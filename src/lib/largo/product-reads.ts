@@ -533,24 +533,42 @@ export async function helixTapeAnalyticsForLargo(ticker: string | null, limit = 
 /** Thermal compare strip — SPY/SPX/QQQ side-by-side positioning summary. */
 export async function thermalCompareForLargo(tickers?: string[]) {
   const { THERMAL_COMPARE_TICKERS } = await import("@/features/thermal/lib/thermal-desk-state");
-  const { gexHeatmapForLargo } = await import("@/lib/largo/gex-heatmap-for-largo");
+  const { getGexPositioning } = await import("@/lib/providers/gex-positioning");
   const list = (tickers?.length ? tickers : [...THERMAL_COMPARE_TICKERS]).map((t) =>
     String(t).trim().toUpperCase()
   );
+  // Compare strip only needs summary scalars (flip, walls, net GEX) — NOT the full matrix.
+  // gexHeatmapForLargo re-fetches the entire chain per ticker and was timing out Largo turns
+  // at ~120s on cold SPX+SPY. getGexPositioning reads the shared warmed cache — same numbers
+  // the Thermal compare UI shows.
   const rows = await Promise.all(
     list.map(async (ticker) => {
-      const row = await gexHeatmapForLargo(ticker, { lens: "gex", top_strikes: 4 });
+      const pos = await getGexPositioning(ticker).catch(() => null);
+      if (!pos) {
+        return {
+          ticker,
+          available: false,
+          spot: null,
+          change_pct: null,
+          flip: null,
+          call_wall: null,
+          put_wall: null,
+          net_gex: null,
+          gamma_regime_read: null,
+          cross_validation: null,
+        };
+      }
       return {
         ticker,
-        available: row.available,
-        spot: row.spot,
-        change_pct: row.change_pct,
-        flip: row.flip,
-        call_wall: row.call_wall,
-        put_wall: row.put_wall,
-        net_gex: row.net_gex,
-        gamma_regime_read: row.gamma_regime_read,
-        cross_validation: row.cross_validation ?? null,
+        available: true,
+        spot: pos.spot,
+        change_pct: pos.change_pct,
+        flip: pos.flip,
+        call_wall: pos.call_wall,
+        put_wall: pos.put_wall,
+        net_gex: pos.net_gex,
+        gamma_regime_read: pos.gamma_regime_read,
+        cross_validation: pos.gex_cross_validation ?? null,
       };
     })
   );

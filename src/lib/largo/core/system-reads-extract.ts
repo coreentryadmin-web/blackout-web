@@ -2,11 +2,12 @@ import {
   helixFlowRead,
   vectorPlayRead,
   gammaRegimeRead,
-  nightHawkRead,
+  nightHawkReconciledRead,
   agreementOf,
   type SystemRead,
   type SystemAgreement,
 } from "./system-reads";
+import { extractNightHawkState } from "./market-evidence";
 
 /**
  * SYSTEM READS, from the tool results the turn ALREADY fetched.
@@ -86,29 +87,6 @@ function findVectorPlay(results: readonly unknown[]): { bias?: string | null; gr
   return null;
 }
 
-/** Night Hawk plays for the instrument under discussion. */
-function findNightHawkPlays(
-  results: readonly unknown[],
-  ticker: string | null
-): Array<{ direction?: string | null; status?: string | null }> | null {
-  if (!ticker) return null;
-  const want = ticker.toUpperCase();
-  for (const r of results) {
-    if (!isRecord(r)) continue;
-    const rows = r.sample_plays ?? r.committed ?? r.ledger;
-    if (!Array.isArray(rows)) continue;
-    const mine = rows.filter(
-      (p): p is Record<string, unknown> => isRecord(p) && String(p.ticker ?? "").toUpperCase() === want
-    );
-    // An empty filter over a real lane IS a finding ("no plays on this name"), so return [] rather
-    // than null once we have found the lane.
-    return mine.map((p) => ({
-      direction: typeof p.direction === "string" ? p.direction : null,
-      status: typeof p.status === "string" ? p.status : null,
-    }));
-  }
-  return null;
-}
 
 export type SystemReadsBlock = { reads: SystemRead[]; agreement: SystemAgreement };
 
@@ -134,8 +112,14 @@ export function extractSystemReads(
   const vector = findVectorPlay(results);
   if (vector) reads.push(vectorPlayRead(vector));
 
-  const nh = findNightHawkPlays(results, ticker);
-  if (nh) reads.push(nightHawkRead(nh));
+  const nhState = extractNightHawkState(results, ticker);
+  if (
+    nhState &&
+    ticker &&
+    (nhState.consulted.edition || nhState.consulted.zerodte || nhState.consulted.swing)
+  ) {
+    reads.push(nightHawkReconciledRead(nhState, ticker));
+  }
 
   const pos = findPositioning(results);
   if (pos) reads.push(gammaRegimeRead({ spot: pos.spot, gammaFlip: pos.flip }));

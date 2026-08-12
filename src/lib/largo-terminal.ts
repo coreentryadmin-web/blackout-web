@@ -63,6 +63,11 @@ import { formatEntityBlock } from "@/lib/largo/core/entities";
 import { buildDrillDowns, formatDrillDownBlock } from "@/lib/largo/core/drilldown";
 import { applyConflictCaveat, findSourceConflicts } from "@/lib/largo/core/cross-source";
 import {
+  applyEvidenceIntegrityCaveat,
+  buildMarketEvidence,
+  mergeEvidenceIssues,
+} from "@/lib/largo/core/market-evidence";
+import {
   applyCoherenceCaveat,
   applyProvenanceCaveat,
   findContradictions,
@@ -518,7 +523,8 @@ function envelopeFromContract(
   text: string,
   question: string,
   /** The turn's raw tool results — carries structured blocks (GEX shifts) the prose flattened. */
-  capturedResults?: readonly unknown[]
+  capturedResults?: readonly unknown[],
+  marketEvidence?: ReturnType<typeof buildMarketEvidence>
 ): BieAnswerEnvelope | undefined {
   const report = validateAnswerContract(text);
   if (!report.conforms) {
@@ -531,7 +537,23 @@ function envelopeFromContract(
       question.slice(0, 80)
     );
   }
-  return parseAnswerEnvelope(text, capturedResults) ?? undefined;
+  return parseAnswerEnvelope(text, capturedResults, marketEvidence ?? undefined) ?? undefined;
+}
+
+/** Post-synthesis integrity: canonical evidence + fail-closed gates on spot disagreement. */
+function applyMarketEvidenceGates(
+  text: string,
+  capturedResults: readonly unknown[],
+  tickerHint: string | null,
+  startedAt: number
+): { text: string; marketEvidence: ReturnType<typeof buildMarketEvidence> } {
+  let marketEvidence = buildMarketEvidence(capturedResults, tickerHint, todayEtYmd(), startedAt);
+  if (!marketEvidence) return { text, marketEvidence: null };
+  marketEvidence = mergeEvidenceIssues(marketEvidence, text);
+  if (marketEvidence.issues.length) {
+    console.warn(`[largo] market-evidence: ${marketEvidence.issues.map((i) => i.code).join(",")}`);
+  }
+  return { text: applyEvidenceIntegrityCaveat(text, marketEvidence), marketEvidence };
 }
 
 
@@ -674,6 +696,14 @@ export async function runLargoQuery(
       text = applyProvenanceCaveat(text, provenanceLies);
     }
 
+    const { text: gatedText, marketEvidence } = applyMarketEvidenceGates(
+      text,
+      capturedResults,
+      tickerHint,
+      startedAt
+    );
+    text = gatedText;
+
     // Per-tool timing summary. Turns "Largo is slow" into "get_postgres_flows took 9.2s of an 11s
     // turn" — a question with an answer. Also surfaces DENIED and silently-EMPTY tool results,
     // neither of which is visible in `toolsUsed` alone.
@@ -686,7 +716,7 @@ export async function runLargoQuery(
     // headline the badge renders. Deriving them from the raw answer instead would read the whole
     // body — where a long answer naturally names both directions — and report MIXED on answers
     // that resolved cleanly. Chips and badge now agree by construction.
-    const envelope = envelopeFromContract(text, question, capturedResults);
+    const envelope = envelopeFromContract(text, question, capturedResults, marketEvidence);
     // The turn id rides on the envelope so a follow-up can name the exact turn it refers to.
     if (envelope && turnId != null) envelope.turnId = turnId;
     const followups = withResolutionChips(
@@ -879,6 +909,14 @@ export async function runLargoQueryStream(
       text = applyProvenanceCaveat(text, provenanceLies);
     }
 
+    const { text: gatedText, marketEvidence } = applyMarketEvidenceGates(
+      text,
+      capturedResults,
+      tickerHint,
+      startedAt
+    );
+    text = gatedText;
+
     // Per-tool timing summary. Turns "Largo is slow" into "get_postgres_flows took 9.2s of an 11s
     // turn" — a question with an answer. Also surfaces DENIED and silently-EMPTY tool results,
     // neither of which is visible in `toolsUsed` alone.
@@ -891,7 +929,7 @@ export async function runLargoQueryStream(
     // headline the badge renders. Deriving them from the raw answer instead would read the whole
     // body — where a long answer naturally names both directions — and report MIXED on answers
     // that resolved cleanly. Chips and badge now agree by construction.
-    const envelope = envelopeFromContract(text, question, capturedResults);
+    const envelope = envelopeFromContract(text, question, capturedResults, marketEvidence);
     // The turn id rides on the envelope so a follow-up can name the exact turn it refers to.
     if (envelope && turnId != null) envelope.turnId = turnId;
     const followups = withResolutionChips(

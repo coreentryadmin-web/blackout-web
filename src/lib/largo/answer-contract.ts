@@ -4,6 +4,10 @@ import { extractGexShifts } from "@/lib/largo/core/gex-shift-extract";
 import { analyzeLargoQuestion } from "@/lib/largo/question-intent";
 import { extractSystemReads } from "@/lib/largo/core/system-reads-extract";
 import {
+  evidenceLevelsForEnvelope,
+  type MarketEvidence,
+} from "@/lib/largo/core/market-evidence";
+import {
   makeEnvelope,
   type BieAnswerEnvelope,
   type BieBias,
@@ -278,7 +282,9 @@ export function validateAnswerContract(markdown: string): AnswerContractReport {
 export function parseAnswerEnvelope(
   markdown: string,
   /** The turn's raw tool results, for structured blocks the prose cannot carry. */
-  capturedResults?: readonly unknown[]
+  capturedResults?: readonly unknown[],
+  /** Canonical validated evidence — when present, overrides levels and system reads. */
+  marketEvidence?: MarketEvidence | null
 ): BieAnswerEnvelope | null {
   let sections: Map<string, string>;
   try {
@@ -312,7 +318,12 @@ export function parseAnswerEnvelope(
   const confidenceLevel = firstMatch(confidenceBody, CONFIDENCE_WORDS);
   const risk = bulletLines(get("Risk"));
 
-  return makeEnvelope({
+  const canonicalLevels =
+    marketEvidence && marketEvidence.levels.length > 0
+      ? evidenceLevelsForEnvelope(marketEvidence)
+      : extractLevels(evidence);
+
+  const envelope = makeEnvelope({
     headline: verdict.split(/\r?\n/)[0]!.trim(),
     bias: firstMatch(verdict, BIAS_WORDS) ?? "neutral",
     // ABSENT, not defaulted. The `why` is the whole point of the confidence field — a bare level
@@ -320,7 +331,19 @@ export function parseAnswerEnvelope(
     // the opposite: `?? "moderate"` invented a level whenever Largo wrote no Confidence section,
     // and the UI printed "MODERATE CONFIDENCE" above "No confidence rationale was given."
     // An omitted section now yields an omitted badge.
-    confidence: confidenceLevel ? { level: confidenceLevel, why: confidenceBody.trim() } : undefined,
+    confidence: confidenceLevel
+      ? {
+          level: marketEvidence?.preciseRecommendationsBlocked ? "insufficient" : confidenceLevel,
+          why: marketEvidence?.preciseRecommendationsBlocked
+            ? `${confidenceBody.trim()} Sources disagree on spot — precise levels withheld.`.trim()
+            : confidenceBody.trim(),
+        }
+      : marketEvidence?.preciseRecommendationsBlocked
+        ? {
+            level: "insufficient",
+            why: "Spot prices disagree across sources — precise entry/stop/target levels are withheld.",
+          }
+        : undefined,
     // Every canonical section Largo actually wrote becomes a card, in contract order. Conflicts
     // and Data ride here rather than being flattened into a caveat list so the UI can give them
     // their own headings — "these signals disagree" and "this number is 12 minutes old" are
@@ -334,11 +357,13 @@ export function parseAnswerEnvelope(
     // the numbers were in the evidence prose and nothing lifted them out. extractLevels reads the
     // already-structured evidence rows against a closed label set, so a miss costs one grid row
     // and can never produce a wrong one.
-    levels: extractLevels(evidence),
+    levels: canonicalLevels,
     // Structured, from the tool's own output — see gex-shift-extract.ts.
     gexShifts: extractGexShifts(capturedResults)?.shifts,
     // Cross-system consensus, from the same tool results — see system-reads-extract.ts.
     systemReads: extractSystemReads(capturedResults, tickerHint) ?? undefined,
-    invalidation: risk[0] ?? null,
+    invalidation: marketEvidence?.preciseRecommendationsBlocked ? null : risk[0] ?? null,
   });
+
+  return envelope;
 }
