@@ -64,20 +64,36 @@ async function fetchChain(ticker) {
   return out;
 }
 
-async function fetchSpot(ticker) {
-  // An INDEX is not on the stocks snapshot endpoint. Asking for SPX there returns nothing, which
-  // the harness then reported as a hard FAIL — a harness gap dressed up as a product defect, which
-  // is exactly the failure mode the rest of this file exists to avoid.
-  if (ticker === "SPX" || ticker.startsWith("I:")) {
-    const sym = ticker.startsWith("I:") ? ticker : `I:${ticker}`;
-    const j = await getJson(`${BASE}/v3/snapshot/indices?ticker.any_of=${encodeURIComponent(sym)}&apiKey=${KEY}`);
-    const px = j?.results?.[0]?.value ?? j?.results?.[0]?.session?.close;
-    return Number.isFinite(px) && px > 0 ? px : 0;
-  }
+async function indexSpot(ticker) {
+  const sym = ticker.startsWith("I:") ? ticker : `I:${ticker}`;
+  const j = await getJson(`${BASE}/v3/snapshot/indices?ticker.any_of=${encodeURIComponent(sym)}&apiKey=${KEY}`);
+  const px = j?.results?.[0]?.value ?? j?.results?.[0]?.session?.close;
+  return Number.isFinite(px) && px > 0 ? px : 0;
+}
+
+async function stockSpot(ticker) {
   const j = await getJson(`${BASE}/v2/snapshot/locale/us/markets/stocks/tickers/${ticker}?apiKey=${KEY}`);
   const t = j?.ticker;
   const px = t?.lastTrade?.p ?? t?.day?.c ?? t?.prevDay?.c;
   return Number.isFinite(px) && px > 0 ? px : 0;
+}
+
+/**
+ * An INDEX is not on the stocks snapshot endpoint, so asking for one there returns nothing and the
+ * harness reported a hard FAIL — a harness gap dressed up as a product defect, the exact failure
+ * mode the rest of this file exists to avoid.
+ *
+ * The first fix special-cased SPX. That was the same bug with a smaller blast radius: VIX is also a
+ * real index with a listed options chain, and it still came back FAIL. A hardcoded list is a
+ * standing invitation to repeat this for the next index someone types. So: TRY, then FALL BACK.
+ * `I:`-prefixed symbols go straight to the index endpoint; everything else tries stocks first and
+ * falls back to indices before we conclude anything at all.
+ */
+async function fetchSpot(ticker) {
+  if (ticker.startsWith("I:")) return indexSpot(ticker);
+  const px = await stockSpot(ticker);
+  if (px > 0) return px;
+  return indexSpot(ticker);
 }
 
 /** The matrix's own math, reproduced exactly: dealer sign × provider gamma × OI × shares × S² × 0.01. */
@@ -175,6 +191,26 @@ for (const ticker of TICKERS) {
     anchorNetGamma: prov.total,
   });
   const ms = Date.now() - t0;
+
+  // A ladder with no rungs must NEVER report PASS. Generalising the index lookup above let VIX
+  // resolve a spot ($15.28) while its chain contributed zero usable contracts under this root — and
+  // every check below then "passed" against an empty ladder: 0/0 bands agree, 0 vs 0 net GEX, 0%
+  // difference. That is a vacuous pass, which is worse than the FAIL it replaced, because a FAIL
+  // gets investigated and a green tick does not. Report it as SKIP: not validated, and not counted
+  // as evidence of anything.
+  if (ladder.levels.length === 0) {
+    results.push({
+      ticker,
+      verdict: "SKIP",
+      reason: `spot ${spot.toFixed(2)} resolved but 0 usable contracts under root ${optionsRoot} (${rawChain.length} raw rows, ${keep.size} near-term expiries)`,
+      spot: Number(spot.toFixed(2)),
+    });
+    if (!asJson) {
+      console.log(`\n═══ ${ticker}  spot ${spot.toFixed(2)}  [SKIP] 0 usable contracts under root ${optionsRoot}`);
+      console.log(`  ${rawChain.length} raw chain rows, ${keep.size} near-term expiries — nothing to validate, so nothing is claimed.`);
+    }
+    continue;
+  }
 
   // ── Check 1: does our Black-Scholes gamma reproduce the provider's? ──────────────────────
   // Measured RAW, before the anchor is applied — anchoring makes the two agree by construction, so
