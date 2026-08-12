@@ -72,7 +72,8 @@ The provider's greeks are not. Measured live on 2026-08-12, raw agreement at spo
 | TSLA | 0.1% | AAPL | 7.3% |
 | ASTS | 0.7% | SPY | 9.5% |
 | NVDA | 1.7% | QQQ | 15.8% |
-| | | IWM | 21.7% |
+| MSFT | 0.6% | IWM | 21.7% |
+| AMD | 2.0% | SPX | 10.7% |
 
 **The gap is the dividend yield.** So the ladder is *anchored*: scaled so its gamma at spot equals
 the matrix's own `gex.total`. Each source is then used for what it is best at — provider greeks are
@@ -127,6 +128,9 @@ Checked against live chains by `gex-depth-validate.mjs`:
 - Inherits the **calls-long / puts-short** dealer assumption. Where that is wrong for a strike, the
   depth is wrong there too — which is why flow-inferred dealer sign would upgrade this for free.
 - **IV is held fixed** across the ladder. A real 5% move moves vol too.
+- The closed form is **European**. SPX genuinely is; listed equity and ETF options are American,
+  where early exercise shifts delta slightly (most visibly on deep-ITM puts). Smaller than the
+  r=q=0 effect above, and the anchor absorbs the part of it that is a level error — but real.
 
 ## Lifecycle
 

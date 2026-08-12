@@ -65,6 +65,15 @@ async function fetchChain(ticker) {
 }
 
 async function fetchSpot(ticker) {
+  // An INDEX is not on the stocks snapshot endpoint. Asking for SPX there returns nothing, which
+  // the harness then reported as a hard FAIL — a harness gap dressed up as a product defect, which
+  // is exactly the failure mode the rest of this file exists to avoid.
+  if (ticker === "SPX" || ticker.startsWith("I:")) {
+    const sym = ticker.startsWith("I:") ? ticker : `I:${ticker}`;
+    const j = await getJson(`${BASE}/v3/snapshot/indices?ticker.any_of=${encodeURIComponent(sym)}&apiKey=${KEY}`);
+    const px = j?.results?.[0]?.value ?? j?.results?.[0]?.session?.close;
+    return Number.isFinite(px) && px > 0 ? px : 0;
+  }
   const j = await getJson(`${BASE}/v2/snapshot/locale/us/markets/stocks/tickers/${ticker}?apiKey=${KEY}`);
   const t = j?.ticker;
   const px = t?.lastTrade?.p ?? t?.day?.c ?? t?.prevDay?.c;

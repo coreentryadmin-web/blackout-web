@@ -30,6 +30,10 @@
  *     a strike, the depth is wrong there too.
  *   - IV is held FIXED across the ladder. A real 5% move moves vol as well; adding a vol axis to
  *     this same grid is the natural next step, not a correction to this one.
+ *   - The closed form is EUROPEAN. Index options (SPX) genuinely are; listed equity and ETF options
+ *     are AMERICAN, where early exercise moves delta slightly — most visibly on deep-ITM puts. The
+ *     effect is small relative to the r=q=0 simplification above, and the anchor absorbs whatever
+ *     part of it is a level error, but it is a real model limitation and not a rounding detail.
  *
  * Pure by construction: no network, no React, no Redis. Every input is passed in.
  */
