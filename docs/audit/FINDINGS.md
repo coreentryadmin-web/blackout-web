@@ -38,6 +38,20 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-08-12 — [FINDING, P1 Thermal] Both of the operator's Thermal reports were real: ASTS served 30 of 119 strikes, and Max Pain came off an already-settled expiry — FIXED, LIVE-VERIFIED
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Status** | FIXED and verified against live prod. Shipped as #2083 (settled expiry), #2084 (strike coverage), #2085 (`$0.0K` on absent contracts). Observability follow-up in this PR. |
+| **Reported** | "some stocks dont show up all strikes ? Like for example ASTS, it only shows a few strikes .. not all" and "the top panel above the matrix net gex, max pain, call wall are always incorrect". Both reproduced exactly. |
+| **Root cause 1 — strike coverage** | `fetchHeatmapBand` pulled `spot ± DEFAULT_HEATMAP_BAND_PCT` (±20%), and escalated to the full listed chain ONLY when `spot <= $15`. ASTS at $71.66 never qualified, so the matrix was computed on **30 of its 119 listed strikes**, leaving **812,514 of 1,194,376 OI (68%) unfetched — including strike 100, the single largest-OI strike in the chain**. Every downstream number is computed on what was fetched, so the call wall could only ever be found among the strikes that made it in. The symptom is a THIN LADDER, not a low price, so `shouldEscalateToFullChain` now triggers on the returned strike count (`< 45`) at any price. |
+| **Root cause 2 — settled expiry** | Gamma collapses at the 4pm ET settlement but OPEN INTEREST does not vanish until the provider drops the contracts. `2026-08-11` therefore contributed zero gamma (a dead leftmost `$0.0K` column) while still supplying the OI that `computeMaxPainFromChain` read as the front expiry. On SPY/SPX dailies that is **every trading evening** — precisely when an overnight desk is read. `liveExpiries` now drops settled expiries at the single derivation point so the near-term axis, far-dated union, structural levels and max-pain scope all inherit it; it keeps today's expiry until the close, and returns the list unchanged if everything is settled, so it can never blank the matrix. |
+| **Evidence (live prod, after deploy `ec7876a8`)** | ASTS strikes served **30 → 118**, range **57–86 → 2.5–190**, call wall **80 → 100** (the largest-OI strike, previously invisible), front expiry **2026-08-11 (settled) → 2026-08-14**. SOFI 57 strikes, NVDA 78 (correctly no escalation — already above the threshold). Max pain independently recomputed from the raw Polygon chain: **ASTS 2026-08-14 → 69** and **NVDA 2026-08-12 → 217.5**, both matching the served values exactly. |
+| **Blast radius** | One fetch path (`fetchHeatmapBand`, the only caller at line 2717) and one expiry derivation, so every Thermal metric — GEX/VEX/DEX/CHARM cells, strike totals, call/put wall, gamma flip, max pain, the SHIFT ring and the EOD history — was affected together and is fixed together. The UW `spot-exposures` degraded path applies its own band and is out of scope. |
+| **Process failure worth keeping** | The strike fix was first read as "shipped but did nothing in production". It had not: the matrix was serving a **pre-deploy cached ladder**, and because the escalation logs nothing either way, a failed escalation, an escalation that never fired, and a stale cache were all indistinguishable from outside the process. **Verifying a data-shape fix immediately after a deploy proves nothing until the cache has turned over.** This PR adds the log lines on both branches so the next occurrence is one request to diagnose, not an hour. |
+
 ## 2026-08-12 — [NEGATIVE-RESULT, Night Hawk 0DTE] `actual_dte_at_commit` cannot replace the OCC derivation in #2075 — RULED OUT
 
 > **kind:** `NEGATIVE-RESULT`
