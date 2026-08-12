@@ -2590,6 +2590,18 @@ function GexDepthLadderView({
       : null;
   const callWallRung = nearest(callWall);
   const putWallRung = nearest(putWall);
+  // Where net dealer gamma changes sign as price moves — the ladder's own repriced flip, which is
+  // NOT the same as the current gamma flip in Key Levels (that one is measured at today's spot;
+  // this one is where the flip would move to). Rungs are descending, so the marker slots above the
+  // first rung below it, exactly like the spot row.
+  //
+  // It is drawn rather than left as a legend chip because without it the ladder can read as broken.
+  // Live SPY 2026-08-12: every rung on BOTH sides of spot said SELL, which looks like a stuck sign
+  // until you see the crossing sitting at 768.19 — above it dealers sell into strength because they
+  // are LONG gamma, below it they sell into weakness because they are SHORT gamma. Same colour,
+  // opposite mechanism, and the line between them is the whole story.
+  const crossingIdx =
+    depth.crossing != null ? rungs.findIndex((l) => l.price < depth.crossing!) : -1;
 
   // What stands between spot and the desk's own target. A price alone says nothing about how hard
   // it is to reach; the forced flow in the way is the difference between a target with the tape
@@ -2639,7 +2651,10 @@ function GexDepthLadderView({
   };
 
   return (
-    <div className="min-w-0">
+    // Capped and centred rather than edge-to-edge: with the Cumulative Curve no longer sharing the
+    // row, an uncapped ladder stretches every rung across a 1440px desk, and a 32-rung book of
+    // hairline-tall bars that wide is harder to read than the half-width one it replaced.
+    <div className="mx-auto w-full min-w-0 max-w-3xl">
       <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <h3 className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-sky-300">
           Forced dealer flow
@@ -2681,7 +2696,11 @@ function GexDepthLadderView({
       <div
         className="space-y-[3px]"
         role="img"
-        aria-label={`Forced dealer hedging flow for ${underlying} by price level. Buying below spot, selling above, drawn from net dealer gamma.`}
+        // NOT "buying below spot, selling above" — that is only true of a book that is long gamma
+        // throughout, and it is false whenever the modelled flip sits inside the ladder. Live SPY
+        // 2026-08-12 was selling on BOTH sides. Describing the panel by an assumption it does not
+        // hold would read a wrong market structure to a screen-reader user with no way to check it.
+        aria-label={`Forced dealer hedging flow for ${underlying} by price level, drawn from net dealer gamma. Direction is per price band and can be the same on both sides of spot.`}
       >
         {rungs.map((l, i) => (
           <div key={l.price}>
@@ -2697,10 +2716,54 @@ function GexDepthLadderView({
                 <span className="hidden w-[4.75rem] shrink-0 sm:inline" />
               </div>
             )}
+            {i === crossingIdx && i !== spotIdx && depth.crossing != null && (
+              <div className="flex items-center gap-1.5 py-[3px]">
+                <span className="w-[3.75rem] shrink-0 text-right font-mono text-[10px] font-bold tabular-nums text-amber-300">
+                  {fmtStrike(depth.crossing)}
+                </span>
+                {/* Dashed, and amber rather than the spot row's solid white: this is a MODELLED
+                    boundary the ladder derived, not an observed price. The two must not read as
+                    equally hard facts. */}
+                <span
+                  aria-hidden
+                  className="h-px min-w-0 flex-1"
+                  style={{
+                    backgroundImage:
+                      "repeating-linear-gradient(to right, rgba(252,211,77,0.75) 0 5px, transparent 5px 9px)",
+                  }}
+                />
+                <span
+                  className="w-[4.5rem] shrink-0 font-mono text-[9px] uppercase tracking-wider text-amber-300/80"
+                  title="Net dealer gamma changes sign here. Above it dealers DAMP moves (long gamma); below it they AMPLIFY them (short gamma) — which is why both sides can show the same trade direction for opposite reasons."
+                >
+                  γ flip
+                </span>
+                <span className="hidden w-[4.75rem] shrink-0 sm:inline" />
+              </div>
+            )}
             <Row l={l} />
           </div>
         ))}
       </div>
+
+      {/* The sentence the ladder cannot draw. Which side of the modelled flip spot currently sits
+          on decides whether dealer hedging steadies this tape or accelerates it, and that is the
+          single most actionable thing on this panel. */}
+      {depth.crossing != null && (
+        <p className="mt-2 font-mono text-[10px] leading-snug text-white/50">
+          {spot < depth.crossing ? (
+            <>
+              Spot is <span className="text-bear-text">below</span> the modelled flip — dealers are
+              short gamma here and hedging <span className="text-bear-text">amplifies</span> moves.
+            </>
+          ) : (
+            <>
+              Spot is <span className="text-emerald-300">above</span> the modelled flip — dealers are
+              long gamma here and hedging <span className="text-emerald-300">damps</span> moves.
+            </>
+          )}
+        </p>
+      )}
 
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[9px] uppercase tracking-[0.16em] text-sky-300/70">
         <span className="flex items-center gap-1.5">
@@ -4536,22 +4599,27 @@ export function GexHeatmap({
               </TabPanel>
               <TabPanel value="pair-c">
                 {data?.depth && data.depth.levels.length > 0 && !stale ? (
-                  <div className={clsx("grid grid-cols-1 gap-4", nativeShell ? "" : "lg:grid-cols-2")}>
-                    <GexDepthLadderView
-                      depth={data.depth}
-                      spot={data.spot ?? 0}
-                      underlying={data.underlying ?? ticker}
-                      callWall={data.gex?.call_wall ?? null}
-                      putWall={data.gex?.put_wall ?? null}
-                      targetStrike={
-                        data.nighthawk_context?.target_strike != null
-                          ? Number(data.nighthawk_context.target_strike)
-                          : null
-                      }
-                      targetDirection={data.nighthawk_context?.play_direction ?? null}
-                    />
-                    {!nativeShell && <div className="min-w-0">{curvePanel}</div>}
-                  </div>
+                  /* The ladder alone, full width — the Cumulative Curve deliberately does NOT sit
+                     beside it (it lives on the Profile tab with the profile + shift, which is the
+                     trio it belongs to). Both are running sums over strikes and they LOOK alike,
+                     but they answer different questions: the curve sums the book as it stands at
+                     TODAY'S spot, so its zero-crossing is the gamma flip right now; the ladder
+                     REPRICES the whole chain at hypothetical spots, so its crossing is where the
+                     flip would MOVE TO. Side by side they read as one curve drawn twice, which
+                     buries the only thing the ladder adds. */
+                  <GexDepthLadderView
+                    depth={data.depth}
+                    spot={data.spot ?? 0}
+                    underlying={data.underlying ?? ticker}
+                    callWall={data.gex?.call_wall ?? null}
+                    putWall={data.gex?.put_wall ?? null}
+                    targetStrike={
+                      data.nighthawk_context?.target_strike != null
+                        ? Number(data.nighthawk_context.target_strike)
+                        : null
+                    }
+                    targetDirection={data.nighthawk_context?.play_direction ?? null}
+                  />
                 ) : (
                   /* Honest empty state. The ladder is dropped (not pruned) across the ET rollover
                      and omitted entirely on a legacy cached payload, so "unavailable" is a real

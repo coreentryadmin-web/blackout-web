@@ -7642,9 +7642,13 @@ body::before {
   }
 
   @media (min-width: 1280px) {
-    /* Proportions per member spec: ~10% ladder · ~60% chart · ~30% terminal. The ladder holds only a
-       few dense rows so it stays thin (min 96px so it never collapses); the terminal is the main
-       scroll surface so it gets ~30%; the chart takes the remaining ~60%. */
+    /* Proportions per member spec: ~10% ladder · ~60% chart · ~30% terminal.
+       The ladder stays THIN on purpose. Unlike the Thermal forced-flow ladder, which owns a
+       standalone page and can spend width freely, this one is a rail beside the chart — the chart
+       is the main event on /vector and does not give up pixels to a sidebar. So the fix for the
+       0px bar and the clipped values is to tighten the ROW to fit this rail (see
+       .vector-gex-ladder-row), not to widen the rail to fit a loose row. Min 96px so it never
+       collapses. */
     .vector-chart-terminal-grid {
       grid-template-columns: minmax(96px, 10%) minmax(0, 1fr) minmax(300px, 30%);
     }
@@ -7954,24 +7958,33 @@ body::before {
   .vector-gex-ladder-rows {
     list-style: none;
     margin: 0;
-    padding: 0.25rem 0.4rem;
+    /* Horizontal padding halved — in a 139px rail this is 12.8px of row width spent on air. */
+    padding: 0.25rem 0.2rem;
     overflow-y: auto;
     flex: 1 1 auto;
     min-height: 0;
   }
 
+  /* Strike | bar | value — the Thermal forced-flow ladder's three-part layout, TIGHTENED to fit a
+     rail rather than a page.
+     Measured live at 1440px before this: rail 139.2px, row 124.4px, and fixed tracks alone 125.4px
+     — over-subscribed, so the bar resolved to EXACTLY 0px and the value clipped "+$93.1M" down to
+     "+$93.1" (a unit-less number is not a smaller number, it is a wrong one — K/M/B are 1000x
+     apart). Every fixed dimension below is cut to buy that space back from within the rail:
+       forced-flow rail  0.3rem  -> 0.2rem
+       strike column     2.9rem  -> 2.1rem   (fits a 5-digit strike at the tightened font)
+       column gap        0.3rem  -> 0.18rem
+       row padding-x    0.25rem  -> 0.12rem
+       migration arrow   2.4rem  -> 0        (moved inside the value cell; see the component)
+     That returns ~40px to the bar while leaving the value its full unit. */
   .vector-gex-ladder-row {
     display: grid;
-    /* Thin left-rail: keep the strike + value tight so the magnitude bar still has room to read.
-       4th track (2026-08-06, wall-migration arrows) is a narrow fixed width so it doesn't steal
-       space from the bar on rows with no migration reading — see the component's comment on why
-       it's always rendered (empty) rather than conditionally added/removed from the grid. */
-    /* Leading 0.3rem track (2026-08-12) is the forced-flow rail — see .vector-gex-ladder-flow. */
-    grid-template-columns: 0.3rem 2.9rem minmax(0, 1fr) 2.4rem auto;
+    /* forced-flow rail | strike | magnitude bar | value */
+    grid-template-columns: 0.2rem 2.1rem minmax(1.5rem, 1fr) auto;
     align-items: center;
-    gap: 0.3rem;
-    padding: 0.09rem 0.25rem;
-    border-radius: 0.35rem;
+    gap: 0.18rem;
+    padding: 0.09rem 0.12rem;
+    border-radius: 0.3rem;
     font-variant-numeric: tabular-nums;
   }
 
@@ -7980,7 +7993,7 @@ body::before {
   }
 
   .vector-gex-ladder-strike {
-    font-size: 0.68rem;
+    font-size: 0.63rem;
     color: rgba(203, 213, 225, 0.95);
     font-family: var(--font-mono, ui-monospace, monospace);
   }
@@ -7988,6 +8001,7 @@ body::before {
   .vector-gex-ladder-bar-track {
     position: relative;
     height: 0.55rem;
+    min-width: 0;
     border-radius: 0.28rem;
     background: rgba(255, 255, 255, 0.05);
     overflow: hidden;
@@ -8001,7 +8015,15 @@ body::before {
   }
 
   .vector-gex-ladder-val {
-    font-size: 0.62rem;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.2rem;
+    min-width: 0;
+    /* The number must survive; the migration arrow after it is what gets cut if the cell
+       over-subscribes at this panel width. */
+    overflow: hidden;
+    font-size: 0.58rem;
     text-align: right;
     white-space: nowrap;
     font-family: var(--font-mono, ui-monospace, monospace);
@@ -8016,8 +8038,8 @@ body::before {
      window? Muted grey (empty) by default so a row with no reading yet doesn't draw the eye;
      only rows with an actual ≥1% move get a coloured tag. */
   .vector-gex-ladder-migration {
+    flex: 0 0 auto;
     font-size: 0.58rem;
-    text-align: right;
     white-space: nowrap;
     font-family: var(--font-mono, ui-monospace, monospace);
     color: rgba(148, 163, 184, 0.4);
@@ -8039,8 +8061,8 @@ body::before {
      laid out) on strikes outside the ladder's ±8% window. */
   .vector-gex-ladder-flow {
     height: 100%;
-    min-height: 0.55rem;
-    border-radius: 0.15rem;
+    min-height: 0.5rem;
+    border-radius: 0.12rem;
     background: transparent;
   }
 
