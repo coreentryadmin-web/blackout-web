@@ -3843,7 +3843,12 @@ export function GexHeatmap({
                               (isDayCallWallCell || isDayPutWallCell) && "spx-gex-matrix-extreme-pop"
                             )}
                           >
-                            {fmtHeatmapMoneySigned(val, { showZero: true })}
+                            {/* `showZero: has` — NOT `true`. A cell with no listed contract was coerced to 0 above and
+                                then printed "$0.0K", asserting a MEASURED zero where there is simply no contract.
+                                On a market-structure matrix those are different facts: "dealers hold no gamma
+                                here" vs "this strike/expiry does not trade". The dim class below already says
+                                absent; the text was contradicting it. A real 0 still prints "$0.0K". */}
+                            {fmtHeatmapMoneySigned(val, { showZero: has })}
                           </span>
                           {isDayKing && (
                             <span className="ml-0.5 inline-flex items-baseline gap-0.5">

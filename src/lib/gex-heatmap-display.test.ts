@@ -42,3 +42,27 @@ describe("gex-heatmap-display", () => {
     assert.ok(light.textShadow);
   });
 });
+/**
+ * ABSENT IS NOT ZERO.
+ *
+ * The matrix coerces a missing cell to 0 before rendering (`const val = has ? v : 0`) and used to
+ * pass `showZero: true` unconditionally, so a strike/expiry with NO listed contract printed
+ * "$0.0K" — a measured reading where there is no instrument. On SPY that was a large share of the
+ * grid. The formatter always supported both; only the call site was wrong (it now passes `has`).
+ */
+
+describe("absent vs measured zero", () => {
+  it("a measured zero still reads as a measured zero", () => {
+    assert.equal(fmtHeatmapMoneySigned(0, { showZero: true }), "$0.0K");
+  });
+
+  it("an absent cell reads as absent, not as zero", () => {
+    assert.equal(fmtHeatmapMoneySigned(0, { showZero: false }), "·");
+    assert.equal(fmtHeatmapMoneySigned(0), "·");
+  });
+
+  it("real values are unaffected and keep their sign", () => {
+    assert.match(fmtHeatmapMoneySigned(1_500_000, { showZero: false }), /^\+\$1\.5M$/);
+    assert.match(fmtHeatmapMoneySigned(-1_500_000, { showZero: true }), /^-\$1\.5M$/);
+  });
+});
