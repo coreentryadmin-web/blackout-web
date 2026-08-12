@@ -2639,7 +2639,10 @@ function GexDepthLadderView({
   };
 
   return (
-    <div className="min-w-0">
+    // Capped and centred rather than edge-to-edge: with the Cumulative Curve no longer sharing the
+    // row, an uncapped ladder stretches every rung across a 1440px desk, and a 32-rung book of
+    // hairline-tall bars that wide is harder to read than the half-width one it replaced.
+    <div className="mx-auto w-full min-w-0 max-w-3xl">
       <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <h3 className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-sky-300">
           Forced dealer flow
@@ -4536,22 +4539,27 @@ export function GexHeatmap({
               </TabPanel>
               <TabPanel value="pair-c">
                 {data?.depth && data.depth.levels.length > 0 && !stale ? (
-                  <div className={clsx("grid grid-cols-1 gap-4", nativeShell ? "" : "lg:grid-cols-2")}>
-                    <GexDepthLadderView
-                      depth={data.depth}
-                      spot={data.spot ?? 0}
-                      underlying={data.underlying ?? ticker}
-                      callWall={data.gex?.call_wall ?? null}
-                      putWall={data.gex?.put_wall ?? null}
-                      targetStrike={
-                        data.nighthawk_context?.target_strike != null
-                          ? Number(data.nighthawk_context.target_strike)
-                          : null
-                      }
-                      targetDirection={data.nighthawk_context?.play_direction ?? null}
-                    />
-                    {!nativeShell && <div className="min-w-0">{curvePanel}</div>}
-                  </div>
+                  /* The ladder alone, full width — the Cumulative Curve deliberately does NOT sit
+                     beside it (it lives on the Profile tab with the profile + shift, which is the
+                     trio it belongs to). Both are running sums over strikes and they LOOK alike,
+                     but they answer different questions: the curve sums the book as it stands at
+                     TODAY'S spot, so its zero-crossing is the gamma flip right now; the ladder
+                     REPRICES the whole chain at hypothetical spots, so its crossing is where the
+                     flip would MOVE TO. Side by side they read as one curve drawn twice, which
+                     buries the only thing the ladder adds. */
+                  <GexDepthLadderView
+                    depth={data.depth}
+                    spot={data.spot ?? 0}
+                    underlying={data.underlying ?? ticker}
+                    callWall={data.gex?.call_wall ?? null}
+                    putWall={data.gex?.put_wall ?? null}
+                    targetStrike={
+                      data.nighthawk_context?.target_strike != null
+                        ? Number(data.nighthawk_context.target_strike)
+                        : null
+                    }
+                    targetDirection={data.nighthawk_context?.play_direction ?? null}
+                  />
                 ) : (
                   /* Honest empty state. The ladder is dropped (not pruned) across the ET rollover
                      and omitted entirely on a legacy cached payload, so "unavailable" is a real
