@@ -33,6 +33,8 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { createRequire } from "node:module";
 import { mintClerkPremiumSession } from "./lib/prod-clerk-session.mjs";
+import { probeGeometry } from "./lib/ui-geometry-probe.mjs";
+import { keepSessionAlive, isAuthExpiry } from "./lib/ui-session-keepalive.mjs";
 
 const require_ = createRequire(import.meta.url);
 const { createTunneledContext } = require_("./lib/proxy-tunnel-context.cjs");
@@ -78,6 +80,12 @@ async function auditPage(session, path, device) {
     cookie: session.cookieHeader,
   });
   const tag = `${path} [${device.name}]`;
+  // The minted __session JWT is dead ~72s after issue (measured — see lib/ui-session-keepalive.mjs).
+  // Without this the run goes unauthenticated part-way through and every later page reports its
+  // signed-out empty state as a product defect.
+  const stopKeepAlive = keepSessionAlive(ctx, session, new URL(BASE).hostname, (e) =>
+    note("WARN", `${tag}: session keep-alive failed — ${e}`)
+  );
   try {
     const page = await ctx.newPage();
     // The desk holds a per-second SSE stream open; the tunnel never sees it end, so a navigation
@@ -87,6 +95,8 @@ async function auditPage(session, path, device) {
     const consoleErrors = [];
     const thirdPartyNoise = [];
     const failedRequests = [];
+    /** 401/403 on a first-party URL: the run's credential expired, not a product defect. */
+    const authExpired = [];
     // "Failed to load resource: net::ERR_FAILED" carries NO url, so it cannot be attributed — and
     // the harness itself manufactures one of these by aborting the SSE route above. Dropping the
     // line loses nothing: a resource that fails to load is already measured, with its URL, by the
@@ -102,7 +112,12 @@ async function auditPage(session, path, device) {
     page.on("response", (r) => {
       if (r.status() < 400) return;
       const u = r.url();
-      if (!THIRD_PARTY.test(u)) failedRequests.push(`${r.status()} ${u.replace(BASE, "").slice(0, 90)}`);
+      if (THIRD_PARTY.test(u)) return;
+      // A 401/403 is the run's own credential dying, not the product failing. Routed separately so
+      // an expired token cannot masquerade as a page full of broken panels — the exact confusion
+      // that produced a false "GEX ladder unavailable" bug report in #1961.
+      if (isAuthExpiry(r.status())) authExpired.push(u.replace(BASE, "").slice(0, 60));
+      else failedRequests.push(`${r.status()} ${u.replace(BASE, "").slice(0, 90)}`);
     });
 
     try {
@@ -156,6 +171,13 @@ async function auditPage(session, path, device) {
         requests: [...new Set(failedRequests)].slice(0, 4),
       });
     }
+    if (authExpired.length > 0) {
+      // WARN, not FAIL: it invalidates THIS page's evidence rather than indicting the product. Said
+      // out loud because a silent auth expiry turns the rest of the run into confident nonsense.
+      note("WARN", `${tag}: ${authExpired.length} request(s) 401/403 — audit session expired, findings here are unreliable`, {
+        sample: [...new Set(authExpired)].slice(0, 3),
+      });
+    }
     if (thirdPartyNoise.length > 0 && !asJson) {
       console.log(`        (${thirdPartyNoise.length} third-party console lines — collected, not scored)`);
     }
@@ -164,114 +186,15 @@ async function auditPage(session, path, device) {
     // Two defects found by staring at screenshots on 2026-08-12 — the GEX ladder's reset button
     // rendering 17.5px outside an `overflow: hidden` rail, and the iOS tool label printing under
     // the hamburger. Both were plainly visible and both had been shipping for weeks, because
-    // "someone looks at a screenshot" is not a process. These two predicates are that process.
-    //
-    // Both are HEURISTICS over a live DOM, so each is deliberately narrow: a check that fires on
-    // healthy pages is worse than no check, since its reader learns to skip the whole report.
-    const geometry = await page.evaluate(() => {
-      const vis = (el) => {
-        const s = getComputedStyle(el);
-        return s.visibility !== "hidden" && s.display !== "none" && s.opacity !== "0";
-      };
-      /**
-       * Scrolled out of its own scrollport — present in the DOM, invisible on screen.
-       *
-       * getBoundingClientRect reports where content WOULD be, and inside a scroll container that
-       * is routinely somewhere else entirely: the GEX ladder's scrolled-away rows return rects
-       * sitting on top of a completely different panel. Every one of the twelve collisions the
-       * first live run reported was a pair like that — two elements that share coordinates and
-       * never share a screen. The collision predicate is about what a member SEES, so anything
-       * clipped away by a scrollport is not a participant.
-       */
-      const hiddenByScroll = (el) => {
-        const r = el.getBoundingClientRect();
-        for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
-          const s = getComputedStyle(p);
-          if (!/auto|scroll/.test(s.overflowX) && !/auto|scroll/.test(s.overflowY)) continue;
-          const pr = p.getBoundingClientRect();
-          if (r.bottom <= pr.top || r.top >= pr.bottom || r.right <= pr.left || r.left >= pr.right) {
-            return true;
-          }
-        }
-        return false;
-      };
-      const leaves = [...document.querySelectorAll("body *")].filter(
-        (el) => el.children.length === 0 && (el.textContent ?? "").trim() && vis(el)
-      );
-
-      // (1) CLIPPED: a text leaf sticking out of an ancestor that will CUT it off.
-      //
-      // Three exclusions, each of which produced dozens of false hits on the first live run:
-      //   - `auto`/`scroll` STOPS the walk. Content is reachable by scrolling, so it is not
-      //     clipped — and every ancestor further up is irrelevant, because the scroll container
-      //     will have brought the content inside them by the time it is on screen. Without this
-      //     break the GEX ladder reported all 300+ of its own scrolled-away rows as "cut by 940px"
-      //     inside the panel that scrolls them.
-      //   - a zero-size ancestor is a DELIBERATE collapse (`.nav-brand-ios-compact` sets
-      //     `width: 0; overflow: hidden` to hide the wordmark), not an accident.
-      //   - 6px of slack absorbs sub-pixel rounding and the odd descender.
-      const clipped = [];
-      for (const el of leaves) {
-        const r = el.getBoundingClientRect();
-        if (r.width === 0 || r.height === 0) continue;
-        for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
-          const s = getComputedStyle(p);
-          const scrollable = /auto|scroll/.test(s.overflowX) || /auto|scroll/.test(s.overflowY);
-          if (scrollable) break;
-          if (s.overflowX !== "hidden" && s.overflowY !== "hidden") continue;
-          const pr = p.getBoundingClientRect();
-          if (pr.width === 0 || pr.height === 0) break;
-          const outX = s.overflowX === "hidden" ? Math.max(pr.left - r.left, r.right - pr.right) : 0;
-          const outY = s.overflowY === "hidden" ? Math.max(pr.top - r.top, r.bottom - pr.bottom) : 0;
-          const out = Math.max(outX, outY);
-          if (out > 6) {
-            clipped.push(
-              `"${el.textContent.trim().slice(0, 24)}" cut by ${Math.round(out)}px inside .${
-                (p.className || "").toString().split(/\s+/)[0] || p.tagName.toLowerCase()
-              }`
-            );
-            break;
-          }
-        }
-      }
-
-      // (2) COLLIDING: text printing on top of an interactive control.
-      // Restricted to text-over-CONTROL because unrelated text boxes overlap legitimately all the
-      // time (chart annotations, badges, decorative layers) while a label sitting on a button is a
-      // defect in every design. Ancestor pairs are skipped — a button's own label is inside it —
-      // and anything under a modal is skipped, where covering the page is the entire point.
-      const controls = [...document.querySelectorAll("button, a, input, select, [role=button]")]
-        .filter((el) => vis(el) && !hiddenByScroll(el));
-      const collide = [];
-      for (const t of leaves) {
-        if (t.closest("[role=dialog], [aria-modal=true]")) continue;
-        if (hiddenByScroll(t)) continue;
-        const a = t.getBoundingClientRect();
-        if (a.width === 0 || a.height === 0) continue;
-        for (const c of controls) {
-          if (c.contains(t) || t.contains(c)) continue;
-          const b = c.getBoundingClientRect();
-          if (b.width === 0 || b.height === 0) continue;
-          const ov =
-            Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) *
-            Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
-          // A quarter of the smaller box: a 1px kiss is a rounding artifact, a quarter is a collision.
-          if (ov > 0.25 * Math.min(a.width * a.height, b.width * b.height)) {
-            collide.push(
-              `"${t.textContent.trim().slice(0, 20)}" over control "${(c.innerText || c.getAttribute("aria-label") || c.tagName).trim().slice(0, 20)}"`
-            );
-          }
-        }
-      }
-      return { clipped: [...new Set(clipped)], collide: [...new Set(collide)] };
-    }).catch(() => null);
-
-    if (geometry?.clipped.length) {
+    // "someone looks at a screenshot" is not a process. These predicates are that process; they
+    // live in lib/ui-geometry-probe.mjs so the interaction audit runs the SAME ones.
+    const geometry = await probeGeometry(page);
+    if (geometry.clipped.length) {
       note("FAIL", `${tag}: ${geometry.clipped.length} element(s) CLIPPED by an overflow:hidden box`, {
         clipped: geometry.clipped.slice(0, 4),
       });
     }
-    if (geometry?.collide.length) {
+    if (geometry.collide.length) {
       note("FAIL", `${tag}: ${geometry.collide.length} text/control COLLISION(s)`, {
         collisions: geometry.collide.slice(0, 4),
       });
@@ -291,6 +214,7 @@ async function auditPage(session, path, device) {
 
     await page.screenshot({ path: join(OUT, `${path.replace(/\W+/g, "_") || "root"}-${device.name}.png`) });
   } finally {
+    stopKeepAlive();
     await browser.close().catch(() => {});
   }
 }
