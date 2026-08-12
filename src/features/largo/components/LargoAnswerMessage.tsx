@@ -8,7 +8,9 @@ import { LargoDeskRead } from "@/features/largo/answer/LargoDeskRead";
 import { LargoAnswerCaveats } from "@/features/largo/answer/LargoAnswerCaveats";
 import { splitAnswerCaveats } from "@/features/largo/answer/answer-caveats";
 import { largoAnswerToEnvelope } from "@/features/largo/answer/answer-format";
+import { proseSections } from "@/features/largo/answer/section-policy";
 import { BieScenarioCards } from "@/features/largo/answer/BieScenarioCards";
+import { LargoAnswerBlocks } from "@/features/largo/components/LargoAnswerBlocks";
 
 /**
  * Renders a COMPLETED Largo assistant turn through the rich <BieAnswer> surface
@@ -69,13 +71,18 @@ export function LargoAnswerMessage({
         return (
           <>
             <LargoDeskRead envelope={envelope} question={question} />
+            <LargoAnswerBlocks content={content} />
             <BieScenarioCards scenarios={envelope.scenarios} />
             <LargoAnswerCaveats caveats={caveats} />
           </>
         );
       }
       return (
-        <BieAnswer envelope={envelope} bodyClassName={className} onFollowup={onFollowup} />
+        <BieAnswer
+          envelope={{ ...envelope, sections: proseSections(envelope.sections) }}
+          bodyClassName={className}
+          onFollowup={onFollowup}
+        />
       );
     }
 

@@ -18764,8 +18764,17 @@ body::before {
     letter-spacing: 0.04em;
     text-transform: uppercase;
   }
-  .largo-read-header-speculative {
+  .largo-read-header-rest {
+    padding: 0 0.9rem 0.55rem;
+    font-size: 0.88rem;
+    line-height: 1.5;
+    color: var(--largo-muted);
+  }
+  .largo-read-action-warn {
     color: var(--largo-warn, #fbbf24);
+  }
+  .largo-answer-blocks {
+    margin-top: 0.5rem;
   }
   .largo-read-trade-body {
     display: flex;

@@ -3,6 +3,7 @@
 import { clsx } from "clsx";
 import type { BieAnswerEnvelope } from "@/lib/bie/answer-envelope";
 import { LargoMessageBody } from "@/features/largo/components/LargoMessageBody";
+import { renderInlineMarkdown } from "@/features/largo/components/inline-markdown";
 import { BiasPill, ConfidenceBadge, SourceStamp, UnavailableChip } from "./BieChips";
 import { BieEvidencePanel } from "./BieEvidencePanel";
 import { BieKeyLevelsTable } from "./BieKeyLevelsTable";
@@ -116,7 +117,7 @@ export function BieAnswer({
       {envelope.invalidation ? (
         <p className="bie-answer-invalidation">
           <span className="bie-answer-invalidation-label">Invalidation</span>
-          {envelope.invalidation}
+          {renderInlineMarkdown(envelope.invalidation)}
         </p>
       ) : null}
 

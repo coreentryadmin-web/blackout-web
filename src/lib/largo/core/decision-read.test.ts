@@ -45,58 +45,62 @@ const TSLA_EMPTY_BOARD = [
   { play: { bias: "long" }, emas: { ema20: 178, ema50: 175 }, vwap: 181.2 },
 ];
 
-test("assessZerodteBoardState: empty ledger, WATCH fresh find is not on board", () => {
+test("assessZerodteBoardState: WATCH fresh find is not on board", () => {
   const ev = buildMarketEvidence(TSLA_EMPTY_BOARD, "TSLA", NVDA_SESSION, Date.now())!;
   const board = assessZerodteBoardState(ev);
   assert.equal(board.consulted, true);
   assert.equal(board.hasOpenPlay, false);
 });
 
-test("buildTradeDecisionRead: 0DTE ask with no board play → speculative warning", () => {
+test("buildTradeDecisionRead: 0DTE empty board → warning badge, no canned headline", () => {
   const evidence = buildMarketEvidence(TSLA_EMPTY_BOARD, "TSLA", NVDA_SESSION, Date.now())!;
   const systemReads = extractSystemReads(TSLA_EMPTY_BOARD, "TSLA")!;
   const envelope = makeEnvelope({
-    headline: "TSLA scanning",
+    headline: "TSLA could work on a reclaim above 182 if flow confirms — not on the board yet.",
     levels: evidenceLevelsForEnvelope(evidence),
     systemReads,
     sections: [],
     evidence: [],
   });
 
-  const q = "What could be a good 0DTE play on TSLA?";
-  const decision = buildTradeDecisionRead(q, envelope, evidence)!;
+  const decision = buildTradeDecisionRead(
+    "What could be a good 0DTE play on TSLA?",
+    envelope,
+    evidence
+  )!;
 
   assert.ok(decision);
   assert.equal(decision.isSpeculative, true);
-  assert.equal(decision.headlineGlyph, "⚠️");
-  assert.match(decision.headline, /NOT ON 0DTE BOARD/);
-  assert.equal(decision.actionLabel, "⚠️ SYNTHESIS ONLY — NOT ON BOARD");
-  assert.ok(decision.speculativeThesis);
-  assert.match(decision.speculativeThesis!.warning, /NOT ON 0DTE BOARD/);
-  assert.ok(decision.speculativeThesis!.factors.length >= 2);
+  assert.equal(decision.actionLabel, "NOT ON 0DTE BOARD");
+  assert.ok(decision.notOnBoardWarning);
+  assert.equal(decision.approach, undefined);
+  assert.equal(decision.overall, undefined);
+  assert.ok(decision.signalRows.length >= 1);
 });
 
-test("buildTradeDecisionRead: NVDA options-play → withheld levels + existing thesis", () => {
+test("buildTradeDecisionRead: skips fallback signals when model wrote comparison block", () => {
+  const evidence = buildMarketEvidence(TSLA_EMPTY_BOARD, "TSLA", NVDA_SESSION, Date.now())!;
+  const envelope = makeEnvelope({ headline: "TSLA wait", sections: [], evidence: [] });
+  const decision = buildTradeDecisionRead("0DTE play on TSLA?", envelope, evidence, {
+    hasComparisonBlock: true,
+  })!;
+  assert.deepEqual(decision.signalRows, []);
+});
+
+test("buildTradeDecisionRead: spot hold badge only", () => {
   const evidence = buildMarketEvidence(NVDA_TOOL_RESULTS, "NVDA", NVDA_SESSION, Date.now())!;
-  const systemReads = extractSystemReads(NVDA_TOOL_RESULTS, "NVDA")!;
   const envelope = makeEnvelope({
-    headline: "NVDA long call thesis",
-    levels: evidenceLevelsForEnvelope(evidence),
-    systemReads,
+    headline: "NVDA — wait for spot to reconcile before sizing.",
     sections: [],
     evidence: [],
   });
-
-  const q = "What is a good options play to take on NVDA today?";
-  const decision = buildTradeDecisionRead(q, envelope, evidence)!;
-
-  assert.ok(decision);
-  assert.match(decision.headline, /LEVELS WITHHELD|NO CLEAN FRESH ENTRY/);
-  assert.equal(decision.actionLabel, "HOLD — SPOT DISAGREES");
+  const decision = buildTradeDecisionRead(
+    "What is a good options play to take on NVDA today?",
+    envelope,
+    evidence
+  )!;
+  assert.equal(decision.actionLabel, "SPOT SOURCES DISAGREE");
   assert.ok(decision.existingPlay);
-  assert.match(decision.approach, /reclaim|wait/i);
-  assert.ok(decision.signalRows.some((r) => r.signal === "Helix Flow" || r.signal === "Night Hawk"));
-  assert.match(decision.overall, /Overall:/);
 });
 
 test("buildTradeDecisionRead returns null for non-trade questions", () => {

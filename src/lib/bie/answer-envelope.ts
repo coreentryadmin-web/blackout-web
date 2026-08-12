@@ -138,23 +138,13 @@ export type BieAnswerEnvelope = {
     reads: { system: string; kind: "directional" | "regime"; stance: string; strength: number | null; basis: string; reason?: string }[];
     agreement: { voting: number; bullish: number; bearish: number; neutral: number; verdict: string; direction: string | null };
   };
-  /** Decision-first trade read — built from validated evidence for "what play" questions. */
+  /** Integrity supplement for play questions — badges only; Verdict stays model-authored. */
   tradeDecision?: {
     ticker: string;
-    headline: string;
-    headlineGlyph?: "🟡" | "⚠️";
-    approach: string;
+    actionLabel?: string;
+    notOnBoardWarning?: string;
     existingPlay?: { contract: string; originalEntry: string; note: string };
     boardPlay?: { contract: string; status: string; note: string };
-    speculativeThesis?: {
-      direction: string;
-      summary: string;
-      factors: string[];
-      warning: string;
-    };
-    bearishConfirm?: string;
-    overall: string;
-    actionLabel: string;
     isSpeculative?: boolean;
     signalRows: { signal: string; read: string; bias: string; glyph: string }[];
   };

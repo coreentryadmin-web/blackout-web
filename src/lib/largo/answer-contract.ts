@@ -8,6 +8,7 @@ import {
   type MarketEvidence,
 } from "@/lib/largo/core/market-evidence";
 import { buildTradeDecisionRead } from "@/lib/largo/core/decision-read";
+import { isPlayQuestion } from "@/lib/largo/core/trade-question";
 import {
   makeEnvelope,
   type BieAnswerEnvelope,
@@ -302,9 +303,10 @@ export function parseAnswerEnvelope(
 
   const verdict = get("Verdict");
   const facts = get("Facts");
-  // Require a verdict AND at least one fact line. A "Verdict"-only answer would render as a
-  // confident headline card with no evidence behind it — the most misleading possible card.
-  if (!verdict || !facts) return null;
+  const playQ = isPlayQuestion(question);
+  // Require a verdict. Facts can be thin on play questions when levels come from tool evidence.
+  if (!verdict) return null;
+  if (!facts && !playQ) return null;
 
   // The instrument this answer is about, resolved through the SAME entity layer the rest of Largo
   // uses so the Night Hawk row cannot be filtered on a different spelling than the answer discusses.
@@ -315,7 +317,15 @@ export function parseAnswerEnvelope(
     const { text, provenance } = parseProvenance(line.replace(KIND_RE, ""));
     if (text) evidence.push({ kind: "inference", text, provenance });
   }
-  if (evidence.length === 0) return null;
+  if (evidence.length === 0) {
+    const hasToolGrounding =
+      playQ &&
+      marketEvidence &&
+      (marketEvidence.levels.length > 0 ||
+        marketEvidence.nightHawk != null ||
+        (marketEvidence.spot?.authoritative != null));
+    if (!hasToolGrounding) return null;
+  }
 
   const confidenceBody = get("Confidence");
   const confidenceLevel = firstMatch(confidenceBody, CONFIDENCE_WORDS);
@@ -368,22 +378,19 @@ export function parseAnswerEnvelope(
     invalidation: marketEvidence?.preciseRecommendationsBlocked ? null : risk[0] ?? null,
   });
 
-  const tradeDecision = buildTradeDecisionRead(question, envelope, marketEvidence);
+  const hasComparisonBlock = /"type"\s*:\s*"comparison"/i.test(markdown);
+  const tradeDecision = buildTradeDecisionRead(question, envelope, marketEvidence, {
+    hasComparisonBlock,
+  });
   if (tradeDecision) {
     return {
       ...envelope,
-      headline: tradeDecision.headline,
       tradeDecision: {
         ticker: tradeDecision.ticker,
-        headline: tradeDecision.headline,
-        headlineGlyph: tradeDecision.headlineGlyph,
-        approach: tradeDecision.approach,
+        actionLabel: tradeDecision.actionLabel,
+        notOnBoardWarning: tradeDecision.notOnBoardWarning,
         existingPlay: tradeDecision.existingPlay,
         boardPlay: tradeDecision.boardPlay,
-        speculativeThesis: tradeDecision.speculativeThesis,
-        bearishConfirm: tradeDecision.bearishConfirm,
-        overall: tradeDecision.overall,
-        actionLabel: tradeDecision.actionLabel,
         isSpeculative: tradeDecision.isSpeculative,
         signalRows: tradeDecision.signalRows.map((r) => ({
           signal: r.signal,
