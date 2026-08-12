@@ -178,6 +178,20 @@ async function main() {
               `${device.name}: ${railCells} rail cells painted on the matrix`
             );
           }
+          // Scroll the rail into view BEFORE shooting. The matrix scrolls horizontally and the
+          // Flow column is its last one, so a default screenshot frames 14 expiry columns and none
+          // of the feature under test — a picture that would be filed as evidence and shows
+          // nothing. If the column cannot be brought on screen at all, that is itself the finding.
+          await flowHeader.first().scrollIntoViewIfNeeded().catch(() => {});
+          await page.waitForTimeout(600);
+          const railOnScreen = await flowHeader
+            .first()
+            .isVisible()
+            .catch(() => false);
+          note(
+            railOnScreen ? "INFO" : "WARN",
+            `${device.name}: Flow column ${railOnScreen ? "brought on screen" : "could not be scrolled into view"}`
+          );
           const matrixShot = join(OUT, `${device.name}-matrix-rail.png`);
           await page.screenshot({ path: matrixShot, fullPage: false });
           note("INFO", `${device.name}: screenshot ${matrixShot}`);
