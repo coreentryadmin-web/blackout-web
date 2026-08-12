@@ -363,33 +363,26 @@ test("runLargoQueryStream: Claude streaming persists tool names", async () => {
   assert.deepEqual(row.tools_used, ["live_feed_capture", "get_quote", "get_technicals"]);
 });
 
-// Task #165 — root cause: runLargoQuery's try block wrapping anthropicToolLoop had ONLY a
-// finally, no catch, so a thrown error skipped logBie() entirely and propagated straight to
-// the API route (a bare 502) with no trace in bie_interactions. These two tests lock in the
-// fix: the error must still propagate/emit completely unchanged (never swallowed), AND a
-// minimal failure row must land so calibration reports can see the failure happened at all.
-test("runLargoQuery: a thrown tool-loop error still propagates AND writes a logBie row with answer_source 'error'", async () => {
+// Task #165 — tool-loop failures must log to bie_interactions. Non-stream path now fail-soft
+// (returns an honest Verdict+Data answer instead of 502) while still logging answer_source 'error'.
+test("runLargoQuery: a thrown tool-loop error returns fail-soft answer AND writes a logBie row with answer_source 'error'", async () => {
   inserted = [];
   toolLoopToolNames = [];
   toolLoopError = new Error("tool loop boom");
   try {
-    await assert.rejects(
-      () => runLargoQuery("Why did NVDA reverse today?", "", "user-err-1", []),
-      /tool loop boom/
-    );
+    const result = await runLargoQuery("Why did NVDA reverse today?", "", "user-err-1", []);
     await waitForInserts(1);
+
+    assert.match(result.answer, /internal error/i);
+    assert.equal(result.turn_id, null);
 
     assert.equal(inserted.length, 1);
     const row = inserted[0]!;
     assert.equal(row.answer_source, "error");
-    // Claims are explicitly null (never 0) — a turn that never produced an answer has no
-    // claims that were "verified none of," which is what 0 would falsely imply.
     assert.equal(row.claims_total, null);
     assert.equal(row.claims_verified, null);
     assert.equal(row.intent, null);
     assert.equal(row.intent_bucket, "claude_fallback");
-    // Whatever tool progress happened before the throw is still captured — not an empty
-    // placeholder — same "real tool names dispatched this turn" contract as the success path.
     assert.deepEqual(row.tools_used, ["live_feed_capture", "get_quote"]);
     assert.equal(typeof row.latency_ms, "number");
   } finally {
