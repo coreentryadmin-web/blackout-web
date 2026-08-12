@@ -46,6 +46,7 @@ import {
   heatmapLegendItems,
   type GexHeatmapLens,
 } from "@/lib/gex-heatmap-display";
+import { depthBandForPrice } from "@/lib/gex-depth";
 import {
   readGexHeatmapSessionCache,
   writeGexHeatmapSessionCache,
@@ -3222,6 +3223,14 @@ export function GexHeatmap({
     return p;
   }, [cells]);
 
+  // The rail rides the SAME payload block the Depth tab uses, so the two can never disagree.
+  // GEX-only: the ladder is built from dealer gamma and means nothing under vanna/delta/charm,
+  // and `stale` gates it for the same reason the Depth tab does.
+  const depthRail =
+    lens === "gex" && !stale && data?.depth && data.depth.levels.length > 0 && (data.spot ?? 0) > 0
+      ? data.depth
+      : null;
+
   const totalPeak = useMemo(() => {
     let p = 0;
     for (const v of Object.values(strikeTotals)) {
@@ -3980,6 +3989,14 @@ export function GexHeatmap({
                 >
                   Net
                 </th>
+                {depthRail && (
+                  <th
+                    className="py-1.5 pl-1 pr-2 text-left font-semibold whitespace-nowrap"
+                    title="Forced dealer hedging flow if price reaches that strike — buying grows left, selling right. Conditional flow, not resting liquidity."
+                  >
+                    Flow
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -4123,6 +4140,44 @@ export function GexHeatmap({
                     >
                       {fmtHeatmapMoneySigned(rowTotal, { showZero: true })}
                     </td>
+                    {/* FORCED-FLOW RAIL — the depth ladder, row-aligned to this strike.
+                        The matrix says where dealer exposure SITS; this says what dealers must
+                        TRADE if price reaches this row. Reading both on one line is the whole
+                        point of pinning it here rather than leaving it a tab away.
+                        A strike outside the ladder's ±8% band renders blank, never clamped — a
+                        clamped bar would paint the outermost band's flow onto every far strike and
+                        read as a wall of forced trading exactly where there is none. */}
+                    {depthRail && (
+                      <td className="whitespace-nowrap py-1 pl-1 pr-2">
+                        {(() => {
+                          const band = depthBandForPrice(depthRail.levels, data?.spot ?? 0, strike);
+                          if (!band || band.direction === "flat") {
+                            return <span className="block h-[10px] w-[46px]" aria-hidden />;
+                          }
+                          const w = Math.max(
+                            2,
+                            Math.round((Math.abs(band.notional) / depthRail.max_abs_notional) * 46)
+                          );
+                          const buy = band.direction === "buy";
+                          return (
+                            <span
+                              className="block h-[10px] w-[46px]"
+                              title={`If ${data?.underlying ?? ticker} reaches ${fmtStrike(strike)}, dealers must ${buy ? "BUY" : "SELL"} about ${fmtMoney(Math.abs(band.notional))} of stock to stay hedged.`}
+                            >
+                              <span
+                                className="block h-full rounded-[1px]"
+                                style={{
+                                  width: `${w}px`,
+                                  marginLeft: buy ? 0 : `${46 - w}px`,
+                                  backgroundColor: buy ? DEPTH_BUY_HEX : DEPTH_SELL_HEX,
+                                  opacity: 0.8,
+                                }}
+                              />
+                            </span>
+                          );
+                        })()}
+                      </td>
+                    )}
                   </tr>
                 );
               })}
