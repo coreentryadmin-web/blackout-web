@@ -38,6 +38,17 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-08-12 — [FINDING, P1/P2/P3 Largo] Live UI probe: 502, null envelopes, vendor leaks — FIXED (pending deploy)
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Status** | FIXED on `cursor/largo-audit-fixes-3d11` — re-run `scripts/audit/largo-live-ui-probe.mjs` post-deploy |
+| **Evidence** | Prod probe 2026-08-12: compare/0DTE 502; all 200s had `envelope: null`; UW/Polygon in copy; put wall 8000 vs spot ~7748; setup_stats vs empty trade_history |
+| **Root cause** | Parser rejected `**Verdict:**` headings; persist threw on huge tool_results; no vendor sanitizer; flow tools ignored `since_hours`; trade_history returned [] without rollup |
+| **Fix** | `answer-contract.ts`, `sanitize-member-text.ts`, `persist-tool-results.ts`, `largo-terminal.ts`, `run-tool.ts`, `flow-service.ts`, `market-evidence.ts`, `system-prompt.ts` |
+
 ## 2026-08-12 — [FINDING, P2 Thermal] Our closed-form VEX and CHARM carry an unmodelled dividend-yield error — now QUANTIFIED, not fixed
 
 > **kind:** `FINDING`

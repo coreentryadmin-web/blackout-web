@@ -7,14 +7,20 @@ import type { FlowTapeSummary } from "./types";
 
 export { subscribeFlowEvents, publishFlowEvent };
 
-export async function getFlowTape(opts?: { ticker?: string; limit?: number }) {
+export async function getFlowTape(opts?: { ticker?: string; limit?: number; since_hours?: number }) {
   return fetchRecentFlows({
     limit: opts?.limit ?? 25,
     ticker: opts?.ticker ? opts.ticker.toUpperCase() : undefined,
+    since_hours: opts?.since_hours,
+    order: opts?.since_hours != null && opts.since_hours <= 6 ? "recent" : undefined,
   });
 }
 
-export async function getFlowTapeSummary(opts?: { ticker?: string; limit?: number }): Promise<FlowTapeSummary> {
+export async function getFlowTapeSummary(opts?: {
+  ticker?: string;
+  limit?: number;
+  since_hours?: number;
+}): Promise<FlowTapeSummary> {
   const rows = await getFlowTape(opts);
   const byTicker = new Map<string, { premium: number; count: number }>();
 
@@ -36,5 +42,6 @@ export async function getFlowTapeSummary(opts?: { ticker?: string; limit?: numbe
     top_tickers,
     recent: rows,
     strike_stacks: computeFlowStrikeStacks(rows, { limit: 24 }),
+    window_hours: opts?.since_hours ?? 48,
   };
 }

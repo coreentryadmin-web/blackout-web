@@ -27,7 +27,9 @@ import {
   persistClaudeTurn,
 } from "@/lib/largo/turn-outcome";
 import type { BieAnswerEnvelope } from "@/lib/bie/answer-envelope";
-import { parseAnswerEnvelope, validateAnswerContract } from "@/lib/largo/answer-contract";
+import { parseAnswerEnvelope, validateAnswerContract, fallbackAnswerEnvelope } from "@/lib/largo/answer-contract";
+import { sanitizeLargoMemberText } from "@/lib/largo/sanitize-member-text";
+import { truncateCapturedResultsForPersist } from "@/lib/largo/persist-tool-results";
 import { stripLargoBlocks } from "@/features/largo/blocks/extract";
 import { collectContextNumbers, verifyClaims, type ClaimVerification } from "@/lib/bie/verifier";
 import { resetLargoSpxDeskCache } from "@/lib/largo/spx-desk-cache";
@@ -90,6 +92,18 @@ import {
   effectiveEntities,
   formatConversationBlock,
 } from "@/lib/largo/core/conversation";
+
+const LARGO_TOOL_LOOP_TIMEOUT_MS = (() => {
+  const raw = process.env.LARGO_TOOL_LOOP_TIMEOUT_MS?.trim();
+  const n = raw ? Number(raw) : 90_000;
+  return Number.isFinite(n) && n >= 30_000 ? Math.min(Math.round(n), 120_000) : 90_000;
+})();
+
+const LARGO_TOOL_LOOP_MAX_ROUNDS = (() => {
+  const raw = process.env.LARGO_TOOL_LOOP_MAX_ROUNDS?.trim();
+  const n = raw ? Number(raw) : 10;
+  return Number.isFinite(n) && n >= 4 ? Math.min(Math.round(n), 12) : 10;
+})();
 
 const MAX_HISTORY = 28;
 
@@ -546,7 +560,9 @@ function envelopeFromContract(
       question.slice(0, 80)
     );
   }
-  return parseAnswerEnvelope(text, capturedResults, marketEvidence ?? undefined, question) ?? undefined;
+  return parseAnswerEnvelope(text, capturedResults, marketEvidence ?? undefined, question)
+    ?? fallbackAnswerEnvelope(text)
+    ?? undefined;
 }
 
 /** Post-synthesis integrity: canonical evidence + fail-closed gates on spot disagreement. */
@@ -629,8 +645,8 @@ export async function runLargoQuery(
       messages: history,
       model: LARGO_MODEL,
       maxTokens: 4096,
-      maxRounds: 12,
-      timeoutMs: 60_000,
+      maxRounds: LARGO_TOOL_LOOP_MAX_ROUNDS,
+      timeoutMs: LARGO_TOOL_LOOP_TIMEOUT_MS,
       maxRetries: 1,
       cacheSystem: true,
       aiGate: "largo",
@@ -711,7 +727,7 @@ export async function runLargoQuery(
       tickerHint,
       startedAt
     );
-    text = gatedText;
+    text = sanitizeLargoMemberText(gatedText);
 
     // Per-tool timing summary. Turns "Largo is slow" into "get_postgres_flows took 9.2s of an 11s
     // turn" — a question with an answer. Also surfaces DENIED and silently-EMPTY tool results,
@@ -719,7 +735,22 @@ export async function runLargoQuery(
     const diagLine = formatToolDiagnostics(diagnostics);
     if (diagLine) console.info(diagLine);
     logClaudeTurn({ userId, question, toolsUsed, verification, startedAt });
-    const turnId = await persistClaudeTurn({ sessionId: sid, userId, question: persistedQuestion, answer: text, toolsUsed, capturedResults });
+    let turnId: number | null = null;
+    try {
+      turnId = await persistClaudeTurn({
+        sessionId: sid,
+        userId,
+        question: persistedQuestion,
+        answer: text,
+        toolsUsed,
+        capturedResults: truncateCapturedResultsForPersist(capturedResults),
+      });
+    } catch (err) {
+      console.warn(
+        "[largo] persist turn failed — returning answer anyway:",
+        err instanceof Error ? err.message : String(err)
+      );
+    }
 
     // The envelope is built BEFORE the follow-ups so the chips can be derived from the same
     // headline the badge renders. Deriving them from the raw answer instead would read the whole
@@ -756,7 +787,25 @@ export async function runLargoQuery(
       startedAt,
       answerSource: "error",
     });
-    throw error;
+    const msg = error instanceof Error ? error.message : String(error);
+    if (msg.includes("Largo requires Anthropic")) throw error;
+    console.error("[largo/runLargoQuery]", error);
+    const fallback =
+      "**Verdict** — I hit an internal error before I could finish this answer.\n\n" +
+      "**Data** — The desk tools did not complete cleanly this turn. Retry in a moment, or ask a narrower question (one ticker or one desk).";
+    console.error("[largo/runLargoQuery] detail:", msg.slice(0, 300));
+    const envelope = fallbackAnswerEnvelope(fallback) ?? undefined;
+    return {
+      answer: sanitizeLargoMemberText(fallback),
+      session_id: sid,
+      source: dbConfigured() ? "blackout-web+postgres" : "blackout-web",
+      tools_used: Array.from(new Set(toolsUsed)),
+      followups: deterministicLargoFollowups(question, tickerHint).slice(0, 3),
+      verification: { total: 0, verified: 0, coverage: 1, unverified: [] },
+      ticker: tickerHint,
+      turn_id: null,
+      envelope,
+    };
   } finally {
     resetLargoSpxDeskCache(userId);
   }
@@ -820,9 +869,9 @@ export async function runLargoQueryStream(
       messages: history,
       model: LARGO_MODEL,
       maxTokens: 4096,
-      maxRounds: 12,
+      maxRounds: LARGO_TOOL_LOOP_MAX_ROUNDS,
       // Per-round timeout so a single slow round falls back to partial text instead of 500ing (#77 E).
-      timeoutMs: 60_000,
+      timeoutMs: LARGO_TOOL_LOOP_TIMEOUT_MS,
       maxRetries: 1,
       // Cache the stable Largo system prompt — saves ~50% on system-token cost for repeat calls.
       cacheSystem: true,
@@ -924,7 +973,7 @@ export async function runLargoQueryStream(
       tickerHint,
       startedAt
     );
-    text = gatedText;
+    text = sanitizeLargoMemberText(gatedText);
 
     // Per-tool timing summary. Turns "Largo is slow" into "get_postgres_flows took 9.2s of an 11s
     // turn" — a question with an answer. Also surfaces DENIED and silently-EMPTY tool results,
@@ -932,7 +981,22 @@ export async function runLargoQueryStream(
     const diagLine = formatToolDiagnostics(diagnostics);
     if (diagLine) console.info(diagLine);
     logClaudeTurn({ userId, question, toolsUsed, verification, startedAt });
-    const turnId = await persistClaudeTurn({ sessionId: sid, userId, question: persistedQuestion, answer: text, toolsUsed, capturedResults });
+    let turnId: number | null = null;
+    try {
+      turnId = await persistClaudeTurn({
+        sessionId: sid,
+        userId,
+        question: persistedQuestion,
+        answer: text,
+        toolsUsed,
+        capturedResults: truncateCapturedResultsForPersist(capturedResults),
+      });
+    } catch (err) {
+      console.warn(
+        "[largo] persist turn failed — returning answer anyway:",
+        err instanceof Error ? err.message : String(err)
+      );
+    }
 
     // The envelope is built BEFORE the follow-ups so the chips can be derived from the same
     // headline the badge renders. Deriving them from the raw answer instead would read the whole
