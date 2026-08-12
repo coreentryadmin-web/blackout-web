@@ -2,7 +2,9 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { requireTierApi } from "@/lib/market-api-auth";
 import { validateAttachments } from "@/lib/largo/core/image-attachment";
-import { largoConfigured, runLargoQuery, runLargoQueryStream, isSseClientDisconnect, SseClientDisconnected } from "@/lib/largo-terminal";
+import { largoConfigured, runLargoQuery, runLargoQueryStream, isSseClientDisconnect, SseClientDisconnected, type LargoTurnOptions } from "@/lib/largo-terminal";
+import { parseLargoDepth } from "@/lib/largo/largo-depth";
+import type { LargoPlayContext } from "@/lib/largo/session-metadata";
 import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
 import { largoBudgetKey, secondsUntilEtMidnight, largoDailyQueryBudget } from "@/lib/largo-budget";
 import {
@@ -256,7 +258,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let body: { question?: string; session_id?: string; images?: unknown };
+  let body: {
+    question?: string;
+    session_id?: string;
+    images?: unknown;
+    depth?: string;
+    historical?: boolean;
+    play_context?: unknown;
+  };
   try {
     body = await req.json();
   } catch {
@@ -297,6 +306,15 @@ export async function POST(req: NextRequest) {
   }
 
   const resolvedSessionId = sessionId || `web-${authResult.userId}-${Date.now()}`;
+
+  const turnOptions: LargoTurnOptions = {
+    depth: parseLargoDepth(body.depth),
+    historicalMode: Boolean(body.historical),
+    playContext:
+      body.play_context && typeof body.play_context === "object"
+        ? (body.play_context as LargoPlayContext)
+        : null,
+  };
 
   // Org-wide kill-switch — checked FIRST (cheap GET, no side effects, holds no slot). If the
   // whole org has burned past the hard daily spend ceiling, reject before doing any work.
@@ -389,7 +407,8 @@ export async function POST(req: NextRequest) {
             // images argument omitted here reaches the model as a turn with no picture and produces
             // a fluent answer about a chart nobody sent, which is the worst possible failure of
             // this feature and the one with no error to notice.
-            images
+            images,
+            turnOptions
           );
         } catch (error) {
           if (isSseClientDisconnect(error)) return;
@@ -422,7 +441,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const result = await runLargoQuery(effectiveQuestion, resolvedSessionId, userId, images);
+    const result = await runLargoQuery(effectiveQuestion, resolvedSessionId, userId, images, turnOptions);
     return NextResponse.json(result, {
       headers: {
         ...NO_STORE_HEADERS,

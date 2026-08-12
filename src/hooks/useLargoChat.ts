@@ -7,6 +7,17 @@ import { LARGO_SESSION_KEY } from "@/lib/session-cache";
 import { isIosAppShell } from "@/lib/ios-app-shell";
 import { largoStreamErrorMessage } from "@/lib/largo-stream-errors";
 import type { BieAnswerEnvelope } from "@/lib/bie/answer-envelope";
+import type { HelixThermalCompareCard } from "@/lib/largo/helix-thermal-compare";
+import type { LargoAction } from "@/lib/largo/largo-actions";
+import {
+  LARGO_DESK_EXAMPLE_PROMPTS,
+  LARGO_DESK_PROMPTS,
+  LARGO_SUGGESTION_QUESTIONS,
+} from "@/lib/largo/desk-prompts";
+import {
+  parsePlayContextFromSearchParams,
+  type LargoPlayContext,
+} from "@/lib/largo/session-metadata";
 import {
   conversationTitle,
   loadConversations,
@@ -38,6 +49,11 @@ export type LargoMessage = {
   visual?: { size: "x_landscape" | "x_portrait" | "square" | "story" } | null;
   /** Object/data URLs for images sent with a user turn, rendered as thumbnails in the bubble. */
   images?: string[];
+  /** Structured HELIX vs Thermal compare — rendered side-by-side, not model-merged. */
+  compareCard?: HelixThermalCompareCard | null;
+  /** Post-verdict desk deep links. */
+  actions?: LargoAction[];
+  depth?: "quick" | "deep";
 };
 
 const TOOL_LABEL: Record<string, string> = {
@@ -86,53 +102,16 @@ export const LARGO_WELCOME: LargoMessage = {
     "Largo online. Ask anything specific — SPX levels, a ticker, flow, news. I pull live data on every question and keep the thread.",
 };
 
-/** Compact-panel chips. Same intent as LARGO_EXAMPLE_PROMPTS above — cross-product first. */
-export const LARGO_SUGGESTIONS = [
-  "What matters now across the platform?",
-  "Why is SPX moving right now?",
-  "Where do the systems disagree?",
-  "What changed in the last 30 minutes?",
-] as const;
+/** Compact-panel chips — first-class desk prompts (SPX setup, Flow vs GEX, 0DTE P&L). */
+export const LARGO_SUGGESTIONS = LARGO_SUGGESTION_QUESTIONS;
 
-/**
- * Empty-state showcase prompts — the first impression of what Largo IS.
- *
- * The previous set ("SPX trend?", "NVDA wall dynamics") was accurate and badly chosen: every one
- * of them is a single-product lookup, so the terminal introduced itself as a nicer ticker search.
- * Anything with a search box can plausibly answer them, which makes them the worst possible
- * advertisement for the one thing Largo can do that nothing else here can.
- *
- * These four are picked for what they REQUIRE, not what they mention. Not one can be answered from
- * a single product:
- *   - ranking demands a comparable view across every board at once;
- *   - synthesis demands four engines reconciled into one causal read;
- *   - disagreement is only visible if you hold several systems side by side — and it is the
- *     question a member cannot answer for themselves at any speed;
- *   - "what changed" demands a temporal diff across flow, gamma, levels, regime and open plays,
- *     which no single panel keeps.
- *
- * Phrased as the question a trader actually has, not as a query. "Why is SPX moving" is what
- * someone thinks at 10:04; "SPX trend?" is what they type when they have given up on being
- * understood.
- */
-export const LARGO_EXAMPLE_PROMPTS: { label: string; hint: string }[] = [
-  {
-    label: "What matters now?",
-    hint: "Ranks live opportunities across every board on the platform",
-  },
-  {
-    label: "Why is SPX moving?",
-    hint: "Helix flow + Thermal gamma + Vector structure + Slayer, reconciled",
-  },
-  {
-    label: "Where do the systems disagree?",
-    hint: "Conflicting signals across BlackOut — and which side has the evidence",
-  },
-  {
-    label: "What changed in the last 30 minutes?",
-    hint: "Flow, gamma, levels, regime and active plays — the temporal diff",
-  },
-];
+export const LARGO_EXAMPLE_PROMPTS = LARGO_DESK_EXAMPLE_PROMPTS.map((p) => ({
+  label: p.label,
+  hint: p.hint,
+  question: p.question,
+}));
+
+export { LARGO_DESK_PROMPTS };
 
 function upsertAssistantMessage(
   messages: LargoMessage[],
@@ -156,6 +135,9 @@ const MAX_COMPOSER_IMAGES = 4;
 function newSessionId(): string {
   return `web-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
+
+const DEPTH_STORAGE_KEY = "largo-depth";
+const HISTORICAL_STORAGE_KEY = "largo-historical";
 
 /** Shared Largo chat session + streaming (web desk + native mobile). */
 export function useLargoChat() {
@@ -190,6 +172,10 @@ export function useLargoChat() {
   // The instrument the SERVER resolved for the most recent answer — the contextual rail's only
   // source. Kept across follow-ups so the rail persists through a chain about the same name.
   const [activeTicker, setActiveTicker] = useState<string | null>(null);
+  const [depth, setDepth] = useState<"quick" | "deep">("deep");
+  const [historicalMode, setHistoricalMode] = useState(false);
+  const [playContext, setPlayContext] = useState<LargoPlayContext | null>(null);
+  const [chartGuide, setChartGuide] = useState(false);
 
   const setSession = useCallback((id: string) => {
     sessionId.current = id;
@@ -232,8 +218,21 @@ export function useLargoChat() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const q = new URLSearchParams(window.location.search).get("q");
+    const params = new URLSearchParams(window.location.search);
+    const q = params.get("q");
     if (q?.trim()) setInput(q.trim().slice(0, 500));
+    const ctx = parsePlayContextFromSearchParams(params);
+    if (ctx) {
+      setPlayContext(ctx);
+      if (params.get("explain") === "1" || params.has("explain")) {
+        setInput(
+          `Explain this play — ${ctx.ticker}${ctx.contract ? ` ${ctx.contract}` : ""}: grade, thesis, and invalidation.`
+        );
+      }
+    }
+    const storedDepth = sessionStorage.getItem(DEPTH_STORAGE_KEY);
+    if (storedDepth === "quick" || storedDepth === "deep") setDepth(storedDepth);
+    if (sessionStorage.getItem(HISTORICAL_STORAGE_KEY) === "1") setHistoricalMode(true);
   }, []);
 
   useEffect(() => {
@@ -351,7 +350,12 @@ export function useLargoChat() {
             }
             setMessages((m) => upsertAssistantMessage(m, assistantId, { content: "" }));
           },
-          staged.map((a) => ({ data: a.data, media_type: a.media_type }))
+          staged.map((a) => ({ data: a.data, media_type: a.media_type })),
+          {
+            depth,
+            historical: historicalMode,
+            playContext,
+          }
         );
         setSession(res.session_id);
         setMessages((m) =>
@@ -366,6 +370,9 @@ export function useLargoChat() {
             // what left "create an image of todays 0DTE results" with nothing to render from.
             turnId: res.turn_id ?? null,
             visual: res.visual ? { size: res.visual.size } : null,
+            compareCard: res.compare_card ?? null,
+            actions: res.actions,
+            depth: res.depth,
           })
         );
         // Only overwrite when the server actually resolved one: a follow-up that names no ticker
@@ -409,7 +416,7 @@ export function useLargoChat() {
         setAwaitingFirstToken(false);
       }
     },
-    [loading, hydrated, setSession, recordConversation]
+    [loading, hydrated, setSession, recordConversation, depth, historicalMode, playContext]
   );
 
   /**
@@ -433,6 +440,7 @@ export function useLargoChat() {
         const prepared = await prepareImage(file);
         attachmentsRef.current = [...attachmentsRef.current, prepared];
         setAttachments(attachmentsRef.current);
+        setChartGuide(true);
       } catch (err) {
         setAttachError(
           err instanceof ImageRejected ? err.message : "That image could not be attached."
@@ -509,6 +517,24 @@ export function useLargoChat() {
     [loading, setSession]
   );
 
+  const toggleDepth = useCallback(() => {
+    setDepth((d) => {
+      const next = d === "quick" ? "deep" : "quick";
+      if (typeof window !== "undefined") sessionStorage.setItem(DEPTH_STORAGE_KEY, next);
+      return next;
+    });
+  }, []);
+
+  const toggleHistoricalMode = useCallback(() => {
+    setHistoricalMode((h) => {
+      const next = !h;
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem(HISTORICAL_STORAGE_KEY, next ? "1" : "0");
+      }
+      return next;
+    });
+  }, []);
+
   const isFresh = messages.length === 1 && messages[0]?.id === "welcome";
 
   return {
@@ -537,5 +563,13 @@ export function useLargoChat() {
     newConversation,
     switchConversation,
     isFresh,
+    depth,
+    toggleDepth,
+    historicalMode,
+    toggleHistoricalMode,
+    playContext,
+    chartGuide,
+    setChartGuide,
+    LARGO_DESK_PROMPTS,
   };
 }

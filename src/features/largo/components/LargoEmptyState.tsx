@@ -34,7 +34,7 @@ export function LargoEmptyState({ onPick }: { onPick: (prompt: string) => void }
             key={p.label}
             type="button"
             className="largo-empty-card"
-            onClick={() => onPick(p.label)}
+            onClick={() => onPick(p.question)}
           >
             <span className="largo-empty-card-q">{p.label}</span>
             <span className="largo-empty-card-hint">{p.hint}</span>

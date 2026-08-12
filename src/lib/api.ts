@@ -508,6 +508,12 @@ export class LargoStreamAborted extends Error {
  *  type — the server re-derives the real type from the bytes, so a wrong guess here is harmless. */
 export type LargoImageAttachment = { data: string; media_type: string };
 
+export type LargoQueryOptions = {
+  depth?: "quick" | "deep";
+  historical?: boolean;
+  playContext?: import("@/lib/largo/session-metadata").LargoPlayContext | null;
+};
+
 export async function queryLargoStream(
   question: string,
   sessionId: string,
@@ -529,7 +535,8 @@ export async function queryLargoStream(
    */
   onAnswerReset?: () => void,
   /** Chart/screenshot attachments for this turn. Sent only when non-empty. */
-  images?: LargoImageAttachment[]
+  images?: LargoImageAttachment[],
+  options?: LargoQueryOptions
 ): Promise<{
   answer: string;
   session_id: string;
@@ -537,14 +544,13 @@ export async function queryLargoStream(
   tools_used?: string[];
   followups?: string[];
   verification?: ClaimVerification;
-  /** The instrument Largo resolved — drives the contextual rail. */
   ticker?: string | null;
-  /** Populated structured answer (synthesis #59). Absent on trivial/string answers. */
   envelope?: BieAnswerEnvelope | null;
-  /** The persisted turn — what the card is rebuilt from. See largo-terminal's return type. */
   turn_id?: number | null;
-  /** The server's auto-render directive — present only when the member asked for an image. */
   visual?: LargoVisualDirective | null;
+  compare_card?: import("@/lib/largo/helix-thermal-compare").HelixThermalCompareCard | null;
+  actions?: import("@/lib/largo/largo-actions").LargoAction[];
+  depth?: "quick" | "deep";
 }> {
   const abort = new AbortController();
   const timeout = setTimeout(() => abort.abort(), LARGO_STREAM_TIMEOUT_MS);
@@ -581,9 +587,10 @@ export async function queryLargoStream(
       body: JSON.stringify({
         question,
         session_id: sessionId,
-        // Omitted entirely when there is nothing attached, so the request body of an ordinary
-        // question is byte-identical to what it was before this feature existed.
         ...(images && images.length ? { images } : {}),
+        ...(options?.depth ? { depth: options.depth } : {}),
+        ...(options?.historical ? { historical: true } : {}),
+        ...(options?.playContext ? { play_context: options.playContext } : {}),
       }),
     });
   } catch (err) {
@@ -622,6 +629,9 @@ export async function queryLargoStream(
     turn_id?: number | null;
     visual?: LargoVisualDirective | null;
     envelope?: BieAnswerEnvelope | null;
+    compare_card?: import("@/lib/largo/helix-thermal-compare").HelixThermalCompareCard | null;
+    actions?: import("@/lib/largo/largo-actions").LargoAction[];
+    depth?: "quick" | "deep";
   };
   let result: LargoDone | null = null;
 
@@ -667,6 +677,9 @@ export async function queryLargoStream(
             turn_id: event.turn_id ?? null,
             visual: event.visual ?? null,
             envelope: event.envelope ?? null,
+            compare_card: event.compare_card ?? null,
+            actions: event.actions,
+            depth: event.depth,
           };
         }
         if (event.type === "error") {
@@ -699,7 +712,32 @@ export const fetchLargoSession = (sessionId: string) =>
     `/largo/session?session_id=${encodeURIComponent(sessionId)}`
   );
 
-// ── Live flow stream (website SSE — no engine WebSocket required) ─────────────
+export async function updateLargoWatchlist(sessionId: string, ticker: string): Promise<void> {
+  const res = await fetch(`${MARKET_BASE}/largo/session`, {
+    method: "PATCH",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session_id: sessionId, watchlist_add: ticker }),
+  });
+  if (!res.ok) throw new Error(`watchlist update → ${res.status}`);
+}
+
+export async function shareLargoToDiscord(input: {
+  answer: string;
+  headline?: string | null;
+  ticker?: string | null;
+}): Promise<{ ok: boolean }> {
+  const res = await fetch(`${MARKET_BASE}/largo/share-discord`, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error(`share discord → ${res.status}`);
+  return res.json() as Promise<{ ok: boolean }>;
+}
+
+// ── Live flow stream
 
 export type PulseStreamSnapshot = {
   spx?: { price: number; change_pct?: number };

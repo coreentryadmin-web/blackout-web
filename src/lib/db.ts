@@ -1694,6 +1694,10 @@ async function runMigrations(): Promise<void> {
     ALTER TABLE largo_messages
     ADD COLUMN IF NOT EXISTS tool_results JSONB;
   `);
+  await p.query(`
+    ALTER TABLE largo_sessions
+    ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb;
+  `);
 
   // Helix signal-outcome ledger (008_helix_signal_outcomes.sql) — inlined for ECS
   // standalone cold starts. Dedicated per-feature table (NOT the dead generic

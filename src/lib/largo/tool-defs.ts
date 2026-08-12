@@ -496,6 +496,14 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
   ),
 
   t(
+    "get_helix_thermal_compare",
+    "HELIX flow vs Thermal GEX on ONE ticker — parallel side-by-side bias, premiums, flip, walls, and conflict flag. Use for 'flow vs GEX', 'HELIX vs Thermal', or when systems disagree on direction. Prefer this over calling get_flow_tape and get_gex separately for compare questions.",
+    {
+      ticker: { type: "string", description: "Ticker (default SPX)." },
+    }
+  ),
+
+  t(
     "get_thermal_compare",
     "BlackOut Thermal compare strip — side-by-side SPY/SPX/QQQ (or custom tickers) spot, change, flip, call/put walls, net GEX, gamma regime read, and cross_validation divergence. Same preset universe as the /heatmap compare cards.",
     {

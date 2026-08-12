@@ -19,6 +19,10 @@ export function LargoTerminalToolbar({
   onRegenerate,
   canRegenerate,
   loading,
+  depth,
+  onToggleDepth,
+  historicalMode,
+  onToggleHistorical,
   onToggleFullscreen,
   isFullscreen,
   fullscreenSupported,
@@ -30,6 +34,10 @@ export function LargoTerminalToolbar({
   onRegenerate: () => void;
   canRegenerate: boolean;
   loading: boolean;
+  depth: "quick" | "deep";
+  onToggleDepth: () => void;
+  historicalMode: boolean;
+  onToggleHistorical: () => void;
   onToggleFullscreen: () => void;
   isFullscreen: boolean;
   fullscreenSupported: boolean;
@@ -134,6 +142,28 @@ export function LargoTerminalToolbar({
             </div>
           )}
         </div>
+
+        <button
+          type="button"
+          className={clsx("largo-toolbar-btn", depth === "quick" && "is-active")}
+          aria-pressed={depth === "quick"}
+          disabled={loading}
+          onClick={onToggleDepth}
+          title={depth === "quick" ? "Quick read (Haiku, 2 tools)" : "Deep dive (Sonnet, full loop)"}
+        >
+          <span className="largo-toolbar-btn-label">{depth === "quick" ? "Quick read" : "Deep dive"}</span>
+        </button>
+
+        <button
+          type="button"
+          className={clsx("largo-toolbar-btn", historicalMode && "is-active")}
+          aria-pressed={historicalMode}
+          disabled={loading}
+          onClick={onToggleHistorical}
+          title="Historical mode — past session snapshots"
+        >
+          <span className="largo-toolbar-btn-label">Historical</span>
+        </button>
 
         <button
           type="button"
