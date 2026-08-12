@@ -8,7 +8,7 @@ import { isHeatmapPreset } from "../heatmap-allowlist";
 import { isLiveOdteSession } from "./unusual-whales";
 import { fmtPremium } from "@/lib/fmt-money";
 import { persistGexRegimeEvents } from "./gex-regime-events";
-import { zeroGammaFlip as computeZeroGammaFlip, cumulativeGammaFlip } from "@/lib/providers/gex-cross-validation-core";
+import { zeroGammaFlip as computeZeroGammaFlip, cumulativeGammaFlip, gexWallsFromStrikeTotals } from "@/lib/providers/gex-cross-validation-core";
 import { applySpxOdteGexUwOverlay } from "@/lib/providers/spx-odte-gex-uw-overlay";
 export { zeroGammaFlip as computeZeroGammaFlip, cumulativeGammaFlip } from "@/lib/providers/gex-cross-validation-core";
 
@@ -434,8 +434,19 @@ export type GexHeatmap = {
   near_term_expiries?: string[];
   /** Descending, strike-banded around spot (SHARED by both metrics). */
   strikes: number[];
-  /** Max-pain strike (option-holder value minimizer), or null — GEX-only, shared at top. */
+  /** Max-pain strike (option-holder value minimizer), or null — GEX-only, shared at top.
+   *  Scoped to the FRONT expiry (see the builder's comment on why max pain cannot be summed). */
   max_pain: number | null;
+  /**
+   * Max pain per expiry — `expiry -> strike | null`, the same single-expiry question answered for
+   * every column on the axis.
+   *
+   * Unlike the walls/flip/net-GEX tiles, which the client can re-scope itself from `gex.cells`,
+   * max pain needs OPEN INTEREST rather than gamma, and the cells carry only gamma. Precomputed
+   * server-side so the Key Levels panel can scope EVERY tile to one expiry instead of showing an
+   * aggregate flip beside a single-expiry max pain.
+   */
+  max_pain_by_expiry?: Record<string, number | null>;
   /** Net dealer dollar-GAMMA block. */
   gex: GexMetricBlock;
   /** Net dealer dollar-VANNA block. */
@@ -893,24 +904,9 @@ function computeGexRegime(
   flip: number | null,
   maxPain: number | null
 ): { callWall: number | null; putWall: number | null; regime: GexRegime } {
-  let callWall: number | null = null;
-  let putWall: number | null = null;
-  let maxPos = 0;
-  let maxNeg = 0;
-  for (const [s, g] of Object.entries(strikeTotals)) {
-    const strike = Number(s);
-    if (!Number.isFinite(strike) || !Number.isFinite(g)) continue;
-    // Largest POSITIVE net gamma → call wall (resistance/pin).
-    if (g > maxPos) {
-      maxPos = g;
-      callWall = strike;
-    }
-    // Largest NEGATIVE net gamma → put wall (support).
-    if (g < maxNeg) {
-      maxNeg = g;
-      putWall = strike;
-    }
-  }
+  // Shared with Thermal's per-expiry Key Levels — see gexWallsFromStrikeTotals. Two copies of the
+  // wall scan could drift; one cannot.
+  const { callWall, putWall } = gexWallsFromStrikeTotals(strikeTotals);
 
   const posture: "long" | "short" | null =
     flip != null && spot > 0 ? (spot >= flip ? "long" : "short") : null;
@@ -1352,8 +1348,19 @@ export function prunePastExpiriesFromHeatmap(hm: GexHeatmap, todayYmd: string): 
   // next fresh build, which is honest, where a silently stale ladder would not be.
   const { depth: _staleDepth, ...hmWithoutDepth } = hm;
 
+  // Max pain per expiry CAN be pruned in place, unlike the depth ladder above: each entry answers a
+  // question about ONE settlement date from that expiry's own OI, so a surviving expiry's value is
+  // unaffected by which other expiries dropped off. Carrying the map through untouched would leave
+  // already-settled expiries in it, and the panel's expiry picker reads its keys.
+  const prunedMaxPainByExpiry = hm.max_pain_by_expiry
+    ? Object.fromEntries(
+        Object.entries(hm.max_pain_by_expiry).filter(([e]) => expiries.includes(e))
+      )
+    : undefined;
+
   return {
     ...hmWithoutDepth,
+    ...(prunedMaxPainByExpiry ? { max_pain_by_expiry: prunedMaxPainByExpiry } : {}),
     expiries,
     near_term_expiries:
       nearKeep.length > 0 ? nearKeep : expiries.slice(0, NEAR_TERM_EXPIRY_COUNT),
@@ -3068,6 +3075,25 @@ async function buildGexHeatmapUncached(
   );
   const maxPain = computeMaxPainFromChain(frontExpiryContracts);
 
+  // …and the SAME question answered for every other expiry on the axis.
+  //
+  // The Key Levels panel was scoped inconsistently: flip/walls/netGEX/King summed the near-term
+  // expiries while Max Pain was this one front expiry, and a footnote explained the mismatch
+  // instead of removing it. The four gamma-derived tiles can be re-scoped client-side from
+  // `gex.cells` (strike -> expiry -> gamma, already on the payload), but max pain cannot — it needs
+  // OPEN INTEREST, which the cells do not carry. So it is precomputed here, per expiry.
+  //
+  // Cost is N numbers, not an N x M OI grid: shipping raw OI cells would be far heavier and would
+  // put a second, independently-derivable copy of max pain in the client, which is how two
+  // surfaces start disagreeing about one product.
+  const maxPainByExpiry: Record<string, number | null> = {};
+  for (const e of sortedAll) {
+    const forExpiry = contracts.filter(
+      (c) => String(c.details?.expiration_date ?? "").slice(0, 10) === e
+    );
+    maxPainByExpiry[e] = forExpiry.length > 0 ? computeMaxPainFromChain(forExpiry) : null;
+  }
+
   // GEX levels + regime. Gamma flip = CUMULATIVE zero-gamma boundary (SpotGamma-standard), the
   // aggregate net-short→net-long crossing — NOT the per-strike sign flip (VEX/DEX/CHARM below still
   // use that generic per-strike helper). See cumulativeGammaFlip / docs/audit/FINDINGS.md 2026-07-21.
@@ -3271,6 +3297,7 @@ async function buildGexHeatmapUncached(
     near_term_expiries: nearKeep,
     strikes: finalStrikes,
     max_pain: maxPain,
+    max_pain_by_expiry: maxPainByExpiry,
     gex: {
       cells: gexBuilt.cells,
       strike_totals: gexBuilt.strikeTotals,

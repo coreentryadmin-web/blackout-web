@@ -244,3 +244,36 @@ export function crossValidateGexLevels(
     uw,
   };
 }
+
+/**
+ * Largest positive / largest negative net-gamma strike — the call and put walls.
+ *
+ * Extracted so the SERVER (computeGexRegime, near-term aggregate) and the CLIENT (Thermal's
+ * per-expiry Key Levels) run the identical scan. Two implementations of "the wall" that could
+ * drift apart is exactly the class of bug that produced a panel where Max Pain was single-expiry
+ * while every tile beside it was an aggregate — one number saying one thing, its neighbour another.
+ *
+ * Pure and dependency-free (this module has no imports) so it is safe in a client component.
+ */
+export function gexWallsFromStrikeTotals(strikeTotals: Record<string, number>): {
+  callWall: number | null;
+  putWall: number | null;
+} {
+  let callWall: number | null = null;
+  let putWall: number | null = null;
+  let maxPos = 0;
+  let maxNeg = 0;
+  for (const [s, g] of Object.entries(strikeTotals)) {
+    const strike = Number(s);
+    if (!Number.isFinite(strike) || !Number.isFinite(g)) continue;
+    if (g > maxPos) {
+      maxPos = g;
+      callWall = strike;
+    }
+    if (g < maxNeg) {
+      maxNeg = g;
+      putWall = strike;
+    }
+  }
+  return { callWall, putWall };
+}
