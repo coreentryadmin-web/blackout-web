@@ -484,3 +484,71 @@ export function depthBandForPrice<T extends { price: number }>(
   return null;
 
 }
+
+/** What stands between spot and a target price. */
+export interface ForcedFlowBetween {
+  /** Signed dollars dealers must trade to traverse: positive = net BUYING, negative = net SELLING. */
+  notional: number;
+  direction: "buy" | "sell" | "flat";
+  /**
+   * FALSE when the target sits beyond the ladder's band and this figure only covers the part we
+   * can actually see. The caller MUST surface that — a number that silently stops short reads as
+   * "this is all there is", which is the opposite of true.
+   */
+  complete: boolean;
+  /** The furthest price this figure actually accounts for. Equals `target` when complete. */
+  coveredTo: number;
+  /** Bands summed. Zero means the target is at/behind spot, or no ladder covers the path. */
+  bands: number;
+}
+
+/**
+ * Sum the forced dealer hedging flow between spot and a target price.
+ *
+ * This is the number that turns a target into a judgement: "your 605 target is behind $1.8B of
+ * mechanical selling" says something a price alone cannot. Direction matters as much as size — the
+ * same $1.8B is a headwind if dealers must SELL into the move and a tailwind if they must BUY.
+ *
+ * Only bands strictly BETWEEN spot and the target count, in the direction of travel. A target below
+ * spot sums the downward bands; one above sums the upward ones. Bands on the far side are
+ * irrelevant to that journey and are never included.
+ */
+export function forcedFlowBetween<T extends { price: number; notional: number }>(
+  levels: readonly T[],
+  spot: number,
+  target: number
+): ForcedFlowBetween {
+  const none: ForcedFlowBetween = {
+    notional: 0,
+    direction: "flat",
+    complete: false,
+    coveredTo: spot,
+    bands: 0,
+  };
+  if (!(spot > 0) || !Number.isFinite(target) || levels.length === 0) return none;
+  if (target === spot) return { ...none, complete: true, coveredTo: spot };
+
+  const up = target > spot;
+  const inPath = levels.filter((l) =>
+    up ? l.price > spot && l.price <= target : l.price < spot && l.price >= target
+  );
+
+  // How far the ladder itself reaches in the direction of travel — the honesty check.
+  const reach = levels.reduce(
+    (acc, l) => (up ? (l.price > acc ? l.price : acc) : l.price < acc ? l.price : acc),
+    spot
+  );
+  const complete = up ? reach >= target : reach <= target;
+  const coveredTo = complete ? target : reach;
+
+  const notional = inPath.reduce((s, l) => s + l.notional, 0);
+  const scale = inPath.reduce((m, l) => Math.max(m, Math.abs(l.notional)), 0);
+  const eps = scale * 1e-4;
+  return {
+    notional,
+    direction: notional > eps ? "buy" : notional < -eps ? "sell" : "flat",
+    complete,
+    coveredTo,
+    bands: inPath.length,
+  };
+}

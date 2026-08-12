@@ -36,6 +36,7 @@ import { usePollIntervalMs, useEtMarketOpen } from "@/hooks/use-et-market-open";
 import { resetIosViewport } from "@/hooks/useIosKeyboardInset";
 import { useLiveQuoteStream } from "@/hooks/useLiveQuoteStream";
 import { todayEt } from "@/lib/et-date";
+import { forcedFlowBetween } from "@/lib/gex-depth";
 import {
   fmtHeatmapExpiry,
   fmtHeatmapMoneySigned,
@@ -2566,12 +2567,17 @@ function GexDepthLadderView({
   underlying,
   callWall,
   putWall,
+  targetStrike,
+  targetDirection,
 }: {
   depth: GexDepthPayload;
   spot: number;
   underlying: string;
   callWall: number | null;
   putWall: number | null;
+  /** Night Hawk's live play strike for this ticker, when one exists. */
+  targetStrike?: number | null;
+  targetDirection?: string | null;
 }) {
   const scale = depth.max_abs_notional > 0 ? depth.max_abs_notional : 1;
   // Descending so the ladder reads like every price ladder a trader has ever used: high at the top.
@@ -2584,6 +2590,14 @@ function GexDepthLadderView({
       : null;
   const callWallRung = nearest(callWall);
   const putWallRung = nearest(putWall);
+
+  // What stands between spot and the desk's own target. A price alone says nothing about how hard
+  // it is to reach; the forced flow in the way is the difference between a target with the tape
+  // behind it and one that has to be pushed through dealers the whole distance.
+  const targetFlow =
+    targetStrike != null && Number.isFinite(targetStrike) && targetStrike !== spot
+      ? forcedFlowBetween(depth.levels, spot, targetStrike)
+      : null;
 
   const Row = ({ l }: { l: (typeof rungs)[number] }) => {
     const w = Math.min(100, (Math.abs(l.notional) / scale) * 100);
@@ -2638,6 +2652,31 @@ function GexDepthLadderView({
         Stock dealers must trade to stay hedged <em>if price gets there</em> — not resting orders.
         Buying left, selling right.
       </p>
+
+      {targetFlow && targetFlow.bands > 0 && (
+        <p
+          className="mb-3 rounded-lg border border-cyan-400/25 bg-cyan-400/[0.06] px-3 py-2 text-[11px] leading-snug text-white/70"
+          title="Forced dealer hedging flow standing between the live price and Night Hawk's target for this ticker."
+        >
+          <span className="font-mono text-[10px] uppercase tracking-widest text-cyan-400">
+            NH target {fmtStrike(targetStrike!)}
+            {targetDirection ? ` · ${String(targetDirection).toUpperCase()}` : ""}
+          </span>{" "}
+          — {fmtMoney(Math.abs(targetFlow.notional))} of dealer{" "}
+          <strong className={targetFlow.direction === "buy" ? "text-emerald-300" : "text-rose-300"}>
+            {targetFlow.direction === "buy" ? "BUYING" : "SELLING"}
+          </strong>{" "}
+          stands between here and there
+          {/* Never let a figure that stopped at the ladder's edge read as the whole story. */}
+          {!targetFlow.complete && (
+            <span className="text-white/40">
+              {" "}
+              — measured only to {fmtStrike(targetFlow.coveredTo)}, the edge of this ladder; the
+              rest of the path is beyond it.
+            </span>
+          )}
+        </p>
+      )}
 
       <div
         className="space-y-[3px]"
@@ -4504,6 +4543,12 @@ export function GexHeatmap({
                       underlying={data.underlying ?? ticker}
                       callWall={data.gex?.call_wall ?? null}
                       putWall={data.gex?.put_wall ?? null}
+                      targetStrike={
+                        data.nighthawk_context?.target_strike != null
+                          ? Number(data.nighthawk_context.target_strike)
+                          : null
+                      }
+                      targetDirection={data.nighthawk_context?.play_direction ?? null}
                     />
                     {!nativeShell && <div className="min-w-0">{curvePanel}</div>}
                   </div>
