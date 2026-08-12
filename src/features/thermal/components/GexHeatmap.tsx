@@ -3748,20 +3748,35 @@ export function GexHeatmap({
   }, [data?.shift]);
 
   // ── Consolidated key-level cells (Step 2) ────────────────────────────────────
+  // The tooltip has to name the expiry the tile ACTUALLY used, which is the scoped one when the
+  // member has picked a single expiry — naming `zeroDteExpiry` there would describe a value the
+  // tile is not showing.
   const maxPainHelp = useMemo(() => {
-    if (zeroDteExpiry) {
-      return `${METRIC_HELP.maxPain} Scoped to ${fmtExpiry(zeroDteExpiry)}.`;
+    const label = scopedExpiryLabel ?? zeroDteExpiry;
+    if (label) {
+      return `${METRIC_HELP.maxPain} Scoped to ${fmtExpiry(label)}.`;
     }
     return METRIC_HELP.maxPain;
-  }, [zeroDteExpiry]);
+  }, [scopedExpiryLabel, zeroDteExpiry]);
 
   const keyLevelsScopeKicker = useMemo(
-    () => keyLevelsKicker(lensUpper, stale ? null : data?.near_term_expiries),
-    [lensUpper, stale, data?.near_term_expiries]
+    () =>
+      keyLevelsKicker(
+        lensUpper,
+        stale ? null : data?.near_term_expiries,
+        scopedExpiryLabel
+          ? { expiryLabel: fmtExpiry(scopedExpiryLabel), nearSpotGammaShare: scopedShare }
+          : null
+      ),
+    [lensUpper, stale, data?.near_term_expiries, scopedExpiryLabel, scopedShare]
   );
   const keyLevelsScopeFootnote = useMemo(
-    () => keyLevelsFootnote(zeroDteExpiry ? fmtExpiry(zeroDteExpiry) : null),
-    [zeroDteExpiry]
+    () =>
+      keyLevelsFootnote(
+        zeroDteExpiry ? fmtExpiry(zeroDteExpiry) : null,
+        scopedExpiryLabel ? fmtExpiry(scopedExpiryLabel) : null
+      ),
+    [zeroDteExpiry, scopedExpiryLabel]
   );
 
   // The old ~6 big cards (flip / call wall / put wall / max pain / net / anchor) collapse
