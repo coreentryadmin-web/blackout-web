@@ -138,6 +138,16 @@ export type BieAnswerEnvelope = {
     reads: { system: string; kind: "directional" | "regime"; stance: string; strength: number | null; basis: string; reason?: string }[];
     agreement: { voting: number; bullish: number; bearish: number; neutral: number; verdict: string; direction: string | null };
   };
+  /** Integrity supplement for play questions — badges only; Verdict stays model-authored. */
+  tradeDecision?: {
+    ticker: string;
+    actionLabel?: string;
+    notOnBoardWarning?: string;
+    existingPlay?: { contract: string; originalEntry: string; note: string };
+    boardPlay?: { contract: string; status: string; note: string };
+    isSpeculative?: boolean;
+    signalRows: { signal: string; read: string; bias: string; glyph: string }[];
+  };
   followups?: string[];
   /** Sources requested but unavailable this turn — always surfaced. */
   unavailableSources?: BieUnavailableSource[];

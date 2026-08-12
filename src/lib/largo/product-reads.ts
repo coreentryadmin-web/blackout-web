@@ -456,3 +456,125 @@ export async function helixDerivedForLargo(ticker?: string | null, limit = 400) 
     };
   }
 }
+
+/** Deterministic FlowBrief memo — same composeFlowBrief the HELIX UI uses (no LLM). */
+export async function flowBriefForLargo() {
+  try {
+    const [{ getFlowTapeSummary }, { fetchUwDarkPoolRecent }, { composeFlowBrief }] = await Promise.all([
+      import("@/lib/platform").then((m) => ({ getFlowTapeSummary: m.marketPlatform.flows.getFlowTapeSummary })),
+      import("@/lib/providers/unusual-whales"),
+      import("@/lib/bie/flow-brief"),
+    ]);
+    const summary = await getFlowTapeSummary({ limit: 200 });
+    const alerts = summary.recent ?? [];
+    const darkRaw = await fetchUwDarkPoolRecent(40).catch(() => []);
+    const darkPrints = (darkRaw ?? [])
+      .map((r: unknown) => {
+        if (!r || typeof r !== "object") return null;
+        const o = r as Record<string, unknown>;
+        const ticker = String(o.ticker ?? o.symbol ?? "").toUpperCase();
+        const premium = Number(o.premium ?? o.notional ?? 0);
+        if (!ticker || premium <= 0) return null;
+        const sideRaw = String(o.side ?? o.sentiment ?? "neutral").toLowerCase();
+        const side = sideRaw.includes("buy") ? "buy" : sideRaw.includes("sell") ? "sell" : "neutral";
+        return { ticker, premium, side };
+      })
+      .filter(Boolean) as Array<{ ticker: string; premium: number; side: string }>;
+    const brief = composeFlowBrief(alerts, darkPrints);
+    return roundFloats({
+      available: Boolean(brief),
+      brief,
+      alert_count: alerts.length,
+      total_premium: summary.total_premium ?? null,
+      top_tickers: summary.top_tickers ?? [],
+    });
+  } catch (e) {
+    return {
+      available: false,
+      brief: null,
+      error: e instanceof Error ? e.message : "flow_brief_failed",
+    };
+  }
+}
+
+/** HELIX tape panel aggregates — Net Premium, Route, Expiry, session skew. */
+export async function helixTapeAnalyticsForLargo(ticker: string | null, limit = 200) {
+  try {
+    const { marketPlatform } = await import("@/lib/platform");
+    const {
+      netPremiumLeaders,
+      routeBreakdown,
+      expiryConcentration,
+      sessionFlowSkew,
+    } = await import("@/lib/largo/helix-tape-analytics");
+    const summary = await marketPlatform.flows.getFlowTapeSummary({
+      limit,
+      ticker: ticker ? ticker.toUpperCase() : undefined,
+    });
+    const alerts = summary.recent ?? [];
+    return roundFloats({
+      available: alerts.length > 0,
+      ticker: ticker?.toUpperCase() ?? null,
+      session: sessionFlowSkew(alerts),
+      net_premium_leaders: netPremiumLeaders(alerts),
+      route_breakdown: routeBreakdown(alerts),
+      expiry_concentration: expiryConcentration(alerts),
+      count: summary.count ?? alerts.length,
+      total_premium: summary.total_premium ?? null,
+    });
+  } catch (e) {
+    return {
+      available: false,
+      error: e instanceof Error ? e.message : "helix_tape_analytics_failed",
+    };
+  }
+}
+
+/** Thermal compare strip — SPY/SPX/QQQ side-by-side positioning summary. */
+export async function thermalCompareForLargo(tickers?: string[]) {
+  const { THERMAL_COMPARE_TICKERS } = await import("@/features/thermal/lib/thermal-desk-state");
+  const { getGexPositioning } = await import("@/lib/providers/gex-positioning");
+  const list = (tickers?.length ? tickers : [...THERMAL_COMPARE_TICKERS]).map((t) =>
+    String(t).trim().toUpperCase()
+  );
+  // Compare strip only needs summary scalars (flip, walls, net GEX) — NOT the full matrix.
+  // gexHeatmapForLargo re-fetches the entire chain per ticker and was timing out Largo turns
+  // at ~120s on cold SPX+SPY. getGexPositioning reads the shared warmed cache — same numbers
+  // the Thermal compare UI shows.
+  const rows = await Promise.all(
+    list.map(async (ticker) => {
+      const pos = await getGexPositioning(ticker).catch(() => null);
+      if (!pos) {
+        return {
+          ticker,
+          available: false,
+          spot: null,
+          change_pct: null,
+          flip: null,
+          call_wall: null,
+          put_wall: null,
+          net_gex: null,
+          gamma_regime_read: null,
+          cross_validation: null,
+        };
+      }
+      return {
+        ticker,
+        available: true,
+        spot: pos.spot,
+        change_pct: pos.change_pct,
+        flip: pos.flip,
+        call_wall: pos.call_wall,
+        put_wall: pos.put_wall,
+        net_gex: pos.net_gex,
+        gamma_regime_read: pos.gamma_regime_read,
+        cross_validation: pos.gex_cross_validation ?? null,
+      };
+    })
+  );
+  return roundFloats({
+    available: rows.some((r) => r.available),
+    as_of: new Date().toISOString(),
+    tickers: rows,
+  });
+}

@@ -4,6 +4,14 @@ import { extractGexShifts } from "@/lib/largo/core/gex-shift-extract";
 import { analyzeLargoQuestion } from "@/lib/largo/question-intent";
 import { extractSystemReads } from "@/lib/largo/core/system-reads-extract";
 import {
+  evidenceLevelsForEnvelope,
+  type MarketEvidence,
+} from "@/lib/largo/core/market-evidence";
+import { buildTradeDecisionRead } from "@/lib/largo/core/decision-read";
+import { isPlayQuestion } from "@/lib/largo/core/trade-question";
+import { hasComparisonBlock } from "@/features/largo/answer/desk-read-layout";
+import { deriveMarketState, marketStateToBias } from "@/lib/largo/core/market-state";
+import {
   makeEnvelope,
   type BieAnswerEnvelope,
   type BieBias,
@@ -278,7 +286,11 @@ export function validateAnswerContract(markdown: string): AnswerContractReport {
 export function parseAnswerEnvelope(
   markdown: string,
   /** The turn's raw tool results, for structured blocks the prose cannot carry. */
-  capturedResults?: readonly unknown[]
+  capturedResults?: readonly unknown[],
+  /** Canonical validated evidence — when present, overrides levels and system reads. */
+  marketEvidence?: MarketEvidence | null,
+  /** Member question — used to build decision-first trade layout. */
+  question?: string | null
 ): BieAnswerEnvelope | null {
   let sections: Map<string, string>;
   try {
@@ -293,9 +305,10 @@ export function parseAnswerEnvelope(
 
   const verdict = get("Verdict");
   const facts = get("Facts");
-  // Require a verdict AND at least one fact line. A "Verdict"-only answer would render as a
-  // confident headline card with no evidence behind it — the most misleading possible card.
-  if (!verdict || !facts) return null;
+  const playQ = isPlayQuestion(question);
+  // Require a verdict. Facts can be thin on play questions when levels come from tool evidence.
+  if (!verdict) return null;
+  if (!facts && !playQ) return null;
 
   // The instrument this answer is about, resolved through the SAME entity layer the rest of Largo
   // uses so the Night Hawk row cannot be filtered on a different spelling than the answer discusses.
@@ -306,21 +319,46 @@ export function parseAnswerEnvelope(
     const { text, provenance } = parseProvenance(line.replace(KIND_RE, ""));
     if (text) evidence.push({ kind: "inference", text, provenance });
   }
-  if (evidence.length === 0) return null;
+  if (evidence.length === 0) {
+    const hasToolGrounding =
+      playQ &&
+      marketEvidence &&
+      (marketEvidence.levels.length > 0 ||
+        marketEvidence.nightHawk != null ||
+        (marketEvidence.spot?.authoritative != null));
+    if (!hasToolGrounding) return null;
+  }
 
   const confidenceBody = get("Confidence");
   const confidenceLevel = firstMatch(confidenceBody, CONFIDENCE_WORDS);
   const risk = bulletLines(get("Risk"));
 
-  return makeEnvelope({
+  const canonicalLevels =
+    marketEvidence && marketEvidence.levels.length > 0
+      ? evidenceLevelsForEnvelope(marketEvidence)
+      : extractLevels(evidence);
+
+  const envelope = makeEnvelope({
     headline: verdict.split(/\r?\n/)[0]!.trim(),
-    bias: firstMatch(verdict, BIAS_WORDS) ?? "neutral",
+    bias: marketStateToBias(deriveMarketState(verdict)),
     // ABSENT, not defaulted. The `why` is the whole point of the confidence field — a bare level
     // is an arbitrary number wearing a word — and this code used to say exactly that while doing
     // the opposite: `?? "moderate"` invented a level whenever Largo wrote no Confidence section,
     // and the UI printed "MODERATE CONFIDENCE" above "No confidence rationale was given."
     // An omitted section now yields an omitted badge.
-    confidence: confidenceLevel ? { level: confidenceLevel, why: confidenceBody.trim() } : undefined,
+    confidence: confidenceLevel
+      ? {
+          level: marketEvidence?.preciseRecommendationsBlocked ? "insufficient" : confidenceLevel,
+          why: marketEvidence?.preciseRecommendationsBlocked
+            ? `${confidenceBody.trim()} Sources disagree on spot — precise levels withheld.`.trim()
+            : confidenceBody.trim(),
+        }
+      : marketEvidence?.preciseRecommendationsBlocked
+        ? {
+            level: "insufficient",
+            why: "Spot prices disagree across sources — precise entry/stop/target levels are withheld.",
+          }
+        : undefined,
     // Every canonical section Largo actually wrote becomes a card, in contract order. Conflicts
     // and Data ride here rather than being flattened into a caveat list so the UI can give them
     // their own headings — "these signals disagree" and "this number is 12 minutes old" are
@@ -334,11 +372,37 @@ export function parseAnswerEnvelope(
     // the numbers were in the evidence prose and nothing lifted them out. extractLevels reads the
     // already-structured evidence rows against a closed label set, so a miss costs one grid row
     // and can never produce a wrong one.
-    levels: extractLevels(evidence),
+    levels: canonicalLevels,
     // Structured, from the tool's own output — see gex-shift-extract.ts.
     gexShifts: extractGexShifts(capturedResults)?.shifts,
     // Cross-system consensus, from the same tool results — see system-reads-extract.ts.
     systemReads: extractSystemReads(capturedResults, tickerHint) ?? undefined,
-    invalidation: risk[0] ?? null,
+    invalidation: marketEvidence?.preciseRecommendationsBlocked ? null : risk[0] ?? null,
   });
+
+  const hasComparison = hasComparisonBlock(markdown);
+  const tradeDecision = buildTradeDecisionRead(question, envelope, marketEvidence, {
+    hasComparisonBlock: hasComparison,
+  });
+  if (tradeDecision) {
+    return {
+      ...envelope,
+      tradeDecision: {
+        ticker: tradeDecision.ticker,
+        actionLabel: tradeDecision.actionLabel,
+        notOnBoardWarning: tradeDecision.notOnBoardWarning,
+        existingPlay: tradeDecision.existingPlay,
+        boardPlay: tradeDecision.boardPlay,
+        isSpeculative: tradeDecision.isSpeculative,
+        signalRows: tradeDecision.signalRows.map((r) => ({
+          signal: r.signal,
+          read: r.read,
+          bias: r.bias,
+          glyph: r.glyph,
+        })),
+      },
+    };
+  }
+
+  return envelope;
 }

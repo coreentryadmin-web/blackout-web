@@ -11,7 +11,11 @@ const FLOW_TAPE = {
 };
 const POSITIONING = { gamma_posture: "short", spot: 7757.58, flip: 7764.93, call_wall: 7775 };
 const VECTOR = { play: { bias: "bullish", grade: "B", conviction: 73 }, spot: 7757 };
-const SWING = { sample_plays: [{ ticker: "SPX", direction: "long", status: "OPEN" }] };
+const SWING = {
+  sample_plays: [{ ticker: "SPX", direction: "long", status: "OPEN" }],
+  committed_count: 1,
+  horizon: "swing",
+};
 
 test("reads are built from tool results already in the turn", () => {
   const b = extractSystemReads([FLOW_TAPE, POSITIONING, VECTOR, SWING], "SPX")!;
@@ -32,12 +36,34 @@ test("a system that was NOT consulted gets no row at all", () => {
   assert.equal(b.reads.some((r) => r.system === "NIGHT HAWK"), false);
 });
 
-test("an empty lane for this ticker IS a finding, and does get a row", () => {
-  const emptyLane = { sample_plays: [{ ticker: "NVDA", direction: "long" }] };
+test("swing lane alone still produces Night Hawk row when ticker matches", () => {
+  const b = extractSystemReads([FLOW_TAPE, POSITIONING, SWING], "SPX")!;
+  assert.ok(b.reads.some((r) => r.system === "NIGHT HAWK"));
+});
+
+test("an empty zerodte lane for this ticker IS a finding when no edition exists", () => {
+  const emptyLane = {
+    sample_plays: [{ ticker: "NVDA", direction: "long" }],
+    committed_count: 0,
+    horizon: "swing",
+  };
   const b = extractSystemReads([FLOW_TAPE, POSITIONING, emptyLane], "SPX")!;
   const nh = b.reads.find((r) => r.system === "NIGHT HAWK")!;
   assert.equal(nh.stance, "no-read");
   assert.equal(nh.reason, "no plays on this name");
+});
+
+test("evening edition pick for NVDA shows bullish even when zerodte board is empty", () => {
+  const edition = {
+    available: true,
+    edition_for: "2026-08-11",
+    plays: [{ ticker: "NVDA", direction: "long", conviction: "B", options_play: "Aug 12 $217.5 call" }],
+  };
+  const zerodte = { plays: [], fresh_finds: [] };
+  const b = extractSystemReads([FLOW_TAPE, POSITIONING, edition, zerodte], "NVDA")!;
+  const nh = b.reads.find((r) => r.system === "NIGHT HAWK")!;
+  assert.equal(nh.stance, "bullish");
+  assert.match(nh.basis, /evening edition/);
 });
 
 test("gamma is a REGIME row and never votes in the tally", () => {

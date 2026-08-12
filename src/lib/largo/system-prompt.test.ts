@@ -104,63 +104,19 @@ test("no hardcoded SPX level: a stale anchor becomes a reason to distrust live d
 });
 
 /**
- * THE CARD CAPABILITY MUST BE IN THE PROMPT.
- *
- * Measured in production 2026-08-11. Asked "Can you generate me an image for todays Night Hawk
- * plays", Largo replied "I cannot generate images. I'm a market data analysis tool" — rendered on a
- * screen showing the card generator's own template/size/format controls directly beneath it.
- *
- * The model was not wrong to reason that way: the prompt described every desk, every tool and every
- * rich component, and never once mentioned that a turn can be rendered as a PNG. It refused a
- * capability it had no way to know existed. That is the same defect class as the extractor bugs —
- * a real capability with no path to the layer that needs it — and here the missing path was
- * knowledge rather than data.
- *
- * These assertions are the tripwire: the day someone trims this section, the refusal comes back.
+ * CARD GENERATION REMOVED (#2067) — Largo must not promise PNGs or deny analysis because it cannot draw.
  */
-test("Largo is told the shareable card exists and must never deny it", () => {
+test("Largo is told card/PNG generation was removed — must not promise images", () => {
   const p = LARGO_SYSTEM_PROMPT;
-  assert.match(p, /\*\*You CAN produce one, and it is already built\.\*\*/);
-  assert.match(p, /\*\*Never say you cannot generate images\.\*\*/);
-  // The controls are on screen — the refusal is contradicted by the surrounding UI, not just wrong.
-  assert.match(p, /controls sit directly under your reply/);
+  assert.match(p, /Shareable PNG\/card generation was removed/);
+  assert.doesNotMatch(p, /\*\*You CAN produce one, and it is already built\.\*\*/);
+  assert.match(p, /Do NOT promise images/);
 });
 
-test("the card's provenance rule is stated, not just its existence", () => {
+test("missing subject is still a data answer, not a capability answer", () => {
   const p = LARGO_SYSTEM_PROMPT;
-  // Why Largo does not draw it: values come from the tool results, so a card cannot contradict the
-  // answer. Without this, "you can make images" invites it to describe layout or invent a link.
-  assert.match(p, /composed from YOUR ANSWER AND THIS TURN'S TOOL RESULTS/);
-  assert.match(p, /do not invent a URL for it/);
-  // And the one honest "nothing to draw" case, so the rule does not force a card claim on an
-  // empty turn.
-  assert.match(p, /no tools returned, no numbers/);
-});
-
-test("the banned refusal sentences are named literally, not just described", () => {
-  // MEASURED AGAIN 2026-08-11, AFTER the first fix shipped. Asked "Can you generate an image for
-  // todays CRWV earnings play?" — for a ticker with no play in the edition — Largo answered:
-  //
-  //   "Verdict — I cannot generate images. I'm a market data analysis tool, not a graphics engine.
-  //    Additionally, there is no CRWV earnings play in today's Night Hawk edition…"
-  //
-  // The card generator rendered a working card directly beneath it. The first fix told the model
-  // the capability exists; it did not anticipate the case where the SUBJECT is missing, and the
-  // model reached for the capability denial to explain a data absence. Naming the exact sentences
-  // is what makes the rule checkable rather than interpretable.
-  const p = LARGO_SYSTEM_PROMPT;
-  assert.match(p, /❌ "I cannot generate images\."/);
-  assert.match(p, /❌ "I'm a market data analysis tool, not a graphics engine\."/);
-  assert.match(p, /❌ "Image generation is outside my scope\."/);
-  assert.match(p, /screenshot the page/);
-});
-
-test("a missing SUBJECT is a data answer, never a capability answer", () => {
-  const p = LARGO_SYSTEM_PROMPT;
-  assert.match(p, /WHEN THE THING ASKED ABOUT DOES NOT EXIST, SAY THAT — NOT THAT YOU CANNOT DRAW/);
-  // The live example is in the prompt, because an abstract rule did not survive contact with it.
-  assert.match(p, /no CRWV play exists/);
-  assert.match(p, /A missing subject is a DATA answer, never a capability\s+answer/);
+  assert.match(p, /Never say you cannot answer because you cannot draw/);
+  assert.match(p, /no CRWV play/);
 });
 
 test("a ticker missing from the desk's own boards is still analysable", () => {

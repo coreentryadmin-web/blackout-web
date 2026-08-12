@@ -165,6 +165,61 @@ export function nightHawkRead(
   };
 }
 
+/** Night Hawk row reconciling evening edition, 0DTE board, and swing lane. */
+export function nightHawkReconciledRead(
+  state: {
+    edition: ReadonlyArray<{ ticker: string; direction: string; conviction?: string | null; product: string }>;
+    zerodte: ReadonlyArray<{ direction: string; status?: string | null; product: string }>;
+    swing: ReadonlyArray<{ direction: string; product: string }>;
+    forTicker: ReadonlyArray<{ direction: string; conviction?: string | null; product: string }>;
+    consulted: { edition: boolean; zerodte: boolean; swing: boolean };
+  },
+  ticker: string | null
+): SystemRead {
+  const base = { system: "NIGHT HAWK", kind: "directional" as const };
+  const plays = state.forTicker;
+
+  if (!plays.length) {
+    const consulted = state.consulted.edition || state.consulted.zerodte || state.consulted.swing;
+    if (!consulted) {
+      return { ...base, stance: "no-read", strength: null, basis: "—", reason: "lane unavailable" };
+    }
+    const editionHasTicker =
+      ticker != null && state.edition.some((p) => p.ticker === ticker.toUpperCase());
+    return {
+      ...base,
+      stance: "no-read",
+      strength: null,
+      basis: "no plays",
+      reason: editionHasTicker
+        ? "no plays on this name"
+        : state.consulted.zerodte && !state.consulted.edition
+          ? "no open plays on 0DTE board"
+          : "no plays on this name",
+    };
+  }
+
+  let bull = 0;
+  let bear = 0;
+  for (const p of plays) {
+    const d = String(p.direction ?? "").toLowerCase();
+    if (/bull|long|call/.test(d)) bull++;
+    else if (/bear|short|put/.test(d)) bear++;
+  }
+  const stance: SystemStance = bull > bear ? "bullish" : bear > bull ? "bearish" : "neutral";
+  const src = plays[0]!.product;
+  const conv = plays[0]?.conviction;
+  const productLabel =
+    src === "edition" ? "evening edition" : src === "zerodte" ? "0DTE board" : "swings lane";
+  const n = plays.length;
+  return {
+    ...base,
+    stance,
+    strength: null,
+    basis: `${n} ${n === 1 ? "play" : "plays"} · ${productLabel}${conv ? ` · conv ${conv}` : ""}${bull || bear ? ` · ${bull}L/${bear}S` : ""}`,
+  };
+}
+
 /**
  * GAMMA REGIME — a state, never a vote.
  *

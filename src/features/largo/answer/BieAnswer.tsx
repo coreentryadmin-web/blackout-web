@@ -3,12 +3,14 @@
 import { clsx } from "clsx";
 import type { BieAnswerEnvelope } from "@/lib/bie/answer-envelope";
 import { LargoMessageBody } from "@/features/largo/components/LargoMessageBody";
+import { renderInlineMarkdown } from "@/features/largo/components/inline-markdown";
 import { BiasPill, ConfidenceBadge, SourceStamp, UnavailableChip } from "./BieChips";
 import { BieEvidencePanel } from "./BieEvidencePanel";
 import { BieKeyLevelsTable } from "./BieKeyLevelsTable";
 import { BieScenarioCards } from "./BieScenarioCards";
 import { BieSectionCard } from "./BieSectionCard";
 import { answeredParts, relativeTime } from "./answer-format";
+import { splitHeadline } from "./headline";
 
 /**
  * Whether the envelope is "shallow" — a single section with no cross-cutting
@@ -59,9 +61,10 @@ export function BieAnswer({
   showAsOf?: boolean;
 }) {
   const compact = isCompact(envelope);
+  const { header, rest } = splitHeadline(envelope.headline);
   const { answered, total } = answeredParts(envelope.sections);
   const asOfRel = showAsOf ? relativeTime(envelope.asOf) : null;
-  const hasHeadline = Boolean(envelope.headline.trim());
+  const hasHeadline = Boolean(header.trim());
   // An absent confidence draws NOTHING — see `answer-envelope.ts` on why the field is optional.
   // Folded into `showHeader` too, so an answer with no headline, no bias and no confidence does
   // not render an empty header strip.
@@ -75,7 +78,9 @@ export function BieAnswer({
         <header className="bie-answer-head">
           {hasHeadline || showBias ? (
             <div className="bie-answer-head-row">
-              {hasHeadline ? <h2 className="bie-answer-headline">{envelope.headline}</h2> : null}
+              {hasHeadline ? (
+                <h2 className="bie-answer-headline">{renderInlineMarkdown(header)}</h2>
+              ) : null}
               {showBias ? <BiasPill bias={envelope.bias} /> : null}
             </div>
           ) : null}
@@ -92,6 +97,10 @@ export function BieAnswer({
             <UnavailableChip key={`${u.source}-${i}`} reason={`${u.source}: ${u.reason}`} />
           ))}
         </div>
+      ) : null}
+
+      {rest ? (
+        <p className={clsx("bie-answer-lead", bodyClassName)}>{renderInlineMarkdown(rest)}</p>
       ) : null}
 
       {compact ? (
@@ -116,7 +125,7 @@ export function BieAnswer({
       {envelope.invalidation ? (
         <p className="bie-answer-invalidation">
           <span className="bie-answer-invalidation-label">Invalidation</span>
-          {envelope.invalidation}
+          {renderInlineMarkdown(envelope.invalidation)}
         </p>
       ) : null}
 

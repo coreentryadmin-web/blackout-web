@@ -23,6 +23,8 @@
  * PURE AND TOTAL: no IO, no clock, no throw.
  */
 
+import { isZeroDtePlayQuestion } from "@/lib/largo/core/trade-question";
+
 export type AnswerLayout =
   /** "Is 7800 holding?" — one level, its strength, and what breaks it. */
   | "level"
@@ -36,6 +38,8 @@ export type AnswerLayout =
   | "flow"
   /** "Why is SPX moving?" — regime, drivers, bull vs bear, level map. */
   | "market"
+  /** "What is a good options play on NVDA today?" — decision-first, not an essay. */
+  | "trade"
   /** Anything else — the general desk read. */
   | "default";
 
@@ -49,6 +53,9 @@ export type AnswerLayout =
 const COMPARISON_WORDS_RE =
   /\b(vs\.?|versus|compare[ds]?|comparison|which (?:is |one )?(?:better|stronger)|better than)\b/i;
 const COMPARISON_TICKERS_RE = /\b[A-Z]{2,5}\s+or\s+[A-Z]{2,5}\b/;
+
+const TRADE_RE =
+  /\b(?:(?:good|best|what|any|which)\s+(?:options?\s+)?(?:play|trade|setup|entry)|(?:should i|can i)\s+(?:take|buy|play|trade)|options?\s+play\s+(?:on|for|to)|what(?:'s| is)\s+(?:the\s+)?(?:play|trade|setup))\b/i;
 
 /** Superlatives and list requests — the shape is an ordered set, not a paragraph. */
 const RANKING_RE =
@@ -83,6 +90,7 @@ export function classifyLayout(question: string | null | undefined): AnswerLayou
 
   // Most specific first — see the ORDER MATTERS note above.
   if (COMPARISON_WORDS_RE.test(q) || COMPARISON_TICKERS_RE.test(q)) return "comparison";
+  if (TRADE_RE.test(q) || isZeroDtePlayQuestion(q)) return "trade";
   if (RANKING_RE.test(q)) return "ranking";
   if (RECAP_RE.test(q)) return "recap";
   if (LEVEL_RE.test(q)) return "level";
@@ -114,6 +122,7 @@ const LAYOUT_ORDER: Record<AnswerLayout, AnswerBlock[]> = {
   recap: ["sections", "ladder", "signals", "invalidation"],
   // Flow questions want the directional tally before the structure.
   flow: ["signals", "sections", "ladder", "invalidation"],
+  trade: ["sections", "ladder", "invalidation"],
   // "Why is it moving" — the read, then what confirms or breaks it.
   market: ["signals", "ladder", "sections", "invalidation"],
   default: DEFAULT_ORDER,
@@ -146,6 +155,7 @@ export const LAYOUT_LABEL: Record<AnswerLayout, string> = {
   ranking: "Ranking",
   recap: "Session recap",
   flow: "Flow analysis",
+  trade: "Trade decision",
   market: "Market read",
   default: "Desk read",
 };

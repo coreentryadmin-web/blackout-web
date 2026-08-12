@@ -20,7 +20,8 @@ type ContentBlock =
   | { type: "section"; title: string; inline?: string }
   | { type: "list"; items: string[] }
   | { type: "table"; headers: string[]; rows: string[][] }
-  | { type: "para"; lines: string[] };
+  | { type: "para"; lines: string[] }
+  | { type: "caveat"; text: string };
 
 function isTableRow(line: string): boolean {
   const t = line.trim();
@@ -174,6 +175,17 @@ function parseContentBlocks(content: string): ContentBlock[] {
     if (boldHeading) {
       blocks.push({ type: "heading", text: boldHeading });
       i++;
+      continue;
+    }
+
+    // Post-answer honesty caveats (`> **These two parts...`) — render as callouts, not prose.
+    if (trimmed.startsWith(">")) {
+      const caveatLines: string[] = [];
+      while (i < lines.length && lines[i].trim().startsWith(">")) {
+        caveatLines.push(lines[i].trim().replace(/^>\s?/, ""));
+        i++;
+      }
+      blocks.push({ type: "caveat", text: caveatLines.join(" ") });
       continue;
     }
 
@@ -341,6 +353,15 @@ function LargoProse({ content, className, bare }: LargoMessageBodyProps & { bare
                 <li key={li}>{renderLine(item)}</li>
               ))}
             </ul>
+          );
+        }
+
+        if (block.type === "caveat") {
+          return (
+            <div key={bi} className="largo-answer-caveat">
+              <span className="largo-answer-caveat-label">Note</span>
+              <div className="largo-answer-caveat-body">{renderLine(block.text)}</div>
+            </div>
           );
         }
 

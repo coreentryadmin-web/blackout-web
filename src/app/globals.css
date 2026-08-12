@@ -18816,16 +18816,142 @@ body::before {
     color: var(--largo-primary);
   }
   /* ── EXECUTIVE ANSWER ──────────────────────────────────────────────────────────────────────
-     One line, in the synthesis colour, sized to be read before anything else. Everything below is
-     support for this sentence. */
+     Verdict first — left-aligned prose the member reads, not a centered badge shouting direction. */
   .largo-read-header {
-    padding: 0.15rem 0.9rem 0.7rem;
-    font-family: var(--font-anton, sans-serif);
-    font-size: clamp(1.05rem, 2.4vw, 1.5rem);
-    line-height: 1.28;
-    letter-spacing: 0.01em;
-    color: var(--largo-ai);
-    text-wrap: balance;
+    padding: 0.65rem 0.9rem 0.35rem;
+    font-size: clamp(0.98rem, 2.2vw, 1.22rem);
+    line-height: 1.45;
+    font-weight: 600;
+    color: var(--largo-primary);
+    text-align: left;
+    text-wrap: pretty;
+  }
+  /* Verdict continuation when Interpretation carries the reasoning separately. */
+  .largo-read-lead {
+    padding: 0 0.9rem 0.55rem;
+    font-size: 0.88rem;
+    line-height: 1.55;
+    color: var(--largo-muted);
+    text-align: left;
+  }
+  /* Direction / action / confidence — secondary chips below the verdict, not competing with it. */
+  .largo-read-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.45rem 0.65rem;
+    padding: 0.15rem 0.9rem 0.55rem;
+    text-align: left;
+  }
+  /* Board-not-committed / edition integrity — one strip, not scattered callouts. */
+  .largo-read-integrity {
+    margin: 0 0.75rem 0.5rem;
+    padding: 0.45rem 0.55rem;
+    border-left: 2px solid var(--largo-warn, #fbbf24);
+    background: rgba(251, 191, 36, 0.08);
+    border-radius: 0 4px 4px 0;
+    font-size: 0.82rem;
+    line-height: 1.45;
+    color: var(--largo-primary);
+  }
+  .largo-read-integrity p {
+    margin: 0;
+  }
+  .largo-read-integrity p + p {
+    margin-top: 0.35rem;
+  }
+  .largo-read-integrity-note {
+    color: var(--largo-muted);
+    font-size: 0.78rem;
+  }
+  /* Model-authored comparison / ranking blocks live inside the card. */
+  .largo-read-blocks {
+    padding: 0.35rem 0.75rem 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+  }
+  /* Trade-decision headline — one line, amber cue, no essay slot. */
+  .largo-read-header-trade {
+    color: var(--largo-warn, #fbbf24);
+    font-size: clamp(0.95rem, 2.2vw, 1.35rem);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .largo-read-header-rest {
+    padding: 0 0.9rem 0.55rem;
+    font-size: 0.88rem;
+    line-height: 1.5;
+    color: var(--largo-muted);
+  }
+  .largo-read-action-warn {
+    color: var(--largo-warn, #fbbf24);
+  }
+  .largo-answer-blocks {
+    margin-top: 0.5rem;
+  }
+  .largo-read-trade-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    padding: 0 0.75rem 0.55rem;
+  }
+  .largo-read-callout {
+    padding: 0.5rem 0.65rem;
+    border-left: 2px solid var(--largo-info);
+    background: rgba(34, 211, 238, 0.06);
+    border-radius: 0 4px 4px 0;
+    font-size: 0.84rem;
+    line-height: 1.45;
+    color: var(--largo-primary);
+  }
+  .largo-read-callout-muted {
+    border-left-color: var(--largo-muted);
+    background: rgba(148, 163, 184, 0.06);
+    color: var(--largo-muted);
+  }
+  .largo-read-callout-risk {
+    border-left-color: var(--largo-bear);
+    background: rgba(248, 113, 113, 0.06);
+    color: var(--largo-primary);
+  }
+  .largo-read-callout-warning {
+    border-left-color: var(--largo-warn, #fbbf24);
+    background: rgba(251, 191, 36, 0.1);
+    color: var(--largo-primary);
+  }
+  .largo-read-callout-board {
+    border-left-color: var(--largo-bull);
+    background: rgba(74, 222, 128, 0.06);
+  }
+  .largo-read-speculative-summary {
+    margin: 0.35rem 0 0.25rem;
+    font-size: 0.84rem;
+    line-height: 1.45;
+  }
+  .largo-read-speculative-factors {
+    margin: 0.25rem 0 0;
+    padding-left: 1.1rem;
+    font-size: 0.82rem;
+    line-height: 1.4;
+    color: var(--largo-muted);
+  }
+  .largo-read-overall {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--largo-warn);
+    padding: 0.15rem 0 0.25rem;
+  }
+  .largo-read-sig-head {
+    font-size: 8.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--largo-muted-faint);
+    border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+    padding-bottom: 0.2rem;
+    margin-bottom: 0.1rem;
   }
   .largo-read-statechip {
     display: inline-flex;
@@ -18900,10 +19026,8 @@ body::before {
     color: var(--largo-muted);
   }
   .largo-read-conf-why {
-    max-width: 34rem;
-    margin: 0.3rem auto 0;
-    padding: 0 0.75rem;
-    text-align: center;
+    padding: 0 0.9rem 0.55rem;
+    text-align: left;
     font-size: 11px;
     line-height: 1.5;
     color: var(--largo-muted-faint);
@@ -19041,6 +19165,39 @@ body::before {
 }
 
 @layer components {
+  .largo-answer-caveats {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0.65rem;
+  }
+  .largo-answer-caveat {
+    padding: 0.55rem 0.7rem;
+    border-left: 2px solid var(--largo-warn, #fbbf24);
+    background: rgba(251, 191, 36, 0.06);
+    border-radius: 0 4px 4px 0;
+    font-size: 0.82rem;
+    line-height: 1.45;
+  }
+  .largo-answer-caveat-label {
+    display: block;
+    margin-bottom: 0.25rem;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 9px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--largo-warn, #fbbf24);
+  }
+  .largo-answer-caveat-body {
+    color: var(--largo-primary, #f0f0f8);
+  }
+  .largo-answer-caveat[data-kind="integrity"] {
+    border-left-color: var(--largo-bear, #f87171);
+    background: rgba(248, 113, 113, 0.08);
+  }
+  .largo-answer-caveat[data-kind="integrity"] .largo-answer-caveat-label {
+    color: var(--largo-bear, #f87171);
+  }
   .largo-read-more > summary {
     margin-top: 0.5rem;
     font-family: var(--font-mono, ui-monospace, monospace);

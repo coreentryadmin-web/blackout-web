@@ -1003,6 +1003,27 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       );
     }
 
+    case "get_flow_brief": {
+      const { flowBriefForLargo } = await import("@/lib/largo/product-reads");
+      return flowBriefForLargo();
+    }
+
+    case "get_helix_tape_analytics": {
+      const { helixTapeAnalyticsForLargo } = await import("@/lib/largo/product-reads");
+      return helixTapeAnalyticsForLargo(
+        input.ticker ? String(input.ticker) : null,
+        Number(input.limit ?? 200)
+      );
+    }
+
+    case "get_thermal_compare": {
+      const { thermalCompareForLargo } = await import("@/lib/largo/product-reads");
+      const tickers = Array.isArray(input.tickers)
+        ? input.tickers.map((t) => String(t))
+        : undefined;
+      return thermalCompareForLargo(tickers);
+    }
+
     case "get_vector_analytics": {
       const { vectorAnalyticsForLargo } = await import("@/lib/largo/vector-analytics");
       return vectorAnalyticsForLargo(input.ticker ? String(input.ticker) : null, {

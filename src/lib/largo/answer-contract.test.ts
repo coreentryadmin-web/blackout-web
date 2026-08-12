@@ -111,7 +111,18 @@ test("a stale read is carried as stale, never silently promoted to live", () => 
 test("bias and confidence are read from the answer, not defaulted away", () => {
   const env = parseAnswerEnvelope(FULL);
   assert.ok(env);
-  assert.equal(env.bias, "bullish");
+  // MIXED, not "bullish" — and that flip is the point of the change, not a broken assertion.
+  //
+  // `bias` used to be the first sentiment keyword found in the prose, so FULL scored "bullish"
+  // off the word `bullish` in "SPX is bullish above the 5990 gamma flip, BUT the tape disagrees
+  // with structure". The badge then contradicted the sentence beneath it. It now comes from
+  // `deriveMarketState(verdict)`, whose CONFLICT_RE catches "disagrees".
+  //
+  // FULL is the right fixture to pin this on because it is conflicted three times over, by
+  // construction: its own docstring calls it "a genuine conflict", its Confidence line says the
+  // flow leg "contradicts" the others, and it carries a Conflicts section reading "these point
+  // opposite ways". A verdict that says the tape disagrees must not badge BULLISH.
+  assert.equal(env.bias, "mixed");
   assert.equal(env.confidence.level, "moderate");
   assert.match(env.confidence.why, /contradicts/);
 });

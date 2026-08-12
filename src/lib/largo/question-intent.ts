@@ -154,9 +154,23 @@ const DOMAIN_UPPERCASE_WORDS = new Set([
   "PIN", "TAPE", "FLOW", "NEWS", "PLAY", "PLAYS", "CARD", "DESK", "TODAY", "NOW", "ASAP",
 ]);
 
-/** Was this token written as an UPPERCASE symbol in the original question? */
+/**
+ * Was this token written as an UPPERCASE symbol in the original question?
+ *
+ * `token` is ESCAPED before it reaches the RegExp. Every caller today passes a candidate matched
+ * by `/\$?\b([A-Z]{2,5})\b/g`, so it is already 2-5 uppercase letters and cannot carry a regex
+ * metacharacter — which is why this has never misbehaved, and why escaping is a strict no-op for
+ * real inputs rather than a behaviour change.
+ *
+ * It is escaped anyway because the SIGNATURE accepts any string while the safety lives entirely in
+ * the callers: one future call site passing raw question text would turn a member-supplied `(((((`
+ * into a thrown SyntaxError, or a crafted nested quantifier into catastrophic backtracking on a
+ * member-facing endpoint. CodeQL flags this line as a high-severity regex injection for exactly
+ * that reason. Closing it at the sink costs nothing and removes the whole class.
+ */
 function writtenUppercase(question: string, token: string): boolean {
-  return new RegExp(`\\b${token}\\b`).test(question);
+  const safe = token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`\\b${safe}\\b`).test(question);
 }
 
 function extractTicker(question: string, historyText: string): string | null {
@@ -239,10 +253,16 @@ export function analyzeLargoQuestion(
     );
   }
   if (needsThermalRead) {
-    toolHints.push("get_positioning", "get_gex", "get_gex_regime_events");
+    toolHints.push(
+      "get_positioning",
+      "get_gex_heatmap",
+      "get_gex_matrix_changes",
+      "get_thermal_compare",
+      "get_gex_regime_events"
+    );
   }
   if (needsVectorRead) {
-    toolHints.push("get_vector_full_state", "get_positioning");
+    toolHints.push("get_vector_full_state", "get_vector_pulse", "get_wall_dynamics", "get_positioning");
   }
   if (needsVectorAnalytics) {
     // Hinted on its OWN keywords, independent of needsVectorRead: these questions name the
@@ -251,14 +271,21 @@ export function analyzeLargoQuestion(
     toolHints.push("get_vector_analytics");
   }
   if (needsHelixRead) {
-    toolHints.push("get_flow_tape", "get_flow_anomaly_near_misses", "get_global_flow");
+    toolHints.push(
+      "get_flow_tape",
+      "get_flow_brief",
+      "get_helix_tape_analytics",
+      "get_helix_derived",
+      "get_flow_anomaly_near_misses",
+      "get_global_flow"
+    );
   }
   if (needsRecordRead) {
     toolHints.push("get_spx_vs_nighthawk_comparison", "get_setup_stats", "get_trade_history");
   }
 
   if (needsSpxDesk || scopeTicker === "SPX") {
-    toolHints.push("get_spx_structure", "get_gex", "get_greek_flow");
+    toolHints.push("get_spx_structure", "get_spx_pulse", "get_spx_pin", "get_gex", "get_greek_flow");
   }
   if (needsPlayState) {
     toolHints.push("get_spx_play", "get_open_plays");

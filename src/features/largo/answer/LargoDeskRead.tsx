@@ -5,48 +5,22 @@ import React from "react";
 import { clsx } from "clsx";
 import type { BieAnswerEnvelope, BieFreshness } from "@/lib/bie/answer-envelope";
 import { renderInlineMarkdown } from "@/features/largo/components/inline-markdown";
+import { extractLargoSegments } from "@/features/largo/blocks/extract";
+import { LargoBlockView } from "@/features/largo/blocks/LargoBlocks";
 import { proseSections, summariseEvidence, hasExpandableEvidence } from "./section-policy";
 import { splitHeadline } from "./headline";
 import { signalRowsFromLevels, tallySignals, BIAS_GLYPH } from "./signal-rows";
 import { ladderFromLevels } from "./level-ladder";
 import { classifyLayout, blockOrder, type AnswerBlock } from "./answer-layout";
+import { deskReadVisibility } from "./desk-read-layout";
 import { formatGexChange } from "@/lib/largo/core/gex-shift-extract";
 import { formatDistance } from "@/features/largo/lib/rail-levels";
 import {
-  deriveMarketState,
   deriveActionState,
   marketStateToBias,
   MARKET_STATE_LABEL,
   ACTION_STATE_LABEL,
 } from "@/lib/largo/core/market-state";
-
-/**
- * LARGO DESK READ — the structured answer surface.
- *
- * WHY THIS EXISTS. A Largo answer was rendering as a paragraph, which made a cross-product
- * synthesis look like chat output. That is not only a presentation problem: prose forces the
- * member to RE-READ to find the level, the invalidation and the freshness every single time,
- * because those facts move around depending on how the sentence came out. A fixed layout puts the
- * same fact in the same place in every answer, which is what makes it readable at a glance under
- * pressure and what a paragraph can never do however well written.
- *
- * IT RENDERS THE ENVELOPE, IT DOES NOT PARSE PROSE. Every field here comes from the structured
- * `BieAnswerEnvelope` the answer contract already produces. The tempting shortcut — regex the
- * markdown into a table — would produce a layout that silently degrades whenever the model phrases
- * something differently, and the failure would look like a UI bug rather than a missing field.
- * When a field is absent the block is OMITTED; nothing is invented to fill the grid.
- *
- * FALLS BACK, NEVER BLOCKS. `LargoAnswerMessage` keeps the markdown path for answers with no
- * envelope (drifted contract, rehydrated history, a trivial reply). A member must never lose an
- * answer because it did not fit a template.
- */
-
-const BIAS_CLASS: Record<string, string> = {
-  bullish: "largo-read-bias-bullish",
-  bearish: "largo-read-bias-bearish",
-  neutral: "largo-read-bias-neutral",
-  mixed: "largo-read-bias-neutral",
-};
 
 const FRESH_CLASS: Record<BieFreshness, string> = {
   live: "largo-read-src-live",
@@ -55,24 +29,16 @@ const FRESH_CLASS: Record<BieFreshness, string> = {
   unknown: "largo-read-src",
 };
 
-/** Sections whose content is a STOP condition get the red treatment — they end trades. */
 const RISK_TITLE = /^(invalidation|risk|what would change|caution|warning)/i;
 
-/** One glyph per section meaning — the restrained set, defined once. */
 const SECTION_ICON: Record<string, string> = {
   interpretation: "⚡",
   conflicts: "🟡",
   risk: "⚠️",
-  invalidation: "🎯",
-  flow: "🌊",
 };
 
 function sectionIcon(title: string): string {
   return SECTION_ICON[String(title ?? "").trim().toLowerCase()] ?? "";
-}
-
-function biasClass(bias: string | null | undefined): string {
-  return BIAS_CLASS[String(bias ?? "").toLowerCase()] ?? "largo-read-bias-neutral";
 }
 
 function formatEt(iso: string | null | undefined): string {
@@ -83,79 +49,76 @@ function formatEt(iso: string | null | undefined): string {
     timeZone: "America/New_York",
     hour: "2-digit",
     minute: "2-digit",
-    second: "2-digit",
     hour12: false,
   }).format(d)} ET`;
+}
+
+function displayHeader(text: string): string {
+  return text.replace(/^[🟡🟢🔴⚠️◌]\s*/, "").trim();
 }
 
 export function LargoDeskRead({
   envelope,
   question,
+  markdownSource,
 }: {
   envelope: BieAnswerEnvelope;
-  /** The member's question, used ONLY to choose which block leads. Optional: without it the card
-   *  renders the default order, which is always a correct way to show an answer. */
   question?: string | null;
+  /** Raw answer markdown — used for inline blocks + dedupe (comparison vs fallback signals). */
+  markdownSource?: string | null;
 }) {
-  const levels = envelope.levels ?? [];
-  // Only sections whose content exists nowhere else. See section-policy.ts: Verdict, Confidence,
-  // Risk, Data and Facts are each rendered by a dedicated component below, and rendering them
-  // again as prose printed the same thesis up to six times per answer.
+  const vis = deskReadVisibility(envelope, markdownSource);
+  const trade = envelope.tradeDecision;
+  const layout = classifyLayout(question);
   const sections = proseSections(envelope.sections);
+  const hasInterpretation = sections.some((s) => s.title.toLowerCase() === "interpretation");
   const evidence = envelope.evidence ?? [];
   const evidenceSummary = summariseEvidence(evidence);
 
-  // THE HEADLINE IS THE EXECUTIVE ANSWER. Largo writes its verdict as one long paragraph, so the
-  // old `headline` was the whole thing rendered in display type — an essay in a title slot, and
-  // the same reasoning appeared again below. Only the first sentence leads; the elaboration is
-  // dropped from the default view because Interpretation already carries it (see section-policy).
-  const { header } = splitHeadline(envelope.headline);
-
-  // Derived from the header, so the badge, the chips and the prose can never disagree.
-  const state = deriveMarketState(envelope.headline ?? "");
+  const { header, rest } = splitHeadline(envelope.headline);
+  const bias = marketStateToBias(vis.state);
   const action = deriveActionState(envelope.headline ?? "");
-  const bias = marketStateToBias(state);
 
-  const ladder = ladderFromLevels(levels);
-  const signals = signalRowsFromLevels(levels);
-  const tally = tallySignals(signals);
+  const ladder = ladderFromLevels(envelope.levels ?? []);
+  const levelSignals = signalRowsFromLevels(envelope.levels ?? []);
+  const tally = tallySignals(levelSignals);
+  const order = blockOrder(layout);
 
-  // The question decides which block LEADS — never which blocks exist. `blockOrder` guarantees
-  // every block appears exactly once under every layout, so a misclassified question costs
-  // emphasis, never content. See answer-layout.ts.
-  const order = blockOrder(classifyLayout(question));
-  // Freshness per distinct source. Deduped because six evidence rows from HELIX should read as one
-  // source chip, not six — the member is asking "how fresh is HELIX", not "how many rows".
+  const inlineBlocks = vis.showInlineBlocks
+    ? extractLargoSegments(String(markdownSource ?? "")).filter((s) => s.kind === "block")
+    : [];
+
   const sources = new Map<string, BieFreshness>();
-  for (const e of envelope.evidence ?? []) {
+  for (const e of evidence) {
     const label = e.provenance?.source;
     if (!label) continue;
     const f = e.provenance?.freshness ?? "unknown";
-    // Worst freshness wins: one stale reading makes the source stale. Presenting a source as live
-    // because SOME of its rows were fresh is the exact "never present stale as live" failure.
     const rank: Record<BieFreshness, number> = { live: 0, recent: 1, unknown: 2, stale: 3 };
     const prev = sources.get(label);
     if (!prev || rank[f] > rank[prev]) sources.set(label, f);
   }
 
-  /**
-   * The four reorderable blocks, built once and emitted in the order the question implies.
-   *
-   * Keyed by block name so `order` can permute them. Every key is always present in the map — a
-   * layout can move a block but cannot remove it, which is the invariant answer-layout.ts exists
-   * to guarantee. A block that has no data renders null, exactly as it did inline.
-   */
   const blocks: Record<AnswerBlock, React.ReactNode> = {
-    // SIGNAL TABLE. Every arrow is COMPUTED (level vs spot) or looked up in a closed convention
-    // map — never inferred from phrasing. See signal-rows.ts: fewer rows is the correct failure,
-    // because a fabricated arrow reads as an instruction.
     signals:
-      signals.length > 0 ? (
+      vis.showFallbackSignals && trade ? (
+        <div key="signals" className="largo-read-signals">
+          <div className="largo-read-block-title">Signal alignment</div>
+          {trade.signalRows.map((r) => (
+            <div key={r.signal} className="largo-read-sig">
+              <span className="largo-read-sig-label">{r.signal}</span>
+              <span className="largo-read-sig-read">{r.read}</span>
+              <span className={clsx("largo-read-sig-bias", `largo-read-sig-${r.bias === "bullish" ? "bull" : r.bias === "bearish" || r.bias === "unstable" ? "bear" : "neutral"}`)}>
+                {r.glyph}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : vis.showLevelSignals ? (
         <div key="signals" className="largo-read-signals">
           <div className="largo-read-block-title">
-            Signals <span className="largo-read-tally">{tally.bull} bull · {tally.bear} bear</span>
+            Levels <span className="largo-read-tally">{tally.bull} bull · {tally.bear} bear</span>
           </div>
-          {signals.map((r: (typeof signals)[number]) => (
+          {levelSignals.map((r) => (
             <div key={r.label} className="largo-read-sig" title={r.because}>
               <span className="largo-read-sig-label">{r.label}</span>
               <span className="largo-read-sig-read">{r.reading}</span>
@@ -165,20 +128,13 @@ export function LargoDeskRead({
         </div>
       ) : null,
 
-    // DECISION MAP — price-ordered with spot in place, so the geometry is visible without reading
-    // a sentence. Shared with the context rail so the two cannot disagree.
     ladder:
       ladder.length > 1 ? (
         <div key="ladder" className="largo-read-ladder">
-          <div className="largo-read-block-title">📍 Decision levels</div>
+          <div className="largo-read-block-title">Decision levels</div>
           {ladder.map((r) => (
-            <div
-              key={`${r.label}-${r.price}`}
-              className={clsx("largo-read-rung", r.isSpot && "largo-read-rung-spot")}
-            >
-              <span className="largo-read-rung-price">
-                {r.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-              </span>
+            <div key={`${r.label}-${r.price}`} className={clsx("largo-read-rung", r.isSpot && "largo-read-rung-spot")}>
+              <span className="largo-read-rung-price">{r.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
               <span className="largo-read-rung-label">{r.label}</span>
               <span className="largo-read-rung-dist">{r.isSpot ? "" : formatDistance(r.distancePct)}</span>
             </div>
@@ -191,7 +147,11 @@ export function LargoDeskRead({
         {sections.map((sec, i) => (
           <div
             key={`${sec.title}-${i}`}
-            className={clsx("largo-read-section", RISK_TITLE.test(sec.title) && "largo-read-section-risk")}
+            className={clsx(
+              "largo-read-section",
+              sec.title.toLowerCase() === "conflicts" && "largo-read-section-conflicts",
+              RISK_TITLE.test(sec.title) && "largo-read-section-risk"
+            )}
           >
             <div className="largo-read-section-title">{sectionIcon(sec.title)} {sec.title}</div>
             <div className="largo-read-section-body">{renderInlineMarkdown(sec.body)}</div>
@@ -200,90 +160,29 @@ export function LargoDeskRead({
       </React.Fragment>
     ),
 
-    // SYSTEM READS — what each product independently thinks, and whether they agree. The single
-    // highest-value thing this platform knows and the only thing it never said out loud: every
-    // product already has an opinion, they were just on five different pages.
-    //
-    // A bar renders ONLY where a system natively produces a 0-100 quantity (see system-reads.ts).
-    // Night Hawk deliberately has none — a lane with one open call is not "100% bullish".
-    systemReads: envelope.systemReads?.reads.length ? (
+    systemReads: vis.showSystemReads ? (
       <div key="systemReads" className="largo-read-signals">
-        <div className="largo-read-block-title">
-          System reads
-          <span
-            className={clsx(
-              "largo-read-tally",
-              envelope.systemReads.agreement.verdict === "aligned" && "largo-read-sig-bull",
-              envelope.systemReads.agreement.verdict === "split" && "largo-read-sig-neutral"
-            )}
-          >
-            {envelope.systemReads.agreement.verdict === "aligned"
-              ? `✓ aligned ${envelope.systemReads.agreement.direction ?? ""}`
-              : envelope.systemReads.agreement.verdict === "split"
-                ? `🟡 split · ${envelope.systemReads.agreement.bullish}▲ ${envelope.systemReads.agreement.bearish}▼`
-                : `${envelope.systemReads.agreement.voting} system${envelope.systemReads.agreement.voting === 1 ? "" : "s"} read`}
-          </span>
-        </div>
-        {envelope.systemReads.reads.map((r) => (
+        <div className="largo-read-block-title">System reads</div>
+        {envelope.systemReads!.reads.map((r) => (
           <div key={r.system} className="largo-read-sig" title={r.reason ?? r.basis}>
             <span className="largo-read-sig-label">{r.system}</span>
             <span className="largo-read-sig-read">{r.basis}</span>
-            <span
-              className={clsx(
-                "largo-read-sig-bias",
-                r.stance === "bullish" && "largo-read-sig-bull",
-                r.stance === "bearish" && "largo-read-sig-bear",
-                r.stance === "neutral" && "largo-read-sig-neutral"
-              )}
-            >
-              {r.stance === "bullish"
-                ? "🟢 ↑"
-                : r.stance === "bearish"
-                  ? "🔴 ↓"
-                  : r.stance === "neutral"
-                    ? "🟡 ↔"
-                    : "◌"}
-              {/* The bar is the system's OWN number, or nothing. Never a normalised stand-in. */}
-              {r.strength != null ? ` ${r.strength}` : ""}
+            <span className={clsx("largo-read-sig-bias", r.stance === "bullish" && "largo-read-sig-bull", r.stance === "bearish" && "largo-read-sig-bear", r.stance === "neutral" && "largo-read-sig-neutral")}>
+              {r.stance === "bullish" ? "↑" : r.stance === "bearish" ? "↓" : r.stance === "neutral" ? "↔" : "—"}
             </span>
           </div>
         ))}
       </div>
     ) : null,
 
-    // Γ GEX SHIFT — strike-level change since the previous snapshot, from the tool's OWN structured
-    // output. Direction is the tool's `stronger`/`weaker`/`flipped` field, not the sign of the
-    // change: a strike CROSSING ZERO is a different event from one merely shrinking, and a sign
-    // test cannot express the difference.
     gexShifts: envelope.gexShifts?.length ? (
       <div key="gexShifts" className="largo-read-signals">
-        <div className="largo-read-block-title">Γ GEX shift</div>
+        <div className="largo-read-block-title">GEX shift</div>
         {envelope.gexShifts.map((g) => (
           <div key={g.strike} className="largo-read-sig">
-            <span className="largo-read-sig-label">
-              {g.strike.toLocaleString(undefined, { maximumFractionDigits: 2 })}
-            </span>
-            <span
-              className={clsx(
-                "largo-read-sig-read",
-                g.direction === "stronger" && "largo-read-sig-bull",
-                g.direction === "weaker" && "largo-read-sig-bear",
-                g.direction === "flipped" && "largo-read-sig-neutral"
-              )}
-            >
-              {formatGexChange(g.change)}
-            </span>
-            <span
-              className={clsx(
-                "largo-read-sig-bias",
-                g.direction === "stronger" && "largo-read-sig-bull",
-                g.direction === "weaker" && "largo-read-sig-bear",
-                g.direction === "flipped" && "largo-read-sig-neutral"
-              )}
-            >
-              {g.direction === "stronger" ? "🟢 ↑" : g.direction === "weaker" ? "🔴 ↓" : "🟡 ↔"}{" "}
-              {g.direction}
-            </span>
+            <span className="largo-read-sig-label">{g.strike.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+            <span className="largo-read-sig-read">{formatGexChange(g.change)}</span>
+            <span className="largo-read-sig-bias">{g.direction}</span>
           </div>
         ))}
       </div>
@@ -291,56 +190,76 @@ export function LargoDeskRead({
 
     invalidation: envelope.invalidation ? (
       <div key="invalidation" className="largo-read-section largo-read-section-risk">
-        <div className="largo-read-section-title">🎯 Invalidation</div>
+        <div className="largo-read-section-title">Invalidation</div>
         <div className="largo-read-section-body">{renderInlineMarkdown(envelope.invalidation)}</div>
       </div>
     ) : null,
   };
 
+  const biasKey = bias === "bullish" ? "bull" : bias === "bearish" ? "bear" : "neutral";
+  const integrityNotes: string[] = [];
+  if (trade?.notOnBoardWarning) integrityNotes.push(trade.notOnBoardWarning);
+  if (trade?.boardPlay) integrityNotes.push(`Board: ${trade.boardPlay.contract} (${trade.boardPlay.status})`);
+  if (trade?.existingPlay) integrityNotes.push(`Edition: ${trade.existingPlay.contract}`);
+
   return (
     <div className="largo-read">
       <div className="largo-read-head">
-        {/* The synthesis mark. Purple appears HERE and on the left rule — never in body text —
-            so it reads as provenance ("Largo produced this") rather than as a theme. */}
-        <span className="largo-read-mark">◈ Largo synthesis</span>
+        <span className="largo-read-mark">Largo</span>
         <span className="largo-read-asof">{formatEt(envelope.asOf)}</span>
       </div>
 
-      {/* ONE-GLANCE STATE: direction, action, confidence. Direction and action are separate
-          variables — "clearly bullish" and "take a long" are different claims, and a single badge
-          has to overstate one of them. */}
-      <div className="largo-read-state">
-        <span className={clsx("largo-read-statechip", `largo-read-bias-${bias}`)}>
-          {BIAS_GLYPH[bias === "bullish" ? "bull" : bias === "bearish" ? "bear" : "neutral"]}{" "}
-          {MARKET_STATE_LABEL[state]}
-        </span>
-        {envelope.confidence?.level && (
-          <span className="largo-read-conf">{envelope.confidence.level} confidence</span>
-        )}
-        {action !== "unknown" && (
-          <span className="largo-read-action">◌ {ACTION_STATE_LABEL[action]}</span>
-        )}
-      </div>
+      {header && <div className="largo-read-header">{renderInlineMarkdown(displayHeader(header))}</div>}
 
-      {/* THE EXECUTIVE ANSWER — one sentence, in the neon synthesis colour. Everything below is
-          support for this line. */}
-      {header && <div className="largo-read-header">{header}</div>}
+      {rest && !hasInterpretation && (
+        <div className="largo-read-lead">{renderInlineMarkdown(rest)}</div>
+      )}
 
-      {/* The WHY behind the confidence level, not just the level. A confidence number with no
-          reason is a number nobody can argue with, which is the opposite of useful. */}
-      {envelope.confidence?.why && (
-        // THROUGH THE INLINE RENDERER, like every other prose field on this component.
-        // This one line printed its markdown raw: the live CRWV read showed a literal
-        // "**Low**. The IV rank is median…" under the headline. Largo writes the confidence
-        // rationale in the same voice as the sections above it — bold for the level, numbers it
-        // expects to be stamped — and this was the only place that text reached the DOM unparsed.
+      {(vis.showStateChip || trade?.actionLabel) && (
+        <div className="largo-read-meta">
+          {vis.showStateChip && (
+            <span className={clsx("largo-read-statechip", `largo-read-bias-${bias}`)}>
+              {BIAS_GLYPH[biasKey]} {MARKET_STATE_LABEL[vis.state]}
+            </span>
+          )}
+          {trade?.actionLabel && (
+            <span className={clsx("largo-read-action", trade.isSpeculative && "largo-read-action-warn")}>
+              {trade.isSpeculative ? "⚠" : ""} {trade.actionLabel}
+            </span>
+          )}
+          {!trade?.actionLabel && vis.showActionChip && action !== "unknown" && (
+            <span className="largo-read-action">{ACTION_STATE_LABEL[action]}</span>
+          )}
+          {envelope.confidence?.level && (
+            <span className="largo-read-conf">{envelope.confidence.level}</span>
+          )}
+        </div>
+      )}
+
+      {integrityNotes.length > 0 && (
+        <div className="largo-read-integrity">
+          {integrityNotes.map((n) => (
+            <p key={n}>{n}</p>
+          ))}
+          {trade?.existingPlay?.note && <p className="largo-read-integrity-note">{trade.existingPlay.note}</p>}
+          {trade?.boardPlay?.note && <p className="largo-read-integrity-note">{trade.boardPlay.note}</p>}
+        </div>
+      )}
+
+      {vis.showConfidenceWhy && envelope.confidence?.why && (
         <div className="largo-read-conf-why">{renderInlineMarkdown(envelope.confidence.why)}</div>
+      )}
+
+      {inlineBlocks.length > 0 && (
+        <div className="largo-read-blocks">
+          {inlineBlocks.map((seg, i) =>
+            seg.kind === "block" ? <LargoBlockView key={i} block={seg.block} /> : null
+          )}
+        </div>
       )}
 
       {order.map((b) => blocks[b])}
 
-      {/* Sources requested but UNAVAILABLE are surfaced, not omitted. A missing source silently
-          dropped turns "we could not see" into "there was nothing there". */}
       {(envelope.unavailableSources?.length ?? 0) > 0 && (
         <div className="largo-read-section largo-read-section-risk">
           <div className="largo-read-section-title">Could not read</div>
@@ -350,21 +269,12 @@ export function LargoDeskRead({
         </div>
       )}
 
-      {/* EVIDENCE — collapsed by default. The audit trail is one of the strongest things Largo has
-          and it is also the longest; open by default it buried the answer, and cut it would remove
-          the only way to check a claim. A disclosure keeps the casual read short and the
-          sophisticated read complete, and the summary line says what is behind it so the choice to
-          expand is informed rather than blind. `<details>` because it must work before hydration —
-          an answer whose basis is unreachable until JS lands is an answer you cannot verify. */}
       {hasExpandableEvidence(envelope) && (
         <details className="largo-read-evidence">
-          <summary className="largo-read-evidence-summary">Evidence &amp; reasoning · {evidenceSummary.label}</summary>
+          <summary className="largo-read-evidence-summary">Supporting evidence · {evidenceSummary.label}</summary>
           <div className="largo-read-evidence-body">
             {evidence.map((e, i) => (
               <div key={i} className="largo-read-ev">
-                {/* The kind is a CLASS, not a text prefix. `[fact]` reaching the UI was the raw
-                    Facts markdown being rendered alongside the parsed rows; the parsed rows never
-                    carried the marker. */}
                 <span className={clsx("largo-read-ev-kind", `largo-read-ev-${e.kind}`)}>{e.kind}</span>
                 <span className="largo-read-ev-text">{renderInlineMarkdown(e.text)}</span>
                 {e.provenance?.source && (
@@ -382,13 +292,6 @@ export function LargoDeskRead({
         <div className="largo-read-data">
           {[...sources.entries()].map(([src, fresh]) => (
             <span key={src} className={clsx("largo-read-src", FRESH_CLASS[fresh])}>
-              {/* SEPARATED, AND THE FRESHNESS SPELLED OUT.
-                  This concatenated a SOURCE NAME directly with a FRESHNESS VALUE, and the
-                  result reads as a sentence about the source: the live CRWV read showed
-                  "NIGHT HAWK EDITION UNKNOWN" — which parses as the edition being unknown, on an
-                  answer that had just cited that edition's Aug-4 pick. The edition was known; its
-                  AGE was not. `FRESHNESS_LABEL` already carries the unambiguous wording ("Age
-                  unknown"), and the separator stops the two fields reading as one phrase. */}
               {src} · {FRESHNESS_LABEL[fresh]}
             </span>
           ))}
