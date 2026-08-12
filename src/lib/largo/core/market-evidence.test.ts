@@ -9,6 +9,7 @@ import {
   mergeEvidenceIssues,
   validateProseAgainstEvidence,
   applyEvidenceIntegrityCaveat,
+  assessEditionActionability,
   PRECISE_REC_BLOCK_SPREAD_PCT,
 } from "./market-evidence";
 import { extractSystemReads } from "./system-reads-extract";
@@ -110,6 +111,21 @@ test("buildMarketEvidence: put wall is 190, flow put strike is separate", () => 
   assert.ok(ev.levels.some((l) => l.type === "PUT_WALL" && l.price === 190));
   assert.ok(ev.levels.some((l) => l.type === "FLOW_STRIKE" && l.price === 212.5));
   assert.equal(ev.preciseRecommendationsBlocked, true);
+});
+
+test("validateProseAgainstEvidence: catches horizon mislabel on Aug 24 flow", () => {
+  const ev = buildMarketEvidence(NVDA_TOOL_RESULTS, "NVDA", NVDA_SESSION, Date.now())!;
+  const prose = "Aug 24 217.5C is the best 0DTE play on NVDA today.";
+  const issues = validateProseAgainstEvidence(prose, ev);
+  assert.ok(issues.some((i) => i.code === "horizon_mislabel"));
+});
+
+test("assessEditionActionability: below VWAP/flip is existing thesis, not fresh entry", () => {
+  const ev = buildMarketEvidence(NVDA_TOOL_RESULTS, "NVDA", NVDA_SESSION, Date.now())!;
+  const act = assessEditionActionability(ev)!;
+  assert.equal(act.freshEntry, false);
+  assert.equal(act.existingThesis, true);
+  assert.match(act.note, /Do not chase/);
 });
 
 test("validateProseAgainstEvidence: catches EMA stack down when computed bullish", () => {

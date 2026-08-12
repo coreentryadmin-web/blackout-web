@@ -64,7 +64,9 @@ export function LargoAnswerMessage({
       // richness test gates the layout rather than the layout inventing filler.
       const richEnough =
         Boolean(envelope.headline || envelope.bias) &&
-        ((envelope.levels?.length ?? 0) > 0 || (envelope.sections?.length ?? 0) > 0);
+        ((envelope.levels?.length ?? 0) > 0 ||
+          (envelope.sections?.length ?? 0) > 0 ||
+          envelope.tradeDecision != null);
       if (richEnough) {
         const { caveats } = splitAnswerCaveats(content);
         return (

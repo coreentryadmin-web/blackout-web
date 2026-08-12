@@ -69,6 +69,9 @@ export function LargoNativeTerminal() {
                   content={msg.content}
                   envelope={msg.envelope}
                   turnId={msg.turnId ?? null}
+                  question={
+                    idx > 0 && messages[idx - 1]?.role === "user" ? messages[idx - 1]?.content : null
+                  }
                   streaming={
                     loading && idx === messages.length - 1 && msg.role === "assistant"
                   }

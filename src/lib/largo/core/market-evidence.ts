@@ -524,21 +524,24 @@ export function validateProseAgainstEvidence(
     }
   }
 
-  // Entity confusion: prose cites "put wall" at a flow strike price
+  // Entity confusion: prose cites "put wall" at a flow strike price (not dealer put wall)
   const putWall = evidence.walls.putWall;
   if (putWall != null) {
-    for (const fc of evidence.flowContracts) {
-      if (fc.right !== "P") continue;
-      if (Math.abs(fc.strike - putWall) > 0.01) continue;
-      // strike matches put wall — ok
-    }
-    const putWallWrong = /\bput wall\b[^.\n]{0,60}\b212\.5\b/i.exec(prose);
-    if (putWallWrong && putWall != null && Math.abs(putWall - 212.5) > 0.01) {
-      issues.push({
-        code: "entity_type_confusion",
-        severity: "warn",
-        message: `Put wall is ${putWall} (dealer gamma), not 212.5 (flow strike). Do not interchange FLOW_STRIKE and PUT_WALL.`,
-      });
+    for (const m of prose.matchAll(/\bput wall\b[^.\n]{0,80}?\$?(\d[\d,]*(?:\.\d+)?)/gi)) {
+      const cited = Number.parseFloat(String(m[1]).replace(/,/g, ""));
+      if (!Number.isFinite(cited)) continue;
+      if (Math.abs(cited - putWall) <= 0.01) continue;
+      const flowPutAtCited = evidence.flowContracts.some(
+        (fc) => fc.right === "P" && Math.abs(fc.strike - cited) <= 0.01
+      );
+      if (flowPutAtCited) {
+        issues.push({
+          code: "entity_type_confusion",
+          severity: "warn",
+          message: `Put wall is ${putWall} (dealer gamma), not ${cited} (flow strike). Do not interchange FLOW_STRIKE and PUT_WALL.`,
+        });
+        break;
+      }
     }
   }
 
@@ -698,11 +701,12 @@ export function assessEditionActionability(evidence: MarketEvidence): {
   if (!nh) return null;
 
   const spot = evidence.spot?.authoritative;
+  const spotForStructure = evidence.spot?.conflict?.min ?? spot;
   const vwap = evidence.walls.vwap;
   const flip = evidence.walls.gammaFlip;
   const belowStructure =
-    spot != null &&
-    ((vwap != null && spot < vwap) || (flip != null && spot < flip));
+    spotForStructure != null &&
+    ((vwap != null && spotForStructure < vwap) || (flip != null && spotForStructure < flip));
 
   const strike = nh.strike;
   const expiry = nh.expiry;
@@ -712,9 +716,11 @@ export function assessEditionActionability(evidence: MarketEvidence): {
       ? `${expiry} $${strike}${right}`
       : nh.direction;
 
+  const freshEntry = !belowStructure && !evidence.preciseRecommendationsBlocked;
+
   return {
-    freshEntry: !belowStructure && !evidence.preciseRecommendationsBlocked,
-    existingThesis: true,
+    freshEntry,
+    existingThesis: !freshEntry,
     contractLabel,
     originalEntry: nh.entryPremium ?? null,
     note: belowStructure

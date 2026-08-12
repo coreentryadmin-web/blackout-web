@@ -9867,3 +9867,14 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Fix** | `subjectFirst(rows, subject, cap)` — a stable partition promoting the subject's rows, applied to the playbook block. CONDITIONAL by design: rank carries meaning, so promotion happens only when the subject's row would otherwise be CUT OFF by the cap. If it is already drawn, the published order stands. |
 | **Tests** | 3 — promotion suppressed when already visible and applied when not; stable partition asserted on `rank` values so a re-rank cannot pass; every no-op case. |
 | **Status** | FIXED. |
+
+## 2026-08-12 — [P1, product] Largo trade answers read like contradictory templates — desk read dedupe + evidence gates — FIXED (cursor/largo-market-evidence-validation-3d11, #2121)
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Symptom** | NVDA options-play answers: headline badge said BULLISH while verdict said mixed/bearish; put wall cited at flow strike (212.5 vs dealer 190); EMA stack inverted; same thesis printed 3–4 times (system reads + signal table + comparison block); centered Anton headline read like a widget not a desk answer. |
+| **Root cause** | (1) `envelope.bias` from first keyword match, not verdict semantics. (2) `validateProseAgainstEvidence` only hardcoded NVDA 212.5 for entity confusion. (3) `assessEditionActionability` always set `existingThesis: true`. (4) Renderer printed every envelope field without dedupe. (5) Mobile native terminal never passed `question` → trade layout always default. |
+| **Fix** | `deskReadVisibility()` dedupe; `deriveMarketState` for bias; generalized put-wall vs flow-strike check; `existingThesis = !freshEntry` with conservative low spot for structure; `LargoDeskRead` verdict-first left-aligned layout; `BieAnswer` uses `splitHeadline`; native terminal passes preceding user question; trade envelopes route through desk read when `tradeDecision` present. |
+| **Tests** | `desk-read-layout.test.ts`, extended `market-evidence.test.ts` (horizon mislabel, entity confusion, edition actionability); 397 Largo unit tests green. |
+| **Status** | FIXED on branch — PR #2121 draft, not auto-merged per operator. |

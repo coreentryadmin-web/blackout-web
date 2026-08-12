@@ -9,6 +9,7 @@ import {
 } from "@/lib/largo/core/market-evidence";
 import { buildTradeDecisionRead } from "@/lib/largo/core/decision-read";
 import { isPlayQuestion } from "@/lib/largo/core/trade-question";
+import { hasComparisonBlock } from "@/features/largo/answer/desk-read-layout";
 import { deriveMarketState, marketStateToBias } from "@/lib/largo/core/market-state";
 import {
   makeEnvelope,
@@ -379,9 +380,9 @@ export function parseAnswerEnvelope(
     invalidation: marketEvidence?.preciseRecommendationsBlocked ? null : risk[0] ?? null,
   });
 
-  const hasComparisonBlock = /"type"\s*:\s*"comparison"/i.test(markdown);
+  const hasComparison = hasComparisonBlock(markdown);
   const tradeDecision = buildTradeDecisionRead(question, envelope, marketEvidence, {
-    hasComparisonBlock,
+    hasComparisonBlock: hasComparison,
   });
   if (tradeDecision) {
     return {
