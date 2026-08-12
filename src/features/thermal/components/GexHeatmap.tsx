@@ -3683,8 +3683,8 @@ export function GexHeatmap({
     <div className="min-w-0">
       {uwDiverged && (
         <p className="mb-2 font-mono text-[9px] leading-snug text-amber-300/90">
-          UW oracle diverges {uwCross?.divergence?.toFixed(0)}pt from Polygon walls — treat levels
-          as provisional until channels agree.
+          Our two data sources disagree by {uwCross?.divergence?.toFixed(0)}pt on where the walls
+          sit — treat these levels as provisional until they agree.
         </p>
       )}
       <GexShiftLeadersStrip

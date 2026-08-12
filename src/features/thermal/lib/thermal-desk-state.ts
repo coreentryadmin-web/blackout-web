@@ -30,7 +30,13 @@ export type ThermalFreshnessStatus = "live" | "stale" | "cached" | "offline" | "
 export type ThermalLayerFreshness = {
   matrix: { status: ThermalFreshnessStatus; asOf: Date | null };
   overlays: { status: ThermalFreshnessStatus; asOf: Date | null; label: string };
-  crossVal: { status: ThermalFreshnessStatus; asOf: Date | null; label: string };
+  crossVal: {
+    status: ThermalFreshnessStatus;
+    asOf: Date | null;
+    label: string;
+    /** Hover copy — the chip label alone cannot explain what a cross-check is. */
+    title: string;
+  };
 };
 
 export function isThermalCompareTicker(t: string): t is ThermalCompareTicker {
@@ -87,6 +93,11 @@ function statusFromAge(
   return "stale";
 }
 
+const CROSS_CHECK_TITLE =
+  "A second, independent options-data source is confirming the strike ladder these walls are drawn from.";
+const CROSS_CHECK_OFF_TITLE =
+  "The second data source is unavailable right now (common outside market hours), so the walls come from a single source. They are still real — just unconfirmed.";
+
 /**
  * Per-layer freshness from matrix/overlay/cross-val timestamps.
  * Never fabricates a live state when the sample is missing.
@@ -121,17 +132,26 @@ export function thermalLayerFreshness(input: {
     };
   }
 
+  // "UW" is our upstream vendor's initials, not a word a member has any reason to know. The chip
+  // said "UW check off" — three tokens, none of which explain that a SECOND, independent strike
+  // ladder is (or is not) confirming the walls the matrix is drawing. Name the job, not the vendor.
   let crossVal: ThermalLayerFreshness["crossVal"];
   if (!input.crossValPresent) {
-    crossVal = { status: "offline", asOf: null, label: "UW check off" };
+    crossVal = {
+      status: "offline",
+      asOf: null,
+      label: "Cross-check off",
+      title: CROSS_CHECK_OFF_TITLE,
+    };
   } else if (!input.crossValUwAsof) {
-    crossVal = { status: "cached", asOf: null, label: "UW check" };
+    crossVal = { status: "cached", asOf: null, label: "Cross-check", title: CROSS_CHECK_TITLE };
   } else {
     const cMs = Date.parse(input.crossValUwAsof);
     crossVal = {
       status: "live",
       asOf: Number.isFinite(cMs) ? new Date(cMs) : null,
-      label: "UW check",
+      label: "Cross-check",
+      title: CROSS_CHECK_TITLE,
     };
   }
 
@@ -201,7 +221,7 @@ export function honestLevelEmpty(
   if (kind === "cross_val") {
     return {
       value: "—",
-      help: "UW cross-check offline — live strike ladder unavailable (common after hours). Matrix walls are Polygon near-term only.",
+      help: "Cross-check offline — the second data source's live strike ladder is unavailable (common after hours). Walls come from the primary source's near-term expiries only.",
     };
   }
   return {
