@@ -7,11 +7,13 @@ import { IMAGES, MARKETING_MODULE_GALLERY } from "@/lib/images";
 import { MEMBERSHIP_PRICING, usd } from "@/lib/pricing";
 import { SITE } from "@/lib/site";
 import { WHOP_CHECKOUT } from "@/lib/whop-checkout";
+import type { PublicGexSnapshot } from "@/lib/public-gex-snapshot";
 import { LandingRedesignFxLazy } from "./LandingRedesignFxLazy";
 import { MarketingAuthAnchor, MarketingAuthCta, MarketingAuthLabel } from "./MarketingAuthCta";
+import { HomeGammaHeroLink, HomeGammaPromo } from "./HomeGammaPromo";
 
 /** Redesigned homepage body — server-rendered content + one client FX layer (canvas, reveal, ticker). */
-export function RedesignHome() {
+export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot }) {
   return (
     <div className="rl">
       {/* ═══ Atmosphere layers ═══ */}
@@ -68,9 +70,7 @@ export function RedesignHome() {
               labelSignedOut="Get access"
               className="btn-p"
             />
-            <Link href="/tools/gamma-snapshot" prefetch={false} className="btn-g">
-              See live gamma levels — free
-            </Link>
+            <HomeGammaHeroLink />
             <Link href="#modules" prefetch={false} className="btn-g hero-btn-ghost">
               Explore the desk
             </Link>
@@ -85,24 +85,7 @@ export function RedesignHome() {
 
       <div className="node" aria-hidden="true" />
 
-      {/* ═══ FREE GAMMA SNAPSHOT — public lead magnet ═══ */}
-      <section className="sec-free-gamma" id="free-gamma">
-        <div className="w">
-          <div className="free-gamma-band">
-            <div className="free-gamma-copy">
-              <span className="kk"><span className="dot" />Free tool · no account</span>
-              <h2>Gamma flip &amp; wall levels, live.</h2>
-              <p>
-                SPX, SPY, and QQQ — gamma flip, call wall, put wall, and long/short-gamma regime.
-                The same dealer-positioning lens the desk is built on, free to try.
-              </p>
-            </div>
-            <Link href="/tools/gamma-snapshot" prefetch={false} className="btn-p free-gamma-cta">
-              Open gamma snapshot <span className="cta-arrow">&rarr;</span>
-            </Link>
-          </div>
-        </div>
-      </section>
+      <HomeGammaPromo initial={initialGamma} />
 
       <div className="node" aria-hidden="true" />
 
@@ -360,11 +343,7 @@ export function RedesignHome() {
             </Link>
           </div>
           <div className="academy-grid">
-            <Link href="/tools/gamma-snapshot" prefetch={false} className="academy-card academy-card-free">
-              <span className="academy-tag">Free tool</span>
-              <h3>Live gamma flip &amp; walls</h3>
-              <p>SPX, SPY, QQQ — flip level, call/put walls, and regime. No sign-in.</p>
-            </Link>
+            <HomeGammaPromo initial={initialGamma} variant="academy" />
             <Link href="/learn/dealer-gamma-options-flow-guide" prefetch={false} className="academy-card">
               <span className="academy-tag">Pillar</span>
               <h3>Dealer gamma &amp; options flow</h3>
