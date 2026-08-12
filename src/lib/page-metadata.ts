@@ -57,9 +57,14 @@ export function publicPageMetadata(
 }
 
 /** Authenticated app surface — excluded from search indexes. */
-export function noindexPageMetadata(title: string): Metadata {
+export function noindexPageMetadata(title: string, path?: string): Metadata {
   return {
     title,
     robots: { index: false, follow: false },
+    // Root layout sets homepage canonical; without an override, noindex app pages
+    // inherit it and Google can consolidate signals onto `/` incorrectly.
+    ...(path
+      ? { alternates: { canonical: path === "/" ? SITE.url : `${SITE.url}${path}` } }
+      : {}),
   };
 }

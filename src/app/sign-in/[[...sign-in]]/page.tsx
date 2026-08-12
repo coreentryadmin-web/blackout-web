@@ -13,7 +13,7 @@ import { noindexPageMetadata } from "@/lib/page-metadata";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = noindexPageMetadata("Sign in · BlackOut");
+export const metadata: Metadata = noindexPageMetadata("Sign in · BlackOut", "/sign-in");
 
 type Props = {
   searchParams: Promise<{ redirect_url?: string }>;

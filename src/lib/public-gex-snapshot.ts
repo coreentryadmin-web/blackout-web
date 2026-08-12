@@ -1,5 +1,17 @@
 import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
 import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
+import {
+  type PublicGexSnapshot,
+  type PublicGexTicker,
+  sanitizePublicRead,
+} from "@/lib/public-gex-snapshot-types";
+
+export type { PublicGexSnapshot, PublicGexTicker } from "@/lib/public-gex-snapshot-types";
+export {
+  isPublicGexTicker,
+  publicGexTickers,
+  sanitizePublicRead,
+} from "@/lib/public-gex-snapshot-types";
 
 /**
  * Sanitized, PUBLIC projection of the GEX heatmap — the free lead-magnet snapshot
@@ -8,29 +20,6 @@ import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
  * matrix, no flow/dark-pool overlays, nothing that would substitute for the real
  * (live, tick-by-tick) product members pay for.
  */
-export type PublicGexSnapshot = {
-  available: boolean;
-  ticker: string;
-  spot: number | null;
-  change_pct: number | null;
-  asof: string | null;
-  call_wall: number | null;
-  put_wall: number | null;
-  flip: number | null;
-  posture: "long" | "short" | null;
-  read: string;
-};
-
-const ALLOWED_TICKERS = ["SPX", "SPY", "QQQ"] as const;
-export type PublicGexTicker = (typeof ALLOWED_TICKERS)[number];
-
-export function isPublicGexTicker(value: string): value is PublicGexTicker {
-  return (ALLOWED_TICKERS as readonly string[]).includes(value);
-}
-
-export function publicGexTickers(): readonly PublicGexTicker[] {
-  return ALLOWED_TICKERS;
-}
 
 // This is a marketing lead-magnet, not the trading product — a several-minute-old
 // read is an acceptable, honest tradeoff (the page says so) in exchange for bounding
@@ -38,28 +27,6 @@ export function publicGexTickers(): readonly PublicGexTicker[] {
 // traffic volume. Same shared-Polygon-budget concern as gex-heatmap's OVERLAY_TTL_MS.
 const CACHE_TTL_SEC = 300;
 const EMPTY_CACHE_TTL_SEC = 30; // short-lived so a transient upstream miss self-heals fast
-
-/**
- * Strip vendor/infra provenance from the regime narration before it leaves the server.
- *
- * `read` is the ONLY unbounded string in this projection — every other field is a number or a
- * two-value enum. Its normal producer is harmless (it restates spot/flip/walls, all of which are
- * already in the payload), but the UW-FALLBACK producer appends
- * "(UW all-expiry dealer gamma — Polygon chain unavailable; levels are live UW OI, not the
- * canonical near-term Polygon matrix.)" — see polygon-options-gex.ts. On an authenticated desk
- * that is useful honesty; on an UNAUTHENTICATED endpoint it tells anyone who polls which market-
- * data vendors we buy and broadcasts, in real time, whenever our primary chain provider is
- * degraded. Neither belongs in a marketing lead magnet.
- *
- * Drops any parenthetical naming a data provider and leaves the trader-facing sentence intact, so
- * a future producer that adds a new provenance note is stripped too rather than silently leaking.
- */
-export function sanitizePublicRead(read: string): string {
-  return read
-    .replace(/\s*\([^()]*\b(?:UW|Unusual\s*Whales|Polygon|Massive)\b[^()]*\)/gi, "")
-    .replace(/\s{2,}/g, " ")
-    .trim();
-}
 
 function emptySnapshot(ticker: string): PublicGexSnapshot {
   return {

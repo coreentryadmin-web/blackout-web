@@ -7,11 +7,14 @@ import { IMAGES, MARKETING_MODULE_GALLERY } from "@/lib/images";
 import { MEMBERSHIP_PRICING, usd } from "@/lib/pricing";
 import { SITE } from "@/lib/site";
 import { WHOP_CHECKOUT } from "@/lib/whop-checkout";
+import type { PublicGexSnapshot } from "@/lib/public-gex-snapshot";
 import { LandingRedesignFxLazy } from "./LandingRedesignFxLazy";
 import { MarketingAuthAnchor, MarketingAuthCta, MarketingAuthLabel } from "./MarketingAuthCta";
+import { HomeGammaHeroLink, HomeGammaPromo } from "./HomeGammaPromo";
+import { HomeCommunityRail } from "./HomeCommunityRail";
 
 /** Redesigned homepage body — server-rendered content + one client FX layer (canvas, reveal, ticker). */
-export function RedesignHome() {
+export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot }) {
   return (
     <div className="rl">
       {/* ═══ Atmosphere layers ═══ */}
@@ -68,7 +71,10 @@ export function RedesignHome() {
               labelSignedOut="Get access"
               className="btn-p"
             />
-            <Link href="#modules" prefetch={false} className="btn-g">Explore the desk</Link>
+            <HomeGammaHeroLink />
+            <Link href="#modules" prefetch={false} className="btn-g hero-btn-ghost">
+              Explore the desk
+            </Link>
           </div>
           <ul className="hero-creds">
             <li>6 live engines</li>
@@ -77,6 +83,10 @@ export function RedesignHome() {
           </ul>
         </div>
       </section>
+
+      <div className="node" aria-hidden="true" />
+
+      <HomeGammaPromo initial={initialGamma} />
 
       <div className="node" aria-hidden="true" />
 
@@ -329,8 +339,12 @@ export function RedesignHome() {
             <Link href="/learn" prefetch={false} className="btn-g academy-hub-link">
               Browse all guides →
             </Link>
+            <Link href="/tools/gamma-snapshot" prefetch={false} className="btn-g academy-tool-link">
+              Try the free gamma snapshot →
+            </Link>
           </div>
           <div className="academy-grid">
+            <HomeGammaPromo initial={initialGamma} variant="academy" />
             <Link href="/learn/dealer-gamma-options-flow-guide" prefetch={false} className="academy-card">
               <span className="academy-tag">Pillar</span>
               <h3>Dealer gamma &amp; options flow</h3>
@@ -349,6 +363,10 @@ export function RedesignHome() {
           </div>
         </div>
       </section>
+
+      <div className="node" aria-hidden="true" />
+
+      <HomeCommunityRail />
 
       <div className="node" aria-hidden="true" />
 
@@ -429,7 +447,7 @@ export function RedesignHome() {
               <span className="badge">FULL DESK</span>
               <div className="plan" style={{ color: "var(--g)" }}>Premium</div>
               <div className="amt">{usd(MEMBERSHIP_PRICING.monthly)}<small> / mo</small></div>
-              <div className="sub">Every module + Discord — one membership</div>
+              <div className="sub">Every module — one membership</div>
               <ul className="perks">
                 <li>HELIX live options-flow</li>
                 <li>SPX Slayer 0DTE desk</li>

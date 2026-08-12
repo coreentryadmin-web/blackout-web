@@ -2,11 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { requireAdmin } from "@/lib/admin-access";
 import { LargoAnswerPreview } from "@/features/largo/answer/LargoAnswerPreview";
+import { noindexPageMetadata } from "@/lib/page-metadata";
 
-export const metadata: Metadata = {
-  title: "Largo Answer Preview · Admin · BlackOut",
-  description: "Admin render harness for the BieAnswerEnvelope UI components.",
-};
+export const metadata: Metadata = noindexPageMetadata(
+  "Largo Answer Preview · Admin · BlackOut",
+  "/admin/largo-answer-preview",
+);
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;

@@ -4,6 +4,7 @@ import { RedesignHome } from "@/components/landing/RedesignHome";
 import { FAQPageJsonLd, WebPageJsonLd } from "@/components/seo/JsonLd";
 import { HOME_FAQ_IDS, selectFaqItems } from "@/lib/faq/content";
 import { publicPageMetadata } from "@/lib/page-metadata";
+import { buildPublicGexSnapshot } from "@/lib/public-gex-snapshot";
 
 export const revalidate = 3600;
 
@@ -23,7 +24,9 @@ const LANDING_REDIRECT_SCRIPT =
  * FX layer for the canvas/reveal/ticker. Chrome (nav/footer) stays with MarketingPageShell;
  * the shell's ambient chart backdrop is off (showChart=false) since the hero has its own canvas.
  */
-export default function LandingPage() {
+export default async function LandingPage() {
+  const initialGamma = await buildPublicGexSnapshot("SPX");
+
   return (
     <MarketingPageShell showChart={false}>
       <FAQPageJsonLd items={selectFaqItems(HOME_FAQ_IDS).map((i) => ({ question: i.q, answer: i.a }))} />
@@ -33,7 +36,7 @@ export default function LandingPage() {
         path="/"
       />
       <script dangerouslySetInnerHTML={{ __html: LANDING_REDIRECT_SCRIPT }} />
-      <RedesignHome />
+      <RedesignHome initialGamma={initialGamma} />
     </MarketingPageShell>
   );
 }

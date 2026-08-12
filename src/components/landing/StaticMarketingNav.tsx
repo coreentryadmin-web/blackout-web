@@ -7,6 +7,7 @@ import { NavAuthLinks } from "./NavAuthLinks";
 const LINKS = [
   { href: "/#protocol", label: "Platform" },
   { href: "/#modules", label: "Products" },
+  { href: "/tools/gamma-snapshot", label: "Free Tool" },
   { href: "/learn", label: "Learn" },
   { href: "/faq", label: "FAQ" },
   { href: "/pricing", label: "Pricing", iosHide: true },

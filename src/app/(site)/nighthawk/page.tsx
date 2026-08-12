@@ -8,7 +8,7 @@ import { noindexPageMetadata } from "@/lib/page-metadata";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = noindexPageMetadata("Night Hawk · BlackOut");
+export const metadata: Metadata = noindexPageMetadata("Night Hawk · BlackOut", "/nighthawk");
 
 type PageProps = {
   searchParams: Promise<{ view?: string }>;

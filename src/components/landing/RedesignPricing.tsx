@@ -41,7 +41,7 @@ export function RedesignPricing() {
               <span className="dot" aria-hidden />Membership
             </span>
             <h1>One desk. <span className="rl-gt">Your price.</span></h1>
-            <p>Community on Discord, or the full desk — monthly or yearly. Priced for traders who already pay for edge. No broker lock-in, cancel anytime.</p>
+            <p>SPX Slayer or the full desk — monthly or yearly. Priced for traders who already pay for edge. No broker lock-in, cancel anytime.</p>
           </div>
 
           <div className="rl-tier-grid">
@@ -72,7 +72,7 @@ export function RedesignPricing() {
               <div className="badge">Full desk</div>
               <div className="pl">Premium · Monthly</div>
               <div className="amt">{usd(MEMBERSHIP_PRICING.monthly)}<span> / mo</span></div>
-              <div className="save">Every module + Discord · one membership</div>
+              <div className="save">Every module · one membership</div>
               <ul className="perks">
                 {DESK_PERKS.map((p) => <li key={p}>{p}</li>)}
               </ul>

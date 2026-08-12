@@ -5,7 +5,7 @@ import { noindexPageMetadata } from "@/lib/page-metadata";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = noindexPageMetadata("HELIX · BlackOut");
+export const metadata: Metadata = noindexPageMetadata("HELIX · BlackOut", "/flows");
 
 export default async function FlowsPage() {
   await requireTier("premium");

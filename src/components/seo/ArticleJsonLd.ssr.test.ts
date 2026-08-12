@@ -33,5 +33,5 @@ test("ArticleJsonLd emits the passed-in per-page image", async () => {
 
 test("ArticleJsonLd falls back to the site default OG image when none is passed", async () => {
   const data = await renderArticleJsonLd(undefined);
-  assert.equal(data.image, "https://blackouttrades.com/og-image.png");
+  assert.equal(data.image, "https://blackouttrades.com/og-image.webp");
 });

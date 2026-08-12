@@ -1,4 +1,5 @@
 import { SITE } from "@/lib/site";
+import { IMAGES } from "@/lib/images";
 import { MEMBERSHIP_PRICING } from "@/lib/pricing";
 
 type JsonLdProps = { data: Record<string, unknown> };
@@ -21,7 +22,7 @@ export function OrganizationJsonLd() {
         name: SITE.name,
         legalName: SITE.legalName,
         url: SITE.url,
-        logo: `${SITE.url}/og-image.png`,
+        logo: `${SITE.url}/og-image.webp`,
         description: SITE.description,
         sameAs: [
           SITE.social.x.url,
@@ -268,7 +269,7 @@ export function ArticleJsonLd({
         headline: title,
         description,
         url: `${SITE.url}${path}`,
-        image: image ?? `${SITE.url}/og-image.png`,
+        image: image ?? `${SITE.url}${IMAGES.ogImage}`,
         ...(datePublished && { datePublished }),
         ...(dateModified && { dateModified }),
         author: {
@@ -280,7 +281,7 @@ export function ArticleJsonLd({
           "@type": "Organization",
           name: SITE.name,
           url: SITE.url,
-          logo: { "@type": "ImageObject", url: `${SITE.url}/og-image.png` },
+          logo: { "@type": "ImageObject", url: `${SITE.url}${IMAGES.ogImage}` },
         },
         mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE.url}${path}` },
       }}

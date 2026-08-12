@@ -1,9 +1,13 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { requireAdmin } from "@/lib/admin-access";
 import { UserManagement } from "@/components/admin/UserManagement";
+import { noindexPageMetadata } from "@/lib/page-metadata";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+export const metadata: Metadata = noindexPageMetadata("User management · Admin · BlackOut", "/admin/users");
 
 export default async function AdminUsersPage() {
   await requireAdmin();
