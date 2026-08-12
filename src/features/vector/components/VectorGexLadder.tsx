@@ -70,6 +70,9 @@ type LadderResponse = {
   asOf: string | null;
   ladder: GexLadder;
   depth?: DepthWire | null;
+  /** Spot the SERVER built `depth` at (the matrix's). Differs from `spot` on a narrowed horizon,
+   *  where `spot` comes from the scoped positioning snapshot instead. */
+  depthSpot?: number | null;
 };
 
 /**
@@ -165,15 +168,13 @@ export function VectorGexLadder({
         const data = (await res.json()) as LadderResponse;
         if (cancelled || tickerRef.current !== ticker) return;
         setLadder(data.ladder ?? buildGexLadder(null, data.spot ?? null));
-        // `null` on a narrowed DTE horizon by design (see the route): the ladder is scoped to the
-        // near-term expiry set, so pairing it with a narrower horizon would put two different
-        // expiry scopes on one rail. Clearing it is the honest render — a blank rail, not a
-        // silently mismatched one.
-        setDepth(
-          data.depth && data.spot != null && data.spot > 0
-            ? { ...data.depth, spot: data.spot }
-            : null
-        );
+        // Mapped against `depthSpot` — the MATRIX's spot, which is the price the server built the
+        // ladder at — and never against the response's own `spot`. On a narrowed horizon those are
+        // two different snapshots (`scoped.spot` vs the matrix), and the band geometry is defined
+        // relative to the spot the ladder was built at, so mixing them slides every strike's band.
+        // Falls back to `spot` only when the server sent no `depthSpot` (older payload).
+        const anchor = data.depthSpot ?? data.spot;
+        setDepth(data.depth && anchor != null && anchor > 0 ? { ...data.depth, spot: anchor } : null);
         // Only update spot from fetch if liveSpot is not available (off-hours or initial load).
         if (!liveSpot) {
           setSpot(data.spot ?? null);
@@ -324,7 +325,14 @@ export function VectorGexLadder({
           dealers buy
           <span className="vector-gex-ladder-flow-swatch" style={{ backgroundColor: FLOW_SELL_COLOR }} />
           dealers sell
-          <span className="vector-gex-ladder-flow-note">· if price reaches that strike</span>
+          {/* The scope is STATED, not implied. The rail is always the near-term book, while the
+              bars beside it re-scope with the DTE toggle, so under a narrowed horizon the two
+              columns are drawn from different expiry sets. Saying so is the honest fix; hiding the
+              rail on those horizons was the version that shipped the feature dark. */}
+          <span className="vector-gex-ladder-flow-note">
+            · if price reaches that strike
+            {dteHorizon !== "all" ? " · near-term book, not this DTE scope" : ""}
+          </span>
         </div>
       ) : null}
     </section>
