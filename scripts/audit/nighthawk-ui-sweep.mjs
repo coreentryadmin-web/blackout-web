@@ -58,9 +58,19 @@ const PAGES = [
   { id: "terminal", path: "/terminal", label: "Terminal" },
   { id: "vector", path: "/vector", label: "Vector" },
   { id: "flows", path: "/flows", label: "Helix / flows" },
-  { id: "heatmap", path: "/heatmap", label: "Thermal / heatmap" },
-  { id: "record", path: "/record", label: "Track record" },
+  // `settleMs` overrides the default post-load wait. /heatmap's SPX GEX build is a documented
+  // cold-cache spike (~12.5s cold vs 0.1-1.8s warm), so the 9s default judged a page that was
+  // still legitimately fetching as BROKEN.
+  { id: "heatmap", path: "/heatmap", label: "Thermal / heatmap", settleMs: 20000 },
+  // NOT `/record` — that route does not exist and the sweep was auditing a 404, then reporting it
+  // as a product finding. The track-record page is `(site)/track-record`.
+  { id: "track-record", path: "/track-record", label: "Track record" },
 ];
+
+/** The Night Hawk desk is four lanes behind one tab strip; a path-only sweep audits ONLY the first
+ *  one. `IosNativeSegment` renders real `role="tab"` buttons with `aria-selected`, so each lane can
+ *  be driven and audited like a page. */
+const TAB_SWEEP = { pageId: "nighthawk", path: "/nighthawk" };
 
 /** Text that should never be on a rendered desk. Skeletons are matched as WHOLE words so a panel
  *  legitimately headed "Loading zone" is not reported. */
@@ -104,10 +114,17 @@ async function auditPage(ctx, counts, session, page, spec) {
   } catch (e) {
     navError = e.message.split("\n")[0];
   }
-  await page.waitForTimeout(9000);
+  await page.waitForTimeout(spec.settleMs ?? 9000);
 
   const routed = counts.ok - before;
-  const probe = await page
+  const probe = await probeDom(page);
+  return finishAudit({ spec, routed, navError, probe, page });
+}
+
+/** Read the rendered DOM. Shared by the page sweep and the tab sweep so a lane is judged by exactly
+ *  the same rules as a page. */
+async function probeDom(page) {
+  return page
     .evaluate(() => {
       const txt = document.body.innerText || "";
       const headings = [...document.querySelectorAll("h1,h2,h3,[class*='panel'] [class*='title'],[class*='Panel'] header")]
@@ -115,9 +132,20 @@ async function auditPage(ctx, counts, session, page, spec) {
         .filter((t) => t && t.length < 60);
       // An "empty panel" is a section container whose own text is essentially nothing — the
       // failure mode where a panel renders its chrome and no data.
+      //
+      // The class selector alone is far too broad: `[class*='card']` also matches decorative LEAVES
+      // like `vp-intel-card-icon` and `vp-intel-card-title`, which are SUPPOSED to hold no text.
+      // That reported 8 "empty sections" on a perfectly healthy /vector and cost a round of
+      // investigation. A real panel is a container — it has element children and occupies real
+      // space — so require both before calling emptiness a defect.
       const sections = [...document.querySelectorAll("section,[class*='panel'],[class*='Panel'],[class*='card']")];
       const empty = sections
-        .filter((s) => (s.textContent || "").replace(/\s+/g, "").length < 12)
+        .filter((s) => {
+          if ((s.textContent || "").replace(/\s+/g, "").length >= 12) return false;
+          if (s.childElementCount === 0) return false; // a leaf (icon/title span), not a panel
+          const r = s.getBoundingClientRect();
+          return r.width >= 200 && r.height >= 80; // big enough that a member would see the hole
+        })
         .map((s) => s.className?.toString?.().slice(0, 60) || s.tagName)
         .slice(0, 8);
       return {
@@ -133,7 +161,10 @@ async function auditPage(ctx, counts, session, page, spec) {
       };
     })
     .catch((e) => ({ error: e.message }));
+}
 
+/** Turn a probe into a verdict row, screenshotting ONLY once the view is judged loaded. */
+async function finishAudit({ spec, routed, navError, probe, page }) {
   const loaded = !navError && routed >= MIN_ROUTED && !probe.error && !probe.signedOut;
   let shot = null;
   if (loaded) {
@@ -167,6 +198,57 @@ async function auditPage(ctx, counts, session, page, spec) {
   };
 }
 
+/**
+ * Sweep the Night Hawk tab strip — 0DTE / Swings / Bangers / Legacy.
+ *
+ * A path-only sweep audits the DEFAULT lane and nothing else, so three of the four boards a member
+ * pays for were never looked at. The strip is `IosNativeSegment`, which renders real
+ * `role="tab"` buttons, so each lane is driven the way a member drives it: click, let the lane's
+ * own fetches settle, then run the SAME probe a page gets.
+ *
+ * Routed-request counts are not a useful health signal here — switching lanes issues a handful of
+ * XHRs, not a full page load — so a tab is judged on what it RENDERS (text, panels, error/skeleton
+ * text) with `routed` reported for information only. MIN_ROUTED is bypassed via `routed: Infinity`
+ * rather than special-cased inside `finishAudit`, keeping one verdict path for pages and tabs.
+ */
+async function auditTabs(counts, page, rows) {
+  const tabs = await page.$$('[role="tab"]');
+  if (tabs.length === 0) {
+    console.log("TABS  none found — the desk segment did not render");
+    return;
+  }
+  const labels = await Promise.all(tabs.map((t) => t.innerText().catch(() => "")));
+  console.log(`\nTABS  ${tabs.length} lanes: ${labels.map((l) => l.trim()).join(" · ")}`);
+
+  for (let i = 0; i < tabs.length; i += 1) {
+    const label = (labels[i] || `tab${i}`).trim().replace(/\s+/g, " ");
+    const before = counts.ok;
+    // Re-query each pass: switching lanes remounts the strip, so handles from before the click are
+    // detached and clicking one throws.
+    const fresh = await page.$$('[role="tab"]');
+    if (!fresh[i]) continue;
+    await fresh[i].click().catch(() => {});
+    await page.waitForTimeout(9000);
+
+    const probe = await probeDom(page);
+    const spec = {
+      id: `nighthawk-tab-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+      label: `Night Hawk · ${label}`,
+      path: `/nighthawk#${label}`,
+    };
+    const r = await finishAudit({ spec, routed: Infinity, navError: null, probe, page });
+    r.routed = counts.ok - before; // report the real count; it just does not gate the verdict
+    rows.push(r);
+    console.log(
+      `${r.loaded ? "OK  " : "BROKEN"} ${spec.label.padEnd(24)} xhr=${String(r.routed).padStart(3)} ` +
+        `chars=${String(r.chars ?? 0).padStart(6)} panels=${String(r.sectionCount ?? 0).padStart(3)} ` +
+        `empty=${r.emptySections.length} overflow=${r.overflowPx}px badText=${r.badText.length}`
+    );
+    if (r.loaded && r.badText.length) console.log(`      badText: ${r.badText.join(" · ")}`);
+    if (r.loaded && r.headings.length) console.log(`      panels:  ${r.headings.slice(0, 10).join(" · ")}`);
+  }
+}
+
 async function main() {
   const session = await mintClerkPremiumSession({ appUrl: BASE });
   if (session.skip) {
@@ -198,6 +280,10 @@ async function main() {
       if (r.loaded && r.badText.length) console.log(`      badText: ${r.badText.join(" · ")}`);
       if (r.loaded && r.emptySections.length) console.log(`      empty:   ${r.emptySections.slice(0, 4).join(" · ")}`);
       if (r.loaded && r.headings.length) console.log(`      panels:  ${r.headings.slice(0, 12).join(" · ")}`);
+
+      // The four Night Hawk lanes live behind a tab strip on this one page — sweep them while the
+      // page is loaded and authenticated, rather than as separate navigations.
+      if (spec.id === TAB_SWEEP.pageId && r.loaded) await auditTabs(counts, page, rows);
     }
   } finally {
     await ctx.close().catch(() => {});

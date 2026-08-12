@@ -136,7 +136,10 @@ const STREAM_TIMEOUT_MS = 180000;
  * tunnel is push-freshness — say so rather than implying the stream was exercised.
  */
 function isStreamingRequest(req) {
-  if (/\/(stream|sse|events)(\?|$)/.test(new URL(req.url()).pathname + new URL(req.url()).search)) return true;
+  // `-stream` counts as much as `/stream`: the desk's live-price endpoint is
+  // `/api/market/stocks/spot-stream`, and requiring a leading slash missed it — so an SSE stream got
+  // the SHORT timeout and was then reported as a failed request on every otherwise-healthy run.
+  if (/(^|\/|-)(stream|sse|events)(\?|$)/.test(new URL(req.url()).pathname + new URL(req.url()).search)) return true;
   const accept = req.headers()["accept"] ?? "";
   return accept.includes("text/event-stream");
 }
@@ -243,7 +246,7 @@ async function createTunneledContext({
     );
   }
 
-  const counts = { ok: 0, fail: 0, streamsBuffered: 0 };
+  const counts = { ok: 0, fail: 0, streamsBuffered: 0, streamsHeldOpen: 0 };
 
   // CONTEXT level, before any page exists, so even the first navigation goes through Node.
   await ctx.route("**/*", async (route, req) => {
@@ -275,8 +278,22 @@ async function createTunneledContext({
       counts.ok++;
       await route.fulfill({ status: r.status, headers: r.headers, body: r.body });
     } catch (e) {
-      counts.fail++;
-      console.error(`  FAIL [${logSafe(req.method(), 8)}] ${logSafe(reqUrl, 80)}: ${logSafe(e?.message, 200)}`);
+      // A long-lived stream that runs out the clock has not FAILED — an SSE connection is supposed
+      // to stay open, so hitting the deadline is its normal end state. Counting it as a failure put
+      // two permanent "FAIL … timeout" lines on every healthy desk sweep, which is exactly the kind
+      // of standing noise that trains a reader to skim past real failures. Narrow on purpose: only
+      // a TIMEOUT on a request already identified as streaming is reclassified. A stream that 500s,
+      // resets, or fails TLS still counts and still prints as FAIL.
+      const timedOut = /timeout|timed out|aborted/i.test(e?.message ?? "");
+      if (streaming && timedOut) {
+        counts.streamsHeldOpen++;
+        console.error(
+          `  HELD [${logSafe(req.method(), 8)}] ${logSafe(reqUrl, 80)}: held open to the deadline (expected for a stream)`
+        );
+      } else {
+        counts.fail++;
+        console.error(`  FAIL [${logSafe(req.method(), 8)}] ${logSafe(reqUrl, 80)}: ${logSafe(e?.message, 200)}`);
+      }
       await route.abort("connectionfailed");
     }
   });
@@ -284,4 +301,13 @@ async function createTunneledContext({
   return { browser, ctx, counts };
 }
 
-module.exports = { createTunneledContext, proxyFetch, proxyFetchFollow, IPHONE_UA, DESKTOP_UA };
+module.exports = {
+  createTunneledContext,
+  proxyFetch,
+  proxyFetchFollow,
+  IPHONE_UA,
+  DESKTOP_UA,
+  // Exported for the unit test: which requests are long-lived decides both their timeout and
+  // whether hitting that timeout is reported as a failure, and both got it wrong for `spot-stream`.
+  isStreamingRequest,
+};
