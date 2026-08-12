@@ -294,7 +294,7 @@ export function HomeGammaHeroLink() {
   return (
     <Link href="/tools/gamma-snapshot" prefetch={false} className="btn-g btn-gamma-live">
       <span className="gamma-live-dot" aria-hidden />
-      See live gamma levels — free
+      Free gamma snapshot
     </Link>
   );
 }

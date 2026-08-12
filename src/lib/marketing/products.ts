@@ -15,6 +15,8 @@ export type MarketingProduct = {
   heroBlurb: string;
   bullets: string[];
   stat: { k: string; v: string };
+  /** Public learn guide — homepage module cards link here for SEO/crawl. */
+  learnHref: string;
   href: string;
   launchStatus: "live" | "soon";
   index: number;
@@ -37,6 +39,7 @@ export const MARKETING_PRODUCTS: readonly MarketingProduct[] = [
       "Trade alerts gated by the same BIE verification stack",
     ],
     stat: { k: "8s", v: "matrix refresh in RTH" },
+    learnHref: "/learn/spx-slayer-gex-matrix-guide",
     href: "/dashboard",
     launchStatus: "live",
   },
@@ -56,6 +59,7 @@ export const MARKETING_PRODUCTS: readonly MarketingProduct[] = [
       "Feeds SPX Slayer confluence and Night Hawk scanner",
     ],
     stat: { k: "Live", v: "options flow stream" },
+    learnHref: "/learn/helix-flow-scanner-guide",
     href: "/flows",
     launchStatus: "live",
   },
@@ -75,6 +79,7 @@ export const MARKETING_PRODUCTS: readonly MarketingProduct[] = [
       "Charm and delta shifts when positioning rotates",
     ],
     stat: { k: "Multi", v: "ticker presets" },
+    learnHref: "/learn/thermal-heatmap-reading-guide",
     href: "/heatmap",
     launchStatus: "live",
   },
@@ -94,6 +99,7 @@ export const MARKETING_PRODUCTS: readonly MarketingProduct[] = [
       "SPX, flow, and cross-tool context in one terminal",
     ],
     stat: { k: "BIE", v: "structure-first AI" },
+    learnHref: "/learn/largo-ai-terminal-guide",
     href: "/terminal",
     launchStatus: "live",
   },
@@ -113,6 +119,7 @@ export const MARKETING_PRODUCTS: readonly MarketingProduct[] = [
       "Alerts when gates clear — not noise for noise's sake",
     ],
     stat: { k: "A–F", v: "graded play log" },
+    learnHref: "/learn/night-hawk-0dte-command-guide",
     href: "/nighthawk",
     launchStatus: "live",
   },
@@ -132,6 +139,7 @@ export const MARKETING_PRODUCTS: readonly MarketingProduct[] = [
       "Rolling out as desk coverage expands",
     ],
     stat: { k: "Soon", v: "universe scan" },
+    learnHref: "/learn/vector-scanner-guide",
     href: "/vector",
     launchStatus: "live",
   },
@@ -141,6 +149,6 @@ export function marketingProductById(id: string): MarketingProduct | undefined {
   return MARKETING_PRODUCTS.find((p) => p.id === id);
 }
 
-export function marketingProductHref(id: MarketingProductId): string {
-  return marketingProductById(id)?.href ?? "/pricing";
+export function marketingProductLearnHref(id: MarketingProductId): string {
+  return marketingProductById(id)?.learnHref ?? "/learn";
 }

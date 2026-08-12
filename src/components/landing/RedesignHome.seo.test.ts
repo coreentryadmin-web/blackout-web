@@ -11,8 +11,16 @@ test("RedesignHome wires HomeGammaPromo with live initial snapshot", () => {
   assert.match(REDESIGN, /HomeGammaHeroLink/);
 });
 
+test("RedesignHome hero and modules link to free gamma + learn guides", () => {
+  assert.match(REDESIGN, /href="\/tools\/gamma-snapshot"/);
+  assert.match(REDESIGN, /hero-cred-link/);
+  assert.match(REDESIGN, /m\.learnHref/);
+  assert.match(REDESIGN, /Read the guide/);
+});
+
 test("HomeGammaPromo links to the free gamma snapshot tool", () => {
   assert.match(PROMO, /href="\/tools\/gamma-snapshot"/);
+  assert.match(PROMO, /Free gamma snapshot/);
   assert.match(PROMO, /gamma-promo-shell/);
   assert.match(PROMO, /gamma-academy-teaser/);
 });

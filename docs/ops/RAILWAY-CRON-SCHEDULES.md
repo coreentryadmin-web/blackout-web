@@ -49,6 +49,7 @@ are cheap no-ops — the wide UTC band avoids maintaining separate EDT/EST cron 
 | nighthawk-morning-confirm | NightHawk-Morning-Confirm | `15 13 * * 1-5` | ~9:15 AM ET |
 | spx-signal-weight-optimize | SPX-Signal-Weight-Optimize | `0 22 * * 1-5` | ~6 PM ET post-close |
 | membership-reconcile | Membership-Reconcile | `0 */6 * * *` | Every 6h, 24/7 |
+| welcome-sequence | Welcome-Sequence | `0 * * * *` | Hourly — welcome drip steps 2–5 (`railway.welcome-sequence.toml`; step 1 fires from Clerk webhook) |
 | db-cleanup | DB_CLEANUP | `0 7 * * *` | Daily 07:00 UTC |
 | largo-cleanup | Largo-Chat-CleanUp | `0 8 * * 0` | Sunday 08:00 UTC |
 | cron-staleness-watchdog | Cron-Staleness-Watchdog | `*/5 * * * *` | 24/7 staleness monitor |

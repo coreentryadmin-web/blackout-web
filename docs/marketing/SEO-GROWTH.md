@@ -52,7 +52,7 @@ Legend: 🔴 Not started · 🟡 In progress · 🟢 PR open · ✅ Merged · �
 
 | Finding | Status | PR | Notes |
 |---|---|---|---|
-| 5-email welcome sequence has no send mechanism | 🟡 | [#1898](https://github.com/coreentryadmin-web/blackout-web/pull/1898) | Day 0/2/4/6/8 drip, Clerk `user.created`-triggered, sent via Resend. Rewritten with bold "trading-floor" copy voice (multi-draft + judge pass) and real product screenshots per the founder's direct design feedback. **Only step 1 (day 0) actually sends today** — `processDueWelcomeSequenceSteps`'s only caller is `/api/cron/welcome-sequence`, and that route has no EventBridge rule (absent from every `railway.*.toml`, `CRON_SERVICE_NAMES`, and `CRON_JOBS`), so steps 2–5 never fire; rows just sit with `next_send_at` in the past. Needs the same infra go-ahead as the ECS `RESEND_API_KEY` wiring above before calling this 🟢 — see #1898 review thread |
+| 5-email welcome sequence has no send mechanism | ✅ | [#1898](https://github.com/coreentryadmin-web/blackout-web/pull/1898) | Day 0/2/4/6/8 drip via Clerk webhook + hourly `/api/cron/welcome-sequence`. EventBridge rule `blackout-production-welcome-sequence` verified live 2026-08-12 (24 hourly invocations/24h). Runbook: `docs/ops/WELCOME-SEQUENCE-CRON.md` |
 | `cold-email` / `prospecting` / `revops` / `sales-enablement` | ✅ N/A | — | Not applicable — self-serve B2C product, no sales team |
 
 ### Billing lifecycle emails (not an original audit finding — added 2026-08-07 per direct request)
