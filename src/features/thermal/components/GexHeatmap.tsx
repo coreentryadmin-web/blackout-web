@@ -2590,6 +2590,18 @@ function GexDepthLadderView({
       : null;
   const callWallRung = nearest(callWall);
   const putWallRung = nearest(putWall);
+  // Where net dealer gamma changes sign as price moves — the ladder's own repriced flip, which is
+  // NOT the same as the current gamma flip in Key Levels (that one is measured at today's spot;
+  // this one is where the flip would move to). Rungs are descending, so the marker slots above the
+  // first rung below it, exactly like the spot row.
+  //
+  // It is drawn rather than left as a legend chip because without it the ladder can read as broken.
+  // Live SPY 2026-08-12: every rung on BOTH sides of spot said SELL, which looks like a stuck sign
+  // until you see the crossing sitting at 768.19 — above it dealers sell into strength because they
+  // are LONG gamma, below it they sell into weakness because they are SHORT gamma. Same colour,
+  // opposite mechanism, and the line between them is the whole story.
+  const crossingIdx =
+    depth.crossing != null ? rungs.findIndex((l) => l.price < depth.crossing!) : -1;
 
   // What stands between spot and the desk's own target. A price alone says nothing about how hard
   // it is to reach; the forced flow in the way is the difference between a target with the tape
@@ -2684,7 +2696,11 @@ function GexDepthLadderView({
       <div
         className="space-y-[3px]"
         role="img"
-        aria-label={`Forced dealer hedging flow for ${underlying} by price level. Buying below spot, selling above, drawn from net dealer gamma.`}
+        // NOT "buying below spot, selling above" — that is only true of a book that is long gamma
+        // throughout, and it is false whenever the modelled flip sits inside the ladder. Live SPY
+        // 2026-08-12 was selling on BOTH sides. Describing the panel by an assumption it does not
+        // hold would read a wrong market structure to a screen-reader user with no way to check it.
+        aria-label={`Forced dealer hedging flow for ${underlying} by price level, drawn from net dealer gamma. Direction is per price band and can be the same on both sides of spot.`}
       >
         {rungs.map((l, i) => (
           <div key={l.price}>
@@ -2700,10 +2716,54 @@ function GexDepthLadderView({
                 <span className="hidden w-[4.75rem] shrink-0 sm:inline" />
               </div>
             )}
+            {i === crossingIdx && i !== spotIdx && depth.crossing != null && (
+              <div className="flex items-center gap-1.5 py-[3px]">
+                <span className="w-[3.75rem] shrink-0 text-right font-mono text-[10px] font-bold tabular-nums text-amber-300">
+                  {fmtStrike(depth.crossing)}
+                </span>
+                {/* Dashed, and amber rather than the spot row's solid white: this is a MODELLED
+                    boundary the ladder derived, not an observed price. The two must not read as
+                    equally hard facts. */}
+                <span
+                  aria-hidden
+                  className="h-px min-w-0 flex-1"
+                  style={{
+                    backgroundImage:
+                      "repeating-linear-gradient(to right, rgba(252,211,77,0.75) 0 5px, transparent 5px 9px)",
+                  }}
+                />
+                <span
+                  className="w-[4.5rem] shrink-0 font-mono text-[9px] uppercase tracking-wider text-amber-300/80"
+                  title="Net dealer gamma changes sign here. Above it dealers DAMP moves (long gamma); below it they AMPLIFY them (short gamma) — which is why both sides can show the same trade direction for opposite reasons."
+                >
+                  γ flip
+                </span>
+                <span className="hidden w-[4.75rem] shrink-0 sm:inline" />
+              </div>
+            )}
             <Row l={l} />
           </div>
         ))}
       </div>
+
+      {/* The sentence the ladder cannot draw. Which side of the modelled flip spot currently sits
+          on decides whether dealer hedging steadies this tape or accelerates it, and that is the
+          single most actionable thing on this panel. */}
+      {depth.crossing != null && (
+        <p className="mt-2 font-mono text-[10px] leading-snug text-white/50">
+          {spot < depth.crossing ? (
+            <>
+              Spot is <span className="text-bear-text">below</span> the modelled flip — dealers are
+              short gamma here and hedging <span className="text-bear-text">amplifies</span> moves.
+            </>
+          ) : (
+            <>
+              Spot is <span className="text-emerald-300">above</span> the modelled flip — dealers are
+              long gamma here and hedging <span className="text-emerald-300">damps</span> moves.
+            </>
+          )}
+        </p>
+      )}
 
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[9px] uppercase tracking-[0.16em] text-sky-300/70">
         <span className="flex items-center gap-1.5">
