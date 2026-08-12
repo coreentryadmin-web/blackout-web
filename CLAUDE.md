@@ -97,9 +97,16 @@ Both harnesses and their `npm run validate:vector-*` scripts were removed with i
   - **Missed real failures.** #2073's tsx 4.23.1→4.23.10 bump threw `ERR_INVALID_URL` inside tsx's
     own ESM resolver hook under Node 20 + `--experimental-test-module-mocks`, killing 133 tests in
     CI while passing clean on Node 22 here.
-  `nvm` lives at **`/opt/nvm`** (not `~/.nvm` — `source ~/.nvm/nvm.sh` fails); v20.20.2 is installed
-  and is the default alias for a login shell. `npm test` now goes through `scripts/run-tests.mjs`,
-  which is the exact command CI runs and prints a loud banner on any other major.
+  **Node 20 is NOT pre-installed and does NOT survive a container restart — install it first:**
+  `bash -lc 'nvm install 20'` (~1 min), then run with
+  `export PATH=/opt/nvm/versions/node/v20.20.2/bin:$PATH`. `nvm` lives at **`/opt/nvm`**, not
+  `~/.nvm` — `source ~/.nvm/nvm.sh` fails, but `nvm` is already a shell function in a LOGIN shell
+  (`bash -lc`). Verified the hard way: this note originally read "v20.20.2 is installed", the
+  container restarted a few hours later, `/opt/nvm/versions/node/` was gone, and the default `node`
+  was back to 22 — the exact stale-doc trap the rest of this file exists to prevent. A restart also
+  wipes the scratchpad and any background-task output, though the repo and `node_modules` survive.
+  `npm test` goes through `scripts/run-tests.mjs`, which is the exact command CI runs and prints a
+  loud banner on any other major — so a Node 22 run announces itself rather than lying quietly.
 - **All infrastructure runs on AWS ECS only** — there is no Railway. Docker images are built and pushed to ECR, ECS services are force-deployed, Cloudflare cache is purged. **Production is now the ONLY environment** (`blackout-production-cluster` / `blackout-production-web` at `blackouttrades.com`) — the entire `blackout-staging-*` stack was decommissioned 2026-07-25 (see the Vector-validation note above). The `blackout-web` ECR repo is shared and still in use by production; it was deliberately NOT deleted.
 - **WebSockets WORK from this sandbox — inside a CONNECT tunnel (corrected 2026-08-09).** The old
   note here said "WS upgrades unsupported"; that is true only of asking the proxy to proxy an
