@@ -20,6 +20,8 @@ import {
 import {
   VECTOR_BEAD_RECORD_TICK_MS,
   VECTOR_BEAD_RECORD_ACTIVE_TICK_MS,
+  evaluateSweepBudget,
+  type SweepBudgetState,
 } from "@/features/vector/lib/vector-bead-recorder-logic";
 import {
   alertWsLeaderFailClosedOnce,
@@ -47,6 +49,8 @@ let recordInFlight = false;
 /** Per-ticker consecutive-failure streaks across sweeps. Bounded by the number of CURRENTLY
  *  failing tickers (successes are deleted), not by universe size. */
 const tickerFailureStreaks = new Map<string, number>();
+/** Rate-limit state for the sweep-overrun alarm — see evaluateSweepBudget. */
+const sweepBudget: SweepBudgetState = { lastLoggedAt: 0 };
 let activeRecordInFlight = false;
 let lastHeartbeatAt = 0;
 let heartbeatInFlight = false;
@@ -156,6 +160,26 @@ async function tick(): Promise<void> {
     if (result.total > 0 && result.recorded === 0) {
       console.warn(
         `[vector-bead-recorder] zero samples recorded (${result.failed}/${result.total} failed, ${result.elapsedMs}ms)`
+      );
+    }
+    // A sweep that runs long is not an ERROR — it records everything, just late — so nothing here
+    // ever complained about one, and the universe silently recorded at 10s (2026-08-07) and then
+    // ~30s (2026-08-12) against a designed 5s. Both times it was found by a member noticing thin
+    // beads rather than by us. Name the member-visible consequence, rate-limited.
+    const budget = evaluateSweepBudget(
+      result.elapsedMs,
+      VECTOR_BEAD_RECORD_TICK_MS,
+      result.recorded,
+      result.total,
+      Date.now(),
+      sweepBudget
+    );
+    if (budget.kind === "overrun") {
+      console.warn(
+        `[vector-bead-recorder] SWEEP OVER BUDGET — universe is recording every ` +
+          `${budget.effectiveCadenceMs / 1000}s, not the designed ${budget.budgetMs / 1000}s ` +
+          `(sweep ${budget.elapsedMs}ms for ${budget.recorded}/${budget.total} tickers). ` +
+          `Every tick landing inside a running sweep is dropped, so bead rails are this much thinner.`
       );
     }
     // PER-TICKER visibility. The whole-pass warning above only fires when EVERY ticker fails, so a

@@ -152,3 +152,74 @@ export function trackTickerFailures(
 
   return events;
 }
+
+// ── Sweep budget observability ────────────────────────────────────────────────────────────────
+
+/**
+ * How far over its tick budget a sweep must run before it is worth a log line.
+ *
+ * A sweep that overruns is not an error — it records everything, just late — so nothing in the
+ * recorder ever complained about one. That silence is exactly how this defect survived twice.
+ * On 2026-08-07 the universe was recording at 10s instead of 5s and it was found only by a member
+ * noticing thin beads; the response was to raise `vectorBeadRecordConcurrency` 25 -> 64. By
+ * 2026-08-12 it had regressed to ~30s, with the same fingerprint (QQQ/TSLA/AMD all landing on
+ * EXACTLY 115 samples over the same window — identical counts because they share one sweep) and
+ * again no log line anywhere.
+ *
+ * Tuning a constant twice without an alarm is how you get a third regression. This is the alarm.
+ */
+const SWEEP_OVERRUN_FACTOR = 1.5;
+
+/** Don't emit more than one overrun line per this interval — a chronically slow sweep is ONE
+ *  fact, and logging it every tick buries the signal it is supposed to raise. */
+const SWEEP_OVERRUN_LOG_INTERVAL_MS = 60_000;
+
+export type SweepBudgetState = { lastLoggedAt: number };
+
+export type SweepBudgetVerdict =
+  | { kind: "ok" }
+  | {
+      kind: "overrun";
+      /** Sweeps actually achievable per tick budget, i.e. the REAL cadence tickers are getting. */
+      effectiveCadenceMs: number;
+      elapsedMs: number;
+      budgetMs: number;
+      recorded: number;
+      total: number;
+    };
+
+/**
+ * Decide whether this sweep's duration is worth reporting, rate-limited.
+ *
+ * Pure so the threshold and the rate limit are testable without a clock or a leader: the caller
+ * passes `nowMs` and owns the mutable `state`.
+ *
+ * Reports the EFFECTIVE CADENCE rather than raw elapsed, because that is the number a reader
+ * needs. "sweep took 31s" invites the response "so what, it finished"; "the universe is recording
+ * at 31s, not the designed 5s" names the member-visible consequence — thin bead rails — and is
+ * directly comparable to the per-ticker gaps anyone measures off a live rail.
+ */
+export function evaluateSweepBudget(
+  elapsedMs: number,
+  budgetMs: number,
+  recorded: number,
+  total: number,
+  nowMs: number,
+  state: SweepBudgetState
+): SweepBudgetVerdict {
+  if (!Number.isFinite(elapsedMs) || !Number.isFinite(budgetMs) || budgetMs <= 0) return { kind: "ok" };
+  if (elapsedMs <= budgetMs * SWEEP_OVERRUN_FACTOR) return { kind: "ok" };
+  if (nowMs - state.lastLoggedAt < SWEEP_OVERRUN_LOG_INTERVAL_MS) return { kind: "ok" };
+  state.lastLoggedAt = nowMs;
+  // A sweep that overruns forces the leader to drop every tick that lands while it runs, so the
+  // achieved cadence rounds UP to whole ticks — 7s of work on a 5s budget yields 10s, not 7s.
+  const ticks = Math.max(1, Math.ceil(elapsedMs / budgetMs));
+  return {
+    kind: "overrun",
+    effectiveCadenceMs: ticks * budgetMs,
+    elapsedMs: Math.round(elapsedMs),
+    budgetMs,
+    recorded,
+    total,
+  };
+}
