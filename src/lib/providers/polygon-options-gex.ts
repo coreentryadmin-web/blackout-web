@@ -1765,10 +1765,33 @@ async function fetchHeatmapBand(
   // A thin ladder means the band missed most of the chain — escalate at ANY price, not just
   // NIO-class. See shouldEscalateToFullChain: ASTS ($71.66) returned 30 of its 119 listed strikes,
   // leaving 68% of open interest — including the chain's single largest OI strike — unfetched.
-  if (shouldEscalateToFullChain(countUniqueChainStrikes(contracts), spot)) {
+  //
+  // WHY BOTH BRANCHES LOG. The guard below adopts the unfiltered pull only when it is STRICTLY
+  // richer, and `fetchHeatmapBandUnfiltered` returns [] rather than throwing when the snapshot
+  // 403s/429s/pages out. So a failed escalation is byte-identical, from outside the process, to an
+  // escalation that never fired — and both look exactly like the fix not being deployed. That cost
+  // real time on 2026-08-12: #2084 was correct and live, but the matrix served a pre-deploy CACHED
+  // ladder for ASTS, and with no signal from this branch there was no way to tell "fix broken" from
+  // "cache stale" without shipping instrumentation first. One request now answers it.
+  const inBand = countUniqueChainStrikes(contracts);
+  if (shouldEscalateToFullChain(inBand, spot)) {
     const full = await fetchHeatmapBandUnfiltered(underlying);
-    if (countUniqueChainStrikes(full) > countUniqueChainStrikes(contracts)) {
+    const fullStrikes = countUniqueChainStrikes(full);
+    if (fullStrikes > inBand) {
       contracts = full;
+      console.info(
+        `[polygon-gex] full-chain escalation ADOPTED for ${underlying}: ${inBand} -> ${fullStrikes} strikes ` +
+          `(spot ${spot.toFixed(2)}, band ${lo}-${hi}).`
+      );
+    } else {
+      // The interesting case: we asked for the whole chain and got nothing better. Either the
+      // unfiltered snapshot failed/was throttled (it returns [] rather than throwing) or the band
+      // genuinely already held the chain. Without this line the two look identical from the API.
+      console.warn(
+        `[polygon-gex] full-chain escalation NO-OP for ${underlying}: band gave ${inBand} strikes, ` +
+          `unfiltered pull gave ${fullStrikes} — keeping the banded ladder. If ${underlying} is known ` +
+          `to list more strikes than that, the unfiltered snapshot is failing silently.`
+      );
     }
   }
 
