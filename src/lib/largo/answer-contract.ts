@@ -9,6 +9,7 @@ import {
 } from "@/lib/largo/core/market-evidence";
 import { buildTradeDecisionRead } from "@/lib/largo/core/decision-read";
 import { isPlayQuestion } from "@/lib/largo/core/trade-question";
+import { deriveMarketState, marketStateToBias } from "@/lib/largo/core/market-state";
 import {
   makeEnvelope,
   type BieAnswerEnvelope,
@@ -338,7 +339,7 @@ export function parseAnswerEnvelope(
 
   const envelope = makeEnvelope({
     headline: verdict.split(/\r?\n/)[0]!.trim(),
-    bias: firstMatch(verdict, BIAS_WORDS) ?? "neutral",
+    bias: marketStateToBias(deriveMarketState(verdict)),
     // ABSENT, not defaulted. The `why` is the whole point of the confidence field — a bare level
     // is an arbitrary number wearing a word — and this code used to say exactly that while doing
     // the opposite: `?? "moderate"` invented a level whenever Largo wrote no Confidence section,

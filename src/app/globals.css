@@ -18746,16 +18746,60 @@ body::before {
     color: var(--largo-primary);
   }
   /* ── EXECUTIVE ANSWER ──────────────────────────────────────────────────────────────────────
-     One line, in the synthesis colour, sized to be read before anything else. Everything below is
-     support for this sentence. */
+     Verdict first — left-aligned prose the member reads, not a centered badge shouting direction. */
   .largo-read-header {
-    padding: 0.15rem 0.9rem 0.7rem;
-    font-family: var(--font-anton, sans-serif);
-    font-size: clamp(1.05rem, 2.4vw, 1.5rem);
-    line-height: 1.28;
-    letter-spacing: 0.01em;
-    color: var(--largo-ai);
-    text-wrap: balance;
+    padding: 0.65rem 0.9rem 0.35rem;
+    font-size: clamp(0.98rem, 2.2vw, 1.22rem);
+    line-height: 1.45;
+    font-weight: 600;
+    color: var(--largo-primary);
+    text-align: left;
+    text-wrap: pretty;
+  }
+  /* Verdict continuation when Interpretation carries the reasoning separately. */
+  .largo-read-lead {
+    padding: 0 0.9rem 0.55rem;
+    font-size: 0.88rem;
+    line-height: 1.55;
+    color: var(--largo-muted);
+    text-align: left;
+  }
+  /* Direction / action / confidence — secondary chips below the verdict, not competing with it. */
+  .largo-read-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.45rem 0.65rem;
+    padding: 0.15rem 0.9rem 0.55rem;
+    text-align: left;
+  }
+  /* Board-not-committed / edition integrity — one strip, not scattered callouts. */
+  .largo-read-integrity {
+    margin: 0 0.75rem 0.5rem;
+    padding: 0.45rem 0.55rem;
+    border-left: 2px solid var(--largo-warn, #fbbf24);
+    background: rgba(251, 191, 36, 0.08);
+    border-radius: 0 4px 4px 0;
+    font-size: 0.82rem;
+    line-height: 1.45;
+    color: var(--largo-primary);
+  }
+  .largo-read-integrity p {
+    margin: 0;
+  }
+  .largo-read-integrity p + p {
+    margin-top: 0.35rem;
+  }
+  .largo-read-integrity-note {
+    color: var(--largo-muted);
+    font-size: 0.78rem;
+  }
+  /* Model-authored comparison / ranking blocks live inside the card. */
+  .largo-read-blocks {
+    padding: 0.35rem 0.75rem 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
   }
   /* Trade-decision headline — one line, amber cue, no essay slot. */
   .largo-read-header-trade {
@@ -18912,10 +18956,8 @@ body::before {
     color: var(--largo-muted);
   }
   .largo-read-conf-why {
-    max-width: 34rem;
-    margin: 0.3rem auto 0;
-    padding: 0 0.75rem;
-    text-align: center;
+    padding: 0 0.9rem 0.55rem;
+    text-align: left;
     font-size: 11px;
     line-height: 1.5;
     color: var(--largo-muted-faint);

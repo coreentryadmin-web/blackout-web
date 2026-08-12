@@ -122,7 +122,7 @@ const LAYOUT_ORDER: Record<AnswerLayout, AnswerBlock[]> = {
   recap: ["sections", "ladder", "signals", "invalidation"],
   // Flow questions want the directional tally before the structure.
   flow: ["signals", "sections", "ladder", "invalidation"],
-  trade: ["signals", "ladder", "invalidation"],
+  trade: ["sections", "ladder", "invalidation"],
   // "Why is it moving" — the read, then what confirms or breaks it.
   market: ["signals", "ladder", "sections", "invalidation"],
   default: DEFAULT_ORDER,

@@ -10,7 +10,6 @@ import { splitAnswerCaveats } from "@/features/largo/answer/answer-caveats";
 import { largoAnswerToEnvelope } from "@/features/largo/answer/answer-format";
 import { proseSections } from "@/features/largo/answer/section-policy";
 import { BieScenarioCards } from "@/features/largo/answer/BieScenarioCards";
-import { LargoAnswerBlocks } from "@/features/largo/components/LargoAnswerBlocks";
 
 /**
  * Renders a COMPLETED Largo assistant turn through the rich <BieAnswer> surface
@@ -70,8 +69,7 @@ export function LargoAnswerMessage({
         const { caveats } = splitAnswerCaveats(content);
         return (
           <>
-            <LargoDeskRead envelope={envelope} question={question} />
-            <LargoAnswerBlocks content={content} />
+            <LargoDeskRead envelope={envelope} question={question} markdownSource={content} />
             <BieScenarioCards scenarios={envelope.scenarios} />
             <LargoAnswerCaveats caveats={caveats} />
           </>

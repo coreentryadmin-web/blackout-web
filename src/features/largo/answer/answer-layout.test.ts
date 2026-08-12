@@ -55,8 +55,8 @@ test("EVERY layout renders EVERY block — layout reorders, it never drops", () 
   }
 });
 
-test("trade layout leads with the signal table", () => {
-  assert.equal(blockOrder("trade")[0], "signals");
+test("trade layout leads with interpretation prose, not a signal table", () => {
+  assert.equal(blockOrder("trade")[0], "sections");
 });
 
 test("each layout leads with the block its question is about", () => {
