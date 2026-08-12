@@ -3,6 +3,11 @@ import assert from "node:assert/strict";
 import { estimateCostUsd, etDayKey, SpendTracker } from "./ai-spend";
 
 // ---- estimateCostUsd ----
+test("sonnet-5 pricing 2/10", () => {
+  const c = estimateCostUsd("claude-sonnet-5", { input_tokens: 1_000_000, output_tokens: 1_000_000 });
+  assert.equal(c, 12); // 2 + 10
+});
+
 test("known model: input+output priced per MTok", () => {
   const c = estimateCostUsd("claude-sonnet-4-6", { input_tokens: 1_000_000, output_tokens: 1_000_000 });
   assert.equal(c, 18); // 3 + 15

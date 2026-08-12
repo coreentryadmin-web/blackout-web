@@ -164,8 +164,8 @@ function trackSpend(model: string, usage: AnthropicUsage | null | undefined): vo
  *  from this so the dashboard reflects the real retry budget (P3 fix). */
 const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_MODEL = "claude-sonnet-4-6";
-/** Default Largo tool-loop model — Haiku (~4× cheaper than Sonnet on one-shot benchmarks). */
-export const LARGO_MODEL = "claude-haiku-4-5";
+/** Default Largo tool-loop model — Sonnet 5 for synthesis quality on multi-tool desk reads. */
+export const LARGO_MODEL = "claude-sonnet-5";
 /** Optional escalation tier for future compound / deep tool loops (not wired by default). */
 export const LARGO_ESCALATION_MODEL = "claude-sonnet-4-6";
 export const COMMENTARY_MODEL = "claude-haiku-4-5";
