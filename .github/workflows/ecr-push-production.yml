@@ -322,18 +322,45 @@ jobs:
           # Let the edge drop entries before we validate through it.
           sleep 10
 
+      # WHY THIS IS PATIENT *AND* STRICTER THAN IT LOOKS (2026-08-12).
+      #
+      # This gate failed a real deploy on 2026-08-12: 10 attempts x 15s = 2.5 minutes was not
+      # enough for the ECS fleet to converge, so four merged fixes sat in `main` while production
+      # kept serving the previous build for ~25 minutes. Nothing surfaced that — every PR reported
+      # green. A re-run with no code change passed, which is the signature of a timing race, not a
+      # broken build.
+      #
+      # The race: during a rolling deploy the ALB has BOTH builds behind it. A page served by a new
+      # task references chunk hashes only the new build has; the follow-up request for that chunk
+      # can land on an old task and 404. It resolves itself once every task is new — it just takes
+      # longer than 2.5 minutes.
+      #
+      # So the window is now 20 x 15s = 5 minutes. And because the same mixed fleet can also make a
+      # SINGLE probe pass by luck (both requests happening to hit new tasks), one pass is no longer
+      # enough: it requires TWO CONSECUTIVE passes. That costs 15s on a healthy deploy and removes
+      # the false GREEN, which is the more dangerous of the two failures — a false RED is loud, a
+      # false GREEN ships a half-rolled fleet.
       - name: Validate static assets on origin
         run: |
           set -euo pipefail
-          for i in 1 2 3 4 5 6 7 8 9 10; do
+          streak=0
+          for i in $(seq 1 20); do
             if node scripts/validate-static-assets.mjs; then
-              echo "Static asset check passed."
-              exit 0
+              streak=$((streak + 1))
+              if [ "$streak" -ge 2 ]; then
+                echo "Static asset check passed twice in a row — fleet has converged."
+                exit 0
+              fi
+              echo "Attempt $i/20 passed (streak $streak/2) — confirming once more in 15s..."
+            else
+              # Reset: a failure means the fleet is still mixed, so any earlier pass was luck.
+              if [ "$streak" -gt 0 ]; then echo "Streak broken — fleet still mixed."; fi
+              streak=0
+              echo "Attempt $i/20 failed — retrying in 15s..."
             fi
-            echo "Attempt $i/10 failed — retrying in 15s..."
             sleep 15
           done
-          echo "Static assets still broken after ECS rollout."
+          echo "Static assets still broken after ECS rollout (5 minutes, needed 2 consecutive passes)."
           exit 1
 
       # Roll the market-worker LAST — after web has fully rolled, been edge-purged,
