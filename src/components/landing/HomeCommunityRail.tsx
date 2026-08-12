@@ -52,11 +52,8 @@ function CommunityCard({ href, external, kicker, title, detail, icon, accent = "
   );
 }
 
-/** Homepage community + checkout rail — honest tier copy (Discord is not free). */
+/** Homepage community + checkout rail — X + Discord free; Whop for paid desk access. */
 export function HomeCommunityRail() {
-  const whopStore = WHOP_CHECKOUT.store || "/pricing";
-  const discordHref = WHOP_CHECKOUT.community || "/pricing";
-
   return (
     <section className="sec-community" id="community">
       <div className="w">
@@ -70,8 +67,8 @@ export function HomeCommunityRail() {
             <span className="gt">Join the floor.</span>
           </h2>
           <p className="community-sub">
-            Market reads and session color on X are free. Discord access ships with a paid membership — Premium
-            includes the full platform plus the private server.
+            Session reads on X and the community Discord are free. When you are ready for the full live desk,
+            checkout runs through Whop.
           </p>
         </div>
 
@@ -86,11 +83,21 @@ export function HomeCommunityRail() {
             accent="bull"
           />
 
+          <CommunityCard
+            href={SITE.social.discord.url}
+            external
+            kicker="Free"
+            title="Join the Discord"
+            detail="Daily market reads, session discussion, and the community floor — open invite, no paywall."
+            icon={<SvgIcon d={ICON_DISCORD} size={20} />}
+            accent="cyan"
+          />
+
           {WHOP_CHECKOUT.store ? (
             <CommunityCard
               href={WHOP_CHECKOUT.store}
               external
-              kicker="Checkout"
+              kicker="Desk access"
               title="View plans on Whop"
               detail={`SPX Slayer from ${usd(MEMBERSHIP_PRICING.community)}/mo · Premium from ${usd(MEMBERSHIP_PRICING.monthly)}/mo.`}
               icon={
@@ -103,7 +110,7 @@ export function HomeCommunityRail() {
           ) : (
             <CommunityCard
               href="/pricing"
-              kicker="Plans"
+              kicker="Desk access"
               title="See membership options"
               detail="Compare SPX Slayer and Premium tiers on the pricing page."
               icon={
@@ -114,20 +121,6 @@ export function HomeCommunityRail() {
               accent="violet"
             />
           )}
-
-          <CommunityCard
-            href={discordHref}
-            external={Boolean(WHOP_CHECKOUT.community)}
-            kicker="Members"
-            title="Join the Discord"
-            detail={
-              WHOP_CHECKOUT.community
-                ? "Private server — Community Discord tier or included with Premium."
-                : "Included with Community and Premium — see pricing for access."
-            }
-            icon={<SvgIcon d={ICON_DISCORD} size={20} />}
-            accent="cyan"
-          />
         </div>
       </div>
     </section>
