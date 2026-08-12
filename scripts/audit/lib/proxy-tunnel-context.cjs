@@ -39,7 +39,37 @@ function proxyFetch(url, method, hdrs, body, timeoutMs = 20000) {
   const u = new URL(url);
   const p = new URL(PROXY_URL);
   return new Promise((resolve, reject) => {
-    const kill = setTimeout(() => reject(new Error("timeout")), timeoutMs);
+    /**
+     * Every exit from this promise MUST tear the tunnel down.
+     *
+     * Each call opens a CONNECT tunnel through the agent proxy and a TLS socket inside it. The
+     * timeout path used to `reject()` and walk away, leaving both alive forever — and prod API
+     * timeouts are common enough during an audit (a slow /gex-ladder, a cold matrix) that a long
+     * run leaked dozens. The agent proxy then runs out of tunnels and refuses new CONNECTs, so
+     * Chromium reports ERR_CONNECTION_RESET while the proxy's own `recentRelayFailures` stays
+     * EMPTY — it is saturated, not failing, so it has nothing to report.
+     *
+     * That signature is indistinguishable from "Chromium has no network", which is the documented
+     * baseline condition in this sandbox, so it reads as environmental rather than as a leak. It
+     * cost a full multi-page sweep: the first page passed and every page after it failed to
+     * navigate, on every run longer than a couple of minutes.
+     *
+     * Measured: 3 pages at 3 controls each pass; the SAME 3 pages at 18 controls each fail after
+     * the first. Time and request volume, not the pages.
+     */
+    let settled = false;
+    let sockRef = null;
+    let tlsRef = null;
+    const done = (fn, arg) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(kill);
+      try { tlsRef?.destroy(); } catch { /* already gone */ }
+      try { sockRef?.destroy(); } catch { /* already gone */ }
+      try { cReq.destroy(); } catch { /* already gone */ }
+      fn(arg);
+    };
+    const kill = setTimeout(() => done(reject, new Error("timeout")), timeoutMs);
 
     const cReq = http.request({
       host: p.hostname,
@@ -47,16 +77,10 @@ function proxyFetch(url, method, hdrs, body, timeoutMs = 20000) {
       method: "CONNECT",
       path: `${u.hostname}:${u.port || 443}`,
     });
-    cReq.on("error", (e) => {
-      clearTimeout(kill);
-      reject(e);
-    });
+    cReq.on("error", (e) => done(reject, e));
     cReq.on("connect", (res, sock) => {
-      if (res.statusCode !== 200) {
-        clearTimeout(kill);
-        sock.destroy();
-        return reject(new Error(`CONNECT ${res.statusCode}`));
-      }
+      sockRef = sock;
+      if (res.statusCode !== 200) return done(reject, new Error(`CONNECT ${res.statusCode}`));
 
       const ts = tls.connect({ socket: sock, host: u.hostname, servername: u.hostname, ca }, () => {
         const rh = Object.assign({}, hdrs, {
@@ -86,14 +110,14 @@ function proxyFetch(url, method, hdrs, body, timeoutMs = 20000) {
         if (body?.length) ts.write(body);
       });
 
+      tlsRef = ts;
       const bufs = [];
       ts.on("data", (c) => bufs.push(c));
       ts.on("end", () => {
-        clearTimeout(kill);
         const all = Buffer.concat(bufs);
         const s = all.toString("latin1");
         const sep = s.indexOf("\r\n\r\n");
-        if (sep < 0) return resolve({ status: 200, headers: {}, body: Buffer.alloc(0) });
+        if (sep < 0) return done(resolve, { status: 200, headers: {}, body: Buffer.alloc(0) });
         const hdr = s.slice(0, sep);
         const bdy = all.slice(sep + 4);
         const st = +(hdr.match(/^HTTP\/[\d.]+ (\d+)/)?.[1] || 200);
@@ -105,12 +129,9 @@ function proxyFetch(url, method, hdrs, body, timeoutMs = 20000) {
             const i = l.indexOf(":");
             if (i > 0) rh2[l.slice(0, i).trim().toLowerCase()] = l.slice(i + 1).trim();
           });
-        resolve({ status: st, headers: rh2, body: bdy });
+        done(resolve, { status: st, headers: rh2, body: bdy });
       });
-      ts.on("error", (e) => {
-        clearTimeout(kill);
-        reject(e);
-      });
+      ts.on("error", (e) => done(reject, e));
     });
     cReq.end();
   });

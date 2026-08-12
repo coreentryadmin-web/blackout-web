@@ -216,9 +216,23 @@ async function auditPage(session, path, device) {
   );
   try {
     const page = await ctx.newPage();
-    // The desk holds a per-second SSE stream open; the tunnel never sees it end, so anything that
-    // waits on network-idle would hang forever. Blocked; readiness is established by polling.
-    await page.route("**/api/market/vector/stream**", (r) => r.abort());
+    // ABORT EVERY SSE STREAM, not one hardcoded path.
+    //
+    // proxy-tunnel-context resolves a routed request on socket END, and an SSE stream never ends by
+    // design, so its handler is held to STREAM_TIMEOUT_MS (180s) — and Playwright SERIALISES route
+    // handling, so one open stream stalls every request behind it. Blocking only
+    // `/api/market/vector/stream` left `/api/market/spx/pulse/stream` and `.../spot-stream` open,
+    // which is why a multi-page sweep died: the first desk page worked and every page after it
+    // failed with ERR_CONNECTION_RESET. Three stream-free pages in the same process sweep fine,
+    // which is what isolated the cause.
+    //
+    // The desk treats SSE as optional and falls back to SWR polling (this sandbox blocks WebSockets
+    // outright, so the polling path is the one that has to work here anyway). The honest cost: this
+    // harness CANNOT validate push-freshness. It validates everything the polling path renders.
+    await page.route(
+      (u) => /(^|\/|-)(stream|sse|events)(\?|$)/.test(u.pathname + u.search),
+      (r) => r.abort()
+    );
 
     let consoleErrors = [];
     let failedRequests = [];

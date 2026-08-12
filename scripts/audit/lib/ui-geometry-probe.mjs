@@ -45,6 +45,44 @@ export async function probeGeometry(page) {
         return false;
       };
 
+      /**
+       * How much of a node actually survives its `overflow: hidden` ancestors, as a fraction of its
+       * own area. 1 = fully visible, 0 = entirely clipped away.
+       *
+       * This is the difference between a COLLAPSE and a DEFECT, and both predicates need it.
+       * A closed `<details>` accordion keeps its answer in the DOM at full height and hides it by
+       * clipping the parent to the summary — so the answer's rect still reports where it WOULD be,
+       * overlapping whatever is painted below. Measured on /pricing: the answer `<p>` spans
+       * y=2075..2162 while its `details.faq-item` parent ends at y=2076, and the "Full refund
+       * policy →" link two sections down sits at y=2102..2121. Invisible text, real rect, false
+       * collision.
+       *
+       * The fraction separates the two cleanly. A collapsed accordion keeps ~1% of its area; the
+       * GEX ladder's clipped reset button keeps ~55% (21.6px of a 39px button inside the rail)
+       * while poking 17px out. So: mostly-clipped means hidden by design, partly-clipped means
+       * something is spilling out of its box.
+       */
+      const visibleFraction = (el) => {
+        const r = el.getBoundingClientRect();
+        const area = r.width * r.height;
+        if (area <= 0) return 0;
+        let l = r.left;
+        let t = r.top;
+        let rt = r.right;
+        let b = r.bottom;
+        for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+          const s = getComputedStyle(p);
+          if (s.overflowX !== "hidden" && s.overflowY !== "hidden") continue;
+          const pr = p.getBoundingClientRect();
+          if (pr.width === 0 || pr.height === 0) continue;
+          if (s.overflowX === "hidden") { l = Math.max(l, pr.left); rt = Math.min(rt, pr.right); }
+          if (s.overflowY === "hidden") { t = Math.max(t, pr.top); b = Math.min(b, pr.bottom); }
+        }
+        return Math.max(0, rt - l) * Math.max(0, b - t) / area;
+      };
+      /** Clipped away to nothing = deliberately hidden (collapsed accordion, closed drawer). */
+      const HIDDEN_BY_CLIP = 0.5;
+
       const leaves = [...document.querySelectorAll("body *")].filter(
         (el) => el.children.length === 0 && (el.textContent ?? "").trim() && vis(el)
       );
@@ -66,6 +104,8 @@ export async function probeGeometry(page) {
       for (const el of leaves) {
         const r = el.getBoundingClientRect();
         if (r.width === 0 || r.height === 0) continue;
+        // Mostly clipped away = hidden on purpose, not spilling out of a box. See visibleFraction.
+        if (visibleFraction(el) < HIDDEN_BY_CLIP) continue;
         for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
           const s = getComputedStyle(p);
           if (/auto|scroll/.test(s.overflowX) || /auto|scroll/.test(s.overflowY)) break;
@@ -126,12 +166,12 @@ export async function probeGeometry(page) {
       };
 
       const controls = [...document.querySelectorAll("button, a, input, select, [role=button]")].filter(
-        (el) => vis(el) && !hiddenByScroll(el)
+        (el) => vis(el) && !hiddenByScroll(el) && visibleFraction(el) >= HIDDEN_BY_CLIP
       );
       const collide = [];
       for (const t of leaves) {
         if (t.closest("[role=dialog], [aria-modal=true], [role=menu], [role=listbox], [role=tooltip]")) continue;
-        if (hiddenByScroll(t)) continue;
+        if (hiddenByScroll(t) || visibleFraction(t) < HIDDEN_BY_CLIP) continue;
         const tLayer = layer(t);
         const a = t.getBoundingClientRect();
         if (a.width === 0 || a.height === 0) continue;
