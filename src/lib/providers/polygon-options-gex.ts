@@ -2,6 +2,7 @@ import { polygonConfigured, gexHeatmapMaxBlockMs } from "./config";
 import { fetchStockSnapshot, fetchIndexSnapshot } from "./polygon";
 import { todayEtYmd } from "./spx-session";
 import { liveExpiries } from "./expiry-liveness";
+import { buildGexDepthLadder, type DepthContract } from "@/lib/gex-depth";
 import { polygonTrackedFetch } from "./polygon-rate-limiter";
 import { isHeatmapPreset } from "../heatmap-allowlist";
 import { isLiveOdteSession } from "./unusual-whales";
@@ -483,8 +484,51 @@ export type GexHeatmap = {
    * cheap Redis list inside the already-cached matrix build (one read per ticker per TTL).
    */
   history_context?: GexHistoryContext;
+  /**
+   * SYNTHETIC ORDER BOOK — forced dealer hedging flow per price level around spot.
+   *
+   * OPTIONAL + additive: absent on a legacy cached payload, and the view degrades to a "not
+   * available" state rather than drawing an empty ladder.
+   *
+   * SERVER-SIDE BY NECESSITY, not by preference. Building it means repricing every contract at
+   * ~33 hypothetical spots, which needs per-contract IV and time-to-expiry. The client payload
+   * carries `cells` — already-aggregated strike × expiry DOLLARS — so the browser structurally
+   * cannot do this. Computed once on a fresh matrix build and cached with it, exactly like the
+   * SHIFT ring, so every reader shares one computation.
+   *
+   * Scoped to the SAME near-term expiries the walls and flip use, and anchored to this payload's
+   * own `gex.total`, so the ladder describes the same book as the levels drawn beside it.
+   */
+  depth?: GexDepthBlock;
   source: "polygon";
   data_delay: string;
+};
+
+/** Serialized depth ladder — the wire form of `buildGexDepthLadder`'s result. */
+export type GexDepthBlock = {
+  /** Bands ascending by price. Empty when the ladder could not be built. */
+  levels: Array<{
+    price: number;
+    /** Signed dollars: positive = dealers must BUY, negative = must SELL. */
+    notional: number;
+    /** Signed dollars from spot out to this level. */
+    cumulative: number;
+    direction: "buy" | "sell" | "flat";
+    /** Net dealer $-gamma per 1% move with spot AT this band — the regime there, not here. */
+    gamma: number;
+  }>;
+  /** Largest |notional| on the ladder — bar scaling, so the client never rescans. */
+  max_abs_notional: number;
+  /** Repriced gamma-flip: where the damping bowl becomes an accelerating slide. */
+  crossing: number | null;
+  peak_buy: number | null;
+  peak_sell: number | null;
+  /** Band half-width and step, as fractions of spot — lets the view label the axis honestly. */
+  range_pct: number;
+  step_pct: number;
+  /** Scale applied to match `gex.total`; 1 = uncalibrated (see gex-depth.ts). */
+  calibration_factor: number;
+  contracts_used: number;
 };
 
 /**
@@ -1300,8 +1344,16 @@ export function prunePastExpiriesFromHeatmap(hm: GexHeatmap, todayYmd: string): 
     .filter(Number.isFinite)
     .sort((a, b) => b - a);
 
+  // The depth ladder CANNOT be pruned in place and must not be carried through. It was built by
+  // repricing the chain against the pre-rollover near-term expiry set, so after that set changes it
+  // describes a book that no longer exists — and unlike the cells, it holds no per-expiry breakdown
+  // to prune, only the collapsed result. Rebuilding needs the raw contracts (with IV), which a
+  // served payload does not carry. So drop it: the view reports the ladder as unavailable until the
+  // next fresh build, which is honest, where a silently stale ladder would not be.
+  const { depth: _staleDepth, ...hmWithoutDepth } = hm;
+
   return {
-    ...hm,
+    ...hmWithoutDepth,
     expiries,
     near_term_expiries:
       nearKeep.length > 0 ? nearKeep : expiries.slice(0, NEAR_TERM_EXPIRY_COUNT),
@@ -1712,6 +1764,20 @@ export function shouldEscalateToFullChain(strikesInBand: number, spot: number): 
   return strikesInBand < THIN_LADDER_STRIKES_BEFORE_FULL;
 }
 const HEATMAP_UNFILTERED_PAGE_GUARD = 12;
+
+/**
+ * Depth-ladder geometry: +/-8% of spot in 0.5% steps -> 32 bands plus spot.
+ *
+ * 8% because that is roughly the widest move worth planning around inside the near-term expiry
+ * set the ladder is scoped to; wider bands are dominated by contracts that are nearly inert.
+ * 0.5% because it keeps the row count readable on a phone (the ladder is the one gamma view that
+ * fits a narrow screen) while still resolving a wall to within half a percent.
+ *
+ * Cost is ~33 x chain-size closed-form evaluations, measured at 55-370ms across SPY/QQQ/NVDA/
+ * TSLA/ASTS/AAPL/IWM, paid ONCE per fresh matrix build and cached with it.
+ */
+const DEPTH_RANGE_PCT = 0.08;
+const DEPTH_STEP_PCT = 0.005;
 
 async function fetchHeatmapBandLoHi(
   underlying: string,
@@ -3013,6 +3079,60 @@ async function buildGexHeatmapUncached(
     maxPain
   );
 
+  // ── SYNTHETIC ORDER BOOK — forced hedging flow per price level ───────────────────────────
+  // Built from the SAME `contracts` snapshot the cells came from, scoped to the SAME near-term
+  // expiries the walls/flip above use, and anchored to the SAME net GEX — so the ladder and the
+  // levels beside it can never describe different books. Best-effort: any failure leaves `depth`
+  // undefined and the view says so, rather than blocking a matrix that is otherwise fine.
+  let depth: GexDepthBlock | undefined;
+  try {
+    const depthContracts: DepthContract[] = [];
+    for (const c of contracts) {
+      const strike = Number(c.details?.strike_price);
+      const expiry = String(c.details?.expiration_date ?? "").slice(0, 10);
+      const type = String(c.details?.contract_type ?? "").toLowerCase();
+      if (!(strike > 0) || !expiry || (type !== "call" && type !== "put")) continue;
+      depthContracts.push({
+        strike,
+        expiry,
+        type,
+        openInterest: Number(c.open_interest ?? 0),
+        iv: Number(c.implied_volatility ?? 0),
+        sharesPerContract: Number(c.details?.shares_per_contract ?? 100),
+      });
+    }
+    const ladder = buildGexDepthLadder(depthContracts, spot, {
+      todayYmd: today,
+      expiries: nearTermKeep,
+      rangePct: DEPTH_RANGE_PCT,
+      stepPct: DEPTH_STEP_PCT,
+      anchorNetGamma: gexBuilt.total,
+    });
+    if (ladder.levels.length > 0) {
+      depth = {
+        levels: ladder.levels.map((l) => ({
+          price: Number(l.price.toFixed(2)),
+          // Round at the data layer — several endpoints have shipped unrounded floats like
+          // 7499.360000000001 before (see CLAUDE.md), and this block is ~33 rows per ticker.
+          notional: Number(l.notional.toFixed(2)),
+          cumulative: Number(l.cumulative.toFixed(2)),
+          direction: l.direction,
+          gamma: Number(l.gamma.toFixed(2)),
+        })),
+        max_abs_notional: Number(ladder.maxAbsNotional.toFixed(2)),
+        crossing: ladder.crossing,
+        peak_buy: ladder.peakBuy == null ? null : Number(ladder.peakBuy.toFixed(2)),
+        peak_sell: ladder.peakSell == null ? null : Number(ladder.peakSell.toFixed(2)),
+        range_pct: DEPTH_RANGE_PCT,
+        step_pct: DEPTH_STEP_PCT,
+        calibration_factor: Number(ladder.calibrationFactor.toFixed(4)),
+        contracts_used: ladder.contractsUsed,
+      };
+    }
+  } catch (err) {
+    console.warn(`[gex-heatmap] depth ladder failed for ${root}:`, err);
+  }
+
   // VEX levels + regime (zero-vanna flip reuses the generic cumulative-cross helper).
   // NOTE: this intentionally reuses the gamma-style neg→pos crossing on cumulative vanna; it
   // marks where net dealer vanna flips sign, NOT a hard vanna support/resistance level.
@@ -3180,6 +3300,9 @@ async function buildGexHeatmapUncached(
     ...(events !== undefined ? { events } : {}),
     // Omit `history_context` when no EOD snapshot exists yet (never fabricated).
     ...(historyContext !== undefined ? { history_context: historyContext } : {}),
+    // Omit `depth` when the ladder could not be built, so the view can say "unavailable" instead
+    // of rendering an empty book that reads as "no dealer flow anywhere".
+    ...(depth !== undefined ? { depth } : {}),
     source: "polygon",
     data_delay: POLYGON_OPTIONS_DATA_DELAY,
   };

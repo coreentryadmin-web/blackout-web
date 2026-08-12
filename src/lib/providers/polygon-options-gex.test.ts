@@ -554,6 +554,57 @@ test("prunePastExpiriesFromHeatmap: drops past columns and re-sums near-term tot
   assert.equal(pruned.gex.total, 300_000);
 });
 
+test("prunePastExpiriesFromHeatmap: drops the depth ladder rather than serving a stale one", () => {
+  // The ladder is built by repricing the chain against a specific near-term expiry set. Once that
+  // set changes at the ET rollover it describes a book that no longer exists, and — unlike `cells`
+  // — it holds no per-expiry breakdown to prune, only the collapsed result. `return { ...hm }`
+  // carried it through untouched, which would have served a confidently-wrong ladder beside
+  // correctly-pruned levels. Absent is honest; stale is not.
+  const hm: GexHeatmap = {
+    ...sampleHeatmap(["2026-08-04", "2026-08-05"]),
+    depth: {
+      levels: [
+        { price: 6290, notional: 1_000, cumulative: 1_000, direction: "buy", gamma: 5 },
+        { price: 6310, notional: -1_000, cumulative: -1_000, direction: "sell", gamma: 5 },
+      ],
+      max_abs_notional: 1_000,
+      crossing: null,
+      peak_buy: 6290,
+      peak_sell: 6310,
+      range_pct: 0.08,
+      step_pct: 0.005,
+      calibration_factor: 1,
+      contracts_used: 42,
+    },
+  };
+  assert.ok(hm.depth, "fixture must actually carry a ladder or this proves nothing");
+  const pruned = prunePastExpiriesFromHeatmap(hm, "2026-08-05");
+  assert.ok(pruned);
+  assert.equal(pruned.depth, undefined);
+  // ...while everything else still prunes normally.
+  assert.deepEqual(pruned.expiries, ["2026-08-05"]);
+});
+
+test("prunePastExpiriesFromHeatmap: a matrix with no past columns is returned untouched, ladder included", () => {
+  const hm: GexHeatmap = {
+    ...sampleHeatmap(["2026-08-05", "2026-08-06"]),
+    depth: {
+      levels: [{ price: 6310, notional: -1_000, cumulative: -1_000, direction: "sell", gamma: 5 }],
+      max_abs_notional: 1_000,
+      crossing: null,
+      peak_buy: null,
+      peak_sell: 6310,
+      range_pct: 0.08,
+      step_pct: 0.005,
+      calibration_factor: 1,
+      contracts_used: 42,
+    },
+  };
+  const same = prunePastExpiriesFromHeatmap(hm, "2026-08-05");
+  assert.equal(same, hm, "no rollover happened — nothing should be rebuilt or dropped");
+  assert.ok(same?.depth);
+});
+
 test("prunePastExpiriesFromHeatmap: returns null when every column expired", () => {
   const hm = sampleHeatmap(["2026-08-04"]);
   assert.equal(prunePastExpiriesFromHeatmap(hm, "2026-08-05"), null);

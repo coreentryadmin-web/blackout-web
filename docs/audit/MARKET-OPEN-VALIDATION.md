@@ -120,10 +120,24 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — first session on 2026-08-12 (read this before the routine pass)
 
-Five fixes shipped overnight on 2026-08-11/12. **Two of them changed what members SEE and are
+Five fixes plus one new surface shipped overnight on 2026-08-11/12. **Two of them changed what members SEE and are
 deployed but NOT verified** — the board rolls empty after the close, so there were no committed
 rows to render and a "zero defects" reading would have been vacuous. These are the first things to
 check when rows exist, ahead of the routine pass.
+
+### 0. Thermal Depth tab — brand-new surface, never seen live under RTH (#2089)
+The synthetic order book ships a THIRD Thermal tab (`Forced Flow (Depth)`), GEX-lens only. Its
+numbers were validated pre-deploy against 14 live chains (`scripts/audit/gex-depth-validate.mjs`,
+all PASS, flow/gamma coherence 100%) and its render was validated on prod at desktop 1440 + phone
+430 (`scripts/audit/depth-ladder-ui-audit.mjs`). **But every one of those runs happened outside RTH.**
+What is genuinely unproven until the open:
+- the ladder under a MOVING spot — every rung is recomputed on each fresh matrix build, so a fast
+  tape is the first time the bars animate rather than sit still;
+- the `crossing` line when a ticker actually crosses its regime intraday;
+- whether the anchor stays inside its 0.4–2.5 band once RTH greeks and IV are live (off-hours IV is
+  the stalest input the ladder has).
+Re-run both harnesses during RTH. **Remember the matrix is CACHED** — a check within seconds of a
+deploy proves nothing until the cache turns over.
 
 ### 1. `?DTE` on the 0DTE board — the fix is live, the proof is not (#2075)
 Before the fix, EVERY row on the closed board read `RIOT 21P · ?DTE`. `zerodte-sources.ts`
