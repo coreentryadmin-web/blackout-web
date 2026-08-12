@@ -11,6 +11,7 @@
 import type { ZeroDteDeckSource } from "./adapters";
 import type { ThesisHealthPayload } from "@/lib/zerodte/thesis-health";
 import { resolveFreshFindStatus, type SessionHeatState } from "@/lib/zerodte/board";
+import { ledgerRowDte } from "./ledger-dte";
 
 import type { DiscoveryFunnelHint } from "@/lib/zerodte/discovery-funnel-hint";
 import type { MarketStateSnapshot } from "@/lib/zerodte/market-state-engine";
@@ -103,7 +104,10 @@ function sourceFrom(
       ? ({
           direction: lg.direction as "long" | "short",
           top_strike: (lg.top_strike as number) ?? null,
-          dte: null,
+          // Recovered from the row's own OCC rather than left null — a null here renders "?DTE",
+          // and since EVERY row is ledger-only once the session closes, that hardcoded null made
+          // the whole closed board read "?DTE". See ledger-dte.ts for the reference-day choice.
+          dte: ledgerRowDte(occ, lg.first_flagged_at as string | null, lg.exit_at as string | null),
           plan: occ
             ? {
                 occ,
