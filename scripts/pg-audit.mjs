@@ -1,7 +1,6 @@
 /**
  * Shared Postgres helpers for ops audit scripts (cron-audit, ops-collect, validate-deploy).
  */
-import { execSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { auditSecret } from "./audit/lib/prod-secrets.mjs";
 
@@ -21,18 +20,12 @@ export function auditPgSsl(connectionString) {
 
 /** Resolve DATABASE_PUBLIC_URL from AWS Secrets Manager, env, or legacy Railway variables. */
 export function resolveAuditDbUrl() {
-  let dbUrl = auditSecret("DATABASE_PUBLIC_URL") || auditSecret("DATABASE_URL");
-  if (!dbUrl) {
-    try {
-      const raw = execSync("railway variables --service blackout-web --json 2>/dev/null", {
-        encoding: "utf8",
-      });
-      const vars = JSON.parse(raw);
-      dbUrl = vars.DATABASE_PUBLIC_URL || vars.DATABASE_URL;
-    } catch {
-      /* optional */
-    }
-  }
+  // Env only. The old fallback shelled out to `railway variables --service blackout-web`, and
+  // THERE IS NO RAILWAY — the platform has run on AWS ECS alone since the migration (see
+  // CLAUDE.md "All infrastructure runs on AWS ECS only"). The command cannot succeed anywhere it
+  // runs; it just costs a spawn and swallows its own error, so a missing secret surfaced as a
+  // vague null instead of "the secret is not set".
+  const dbUrl = auditSecret("DATABASE_PUBLIC_URL") || auditSecret("DATABASE_URL");
   return dbUrl?.trim() || null;
 }
 
