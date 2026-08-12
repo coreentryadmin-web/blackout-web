@@ -134,17 +134,55 @@ async function fingerprint(page) {
     .catch(() => null);
 }
 
-/** Wait for real content, by POLLING. Sampling at a fixed time measures the clock, not the page. */
+/**
+ * Wait for real content, by POLLING. Sampling at a fixed time measures the clock, not the page.
+ *
+ * READY means the page has substantial content — NOT that the word "Loading" is absent anywhere in
+ * it. A desk renders twenty panels and there is almost always one lazily filling in; requiring the
+ * whole body to be free of loading copy made a perfectly usable page read as "never left a loading
+ * state" for its full 45s timeout. That produced the false "BACK left the page unusable" findings
+ * on /heatmap and /nighthawk: Back worked fine, one panel was simply still fetching.
+ *
+ * A panel that never finishes is still worth reporting — but as its own finding, naming the panel,
+ * which is actionable in a way that "the page is loading" is not. See stuckPanels().
+ */
 async function waitReady(page) {
   const t0 = Date.now();
   let text = "";
   while (Date.now() - t0 < READY_TIMEOUT_MS) {
     text = await page.evaluate(() => document.body?.innerText ?? "").catch(() => "");
     if (BROKEN.test(text)) return { state: "broken", text };
-    if (text.length > 400 && !LOADING.test(text)) return { state: "ready", text };
+    if (text.length > 400) return { state: "ready", text };
     await page.waitForTimeout(1_200);
   }
   return { state: "loading", text };
+}
+
+/**
+ * Panels still showing loading copy once the page itself is usable.
+ *
+ * Scans ELEMENTS, and skips `script`/`style`/`template`: Next.js streams its RSC payload inside
+ * `<script>` tags, and that payload contains the word "Loading" as ordinary data. `innerText`
+ * excludes script content but `textContent` on a per-element walk does not — so a naive scan
+ * reports four permanently "stuck panels" on every Next.js page, none of which a member can see.
+ */
+async function stuckPanels(page) {
+  return page
+    .evaluate((src) => {
+      const re = new RegExp(src, "i");
+      const out = [];
+      for (const el of document.querySelectorAll("body *")) {
+        if (/^(script|style|template|noscript)$/i.test(el.tagName)) continue;
+        if (el.children.length || !re.test(el.textContent || "")) continue;
+        const s = getComputedStyle(el);
+        if (s.visibility === "hidden" || s.display === "none") continue;
+        const r = el.getBoundingClientRect();
+        if (!r.width || !r.height) continue;
+        out.push(el.textContent.trim().slice(0, 44));
+      }
+      return [...new Set(out)];
+    }, LOADING.source)
+    .catch(() => []);
 }
 
 /**
@@ -278,6 +316,16 @@ async function auditPage(session, path, device) {
       return;
     }
 
+    // A panel that is STILL fetching once the page is otherwise usable. Reported by name, and only
+    // after a grace period, because a desk panel taking a few seconds is normal, not a defect.
+    await page.waitForTimeout(6_000);
+    const stuck = await stuckPanels(page);
+    if (stuck.length) {
+      note("FAIL", `${tag}: ${stuck.length} panel(s) still LOADING after the page was usable`, {
+        panels: stuck.slice(0, 4),
+      });
+    }
+
     // Baseline geometry BEFORE any interaction, so a defect that already existed on load is not
     // blamed on the click that happened to be in front of it.
     const base = await probeGeometry(page);
@@ -289,11 +337,28 @@ async function auditPage(session, path, device) {
     }
     const baseGeo = new Set([...base.clipped, ...base.collide]);
 
-    const controls = await safeControls(page, DESTRUCTIVE_TEXT.source);
+    // POLL for controls rather than enumerating once.
+    //
+    // Readiness is measured on body TEXT, and a desk paints its copy well before it mounts its
+    // interactive chrome — so a single enumeration right after "ready" catches the page mid-mount.
+    // Loosening the text check (a desk almost always has one panel still fetching, which used to
+    // make the whole page read as "loading") moved readiness earlier and exposed this: /terminal
+    // went from 7 controls to 0 between two runs of the same harness, with no product change. A
+    // count of zero has to mean "this page has no controls", not "we asked too early".
+    let controls = [];
+    for (let i = 0; i < 8; i += 1) {
+      const found = await safeControls(page, DESTRUCTIVE_TEXT.source);
+      // Settled = the count stopped growing. Still-mounting pages grow between polls.
+      if (found.length > 0 && found.length === controls.length) { controls = found; break; }
+      controls = found;
+      await page.waitForTimeout(2_500);
+    }
     if (controls.length === 0) {
-      note("WARN", `${tag}: no safely-clickable controls found — nothing was exercised here`);
+      note("WARN", `${tag}: no safely-clickable controls found after 20s — nothing was exercised here`);
       return;
     }
+    // Re-stamp: the indices above came from the last poll, and the DOM may have moved since.
+    await safeControls(page, DESTRUCTIVE_TEXT.source);
     note("INFO", `${tag}: exercising ${Math.min(controls.length, MAX_CONTROLS)} of ${controls.length} controls`);
 
     const dead = [];
@@ -384,7 +449,9 @@ async function auditPage(session, path, device) {
         await page.goBack({ waitUntil: "domcontentloaded", timeout: 30_000 }).catch(() => {});
         const back = await waitReady(page);
         if (back.state !== "ready") {
-          note("FAIL", `${tag}: BACK from "${ctl.label}" left the page unusable (${back.state})`);
+          note("FAIL", `${tag}: BACK from "${ctl.label}" left the page unusable (${back.state})`, {
+            chars: back.text.length,
+          });
           break;
         }
         // The audit indices were stamped on the previous DOM; re-stamp for the restored one.
