@@ -122,6 +122,34 @@ async function main() {
         }
         note("PASS", `${device.name}: desk rendered (routed ${counts.ok} ok, ${counts.fail} fail)`);
 
+        // ── Phase 2: the forced-flow rail pinned to the MATRIX ───────────────────────────
+        // Checked on the Matrix tab, which is where a member actually meets it — the rail's whole
+        // point is being readable on the same line as the strike's exposure. The Depth tab below
+        // proves the ladder renders; it says nothing about whether the rail reached the matrix,
+        // which is a separate render path (one <th> + one <td> per row, behind `depthRail &&`).
+        //
+        // Desktop only: the matrix collapses to a card layout on a phone, where there is no row to
+        // pin a rail to. Asserting it there would manufacture a failure for a view that does not
+        // exist at that width.
+        if (device.desktop) {
+          const flowHeader = page.locator("th", { hasText: /^Flow$/i });
+          if ((await flowHeader.count()) === 0) {
+            note("WARN", `${device.name}: no Flow column on the matrix — Phase 2 rail absent (not yet deployed, or this payload carries no depth)`);
+          } else {
+            note("PASS", `${device.name}: matrix Flow column present`);
+            // A header with no painted cells is the failure that matters: it reserves the column,
+            // implies a reading, and shows nothing. Count cells that actually carry a colour.
+            const railCells = await page.locator("td span[style*='background']").count();
+            note(
+              railCells >= 5 ? "PASS" : "FAIL",
+              `${device.name}: ${railCells} rail cells painted on the matrix`
+            );
+          }
+          const matrixShot = join(OUT, `${device.name}-matrix-rail.png`);
+          await page.screenshot({ path: matrixShot, fullPage: false });
+          note("INFO", `${device.name}: screenshot ${matrixShot}`);
+        }
+
         // ── Open the Depth tab ───────────────────────────────────────────────────────────
         const depthTab = page
           .locator('[role="tab"]', { hasText: /Depth|Forced Flow/i })
