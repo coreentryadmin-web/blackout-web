@@ -29,7 +29,45 @@ test("wallTrailSampleSecForTicker: live scope — oracle 5s, on-demand 15s", asy
   assert.equal(wallTrailSampleSecForTicker("SPX"), ORACLE_WALL_TRAIL_SAMPLE_SEC);
   assert.equal(wallTrailSampleSecForTicker("SPY"), ORACLE_WALL_TRAIL_SAMPLE_SEC);
   assert.equal(wallTrailSampleSecForTicker("QQQ"), ORACLE_WALL_TRAIL_SAMPLE_SEC);
-  assert.equal(wallTrailSampleSecForTicker("NVDA"), NON_UNIVERSE_WALL_TRAIL_SAMPLE_SEC);
+  // PLTR is genuinely on-demand — nothing records it in the background, so its rail really is
+  // viewer-built and 15s is the honest cadence for it.
   assert.equal(wallTrailSampleSecForTicker("PLTR"), NON_UNIVERSE_WALL_TRAIL_SAMPLE_SEC);
   assert.equal(wallTrailSampleSecForTicker(null), NON_UNIVERSE_WALL_TRAIL_SAMPLE_SEC);
+});
+
+test("wallTrailSampleSecForTicker: a RECORDED-universe ticker gets 5s in live scope too", async () => {
+  const { wallTrailSampleSecForTicker } = await mod();
+  // This assertion used to read NON_UNIVERSE (15s), which is what the bug looked like from
+  // inside the unit test: it faithfully described the function and said nothing about the rail.
+  //
+  // NVDA/TSLA/AMD are in the static shared universe, so the background recorder is ALREADY
+  // stamping their rail at 5s. The SSE hub then wrote the same rail at 15s, and since both
+  // writers key by bucket time the coarser bucket swallowed two of every three observations.
+  // Measured on prod over one 77-minute window: SPX 614 samples / 5s median gap vs NVDA 207 / 15s
+  // and TSLA 115 / 30s — with every one of those names already captured at 5s upstream.
+  //
+  // The cadence belongs to the RAIL. Two writers on one rail must agree about it.
+  for (const t of ["NVDA", "TSLA", "AMD", "META", "AAPL"]) {
+    assert.equal(
+      wallTrailSampleSecForTicker(t),
+      UNIVERSE_WALL_TRAIL_SAMPLE_SEC,
+      `${t} is recorded at 5s; the live writer must not re-stamp its rail at 15s`
+    );
+  }
+});
+
+test("wallTrailSampleSecForTicker: the env override still beats every ticker rule", async () => {
+  const prev = process.env.VECTOR_WALL_TRAIL_SAMPLE_SEC;
+  process.env.VECTOR_WALL_TRAIL_SAMPLE_SEC = "20";
+  try {
+    const { wallTrailSampleSecForTicker } = await mod();
+    // The new universe branch sits AFTER the override, so an operator tuning cadence in prod is
+    // not silently overruled for exactly the tickers this change touches.
+    assert.equal(wallTrailSampleSecForTicker("NVDA"), 20);
+    assert.equal(wallTrailSampleSecForTicker("SPX"), 20);
+    assert.equal(wallTrailSampleSecForTicker("PLTR", "universe"), 20);
+  } finally {
+    if (prev == null) delete process.env.VECTOR_WALL_TRAIL_SAMPLE_SEC;
+    else process.env.VECTOR_WALL_TRAIL_SAMPLE_SEC = prev;
+  }
 });
