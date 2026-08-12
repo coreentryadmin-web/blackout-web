@@ -2018,8 +2018,20 @@ body::before {
     pointer-events: none;
   }
 
-  html.ios-app .ios-nav-context span {
+  /* The tool label is now the span itself rather than a span inside a positioned wrapper — see
+     Nav.tsx for why the overlay was removed. */
+  html.ios-app .ios-nav-context {
     text-shadow: 0 0 24px rgba(0, 230, 118, 0.35);
+    justify-self: start;
+  }
+
+  /* Declared explicitly rather than inherited from the width-dependent base template, so the three
+     children (label | collapsed brand | actions) land in known tracks at EVERY width — an iPad-width
+     iOS shell would otherwise pick up the desktop `1fr auto 1fr` and put the label in the brand's
+     track. `minmax(0, 1fr)` lets the label track shrink below its content so the label truncates
+     instead of pushing the actions off the bar. */
+  html.ios-app .nav-bar-ios-tool .nav-inner {
+    grid-template-columns: minmax(0, 1fr) auto auto;
   }
 
   html.ios-app .page-shell,
@@ -7920,11 +7932,20 @@ body::before {
     }
   }
 
+  /* WRAPS, because the rail is 139px and this header's content is not.
+     Measured live 2026-08-12 at 1440px: panel right edge 163.19px, reset-button right edge
+     180.64px — 17.5px of the button sitting OUTSIDE a container with `overflow: hidden`, so
+     "⟳ SPOT" rendered cut in half. `ml-auto` on the button (see .vector-gex-ladder-reset) pins it
+     to the right of whatever width the flex line claims, and a non-wrapping line claims more than
+     the rail has. Wrapping lets the button drop to its own line instead of off the edge; at phone
+     width (412px header) everything still fits on one line, so nothing changes there. */
   .vector-gex-ladder-head {
     display: flex;
+    flex-wrap: wrap;
     align-items: baseline;
     justify-content: space-between;
     gap: 0.5rem;
+    row-gap: 0.2rem;
     padding: 0.5rem 0.7rem;
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     flex: 0 0 auto;
@@ -8870,8 +8891,10 @@ body::before {
   }
   /* Reset-to-spot control in the ladder header. Mirrors the SPX desk's affordance so a member who
      has scrolled away has one click back to their level. */
+  /* shrink-0: the button's label is "⟳ SPOT" — a squeezed one reads as a different control. It
+     wraps to its own line rather than compressing (see .vector-gex-ladder-head). */
   .vector-gex-ladder-reset {
-    @apply ml-auto rounded border border-cyan-500/25 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-cyan-300/70 transition-colors;
+    @apply ml-auto shrink-0 rounded border border-cyan-500/25 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-cyan-300/70 transition-colors;
   }
   .vector-gex-ladder-reset:hover {
     @apply border-cyan-400/60 text-cyan-100;
