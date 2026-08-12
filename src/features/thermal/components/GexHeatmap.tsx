@@ -184,6 +184,26 @@ type Overlays = {
 };
 
 /** Restructured payload from /api/market/gex-heatmap: shared axes + gex/vex blocks. */
+/** Wire form of the depth ladder — mirrors GexDepthBlock in polygon-options-gex.ts. */
+type GexDepthPayload = {
+  levels: Array<{
+    price: number;
+    /** Signed dollars: positive = dealers must BUY, negative = must SELL. */
+    notional: number;
+    cumulative: number;
+    direction: "buy" | "sell" | "flat";
+    gamma: number;
+  }>;
+  max_abs_notional: number;
+  crossing: number | null;
+  peak_buy: number | null;
+  peak_sell: number | null;
+  range_pct: number;
+  step_pct: number;
+  calibration_factor: number;
+  contracts_used: number;
+};
+
 type GexHeatmapResponse = {
   available: boolean;
   underlying?: string;
@@ -239,6 +259,10 @@ type GexHeatmapResponse = {
     sessions: number;
   };
   overlays?: Overlays;
+  /** SYNTHETIC ORDER BOOK — forced dealer hedging flow per price band. Server-computed (repricing
+   *  the chain needs per-contract IV the client never receives) and OPTIONAL: absent on a legacy
+   *  cached payload, and deliberately DROPPED rather than pruned across the ET rollover. */
+  depth?: GexDepthPayload;
   /** Near-term expiry set that feeds walls/flip — authoritative for wall-scope chip. */
   near_term_expiries?: string[];
   /** Overlay sample time (#9) — the dark-pool / flow-by-strike overlays ride a separate ~30s
@@ -429,6 +453,15 @@ type LensVocab = {
   /** Total noun, e.g. "$-gamma" / "$-vanna" / "$-delta" / "$-charm". */
   unit: string;
 };
+
+/**
+ * Depth-ladder colours. Deliberately NOT the GEX cell palette: the matrix encodes the SIGN of an
+ * exposure, whereas the ladder encodes a DIRECTION OF TRADE. Reusing green/red there would imply
+ * "buying is bullish", which is exactly backwards in a short-gamma regime where forced buying is
+ * what accelerates a squeeze. Emerald/rose read as buy/sell on a ladder, the way a DOM does.
+ */
+const DEPTH_BUY_HEX = "#34d399";
+const DEPTH_SELL_HEX = "#fb7185";
 
 const LENS_VOCAB: Record<Lens, LensVocab> = {
   gex: { noun: "Gamma", pivot: "γ flip", pos: "long γ", neg: "short γ", unit: "$-gamma" },
@@ -2514,6 +2547,150 @@ function CompactLevel({ cell }: { cell: LevelCell }) {
   );
 }
 
+/**
+ * SYNTHETIC ORDER BOOK — the depth ladder.
+ *
+ * A volume profile shows where trading HAS happened; this shows where it MUST happen. Each rung is
+ * one price band, and the bar is the stock notional dealers are mechanically obliged to trade to
+ * stay delta-neutral if price gets there. Buying grows left of the spine, selling right, so the
+ * regime is legible as a SHAPE rather than a label: a damping bowl (long gamma — sell rallies, buy
+ * dips) versus an accelerating slide (short gamma — chase both ways).
+ *
+ * Presentational only. Every number is computed server-side by gex-depth.ts, because repricing the
+ * chain needs per-contract IV and expiry that the client payload does not carry.
+ */
+function GexDepthLadderView({
+  depth,
+  spot,
+  underlying,
+  callWall,
+  putWall,
+}: {
+  depth: GexDepthPayload;
+  spot: number;
+  underlying: string;
+  callWall: number | null;
+  putWall: number | null;
+}) {
+  const scale = depth.max_abs_notional > 0 ? depth.max_abs_notional : 1;
+  // Descending so the ladder reads like every price ladder a trader has ever used: high at the top.
+  const rungs = [...depth.levels].sort((a, b) => b.price - a.price);
+  const spotIdx = rungs.findIndex((l) => l.price < spot);
+  const bandUsd = spot * depth.step_pct;
+  const nearest = (target: number | null) =>
+    target != null && Math.abs(target - spot) <= spot * depth.range_pct
+      ? rungs.reduce((best, r) => (Math.abs(r.price - target) < Math.abs(best.price - target) ? r : best), rungs[0]!)
+      : null;
+  const callWallRung = nearest(callWall);
+  const putWallRung = nearest(putWall);
+
+  const Row = ({ l }: { l: (typeof rungs)[number] }) => {
+    const w = Math.min(100, (Math.abs(l.notional) / scale) * 100);
+    const buy = l.direction === "buy";
+    const tag =
+      l === callWallRung ? "call wall" : l === putWallRung ? "put wall" : null;
+    return (
+      <div className="flex items-center gap-1.5" key={l.price}>
+        <span className="w-[3.75rem] shrink-0 text-right font-mono text-[10px] tabular-nums text-sky-300/70">
+          {fmtStrike(l.price)}
+        </span>
+        <div className="relative h-[13px] min-w-0 flex-1">
+          {/* the spine — zero */}
+          <span aria-hidden className="absolute inset-y-[-1px] left-1/2 w-px bg-white/15" />
+          <span
+            aria-hidden
+            className="absolute top-[2px] bottom-[2px] rounded-[1px]"
+            style={{
+              width: `${w / 2}%`,
+              ...(buy
+                ? { right: "50%", backgroundColor: DEPTH_BUY_HEX, opacity: 0.85 }
+                : { left: "50%", backgroundColor: DEPTH_SELL_HEX, opacity: 0.85 }),
+            }}
+          />
+        </div>
+        <span
+          className={clsx(
+            "w-[4.5rem] shrink-0 font-mono text-[10px] tabular-nums",
+            buy ? "text-emerald-300" : l.direction === "sell" ? "text-rose-300" : "text-white/25"
+          )}
+        >
+          {l.direction === "flat" ? "·" : fmtMoney(Math.abs(l.notional))}
+        </span>
+        <span className="hidden w-[4.75rem] shrink-0 font-mono text-[9px] uppercase tracking-wider text-white/30 sm:inline">
+          {tag ?? ""}
+        </span>
+      </div>
+    );
+  };
+
+  return (
+    <div className="min-w-0">
+      <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <h3 className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-sky-300">
+          Forced dealer flow
+        </h3>
+        <span className="font-mono text-[9px] uppercase tracking-wider text-white/35">
+          {underlying} · per {(depth.step_pct * 100).toFixed(1)}% band
+        </span>
+      </div>
+      <p className="mb-3 text-[11px] leading-snug text-white/45">
+        Stock dealers must trade to stay hedged <em>if price gets there</em> — not resting orders.
+        Buying left, selling right.
+      </p>
+
+      <div
+        className="space-y-[3px]"
+        role="img"
+        aria-label={`Forced dealer hedging flow for ${underlying} by price level. Buying below spot, selling above, drawn from net dealer gamma.`}
+      >
+        {rungs.map((l, i) => (
+          <div key={l.price}>
+            {i === spotIdx && (
+              <div className="flex items-center gap-1.5 py-[3px]">
+                <span className="w-[3.75rem] shrink-0 text-right font-mono text-[10px] font-bold tabular-nums text-white">
+                  {fmtStrike(spot)}
+                </span>
+                <span aria-hidden className="h-px min-w-0 flex-1 bg-white/30" />
+                <span className="w-[4.5rem] shrink-0 font-mono text-[9px] uppercase tracking-wider text-white/60">
+                  spot
+                </span>
+                <span className="hidden w-[4.75rem] shrink-0 sm:inline" />
+              </div>
+            )}
+            <Row l={l} />
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[9px] uppercase tracking-[0.16em] text-sky-300/70">
+        <span className="flex items-center gap-1.5">
+          <span aria-hidden className="inline-block h-2 w-2 rounded-[1px]" style={{ backgroundColor: DEPTH_BUY_HEX }} />
+          dealers buy
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span aria-hidden className="inline-block h-2 w-2 rounded-[1px]" style={{ backgroundColor: DEPTH_SELL_HEX }} />
+          dealers sell
+        </span>
+        {depth.crossing != null && (
+          <span title="Where the damping bowl becomes an accelerating slide — net dealer gamma changes sign here.">
+            regime flips {fmtStrike(depth.crossing)}
+          </span>
+        )}
+        <span title={`Each band spans about ${fmtMoney(bandUsd)} of price.`}>
+          {depth.contracts_used} contracts
+        </span>
+      </div>
+
+      {/* The honest limits. These are not a disclaimer — a reader who thinks this is resting
+          liquidity will size a trade wrong, so they belong on the surface, not in a doc. */}
+      <p className="mt-2 text-[10px] leading-snug text-white/30">
+        Conditional flow, not resting liquidity. Assumes dealers hedge fully and continuously, that
+        calls are dealer-long and puts dealer-short, and holds volatility fixed across the ladder.
+      </p>
+    </div>
+  );
+}
+
 /** Matrix colour key — swatches + hover help, driven by the same constants the cells are painted
  *  from (see heatmapLegendItems). Presentational only. */
 function MatrixLegend({ lens, vocab }: { lens: GexHeatmapLens; vocab: LensVocab }) {
@@ -2635,7 +2812,7 @@ export function GexHeatmap({
   // Tab A is now the Matrix ALONE (full content width so the far-dated monthly columns
   // breathe); the Gamma Profile moved into Tab B alongside the Curve + Shift (all three
   // are strike-axis profile views, so they group naturally).
-  const [pairView, setPairView] = useState<"pair-a" | "pair-b">("pair-a");
+  const [pairView, setPairView] = useState<"pair-a" | "pair-b" | "pair-c">("pair-a");
   // Cross-tool overlay toggles (default on; auto-hidden when the overlay is null).
   const [showFlow, setShowFlow] = useState(true);
   const [showDarkPool, setShowDarkPool] = useState(true);
@@ -3986,13 +4163,21 @@ export function GexHeatmap({
         {/* View tabs — Matrix | Profile + Curve + Shift. Controlled mirror of the body
             TabPanels (both driven by `pairView`). Only meaningful with a real block. */}
         {showMatrixTabs && (
-          <Tabs value={pairView} onValueChange={(v) => setPairView(v as "pair-a" | "pair-b")}>
+          <Tabs value={pairView} onValueChange={(v) => setPairView(v as "pair-a" | "pair-b" | "pair-c")}>
             <TabList aria-label={`${lensUpper} views`} className="max-w-full overflow-x-auto">
               <Tab value="pair-a">Matrix</Tab>
               <Tab value="pair-b">
                 <span className="sm:hidden">Profile</span>
                 <span className="hidden sm:inline">{`${vocab.noun} Profile + Curve + Shift`}</span>
               </Tab>
+              {/* Depth is GEX-only: the ladder is built from dealer GAMMA, so it has no meaning
+                  under the vanna/delta/charm lenses and is hidden rather than shown empty. */}
+              {lens === "gex" && (
+                <Tab value="pair-c">
+                  <span className="sm:hidden">Depth</span>
+                  <span className="hidden sm:inline">Forced Flow (Depth)</span>
+                </Tab>
+              )}
             </TabList>
           </Tabs>
         )}
@@ -4231,7 +4416,7 @@ export function GexHeatmap({
                 • "Profile + Curve + Shift" — 3 equal columns (lg:grid-cols-3), shared
                   ExpiryScopeBar + overlay toggles above, no Largo/DarkPool rail.
               ──────────────── */}
-          <Tabs value={pairView} onValueChange={(v) => setPairView(v as "pair-a" | "pair-b")} className="mt-3">
+          <Tabs value={pairView} onValueChange={(v) => setPairView(v as "pair-a" | "pair-b" | "pair-c")} className="mt-3">
             <TabPanels>
               <TabPanel value="pair-a">{matrixPanel}</TabPanel>
               <TabPanel value="pair-b">
@@ -4245,6 +4430,29 @@ export function GexHeatmap({
                     </>
                   ) : null}
                 </div>
+              </TabPanel>
+              <TabPanel value="pair-c">
+                {data?.depth && data.depth.levels.length > 0 && !stale ? (
+                  <div className={clsx("grid grid-cols-1 gap-4", nativeShell ? "" : "lg:grid-cols-2")}>
+                    <GexDepthLadderView
+                      depth={data.depth}
+                      spot={data.spot ?? 0}
+                      underlying={data.underlying ?? ticker}
+                      callWall={data.gex?.call_wall ?? null}
+                      putWall={data.gex?.put_wall ?? null}
+                    />
+                    {!nativeShell && <div className="min-w-0">{curvePanel}</div>}
+                  </div>
+                ) : (
+                  /* Honest empty state. The ladder is dropped (not pruned) across the ET rollover
+                     and omitted entirely on a legacy cached payload, so "unavailable" is a real
+                     state a member can hit — say so rather than draw a flat book, which would read
+                     as "no dealer flow anywhere". */
+                  <p className="rounded-xl border border-white/10 bg-[rgba(8,9,14,0.4)] px-4 py-6 text-center font-mono text-[11px] text-white/40">
+                    Forced-flow ladder unavailable for this snapshot — it rebuilds on the next
+                    matrix refresh.
+                  </p>
+                )}
               </TabPanel>
             </TabPanels>
           </Tabs>

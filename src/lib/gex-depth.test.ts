@@ -271,3 +271,51 @@ describe("depth ladder — agreement with the matrix's own math", () => {
     assert.ok(Math.abs(summed - direct) < 1e-6);
   });
 });
+
+/**
+ * The view renders straight off these fields, so their SHAPE is a contract. A ladder that sorts
+ * wrong, or whose bars can exceed their track, is a rendering bug that only shows up as a picture —
+ * these catch it as a number instead.
+ */
+describe("depth ladder — what the view depends on", () => {
+  const book = chain([
+    { strike: 96, type: "put", openInterest: 8_000 },
+    { strike: 100, type: "call", openInterest: 9_000 },
+    { strike: 104, type: "call", openInterest: 4_000 },
+  ]);
+
+  it("every bar width is a valid percentage of the track", () => {
+    const l = buildGexDepthLadder(book, 100, { todayYmd: TODAY });
+    for (const lv of l.levels) {
+      const w = (Math.abs(lv.notional) / l.maxAbsNotional) * 100;
+      assert.ok(w >= 0 && w <= 100 && Number.isFinite(w), `width ${w} at ${lv.price}`);
+    }
+  });
+
+  it("exactly one rung sits either side of spot at the boundary, so the spot row lands right", () => {
+    const l = buildGexDepthLadder(book, 100, { todayYmd: TODAY, rangePct: 0.02, stepPct: 0.01 });
+    const desc = [...l.levels].sort((a, b) => b.price - a.price);
+    const firstBelow = desc.findIndex((x) => x.price < 100);
+    assert.ok(firstBelow > 0, "spot must not be at the very top of the ladder");
+    assert.ok(desc[firstBelow - 1]!.price > 100, "the rung above the split must be above spot");
+  });
+
+  it("no NaN or Infinity can reach the DOM", () => {
+    const l = buildGexDepthLadder(book, 100, { todayYmd: TODAY });
+    for (const lv of l.levels) {
+      for (const [k, v] of Object.entries(lv)) {
+        if (typeof v === "number") assert.ok(Number.isFinite(v), `${k} at ${lv.price} is ${v}`);
+      }
+    }
+    assert.ok(Number.isFinite(l.maxAbsNotional));
+    assert.ok(l.crossing == null || Number.isFinite(l.crossing));
+  });
+
+  it("a zero-gamma book yields flat rungs, not divide-by-zero bars", () => {
+    // Every contract unusable → empty ladder, and the view's `max_abs_notional > 0 ? … : 1` guard
+    // is never asked to divide by zero.
+    const l = buildGexDepthLadder(chain([{ strike: 100, type: "call", iv: 0 }]), 100, { todayYmd: TODAY });
+    assert.equal(l.levels.length, 0);
+    assert.equal(l.maxAbsNotional, 0);
+  });
+});
