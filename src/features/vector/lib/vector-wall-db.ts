@@ -62,6 +62,74 @@ export async function persistWallSampleToDb(
 }
 
 /**
+ * Upsert MANY samples in ONE statement — the durable write path for the bead recorder.
+ *
+ * WHY THIS EXISTS. `persistWallSampleToDb` issues one INSERT per sample. The recorder writes ~122
+ * tickers x 4 horizons = ~488 samples every 5 seconds, each dispatched fire-and-forget with NO
+ * concurrency bound, against a pool of `PG_POOL_MAX=4`. Demand (~98 writes/sec) exceeded what four
+ * connections could drain, so the pool's waiter queue grew without limit and every caller past the
+ * 15s `connectionTimeoutMillis` threw:
+ *
+ *   [vector-wall-db] persist failed GRAB::0dte: Error: timeout exceeded when trying to connect
+ *
+ * Observed continuously across dozens of tickers on prod 2026-08-12. The consequence was NOT a
+ * slow rail — it was silent data loss: Redis holds bead rails for 72h and Postgres is the 15-day
+ * durable mirror, so anything past the TTL was gone with no durable copy behind it.
+ *
+ * One multi-row INSERT collapses a sweep's ~488 round-trips into a handful, which takes the load
+ * from ~20x the pool's capacity to a small fraction of it. Batching is the fix rather than a bigger
+ * pool because the pool is sized against a shared PgBouncer backend budget — widening it here just
+ * moves the exhaustion to whoever else needs a connection.
+ *
+ * Same ON CONFLICT upsert semantics as the single-row path, so a re-recorded bucket still
+ * overwrites rather than duplicates. Best-effort: returns the number of rows written, 0 on any
+ * failure, and never throws into the recorder.
+ */
+export async function persistWallSamplesToDb(
+  rows: readonly { sessionYmd: string; ticker: string; sample: WallHistorySample }[]
+): Promise<number> {
+  if (rows.length === 0 || !dbConfigured()) return 0;
+  const usable = rows.filter((r) => r.sessionYmd && r.ticker && r.sample);
+  if (usable.length === 0) return 0;
+  try {
+    const values: unknown[] = [];
+    const tuples = usable.map((r, i) => {
+      const b = i * 7;
+      values.push(
+        r.ticker,
+        r.sessionYmd,
+        r.sample.time,
+        JSON.stringify(r.sample.walls),
+        r.sample.gammaFlip ?? null,
+        r.sample.vexWalls ? JSON.stringify(r.sample.vexWalls) : null,
+        r.sample.vexFlip ?? null
+      );
+      return `($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}::jsonb, $${b + 5}, $${b + 6}::jsonb, $${b + 7})`;
+    });
+    await dbQuery(
+      `
+      INSERT INTO vector_wall_history
+        (ticker, session_ymd, bucket_time, walls, gamma_flip, vex_walls, vex_flip)
+      VALUES ${tuples.join(", ")}
+      ON CONFLICT (ticker, session_ymd, bucket_time) DO UPDATE SET
+        walls = EXCLUDED.walls,
+        gamma_flip = EXCLUDED.gamma_flip,
+        vex_walls = EXCLUDED.vex_walls,
+        vex_flip = EXCLUDED.vex_flip,
+        updated_at = NOW()
+      `,
+      values
+    );
+    return usable.length;
+  } catch (err) {
+    // One line per FLUSH, not per sample — the single-row path logged ~488 lines per sweep during
+    // the outage, which buried every other signal in the worker's logs.
+    console.warn(`[vector-wall-db] batch persist failed (${usable.length} rows):`, err);
+    return 0;
+  }
+}
+
+/**
  * Load the durable per-bar rail for a session, ascending by bucket. Returns [] (never throws)
  * on any guard miss or DB error — the caller treats an empty rail as "nothing durable, use Redis".
  */
