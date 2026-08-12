@@ -447,7 +447,7 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
               <span className="badge">FULL DESK</span>
               <div className="plan" style={{ color: "var(--g)" }}>Premium</div>
               <div className="amt">{usd(MEMBERSHIP_PRICING.monthly)}<small> / mo</small></div>
-              <div className="sub">Every module + Discord — one membership</div>
+              <div className="sub">Every module — one membership</div>
               <ul className="perks">
                 <li>HELIX live options-flow</li>
                 <li>SPX Slayer 0DTE desk</li>
