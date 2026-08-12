@@ -83,6 +83,30 @@ export async function probeGeometry(page) {
       /** Clipped away to nothing = deliberately hidden (collapsed accordion, closed drawer). */
       const HIDDEN_BY_CLIP = 0.5;
 
+      /**
+       * Is this node (or an ancestor) being ANIMATED?
+       *
+       * A moving element's rect is a single frame, not a layout. The Largo input placeholder is a
+       * marquee — `animation: largo-placeholder-ltr 20s linear infinite` slides the text from
+       * `translateX(-100%)` across its `overflow: hidden` box — so at almost every instant part of
+       * it is outside its own container ON PURPOSE. Sampled mid-sweep it reported as "cut by 126px".
+       *
+       * Any moving thing will do this, so the fix is not a marquee special-case: measure only what
+       * is holding still. Geometry claims about a moving target are noise whichever way they land.
+       */
+      const animated = (el) => {
+        for (let p = el; p && p !== document.body; p = p.parentElement) {
+          const s = getComputedStyle(p);
+          if (s.animationName && s.animationName !== "none") return true;
+          if (s.transitionProperty && s.transitionProperty !== "none" && parseFloat(s.transitionDuration) > 0) {
+            // A transition only moves things while it runs; treat it as motion only if it is long
+            // enough to still be running when we look.
+            if (parseFloat(s.transitionDuration) > 0.4) return true;
+          }
+        }
+        return false;
+      };
+
       const leaves = [...document.querySelectorAll("body *")].filter(
         (el) => el.children.length === 0 && (el.textContent ?? "").trim() && vis(el)
       );
@@ -106,6 +130,7 @@ export async function probeGeometry(page) {
         if (r.width === 0 || r.height === 0) continue;
         // Mostly clipped away = hidden on purpose, not spilling out of a box. See visibleFraction.
         if (visibleFraction(el) < HIDDEN_BY_CLIP) continue;
+        if (animated(el)) continue;
         for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
           const s = getComputedStyle(p);
           if (/auto|scroll/.test(s.overflowX) || /auto|scroll/.test(s.overflowY)) break;
@@ -166,12 +191,12 @@ export async function probeGeometry(page) {
       };
 
       const controls = [...document.querySelectorAll("button, a, input, select, [role=button]")].filter(
-        (el) => vis(el) && !hiddenByScroll(el) && visibleFraction(el) >= HIDDEN_BY_CLIP
+        (el) => vis(el) && !hiddenByScroll(el) && visibleFraction(el) >= HIDDEN_BY_CLIP && !animated(el)
       );
       const collide = [];
       for (const t of leaves) {
         if (t.closest("[role=dialog], [aria-modal=true], [role=menu], [role=listbox], [role=tooltip]")) continue;
-        if (hiddenByScroll(t) || visibleFraction(t) < HIDDEN_BY_CLIP) continue;
+        if (hiddenByScroll(t) || visibleFraction(t) < HIDDEN_BY_CLIP || animated(t)) continue;
         const tLayer = layer(t);
         const a = t.getBoundingClientRect();
         if (a.width === 0 || a.height === 0) continue;
