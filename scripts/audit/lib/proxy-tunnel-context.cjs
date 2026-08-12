@@ -32,6 +32,9 @@ const DESKTOP_UA =
  * One-shot HTTPS fetch through the CONNECT tunnel. HTTP/1.0 + Connection:close guarantees the
  * server closes the socket when the body ends — no chunked ambiguity to parse.
  */
+/** Methods that carry a body and therefore require a Content-Length, even when it is 0. */
+const BODY_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
 function proxyFetch(url, method, hdrs, body, timeoutMs = 20000) {
   const u = new URL(url);
   const p = new URL(PROXY_URL);
@@ -61,7 +64,19 @@ function proxyFetch(url, method, hdrs, body, timeoutMs = 20000) {
           "Accept-Encoding": "identity",
           Connection: "close",
         });
-        if (body?.length) rh["Content-Length"] = String(body.length);
+        // Content-Length on EVERY body-bearing method, including a zero-length body.
+        //
+        // Playwright cannot expose the payload of a `navigator.sendBeacon` Blob, so analytics
+        // beacons reach us as a POST with `postDataBuffer() === null`. Forwarding those without a
+        // Content-Length made Google Analytics answer `411 Length Required`, which surfaced as a
+        // console error on EVERY audited page — a permanent, ambient FAIL in every UI harness.
+        // A harness that always reports a failure is worse than none, because it teaches whoever
+        // reads it to ignore the result.
+        if (BODY_METHODS.has(method.toUpperCase())) {
+          rh["Content-Length"] = String(body?.length ?? 0);
+        } else if (body?.length) {
+          rh["Content-Length"] = String(body.length);
+        }
         delete rh["accept-encoding"];
 
         let raw = `${method} ${u.pathname}${u.search} HTTP/1.0\r\n`;

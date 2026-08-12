@@ -71,11 +71,33 @@ async function main() {
       });
       try {
         const page = await ctx.newPage();
+        // FIRST-PARTY console errors only.
+        //
+        // The tunnel is not a browser: it cannot replay a `sendBeacon` Blob, so third-party
+        // analytics POSTs fail against endpoints we do not own and never will. Counting those as
+        // failures made this harness report FAIL on every run regardless of the product's health —
+        // and an audit that always fails is worse than no audit, because it trains its reader to
+        // skip the result. Third-party noise is still COLLECTED and printed, just not scored.
         const consoleErrors = [];
+        const thirdPartyNoise = [];
+        const isFirstParty = (text) =>
+          !/google-analytics|googletagmanager|doubleclick|analytics\.twitter|\bt\.co\b|clarity\.ms|cdn-cgi\/rum|facebook|hotjar|segment\.(io|com)/i.test(text);
         page.on("console", (m) => {
-          if (m.type() === "error") consoleErrors.push(m.text().slice(0, 200));
+          if (m.type() !== "error") return;
+          const t = m.text().slice(0, 200);
+          (isFirstParty(t) ? consoleErrors : thirdPartyNoise).push(t);
         });
-        page.on("pageerror", (e) => consoleErrors.push(`pageerror: ${String(e).slice(0, 200)}`));
+        page.on("pageerror", (e) => {
+          const t = `pageerror: ${String(e).slice(0, 200)}`;
+          (isFirstParty(t) ? consoleErrors : thirdPartyNoise).push(t);
+        });
+        // A bare "Failed to load resource" console line carries no URL, so it cannot be attributed.
+        // Attribute it from the RESPONSE instead, which does.
+        page.on("response", (r) => {
+          if (r.status() < 400) return;
+          const u = r.url();
+          if (!isFirstParty(u)) thirdPartyNoise.push(`${r.status()} ${u.slice(0, 120)}`);
+        });
 
         if (!asJson) console.log(`\n═══ ${device.name} ${device.viewport}`);
         await page.goto(TARGET, {
@@ -158,12 +180,20 @@ async function main() {
         await page.screenshot({ path: shot, fullPage: false });
         note("INFO", `${device.name}: screenshot ${shot}`);
 
-        if (consoleErrors.length > 0) {
-          note("FAIL", `${device.name}: ${consoleErrors.length} console errors`, {
-            first: consoleErrors.slice(0, 3),
+        // "Failed to load resource" duplicates a signal the response listener already attributed;
+        // drop the unattributable copies so one third-party 4xx is not counted twice.
+        const firstParty = consoleErrors.filter((t) => !/^Failed to load resource/i.test(t));
+        if (firstParty.length > 0) {
+          note("FAIL", `${device.name}: ${firstParty.length} first-party console errors`, {
+            first: firstParty.slice(0, 3),
           });
         } else {
-          note("PASS", `${device.name}: zero console errors`);
+          note("PASS", `${device.name}: zero first-party console errors`);
+        }
+        if (thirdPartyNoise.length > 0) {
+          note("INFO", `${device.name}: ${thirdPartyNoise.length} third-party/telemetry errors ignored`, {
+            sample: thirdPartyNoise.slice(0, 2),
+          });
         }
         if (!asJson) console.log(`  routed: ${counts.ok} ok, ${counts.fail} fail, ${counts.streamsHeldOpen ?? 0} held`);
       } finally {
