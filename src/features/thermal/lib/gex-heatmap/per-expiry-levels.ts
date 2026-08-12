@@ -1,97 +1,22 @@
 /**
- * Per-expiry Key Levels for the Thermal matrix.
+ * The PIN CONTEST — each expiry's share of the near-spot dealer gamma.
  *
- * WHY THIS EXISTS. The Key Levels row was scoped INCONSISTENTLY and said so in a footnote rather
- * than fixing it:
+ * Deliberately the ONLY thing in this module. Per-expiry walls / flip / net GEX are already
+ * derived in GexHeatmap by `filterStrikeTotals` + `recomputeLevels` (they drive the profile and
+ * curve); adding a second implementation here would have made a THIRD copy of the wall scan in a
+ * codebase that already had two. Those existing helpers are now wired to the Key Levels row
+ * instead, and the shared scan lives in `gexWallsFromStrikeTotals`.
  *
- *   Gamma Flip · Call Wall · Put Wall · Net GEX · King Node -> near-term AGGREGATE (all expiries)
- *   Max Pain                                                -> a SINGLE expiry (today's OI only)
+ * What was genuinely missing is this: WHICH expiry owns the gamma near spot. That is the number
+ * the "will today's expiry pin, or have dealers moved on to the next one" question turns on — not
+ * where each expiry's max pain sits. On the Thursday before monthly OpEx today's max pain can look
+ * perfectly reasonable while today's expiry holds a fifth of the near-spot gamma and pins nothing.
  *
- * So six tiles that read as one coherent picture were describing two different books. Concretely:
- * a 0DTE trader reads `call wall 780` as today's resistance, but if today's expiry carries a small
- * share of the near-spot gamma, 780 is mostly Friday's wall and today's is somewhere else. The
- * blend hides exactly the thing that matters — whether today's expiry has enough gamma to pin at
- * all, or whether dealers are already positioned around the next one.
- *
- * Everything here is derived from `gex.cells` (strike -> expiry -> net dealer $-gamma), which the
- * payload ALREADY ships. No new fetch, no new server field, for the four gamma-derived tiles.
- * (Max Pain is the exception — it needs OI, not gamma, so it comes from the server per expiry.)
- *
- * Pure and client-safe: the only import is the dependency-free cross-validation core, so the walls
- * and flip are computed by the SAME functions the server uses for the aggregate. Re-deriving them
- * here would let the per-expiry and aggregate numbers drift apart, which is the bug this module is
- * fixing, one level down.
+ * Pure and client-safe; derived from `gex.cells`, which the payload already ships.
  */
-import {
-  cumulativeGammaFlip,
-  gexWallsFromStrikeTotals,
-} from "@/lib/providers/gex-cross-validation-core";
 
 /** `gex.cells` as served: strike key -> expiry key -> net dealer dollar-gamma. */
 export type GexCells = Record<string, Record<string, number>>;
-
-export type ExpiryLevels = {
-  /** Largest positive net-gamma strike within this expiry (resistance/pin). */
-  callWall: number | null;
-  /** Largest negative net-gamma strike within this expiry (support). */
-  putWall: number | null;
-  /** Cumulative zero-gamma boundary within this expiry. */
-  flip: number | null;
-  /** Signed net dealer dollar-gamma summed across this expiry's strikes. */
-  netGex: number;
-  /** Strike carrying the largest |net gamma| — this expiry's dominant node. */
-  kingNode: number | null;
-  /** Strikes with a non-zero reading. 0 means the expiry column is empty. */
-  strikes: number;
-};
-
-/**
- * Collapse `cells` to one expiry's `strike -> netGamma` map.
- *
- * Strikes absent from that expiry are OMITTED rather than zero-filled: a strike with no contracts
- * at this expiry is not a strike with zero gamma, and zero-filling would make `kingNode` and the
- * wall scan treat "no data" as "balanced book".
- */
-export function strikeTotalsForExpiry(cells: GexCells, expiry: string): Record<string, number> {
-  const out: Record<string, number> = {};
-  if (!cells || !expiry) return out;
-  for (const [strike, byExpiry] of Object.entries(cells)) {
-    const g = byExpiry?.[expiry];
-    if (typeof g === "number" && Number.isFinite(g) && g !== 0) out[strike] = g;
-  }
-  return out;
-}
-
-/** Every Key Levels value for ONE expiry, using the server's own wall/flip math. */
-export function levelsForExpiry(cells: GexCells, expiry: string, spot: number): ExpiryLevels {
-  const totals = strikeTotalsForExpiry(cells, expiry);
-  const entries = Object.entries(totals);
-  const { callWall, putWall } = gexWallsFromStrikeTotals(totals);
-
-  let netGex = 0;
-  let kingNode: number | null = null;
-  let maxAbs = 0;
-  for (const [s, g] of entries) {
-    netGex += g;
-    const a = Math.abs(g);
-    if (a > maxAbs) {
-      maxAbs = a;
-      const strike = Number(s);
-      kingNode = Number.isFinite(strike) ? strike : kingNode;
-    }
-  }
-
-  return {
-    callWall,
-    putWall,
-    // `cumulativeGammaFlip` needs a spot to walk out from; without one there is no flip to report
-    // and a fabricated number would be worse than a dash.
-    flip: spot > 0 && entries.length > 0 ? cumulativeGammaFlip(totals, spot) : null,
-    netGex,
-    kingNode,
-    strikes: entries.length,
-  };
-}
 
 export type ExpiryGammaShare = {
   expiry: string;
