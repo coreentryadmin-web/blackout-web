@@ -11,6 +11,7 @@ import type { PublicGexSnapshot } from "@/lib/public-gex-snapshot";
 import { LandingRedesignFxLazy } from "./LandingRedesignFxLazy";
 import { MarketingAuthAnchor, MarketingAuthCta, MarketingAuthLabel } from "./MarketingAuthCta";
 import { HomeGammaHeroLink, HomeGammaPromo } from "./HomeGammaPromo";
+import { HomeCommunityRail } from "./HomeCommunityRail";
 
 /** Redesigned homepage body — server-rendered content + one client FX layer (canvas, reveal, ticker). */
 export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot }) {
@@ -362,6 +363,10 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
           </div>
         </div>
       </section>
+
+      <div className="node" aria-hidden="true" />
+
+      <HomeCommunityRail />
 
       <div className="node" aria-hidden="true" />
 

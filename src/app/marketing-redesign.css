@@ -1325,6 +1325,50 @@
   text-transform:uppercase;color:var(--rl-bull);
 }
 @media(prefers-reduced-motion:reduce){.rl .gamma-promo-scan,.rl .gamma-promo-warm-scan{animation:none!important}}
+
+/* ── Community rail (X / Whop / Discord) ── */
+.rl .sec-community{padding:clamp(3rem,7vw,5rem) 0}
+.rl .community-head{max-width:40rem;margin:0 auto;text-align:center}
+.rl .community-sub{margin-top:1rem;color:var(--rl-dim);font-size:.92rem;line-height:1.65}
+.rl .community-grid{
+  margin-top:2.25rem;display:grid;gap:1rem;
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));
+}
+.rl .community-card{
+  position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:.35rem;
+  padding:1.25rem 1.3rem 1.15rem;border-radius:14px;text-decoration:none;
+  border:1px solid var(--rl-line2);background:rgba(255,255,255,.02);
+  transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease,background .2s ease;
+  min-height:100%;
+}
+.rl .community-card:hover{
+  transform:translateY(-4px);
+  border-color:color-mix(in srgb,var(--rl-cyan) 40%,transparent);
+  background:rgba(255,255,255,.04);
+  box-shadow:0 16px 40px -18px rgba(0,0,0,.65);
+}
+.rl .community-card-bull:hover{border-color:color-mix(in srgb,var(--rl-bull) 45%,transparent);box-shadow:0 16px 40px -18px rgba(163,230,53,.15)}
+.rl .community-card-violet:hover{border-color:color-mix(in srgb,var(--rl-violet) 45%,transparent);box-shadow:0 16px 40px -18px rgba(191,95,255,.12)}
+.rl .community-card-cyan:hover{border-color:color-mix(in srgb,var(--rl-cyan) 45%,transparent);box-shadow:0 16px 40px -18px rgba(34,211,238,.15)}
+.rl .community-card-icon{
+  display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:10px;
+  border:1px solid rgba(255,255,255,.1);background:rgba(0,0,0,.35);color:var(--rl-ink);margin-bottom:.35rem;
+}
+.rl .community-card-bull .community-card-icon{color:var(--rl-bull);border-color:rgba(163,230,53,.25)}
+.rl .community-card-violet .community-card-icon{color:var(--rl-violet);border-color:rgba(191,95,255,.25)}
+.rl .community-card-cyan .community-card-icon{color:var(--rl-cyan);border-color:rgba(34,211,238,.25)}
+.rl .community-whop-mark{
+  font-family:var(--rl-disp);font-size:1rem;line-height:1;font-weight:400;letter-spacing:.04em;
+}
+.rl .community-card-kicker{
+  font-family:var(--rl-mono);font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--rl-faint);
+}
+.rl .community-card-title{font-family:var(--font-syne);font-size:1.05rem;font-weight:700;color:#fff;line-height:1.25}
+.rl .community-card-detail{font-size:.82rem;line-height:1.55;color:var(--rl-dim);flex:1}
+.rl .community-card-go{
+  margin-top:.65rem;font-family:var(--rl-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--rl-bull);
+}
+
 .rl .academy-card{display:block;padding:1.25rem 1.35rem;border-radius:14px;border:1px solid var(--rl-line2);background:rgba(255,255,255,.02);text-decoration:none;transition:border-color .2s,background .2s}
 .rl .academy-card:hover{border-color:color-mix(in srgb,var(--rl-cyan) 40%,transparent);background:rgba(34,211,238,.04)}
 .rl .academy-tag{font-family:var(--font-jetbrains);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--rl-cyan)}
