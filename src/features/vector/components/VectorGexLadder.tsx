@@ -399,22 +399,16 @@ const LadderRow = memo(function LadderRow({
               : undefined
           }
         />
-        {/* MAGNITUDE AS A BLOCK, the Thermal matrix's idiom — not a bar in its own column.
-            The bar track it replaces resolved to 0px wide in this 139px panel (fixed tracks alone
-            over-subscribed the row), so the magnitude was invisible while still costing the value
-            column the pixels that were clipping "+$93.1M" to "+$93.1". As a background fill it
-            costs no width at all. Grows leftward from the value; a floor of 3% keeps a real-but-
-            tiny strike from reading as zero exposure. */}
-        <span
-          className="vector-gex-ladder-fill"
-          aria-hidden="true"
-          style={{
-            width: `${Math.max(3, Math.round(row.magnitude * 100))}%`,
-            backgroundColor: color,
-            opacity: 0.1 + row.magnitude * 0.3,
-          }}
-        />
         <span className="vector-gex-ladder-strike">{row.strike.toLocaleString("en-US")}</span>
+        {/* The magnitude bar, restored to a real column now that the rail is 200px wide. At the old
+            139px this track resolved to exactly 0px, so the panel's primary visual never rendered.
+            A 3% floor keeps a real-but-tiny strike from reading as zero exposure. */}
+        <span className="vector-gex-ladder-bar-track">
+          <span
+            className="vector-gex-ladder-bar"
+            style={{ width: `${Math.max(3, Math.round(row.magnitude * 100))}%`, backgroundColor: color }}
+          />
+        </span>
         <span className="vector-gex-ladder-val" style={{ color }}>
           {row.isKing ? <span className="vector-gex-ladder-crown" aria-hidden="true">♛</span> : null}
           {fmtGex(row.gex)}

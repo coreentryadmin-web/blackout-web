@@ -7642,11 +7642,19 @@ body::before {
   }
 
   @media (min-width: 1280px) {
-    /* Proportions per member spec: ~10% ladder · ~60% chart · ~30% terminal. The ladder holds only a
-       few dense rows so it stays thin (min 96px so it never collapses); the terminal is the main
-       scroll surface so it gets ~30%; the chart takes the remaining ~60%. */
+    /* Proportions: ~14% ladder · ~56% chart · ~30% terminal.
+       The ladder was minmax(96px, 10%) on the reasoning that it "holds only a few dense rows so it
+       stays thin". That was wrong about its contents: it carries a strike, a magnitude bar, a
+       signed value, a migration arrow and (since the synthetic order book) a forced-flow rail.
+       Measured live at 1440px the rail resolved to 139px, the row to 124.4px, and the fixed tracks
+       alone to 125.4px — so the magnitude bar collapsed to EXACTLY 0px and the value column was
+       clipped to 35.8px, rendering "+$93.1M" as "+$93.1". A unit-less number is not a smaller
+       number, it is a wrong one: K/M/B are 1000x apart.
+       200px is the width at which the strike, a readable bar, and a full value with its unit all
+       fit — the same three-part layout the Thermal forced-flow ladder uses. The chart absorbs the
+       difference; it is minmax(0, 1fr) and has pixels to spare at this breakpoint. */
     .vector-chart-terminal-grid {
-      grid-template-columns: minmax(96px, 10%) minmax(0, 1fr) minmax(300px, 30%);
+      grid-template-columns: minmax(200px, 14%) minmax(0, 1fr) minmax(300px, 30%);
     }
     .vector-ladder-rail,
     .vector-chart-terminal-chart,
@@ -7682,7 +7690,7 @@ body::before {
        (10/53/25/12) rather than keeping the terminal's 30% and cramming the action rail in free
        space that doesn't exist. */
     .vector-chart-terminal-grid {
-      grid-template-columns: minmax(96px, 10%) minmax(0, 1fr) minmax(280px, 25%) minmax(260px, 12%);
+      grid-template-columns: minmax(200px, 13%) minmax(0, 1fr) minmax(280px, 25%) minmax(260px, 12%);
     }
     .vector-action-rail {
       grid-column: auto;
@@ -7960,38 +7968,21 @@ body::before {
     min-height: 0;
   }
 
-  /* MAGNITUDE IS THE ROW'S FILL, not a column (2026-08-12).
-     It used to be a `minmax(0, 1fr)` bar track between the strike and the value. Measured live on
-     prod, the panel is 139px wide and the fixed tracks alone came to 125.4px against a 124.4px row
-     — so the bar resolved to EXACTLY 0px and never rendered, while the value column was squeezed to
-     35.8px and clipped "+$93.1M" down to "+$93.1". A magnitude reading nobody can see, next to a
-     number whose unit is missing, which is worse than no number at all since K/M/B are 1000x apart.
-     Painting the magnitude as a background fill (the Thermal matrix's own idiom) costs zero width,
-     so every remaining pixel goes to the two things that must stay legible: strike and value. */
+  /* Strike | bar | value — the same three-part layout the Thermal forced-flow ladder uses, which
+     is the one that reads. It only works now because the rail was widened to 200px above; at the
+     old 139px the fixed tracks over-subscribed the row and the bar resolved to 0px.
+     The migration arrow no longer has its own fixed 2.4rem track: it reserved 38.4px on EVERY row —
+     more than the value column itself got — while being empty on most of them. It rides inside the
+     value cell instead, so an absent one costs nothing. */
   .vector-gex-ladder-row {
-    position: relative;
     display: grid;
-    /* flow rail | strike | value. No bar track and no reserved migration track — the migration
-       arrow now rides inside the value cell, so an empty one costs nothing. */
-    grid-template-columns: 0.3rem 2.9rem minmax(0, 1fr);
+    /* forced-flow rail | strike | magnitude bar | value */
+    grid-template-columns: 0.3rem 2.9rem minmax(2.5rem, 1fr) auto;
     align-items: center;
     gap: 0.3rem;
     padding: 0.09rem 0.25rem;
     border-radius: 0.35rem;
     font-variant-numeric: tabular-nums;
-    isolation: isolate;
-  }
-
-  /* The fill itself: width = |gex| / maxAbs, colour = call gold / put purple, painted BEHIND the
-     text. Anchored right so it grows leftward from the value, keeping the strike column readable
-     at every magnitude. */
-  .vector-gex-ladder-fill {
-    position: absolute;
-    inset-block: 0;
-    right: 0;
-    z-index: -1;
-    border-radius: 0.35rem;
-    pointer-events: none;
   }
 
   .vector-gex-ladder-king {
@@ -8002,6 +7993,22 @@ body::before {
     font-size: 0.68rem;
     color: rgba(203, 213, 225, 0.95);
     font-family: var(--font-mono, ui-monospace, monospace);
+  }
+
+  .vector-gex-ladder-bar-track {
+    position: relative;
+    height: 0.55rem;
+    min-width: 0;
+    border-radius: 0.28rem;
+    background: rgba(255, 255, 255, 0.05);
+    overflow: hidden;
+  }
+
+  .vector-gex-ladder-bar {
+    display: block;
+    height: 100%;
+    border-radius: 0.28rem;
+    opacity: 0.85;
   }
 
   .vector-gex-ladder-val {
