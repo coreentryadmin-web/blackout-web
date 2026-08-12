@@ -162,8 +162,16 @@ export function VectorToolbar(props: Props) {
         {trailSlot}
       </div>
       {/* Desktop / wide web — legacy wrap row (hidden on iOS via ios-native-compact-controls.css) */}
+      {/* Two groups side by side, each wrapping internally. Below `sm` they must each take a FULL
+          row instead: the right group is `flex-1 min-w-0 justify-end`, so on a narrow viewport it
+          is handed a sliver of the row (~113px at 430px wide) while its children — the lens and DTE
+          toggles — cannot shrink below min-content. An over-wide line inside a `justify-end`
+          container overflows to the LEFT, which slid the 0DTE/WEEKLY chips on top of the
+          INDICATORS button in the neighbouring group (measured on prod phone 430px: 47x17px and
+          13x17px of overlap, i.e. controls that literally cannot both be tapped). Desktop has room
+          for both groups, which is why this only ever showed on phones. */}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           {leadSlot}
           <VectorTimeframeSelect
             interval={interval}
@@ -179,7 +187,7 @@ export function VectorToolbar(props: Props) {
             onOpeningRangeMinutes={onOpeningRangeMinutes}
           />
         </div>
-        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
+        <div className="flex w-full min-w-0 flex-wrap items-center justify-start gap-2 sm:w-auto sm:flex-1 sm:justify-end">
           {replayLeadSlot}
           <VectorReplayControls
             replayMode={replayMode}
