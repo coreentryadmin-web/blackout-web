@@ -34,6 +34,13 @@ export type GexHeatmapForLargo = {
   nearest_wall: { strike: number; kind: "resistance" | "support"; distance_pts: number } | null;
   distance_to_flip_pct: number | null;
   shift_summary: string | null;
+  /** Polygon vs UW divergence on primary levels — same chip Thermal UI shows. */
+  cross_validation?: {
+    divergence?: number | null;
+    callWallMatch?: boolean;
+    putWallMatch?: boolean;
+    flipMatch?: boolean;
+  } | null;
   source: "polygon";
 };
 
@@ -94,9 +101,19 @@ export async function gexHeatmapForLargo(
       nearest_wall: null,
       distance_to_flip_pct: null,
       shift_summary: null,
+      cross_validation: null,
       source: "polygon",
     };
   }
+
+  const crossValidation = pos?.gex_cross_validation
+    ? {
+        divergence: pos.gex_cross_validation.divergence ?? null,
+        callWallMatch: pos.gex_cross_validation.callWallMatch,
+        putWallMatch: pos.gex_cross_validation.putWallMatch,
+        flipMatch: pos.gex_cross_validation.flipMatch,
+      }
+    : null;
 
   const totals =
     lens === "gex"
@@ -133,6 +150,7 @@ export async function gexHeatmapForLargo(
     nearest_wall: pos?.nearest_wall ?? null,
     distance_to_flip_pct: pos?.distance_to_flip_pct ?? null,
     shift_summary: pos?.shift_summary ?? hm.shift?.summary ?? null,
+    cross_validation: crossValidation,
     source: "polygon",
   };
 }

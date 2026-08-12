@@ -239,10 +239,16 @@ export function analyzeLargoQuestion(
     );
   }
   if (needsThermalRead) {
-    toolHints.push("get_positioning", "get_gex", "get_gex_regime_events");
+    toolHints.push(
+      "get_positioning",
+      "get_gex_heatmap",
+      "get_gex_matrix_changes",
+      "get_thermal_compare",
+      "get_gex_regime_events"
+    );
   }
   if (needsVectorRead) {
-    toolHints.push("get_vector_full_state", "get_positioning");
+    toolHints.push("get_vector_full_state", "get_vector_pulse", "get_wall_dynamics", "get_positioning");
   }
   if (needsVectorAnalytics) {
     // Hinted on its OWN keywords, independent of needsVectorRead: these questions name the
@@ -251,14 +257,21 @@ export function analyzeLargoQuestion(
     toolHints.push("get_vector_analytics");
   }
   if (needsHelixRead) {
-    toolHints.push("get_flow_tape", "get_flow_anomaly_near_misses", "get_global_flow");
+    toolHints.push(
+      "get_flow_tape",
+      "get_flow_brief",
+      "get_helix_tape_analytics",
+      "get_helix_derived",
+      "get_flow_anomaly_near_misses",
+      "get_global_flow"
+    );
   }
   if (needsRecordRead) {
     toolHints.push("get_spx_vs_nighthawk_comparison", "get_setup_stats", "get_trade_history");
   }
 
   if (needsSpxDesk || scopeTicker === "SPX") {
-    toolHints.push("get_spx_structure", "get_gex", "get_greek_flow");
+    toolHints.push("get_spx_structure", "get_spx_pulse", "get_spx_pin", "get_gex", "get_greek_flow");
   }
   if (needsPlayState) {
     toolHints.push("get_spx_play", "get_open_plays");

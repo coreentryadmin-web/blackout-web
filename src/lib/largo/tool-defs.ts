@@ -324,6 +324,20 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
   ),
 
   t(
+    "get_flow_brief",
+    "HELIX FlowBrief — deterministic session memo (call/put skew, whale count, massive print callouts). Same composeFlowBrief the /flows FlowBrief panel uses — NOT an LLM hallucination. Use for 'summarize the tape', 'what is flow doing', 'give me the flow brief'."
+  ),
+
+  t(
+    "get_helix_tape_analytics",
+    "HELIX secondary panels computed from the Postgres flow tape — the aggregates the UI renders as Net Premium leaderboard, Route Breakdown (SWEEP/BLOCK/SPLIT/…), Expiry Concentration, and session call/put skew. get_helix_derived covers Stacked Hits/Velocity/Split Flow; THIS tool covers the leaderboard/route/expiry panels. Optional ticker narrows the tape to one name.",
+    {
+      ticker: { type: "string", description: "Optional — omit for market-wide tape panels." },
+      limit: { type: "integer", default: 200, description: "Prints to aggregate (default 200)." },
+    }
+  ),
+
+  t(
     "get_flow_tape",
     "HELIX tape from Postgres (the flow_alerts table — same ingestion pipeline as get_postgres_flows): count, total_premium, top_tickers (top 10 by aggregated premium, each with ticker/premium/count), and recent (the flat print list — identical rows to what get_postgres_flows returns on its own; this tool calls that exact same underlying fetch and returns it verbatim as `recent`, then adds the aggregates on top). A strict SUPERSET of get_postgres_flows, never a different view — get_postgres_flows exists for when you want ONLY the bare print list. Default limit 50 (vs get_postgres_flows' 25), last 48h window, sorted biggest-premium-first by default; ticker is optional (omit for a platform-wide tape + leaderboard). No live UW REST call — contrast get_options_flow, which DOES call UW live for a single ticker and merges this same Postgres tape in, and get_global_flow, which is a pure live UW pull with no Postgres data at all. No strike_stacks (that pattern-detection is get_options_flow/get_global_flow only). If you already need this ticker's other cross-instrument context too, prefer get_ecosystem_context's flow_full_state field instead of a standalone call — it returns this exact object (via the same underlying function) plus per-print GEX-proximity enrichment.",
     {
@@ -477,6 +491,18 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
     "Material strike-level GEX changes since the last heatmap-warm snapshot — answers 'what changed in the matrix', 'is a wall building', 'which strikes moved'. Compares current Thermal cache vs the prior cron snapshot (≥$100 notional threshold). Returns largest_moves with signed gex_change and direction (stronger/weaker/flipped). Use alongside get_gex_regime_events for durable flip/wall-cross history.",
     { ...T, limit: { type: "integer", default: 15 } },
     ["ticker"]
+  ),
+
+  t(
+    "get_thermal_compare",
+    "BlackOut Thermal compare strip — side-by-side SPY/SPX/QQQ (or custom tickers) spot, change, flip, call/put walls, net GEX, gamma regime read, and cross_validation divergence. Same preset universe as the /heatmap compare cards.",
+    {
+      tickers: {
+        type: "array",
+        items: { type: "string" },
+        description: "Optional ticker list (default SPY, SPX, QQQ).",
+      },
+    }
   ),
 
   t(
@@ -679,6 +705,9 @@ export const TOOL_GROUPS = {
     "get_market_stats",
     "get_option_contract",
     "get_helix_signal_outcomes",
+    "get_flow_brief",
+    "get_helix_tape_analytics",
+    "get_helix_derived",
   ],
   stock_analysis: [
     "get_quote",
@@ -697,6 +726,7 @@ export const TOOL_GROUPS = {
     "get_positioning",
     "get_gex_heatmap",
     "get_gex_matrix_changes",
+    "get_thermal_compare",
     "get_wall_dynamics",
     "get_gex_regime_events",
     // previously orphaned — LARGO-9
@@ -879,7 +909,13 @@ export const SPX_ENGINE_TOOL_NAMES = [
 // (get_flow_tape itself lives in spx_desk, bundled there for SPX-flavored
 // routing convenience per SPX_ENGINE_TOOL_NAMES's own comment above, not in
 // flow_analysis; get_flow_anomaly_near_misses lives in platform.)
-export const HELIX_ENGINE_TOOL_NAMES = ["get_flow_tape", "get_flow_anomaly_near_misses"];
+export const HELIX_ENGINE_TOOL_NAMES = [
+  "get_flow_tape",
+  "get_flow_brief",
+  "get_helix_tape_analytics",
+  "get_helix_derived",
+  "get_flow_anomaly_near_misses",
+];
 
 // Task #137 — the cohort-membership test for "did this Largo turn touch BlackOut
 // Thermal's OWN computed/cached dealer-positioning state" (BIE's self-eval loop,
@@ -945,8 +981,16 @@ export const THERMAL_ENGINE_TOOL_NAMES = [
   "get_positioning",
   "get_gex_heatmap",
   "get_gex_matrix_changes",
+  "get_thermal_compare",
   "get_wall_dynamics",
   "get_gex_regime_events",
+];
+
+export const VECTOR_ENGINE_TOOL_NAMES = [
+  "get_vector_full_state",
+  "get_vector_pulse",
+  "get_vector_analytics",
+  "get_wall_dynamics",
 ];
 
 // Task #144 — the cohort-membership test for "did this Largo turn touch Night
