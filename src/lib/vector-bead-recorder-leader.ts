@@ -29,7 +29,26 @@ import {
   wsLeaderShouldFailOpenWithoutRedis,
 } from "@/lib/ws/leader-lock-shared";
 import { newLockToken, releaseFencedLock, renewFencedLock, type FencedRedis } from "@/lib/ws/leader-lock-fencing";
+import {
+  VECTOR_BEAD_SHARD_COUNT,
+  beadShardsForReplica,
+} from "@/features/vector/lib/vector-bead-shard";
 
+/**
+ * SLOT, not an exclusive lead.
+ *
+ * The recorder used to elect ONE leader that swept all ~122 tickers alone. Measured on prod
+ * 2026-08-12: one market-worker task pinned at 100% CPU for 40 minutes straight while its peer
+ * idled at 0.1%, with the sweep running ~6x over its 5s budget. Half the provisioned compute was
+ * doing nothing by construction.
+ *
+ * Each replica now claims a numbered SLOT and sweeps only the shards that map to it, so every
+ * running task contributes. Losing a task cannot leave a hole: the lowest live slot adopts every
+ * orphaned shard (see beadShardsForReplica), so coverage survives on a single replica — the
+ * failure mode a naive `hash % replicas` split would have introduced is exactly the silent
+ * partial-recording bug this whole investigation started from.
+ */
+const SLOT_KEY = (i: number) => `vector:bead:recorder:slot:${i}`;
 const LEADER_KEY = "vector:bead:recorder:leader";
 const LEADER_TTL_SEC = 45;
 /** Observability heartbeat — EventBridge backup cron may be unprovisioned; keep cron_job_runs fresh. */
@@ -38,10 +57,13 @@ const LOCK_TOKEN = newLockToken();
 
 type IoredisLockExtra = FencedRedis & {
   set(k: string, v: string, ex: string, ttl: number, nx: string): Promise<string | null>;
+  get(k: string): Promise<string | null>;
 };
 
 let started = false;
 let isLeader = false;
+/** Which slot this replica holds (null = none yet). Determines the shards it sweeps. */
+let mySlot: number | null = null;
 let tickTimer: ReturnType<typeof setInterval> | null = null;
 let activeTickTimer: ReturnType<typeof setInterval> | null = null;
 let leaderRefreshTimer: ReturnType<typeof setInterval> | null = null;
@@ -75,17 +97,46 @@ async function tryAcquireLead(): Promise<boolean> {
         alertWsLeaderFailClosedOnce("vector-bead-recorder");
         return false;
       }
+      // No Redis and configured to fail open: we are the only writer we know of, so take slot 0
+      // and (having no peers to observe) sweep everything via orphan adoption.
+      mySlot = 0;
       return true;
     }
     clearWsLeaderFailClosedAlert("vector-bead-recorder");
-    const result = await redis.set(LEADER_KEY, LOCK_TOKEN, "EX", LEADER_TTL_SEC, "NX");
-    return result === "OK";
+    // Claim the lowest FREE slot. First replica gets 0, second gets 1, and so on; a replica that
+    // dies frees its slot for the next task ECS starts.
+    for (let i = 0; i < VECTOR_BEAD_SHARD_COUNT; i += 1) {
+      const got = await redis.set(SLOT_KEY(i), LOCK_TOKEN, "EX", LEADER_TTL_SEC, "NX");
+      if (got === "OK") {
+        mySlot = i;
+        return true;
+      }
+    }
+    return false;
   } catch {
     if (!wsLeaderShouldFailOpenWithoutRedis()) {
       alertWsLeaderFailClosedOnce("vector-bead-recorder");
       return false;
     }
+    mySlot = 0;
     return true;
+  }
+}
+
+/** Slots currently claimed cluster-wide — drives orphan adoption. Falls back to "only ours" on a
+ *  read failure, which makes this replica adopt everything: over-covering beats under-covering. */
+async function readHeldSlots(): Promise<number[]> {
+  try {
+    const redis = await getLockRedis();
+    if (!redis) return mySlot == null ? [] : [mySlot];
+    const held: number[] = [];
+    for (let i = 0; i < VECTOR_BEAD_SHARD_COUNT; i += 1) {
+      const v = await redis.get(SLOT_KEY(i));
+      if (v) held.push(i);
+    }
+    return held.length ? held : mySlot == null ? [] : [mySlot];
+  } catch {
+    return mySlot == null ? [] : [mySlot];
   }
 }
 
@@ -96,12 +147,14 @@ function startLeaderRefresh(): void {
     void getLockRedis()
       .then(async (redis) => {
         if (!redis) return;
-        const stillMine = await renewFencedLock(redis, LEADER_KEY, LOCK_TOKEN, LEADER_TTL_SEC);
+        const key = mySlot == null ? LEADER_KEY : SLOT_KEY(mySlot);
+        const stillMine = await renewFencedLock(redis, key, LOCK_TOKEN, LEADER_TTL_SEC);
         if (!stillMine) {
           console.warn(
             "[vector-bead-recorder] lost cluster lead to another replica (stalled past TTL) — standing down"
           );
           isLeader = false;
+          mySlot = null;
         }
       })
       .catch(() => undefined);
@@ -110,13 +163,15 @@ function startLeaderRefresh(): void {
 }
 
 function releaseLead(): void {
+  const slot = mySlot;
   isLeader = false;
+  mySlot = null;
   if (leaderRefreshTimer) {
     clearInterval(leaderRefreshTimer);
     leaderRefreshTimer = null;
   }
   void getLockRedis()
-    .then((redis) => redis && releaseFencedLock(redis, LEADER_KEY, LOCK_TOKEN))
+    .then((redis) => redis && releaseFencedLock(redis, slot == null ? LEADER_KEY : SLOT_KEY(slot), LOCK_TOKEN))
     .catch(() => undefined);
 }
 
@@ -151,12 +206,18 @@ async function tick(): Promise<void> {
     isLeader = await tryAcquireLead();
     if (!isLeader) return;
     startLeaderRefresh();
-    console.log("[vector-bead-recorder] acquired cluster lead — 5s universe + 15s active-viewer bead recording");
+    console.log(
+      `[vector-bead-recorder] claimed slot ${mySlot} of ${VECTOR_BEAD_SHARD_COUNT} — 5s universe (own shards) + 15s active-viewer bead recording`
+    );
   }
 
   recordInFlight = true;
   try {
-    const result = await recordSharedUniverseWallSamples();
+    // Sweep OUR shards only, so every replica contributes instead of one doing all 122 while its
+    // peers idle. Orphaned shards (a slot no replica holds) are adopted by the lowest live slot,
+    // so a single surviving task still covers the whole universe.
+    const shards = beadShardsForReplica(mySlot, await readHeldSlots());
+    const result = await recordSharedUniverseWallSamples({ shards });
     if (result.total > 0 && result.recorded === 0) {
       console.warn(
         `[vector-bead-recorder] zero samples recorded (${result.failed}/${result.total} failed, ${result.elapsedMs}ms)`

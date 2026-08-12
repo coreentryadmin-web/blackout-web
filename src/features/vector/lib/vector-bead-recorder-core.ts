@@ -5,6 +5,7 @@ import {
   mapInPool,
   vectorBeadRecordConcurrency,
 } from "./vector-bead-recorder-logic";
+import { partitionUniverseForReplica } from "./vector-bead-shard";
 
 export { VECTOR_BEAD_RECORD_TICK_MS } from "./vector-bead-recorder-logic";
 
@@ -38,6 +39,12 @@ export type VectorBeadRecordResult = {
 export async function recordSharedUniverseWallSamples(opts?: {
   sessionYmd?: string;
   concurrency?: number;
+  /**
+   * Shards this replica owns. Omitted (or empty) = record the WHOLE universe, which is the
+   * single-leader behaviour every existing caller and test relies on — sharding is opt-in from
+   * the leader, so the HTTP backup cron keeps full coverage on its own.
+   */
+  shards?: readonly number[];
 }): Promise<VectorBeadRecordResult> {
   const sessionYmd = opts?.sessionYmd ?? todayEtYmd();
   const started = Date.now();
@@ -45,7 +52,15 @@ export async function recordSharedUniverseWallSamples(opts?: {
     return { sessionYmd: "", total: 0, recorded: 0, failed: 0, failedTickers: [], attempted: [], elapsedMs: 0 };
   }
 
-  const tickers = await listSharedUniverseTickers();
+  const all = await listSharedUniverseTickers();
+  // Own slice only, when the caller told us which shards are ours. `attempted`/`failedTickers`
+  // below are then this replica's slice — which is what the dark-ticker tracker wants: a ticker
+  // another replica owns is not "attempted and failed" here, it is simply not ours, and counting
+  // it as failed would fire a false DARK alarm on every peer's tickers.
+  const tickers =
+    opts?.shards && opts.shards.length > 0
+      ? partitionUniverseForReplica(all, opts.shards)
+      : all;
   const nowSec = Math.floor(Date.now() / 1000);
   const concurrency = opts?.concurrency ?? vectorBeadRecordConcurrency();
 

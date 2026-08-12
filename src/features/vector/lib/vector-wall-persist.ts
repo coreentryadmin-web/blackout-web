@@ -91,6 +91,40 @@ export async function loadSessionWallHistory(
  * because A's fresh read (immediately before the set) already contains B's
  * bucket and the union preserves it.
  */
+/**
+ * Last rail THIS process wrote, per (storageId, sessionYmd) — the read-side of the append.
+ *
+ * WHY: every append used to Redis-GET the ENTIRE session rail, JSON-parse it, merge one sample,
+ * and stringify the whole thing back. With ~122 tickers x 4 horizons that is ~488 full-rail
+ * read-modify-writes every 5 seconds, against arrays that grow all session (cap 5760 samples,
+ * each carrying a full wall ladder). The cost is O(rail length) per bead and therefore grows
+ * through the day — which is exactly the observed shape: the sweep ran at 10s near the open on
+ * 2026-08-07 and ~30s by midday on 2026-08-12, with one worker pinned at 100% CPU. The JSON work
+ * WAS the compute bottleneck.
+ *
+ * Serving the prior rail from memory removes the GET and the parse (half the JSON cost and ~488
+ * Redis round-trips per sweep) while still writing through, so readers on other replicas are
+ * unaffected.
+ *
+ * CORRECTNESS depends on single-writer ownership, which is why this ships WITH sharding: each
+ * ticker is swept by exactly one replica, so nothing else is appending to that rail concurrently.
+ * Two guards keep it honest even when that assumption is violated (a slot handover mid-session,
+ * an orphan adopted by a second replica):
+ *   - the merge is by bucket time and monotonic, so a stale memory rail can only ever MISS
+ *     someone else's bucket, never delete it — the next resync picks it up;
+ *   - the cache is force-refreshed from Redis every RESYNC_MS, bounding any divergence.
+ * That is strictly safer than the previous behaviour, which had no lock either and relied on the
+ * same union semantics with two replicas racing on every single write.
+ */
+const railMemo = new Map<string, { rail: WallHistorySample[]; at: number }>();
+/** How long a memoized rail may be trusted before we re-read Redis. */
+const RAIL_MEMO_RESYNC_MS = 60_000;
+
+/** Test-only reset so a suite cannot leak one test's rail into the next. */
+export function _resetWallRailMemoForTest(): void {
+  railMemo.clear();
+}
+
 export async function appendSessionWallSample(
   sessionYmd: string,
   sample: WallHistorySample,
@@ -100,10 +134,22 @@ export async function appendSessionWallSample(
   if (!sessionYmd) return false;
   const st = wallRailStorageId(ticker, horizon);
   try {
-    const existing = await loadSessionWallHistory(sessionYmd, ticker, horizon);
+    const memoKey = `${st}:${sessionYmd}`;
+    const memo = railMemo.get(memoKey);
+    const existing =
+      memo && Date.now() - memo.at < RAIL_MEMO_RESYNC_MS
+        ? memo.rail
+        : await loadSessionWallHistory(sessionYmd, ticker, horizon);
     const next = mergeWallHistory(existing, [sample]);
     if (next === existing) return false; // no-op merge — nothing new to write
     await sharedCacheSet(redisKey(st, sessionYmd), next, TTL_SEC);
+    // Memoize only AFTER the write lands. Caching an unwritten rail would let a failed Redis SET
+    // silently become this process's idea of the truth, and every later append would build on a
+    // rail that exists nowhere else — the memo must never be ahead of the store.
+    // `at` is only refreshed on a real Redis resync (below), so the resync window is measured from
+    // the last authoritative READ, not from the last write. Otherwise a busy rail written every 5s
+    // would keep pushing its own deadline out and never resync at all.
+    railMemo.set(memoKey, { rail: next, at: memo?.at ?? Date.now() });
     // Durable write-through: fan the SAME bucket out to Postgres so the rail survives Redis
     // restarts. Non-blocking and best-effort — Redis stays authoritative for the boolean
     // return, and a DB failure (or the server-only module failing to load in an unexpected
