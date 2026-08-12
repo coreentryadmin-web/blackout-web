@@ -211,8 +211,17 @@ export function VectorGexLadder({
   const bandMin = priceBand?.min ?? null;
   const bandMax = priceBand?.max ?? null;
   const rows = useMemo(
-    () => rowsInBand(ladder.rows, bandMin != null && bandMax != null ? { min: bandMin, max: bandMax } : null),
-    [ladder.rows, bandMin, bandMax]
+    () =>
+      rowsInBand(
+        ladder.rows,
+        bandMin != null && bandMax != null ? { min: bandMin, max: bandMax } : null,
+        undefined,
+        // Anchor the widen-out on SPOT, not the band centre: the panel already auto-scrolls to
+        // spot, so growing the rail around anything else would push the rows a member is looking
+        // for off the visible part of the list.
+        { anchor: spot }
+      ),
+    [ladder.rows, bandMin, bandMax, spot]
   );
   // Index of the first row at/below spot — the spot marker slots ABOVE it (rows are strike-desc, so
   // this is the boundary between strikes above spot and strikes at/below it).

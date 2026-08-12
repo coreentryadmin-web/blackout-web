@@ -25,10 +25,25 @@ export type BandedRow = { strike: number };
  * silently narrowing to a guessed band would hide walls the member expects. Degrading to today's
  * full rail is the safe direction.
  */
+/**
+ * Fewest rows the rail should ever show when the ladder HAS more available.
+ *
+ * A band-scoped rail can be far too short as well as too long. Live capture, SPY 2026-08-12: the
+ * chart was zoomed to roughly 770-776 and SPY's strikes are $1 apart, so the band matched SEVEN
+ * rows — in a panel with room for around forty. The API had served 163. The member saw a nearly
+ * empty column and no idea where the real walls sat, which is the same "where is my structure"
+ * failure the band was introduced to fix, just from the other direction.
+ *
+ * The old guard only caught the degenerate case (band matches NOTHING). Between "nothing" and
+ * "everything" there is a wide range of bands that technically match but leave the panel useless.
+ */
+const MIN_BAND_ROWS = 24;
+
 export function rowsInBand<T extends BandedRow>(
   rows: readonly T[],
   band: { min: number; max: number } | null | undefined,
-  padPct = 0.15
+  padPct = 0.15,
+  opts: { minRows?: number; anchor?: number | null } = {}
 ): readonly T[] {
   if (!band) return rows;
   const { min, max } = band;
@@ -39,7 +54,35 @@ export function rowsInBand<T extends BandedRow>(
   const kept = rows.filter((r) => Number.isFinite(r.strike) && r.strike >= lo && r.strike <= hi);
   // Never return an empty rail: if the band excludes everything (a stale band from another ticker,
   // or a chart zoomed far outside the strike set), show the full ladder rather than a blank panel.
-  return kept.length ? kept : rows;
+  if (kept.length === 0) return rows;
+
+  // Too FEW rows is its own failure. Widen back out around the anchor (spot, or the band's centre
+  // when spot is unknown) until the panel has something to show. Taking the nearest-N rather than
+  // scaling the band up by a factor keeps the result predictable on any strike spacing: SPY at $1
+  // and SPX at $5 both end up with the same row COUNT, which is what the panel's height cares
+  // about.
+  const minRows = Math.max(0, Math.floor(opts.minRows ?? MIN_BAND_ROWS));
+  // The floor applies ONLY when the ladder actually holds enough rows to fill the panel. On a thin
+  // chain the band must still win: the original reason this scoping exists is the NVDA case, where
+  // a 9-row rail spanning 162.5-300 had to be cut to the chart's 197.5-247.5 — five rows, and
+  // correctly so. Widening that back out would undo the fix rather than complement it. The panel
+  // is only "too empty" when rows are being HIDDEN, which needs the full set to be big enough to
+  // hide something worth seeing.
+  if (rows.length < minRows) return kept;
+  if (kept.length >= minRows) return kept;
+
+  const anchor =
+    opts.anchor != null && Number.isFinite(opts.anchor) ? opts.anchor : (min + max) / 2;
+  const nearest = rows
+    .filter((r) => Number.isFinite(r.strike))
+    .slice()
+    .sort((a, b) => Math.abs(a.strike - anchor) - Math.abs(b.strike - anchor))
+    .slice(0, minRows);
+  const chosen = new Set(nearest.map((r) => r.strike));
+  // Re-emit in the INPUT's order rather than the distance order used to pick: the rail renders
+  // strike-descending and the spot marker is placed by scanning for the first row at/below spot,
+  // so handing back distance-sorted rows would scramble the panel.
+  return rows.filter((r) => chosen.has(r.strike));
 }
 
 /**
