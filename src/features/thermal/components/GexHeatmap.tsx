@@ -2599,7 +2599,7 @@ function GexDepthLadderView({
           <span aria-hidden className="absolute inset-y-[-1px] left-1/2 w-px bg-white/15" />
           <span
             aria-hidden
-            className="absolute top-[2px] bottom-[2px] rounded-[1px]"
+            className="absolute inset-y-[2px] rounded-[1px]"
             style={{
               width: `${w / 2}%`,
               ...(buy
@@ -2664,11 +2664,11 @@ function GexDepthLadderView({
 
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 font-mono text-[9px] uppercase tracking-[0.16em] text-sky-300/70">
         <span className="flex items-center gap-1.5">
-          <span aria-hidden className="inline-block h-2 w-2 rounded-[1px]" style={{ backgroundColor: DEPTH_BUY_HEX }} />
+          <span aria-hidden className="inline-block size-2 rounded-[1px]" style={{ backgroundColor: DEPTH_BUY_HEX }} />
           dealers buy
         </span>
         <span className="flex items-center gap-1.5">
-          <span aria-hidden className="inline-block h-2 w-2 rounded-[1px]" style={{ backgroundColor: DEPTH_SELL_HEX }} />
+          <span aria-hidden className="inline-block size-2 rounded-[1px]" style={{ backgroundColor: DEPTH_SELL_HEX }} />
           dealers sell
         </span>
         {depth.crossing != null && (
@@ -2721,7 +2721,7 @@ function MatrixLegend({ lens, vocab }: { lens: GexHeatmapLens; vocab: LensVocab 
             <span key={item.label} className="flex items-center gap-1.5" title={item.help}>
               <span
                 aria-hidden
-                className="inline-block h-2 w-2 rounded-[2px]"
+                className="inline-block size-2 rounded-[2px]"
                 style={{ backgroundColor: item.hex, boxShadow: `0 0 6px ${item.hex}66` }}
               />
               {item.label}
