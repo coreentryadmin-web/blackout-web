@@ -56,6 +56,8 @@ const NON_UNIVERSE_TARGET_SEC = 15;
 const TOLERANCE_FACTOR = 2.2;
 /** Below this many samples the median is not a measurement — say so instead of grading it. */
 const MIN_SAMPLES = 20;
+/** Trailing window graded, in minutes. "On cadence" is a question about NOW, not about the day. */
+const WINDOW_MIN = Number(flag("window", "20")) || 20;
 
 const findings = [];
 const note = (level, msg, extra) => {
@@ -63,11 +65,28 @@ const note = (level, msg, extra) => {
   if (!asJson) console.log(`  [${level}] ${msg}${extra ? ` ${JSON.stringify(extra)}` : ""}`);
 };
 
-function medianGapSec(history) {
+/**
+ * Grade the RECENT window, not the whole session.
+ *
+ * "Is the recorder on cadence?" is a question about NOW. A session rail carries every gap the day
+ * has produced, so after a fix the old wide gaps sit in the array forever and drag the median for
+ * hours — a rail that switched from 30s to 5s twenty minutes ago still reports ~30s if you take
+ * the median over 2 hours of history. Measuring a trailing window is what makes a before/after
+ * comparison mean anything, and it is also what a member sees at the right edge of the chart.
+ *
+ * The window is anchored to the rail's own LAST sample rather than wall-clock now: a rail that
+ * stopped recording entirely would otherwise yield an empty window and read as "no data" instead
+ * of what it is.
+ */
+function medianGapSec(history, windowMin) {
   const times = history.map((s) => s.time).filter(Number.isFinite).sort((a, b) => a - b);
-  const gaps = times.slice(1).map((t, i) => t - times[i]).filter((g) => g > 0).sort((a, b) => a - b);
+  if (times.length < 2) return null;
+  const cutoff = times[times.length - 1] - windowMin * 60;
+  const recent = times.filter((t) => t >= cutoff);
+  const use = recent.length >= 2 ? recent : times;
+  const gaps = use.slice(1).map((t, i) => t - use[i]).filter((g) => g > 0).sort((a, b) => a - b);
   if (gaps.length === 0) return null;
-  return gaps[Math.floor(gaps.length / 2)];
+  return { median: gaps[Math.floor(gaps.length / 2)], n: use.length, windowed: recent.length >= 2 };
 }
 
 async function checkTicker(ticker, targetSec, membership) {
@@ -82,13 +101,18 @@ async function checkTicker(ticker, targetSec, membership) {
     note("WARN", `${ticker} (${membership}): only ${history?.length ?? 0} samples — too few to measure (http ${r.status})`);
     return;
   }
-  const med = medianGapSec(history);
+  const m = medianGapSec(history, WINDOW_MIN);
   const spanMin = Math.round((Math.max(...history.map((s) => s.time)) - Math.min(...history.map((s) => s.time))) / 60);
-  const ok = med != null && med <= targetSec * TOLERANCE_FACTOR;
+  if (m == null) {
+    note("WARN", `${ticker} (${membership}): no usable gaps — nothing to grade`);
+    return;
+  }
+  const ok = m.median <= targetSec * TOLERANCE_FACTOR;
+  const scope = m.windowed ? `last ${WINDOW_MIN}min` : `whole rail (window too sparse)`;
   note(
     ok ? "PASS" : "FAIL",
-    `${ticker} (${membership}): median gap ${med}s vs ${targetSec}s target — ${history.length} samples over ${spanMin}min`,
-    ok ? undefined : { target: targetSec, measured: med, allowed: targetSec * TOLERANCE_FACTOR }
+    `${ticker} (${membership}): median gap ${m.median}s vs ${targetSec}s target [${scope}, n=${m.n}] — rail ${history.length} samples / ${spanMin}min`,
+    ok ? undefined : { target: targetSec, measured: m.median, allowed: targetSec * TOLERANCE_FACTOR }
   );
 }
 
