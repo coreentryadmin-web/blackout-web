@@ -267,6 +267,8 @@
 .hero-sub p{font-size:.95rem;color:var(--dim);line-height:1.7;margin-bottom:1.25rem}
 .hero-sub p b{color:var(--ink);font-weight:600}
 .cta-row{display:flex;gap:.75rem;justify-content:center;flex-wrap:wrap}
+.hero-btn-ghost{opacity:.88}
+.hero-btn-ghost:hover{opacity:1}
 .hero-creds{display:flex;gap:1.5rem;justify-content:center;margin-top:1.25rem;flex-wrap:wrap}
 .hero-creds li{display:flex;align-items:center;gap:.35rem;font-family:var(--m);font-size:.6rem;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);font-weight:500}
 .hero-creds li::before{content:"";width:4px;height:4px;background:var(--g);box-shadow:0 0 6px var(--g)}
@@ -1158,7 +1160,22 @@
 .rl .academy-head{max-width:40rem;margin:0 auto;text-align:center}
 .rl .academy-sub{margin-top:1rem;color:var(--rl-muted);line-height:1.6;font-size:.95rem}
 .rl .academy-hub-link{margin-top:1.5rem;display:inline-flex}
+.rl .academy-tool-link{margin-top:1rem;margin-left:.75rem;display:inline-flex}
+@media(max-width:640px){.rl .academy-tool-link{margin-left:0}}
 .rl .academy-grid{display:grid;gap:1rem;margin-top:2.5rem;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+.rl .academy-card-free{border-color:color-mix(in srgb,var(--rl-cyan) 28%,transparent);background:rgba(34,211,238,.03)}
+.rl .sec-free-gamma{padding:0 0 clamp(2.5rem,5vw,3.5rem)}
+.rl .free-gamma-band{
+  display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:1.5rem 2rem;
+  padding:clamp(1.25rem,3vw,1.75rem) clamp(1.25rem,4vw,2rem);
+  border-radius:16px;border:1px solid color-mix(in srgb,var(--rl-cyan) 35%,transparent);
+  background:linear-gradient(135deg,rgba(34,211,238,.06) 0%,rgba(255,255,255,.02) 55%,rgba(163,230,53,.04) 100%);
+}
+.rl .free-gamma-copy{flex:1 1 280px;max-width:36rem}
+.rl .free-gamma-copy h2{margin-top:.65rem;font-family:var(--font-syne);font-size:clamp(1.35rem,3vw,1.75rem);font-weight:700;color:#fff;line-height:1.2}
+.rl .free-gamma-copy p{margin-top:.65rem;font-size:.88rem;line-height:1.6;color:var(--rl-muted)}
+.rl .free-gamma-cta{flex-shrink:0;white-space:nowrap}
+@media(max-width:640px){.rl .free-gamma-cta{width:100%;justify-content:center}}
 .rl .academy-card{display:block;padding:1.25rem 1.35rem;border-radius:14px;border:1px solid var(--rl-line2);background:rgba(255,255,255,.02);text-decoration:none;transition:border-color .2s,background .2s}
 .rl .academy-card:hover{border-color:color-mix(in srgb,var(--rl-cyan) 40%,transparent);background:rgba(34,211,238,.04)}
 .rl .academy-tag{font-family:var(--font-jetbrains);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--rl-cyan)}
