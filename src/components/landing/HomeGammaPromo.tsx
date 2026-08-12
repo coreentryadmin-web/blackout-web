@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { BorderBeam } from "@/components/ui/motion/BorderBeam";
 import { RetroGrid } from "@/components/ui/motion/RetroGrid";
-import type { PublicGexSnapshot, PublicGexTicker } from "@/lib/public-gex-snapshot";
-import { publicGexTickers } from "@/lib/public-gex-snapshot";
+import type { PublicGexSnapshot, PublicGexTicker } from "@/lib/public-gex-snapshot-types";
+import { publicGexTickers } from "@/lib/public-gex-snapshot-types";
 
 const TICKERS = publicGexTickers();
 
