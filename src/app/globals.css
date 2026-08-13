@@ -17781,8 +17781,8 @@ body::before {
 .nh-deck-lifecycle-strip__lab{font-size:9px;font-weight:700;color:var(--dk-info);letter-spacing:.08em;text-transform:uppercase}
 .nh-deck-trade-hero__fresh{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:6px 0 2px}
 .nh-deck-trade-hero__fresh-time{font-size:10px;color:var(--dk-text-primary);font-variant-numeric:tabular-nums}
-/* ── Thermal Triple Desk (SPY | SPX | QQQ) ───────────────────────────────────
-   Ultra-dense expiry columns so three live matrices share one viewport.
+/* ── Thermal sector compare grid (5 names × nearest expiry) ───────────────────
+   Columns flex to fill the desk on wide viewports; narrow screens scroll/snap.
    Atmosphere + active-column pulse — institutional, not Discordy. */
 .thermal-triple-desk {
   --tt-cyan: #22d3ee;
@@ -17791,6 +17791,7 @@ body::before {
   --tt-line: rgba(125, 211, 252, 0.18);
   position: relative;
   isolation: isolate;
+  width: 100%;
   margin-top: 0.35rem;
   padding: 0.75rem 0.65rem 0.85rem;
   border-radius: 0.85rem;
@@ -18004,6 +18005,45 @@ body::before {
   transition:
     border-color 0.2s ease,
     box-shadow 0.25s ease;
+}
+
+/* Compare grid: equal columns consume the full desk width (no dead right rail). */
+.thermal-triple-desk[data-cols] .thermal-triple-grid {
+  width: 100%;
+}
+
+.thermal-triple-desk[data-cols] .thermal-compact-table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.thermal-triple-desk[data-cols] .thermal-compact-corner,
+.thermal-triple-desk[data-cols] .thermal-compact-strike {
+  width: 36%;
+}
+
+.thermal-triple-desk[data-cols] .thermal-compact-table.is-0dte .thermal-compact-exp,
+.thermal-triple-desk[data-cols] .thermal-compact-table.is-0dte .thermal-compact-cell {
+  min-width: 0;
+}
+
+@media (min-width: 900px) {
+  .thermal-triple-desk[data-cols] .thermal-triple-grid {
+    overflow-x: visible;
+    scroll-snap-type: none;
+  }
+
+  .thermal-triple-desk[data-cols] .thermal-triple-col {
+    flex: 1 1 0;
+    min-width: 0;
+    max-width: none;
+  }
+}
+
+@media (max-width: 899px) {
+  .thermal-triple-desk[data-cols] .thermal-triple-col {
+    flex: 0 0 clamp(11.5rem, 78vw, 16.5rem);
+  }
 }
 
 .thermal-triple-col.is-active {
@@ -18471,10 +18511,27 @@ body::before {
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
-  border-left: 1px solid rgba(125, 211, 252, 0.18);
-  padding: 0 0.65rem 0 0.5rem;
   min-width: 6.5rem;
+  border-left: 1px solid rgba(125, 211, 252, 0.18);
+}
+
+.thermal-grid-sector-picker-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  width: 100%;
+  margin: 0;
+  padding: 0 0.65rem 0 0.5rem;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.thermal-grid-sector-picker-trigger:focus-visible {
+  outline: 2px solid rgba(34, 211, 238, 0.65);
+  outline-offset: 2px;
+  border-radius: 0.25rem;
 }
 
 .thermal-grid-sector-picker-value {
@@ -18493,16 +18550,72 @@ body::before {
   margin-left: auto;
   font-size: 10px;
   color: rgba(125, 211, 252, 0.75);
+  transition: transform 0.15s ease;
 }
 
-.thermal-grid-sector-picker-select {
+.thermal-grid-sector-picker-chevron.is-open {
+  transform: rotate(180deg);
+  color: #22d3ee;
+}
+
+.thermal-grid-sector-menu {
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 50;
+  min-width: 10.5rem;
+  margin: 0;
+  padding: 0.35rem;
+  list-style: none;
+  border-radius: 0.55rem;
+  border: 1px solid rgba(34, 211, 238, 0.35);
+  background: rgba(4, 6, 12, 0.98);
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(125, 211, 252, 0.06);
   opacity: 0;
-  cursor: pointer;
+  pointer-events: none;
+  transform: translateY(-4px);
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
+}
+
+.thermal-grid-sector-menu.is-open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.thermal-grid-sector-option {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 0.35rem;
+  background: transparent;
+  padding: 0.45rem 0.55rem;
+  text-align: left;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #7dd3fc;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.thermal-grid-sector-option:hover,
+.thermal-grid-sector-option.is-active {
+  background: rgba(34, 211, 238, 0.12);
+  color: #22d3ee;
+}
+
+.thermal-grid-sector-option.is-selected {
+  color: #22d3ee;
+  box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.35);
 }
 
 .thermal-grid-sector-picker--compact {

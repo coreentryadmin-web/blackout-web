@@ -1,11 +1,12 @@
 /**
- * Thermal compare-grid sector/theme bundles — each preset is five liquid names shown
+ * Thermal compare-grid sector/theme bundles — each preset is 3–7 liquid names shown
  * side-by-side on a single nearest-expiry (0DTE when listed) heat column.
  */
 
-export const THERMAL_COMPARE_PRESET_SIZE = 5;
+export const THERMAL_COMPARE_PRESET_SIZE = 7;
 
 export type ThermalComparePresetId =
+  | "indices"
   | "semis"
   | "ai"
   | "space"
@@ -19,12 +20,17 @@ export type ThermalComparePreset = {
   id: ThermalComparePresetId;
   /** Short desk label for the dropdown / rail. */
   label: string;
-  /** Five tickers — one nearest-expiry column each. */
+  /** Three to seven tickers — one nearest-expiry column each. */
   tickers: readonly string[];
 };
 
 /** Curated liquid options names per theme (not dynamic discovery — cache-friendly). */
 export const THERMAL_COMPARE_PRESETS: readonly ThermalComparePreset[] = [
+  {
+    id: "indices",
+    label: "Indices",
+    tickers: ["SPY", "SPX", "QQQ"],
+  },
   {
     id: "semis",
     label: "Semis",
@@ -42,8 +48,8 @@ export const THERMAL_COMPARE_PRESETS: readonly ThermalComparePreset[] = [
   },
   {
     id: "mega",
-    label: "Mega cap",
-    tickers: ["NVDA", "AAPL", "MSFT", "META", "AMZN"],
+    label: "Mag 7",
+    tickers: ["NVDA", "AAPL", "MSFT", "GOOG", "AMZN", "META", "TSLA"],
   },
   {
     id: "crypto",
@@ -79,6 +85,8 @@ for (const preset of THERMAL_COMPARE_PRESETS) {
     if (!TICKER_TO_PRESET.has(t)) TICKER_TO_PRESET.set(t, preset.id);
   }
 }
+// Mag 7 lists GOOG; members often search GOOGL — same book for grid routing.
+if (!TICKER_TO_PRESET.has("GOOGL")) TICKER_TO_PRESET.set("GOOGL", "mega");
 
 export function isThermalComparePresetId(raw: string | null | undefined): raw is ThermalComparePresetId {
   if (!raw) return false;
@@ -115,5 +123,5 @@ export function orderComparePresetTickers(
   return [active, ...list.filter((t) => t !== active)];
 }
 
-/** @deprecated Legacy compare default — Semis preset (indices grid removed). */
-export const THERMAL_COMPARE_TICKERS = THERMAL_COMPARE_PRESETS.find((p) => p.id === "semis")!.tickers;
+/** Legacy compare default — classic SPY / SPX / QQQ triple. */
+export const THERMAL_COMPARE_TICKERS = THERMAL_COMPARE_PRESETS.find((p) => p.id === "indices")!.tickers;

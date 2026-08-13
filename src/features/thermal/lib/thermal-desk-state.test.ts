@@ -16,8 +16,8 @@ import {
   keyLevelsFootnote,
 } from "./thermal-desk-state.ts";
 
-test("THERMAL_COMPARE_TICKERS matches the Semis preset (legacy export)", () => {
-  assert.deepEqual([...THERMAL_COMPARE_TICKERS], ["NVDA", "AMD", "AVGO", "MU", "SMCI"]);
+test("THERMAL_COMPARE_TICKERS matches the Indices preset (legacy export)", () => {
+  assert.deepEqual([...THERMAL_COMPARE_TICKERS], ["SPY", "SPX", "QQQ"]);
 });
 
 test("parseThermalTicker / lens / url state", () => {
@@ -52,8 +52,9 @@ test("buildThermalUrlSearch writes ticker/lens/compare/compareSet and drops comp
 });
 
 test("isUsableGexHeatmapPayload / shouldForceMatrixRefresh", () => {
-  assert.equal(isThermalCompareTicker("SPY"), false);
-  assert.equal(isThermalCompareTicker("NVDA"), true);
+  assert.equal(isThermalCompareTicker("SPY"), true);
+  assert.equal(isThermalCompareTicker("QQQ"), true);
+  assert.equal(isThermalCompareTicker("NVDA"), false);
   assert.equal(isUsableGexHeatmapPayload(null), false);
   assert.equal(isUsableGexHeatmapPayload({ available: true, strikes: [], expiries: ["2026-07-29"] }), false);
   assert.equal(
