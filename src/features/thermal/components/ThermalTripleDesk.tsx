@@ -25,6 +25,7 @@ import {
   readGexHeatmapSessionCache,
   writeGexHeatmapSessionCache,
 } from "@/lib/gex-heatmap-session-cache";
+import { matrixShiftForLens } from "@/lib/gex-shift-leaders";
 import ThermalCompactMatrix, {
   type ThermalCompareMode,
 } from "@/features/thermal/components/ThermalCompactMatrix";
@@ -65,6 +66,10 @@ type HeatmapPayload = {
   expiries?: string[];
   strikes?: number[];
   near_term_expiries?: string[];
+  shift?: { available?: boolean; delta_by_strike?: Record<string, number> };
+  vex_shift?: { available?: boolean; delta_by_strike?: Record<string, number> };
+  dex_shift?: { available?: boolean; delta_by_strike?: Record<string, number> };
+  charm_shift?: { available?: boolean; delta_by_strike?: Record<string, number> };
   gex?: LensBlock;
   vex?: LensBlock;
   dex?: LensBlock;
@@ -276,11 +281,11 @@ function TripleColumn({
           data={{
             ticker,
             spot: view!.spot,
-            labelSpot: headerSpot,
             strikes: view!.strikes!,
             expiries: view!.expiries!,
             nearTermExpiries: view!.near_term_expiries,
             cells: block.cells,
+            shift: matrixShiftForLens(lens, view),
           }}
           lens={lens}
           mode={mode}

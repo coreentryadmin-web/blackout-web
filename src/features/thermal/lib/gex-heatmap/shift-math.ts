@@ -21,6 +21,17 @@ export function shiftPercentForStrike(
   return (delta / Math.abs(baseline)) * 100;
 }
 
+/** "+55%" / "−12%" / "—" — whole-percent intraday shift (profile + matrix DR% parity). */
+export function fmtShiftPercentForStrike(
+  currentValue: number,
+  delta: number | null | undefined,
+): string {
+  const pct = shiftPercentForStrike(currentValue, delta);
+  if (pct == null || !Number.isFinite(pct)) return "—";
+  const sign = pct > 0 ? "+" : pct < 0 ? "−" : "";
+  return `${sign}${Math.abs(Math.round(pct))}%`;
+}
+
 /**
  * Wall STRENGTH shift: did the dealer gamma parked at this strike get HEAVIER or LIGHTER over the
  * window, and by what %? This is what a trader means by a wall "building" vs "melting".

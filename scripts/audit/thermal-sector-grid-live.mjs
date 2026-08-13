@@ -25,7 +25,7 @@ const EXPECTED_PRESETS = [
   "Crypto",
   "Energy",
   "Financials",
-  "Biotech",
+  "Healthcare",
 ];
 const REMOVED = ["Industrials", "Real Estate", "SPY / SPX / QQQ"];
 

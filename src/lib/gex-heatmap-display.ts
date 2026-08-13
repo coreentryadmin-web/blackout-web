@@ -224,8 +224,8 @@ export function fmtHeatmapStrike(n: number): string {
 }
 
 /**
- * Signed % distance of a strike from live spot — same formula as SPX desk `distance_pct`
- * and Largo rail `distancePct`: ((strike − spot) / spot) × 100.
+ * Signed % distance of a strike from live spot — desk ladder / distance context only.
+ * Matrix DR% labels use {@link fmtShiftPercentForStrike} (intraday gamma build/melt).
  */
 export function strikeDistancePct(
   spot: number | null | undefined,

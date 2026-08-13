@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { shiftPercentForStrike, wallStrengthShift } from "./shift-math";
+import { shiftPercentForStrike, wallStrengthShift, fmtShiftPercentForStrike } from "./shift-math";
 
 describe("shiftPercentForStrike", () => {
   it("computes a positive percent when the value built", () => {
@@ -78,5 +78,18 @@ describe("wallStrengthShift (magnitude-based built/melted — side-agnostic)", (
     assert.equal(wallStrengthShift(500.4, 500), null); // baseline 0.4 floored
     assert.equal(wallStrengthShift(NaN, 100), null);
     assert.equal(wallStrengthShift(100, Infinity), null);
+  });
+});
+
+describe("fmtShiftPercentForStrike", () => {
+  it("formats whole-percent shift labels with true minus sign", () => {
+    assert.equal(fmtShiftPercentForStrike(1_500_000, 500_000), "+50%");
+    assert.equal(fmtShiftPercentForStrike(-1_500_000, -500_000), "−50%");
+    assert.equal(fmtShiftPercentForStrike(1_000_000, null), "—");
+  });
+
+  it("rounds to nearest whole percent like profile badges", () => {
+    assert.equal(fmtShiftPercentForStrike(1_550_000, 550_000), "+55%");
+    assert.equal(fmtShiftPercentForStrike(2_130_000, 1_130_000), "+113%");
   });
 });

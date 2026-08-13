@@ -12,13 +12,13 @@ import {
   fmtHeatmapExpiry,
   fmtHeatmapMoneySigned,
   fmtHeatmapStrike,
-  fmtStrikeDistancePct,
   shouldShowStrikeDistancePct,
-  strikeDistancePct,
   isHeatmapTopHighlightRank,
   resolveHeatmapTopHighlightCellStyle,
   type GexHeatmapLens,
 } from "@/lib/gex-heatmap-display";
+import { fmtShiftPercentForStrike } from "@/features/thermal/lib/gex-heatmap/shift-math";
+import type { GexShiftLike } from "@/lib/gex-shift-leaders";
 import { scrollRowIntoViewCenter } from "@/features/spx/lib/spx-matrix-scroll";
 import {
   bandStrikesAroundSpot,
@@ -41,16 +41,12 @@ export type ThermalCompactPayload = {
   ticker: string;
   /** Matrix snapshot spot — drives ATM row highlight + scroll (5s cadence). */
   spot?: number | null;
-  /**
-   * Spot for % distance labels — defaults to `spot`. Compare grid passes the
-   * live header quote (push ?? matrix) so % drifts with the visible price
-   * between matrix refreshes; GEX cells still update on the matrix cadence.
-   */
-  labelSpot?: number | null;
   strikes: number[];
   expiries: string[];
   nearTermExpiries?: string[] | null;
   cells: Record<string, Record<string, number>>;
+  /** Intraday migration for the active lens — drives DR% labels on near-spot rows. */
+  shift?: GexShiftLike | null;
 };
 
 type Props = {
@@ -133,8 +129,6 @@ export default function ThermalCompactMatrix({
     THERMAL_COMPARE_STRIKE_HALF,
   );
   const spotIdx = nearestStrikeIndex(strikes, data.spot ?? null);
-  const pctSpot = data.labelSpot ?? data.spot ?? null;
-  const pctSpotIdx = nearestStrikeIndex(strikes, pctSpot);
   const spotStrike = spotIdx >= 0 ? strikes[spotIdx]! : null;
   const pinSet = new Set(pinnedStrikes);
   const peak = compactMatrixPeak(data.cells, strikes, expiries);
@@ -288,17 +282,26 @@ export default function ThermalCompactMatrix({
                   const posRank = hl?.topPositive[strike];
                   const negRank = hl?.topNegative[strike];
                   const isKing = has && n !== 0 && day?.king === strike;
-                  const showPct =
-                    !isSpot && shouldShowStrikeDistancePct(si, pctSpotIdx);
-                  const pctDelta = showPct ? strikeDistancePct(pctSpot, strike) : null;
+                  const showDrift =
+                    !isSpot && shouldShowStrikeDistancePct(si, spotIdx);
+                  let rowTotal = 0;
+                  for (const exp of expiries) {
+                    const v = row[exp];
+                    if (typeof v === "number" && Number.isFinite(v)) rowTotal += v;
+                  }
+                  const shiftDelta =
+                    data.shift?.available
+                      ? data.shift.delta_by_strike?.[String(strike)]
+                      : undefined;
+                  const driftLabel = showDrift
+                    ? fmtShiftPercentForStrike(rowTotal, shiftDelta)
+                    : null;
                   const pctToneClass =
-                    pctDelta == null || !Number.isFinite(pctDelta)
+                    driftLabel == null || driftLabel === "—"
                       ? ""
-                      : pctDelta > 0
+                      : shiftDelta != null && shiftDelta >= 0
                         ? "is-pct-pos"
-                        : pctDelta < 0
-                          ? "is-pct-neg"
-                          : "is-pct-flat";
+                        : "is-pct-neg";
 
                   let style: CSSProperties = {};
                   if (has && n !== 0) {
@@ -356,7 +359,7 @@ export default function ThermalCompactMatrix({
                       }
                     >
                       <span className="thermal-compact-cell-inner">
-                        {showPct ? (
+                        {showDrift && driftLabel && driftLabel !== "—" ? (
                           <span
                             className={[
                               "thermal-compact-cell-pct",
@@ -364,9 +367,9 @@ export default function ThermalCompactMatrix({
                             ]
                               .filter(Boolean)
                               .join(" ")}
-                            title="Distance from spot"
+                            title="Intraday gamma build/melt vs prior snapshot"
                           >
-                            {fmtStrikeDistancePct(pctSpot, strike)}
+                            {driftLabel}
                           </span>
                         ) : null}
                         <span className="thermal-compact-cell-val">

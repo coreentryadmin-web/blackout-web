@@ -20,7 +20,6 @@ import {
   fmtHeatmapExpiry,
   fmtHeatmapMoneySigned,
   fmtHeatmapStrike,
-  fmtStrikeDistancePct,
   shouldShowStrikeDistancePct,
   heatmapCellStyle,
   heatmapCellTextStyle,
@@ -36,6 +35,7 @@ import { spxMatrixScopeLabel } from "@/lib/gex-scope-labels";
 import { pickGexShiftLeaders, pickGexShiftLeaderCells, gexMatrixShiftCellKey, matrixShiftForLens, matrixShiftSinceMs } from "@/lib/gex-shift-leaders";
 import { GexShiftLeadersStrip } from "@/components/gex/GexShiftLeadersStrip";
 import { GexMatrixShiftBadge } from "@/components/gex/GexMatrixShiftBadge";
+import { fmtShiftPercentForStrike } from "@/features/thermal/lib/gex-heatmap/shift-math";
 import { SpxMatrixTapeStrip } from "./SpxMatrixTapeStrip";
 import { SpxStrikeLadderAxis } from "./SpxStrikeLadderAxis";
 import { scrollRowIntoViewCenter } from "@/features/spx/lib/spx-matrix-scroll";
@@ -681,7 +681,7 @@ export function SpxGexMatrixHeatmap({
                 <th className="sticky left-0 z-30 bg-[#08080e] py-1.5 pl-1 pr-2 text-left font-semibold">
                   <span className="block">Strike</span>
                   <span className="block text-[8px] font-normal tracking-normal text-cyan-400/80">
-                    %
+                    DR%
                   </span>
                 </th>
                 {displayExpiries.map((e) => (
@@ -712,6 +712,14 @@ export function SpxGexMatrixHeatmap({
                   odteLevels.callWall != null && strike === odteLevels.callWall;
                 const isPutWall =
                   odteLevels.putWall != null && strike === odteLevels.putWall;
+                const shiftDelta =
+                  activeShift?.available
+                    ? activeShift.delta_by_strike?.[String(strike)]
+                    : undefined;
+                const driftLabel =
+                  !isSpotRow && shouldShowStrikeDistancePct(si, spotIdx)
+                    ? fmtShiftPercentForStrike(rowTotal, shiftDelta)
+                    : null;
 
                 return (
                   <tr
@@ -735,9 +743,17 @@ export function SpxGexMatrixHeatmap({
                     >
                       <span className="flex items-baseline justify-between gap-2 min-w-[4.5rem]">
                         <span>{fmtHeatmapStrike(strike)}</span>
-                        {!isSpotRow && overlaySpot > 0 && shouldShowStrikeDistancePct(si, spotIdx) ? (
-                          <span className="text-[9px] font-semibold tabular-nums text-sky-300/90">
-                            {fmtStrikeDistancePct(overlaySpot, strike)}
+                        {driftLabel && driftLabel !== "—" ? (
+                          <span
+                            className={clsx(
+                              "text-[9px] font-semibold tabular-nums",
+                              shiftDelta != null && shiftDelta >= 0
+                                ? "text-bull"
+                                : "text-bear"
+                            )}
+                            title="Intraday gamma build/melt vs prior snapshot"
+                          >
+                            {driftLabel}
                           </span>
                         ) : null}
                       </span>

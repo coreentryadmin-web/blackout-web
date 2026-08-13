@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { gammaShareByExpiry } from "@/features/thermal/lib/gex-heatmap/per-expiry-levels";
 import { gexWallsFromStrikeTotals } from "@/lib/providers/gex-cross-validation-core";
@@ -44,7 +44,7 @@ import { prefetchGexHeatmapTickers } from "@/lib/gex-heatmap-prefetch";
 // deliberately does NOT `import "server-only"` (see the note at the top of that file).
 import { isHeatmapOverlayAllowed } from "@/lib/heatmap-allowlist";
 import { GEX_KING_COMPACT_LABEL, GEX_KING_DUAL_LABEL, GEX_KING_NODE_HELP, gexKingDualLabel } from "@/lib/gex-king-node-labels";
-import { shiftPercentForStrike } from "@/features/thermal/lib/gex-heatmap/shift-math";
+import { shiftPercentForStrike, fmtShiftPercentForStrike } from "@/features/thermal/lib/gex-heatmap/shift-math";
 import { createPulseEventSource, type PulseStreamSnapshot } from "@/lib/api";
 import { usePollIntervalMs, useEtMarketOpen } from "@/hooks/use-et-market-open";
 import { resetIosViewport } from "@/hooks/useIosKeyboardInset";
@@ -61,6 +61,7 @@ import {
   heatmapLegendItems,
   isHeatmapTopHighlightRank,
   resolveHeatmapTopHighlightCellStyle,
+  shouldShowStrikeDistancePct,
   type GexHeatmapLens,
 } from "@/lib/gex-heatmap-display";
 import { compactPerExpiryTopHighlights } from "@/features/thermal/lib/thermal-compact-matrix";
@@ -340,19 +341,6 @@ async function fetchQuote(url: string): Promise<QuoteResponse> {
   if (!res.ok) throw new Error(`quote → ${res.status}`);
   return res.json();
 }
-
-/**
- * Largo desk-read narrative from /api/market/gex-heatmap/explain. The route is a
- * cache-reader (one Claude call per ticker per ~3 min) and never fabricates: when AI
- * is unconfigured or the read fails it returns { available:false, reason }.
- */
-type LargoExplainResponse = {
-  available: boolean;
-  narrative?: string;
-  asof?: string;
-  ticker?: string;
-  reason?: "ai-unconfigured" | "no-data" | "failed";
-};
 
 async function fetchGexHeatmap(url: string): Promise<GexHeatmapResponse> {
   const res = await fetch(url, {
@@ -1048,10 +1036,10 @@ function ExposureProfile({
                     opacity: 0.35 + mag * 0.6,
                   }}
                 />
-                {/* flow marker — thin secondary bar from center, sized by net premium */}
+                {/* flow marker — secondary bar from center, sized by net premium */}
                 {flow != null && flowMag > 0 && (
                   <span
-                    className="absolute top-1/2 z-10 h-1 -translate-y-1/2 rounded-full motion-safe:transition-all motion-safe:duration-300"
+                    className="absolute top-1/2 z-10 h-[9px] -translate-y-1/2 rounded-full motion-safe:transition-all motion-safe:duration-300"
                     style={{
                       width: `${(flowMag * 46).toFixed(2)}%`,
                       left: flowBull ? "50%" : undefined,
@@ -1950,24 +1938,8 @@ function TickerSwitcher({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Largo read — AI desk-read narrative of the current dealer positioning
-// ---------------------------------------------------------------------------
-
-/** Format an ISO timestamp as a compact ET clock label, e.g. "3:42 PM". */
-function fmtAsof(iso: string | undefined): string | null {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: "America/New_York",
-  });
-}
-
 /** Seconds-precision ET time for the matrix freshness chip (traders read the grid directly,
- *  so the matrix's own sample time must be visible — not buried in the Largo panel). */
+ *  so the matrix's own sample time must be visible in the header). */
 function fmtAsofSeconds(iso: string | undefined): string | null {
   if (!iso) return null;
   const d = new Date(iso);
@@ -2006,100 +1978,6 @@ function MatrixFreshness({ asof }: { asof: string | undefined }) {
   );
 }
 
-/**
- * "Ask Largo" panel. Lazy on click: the narrative is fetched only when the user opens it,
- * keyed by ticker so it clears/refetches when the ticker changes. The route itself caches
- * (one Claude call per ticker per ~3 min) so re-opens are cheap. Browser-safe: it only
- * fetches the explain route + renders JSON — no server/node imports.
- */
-function LargoRead({ ticker }: { ticker: string }) {
-  // `open` is keyed by ticker via the parent's `key` prop, so it resets on ticker change.
-  const [open, setOpen] = useState(false);
-
-  const { data, isLoading, error } = useSWR<LargoExplainResponse>(
-    open ? `/api/market/gex-heatmap/explain?ticker=${encodeURIComponent(ticker)}` : null,
-    (url: string) =>
-      fetch(url, { credentials: "same-origin", cache: "no-store" }).then((r) => {
-        if (!r.ok) throw new Error(`Largo read → ${r.status}`);
-        return r.json();
-      }),
-    { revalidateOnFocus: false, dedupingInterval: 60_000 }
-  );
-
-  const narrative = data?.available ? data.narrative ?? null : null;
-  const unavailable = data != null && !data.available;
-  const asof = fmtAsof(data?.asof);
-  const failed = Boolean(error) && !isLoading;
-
-  return (
-    <div className="rounded-xl border border-sky-400/25 bg-[rgba(8,12,20,0.55)] px-4 py-3">
-      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-        <span className="flex items-center gap-2">
-          <Badge tone="sky" dot>
-            Largo · AI
-          </Badge>
-          <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-sky-300/70">
-            Desk read
-          </span>
-          {open && asof && (
-            <span className="font-mono text-[10px] tabular-nums text-sky-300/75">
-              as of {asof} ET
-            </span>
-          )}
-        </span>
-
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          aria-expanded={open}
-          className={clsx(
-            "rounded-md px-3 py-1 font-mono text-[11px] font-bold uppercase tracking-wider outline-none transition-colors",
-            "focus-visible:ring-2 focus-visible:ring-sky-400",
-            open
-              ? "bg-sky-400/15 text-sky-300 outline outline-1 outline-sky-400/50"
-              : "bg-sky-400/10 text-sky-300 outline outline-1 outline-sky-400/30 hover:bg-sky-400/15 hover:text-white"
-          )}
-        >
-          {open ? "Hide read" : "Ask Largo"}
-        </button>
-      </div>
-
-      {open && (
-        <div className="mt-3">
-          {isLoading && !data ? (
-            <div className="space-y-2" aria-hidden>
-              <Skeleton height={14} rounded="md" />
-              <Skeleton height={14} rounded="md" />
-              <Skeleton height={14} rounded="md" />
-            </div>
-          ) : failed || unavailable ? (
-            <p className="text-[12px] leading-snug text-sky-300/70" role="status">
-              {data?.reason === "ai-unconfigured"
-                ? "Largo read unavailable — AI is not configured."
-                : data?.reason === "no-data"
-                  ? "Largo read unavailable — no dealer positioning to read for this ticker yet."
-                  : "Largo read unavailable — try again in a moment."}
-            </p>
-          ) : narrative ? (
-            <p className="text-[13px] leading-relaxed text-sky-100 whitespace-pre-line">
-              {narrative}
-            </p>
-          ) : (
-            <p className="text-[12px] leading-snug text-sky-300/70" role="status">
-              Largo read unavailable — try again in a moment.
-            </p>
-          )}
-
-          <p className="mt-2 text-[10px] leading-snug text-sky-300/75">
-            Largo reads dealer positioning from the data above. Market-structure analysis,
-            not financial advice.
-          </p>
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Key-level tone palette — semantic color identity by meaning (walls gold, flip
 // cyan, support/net bear-or-bull, max-pain sky). Consumed by the consolidated
@@ -2135,71 +2013,12 @@ const TILE_DELTA_HEX: Record<TileDelta["tone"], string> = {
 };
 
 // ---------------------------------------------------------------------------
-// Key levels — a compact, right-aligned list of the structural price lines
-// (spot, flip, walls, max pain) + dark-pool levels. Always-useful rail content.
-// ---------------------------------------------------------------------------
-
-/**
- * Dark-pool levels rail card. The structural key levels (spot / flip / call wall / put
- * wall / max pain) live ONLY in the consolidated top key-level box now — the old rail
- * "KEY LEVELS" list duplicated them, so it was dropped. Dark-pool price levels, however,
- * appear NOWHERE in the top box, so they keep their own focused card here (the top-N by
- * notional). Renders nothing when there's no dark-pool data, letting the rail breathe.
- */
-function DarkPoolRail({ darkPoolLevels }: { darkPoolLevels: DarkPoolLevel[] | null }) {
-  const dp = (darkPoolLevels ?? [])
-    .slice()
-    .sort((a, b) => b.notional - a.notional)
-    .slice(0, 4);
-  if (dp.length === 0) return null;
-
-  return (
-    <div className="rounded-xl border border-white/10 bg-[rgba(8,9,14,0.5)] px-4 py-3">
-      <div className="mb-2.5 flex items-center justify-between">
-        <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-sky-300/75">
-          Dark-pool levels
-        </span>
-        <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-sky-300/75">
-          notional
-        </span>
-      </div>
-      <ul className="space-y-1">
-        {dp.map((d, i) => (
-          <li key={`${d.price}-${i}`} className="flex items-center justify-between gap-3 py-0.5">
-            <span className="flex items-center gap-2 min-w-0">
-              <span
-                aria-hidden
-                className="h-px w-3 shrink-0"
-                style={{ backgroundColor: DARK_POOL_HEX, boxShadow: `0 0 6px ${DARK_POOL_HEX}` }}
-              />
-              <span className="font-mono text-[11px] tabular-nums text-white">
-                {fmtStrike(d.price)}
-              </span>
-            </span>
-            <span className="font-mono text-[11px] tabular-nums text-sky-300/80">
-              {fmtMoney(d.notional)}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Flow summary — net premium tilt for the ticker today (bull calls / bear puts),
 // derived from the per-strike HELIX overlay. Compact rail card.
 // ---------------------------------------------------------------------------
 
-function FlowSummary({
-  flowByStrike,
-  overlaysLoaded,
-}: {
-  flowByStrike: Record<string, FlowByStrike> | null;
-  /** True once the heatmap response has arrived (distinguishes "loading" from "unavailable"). */
-  overlaysLoaded?: boolean;
-}) {
-  const totals = useMemo(() => {
+function useFlowTotals(flowByStrike: Record<string, FlowByStrike> | null) {
+  return useMemo(() => {
     let call = 0;
     let put = 0;
     if (flowByStrike) {
@@ -2210,20 +2029,33 @@ function FlowSummary({
     }
     return { call, put, net: call - put };
   }, [flowByStrike]);
+}
 
-  // When overlays have been loaded but this ticker has no flow overlay data, show a muted
-  // indicator instead of silently hiding the card — so the user knows the HELIX card area
-  // is working and this ticker simply isn't in the flow overlay allowlist.
+/** Compact Flow Today strip for the key-levels row (matrix header). */
+function FlowSummaryStrip({
+  flowByStrike,
+  overlaysLoaded,
+}: {
+  flowByStrike: Record<string, FlowByStrike> | null;
+  overlaysLoaded?: boolean;
+}) {
+  const totals = useFlowTotals(flowByStrike);
+
   if (!flowByStrike || Object.keys(flowByStrike).length === 0) {
-    if (!overlaysLoaded) return null; // still loading — stay quiet
+    if (!overlaysLoaded) return null;
     return (
-      <div className="rounded-xl border border-white/5 bg-[rgba(8,9,14,0.35)] px-4 py-3">
-        <div className="flex items-center gap-2">
-          <Badge tone="neutral" size="sm">HELIX</Badge>
-          <span className="font-mono text-[11px] text-sky-300/50">
-            Flow overlay unavailable for this ticker
+      <div
+        className="flex min-h-[3.25rem] flex-col justify-center rounded-lg border border-white/8 bg-[rgba(8,9,14,0.4)] px-2.5 py-1.5"
+        data-flow-summary="unavailable"
+      >
+        <span className="flex items-center gap-1.5">
+          <Badge tone="neutral" size="sm">
+            HELIX
+          </Badge>
+          <span className="font-mono text-[8px] uppercase tracking-[0.14em] text-sky-300/55">
+            Flow unavailable
           </span>
-        </div>
+        </span>
       </div>
     );
   }
@@ -2233,10 +2065,13 @@ function FlowSummary({
   const callPct = gross > 0 ? (Math.abs(totals.call) / gross) * 100 : 50;
 
   return (
-    <div className="rounded-xl border border-white/10 bg-[rgba(8,9,14,0.5)] px-4 py-3">
-      <div className="mb-2.5 flex items-center justify-between">
-        <span className="flex items-center gap-2">
-          <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-sky-300/75">
+    <div
+      className="flex min-h-[3.25rem] min-w-0 flex-col justify-center gap-1 rounded-lg border border-white/12 bg-[rgba(8,9,14,0.55)] px-2.5 py-1.5"
+      data-flow-summary="live"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="truncate font-mono text-[8px] uppercase tracking-[0.14em] text-sky-300/75">
             Flow today
           </span>
           <Badge tone="bull" size="sm">
@@ -2244,37 +2079,39 @@ function FlowSummary({
           </Badge>
         </span>
         <span
-          className={clsx("font-mono text-[12px] font-bold tabular-nums", bullish ? "text-bull" : "text-bear")}
+          className={clsx(
+            "shrink-0 font-mono text-[13px] font-bold tabular-nums leading-none",
+            bullish ? "text-bull" : "text-bear"
+          )}
         >
           {fmtMoneySigned(totals.net)}
         </span>
       </div>
 
-      {/* call vs put premium split bar */}
-      <div className="mb-2 flex h-2 overflow-hidden rounded-full bg-[rgba(8,9,14,0.8)]">
+      <div className="flex h-[6px] overflow-hidden rounded-full bg-[rgba(8,9,14,0.85)]">
         <span
           className="h-full"
-          style={{ width: `${callPct.toFixed(1)}%`, backgroundColor: "#a3e635", boxShadow: "0 0 8px #a3e63588" }}
+          style={{
+            width: `${callPct.toFixed(1)}%`,
+            backgroundColor: "#a3e635",
+            boxShadow: "0 0 6px #a3e63588",
+          }}
         />
         <span
           className="h-full flex-1"
-          style={{ backgroundColor: "#ff2d55", boxShadow: "0 0 8px #ff2d5588" }}
+          style={{ backgroundColor: "#ff2d55", boxShadow: "0 0 6px #ff2d5588" }}
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
-        <div className="flex flex-col">
-          <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-bull/80">Calls</span>
-          <span className="font-mono text-[13px] font-bold tabular-nums text-bull">
-            {fmtMoney(totals.call)}
-          </span>
-        </div>
-        <div className="flex flex-col text-right">
-          <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-bear-text">Puts</span>
-          <span className="font-mono text-[13px] font-bold tabular-nums text-bear">
-            {fmtMoney(totals.put)}
-          </span>
-        </div>
+      <div className="flex items-center justify-between gap-2 font-mono text-[9px] tabular-nums leading-none">
+        <span className="text-bull/90">
+          <span className="uppercase tracking-[0.12em]">C </span>
+          <span className="font-bold">{fmtMoney(totals.call)}</span>
+        </span>
+        <span className="text-bear">
+          <span className="uppercase tracking-[0.12em]">P </span>
+          <span className="font-bold">{fmtMoney(totals.put)}</span>
+        </span>
       </div>
     </div>
   );
@@ -2370,9 +2207,9 @@ function ExpiryScopeBar({
       {scoped && (
         <span
           className="ml-1 font-mono text-[9px] normal-case tracking-normal text-sky-300/50"
-          title="Scope narrows the profile bars, the cumulative curve, and the key-levels row (flip, walls, net, max pain). The King node still marks the dominant node across the whole near-term book."
+          title="Scope narrows the matrix, profile, curve, and key-levels row — including King node — to the selected expiry set."
         >
-          filters profile, curve &amp; key levels · King node stays near-term
+          filters matrix, profile, curve &amp; key levels
         </span>
       )}
     </div>
@@ -2532,7 +2369,7 @@ function CompactLevel({ cell }: { cell: LevelCell }) {
       // wording change silently turns a real assertion into one that matches nothing.
       data-level={cell.key}
       className={clsx(
-        "relative flex min-w-0 flex-col gap-0.5 rounded-lg border px-2.5 py-1.5",
+        "relative flex min-w-0 flex-col gap-0.5 rounded-lg border px-2 py-1",
         cell.anchor
           ? "border-white/45 bg-[rgba(12,13,16,0.6)]"
           : active
@@ -2558,7 +2395,7 @@ function CompactLevel({ cell }: { cell: LevelCell }) {
       <span
         data-level-value={cell.key}
         className={clsx(
-          "font-mono text-[15px] font-bold leading-none tabular-nums",
+          "font-mono text-[14px] font-bold leading-none tabular-nums",
           cell.anchor ? "text-white" : active ? t.value : "text-sky-300/55"
         )}
       >
@@ -2880,11 +2717,14 @@ function KeyLevelBox({
   kicker,
   footnote,
   className,
+  trailing,
 }: {
   cells: LevelCell[];
   kicker: string;
   footnote?: string | null;
   className?: string;
+  /** Optional trailing slot (e.g. Flow Today HELIX) — sits flush on the key-levels row. */
+  trailing?: ReactNode;
 }) {
   return (
     <div
@@ -2893,7 +2733,7 @@ function KeyLevelBox({
         className
       )}
     >
-      <div className="mb-2 flex items-center justify-between">
+      <div className="mb-1.5 flex items-center justify-between">
         <span className="font-mono text-[9px] uppercase tracking-[0.22em] text-sky-300/75">
           Key levels
         </span>
@@ -2908,15 +2748,25 @@ function KeyLevelBox({
           {kicker}
         </span>
       </div>
-      {/* Tight responsive grid of small cells — 2 cols on phones, fans out to 6 at lg.
-          One grouped box, much smaller footprint than the old big-card row. */}
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-        {cells.map((cell) => (
-          <CompactLevel key={cell.key} cell={cell} />
-        ))}
+      <div className="flex flex-col gap-1.5 xl:flex-row xl:items-stretch">
+        <div
+          className={clsx(
+            "grid min-w-0 flex-1 gap-1.5",
+            trailing
+              ? "grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-6"
+              : "grid-cols-2 sm:grid-cols-3 lg:grid-cols-6"
+          )}
+        >
+          {cells.map((cell) => (
+            <CompactLevel key={cell.key} cell={cell} />
+          ))}
+        </div>
+        {trailing ? (
+          <div className="min-w-0 shrink-0 xl:w-[min(100%,15.5rem)]">{trailing}</div>
+        ) : null}
       </div>
       {footnote ? (
-        <p className="mt-2 font-mono text-[9px] leading-snug text-sky-300/60">{footnote}</p>
+        <p className="mt-1.5 font-mono text-[9px] leading-snug text-sky-300/60">{footnote}</p>
       ) : null}
     </div>
   );
@@ -3599,6 +3449,13 @@ export function GexHeatmap({
     );
   }, [strikes, spot]);
 
+  const spotStrikeIdx = useMemo(() => {
+    if (spotStrike == null) return -1;
+    return strikes.indexOf(spotStrike);
+  }, [strikes, spotStrike]);
+
+  const matrixRowTotals = selectedExpiries != null ? filteredTotals : strikeTotals;
+
   // The strike row nearest the active flip — gets the flip marker (matrix view).
   const flipStrike = useMemo(() => {
     if (flip == null || strikes.length === 0) return null;
@@ -3607,16 +3464,14 @@ export function GexHeatmap({
     );
   }, [strikes, flip]);
 
-  // ── ANCHOR for the MATRIX (and the card) ─────────────────────────────────────
-  // The matrix renders the SERVER all-expiry `strikeTotals` (one row total per strike),
-  // so its OVERALL anchor = argmax |strikeTotals| — the dominant net-exposure STRIKE (the
-  // card uses this same all-expiry anchor so it agrees with the server-authoritative top
-  // tiles). Within that anchor row we also find the single PEAK CELL: the expiry with the
-  // max |cells| at the anchor strike, which gets the prominent in-cell white ◆ marker. Both
-  // null-safe (empty/all-zero → null).
+  // ── ANCHOR for the MATRIX + key-levels King tile ─────────────────────────────
+  // When the member scopes to one expiry (or a filtered horizon), King node tracks that
+  // same book — matching the profile anchor and the visible matrix columns. Unscoped
+  // "All" keeps the server near-term strike_totals aggregate.
+  const matrixTotalsForAnchor = selectedExpiries != null ? filteredTotals : strikeTotals;
   const matrixAnchorStrike = useMemo(
-    () => anchorStrike(strikeTotals),
-    [strikeTotals]
+    () => anchorStrike(matrixTotalsForAnchor),
+    [matrixTotalsForAnchor]
   );
   const matrixAnchorExpiry = useMemo<string | null>(() => {
     if (matrixAnchorStrike == null) return null;
@@ -3971,9 +3826,15 @@ export function GexHeatmap({
       // ANCHOR cell — bright-white-distinct, the dominant all-expiry node (GEX only). Slots last
       // so the structural levels read left→right; the white accent makes it pop regardless.
       if (matrixAnchorStrike != null) {
+        const kingScope =
+          scopedExpiryLabel != null
+            ? fmtExpiry(scopedExpiryLabel)
+            : expiryScope === "all"
+              ? "near-term"
+              : scopeLabel;
         cellsOut.push({
           key: "anchor",
-          label: gexKingDualLabel("near-term"),
+          label: gexKingDualLabel(kingScope),
           value: fmtStrike(matrixAnchorStrike),
           tone: "wall",
           anchor: true,
@@ -4114,13 +3975,16 @@ export function GexHeatmap({
     charmPosture,
     gexShiftNet,
     maxPainHelp,
+    scopedExpiryLabel,
+    expiryScope,
+    scopeLabel,
   ]);
 
   // ── View panels (Step 3) ─────────────────────────────────────────────────────
   // Tab A "Matrix" (default): the Strike × Expiry Matrix at full content width.
   // Tab B "Profile + Curve + Shift": 3 equal-width columns, all centered on spot,
-  // with a shared ExpiryScopeBar + overlay toggles above. Largo/DarkPool rail only
-  // shows on the Matrix tab — the 3-panel view is self-contained.
+  // with a shared ExpiryScopeBar + overlay toggles above. Flow rail only shows on the
+  // Matrix tab — the 3-panel view is self-contained.
 
   // Shared controls rendered once ABOVE all 3 profile panels (expiry scope + overlay toggles).
   const sharedProfileControls = (
@@ -4309,9 +4173,12 @@ export function GexHeatmap({
             aria-label={`${data?.underlying ?? ticker} dealer ${vocab.noun.toLowerCase()} matrix by strike and expiry`}
           >
             <thead className="sticky top-0 z-20 bg-[#08080e]">
-              <tr className="border-b border-white/10 text-[10px] uppercase tracking-normal text-sky-300">
-                <th className="sticky left-0 z-30 bg-[#08080e] py-1.5 pl-1 pr-2 text-left font-semibold">
-                  Strike
+              <tr className="thermal-matrix-head-row border-b border-white/10">
+                <th className="thermal-matrix-head thermal-matrix-head-strike sticky left-0 z-30 bg-[#08080e]">
+                  <span className="block">Strike</span>
+                  <span className="thermal-matrix-head-sub" title="Intraday build/melt % vs prior snapshot">
+                    DR%
+                  </span>
                 </th>
                 {matrixExpiries.map((e) => {
                   const isMonthly = isMonthlyExpiry(e);
@@ -4320,28 +4187,32 @@ export function GexHeatmap({
                       key={e}
                       title={isMonthly ? `${fmtHeatmapExpiry(e)} — monthly OpEx` : fmtHeatmapExpiry(e)}
                       className={clsx(
-                        "py-1.5 px-0.5 text-center font-semibold whitespace-nowrap",
-                        isMonthly ? "text-gold" : "text-sky-300"
+                        "thermal-matrix-head thermal-matrix-head-expiry spx-gex-matrix-expiry-col",
+                        isMonthly && "text-gold"
                       )}
                     >
                       {fmtHeatmapExpiry(e)}
-                      {isMonthly && <span aria-hidden className="ml-0.5 text-[8px] font-bold text-gold/80">M</span>}
+                      {isMonthly && <span aria-hidden className="ml-0.5 text-[9px] font-bold text-gold/80">M</span>}
                     </th>
                   );
                 })}
                 <th
-                  className="py-1.5 pl-1 pr-2 text-right font-semibold whitespace-nowrap"
+                  className="thermal-matrix-head thermal-matrix-head-net spx-gex-matrix-net-col"
                   title={
                     monthlyExpiries.length > 0
-                      ? "Near-term aggregate per strike (excludes monthly OpEx columns)"
-                      : undefined
+                      ? selectedExpiries != null
+                        ? "Net dealer gamma per strike for the selected expiry scope"
+                        : "Near-term aggregate per strike (excludes monthly OpEx columns)"
+                      : selectedExpiries != null
+                        ? "Net dealer gamma per strike for the selected expiry scope"
+                        : undefined
                   }
                 >
                   Net
                 </th>
                 {depthRail && (
                   <th
-                    className="py-1.5 pl-1 pr-2 text-left font-semibold whitespace-nowrap"
+                    className="thermal-matrix-head thermal-matrix-head-flow"
                     title="Forced dealer hedging flow if price reaches that strike — buying grows left, selling right. Conditional flow, not resting liquidity."
                   >
                     Flow
@@ -4350,11 +4221,17 @@ export function GexHeatmap({
               </tr>
             </thead>
             <tbody>
-              {strikes.map((strike) => {
+              {strikes.map((strike, strikeIdx) => {
                 const row = cells[String(strike)] ?? {};
                 const isSpot = strike === spotStrike;
                 const isAnchor = matrixAnchorStrike != null && strike === matrixAnchorStrike;
-                const rowTotal = strikeTotals[String(strike)] ?? 0;
+                const rowTotal = matrixRowTotals[String(strike)] ?? 0;
+                const shiftDelta =
+                  shift?.available ? shift.delta_by_strike?.[String(strike)] : undefined;
+                const shiftPctLabel =
+                  !isSpot && shouldShowStrikeDistancePct(strikeIdx, spotStrikeIdx)
+                    ? fmtShiftPercentForStrike(rowTotal, shiftDelta)
+                    : null;
                 const isCallWallRow = lens === "gex" && posWall != null && strike === posWall;
                 const isPutWallRow = lens === "gex" && negWall != null && strike === negWall;
 
@@ -4376,7 +4253,20 @@ export function GexHeatmap({
                         isSpot && "text-cyan-300"
                       )}
                     >
-                      {fmtHeatmapStrike(strike)}
+                      <span className="flex min-w-[5.5rem] items-baseline justify-between gap-2">
+                        <span>{fmtHeatmapStrike(strike)}</span>
+                        {shiftPctLabel && shiftPctLabel !== "—" ? (
+                          <span
+                            className={clsx(
+                              "thermal-matrix-strike-pct",
+                              shiftDelta != null && shiftDelta >= 0 ? "text-bull" : "text-bear"
+                            )}
+                            title="Intraday gamma build/melt vs prior snapshot"
+                          >
+                            {shiftPctLabel}
+                          </span>
+                        ) : null}
+                      </span>
                       {isSpot && spot > 0 && Math.abs(strike - spot) >= 0.5 && (
                         <span className="block text-[8px] font-normal text-cyan-400/80">
                           ← {fmtHeatmapStrike(spot)}
@@ -4518,26 +4408,26 @@ export function GexHeatmap({
                         {(() => {
                           const band = depthBandForPrice(depthRail.levels, data?.spot ?? 0, strike);
                           if (!band || band.direction === "flat") {
-                            return <span className="block h-[10px] w-[46px]" aria-hidden />;
+                            return <span className="thermal-matrix-flow-rail is-empty" aria-hidden />;
                           }
-                          const w = Math.max(
-                            2,
-                            Math.round((Math.abs(band.notional) / depthRail.max_abs_notional) * 46)
+                          const pct = Math.max(
+                            4,
+                            Math.round((Math.abs(band.notional) / depthRail.max_abs_notional) * 100)
                           );
                           const buy = band.direction === "buy";
                           return (
                             <span
-                              className="block h-[10px] w-[46px]"
+                              className="thermal-matrix-flow-rail"
                               title={`If ${data?.underlying ?? ticker} reaches ${fmtStrike(strike)}, dealers must ${buy ? "BUY" : "SELL"} about ${fmtMoney(Math.abs(band.notional))} of stock to stay hedged.`}
                             >
+                              <span aria-hidden className="thermal-matrix-flow-rail-axis" />
                               <span
-                                className="block h-full rounded-[1px]"
-                                style={{
-                                  width: `${w}px`,
-                                  marginLeft: buy ? 0 : `${46 - w}px`,
-                                  backgroundColor: buy ? DEPTH_BUY_HEX : DEPTH_SELL_HEX,
-                                  opacity: 0.8,
-                                }}
+                                aria-hidden
+                                className={clsx(
+                                  "thermal-matrix-flow-rail-bar",
+                                  buy ? "is-buy" : "is-sell"
+                                )}
+                                style={{ width: `${pct / 2}%` }}
                               />
                             </span>
                           );
@@ -4743,6 +4633,11 @@ export function GexHeatmap({
           kicker={keyLevelsScopeKicker}
           footnote={keyLevelsScopeFootnote}
           className="mb-2 gex-key-levels thermal-key-levels"
+          trailing={
+            !nativeShell ? (
+              <FlowSummaryStrip flowByStrike={flowByStrike} overlaysLoaded={data != null} />
+            ) : undefined
+          }
         />
       )}
 
@@ -4865,9 +4760,9 @@ export function GexHeatmap({
           <AlertsStrip events={events} />
 
           {/* ── Main area — 2 tabs:
-                • "Matrix" — full-width Strike × Expiry Matrix + Largo/DarkPool rail below.
+                • "Matrix" — full-width Strike × Expiry Matrix + flow rail below.
                 • "Profile + Curve + Shift" — 3 equal columns (lg:grid-cols-3), shared
-                  ExpiryScopeBar + overlay toggles above, no Largo/DarkPool rail.
+                  ExpiryScopeBar + overlay toggles above, no flow rail.
               ──────────────── */}
           <Tabs value={pairView} onValueChange={(v) => setPairView(v as "pair-a" | "pair-b" | "pair-c")} className="mt-3">
             <TabPanels>
@@ -4916,18 +4811,6 @@ export function GexHeatmap({
               </TabPanel>
             </TabPanels>
           </Tabs>
-
-          {/* ── Rail: Largo + dark-pool + flow — Matrix tab only (the 3-panel
-              Profile+Curve+Shift view is self-contained). ── */}
-          {!nativeShell && pairView === "pair-a" && (
-            <div className="mt-5 grid gap-4 lg:grid-cols-[1.6fr_1fr] gex-heatmap-rail">
-              <LargoRead key={ticker} ticker={ticker} />
-              <div className="grid content-start gap-4">
-                <DarkPoolRail darkPoolLevels={darkPoolLevels} />
-                <FlowSummary flowByStrike={flowByStrike} overlaysLoaded={data != null} />
-              </div>
-            </div>
-          )}
 
           {!nativeShell && pairView === "pair-a" && (
           <p className="mt-5 border-t border-white/8 pt-3 text-[10px] leading-snug text-sky-300/75 gex-heatmap-methodology">
