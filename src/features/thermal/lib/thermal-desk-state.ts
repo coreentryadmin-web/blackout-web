@@ -260,20 +260,15 @@ export function keyLevelsKicker(
  * Footnote under the key-levels box — explains why matrix cell peaks can disagree with the bar.
  * `frontExpiryLabel` is optional human text for max-pain scope (e.g. "Aug 4").
  * `scopedExpiryLabel` is set when the row is scoped to ONE expiry, which changes what is true:
- * flip/walls/net GEX are then that expiry alone. The King node is deliberately NOT rescoped — it
- * marks the dominant node across the whole near-term book — so the footnote keeps saying so
- * rather than letting the reader assume the entire row moved.
+ * flip/walls/net GEX are then that expiry alone. King node follows the same scope as the
+ * profile anchor and the matrix Net column when an expiry filter is active.
  */
 /**
  * The footnote with the part the KICKER already says removed.
  *
- * When a single expiry is scoped, the kicker above the row already reads "GEX · Aug 14 · 62% of
- * near-spot Γ", so "Flip, walls, net GEX, and max pain are Aug 14 only" is genuinely redundant and
- * costs vertical room on a dense panel. What is NOT redundant is the King node exemption: it is
- * deliberately not rescoped, so under an "Aug 14" kicker a reader will otherwise take the whole row
- * — King node included — as Aug 14. That is the exact assumption keyLevelsFootnote was written to
- * prevent, and dropping the line entirely reinstates it while every unit test keeps passing, since
- * they assert the STRING and not that anything renders it.
+ * When a single expiry is scoped, the kicker above the row already reads "GEX · Aug 14 · …",
+ * so restating flip/walls/net/max pain scope is redundant. King node now follows the same
+ * expiry scope as the key-levels row — only the matrix peak-cell note remains in compact mode.
  *
  * Unscoped is returned verbatim: with no expiry in the kicker, nothing else discloses that the
  * tiles sum near-term expiries or that max pain is a single expiry's OI.
@@ -283,10 +278,7 @@ export function keyLevelsFootnoteCompact(
   scopedExpiryLabel?: string | null
 ): string {
   if (scopedExpiryLabel?.trim()) {
-    return (
-      `King node still marks the dominant near-term node across all expiries. ` +
-      `Matrix gold/purple cell peaks can land on any expiry column.`
-    );
+    return `Matrix gold/purple cell peaks can land on any expiry column.`;
   }
   return keyLevelsFootnote(frontExpiryLabel, scopedExpiryLabel);
 }
@@ -298,8 +290,8 @@ export function keyLevelsFootnote(
   const scoped = scopedExpiryLabel?.trim();
   if (scoped) {
     return (
-      `Flip, walls, net GEX, and max pain are ${scoped} only. King node still marks the dominant ` +
-      `near-term node across all expiries. Matrix gold/purple cell peaks can land on any expiry column.`
+      `Flip, walls, net GEX, max pain, and King node are ${scoped} only. ` +
+      `Matrix gold/purple cell peaks can land on any expiry column.`
     );
   }
   const mp = frontExpiryLabel?.trim()

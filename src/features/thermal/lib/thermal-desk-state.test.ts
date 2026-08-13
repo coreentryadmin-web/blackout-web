@@ -197,26 +197,17 @@ test("keyLevelsKicker names the single scoped expiry instead of calling it near-
   );
 });
 
-test("keyLevelsFootnote tells the truth about what a single-expiry scope did and did not rescope", () => {
+test("keyLevelsFootnote tells the truth about what a single-expiry scope rescopes", () => {
   const f = keyLevelsFootnote("Aug 14", "Aug 14");
-  assert.match(f, /Flip, walls, net GEX, and max pain are Aug 14 only/);
-  // The King node is NOT rescoped — it still marks the dominant node across the near-term book.
-  // Saying nothing here would let a reader assume the entire row moved with the selector.
-  assert.match(f, /King node still marks the dominant near-term node/);
+  assert.match(f, /Flip, walls, net GEX, max pain, and King node are Aug 14 only/);
   assert.doesNotMatch(f, /sum near-term expiries/);
 });
 
-test("keyLevelsFootnoteCompact drops what the kicker says but never the King-node exemption", () => {
-  // Scoped: the kicker already reads "GEX · Aug 14 · …", so restating the scope is dead weight.
+test("keyLevelsFootnoteCompact drops redundant scoped copy but keeps matrix peak note", () => {
   const scoped = keyLevelsFootnoteCompact("Aug 14", "Aug 14");
   assert.doesNotMatch(scoped, /Flip, walls, net GEX, and max pain are/);
-  // ...but the King node is NOT rescoped by the selector. Without this line a reader takes the
-  // whole row as Aug 14, which is the assumption the footnote exists to prevent. #2146 removed the
-  // rendering entirely and every test still passed, because they assert the string, not the render.
-  assert.match(scoped, /King node still marks the dominant near-term node across all expiries/);
   assert.match(scoped, /any expiry column/);
 
-  // Unscoped: nothing else discloses the near-term summing or the max-pain scope, so it stays whole.
   assert.equal(keyLevelsFootnoteCompact("Aug 4"), keyLevelsFootnote("Aug 4"));
   assert.match(keyLevelsFootnoteCompact("Aug 4"), /sum near-term expiries/);
 });

@@ -55,12 +55,14 @@ import {
   fmtHeatmapExpiry,
   fmtHeatmapMoneySigned,
   fmtHeatmapStrike,
+  fmtStrikeDistancePct,
   heatmapCellStyle,
   heatmapCellTextStyle,
   heatmapMatrixExtremeCellStyle,
   heatmapLegendItems,
   isHeatmapTopHighlightRank,
   resolveHeatmapTopHighlightCellStyle,
+  shouldShowStrikeDistancePct,
   type GexHeatmapLens,
 } from "@/lib/gex-heatmap-display";
 import { compactPerExpiryTopHighlights } from "@/features/thermal/lib/thermal-compact-matrix";
@@ -1048,10 +1050,10 @@ function ExposureProfile({
                     opacity: 0.35 + mag * 0.6,
                   }}
                 />
-                {/* flow marker — thin secondary bar from center, sized by net premium */}
+                {/* flow marker — secondary bar from center, sized by net premium */}
                 {flow != null && flowMag > 0 && (
                   <span
-                    className="absolute top-1/2 z-10 h-1 -translate-y-1/2 rounded-full motion-safe:transition-all motion-safe:duration-300"
+                    className="absolute top-1/2 z-10 h-[9px] -translate-y-1/2 rounded-full motion-safe:transition-all motion-safe:duration-300"
                     style={{
                       width: `${(flowMag * 46).toFixed(2)}%`,
                       left: flowBull ? "50%" : undefined,
@@ -2370,9 +2372,9 @@ function ExpiryScopeBar({
       {scoped && (
         <span
           className="ml-1 font-mono text-[9px] normal-case tracking-normal text-sky-300/50"
-          title="Scope narrows the profile bars, the cumulative curve, and the key-levels row (flip, walls, net, max pain). The King node still marks the dominant node across the whole near-term book."
+          title="Scope narrows the matrix, profile, curve, and key-levels row — including King node — to the selected expiry set."
         >
-          filters profile, curve &amp; key levels · King node stays near-term
+          filters matrix, profile, curve &amp; key levels
         </span>
       )}
     </div>
@@ -3599,6 +3601,13 @@ export function GexHeatmap({
     );
   }, [strikes, spot]);
 
+  const spotStrikeIdx = useMemo(() => {
+    if (spotStrike == null) return -1;
+    return strikes.indexOf(spotStrike);
+  }, [strikes, spotStrike]);
+
+  const matrixRowTotals = selectedExpiries != null ? filteredTotals : strikeTotals;
+
   // The strike row nearest the active flip — gets the flip marker (matrix view).
   const flipStrike = useMemo(() => {
     if (flip == null || strikes.length === 0) return null;
@@ -3607,16 +3616,14 @@ export function GexHeatmap({
     );
   }, [strikes, flip]);
 
-  // ── ANCHOR for the MATRIX (and the card) ─────────────────────────────────────
-  // The matrix renders the SERVER all-expiry `strikeTotals` (one row total per strike),
-  // so its OVERALL anchor = argmax |strikeTotals| — the dominant net-exposure STRIKE (the
-  // card uses this same all-expiry anchor so it agrees with the server-authoritative top
-  // tiles). Within that anchor row we also find the single PEAK CELL: the expiry with the
-  // max |cells| at the anchor strike, which gets the prominent in-cell white ◆ marker. Both
-  // null-safe (empty/all-zero → null).
+  // ── ANCHOR for the MATRIX + key-levels King tile ─────────────────────────────
+  // When the member scopes to one expiry (or a filtered horizon), King node tracks that
+  // same book — matching the profile anchor and the visible matrix columns. Unscoped
+  // "All" keeps the server near-term strike_totals aggregate.
+  const matrixTotalsForAnchor = selectedExpiries != null ? filteredTotals : strikeTotals;
   const matrixAnchorStrike = useMemo(
-    () => anchorStrike(strikeTotals),
-    [strikeTotals]
+    () => anchorStrike(matrixTotalsForAnchor),
+    [matrixTotalsForAnchor]
   );
   const matrixAnchorExpiry = useMemo<string | null>(() => {
     if (matrixAnchorStrike == null) return null;
@@ -3971,9 +3978,15 @@ export function GexHeatmap({
       // ANCHOR cell — bright-white-distinct, the dominant all-expiry node (GEX only). Slots last
       // so the structural levels read left→right; the white accent makes it pop regardless.
       if (matrixAnchorStrike != null) {
+        const kingScope =
+          scopedExpiryLabel != null
+            ? fmtExpiry(scopedExpiryLabel)
+            : expiryScope === "all"
+              ? "near-term"
+              : scopeLabel;
         cellsOut.push({
           key: "anchor",
-          label: gexKingDualLabel("near-term"),
+          label: gexKingDualLabel(kingScope),
           value: fmtStrike(matrixAnchorStrike),
           tone: "wall",
           anchor: true,
@@ -4114,6 +4127,9 @@ export function GexHeatmap({
     charmPosture,
     gexShiftNet,
     maxPainHelp,
+    scopedExpiryLabel,
+    expiryScope,
+    scopeLabel,
   ]);
 
   // ── View panels (Step 3) ─────────────────────────────────────────────────────
@@ -4309,9 +4325,10 @@ export function GexHeatmap({
             aria-label={`${data?.underlying ?? ticker} dealer ${vocab.noun.toLowerCase()} matrix by strike and expiry`}
           >
             <thead className="sticky top-0 z-20 bg-[#08080e]">
-              <tr className="border-b border-white/10 text-[10px] uppercase tracking-normal text-sky-300">
-                <th className="sticky left-0 z-30 bg-[#08080e] py-1.5 pl-1 pr-2 text-left font-semibold">
-                  Strike
+              <tr className="thermal-matrix-head-row border-b border-white/10">
+                <th className="thermal-matrix-head thermal-matrix-head-strike sticky left-0 z-30 bg-[#08080e]">
+                  <span className="block">Strike</span>
+                  <span className="thermal-matrix-head-sub">%</span>
                 </th>
                 {matrixExpiries.map((e) => {
                   const isMonthly = isMonthlyExpiry(e);
@@ -4320,28 +4337,32 @@ export function GexHeatmap({
                       key={e}
                       title={isMonthly ? `${fmtHeatmapExpiry(e)} — monthly OpEx` : fmtHeatmapExpiry(e)}
                       className={clsx(
-                        "py-1.5 px-0.5 text-center font-semibold whitespace-nowrap",
-                        isMonthly ? "text-gold" : "text-sky-300"
+                        "thermal-matrix-head thermal-matrix-head-expiry spx-gex-matrix-expiry-col",
+                        isMonthly && "text-gold"
                       )}
                     >
                       {fmtHeatmapExpiry(e)}
-                      {isMonthly && <span aria-hidden className="ml-0.5 text-[8px] font-bold text-gold/80">M</span>}
+                      {isMonthly && <span aria-hidden className="ml-0.5 text-[9px] font-bold text-gold/80">M</span>}
                     </th>
                   );
                 })}
                 <th
-                  className="py-1.5 pl-1 pr-2 text-right font-semibold whitespace-nowrap"
+                  className="thermal-matrix-head thermal-matrix-head-net spx-gex-matrix-net-col"
                   title={
                     monthlyExpiries.length > 0
-                      ? "Near-term aggregate per strike (excludes monthly OpEx columns)"
-                      : undefined
+                      ? selectedExpiries != null
+                        ? "Net dealer gamma per strike for the selected expiry scope"
+                        : "Near-term aggregate per strike (excludes monthly OpEx columns)"
+                      : selectedExpiries != null
+                        ? "Net dealer gamma per strike for the selected expiry scope"
+                        : undefined
                   }
                 >
                   Net
                 </th>
                 {depthRail && (
                   <th
-                    className="py-1.5 pl-1 pr-2 text-left font-semibold whitespace-nowrap"
+                    className="thermal-matrix-head thermal-matrix-head-flow"
                     title="Forced dealer hedging flow if price reaches that strike — buying grows left, selling right. Conditional flow, not resting liquidity."
                   >
                     Flow
@@ -4350,11 +4371,11 @@ export function GexHeatmap({
               </tr>
             </thead>
             <tbody>
-              {strikes.map((strike) => {
+              {strikes.map((strike, strikeIdx) => {
                 const row = cells[String(strike)] ?? {};
                 const isSpot = strike === spotStrike;
                 const isAnchor = matrixAnchorStrike != null && strike === matrixAnchorStrike;
-                const rowTotal = strikeTotals[String(strike)] ?? 0;
+                const rowTotal = matrixRowTotals[String(strike)] ?? 0;
                 const isCallWallRow = lens === "gex" && posWall != null && strike === posWall;
                 const isPutWallRow = lens === "gex" && negWall != null && strike === negWall;
 
@@ -4376,7 +4397,14 @@ export function GexHeatmap({
                         isSpot && "text-cyan-300"
                       )}
                     >
-                      {fmtHeatmapStrike(strike)}
+                      <span className="flex min-w-[5.5rem] items-baseline justify-between gap-2">
+                        <span>{fmtHeatmapStrike(strike)}</span>
+                        {!isSpot && spot > 0 && shouldShowStrikeDistancePct(strikeIdx, spotStrikeIdx) ? (
+                          <span className="thermal-matrix-strike-pct">
+                            {fmtStrikeDistancePct(spot, strike)}
+                          </span>
+                        ) : null}
+                      </span>
                       {isSpot && spot > 0 && Math.abs(strike - spot) >= 0.5 && (
                         <span className="block text-[8px] font-normal text-cyan-400/80">
                           ← {fmtHeatmapStrike(spot)}
@@ -4518,26 +4546,26 @@ export function GexHeatmap({
                         {(() => {
                           const band = depthBandForPrice(depthRail.levels, data?.spot ?? 0, strike);
                           if (!band || band.direction === "flat") {
-                            return <span className="block h-[10px] w-[46px]" aria-hidden />;
+                            return <span className="thermal-matrix-flow-rail is-empty" aria-hidden />;
                           }
-                          const w = Math.max(
-                            2,
-                            Math.round((Math.abs(band.notional) / depthRail.max_abs_notional) * 46)
+                          const pct = Math.max(
+                            4,
+                            Math.round((Math.abs(band.notional) / depthRail.max_abs_notional) * 100)
                           );
                           const buy = band.direction === "buy";
                           return (
                             <span
-                              className="block h-[10px] w-[46px]"
+                              className="thermal-matrix-flow-rail"
                               title={`If ${data?.underlying ?? ticker} reaches ${fmtStrike(strike)}, dealers must ${buy ? "BUY" : "SELL"} about ${fmtMoney(Math.abs(band.notional))} of stock to stay hedged.`}
                             >
+                              <span aria-hidden className="thermal-matrix-flow-rail-axis" />
                               <span
-                                className="block h-full rounded-[1px]"
-                                style={{
-                                  width: `${w}px`,
-                                  marginLeft: buy ? 0 : `${46 - w}px`,
-                                  backgroundColor: buy ? DEPTH_BUY_HEX : DEPTH_SELL_HEX,
-                                  opacity: 0.8,
-                                }}
+                                aria-hidden
+                                className={clsx(
+                                  "thermal-matrix-flow-rail-bar",
+                                  buy ? "is-buy" : "is-sell"
+                                )}
+                                style={{ width: `${pct / 2}%` }}
                               />
                             </span>
                           );
