@@ -13,6 +13,7 @@ import {
   fmtHeatmapExpiry,
   fmtHeatmapMoneySigned,
   fmtHeatmapStrike,
+  fmtStrikeDistancePct,
   heatmapCellStyle,
   heatmapCellTextStyle,
   heatmapMatrixExtremeCellStyle,
@@ -282,7 +283,8 @@ export default function ThermalCompactMatrix({
         <thead>
           <tr>
             <th className="thermal-compact-corner text-[11px]" scope="col">
-              Strike
+              <span className="thermal-compact-corner-strike">Strike</span>
+              <span className="thermal-compact-corner-pct">%</span>
             </th>
             {expiries.map((exp) => (
               <th
@@ -334,7 +336,12 @@ export default function ThermalCompactMatrix({
                     <span className="thermal-compact-pin" aria-hidden>
                       {pinned ? "◆" : "◇"}
                     </span>
-                    {fmtHeatmapStrike(strike)}
+                    <span className="thermal-compact-strike-label">{fmtHeatmapStrike(strike)}</span>
+                    {!isSpot ? (
+                      <span className="thermal-compact-strike-pct" title="Distance from spot">
+                        {fmtStrikeDistancePct(data.spot, strike)}
+                      </span>
+                    ) : null}
                   </button>
                 </th>
                 {expiries.map((exp) => {

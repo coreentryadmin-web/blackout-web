@@ -18231,7 +18231,7 @@ body::before {
   left: 0;
   top: 0;
   z-index: 4;
-  min-width: 4.25rem;
+  min-width: 5.75rem;
   padding: 0.4rem 0.45rem;
   font-size: 10px;
   font-weight: 800;
@@ -18240,6 +18240,17 @@ body::before {
   color: var(--tt-sky);
   text-align: left;
   border-bottom: 1px solid var(--tt-line);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35rem;
+}
+
+.thermal-compact-corner-pct {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: var(--tt-cyan);
+  opacity: 0.85;
 }
 
 .thermal-compact-exp {
@@ -18286,7 +18297,7 @@ body::before {
 .thermal-compact-strike {
   left: 0;
   z-index: 2;
-  min-width: 4.25rem;
+  min-width: 5.75rem;
   padding: 0;
   border-right: 1px solid rgba(125, 211, 252, 0.12);
   vertical-align: middle;
@@ -18298,7 +18309,7 @@ body::before {
   align-items: center;
   justify-content: flex-end;
   gap: 0.28rem;
-  padding: 0.32rem 0.5rem;
+  padding: 0.32rem 0.45rem;
   border: 0;
   background: transparent;
   font: inherit;
@@ -18307,6 +18318,22 @@ body::before {
   font-variant-numeric: tabular-nums;
   color: var(--tt-ink);
   cursor: pointer;
+}
+
+.thermal-compact-strike-label {
+  flex: 1 1 auto;
+  text-align: right;
+}
+
+.thermal-compact-strike-pct {
+  flex: 0 0 auto;
+  min-width: 2.85rem;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--tt-sky);
+  text-align: right;
+  opacity: 0.92;
 }
 
 .thermal-compact-strike-btn:hover {
