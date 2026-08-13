@@ -5,6 +5,7 @@ import {
   ORACLE_WALL_TRAIL_SAMPLE_SEC,
   UNIVERSE_WALL_TRAIL_SAMPLE_SEC,
 } from "./vector-wall-sample";
+import { vectorUniverseTickers } from "@/lib/heatmap-allowlist";
 
 // vector-wall-sample-server.ts now starts with `import "server-only";` (added alongside the
 // no-restricted-imports ESLint guard against client components importing *-server modules —
@@ -29,9 +30,20 @@ test("wallTrailSampleSecForTicker: live scope — oracle 5s, on-demand 15s", asy
   assert.equal(wallTrailSampleSecForTicker("SPX"), ORACLE_WALL_TRAIL_SAMPLE_SEC);
   assert.equal(wallTrailSampleSecForTicker("SPY"), ORACLE_WALL_TRAIL_SAMPLE_SEC);
   assert.equal(wallTrailSampleSecForTicker("QQQ"), ORACLE_WALL_TRAIL_SAMPLE_SEC);
-  // PLTR is genuinely on-demand — nothing records it in the background, so its rail really is
+  // A genuinely on-demand ticker — nothing records it in the background, so its rail really is
   // viewer-built and 15s is the honest cadence for it.
-  assert.equal(wallTrailSampleSecForTicker("PLTR"), NON_UNIVERSE_WALL_TRAIL_SAMPLE_SEC);
+  //
+  // Resolved from the universe at RUNTIME rather than hardcoded. This assertion used to name
+  // PLTR, which stopped being on-demand the moment PLTR joined the static overlay/record universe
+  // with the Thermal sector grid — and the failure then read "5 !== 15", which describes the
+  // symptom and hides the cause. Picking the example from the live list means a future universe
+  // change either finds another off-universe name or fails on the explicit premise below.
+  const offUniverse = ["F", "SOFI", "NIO", "PFE", "T"].find((t) => !vectorUniverseTickers().includes(t));
+  assert.ok(
+    offUniverse,
+    "every candidate is now IN the recorded universe — pick a new off-universe ticker for this case"
+  );
+  assert.equal(wallTrailSampleSecForTicker(offUniverse), NON_UNIVERSE_WALL_TRAIL_SAMPLE_SEC);
   assert.equal(wallTrailSampleSecForTicker(null), NON_UNIVERSE_WALL_TRAIL_SAMPLE_SEC);
 });
 
