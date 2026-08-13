@@ -38,6 +38,63 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-08-13 — [FINDING, P2 tooling] data-validator: ARM "frozen mark" was a FALSE POSITIVE, and a rotating sample hid it — FIXED
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Severity** | P2 (tooling — the product was never wrong; the audit was) |
+| **Scope** | `scripts/audit/data-validator.mjs` — the 0DTE ledger "was a quote EVER observed on this row?" check |
+| **Status** | FIXED — both defects, with the fix extracted to `scripts/audit/lib/ledger-mark-evidence.mjs` + 11 unit tests |
+
+**Two separate defects, found together.**
+
+**(1) The check could not tell "never written" from "written, and equal to entry."**
+The frozen-mark test had two acceptance paths: a stamped `last_mark_at`, or a `last_mark` that
+differs from `entry_premium`. A row failing both fell through to a tape test (what fraction of
+minute closes since the flag sit >X% away from the mark). ARM on 2026-08-13 hit that path — entry
+6.95, `last_mark` 6.95, `last_mark_at` NULL (pre-column row) — and the tape correctly reported the
+contract spent the session away from 6.95. Verdict: FROZEN, "any P&L on this row is manufactured."
+It was reported as a live P1 roughly six times over ~6 hours.
+
+It was wrong. ARM's `peak_premium` is **10.33** against an entry of 6.95 (+48.6%), and its
+`exit_reason` is **`ratchet`**. `peak_premium`/`trough_premium` are latched by the SAME lane that
+writes `last_mark` (`src/lib/zerodte/live-marks.ts`), so a peak away from entry is exactly as
+conclusive as a mark away from entry — the lane demonstrably wrote this row. And a **breakeven
+ratchet closes AT entry by design**: the position runs up, the ratchet trails the stop to entry,
+the row exits at precisely `entry_premium`. `last_mark === entry_premium` was a real observed
+value, not a seeded one. The tape test cannot distinguish the two cases, and nothing above it
+tried to.
+
+**Fix:** a third acceptance path (`lane_wrote`) before the tape test — peak OR trough differing
+from entry proves the lane wrote the row. Deliberately NOT relaxed further: peak/trough *equal* to
+entry still falls through to the tape, because that is exactly what a genuinely never-written row
+looks like (the real RIOT 2026-08-11 shape this check was built for, which still FAILs).
+
+**(2) The sample rotated, so three consecutive runs reported "0 FAIL" without looking at the row.**
+The ledger loop was `ledgerRows.slice(0, ZERODTE_LEDGER_CHECK_CAP)` — first 5 in whatever order the
+board returned. The cap is a legitimate COST control (each row costs Polygon minute-bar fetches),
+but slicing raw board order made it a COVERAGE lottery: ARM was audited at 15:57 and then silently
+skipped at 19:33, 20:33 and 23:xx. **A suite that rotates its sample can stop reporting a standing
+defect without anything changing** — that is worse than not checking at all, because it reads as
+all-clear. It also meant the first attempt at fix (1) verified nothing: the very next run didn't
+sample ARM.
+
+**Fix:** `orderLedgerRowsForMarkCheck` sorts rows whose `last_mark` is bit-identical to
+`entry_premium` — the entire population this check is about — to the front, stably, before the cap
+applies. The cap stays; what it spends its budget on no longer depends on board ordering.
+
+**Evidence.** Live run 2026-08-13 23:44 UTC, 15 ledger rows, cap 5: ARM is now sampled **first**
+and PASSes — `last_mark === entry (6.95), but peak=10.33 trough=6.95 differ from entry — the mark
+lane demonstrably wrote this row (exit_reason=ratchet; a breakeven ratchet closes AT entry by
+design)`. Post-refactor re-run is byte-identical. TOTALS `{"PASS":42,"INFO":3,"FAIL":4}`; the 4
+FAILs are unrelated off-hours artifacts (extended-hours app prices vs prev-close ground truth).
+
+**Blast radius.** Contained to this validator — no product code reads these helpers, and no board /
+ledger / grading behaviour changed. The `num()` coercion in the extracted module carries an explicit
+null guard the inline version did not need: `Number(null) === 0`, and zero is a premium value this
+module compares for bit-identity.
+
 ## 2026-08-12 — [FEATURE, Largo product roadmap 1–15] Desk prompts, compare card, depth toggle, session memory, morning brief — SHIPPED
 > **kind:** `FINDING`
 
