@@ -26,8 +26,8 @@ import { ThermalGridSectorPicker } from "@/features/thermal/components/ThermalGr
 import {
   buildThermalUrlSearch,
   honestLevelEmpty,
-  keyLevelsFootnote,
   keyLevelsKicker,
+  keyLevelsFootnoteCompact,
   parseThermalTicker,
   parseThermalUrlState,
   shouldForceMatrixRefresh,
@@ -3490,6 +3490,17 @@ export function GexHeatmap({
     [filteredTotals]
   );
 
+  // Restored after #2146 removed it. The redundant half (which the kicker already states) is gone;
+  // the King-node exemption is kept, because nothing else on the panel discloses it.
+  const keyLevelsScopeFootnote = useMemo(
+    () =>
+      keyLevelsFootnoteCompact(
+        zeroDteExpiry ? fmtExpiry(zeroDteExpiry) : null,
+        scopedExpiryLabel ? fmtExpiry(scopedExpiryLabel) : null
+      ),
+    [zeroDteExpiry, scopedExpiryLabel]
+  );
+
   // The active block is empty when it has no strike totals (e.g. VEX skipped all IVs).
   const blockEmpty = Object.keys(strikeTotals).length === 0;
   const empty = !isLoading && data != null && (!data.available || strikes.length === 0);
@@ -3887,15 +3898,6 @@ export function GexHeatmap({
       ),
     [lensUpper, stale, data?.near_term_expiries, scopedExpiryLabel, scopedShare]
   );
-  const keyLevelsScopeFootnote = useMemo(
-    () =>
-      keyLevelsFootnote(
-        zeroDteExpiry ? fmtExpiry(zeroDteExpiry) : null,
-        scopedExpiryLabel ? fmtExpiry(scopedExpiryLabel) : null
-      ),
-    [zeroDteExpiry, scopedExpiryLabel]
-  );
-
   // The old ~6 big cards (flip / call wall / put wall / max pain / net / anchor) collapse
   // into ONE compact box of small label-over-value cells. Per-lens cell sets mirror the
   // prior RegimeTile sets exactly (same values, tones, help, "vs prior close" deltas):
@@ -4720,7 +4722,7 @@ export function GexHeatmap({
           cells={levelCells}
           kicker={keyLevelsScopeKicker}
           footnote={keyLevelsScopeFootnote}
-          className="mb-3 gex-key-levels"
+          className="mb-2 gex-key-levels thermal-key-levels"
         />
       )}
 

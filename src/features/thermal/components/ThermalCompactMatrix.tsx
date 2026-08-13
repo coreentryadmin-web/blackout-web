@@ -38,7 +38,14 @@ export type ThermalCompareMode = "0dte" | "near";
 
 export type ThermalCompactPayload = {
   ticker: string;
+  /** Matrix snapshot spot — drives ATM row highlight + scroll (5s cadence). */
   spot?: number | null;
+  /**
+   * Spot for % distance labels — defaults to `spot`. Compare grid passes the
+   * live header quote (push ?? matrix) so % drifts with the visible price
+   * between matrix refreshes; GEX cells still update on the matrix cadence.
+   */
+  labelSpot?: number | null;
   strikes: number[];
   expiries: string[];
   nearTermExpiries?: string[] | null;
@@ -52,15 +59,9 @@ type Props = {
   pinnedStrikes: number[];
   onTogglePin: (strike: number) => void;
   scrollRef?: RefObject<HTMLDivElement | null>;
-  onScrollSync?: (scrollTop: number, scrollLeft: number) => void;
-  /**
-   * Desk-level flag: while true, skip scroll-sync so each panel can center on its
-   * own spot without yanking the other two to the wrong scrollTop.
-   */
-  suppressScrollSyncRef?: MutableRefObject<boolean>;
-  /** Desk-level: user scrolled any panel — don't auto-yank until spot strike moves or refresh. */
+  /** Per-column: user scrolled this panel — skip auto-recenter until spot moves or refresh. */
   userPinnedScrollRef?: MutableRefObject<boolean>;
-  /** Bumped by the rail Refresh control to force recenter after revalidate. */
+  /** Bumped by the toolbar Refresh control to force recenter after revalidate. */
   recenterEpoch?: number;
 };
 
@@ -73,13 +74,7 @@ function todayEtYmd(): string {
   }).format(new Date());
 }
 
-function centerSpotInBox(
-  box: HTMLElement,
-  row: HTMLElement,
-  behavior: ScrollBehavior,
-  suppressRef?: MutableRefObject<boolean>,
-) {
-  if (suppressRef) suppressRef.current = true;
+function centerSpotInBox(box: HTMLElement, row: HTMLElement, behavior: ScrollBehavior) {
   if (behavior === "smooth") {
     const scrollRect = box.getBoundingClientRect();
     const rowRect = row.getBoundingClientRect();
@@ -91,13 +86,6 @@ function centerSpotInBox(
   } else {
     scrollRowIntoViewCenter(box, row);
   }
-  // Keep sync suppressed through the scroll event + a layout frame so the
-  // other panels keep their own spot-centered scrollTop.
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      if (suppressRef) suppressRef.current = false;
-    });
-  });
 }
 
 export default function ThermalCompactMatrix({
@@ -107,8 +95,6 @@ export default function ThermalCompactMatrix({
   pinnedStrikes,
   onTogglePin,
   scrollRef,
-  onScrollSync,
-  suppressScrollSyncRef,
   userPinnedScrollRef,
   recenterEpoch = 0,
 }: Props) {
@@ -146,6 +132,8 @@ export default function ThermalCompactMatrix({
     THERMAL_COMPARE_STRIKE_HALF,
   );
   const spotIdx = nearestStrikeIndex(strikes, data.spot ?? null);
+  const pctSpot = data.labelSpot ?? data.spot ?? null;
+  const pctSpotIdx = nearestStrikeIndex(strikes, pctSpot);
   const spotStrike = spotIdx >= 0 ? strikes[spotIdx]! : null;
   const pinSet = new Set(pinnedStrikes);
   const peak = compactMatrixPeak(data.cells, strikes, expiries);
@@ -158,7 +146,7 @@ export default function ThermalCompactMatrix({
     const box = localScrollRef.current;
     const row = spotRowRef.current;
     if (box == null || row == null) return;
-    centerSpotInBox(box, row, behavior, suppressScrollSyncRef);
+    centerSpotInBox(box, row, behavior);
   };
 
   // Mark desk scroll as user-pinned so quiet matrix refreshes don't yank the ladder.
@@ -233,12 +221,6 @@ export default function ThermalCompactMatrix({
     <div
       ref={setScrollEl}
       className={`thermal-compact-scroll${is0dte ? " is-0dte" : ""}`}
-      onScroll={(e) => {
-        if (suppressScrollSyncRef?.current) return;
-        if (!onScrollSync) return;
-        const el = e.currentTarget;
-        onScrollSync(el.scrollTop, el.scrollLeft);
-      }}
     >
       <table
         className={`thermal-compact-table${is0dte ? " is-0dte" : ""} font-mono text-[13px] tabular-nums`}
@@ -305,7 +287,8 @@ export default function ThermalCompactMatrix({
                   const posRank = hl?.topPositive[strike];
                   const negRank = hl?.topNegative[strike];
                   const isKing = has && n !== 0 && day?.king === strike;
-                  const showPct = !isSpot && shouldShowStrikeDistancePct(si, spotIdx);
+                  const showPct =
+                    !isSpot && shouldShowStrikeDistancePct(si, pctSpotIdx);
 
                   let style: CSSProperties = {};
                   if (has && n !== 0) {
@@ -363,14 +346,14 @@ export default function ThermalCompactMatrix({
                       }
                     >
                       <span className="thermal-compact-cell-inner">
+                        {showPct ? (
+                          <span className="thermal-compact-cell-pct" title="Distance from spot">
+                            {fmtStrikeDistancePct(pctSpot, strike)}
+                          </span>
+                        ) : null}
                         <span className="thermal-compact-cell-val">
                           {fmtHeatmapMoneySigned(n, { showZero: true })}
                         </span>
-                        {showPct ? (
-                          <span className="thermal-compact-cell-pct" title="Distance from spot">
-                            {fmtStrikeDistancePct(data.spot, strike)}
-                          </span>
-                        ) : null}
                       </span>
                       {isKing ? (
                         <span

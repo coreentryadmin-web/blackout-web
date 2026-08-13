@@ -9,7 +9,6 @@ import {
   useRef,
   useState,
   type MutableRefObject,
-  type RefObject,
 } from "react";
 import useSWR from "swr";
 import { FreshnessChip } from "@/components/ui";
@@ -131,9 +130,6 @@ type ColumnProps = {
   onFocus: () => void;
   onTogglePin: (strike: number) => void;
   shortcut: string;
-  scrollRef: RefObject<HTMLDivElement | null>;
-  onScrollSync: (scrollTop: number, scrollLeft: number) => void;
-  suppressScrollSyncRef: MutableRefObject<boolean>;
   userPinnedScrollRef: MutableRefObject<boolean>;
   recenterEpoch: number;
   onRegisterMutate: (
@@ -185,9 +181,6 @@ function TripleColumn({
   onFocus,
   onTogglePin,
   shortcut,
-  scrollRef,
-  onScrollSync,
-  suppressScrollSyncRef,
   userPinnedScrollRef,
   recenterEpoch,
   onRegisterMutate,
@@ -372,6 +365,7 @@ function TripleColumn({
           data={{
             ticker,
             spot: view!.spot,
+            labelSpot: headerSpot,
             strikes: view!.strikes!,
             expiries: view!.expiries!,
             nearTermExpiries: view!.near_term_expiries,
@@ -381,9 +375,6 @@ function TripleColumn({
           mode={mode}
           pinnedStrikes={pinnedStrikes}
           onTogglePin={onTogglePin}
-          scrollRef={scrollRef}
-          onScrollSync={onScrollSync}
-          suppressScrollSyncRef={suppressScrollSyncRef}
           userPinnedScrollRef={userPinnedScrollRef}
           recenterEpoch={recenterEpoch}
         />
@@ -408,12 +399,12 @@ export type ThermalTripleDeskHandle = {
   refreshAndRecenter: () => Promise<void>;
 };
 
-function scrollRefFor(
-  store: MutableRefObject<Record<string, RefObject<HTMLDivElement | null>>>,
+function userPinnedScrollRefFor(
+  store: MutableRefObject<Record<string, MutableRefObject<boolean>>>,
   ticker: string,
-): RefObject<HTMLDivElement | null> {
+): MutableRefObject<boolean> {
   if (!store.current[ticker]) {
-    store.current[ticker] = { current: null };
+    store.current[ticker] = { current: false };
   }
   return store.current[ticker]!;
 }
@@ -427,10 +418,7 @@ const ThermalTripleDesk = forwardRef<ThermalTripleDeskHandle, Props>(function Th
   const [recenterEpoch, setRecenterEpoch] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [columnValidating, setColumnValidating] = useState<Record<string, boolean>>({});
-  const scrollRefStore = useRef<Record<string, RefObject<HTMLDivElement | null>>>({});
-  const syncingScroll = useRef(false);
-  const suppressScrollSyncRef = useRef(false);
-  const userPinnedScrollRef = useRef(false);
+  const userPinnedScrollRefStore = useRef<Record<string, MutableRefObject<boolean>>>({});
   const mutateByTickerRef = useRef<Record<string, () => Promise<unknown>>>({});
 
   const columnTickers = useMemo(() => tickers.map((t) => t.toUpperCase()), [tickers]);
@@ -450,18 +438,19 @@ const ThermalTripleDesk = forwardRef<ThermalTripleDeskHandle, Props>(function Th
   );
 
   const refreshAndRecenter = useCallback(async () => {
-    userPinnedScrollRef.current = false;
+    for (const ticker of columnTickers) {
+      userPinnedScrollRefFor(userPinnedScrollRefStore, ticker).current = false;
+    }
     setRefreshing(true);
     try {
       const mutates = Object.values(mutateByTickerRef.current);
       await Promise.all(mutates.map((m) => m()));
     } finally {
       setRefreshing(false);
-      // Force each compact matrix to re-map its ladder onto live spot
-      // (independent scrollTops — sync suppressed inside centerSpotInBox).
+      // Each column recenters on its own spot row (independent scroll positions).
       setRecenterEpoch((n) => n + 1);
     }
-  }, []);
+  }, [columnTickers]);
 
   useImperativeHandle(ref, () => ({ refreshAndRecenter }), [refreshAndRecenter]);
 
@@ -476,23 +465,6 @@ const ThermalTripleDesk = forwardRef<ThermalTripleDeskHandle, Props>(function Th
       return merged;
     });
   }, []);
-
-  const onScrollSync = useCallback(
-    (scrollTop: number, scrollLeft: number) => {
-      if (syncingScroll.current || suppressScrollSyncRef.current) return;
-      syncingScroll.current = true;
-      for (const ticker of columnTickers) {
-        const el = scrollRefFor(scrollRefStore, ticker).current;
-        if (!el) continue;
-        if (el.scrollTop !== scrollTop) el.scrollTop = scrollTop;
-        if (el.scrollLeft !== scrollLeft) el.scrollLeft = scrollLeft;
-      }
-      requestAnimationFrame(() => {
-        syncingScroll.current = false;
-      });
-    },
-    [columnTickers],
-  );
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -536,10 +508,7 @@ const ThermalTripleDesk = forwardRef<ThermalTripleDeskHandle, Props>(function Th
             onFocus={() => onFocusTicker(ticker)}
             onTogglePin={(strike) => togglePin(ticker, strike)}
             shortcut={String(i + 1)}
-            scrollRef={scrollRefFor(scrollRefStore, ticker)}
-            onScrollSync={onScrollSync}
-            suppressScrollSyncRef={suppressScrollSyncRef}
-            userPinnedScrollRef={userPinnedScrollRef}
+            userPinnedScrollRef={userPinnedScrollRefFor(userPinnedScrollRefStore, ticker)}
             recenterEpoch={recenterEpoch}
             onRegisterMutate={onRegisterMutate}
           />
