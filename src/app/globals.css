@@ -17898,14 +17898,18 @@ body::before {
   border-radius: 0.75rem !important;
   border-color: rgba(125, 211, 252, 0.2) !important;
   background: linear-gradient(180deg, rgba(8, 12, 22, 0.88), rgba(4, 6, 12, 0.94)) !important;
-  padding: 0.45rem 0.65rem 0.5rem !important;
+  padding: 0.35rem 0.55rem 0.45rem !important;
   box-shadow:
     inset 0 1px 0 rgba(125, 211, 252, 0.06),
     0 4px 18px rgba(0, 0, 0, 0.2);
 }
 
 .thermal-key-levels > div:first-child {
-  margin-bottom: 0.35rem !important;
+  margin-bottom: 0.25rem !important;
+}
+
+.thermal-key-levels [data-flow-summary] {
+  align-self: stretch;
 }
 
 .thermal-desk-view-tabs {

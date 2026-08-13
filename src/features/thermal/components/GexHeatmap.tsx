@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { gammaShareByExpiry } from "@/features/thermal/lib/gex-heatmap/per-expiry-levels";
 import { gexWallsFromStrikeTotals } from "@/lib/providers/gex-cross-validation-core";
@@ -2018,15 +2018,8 @@ const TILE_DELTA_HEX: Record<TileDelta["tone"], string> = {
 // derived from the per-strike HELIX overlay. Compact rail card.
 // ---------------------------------------------------------------------------
 
-function FlowSummary({
-  flowByStrike,
-  overlaysLoaded,
-}: {
-  flowByStrike: Record<string, FlowByStrike> | null;
-  /** True once the heatmap response has arrived (distinguishes "loading" from "unavailable"). */
-  overlaysLoaded?: boolean;
-}) {
-  const totals = useMemo(() => {
+function useFlowTotals(flowByStrike: Record<string, FlowByStrike> | null) {
+  return useMemo(() => {
     let call = 0;
     let put = 0;
     if (flowByStrike) {
@@ -2037,20 +2030,33 @@ function FlowSummary({
     }
     return { call, put, net: call - put };
   }, [flowByStrike]);
+}
 
-  // When overlays have been loaded but this ticker has no flow overlay data, show a muted
-  // indicator instead of silently hiding the card — so the user knows the HELIX card area
-  // is working and this ticker simply isn't in the flow overlay allowlist.
+/** Compact Flow Today strip for the key-levels row (matrix header). */
+function FlowSummaryStrip({
+  flowByStrike,
+  overlaysLoaded,
+}: {
+  flowByStrike: Record<string, FlowByStrike> | null;
+  overlaysLoaded?: boolean;
+}) {
+  const totals = useFlowTotals(flowByStrike);
+
   if (!flowByStrike || Object.keys(flowByStrike).length === 0) {
-    if (!overlaysLoaded) return null; // still loading — stay quiet
+    if (!overlaysLoaded) return null;
     return (
-      <div className="rounded-xl border border-white/5 bg-[rgba(8,9,14,0.35)] px-4 py-3">
-        <div className="flex items-center gap-2">
-          <Badge tone="neutral" size="sm">HELIX</Badge>
-          <span className="font-mono text-[11px] text-sky-300/50">
-            Flow overlay unavailable for this ticker
+      <div
+        className="flex min-h-[3.25rem] flex-col justify-center rounded-lg border border-white/8 bg-[rgba(8,9,14,0.4)] px-2.5 py-1.5"
+        data-flow-summary="unavailable"
+      >
+        <span className="flex items-center gap-1.5">
+          <Badge tone="neutral" size="sm">
+            HELIX
+          </Badge>
+          <span className="font-mono text-[8px] uppercase tracking-[0.14em] text-sky-300/55">
+            Flow unavailable
           </span>
-        </div>
+        </span>
       </div>
     );
   }
@@ -2060,10 +2066,13 @@ function FlowSummary({
   const callPct = gross > 0 ? (Math.abs(totals.call) / gross) * 100 : 50;
 
   return (
-    <div className="rounded-xl border border-white/10 bg-[rgba(8,9,14,0.5)] px-4 py-3">
-      <div className="mb-2.5 flex items-center justify-between">
-        <span className="flex items-center gap-2">
-          <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-sky-300/75">
+    <div
+      className="flex min-h-[3.25rem] min-w-0 flex-col justify-center gap-1 rounded-lg border border-white/12 bg-[rgba(8,9,14,0.55)] px-2.5 py-1.5"
+      data-flow-summary="live"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="truncate font-mono text-[8px] uppercase tracking-[0.14em] text-sky-300/75">
             Flow today
           </span>
           <Badge tone="bull" size="sm">
@@ -2071,37 +2080,39 @@ function FlowSummary({
           </Badge>
         </span>
         <span
-          className={clsx("font-mono text-[12px] font-bold tabular-nums", bullish ? "text-bull" : "text-bear")}
+          className={clsx(
+            "shrink-0 font-mono text-[13px] font-bold tabular-nums leading-none",
+            bullish ? "text-bull" : "text-bear"
+          )}
         >
           {fmtMoneySigned(totals.net)}
         </span>
       </div>
 
-      {/* call vs put premium split bar */}
-      <div className="mb-2 flex h-2 overflow-hidden rounded-full bg-[rgba(8,9,14,0.8)]">
+      <div className="flex h-[6px] overflow-hidden rounded-full bg-[rgba(8,9,14,0.85)]">
         <span
           className="h-full"
-          style={{ width: `${callPct.toFixed(1)}%`, backgroundColor: "#a3e635", boxShadow: "0 0 8px #a3e63588" }}
+          style={{
+            width: `${callPct.toFixed(1)}%`,
+            backgroundColor: "#a3e635",
+            boxShadow: "0 0 6px #a3e63588",
+          }}
         />
         <span
           className="h-full flex-1"
-          style={{ backgroundColor: "#ff2d55", boxShadow: "0 0 8px #ff2d5588" }}
+          style={{ backgroundColor: "#ff2d55", boxShadow: "0 0 6px #ff2d5588" }}
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
-        <div className="flex flex-col">
-          <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-bull/80">Calls</span>
-          <span className="font-mono text-[13px] font-bold tabular-nums text-bull">
-            {fmtMoney(totals.call)}
-          </span>
-        </div>
-        <div className="flex flex-col text-right">
-          <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-bear-text">Puts</span>
-          <span className="font-mono text-[13px] font-bold tabular-nums text-bear">
-            {fmtMoney(totals.put)}
-          </span>
-        </div>
+      <div className="flex items-center justify-between gap-2 font-mono text-[9px] tabular-nums leading-none">
+        <span className="text-bull/90">
+          <span className="uppercase tracking-[0.12em]">C </span>
+          <span className="font-bold">{fmtMoney(totals.call)}</span>
+        </span>
+        <span className="text-bear">
+          <span className="uppercase tracking-[0.12em]">P </span>
+          <span className="font-bold">{fmtMoney(totals.put)}</span>
+        </span>
       </div>
     </div>
   );
@@ -2359,7 +2370,7 @@ function CompactLevel({ cell }: { cell: LevelCell }) {
       // wording change silently turns a real assertion into one that matches nothing.
       data-level={cell.key}
       className={clsx(
-        "relative flex min-w-0 flex-col gap-0.5 rounded-lg border px-2.5 py-1.5",
+        "relative flex min-w-0 flex-col gap-0.5 rounded-lg border px-2 py-1",
         cell.anchor
           ? "border-white/45 bg-[rgba(12,13,16,0.6)]"
           : active
@@ -2385,7 +2396,7 @@ function CompactLevel({ cell }: { cell: LevelCell }) {
       <span
         data-level-value={cell.key}
         className={clsx(
-          "font-mono text-[15px] font-bold leading-none tabular-nums",
+          "font-mono text-[14px] font-bold leading-none tabular-nums",
           cell.anchor ? "text-white" : active ? t.value : "text-sky-300/55"
         )}
       >
@@ -2707,11 +2718,14 @@ function KeyLevelBox({
   kicker,
   footnote,
   className,
+  trailing,
 }: {
   cells: LevelCell[];
   kicker: string;
   footnote?: string | null;
   className?: string;
+  /** Optional trailing slot (e.g. Flow Today HELIX) — sits flush on the key-levels row. */
+  trailing?: ReactNode;
 }) {
   return (
     <div
@@ -2720,7 +2734,7 @@ function KeyLevelBox({
         className
       )}
     >
-      <div className="mb-2 flex items-center justify-between">
+      <div className="mb-1.5 flex items-center justify-between">
         <span className="font-mono text-[9px] uppercase tracking-[0.22em] text-sky-300/75">
           Key levels
         </span>
@@ -2735,15 +2749,25 @@ function KeyLevelBox({
           {kicker}
         </span>
       </div>
-      {/* Tight responsive grid of small cells — 2 cols on phones, fans out to 6 at lg.
-          One grouped box, much smaller footprint than the old big-card row. */}
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-        {cells.map((cell) => (
-          <CompactLevel key={cell.key} cell={cell} />
-        ))}
+      <div className="flex flex-col gap-1.5 xl:flex-row xl:items-stretch">
+        <div
+          className={clsx(
+            "grid min-w-0 flex-1 gap-1.5",
+            trailing
+              ? "grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-6"
+              : "grid-cols-2 sm:grid-cols-3 lg:grid-cols-6"
+          )}
+        >
+          {cells.map((cell) => (
+            <CompactLevel key={cell.key} cell={cell} />
+          ))}
+        </div>
+        {trailing ? (
+          <div className="min-w-0 shrink-0 xl:w-[min(100%,15.5rem)]">{trailing}</div>
+        ) : null}
       </div>
       {footnote ? (
-        <p className="mt-2 font-mono text-[9px] leading-snug text-sky-300/60">{footnote}</p>
+        <p className="mt-1.5 font-mono text-[9px] leading-snug text-sky-300/60">{footnote}</p>
       ) : null}
     </div>
   );
@@ -4596,6 +4620,11 @@ export function GexHeatmap({
           kicker={keyLevelsScopeKicker}
           footnote={keyLevelsScopeFootnote}
           className="mb-2 gex-key-levels thermal-key-levels"
+          trailing={
+            !nativeShell ? (
+              <FlowSummaryStrip flowByStrike={flowByStrike} overlaysLoaded={data != null} />
+            ) : undefined
+          }
         />
       )}
 
@@ -4769,15 +4798,6 @@ export function GexHeatmap({
               </TabPanel>
             </TabPanels>
           </Tabs>
-
-          {/* ── Rail: flow today — Matrix tab only (Profile+Curve+Shift is self-contained). ── */}
-          {!nativeShell && pairView === "pair-a" && (
-            <div className="mt-5 flex justify-end gex-heatmap-rail">
-              <div className="w-full max-w-md">
-                <FlowSummary flowByStrike={flowByStrike} overlaysLoaded={data != null} />
-              </div>
-            </div>
-          )}
 
           {!nativeShell && pairView === "pair-a" && (
           <p className="mt-5 border-t border-white/8 pt-3 text-[10px] leading-snug text-sky-300/75 gex-heatmap-methodology">
