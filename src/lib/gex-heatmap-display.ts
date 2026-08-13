@@ -163,3 +163,45 @@ export function fmtHeatmapExpiry(ymd: string): string {
 export function fmtHeatmapStrike(n: number): string {
   return n.toLocaleString("en-US", { maximumFractionDigits: 1, minimumFractionDigits: 0 });
 }
+
+/**
+ * Signed % distance of a strike from live spot — same formula as SPX desk `distance_pct`
+ * and Largo rail `distancePct`: ((strike − spot) / spot) × 100.
+ */
+export function strikeDistancePct(
+  spot: number | null | undefined,
+  strike: number | null | undefined,
+): number | null {
+  if (!Number.isFinite(spot as number) || !Number.isFinite(strike as number) || (spot as number) <= 0) {
+    return null;
+  }
+  return ((Number(strike) - Number(spot)) / Number(spot)) * 100;
+}
+
+/** How many strikes above/below spot get a readable % label (8 rows total). */
+export const STRIKE_DISTANCE_PCT_NEAR_SPOT = 4;
+
+/**
+ * Show % distance only on the nearest N strikes above and below spot — not the
+ * full 70+ row ladder (readability).
+ */
+export function shouldShowStrikeDistancePct(
+  rowIndex: number,
+  spotIndex: number,
+  nearCount: number = STRIKE_DISTANCE_PCT_NEAR_SPOT,
+): boolean {
+  if (spotIndex < 0 || rowIndex === spotIndex) return false;
+  return Math.abs(rowIndex - spotIndex) <= nearCount;
+}
+
+/** "+0.12%" / "−0.05%" / "—" — two decimals, true minus sign (desk ladder parity). */
+export function fmtStrikeDistancePct(
+  spot: number | null | undefined,
+  strike: number | null | undefined,
+): string {
+  const pct = strikeDistancePct(spot, strike);
+  if (pct == null || !Number.isFinite(pct)) return "—";
+  const rounded = Math.abs(pct) < 0.005 ? 0 : pct;
+  const sign = rounded > 0 ? "+" : rounded < 0 ? "−" : "";
+  return `${sign}${Math.abs(rounded).toFixed(2)}%`;
+}

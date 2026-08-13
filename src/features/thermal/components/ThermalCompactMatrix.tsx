@@ -13,6 +13,8 @@ import {
   fmtHeatmapExpiry,
   fmtHeatmapMoneySigned,
   fmtHeatmapStrike,
+  fmtStrikeDistancePct,
+  shouldShowStrikeDistancePct,
   heatmapCellStyle,
   heatmapCellTextStyle,
   heatmapMatrixExtremeCellStyle,
@@ -187,6 +189,7 @@ export default function ThermalCompactMatrix({
   const extremes = compactPerExpiryExtremes(data.cells, strikes, expiries);
   const is0dte = mode === "0dte";
   const hasData = expiries.length > 0 && strikes.length > 0;
+  const primaryExpiry = is0dte && expiries.length > 0 ? expiries[0]! : null;
 
   const centerSpotRow = (behavior: ScrollBehavior = "auto") => {
     const box = localScrollRef.current;
@@ -275,6 +278,12 @@ export default function ThermalCompactMatrix({
       }}
       onMouseLeave={() => onCrosshairIndex?.(null)}
     >
+      {is0dte && primaryExpiry ? (
+        <div className="thermal-compact-expiry-center" title={primaryExpiry}>
+          <span className="thermal-compact-exp-chip">0DTE</span>
+          <span className="thermal-compact-exp-date">{fmtHeatmapExpiry(primaryExpiry)}</span>
+        </div>
+      ) : null}
       <table
         className={`thermal-compact-table${is0dte ? " is-0dte" : ""} font-mono text-[13px] tabular-nums`}
         aria-label={`${data.ticker} ${lens.toUpperCase()} ${is0dte ? "0DTE" : "near-term"} matrix`}
@@ -282,25 +291,23 @@ export default function ThermalCompactMatrix({
         <thead>
           <tr>
             <th className="thermal-compact-corner text-[11px]" scope="col">
-              Strike
+              <span className="thermal-compact-corner-strike">Strike</span>
+              <span className="thermal-compact-corner-pct">%</span>
             </th>
-            {expiries.map((exp) => (
-              <th
-                key={exp}
-                className="thermal-compact-exp text-[11px]"
-                scope="col"
-                title={exp}
-              >
-                {is0dte ? (
-                  <>
-                    <span className="thermal-compact-exp-chip">0DTE</span>
-                    <span className="thermal-compact-exp-date">{fmtHeatmapExpiry(exp)}</span>
-                  </>
-                ) : (
-                  fmtHeatmapExpiry(exp)
-                )}
-              </th>
-            ))}
+            {is0dte ? (
+              <th className="thermal-compact-exp is-0dte-spacer" scope="col" aria-hidden />
+            ) : (
+              expiries.map((exp) => (
+                <th
+                  key={exp}
+                  className="thermal-compact-exp text-[11px]"
+                  scope="col"
+                  title={exp}
+                >
+                  {fmtHeatmapExpiry(exp)}
+                </th>
+              ))
+            )}
           </tr>
         </thead>
         <tbody>
@@ -334,7 +341,12 @@ export default function ThermalCompactMatrix({
                     <span className="thermal-compact-pin" aria-hidden>
                       {pinned ? "◆" : "◇"}
                     </span>
-                    {fmtHeatmapStrike(strike)}
+                    <span className="thermal-compact-strike-label">{fmtHeatmapStrike(strike)}</span>
+                    {!isSpot && shouldShowStrikeDistancePct(si, spotIdx) ? (
+                      <span className="thermal-compact-strike-pct" title="Distance from spot">
+                        {fmtStrikeDistancePct(data.spot, strike)}
+                      </span>
+                    ) : null}
                   </button>
                 </th>
                 {expiries.map((exp) => {

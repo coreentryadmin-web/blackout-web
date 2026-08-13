@@ -19,7 +19,6 @@ import {
   TabPanel,
 } from "@/components/ui";
 import { AnchorGlyph, PanelLabel } from "@/features/thermal/lib/gex-heatmap/primitives";
-import { ThermalFreshnessBar } from "@/features/thermal/components/ThermalFreshnessBar";
 import ThermalTripleDesk from "@/features/thermal/components/ThermalTripleDesk";
 import { ThermalGridSectorPicker } from "@/features/thermal/components/ThermalGridSectorPicker";
 import {
@@ -1848,7 +1847,7 @@ function TickerSwitcher({
       className={clsx(
         nativeShell
           ? "gex-ticker-native-sheet-search"
-          : "w-full rounded-md border border-white/12 bg-[rgba(4,6,10,0.7)] px-2.5 py-1.5 font-mono text-[12px] text-white placeholder:text-sky-300/40 outline-none focus-visible:border-sky-400/60 focus-visible:ring-1 focus-visible:ring-sky-400/50"
+          : "thermal-desk-ticker-search w-full px-2.5 py-1.5 font-mono text-[12px]"
       )}
     />
   );
@@ -1881,7 +1880,7 @@ function TickerSwitcher({
     !nativeShell && open && menuPos ? (
       <div
         ref={menuRef}
-        className="fixed z-[200] rounded-lg border border-white/12 bg-[rgba(8,9,14,0.97)] p-1.5 shadow-xl backdrop-blur"
+        className="thermal-desk-ticker-menu fixed z-[200] p-1.5"
         style={{ top: menuPos.top, left: menuPos.left, width: menuPos.width }}
       >
         {searchInput}
@@ -1900,8 +1899,7 @@ function TickerSwitcher({
         aria-expanded={open}
         aria-label={`Ticker: ${ticker}. Change ticker`}
         className={clsx(
-          "inline-flex items-center gap-1.5 rounded-md border border-white/12 bg-[rgba(8,9,14,0.6)] px-2.5 py-1.5 outline-none transition-colors",
-          "hover:border-sky-400/50 focus-visible:ring-2 focus-visible:ring-sky-400",
+          "thermal-desk-ticker-trigger inline-flex items-center gap-1.5 px-2.5 py-1.5 outline-none",
           nativeShell && "gex-ticker-native-trigger min-h-[var(--ios-touch,2.75rem)]"
         )}
       >
@@ -4525,16 +4523,12 @@ export function GexHeatmap({
     </div>
   );
 
-  const hasOverlaysPainted =
-    (hasFlowOverlay && showFlow) || (hasDarkPoolOverlay && showDarkPool);
-  const crossValPresent = data?.cross_validation != null && !stale;
-
   return (
     <Panel accent={panelAccent} className={clsx("overflow-visible gex-heatmap-panel", nativeShell && "gex-heatmap-panel-native")}>
       {/* ── ONE compact control row (UI refactor) ──────────────────────────────
           [🔍 ticker + spot]  [ Profile+Matrix | Curve+Shift ]  …spacer…  [compare · GEX VEX DEX CHARM]
           Wraps gracefully on narrow widths (flex-wrap). */}
-      <div className="relative z-[40] mb-3 flex flex-wrap items-center gap-x-4 gap-y-3 overflow-visible rounded-xl border border-white/10 bg-[rgba(8,9,14,0.45)] px-3 py-2.5 backdrop-blur gex-heatmap-control-row">
+      <div className="thermal-desk-control-row relative z-[40] mb-3 flex flex-wrap items-center overflow-visible gex-heatmap-control-row">
         {/* Compact searchable ticker + the ONE kept clean spot reference. */}
         <TickerSwitcher
           ticker={ticker}
@@ -4555,7 +4549,10 @@ export function GexHeatmap({
             TabPanels (both driven by `pairView`). Only meaningful with a real block. */}
         {showMatrixTabs && (
           <Tabs value={pairView} onValueChange={(v) => setPairView(v as "pair-a" | "pair-b" | "pair-c")}>
-            <TabList aria-label={`${lensUpper} views`} className="max-w-full overflow-x-auto">
+            <TabList
+              aria-label={`${lensUpper} views`}
+              className="thermal-desk-view-tabs max-w-full overflow-x-auto"
+            >
               <Tab value="pair-a">Matrix</Tab>
               <Tab value="pair-b">
                 <span className="sm:hidden">Profile</span>
@@ -4650,32 +4647,16 @@ export function GexHeatmap({
             hide the tab rather than render an empty lens). Moved here (far right of the
             control row) from the old header top-right. */}
         <Tabs value={lens} onValueChange={(v) => setLens(v as Lens)}>
-          <TabList
-            aria-label="Exposure lens"
-            unstyled
-            className="flex items-center gap-1 rounded-lg border border-white/10 bg-[rgba(8,9,14,0.5)] p-1"
-          >
+          <TabList aria-label="Exposure lens" unstyled className="thermal-desk-lens-rail">
             {(["gex", "vex", ...(hasDex ? (["dex"] as const) : []), ...(hasCharm ? (["charm"] as const) : [])] as Lens[]).map((l) => {
               const active = l === lens;
-              // Per-lens active chip: gex→bull, vex→sky, dex→cyan, charm→gold.
-              const activeChip =
-                l === "gex"
-                  ? "bg-bull/15 text-bull outline outline-1 outline-bull/50"
-                  : l === "vex"
-                    ? "bg-sky-400/15 text-sky-300 outline outline-1 outline-sky-400/50"
-                    : l === "dex"
-                      ? "bg-cyan-400/15 text-cyan-400 outline outline-1 outline-cyan-400/50"
-                      : "bg-gold/15 text-gold outline outline-1 outline-gold/50";
               return (
                 <Tab
                   key={l}
                   value={l}
                   unstyled
-                  className={clsx(
-                    "rounded-md px-3.5 py-1 font-mono text-[11px] font-bold uppercase tracking-wider outline-none transition-colors",
-                    "focus-visible:ring-2 focus-visible:ring-sky-400",
-                    active ? activeChip : "text-sky-300/70 hover:text-white"
-                  )}
+                  data-lens={l}
+                  className={clsx("thermal-desk-lens-tab", active && "is-active")}
                 >
                   {l}
                 </Tab>
@@ -4684,20 +4665,6 @@ export function GexHeatmap({
           </TabList>
         </Tabs>
       </div>
-
-      {/* Per-layer freshness (matrix 5s / overlays ~30s / UW check) + near-term wall scope. */}
-      {!empty && (
-        <ThermalFreshnessBar
-          className="mb-3"
-          matrixAsof={stale ? null : data?.asof}
-          overlaysAt={stale ? null : data?.overlays_at}
-          hasOverlays={hasOverlaysPainted}
-          crossValUwAsof={stale ? null : data?.cross_validation?.uw_asof}
-          crossValPresent={crossValPresent}
-          nearTermExpiries={stale ? null : data?.near_term_expiries}
-          matrixLoading={isLoading && !data}
-        />
-      )}
 
       {/* Key levels sit tight under the control row — matrix is the hero below. */}
       {showViewTabs && (
@@ -4766,6 +4733,13 @@ export function GexHeatmap({
             lens={lens}
             activeTicker={ticker}
             tickers={compareGridTickers}
+            compareSet={compareSet}
+            onCompareSetChange={(id) => {
+              setCompareSet(id);
+              prefetchGexHeatmapTickers(
+                orderComparePresetTickers(thermalComparePreset(id), ticker),
+              );
+            }}
             presetLabel={comparePreset.label}
             onFocusTicker={setTicker}
             onLensChange={(l) => setLens(l as Lens)}
@@ -4774,7 +4748,7 @@ export function GexHeatmap({
             <span aria-hidden className="mr-1 text-sky-300/70">ⓘ</span>
             Grid compares {compareGridTickers.join(" · ")} on one nearest-expiry column each
             (0DTE when listed, else the front date on the chain). Pick a sector from the dropdown.
-            Keys 1–{compareGridTickers.length} focus; G/V/D/C lens. Pin strikes; CSV exports the full chain.
+            Keys 1–{compareGridTickers.length} focus; G/V/D/C lens. Pin strikes on the ladder.
           </p>
         </div>
       ) : (isLoading && !data) || stale ? (

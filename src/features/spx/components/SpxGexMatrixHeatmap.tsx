@@ -20,6 +20,8 @@ import {
   fmtHeatmapExpiry,
   fmtHeatmapMoneySigned,
   fmtHeatmapStrike,
+  fmtStrikeDistancePct,
+  shouldShowStrikeDistancePct,
   heatmapCellStyle,
   heatmapCellTextStyle,
   heatmapMatrixExtremeCellStyle,
@@ -360,6 +362,11 @@ export function SpxGexMatrixHeatmap({
     return nearestStrike(strikesAxis, overlaySpot);
   }, [strikesAxis, overlaySpot]);
 
+  const spotIdx = useMemo(() => {
+    if (spotStrike == null) return -1;
+    return strikesAxis.indexOf(spotStrike);
+  }, [strikesAxis, spotStrike]);
+
   const orHighStrike = useMemo(
     () => (openingRange?.high != null ? nearestStrike(strikesAxis, openingRange.high) : null),
     [openingRange?.high, strikesAxis]
@@ -672,7 +679,10 @@ export function SpxGexMatrixHeatmap({
             <thead className="sticky top-0 z-20 bg-[#08080e]">
               <tr className="border-b border-white/10 text-[10px] uppercase tracking-wider text-sky-300">
                 <th className="sticky left-0 z-30 bg-[#08080e] py-1.5 pl-1 pr-2 text-left font-semibold">
-                  Strike
+                  <span className="block">Strike</span>
+                  <span className="block text-[8px] font-normal tracking-normal text-cyan-400/80">
+                    %
+                  </span>
                 </th>
                 {displayExpiries.map((e) => (
                   <th
@@ -688,7 +698,7 @@ export function SpxGexMatrixHeatmap({
               </tr>
             </thead>
             <tbody>
-              {strikesAxis.map((strike) => {
+              {strikesAxis.map((strike, si) => {
                 const isSpotRow = spotStrike === strike;
                 const isOrHigh = orHighStrike === strike;
                 const isOrLow = orLowStrike === strike;
@@ -723,7 +733,14 @@ export function SpxGexMatrixHeatmap({
                         isSpotRow && "text-cyan-300"
                       )}
                     >
-                      {fmtHeatmapStrike(strike)}
+                      <span className="flex items-baseline justify-between gap-2 min-w-[4.5rem]">
+                        <span>{fmtHeatmapStrike(strike)}</span>
+                        {!isSpotRow && overlaySpot > 0 && shouldShowStrikeDistancePct(si, spotIdx) ? (
+                          <span className="text-[9px] font-semibold tabular-nums text-sky-300/90">
+                            {fmtStrikeDistancePct(overlaySpot, strike)}
+                          </span>
+                        ) : null}
+                      </span>
                       {isOrHigh && openingRange && (
                         <span className="block text-[8px] font-normal text-amber-300/90">OR-H</span>
                       )}

@@ -3,13 +3,18 @@ import { describe, it } from "node:test";
 import {
   fmtHeatmapMoney,
   fmtHeatmapMoneySigned,
+  fmtStrikeDistancePct,
   heatmapCellStyle,
   heatmapCellTextStyle,
   heatmapMatrixExtremeCellStyle,
   heatmapLegendItems,
   GEX_BEAD_CALL_HEX,
   GEX_BEAD_PUT_HEX,
+  shouldShowStrikeDistancePct,
+  strikeDistancePct,
+  STRIKE_DISTANCE_PCT_NEAR_SPOT,
 } from "./gex-heatmap-display";
+import { distancePct } from "./providers/spx-session";
 
 describe("gex-heatmap-display", () => {
   it("fmtHeatmapMoneySigned shows $0.0K at zero when showZero", () => {
@@ -115,5 +120,32 @@ describe("matrix colour key", () => {
     assert.ok(empty);
     assert.equal((empty as { glyph: string }).glyph, fmtHeatmapMoneySigned(0, { showZero: false }));
     assert.match((empty as { help: string }).help, /\$0\.0K/);
+  });
+});
+
+describe("strike distance from spot", () => {
+  it("matches SPX desk distancePct formula", () => {
+    const spot = 5550.25;
+    const strike = 5555;
+    assert.equal(strikeDistancePct(spot, strike), distancePct(spot, strike));
+  });
+
+  it("fmtStrikeDistancePct formats signed two-decimal ladder labels", () => {
+    assert.equal(fmtStrikeDistancePct(100, 100.12), "+0.12%");
+    assert.equal(fmtStrikeDistancePct(100, 99.95), "−0.05%");
+    assert.equal(fmtStrikeDistancePct(5550, 5555), "+0.09%");
+    assert.equal(fmtStrikeDistancePct(null, 100), "—");
+    assert.equal(fmtStrikeDistancePct(0, 100), "—");
+  });
+
+  it("shouldShowStrikeDistancePct limits labels to 4 above + 4 below spot", () => {
+    const spot = 5;
+    assert.equal(STRIKE_DISTANCE_PCT_NEAR_SPOT, 4);
+    assert.equal(shouldShowStrikeDistancePct(spot, spot), false);
+    assert.equal(shouldShowStrikeDistancePct(spot - 4, spot), true);
+    assert.equal(shouldShowStrikeDistancePct(spot + 4, spot), true);
+    assert.equal(shouldShowStrikeDistancePct(spot - 5, spot), false);
+    assert.equal(shouldShowStrikeDistancePct(spot + 5, spot), false);
+    assert.equal(shouldShowStrikeDistancePct(0, -1), false);
   });
 });
