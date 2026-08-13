@@ -26,20 +26,58 @@ const CADENCE_TICKER = flag("ticker", "SPY");
 const out = { cadence: null, sectors: [], verdict: "" };
 const log = (...a) => { if (!asJson) console.log(...a); };
 
-async function getJson(path, cookie) {
-  const r = await fetch(`${BASE}${path}`, { headers: { Cookie: cookie } });
-  if (!r.ok) return { __status: r.status };
-  return r.json();
+/**
+ * Session holder that re-mints before the token dies.
+ *
+ * MEASURED (lib/ui-session-keepalive.mjs): the minted `__session` JWT is dead ~72s after issue and
+ * traffic does NOT extend it — a fixed lifetime. A run that walks 51 tickers outlives one token, so
+ * without this every ticker past ~72s returns 401. That is not a cosmetic bug: the first version of
+ * this script reported Crypto/Energy/Financials/Healthcare as four BROKEN presets when the only
+ * thing broken was its own credential. An auth failure must never be scoreable as a product defect.
+ */
+function sessionHolder(session) {
+  let cookie = session.cookieHeader;
+  let mintedAt = Date.now();
+  return {
+    get: async () => {
+      if (Date.now() - mintedAt > 45_000 && typeof session.refresh === "function") {
+        const next = await session.refresh().catch(() => null);
+        if (next?.cookieHeader) { cookie = next.cookieHeader; mintedAt = Date.now(); }
+      }
+      return cookie;
+    },
+    force: async () => {
+      const next = await session.refresh?.().catch(() => null);
+      if (next?.cookieHeader) { cookie = next.cookieHeader; mintedAt = Date.now(); return true; }
+      return false;
+    },
+  };
+}
+
+/** `__auth` marks a HARNESS credential failure — callers must not score it as a ticker defect. */
+async function getJson(path, sess) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const r = await fetch(`${BASE}${path}`, { headers: { Cookie: await sess.get() } });
+    if (r.ok) return r.json();
+    if (r.status === 401 || r.status === 403) {
+      if (attempt === 0 && (await sess.force())) continue;
+      return { __auth: r.status };
+    }
+    return { __status: r.status };
+  }
+  return { __auth: 401 };
 }
 
 /** (A) Sample the SERVED payload once a second and measure when values actually change. */
-async function measureCadence(cookie) {
+async function measureCadence(sess) {
   log(`\n═══ A. CADENCE — ${CADENCE_TICKER}, sampling 1/s for ${SECONDS}s`);
   const samples = [];
+  let authFails = 0;
   for (let i = 0; i < SECONDS; i++) {
     const t = Date.now();
-    const j = await getJson(`/api/market/gex-heatmap?ticker=${CADENCE_TICKER}`, cookie);
-    if (!j.__status) samples.push({ t, asof: j.asof, spot: j.spot, chg: j.change_pct, gex: j.gex?.total });
+    const j = await getJson(`/api/market/gex-heatmap?ticker=${CADENCE_TICKER}`, sess);
+    if (j.__auth) { authFails++; }
+    else if (!j.__status) samples.push({ t, asof: j.asof, spot: j.spot, chg: j.change_pct, gex: j.gex?.total });
     const spent = Date.now() - t;
     await new Promise((r) => setTimeout(r, Math.max(0, 1000 - spent)));
   }
@@ -57,7 +95,7 @@ async function measureCadence(cookie) {
   };
   const stat = (g) => g.length ? { changes: g.length, median: +g.sort((a,b)=>a-b)[Math.floor(g.length/2)].toFixed(1),
       min: +Math.min(...g).toFixed(1), max: +Math.max(...g).toFixed(1) } : { changes: 0 };
-  const res = { samples: samples.length, gex: stat(intervals("gex")), spot: stat(intervals("spot")),
+  const res = { samples: samples.length, authFails, gex: stat(intervals("gex")), spot: stat(intervals("spot")),
                 chg: stat(intervals("chg")), asof: stat(intervals("asof")) };
   out.cadence = res;
   for (const k of ["asof", "spot", "gex", "chg"]) {
@@ -68,12 +106,15 @@ async function measureCadence(cookie) {
 }
 
 /** (B) Every preset ticker must serve a matrix AND overlays. */
-async function checkSectors(cookie) {
+async function checkSectors(sess) {
   log(`\n═══ B. SECTORS — ${THERMAL_COMPARE_PRESETS.length} presets`);
   for (const p of THERMAL_COMPARE_PRESETS) {
     const rows = [];
     for (const tk of p.tickers) {
-      const j = await getJson(`/api/market/gex-heatmap?ticker=${encodeURIComponent(tk)}`, cookie);
+      const j = await getJson(`/api/market/gex-heatmap?ticker=${encodeURIComponent(tk)}`, sess);
+      // A credential failure says nothing about the ticker — bucket it separately so it can never
+      // be counted as a broken preset.
+      if (j.__auth) { rows.push({ tk, ok: false, auth: true, why: `auth ${j.__auth}` }); continue; }
       if (j.__status) { rows.push({ tk, ok: false, why: `HTTP ${j.__status}` }); continue; }
       const cells = j.gex?.cells ? Object.keys(j.gex.cells).length : 0;
       const strikes = Array.isArray(j.strikes) ? j.strikes.length : 0;
@@ -82,12 +123,14 @@ async function checkSectors(cookie) {
                   overlays: j.overlays ? Object.keys(j.overlays).length : 0, chg: j.change_pct });
       await new Promise((r) => setTimeout(r, 350)); // stay under the 2 RPS UW cluster budget
     }
-    const bad = rows.filter((r) => !r.ok);
+    const authBad = rows.filter((r) => r.auth);
+    const bad = rows.filter((r) => !r.ok && !r.auth);
     const noOverlay = rows.filter((r) => r.ok && !r.overlays);
-    out.sectors.push({ id: p.id, label: p.label, rows, bad: bad.length, noOverlay: noOverlay.length });
-    const mark = bad.length ? "FAIL" : noOverlay.length ? "WARN" : "PASS";
+    out.sectors.push({ id: p.id, label: p.label, rows, bad: bad.length, auth: authBad.length, noOverlay: noOverlay.length });
+    const mark = bad.length ? "FAIL" : authBad.length ? "AUTH" : noOverlay.length ? "WARN" : "PASS";
     log(`  [${mark}] ${p.label.padEnd(12)} ${rows.map((r) => `${r.tk}${r.ok ? "" : "✗"}${r.ok && !r.overlays ? "°" : ""}`).join(" ")}`);
     if (bad.length) for (const b of bad) log(`         ✗ ${b.tk}: ${b.why ?? "no matrix"}`);
+    if (authBad.length) log(`         ! harness auth failure on ${authBad.length} name(s) — NOT a product defect, re-run`);
     if (noOverlay.length) log(`         ° no UW overlays: ${noOverlay.map((r) => r.tk).join(", ")}`);
   }
 }
@@ -96,19 +139,22 @@ async function main() {
   const s = await mintClerkPremiumSession({ appUrl: BASE });
   if (s.skip) { console.log(`SKIP — ${s.reason}`); process.exit(0); }
   try {
-    await checkSectors(s.cookieHeader);
-    await measureCadence(s.cookieHeader);
+    const sess = sessionHolder(s);
+    await checkSectors(sess);
+    await measureCadence(sess);
   } finally { await s.cleanup?.(); log("\nsession released"); }
 
   const failed = out.sectors.filter((x) => x.bad > 0);
+  const authed = out.sectors.filter((x) => x.auth > 0);
   const warned = out.sectors.filter((x) => x.bad === 0 && x.noOverlay > 0);
   const cadenceOk = (out.cadence?.gex?.changes ?? 0) > 0 || (out.cadence?.spot?.changes ?? 0) > 0;
-  out.verdict = failed.length ? `${failed.length} preset(s) with a broken ticker`
+  out.verdict = authed.length ? `INCONCLUSIVE — harness auth failed on ${authed.length} preset(s); re-run`
+    : failed.length ? `${failed.length} preset(s) with a broken ticker`
     : !cadenceOk ? "sectors OK but NOTHING refreshed during the window"
     : warned.length ? `all presets serve data; ${warned.length} preset(s) have overlay-less names`
     : "ALL PRESETS OK + data refreshing";
   if (asJson) console.log(JSON.stringify(out, null, 2));
   else console.log(`\n${"═".repeat(70)}\nVERDICT: ${out.verdict}`);
-  process.exit(failed.length || !cadenceOk ? 1 : 0);
+  process.exit(failed.length || authed.length || !cadenceOk ? 1 : 0);
 }
 main().catch((e) => { console.error("FATAL", String(e)); process.exit(2); });
