@@ -18648,6 +18648,11 @@ body::before {
   color: rgba(125, 211, 252, 0.4);
 }
 
+.thermal-compact-cell.is-neutral .thermal-compact-cell-val,
+.thermal-compact-cell.is-neutral .thermal-compact-cell-pct {
+  color: rgba(186, 230, 253, 0.82);
+}
+
 .thermal-compact-table.is-0dte .thermal-compact-cell-val {
   font-size: 13px;
 }

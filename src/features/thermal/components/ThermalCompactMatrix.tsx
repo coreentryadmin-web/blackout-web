@@ -8,7 +8,6 @@ import {
   type MutableRefObject,
   type RefObject,
 } from "react";
-import type { GexHeatmapLens } from "@/lib/gex-heatmap-display";
 import {
   fmtHeatmapExpiry,
   fmtHeatmapMoneySigned,
@@ -18,12 +17,14 @@ import {
   heatmapCellStyle,
   heatmapCellTextStyle,
   heatmapMatrixExtremeCellStyle,
+  type GexHeatmapLens,
 } from "@/lib/gex-heatmap-display";
 import { scrollRowIntoViewCenter } from "@/features/spx/lib/spx-matrix-scroll";
 import {
   bandStrikesAroundSpot,
   compactMatrixPeak,
   compactPerExpiryExtremes,
+  compactPerExpiryTopHighlights,
   nearestStrikeIndex,
   resolveCompactExpiries,
   resolveZeroDteExpiry,
@@ -74,34 +75,19 @@ function todayEtYmd(): string {
 }
 
 /**
- * Green (+) / red (−) heat — same lens RGB as the major matrix, boosted alpha
- * so the 0DTE strip reads as a ladder (never viridis / purple-yellow scale).
+ * Ranks 2–4 on each side — green/red only; rank 1 uses yellow/purple via
+ * heatmapMatrixExtremeCellStyle. Neutral cells stay uncolored.
  */
-function signedHeatStyle(
+function compactRankedHeatStyle(
   value: number,
-  peak: number,
+  rank: number,
   lens: GexHeatmapLens,
-  boost: boolean,
+  peak: number,
 ): CSSProperties {
-  const base = heatmapCellStyle(value, peak, lens);
-  if (!value || peak <= 0) {
-    return boost ? { backgroundColor: "rgba(8, 12, 22, 0.9)" } : {};
-  }
-  if (!boost) return base;
-  const mag = Math.min(1, Math.abs(value) / peak);
-  const alpha = 0.18 + Math.pow(mag, 1.15) * 0.8;
-  const bg = String(base.backgroundColor ?? "");
-  const boosted = bg.replace(
-    /rgba\(([^,]+),([^,]+),([^,]+),([^)]+)\)/,
-    (_, r, g, b) => `rgba(${r},${g},${b},${alpha.toFixed(3)})`,
-  );
+  const rankPeak = peak * (1 - (rank - 2) * 0.12);
   return {
-    ...base,
-    backgroundColor: boosted || base.backgroundColor,
-    boxShadow:
-      mag > 0.35
-        ? `inset 0 0 22px ${boosted.replace(/[\d.]+\)$/, `${(mag * 0.42).toFixed(2)})`)}`
-        : base.boxShadow,
+    ...heatmapCellStyle(value, rankPeak, lens),
+    ...heatmapCellTextStyle(value, rankPeak),
   };
 }
 
@@ -182,6 +168,7 @@ export default function ThermalCompactMatrix({
   const pinSet = new Set(pinnedStrikes);
   const peak = compactMatrixPeak(data.cells, strikes, expiries);
   const extremes = compactPerExpiryExtremes(data.cells, strikes, expiries);
+  const topHighlights = compactPerExpiryTopHighlights(data.cells, strikes, expiries);
   const is0dte = mode === "0dte";
   const hasData = expiries.length > 0 && strikes.length > 0;
 
@@ -332,21 +319,36 @@ export default function ThermalCompactMatrix({
                   const has = typeof val === "number" && Number.isFinite(val);
                   const n = has ? val : 0;
                   const day = extremes[exp];
-                  const isPosNode = has && day?.callWall === strike;
-                  const isNegNode = has && day?.putWall === strike;
+                  const hl = topHighlights[exp];
+                  const posRank = hl?.topPositive[strike];
+                  const negRank = hl?.topNegative[strike];
                   const isKing = has && n !== 0 && day?.king === strike;
                   const showPct = !isSpot && shouldShowStrikeDistancePct(si, spotIdx);
 
-                  const style: CSSProperties = has
-                    ? isPosNode
-                      ? heatmapMatrixExtremeCellStyle("positive")
-                      : isNegNode
-                        ? heatmapMatrixExtremeCellStyle("negative")
-                        : {
-                            ...signedHeatStyle(n, peak, lens, is0dte),
-                            ...heatmapCellTextStyle(n, peak),
-                          }
-                    : {};
+                  let style: CSSProperties = {};
+                  if (has && n !== 0) {
+                    if (posRank === 1) {
+                      style = heatmapMatrixExtremeCellStyle("positive");
+                    } else if (negRank === 1) {
+                      style = heatmapMatrixExtremeCellStyle("negative");
+                    } else if (posRank != null && posRank > 1) {
+                      const rank1Val =
+                        day?.callWall != null
+                          ? (data.cells[String(day.callWall)]?.[exp] ?? peak)
+                          : peak;
+                      style = compactRankedHeatStyle(n, posRank, lens, rank1Val);
+                    } else if (negRank != null && negRank > 1) {
+                      const rank1Val =
+                        day?.putWall != null
+                          ? Math.abs(data.cells[String(day.putWall)]?.[exp] ?? peak)
+                          : peak;
+                      style = compactRankedHeatStyle(n, negRank, lens, rank1Val);
+                    }
+                  }
+
+                  const isHighlighted = posRank != null || negRank != null;
+                  const isPosNode = posRank === 1;
+                  const isNegNode = negRank === 1;
 
                   return (
                     <td
@@ -360,9 +362,10 @@ export default function ThermalCompactMatrix({
                         isPosNode ? "is-pos-node" : "",
                         isNegNode ? "is-neg-node" : "",
                         isKing ? "is-king" : "",
-                        !isPosNode && !isNegNode && n > 0 ? "is-pos" : "",
-                        !isPosNode && !isNegNode && n < 0 ? "is-neg" : "",
+                        isHighlighted && !isPosNode && !isNegNode && n > 0 ? "is-pos" : "",
+                        isHighlighted && !isPosNode && !isNegNode && n < 0 ? "is-neg" : "",
                         !has || n === 0 ? "is-zero" : "",
+                        has && n !== 0 && !isHighlighted ? "is-neutral" : "",
                       ]
                         .filter(Boolean)
                         .join(" ")}
