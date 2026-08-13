@@ -4181,10 +4181,17 @@ export function GexHeatmap({
           aria-label={`${data?.underlying ?? ticker} dealer ${vocab.noun.toLowerCase()} exposure matrix, strikes by expiration`}
         >
           <table
-            className="spx-gex-matrix-table w-max min-w-full border-collapse font-mono text-[12px] tabular-nums"
+            className="spx-gex-matrix-table thermal-matrix-table border-collapse font-mono text-[12px] tabular-nums"
             role="grid"
             aria-label={`${data?.underlying ?? ticker} dealer ${vocab.noun.toLowerCase()} matrix by strike and expiry`}
           >
+            <colgroup>
+              <col className="thermal-matrix-col-strike" />
+              {matrixExpiries.map((e) => (
+                <col key={e} className="thermal-matrix-col-expiry" />
+              ))}
+              {depthRail ? <col className="thermal-matrix-col-flow" /> : null}
+            </colgroup>
             <thead className="sticky top-0 z-20 bg-[#08080e]">
               <tr className="thermal-matrix-head-row border-b border-white/10">
                 <th className="thermal-matrix-head thermal-matrix-head-strike sticky left-0 z-30 bg-[#08080e]">
@@ -4216,26 +4223,12 @@ export function GexHeatmap({
                     </th>
                   );
                 })}
-                <th
-                  className="thermal-matrix-head thermal-matrix-head-net spx-gex-matrix-net-col"
-                  title={
-                    monthlyExpiries.length > 0
-                      ? selectedExpiries != null
-                        ? "Net dealer gamma per strike for the selected expiry scope"
-                        : "Near-term aggregate per strike (excludes monthly OpEx columns)"
-                      : selectedExpiries != null
-                        ? "Net dealer gamma per strike for the selected expiry scope"
-                        : undefined
-                  }
-                >
-                  Net
-                </th>
                 {depthRail && (
                   <th
                     className="thermal-matrix-head thermal-matrix-head-flow"
                     title="Forced dealer hedging flow if price reaches that strike — buying grows left, selling right. Conditional flow, not resting liquidity."
                   >
-                    Flow
+                    Net flow
                   </th>
                 )}
               </tr>
@@ -4283,11 +4276,11 @@ export function GexHeatmap({
                   >
                     <td
                       className={clsx(
-                        "sticky left-0 z-10 bg-[#08080e] py-1 pl-1 pr-2 text-left font-bold",
+                        "thermal-matrix-strike-cell sticky left-0 z-10 bg-[#08080e] py-1 text-left font-bold",
                         isSpot && "text-cyan-300"
                       )}
                     >
-                      <span className="flex min-w-[5.5rem] items-baseline justify-between gap-2">
+                      <span className="thermal-matrix-strike-stack">
                         <span>{fmtHeatmapStrike(strike)}</span>
                         {shiftPctLabel && shiftPctLabel !== "—" ? (
                           <span
@@ -4400,37 +4393,19 @@ export function GexHeatmap({
                         </td>
                       );
                     })}
-                    <td
-                      className={clsx(
-                        "whitespace-nowrap py-1 pl-1 pr-2 text-right font-bold",
-                        rowTotal > 0 && (lens === "gex" ? "text-emerald-300" : posColorClass),
-                        rowTotal < 0 && (lens === "gex" ? "text-rose-300" : "text-bear-text"),
-                        rowTotal === 0 && "text-sky-300/25"
-                      )}
-                      style={{
-                        ...(rowTotal
-                          ? {
-                              ...heatmapCellStyle(rowTotal, totalPeak, matrixLens),
-                              ...heatmapCellTextStyle(rowTotal, totalPeak),
-                            }
-                          : {}),
-                      }}
-                    >
-                      {fmtHeatmapMoneySigned(rowTotal, { showZero: true })}
-                    </td>
-                    {/* FORCED-FLOW RAIL — the depth ladder, row-aligned to this strike.
-                        The matrix says where dealer exposure SITS; this says what dealers must
-                        TRADE if price reaches this row. Reading both on one line is the whole
-                        point of pinning it here rather than leaving it a tab away.
-                        A strike outside the ladder's ±8% band renders blank, never clamped — a
-                        clamped bar would paint the outermost band's flow onto every far strike and
-                        read as a wall of forced trading exactly where there is none. */}
                     {depthRail && (
-                      <td className="whitespace-nowrap py-1 pl-1 pr-2">
+                      <td className="thermal-matrix-flow-cell whitespace-nowrap py-1">
                         {(() => {
                           const band = depthBandForPrice(depthRail.levels, data?.spot ?? 0, strike);
                           if (!band || band.direction === "flat") {
-                            return <span className="thermal-matrix-flow-rail is-empty" aria-hidden />;
+                            return (
+                              <span className="thermal-matrix-flow-rail-wrap">
+                                <span className="thermal-matrix-flow-rail is-empty" aria-hidden />
+                                <span className="thermal-matrix-flow-amt is-flat" aria-hidden>
+                                  ·
+                                </span>
+                              </span>
+                            );
                           }
                           const pct = Math.max(
                             4,
@@ -4439,18 +4414,28 @@ export function GexHeatmap({
                           const buy = band.direction === "buy";
                           return (
                             <span
-                              className="thermal-matrix-flow-rail"
+                              className="thermal-matrix-flow-rail-wrap"
                               title={`If ${data?.underlying ?? ticker} reaches ${fmtStrike(strike)}, dealers must ${buy ? "BUY" : "SELL"} about ${fmtMoney(Math.abs(band.notional))} of stock to stay hedged.`}
                             >
-                              <span aria-hidden className="thermal-matrix-flow-rail-axis" />
+                              <span className="thermal-matrix-flow-rail">
+                                <span aria-hidden className="thermal-matrix-flow-rail-axis" />
+                                <span
+                                  aria-hidden
+                                  className={clsx(
+                                    "thermal-matrix-flow-rail-bar",
+                                    buy ? "is-buy" : "is-sell"
+                                  )}
+                                  style={{ width: `${pct / 2}%` }}
+                                />
+                              </span>
                               <span
-                                aria-hidden
                                 className={clsx(
-                                  "thermal-matrix-flow-rail-bar",
+                                  "thermal-matrix-flow-amt",
                                   buy ? "is-buy" : "is-sell"
                                 )}
-                                style={{ width: `${pct / 2}%` }}
-                              />
+                              >
+                                {fmtMoney(Math.abs(band.notional))}
+                              </span>
                             </span>
                           );
                         })()}
