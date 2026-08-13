@@ -640,10 +640,23 @@ test("fetchGexHeatmap TTL fast path serves pruned cache at ET rollover (no rebui
     /heatmapHasPastExpiries\(redisHit\.data, today\)/,
     "Redis TTL fast path must not skip serve when past expiries exist"
   );
+  // The stale-handoff body moved into `resolveHeatmapStaleHandoff` so the block-cap timer callback
+  // stays synchronous (an uncapped await inside that callback is what let SPX hang to an ALB 504).
+  // The INVARIANT is unchanged and is what this guards: whatever the handoff picks — fresh-enough
+  // stale, a second look after a capped Redis read, or the last-good local — must go through
+  // `finalizeHeatmapForServe` so past expiries are pruned before a member sees it. Assert the shape
+  // that carries the invariant, not the exact line that used to express it.
   assert.match(
     src,
-    /resolve\(await finalizeHeatmapForServe\(cacheKey, served\)\)/,
+    /async function resolveHeatmapStaleHandoff[\s\S]*?return finalizeHeatmapForServe\(cacheKey, served\)/,
     "block-cap handoff must prune before serve"
+  );
+  // …and that the timer branch actually delegates to it. Without this, the helper could keep
+  // pruning correctly while the timeout path quietly resolved some other, unpruned value.
+  assert.match(
+    src,
+    /setTimeout\(\(\) => \{[\s\S]*?resolveHeatmapStaleHandoff\(cacheKey, mem, redisHit, now\)/,
+    "block-cap timeout branch must route through the pruning handoff helper"
   );
 });
 
