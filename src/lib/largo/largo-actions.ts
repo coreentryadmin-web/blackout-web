@@ -3,7 +3,7 @@
  */
 
 import type { BieAnswerEnvelope } from "@/lib/bie/answer-envelope";
-import type { HelixThermalCompareCard } from "@/lib/largo/helix-thermal-compare";
+import type { LargoCompareCard } from "@/lib/largo/helix-thermal-compare";
 import { DESK_ROUTES } from "@/lib/largo/core/drilldown";
 
 export type LargoAction = {
@@ -15,12 +15,21 @@ export type LargoAction = {
 export function buildLargoActions(input: {
   ticker?: string | null;
   envelope?: BieAnswerEnvelope | null;
-  compareCard?: HelixThermalCompareCard | null;
+  compareCard?: LargoCompareCard | null;
 }): LargoAction[] {
   const t = (input.ticker ?? "SPX").toString().trim().toUpperCase();
   const flipLevel = input.envelope?.levels?.find((l) => /flip/i.test(String(l.label ?? "")));
+  const helixFlip =
+    input.compareCard?.kind === "helix_thermal" ? input.compareCard.thermal.flip : null;
+  const peerFirstFlip =
+    input.compareCard?.kind === "peer_tickers"
+      ? input.compareCard.rows.find((r) => r.ticker === t)?.gamma.flip ??
+        input.compareCard.rows[0]?.gamma.flip ??
+        null
+      : null;
   const flip =
-    input.compareCard?.thermal.flip ??
+    helixFlip ??
+    peerFirstFlip ??
     (flipLevel && typeof flipLevel.price === "number" ? flipLevel.price : null);
   const out: LargoAction[] = [];
 

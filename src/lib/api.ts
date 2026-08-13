@@ -548,7 +548,7 @@ export async function queryLargoStream(
   envelope?: BieAnswerEnvelope | null;
   turn_id?: number | null;
   visual?: LargoVisualDirective | null;
-  compare_card?: import("@/lib/largo/helix-thermal-compare").HelixThermalCompareCard | null;
+  compare_card?: import("@/lib/largo/helix-thermal-compare").LargoCompareCard | null;
   actions?: import("@/lib/largo/largo-actions").LargoAction[];
   depth?: "quick" | "deep";
 }> {
@@ -629,7 +629,7 @@ export async function queryLargoStream(
     turn_id?: number | null;
     visual?: LargoVisualDirective | null;
     envelope?: BieAnswerEnvelope | null;
-    compare_card?: import("@/lib/largo/helix-thermal-compare").HelixThermalCompareCard | null;
+    compare_card?: import("@/lib/largo/helix-thermal-compare").LargoCompareCard | null;
     actions?: import("@/lib/largo/largo-actions").LargoAction[];
     depth?: "quick" | "deep";
   };

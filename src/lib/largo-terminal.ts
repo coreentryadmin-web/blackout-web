@@ -92,8 +92,16 @@ import {
   effectiveEntities,
   formatConversationBlock,
 } from "@/lib/largo/core/conversation";
-import { questionWantsCompareCard } from "@/lib/largo/desk-prompts";
-import { helixThermalCompareForLargo, type HelixThermalCompareCard } from "@/lib/largo/helix-thermal-compare";
+import {
+  questionWantsCompareCard,
+  questionWantsPeerCompare,
+  extractPeerCompareTickers,
+} from "@/lib/largo/desk-prompts";
+import {
+  helixThermalCompareForLargo,
+  peerTickerCompareForLargo,
+  type LargoCompareCard,
+} from "@/lib/largo/helix-thermal-compare";
 import { formatDepthBlock, largoDepthConfig, parseLargoDepth, type LargoDepth } from "@/lib/largo/largo-depth";
 import { buildLargoActions, type LargoAction } from "@/lib/largo/largo-actions";
 import {
@@ -164,7 +172,7 @@ export type LargoStreamEvent =
       ticker?: string | null;
       turn_id?: number | null;
       envelope?: BieAnswerEnvelope;
-      compare_card?: HelixThermalCompareCard | null;
+      compare_card?: LargoCompareCard | null;
       actions?: LargoAction[];
       depth?: LargoDepth;
     }
@@ -337,7 +345,7 @@ async function prepareLargoTurn(
   timeframe: Timeframe;
   persistedQuestion: string;
   depth: LargoDepth;
-  compareCard: HelixThermalCompareCard | null;
+  compareCard: LargoCompareCard | null;
   sessionMetadata: Awaited<ReturnType<typeof fetchLargoSessionMetadata>>;
 }> {
   let sid = sessionId.trim() || `web-${userId}-${Date.now()}`;
@@ -494,8 +502,12 @@ async function prepareLargoTurn(
   if (platformVitalsBlock) toolsUsed.push("platform_vitals_prefetch");
 
   const intentTicker = intent.tickerHint ?? "SPX";
-  let compareCard: HelixThermalCompareCard | null = null;
-  if (questionWantsCompareCard(question)) {
+  let compareCard: LargoCompareCard | null = null;
+  if (questionWantsPeerCompare(question)) {
+    const peerTickers = extractPeerCompareTickers(question);
+    compareCard = await peerTickerCompareForLargo(peerTickers).catch(() => null);
+    if (compareCard) toolsUsed.push("get_peer_ticker_compare");
+  } else if (questionWantsCompareCard(question)) {
     compareCard = await helixThermalCompareForLargo(intentTicker).catch(() => null);
     if (compareCard) toolsUsed.push("get_helix_thermal_compare");
   }
@@ -527,7 +539,9 @@ async function prepareLargoTurn(
     formatRegimePersonalityBlock(marketPhase) +
     formatCalibrationBlock() +
     (compareCard
-      ? `\n\n## HELIX vs Thermal (prefetched — cite these numbers)\n${JSON.stringify(compareCard, null, 0).slice(0, 4000)}\n`
+      ? compareCard.kind === "peer_tickers"
+        ? `\n\n## Peer ticker compare (prefetched — cite these numbers)\n${JSON.stringify(compareCard, null, 0).slice(0, 5000)}\n`
+        : `\n\n## HELIX vs Thermal (prefetched — cite these numbers)\n${JSON.stringify(compareCard, null, 0).slice(0, 4000)}\n`
       : "");
 
   const system = buildDynamicSystem(
@@ -655,7 +669,7 @@ export async function runLargoQuery(
   ticker: string | null;
   turn_id: number | null;
   envelope?: BieAnswerEnvelope;
-  compare_card?: HelixThermalCompareCard | null;
+  compare_card?: LargoCompareCard | null;
   actions?: LargoAction[];
   depth?: LargoDepth;
 }> {
