@@ -18476,7 +18476,7 @@ body::before {
   white-space: nowrap;
 }
 
-.thermal-compact-table.is-0dte .thermal-compact-exp {
+.thermal-compact-table.is-0dte .thermal-compact-exp:not(.is-0dte-spacer) {
   min-width: 100%;
   padding: 0.45rem 0.6rem;
 }
