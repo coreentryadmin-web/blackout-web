@@ -1,9 +1,9 @@
 /**
- * Thermal compare-grid sector/theme bundles — each preset is 3–5 liquid names shown
+ * Thermal compare-grid sector/theme bundles — each preset is 3–7 liquid names shown
  * side-by-side on a single nearest-expiry (0DTE when listed) heat column.
  */
 
-export const THERMAL_COMPARE_PRESET_SIZE = 5;
+export const THERMAL_COMPARE_PRESET_SIZE = 7;
 
 export type ThermalComparePresetId =
   | "indices"
@@ -20,7 +20,7 @@ export type ThermalComparePreset = {
   id: ThermalComparePresetId;
   /** Short desk label for the dropdown / rail. */
   label: string;
-  /** Three to five tickers — one nearest-expiry column each. */
+  /** Three to seven tickers — one nearest-expiry column each. */
   tickers: readonly string[];
 };
 
@@ -48,8 +48,8 @@ export const THERMAL_COMPARE_PRESETS: readonly ThermalComparePreset[] = [
   },
   {
     id: "mega",
-    label: "Mega cap",
-    tickers: ["NVDA", "AAPL", "MSFT", "META", "AMZN"],
+    label: "Mag 7",
+    tickers: ["NVDA", "AAPL", "MSFT", "GOOG", "AMZN", "META", "TSLA"],
   },
   {
     id: "crypto",
@@ -85,6 +85,8 @@ for (const preset of THERMAL_COMPARE_PRESETS) {
     if (!TICKER_TO_PRESET.has(t)) TICKER_TO_PRESET.set(t, preset.id);
   }
 }
+// Mag 7 lists GOOG; members often search GOOGL — same book for grid routing.
+if (!TICKER_TO_PRESET.has("GOOGL")) TICKER_TO_PRESET.set("GOOGL", "mega");
 
 export function isThermalComparePresetId(raw: string | null | undefined): raw is ThermalComparePresetId {
   if (!raw) return false;

@@ -4774,7 +4774,7 @@ export function GexHeatmap({
             <span aria-hidden className="mr-1 text-sky-300/70">ⓘ</span>
             Grid compares {compareGridTickers.join(" · ")} on one nearest-expiry column each
             (0DTE when listed, else the front date on the chain). Pick a sector from the dropdown.
-            Keys 1–5 focus; G/V/D/C lens. Pin strikes; CSV exports the full chain.
+            Keys 1–{compareGridTickers.length} focus; G/V/D/C lens. Pin strikes; CSV exports the full chain.
           </p>
         </div>
       ) : (isLoading && !data) || stale ? (

@@ -21,7 +21,7 @@ const EXPECTED_PRESETS = [
   "Semis",
   "AI",
   "Space",
-  "Mega cap",
+  "Mag 7",
   "Crypto",
   "Energy",
   "Financials",

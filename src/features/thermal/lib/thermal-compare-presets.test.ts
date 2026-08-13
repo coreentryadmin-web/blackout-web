@@ -41,11 +41,21 @@ test("parseThermalComparePresetId accepts known ids only", () => {
   assert.equal(parseThermalComparePresetId("nope"), null);
 });
 
-test("every preset has 3–5 unique tickers", () => {
+test("every preset has 3–7 unique tickers", () => {
   for (const preset of THERMAL_COMPARE_PRESETS) {
-    assert.ok(preset.tickers.length >= 3 && preset.tickers.length <= 5, preset.id);
+    assert.ok(preset.tickers.length >= 3 && preset.tickers.length <= 7, preset.id);
     assert.equal(new Set(preset.tickers).size, preset.tickers.length, preset.id);
   }
+});
+
+test("mag 7 preset includes GOOG and TSLA", () => {
+  const mag7 = thermalComparePreset("mega");
+  assert.equal(mag7.label, "Mag 7");
+  assert.equal(mag7.tickers.length, 7);
+  assert.ok(mag7.tickers.includes("GOOG"));
+  assert.ok(mag7.tickers.includes("TSLA"));
+  assert.equal(resolveComparePresetIdForTicker("GOOGL"), "mega");
+  assert.equal(resolveComparePresetIdForTicker("TSLA"), "mega");
 });
 
 test("indices preset is the classic SPY SPX QQQ triple", () => {
