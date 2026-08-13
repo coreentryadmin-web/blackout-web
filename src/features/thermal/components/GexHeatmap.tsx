@@ -72,6 +72,7 @@ import {
 } from "@/lib/gex-heatmap-session-cache";
 import {
   gexMatrixShiftCellKey,
+  matrixShiftDeltaForStrike,
   matrixShiftForLens,
   matrixShiftSinceMs,
   pickGexShiftLeaderCells,
@@ -914,7 +915,7 @@ function ExposureProfile({
 
         // ── Shift badge: intraday %-built/melted for this strike, inline (mirrors the
         // Shift tab's build=green/melt=red convention: built = delta > 0). ──
-        const shiftDelta = shift?.available ? shift.delta_by_strike?.[String(r.strike)] : null;
+        const shiftDelta = matrixShiftDeltaForStrike(shift, r.strike);
         const shiftPct = shiftPercentForStrike(r.value, shiftDelta);
         const shiftBuilt = shiftDelta != null && shiftDelta > 0;
         const shiftHex = shiftBuilt ? SHIFT_BUILD_HEX : SHIFT_MELT_HEX;
@@ -4225,13 +4226,17 @@ export function GexHeatmap({
                 const row = cells[String(strike)] ?? {};
                 const isSpot = strike === spotStrike;
                 const isAnchor = matrixAnchorStrike != null && strike === matrixAnchorStrike;
-                const rowTotal = matrixRowTotals[String(strike)] ?? 0;
-                const shiftDelta =
-                  shift?.available ? shift.delta_by_strike?.[String(strike)] : undefined;
+                const rowTotal = strikeTotals[String(strike)] ?? 0;
+                const shiftDelta = matrixShiftDeltaForStrike(shift, strike);
                 const shiftPctLabel =
                   !isSpot && shouldShowStrikeDistancePct(strikeIdx, spotStrikeIdx)
                     ? fmtShiftPercentForStrike(rowTotal, shiftDelta)
                     : null;
+                const driftTitle = shift?.available
+                  ? "Intraday gamma build/melt vs prior snapshot"
+                  : shiftDelta != null
+                    ? "Session build/melt at close (market closed)"
+                    : undefined;
                 const isCallWallRow = lens === "gex" && posWall != null && strike === posWall;
                 const isPutWallRow = lens === "gex" && negWall != null && strike === negWall;
 
@@ -4257,11 +4262,12 @@ export function GexHeatmap({
                         <span>{fmtHeatmapStrike(strike)}</span>
                         {shiftPctLabel && shiftPctLabel !== "—" ? (
                           <span
+                            title={driftTitle}
                             className={clsx(
                               "thermal-matrix-strike-pct",
+                              !shift?.available && shiftDelta != null && "opacity-75",
                               shiftDelta != null && shiftDelta >= 0 ? "text-bull" : "text-bear"
                             )}
-                            title="Intraday gamma build/melt vs prior snapshot"
                           >
                             {shiftPctLabel}
                           </span>

@@ -32,7 +32,7 @@ import {
   writeGexHeatmapSessionCache,
 } from "@/lib/gex-heatmap-session-cache";
 import { spxMatrixScopeLabel } from "@/lib/gex-scope-labels";
-import { pickGexShiftLeaders, pickGexShiftLeaderCells, gexMatrixShiftCellKey, matrixShiftForLens, matrixShiftSinceMs } from "@/lib/gex-shift-leaders";
+import { pickGexShiftLeaders, pickGexShiftLeaderCells, gexMatrixShiftCellKey, matrixShiftDeltaForStrike, matrixShiftForLens, matrixShiftSinceMs } from "@/lib/gex-shift-leaders";
 import { GexShiftLeadersStrip } from "@/components/gex/GexShiftLeadersStrip";
 import { GexMatrixShiftBadge } from "@/components/gex/GexMatrixShiftBadge";
 import { fmtShiftPercentForStrike } from "@/features/thermal/lib/gex-heatmap/shift-math";
@@ -712,10 +712,7 @@ export function SpxGexMatrixHeatmap({
                   odteLevels.callWall != null && strike === odteLevels.callWall;
                 const isPutWall =
                   odteLevels.putWall != null && strike === odteLevels.putWall;
-                const shiftDelta =
-                  activeShift?.available
-                    ? activeShift.delta_by_strike?.[String(strike)]
-                    : undefined;
+                const shiftDelta = matrixShiftDeltaForStrike(activeShift, strike);
                 const driftLabel =
                   !isSpotRow && shouldShowStrikeDistancePct(si, spotIdx)
                     ? fmtShiftPercentForStrike(rowTotal, shiftDelta)

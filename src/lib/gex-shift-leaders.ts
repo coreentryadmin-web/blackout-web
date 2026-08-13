@@ -11,9 +11,39 @@ export type GexShiftLeader = {
 
 export type GexShiftLike = {
   available?: boolean;
+  status?: string;
   delta_by_strike?: Record<string, number>;
   since_ms?: number;
 };
+
+/**
+ * Per-strike Δ for matrix DR% labels. Reads `delta_by_strike` even when `available` is false —
+ * the route preserves that map off-hours (summary/flip/wall narrative stripped) so the Strike
+ * column can show last-session build/melt % without implying live migration.
+ */
+export function matrixShiftDeltaForStrike(
+  shift: GexShiftLike | null | undefined,
+  strike: number,
+): number | undefined {
+  const d = shift?.delta_by_strike?.[String(strike)];
+  return d != null && Number.isFinite(d) ? d : undefined;
+}
+
+/**
+ * Off-hours presentation gate: force `available:false` and strip present-tense narrative fields
+ * (summary, flip_migration, wall_changes) while keeping the cached per-strike delta map for
+ * matrix DR% display.
+ */
+export function gateShiftOffHours(shift: GexShiftLike | null | undefined): GexShiftLike {
+  if (!shift) return { available: false, status: "collecting" };
+  const deltas = shift.delta_by_strike;
+  const hasDeltas = deltas != null && Object.keys(deltas).length > 0;
+  return {
+    available: false,
+    status: "collecting",
+    ...(hasDeltas ? { delta_by_strike: deltas, since_ms: shift.since_ms } : {}),
+  };
+}
 
 /** Per-lens shift block on the shared gex-heatmap payload. */
 export type MatrixShiftPayload = {
@@ -61,7 +91,7 @@ export function pickGexShiftLeaders(
 ): GexShiftLeader[] {
   const perSide = opts?.perSide ?? 3;
   const totals = strikeTotals ?? {};
-  if (!shift?.available || !shift.delta_by_strike) return [];
+  if (!shift?.delta_by_strike) return [];
 
   const rows: Array<{ strike: number; delta: number; current: number }> = [];
   for (const [key, delta] of Object.entries(shift.delta_by_strike)) {

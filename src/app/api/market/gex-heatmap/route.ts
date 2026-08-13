@@ -17,11 +17,11 @@ import { isHeatmapOverlayAllowed } from "@/lib/heatmap-allowlist";
 import { gexHeatmapEnrichmentMaxMs } from "@/lib/providers/config";
 import { dbConfigured, fetchLatestPlayableNighthawkEdition } from "@/lib/db";
 import { roundFloats, reconcileStrikeTotal, reconcileCellStrikeTotals } from "@/lib/round-floats";
-import { isEtCashRth } from "@/lib/et-market-hours";
 import { joinGexStrikeExpiryTicker, hasLiveGexStrikeExpiry, getGexStrikeExpiryLadder } from "@/lib/ws/uw-socket";
 import { registerVectorUniverseView } from "@/features/vector/lib/vector-universe";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 import { compactHeatmapMemberPayload } from "@/lib/gex-heatmap-member";
+import { applyHeatmapMemberPresentationGates } from "@/lib/gex-heatmap-member-serve";
 import {
   loadHeatmapCacheReaderOnly,
   scheduleHeatmapBackgroundWarm,
@@ -447,24 +447,15 @@ export async function GET(req: NextRequest) {
     //      cache was (re)computed — the route already holds the freshest wall-clock read, and
     //      this override must re-apply on EVERY cache hit (every request during the closed
     //      window reads the SAME cached object), not just the refresh that computed it.
-    //   2. We blank the WHOLE object (not just flip the boolean) so the misleading present-
-    //      tense `summary` string, delta_by_strike, etc. never leave the server while closed —
-    //      half-fixing this by leaving `available:false` next to a live-reading summary string
-    //      would still leak the exact misleading text a raw-JSON consumer (or a future UI) could
-    //      render. Reusing the existing 'collecting' status (rather than inventing a new one) is
-    //      intentional: GexHeatmap.tsx's Shift panel branches ONLY on `shift.available` truthiness
-    //      (never on `status`'s value — grepped), so a new status literal would add a type-surface
-    //      change with zero behavioral effect; reusing the shape already proven by the cold-start
-    //      path is the smaller, safer diff.
+    //   2. Narrative fields (summary, flip_migration, wall_changes) are stripped off-hours so
+    //      present-tense migration text never leaves the server while closed. The cached
+    //      `delta_by_strike` map IS preserved — matrix DR% labels are last-session build/melt
+    //      facts, not a live "happening now" read; GexHeatmap.tsx still gates the Shift panel on
+    //      `available` so the full migration story only renders during RTH.
     // Out of scope (deliberately untouched): computeMetricShift's diff math, wall/flip-migration
     // calculations, and the cache-refresh trigger — those are correct; this is purely a "don't
     // present a stale/cached result as if it's happening right now" presentation-layer gate.
-    if (!isEtCashRth()) {
-      rounded.shift = { available: false, status: "collecting" };
-      if (rounded.vex_shift) rounded.vex_shift = { available: false, status: "collecting" };
-      if (rounded.dex_shift) rounded.dex_shift = { available: false, status: "collecting" };
-      if (rounded.charm_shift) rounded.charm_shift = { available: false, status: "collecting" };
-    }
+    applyHeatmapMemberPresentationGates(rounded);
 
     // Reconcile each metric AFTER rounding, TWO levels: (1) a strike's own
     // strike_totals entry vs the sum of that strike's rounded near-term cells, then

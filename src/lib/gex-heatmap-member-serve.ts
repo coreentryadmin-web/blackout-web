@@ -12,6 +12,26 @@ import {
   type HeatmapMemberPayload,
 } from "@/lib/gex-heatmap-member";
 import { roundFloats, reconcileStrikeTotal, reconcileCellStrikeTotals } from "@/lib/round-floats";
+import { isEtCashRth } from "@/lib/et-market-hours";
+import { gateShiftOffHours, type GexShiftLike } from "@/lib/gex-shift-leaders";
+
+type HeatmapShiftFields = {
+  shift?: GexShiftLike | null;
+  vex_shift?: GexShiftLike | null;
+  dex_shift?: GexShiftLike | null;
+  charm_shift?: GexShiftLike | null;
+};
+
+/** Presentation gates applied on every member-facing heatmap read (single + batch). */
+export function applyHeatmapMemberPresentationGates<T extends HeatmapShiftFields>(payload: T): T {
+  if (!isEtCashRth()) {
+    payload.shift = gateShiftOffHours(payload.shift);
+    if (payload.vex_shift) payload.vex_shift = gateShiftOffHours(payload.vex_shift);
+    if (payload.dex_shift) payload.dex_shift = gateShiftOffHours(payload.dex_shift);
+    if (payload.charm_shift) payload.charm_shift = gateShiftOffHours(payload.charm_shift);
+  }
+  return payload;
+}
 
 /** Fire-and-forget matrix warm — member routes must never await cold builds. */
 export function scheduleHeatmapBackgroundWarm(
@@ -83,7 +103,7 @@ export function buildCompactComparePayload(heatmap: GexHeatmap): HeatmapMemberPa
     );
   }
 
-  return compactHeatmapMemberPayload(rounded);
+  return applyHeatmapMemberPresentationGates(compactHeatmapMemberPayload(rounded));
 }
 
 export function memberPayloadFromHeatmap(
