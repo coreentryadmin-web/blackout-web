@@ -1,8 +1,7 @@
 "use client";
 
 import { clsx } from "clsx";
-import { PageShell, PageHeader } from "@/components/ui";
-import { ProductMark } from "@/components/marks/ProductMark";
+import { PageShell } from "@/components/ui";
 import { Heatmap } from "@/features/thermal/components/Heatmap";
 import { IosIntelligenceHubSegment } from "@/components/ios/IosIntelligenceHubSegment";
 import { useIosNativeShell } from "@/hooks/useIosNativeShell";
@@ -19,7 +18,7 @@ export function ThermalPageShell() {
         nativeShell && "thermal-page-shell-native"
       )}
       contentClassName={clsx(
-        nativeShell ? "thermal-page-content-native !py-0" : "!py-2 md:!py-3"
+        nativeShell ? "thermal-page-content-native !py-0" : "!py-1 md:!py-2"
       )}
     >
       <div
@@ -28,14 +27,8 @@ export function ThermalPageShell() {
           nativeShell ? "thermal-page-inner-native" : "px-4 md:px-6"
         )}
       >
-        {!nativeShell && (
-          <PageHeader
-            title="BlackOut Thermal"
-            badge={<ProductMark product="heatmap" size={44} />}
-          />
-        )}
         <IosIntelligenceHubSegment />
-        <div className={clsx(nativeShell ? "mt-0" : "mt-2")}>
+        <div className={nativeShell ? "mt-0" : "mt-1"}>
           <Heatmap nativeShell={nativeShell} />
         </div>
       </div>

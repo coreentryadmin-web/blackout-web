@@ -363,14 +363,14 @@ export default function ThermalCompactMatrix({
                       }
                     >
                       <span className="thermal-compact-cell-inner">
-                        <span className="thermal-compact-cell-val">
-                          {fmtHeatmapMoneySigned(n, { showZero: true })}
-                        </span>
                         {showPct ? (
                           <span className="thermal-compact-cell-pct" title="Distance from spot">
                             {fmtStrikeDistancePct(data.spot, strike)}
                           </span>
                         ) : null}
+                        <span className="thermal-compact-cell-val">
+                          {fmtHeatmapMoneySigned(n, { showZero: true })}
+                        </span>
                       </span>
                       {isKing ? (
                         <span

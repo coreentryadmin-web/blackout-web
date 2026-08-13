@@ -26,7 +26,6 @@ import { ThermalGridSectorPicker } from "@/features/thermal/components/ThermalGr
 import {
   buildThermalUrlSearch,
   honestLevelEmpty,
-  keyLevelsFootnote,
   keyLevelsKicker,
   parseThermalTicker,
   parseThermalUrlState,
@@ -3887,15 +3886,6 @@ export function GexHeatmap({
       ),
     [lensUpper, stale, data?.near_term_expiries, scopedExpiryLabel, scopedShare]
   );
-  const keyLevelsScopeFootnote = useMemo(
-    () =>
-      keyLevelsFootnote(
-        zeroDteExpiry ? fmtExpiry(zeroDteExpiry) : null,
-        scopedExpiryLabel ? fmtExpiry(scopedExpiryLabel) : null
-      ),
-    [zeroDteExpiry, scopedExpiryLabel]
-  );
-
   // The old ~6 big cards (flip / call wall / put wall / max pain / net / anchor) collapse
   // into ONE compact box of small label-over-value cells. Per-lens cell sets mirror the
   // prior RegimeTile sets exactly (same values, tones, help, "vs prior close" deltas):
@@ -4719,8 +4709,7 @@ export function GexHeatmap({
         <KeyLevelBox
           cells={levelCells}
           kicker={keyLevelsScopeKicker}
-          footnote={keyLevelsScopeFootnote}
-          className="mb-3 gex-key-levels"
+          className="mb-2 gex-key-levels thermal-key-levels"
         />
       )}
 
