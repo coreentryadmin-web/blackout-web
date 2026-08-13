@@ -52,15 +52,9 @@ type Props = {
   pinnedStrikes: number[];
   onTogglePin: (strike: number) => void;
   scrollRef?: RefObject<HTMLDivElement | null>;
-  onScrollSync?: (scrollTop: number, scrollLeft: number) => void;
-  /**
-   * Desk-level flag: while true, skip scroll-sync so each panel can center on its
-   * own spot without yanking the other two to the wrong scrollTop.
-   */
-  suppressScrollSyncRef?: MutableRefObject<boolean>;
-  /** Desk-level: user scrolled any panel — don't auto-yank until spot strike moves or refresh. */
+  /** Per-column: user scrolled this panel — skip auto-recenter until spot moves or refresh. */
   userPinnedScrollRef?: MutableRefObject<boolean>;
-  /** Bumped by the rail Refresh control to force recenter after revalidate. */
+  /** Bumped by the toolbar Refresh control to force recenter after revalidate. */
   recenterEpoch?: number;
 };
 
@@ -73,13 +67,7 @@ function todayEtYmd(): string {
   }).format(new Date());
 }
 
-function centerSpotInBox(
-  box: HTMLElement,
-  row: HTMLElement,
-  behavior: ScrollBehavior,
-  suppressRef?: MutableRefObject<boolean>,
-) {
-  if (suppressRef) suppressRef.current = true;
+function centerSpotInBox(box: HTMLElement, row: HTMLElement, behavior: ScrollBehavior) {
   if (behavior === "smooth") {
     const scrollRect = box.getBoundingClientRect();
     const rowRect = row.getBoundingClientRect();
@@ -91,13 +79,6 @@ function centerSpotInBox(
   } else {
     scrollRowIntoViewCenter(box, row);
   }
-  // Keep sync suppressed through the scroll event + a layout frame so the
-  // other panels keep their own spot-centered scrollTop.
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      if (suppressRef) suppressRef.current = false;
-    });
-  });
 }
 
 export default function ThermalCompactMatrix({
@@ -107,8 +88,6 @@ export default function ThermalCompactMatrix({
   pinnedStrikes,
   onTogglePin,
   scrollRef,
-  onScrollSync,
-  suppressScrollSyncRef,
   userPinnedScrollRef,
   recenterEpoch = 0,
 }: Props) {
@@ -158,7 +137,7 @@ export default function ThermalCompactMatrix({
     const box = localScrollRef.current;
     const row = spotRowRef.current;
     if (box == null || row == null) return;
-    centerSpotInBox(box, row, behavior, suppressScrollSyncRef);
+    centerSpotInBox(box, row, behavior);
   };
 
   // Mark desk scroll as user-pinned so quiet matrix refreshes don't yank the ladder.
@@ -233,12 +212,6 @@ export default function ThermalCompactMatrix({
     <div
       ref={setScrollEl}
       className={`thermal-compact-scroll${is0dte ? " is-0dte" : ""}`}
-      onScroll={(e) => {
-        if (suppressScrollSyncRef?.current) return;
-        if (!onScrollSync) return;
-        const el = e.currentTarget;
-        onScrollSync(el.scrollTop, el.scrollLeft);
-      }}
     >
       <table
         className={`thermal-compact-table${is0dte ? " is-0dte" : ""} font-mono text-[13px] tabular-nums`}
