@@ -123,7 +123,8 @@ export function compactMatrixPeak(
 }
 
 /** How many strikes per side get ranked green/red (rank 1 on each side is yellow/purple). */
-export const COMPACT_TOP_HIGHLIGHT_COUNT = 4;
+/** Top 3 + / top 3 − per expiry column (6 coloured cells total — was 8). */
+export const COMPACT_TOP_HIGHLIGHT_COUNT = 3;
 
 export type CompactExpiryTopHighlights = {
   /** strike → rank 1..N (1 = largest positive in the column). */
@@ -163,7 +164,7 @@ function rankTopStrikes(
 /**
  * Per-expiry top-N positive / negative ranks for the compare grid.
  * Rank 1 positive → yellow call node; rank 1 negative → purple put node;
- * ranks 2–4 → green / red only (everything else stays neutral for readability).
+ * ranks 2–3 → green / red only (everything else stays neutral for readability).
  */
 export function compactPerExpiryTopHighlights(
   cells: Record<string, Record<string, number>> | undefined,

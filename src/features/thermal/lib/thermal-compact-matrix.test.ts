@@ -75,7 +75,7 @@ test("compactPerExpiryExtremes marks +node yellow side, −node purple side, kin
   assert.equal(ex["2026-07-28"]?.king, 102); // |−80| > |50|
 });
 
-test("compactPerExpiryTopHighlights ranks top 4 positive and negative per expiry", () => {
+test("compactPerExpiryTopHighlights ranks top 3 positive and negative per expiry", () => {
   const cells = {
     "100": { "2026-07-28": 10 },
     "101": { "2026-07-28": 50 },
@@ -96,8 +96,10 @@ test("compactPerExpiryTopHighlights ranks top 4 positive and negative per expiry
     ["2026-07-28"],
   );
   const day = hl["2026-07-28"]!;
-  assert.deepEqual(day.topPositive, { 101: 1, 102: 2, 103: 3, 104: 4 });
-  assert.deepEqual(day.topNegative, { 106: 1, 107: 2, 108: 3, 109: 4 });
+  assert.deepEqual(day.topPositive, { 101: 1, 102: 2, 103: 3 });
+  assert.deepEqual(day.topNegative, { 106: 1, 107: 2, 108: 3 });
+  assert.equal(day.topPositive[104], undefined);
   assert.equal(day.topPositive[105], undefined);
+  assert.equal(day.topNegative[109], undefined);
   assert.equal(day.topNegative[111], undefined);
 });

@@ -148,14 +148,14 @@ describe("strike distance from spot", () => {
     assert.match(drifted, /^\+/);
   });
 
-  it("shouldShowStrikeDistancePct limits labels to 4 above + 4 below spot", () => {
+  it("shouldShowStrikeDistancePct limits labels to 3 above + 3 below spot", () => {
     const spot = 5;
-    assert.equal(STRIKE_DISTANCE_PCT_NEAR_SPOT, 4);
+    assert.equal(STRIKE_DISTANCE_PCT_NEAR_SPOT, 3);
     assert.equal(shouldShowStrikeDistancePct(spot, spot), false);
-    assert.equal(shouldShowStrikeDistancePct(spot - 4, spot), true);
-    assert.equal(shouldShowStrikeDistancePct(spot + 4, spot), true);
-    assert.equal(shouldShowStrikeDistancePct(spot - 5, spot), false);
-    assert.equal(shouldShowStrikeDistancePct(spot + 5, spot), false);
+    assert.equal(shouldShowStrikeDistancePct(spot - 3, spot), true);
+    assert.equal(shouldShowStrikeDistancePct(spot + 3, spot), true);
+    assert.equal(shouldShowStrikeDistancePct(spot - 4, spot), false);
+    assert.equal(shouldShowStrikeDistancePct(spot + 4, spot), false);
     assert.equal(shouldShowStrikeDistancePct(0, -1), false);
   });
 });

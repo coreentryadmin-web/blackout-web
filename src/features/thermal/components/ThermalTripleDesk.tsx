@@ -11,6 +11,7 @@ import {
   type MutableRefObject,
 } from "react";
 import useSWR from "swr";
+import { clsx } from "clsx";
 import { FreshnessChip } from "@/components/ui";
 import { usePollIntervalMs, useEtMarketOpen } from "@/hooks/use-et-market-open";
 import { useLiveQuoteStream } from "@/hooks/useLiveQuoteStream";
@@ -41,6 +42,11 @@ function todayEtYmd(): string {
   }).format(new Date());
 }
 
+function fmtHeaderPct(n: number): string {
+  const sign = n >= 0 ? "+" : "";
+  return `${sign}${n.toFixed(2)}%`;
+}
+
 type LensBlock = {
   cells: Record<string, Record<string, number>>;
   call_wall?: number | null;
@@ -56,6 +62,7 @@ type HeatmapPayload = {
   available: boolean;
   underlying?: string;
   spot?: number;
+  change_pct?: number;
   asof?: string;
   expiries?: string[];
   strikes?: number[];
@@ -287,6 +294,14 @@ function TripleColumn({
   const block = view ? pickBlock(view, lens) : undefined;
   const matrixSpot = view?.spot != null && view.spot > 0 ? view.spot : null;
   const headerSpot = pushSpot ?? matrixSpot;
+  const matrixChangePct =
+    view?.change_pct != null && Number.isFinite(view.change_pct) ? view.change_pct : null;
+  const pushChangePct =
+    pushQuote?.changePct != null && Number.isFinite(pushQuote.changePct)
+      ? pushQuote.changePct
+      : null;
+  const headerChangePct = pushChangePct ?? matrixChangePct;
+  const changeUp = (headerChangePct ?? 0) >= 0;
   const zeroDteExpiry = useMemo(() => {
     if (!view?.expiries?.length) return null;
     return resolveZeroDteExpiry(view.near_term_expiries, view.expiries, todayEtYmd());
@@ -315,8 +330,21 @@ function TripleColumn({
         )}
         <div className="thermal-triple-col-head-spot" aria-label={`${ticker} spot`}>
           {headerSpot != null ? (
-            <span className="thermal-triple-spot thermal-triple-spot--head">
-              {Number(headerSpot).toFixed(2)}
+            <span className="thermal-triple-spot-wrap">
+              <span className="thermal-triple-spot thermal-triple-spot--head">
+                {Number(headerSpot).toFixed(2)}
+              </span>
+              {headerChangePct != null ? (
+                <span
+                  className={clsx(
+                    "thermal-triple-spot-chg",
+                    changeUp ? "is-up" : "is-down",
+                  )}
+                  title={`${ticker} day change`}
+                >
+                  {fmtHeaderPct(headerChangePct)}
+                </span>
+              ) : null}
             </span>
           ) : (
             <span className="thermal-triple-spot thermal-triple-spot--head is-empty">—</span>
