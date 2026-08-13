@@ -98,7 +98,15 @@ const HEATMAP_EXTRA_LIQUID_TICKERS = [
   "HOOD", "MARA", "RIOT",          // crypto
   "XOM", "CVX", "OXY", "SLB", "COP",   // energy
   "JPM", "GS", "BAC", "MS", "V",       // financials
-  "LLY", "UNH", "MRK", "ABBV", "GILD", // biotech
+  "LLY", "UNH", "MRK", "ABBV", "GILD", // healthcare (renamed from "biotech" — none of these are)
+
+  // Second pass after measuring whole-chain liquidity across the presets (2026-08-13). Each of
+  // these out-trades names the grid already carried: INTC 626k day vol (vs AVGO's 140k, which was
+  // already in Semis), ORCL 392k, IBIT 389k, TSM 131k, VRT 71k, ANET 37k.
+  // TLT / GLD / IWM / DIA are used by the new Indices + Macro presets and were already listed above.
+  "INTC", "TSM",           // semis
+  "ORCL", "ANET", "VRT",   // ai (infrastructure + software layer)
+  "IBIT",                  // macro — spot-bitcoin ETF, now a top-tier options book
 ] as const;
 
 /** Normalized allowlist set (uppercased) — overlays fetch ONLY for these symbols. */

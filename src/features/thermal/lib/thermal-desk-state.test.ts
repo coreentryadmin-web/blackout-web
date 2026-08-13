@@ -16,7 +16,12 @@ import {
   keyLevelsFootnote,
 } from "./thermal-desk-state.ts";
 
-test("THERMAL_COMPARE_TICKERS matches the Indices preset (legacy export)", () => {
+// PINNED, and deliberately NOT "matches the Indices preset" any more. Its real consumer is
+// thermalCompareForLargo, which does one getGexPositioning call per entry — so while it tracked the
+// preset, adding IWM + DIA to the grid silently gave a Largo tool 67% more upstream work on a path
+// already trimmed once for ~120s timeouts. This assertion is the tripwire for that coupling
+// returning.
+test("THERMAL_COMPARE_TICKERS stays the classic triple, independent of the Indices preset", () => {
   assert.deepEqual([...THERMAL_COMPARE_TICKERS], ["SPY", "SPX", "QQQ"]);
 });
 
