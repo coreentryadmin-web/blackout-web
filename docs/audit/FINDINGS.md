@@ -72,6 +72,18 @@ Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 | **Fix** | Cap Redis handoff at 500ms; cap SPX UW overlay at 2s (best-effort); unify force/non-force stale handoff; `loadHeatmapForMember` 10s route deadline → `readGexHeatmapSnapshot`; compare column skips force while loading/error. |
 | **Blast radius** | All `/api/market/gex-heatmap` callers (Thermal, SPX Slayer matrix, Vector ladder). SPX may briefly serve honestly-stale matrix (asof timestamp) instead of empty/504. |
 
+## 2026-08-13 — [FINDING, P1 Largo] `/terminal` launch-gated for premium + heavy queries 504 @ ~120s — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Status** | FIXED on `cursor/spx-matrix-timeout-fix-3d11` (same PR as SPX matrix timeout) |
+| **Symptom** | Non-admin premium members saw Coming Soon on `/terminal` and `POST /api/market/largo/query` → **403 `coming_soon`**. Admins could load Largo but heavy 0DTE questions occasionally **504 @ ~120s** (ALB idle timeout). |
+| **Root cause** | (1) `largo` had `defaultLaunched: false` while marketing listed Largo as live — prod `LAUNCHED_TOOLS` unset, so only admins bypassed the gate. (2) Deep tool-loop budget was 90s plus uncapped prefetch/post/followups, so total turn could exceed ALB 120s with no route-level deadline. |
+| **Fix** | Set `defaultLaunched: true` for Largo; add `largoMemberRouteDeadlineMs` (100s) route race on `/api/market/largo/query`; cap tool-loop via `largoToolLoopBudgetMs` (75s); client stream timeout 110s. |
+| **Blast radius** | All premium members gain `/terminal` + Largo API access. Long questions may return an honest 503/SSE error before gateway 504 instead of hanging. |
+
 
 > **kind:** `FINDING`
 

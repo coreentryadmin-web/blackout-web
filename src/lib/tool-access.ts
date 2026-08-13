@@ -2,9 +2,9 @@
 // no Next, no process beyond env) so it is client + server + unit-test safe. Admin bypass is layered on
 // in tool-access-server.ts — this module only knows the per-tool launch state.
 //
-// WHY: paying (Whop) users get every finished desk tool on day one; Largo stays gated
-// behind a padlock until its launch. The locked set remains env-overridable
-// (LAUNCHED_TOOLS) for additive unlocks — default-launched tools cannot be locked via env.
+// WHY: paying (Whop) users get every finished desk tool on day one. The locked set remains
+// env-overridable (LAUNCHED_TOOLS) for additive unlocks — default-launched tools cannot be
+// locked via env.
 
 export type ToolKey = "spx" | "flows" | "heatmap" | "largo" | "nighthawk" | "vector";
 
@@ -29,7 +29,7 @@ export const TOOLS: readonly ToolMeta[] = [
   { key: "spx", label: "SPX Slayer", href: "/dashboard", product: "spx", defaultLaunched: true },
   { key: "flows", label: "HELIX", href: "/flows", product: "helix", defaultLaunched: true },
   { key: "heatmap", label: "BlackOut Thermal", href: "/heatmap", product: "heatmap", defaultLaunched: true },
-  { key: "largo", label: "Largo", href: "/terminal", product: "largo", defaultLaunched: false },
+  { key: "largo", label: "Largo", href: "/terminal", product: "largo", defaultLaunched: true },
   { key: "nighthawk", label: "Night Hawk", href: "/nighthawk", product: "nighthawk", defaultLaunched: true },
   { key: "vector", label: "Vector", href: "/vector", product: "vector", defaultLaunched: true },
 ] as const;

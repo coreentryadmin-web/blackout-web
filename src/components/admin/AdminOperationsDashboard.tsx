@@ -846,17 +846,14 @@ export function AdminOperationsDashboard() {
                   }
                   ok={
                     h?.launch_status
-                      ? h.launch_status.open_count === h.launch_status.total_count ||
-                        (h.launch_status.open_count === 5 &&
-                          h.launch_status.locked_keys.length === 1 &&
-                          h.launch_status.locked_keys[0] === "largo")
+                      ? h.launch_status.open_count === h.launch_status.total_count
                       : null
                   }
                   sub={
                     h?.launch_status?.launched_tools_env
                       ? `LAUNCHED_TOOLS=${h.launch_status.launched_tools_env}`
                       : h?.launch_status
-                        ? "LAUNCHED_TOOLS unset (defaults: all except Largo)"
+                        ? "LAUNCHED_TOOLS unset (all tools default-live)"
                         : undefined
                   }
                 />

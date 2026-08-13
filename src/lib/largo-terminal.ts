@@ -109,6 +109,7 @@ import {
 import { playSimilarityForLargo, type PlaySimilarityCard } from "@/lib/largo/play-similarity";
 import { preEarningsPackForLargo, type PreEarningsPackCard } from "@/lib/largo/pre-earnings-pack";
 import { formatDepthBlock, largoDepthConfig, parseLargoDepth, type LargoDepth } from "@/lib/largo/largo-depth";
+import { largoToolLoopBudgetMs } from "@/lib/providers/config";
 import { buildLargoActions, type LargoAction } from "@/lib/largo/largo-actions";
 import {
   fetchLargoSessionMetadata,
@@ -131,9 +132,13 @@ import { getUserTier } from "@/lib/auth-access";
 
 const LARGO_TOOL_LOOP_TIMEOUT_MS = (() => {
   const raw = process.env.LARGO_TOOL_LOOP_TIMEOUT_MS?.trim();
-  const n = raw ? Number(raw) : 90_000;
-  return Number.isFinite(n) && n >= 30_000 ? Math.min(Math.round(n), 120_000) : 90_000;
+  const n = raw ? Number(raw) : largoToolLoopBudgetMs();
+  return Number.isFinite(n) && n >= 20_000 ? Math.min(Math.round(n), largoToolLoopBudgetMs()) : largoToolLoopBudgetMs();
 })();
+
+function largoLoopTimeoutMs(depth: LargoDepth): number {
+  return Math.min(largoDepthConfig(depth).timeoutMs, LARGO_TOOL_LOOP_TIMEOUT_MS);
+}
 
 const LARGO_TOOL_LOOP_MAX_ROUNDS = (() => {
   const raw = process.env.LARGO_TOOL_LOOP_MAX_ROUNDS?.trim();
@@ -742,7 +747,7 @@ export async function runLargoQuery(
       model: depthCfg.model,
       maxTokens: depthCfg.maxTokens,
       maxRounds: depthCfg.maxRounds,
-      timeoutMs: depthCfg.timeoutMs,
+      timeoutMs: largoLoopTimeoutMs(depth),
       maxRetries: 1,
       cacheSystem: true,
       aiGate: "largo",
@@ -972,7 +977,7 @@ export async function runLargoQueryStream(
       model: depthCfg.model,
       maxTokens: depthCfg.maxTokens,
       maxRounds: depthCfg.maxRounds,
-      timeoutMs: depthCfg.timeoutMs,
+      timeoutMs: largoLoopTimeoutMs(depth),
       maxRetries: 1,
       cacheSystem: true,
       aiGate: "largo",
