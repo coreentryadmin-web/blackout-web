@@ -34,7 +34,6 @@ import {
   type ThermalLens,
 } from "@/features/thermal/lib/thermal-desk-state";
 import {
-  THERMAL_COMPARE_PRESETS,
   orderComparePresetTickers,
   resolveComparePresetIdForTicker,
   thermalComparePreset,

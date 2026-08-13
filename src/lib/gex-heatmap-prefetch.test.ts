@@ -7,9 +7,10 @@ import test, { beforeEach, afterEach } from "node:test";
  * about the dropdown, where a member changes preset far faster than a heatmap build completes.
  */
 
-type Store = Record<string, string>;
-
-const store: Store = {};
+// A Map, not a plain object: the stub writes keys straight from the code under test, and a
+// computed property write on an object literal is a prototype-pollution shape (CodeQL flags it,
+// correctly in general). A Map has no prototype chain to walk into.
+const store = new Map<string, string>();
 const fetched: string[] = [];
 const aborted: string[] = [];
 
@@ -24,18 +25,18 @@ const g = globalThis as unknown as {
 let pending: Array<{ ticker: string; resolve: (v: unknown) => void }> = [];
 
 beforeEach(() => {
-  for (const k of Object.keys(store)) delete store[k];
+  store.clear();
   fetched.length = 0;
   aborted.length = 0;
   pending = [];
 
   g.sessionStorage = {
-    getItem: (k: string) => store[k] ?? null,
+    getItem: (k: string) => store.get(k) ?? null,
     setItem: (k: string, v: string) => {
-      store[k] = v;
+      store.set(k, v);
     },
     removeItem: (k: string) => {
-      delete store[k];
+      store.delete(k);
     },
   };
   g.window = { sessionStorage: g.sessionStorage };
