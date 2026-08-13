@@ -40,6 +40,9 @@ import {
   thermalComparePreset,
 } from "@/features/thermal/lib/thermal-compare-presets";
 import { prefetchGexHeatmapTickers } from "@/lib/gex-heatmap-prefetch";
+// Client-safe by construction — heatmap-allowlist.ts is a pure data + predicate module and
+// deliberately does NOT `import "server-only"` (see the note at the top of that file).
+import { isHeatmapOverlayAllowed } from "@/lib/heatmap-allowlist";
 import { GEX_KING_COMPACT_LABEL, GEX_KING_DUAL_LABEL, GEX_KING_NODE_HELP, gexKingDualLabel } from "@/lib/gex-king-node-labels";
 import { shiftPercentForStrike } from "@/features/thermal/lib/gex-heatmap/shift-math";
 import { createPulseEventSource, type PulseStreamSnapshot } from "@/lib/api";
@@ -3213,6 +3216,20 @@ export function GexHeatmap({
   const hasFlowOverlay = flowByStrike != null && Object.keys(flowByStrike).length > 0;
   const hasDarkPoolOverlay = darkPoolLevels != null && darkPoolLevels.length > 0;
 
+  // Two DIFFERENT reasons an overlay is missing, and the member has to be able to tell them apart.
+  //
+  // The UW overlays (flow-per-strike + dark pool) are gated server-side to a ~21-name allowlist
+  // because UW is capped at 2 RPS CLUSTER-WIDE, shared with the desk / Largo / Night Hawk / HELIX
+  // (see lib/heatmap-allowlist.ts). Off-allowlist tickers still get the full dealer-gamma matrix —
+  // they just serve the overlay-free contract, permanently and by design.
+  //
+  // The sector grid makes this the COMMON case rather than the exception: whole presets (Space,
+  // Energy, Financials, Biotech) are entirely off-allowlist, so without this distinction five
+  // columns would sit there reading "unavailable" forever and every one of them would look like a
+  // broken feed. "Not offered for this symbol" is a different sentence from "nothing in the window
+  // right now", and only one of them is a reason to come back later.
+  const overlaysOfferedForTicker = isHeatmapOverlayAllowed(ticker);
+
   // ── Intraday migration per lens (GEX/VEX/DEX/CHARM) — server-computed, cached with matrix. ──
   const shift = (matrixShiftForLens(lens, data) ?? null) as GexShift | null;
   // Which lenses carry shift blocks in THIS payload — older caches may omit dex/charm shifts.
@@ -3376,11 +3393,18 @@ export function GexHeatmap({
     return filtered.length ? filtered : expiries;
   }, [expiries, selectedExpiries]);
 
-  // Warm SPY|SPX|QQQ session cache when compare grid opens so columns paint together.
+  // Warm the ACTIVE preset's session cache so its columns paint together.
+  //
+  // This effect arrived with the fixed SPY|SPX|QQQ triple and warmed a constant. The grid is now a
+  // sector dropdown, so the warm set has to follow `compareSet` — otherwise switching sector paints
+  // five cold columns and the prefetch is doing nothing but burning one stale batch on open.
+  // Re-running per preset is safe precisely because prefetchGexHeatmapTickers aborts the batch it
+  // supersedes; a member scrolling the dropdown leaves at most one batch in flight.
   useEffect(() => {
     if (!compare) return;
-    prefetchGexHeatmapTickers(THERMAL_COMPARE_TICKERS);
-  }, [compare]);
+    const presetId = compareSet ?? resolveComparePresetIdForTicker(ticker);
+    prefetchGexHeatmapTickers(orderComparePresetTickers(thermalComparePreset(presetId), ticker));
+  }, [compare, compareSet, ticker]);
 
   // Filtered per-strike totals (re-summed from cells when a subset is active; the server
   // strike_totals verbatim for "All" so it exactly matches today's behavior). These drive
@@ -4108,9 +4132,13 @@ export function GexHeatmap({
           ) : (
             <span
               className="rounded-md border border-white/10 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-sky-300/60"
-              title="No HELIX flow prints in the current window for this ticker"
+              title={
+                overlaysOfferedForTicker
+                  ? "No HELIX flow prints in the current window for this ticker"
+                  : `Flow overlays are not offered for ${ticker} — the dealer-gamma matrix below is complete and unaffected`
+              }
             >
-              HELIX Flow · unavailable
+              {overlaysOfferedForTicker ? "HELIX Flow · unavailable" : "HELIX Flow · not offered"}
             </span>
           )}
           {hasDarkPoolOverlay ? (
@@ -4131,9 +4159,13 @@ export function GexHeatmap({
           ) : (
             <span
               className="rounded-md border border-white/10 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-sky-300/60"
-              title="No dark-pool levels in the current overlay window for this ticker"
+              title={
+                overlaysOfferedForTicker
+                  ? "No dark-pool levels in the current overlay window for this ticker"
+                  : `Dark-pool overlays are not offered for ${ticker} — the dealer-gamma matrix below is complete and unaffected`
+              }
             >
-              Dark pool · unavailable
+              {overlaysOfferedForTicker ? "Dark pool · unavailable" : "Dark pool · not offered"}
             </span>
           )}
           {fmtAsofSeconds(data?.overlays_at ?? undefined) && (
