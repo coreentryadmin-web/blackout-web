@@ -18710,6 +18710,51 @@ body::before {
     color: #e2e8f0;
     margin: 0.15rem 0;
   }
+  .largo-compare-card-peer {
+    overflow-x: auto;
+  }
+  .largo-compare-peer-table {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+  .largo-compare-peer-row {
+    display: grid;
+    grid-template-columns: minmax(3.5rem, 0.65fr) 1fr 1fr;
+    gap: 0.65rem;
+    align-items: start;
+    padding: 0.35rem 0;
+    border-top: 1px solid rgba(34, 211, 238, 0.12);
+  }
+  .largo-compare-peer-row:first-child {
+    border-top: none;
+    padding-top: 0;
+  }
+  .largo-compare-peer-head {
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: rgba(148, 163, 184, 0.9);
+  }
+  .largo-compare-peer-head .largo-compare-bias,
+  .largo-compare-peer-head .largo-compare-summary,
+  .largo-compare-peer-head .largo-compare-meta {
+    display: none;
+  }
+  .largo-compare-peer-ticker {
+    font-size: 12px;
+    font-weight: 600;
+    color: #22d3ee;
+    letter-spacing: 0.04em;
+  }
+  .largo-compare-peer-row-conflict {
+    background: rgba(251, 191, 36, 0.06);
+  }
+  .largo-compare-peer-conflict-dot {
+    margin-left: 0.25rem;
+    font-size: 10px;
+    color: #fbbf24;
+  }
   .largo-actions-bar {
     display: flex;
     flex-wrap: wrap;

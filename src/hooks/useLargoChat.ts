@@ -7,7 +7,7 @@ import { LARGO_SESSION_KEY } from "@/lib/session-cache";
 import { isIosAppShell } from "@/lib/ios-app-shell";
 import { largoStreamErrorMessage } from "@/lib/largo-stream-errors";
 import type { BieAnswerEnvelope } from "@/lib/bie/answer-envelope";
-import type { HelixThermalCompareCard } from "@/lib/largo/helix-thermal-compare";
+import type { LargoCompareCard } from "@/lib/largo/helix-thermal-compare";
 import type { LargoAction } from "@/lib/largo/largo-actions";
 import {
   LARGO_DESK_EXAMPLE_PROMPTS,
@@ -50,7 +50,7 @@ export type LargoMessage = {
   /** Object/data URLs for images sent with a user turn, rendered as thumbnails in the bubble. */
   images?: string[];
   /** Structured HELIX vs Thermal compare — rendered side-by-side, not model-merged. */
-  compareCard?: HelixThermalCompareCard | null;
+  compareCard?: LargoCompareCard | null;
   /** Post-verdict desk deep links. */
   actions?: LargoAction[];
   depth?: "quick" | "deep";

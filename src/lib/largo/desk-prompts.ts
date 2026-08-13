@@ -11,6 +11,8 @@ export type LargoDeskPrompt = {
   question: string;
   /** When true, server prefetches HELIX+Thermal compare card before the model runs. */
   compareCard?: boolean;
+  /** When true, server prefetches multi-ticker flow+gamma peer compare. */
+  peerCompare?: boolean;
 };
 
 /** Compact chips in the composer and native terminal. */
@@ -34,6 +36,13 @@ export const LARGO_DESK_PROMPTS: LargoDeskPrompt[] = [
     hint: "Open Night Hawk / 0DTE plays and live marks",
     question: "What's the 0DTE board P&L — open plays, marks, and any stopped positions?",
   },
+  {
+    id: "peer-compare",
+    label: "NVDA vs AMD vs SMH",
+    hint: "Flow + gamma side-by-side for earnings and peer days",
+    question: "Compare NVDA vs AMD vs SMH — flow and gamma side by side for earnings week.",
+    peerCompare: true,
+  },
 ];
 
 /** Empty-state showcase — same three intents, phrased as questions. */
@@ -48,10 +57,110 @@ export function deskPromptById(id: string): LargoDeskPrompt | undefined {
 
 export function questionWantsCompareCard(question: string): boolean {
   const q = question.toLowerCase();
+  if (questionWantsPeerCompare(question)) return false;
   return (
     /\b(helix|flow)\b.*\b(thermal|gex|gamma)\b/i.test(q) ||
     /\b(thermal|gex|gamma)\b.*\b(helix|flow)\b/i.test(q) ||
     /\bflow vs gex\b/i.test(q) ||
     /\bwhere do (?:they|the systems) disagree\b/i.test(q)
+  );
+}
+
+const PEER_COMPARE_STOPWORDS = new Set([
+  "I",
+  "A",
+  "AN",
+  "THE",
+  "VS",
+  "AND",
+  "OR",
+  "ET",
+  "AI",
+  "GEX",
+  "RTH",
+  "DTE",
+  "FOR",
+  "ON",
+  "IN",
+  "TO",
+  "IT",
+  "IS",
+  "AT",
+  "BY",
+  "OF",
+  "MY",
+  "ME",
+  "WE",
+  "US",
+  "DO",
+  "SO",
+  "IF",
+  "AS",
+  "BE",
+  "HE",
+  "SHE",
+  "ALL",
+  "DAY",
+  "WEEK",
+  "NOW",
+  "BUY",
+  "PUT",
+  "CALL",
+  "FLOW",
+  "GAMMA",
+  "HELIX",
+  "THERMAL",
+  "COMPARE",
+  "SIDE",
+]);
+
+/** Extract 2–3 tickers from a peer-compare question; defaults to NVDA/AMD/SMH when unspecified. */
+export function extractPeerCompareTickers(question: string): string[] {
+  const q = String(question ?? "").trim();
+  if (!q) return [];
+
+  const vsChain =
+    q.match(
+      /\b([A-Z]{1,5})\s+(?:vs\.?|versus)\s+([A-Z]{1,5})(?:\s+(?:vs\.?|versus|,)\s+([A-Z]{1,5}))?/i
+    ) ?? q.match(/\b([A-Z]{1,5})\s*,\s*([A-Z]{1,5})\s*(?:,|and)\s*([A-Z]{1,5})\b/i);
+
+  if (vsChain) {
+    const tickers = [vsChain[1], vsChain[2], vsChain[3]]
+      .filter((t): t is string => Boolean(t))
+      .map((t) => t.toUpperCase())
+      .filter((t) => !PEER_COMPARE_STOPWORDS.has(t) && t.length >= 2);
+    const deduped = [...new Set(tickers)];
+    if (deduped.length >= 2) return deduped.slice(0, 3);
+  }
+
+  const tokens =
+    q.match(/\$?[A-Z][A-Z0-9]{0,4}\b/g)?.map((t) => t.replace(/^\$/, "").toUpperCase()) ?? [];
+  const named = [...new Set(tokens.filter((t) => !PEER_COMPARE_STOPWORDS.has(t) && t.length >= 2))];
+  if (named.length >= 2) return named.slice(0, 3);
+
+  if (
+    /\bcompare\s+(three|3)\s+tickers?\b/i.test(q) ||
+    /\b(earnings|peer|semiconductor|chip)\b/i.test(q)
+  ) {
+    return ["NVDA", "AMD", "SMH"];
+  }
+
+  return [];
+}
+
+/** True when the member wants 2–3 tickers compared on flow + gamma (not HELIX-vs-Thermal on one name). */
+export function questionWantsPeerCompare(question: string): boolean {
+  const q = String(question ?? "").trim();
+  if (!q) return false;
+
+  if (/\bcompare\s+(three|3)\s+tickers?\b/i.test(q)) return true;
+  if (/\bnvda\s+vs\s+amd(\s+vs\s+smh)?\b/i.test(q)) return true;
+
+  const tickers = extractPeerCompareTickers(q);
+  if (tickers.length < 2) return false;
+
+  return (
+    /\b(vs|versus|compare|side.?by.?side|peer|earnings|relative)\b/i.test(q) ||
+    (tickers.length >= 3 && /\bflow\b.*\bgamma\b|\bgamma\b.*\bflow\b/i.test(q))
   );
 }
