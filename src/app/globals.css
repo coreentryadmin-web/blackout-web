@@ -18511,10 +18511,27 @@ body::before {
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
-  border-left: 1px solid rgba(125, 211, 252, 0.18);
-  padding: 0 0.65rem 0 0.5rem;
   min-width: 6.5rem;
+  border-left: 1px solid rgba(125, 211, 252, 0.18);
+}
+
+.thermal-grid-sector-picker-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  width: 100%;
+  margin: 0;
+  padding: 0 0.65rem 0 0.5rem;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.thermal-grid-sector-picker-trigger:focus-visible {
+  outline: 2px solid rgba(34, 211, 238, 0.65);
+  outline-offset: 2px;
+  border-radius: 0.25rem;
 }
 
 .thermal-grid-sector-picker-value {
@@ -18533,16 +18550,72 @@ body::before {
   margin-left: auto;
   font-size: 10px;
   color: rgba(125, 211, 252, 0.75);
+  transition: transform 0.15s ease;
 }
 
-.thermal-grid-sector-picker-select {
+.thermal-grid-sector-picker-chevron.is-open {
+  transform: rotate(180deg);
+  color: #22d3ee;
+}
+
+.thermal-grid-sector-menu {
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 50;
+  min-width: 10.5rem;
+  margin: 0;
+  padding: 0.35rem;
+  list-style: none;
+  border-radius: 0.55rem;
+  border: 1px solid rgba(34, 211, 238, 0.35);
+  background: rgba(4, 6, 12, 0.98);
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(125, 211, 252, 0.06);
   opacity: 0;
-  cursor: pointer;
+  pointer-events: none;
+  transform: translateY(-4px);
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
+}
+
+.thermal-grid-sector-menu.is-open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.thermal-grid-sector-option {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 0.35rem;
+  background: transparent;
+  padding: 0.45rem 0.55rem;
+  text-align: left;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #7dd3fc;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.thermal-grid-sector-option:hover,
+.thermal-grid-sector-option.is-active {
+  background: rgba(34, 211, 238, 0.12);
+  color: #22d3ee;
+}
+
+.thermal-grid-sector-option.is-selected {
+  color: #22d3ee;
+  box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.35);
 }
 
 .thermal-grid-sector-picker--compact {
