@@ -8,6 +8,7 @@ import {
   deskPulseMaxBlockMs,
 } from "@/lib/providers/config";
 import { pulseChangePctFromPriorClose } from "./spx-change-anchor";
+import { rebaseChangePct } from "@/lib/providers/change-pct";
 import { serverCache } from "@/lib/server-cache";
 // Pure numeric helpers (round + GEX staleness + pulse rounding) live in a server-only-free module
 // so they can be unit-tested in isolation. See spx-desk-numerics.ts.
@@ -526,11 +527,19 @@ function mergeWsIndexSnapshots(
       // is WRONG, so keep the authoritative REST snapshot change_pct (out[sym]) until the anchor is
       // reconciled. This stops a deploy-time bar open from clobbering the true day change for ~120s.
       const wsChangeAuthoritative = ws.open_source === "rest";
-      const restChangePct = out[sym]?.change_pct ?? 0;
+      // When the WS change% is NOT authoritative we fall back to REST — but REBASED onto the WS
+      // price rather than copied across. The REST percentage was measured at the snapshot's
+      // instant; pairing it with a sub-second-fresh price serves two numbers from different
+      // moments. Rebasing keeps the same prior-session reference and moves both together; it
+      // returns null only when that reference can't be recovered, where the raw REST value stands.
+      const restSnap = out[sym];
+      const restChangePct =
+        rebaseChangePct(ws.price, restSnap) ?? restSnap?.change_pct ?? 0;
       out[sym] = {
         symbol: sym,
         price: ws.price,
         change_pct: wsChangeAuthoritative ? ws.change_pct ?? restChangePct : restChangePct,
+        prev_close: restSnap?.prev_close ?? null,
       };
     }
   }
@@ -591,6 +600,9 @@ async function fetchPulseLaneSnapshots(): Promise<IndexSnapMap> {
             symbol: sym,
             price: e.price!,
             change_pct: pulseChange ?? 0,
+            // The pulse carries no prior close; the REST lane below supplies the authoritative
+            // percentage for anything left in `unresolvedChange`.
+            prev_close: null,
           };
           if (pulseChange == null) unresolvedChange.add(sym);
         }
@@ -651,6 +663,7 @@ async function fetchPulseLaneSnapshots(): Promise<IndexSnapMap> {
         symbol: SPX,
         price: lastPulseForSignals.price,
         change_pct: lastPulseForSignals.spx_change_pct ?? 0,
+        prev_close: null,
       },
     };
   }

@@ -374,6 +374,11 @@ export type IndexQuote = {
   symbol: string;
   price: number;
   change_pct: number;
+  /** Prior-session close, when the provider gives it. Carried so a consumer overlaying a fresher
+   *  WS price can re-derive `change_pct` against the SAME reference instead of passing this
+   *  snapshot's percentage through beside a newer price (see lib/providers/change-pct.ts).
+   *  Null when the session block omits it — never inferred. */
+  prev_close: number | null;
 };
 
 /** Batch index snapshots — Massive uses GET /v3/snapshot/indices?ticker.any_of=I:SPX,I:VIX */
@@ -408,6 +413,10 @@ export async function fetchIndexSnapshots(
       symbol: ticker,
       price,
       change_pct: Number((row.session?.change_percent ?? 0).toFixed(2)),
+      prev_close:
+        row.session?.previous_close != null && Number(row.session.previous_close) > 0
+          ? Number(row.session.previous_close)
+          : null,
     };
   }
 
