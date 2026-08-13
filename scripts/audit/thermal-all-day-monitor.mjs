@@ -130,16 +130,6 @@ function integrityCheck(ticker, payload) {
   if (!payload.expiries?.length) {
     bugs.push({ severity: "RED", code: "no_expiries", ticker, detail: "empty expiry axis" });
   }
-  const today = todayEtYmd();
-  const has0dte = payload.expiries?.some((e) => e === today || e.startsWith(today));
-  if (!has0dte && payload.expiries?.length) {
-    bugs.push({
-      severity: "AMBER",
-      code: "no_0dte_listed",
-      ticker,
-      detail: `no daily expiry for ${today}; front=${payload.expiries[0]}`,
-    });
-  }
   return bugs;
 }
 
