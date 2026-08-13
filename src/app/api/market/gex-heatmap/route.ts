@@ -24,6 +24,8 @@ import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+/** SPX cold force-rebuild can exceed default platform limits; stay under ALB idle timeout. */
+export const maxDuration = 120;
 
 /**
  * Overlay cache. CRITICAL: fetchUwDarkPool is internally cached, but fetchUwFlowPerStrikeRows

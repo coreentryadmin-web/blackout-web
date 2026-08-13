@@ -79,6 +79,14 @@ export function gexHeatmapMaxBlockMs(): number {
   return Math.round(ms);
 }
 
+/** Max ms a `?force=1` matrix recompute may block before failing closed (no stale handoff). Default 55s. */
+export function gexHeatmapForceMaxBlockMs(): number {
+  const raw = process.env.GEX_HEATMAP_FORCE_MAX_BLOCK_MS?.trim();
+  const ms = raw ? Number(raw) : 55_000;
+  if (!Number.isFinite(ms) || ms < 5_000) return 55_000;
+  return Math.round(ms);
+}
+
 /** Max ms member `/api/market/spx/play` may block on cold eval before serving stale/degraded. Default 800ms. */
 export function playMemberReadMaxBlockMs(): number {
   const raw = process.env.SPX_PLAY_MEMBER_READ_MAX_BLOCK_MS?.trim();

@@ -87,6 +87,7 @@
     "validate:gex-parity": "node scripts/validate-gex-parity.mjs",
     "validate:thermal-matrix": "node scripts/audit/thermal-matrix-validator.mjs",
     "validate:thermal-ui": "node scripts/audit/thermal-ui-clickthrough.mjs",
+    "monitor:thermal-all-day": "node scripts/audit/thermal-all-day-monitor.mjs --until-close",
     "validate:platform-integrity": "node scripts/validate-platform-integrity.mjs",
     "validate:comprehensive-endpoints": "node scripts/comprehensive-endpoint-audit.mjs",
     "validate:endpoint-audit-all": "node scripts/comprehensive-endpoint-audit.mjs && node scripts/audit/data-validator.mjs && node scripts/probe-docs-endpoints.mjs --uw-only",
