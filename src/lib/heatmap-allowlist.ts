@@ -46,8 +46,18 @@ export const HEATMAP_PRESET_TICKERS = [
 /**
  * Additional known-liquid names allowed to fetch UW overlays beyond the preset chips.
  * These are heavily-traded, deep-options-chain symbols where the overlay budget spend
- * is worth it. Kept deliberately short — every entry here is one more ticker competing
- * for the 2-RPS UW budget. Off-list symbols still get the full matrix, overlay-free.
+ * is worth it. Off-list symbols still get the full matrix, overlay-free.
+ *
+ * MEASURED UW CEILING (2026-08-13, live probe against the production key):
+ *   sustained 2/s -> 12/12 200    4/s -> 24/24 200    6/s -> 36/36 200    8/s -> 11 OK / 37x 503
+ *   burst concurrency: 4 concurrent all 200; 8 concurrent -> 5x 429; 12 -> 9x 429
+ * So UW sustains ~6 req/s and sheds (503) above it, and rejects bursts past ~4 in flight.
+ * UW publishes no rate-limit headers and no documented number — this was established
+ * empirically; re-measure before treating it as fixed.
+ *
+ * Our own ceiling is `UW_GLOBAL_MAX_RPS` (default 2) in uw-rate-limiter.ts — a CLUSTER-WIDE
+ * Redis-enforced cap, i.e. we deliberately run at ~1/3 of measured upstream capacity. That
+ * headroom is why the sector-grid names below are affordable.
  */
 const HEATMAP_EXTRA_LIQUID_TICKERS = [
   "MSFT",
@@ -66,6 +76,29 @@ const HEATMAP_EXTRA_LIQUID_TICKERS = [
   // the fix for "ASTS only shows single beads" (an unrecorded ticker has no intraday trail to seed,
   // so seedWallHistoryForDisplay honestly draws one dot per wall at the last bar).
   "ASTS",
+
+  // ── Thermal sector-grid presets (#2137) ───────────────────────────────────────────────────
+  // Every remaining name across the 8 sector presets in features/thermal/lib/thermal-compare-presets.
+  // Without these, four whole presets (Space, Energy, Financials, Biotech) were 0/5 covered, so all
+  // five columns showed the overlay chip in its "not offered" state permanently — technically honest
+  // but a poor read of a shipped feature.
+  //
+  // COST: overlays are cached 30s server-side, in-memory + Redis, SHARED across every member
+  // (gex-heatmap/route.ts OVERLAY_TTL_MS). So the spend is 2 REST calls per ticker per 30s
+  // CLUSTER-WIDE, not per user — a member sitting on one 5-name preset costs ~0.33 req/s, and all
+  // 8 presets being viewed at once costs ~2.7 req/s. Both sit under the ~6/s measured ceiling.
+  // Membership here does NOT change what a member can see: /api/market/gex-heatmap serves the full
+  // dealer-gamma matrix for any valid ticker regardless — this only gates the UW overlay spend.
+  //
+  // Sorted by preset for auditability against thermal-compare-presets.ts. Names already listed
+  // above (NVDA/AMD/AAPL/META/AMZN/MSFT/COIN/MSTR + presets) are deliberately not repeated.
+  "AVGO", "MU", "SMCI",            // semis
+  "PLTR", "ARM",                   // ai
+  "RKLB", "LUNR", "BA", "PL",      // space (ASTS already above)
+  "HOOD", "MARA", "RIOT",          // crypto
+  "XOM", "CVX", "OXY", "SLB", "COP",   // energy
+  "JPM", "GS", "BAC", "MS", "V",       // financials
+  "LLY", "UNH", "MRK", "ABBV", "GILD", // biotech
 ] as const;
 
 /** Normalized allowlist set (uppercased) — overlays fetch ONLY for these symbols. */

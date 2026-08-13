@@ -2578,12 +2578,18 @@ export async function fetchGexHeatmap(
   const baseTtlMs = gexHeatmapCacheMsFor(root);
 
   // ── Fast-move freshness bypass (WARM PRESETS ONLY) ───────────────────────────
-  // Dealer GEX is otherwise served on a flat ~20s TTL even while price runs. For the ~11 warm
-  // presets we SHORTEN the acceptable cache age when that ticker has moved >0.5% across its
-  // in-window ring (recorded on each fresh compute below) so the matrix re-syncs to the new
-  // level sooner. Off-preset tickers keep the full 20s TTL — they have no per-ticker ring and
-  // aren't worth the extra recompute pressure. (DOCUMENTED tradeoff: a fast-moving off-preset
-  // name can serve up to ~20s-stale GEX.)
+  // For the ~11 warm presets, SHORTEN the acceptable cache age when that ticker has moved >0.5%
+  // across its in-window ring (recorded on each fresh compute below) so the matrix re-syncs to the
+  // new level sooner.
+  //
+  // NOTE ON THE NUMBERS: this comment used to say the base TTL was "a flat ~20s" and that
+  // off-preset names "keep the full 20s TTL". That has not been true since the base dropped to 5s
+  // (`GEX_HEATMAP_CACHE_SEC ?? 5`, gexHeatmapCacheMs above) — every ticker is served on a 5s TTL,
+  // preset or not. The stale text actively misled a reader into believing off-preset names served
+  // 4x staler GEX than they do, and it was cited as fact in a cost estimate before anyone checked
+  // the constant. Kept as a warning: at DEFAULT config this bypass is a no-op, because
+  // min(5s, GEX_HEATMAP_FAST_MOVE_SEC ?? 5) == 5s. It only bites when the two env vars are set to
+  // different values in a deployed environment.
   const fastMove = isHeatmapPreset(root) && isHeatmapFastMove(root);
   const ttlMs = fastMove ? Math.min(baseTtlMs, GEX_HEATMAP_FAST_MOVE_TTL_MS) : baseTtlMs;
 
