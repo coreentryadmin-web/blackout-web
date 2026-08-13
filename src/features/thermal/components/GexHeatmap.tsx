@@ -44,7 +44,7 @@ import { prefetchGexHeatmapTickers } from "@/lib/gex-heatmap-prefetch";
 // deliberately does NOT `import "server-only"` (see the note at the top of that file).
 import { isHeatmapOverlayAllowed } from "@/lib/heatmap-allowlist";
 import { GEX_KING_COMPACT_LABEL, GEX_KING_DUAL_LABEL, GEX_KING_NODE_HELP, gexKingDualLabel } from "@/lib/gex-king-node-labels";
-import { shiftPercentForStrike } from "@/features/thermal/lib/gex-heatmap/shift-math";
+import { shiftPercentForStrike, fmtShiftPercentForStrike } from "@/features/thermal/lib/gex-heatmap/shift-math";
 import { createPulseEventSource, type PulseStreamSnapshot } from "@/lib/api";
 import { usePollIntervalMs, useEtMarketOpen } from "@/hooks/use-et-market-open";
 import { resetIosViewport } from "@/hooks/useIosKeyboardInset";
@@ -55,7 +55,6 @@ import {
   fmtHeatmapExpiry,
   fmtHeatmapMoneySigned,
   fmtHeatmapStrike,
-  fmtStrikeDistancePct,
   heatmapCellStyle,
   heatmapCellTextStyle,
   heatmapMatrixExtremeCellStyle,
@@ -4177,7 +4176,9 @@ export function GexHeatmap({
               <tr className="thermal-matrix-head-row border-b border-white/10">
                 <th className="thermal-matrix-head thermal-matrix-head-strike sticky left-0 z-30 bg-[#08080e]">
                   <span className="block">Strike</span>
-                  <span className="thermal-matrix-head-sub">%</span>
+                  <span className="thermal-matrix-head-sub" title="Intraday build/melt % vs prior snapshot">
+                    DR%
+                  </span>
                 </th>
                 {matrixExpiries.map((e) => {
                   const isMonthly = isMonthlyExpiry(e);
@@ -4225,6 +4226,12 @@ export function GexHeatmap({
                 const isSpot = strike === spotStrike;
                 const isAnchor = matrixAnchorStrike != null && strike === matrixAnchorStrike;
                 const rowTotal = matrixRowTotals[String(strike)] ?? 0;
+                const shiftDelta =
+                  shift?.available ? shift.delta_by_strike?.[String(strike)] : undefined;
+                const shiftPctLabel =
+                  !isSpot && shouldShowStrikeDistancePct(strikeIdx, spotStrikeIdx)
+                    ? fmtShiftPercentForStrike(rowTotal, shiftDelta)
+                    : null;
                 const isCallWallRow = lens === "gex" && posWall != null && strike === posWall;
                 const isPutWallRow = lens === "gex" && negWall != null && strike === negWall;
 
@@ -4248,9 +4255,15 @@ export function GexHeatmap({
                     >
                       <span className="flex min-w-[5.5rem] items-baseline justify-between gap-2">
                         <span>{fmtHeatmapStrike(strike)}</span>
-                        {!isSpot && spot > 0 && shouldShowStrikeDistancePct(strikeIdx, spotStrikeIdx) ? (
-                          <span className="thermal-matrix-strike-pct">
-                            {fmtStrikeDistancePct(spot, strike)}
+                        {shiftPctLabel && shiftPctLabel !== "—" ? (
+                          <span
+                            className={clsx(
+                              "thermal-matrix-strike-pct",
+                              shiftDelta != null && shiftDelta >= 0 ? "text-bull" : "text-bear"
+                            )}
+                            title="Intraday gamma build/melt vs prior snapshot"
+                          >
+                            {shiftPctLabel}
                           </span>
                         ) : null}
                       </span>
