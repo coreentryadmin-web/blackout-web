@@ -17816,6 +17816,10 @@ body::before {
   box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.28);
 }
 
+.thermal-desk-view-tabs > span[aria-hidden] {
+  display: none;
+}
+
 .thermal-desk-lens-rail {
   display: inline-flex;
   align-items: center;
@@ -18223,9 +18227,18 @@ body::before {
 
 .thermal-triple-col-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 0.35rem;
+}
+
+.thermal-triple-col-walls {
+  display: inline-flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.25rem;
 }
 
 .thermal-triple-ticker-btn {
@@ -18364,6 +18377,31 @@ body::before {
 .thermal-compact-scroll.is-0dte {
   max-height: clamp(620px, 82vh, 1080px);
   min-height: clamp(480px, 68vh, 900px);
+}
+
+.thermal-compact-expiry-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 0.5rem 0.65rem;
+  border-bottom: 1px solid var(--tt-line);
+  background: rgba(4, 6, 12, 0.96);
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+
+.thermal-compact-exp.is-0dte-spacer {
+  min-width: 0;
+  padding: 0;
+  border-bottom: 1px solid var(--tt-line);
+  visibility: hidden;
+}
+
+.thermal-compact-table.is-0dte .thermal-compact-exp.is-0dte-spacer {
+  min-width: 0;
+  width: auto;
 }
 
 .thermal-compact-scroll::-webkit-scrollbar {

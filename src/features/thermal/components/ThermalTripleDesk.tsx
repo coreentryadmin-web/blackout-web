@@ -113,31 +113,6 @@ function wallPair(block: LensBlock | undefined, lens: GexHeatmapLens): { a: stri
   return { a: z, b: "—" };
 }
 
-function exportCsv(
-  ticker: string,
-  lens: GexHeatmapLens,
-  strikes: number[],
-  expiries: string[],
-  cells: Record<string, Record<string, number>>,
-) {
-  const header = ["strike", ...expiries].join(",");
-  const rows = strikes.map((strike) => {
-    const row = cells[String(strike)] ?? {};
-    const vals = expiries.map((exp) => {
-      const v = row[exp];
-      return typeof v === "number" && Number.isFinite(v) ? String(v) : "";
-    });
-    return [strike, ...vals].join(",");
-  });
-  const blob = new Blob([[header, ...rows].join("\n")], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${ticker.toLowerCase()}-${lens}-matrix.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
 type ColumnProps = {
   ticker: string;
   lens: GexHeatmapLens;
@@ -352,36 +327,17 @@ function TripleColumn({
             <span className="thermal-triple-spot is-empty">—</span>
           )}
         </button>
-        <div className="thermal-triple-col-meta">
-          <ThermalMatrixFreshnessChip
-            asof={view?.asof}
-            matrixLoading={isLoading && !view}
-          />
-          <button
-            type="button"
-            className="thermal-triple-export"
-            disabled={!block?.cells || !view?.strikes?.length || !view?.expiries?.length}
-            onClick={() => {
-              if (!view?.strikes || !view?.expiries || !block?.cells) return;
-              exportCsv(ticker, lens, view.strikes, view.expiries, block.cells);
-            }}
-            title="Export CSV"
-          >
-            CSV
-          </button>
+        <div className="thermal-triple-col-walls" aria-label={`${ticker} levels`}>
+          <span className="thermal-triple-wall is-call">
+            {lens === "gex" ? "C" : lens === "vex" ? "+" : "Ø"} {walls.a}
+          </span>
+          {(lens === "gex" || lens === "vex") && (
+            <span className="thermal-triple-wall is-put">
+              {lens === "gex" ? "P" : "−"} {walls.b}
+            </span>
+          )}
         </div>
       </header>
-
-      <div className="thermal-triple-walls" aria-label={`${ticker} levels`}>
-        <span className="thermal-triple-wall is-call">
-          {lens === "gex" ? "C" : lens === "vex" ? "+" : "Ø"} {walls.a}
-        </span>
-        {(lens === "gex" || lens === "vex") && (
-          <span className="thermal-triple-wall is-put">
-            {lens === "gex" ? "P" : "−"} {walls.b}
-          </span>
-        )}
-      </div>
 
       {error && !isUsableGexHeatmapPayload(view) ? (
         <div className="thermal-compact-empty" role="alert">
