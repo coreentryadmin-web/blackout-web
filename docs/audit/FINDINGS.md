@@ -72,6 +72,20 @@ Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 | **Fix** | Cap Redis handoff at 500ms; cap SPX UW overlay at 2s (best-effort); unify force/non-force stale handoff; `loadHeatmapForMember` 10s route deadline → `readGexHeatmapSnapshot`; compare column skips force while loading/error. |
 | **Blast radius** | All `/api/market/gex-heatmap` callers (Thermal, SPX Slayer matrix, Vector ladder). SPX may briefly serve honestly-stale matrix (asof timestamp) instead of empty/504. |
 
+## 2026-08-13 — [FINDING, P2 Thermal] Net flow column reads as expiry-scoped once its neighbours became scoped — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Status** | FIXED on `fix/thermal-net-flow-scope-disclosure` |
+| **Symptom** | Under a single-expiry scope (e.g. "Aug 14") the matrix shows King node scoped, DR% scoped, and **Net flow silently unscoped** beside them, with nothing saying so. A reader reasonably takes the whole row as Aug 14. |
+| **Root cause** | Not a data bug — Net flow is CORRECTLY the near-term forced-hedging ladder (`gex-depth.ts`); re-pricing per selected expiry needs contract-level IV the member payload does not carry. The defect is disclosure: #2154 rescoped the King node (removing the footnote that used to warn "King node still marks the dominant near-term node across all expiries") and #2156 rescoped DR%. Each was right on its own; together they left the one genuinely unscoped column as the only silent one, and deleted the sentence that had been doing the warning. |
+| **Fix** | `netFlowHeaderTooltip()` in `thermal-desk-state.ts` — pure, unit-tested, mirrors the existing `keyLevelsFootnote` pattern. Unscoped returns the base copy verbatim (nothing to disclose when every column is near-term); scoped appends "Same near-term book as the Depth tab — NOT re-scoped to <expiry>, unlike the King node and DR% columns." Wired into the Net flow `<th>`, passing `fmtExpiry(scopedExpiryLabel)` so the tooltip names "Aug 14", not `2026-08-14`. |
+| **Evidence** | `thermal-desk-state.test.ts` 13/13 on Node 20; `npx tsc --noEmit` clean. Test asserts the unscoped string does NOT contain the disclosure (so it cannot creep into the default view), the scoped string names both the scope and the differing columns, and whitespace-only is not a scope. |
+| **Blast radius** | Thermal single-ticker matrix Net flow header only. No data path, no payload, no server change. The Depth tab and Vector's GEX ladder rail already carried this contract; this aligns Thermal with them. |
+| **Deliberately unchanged** | Net flow itself is NOT rescoped. Doing so is a real server feature (per-expiry forced-flow repricing), not a UI tweak — this PR makes the existing limit legible rather than pretending it away. |
+
 ## 2026-08-13 — [FINDING, P1 Largo] Heavy queries 504 @ ~120s — FIXED (launch gate deliberately NOT changed)
 
 > **kind:** `FINDING`

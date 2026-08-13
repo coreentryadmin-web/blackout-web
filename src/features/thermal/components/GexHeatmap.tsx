@@ -28,6 +28,7 @@ import {
   honestLevelEmpty,
   keyLevelsKicker,
   keyLevelsFootnoteCompact,
+  netFlowHeaderTooltip,
   parseThermalTicker,
   parseThermalUrlState,
   shouldForceMatrixRefresh,
@@ -4226,7 +4227,9 @@ export function GexHeatmap({
                 {depthRail && (
                   <th
                     className="thermal-matrix-head thermal-matrix-head-flow"
-                    title="Forced dealer hedging flow if price reaches that strike — buying grows left, selling right. Conditional flow, not resting liquidity."
+                    title={netFlowHeaderTooltip(
+                      scopedExpiryLabel ? fmtExpiry(scopedExpiryLabel) : null
+                    )}
                   >
                     Net flow
                   </th>

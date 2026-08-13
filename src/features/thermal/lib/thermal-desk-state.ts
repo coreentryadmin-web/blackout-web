@@ -365,3 +365,25 @@ export function shouldForceMatrixRefresh(input: {
   if (nowMs - lastForceAtMs < forceThrottleMs) return false;
   return true;
 }
+
+/**
+ * Tooltip for the matrix "Net flow" column header.
+ *
+ * WHY THIS EXISTS: as of #2154 the King node follows the expiry scope, and as of #2156 DR% does
+ * too. Net flow does NOT — it is the near-term forced-hedging ladder the server builds in
+ * `gex-depth.ts`, and re-pricing it per selected expiry needs contract-level IV the member payload
+ * does not carry. So under an "Aug 14" scope a reader now sees King node scoped, DR% scoped, and
+ * Net flow silently unscoped beside them. That is exactly the assumption the old King-node footnote
+ * existed to prevent, reappearing one column over — a column that is not rescoped must SAY so while
+ * its neighbours are.
+ */
+export function netFlowHeaderTooltip(scopedExpiryLabel?: string | null): string {
+  const base =
+    "Forced dealer hedging flow if price reaches that strike — buying grows left, selling right. " +
+    "Conditional flow, not resting liquidity.";
+  if (!scopedExpiryLabel?.trim()) return base;
+  return (
+    `${base} Same near-term book as the Depth tab — NOT re-scoped to ${scopedExpiryLabel.trim()}, ` +
+    `unlike the King node and DR% columns.`
+  );
+}
