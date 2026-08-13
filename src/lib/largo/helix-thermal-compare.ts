@@ -9,62 +9,30 @@
 
 import { roundFloats } from "@/lib/round-floats";
 
-export type HelixThermalSide = {
-  available: boolean;
-  bias: "bullish" | "bearish" | "neutral" | "mixed" | "unknown";
-  summary: string;
-  net_premium?: number | null;
-  call_premium?: number | null;
-  put_premium?: number | null;
-  flip?: number | null;
-  call_wall?: number | null;
-  put_wall?: number | null;
-  spot?: number | null;
-  gamma_regime?: string | null;
-  print_count?: number | null;
-};
+// Shapes and guards live in the CLIENT-SAFE module — see compare-card-types.ts for why a client
+// component importing them from HERE breaks the webpack build. Re-exported so existing server
+// callers keep their import paths unchanged.
+import {
+  DEFAULT_PEER_COMPARE_TICKERS,
+  type LargoCompareCard,
+  type HelixThermalCompareCard,
+  type HelixThermalSide,
+  type PeerTickerCompareCard,
+  type PeerTickerRow,
+} from "@/lib/largo/compare-card-types";
 
-export type HelixThermalCompareCard = {
-  kind: "helix_thermal";
-  ticker: string;
-  as_of: string;
-  helix: HelixThermalSide;
-  thermal: HelixThermalSide;
-  /** True when flow bias and gamma regime point different directions. */
-  conflict: boolean;
-  conflict_note: string | null;
-};
-
-export type PeerTickerRow = {
-  ticker: string;
-  flow: HelixThermalSide;
-  gamma: HelixThermalSide;
-  /** True when flow bias and gamma regime disagree for this ticker. */
-  conflict: boolean;
-  conflict_note: string | null;
-};
-
-export type PeerTickerCompareCard = {
-  kind: "peer_tickers";
-  tickers: string[];
-  as_of: string;
-  rows: PeerTickerRow[];
-  /** True when flow biases diverge across peers (not all same direction). */
-  peer_divergence: boolean;
-  peer_divergence_note: string | null;
-};
-
-export type LargoCompareCard = HelixThermalCompareCard | PeerTickerCompareCard;
-
-export const DEFAULT_PEER_COMPARE_TICKERS = ["NVDA", "AMD", "SMH"] as const;
-
-export function isHelixThermalCompareCard(card: LargoCompareCard): card is HelixThermalCompareCard {
-  return card.kind === "helix_thermal";
-}
-
-export function isPeerTickerCompareCard(card: LargoCompareCard): card is PeerTickerCompareCard {
-  return card.kind === "peer_tickers";
-}
+export type {
+  HelixThermalSide,
+  HelixThermalCompareCard,
+  PeerTickerRow,
+  PeerTickerCompareCard,
+  LargoCompareCard,
+} from "@/lib/largo/compare-card-types";
+export {
+  DEFAULT_PEER_COMPARE_TICKERS,
+  isHelixThermalCompareCard,
+  isPeerTickerCompareCard,
+} from "@/lib/largo/compare-card-types";
 
 function flowBiasFromPremiums(
   call: number | null | undefined,

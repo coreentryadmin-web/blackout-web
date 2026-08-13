@@ -2,7 +2,7 @@
 
 import { Component, useMemo, useState, type ReactNode } from "react";
 import type { BieAnswerEnvelope } from "@/lib/bie/answer-envelope";
-import type { LargoCompareCard as LargoCompareCardPayload } from "@/lib/largo/helix-thermal-compare";
+import type { LargoCompareCard as LargoCompareCardPayload } from "@/lib/largo/compare-card-types";
 import type { LargoAction } from "@/lib/largo/largo-actions";
 import { shareLargoToDiscord } from "@/lib/api";
 import { LargoMessageBody } from "@/features/largo/components/LargoMessageBody";

@@ -1,11 +1,11 @@
 "use client";
 
 import { clsx } from "clsx";
-import type { LargoCompareCard as LargoCompareCardPayload } from "@/lib/largo/helix-thermal-compare";
+import type { LargoCompareCard as LargoCompareCardPayload } from "@/lib/largo/compare-card-types";
 import {
   isHelixThermalCompareCard,
   isPeerTickerCompareCard,
-} from "@/lib/largo/helix-thermal-compare";
+} from "@/lib/largo/compare-card-types";
 
 const BIAS_CLASS: Record<string, string> = {
   bullish: "largo-compare-bull",
