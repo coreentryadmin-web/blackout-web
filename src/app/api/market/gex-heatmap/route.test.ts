@@ -289,8 +289,11 @@ describe("/api/market/gex-heatmap off-hours shift gate", () => {
     // triggered this bug (audit-quoted: "Over the last 2h14m: gamma flip migrated...") must
     // never leave the server while the market is closed, even as a "hidden" field.
     assert.equal(body.shift.summary, undefined);
-    assert.equal(body.shift.delta_by_strike, undefined);
     assert.equal(body.shift.flip_migration, undefined);
+    assert.equal(body.shift.wall_changes, undefined);
+    // Per-strike deltas are preserved for matrix DR% — last-session facts, not live narrative.
+    assert.deepEqual(body.shift.delta_by_strike, { "100": 5000, "105": -1200 });
+    assert.equal(body.shift.since_ms, 8_040_000);
   });
 
   test("outside RTH, vex_shift.available is ALSO forced false when it independently carries real data", async () => {

@@ -61,7 +61,7 @@ import {
   heatmapLegendItems,
   isHeatmapTopHighlightRank,
   resolveHeatmapTopHighlightCellStyle,
-  shouldShowStrikeDistancePct,
+  shouldShowMatrixDriftPct,
   type GexHeatmapLens,
 } from "@/lib/gex-heatmap-display";
 import { compactPerExpiryTopHighlights } from "@/features/thermal/lib/thermal-compact-matrix";
@@ -70,6 +70,7 @@ import {
   readGexHeatmapSessionCache,
   writeGexHeatmapSessionCache,
 } from "@/lib/gex-heatmap-session-cache";
+import { matrixShiftDeltaForStrikeScoped } from "@/lib/gex-shift-scope";
 import {
   gexMatrixShiftCellKey,
   matrixShiftForLens,
@@ -744,6 +745,8 @@ function ExposureProfile({
   darkPoolLevels,
   showDarkPool,
   shift,
+  metricCells,
+  selectedExpiries,
 }: {
   rows: ProfileRow[];
   peak: number;
@@ -770,6 +773,9 @@ function ExposureProfile({
    * fabricate a shift).
    */
   shift?: GexShift | null;
+  /** Active lens cells — for DTE-scoped shift Δ when expiry filter is narrowed. */
+  metricCells: Record<string, Record<string, number>>;
+  selectedExpiries: string[] | null;
 }) {
   const c = LENS_COLORS[lens];
 
@@ -914,7 +920,12 @@ function ExposureProfile({
 
         // ── Shift badge: intraday %-built/melted for this strike, inline (mirrors the
         // Shift tab's build=green/melt=red convention: built = delta > 0). ──
-        const shiftDelta = shift?.available ? shift.delta_by_strike?.[String(r.strike)] : null;
+        const shiftDelta = matrixShiftDeltaForStrikeScoped({
+          shift,
+          cells: metricCells,
+          selectedExpiries,
+          strike: r.strike,
+        });
         const shiftPct = shiftPercentForStrike(r.value, shiftDelta);
         const shiftBuilt = shiftDelta != null && shiftDelta > 0;
         const shiftHex = shiftBuilt ? SHIFT_BUILD_HEX : SHIFT_MELT_HEX;
@@ -4079,6 +4090,8 @@ export function GexHeatmap({
         darkPoolLevels={darkPoolLevels}
         showDarkPool={showDarkPool && hasDarkPoolOverlay}
         shift={shift}
+        metricCells={cells}
+        selectedExpiries={selectedExpiries}
       />
       <p className="mt-2 text-[9px] font-mono uppercase tracking-widest text-sky-300/60">
         {`${vocab.pos} / ${vocab.neg} · `}
@@ -4176,7 +4189,14 @@ export function GexHeatmap({
               <tr className="thermal-matrix-head-row border-b border-white/10">
                 <th className="thermal-matrix-head thermal-matrix-head-strike sticky left-0 z-30 bg-[#08080e]">
                   <span className="block">Strike</span>
-                  <span className="thermal-matrix-head-sub" title="Intraday build/melt % vs prior snapshot">
+                  <span
+                    className="thermal-matrix-head-sub"
+                    title={
+                      selectedExpiries != null
+                        ? "Intraday gamma build/melt % for the selected expiry scope — same formula as SPX Slayer DR%"
+                        : "Intraday gamma build/melt % — same calculation as SPX Slayer DR%"
+                    }
+                  >
                     DR%
                   </span>
                 </th>
@@ -4225,13 +4245,27 @@ export function GexHeatmap({
                 const row = cells[String(strike)] ?? {};
                 const isSpot = strike === spotStrike;
                 const isAnchor = matrixAnchorStrike != null && strike === matrixAnchorStrike;
-                const rowTotal = matrixRowTotals[String(strike)] ?? 0;
-                const shiftDelta =
-                  shift?.available ? shift.delta_by_strike?.[String(strike)] : undefined;
+                const rowTotal =
+                  selectedExpiries != null
+                    ? (filteredTotals[String(strike)] ?? 0)
+                    : (strikeTotals[String(strike)] ?? 0);
+                const shiftDelta = matrixShiftDeltaForStrikeScoped({
+                  shift,
+                  cells,
+                  selectedExpiries,
+                  strike,
+                });
                 const shiftPctLabel =
-                  !isSpot && shouldShowStrikeDistancePct(strikeIdx, spotStrikeIdx)
+                  !isSpot && shouldShowMatrixDriftPct(strikeIdx, spotStrikeIdx)
                     ? fmtShiftPercentForStrike(rowTotal, shiftDelta)
                     : null;
+                const driftTitle = shift?.available
+                  ? selectedExpiries != null
+                    ? "Intraday gamma build/melt for selected expiries vs prior snapshot"
+                    : "Intraday gamma build/melt vs prior snapshot"
+                  : shiftDelta != null
+                    ? "Session build/melt at close (market closed)"
+                    : undefined;
                 const isCallWallRow = lens === "gex" && posWall != null && strike === posWall;
                 const isPutWallRow = lens === "gex" && negWall != null && strike === negWall;
 
@@ -4257,11 +4291,12 @@ export function GexHeatmap({
                         <span>{fmtHeatmapStrike(strike)}</span>
                         {shiftPctLabel && shiftPctLabel !== "—" ? (
                           <span
+                            title={driftTitle}
                             className={clsx(
                               "thermal-matrix-strike-pct",
+                              !shift?.available && shiftDelta != null && "opacity-75",
                               shiftDelta != null && shiftDelta >= 0 ? "text-bull" : "text-bear"
                             )}
-                            title="Intraday gamma build/melt vs prior snapshot"
                           >
                             {shiftPctLabel}
                           </span>
@@ -4337,13 +4372,7 @@ export function GexHeatmap({
                                 )
                               : {}),
                           }}
-                          title={
-                            isDayKing
-                              ? `King node for ${fmtHeatmapExpiry(e)}${
-                                  spot > 0 ? ` — ${Math.round(Math.abs(strike - spot))}pt from spot` : ""
-                                }`
-                              : extremeTitle
-                          }
+                          title={isDayKing ? `King node for ${fmtHeatmapExpiry(e)}` : extremeTitle}
                         >
                           {shiftLeader ? (
                             <GexMatrixShiftBadge leader={shiftLeader} sinceMs={shift?.since_ms} />
@@ -4361,18 +4390,11 @@ export function GexHeatmap({
                             {fmtHeatmapMoneySigned(val, { showZero: has })}
                           </span>
                           {isDayKing && (
-                            <span className="ml-0.5 inline-flex items-baseline gap-0.5">
-                              <span
-                                aria-hidden
-                                className="text-[13px] leading-none text-amber-400 [text-shadow:0_0_6px_rgba(251,191,36,0.9)]"
-                              >
-                                ★
-                              </span>
-                              {spot > 0 && (
-                                <span className="text-[7px] font-normal leading-none text-amber-300/70">
-                                  {Math.round(Math.abs(strike - spot))}pt
-                                </span>
-                              )}
+                            <span
+                              aria-hidden
+                              className="ml-0.5 text-[13px] leading-none text-amber-400 [text-shadow:0_0_6px_rgba(251,191,36,0.9)]"
+                            >
+                              ★
                             </span>
                           )}
                         </td>

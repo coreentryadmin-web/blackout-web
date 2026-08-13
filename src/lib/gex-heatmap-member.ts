@@ -8,6 +8,7 @@ import {
   resolveZeroDteExpiry,
 } from "@/features/thermal/lib/thermal-compact-matrix";
 import { todayEtYmd } from "@/lib/providers/spx-session";
+import type { GexShiftLike } from "@/lib/gex-shift-leaders";
 
 export type HeatmapLensBlock = {
   cells: Record<string, Record<string, number>>;
@@ -33,6 +34,10 @@ export type HeatmapMemberPayload = {
   vex?: HeatmapLensBlock;
   dex?: HeatmapLensBlock;
   charm?: HeatmapLensBlock;
+  shift?: GexShiftLike | null;
+  vex_shift?: GexShiftLike | null;
+  dex_shift?: GexShiftLike | null;
+  charm_shift?: GexShiftLike | null;
 };
 
 const COMPARE_STRIKE_HALF = 36;
