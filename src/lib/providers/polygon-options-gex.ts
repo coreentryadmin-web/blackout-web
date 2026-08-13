@@ -1,4 +1,4 @@
-import { polygonConfigured, gexHeatmapMaxBlockMs } from "./config";
+import { polygonConfigured, gexHeatmapMaxBlockMs, gexHeatmapForceMaxBlockMs } from "./config";
 import { fetchStockSnapshot, fetchIndexSnapshot } from "./polygon";
 import { todayEtYmd } from "./spx-session";
 import { liveExpiries } from "./expiry-liveness";
@@ -1560,14 +1560,27 @@ function pickStaleHeatmapForHandoff(
   return (withinStale ?? any)?.data ?? null;
 }
 
-/** Cap how long callers await an inflight/cold matrix build — serve stale instead of 20–57s hangs. */
+/** Cap how long callers await an inflight/cold matrix build — serve stale instead of 20–57s hangs.
+ *  `?force=1` bypasses stale handoff: wait for a real recompute (up to gexHeatmapForceMaxBlockMs)
+ *  or return null so the route can fail closed — never paint a pre-force snapshot as "refreshed". */
 async function awaitHeatmapBuildWithBlockCap(
   build: Promise<GexHeatmap | null>,
   cacheKey: string,
   mem: { at: number; data: GexHeatmap } | undefined,
   redisHit: { at: number; data: GexHeatmap } | null,
-  now: number
+  now: number,
+  { forceRefresh = false }: { forceRefresh?: boolean } = {}
 ): Promise<GexHeatmap | null> {
+  if (forceRefresh) {
+    const blockMs = gexHeatmapForceMaxBlockMs();
+    return Promise.race([
+      build.then((data) => finalizeHeatmapForServe(cacheKey, data)),
+      new Promise<GexHeatmap | null>((resolve) => {
+        setTimeout(() => resolve(null), blockMs);
+      }),
+    ]);
+  }
+
   const blockMs = gexHeatmapMaxBlockMs();
   return Promise.race([
     build.then((data) => finalizeHeatmapForServe(cacheKey, data)),
@@ -2648,7 +2661,9 @@ export async function fetchGexHeatmap(
 
   const existing = heatmapInflight.get(inflightKey);
   if (existing) {
-    return awaitHeatmapBuildWithBlockCap(existing, cacheKey, memAtMiss, redisAtMiss, now);
+    return awaitHeatmapBuildWithBlockCap(existing, cacheKey, memAtMiss, redisAtMiss, now, {
+      forceRefresh,
+    });
   }
 
   const build = buildGexHeatmapUncached(root, optionsRoot, cacheKey, now, baseTtlMs).finally(
@@ -2657,7 +2672,9 @@ export async function fetchGexHeatmap(
     }
   );
   heatmapInflight.set(inflightKey, build);
-  return awaitHeatmapBuildWithBlockCap(build, cacheKey, memAtMiss, redisAtMiss, now);
+  return awaitHeatmapBuildWithBlockCap(build, cacheKey, memAtMiss, redisAtMiss, now, {
+    forceRefresh,
+  });
 }
 
 /**

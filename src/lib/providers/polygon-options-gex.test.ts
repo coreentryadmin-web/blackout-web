@@ -97,8 +97,10 @@ test("fetchGexHeatmap caps inflight/cold builds with gexHeatmapMaxBlockMs (never
     "utf8"
   );
   assert.match(src, /gexHeatmapMaxBlockMs/);
+  assert.match(src, /gexHeatmapForceMaxBlockMs/);
   assert.match(src, /awaitHeatmapBuildWithBlockCap/);
   assert.match(src, /pickStaleHeatmapForHandoff/);
+  assert.match(src, /forceRefresh[\s\S]*gexHeatmapForceMaxBlockMs/);
   assert.doesNotMatch(
     src,
     /if\s*\(\s*existing\s*\)\s*return\s+existing\s*;/,
