@@ -31,9 +31,13 @@ export async function POST(req: NextRequest) {
   const excerpt = answer.slice(0, 1800);
 
   const title = headline ?? (ticker ? `Largo · ${ticker}` : "Largo desk read");
-  const webhook =
-    process.env.DISCORD_LARGO_SHARE_WEBHOOK_URL?.trim() ||
-    process.env.DISCORD_ALERT_WEBHOOK_URL?.trim();
+  // NO fallback to DISCORD_ALERT_WEBHOOK_URL. That variable points at the OPS alerting channel —
+  // the one carrying AI-spend threshold crossings and cron failures — so falling back to it would
+  // silently publish member-authored desk reads into an internal ops feed, and succeed while doing
+  // it. Since DISCORD_LARGO_SHARE_WEBHOOK_URL is still an unshipped ops follow-up, that fallback
+  // would have been the ONLY live path on day one. Fail closed: an unconfigured share is a 503 the
+  // caller can render, not a message delivered to the wrong audience.
+  const webhook = process.env.DISCORD_LARGO_SHARE_WEBHOOK_URL?.trim();
   if (!webhook) {
     return NextResponse.json({ error: "Share unavailable" }, { status: 503 });
   }
