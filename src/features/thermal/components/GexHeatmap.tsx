@@ -29,8 +29,10 @@ import {
   parseThermalTicker,
   parseThermalUrlState,
   shouldForceMatrixRefresh,
+  THERMAL_COMPARE_TICKERS,
   type ThermalLens,
 } from "@/features/thermal/lib/thermal-desk-state";
+import { prefetchGexHeatmapTickers } from "@/lib/gex-heatmap-prefetch";
 import { GEX_KING_COMPACT_LABEL, GEX_KING_DUAL_LABEL, GEX_KING_NODE_HELP, gexKingDualLabel } from "@/lib/gex-king-node-labels";
 import { shiftPercentForStrike } from "@/features/thermal/lib/gex-heatmap/shift-math";
 import { createPulseEventSource, type PulseStreamSnapshot } from "@/lib/api";
@@ -3345,6 +3347,20 @@ export function GexHeatmap({
     return [expiryScope];
   }, [expiryScope, zeroDteExpiry, nearExpiries, monthlyExpiries]);
 
+  /** Matrix columns follow the same expiry scope as profile/key-levels when narrowed. */
+  const matrixExpiries = useMemo(() => {
+    if (selectedExpiries == null) return expiries;
+    const set = new Set(selectedExpiries);
+    const filtered = expiries.filter((e) => set.has(e));
+    return filtered.length ? filtered : expiries;
+  }, [expiries, selectedExpiries]);
+
+  // Warm SPY|SPX|QQQ session cache when compare grid opens so columns paint together.
+  useEffect(() => {
+    if (!compare) return;
+    prefetchGexHeatmapTickers(THERMAL_COMPARE_TICKERS);
+  }, [compare]);
+
   // Filtered per-strike totals (re-summed from cells when a subset is active; the server
   // strike_totals verbatim for "All" so it exactly matches today's behavior). These drive
   // the profile bars AND the cumulative curve. Zero refetch — both are in the payload.
@@ -4049,12 +4065,11 @@ export function GexHeatmap({
         scope={expiryScope}
         onScope={setExpiryScope}
       />
-      {(hasFlowOverlay || hasDarkPoolOverlay) && (
-        <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
           <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-sky-300/60">
             Overlays
           </span>
-          {hasFlowOverlay && (
+          {hasFlowOverlay ? (
             <button
               type="button"
               onClick={() => setShowFlow((v) => !v)}
@@ -4069,8 +4084,15 @@ export function GexHeatmap({
             >
               HELIX Flow
             </button>
+          ) : (
+            <span
+              className="rounded-md border border-white/10 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-sky-300/60"
+              title="No HELIX flow prints in the current window for this ticker"
+            >
+              HELIX Flow · unavailable
+            </span>
           )}
-          {hasDarkPoolOverlay && (
+          {hasDarkPoolOverlay ? (
             <button
               type="button"
               onClick={() => setShowDarkPool((v) => !v)}
@@ -4085,6 +4107,13 @@ export function GexHeatmap({
             >
               Dark Pool
             </button>
+          ) : (
+            <span
+              className="rounded-md border border-white/10 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-sky-300/60"
+              title="No dark-pool levels in the current overlay window for this ticker"
+            >
+              Dark pool · unavailable
+            </span>
           )}
           {fmtAsofSeconds(data?.overlays_at ?? undefined) && (
             <span className="font-mono text-[9px] tabular-nums normal-case text-sky-300/60">
@@ -4092,7 +4121,6 @@ export function GexHeatmap({
             </span>
           )}
         </div>
-      )}
     </div>
   );
 
@@ -4173,6 +4201,13 @@ export function GexHeatmap({
           sit — treat these levels as provisional until they agree.
         </p>
       )}
+      <ExpiryScopeBar
+        expiries={expiries}
+        zeroDteExpiry={zeroDteExpiry}
+        monthlyExpiries={monthlyExpiries}
+        scope={expiryScope}
+        onScope={setExpiryScope}
+      />
       <GexShiftLeadersStrip
         leaders={shiftLeaders}
         scopeLabel={`${data?.underlying ?? ticker} · ${lens.toUpperCase()}`}
@@ -4203,7 +4238,7 @@ export function GexHeatmap({
                 <th className="sticky left-0 z-30 bg-[#08080e] py-1.5 pl-1 pr-2 text-left font-semibold">
                   Strike
                 </th>
-                {expiries.map((e) => {
+                {matrixExpiries.map((e) => {
                   const isMonthly = isMonthlyExpiry(e);
                   return (
                     <th
@@ -4273,7 +4308,7 @@ export function GexHeatmap({
                         </span>
                       )}
                     </td>
-                    {expiries.map((e) => {
+                    {matrixExpiries.map((e) => {
                       const v = row[e];
                       const has = typeof v === "number" && Number.isFinite(v);
                       const val = has ? v : 0;
@@ -4505,7 +4540,10 @@ export function GexHeatmap({
             onClick={() => {
               setCompare((v) => {
                 const next = !v;
-                if (next) setPairView("pair-a");
+                if (next) {
+                  prefetchGexHeatmapTickers(THERMAL_COMPARE_TICKERS);
+                  setPairView("pair-a");
+                }
                 return next;
               });
             }}
@@ -4725,14 +4763,10 @@ export function GexHeatmap({
               <TabPanel value="pair-a">{matrixPanel}</TabPanel>
               <TabPanel value="pair-b">
                 {sharedProfileControls}
-                <div className={clsx("grid grid-cols-1 gap-4", nativeShell ? "" : "lg:grid-cols-3")}>
+                <div className={clsx("grid grid-cols-1 gap-4", !nativeShell && "lg:grid-cols-3")}>
                   <div className="min-w-0">{profilePanel}</div>
-                  {!nativeShell ? (
-                    <>
-                      <div className="min-w-0">{curvePanel}</div>
-                      <div className="min-w-0">{shiftPanel}</div>
-                    </>
-                  ) : null}
+                  <div className="min-w-0">{curvePanel}</div>
+                  <div className="min-w-0">{shiftPanel}</div>
                 </div>
               </TabPanel>
               <TabPanel value="pair-c">

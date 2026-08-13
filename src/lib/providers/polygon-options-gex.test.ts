@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { test, mock } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -20,6 +20,9 @@ import {
   type GexHistorySnapshot,
   type ChainContract,
   type GexHeatmap,
+  __test_vannaPerShare,
+  __test_charmPerShare,
+  __test_resolveHeatmapDividendYieldUncached,
 } from "./polygon-options-gex";
 
 function contract(
@@ -636,4 +639,71 @@ test("fetchGexHeatmap TTL fast path serves pruned cache at ET rollover (no rebui
     /resolve\(await finalizeHeatmapForServe\(cacheKey, served\)\)/,
     "block-cap handoff must prune before serve"
   );
+});
+
+test("vanna/charm closed-form uses dividend yield q (unchanged at q=0)", () => {
+  const spot = 450;
+  const strike = 455;
+  const t = 0.08;
+  const sigma = 0.22;
+  const v0 = __test_vannaPerShare(spot, strike, t, sigma, 0);
+  const c0 = __test_charmPerShare(spot, strike, t, sigma, 0);
+  const vLegacy = __test_vannaPerShare(spot, strike, t, sigma);
+  const cLegacy = __test_charmPerShare(spot, strike, t, sigma);
+  assert.equal(v0, vLegacy);
+  assert.equal(c0, cLegacy);
+});
+
+test("vanna/charm magnitudes shift with ETF dividend yield q", () => {
+  const spot = 450;
+  const strike = 455;
+  const t = 0.08;
+  const sigma = 0.22;
+  const q = 0.012;
+  const v0 = __test_vannaPerShare(spot, strike, t, sigma, 0);
+  const vq = __test_vannaPerShare(spot, strike, t, sigma, q);
+  const c0 = __test_charmPerShare(spot, strike, t, sigma, 0);
+  const cq = __test_charmPerShare(spot, strike, t, sigma, q);
+  assert.notEqual(v0, vq);
+  assert.notEqual(c0, cq);
+  assert.ok(Math.abs(vq) > Math.abs(v0), "typical ETF q raises |vanna| vs q=0 at ATM");
+});
+
+// The inner resolve must THROW (not return 0) when the yield is unavailable. That distinction is
+// the whole reason a transient Polygon blip cannot get pinned into the 1h TTL.REFERENCE cache:
+// server-cache's refreshCache writes the store only on a FULFILLED loader, so a rejection leaves
+// the key unset and the next matrix rebuild retries. If this ever regressed to `return 0`, one bad
+// response would silently reinstate the 10-22% VEX/CHARM under-read for an hour.
+//
+// One mock.module for the whole file with a MUTABLE stub: re-mocking the same specifier per-test
+// does not re-apply once the dynamic import has resolved, so swapping the payload is the only way
+// to exercise several upstream shapes.
+//
+// This replaces the WHOLE ./polygon module (omitted exports read as undefined), but it cannot
+// disturb the rest of the file: polygon-options-gex.ts binds fetchStockSnapshot/fetchIndexSnapshot
+// through a STATIC import that resolved when this file was loaded, above. Only the dynamic
+// import() inside the yield resolver sees the stub.
+let ratiosStub: () => Promise<unknown> = async () => null;
+mock.module("./polygon", {
+  namedExports: { fetchPolygonFinancialRatios: async () => ratiosStub() },
+});
+
+test("dividend-yield resolve THROWS when unavailable so failures are never cached", async () => {
+  ratiosStub = async () => null;
+  await assert.rejects(() => __test_resolveHeatmapDividendYieldUncached("SPY"));
+  ratiosStub = async () => ({ dividend_yield: null });
+  await assert.rejects(() => __test_resolveHeatmapDividendYieldUncached("SPY"));
+});
+
+test("dividend-yield resolve normalizes percent notation and caches a genuine non-payer", async () => {
+  // 1.2 is percent notation (1.2%), not a 120% yield.
+  ratiosStub = async () => ({ dividend_yield: 1.2 });
+  assert.equal(await __test_resolveHeatmapDividendYieldUncached("SPY"), 0.012);
+
+  ratiosStub = async () => ({ dividend_yield: 0.012 });
+  assert.equal(await __test_resolveHeatmapDividendYieldUncached("SPY"), 0.012);
+
+  // A real non-payer resolves to 0 WITHOUT throwing — it is an answer, so it is cacheable.
+  ratiosStub = async () => ({ dividend_yield: 0 });
+  assert.equal(await __test_resolveHeatmapDividendYieldUncached("NVDA"), 0);
 });
