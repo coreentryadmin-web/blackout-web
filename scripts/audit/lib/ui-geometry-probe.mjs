@@ -17,9 +17,21 @@
 export async function probeGeometry(page) {
   return page
     .evaluate(() => {
+      /**
+       * Visible to a member — which means checking ANCESTORS, not just the node.
+       *
+       * `opacity` does not inherit as a computed value: a child of an `opacity: 0` parent still
+       * computes `opacity: 1` while being completely invisible, because the parent renders its whole
+       * subtree into a transparent layer. Reading only the node's own opacity therefore calls a
+       * deliberately faded-out subtree visible. `visibility` DOES inherit, but a descendant can
+       * re-assert `visibility: visible` inside a hidden parent, so it is walked for the same reason.
+       */
       const vis = (el) => {
-        const s = getComputedStyle(el);
-        return s.visibility !== "hidden" && s.display !== "none" && s.opacity !== "0";
+        for (let n = el; n && n !== document.documentElement; n = n.parentElement) {
+          const s = getComputedStyle(n);
+          if (s.display === "none" || s.visibility === "hidden" || s.opacity === "0") return false;
+        }
+        return true;
       };
 
       /**
@@ -74,7 +86,15 @@ export async function probeGeometry(page) {
           const s = getComputedStyle(p);
           if (s.overflowX !== "hidden" && s.overflowY !== "hidden") continue;
           const pr = p.getBoundingClientRect();
-          if (pr.width === 0 || pr.height === 0) continue;
+          // A ZERO-SIZE `overflow: hidden` ancestor clips its subtree to nothing. This used to
+          // `continue` past it as if it imposed no constraint, which is backwards — it is the
+          // STRONGEST constraint there is, and it inverted the verdict on the exact pattern used to
+          // collapse a nav brand: `width: 0; overflow: hidden`. The child span keeps its own
+          // unclipped rect (getBoundingClientRect always reports where content WOULD be), so it
+          // scored 1.0 "fully visible" and was reported as colliding with the ☰ button it is in
+          // fact invisible behind. That fired on /heatmap, /vector and /nighthawk — three healthy
+          // pages — which is precisely the always-fails failure this file's header warns about.
+          if (pr.width === 0 || pr.height === 0) return 0;
           if (s.overflowX === "hidden") { l = Math.max(l, pr.left); rt = Math.min(rt, pr.right); }
           if (s.overflowY === "hidden") { t = Math.max(t, pr.top); b = Math.min(b, pr.bottom); }
         }

@@ -256,15 +256,33 @@ async function main() {
   }
 
   const fails = findings.filter((f) => f.level === "FAIL");
-  const rendered = findings.some((f) => /rendered \(/.test(f.msg));
-  const verdict = !rendered
+
+  // COVERAGE, not just "did anything render". `some()` was too weak: a run where 3 of 12 page-views
+  // loaded and the other 9 died on ERR_CONNECTION_RESET printed "ALL 6 PAGES CLEAN", because the
+  // navigation failures are WARN (they invalidate this run's evidence rather than indicting the
+  // product) and one render satisfied `some`. A clean verdict over a quarter of the intended surface
+  // is the most dangerous output this harness can produce — it reads as "the desk is fine" to
+  // exactly the person who asked whether the desk is fine.
+  //
+  // The session-expiry / tunnel ceiling that causes it is a HARNESS limit, so it still must not be
+  // a FAIL. But it must be visible in the verdict line, because that line is what gets quoted.
+  const attempted = PAGES.length * devices.length;
+  const renderedCount = findings.filter((f) => /rendered \(/.test(f.msg)).length;
+  const coverage = `${renderedCount}/${attempted} page-views rendered`;
+  const verdict = renderedCount === 0
     ? "NO EVIDENCE GATHERED — no page rendered; this run proves nothing"
     : fails.length > 0
-      ? `${fails.length} FAILURES across ${PAGES.length} pages`
-      : `ALL ${PAGES.length} PAGES CLEAN`;
-  if (asJson) console.log(JSON.stringify({ verdict, fails: fails.length, findings }, null, 2));
-  else console.log(`\n${"═".repeat(70)}\n${verdict}\nScreenshots: ${OUT}`);
-  process.exit(fails.length > 0 || !rendered ? 1 : 0);
+      ? `${fails.length} FAILURES · ${coverage}`
+      : renderedCount < attempted
+        ? `NO FAILURES in what loaded, but PARTIAL RUN — ${coverage}; the rest never loaded (harness), so they are UNVERIFIED`
+        : `ALL CLEAN · ${coverage}`;
+  if (asJson) {
+    console.log(JSON.stringify(
+      { verdict, fails: fails.length, rendered: renderedCount, attempted, findings }, null, 2));
+  } else {
+    console.log(`\n${"═".repeat(70)}\n${verdict}\nScreenshots: ${OUT}`);
+  }
+  process.exit(fails.length > 0 || renderedCount === 0 ? 1 : 0);
 }
 
 main().catch((e) => {
