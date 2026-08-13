@@ -128,13 +128,15 @@ async function runClickthrough(page) {
   await shot(page, "04-single-matrix");
 
   // Matrix freshness + colour legend (single-ticker matrix)
-  const freshness = page.locator(".thermal-desk-freshness");
+  const freshness = page
+    .locator(".thermal-desk-freshness")
+    .or(page.locator(".thermal-desk-control-row").getByText(/as of \d/i));
   if ((await freshness.count()) > 0) {
     rec("matrix:freshness-chip", "PASS");
   } else {
     rec("matrix:freshness-chip", "INFO", "hidden in compare mode or loading");
   }
-  const legend = page.locator(".gex-matrix-legend");
+  const legend = page.locator(".gex-matrix-legend, [aria-label*='matrix colour key']");
   if ((await legend.count()) > 0) rec("matrix:colour-legend", "PASS");
   else rec("matrix:colour-legend", "WARN", "legend missing on matrix tab");
 
