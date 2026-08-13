@@ -343,19 +343,6 @@ async function fetchQuote(url: string): Promise<QuoteResponse> {
   return res.json();
 }
 
-/**
- * Largo desk-read narrative from /api/market/gex-heatmap/explain. The route is a
- * cache-reader (one Claude call per ticker per ~3 min) and never fabricates: when AI
- * is unconfigured or the read fails it returns { available:false, reason }.
- */
-type LargoExplainResponse = {
-  available: boolean;
-  narrative?: string;
-  asof?: string;
-  ticker?: string;
-  reason?: "ai-unconfigured" | "no-data" | "failed";
-};
-
 async function fetchGexHeatmap(url: string): Promise<GexHeatmapResponse> {
   const res = await fetch(url, {
     cache: "no-store",
@@ -1952,24 +1939,8 @@ function TickerSwitcher({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Largo read — AI desk-read narrative of the current dealer positioning
-// ---------------------------------------------------------------------------
-
-/** Format an ISO timestamp as a compact ET clock label, e.g. "3:42 PM". */
-function fmtAsof(iso: string | undefined): string | null {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: "America/New_York",
-  });
-}
-
 /** Seconds-precision ET time for the matrix freshness chip (traders read the grid directly,
- *  so the matrix's own sample time must be visible — not buried in the Largo panel). */
+ *  so the matrix's own sample time must be visible in the header). */
 function fmtAsofSeconds(iso: string | undefined): string | null {
   if (!iso) return null;
   const d = new Date(iso);
@@ -2008,100 +1979,6 @@ function MatrixFreshness({ asof }: { asof: string | undefined }) {
   );
 }
 
-/**
- * "Ask Largo" panel. Lazy on click: the narrative is fetched only when the user opens it,
- * keyed by ticker so it clears/refetches when the ticker changes. The route itself caches
- * (one Claude call per ticker per ~3 min) so re-opens are cheap. Browser-safe: it only
- * fetches the explain route + renders JSON — no server/node imports.
- */
-function LargoRead({ ticker }: { ticker: string }) {
-  // `open` is keyed by ticker via the parent's `key` prop, so it resets on ticker change.
-  const [open, setOpen] = useState(false);
-
-  const { data, isLoading, error } = useSWR<LargoExplainResponse>(
-    open ? `/api/market/gex-heatmap/explain?ticker=${encodeURIComponent(ticker)}` : null,
-    (url: string) =>
-      fetch(url, { credentials: "same-origin", cache: "no-store" }).then((r) => {
-        if (!r.ok) throw new Error(`Largo read → ${r.status}`);
-        return r.json();
-      }),
-    { revalidateOnFocus: false, dedupingInterval: 60_000 }
-  );
-
-  const narrative = data?.available ? data.narrative ?? null : null;
-  const unavailable = data != null && !data.available;
-  const asof = fmtAsof(data?.asof);
-  const failed = Boolean(error) && !isLoading;
-
-  return (
-    <div className="rounded-xl border border-sky-400/25 bg-[rgba(8,12,20,0.55)] px-4 py-3">
-      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-        <span className="flex items-center gap-2">
-          <Badge tone="sky" dot>
-            Largo · AI
-          </Badge>
-          <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-sky-300/70">
-            Desk read
-          </span>
-          {open && asof && (
-            <span className="font-mono text-[10px] tabular-nums text-sky-300/75">
-              as of {asof} ET
-            </span>
-          )}
-        </span>
-
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          aria-expanded={open}
-          className={clsx(
-            "rounded-md px-3 py-1 font-mono text-[11px] font-bold uppercase tracking-wider outline-none transition-colors",
-            "focus-visible:ring-2 focus-visible:ring-sky-400",
-            open
-              ? "bg-sky-400/15 text-sky-300 outline outline-1 outline-sky-400/50"
-              : "bg-sky-400/10 text-sky-300 outline outline-1 outline-sky-400/30 hover:bg-sky-400/15 hover:text-white"
-          )}
-        >
-          {open ? "Hide read" : "Ask Largo"}
-        </button>
-      </div>
-
-      {open && (
-        <div className="mt-3">
-          {isLoading && !data ? (
-            <div className="space-y-2" aria-hidden>
-              <Skeleton height={14} rounded="md" />
-              <Skeleton height={14} rounded="md" />
-              <Skeleton height={14} rounded="md" />
-            </div>
-          ) : failed || unavailable ? (
-            <p className="text-[12px] leading-snug text-sky-300/70" role="status">
-              {data?.reason === "ai-unconfigured"
-                ? "Largo read unavailable — AI is not configured."
-                : data?.reason === "no-data"
-                  ? "Largo read unavailable — no dealer positioning to read for this ticker yet."
-                  : "Largo read unavailable — try again in a moment."}
-            </p>
-          ) : narrative ? (
-            <p className="text-[13px] leading-relaxed text-sky-100 whitespace-pre-line">
-              {narrative}
-            </p>
-          ) : (
-            <p className="text-[12px] leading-snug text-sky-300/70" role="status">
-              Largo read unavailable — try again in a moment.
-            </p>
-          )}
-
-          <p className="mt-2 text-[10px] leading-snug text-sky-300/75">
-            Largo reads dealer positioning from the data above. Market-structure analysis,
-            not financial advice.
-          </p>
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Key-level tone palette — semantic color identity by meaning (walls gold, flip
 // cyan, support/net bear-or-bull, max-pain sky). Consumed by the consolidated
@@ -2135,58 +2012,6 @@ const TILE_DELTA_HEX: Record<TileDelta["tone"], string> = {
   bear: "#ff2d55",
   neutral: "#7dd3fc",
 };
-
-// ---------------------------------------------------------------------------
-// Key levels — a compact, right-aligned list of the structural price lines
-// (spot, flip, walls, max pain) + dark-pool levels. Always-useful rail content.
-// ---------------------------------------------------------------------------
-
-/**
- * Dark-pool levels rail card. The structural key levels (spot / flip / call wall / put
- * wall / max pain) live ONLY in the consolidated top key-level box now — the old rail
- * "KEY LEVELS" list duplicated them, so it was dropped. Dark-pool price levels, however,
- * appear NOWHERE in the top box, so they keep their own focused card here (the top-N by
- * notional). Renders nothing when there's no dark-pool data, letting the rail breathe.
- */
-function DarkPoolRail({ darkPoolLevels }: { darkPoolLevels: DarkPoolLevel[] | null }) {
-  const dp = (darkPoolLevels ?? [])
-    .slice()
-    .sort((a, b) => b.notional - a.notional)
-    .slice(0, 4);
-  if (dp.length === 0) return null;
-
-  return (
-    <div className="rounded-xl border border-white/10 bg-[rgba(8,9,14,0.5)] px-4 py-3">
-      <div className="mb-2.5 flex items-center justify-between">
-        <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-sky-300/75">
-          Dark-pool levels
-        </span>
-        <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-sky-300/75">
-          notional
-        </span>
-      </div>
-      <ul className="space-y-1">
-        {dp.map((d, i) => (
-          <li key={`${d.price}-${i}`} className="flex items-center justify-between gap-3 py-0.5">
-            <span className="flex items-center gap-2 min-w-0">
-              <span
-                aria-hidden
-                className="h-px w-3 shrink-0"
-                style={{ backgroundColor: DARK_POOL_HEX, boxShadow: `0 0 6px ${DARK_POOL_HEX}` }}
-              />
-              <span className="font-mono text-[11px] tabular-nums text-white">
-                {fmtStrike(d.price)}
-              </span>
-            </span>
-            <span className="font-mono text-[11px] tabular-nums text-sky-300/80">
-              {fmtMoney(d.notional)}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Flow summary — net premium tilt for the ticker today (bull calls / bear puts),
@@ -4135,8 +3960,8 @@ export function GexHeatmap({
   // ── View panels (Step 3) ─────────────────────────────────────────────────────
   // Tab A "Matrix" (default): the Strike × Expiry Matrix at full content width.
   // Tab B "Profile + Curve + Shift": 3 equal-width columns, all centered on spot,
-  // with a shared ExpiryScopeBar + overlay toggles above. Largo/DarkPool rail only
-  // shows on the Matrix tab — the 3-panel view is self-contained.
+  // with a shared ExpiryScopeBar + overlay toggles above. Flow rail only shows on the
+  // Matrix tab — the 3-panel view is self-contained.
 
   // Shared controls rendered once ABOVE all 3 profile panels (expiry scope + overlay toggles).
   const sharedProfileControls = (
@@ -4893,9 +4718,9 @@ export function GexHeatmap({
           <AlertsStrip events={events} />
 
           {/* ── Main area — 2 tabs:
-                • "Matrix" — full-width Strike × Expiry Matrix + Largo/DarkPool rail below.
+                • "Matrix" — full-width Strike × Expiry Matrix + flow rail below.
                 • "Profile + Curve + Shift" — 3 equal columns (lg:grid-cols-3), shared
-                  ExpiryScopeBar + overlay toggles above, no Largo/DarkPool rail.
+                  ExpiryScopeBar + overlay toggles above, no flow rail.
               ──────────────── */}
           <Tabs value={pairView} onValueChange={(v) => setPairView(v as "pair-a" | "pair-b" | "pair-c")} className="mt-3">
             <TabPanels>
@@ -4945,13 +4770,10 @@ export function GexHeatmap({
             </TabPanels>
           </Tabs>
 
-          {/* ── Rail: Largo + dark-pool + flow — Matrix tab only (the 3-panel
-              Profile+Curve+Shift view is self-contained). ── */}
+          {/* ── Rail: flow today — Matrix tab only (Profile+Curve+Shift is self-contained). ── */}
           {!nativeShell && pairView === "pair-a" && (
-            <div className="mt-5 grid gap-4 lg:grid-cols-[1.6fr_1fr] gex-heatmap-rail">
-              <LargoRead key={ticker} ticker={ticker} />
-              <div className="grid content-start gap-4">
-                <DarkPoolRail darkPoolLevels={darkPoolLevels} />
+            <div className="mt-5 flex justify-end gex-heatmap-rail">
+              <div className="w-full max-w-md">
                 <FlowSummary flowByStrike={flowByStrike} overlaysLoaded={data != null} />
               </div>
             </div>
