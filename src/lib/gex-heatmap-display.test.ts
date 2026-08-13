@@ -10,8 +10,10 @@ import {
   heatmapLegendItems,
   GEX_BEAD_CALL_HEX,
   GEX_BEAD_PUT_HEX,
+  shouldShowMatrixDriftPct,
   shouldShowStrikeDistancePct,
   strikeDistancePct,
+  STRIKE_DRIFT_PCT_NEAR_SPOT,
   STRIKE_DISTANCE_PCT_NEAR_SPOT,
   resolveHeatmapTopHighlightCellStyle,
   isHeatmapTopHighlightRank,
@@ -148,15 +150,16 @@ describe("strike distance from spot", () => {
     assert.match(drifted, /^\+/);
   });
 
-  it("shouldShowStrikeDistancePct limits labels to 3 above + 3 below spot", () => {
+  it("shouldShowMatrixDriftPct limits DR% labels to 3 above + 3 below spot", () => {
     const spot = 5;
-    assert.equal(STRIKE_DISTANCE_PCT_NEAR_SPOT, 3);
-    assert.equal(shouldShowStrikeDistancePct(spot, spot), false);
-    assert.equal(shouldShowStrikeDistancePct(spot - 3, spot), true);
-    assert.equal(shouldShowStrikeDistancePct(spot + 3, spot), true);
-    assert.equal(shouldShowStrikeDistancePct(spot - 4, spot), false);
-    assert.equal(shouldShowStrikeDistancePct(spot + 4, spot), false);
-    assert.equal(shouldShowStrikeDistancePct(0, -1), false);
+    assert.equal(STRIKE_DRIFT_PCT_NEAR_SPOT, 3);
+    assert.equal(shouldShowMatrixDriftPct(spot, spot), false);
+    assert.equal(shouldShowMatrixDriftPct(spot - 3, spot), true);
+    assert.equal(shouldShowMatrixDriftPct(spot + 3, spot), true);
+    assert.equal(shouldShowMatrixDriftPct(spot - 4, spot), false);
+    assert.equal(shouldShowMatrixDriftPct(spot + 4, spot), false);
+    assert.equal(shouldShowMatrixDriftPct(0, -1), false);
+    assert.equal(shouldShowStrikeDistancePct(spot - 2, spot), true);
   });
 });
 

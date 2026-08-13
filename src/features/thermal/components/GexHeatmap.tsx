@@ -61,7 +61,7 @@ import {
   heatmapLegendItems,
   isHeatmapTopHighlightRank,
   resolveHeatmapTopHighlightCellStyle,
-  shouldShowStrikeDistancePct,
+  shouldShowMatrixDriftPct,
   type GexHeatmapLens,
 } from "@/lib/gex-heatmap-display";
 import { compactPerExpiryTopHighlights } from "@/features/thermal/lib/thermal-compact-matrix";
@@ -4177,7 +4177,7 @@ export function GexHeatmap({
               <tr className="thermal-matrix-head-row border-b border-white/10">
                 <th className="thermal-matrix-head thermal-matrix-head-strike sticky left-0 z-30 bg-[#08080e]">
                   <span className="block">Strike</span>
-                  <span className="thermal-matrix-head-sub" title="Intraday build/melt % vs prior snapshot">
+                  <span className="thermal-matrix-head-sub" title="Intraday gamma build/melt % — same calculation as SPX Slayer DR%">
                     DR%
                   </span>
                 </th>
@@ -4229,7 +4229,7 @@ export function GexHeatmap({
                 const rowTotal = strikeTotals[String(strike)] ?? 0;
                 const shiftDelta = matrixShiftDeltaForStrike(shift, strike);
                 const shiftPctLabel =
-                  !isSpot && shouldShowStrikeDistancePct(strikeIdx, spotStrikeIdx)
+                  !isSpot && shouldShowMatrixDriftPct(strikeIdx, spotStrikeIdx)
                     ? fmtShiftPercentForStrike(rowTotal, shiftDelta)
                     : null;
                 const driftTitle = shift?.available
@@ -4343,13 +4343,7 @@ export function GexHeatmap({
                                 )
                               : {}),
                           }}
-                          title={
-                            isDayKing
-                              ? `King node for ${fmtHeatmapExpiry(e)}${
-                                  spot > 0 ? ` — ${Math.round(Math.abs(strike - spot))}pt from spot` : ""
-                                }`
-                              : extremeTitle
-                          }
+                          title={isDayKing ? `King node for ${fmtHeatmapExpiry(e)}` : extremeTitle}
                         >
                           {shiftLeader ? (
                             <GexMatrixShiftBadge leader={shiftLeader} sinceMs={shift?.since_ms} />
@@ -4367,18 +4361,11 @@ export function GexHeatmap({
                             {fmtHeatmapMoneySigned(val, { showZero: has })}
                           </span>
                           {isDayKing && (
-                            <span className="ml-0.5 inline-flex items-baseline gap-0.5">
-                              <span
-                                aria-hidden
-                                className="text-[13px] leading-none text-amber-400 [text-shadow:0_0_6px_rgba(251,191,36,0.9)]"
-                              >
-                                ★
-                              </span>
-                              {spot > 0 && (
-                                <span className="text-[7px] font-normal leading-none text-amber-300/70">
-                                  {Math.round(Math.abs(strike - spot))}pt
-                                </span>
-                              )}
+                            <span
+                              aria-hidden
+                              className="ml-0.5 text-[13px] leading-none text-amber-400 [text-shadow:0_0_6px_rgba(251,191,36,0.9)]"
+                            >
+                              ★
                             </span>
                           )}
                         </td>

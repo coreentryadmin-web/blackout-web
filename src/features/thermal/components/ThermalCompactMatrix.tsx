@@ -12,7 +12,7 @@ import {
   fmtHeatmapExpiry,
   fmtHeatmapMoneySigned,
   fmtHeatmapStrike,
-  shouldShowStrikeDistancePct,
+  shouldShowMatrixDriftPct,
   isHeatmapTopHighlightRank,
   resolveHeatmapTopHighlightCellStyle,
   type GexHeatmapLens,
@@ -284,7 +284,7 @@ export default function ThermalCompactMatrix({
                   const negRank = hl?.topNegative[strike];
                   const isKing = has && n !== 0 && day?.king === strike;
                   const showDrift =
-                    !isSpot && shouldShowStrikeDistancePct(si, spotIdx);
+                    !isSpot && shouldShowMatrixDriftPct(si, spotIdx);
                   let rowTotal = 0;
                   for (const exp of expiries) {
                     const v = row[exp];

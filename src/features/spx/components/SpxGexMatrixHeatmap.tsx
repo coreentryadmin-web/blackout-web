@@ -20,7 +20,7 @@ import {
   fmtHeatmapExpiry,
   fmtHeatmapMoneySigned,
   fmtHeatmapStrike,
-  shouldShowStrikeDistancePct,
+  shouldShowMatrixDriftPct,
   heatmapCellStyle,
   heatmapCellTextStyle,
   heatmapMatrixExtremeCellStyle,
@@ -714,7 +714,7 @@ export function SpxGexMatrixHeatmap({
                   odteLevels.putWall != null && strike === odteLevels.putWall;
                 const shiftDelta = matrixShiftDeltaForStrike(activeShift, strike);
                 const driftLabel =
-                  !isSpotRow && shouldShowStrikeDistancePct(si, spotIdx)
+                  !isSpotRow && shouldShowMatrixDriftPct(si, spotIdx)
                     ? fmtShiftPercentForStrike(rowTotal, shiftDelta)
                     : null;
 
