@@ -4766,6 +4766,13 @@ export function GexHeatmap({
             lens={lens}
             activeTicker={ticker}
             tickers={compareGridTickers}
+            compareSet={compareSet}
+            onCompareSetChange={(id) => {
+              setCompareSet(id);
+              prefetchGexHeatmapTickers(
+                orderComparePresetTickers(thermalComparePreset(id), ticker),
+              );
+            }}
             presetLabel={comparePreset.label}
             onFocusTicker={setTicker}
             onLensChange={(l) => setLens(l as Lens)}

@@ -17891,9 +17891,11 @@ body::before {
 }
 
 .thermal-triple-rail-actions {
-  display: inline-flex;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.45rem;
+  justify-content: flex-end;
+  gap: 0.35rem;
 }
 
 .thermal-triple-refresh-btn {
@@ -18014,12 +18016,20 @@ body::before {
 
 .thermal-triple-desk[data-cols] .thermal-compact-table {
   width: 100%;
-  table-layout: fixed;
+  table-layout: auto;
 }
 
 .thermal-triple-desk[data-cols] .thermal-compact-corner,
 .thermal-triple-desk[data-cols] .thermal-compact-strike {
-  width: 36%;
+  width: 1%;
+  min-width: 4.35rem;
+  max-width: 5.5rem;
+  white-space: nowrap;
+}
+
+.thermal-triple-desk[data-cols] .thermal-compact-cell,
+.thermal-triple-desk[data-cols] .thermal-compact-exp {
+  width: auto;
 }
 
 .thermal-triple-desk[data-cols] .thermal-compact-table.is-0dte .thermal-compact-exp,
@@ -18231,8 +18241,9 @@ body::before {
   left: 0;
   top: 0;
   z-index: 4;
-  min-width: 5.75rem;
-  padding: 0.4rem 0.45rem;
+  min-width: 4.35rem;
+  max-width: 5.5rem;
+  padding: 0.35rem 0.4rem;
   font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.12em;
@@ -18243,7 +18254,7 @@ body::before {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 0.35rem;
+  gap: 0.25rem;
 }
 
 .thermal-compact-corner-pct {
@@ -18297,19 +18308,20 @@ body::before {
 .thermal-compact-strike {
   left: 0;
   z-index: 2;
-  min-width: 5.75rem;
+  min-width: 4.35rem;
+  max-width: 5.5rem;
   padding: 0;
   border-right: 1px solid rgba(125, 211, 252, 0.12);
   vertical-align: middle;
 }
 
 .thermal-compact-strike-btn {
-  display: flex;
+  display: grid;
   width: 100%;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: flex-end;
-  gap: 0.28rem;
-  padding: 0.32rem 0.45rem;
+  gap: 0.2rem;
+  padding: 0.28rem 0.35rem;
   border: 0;
   background: transparent;
   font: inherit;
@@ -18321,19 +18333,17 @@ body::before {
 }
 
 .thermal-compact-strike-label {
-  flex: 1 1 auto;
-  text-align: right;
+  text-align: left;
+  min-width: 0;
 }
 
 .thermal-compact-strike-pct {
-  flex: 0 0 auto;
-  min-width: 2.85rem;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 600;
   letter-spacing: 0.01em;
   color: var(--tt-sky);
   text-align: right;
-  opacity: 0.92;
+  white-space: nowrap;
 }
 
 .thermal-compact-strike-btn:hover {
@@ -18498,7 +18508,9 @@ body::before {
   border-radius: 999px;
   border: 1px solid rgba(125, 211, 252, 0.2);
   background: rgba(8, 9, 14, 0.72);
-  overflow: hidden;
+  overflow: visible;
+  position: relative;
+  z-index: 45;
 }
 
 .thermal-grid-toolbar--on {
@@ -18540,6 +18552,10 @@ body::before {
   align-items: center;
   min-width: 6.5rem;
   border-left: 1px solid rgba(125, 211, 252, 0.18);
+}
+
+.thermal-grid-sector-picker.is-open {
+  z-index: 100;
 }
 
 .thermal-grid-sector-picker-trigger {
@@ -18647,6 +18663,23 @@ body::before {
 
 .thermal-grid-sector-picker--compact {
   min-width: 7.25rem;
+}
+
+/* Sector dropdown in the compare-grid rail — always visible, not clipped. */
+.thermal-triple-sector-picker.thermal-grid-sector-picker {
+  border-left: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(125, 211, 252, 0.28);
+  background: rgba(8, 9, 14, 0.82);
+  min-width: 8rem;
+}
+
+.thermal-triple-sector-picker .thermal-grid-sector-picker-trigger {
+  padding: 0.35rem 0.65rem;
+}
+
+.thermal-triple-desk {
+  overflow: visible;
 }
 
 .thermal-compact-empty {
