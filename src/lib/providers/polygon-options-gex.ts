@@ -856,10 +856,11 @@ export function gexContractDedupeKey(c: ChainContract, minExpiryYmd: string): st
  * Sign is the SAME for calls and puts (vanna is type-independent); the call/put
  * dealer-sign convention is applied by the caller, mirroring gamma.
  */
-function vannaPerShare(spot: number, strike: number, t: number, sigma: number): number {
+function vannaPerShare(spot: number, strike: number, t: number, sigma: number, q = 0): number {
   if (!(spot > 0) || !(strike > 0) || !(t > 0) || !(sigma > 0)) return 0;
   const sqrtT = Math.sqrt(t);
-  const d1 = (Math.log(spot / strike) + 0.5 * sigma * sigma * t) / (sigma * sqrtT);
+  const r = 0;
+  const d1 = (Math.log(spot / strike) + (r - q + 0.5 * sigma * sigma) * t) / (sigma * sqrtT);
   const d2 = d1 - sigma * sqrtT;
   const v = (-normPdf(d1) * d2) / sigma;
   return Number.isFinite(v) ? v : 0;
@@ -884,12 +885,14 @@ function vannaPerShare(spot: number, strike: number, t: number, sigma: number): 
  * from yearsToExpiry → reads as delta decay per year. Returns 0 (skip) on non-finite inputs,
  * T<=0, or σ<=0 — SAME guard as vannaPerShare — never fabricated.
  */
-function charmPerShare(spot: number, strike: number, t: number, sigma: number): number {
+function charmPerShare(spot: number, strike: number, t: number, sigma: number, q = 0): number {
   if (!(spot > 0) || !(strike > 0) || !(t > 0) || !(sigma > 0)) return 0;
   const sqrtT = Math.sqrt(t);
-  const d1 = (Math.log(spot / strike) + 0.5 * sigma * sigma * t) / (sigma * sqrtT);
+  const r = 0;
+  const d1 = (Math.log(spot / strike) + (r - q + 0.5 * sigma * sigma) * t) / (sigma * sqrtT);
   const d2 = d1 - sigma * sqrtT;
-  const c = (normPdf(d1) * d2) / (2 * t);
+  // Full BS call charm at r=0: −φ(d1)·(−2qT − d2·σ√T) / (2T·σ√T). Collapses to φ(d1)·d2/(2T) when q=0.
+  const c = (-normPdf(d1) * (2 * (r - q) * t - d2 * sigma * sqrtT)) / (2 * t * sigma * sqrtT);
   return Number.isFinite(c) ? c : 0;
 }
 
@@ -1689,6 +1692,35 @@ function heatmapBandPct(root: string): number {
 }
 
 export const __test_heatmapBandPct = heatmapBandPct;
+export const __test_vannaPerShare = vannaPerShare;
+export const __test_charmPerShare = charmPerShare;
+
+/** ETF proxy for index roots when resolving continuous dividend yield q for VEX/CHARM. */
+const HEATMAP_DIVIDEND_YIELD_PROXY: Record<string, string> = {
+  SPX: "SPY",
+  "I:SPX": "SPY",
+  NDX: "QQQ",
+  "I:NDX": "QQQ",
+  RUT: "IWM",
+  "I:RUT": "IWM",
+};
+
+/** Continuous dividend yield q (decimal, e.g. 0.012 = 1.2%) for closed-form vanna/charm. Best-effort. */
+async function resolveHeatmapDividendYield(root: string): Promise<number> {
+  const upper = root.toUpperCase();
+  const lookup = HEATMAP_DIVIDEND_YIELD_PROXY[upper] ?? upper.replace(/^I:/, "");
+  try {
+    const { fetchPolygonFinancialRatios } = await import("./polygon");
+    const ratios = await fetchPolygonFinancialRatios(lookup);
+    const raw = ratios?.dividend_yield;
+    if (raw == null || !Number.isFinite(raw) || raw <= 0) return 0;
+    // Guard percent-vs-decimal: yields above 100% are nonsense; above 1 likely percent notation.
+    if (raw > 1) return raw / 100;
+    return raw;
+  } catch {
+    return 0;
+  }
+}
 
 /**
  * Minimum $ half-width each side of spot so low-priced chains (NIO ~$5, F ~$11) fetch enough
@@ -2789,7 +2821,10 @@ async function buildGexHeatmapUncached(
   if (isHeatmapPreset(root)) recordHeatmapPriceObservation(root, spot);
 
   // Band sizing stays RELATIVE (% of spot) so it works for $5 and $900 names.
-  const contracts = await fetchHeatmapBand(optionsRoot, spot, root);
+  const [contracts, dividendYieldQ] = await Promise.all([
+    fetchHeatmapBand(optionsRoot, spot, root),
+    resolveHeatmapDividendYield(root),
+  ]);
   if (!contracts.length) {
     console.warn(
       `[gex-heatmap] 0 contracts for ${optionsRoot} @ ${spot} via ${hostOf(BASE)} — trying UW strike-exposure fallback.`
@@ -2902,7 +2937,7 @@ async function buildGexHeatmapUncached(
     // dollar_vanna is per 1.00 change in sigma (= 100 vol-points; IV is decimal here).
     // CONVENTION: VEX keeps the notional `× 100 × spot` scaling (its own per-1-unit-σ standard) —
     // DISTINCT from GEX's per-1%-move scale (× spot² × 0.01) above. Do not align the two.
-    const vps = vannaPerShare(spot, strike, t, iv);
+    const vps = vannaPerShare(spot, strike, t, iv, dividendYieldQ);
     if (vps !== 0) {
       const signedVanna = sign * vps * oi * sharesPerContract * spot;
       if (signedVanna !== 0 && Number.isFinite(signedVanna)) {
@@ -2920,7 +2955,7 @@ async function buildGexHeatmapUncached(
     // scale above); the per-unit-time is YEARS of time-to-expiry (ACT/365), so
     // it reads as net dealer delta decay per year. Charm is type-independent (put charm = call
     // charm at r=q=0, like gamma); the dealer call(+)/put(−) sign is applied here at accumulation.
-    const cps = charmPerShare(spot, strike, t, iv);
+    const cps = charmPerShare(spot, strike, t, iv, dividendYieldQ);
     if (cps !== 0) {
       const signedCharm = sign * cps * oi * sharesPerContract * spot;
       if (signedCharm !== 0 && Number.isFinite(signedCharm)) {

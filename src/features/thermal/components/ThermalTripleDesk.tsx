@@ -387,8 +387,11 @@ function TripleColumn({
           Feed error — retrying…
         </div>
       ) : isLoading && !isUsableGexHeatmapPayload(view) ? (
-        <div className="thermal-compact-empty" role="status">
-          Loading {ticker}…
+        <div className="thermal-compact-empty thermal-compact-syncing" role="status">
+          <ThermalMatrixFreshnessChip asof={view?.asof ?? null} matrixLoading />
+          <p className="mt-2 font-mono text-[10px] uppercase tracking-wider text-sky-300">
+            Syncing {ticker} matrix…
+          </p>
         </div>
       ) : isUsableGexHeatmapPayload(view) && block?.cells ? (
         <ThermalCompactMatrix

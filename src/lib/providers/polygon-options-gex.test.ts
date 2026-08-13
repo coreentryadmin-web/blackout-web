@@ -20,6 +20,8 @@ import {
   type GexHistorySnapshot,
   type ChainContract,
   type GexHeatmap,
+  __test_vannaPerShare,
+  __test_charmPerShare,
 } from "./polygon-options-gex";
 
 function contract(
@@ -636,4 +638,32 @@ test("fetchGexHeatmap TTL fast path serves pruned cache at ET rollover (no rebui
     /resolve\(await finalizeHeatmapForServe\(cacheKey, served\)\)/,
     "block-cap handoff must prune before serve"
   );
+});
+
+test("vanna/charm closed-form uses dividend yield q (unchanged at q=0)", () => {
+  const spot = 450;
+  const strike = 455;
+  const t = 0.08;
+  const sigma = 0.22;
+  const v0 = __test_vannaPerShare(spot, strike, t, sigma, 0);
+  const c0 = __test_charmPerShare(spot, strike, t, sigma, 0);
+  const vLegacy = __test_vannaPerShare(spot, strike, t, sigma);
+  const cLegacy = __test_charmPerShare(spot, strike, t, sigma);
+  assert.equal(v0, vLegacy);
+  assert.equal(c0, cLegacy);
+});
+
+test("vanna/charm magnitudes shift with ETF dividend yield q", () => {
+  const spot = 450;
+  const strike = 455;
+  const t = 0.08;
+  const sigma = 0.22;
+  const q = 0.012;
+  const v0 = __test_vannaPerShare(spot, strike, t, sigma, 0);
+  const vq = __test_vannaPerShare(spot, strike, t, sigma, q);
+  const c0 = __test_charmPerShare(spot, strike, t, sigma, 0);
+  const cq = __test_charmPerShare(spot, strike, t, sigma, q);
+  assert.notEqual(v0, vq);
+  assert.notEqual(c0, cq);
+  assert.ok(Math.abs(vq) > Math.abs(v0), "typical ETF q raises |vanna| vs q=0 at ATM");
 });
