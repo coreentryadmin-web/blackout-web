@@ -9,6 +9,15 @@ import {
   type IntelligenceStatus,
 } from "@/lib/largo/core/system-status";
 
+export type LargoStatusResponse = IntelligenceStatus & {
+  toolConflict?: {
+    conflict: boolean;
+    note: string | null;
+    helix_bias: string;
+    thermal_bias: string;
+  } | null;
+};
+
 /**
  * INTELLIGENCE STRIP — the thin line under LARGO TERMINAL that says "wired into the machine".
  *
@@ -29,7 +38,7 @@ import {
 const fetcher = (url: string) => fetch(url, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null));
 
 export function LargoStatusStrip() {
-  const { data } = useSWR<IntelligenceStatus | null>("/api/market/largo/status", fetcher, {
+  const { data } = useSWR<LargoStatusResponse | null>("/api/market/largo/status", fetcher, {
     refreshInterval: 30_000,
     revalidateOnFocus: true,
   });
@@ -59,6 +68,17 @@ export function LargoStatusStrip() {
 
       <span className="largo-status-sep" aria-hidden />
       <span className="largo-status-meta">{data.marketPhase}</span>
+      {data.toolConflict?.conflict && (
+        <>
+          <span className="largo-status-sep" aria-hidden />
+          <span
+            className="largo-status-conflict-pill"
+            title={data.toolConflict.note ?? "HELIX and Thermal disagree"}
+          >
+            Conflict
+          </span>
+        </>
+      )}
       <span className="largo-status-sep" aria-hidden />
       <span className={clsx("largo-status-meta", `largo-status-${ageHealth}`)}>
         DATA {formatDataAge(data.dataAgeSec)} AGO

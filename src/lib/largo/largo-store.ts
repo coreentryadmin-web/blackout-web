@@ -1,5 +1,10 @@
 import { dbClient, dbConfigured, dbQuery } from "@/lib/db";
 import type { AnthropicMessage } from "@/lib/providers/anthropic";
+import {
+  extractWatchlistFromText,
+  mergeSessionMetadata,
+  type LargoSessionMetadata,
+} from "@/lib/largo/session-metadata";
 
 export type LargoStoredMessage = {
   id: number;
@@ -45,6 +50,47 @@ export async function ensureLargoSession(sessionId: string, userId: string): Pro
   if (upserted.rows[0]?.user_id !== userId) {
     throw new Error("Largo session not found");
   }
+}
+
+export async function fetchLargoSessionMetadata(
+  sessionId: string,
+  userId: string
+): Promise<LargoSessionMetadata> {
+  if (!dbConfigured()) return {};
+  if (!(await sessionOwnedByUser(sessionId, userId))) return {};
+  const res = await dbQuery<{ metadata: LargoSessionMetadata | null }>(
+    `SELECT metadata FROM largo_sessions WHERE id = $1 AND user_id = $2`,
+    [sessionId, userId]
+  );
+  const raw = res.rows[0]?.metadata;
+  return raw && typeof raw === "object" ? (raw as LargoSessionMetadata) : {};
+}
+
+export async function updateLargoSessionMetadata(
+  sessionId: string,
+  userId: string,
+  patch: Partial<LargoSessionMetadata>
+): Promise<LargoSessionMetadata> {
+  if (!dbConfigured()) return mergeSessionMetadata({}, patch);
+  await ensureLargoSession(sessionId, userId);
+  const prev = await fetchLargoSessionMetadata(sessionId, userId);
+  const next = mergeSessionMetadata(prev, patch);
+  await dbQuery(
+    `UPDATE largo_sessions SET metadata = $3::jsonb, updated_at = NOW() WHERE id = $1 AND user_id = $2`,
+    [sessionId, userId, JSON.stringify(next)]
+  );
+  return next;
+}
+
+/** If the question asks to remember tickers, persist to session metadata. */
+export async function maybePersistWatchlistFromQuestion(
+  sessionId: string,
+  userId: string,
+  question: string
+): Promise<LargoSessionMetadata> {
+  const list = extractWatchlistFromText(question);
+  if (!list?.length) return fetchLargoSessionMetadata(sessionId, userId);
+  return updateLargoSessionMetadata(sessionId, userId, { watchlist: list });
 }
 
 export async function sessionOwnedByUser(sessionId: string, userId: string): Promise<boolean> {

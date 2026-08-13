@@ -1062,6 +1062,11 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       return thermalCompareForLargo(tickers);
     }
 
+    case "get_helix_thermal_compare": {
+      const { helixThermalCompareForLargo } = await import("@/lib/largo/helix-thermal-compare");
+      return helixThermalCompareForLargo(input.ticker ? String(input.ticker) : "SPX");
+    }
+
     case "get_vector_analytics": {
       const { vectorAnalyticsForLargo } = await import("@/lib/largo/vector-analytics");
       return vectorAnalyticsForLargo(input.ticker ? String(input.ticker) : null, {

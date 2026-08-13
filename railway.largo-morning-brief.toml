@@ -1,0 +1,12 @@
+# Largo morning brief — 9:25 AM ET weekdays (13:25 UTC EDT)
+# Wire via sync-cron-schedules.mjs / EventBridge
+
+[build]
+builder = "NIXPACKS"
+
+[deploy]
+startCommand = "node scripts/hit-cron.mjs /api/cron/largo-morning-brief"
+restartPolicyType = "NEVER"
+
+[[cron]]
+schedule = "25 13 * * 1-5"

@@ -89,12 +89,26 @@ export async function GET() {
     zerodteOpen,
     swingCommitted,
     bangerOpen,
-    // How long THIS fan-out took: the honest age of what the strip is showing, measured rather
-    // than asserted. It is not the upstream tick age, and it is not claimed to be.
     dataAgeSec: (Date.now() - startedAt) / 1000,
     etDay,
     etMinutes,
   });
 
-  return NextResponse.json(status, { headers: NO_STORE_HEADERS });
+  const { helixThermalCompareForLargo } = await import("@/lib/largo/helix-thermal-compare");
+  const compare = await helixThermalCompareForLargo("SPX").catch(() => null);
+
+  return NextResponse.json(
+    {
+      ...status,
+      toolConflict: compare
+        ? {
+            conflict: compare.conflict,
+            note: compare.conflict_note,
+            helix_bias: compare.helix.bias,
+            thermal_bias: compare.thermal.bias,
+          }
+        : null,
+    },
+    { headers: NO_STORE_HEADERS }
+  );
 }

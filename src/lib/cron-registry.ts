@@ -59,6 +59,18 @@ export const CRON_JOBS: CronJobDefinition[] = [
     description: "Purge stale Largo chat sessions",
   },
   {
+    key: "largo-morning-brief",
+    name: "Largo Morning Brief",
+    kind: "http",
+    path: "/api/cron/largo-morning-brief",
+    schedule_label: "9:25 AM ET weekdays",
+    schedule_cron_utc: "25 13 * * 1-5",
+    stale_after_min: 24 * 60,
+    weekdays_only: true,
+    description: "Pre-open Largo summary push for opted-in members",
+    produces_member_alert: true,
+  },
+  {
     key: "nighthawk-outcomes",
     name: "Night Hawk Outcomes",
     kind: "http",

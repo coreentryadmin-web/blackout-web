@@ -18649,6 +18649,100 @@ body::before {
     color: #e2e8f0;
     font-weight: 600;
   }
+  .largo-status-conflict-pill {
+    color: #fbbf24;
+    border: 1px solid rgba(251, 191, 36, 0.45);
+    padding: 0.1rem 0.45rem;
+    border-radius: 2px;
+  }
+  .largo-compare-card {
+    margin-bottom: 0.75rem;
+    padding: 0.75rem;
+    border: 1px solid rgba(34, 211, 238, 0.22);
+    border-radius: 4px;
+    background: rgba(4, 4, 7, 0.6);
+  }
+  .largo-compare-card-conflict {
+    border-color: rgba(251, 191, 36, 0.45);
+  }
+  .largo-compare-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+  .largo-compare-title {
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #22d3ee;
+  }
+  .largo-compare-conflict-pill {
+    font-size: 10px;
+    color: #fbbf24;
+    border: 1px solid rgba(251, 191, 36, 0.4);
+    padding: 0.05rem 0.35rem;
+  }
+  .largo-compare-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+  }
+  .largo-compare-label {
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: rgba(148, 163, 184, 0.9);
+  }
+  .largo-compare-bias {
+    font-size: 13px;
+    font-weight: 600;
+    margin: 0.25rem 0;
+  }
+  .largo-compare-bull { color: #34d399; }
+  .largo-compare-bear { color: #f87171; }
+  .largo-compare-neutral { color: #e2e8f0; }
+  .largo-compare-mixed { color: #fbbf24; }
+  .largo-compare-summary,
+  .largo-compare-meta,
+  .largo-compare-note {
+    font-size: 12px;
+    color: #e2e8f0;
+    margin: 0.15rem 0;
+  }
+  .largo-actions-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin: 0.5rem 0;
+  }
+  .largo-action-btn {
+    font-size: 11px;
+    padding: 0.25rem 0.5rem;
+    border: 1px solid rgba(34, 211, 238, 0.35);
+    color: #22d3ee;
+    border-radius: 3px;
+    text-decoration: none;
+    background: transparent;
+    cursor: pointer;
+  }
+  .largo-action-btn:hover {
+    background: rgba(34, 211, 238, 0.08);
+  }
+  .largo-share-discord-btn {
+    margin-top: 0.5rem;
+    font-size: 11px;
+    color: #22d3ee;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    text-decoration: underline;
+  }
+  .largo-chart-guide {
+    font-size: 12px;
+    color: #22d3ee;
+    margin-bottom: 0.35rem;
+  }
   @media (prefers-reduced-motion: reduce) {
     .largo-status-dot,
     .largo-status-pill-live {

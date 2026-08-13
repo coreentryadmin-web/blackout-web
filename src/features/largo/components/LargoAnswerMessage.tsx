@@ -1,8 +1,13 @@
 "use client";
 
-import { Component, useMemo, type ReactNode } from "react";
+import { Component, useMemo, useState, type ReactNode } from "react";
 import type { BieAnswerEnvelope } from "@/lib/bie/answer-envelope";
+import type { HelixThermalCompareCard } from "@/lib/largo/helix-thermal-compare";
+import type { LargoAction } from "@/lib/largo/largo-actions";
+import { shareLargoToDiscord } from "@/lib/api";
 import { LargoMessageBody } from "@/features/largo/components/LargoMessageBody";
+import { LargoCompareCard } from "@/features/largo/components/LargoCompareCard";
+import { LargoActionsBar } from "@/features/largo/components/LargoActionsBar";
 import { BieAnswer } from "@/features/largo/answer/BieAnswer";
 import { LargoDeskRead } from "@/features/largo/answer/LargoDeskRead";
 import { LargoAnswerCaveats } from "@/features/largo/answer/LargoAnswerCaveats";
@@ -36,21 +41,26 @@ export function LargoAnswerMessage({
   onFollowup,
   question,
   turnId,
+  compareCard,
+  actions,
+  sessionId,
+  ticker,
 }: {
   content: string;
   source?: string | null;
   createdAt?: string | null;
-  /** A real envelope from the query API once #59 ships; preferred when present. */
   envelope?: BieAnswerEnvelope | null;
   streaming?: boolean;
   className?: string;
   onFollowup?: (q: string) => void;
-  /** The question this answer replies to. Used ONLY to pick which block leads in the desk read —
-   *  see answer-layout.ts. Optional everywhere: without it the card renders the default order. */
   question?: string | null;
-  /** The persisted turn behind this answer, so a consumer can name the exact turn it refers to. */
   turnId?: number | null;
+  compareCard?: HelixThermalCompareCard | null;
+  actions?: LargoAction[];
+  sessionId?: string;
+  ticker?: string | null;
 }) {
+  const [shareState, setShareState] = useState<"idle" | "sending" | "done" | "err">("idle");
   const fallback = <LargoMessageBody content={content} className={className} />;
 
   const rich = useMemo<ReactNode | null>(() => {
@@ -71,9 +81,30 @@ export function LargoAnswerMessage({
         const { caveats } = splitAnswerCaveats(content);
         return (
           <>
+            {compareCard && <LargoCompareCard card={compareCard} />}
             <LargoDeskRead envelope={envelope} question={question} markdownSource={content} />
+            <LargoActionsBar actions={actions} sessionId={sessionId} />
             <BieScenarioCards scenarios={envelope.scenarios} />
             <LargoAnswerCaveats caveats={caveats} />
+            {!streaming && (
+              <button
+                type="button"
+                className="largo-share-discord-btn"
+                disabled={shareState === "sending"}
+                onClick={() => {
+                  setShareState("sending");
+                  void shareLargoToDiscord({
+                    answer: content,
+                    headline: envelope.headline ?? null,
+                    ticker: ticker ?? null,
+                  })
+                    .then(() => setShareState("done"))
+                    .catch(() => setShareState("err"));
+                }}
+              >
+                {shareState === "done" ? "Shared" : shareState === "err" ? "Share failed" : "Share to Discord"}
+              </button>
+            )}
           </>
         );
       }
@@ -110,7 +141,7 @@ export function LargoAnswerMessage({
     } catch {
       return null;
     }
-  }, [content, source, createdAt, envelope, streaming, className, onFollowup, question]);
+  }, [content, source, createdAt, envelope, streaming, className, onFollowup, question, compareCard, actions, sessionId, ticker, shareState]);
 
 
   if (!rich) return fallback;

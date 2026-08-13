@@ -92,6 +92,28 @@ import {
   effectiveEntities,
   formatConversationBlock,
 } from "@/lib/largo/core/conversation";
+import { questionWantsCompareCard } from "@/lib/largo/desk-prompts";
+import { helixThermalCompareForLargo, type HelixThermalCompareCard } from "@/lib/largo/helix-thermal-compare";
+import { formatDepthBlock, largoDepthConfig, parseLargoDepth, type LargoDepth } from "@/lib/largo/largo-depth";
+import { buildLargoActions, type LargoAction } from "@/lib/largo/largo-actions";
+import {
+  fetchLargoSessionMetadata,
+  maybePersistWatchlistFromQuestion,
+  updateLargoSessionMetadata,
+} from "@/lib/largo/largo-store";
+import {
+  formatCalibrationBlock,
+  formatMemberContextBlock,
+  formatRegimePersonalityBlock,
+  recentUserQuestions,
+} from "@/lib/largo/member-context";
+import {
+  formatPlayContextBlock,
+  formatWatchlistBlock,
+  type LargoPlayContext,
+} from "@/lib/largo/session-metadata";
+import { marketPhaseFromEt } from "@/lib/largo/core/system-status";
+import { getUserTier } from "@/lib/auth-access";
 
 const LARGO_TOOL_LOOP_TIMEOUT_MS = (() => {
   const raw = process.env.LARGO_TOOL_LOOP_TIMEOUT_MS?.trim();
@@ -121,6 +143,13 @@ export function isSseClientDisconnect(err: unknown): boolean {
   return msg.includes("Controller is already closed") || msg.includes("Invalid state");
 }
 
+export type LargoTurnOptions = {
+  depth?: LargoDepth;
+  /** When true, temporal layer treats the question as explicitly historical. */
+  historicalMode?: boolean;
+  playContext?: LargoPlayContext | null;
+};
+
 export type LargoStreamEvent =
   | AnthropicToolLoopEvent
   | { type: "status"; message: string }
@@ -131,23 +160,13 @@ export type LargoStreamEvent =
       source: string;
       tools_used: string[];
       followups: string[];
-      // Always present (audit finding: previously the specific unverified numbers were never
-      // surfaced even when the in-text caveat fired, and never at all below its total>=4 &&
-      // coverage<0.5 threshold) — the raw ClaimVerification so any caller can inspect exactly
-      // which numeric claims traced to this turn's source data, independent of the in-text
-      // caveat's own display threshold.
       verification: ClaimVerification;
-      /** The instrument Largo resolved — see runLargoQuery's return type. */
       ticker?: string | null;
-      /** The persisted turn — see runLargoQuery's return type for why it is top-level. */
       turn_id?: number | null;
-      // The structured answer envelope. Since the BIE composer was removed this is produced by
-      // PARSING Largo's own contract-conforming reply (answer-contract.ts) rather than by a
-      // composer — so it is present on any answer that follows the mandatory section template, and
-      // absent when the model drifted off it. The client renders it as evidence/level/scenario
-      // cards; when absent it falls back to the raw `answer` markdown, which is what every Largo
-      // answer rendered as before this shipped.
       envelope?: BieAnswerEnvelope;
+      compare_card?: HelixThermalCompareCard | null;
+      actions?: LargoAction[];
+      depth?: LargoDepth;
     }
   | { type: "error"; message: string };
 
@@ -226,7 +245,8 @@ function buildDynamicSystem(
   question: string,
   history: AnthropicMessage[],
   liveFeedBlock: string,
-  platformVitalsBlock: string
+  platformVitalsBlock: string,
+  extraBlocks = ""
 ): AnthropicSystemBlock[] {
   const intent = analyzeLargoQuestion(question, history);
   const platformSection = platformVitalsBlock.trim()
@@ -236,7 +256,7 @@ function buildDynamicSystem(
 
 Session date (ET): ${todayEtYmd()}
 
-${liveFeedBlock}${platformSection}
+${liveFeedBlock}${platformSection}${extraBlocks}
 
 ${intent.guidance}
 
@@ -303,19 +323,22 @@ async function prepareLargoTurn(
   /** Validated image blocks for this turn — `[]` for a text-only question.
    *  REQUIRED, not defaulted: a defaulted parameter is how the streaming call site silently
    *  dropped every attachment and answered about a chart nobody sent. */
-  images: ImageBlock[]
+  images: ImageBlock[],
+  turnOptions: LargoTurnOptions = {}
 ): Promise<{
   sid: string;
   history: AnthropicMessage[];
   system: AnthropicSystemBlock[];
   filteredTools: typeof LARGO_TOOL_DEFS;
   toolsUsed: string[];
-  /** The live feed's own tool payloads — see the return site for why the card needs them. */
   liveFeedResults: unknown[];
   tickerHint: string | null;
   viewer: ToolGuardViewer;
   timeframe: Timeframe;
   persistedQuestion: string;
+  depth: LargoDepth;
+  compareCard: HelixThermalCompareCard | null;
+  sessionMetadata: Awaited<ReturnType<typeof fetchLargoSessionMetadata>>;
 }> {
   let sid = sessionId.trim() || `web-${userId}-${Date.now()}`;
   try {
@@ -335,6 +358,15 @@ async function prepareLargoTurn(
   }
 
   const history = await fetchLargoHistory(sid, userId);
+  const sessionMetadata = await fetchLargoSessionMetadata(sid, userId);
+  const depth = parseLargoDepth(turnOptions.depth ?? sessionMetadata.depth ?? "deep");
+  void updateLargoSessionMetadata(sid, userId, { depth }).catch(() => {});
+  void maybePersistWatchlistFromQuestion(sid, userId, question).catch(() => {});
+  if (turnOptions.playContext?.ticker) {
+    void updateLargoSessionMetadata(sid, userId, { play_context: turnOptions.playContext }).catch(
+      () => {}
+    );
+  }
   // Read the previous turn's timestamp BEFORE the current question is appended. Fails soft to
   // null (no DB, first turn, unusable timestamp) — a missing window start is reported as missing.
   const previousTurn = await fetchPreviousUserTurn(sid, userId).catch(() => null);
@@ -391,6 +423,10 @@ async function prepareLargoTurn(
   const conversationBlock = formatConversationBlock(conversation);
 
   const timeframe = applyConversationToTimeframe(resolveTimeframe(question, Date.now()), conversation);
+  if (turnOptions.historicalMode && !timeframe.historical) {
+    timeframe.historical = true;
+    timeframe.label = timeframe.label || "Historical (member-selected)";
+  }
   const temporalBlock = formatTemporalBlock(
     timeframe,
     temporalConflicts(timeframe, rankCapabilities(question, LARGO_CAPABILITIES.length))
@@ -457,11 +493,49 @@ async function prepareLargoTurn(
   const platformVitalsBlock = await loadLargoPlatformSnapshotBlock().catch(() => "");
   if (platformVitalsBlock) toolsUsed.push("platform_vitals_prefetch");
 
+  const intentTicker = intent.tickerHint ?? "SPX";
+  let compareCard: HelixThermalCompareCard | null = null;
+  if (questionWantsCompareCard(question)) {
+    compareCard = await helixThermalCompareForLargo(intentTicker).catch(() => null);
+    if (compareCard) toolsUsed.push("get_helix_thermal_compare");
+  }
+
+  const now = new Date();
+  const et = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hour: "numeric",
+    minute: "numeric",
+    weekday: "short",
+    hour12: false,
+  }).formatToParts(now);
+  const part = (t: string) => et.find((p) => p.type === t)?.value ?? "";
+  const DAYS: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  const marketPhase = marketPhaseFromEt(DAYS[part("weekday")] ?? 1, Number(part("hour")) * 60 + Number(part("minute")));
+
+  const tier = await getUserTier(userId).catch(() => null);
+  const isAdmin = await isAdminUser(userId).catch(() => false);
+  const extraBlocks =
+    formatDepthBlock(depth) +
+    formatWatchlistBlock(sessionMetadata.watchlist) +
+    formatPlayContextBlock(turnOptions.playContext ?? sessionMetadata.play_context) +
+    formatMemberContextBlock({
+      tier,
+      isAdmin,
+      recentQuestions: recentUserQuestions(history.slice(0, -1)),
+      watchlist: sessionMetadata.watchlist,
+    }) +
+    formatRegimePersonalityBlock(marketPhase) +
+    formatCalibrationBlock() +
+    (compareCard
+      ? `\n\n## HELIX vs Thermal (prefetched — cite these numbers)\n${JSON.stringify(compareCard, null, 0).slice(0, 4000)}\n`
+      : "");
+
   const system = buildDynamicSystem(
     question,
     history.slice(0, -1),
     liveFeedBlock + knowledgeBlock + temporalBlock + capabilityBlock + entityBlock + ontologyBlock + tradeBlock + conversationBlock + planBlock + drillDownBlock + formatImageBlock(images.length),
-    platformVitalsBlock
+    platformVitalsBlock,
+    extraBlocks
   );
 
   resetLargoSpxDeskCache(userId);
@@ -489,7 +563,7 @@ async function prepareLargoTurn(
   // Entitlement is resolved ONCE per turn, not per tool call — a 12-round loop would otherwise
   // make up to 12 Clerk reads for an answer that cannot change mid-turn. Fails CLOSED to
   // non-admin: if we cannot establish that someone is an admin, they are not treated as one.
-  const isAdmin = await isAdminUser(userId).catch(() => false);
+  const isAdminViewer = isAdmin;
 
   return {
     sid,
@@ -497,34 +571,14 @@ async function prepareLargoTurn(
     system,
     filteredTools,
     toolsUsed,
-    /**
-     * THE LIVE FEED'S OWN PAYLOADS, so the card can see what the answer saw.
-     *
-     * `captureLargoLiveFeed` runs a dozen REAL tools before the model plans — market context, SPX
-     * structure, GEX regime, the 0DTE board, net flow, the banger and swing boards — and the
-     * results were rendered into the system prompt as TEXT and then dropped. `live_feed_capture` is
-     * pushed onto `toolsUsed` for display, which makes it look like a tool whose output was
-     * captured. Nothing captured it.
-     *
-     * MEASURED LIVE 2026-08-11. "what is the SPX gamma picture right now" and "Create an image for
-     * tomorrows NH plays" each ran exactly `live_feed_capture` + `platform_vitals_prefetch` and
-     * NOTHING else — Largo answered both straight from the feed, correctly and in detail, and the
-     * card refused with `insufficient_evidence` and an EMPTY signal list. The evidence existed, was
-     * fresh, was the same evidence the prose quoted, and had no path to the renderer. That is the
-     * fourth instance of this exact class in this file alone.
-     *
-     * Ordered AFTER the tool loop's own results at the call sites below, deliberately: the
-     * extractors take the FIRST match (`findPositioning`, `findQuote`), so an explicitly-called
-     * tool still wins and this can only ADD evidence where there was none.
-     *
-     * The one-snapshot rule is preserved exactly — these ARE the payloads the answer was written
-     * from, captured in the same turn, not a re-query.
-     */
     liveFeedResults: Object.values(liveFeed).filter((v) => v != null),
     tickerHint: intent.tickerHint ?? null,
-    viewer: { userId, isAdmin },
+    viewer: { userId, isAdmin: isAdminViewer },
     timeframe,
     persistedQuestion: persistedQuestionText(question, images.length),
+    depth,
+    compareCard,
+    sessionMetadata,
   };
 }
 
@@ -589,7 +643,8 @@ export async function runLargoQuery(
   /** Validated image blocks for this turn — `[]` for a text-only question.
    *  REQUIRED, not defaulted: a defaulted parameter is how the streaming call site silently
    *  dropped every attachment and answered about a chart nobody sent. */
-  images: ImageBlock[]
+  images: ImageBlock[],
+  turnOptions: LargoTurnOptions = {}
 ): Promise<{
   answer: string;
   session_id: string;
@@ -597,23 +652,12 @@ export async function runLargoQuery(
   tools_used: string[];
   followups: string[];
   verification: ClaimVerification;
-  /** The instrument Largo resolved for this turn — the contextual rail's single source. */
   ticker: string | null;
-  /**
-   * The persisted turn, TOP-LEVEL and independent of the envelope.
-   *
-   * MEASURED LIVE 2026-08-11. The id used to ride ONLY on `envelope.turnId`, and
-   * `envelopeFromContract` returns null whenever the model's reply misses the section contract —
-   * so a turn that persisted perfectly well could still report `turnId: null` to the client, and
-   * the failure was silent. Any consumer that needs to name the exact turn (replay, follow-ups,
-   * the record) has to be able to get the id even when the envelope did not build.
-   *
-   * Keeping it on the envelope as well would have been the smaller diff and the wrong shape: the
-   * turn id is a property of the TURN, not of whether the answer happened to parse into sections.
-   * `envelope.turnId` stays populated for older clients.
-   */
   turn_id: number | null;
   envelope?: BieAnswerEnvelope;
+  compare_card?: HelixThermalCompareCard | null;
+  actions?: LargoAction[];
+  depth?: LargoDepth;
 }> {
   const startedAt = Date.now();
 
@@ -625,14 +669,16 @@ export async function runLargoQuery(
 
   const {
     sid, history, system, filteredTools, toolsUsed, tickerHint, viewer, timeframe, persistedQuestion,
-    liveFeedResults,
+    liveFeedResults, depth, compareCard,
   } = await prepareLargoTurn(
     question,
     sessionId,
     userId,
-    images
+    images,
+    turnOptions
   );
 
+  const depthCfg = largoDepthConfig(depth);
   const capturedResults: unknown[] = [];
   // Per-tool timings/outcomes for the turn. Names, ms and byte counts only — never inputs or
   // outputs, which carry tickers, user ids and the member's positions.
@@ -643,10 +689,10 @@ export async function runLargoQuery(
       system,
       tools: filteredTools,
       messages: history,
-      model: LARGO_MODEL,
-      maxTokens: 4096,
-      maxRounds: LARGO_TOOL_LOOP_MAX_ROUNDS,
-      timeoutMs: LARGO_TOOL_LOOP_TIMEOUT_MS,
+      model: depthCfg.model,
+      maxTokens: depthCfg.maxTokens,
+      maxRounds: depthCfg.maxRounds,
+      timeoutMs: depthCfg.timeoutMs,
       maxRetries: 1,
       cacheSystem: true,
       aiGate: "largo",
@@ -763,6 +809,7 @@ export async function runLargoQuery(
       await generateLargoFollowups(question, text, tickerHint),
       envelope?.headline ?? ""
     );
+    const actions = buildLargoActions({ ticker: tickerHint, envelope, compareCard });
 
     return {
       answer: text,
@@ -771,12 +818,12 @@ export async function runLargoQuery(
       tools_used: Array.from(new Set(toolsUsed)),
       followups,
       verification,
-      // The instrument LARGO resolved, handed to the client so the contextual rail shows the same
-      // thing the answer is about. A client re-guessing from the question text could show NVDA
-      // beside an answer about SPX, and nothing would surface the disagreement.
       ticker: tickerHint,
       turn_id: turnId ?? null,
       envelope,
+      compare_card: compareCard,
+      actions,
+      depth,
     };
   } catch (error) {
     logClaudeTurn({
@@ -818,7 +865,8 @@ export async function runLargoQueryStream(
   onEvent: (event: LargoStreamEvent) => void,
   /** Validated image blocks for this turn — `[]` for a text-only question. Required for the
    *  same reason as runLargoQuery's: see that signature. */
-  images: ImageBlock[]
+  images: ImageBlock[],
+  turnOptions: LargoTurnOptions = {}
 ): Promise<void> {
   const startedAt = Date.now();
   const emitStatus = (message: string) => {
@@ -841,13 +889,15 @@ export async function runLargoQueryStream(
 
   const {
     sid, history, system, filteredTools, toolsUsed, tickerHint, viewer, timeframe, persistedQuestion,
-    liveFeedResults,
+    liveFeedResults, depth, compareCard,
   } = await prepareLargoTurn(
     question,
     sessionId,
     userId,
-    images
+    images,
+    turnOptions
   );
+  const depthCfg = largoDepthConfig(depth);
   const capturedResults: unknown[] = [];
   // Per-tool timings/outcomes for the turn. Names, ms and byte counts only — never inputs or
   // outputs, which carry tickers, user ids and the member's positions.
@@ -867,13 +917,11 @@ export async function runLargoQueryStream(
       system,
       tools: filteredTools,
       messages: history,
-      model: LARGO_MODEL,
-      maxTokens: 4096,
-      maxRounds: LARGO_TOOL_LOOP_MAX_ROUNDS,
-      // Per-round timeout so a single slow round falls back to partial text instead of 500ing (#77 E).
-      timeoutMs: LARGO_TOOL_LOOP_TIMEOUT_MS,
+      model: depthCfg.model,
+      maxTokens: depthCfg.maxTokens,
+      maxRounds: depthCfg.maxRounds,
+      timeoutMs: depthCfg.timeoutMs,
       maxRetries: 1,
-      // Cache the stable Largo system prompt — saves ~50% on system-token cost for repeat calls.
       cacheSystem: true,
       aiGate: "largo",
       // PROGRESSIVE ANSWER. Tokens are forwarded as the model writes, so the member watches the
@@ -1009,14 +1057,8 @@ export async function runLargoQueryStream(
       await generateLargoFollowups(question, text, tickerHint),
       envelope?.headline ?? ""
     );
+    const actions = buildLargoActions({ ticker: tickerHint, envelope, compareCard });
 
-    // Replace the progressively-streamed text with the AUTHORITATIVE version.
-    //
-    // `text` here is the only copy that has been through verifyClaims/applyVerificationCaveat and
-    // the plan-timeframe caveat. What streamed is the model's raw output, which by construction
-    // lacks any caveat that fired after the loop finished. Emitting a reset first means a consumer
-    // that only reads tokens — and never looks at `done` — still ends up holding the verified text
-    // rather than the unverified one. Appending without the reset would render the answer twice.
     emit({ type: "answer_reset" } as LargoStreamEvent);
     emit({ type: "token", text } as LargoStreamEvent);
     emit({
@@ -1030,6 +1072,9 @@ export async function runLargoQueryStream(
       turn_id: turnId ?? null,
       verification,
       envelope,
+      compare_card: compareCard,
+      actions,
+      depth,
     });
   } catch (error) {
     if (isSseClientDisconnect(error)) return;

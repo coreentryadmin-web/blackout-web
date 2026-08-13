@@ -8,6 +8,7 @@ import { useRef, useState } from "react";
 import { useIosKeyboardInset } from "@/hooks/useIosKeyboardInset";
 import {
   LARGO_SUGGESTIONS,
+  LARGO_DESK_PROMPTS,
   largoToolLabel,
   useLargoChat,
 } from "@/hooks/useLargoChat";
@@ -64,6 +65,12 @@ export function LargoTerminal({
     attachError,
     addAttachments,
     removeAttachment,
+    depth,
+    toggleDepth,
+    historicalMode,
+    toggleHistoricalMode,
+    chartGuide,
+    setChartGuide,
   } = useLargoChat();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -135,6 +142,10 @@ export function LargoTerminal({
             onRegenerate={regenerate}
             canRegenerate={canRegenerate}
             loading={loading}
+            depth={depth}
+            onToggleDepth={toggleDepth}
+            historicalMode={historicalMode}
+            onToggleHistorical={toggleHistoricalMode}
             onToggleFullscreen={onToggleFullscreen ?? (() => {})}
             isFullscreen={isFullscreen}
             fullscreenSupported={fullscreenSupported}
@@ -187,14 +198,10 @@ export function LargoTerminal({
                     <LargoAnswerMessage
                       content={msg.content}
                       envelope={msg.envelope}
-                      // The turn and the auto-render directive. Both were plumbed all the way to
-                      // this component's props and then never handed to it, so the server's
-                      // "the member asked for an image" signal died one call site short of the
-                      // thing that acts on it.
                       turnId={msg.turnId ?? null}
-                      // The question this answer replies to — the preceding user turn. Used only to
-                      // choose which block leads in the desk read; a missing match renders the
-                      // default order, which is always correct.
+                      compareCard={msg.compareCard}
+                      actions={msg.actions}
+                      sessionId={activeSessionId}
                       question={
                         idx > 0 && messages[idx - 1]?.role === "user" ? messages[idx - 1]?.content : null
                       }
@@ -202,6 +209,7 @@ export function LargoTerminal({
                         loading && idx === messages.length - 1 && msg.role === "assistant"
                       }
                       className={fullPage ? "text-sm md:text-[15px] lg:text-base" : "text-sm"}
+                      onFollowup={(q) => void runQuery(q)}
                     />
                   )
                 ) : (
@@ -255,15 +263,16 @@ export function LargoTerminal({
             >
               <p className="largo-suggestions-label">Try asking</p>
               <div className="largo-suggestions-grid">
-                {LARGO_SUGGESTIONS.map((s) => (
+                {LARGO_DESK_PROMPTS.map((p) => (
                   <button
-                    key={s}
+                    key={p.id}
                     type="button"
                     className="largo-suggestion-chip"
-                    onClick={() => void runQuery(s)}
+                    onClick={() => void runQuery(p.question)}
+                    title={p.hint}
                   >
                     <span aria-hidden className="largo-suggestion-arrow">▸</span>
-                    {s}
+                    {p.label}
                   </button>
                 ))}
               </div>
@@ -312,6 +321,15 @@ export function LargoTerminal({
 
         {/* Staged attachments sit ABOVE the input, not inside it: the member must be able to see
             exactly what is about to be sent, and remove one, before committing the question. */}
+        {(chartGuide || attachments.length > 0) && (
+          <p className="largo-chart-guide px-2">
+            Chart attached — ask: &quot;Where is invalidation on this setup?&quot; or &quot;What levels matter?&quot;
+            <button type="button" className="ml-2 text-cyan-400 underline" onClick={() => setChartGuide(false)}>
+              Dismiss
+            </button>
+          </p>
+        )}
+
         {(attachments.length > 0 || attachError) && (
           <div className="largo-attach-tray">
             {attachments.map((a, i) => (
