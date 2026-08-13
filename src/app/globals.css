@@ -17822,10 +17822,25 @@ body::before {
 
 .thermal-desk-view-tabs [role="tab"] {
   border-radius: 999px;
-  padding: 0.38rem 0.85rem;
+  padding: 0.42rem 0.95rem;
+  min-height: 2rem;
   font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.thermal-desk-freshness {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.gex-matrix-legend {
+  padding-top: 0.15rem;
+  border-top: 1px solid rgba(125, 211, 252, 0.12);
 }
 
 .thermal-desk-view-tabs [role="tab"][aria-selected="true"] {

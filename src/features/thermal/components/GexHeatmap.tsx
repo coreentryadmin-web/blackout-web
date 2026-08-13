@@ -2156,7 +2156,7 @@ function DarkPoolRail({ darkPoolLevels }: { darkPoolLevels: DarkPoolLevel[] | nu
   return (
     <div className="rounded-xl border border-white/10 bg-[rgba(8,9,14,0.5)] px-4 py-3">
       <div className="mb-2.5 flex items-center justify-between">
-        <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-mute">
+        <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-sky-300/75">
           Dark-pool levels
         </span>
         <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-sky-300/75">
@@ -2236,7 +2236,7 @@ function FlowSummary({
     <div className="rounded-xl border border-white/10 bg-[rgba(8,9,14,0.5)] px-4 py-3">
       <div className="mb-2.5 flex items-center justify-between">
         <span className="flex items-center gap-2">
-          <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-mute">
+          <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-sky-300/75">
             Flow today
           </span>
           <Badge tone="bull" size="sm">
@@ -2434,7 +2434,7 @@ function AlertsStrip({ events }: { events: GexEvent[] }) {
     >
       <div className="mb-2 flex items-center justify-between">
         <span className="flex items-center gap-2">
-          <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-mute">
+          <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-sky-300/75">
             Positioning alerts
           </span>
           <Badge tone="accent" size="sm">
@@ -2548,7 +2548,7 @@ function CompactLevel({ cell }: { cell: LevelCell }) {
       <span
         className={clsx(
           "flex items-center gap-1 font-mono text-[8px] uppercase tracking-[0.16em]",
-          cell.anchor ? "text-white" : "text-mute"
+          cell.anchor ? "text-white" : "text-sky-300/75"
         )}
       >
         {cell.anchor && <AnchorGlyph size={9} />}
@@ -2559,7 +2559,7 @@ function CompactLevel({ cell }: { cell: LevelCell }) {
         data-level-value={cell.key}
         className={clsx(
           "font-mono text-[15px] font-bold leading-none tabular-nums",
-          cell.anchor ? "text-white" : active ? t.value : "text-white/55"
+          cell.anchor ? "text-white" : active ? t.value : "text-sky-300/55"
         )}
       >
         {cell.value}
@@ -2669,12 +2669,12 @@ function GexDepthLadderView({
         <span
           className={clsx(
             "w-[4.5rem] shrink-0 font-mono text-[10px] tabular-nums",
-            buy ? "text-emerald-300" : l.direction === "sell" ? "text-rose-300" : "text-white/25"
+            buy ? "text-emerald-300" : l.direction === "sell" ? "text-rose-300" : "text-sky-300/55"
           )}
         >
           {l.direction === "flat" ? "·" : fmtMoney(Math.abs(l.notional))}
         </span>
-        <span className="hidden w-[4.75rem] shrink-0 font-mono text-[9px] uppercase tracking-wider text-white/30 sm:inline">
+        <span className="hidden w-[4.75rem] shrink-0 font-mono text-[9px] uppercase tracking-wider text-sky-300/65 sm:inline">
           {tag ?? ""}
         </span>
       </div>
@@ -2690,18 +2690,18 @@ function GexDepthLadderView({
         <h3 className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-sky-300">
           Forced dealer flow
         </h3>
-        <span className="font-mono text-[9px] uppercase tracking-wider text-white/35">
+        <span className="font-mono text-[9px] uppercase tracking-wider text-sky-300/70">
           {underlying} · per {(depth.step_pct * 100).toFixed(1)}% band
         </span>
       </div>
-      <p className="mb-3 text-[11px] leading-snug text-white/45">
+      <p className="mb-3 text-[11px] leading-snug text-sky-300/80">
         Stock dealers must trade to stay hedged <em>if price gets there</em> — not resting orders.
         Buying left, selling right.
       </p>
 
       {targetFlow && targetFlow.bands > 0 && (
         <p
-          className="mb-3 rounded-lg border border-cyan-400/25 bg-cyan-400/[0.06] px-3 py-2 text-[11px] leading-snug text-white/70"
+          className="mb-3 rounded-lg border border-cyan-400/25 bg-cyan-400/[0.06] px-3 py-2 text-[11px] leading-snug text-sky-100"
           title="Forced dealer hedging flow standing between the live price and Night Hawk's target for this ticker."
         >
           <span className="font-mono text-[10px] uppercase tracking-widest text-cyan-400">
@@ -2715,7 +2715,7 @@ function GexDepthLadderView({
           stands between here and there
           {/* Never let a figure that stopped at the ladder's edge read as the whole story. */}
           {!targetFlow.complete && (
-            <span className="text-white/40">
+            <span className="text-sky-300/70">
               {" "}
               — measured only to {fmtStrike(targetFlow.coveredTo)}, the edge of this ladder; the
               rest of the path is beyond it.
@@ -2741,7 +2741,7 @@ function GexDepthLadderView({
                   {fmtStrike(spot)}
                 </span>
                 <span aria-hidden className="h-px min-w-0 flex-1 bg-white/30" />
-                <span className="w-[4.5rem] shrink-0 font-mono text-[9px] uppercase tracking-wider text-white/60">
+                <span className="w-[4.5rem] shrink-0 font-mono text-[9px] uppercase tracking-wider text-sky-300/80">
                   spot
                 </span>
                 <span className="hidden w-[4.75rem] shrink-0 sm:inline" />
@@ -2781,7 +2781,7 @@ function GexDepthLadderView({
           on decides whether dealer hedging steadies this tape or accelerates it, and that is the
           single most actionable thing on this panel. */}
       {depth.crossing != null && (
-        <p className="mt-2 font-mono text-[10px] leading-snug text-white/50">
+        <p className="mt-2 font-mono text-[10px] leading-snug text-sky-300/75">
           {spot < depth.crossing ? (
             <>
               Spot is <span className="text-bear-text">below</span> the modelled flip — dealers are
@@ -2817,7 +2817,7 @@ function GexDepthLadderView({
 
       {/* The honest limits. These are not a disclaimer — a reader who thinks this is resting
           liquidity will size a trade wrong, so they belong on the surface, not in a doc. */}
-      <p className="mt-2 text-[10px] leading-snug text-white/30">
+      <p className="mt-2 text-[10px] leading-snug text-sky-300/65">
         Conditional flow, not resting liquidity. Assumes dealers hedge fully and continuously, that
         calls are dealer-long and puts dealer-short, and holds volatility fixed across the ladder.
       </p>
@@ -2831,7 +2831,7 @@ function MatrixLegend({ lens, vocab }: { lens: GexHeatmapLens; vocab: LensVocab 
   const items = heatmapLegendItems(lens, vocab);
   return (
     <div
-      className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-sky-300/70"
+      className="gex-matrix-legend mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 font-mono text-[9px] uppercase tracking-[0.16em] text-sky-300/70"
       aria-label={`${vocab.noun} matrix colour key`}
     >
       {items.map((item) => {
@@ -2894,7 +2894,7 @@ function KeyLevelBox({
       )}
     >
       <div className="mb-2 flex items-center justify-between">
-        <span className="font-mono text-[9px] uppercase tracking-[0.22em] text-mute">
+        <span className="font-mono text-[9px] uppercase tracking-[0.22em] text-sky-300/75">
           Key levels
         </span>
         <span
@@ -3888,15 +3888,19 @@ export function GexHeatmap({
   }, [scopedExpiryLabel, zeroDteExpiry]);
 
   const keyLevelsScopeKicker = useMemo(
-    () =>
-      keyLevelsKicker(
+    () => {
+      const base = keyLevelsKicker(
         lensUpper,
         stale ? null : data?.near_term_expiries,
         scopedExpiryLabel
           ? { expiryLabel: fmtExpiry(scopedExpiryLabel), nearSpotGammaShare: scopedShare }
           : null
-      ),
-    [lensUpper, stale, data?.near_term_expiries, scopedExpiryLabel, scopedShare]
+      );
+      // Compare grid shows per-column 0DTE matrices; the key-levels row stays scoped to the
+      // toolbar ticker so members know which name the flip/walls/net row describes.
+      return compare ? `${ticker} · ${base}` : base;
+    },
+    [compare, ticker, lensUpper, stale, data?.near_term_expiries, scopedExpiryLabel, scopedShare]
   );
   // The old ~6 big cards (flip / call wall / put wall / max pain / net / anchor) collapse
   // into ONE compact box of small label-over-value cells. Per-lens cell sets mirror the
@@ -4605,6 +4609,11 @@ export function GexHeatmap({
         <span className="ml-auto" aria-hidden />
 
         <span className="flex flex-wrap items-center gap-2">
+          {!compare && showViewTabs && data?.asof ? (
+            <span className="thermal-desk-freshness hidden sm:inline-flex">
+              <MatrixFreshness asof={data.asof} />
+            </span>
+          ) : null}
           {fastFlash && (
             <span
               role="status"
@@ -4742,13 +4751,13 @@ export function GexHeatmap({
           <span className="font-mono text-[11px] font-bold text-cyan-400 uppercase tracking-widest">
             NH Play Active
           </span>
-          <span className="mx-1.5 text-white/20 text-xs">·</span>
+          <span className="mx-1.5 text-sky-300/35 text-xs">·</span>
           <span className="font-mono text-[11px] text-sky-300 uppercase tracking-wide">
             {String(data.nighthawk_context.play_direction || "").toUpperCase()}
           </span>
           {data.nighthawk_context.grade && (
             <>
-              <span className="mx-1.5 text-white/20 text-xs">·</span>
+              <span className="mx-1.5 text-sky-300/35 text-xs">·</span>
               <span className="font-mono text-[11px] text-cyan-400 font-bold">
                 Grade {data.nighthawk_context.grade}
               </span>
@@ -4888,7 +4897,7 @@ export function GexHeatmap({
                      and omitted entirely on a legacy cached payload, so "unavailable" is a real
                      state a member can hit — say so rather than draw a flat book, which would read
                      as "no dealer flow anywhere". */
-                  <p className="rounded-xl border border-white/10 bg-[rgba(8,9,14,0.4)] px-4 py-6 text-center font-mono text-[11px] text-white/40">
+                  <p className="rounded-xl border border-white/10 bg-[rgba(8,9,14,0.4)] px-4 py-6 text-center font-mono text-[11px] text-sky-300/75">
                     Forced-flow ladder unavailable for this snapshot — it rebuilds on the next
                     matrix refresh.
                   </p>
