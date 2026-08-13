@@ -39,6 +39,7 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
 ## 2026-08-12 — [FEATURE, Largo product roadmap 1–15] Desk prompts, compare card, depth toggle, session memory, morning brief — SHIPPED
+> **kind:** `FINDING`
 
 | Field | Detail |
 |---|---|
