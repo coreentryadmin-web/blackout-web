@@ -13,6 +13,8 @@ import {
   shouldShowStrikeDistancePct,
   strikeDistancePct,
   STRIKE_DISTANCE_PCT_NEAR_SPOT,
+  resolveHeatmapTopHighlightCellStyle,
+  isHeatmapTopHighlightRank,
 } from "./gex-heatmap-display";
 import { distancePct } from "./providers/spx-session";
 
@@ -147,5 +149,27 @@ describe("strike distance from spot", () => {
     assert.equal(shouldShowStrikeDistancePct(spot - 5, spot), false);
     assert.equal(shouldShowStrikeDistancePct(spot + 5, spot), false);
     assert.equal(shouldShowStrikeDistancePct(0, -1), false);
+  });
+});
+
+describe("top highlight cell styles", () => {
+  it("resolveHeatmapTopHighlightCellStyle paints only ranked cells", () => {
+    assert.equal(Object.keys(resolveHeatmapTopHighlightCellStyle(0, 1, undefined, "gex", 50, -80, 100)).length, 0);
+    assert.equal(
+      String(resolveHeatmapTopHighlightCellStyle(50, 1, undefined, "gex", 50, -80, 100).backgroundColor).includes("255, 214, 10"),
+      true,
+    );
+    assert.equal(
+      String(resolveHeatmapTopHighlightCellStyle(-80, undefined, 1, "gex", 50, -80, 100).backgroundColor).includes("217, 123, 255"),
+      true,
+    );
+    assert.notEqual(resolveHeatmapTopHighlightCellStyle(30, 3, undefined, "gex", 50, -80, 100).backgroundColor, undefined);
+    assert.equal(Object.keys(resolveHeatmapTopHighlightCellStyle(10, undefined, undefined, "gex", 50, -80, 100)).length, 0);
+  });
+
+  it("isHeatmapTopHighlightRank is true only inside top-N", () => {
+    assert.equal(isHeatmapTopHighlightRank(1, undefined), true);
+    assert.equal(isHeatmapTopHighlightRank(undefined, 4), true);
+    assert.equal(isHeatmapTopHighlightRank(undefined, undefined), false);
   });
 });

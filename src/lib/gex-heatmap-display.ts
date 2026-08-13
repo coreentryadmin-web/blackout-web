@@ -89,6 +89,65 @@ export function heatmapMatrixExtremeCellStyle(
     : { ...heatmapExtremeNegativeStyle(), ...heatmapExtremeNegativeTextStyle() };
 }
 
+/** Top-N ranked cells per expiry column get color; everything else stays neutral. */
+export const HEATMAP_TOP_HIGHLIGHT_COUNT = 4;
+
+/** Ranks 2–4 on each side — green/red; rank 1 uses yellow/purple via heatmapMatrixExtremeCellStyle. */
+export function heatmapTopRankCellStyle(
+  value: number,
+  rank: number,
+  lens: GexHeatmapLens,
+  peakValue: number,
+): CSSProperties {
+  const rankPeak = peakValue * (1 - (rank - 2) * 0.12);
+  return {
+    ...heatmapCellStyle(value, rankPeak, lens),
+    ...heatmapCellTextStyle(value, rankPeak),
+  };
+}
+
+/**
+ * Resolve cell paint for the top-8 ladder rule shared by Thermal compare grids and
+ * the single-ticker matrix: #1 positive yellow, #2–4 green, #1 negative purple, #2–4 red.
+ */
+export function resolveHeatmapTopHighlightCellStyle(
+  value: number,
+  posRank: number | undefined,
+  negRank: number | undefined,
+  lens: GexHeatmapLens,
+  rank1PositiveValue: number,
+  rank1NegativeValue: number,
+  peakFallback: number,
+): CSSProperties {
+  if (!value) return {};
+  if (posRank === 1) return heatmapMatrixExtremeCellStyle("positive");
+  if (negRank === 1) return heatmapMatrixExtremeCellStyle("negative");
+  if (posRank != null && posRank > 1) {
+    return heatmapTopRankCellStyle(
+      value,
+      posRank,
+      lens,
+      rank1PositiveValue || peakFallback,
+    );
+  }
+  if (negRank != null && negRank > 1) {
+    return heatmapTopRankCellStyle(
+      value,
+      negRank,
+      lens,
+      Math.abs(rank1NegativeValue) || peakFallback,
+    );
+  }
+  return {};
+}
+
+export function isHeatmapTopHighlightRank(
+  posRank: number | undefined,
+  negRank: number | undefined,
+): boolean {
+  return posRank != null || negRank != null;
+}
+
 /**
  * The matrix's colour key.
  *

@@ -59,8 +59,11 @@ import {
   heatmapCellTextStyle,
   heatmapMatrixExtremeCellStyle,
   heatmapLegendItems,
+  isHeatmapTopHighlightRank,
+  resolveHeatmapTopHighlightCellStyle,
   type GexHeatmapLens,
 } from "@/lib/gex-heatmap-display";
+import { compactPerExpiryTopHighlights } from "@/features/thermal/lib/thermal-compact-matrix";
 import { depthBandForPrice } from "@/lib/gex-depth";
 import {
   readGexHeatmapSessionCache,
@@ -3394,6 +3397,12 @@ export function GexHeatmap({
     return filtered.length ? filtered : expiries;
   }, [expiries, selectedExpiries]);
 
+  /** Top 4 + / top 4 − per expiry column — same ladder rule as compare grids. */
+  const matrixTopHighlights = useMemo(
+    () => compactPerExpiryTopHighlights(cells, strikes, matrixExpiries),
+    [cells, strikes, matrixExpiries],
+  );
+
   // Warm the ACTIVE preset's session cache so its columns paint together.
   //
   // This effect arrived with the fixed SPY|SPX|QQQ triple and warmed a constant. The grid is now a
@@ -4373,14 +4382,26 @@ export function GexHeatmap({
                       const isDayKing =
                         perDayAnchorByExpiry[e] === strike && has && v !== 0;
                       const dayExtremes = perDayExtremesByExpiry[e];
-                      const isDayCallWallCell = has && dayExtremes?.callWall === strike;
-                      const isDayPutWallCell = has && dayExtremes?.putWall === strike;
+                      const hl = matrixTopHighlights[e];
+                      const posRank = hl?.topPositive[strike];
+                      const negRank = hl?.topNegative[strike];
+                      const isHighlighted = isHeatmapTopHighlightRank(posRank, negRank);
+                      const isDayCallWallCell = posRank === 1;
+                      const isDayPutWallCell = negRank === 1;
                       const shiftLeader = shiftLeaderCells.get(gexMatrixShiftCellKey(strike, e));
                       const extremeTitle = isDayCallWallCell
                         ? `Highest positive ${vocab.noun.toLowerCase()} for ${fmtHeatmapExpiry(e)}`
                         : isDayPutWallCell
                           ? `Highest negative ${vocab.noun.toLowerCase()} for ${fmtHeatmapExpiry(e)}`
                           : undefined;
+                      const rank1Pos =
+                        dayExtremes?.callWall != null
+                          ? (cells[String(dayExtremes.callWall)]?.[e] ?? 0)
+                          : 0;
+                      const rank1Neg =
+                        dayExtremes?.putWall != null
+                          ? (cells[String(dayExtremes.putWall)]?.[e] ?? 0)
+                          : 0;
 
                       return (
                         <td
@@ -4390,24 +4411,28 @@ export function GexHeatmap({
                             shiftLeader && "gex-matrix-cell-with-badge",
                             has &&
                               val > 0 &&
+                              isHighlighted &&
                               !isDayCallWallCell &&
                               (lens === "gex" ? "text-emerald-300" : posColorClass),
                             has &&
                               val < 0 &&
+                              isHighlighted &&
                               !isDayPutWallCell &&
                               (lens === "gex" ? "text-rose-300" : "text-bear-text"),
+                            has && !isHighlighted && "text-sky-300/80",
                             !has && "text-sky-300/25"
                           )}
                           style={{
-                            ...(has
-                              ? isDayCallWallCell
-                                ? heatmapMatrixExtremeCellStyle("positive")
-                                : isDayPutWallCell
-                                  ? heatmapMatrixExtremeCellStyle("negative")
-                                  : {
-                                      ...heatmapCellStyle(val, peak, matrixLens),
-                                      ...heatmapCellTextStyle(val, peak),
-                                    }
+                            ...(has && val !== 0
+                              ? resolveHeatmapTopHighlightCellStyle(
+                                  val,
+                                  posRank,
+                                  negRank,
+                                  matrixLens,
+                                  rank1Pos,
+                                  rank1Neg,
+                                  peak,
+                                )
                               : {}),
                           }}
                           title={

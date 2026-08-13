@@ -14,9 +14,8 @@ import {
   fmtHeatmapStrike,
   fmtStrikeDistancePct,
   shouldShowStrikeDistancePct,
-  heatmapCellStyle,
-  heatmapCellTextStyle,
-  heatmapMatrixExtremeCellStyle,
+  isHeatmapTopHighlightRank,
+  resolveHeatmapTopHighlightCellStyle,
   type GexHeatmapLens,
 } from "@/lib/gex-heatmap-display";
 import { scrollRowIntoViewCenter } from "@/features/spx/lib/spx-matrix-scroll";
@@ -72,23 +71,6 @@ function todayEtYmd(): string {
     month: "2-digit",
     day: "2-digit",
   }).format(new Date());
-}
-
-/**
- * Ranks 2–4 on each side — green/red only; rank 1 uses yellow/purple via
- * heatmapMatrixExtremeCellStyle. Neutral cells stay uncolored.
- */
-function compactRankedHeatStyle(
-  value: number,
-  rank: number,
-  lens: GexHeatmapLens,
-  peak: number,
-): CSSProperties {
-  const rankPeak = peak * (1 - (rank - 2) * 0.12);
-  return {
-    ...heatmapCellStyle(value, rankPeak, lens),
-    ...heatmapCellTextStyle(value, rankPeak),
-  };
 }
 
 function centerSpotInBox(
@@ -327,26 +309,26 @@ export default function ThermalCompactMatrix({
 
                   let style: CSSProperties = {};
                   if (has && n !== 0) {
-                    if (posRank === 1) {
-                      style = heatmapMatrixExtremeCellStyle("positive");
-                    } else if (negRank === 1) {
-                      style = heatmapMatrixExtremeCellStyle("negative");
-                    } else if (posRank != null && posRank > 1) {
-                      const rank1Val =
-                        day?.callWall != null
-                          ? (data.cells[String(day.callWall)]?.[exp] ?? peak)
-                          : peak;
-                      style = compactRankedHeatStyle(n, posRank, lens, rank1Val);
-                    } else if (negRank != null && negRank > 1) {
-                      const rank1Val =
-                        day?.putWall != null
-                          ? Math.abs(data.cells[String(day.putWall)]?.[exp] ?? peak)
-                          : peak;
-                      style = compactRankedHeatStyle(n, negRank, lens, rank1Val);
-                    }
+                    const rank1Pos =
+                      day?.callWall != null
+                        ? (data.cells[String(day.callWall)]?.[exp] ?? 0)
+                        : 0;
+                    const rank1Neg =
+                      day?.putWall != null
+                        ? (data.cells[String(day.putWall)]?.[exp] ?? 0)
+                        : 0;
+                    style = resolveHeatmapTopHighlightCellStyle(
+                      n,
+                      posRank,
+                      negRank,
+                      lens,
+                      rank1Pos,
+                      rank1Neg,
+                      peak,
+                    );
                   }
 
-                  const isHighlighted = posRank != null || negRank != null;
+                  const isHighlighted = isHeatmapTopHighlightRank(posRank, negRank);
                   const isPosNode = posRank === 1;
                   const isNegNode = negRank === 1;
 
