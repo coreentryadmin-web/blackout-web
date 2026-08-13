@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { test, mock } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -22,6 +22,7 @@ import {
   type GexHeatmap,
   __test_vannaPerShare,
   __test_charmPerShare,
+  __test_resolveHeatmapDividendYieldUncached,
 } from "./polygon-options-gex";
 
 function contract(
@@ -666,4 +667,43 @@ test("vanna/charm magnitudes shift with ETF dividend yield q", () => {
   assert.notEqual(v0, vq);
   assert.notEqual(c0, cq);
   assert.ok(Math.abs(vq) > Math.abs(v0), "typical ETF q raises |vanna| vs q=0 at ATM");
+});
+
+// The inner resolve must THROW (not return 0) when the yield is unavailable. That distinction is
+// the whole reason a transient Polygon blip cannot get pinned into the 1h TTL.REFERENCE cache:
+// server-cache's refreshCache writes the store only on a FULFILLED loader, so a rejection leaves
+// the key unset and the next matrix rebuild retries. If this ever regressed to `return 0`, one bad
+// response would silently reinstate the 10-22% VEX/CHARM under-read for an hour.
+//
+// One mock.module for the whole file with a MUTABLE stub: re-mocking the same specifier per-test
+// does not re-apply once the dynamic import has resolved, so swapping the payload is the only way
+// to exercise several upstream shapes.
+//
+// This replaces the WHOLE ./polygon module (omitted exports read as undefined), but it cannot
+// disturb the rest of the file: polygon-options-gex.ts binds fetchStockSnapshot/fetchIndexSnapshot
+// through a STATIC import that resolved when this file was loaded, above. Only the dynamic
+// import() inside the yield resolver sees the stub.
+let ratiosStub: () => Promise<unknown> = async () => null;
+mock.module("./polygon", {
+  namedExports: { fetchPolygonFinancialRatios: async () => ratiosStub() },
+});
+
+test("dividend-yield resolve THROWS when unavailable so failures are never cached", async () => {
+  ratiosStub = async () => null;
+  await assert.rejects(() => __test_resolveHeatmapDividendYieldUncached("SPY"));
+  ratiosStub = async () => ({ dividend_yield: null });
+  await assert.rejects(() => __test_resolveHeatmapDividendYieldUncached("SPY"));
+});
+
+test("dividend-yield resolve normalizes percent notation and caches a genuine non-payer", async () => {
+  // 1.2 is percent notation (1.2%), not a 120% yield.
+  ratiosStub = async () => ({ dividend_yield: 1.2 });
+  assert.equal(await __test_resolveHeatmapDividendYieldUncached("SPY"), 0.012);
+
+  ratiosStub = async () => ({ dividend_yield: 0.012 });
+  assert.equal(await __test_resolveHeatmapDividendYieldUncached("SPY"), 0.012);
+
+  // A real non-payer resolves to 0 WITHOUT throwing — it is an answer, so it is cacheable.
+  ratiosStub = async () => ({ dividend_yield: 0 });
+  assert.equal(await __test_resolveHeatmapDividendYieldUncached("NVDA"), 0);
 });

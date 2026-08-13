@@ -1705,22 +1705,53 @@ const HEATMAP_DIVIDEND_YIELD_PROXY: Record<string, string> = {
   "I:RUT": "IWM",
 };
 
-/** Continuous dividend yield q (decimal, e.g. 0.012 = 1.2%) for closed-form vanna/charm. Best-effort. */
+/**
+ * Inner resolve. THROWS rather than returning 0 when the yield is UNAVAILABLE — that is what keeps
+ * a transient upstream blip out of the 1h cache below: `refreshCache` writes the store only on a
+ * fulfilled loader, so a rejection leaves the key unset and the next call retries. A genuine
+ * non-payer (`raw <= 0`) is a real answer and does get cached. The caller turns the throw into 0.
+ */
+async function resolveHeatmapDividendYieldUncached(lookup: string): Promise<number> {
+  const { fetchPolygonFinancialRatios } = await import("./polygon");
+  const ratios = await fetchPolygonFinancialRatios(lookup);
+  const raw = ratios?.dividend_yield;
+  if (raw == null || !Number.isFinite(raw)) throw new Error(`no dividend_yield for ${lookup}`);
+  if (raw <= 0) return 0;
+  // Guard percent-vs-decimal: yields above 100% are nonsense; above 1 likely percent notation.
+  return raw > 1 ? raw / 100 : raw;
+}
+
+/**
+ * Continuous dividend yield q (decimal, e.g. 0.012 = 1.2%) for closed-form vanna/charm. Best-effort.
+ *
+ * CACHED at TTL.REFERENCE (1h) because of WHERE it is called from. The caller is the heatmap matrix
+ * rebuild, which itself sits behind a 5s cache — so an uncached resolve here inherits that 5s
+ * cadence and fires one `/stocks/financials/v1/ratios` request per ticker per 5 seconds
+ * (`fetchPolygonFinancialRatios` -> `polygonGet` uses `cache: "no-store"`, so nothing downstream
+ * absorbs it). Over a 6.5h RTH session that is ~4,700 upstream calls for ONE ticker, for a number
+ * that changes once a QUARTER — rate-limiter budget taken straight from the chain pulls that
+ * actually move with the market.
+ *
+ * 1h is still three orders of magnitude tighter than the quantity's real update frequency, so the
+ * cache costs no accuracy. Failures are deliberately excluded from it (see the inner fn): pinning a
+ * blip's q=0 for an hour would silently reinstate the exact 10–22% VEX/CHARM under-read this change
+ * exists to fix, and would do it invisibly.
+ */
 async function resolveHeatmapDividendYield(root: string): Promise<number> {
   const upper = root.toUpperCase();
   const lookup = HEATMAP_DIVIDEND_YIELD_PROXY[upper] ?? upper.replace(/^I:/, "");
   try {
-    const { fetchPolygonFinancialRatios } = await import("./polygon");
-    const ratios = await fetchPolygonFinancialRatios(lookup);
-    const raw = ratios?.dividend_yield;
-    if (raw == null || !Number.isFinite(raw) || raw <= 0) return 0;
-    // Guard percent-vs-decimal: yields above 100% are nonsense; above 1 likely percent notation.
-    if (raw > 1) return raw / 100;
-    return raw;
+    const { serverCache, TTL } = await import("../server-cache");
+    const q = await serverCache(`heatmap-div-yield:${lookup}`, TTL.REFERENCE, () =>
+      resolveHeatmapDividendYieldUncached(lookup)
+    );
+    return Number.isFinite(q) && q > 0 ? q : 0;
   } catch {
     return 0;
   }
 }
+
+export const __test_resolveHeatmapDividendYieldUncached = resolveHeatmapDividendYieldUncached;
 
 /**
  * Minimum $ half-width each side of spot so low-priced chains (NIO ~$5, F ~$11) fetch enough
