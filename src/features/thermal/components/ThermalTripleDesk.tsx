@@ -248,7 +248,8 @@ function TripleColumn({
     const tick = () => {
       if (!sessionLive) return;
       const nowMs = Date.now();
-      if (forceActive) return; // wait for in-flight force to settle before arming another
+      if (forceActive || isLoading || isValidating) return;
+      if (error && !isUsableGexHeatmapPayload(view)) return;
       if (nowMs - lastForceAtRef.current < MATRIX_FORCE_THROTTLE_MS) return;
       // Blank / unusable column: force immediately (throttled) so SPY doesn't sit on
       // "No matrix yet" waiting for the 1-min warm cron while SPX/QQQ already painted.
@@ -269,7 +270,7 @@ function TripleColumn({
     tick();
     const id = setInterval(tick, 1_000);
     return () => clearInterval(id);
-  }, [view, ticker, forceActive, triggerForce, sessionLive]);
+  }, [view, ticker, forceActive, triggerForce, sessionLive, isLoading, isValidating, error]);
 
   // Reset last-good when the column ticker changes so we never paint SPX cells under a SPY header.
   useEffect(() => {

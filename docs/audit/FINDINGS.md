@@ -59,7 +59,19 @@ Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 | **Root cause** | Parser rejected `**Verdict:**` headings; persist threw on huge tool_results; no vendor sanitizer; flow tools ignored `since_hours`; trade_history returned [] without rollup |
 | **Fix** | `answer-contract.ts`, `sanitize-member-text.ts`, `persist-tool-results.ts`, `largo-terminal.ts`, `run-tool.ts`, `flow-service.ts`, `market-evidence.ts`, `system-prompt.ts` |
 
-## 2026-08-12 — [FINDING, P2 Thermal] Our closed-form VEX and CHARM carry an unmodelled dividend-yield error — FIXED
+## 2026-08-13 — [FINDING, P1 Thermal/SPX] SPX gex-heatmap blocked ~120s → ALB 504; compare grid + desk matrix stuck on "Syncing" — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Status** | FIXED on `cursor/spx-matrix-timeout-fix-3d11` |
+| **Symptom** | `/heatmap?compare=1` SPX column stuck "Syncing SPX matrix…" while SPY/QQQ/IWM paint; `/dashboard` Dealer Gamma Map "Loading gamma matrix…" + GEX STALE; pin forecast loading. |
+| **Evidence** | Prod probe 2026-08-13 RTH: `GET /api/market/gex-heatmap?ticker=SPX` → **504 @ 120026ms**; SPY 82ms (cached). Vector gex-ladder had same class of bug (documented in route). |
+| **Root cause** | (1) SPX cold Polygon chain rebuild exceeds ALB 120s idle timeout. (2) `awaitHeatmapBuildWithBlockCap` timeout branch awaited **uncapped** Redis + `applySpxOdteGexUwOverlay` inside the timer callback — the 3s cap never resolved the Promise, so requests hung until ALB 504. (3) Compare grid blank-column logic spammed `?force=1`, starting 55s blocking rebuilds in a loop. |
+| **Fix** | Cap Redis handoff at 500ms; cap SPX UW overlay at 2s (best-effort); unify force/non-force stale handoff; `loadHeatmapForMember` 10s route deadline → `readGexHeatmapSnapshot`; compare column skips force while loading/error. |
+| **Blast radius** | All `/api/market/gex-heatmap` callers (Thermal, SPX Slayer matrix, Vector ladder). SPX may briefly serve honestly-stale matrix (asof timestamp) instead of empty/504. |
+
 
 > **kind:** `FINDING`
 

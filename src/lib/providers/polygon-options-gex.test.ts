@@ -98,6 +98,10 @@ test("fetchGexHeatmap caps inflight/cold builds with gexHeatmapMaxBlockMs (never
   );
   assert.match(src, /gexHeatmapMaxBlockMs/);
   assert.match(src, /gexHeatmapForceMaxBlockMs/);
+  assert.match(src, /gexHeatmapOverlayMaxMs/);
+  assert.match(src, /readHeatmapRedisEntry/);
+  assert.match(src, /resolveHeatmapStaleHandoff/);
+  assert.match(src, /HEATMAP_REDIS_HANDOFF_CAP_MS/);
   assert.match(src, /awaitHeatmapBuildWithBlockCap/);
   assert.match(src, /pickStaleHeatmapForHandoff/);
   assert.match(src, /forceRefresh[\s\S]*gexHeatmapForceMaxBlockMs/);

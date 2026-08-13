@@ -14,7 +14,7 @@ import { isUwCircuitOpen } from "@/lib/providers/uw-rate-limiter";
 import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
 import { requireAnyToolApi } from "@/lib/tool-access-server";
 import { isHeatmapOverlayAllowed } from "@/lib/heatmap-allowlist";
-import { gexHeatmapEnrichmentMaxMs } from "@/lib/providers/config";
+import { gexHeatmapEnrichmentMaxMs, gexHeatmapMemberRouteDeadlineMs } from "@/lib/providers/config";
 import { dbConfigured, fetchLatestPlayableNighthawkEdition } from "@/lib/db";
 import { roundFloats, reconcileStrikeTotal, reconcileCellStrikeTotals } from "@/lib/round-floats";
 import { isEtCashRth } from "@/lib/et-market-hours";
@@ -277,6 +277,40 @@ async function getOverlays(
   return { overlays, at: now };
 }
 
+/** Hard ceiling on matrix fetch — SPX cold rebuild can exceed ALB idle timeout (120s). */
+const MEMBER_MATRIX_DEADLINE_MS = gexHeatmapMemberRouteDeadlineMs();
+
+/**
+ * Never hold a member GET open until the gateway 504s. On timeout, serve any cached snapshot
+ * while the rebuild continues warming Redis.
+ */
+async function loadHeatmapForMember(
+  ticker: string,
+  forceRefresh: boolean
+): Promise<Awaited<ReturnType<typeof fetchGexHeatmap>> | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const work = (async () => {
+    let heatmap = !forceRefresh ? await readGexHeatmapSnapshot(ticker) : null;
+    if (!heatmap) {
+      heatmap = await fetchGexHeatmap(ticker, { forceRefresh });
+    }
+    return heatmap;
+  })();
+  const timeout = new Promise<Awaited<ReturnType<typeof fetchGexHeatmap>> | null>((resolve) => {
+    timer = setTimeout(() => {
+      console.warn(
+        `[market/gex-heatmap] ${ticker}: matrix load exceeded ${MEMBER_MATRIX_DEADLINE_MS}ms — serving cached snapshot`
+      );
+      void readGexHeatmapSnapshot(ticker).then(resolve);
+    }, MEMBER_MATRIX_DEADLINE_MS);
+  });
+  try {
+    return await Promise.race([work, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
  * GET /api/market/gex-heatmap?ticker=SPY
  *
@@ -325,10 +359,8 @@ export async function GET(req: NextRequest) {
     const matrixPeek = await peekGexHeatmapCache(ticker);
     const skipSlowEnrichment = matrixPeek.cached && !matrixPeek.stale;
 
-    let heatmap = !forceRefresh ? await readGexHeatmapSnapshot(ticker) : null;
-    if (!heatmap) {
-      heatmap = await fetchGexHeatmap(ticker, { forceRefresh });
-    } else if (
+    let heatmap = await loadHeatmapForMember(ticker, forceRefresh);
+    if (
       !forceRefresh &&
       matrixPeek.cached &&
       matrixPeek.age_sec != null &&
