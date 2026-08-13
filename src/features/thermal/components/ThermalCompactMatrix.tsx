@@ -8,22 +8,22 @@ import {
   type MutableRefObject,
   type RefObject,
 } from "react";
-import type { GexHeatmapLens } from "@/lib/gex-heatmap-display";
 import {
   fmtHeatmapExpiry,
   fmtHeatmapMoneySigned,
   fmtHeatmapStrike,
   fmtStrikeDistancePct,
   shouldShowStrikeDistancePct,
-  heatmapCellStyle,
-  heatmapCellTextStyle,
-  heatmapMatrixExtremeCellStyle,
+  isHeatmapTopHighlightRank,
+  resolveHeatmapTopHighlightCellStyle,
+  type GexHeatmapLens,
 } from "@/lib/gex-heatmap-display";
 import { scrollRowIntoViewCenter } from "@/features/spx/lib/spx-matrix-scroll";
 import {
   bandStrikesAroundSpot,
   compactMatrixPeak,
   compactPerExpiryExtremes,
+  compactPerExpiryTopHighlights,
   nearestStrikeIndex,
   resolveCompactExpiries,
   resolveZeroDteExpiry,
@@ -51,9 +51,6 @@ type Props = {
   mode?: ThermalCompareMode;
   pinnedStrikes: number[];
   onTogglePin: (strike: number) => void;
-  /** Spot-relative row index shared across SPY|SPX|QQQ for the synced cursor. */
-  crosshairIndex?: number | null;
-  onCrosshairIndex?: (index: number | null) => void;
   scrollRef?: RefObject<HTMLDivElement | null>;
   onScrollSync?: (scrollTop: number, scrollLeft: number) => void;
   /**
@@ -74,38 +71,6 @@ function todayEtYmd(): string {
     month: "2-digit",
     day: "2-digit",
   }).format(new Date());
-}
-
-/**
- * Green (+) / red (−) heat — same lens RGB as the major matrix, boosted alpha
- * so the 0DTE strip reads as a ladder (never viridis / purple-yellow scale).
- */
-function signedHeatStyle(
-  value: number,
-  peak: number,
-  lens: GexHeatmapLens,
-  boost: boolean,
-): CSSProperties {
-  const base = heatmapCellStyle(value, peak, lens);
-  if (!value || peak <= 0) {
-    return boost ? { backgroundColor: "rgba(8, 12, 22, 0.9)" } : {};
-  }
-  if (!boost) return base;
-  const mag = Math.min(1, Math.abs(value) / peak);
-  const alpha = 0.18 + Math.pow(mag, 1.15) * 0.8;
-  const bg = String(base.backgroundColor ?? "");
-  const boosted = bg.replace(
-    /rgba\(([^,]+),([^,]+),([^,]+),([^)]+)\)/,
-    (_, r, g, b) => `rgba(${r},${g},${b},${alpha.toFixed(3)})`,
-  );
-  return {
-    ...base,
-    backgroundColor: boosted || base.backgroundColor,
-    boxShadow:
-      mag > 0.35
-        ? `inset 0 0 22px ${boosted.replace(/[\d.]+\)$/, `${(mag * 0.42).toFixed(2)})`)}`
-        : base.boxShadow,
-  };
 }
 
 function centerSpotInBox(
@@ -141,8 +106,6 @@ export default function ThermalCompactMatrix({
   mode = "0dte",
   pinnedStrikes,
   onTogglePin,
-  crosshairIndex = null,
-  onCrosshairIndex,
   scrollRef,
   onScrollSync,
   suppressScrollSyncRef,
@@ -187,6 +150,7 @@ export default function ThermalCompactMatrix({
   const pinSet = new Set(pinnedStrikes);
   const peak = compactMatrixPeak(data.cells, strikes, expiries);
   const extremes = compactPerExpiryExtremes(data.cells, strikes, expiries);
+  const topHighlights = compactPerExpiryTopHighlights(data.cells, strikes, expiries);
   const is0dte = mode === "0dte";
   const hasData = expiries.length > 0 && strikes.length > 0;
 
@@ -275,7 +239,6 @@ export default function ThermalCompactMatrix({
         const el = e.currentTarget;
         onScrollSync(el.scrollTop, el.scrollLeft);
       }}
-      onMouseLeave={() => onCrosshairIndex?.(null)}
     >
       <table
         className={`thermal-compact-table${is0dte ? " is-0dte" : ""} font-mono text-[13px] tabular-nums`}
@@ -284,8 +247,7 @@ export default function ThermalCompactMatrix({
         <thead>
           <tr>
             <th className="thermal-compact-corner text-[11px]" scope="col">
-              <span className="thermal-compact-corner-strike">Strike</span>
-              <span className="thermal-compact-corner-pct">%</span>
+              Strike
             </th>
             {is0dte ? (
               <th className="thermal-compact-exp is-0dte-spacer" scope="col" aria-hidden />
@@ -307,7 +269,6 @@ export default function ThermalCompactMatrix({
           {strikes.map((strike, si) => {
             const isSpot = si === spotIdx;
             const pinned = pinSet.has(strike);
-            const isCross = crosshairIndex === si;
             const row = data.cells[String(strike)] ?? {};
             return (
               <tr
@@ -317,11 +278,9 @@ export default function ThermalCompactMatrix({
                   "thermal-compact-row",
                   isSpot ? "is-spot" : "",
                   pinned ? "is-pinned" : "",
-                  isCross ? "is-crosshair" : "",
                 ]
                   .filter(Boolean)
                   .join(" ")}
-                onMouseEnter={() => onCrosshairIndex?.(si)}
               >
                 <th scope="row" className="thermal-compact-strike">
                   <button
@@ -335,11 +294,6 @@ export default function ThermalCompactMatrix({
                       {pinned ? "◆" : "◇"}
                     </span>
                     <span className="thermal-compact-strike-label">{fmtHeatmapStrike(strike)}</span>
-                    {!isSpot && shouldShowStrikeDistancePct(si, spotIdx) ? (
-                      <span className="thermal-compact-strike-pct" title="Distance from spot">
-                        {fmtStrikeDistancePct(data.spot, strike)}
-                      </span>
-                    ) : null}
                   </button>
                 </th>
                 {expiries.map((exp) => {
@@ -347,20 +301,36 @@ export default function ThermalCompactMatrix({
                   const has = typeof val === "number" && Number.isFinite(val);
                   const n = has ? val : 0;
                   const day = extremes[exp];
-                  const isPosNode = has && day?.callWall === strike;
-                  const isNegNode = has && day?.putWall === strike;
+                  const hl = topHighlights[exp];
+                  const posRank = hl?.topPositive[strike];
+                  const negRank = hl?.topNegative[strike];
                   const isKing = has && n !== 0 && day?.king === strike;
+                  const showPct = !isSpot && shouldShowStrikeDistancePct(si, spotIdx);
 
-                  const style: CSSProperties = has
-                    ? isPosNode
-                      ? heatmapMatrixExtremeCellStyle("positive")
-                      : isNegNode
-                        ? heatmapMatrixExtremeCellStyle("negative")
-                        : {
-                            ...signedHeatStyle(n, peak, lens, is0dte),
-                            ...heatmapCellTextStyle(n, peak),
-                          }
-                    : {};
+                  let style: CSSProperties = {};
+                  if (has && n !== 0) {
+                    const rank1Pos =
+                      day?.callWall != null
+                        ? (data.cells[String(day.callWall)]?.[exp] ?? 0)
+                        : 0;
+                    const rank1Neg =
+                      day?.putWall != null
+                        ? (data.cells[String(day.putWall)]?.[exp] ?? 0)
+                        : 0;
+                    style = resolveHeatmapTopHighlightCellStyle(
+                      n,
+                      posRank,
+                      negRank,
+                      lens,
+                      rank1Pos,
+                      rank1Neg,
+                      peak,
+                    );
+                  }
+
+                  const isHighlighted = isHeatmapTopHighlightRank(posRank, negRank);
+                  const isPosNode = posRank === 1;
+                  const isNegNode = negRank === 1;
 
                   return (
                     <td
@@ -374,9 +344,10 @@ export default function ThermalCompactMatrix({
                         isPosNode ? "is-pos-node" : "",
                         isNegNode ? "is-neg-node" : "",
                         isKing ? "is-king" : "",
-                        !isPosNode && !isNegNode && n > 0 ? "is-pos" : "",
-                        !isPosNode && !isNegNode && n < 0 ? "is-neg" : "",
+                        isHighlighted && !isPosNode && !isNegNode && n > 0 ? "is-pos" : "",
+                        isHighlighted && !isPosNode && !isNegNode && n < 0 ? "is-neg" : "",
                         !has || n === 0 ? "is-zero" : "",
+                        has && n !== 0 && !isHighlighted ? "is-neutral" : "",
                       ]
                         .filter(Boolean)
                         .join(" ")}
@@ -391,8 +362,15 @@ export default function ThermalCompactMatrix({
                               : `${data.ticker} ${strike} ${exp} · ${lens.toUpperCase()} ${fmtHeatmapMoneySigned(n, { showZero: true })}`
                       }
                     >
-                      <span className="thermal-compact-cell-val">
-                        {fmtHeatmapMoneySigned(n, { showZero: true })}
+                      <span className="thermal-compact-cell-inner">
+                        <span className="thermal-compact-cell-val">
+                          {fmtHeatmapMoneySigned(n, { showZero: true })}
+                        </span>
+                        {showPct ? (
+                          <span className="thermal-compact-cell-pct" title="Distance from spot">
+                            {fmtStrikeDistancePct(data.spot, strike)}
+                          </span>
+                        ) : null}
                       </span>
                       {isKing ? (
                         <span

@@ -122,6 +122,69 @@ export function compactMatrixPeak(
   return peak;
 }
 
+/** How many strikes per side get ranked green/red (rank 1 on each side is yellow/purple). */
+export const COMPACT_TOP_HIGHLIGHT_COUNT = 4;
+
+export type CompactExpiryTopHighlights = {
+  /** strike → rank 1..N (1 = largest positive in the column). */
+  topPositive: Record<number, number>;
+  /** strike → rank 1..N (1 = most negative in the column). */
+  topNegative: Record<number, number>;
+};
+
+function rankTopStrikes(
+  cells: Record<string, Record<string, number>>,
+  strikes: number[],
+  expiry: string,
+  side: "positive" | "negative",
+  topN: number,
+): Record<number, number> {
+  const entries: { strike: number; value: number }[] = [];
+  for (const strike of strikes) {
+    const v = cells[String(strike)]?.[expiry];
+    if (typeof v !== "number" || !Number.isFinite(v) || v === 0) continue;
+    if (side === "positive" ? v > 0 : v < 0) entries.push({ strike, value: v });
+  }
+  entries.sort((a, b) => {
+    if (side === "positive") {
+      if (b.value !== a.value) return b.value - a.value;
+    } else if (a.value !== b.value) {
+      return a.value - b.value;
+    }
+    return a.strike - b.strike;
+  });
+  const out: Record<number, number> = {};
+  for (let i = 0; i < Math.min(topN, entries.length); i++) {
+    out[entries[i]!.strike] = i + 1;
+  }
+  return out;
+}
+
+/**
+ * Per-expiry top-N positive / negative ranks for the compare grid.
+ * Rank 1 positive → yellow call node; rank 1 negative → purple put node;
+ * ranks 2–4 → green / red only (everything else stays neutral for readability).
+ */
+export function compactPerExpiryTopHighlights(
+  cells: Record<string, Record<string, number>> | undefined,
+  strikes: number[],
+  expiries: string[],
+  topN: number = COMPACT_TOP_HIGHLIGHT_COUNT,
+): Record<string, CompactExpiryTopHighlights> {
+  const out: Record<string, CompactExpiryTopHighlights> = {};
+  if (!cells) {
+    for (const e of expiries) out[e] = { topPositive: {}, topNegative: {} };
+    return out;
+  }
+  for (const e of expiries) {
+    out[e] = {
+      topPositive: rankTopStrikes(cells, strikes, e, "positive", topN),
+      topNegative: rankTopStrikes(cells, strikes, e, "negative", topN),
+    };
+  }
+  return out;
+}
+
 export type CompactDayExtremes = {
   /** Highest + cell in the expiry column → yellow call / + node. */
   callWall: number | null;

@@ -19,7 +19,9 @@ import {
   TabPanel,
 } from "@/components/ui";
 import { AnchorGlyph, PanelLabel } from "@/features/thermal/lib/gex-heatmap/primitives";
-import ThermalTripleDesk from "@/features/thermal/components/ThermalTripleDesk";
+import ThermalTripleDesk, {
+  type ThermalTripleDeskHandle,
+} from "@/features/thermal/components/ThermalTripleDesk";
 import { ThermalGridSectorPicker } from "@/features/thermal/components/ThermalGridSectorPicker";
 import {
   buildThermalUrlSearch,
@@ -57,8 +59,11 @@ import {
   heatmapCellTextStyle,
   heatmapMatrixExtremeCellStyle,
   heatmapLegendItems,
+  isHeatmapTopHighlightRank,
+  resolveHeatmapTopHighlightCellStyle,
   type GexHeatmapLens,
 } from "@/lib/gex-heatmap-display";
+import { compactPerExpiryTopHighlights } from "@/features/thermal/lib/thermal-compact-matrix";
 import { depthBandForPrice } from "@/lib/gex-depth";
 import {
   readGexHeatmapSessionCache,
@@ -2941,6 +2946,8 @@ export function GexHeatmap({
   // Reading urlBoot.compare (the shared, tested parser) instead of re-deriving the
   // default here fixes the inconsistency at its source. See docs/audit/FINDINGS.md.
   const [compare, setCompare] = useState(() => urlBoot.compare);
+  const compareDeskRef = useRef<ThermalTripleDeskHandle>(null);
+  const [compareDeskRefreshing, setCompareDeskRefreshing] = useState(false);
   const [compareSet, setCompareSet] = useState<ThermalComparePresetId>(() =>
     urlBoot.compareSet ?? resolveComparePresetIdForTicker(urlBoot.ticker ?? initialTicker),
   );
@@ -3389,6 +3396,12 @@ export function GexHeatmap({
     const filtered = expiries.filter((e) => set.has(e));
     return filtered.length ? filtered : expiries;
   }, [expiries, selectedExpiries]);
+
+  /** Top 4 + / top 4 − per expiry column — same ladder rule as compare grids. */
+  const matrixTopHighlights = useMemo(
+    () => compactPerExpiryTopHighlights(cells, strikes, matrixExpiries),
+    [cells, strikes, matrixExpiries],
+  );
 
   // Warm the ACTIVE preset's session cache so its columns paint together.
   //
@@ -4369,14 +4382,26 @@ export function GexHeatmap({
                       const isDayKing =
                         perDayAnchorByExpiry[e] === strike && has && v !== 0;
                       const dayExtremes = perDayExtremesByExpiry[e];
-                      const isDayCallWallCell = has && dayExtremes?.callWall === strike;
-                      const isDayPutWallCell = has && dayExtremes?.putWall === strike;
+                      const hl = matrixTopHighlights[e];
+                      const posRank = hl?.topPositive[strike];
+                      const negRank = hl?.topNegative[strike];
+                      const isHighlighted = isHeatmapTopHighlightRank(posRank, negRank);
+                      const isDayCallWallCell = posRank === 1;
+                      const isDayPutWallCell = negRank === 1;
                       const shiftLeader = shiftLeaderCells.get(gexMatrixShiftCellKey(strike, e));
                       const extremeTitle = isDayCallWallCell
                         ? `Highest positive ${vocab.noun.toLowerCase()} for ${fmtHeatmapExpiry(e)}`
                         : isDayPutWallCell
                           ? `Highest negative ${vocab.noun.toLowerCase()} for ${fmtHeatmapExpiry(e)}`
                           : undefined;
+                      const rank1Pos =
+                        dayExtremes?.callWall != null
+                          ? (cells[String(dayExtremes.callWall)]?.[e] ?? 0)
+                          : 0;
+                      const rank1Neg =
+                        dayExtremes?.putWall != null
+                          ? (cells[String(dayExtremes.putWall)]?.[e] ?? 0)
+                          : 0;
 
                       return (
                         <td
@@ -4386,24 +4411,28 @@ export function GexHeatmap({
                             shiftLeader && "gex-matrix-cell-with-badge",
                             has &&
                               val > 0 &&
+                              isHighlighted &&
                               !isDayCallWallCell &&
                               (lens === "gex" ? "text-emerald-300" : posColorClass),
                             has &&
                               val < 0 &&
+                              isHighlighted &&
                               !isDayPutWallCell &&
                               (lens === "gex" ? "text-rose-300" : "text-bear-text"),
+                            has && !isHighlighted && "text-sky-300/80",
                             !has && "text-sky-300/25"
                           )}
                           style={{
-                            ...(has
-                              ? isDayCallWallCell
-                                ? heatmapMatrixExtremeCellStyle("positive")
-                                : isDayPutWallCell
-                                  ? heatmapMatrixExtremeCellStyle("negative")
-                                  : {
-                                      ...heatmapCellStyle(val, peak, matrixLens),
-                                      ...heatmapCellTextStyle(val, peak),
-                                    }
+                            ...(has && val !== 0
+                              ? resolveHeatmapTopHighlightCellStyle(
+                                  val,
+                                  posRank,
+                                  negRank,
+                                  matrixLens,
+                                  rank1Pos,
+                                  rank1Neg,
+                                  peak,
+                                )
                               : {}),
                           }}
                           title={
@@ -4628,6 +4657,25 @@ export function GexHeatmap({
                 nativeShell={nativeShell}
               />
             ) : null}
+            {compare ? (
+              <button
+                type="button"
+                className={clsx(
+                  "thermal-grid-refresh-btn spx-matrix-refresh-btn",
+                  compareDeskRefreshing && "spx-matrix-refresh-btn--spinning",
+                )}
+                onClick={() => {
+                  setCompareDeskRefreshing(true);
+                  void compareDeskRef.current?.refreshAndRecenter().finally(() => {
+                    setCompareDeskRefreshing(false);
+                  });
+                }}
+                title="Refresh all compare grids and recenter on spot"
+                aria-label="Refresh compare grids"
+              >
+                ↻
+              </button>
+            ) : null}
           </div>
           {live ? (
             <Badge tone="bull" dot>
@@ -4730,17 +4778,10 @@ export function GexHeatmap({
         <div className="mt-1">
           {data && !stale && !empty ? <AlertsStrip events={events} /> : null}
           <ThermalTripleDesk
+            ref={compareDeskRef}
             lens={lens}
             activeTicker={ticker}
             tickers={compareGridTickers}
-            compareSet={compareSet}
-            onCompareSetChange={(id) => {
-              setCompareSet(id);
-              prefetchGexHeatmapTickers(
-                orderComparePresetTickers(thermalComparePreset(id), ticker),
-              );
-            }}
-            presetLabel={comparePreset.label}
             onFocusTicker={setTicker}
             onLensChange={(l) => setLens(l as Lens)}
           />

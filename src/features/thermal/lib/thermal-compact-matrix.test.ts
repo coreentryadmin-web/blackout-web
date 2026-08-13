@@ -4,6 +4,7 @@ import {
   bandStrikesAroundSpot,
   compactMatrixPeak,
   compactPerExpiryExtremes,
+  compactPerExpiryTopHighlights,
   fmtCompactExpiry,
   fmtCompactHeatMoney,
   nearestStrikeIndex,
@@ -72,4 +73,31 @@ test("compactPerExpiryExtremes marks +node yellow side, −node purple side, kin
   assert.equal(ex["2026-07-28"]?.callWall, 101);
   assert.equal(ex["2026-07-28"]?.putWall, 102);
   assert.equal(ex["2026-07-28"]?.king, 102); // |−80| > |50|
+});
+
+test("compactPerExpiryTopHighlights ranks top 4 positive and negative per expiry", () => {
+  const cells = {
+    "100": { "2026-07-28": 10 },
+    "101": { "2026-07-28": 50 },
+    "102": { "2026-07-28": 40 },
+    "103": { "2026-07-28": 30 },
+    "104": { "2026-07-28": 20 },
+    "105": { "2026-07-28": 5 },
+    "106": { "2026-07-28": -80 },
+    "107": { "2026-07-28": -60 },
+    "108": { "2026-07-28": -40 },
+    "109": { "2026-07-28": -25 },
+    "110": { "2026-07-28": -10 },
+    "111": { "2026-07-28": -5 },
+  };
+  const hl = compactPerExpiryTopHighlights(
+    cells,
+    [100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111],
+    ["2026-07-28"],
+  );
+  const day = hl["2026-07-28"]!;
+  assert.deepEqual(day.topPositive, { 101: 1, 102: 2, 103: 3, 104: 4 });
+  assert.deepEqual(day.topNegative, { 106: 1, 107: 2, 108: 3, 109: 4 });
+  assert.equal(day.topPositive[105], undefined);
+  assert.equal(day.topNegative[111], undefined);
 });
