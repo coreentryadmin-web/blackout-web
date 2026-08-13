@@ -18007,32 +18007,40 @@ body::before {
     box-shadow 0.25s ease;
 }
 
-/* Five-name sector grid: equal columns consume the full desk width (no dead right rail). */
+/* Compare grid (3–5 names): equal columns consume the full desk width (no dead right rail). */
+.thermal-triple-desk[data-cols="3"] .thermal-triple-grid,
 .thermal-triple-desk[data-cols="5"] .thermal-triple-grid {
   width: 100%;
 }
 
+.thermal-triple-desk[data-cols="3"] .thermal-compact-table,
 .thermal-triple-desk[data-cols="5"] .thermal-compact-table {
   width: 100%;
   table-layout: fixed;
 }
 
+.thermal-triple-desk[data-cols="3"] .thermal-compact-corner,
+.thermal-triple-desk[data-cols="3"] .thermal-compact-strike,
 .thermal-triple-desk[data-cols="5"] .thermal-compact-corner,
 .thermal-triple-desk[data-cols="5"] .thermal-compact-strike {
   width: 36%;
 }
 
+.thermal-triple-desk[data-cols="3"] .thermal-compact-table.is-0dte .thermal-compact-exp,
+.thermal-triple-desk[data-cols="3"] .thermal-compact-table.is-0dte .thermal-compact-cell,
 .thermal-triple-desk[data-cols="5"] .thermal-compact-table.is-0dte .thermal-compact-exp,
 .thermal-triple-desk[data-cols="5"] .thermal-compact-table.is-0dte .thermal-compact-cell {
   min-width: 0;
 }
 
 @media (min-width: 900px) {
+  .thermal-triple-desk[data-cols="3"] .thermal-triple-grid,
   .thermal-triple-desk[data-cols="5"] .thermal-triple-grid {
     overflow-x: visible;
     scroll-snap-type: none;
   }
 
+  .thermal-triple-desk[data-cols="3"] .thermal-triple-col,
   .thermal-triple-desk[data-cols="5"] .thermal-triple-col {
     flex: 1 1 0;
     min-width: 0;
@@ -18041,6 +18049,7 @@ body::before {
 }
 
 @media (max-width: 899px) {
+  .thermal-triple-desk[data-cols="3"] .thermal-triple-col,
   .thermal-triple-desk[data-cols="5"] .thermal-triple-col {
     flex: 0 0 clamp(11.5rem, 78vw, 16.5rem);
   }

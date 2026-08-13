@@ -17,6 +17,7 @@ const OUT = process.env.THERMAL_GRID_E2E_DIR || "/opt/cursor/artifacts/thermal-s
 mkdirSync(OUT, { recursive: true });
 
 const EXPECTED_PRESETS = [
+  "Indices",
   "Semis",
   "AI",
   "Space",
@@ -26,7 +27,7 @@ const EXPECTED_PRESETS = [
   "Financials",
   "Biotech",
 ];
-const REMOVED = ["Indices", "Industrials", "Real Estate", "SPY / SPX / QQQ"];
+const REMOVED = ["Industrials", "Real Estate", "SPY / SPX / QQQ"];
 
 const results = [];
 const pass = (name, detail = "") => {
@@ -85,8 +86,8 @@ try {
       if (options.some((o) => o.includes(label))) pass(`preset:${label}`);
       else fail(`preset:${label}`, `options=${options.join("|")}`);
     }
-    if (options.some((o) => /indices/i.test(o))) fail("preset:Indices", "still in dropdown");
-    else pass("preset:no-indices");
+    if (options.some((o) => /indices/i.test(o))) pass("preset:Indices");
+    else fail("preset:Indices", "missing from dropdown");
     await sectorTrigger.click(); // close menu
   } else {
     // Grid mode may already be open — check rail label / ticker chips
