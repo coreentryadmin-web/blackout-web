@@ -51,9 +51,6 @@ type Props = {
   mode?: ThermalCompareMode;
   pinnedStrikes: number[];
   onTogglePin: (strike: number) => void;
-  /** Spot-relative row index shared across SPY|SPX|QQQ for the synced cursor. */
-  crosshairIndex?: number | null;
-  onCrosshairIndex?: (index: number | null) => void;
   scrollRef?: RefObject<HTMLDivElement | null>;
   onScrollSync?: (scrollTop: number, scrollLeft: number) => void;
   /**
@@ -141,8 +138,6 @@ export default function ThermalCompactMatrix({
   mode = "0dte",
   pinnedStrikes,
   onTogglePin,
-  crosshairIndex = null,
-  onCrosshairIndex,
   scrollRef,
   onScrollSync,
   suppressScrollSyncRef,
@@ -275,7 +270,6 @@ export default function ThermalCompactMatrix({
         const el = e.currentTarget;
         onScrollSync(el.scrollTop, el.scrollLeft);
       }}
-      onMouseLeave={() => onCrosshairIndex?.(null)}
     >
       <table
         className={`thermal-compact-table${is0dte ? " is-0dte" : ""} font-mono text-[13px] tabular-nums`}
@@ -306,7 +300,6 @@ export default function ThermalCompactMatrix({
           {strikes.map((strike, si) => {
             const isSpot = si === spotIdx;
             const pinned = pinSet.has(strike);
-            const isCross = crosshairIndex === si;
             const row = data.cells[String(strike)] ?? {};
             return (
               <tr
@@ -316,11 +309,9 @@ export default function ThermalCompactMatrix({
                   "thermal-compact-row",
                   isSpot ? "is-spot" : "",
                   pinned ? "is-pinned" : "",
-                  isCross ? "is-crosshair" : "",
                 ]
                   .filter(Boolean)
                   .join(" ")}
-                onMouseEnter={() => onCrosshairIndex?.(si)}
               >
                 <th scope="row" className="thermal-compact-strike">
                   <button

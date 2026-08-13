@@ -131,8 +131,6 @@ type ColumnProps = {
   onFocus: () => void;
   onTogglePin: (strike: number) => void;
   shortcut: string;
-  crosshairIndex: number | null;
-  onCrosshairIndex: (index: number | null) => void;
   scrollRef: RefObject<HTMLDivElement | null>;
   onScrollSync: (scrollTop: number, scrollLeft: number) => void;
   suppressScrollSyncRef: MutableRefObject<boolean>;
@@ -187,8 +185,6 @@ function TripleColumn({
   onFocus,
   onTogglePin,
   shortcut,
-  crosshairIndex,
-  onCrosshairIndex,
   scrollRef,
   onScrollSync,
   suppressScrollSyncRef,
@@ -385,8 +381,6 @@ function TripleColumn({
           mode={mode}
           pinnedStrikes={pinnedStrikes}
           onTogglePin={onTogglePin}
-          crosshairIndex={crosshairIndex}
-          onCrosshairIndex={onCrosshairIndex}
           scrollRef={scrollRef}
           onScrollSync={onScrollSync}
           suppressScrollSyncRef={suppressScrollSyncRef}
@@ -430,7 +424,6 @@ const ThermalTripleDesk = forwardRef<ThermalTripleDeskHandle, Props>(function Th
 ) {
   const [pins, setPins] = useState<Record<string, number[]>>({});
   const mode: ThermalCompareMode = "0dte";
-  const [crosshairIndex, setCrosshairIndex] = useState<number | null>(null);
   const [recenterEpoch, setRecenterEpoch] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [columnValidating, setColumnValidating] = useState<Record<string, boolean>>({});
@@ -543,8 +536,6 @@ const ThermalTripleDesk = forwardRef<ThermalTripleDeskHandle, Props>(function Th
             onFocus={() => onFocusTicker(ticker)}
             onTogglePin={(strike) => togglePin(ticker, strike)}
             shortcut={String(i + 1)}
-            crosshairIndex={crosshairIndex}
-            onCrosshairIndex={setCrosshairIndex}
             scrollRef={scrollRefFor(scrollRefStore, ticker)}
             onScrollSync={onScrollSync}
             suppressScrollSyncRef={suppressScrollSyncRef}
