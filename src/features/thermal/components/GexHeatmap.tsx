@@ -27,6 +27,7 @@ import {
   buildThermalUrlSearch,
   honestLevelEmpty,
   keyLevelsKicker,
+  keyLevelsFootnoteCompact,
   parseThermalTicker,
   parseThermalUrlState,
   shouldForceMatrixRefresh,
@@ -3489,6 +3490,17 @@ export function GexHeatmap({
     [filteredTotals]
   );
 
+  // Restored after #2146 removed it. The redundant half (which the kicker already states) is gone;
+  // the King-node exemption is kept, because nothing else on the panel discloses it.
+  const keyLevelsScopeFootnote = useMemo(
+    () =>
+      keyLevelsFootnoteCompact(
+        zeroDteExpiry ? fmtExpiry(zeroDteExpiry) : null,
+        scopedExpiryLabel ? fmtExpiry(scopedExpiryLabel) : null
+      ),
+    [zeroDteExpiry, scopedExpiryLabel]
+  );
+
   // The active block is empty when it has no strike totals (e.g. VEX skipped all IVs).
   const blockEmpty = Object.keys(strikeTotals).length === 0;
   const empty = !isLoading && data != null && (!data.available || strikes.length === 0);
@@ -4709,6 +4721,7 @@ export function GexHeatmap({
         <KeyLevelBox
           cells={levelCells}
           kicker={keyLevelsScopeKicker}
+          footnote={keyLevelsScopeFootnote}
           className="mb-2 gex-key-levels thermal-key-levels"
         />
       )}

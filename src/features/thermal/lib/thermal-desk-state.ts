@@ -245,6 +245,33 @@ export function keyLevelsKicker(
  * marks the dominant node across the whole near-term book — so the footnote keeps saying so
  * rather than letting the reader assume the entire row moved.
  */
+/**
+ * The footnote with the part the KICKER already says removed.
+ *
+ * When a single expiry is scoped, the kicker above the row already reads "GEX · Aug 14 · 62% of
+ * near-spot Γ", so "Flip, walls, net GEX, and max pain are Aug 14 only" is genuinely redundant and
+ * costs vertical room on a dense panel. What is NOT redundant is the King node exemption: it is
+ * deliberately not rescoped, so under an "Aug 14" kicker a reader will otherwise take the whole row
+ * — King node included — as Aug 14. That is the exact assumption keyLevelsFootnote was written to
+ * prevent, and dropping the line entirely reinstates it while every unit test keeps passing, since
+ * they assert the STRING and not that anything renders it.
+ *
+ * Unscoped is returned verbatim: with no expiry in the kicker, nothing else discloses that the
+ * tiles sum near-term expiries or that max pain is a single expiry's OI.
+ */
+export function keyLevelsFootnoteCompact(
+  frontExpiryLabel?: string | null,
+  scopedExpiryLabel?: string | null
+): string {
+  if (scopedExpiryLabel?.trim()) {
+    return (
+      `King node still marks the dominant near-term node across all expiries. ` +
+      `Matrix gold/purple cell peaks can land on any expiry column.`
+    );
+  }
+  return keyLevelsFootnote(frontExpiryLabel, scopedExpiryLabel);
+}
+
 export function keyLevelsFootnote(
   frontExpiryLabel?: string | null,
   scopedExpiryLabel?: string | null

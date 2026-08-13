@@ -14,6 +14,7 @@ import {
   wallScopeLabel,
   keyLevelsKicker,
   keyLevelsFootnote,
+  keyLevelsFootnoteCompact,
 } from "./thermal-desk-state.ts";
 
 // PINNED, and deliberately NOT "matches the Indices preset" any more. Its real consumer is
@@ -192,4 +193,19 @@ test("keyLevelsFootnote tells the truth about what a single-expiry scope did and
   // Saying nothing here would let a reader assume the entire row moved with the selector.
   assert.match(f, /King node still marks the dominant near-term node/);
   assert.doesNotMatch(f, /sum near-term expiries/);
+});
+
+test("keyLevelsFootnoteCompact drops what the kicker says but never the King-node exemption", () => {
+  // Scoped: the kicker already reads "GEX · Aug 14 · …", so restating the scope is dead weight.
+  const scoped = keyLevelsFootnoteCompact("Aug 14", "Aug 14");
+  assert.doesNotMatch(scoped, /Flip, walls, net GEX, and max pain are/);
+  // ...but the King node is NOT rescoped by the selector. Without this line a reader takes the
+  // whole row as Aug 14, which is the assumption the footnote exists to prevent. #2146 removed the
+  // rendering entirely and every test still passed, because they assert the string, not the render.
+  assert.match(scoped, /King node still marks the dominant near-term node across all expiries/);
+  assert.match(scoped, /any expiry column/);
+
+  // Unscoped: nothing else discloses the near-term summing or the max-pain scope, so it stays whole.
+  assert.equal(keyLevelsFootnoteCompact("Aug 4"), keyLevelsFootnote("Aug 4"));
+  assert.match(keyLevelsFootnoteCompact("Aug 4"), /sum near-term expiries/);
 });
