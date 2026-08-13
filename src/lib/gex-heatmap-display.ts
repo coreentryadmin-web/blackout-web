@@ -178,6 +178,22 @@ export function strikeDistancePct(
   return ((Number(strike) - Number(spot)) / Number(spot)) * 100;
 }
 
+/** How many strikes above/below spot get a readable % label (8 rows total). */
+export const STRIKE_DISTANCE_PCT_NEAR_SPOT = 4;
+
+/**
+ * Show % distance only on the nearest N strikes above and below spot — not the
+ * full 70+ row ladder (readability).
+ */
+export function shouldShowStrikeDistancePct(
+  rowIndex: number,
+  spotIndex: number,
+  nearCount: number = STRIKE_DISTANCE_PCT_NEAR_SPOT,
+): boolean {
+  if (spotIndex < 0 || rowIndex === spotIndex) return false;
+  return Math.abs(rowIndex - spotIndex) <= nearCount;
+}
+
 /** "+0.12%" / "−0.05%" / "—" — two decimals, true minus sign (desk ladder parity). */
 export function fmtStrikeDistancePct(
   spot: number | null | undefined,

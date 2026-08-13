@@ -10,7 +10,9 @@ import {
   heatmapLegendItems,
   GEX_BEAD_CALL_HEX,
   GEX_BEAD_PUT_HEX,
+  shouldShowStrikeDistancePct,
   strikeDistancePct,
+  STRIKE_DISTANCE_PCT_NEAR_SPOT,
 } from "./gex-heatmap-display";
 import { distancePct } from "./providers/spx-session";
 
@@ -134,5 +136,16 @@ describe("strike distance from spot", () => {
     assert.equal(fmtStrikeDistancePct(5550, 5555), "+0.09%");
     assert.equal(fmtStrikeDistancePct(null, 100), "—");
     assert.equal(fmtStrikeDistancePct(0, 100), "—");
+  });
+
+  it("shouldShowStrikeDistancePct limits labels to 4 above + 4 below spot", () => {
+    const spot = 5;
+    assert.equal(STRIKE_DISTANCE_PCT_NEAR_SPOT, 4);
+    assert.equal(shouldShowStrikeDistancePct(spot, spot), false);
+    assert.equal(shouldShowStrikeDistancePct(spot - 4, spot), true);
+    assert.equal(shouldShowStrikeDistancePct(spot + 4, spot), true);
+    assert.equal(shouldShowStrikeDistancePct(spot - 5, spot), false);
+    assert.equal(shouldShowStrikeDistancePct(spot + 5, spot), false);
+    assert.equal(shouldShowStrikeDistancePct(0, -1), false);
   });
 });

@@ -14,6 +14,7 @@ import {
   fmtHeatmapMoneySigned,
   fmtHeatmapStrike,
   fmtStrikeDistancePct,
+  shouldShowStrikeDistancePct,
   heatmapCellStyle,
   heatmapCellTextStyle,
   heatmapMatrixExtremeCellStyle,
@@ -337,7 +338,7 @@ export default function ThermalCompactMatrix({
                       {pinned ? "◆" : "◇"}
                     </span>
                     <span className="thermal-compact-strike-label">{fmtHeatmapStrike(strike)}</span>
-                    {!isSpot ? (
+                    {!isSpot && shouldShowStrikeDistancePct(si, spotIdx) ? (
                       <span className="thermal-compact-strike-pct" title="Distance from spot">
                         {fmtStrikeDistancePct(data.spot, strike)}
                       </span>

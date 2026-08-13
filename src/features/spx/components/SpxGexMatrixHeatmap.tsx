@@ -21,6 +21,7 @@ import {
   fmtHeatmapMoneySigned,
   fmtHeatmapStrike,
   fmtStrikeDistancePct,
+  shouldShowStrikeDistancePct,
   heatmapCellStyle,
   heatmapCellTextStyle,
   heatmapMatrixExtremeCellStyle,
@@ -361,6 +362,11 @@ export function SpxGexMatrixHeatmap({
     return nearestStrike(strikesAxis, overlaySpot);
   }, [strikesAxis, overlaySpot]);
 
+  const spotIdx = useMemo(() => {
+    if (spotStrike == null) return -1;
+    return strikesAxis.indexOf(spotStrike);
+  }, [strikesAxis, spotStrike]);
+
   const orHighStrike = useMemo(
     () => (openingRange?.high != null ? nearestStrike(strikesAxis, openingRange.high) : null),
     [openingRange?.high, strikesAxis]
@@ -692,7 +698,7 @@ export function SpxGexMatrixHeatmap({
               </tr>
             </thead>
             <tbody>
-              {strikesAxis.map((strike) => {
+              {strikesAxis.map((strike, si) => {
                 const isSpotRow = spotStrike === strike;
                 const isOrHigh = orHighStrike === strike;
                 const isOrLow = orLowStrike === strike;
@@ -729,7 +735,7 @@ export function SpxGexMatrixHeatmap({
                     >
                       <span className="flex items-baseline justify-between gap-2 min-w-[4.5rem]">
                         <span>{fmtHeatmapStrike(strike)}</span>
-                        {!isSpotRow && overlaySpot > 0 ? (
+                        {!isSpotRow && overlaySpot > 0 && shouldShowStrikeDistancePct(si, spotIdx) ? (
                           <span className="text-[9px] font-semibold tabular-nums text-sky-300/90">
                             {fmtStrikeDistancePct(overlaySpot, strike)}
                           </span>
