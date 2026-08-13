@@ -90,9 +90,9 @@ export function heatmapMatrixExtremeCellStyle(
 }
 
 /** Top-N ranked cells per expiry column get color; everything else stays neutral. */
-export const HEATMAP_TOP_HIGHLIGHT_COUNT = 4;
+export const HEATMAP_TOP_HIGHLIGHT_COUNT = 3;
 
-/** Ranks 2–4 on each side — green/red; rank 1 uses yellow/purple via heatmapMatrixExtremeCellStyle. */
+/** Ranks 2–3 on each side — green/red; rank 1 uses yellow/purple via heatmapMatrixExtremeCellStyle. */
 export function heatmapTopRankCellStyle(
   value: number,
   rank: number,
@@ -107,8 +107,8 @@ export function heatmapTopRankCellStyle(
 }
 
 /**
- * Resolve cell paint for the top-8 ladder rule shared by Thermal compare grids and
- * the single-ticker matrix: #1 positive yellow, #2–4 green, #1 negative purple, #2–4 red.
+ * Resolve cell paint for the top-6 ladder rule shared by Thermal compare grids and
+ * the single-ticker matrix: #1 positive yellow, #2–3 green, #1 negative purple, #2–3 red.
  */
 export function resolveHeatmapTopHighlightCellStyle(
   value: number,
@@ -237,8 +237,8 @@ export function strikeDistancePct(
   return ((Number(strike) - Number(spot)) / Number(spot)) * 100;
 }
 
-/** How many strikes above/below spot get a readable % label (8 rows total). */
-export const STRIKE_DISTANCE_PCT_NEAR_SPOT = 4;
+/** How many strikes above/below spot get a readable % label (6 rows total). */
+export const STRIKE_DISTANCE_PCT_NEAR_SPOT = 3;
 
 /**
  * Show % distance only on the nearest N strikes above and below spot — not the
