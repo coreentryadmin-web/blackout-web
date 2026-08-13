@@ -6,18 +6,18 @@ import { getLaunchStatusSnapshot, isToolLaunched, lockedToolKeys, toolKeyForHref
 
 const E = (v?: string): NodeJS.ProcessEnv => ({ LAUNCHED_TOOLS: v } as NodeJS.ProcessEnv);
 
-test("defaults: all desk tools live", () => {
+test("defaults: all tools live except Largo", () => {
   const env = {} as NodeJS.ProcessEnv;
   assert.equal(isToolLaunched("spx", env), true);
   assert.equal(isToolLaunched("flows", env), true);
   assert.equal(isToolLaunched("heatmap", env), true);
   assert.equal(isToolLaunched("nighthawk", env), true);
   assert.equal(isToolLaunched("vector", env), true);
-  assert.equal(isToolLaunched("largo", env), true);
-  assert.deepEqual(lockedToolKeys(env), []);
+  assert.equal(isToolLaunched("largo", env), false);
+  assert.deepEqual(lockedToolKeys(env), ["largo"]);
 });
 
-test("LAUNCHED_TOOLS is additive — redundant unlocks do not affect defaults", () => {
+test("LAUNCHED_TOOLS is additive — can unlock Largo or Vector without affecting defaults", () => {
   const env = E("largo,vector");
   assert.equal(isToolLaunched("largo", env), true);
   assert.equal(isToolLaunched("vector", env), true);
@@ -56,16 +56,16 @@ test("every tool has a unique key + href", () => {
 test("getLaunchStatusSnapshot reflects env and default-live tools", () => {
   const unset = getLaunchStatusSnapshot({} as NodeJS.ProcessEnv);
   assert.equal(unset.launched_tools_env, null);
-  assert.equal(unset.open_count, 6);
+  assert.equal(unset.open_count, 5);
   assert.equal(unset.total_count, 6);
-  assert.deepEqual(unset.locked_keys, []);
+  assert.deepEqual(unset.locked_keys, ["largo"]);
   assert.equal(unset.tools.find((t) => t.key === "spx")?.launch_source, "default");
   assert.equal(unset.tools.find((t) => t.key === "heatmap")?.launch_source, "default");
-  assert.equal(unset.tools.find((t) => t.key === "largo")?.launch_source, "default");
+  assert.equal(unset.tools.find((t) => t.key === "largo")?.launch_source, "locked");
   assert.equal(unset.tools.find((t) => t.key === "vector")?.launch_source, "default");
 
   const largoOnly = getLaunchStatusSnapshot(E("largo"));
   assert.equal(largoOnly.open_count, 6);
   assert.deepEqual(largoOnly.locked_keys, []);
-  assert.equal(largoOnly.tools.find((t) => t.key === "largo")?.launch_source, "default");
+  assert.equal(largoOnly.tools.find((t) => t.key === "largo")?.launch_source, "env");
 });

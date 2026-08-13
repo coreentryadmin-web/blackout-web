@@ -72,17 +72,18 @@ Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 | **Fix** | Cap Redis handoff at 500ms; cap SPX UW overlay at 2s (best-effort); unify force/non-force stale handoff; `loadHeatmapForMember` 10s route deadline → `readGexHeatmapSnapshot`; compare column skips force while loading/error. |
 | **Blast radius** | All `/api/market/gex-heatmap` callers (Thermal, SPX Slayer matrix, Vector ladder). SPX may briefly serve honestly-stale matrix (asof timestamp) instead of empty/504. |
 
-## 2026-08-13 — [FINDING, P1 Largo] `/terminal` launch-gated for premium + heavy queries 504 @ ~120s — FIXED
+## 2026-08-13 — [FINDING, P1 Largo] Heavy queries 504 @ ~120s — FIXED (launch gate deliberately NOT changed)
 
 > **kind:** `FINDING`
 
 | Field | Value |
 |-------|-------|
 | **Status** | FIXED on `cursor/spx-matrix-timeout-fix-3d11` (same PR as SPX matrix timeout) |
-| **Symptom** | Non-admin premium members saw Coming Soon on `/terminal` and `POST /api/market/largo/query` → **403 `coming_soon`**. Admins could load Largo but heavy 0DTE questions occasionally **504 @ ~120s** (ALB idle timeout). |
-| **Root cause** | (1) `largo` had `defaultLaunched: false` while marketing listed Largo as live — prod `LAUNCHED_TOOLS` unset, so only admins bypassed the gate. (2) Deep tool-loop budget was 90s plus uncapped prefetch/post/followups, so total turn could exceed ALB 120s with no route-level deadline. |
-| **Fix** | Set `defaultLaunched: true` for Largo; add `largoMemberRouteDeadlineMs` (100s) route race on `/api/market/largo/query`; cap tool-loop via `largoToolLoopBudgetMs` (75s); client stream timeout 110s. |
-| **Blast radius** | All premium members gain `/terminal` + Largo API access. Long questions may return an honest 503/SSE error before gateway 504 instead of hanging. |
+| **Symptom** | Admins could load Largo but heavy 0DTE questions occasionally **504 @ ~120s** (ALB idle timeout) — the request hung to the gateway with no member-visible error. |
+| **Root cause** | Deep tool-loop budget was 90s plus uncapped prefetch/post/followups, so a single turn could exceed the ALB 120s idle timeout with no route-level deadline to return before it. |
+| **Fix** | `largoMemberRouteDeadlineMs` (100s) route race on `/api/market/largo/query`; cap tool-loop via `largoToolLoopBudgetMs` (75s); client stream timeout 110s (was 130s, i.e. above the gateway). |
+| **Blast radius** | Largo callers only — today that is admins. Long questions now return an honest 503/SSE error before the gateway 504 instead of hanging. No change to who can reach Largo. |
+| **NOT changed** | An earlier revision of this branch also set `defaultLaunched: true` for `largo`, which would have opened `/terminal` to every premium member. **Reverted on operator instruction — Largo stays admin-only.** A 403 `coming_soon` for a non-admin premium member is the gate working as designed, not a defect. When Largo does launch, unlock it with `LAUNCHED_TOOLS=largo` (additive, reversible, no deploy) rather than by flipping `defaultLaunched`. |
 
 ## 2026-08-13 — [FINDING, P1 Thermal] Compare grid all columns stuck "Syncing …" (Mag7/Semis) — FIXED
 
