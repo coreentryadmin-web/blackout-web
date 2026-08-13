@@ -17,6 +17,7 @@ import {
   keyLevelsKicker,
   keyLevelsFootnote,
   keyLevelsFootnoteCompact,
+  netFlowHeaderTooltip,
 } from "./thermal-desk-state.ts";
 
 // PINNED, and deliberately NOT "matches the Indices preset" any more. Its real consumer is
@@ -210,4 +211,21 @@ test("keyLevelsFootnoteCompact drops redundant scoped copy but keeps matrix peak
 
   assert.equal(keyLevelsFootnoteCompact("Aug 4"), keyLevelsFootnote("Aug 4"));
   assert.match(keyLevelsFootnoteCompact("Aug 4"), /sum near-term expiries/);
+});
+
+test("netFlowHeaderTooltip discloses that net flow is NOT rescoped when its neighbours are", () => {
+  // Unscoped: nothing to disclose — every column is the near-term book, so the base copy stands.
+  const plain = netFlowHeaderTooltip(null);
+  assert.match(plain, /Forced dealer hedging flow/);
+  assert.doesNotMatch(plain, /NOT re-scoped/);
+
+  // Scoped: King node (#2154) and DR% (#2156) DO follow the scope, so a silent unscoped column
+  // reads as scoped. The disclosure must name the scope and say which columns differ.
+  const scoped = netFlowHeaderTooltip("Aug 14");
+  assert.match(scoped, /NOT re-scoped to Aug 14/);
+  assert.match(scoped, /King node and DR%/);
+  assert.match(scoped, /Depth tab/);
+
+  // Whitespace-only is not a scope.
+  assert.equal(netFlowHeaderTooltip("   "), plain);
 });
