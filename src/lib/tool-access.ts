@@ -2,9 +2,11 @@
 // no Next, no process beyond env) so it is client + server + unit-test safe. Admin bypass is layered on
 // in tool-access-server.ts — this module only knows the per-tool launch state.
 //
-// WHY: paying (Whop) users get every finished desk tool on day one; Largo stays gated
-// behind a padlock until its launch. The locked set remains env-overridable
-// (LAUNCHED_TOOLS) for additive unlocks — default-launched tools cannot be locked via env.
+// WHY: paying (Whop) users get every finished desk tool on day one; Largo stays gated behind a
+// padlock until its launch — that gate is deliberate, not a bug, so a 403 `coming_soon` for a
+// non-admin premium member is the gate working. Unlock it by setting LAUNCHED_TOOLS, not by
+// flipping defaultLaunched. The locked set remains env-overridable (LAUNCHED_TOOLS) for additive
+// unlocks — default-launched tools cannot be locked via env.
 
 export type ToolKey = "spx" | "flows" | "heatmap" | "largo" | "nighthawk" | "vector";
 

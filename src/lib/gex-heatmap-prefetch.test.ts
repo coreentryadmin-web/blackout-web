@@ -2,33 +2,26 @@ import assert from "node:assert/strict";
 import test, { beforeEach, afterEach } from "node:test";
 
 /**
- * These exercise the two properties that keep the sector grid from flooding the server: a new
- * preset ABORTS the previous batch, and an already-warm ticker is not re-fetched at all. Both are
- * about the dropdown, where a member changes preset far faster than a heatmap build completes.
+ * Batch prefetch: a new preset ABORTS the previous batch, and warm tickers are skipped.
  */
 
-// A Map, not a plain object: the stub writes keys straight from the code under test, and a
-// computed property write on an object literal is a prototype-pollution shape (CodeQL flags it,
-// correctly in general). A Map has no prototype chain to walk into.
 const store = new Map<string, string>();
 const fetched: string[] = [];
 const aborted: string[] = [];
 
-// jsdom-free stubs: the module only needs `window`, `sessionStorage` and `fetch` to exist.
 const g = globalThis as unknown as {
   window?: unknown;
   sessionStorage?: unknown;
   fetch?: unknown;
 };
 
-/** Resolvers for the in-flight fetches, so a test can decide when (or whether) each lands. */
-let pending: Array<{ ticker: string; resolve: (v: unknown) => void }> = [];
+let pendingResolve: ((v: unknown) => void) | null = null;
 
 beforeEach(() => {
   store.clear();
   fetched.length = 0;
   aborted.length = 0;
-  pending = [];
+  pendingResolve = null;
 
   g.sessionStorage = {
     getItem: (k: string) => store.get(k) ?? null,
@@ -42,15 +35,11 @@ beforeEach(() => {
   g.window = { sessionStorage: g.sessionStorage };
 
   g.fetch = (url: string, init?: { signal?: AbortSignal }) => {
-    const ticker = new URL(url, "https://x.test").searchParams.get("ticker") ?? "";
-    fetched.push(ticker);
+    fetched.push(url);
     return new Promise((resolve, reject) => {
-      pending.push({
-        ticker,
-        resolve: (v) => resolve({ ok: true, json: async () => v }),
-      });
+      pendingResolve = (v) => resolve({ ok: true, json: async () => v });
       init?.signal?.addEventListener("abort", () => {
-        aborted.push(ticker);
+        aborted.push(url);
         reject(new DOMException("aborted", "AbortError"));
       });
     });
@@ -63,35 +52,59 @@ afterEach(() => {
   delete g.fetch;
 });
 
-test("a new preset aborts the previous batch's in-flight requests", async () => {
+test("a new preset aborts the previous batch request", async () => {
   const { prefetchGexHeatmapTickers, __test_resetGexHeatmapPrefetch } = await import(
     "./gex-heatmap-prefetch.ts"
   );
   __test_resetGexHeatmapPrefetch();
 
   prefetchGexHeatmapTickers(["NVDA", "AMD", "AVGO"]);
-  assert.deepEqual(fetched, ["NVDA", "AMD", "AVGO"]);
-  assert.deepEqual(aborted, []);
+  assert.equal(fetched.length, 1);
+  assert.match(fetched[0]!, /batch\?tickers=NVDA%2CAMD%2CAVGO/);
 
-  // Member moves the dropdown to another sector before the first batch lands.
   prefetchGexHeatmapTickers(["XOM", "CVX"]);
-  assert.deepEqual(aborted.sort(), ["AMD", "AVGO", "NVDA"]);
-  assert.deepEqual(fetched.slice(3), ["XOM", "CVX"]);
+  assert.equal(aborted.length, 1);
+  assert.equal(fetched.length, 2);
+  assert.match(fetched[1]!, /batch\?tickers=XOM%2CCVX/);
 
   __test_resetGexHeatmapPrefetch();
 });
 
-test("an already-warm ticker is not re-fetched", async () => {
+test("an already-warm ticker is not included in the batch", async () => {
   const { writeGexHeatmapSessionCache } = await import("./gex-heatmap-session-cache.ts");
   const { prefetchGexHeatmapTickers, __test_resetGexHeatmapPrefetch } = await import(
     "./gex-heatmap-prefetch.ts"
   );
   __test_resetGexHeatmapPrefetch();
 
-  writeGexHeatmapSessionCache("NVDA", { available: true });
+  writeGexHeatmapSessionCache("NVDA", { available: true, spot: 100, strikes: [100], expiries: ["2026-07-28"] });
   prefetchGexHeatmapTickers(["NVDA", "AMD"]);
 
-  assert.deepEqual(fetched, ["AMD"], "warm NVDA must not spend a request");
+  assert.equal(fetched.length, 1);
+  assert.match(fetched[0]!, /batch\?tickers=AMD/);
+  assert.doesNotMatch(fetched[0]!, /NVDA/);
+
+  __test_resetGexHeatmapPrefetch();
+});
+
+test("batch response seeds session cache per ticker", async () => {
+  const { readGexHeatmapSessionCache } = await import("./gex-heatmap-session-cache.ts");
+  const { prefetchGexHeatmapTickers, __test_resetGexHeatmapPrefetch } = await import(
+    "./gex-heatmap-prefetch.ts"
+  );
+  __test_resetGexHeatmapPrefetch();
+
+  prefetchGexHeatmapTickers(["AMD"]);
+  assert.ok(pendingResolve);
+  pendingResolve!({
+    tickers: {
+      AMD: { available: true, spot: 150, strikes: [150], expiries: ["2026-07-28"] },
+    },
+  });
+  await new Promise((r) => setTimeout(r, 0));
+
+  const cached = readGexHeatmapSessionCache("AMD") as { spot?: number } | undefined;
+  assert.equal(cached?.spot, 150);
 
   __test_resetGexHeatmapPrefetch();
 });

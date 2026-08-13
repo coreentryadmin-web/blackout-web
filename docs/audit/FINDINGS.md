@@ -59,7 +59,44 @@ Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 | **Root cause** | Parser rejected `**Verdict:**` headings; persist threw on huge tool_results; no vendor sanitizer; flow tools ignored `since_hours`; trade_history returned [] without rollup |
 | **Fix** | `answer-contract.ts`, `sanitize-member-text.ts`, `persist-tool-results.ts`, `largo-terminal.ts`, `run-tool.ts`, `flow-service.ts`, `market-evidence.ts`, `system-prompt.ts` |
 
-## 2026-08-12 — [FINDING, P2 Thermal] Our closed-form VEX and CHARM carry an unmodelled dividend-yield error — FIXED
+## 2026-08-13 — [FINDING, P1 Thermal/SPX] SPX gex-heatmap blocked ~120s → ALB 504; compare grid + desk matrix stuck on "Syncing" — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Status** | FIXED on `cursor/spx-matrix-timeout-fix-3d11` |
+| **Symptom** | `/heatmap?compare=1` SPX column stuck "Syncing SPX matrix…" while SPY/QQQ/IWM paint; `/dashboard` Dealer Gamma Map "Loading gamma matrix…" + GEX STALE; pin forecast loading. |
+| **Evidence** | Prod probe 2026-08-13 RTH: `GET /api/market/gex-heatmap?ticker=SPX` → **504 @ 120026ms**; SPY 82ms (cached). Vector gex-ladder had same class of bug (documented in route). |
+| **Root cause** | (1) SPX cold Polygon chain rebuild exceeds ALB 120s idle timeout. (2) `awaitHeatmapBuildWithBlockCap` timeout branch awaited **uncapped** Redis + `applySpxOdteGexUwOverlay` inside the timer callback — the 3s cap never resolved the Promise, so requests hung until ALB 504. (3) Compare grid blank-column logic spammed `?force=1`, starting 55s blocking rebuilds in a loop. |
+| **Fix** | Cap Redis handoff at 500ms; cap SPX UW overlay at 2s (best-effort); unify force/non-force stale handoff; `loadHeatmapForMember` 10s route deadline → `readGexHeatmapSnapshot`; compare column skips force while loading/error. |
+| **Blast radius** | All `/api/market/gex-heatmap` callers (Thermal, SPX Slayer matrix, Vector ladder). SPX may briefly serve honestly-stale matrix (asof timestamp) instead of empty/504. |
+
+## 2026-08-13 — [FINDING, P1 Largo] Heavy queries 504 @ ~120s — FIXED (launch gate deliberately NOT changed)
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Status** | FIXED on `cursor/spx-matrix-timeout-fix-3d11` (same PR as SPX matrix timeout) |
+| **Symptom** | Admins could load Largo but heavy 0DTE questions occasionally **504 @ ~120s** (ALB idle timeout) — the request hung to the gateway with no member-visible error. |
+| **Root cause** | Deep tool-loop budget was 90s plus uncapped prefetch/post/followups, so a single turn could exceed the ALB 120s idle timeout with no route-level deadline to return before it. |
+| **Fix** | `largoMemberRouteDeadlineMs` (100s) route race on `/api/market/largo/query`; cap tool-loop via `largoToolLoopBudgetMs` (75s); client stream timeout 110s (was 130s, i.e. above the gateway). |
+| **Blast radius** | Largo callers only — today that is admins. Long questions now return an honest 503/SSE error before the gateway 504 instead of hanging. No change to who can reach Largo. |
+| **NOT changed** | An earlier revision of this branch also set `defaultLaunched: true` for `largo`, which would have opened `/terminal` to every premium member. **Reverted on operator instruction — Largo stays admin-only.** A 403 `coming_soon` for a non-admin premium member is the gate working as designed, not a defect. When Largo does launch, unlock it with `LAUNCHED_TOOLS=largo` (additive, reversible, no deploy) rather than by flipping `defaultLaunched`. |
+
+## 2026-08-13 — [FINDING, P1 Thermal] Compare grid all columns stuck "Syncing …" (Mag7/Semis) — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Status** | FIXED on `cursor/spx-matrix-timeout-fix-3d11` |
+| **Symptom** | Opening `/heatmap?compare=1` with Mag7/Semis/Energy presets: every column stuck **"Syncing {TICKER} matrix…"** — not just SPX. No 5s refresh cadence. |
+| **Root cause** | **Not AWS ECS compute.** Each blank compare column auto-fired `?force=1`, bypassing the Redis cache and starting parallel cold Polygon chain rebuilds (55s block cap × N columns). While any column hung in force/load, SWR stayed `isLoading` with no `lastGood` → perpetual syncing. ALB 504s on SPX made it worse but the compare-grid force storm hit every ticker. |
+| **Fix** | Six-part bundle on `cursor/spx-matrix-timeout-fix-3d11`: (1) strict cache-reader member route — `loadHeatmapCacheReaderOnly` never awaits cold builds on normal GET; (2) `GET /api/market/gex-heatmap/batch` — one round trip for 3–7 compare columns; (3) `comparePresetWarmTickers()` seeds boot-warm + heatmap-warm; (4) batch prefetch on landing, preset switch, and sector-picker hover; (5) `?compact=1` 0DTE strike-band payload; (6) `?force=1` only on manual ↻ (removed per-column auto stale/blank force + stagger storm). Prior partial: `shouldForceBlankMatrixRefresh`, 12s fetch timeout. |
+| **Blast radius** | All Thermal compare presets (3–7 columns). Warm Redis hits should paint in <1s; cold names show honest empty/retry instead of 55s+ force hangs. |
+
 
 > **kind:** `FINDING`
 

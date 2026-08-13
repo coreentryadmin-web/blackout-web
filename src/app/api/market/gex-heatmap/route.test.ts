@@ -25,6 +25,7 @@ let capturedLaunchTools: string[] | null = null;
 // original behavior untouched (the off-hours gate is a no-op when isEtCashRth() is true).
 let mockMarketOpen = true;
 
+mock.module("server-only", { namedExports: {} });
 mock.module("../../../../lib/market-api-auth", {
   namedExports: {
     authorizeMarketDeskApi: async () => ({ userId: "user_1", via: "user" as const }),
@@ -54,7 +55,7 @@ mock.module("../../../../lib/providers/polygon-options-gex", {
       spot: null,
       events_count: null,
     }),
-    readGexHeatmapSnapshot: async () => null,
+    readGexHeatmapSnapshot: async () => mockHeatmap,
   },
 });
 mock.module("../../../../lib/providers/gex-cross-validation", {
@@ -83,6 +84,7 @@ mock.module("../../../../lib/db", {
   namedExports: {
     dbConfigured: () => false,
     fetchLatestNighthawkEdition: async () => null,
+    fetchLatestPlayableNighthawkEdition: async () => null,
   },
 });
 mock.module("../../../../lib/et-market-hours", {
@@ -247,17 +249,15 @@ describe("/api/market/gex-heatmap available flag", () => {
     assert.equal(body.gex.call_wall, 100);
   });
 
-  test("a null heatmap (Polygon unavailable) still short-circuits to the pre-existing available:false contract", async () => {
+  test("a null heatmap (cache miss) short-circuits to available:false and schedules background warm", async () => {
     mockHeatmap = null;
     const callsBefore = fetchGexHeatmapCalls;
     const res = await GET(new NextRequest("http://localhost/api/market/gex-heatmap?ticker=ZZZZ"));
     const body = await res.json();
     assert.equal(body.available, false);
     assert.equal(body.underlying, "ZZZZ");
+    // Cache miss → fire-and-forget warm via fetchGexHeatmap (not awaited on the request path).
     assert.equal(fetchGexHeatmapCalls, callsBefore + 1);
-    // The null path is the minimal { available, underlying } shape — it never merges heatmap
-    // fields (there's nothing to merge), unlike the non-null-but-empty case above which still
-    // spreads the full (empty-valued) heatmap object.
     assert.equal(body.strikes, undefined);
   });
 });

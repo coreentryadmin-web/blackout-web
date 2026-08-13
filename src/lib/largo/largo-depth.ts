@@ -30,7 +30,7 @@ export function largoDepthConfig(depth: LargoDepth): {
     model: LARGO_MODEL,
     maxRounds: 10,
     maxTokens: 4096,
-    timeoutMs: 90_000,
+    timeoutMs: 75_000,
     label: "Deep dive (Sonnet, full loop)",
   };
 }

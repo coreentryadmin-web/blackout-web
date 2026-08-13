@@ -493,8 +493,8 @@ export interface NewsArticle {
 
 // ── Largo (BlackOut intel only) ───────────────────────────────────────────────
 
-/** Client-side ceiling — route maxDuration is 120s; leave headroom for slow mobile proxies. */
-const LARGO_STREAM_TIMEOUT_MS = 130_000;
+/** Client-side ceiling — route deadline is 100s; leave headroom for slow mobile proxies. */
+const LARGO_STREAM_TIMEOUT_MS = 110_000;
 
 /** Thrown when the caller cancels an in-flight Largo stream (Stop button). */
 export class LargoStreamAborted extends Error {

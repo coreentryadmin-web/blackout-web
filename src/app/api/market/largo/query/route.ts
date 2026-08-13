@@ -28,6 +28,7 @@ import {
 import { randomUUID } from "node:crypto";
 import { shouldRejectLargoWithoutRedis } from "@/lib/largo-redis-policy";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
+import { largoMemberRouteDeadlineMs } from "@/lib/providers/config";
 
 // ---------------------------------------------------------------------------
 // Largo concurrency gate — max 2 simultaneous queries per user, Redis-backed.
@@ -227,6 +228,32 @@ export const maxDuration = 120;
 /** Keep mobile/CF proxies from killing silent tool-loop SSE legs (40–90s with no tokens). */
 const LARGO_SSE_HEARTBEAT_MS = 12_000;
 
+/** Hard ceiling before ALB idle timeout (120s) — return a member-visible error, not a gateway 504. */
+const LARGO_ROUTE_DEADLINE_MS = largoMemberRouteDeadlineMs();
+
+const LARGO_ROUTE_TIMEOUT_MESSAGE =
+  "This question ran long before the desk could finish. Try Quick read, or ask about one ticker or one desk.";
+
+class LargoRouteDeadlineError extends Error {
+  constructor() {
+    super("Largo route deadline exceeded");
+    this.name = "LargoRouteDeadlineError";
+  }
+}
+
+function largoRouteDeadlineRace<T>(work: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      console.warn(
+        `[market/largo/query] exceeded ${LARGO_ROUTE_DEADLINE_MS}ms route deadline — returning before ALB 504`
+      );
+      reject(new LargoRouteDeadlineError());
+    }, LARGO_ROUTE_DEADLINE_MS);
+  });
+  return Promise.race([work, deadline]).finally(() => clearTimeout(timer));
+}
+
 function wantsStream(req: NextRequest): boolean {
   if (req.nextUrl.searchParams.get("stream") === "1") return true;
   const accept = req.headers.get("accept") ?? "";
@@ -393,24 +420,30 @@ export async function POST(req: NextRequest) {
         send({ type: "ping", t: Date.now() });
 
         try {
-          await runLargoQueryStream(
-            effectiveQuestion,
-            resolvedSessionId,
-            userId,
-            (event) => {
-              if (!send(event)) {
-                closed = true;
-                throw new SseClientDisconnected();
-              }
-            },
-            // The browser ALWAYS takes this branch — the terminal requests text/event-stream. An
-            // images argument omitted here reaches the model as a turn with no picture and produces
-            // a fluent answer about a chart nobody sent, which is the worst possible failure of
-            // this feature and the one with no error to notice.
-            images,
-            turnOptions
+          await largoRouteDeadlineRace(
+            runLargoQueryStream(
+              effectiveQuestion,
+              resolvedSessionId,
+              userId,
+              (event) => {
+                if (!send(event)) {
+                  closed = true;
+                  throw new SseClientDisconnected();
+                }
+              },
+              // The browser ALWAYS takes this branch — the terminal requests text/event-stream. An
+              // images argument omitted here reaches the model as a turn with no picture and produces
+              // a fluent answer about a chart nobody sent, which is the worst possible failure of
+              // this feature and the one with no error to notice.
+              images,
+              turnOptions
+            )
           );
         } catch (error) {
+          if (error instanceof LargoRouteDeadlineError) {
+            send({ type: "error", message: LARGO_ROUTE_TIMEOUT_MESSAGE });
+            return;
+          }
           if (isSseClientDisconnect(error)) return;
           console.error("[market/largo/query stream]", error);
           send({ type: "error", message: "Largo query failed" });
@@ -441,7 +474,9 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const result = await runLargoQuery(effectiveQuestion, resolvedSessionId, userId, images, turnOptions);
+    const result = await largoRouteDeadlineRace(
+      runLargoQuery(effectiveQuestion, resolvedSessionId, userId, images, turnOptions)
+    );
     return NextResponse.json(result, {
       headers: {
         ...NO_STORE_HEADERS,
@@ -449,6 +484,12 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (error) {
+    if (error instanceof LargoRouteDeadlineError) {
+      return NextResponse.json(
+        { error: LARGO_ROUTE_TIMEOUT_MESSAGE },
+        { status: 503, headers: NO_STORE_HEADERS }
+      );
+    }
     console.error("[market/largo/query]", error);
     return NextResponse.json({ error: "Largo query failed" }, { status: 502, headers: NO_STORE_HEADERS });
   } finally {

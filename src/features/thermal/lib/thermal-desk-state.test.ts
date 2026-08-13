@@ -10,6 +10,8 @@ import {
   parseThermalTicker,
   parseThermalUrlState,
   shouldForceMatrixRefresh,
+  shouldForceBlankMatrixRefresh,
+  THERMAL_MATRIX_CORE_TICKERS,
   thermalLayerFreshness,
   wallScopeLabel,
   keyLevelsKicker,
@@ -92,6 +94,15 @@ test("isUsableGexHeatmapPayload / shouldForceMatrixRefresh", () => {
     false,
     "off-hours: never force (RTH-only policy)"
   );
+});
+
+test("shouldForceBlankMatrixRefresh: sector compare never force-storms cold columns", () => {
+  assert.equal(shouldForceBlankMatrixRefresh("AMZN", { activeColumn: true }), false);
+  assert.equal(shouldForceBlankMatrixRefresh("GOOG", { activeColumn: false }), false);
+  assert.equal(shouldForceBlankMatrixRefresh("SPY", { activeColumn: false }), false);
+  assert.equal(shouldForceBlankMatrixRefresh("SPY", { activeColumn: true }), true);
+  assert.equal(shouldForceBlankMatrixRefresh("QQQ", { activeColumn: true }), true);
+  assert.deepEqual([...THERMAL_MATRIX_CORE_TICKERS], ["SPY", "SPX", "QQQ", "IWM"]);
 });
 
 test("thermalLayerFreshness: matrix live / stale / overlays off / UW off", () => {

@@ -13,15 +13,13 @@ import {
 import useSWR from "swr";
 import { clsx } from "clsx";
 import { FreshnessChip } from "@/components/ui";
-import { usePollIntervalMs, useEtMarketOpen } from "@/hooks/use-et-market-open";
+import { usePollIntervalMs } from "@/hooks/use-et-market-open";
 import { useLiveQuoteStream } from "@/hooks/useLiveQuoteStream";
 import { fmtHeatmapExpiry, type GexHeatmapLens } from "@/lib/gex-heatmap-display";
 import { resolveZeroDteExpiry } from "@/features/thermal/lib/thermal-compact-matrix";
 import {
   thermalLayerFreshness,
   isUsableGexHeatmapPayload,
-  shouldForceMatrixRefresh,
-  MATRIX_FORCE_THROTTLE_MS,
 } from "@/features/thermal/lib/thermal-desk-state";
 import {
   readGexHeatmapSessionCache,
@@ -73,14 +71,38 @@ type HeatmapPayload = {
   charm?: LensBlock;
 };
 
-async function fetchHeatmap(url: string): Promise<HeatmapPayload> {
-  const res = await fetch(url, {
-    credentials: "same-origin",
-    cache: "no-store",
-    headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
-  });
-  if (!res.ok) throw new Error(`heatmap ${res.status}`);
-  return res.json();
+type BatchResponse = {
+  tickers: Record<string, HeatmapPayload>;
+};
+
+async function fetchHeatmapBatch(url: string): Promise<BatchResponse> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 12_000);
+  try {
+    const res = await fetch(url, {
+      credentials: "same-origin",
+      cache: "no-store",
+      signal: ctrl.signal,
+      headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
+    });
+    if (!res.ok) throw new Error(`heatmap batch ${res.status}`);
+    return res.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function readBatchFallback(tickers: readonly string[]): BatchResponse | undefined {
+  const out: Record<string, HeatmapPayload> = {};
+  let any = false;
+  for (const t of tickers) {
+    const cached = readGexHeatmapSessionCache<HeatmapPayload>(t);
+    if (cached && isUsableGexHeatmapPayload(cached)) {
+      out[t] = cached;
+      any = true;
+    }
+  }
+  return any ? { tickers: out } : undefined;
 }
 
 function readPins(): Record<string, number[]> {
@@ -121,11 +143,9 @@ type ColumnProps = {
   shortcut: string;
   userPinnedScrollRef: MutableRefObject<boolean>;
   recenterEpoch: number;
-  onRegisterMutate: (
-    ticker: string,
-    mutate: () => Promise<unknown>,
-    isValidating: boolean,
-  ) => void;
+  view: HeatmapPayload | null;
+  matrixLoading: boolean;
+  hadError: boolean;
 };
 
 function ThermalMatrixFreshnessChip({
@@ -135,7 +155,6 @@ function ThermalMatrixFreshnessChip({
   asof?: string | null;
   matrixLoading: boolean;
 }) {
-  // Own the 1Hz clock here so TripleColumn (matrix + spot header) does not re-render every second.
   const [nowMs, setNowMs] = useState<number | null>(null);
   useEffect(() => {
     setNowMs(Date.now());
@@ -172,124 +191,13 @@ function TripleColumn({
   shortcut,
   userPinnedScrollRef,
   recenterEpoch,
-  onRegisterMutate,
+  view,
+  matrixLoading,
+  hadError,
 }: ColumnProps) {
-  const pollMs = usePollIntervalMs(5_000, 5_000);
-  const sessionLive = useEtMarketOpen();
-
-  // Sub-second header spot overlay (PR 3/N of the sub-second-spot project —
-  // see GexHeatmap.tsx for PR 3a). Display-only: this ticker column's header
-  // badge prefers the push tick when available, falling back to the matrix
-  // snapshot's own `spot` field otherwise. Deliberately NOT threaded into
-  // `data.spot` passed to ThermalCompactMatrix below — that value drives the
-  // ladder's ATM-row highlight and Slayer-parity auto-scroll-to-spot, which is
-  // intentionally paced to the matrix's own 5s/force-refresh cadence, not a
-  // faster independent clock (a push-fast spot there would highlight/scroll
-  // to a strike ahead of the strikes/cells actually painted). SPX has no
-  // stock-candle-store WS coverage (index, not a Polygon stock/ETF ticker) —
-  // the hook simply never reports a quote for it and the matrix's own spot
-  // is used, per useLiveQuoteStream's documented "absent = no live tick yet"
-  // contract.
   const { quotes: livePushQuotes } = useLiveQuoteStream([ticker]);
   const pushQuote = livePushQuotes[ticker.toUpperCase()];
   const pushSpot = pushQuote != null && pushQuote.price > 0 ? pushQuote.price : null;
-  // Age-based force (SPX Slayer parity): EventBridge heatmap-warm floors at 1m, so without
-  // ?force=1 SPY/QQQ asof ages well past the 5s poll. Force when asof is >5s old (server
-  // throttles ≤1/5s; single-flight coalesces concurrent viewers).
-  //
-  // forceNonce is monotonic and NEVER reused: clearing it back to 0 then bumping to 1 again
-  // made every force hit the same SWR key (`…&force=1&n=1`), so later forces could paint a
-  // stale cached payload while a slow revalidate ran (live 2026-07-29: SPY/QQQ felt stuck
-  // at 15–25s). forceActive flips the key on/off; nonce only increases.
-  const [forceNonce, setForceNonce] = useState(0);
-  const [forceActive, setForceActive] = useState(false);
-  const lastForceAtRef = useRef(0);
-  const [lastGood, setLastGood] = useState<HeatmapPayload | null>(null);
-
-  const matrixKey =
-    forceActive && forceNonce > 0
-      ? `/api/market/gex-heatmap?ticker=${encodeURIComponent(ticker)}&force=1&n=${forceNonce}`
-      : `/api/market/gex-heatmap?ticker=${encodeURIComponent(ticker)}`;
-
-  const clearForce = () => setForceActive(false);
-
-  const triggerForce = useCallback(() => {
-    lastForceAtRef.current = Date.now();
-    setForceNonce((n) => n + 1);
-    setForceActive(true);
-  }, []);
-
-  const { data, error, isLoading, isValidating, mutate } = useSWR<HeatmapPayload>(
-    matrixKey,
-    fetchHeatmap,
-    {
-      refreshInterval: pollMs,
-      revalidateOnFocus: true,
-      keepPreviousData: true,
-      fallbackData: readGexHeatmapSessionCache<HeatmapPayload>(ticker),
-      onSuccess: (payload) => {
-        if (isUsableGexHeatmapPayload(payload)) {
-          setLastGood(payload);
-          writeGexHeatmapSessionCache(ticker, payload);
-        }
-        clearForce();
-      },
-      onError: clearForce,
-    },
-  );
-
-  // Prefer a usable payload; never blank the column on a transient available:false.
-  const view =
-    isUsableGexHeatmapPayload(data) ? data
-    : isUsableGexHeatmapPayload(lastGood) ? lastGood
-    : data;
-
-  useEffect(() => {
-    const tick = () => {
-      if (!sessionLive) return;
-      const nowMs = Date.now();
-      if (forceActive) return; // wait for in-flight force to settle before arming another
-      if (nowMs - lastForceAtRef.current < MATRIX_FORCE_THROTTLE_MS) return;
-      // Blank / unusable column: force immediately (throttled) so SPY doesn't sit on
-      // "No matrix yet" waiting for the 1-min warm cron while SPX/QQQ already painted.
-      const blank = !isUsableGexHeatmapPayload(view);
-      const asofRaw = view?.asof;
-      const asofMs = asofRaw ? new Date(asofRaw).getTime() : NaN;
-      const stale =
-        !blank &&
-        shouldForceMatrixRefresh({
-          asofMs: Number.isFinite(asofMs) ? asofMs : null,
-          nowMs,
-          lastForceAtMs: lastForceAtRef.current,
-          sessionLive,
-        });
-      if (!blank && !stale) return;
-      triggerForce();
-    };
-    tick();
-    const id = setInterval(tick, 1_000);
-    return () => clearInterval(id);
-  }, [view, ticker, forceActive, triggerForce, sessionLive]);
-
-  // Reset last-good when the column ticker changes so we never paint SPX cells under a SPY header.
-  useEffect(() => {
-    setLastGood(null);
-  }, [ticker]);
-
-  // Rail ↻: force a fresh matrix compute (same path as age-based force) then let the
-  // desk bump recenterEpoch so each ladder maps onto live spot.
-  useEffect(() => {
-    onRegisterMutate(
-      ticker,
-      async () => {
-        triggerForce();
-        // Key change drives the fetch; mutate() on the prior key is a no-op for force.
-        await new Promise((r) => setTimeout(r, 50));
-        await mutate();
-      },
-      isValidating || forceActive,
-    );
-  }, [ticker, mutate, isValidating, forceActive, onRegisterMutate, triggerForce]);
 
   const block = view ? pickBlock(view, lens) : undefined;
   const matrixSpot = view?.spot != null && view.spot > 0 ? view.spot : null;
@@ -352,11 +260,11 @@ function TripleColumn({
         </div>
       </header>
 
-      {error && !isUsableGexHeatmapPayload(view) ? (
+      {hadError && !isUsableGexHeatmapPayload(view) ? (
         <div className="thermal-compact-empty" role="alert">
           Feed error — retrying…
         </div>
-      ) : isLoading && !isUsableGexHeatmapPayload(view) ? (
+      ) : matrixLoading && !isUsableGexHeatmapPayload(view) ? (
         <div className="thermal-compact-empty thermal-compact-syncing" role="status">
           <ThermalMatrixFreshnessChip asof={view?.asof ?? null} matrixLoading />
           <p className="mt-2 font-mono text-[10px] uppercase tracking-wider text-sky-300">
@@ -420,25 +328,67 @@ const ThermalTripleDesk = forwardRef<ThermalTripleDeskHandle, Props>(function Th
   const mode: ThermalCompareMode = "0dte";
   const [recenterEpoch, setRecenterEpoch] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
-  const [columnValidating, setColumnValidating] = useState<Record<string, boolean>>({});
   const userPinnedScrollRefStore = useRef<Record<string, MutableRefObject<boolean>>>({});
-  const mutateByTickerRef = useRef<Record<string, () => Promise<unknown>>>({});
+  const [forceNonce, setForceNonce] = useState(0);
+  const [forceActive, setForceActive] = useState(false);
+  const lastGoodRef = useRef<Record<string, HeatmapPayload>>({});
 
   const columnTickers = useMemo(() => tickers.map((t) => t.toUpperCase()), [tickers]);
+  const pollMs = usePollIntervalMs(5_000, 5_000);
+
+  const batchKey =
+    columnTickers.length > 0
+      ? forceActive && forceNonce > 0
+        ? `/api/market/gex-heatmap/batch?tickers=${encodeURIComponent(columnTickers.join(","))}&compact=1&force=1&n=${forceNonce}`
+        : `/api/market/gex-heatmap/batch?tickers=${encodeURIComponent(columnTickers.join(","))}&compact=1`
+      : null;
+
+  const { data: batchData, error, isLoading, isValidating, mutate } = useSWR<BatchResponse>(
+    batchKey,
+    fetchHeatmapBatch,
+    {
+      refreshInterval: pollMs,
+      revalidateOnFocus: true,
+      revalidateIfStale: true,
+      errorRetryInterval: pollMs,
+      dedupingInterval: 2_000,
+      keepPreviousData: true,
+      fallbackData: readBatchFallback(columnTickers),
+      onSuccess: (payload) => {
+        for (const [ticker, heatmap] of Object.entries(payload.tickers ?? {})) {
+          if (isUsableGexHeatmapPayload(heatmap)) {
+            lastGoodRef.current[ticker] = heatmap;
+            writeGexHeatmapSessionCache(ticker, heatmap);
+          }
+        }
+        setForceActive(false);
+      },
+      onError: () => setForceActive(false),
+    },
+  );
+
+  const viewByTicker = useMemo(() => {
+    const out: Record<string, HeatmapPayload | null> = {};
+    for (const ticker of columnTickers) {
+      const fresh = batchData?.tickers?.[ticker] ?? null;
+      if (isUsableGexHeatmapPayload(fresh)) {
+        out[ticker] = fresh;
+      } else if (isUsableGexHeatmapPayload(lastGoodRef.current[ticker])) {
+        out[ticker] = lastGoodRef.current[ticker]!;
+      } else {
+        out[ticker] = fresh ?? null;
+      }
+    }
+    return out;
+  }, [batchData, columnTickers]);
 
   useEffect(() => {
     setPins(readPins());
   }, []);
 
-  const onRegisterMutate = useCallback(
-    (ticker: string, mutate: () => Promise<unknown>, isValidating: boolean) => {
-      mutateByTickerRef.current[ticker] = mutate;
-      setColumnValidating((prev) =>
-        prev[ticker] === isValidating ? prev : { ...prev, [ticker]: isValidating },
-      );
-    },
-    [],
-  );
+  useEffect(() => {
+    lastGoodRef.current = {};
+  }, [columnTickers.join(",")]);
 
   const refreshAndRecenter = useCallback(async () => {
     for (const ticker of columnTickers) {
@@ -446,14 +396,14 @@ const ThermalTripleDesk = forwardRef<ThermalTripleDeskHandle, Props>(function Th
     }
     setRefreshing(true);
     try {
-      const mutates = Object.values(mutateByTickerRef.current);
-      await Promise.all(mutates.map((m) => m()));
+      setForceNonce((n) => n + 1);
+      setForceActive(true);
+      await mutate();
     } finally {
       setRefreshing(false);
-      // Each column recenters on its own spot row (independent scroll positions).
       setRecenterEpoch((n) => n + 1);
     }
-  }, [columnTickers]);
+  }, [columnTickers, mutate]);
 
   useImperativeHandle(ref, () => ({ refreshAndRecenter }), [refreshAndRecenter]);
 
@@ -468,6 +418,8 @@ const ThermalTripleDesk = forwardRef<ThermalTripleDeskHandle, Props>(function Th
       return merged;
     });
   }, []);
+
+  const matrixLoading = isLoading || isValidating || forceActive || refreshing;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -513,7 +465,9 @@ const ThermalTripleDesk = forwardRef<ThermalTripleDeskHandle, Props>(function Th
             shortcut={String(i + 1)}
             userPinnedScrollRef={userPinnedScrollRefFor(userPinnedScrollRefStore, ticker)}
             recenterEpoch={recenterEpoch}
-            onRegisterMutate={onRegisterMutate}
+            view={viewByTicker[ticker] ?? null}
+            matrixLoading={matrixLoading}
+            hadError={Boolean(error)}
           />
         ))}
       </div>

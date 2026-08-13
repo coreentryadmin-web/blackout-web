@@ -1,6 +1,6 @@
 import { isWebProcess, shouldRunRthWarmLeader, shouldRunVectorBeadRecorder } from "@/lib/process-role";
 import { seedGexHeatmapFromRedis } from "@/lib/providers/polygon-options-gex";
-import { heatmapPresetTickers } from "@/lib/heatmap-allowlist";
+import { comparePresetWarmTickers } from "@/features/thermal/lib/thermal-compare-presets";
 import { getZeroDteBoardPayload } from "@/lib/platform/zerodte-service";
 import {
   loadBootstrapBundle,
@@ -48,7 +48,7 @@ export function ensureWebBootWarm(): void {
 
   if (!bootWarmInflight) {
     bootWarmInflight = (async () => {
-      const presets = heatmapPresetTickers();
+      const presets = comparePresetWarmTickers();
       await Promise.allSettled([
         loadBootstrapBundle(),
         loadMergedSpxDesk(),

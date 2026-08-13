@@ -87,6 +87,38 @@ export function gexHeatmapForceMaxBlockMs(): number {
   return Math.round(ms);
 }
 
+/** Max ms SPX UW 0DTE overlay may block finalizeHeatmapForServe. Default 2s — overlay is best-effort. */
+export function gexHeatmapOverlayMaxMs(): number {
+  const raw = process.env.GEX_HEATMAP_OVERLAY_MAX_MS?.trim();
+  const ms = raw ? Number(raw) : 2_000;
+  if (!Number.isFinite(ms) || ms < 200) return 2_000;
+  return Math.round(ms);
+}
+
+/** Member POST /api/market/largo/query hard ceiling before ALB idle timeout (120s). Default 100s. */
+export function largoMemberRouteDeadlineMs(): number {
+  const raw = process.env.LARGO_MEMBER_ROUTE_DEADLINE_MS?.trim();
+  const ms = raw ? Number(raw) : 100_000;
+  if (!Number.isFinite(ms) || ms < 30_000) return 100_000;
+  return Math.min(Math.round(ms), 115_000);
+}
+
+/** Anthropic tool-loop budget — route deadline minus prefetch/post overhead. Default 75s. */
+export function largoToolLoopBudgetMs(): number {
+  const raw = process.env.LARGO_TOOL_LOOP_BUDGET_MS?.trim();
+  const ms = raw ? Number(raw) : 75_000;
+  if (!Number.isFinite(ms) || ms < 20_000) return 75_000;
+  const ceiling = largoMemberRouteDeadlineMs() - 20_000;
+  return Math.min(Math.round(ms), Math.max(ceiling, 30_000));
+}
+/** Member GET /api/market/gex-heatmap hard ceiling before serving any cached snapshot. Default 10s. */
+export function gexHeatmapMemberRouteDeadlineMs(): number {
+  const raw = process.env.GEX_HEATMAP_MEMBER_ROUTE_DEADLINE_MS?.trim();
+  const ms = raw ? Number(raw) : 10_000;
+  if (!Number.isFinite(ms) || ms < 2_000) return 10_000;
+  return Math.round(ms);
+}
+
 /** Max ms member `/api/market/spx/play` may block on cold eval before serving stale/degraded. Default 800ms. */
 export function playMemberReadMaxBlockMs(): number {
   const raw = process.env.SPX_PLAY_MEMBER_READ_MAX_BLOCK_MS?.trim();

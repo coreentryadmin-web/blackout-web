@@ -1,4 +1,9 @@
-import { polygonConfigured, gexHeatmapMaxBlockMs, gexHeatmapForceMaxBlockMs } from "./config";
+import {
+  polygonConfigured,
+  gexHeatmapMaxBlockMs,
+  gexHeatmapForceMaxBlockMs,
+  gexHeatmapOverlayMaxMs,
+} from "./config";
 import { fetchStockSnapshot, fetchIndexSnapshot } from "./polygon";
 import { todayEtYmd } from "./spx-session";
 import { liveExpiries } from "./expiry-liveness";
@@ -1425,6 +1430,23 @@ function rememberGoodHeatmap(cacheKey: string, data: GexHeatmap | null): GexHeat
   return pruned;
 }
 
+/** Redis read cap for stale handoff — an uncapped get here blocked members for ~120s (ALB 504). */
+const HEATMAP_REDIS_HANDOFF_CAP_MS = 500;
+
+async function readHeatmapRedisEntry(
+  cacheKey: string
+): Promise<{ at: number; data: GexHeatmap } | null> {
+  try {
+    const { sharedCacheGet } = await import("../shared-cache");
+    return await Promise.race([
+      sharedCacheGet<{ at: number; data: GexHeatmap }>(cacheKey),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), HEATMAP_REDIS_HANDOFF_CAP_MS)),
+    ]);
+  } catch {
+    return null;
+  }
+}
+
 /** Prune + SPX 0DTE UW overlay so served King matches the cross-provider oracle. */
 async function finalizeHeatmapForServe(
   cacheKey: string,
@@ -1432,7 +1454,37 @@ async function finalizeHeatmapForServe(
 ): Promise<GexHeatmap | null> {
   const pruned = rememberGoodHeatmap(cacheKey, data);
   if (!pruned || pruned.underlying !== "SPX") return pruned;
-  return applySpxOdteGexUwOverlay(pruned);
+  const overlayMs = gexHeatmapOverlayMaxMs();
+  try {
+    return await Promise.race([
+      applySpxOdteGexUwOverlay(pruned),
+      new Promise<GexHeatmap>((resolve) => {
+        setTimeout(() => resolve(pruned), overlayMs);
+      }),
+    ]);
+  } catch {
+    return pruned;
+  }
+}
+
+/** Resolve stale handoff for block-cap timeout — must stay fast (no uncapped Redis / overlay). */
+async function resolveHeatmapStaleHandoff(
+  cacheKey: string,
+  mem: { at: number; data: GexHeatmap } | undefined,
+  redisHit: { at: number; data: GexHeatmap } | null,
+  now: number
+): Promise<GexHeatmap | null> {
+  let handoff = pickStaleHeatmapForHandoff(mem, redisHit, now);
+  if (!handoff) {
+    const mem2 = cachedHeatmaps.get(cacheKey);
+    let redis2 = redisHit;
+    if (!mem2 && !redis2) {
+      redis2 = await readHeatmapRedisEntry(cacheKey);
+    }
+    handoff = pickStaleHeatmapForHandoff(mem2, redis2, Date.now());
+  }
+  const served = handoff ?? lastGoodHeatmapLocal.get(cacheKey) ?? null;
+  return finalizeHeatmapForServe(cacheKey, served);
 }
 
 // Bound the ticker dimension so an unusual spread of (garbage) tickers can't leak
@@ -1561,8 +1613,8 @@ function pickStaleHeatmapForHandoff(
 }
 
 /** Cap how long callers await an inflight/cold matrix build — serve stale instead of 20–57s hangs.
- *  `?force=1` bypasses stale handoff: wait for a real recompute (up to gexHeatmapForceMaxBlockMs)
- *  or return null so the route can fail closed — never paint a pre-force snapshot as "refreshed". */
+ *  Force waits longer (gexHeatmapForceMaxBlockMs) but still hands off stale on timeout — better
+ *  than holding the HTTP request until the ALB 504s with no matrix at all. */
 async function awaitHeatmapBuildWithBlockCap(
   build: Promise<GexHeatmap | null>,
   cacheKey: string,
@@ -1571,39 +1623,12 @@ async function awaitHeatmapBuildWithBlockCap(
   now: number,
   { forceRefresh = false }: { forceRefresh?: boolean } = {}
 ): Promise<GexHeatmap | null> {
-  if (forceRefresh) {
-    const blockMs = gexHeatmapForceMaxBlockMs();
-    return Promise.race([
-      build.then((data) => finalizeHeatmapForServe(cacheKey, data)),
-      new Promise<GexHeatmap | null>((resolve) => {
-        setTimeout(() => resolve(null), blockMs);
-      }),
-    ]);
-  }
-
-  const blockMs = gexHeatmapMaxBlockMs();
+  const blockMs = forceRefresh ? gexHeatmapForceMaxBlockMs() : gexHeatmapMaxBlockMs();
   return Promise.race([
     build.then((data) => finalizeHeatmapForServe(cacheKey, data)),
     new Promise<GexHeatmap | null>((resolve) => {
       setTimeout(() => {
-        void (async () => {
-          let handoff = pickStaleHeatmapForHandoff(mem, redisHit, now);
-          if (!handoff) {
-            const mem2 = cachedHeatmaps.get(cacheKey);
-            let redis2 = redisHit;
-            if (!mem2) {
-              try {
-                const { sharedCacheGet } = await import("../shared-cache");
-                redis2 = await sharedCacheGet<{ at: number; data: GexHeatmap }>(cacheKey);
-              } catch {
-                /* redis optional */
-              }
-            }
-            handoff = pickStaleHeatmapForHandoff(mem2, redis2, Date.now());
-          }
-          const served = handoff ?? lastGoodHeatmapLocal.get(cacheKey) ?? null;
-          resolve(await finalizeHeatmapForServe(cacheKey, served));
-        })();
+        void resolveHeatmapStaleHandoff(cacheKey, mem, redisHit, now).then(resolve);
       }, blockMs);
     }),
   ]);
