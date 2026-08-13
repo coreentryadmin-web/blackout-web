@@ -18,7 +18,7 @@ test("semis preset includes NVDA and five names", () => {
 test("resolveComparePresetIdForTicker maps NVDA to semis", () => {
   assert.equal(resolveComparePresetIdForTicker("NVDA"), "semis");
   assert.equal(resolveComparePresetIdForTicker("RKLB"), "space");
-  assert.equal(resolveComparePresetIdForTicker("SPY"), "indices");
+  assert.equal(resolveComparePresetIdForTicker("SPY"), "semis");
   assert.equal(resolveComparePresetIdForTicker("UNKNOWN"), "semis");
 });
 

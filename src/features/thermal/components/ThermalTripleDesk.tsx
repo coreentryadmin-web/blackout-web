@@ -426,7 +426,7 @@ function TripleColumn({
 type Props = {
   lens: GexHeatmapLens;
   activeTicker: string;
-  /** Column tickers for this compare preset (5–6 sector names or 3 indices). */
+  /** Column tickers for this compare preset (five sector names). */
   tickers: readonly string[];
   /** Rail label, e.g. "Semis" or "AI". */
   presetLabel: string;

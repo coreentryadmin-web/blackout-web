@@ -13,15 +13,7 @@ export type ThermalComparePresetId =
   | "crypto"
   | "energy"
   | "financials"
-  | "biotech"
-  | "indices"
-  | "industrials"
-  | "cons-disc"
-  | "comm-svc"
-  | "staples"
-  | "utilities"
-  | "materials"
-  | "realestate";
+  | "biotech";
 
 export type ThermalComparePreset = {
   id: ThermalComparePresetId;
@@ -73,46 +65,6 @@ export const THERMAL_COMPARE_PRESETS: readonly ThermalComparePreset[] = [
     label: "Biotech",
     tickers: ["LLY", "UNH", "MRK", "ABBV", "GILD"],
   },
-  {
-    id: "indices",
-    label: "Indices",
-    tickers: ["SPY", "SPX", "QQQ", "IWM", "DIA"],
-  },
-  {
-    id: "industrials",
-    label: "Industrials",
-    tickers: ["CAT", "GE", "RTX", "HON", "DE"],
-  },
-  {
-    id: "cons-disc",
-    label: "Cons. Disc.",
-    tickers: ["TSLA", "HD", "LOW", "NKE", "COST"],
-  },
-  {
-    id: "comm-svc",
-    label: "Comm. Svc.",
-    tickers: ["NFLX", "DIS", "GOOGL", "META", "SPOT"],
-  },
-  {
-    id: "staples",
-    label: "Staples",
-    tickers: ["WMT", "PG", "KO", "PEP", "COST"],
-  },
-  {
-    id: "utilities",
-    label: "Utilities",
-    tickers: ["NEE", "DUK", "SO", "AEP", "SRE"],
-  },
-  {
-    id: "materials",
-    label: "Materials",
-    tickers: ["FCX", "NEM", "CLF", "LIN", "AA"],
-  },
-  {
-    id: "realestate",
-    label: "Real Estate",
-    tickers: ["PLD", "AMT", "EQIX", "O", "SPG"],
-  },
 ] as const;
 
 export const THERMAL_COMPARE_DEFAULT_PRESET_ID: ThermalComparePresetId = "semis";
@@ -163,5 +115,5 @@ export function orderComparePresetTickers(
   return [active, ...list.filter((t) => t !== active)];
 }
 
-/** @deprecated Use preset tickers — kept for legacy callers/tests. */
-export const THERMAL_COMPARE_TICKERS = THERMAL_COMPARE_PRESETS.find((p) => p.id === "indices")!.tickers;
+/** @deprecated Legacy compare default — Semis preset (indices grid removed). */
+export const THERMAL_COMPARE_TICKERS = THERMAL_COMPARE_PRESETS.find((p) => p.id === "semis")!.tickers;
