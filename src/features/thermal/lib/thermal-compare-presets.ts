@@ -43,7 +43,7 @@ export const THERMAL_COMPARE_PRESETS: readonly ThermalComparePreset[] = [
     label: "Indices",
     // IWM was missing on the first cut despite 863k day volume / 9.9M open interest — on par with
     // the other index legs, and it is the third leg the iron-condor engine already trades.
-    tickers: ["SPY", "SPX", "QQQ", "IWM", "DIA"],
+    tickers: ["SPY", "SPX", "QQQ", "IWM"],
   },
   {
     id: "macro",
@@ -176,9 +176,9 @@ export function orderComparePresetTickers(
  * PINNED as a literal, NOT derived from the Indices preset, because its consumers are not the
  * compare grid. `thermalCompareForLargo` (lib/largo/product-reads.ts) fans out one getGexPositioning
  * call per entry, on a path that has already been trimmed once for timing out Largo turns at ~120s.
- * While this was `presets.find("indices").tickers`, adding IWM + DIA to a UI preset silently made a
- * Largo tool do 67% more upstream work — a grid decision reaching into an unrelated subsystem with
- * nothing in between to notice. `isThermalCompareTicker` reads it too.
+ * While this was `presets.find("indices").tickers`, adding IWM to a UI preset silently made a Largo
+ * tool do more upstream work — a grid decision reaching into an unrelated subsystem with nothing in
+ * between to notice. `isThermalCompareTicker` reads it too.
  *
  * The presets are free to grow; this triple is a separate, deliberate contract. Change it only for
  * its own reasons.
