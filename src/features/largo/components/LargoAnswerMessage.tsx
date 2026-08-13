@@ -3,10 +3,12 @@
 import { Component, useMemo, useState, type ReactNode } from "react";
 import type { BieAnswerEnvelope } from "@/lib/bie/answer-envelope";
 import type { LargoCompareCard as LargoCompareCardPayload } from "@/lib/largo/compare-card-types";
+import type { PlaySimilarityCard } from "@/lib/largo/play-similarity";
+import type { PreEarningsPackCard } from "@/lib/largo/pre-earnings-pack";
 import type { LargoAction } from "@/lib/largo/largo-actions";
 import { shareLargoToDiscord } from "@/lib/api";
 import { LargoMessageBody } from "@/features/largo/components/LargoMessageBody";
-import { LargoCompareCard } from "@/features/largo/components/LargoCompareCard";
+import { LargoStructuredCards } from "@/features/largo/components/LargoStructuredCards";
 import { LargoActionsBar } from "@/features/largo/components/LargoActionsBar";
 import { BieAnswer } from "@/features/largo/answer/BieAnswer";
 import { LargoDeskRead } from "@/features/largo/answer/LargoDeskRead";
@@ -42,6 +44,8 @@ export function LargoAnswerMessage({
   question,
   turnId,
   compareCard,
+  playSimilarity,
+  preEarningsPack,
   actions,
   sessionId,
   ticker,
@@ -56,6 +60,8 @@ export function LargoAnswerMessage({
   question?: string | null;
   turnId?: number | null;
   compareCard?: LargoCompareCardPayload | null;
+  playSimilarity?: PlaySimilarityCard | null;
+  preEarningsPack?: PreEarningsPackCard | null;
   actions?: LargoAction[];
   sessionId?: string;
   ticker?: string | null;
@@ -81,7 +87,11 @@ export function LargoAnswerMessage({
         const { caveats } = splitAnswerCaveats(content);
         return (
           <>
-            {compareCard && <LargoCompareCard card={compareCard} />}
+            <LargoStructuredCards
+              compareCard={compareCard}
+              playSimilarity={playSimilarity}
+              preEarningsPack={preEarningsPack}
+            />
             <LargoDeskRead envelope={envelope} question={question} markdownSource={content} />
             <LargoActionsBar actions={actions} sessionId={sessionId} />
             <BieScenarioCards scenarios={envelope.scenarios} />
@@ -127,6 +137,11 @@ export function LargoAnswerMessage({
       });
       return (
         <>
+          <LargoStructuredCards
+            compareCard={compareCard}
+            playSimilarity={playSimilarity}
+            preEarningsPack={preEarningsPack}
+          />
           <BieAnswer
             envelope={built.envelope}
             showBias={built.showBias}
@@ -141,7 +156,7 @@ export function LargoAnswerMessage({
     } catch {
       return null;
     }
-  }, [content, source, createdAt, envelope, streaming, className, onFollowup, question, compareCard, actions, sessionId, ticker, shareState]);
+  }, [content, source, createdAt, envelope, streaming, className, onFollowup, question, compareCard, playSimilarity, preEarningsPack, actions, sessionId, ticker, shareState]);
 
 
   if (!rich) return fallback;

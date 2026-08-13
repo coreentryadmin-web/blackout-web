@@ -4,6 +4,9 @@ import {
   questionWantsCompareCard,
   questionWantsPeerCompare,
   extractPeerCompareTickers,
+  questionWantsPlaySimilarity,
+  questionWantsPreEarningsPack,
+  extractStructuredTicker,
 } from "@/lib/largo/desk-prompts";
 import { extractWatchlistFromText, normalizeWatchlist } from "@/lib/largo/session-metadata";
 import { parseLargoDepth, largoDepthConfig } from "@/lib/largo/largo-depth";
@@ -31,6 +34,12 @@ describe("desk-prompts", () => {
       "AMD",
       "SMH",
     ]);
+  });
+
+  it("questionWantsPlaySimilarity and pre-earnings detection", () => {
+    assert.equal(questionWantsPlaySimilarity("Find past plays like today's NVDA 0DTE"), true);
+    assert.equal(questionWantsPreEarningsPack("Pre-earnings desk pack for NVDA"), true);
+    assert.equal(extractStructuredTicker("Pre-earnings desk pack for NVDA"), "NVDA");
   });
 });
 

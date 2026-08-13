@@ -18755,6 +18755,112 @@ body::before {
     font-size: 10px;
     color: #fbbf24;
   }
+  .largo-struct-card {
+    margin-bottom: 0.75rem;
+    padding: 0.75rem;
+    border: 1px solid rgba(34, 211, 238, 0.22);
+    border-radius: 4px;
+    background: rgba(4, 4, 7, 0.6);
+  }
+  .largo-struct-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+  .largo-struct-title {
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #22d3ee;
+  }
+  .largo-struct-label {
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: rgba(148, 163, 184, 0.9);
+    margin-bottom: 0.25rem;
+  }
+  .largo-struct-summary,
+  .largo-struct-meta,
+  .largo-struct-note {
+    font-size: 12px;
+    color: #e2e8f0;
+    margin: 0.15rem 0;
+  }
+  .largo-struct-note {
+    color: #fbbf24;
+  }
+  .largo-sim-grid,
+  .largo-earn-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+  }
+  @media (max-width: 640px) {
+    .largo-sim-grid,
+    .largo-earn-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+  .largo-sim-bars {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .largo-sim-bar-row {
+    display: grid;
+    grid-template-columns: 4.5rem 1fr 1.5rem;
+    gap: 0.35rem;
+    align-items: center;
+    margin: 0.2rem 0;
+  }
+  .largo-sim-bar-label,
+  .largo-sim-bar-count {
+    font-size: 11px;
+    color: #e2e8f0;
+  }
+  .largo-sim-bar-track {
+    height: 6px;
+    background: rgba(148, 163, 184, 0.2);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .largo-sim-bar-fill {
+    display: block;
+    height: 100%;
+  }
+  .largo-sim-bar-win { background: #34d399; }
+  .largo-sim-bar-loss { background: #f87171; }
+  .largo-sim-bar-neutral { background: #94a3b8; }
+  .largo-sim-neighbors {
+    margin-top: 0.65rem;
+  }
+  .largo-sim-neighbor-row {
+    display: grid;
+    grid-template-columns: 5.5rem 1fr 3rem 2.5rem;
+    gap: 0.35rem;
+    font-size: 11px;
+    color: #e2e8f0;
+    padding: 0.15rem 0;
+  }
+  .largo-sim-neighbor-head {
+    color: rgba(148, 163, 184, 0.9);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-size: 10px;
+  }
+  .largo-sim-win { color: #34d399; }
+  .largo-sim-loss { color: #f87171; }
+  .largo-earn-section {
+    min-width: 0;
+  }
+  .largo-earn-history {
+    margin-top: 0.5rem;
+    padding-top: 0.35rem;
+    border-top: 1px solid rgba(34, 211, 238, 0.12);
+  }
   .largo-actions-bar {
     display: flex;
     flex-wrap: wrap;

@@ -96,12 +96,18 @@ import {
   questionWantsCompareCard,
   questionWantsPeerCompare,
   extractPeerCompareTickers,
+  questionWantsPlaySimilarity,
+  questionWantsPreEarningsPack,
+  extractStructuredTicker,
+  extractPreEarningsDate,
 } from "@/lib/largo/desk-prompts";
 import {
   helixThermalCompareForLargo,
   peerTickerCompareForLargo,
   type LargoCompareCard,
 } from "@/lib/largo/helix-thermal-compare";
+import { playSimilarityForLargo, type PlaySimilarityCard } from "@/lib/largo/play-similarity";
+import { preEarningsPackForLargo, type PreEarningsPackCard } from "@/lib/largo/pre-earnings-pack";
 import { formatDepthBlock, largoDepthConfig, parseLargoDepth, type LargoDepth } from "@/lib/largo/largo-depth";
 import { buildLargoActions, type LargoAction } from "@/lib/largo/largo-actions";
 import {
@@ -173,6 +179,8 @@ export type LargoStreamEvent =
       turn_id?: number | null;
       envelope?: BieAnswerEnvelope;
       compare_card?: LargoCompareCard | null;
+      play_similarity?: PlaySimilarityCard | null;
+      pre_earnings_pack?: PreEarningsPackCard | null;
       actions?: LargoAction[];
       depth?: LargoDepth;
     }
@@ -346,6 +354,8 @@ async function prepareLargoTurn(
   persistedQuestion: string;
   depth: LargoDepth;
   compareCard: LargoCompareCard | null;
+  playSimilarity: PlaySimilarityCard | null;
+  preEarningsPack: PreEarningsPackCard | null;
   sessionMetadata: Awaited<ReturnType<typeof fetchLargoSessionMetadata>>;
 }> {
   let sid = sessionId.trim() || `web-${userId}-${Date.now()}`;
@@ -512,6 +522,22 @@ async function prepareLargoTurn(
     if (compareCard) toolsUsed.push("get_helix_thermal_compare");
   }
 
+  let playSimilarity: PlaySimilarityCard | null = null;
+  if (questionWantsPlaySimilarity(question)) {
+    const simTicker = extractStructuredTicker(question, intentTicker ?? "NVDA");
+    playSimilarity = await playSimilarityForLargo(simTicker).catch(() => null);
+    if (playSimilarity) toolsUsed.push("get_play_similarity");
+  }
+
+  let preEarningsPack: PreEarningsPackCard | null = null;
+  if (questionWantsPreEarningsPack(question)) {
+    const earnTicker = extractStructuredTicker(question, intentTicker ?? "NVDA");
+    preEarningsPack = await preEarningsPackForLargo(earnTicker, extractPreEarningsDate(question)).catch(
+      () => null
+    );
+    if (preEarningsPack) toolsUsed.push("get_pre_earnings_pack");
+  }
+
   const now = new Date();
   const et = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
@@ -542,6 +568,12 @@ async function prepareLargoTurn(
       ? compareCard.kind === "peer_tickers"
         ? `\n\n## Peer ticker compare (prefetched — cite these numbers)\n${JSON.stringify(compareCard, null, 0).slice(0, 5000)}\n`
         : `\n\n## HELIX vs Thermal (prefetched — cite these numbers)\n${JSON.stringify(compareCard, null, 0).slice(0, 4000)}\n`
+      : "") +
+    (playSimilarity
+      ? `\n\n## Play similarity (prefetched — cite distribution, not a single win rate)\n${JSON.stringify(playSimilarity, null, 0).slice(0, 5000)}\n`
+      : "") +
+    (preEarningsPack
+      ? `\n\n## Pre-earnings desk pack (prefetched — cite these numbers)\n${JSON.stringify(preEarningsPack, null, 0).slice(0, 5000)}\n`
       : "");
 
   const system = buildDynamicSystem(
@@ -592,6 +624,8 @@ async function prepareLargoTurn(
     persistedQuestion: persistedQuestionText(question, images.length),
     depth,
     compareCard,
+    playSimilarity,
+    preEarningsPack,
     sessionMetadata,
   };
 }
@@ -670,6 +704,8 @@ export async function runLargoQuery(
   turn_id: number | null;
   envelope?: BieAnswerEnvelope;
   compare_card?: LargoCompareCard | null;
+  play_similarity?: PlaySimilarityCard | null;
+  pre_earnings_pack?: PreEarningsPackCard | null;
   actions?: LargoAction[];
   depth?: LargoDepth;
 }> {
@@ -683,7 +719,7 @@ export async function runLargoQuery(
 
   const {
     sid, history, system, filteredTools, toolsUsed, tickerHint, viewer, timeframe, persistedQuestion,
-    liveFeedResults, depth, compareCard,
+    liveFeedResults, depth, compareCard, playSimilarity, preEarningsPack,
   } = await prepareLargoTurn(
     question,
     sessionId,
@@ -836,6 +872,8 @@ export async function runLargoQuery(
       turn_id: turnId ?? null,
       envelope,
       compare_card: compareCard,
+      play_similarity: playSimilarity,
+      pre_earnings_pack: preEarningsPack,
       actions,
       depth,
     };
@@ -903,7 +941,7 @@ export async function runLargoQueryStream(
 
   const {
     sid, history, system, filteredTools, toolsUsed, tickerHint, viewer, timeframe, persistedQuestion,
-    liveFeedResults, depth, compareCard,
+    liveFeedResults, depth, compareCard, playSimilarity, preEarningsPack,
   } = await prepareLargoTurn(
     question,
     sessionId,
@@ -1087,6 +1125,8 @@ export async function runLargoQueryStream(
       verification,
       envelope,
       compare_card: compareCard,
+      play_similarity: playSimilarity,
+      pre_earnings_pack: preEarningsPack,
       actions,
       depth,
     });
