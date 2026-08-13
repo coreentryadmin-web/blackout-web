@@ -14,6 +14,7 @@ import {
   fmtHeatmapStrike,
   fmtStrikeDistancePct,
   shouldShowStrikeDistancePct,
+  strikeDistancePct,
   isHeatmapTopHighlightRank,
   resolveHeatmapTopHighlightCellStyle,
   type GexHeatmapLens,
@@ -289,6 +290,15 @@ export default function ThermalCompactMatrix({
                   const isKing = has && n !== 0 && day?.king === strike;
                   const showPct =
                     !isSpot && shouldShowStrikeDistancePct(si, pctSpotIdx);
+                  const pctDelta = showPct ? strikeDistancePct(pctSpot, strike) : null;
+                  const pctToneClass =
+                    pctDelta == null || !Number.isFinite(pctDelta)
+                      ? ""
+                      : pctDelta > 0
+                        ? "is-pct-pos"
+                        : pctDelta < 0
+                          ? "is-pct-neg"
+                          : "is-pct-flat";
 
                   let style: CSSProperties = {};
                   if (has && n !== 0) {
@@ -347,7 +357,15 @@ export default function ThermalCompactMatrix({
                     >
                       <span className="thermal-compact-cell-inner">
                         {showPct ? (
-                          <span className="thermal-compact-cell-pct" title="Distance from spot">
+                          <span
+                            className={[
+                              "thermal-compact-cell-pct",
+                              pctToneClass,
+                            ]
+                              .filter(Boolean)
+                              .join(" ")}
+                            title="Distance from spot"
+                          >
                             {fmtStrikeDistancePct(pctSpot, strike)}
                           </span>
                         ) : null}
