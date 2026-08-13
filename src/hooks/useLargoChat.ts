@@ -8,6 +8,8 @@ import { isIosAppShell } from "@/lib/ios-app-shell";
 import { largoStreamErrorMessage } from "@/lib/largo-stream-errors";
 import type { BieAnswerEnvelope } from "@/lib/bie/answer-envelope";
 import type { LargoCompareCard } from "@/lib/largo/helix-thermal-compare";
+import type { PlaySimilarityCard } from "@/lib/largo/play-similarity";
+import type { PreEarningsPackCard } from "@/lib/largo/pre-earnings-pack";
 import type { LargoAction } from "@/lib/largo/largo-actions";
 import {
   LARGO_DESK_EXAMPLE_PROMPTS,
@@ -51,6 +53,8 @@ export type LargoMessage = {
   images?: string[];
   /** Structured HELIX vs Thermal compare — rendered side-by-side, not model-merged. */
   compareCard?: LargoCompareCard | null;
+  playSimilarity?: PlaySimilarityCard | null;
+  preEarningsPack?: PreEarningsPackCard | null;
   /** Post-verdict desk deep links. */
   actions?: LargoAction[];
   depth?: "quick" | "deep";
@@ -371,6 +375,8 @@ export function useLargoChat() {
             turnId: res.turn_id ?? null,
             visual: res.visual ? { size: res.visual.size } : null,
             compareCard: res.compare_card ?? null,
+            playSimilarity: res.play_similarity ?? null,
+            preEarningsPack: res.pre_earnings_pack ?? null,
             actions: res.actions,
             depth: res.depth,
           })

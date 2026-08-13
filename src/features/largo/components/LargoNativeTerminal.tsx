@@ -71,6 +71,8 @@ export function LargoNativeTerminal() {
                   envelope={msg.envelope}
                   turnId={msg.turnId ?? null}
                   compareCard={msg.compareCard}
+                  playSimilarity={msg.playSimilarity}
+                  preEarningsPack={msg.preEarningsPack}
                   actions={msg.actions}
                   sessionId={activeSessionId}
                   question={

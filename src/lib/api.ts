@@ -549,6 +549,8 @@ export async function queryLargoStream(
   turn_id?: number | null;
   visual?: LargoVisualDirective | null;
   compare_card?: import("@/lib/largo/helix-thermal-compare").LargoCompareCard | null;
+  play_similarity?: import("@/lib/largo/play-similarity").PlaySimilarityCard | null;
+  pre_earnings_pack?: import("@/lib/largo/pre-earnings-pack").PreEarningsPackCard | null;
   actions?: import("@/lib/largo/largo-actions").LargoAction[];
   depth?: "quick" | "deep";
 }> {
@@ -630,6 +632,8 @@ export async function queryLargoStream(
     visual?: LargoVisualDirective | null;
     envelope?: BieAnswerEnvelope | null;
     compare_card?: import("@/lib/largo/helix-thermal-compare").LargoCompareCard | null;
+    play_similarity?: import("@/lib/largo/play-similarity").PlaySimilarityCard | null;
+    pre_earnings_pack?: import("@/lib/largo/pre-earnings-pack").PreEarningsPackCard | null;
     actions?: import("@/lib/largo/largo-actions").LargoAction[];
     depth?: "quick" | "deep";
   };
@@ -678,6 +682,8 @@ export async function queryLargoStream(
             visual: event.visual ?? null,
             envelope: event.envelope ?? null,
             compare_card: event.compare_card ?? null,
+            play_similarity: event.play_similarity ?? null,
+            pre_earnings_pack: event.pre_earnings_pack ?? null,
             actions: event.actions,
             depth: event.depth,
           };

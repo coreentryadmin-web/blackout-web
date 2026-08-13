@@ -208,6 +208,24 @@ before(async () => {
     },
   });
 
+  // Both of these declare `import "server-only"`, which THROWS the moment it is loaded outside a
+  // Server Component — so without these stubs every test in this file dies in the hook, before any
+  // assertion, with "This module cannot be imported from a Client Component module". They are also
+  // real network paths (0DTE ledger k-NN, UW earnings), which these tool-loop tests must not touch.
+  // Returning null exercises the "no card" branch, which is the correct default for fixtures that
+  // ask nothing about play analogs or earnings.
+  mock.module("./largo/play-similarity", {
+    namedExports: {
+      playSimilarityForLargo: async () => null,
+    },
+  });
+
+  mock.module("./largo/pre-earnings-pack", {
+    namedExports: {
+      preEarningsPackForLargo: async () => null,
+    },
+  });
+
   mock.module("./largo/platform-snapshot-block", {
     namedExports: {
       loadLargoPlatformSnapshotBlock: async () => "",

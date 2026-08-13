@@ -38,6 +38,16 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-08-12 — [FEATURE, Largo product roadmap 1–15] Desk prompts, compare card, depth toggle, session memory, morning brief — SHIPPED
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Severity** | product |
+| **Scope** | All 15 roadmap items: one-tap prompts, HELIX+Thermal compare card + conflict chip, quick/deep toggle, watchlist metadata, morning brief cron, play context URL params, chart guide, historical mode, Discord export, Largo Actions, calibration/regime/member context in system blocks, nightly stress workflow |
+| **Branch** | `cursor/largo-product-roadmap-3d11` (includes merged P1–P3 audit fixes) |
+| **Status** | FIXED — pending CI + deploy |
+
 ## 2026-08-12 — [FINDING, P1/P2/P3 Largo] Live UI probe: 502, null envelopes, vendor leaks — FIXED (pending deploy)
 
 > **kind:** `FINDING`

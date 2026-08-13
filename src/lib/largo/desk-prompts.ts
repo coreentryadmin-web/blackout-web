@@ -13,6 +13,8 @@ export type LargoDeskPrompt = {
   compareCard?: boolean;
   /** When true, server prefetches multi-ticker flow+gamma peer compare. */
   peerCompare?: boolean;
+  playSimilarity?: boolean;
+  preEarningsPack?: boolean;
 };
 
 /** Compact chips in the composer and native terminal. */
@@ -42,6 +44,20 @@ export const LARGO_DESK_PROMPTS: LargoDeskPrompt[] = [
     hint: "Flow + gamma side-by-side for earnings and peer days",
     question: "Compare NVDA vs AMD vs SMH — flow and gamma side by side for earnings week.",
     peerCompare: true,
+  },
+  {
+    id: "play-similarity",
+    label: "Plays like NVDA",
+    hint: "k-NN analogs from the 0DTE feature store with outcome distribution",
+    question: "Find past plays like today's NVDA 0DTE — show the outcomes distribution.",
+    playSimilarity: true,
+  },
+  {
+    id: "pre-earnings",
+    label: "Pre-earnings NVDA",
+    hint: "Positioning, flow, history, and board exposure in one pack",
+    question: "Pre-earnings desk pack for NVDA — positioning, flow into the print, historical moves, and any 0DTE exposure.",
+    preEarningsPack: true,
   },
 ];
 
@@ -163,4 +179,49 @@ export function questionWantsPeerCompare(question: string): boolean {
     /\b(vs|versus|compare|side.?by.?side|peer|earnings|relative)\b/i.test(q) ||
     (tickers.length >= 3 && /\bflow\b.*\bgamma\b|\bgamma\b.*\bflow\b/i.test(q))
   );
+}
+
+const TICKER_TOKEN = /\$?([A-Z][A-Z0-9]{0,4})\b/g;
+
+/** Extract primary ticker for play-similarity / pre-earnings asks. */
+export function extractStructuredTicker(question: string, fallback = "NVDA"): string {
+  const q = String(question ?? "").trim();
+  const stop = new Set([...PEER_COMPARE_STOPWORDS, "PAST", "PLAYS", "LIKE", "TODAY", "FIND", "PACK", "DESK"]);
+  const tokens = [...q.matchAll(TICKER_TOKEN)].map((m) => m[1]!.toUpperCase());
+  for (const t of tokens) {
+    if (!stop.has(t) && t.length >= 2 && t.length <= 5) return t;
+  }
+  return fallback;
+}
+
+/** True when the member wants k-NN past-play analogs with outcome distribution. */
+export function questionWantsPlaySimilarity(question: string): boolean {
+  const q = String(question ?? "").trim();
+  if (!q) return false;
+  return (
+    /\bpast plays like\b/i.test(q) ||
+    /\bplays like today'?s?\b/i.test(q) ||
+    /\bsimilar (?:0dte|0 dte|plays?)\b/i.test(q) ||
+    /\boutcomes? distribution\b/i.test(q) ||
+    /\bfind.*like today'?s?\b/i.test(q)
+  );
+}
+
+/** True when the member wants a pre-earnings bundled desk read. */
+export function questionWantsPreEarningsPack(question: string): boolean {
+  const q = String(question ?? "").trim();
+  if (!q) return false;
+  return (
+    /\bpre-?earnings\b/i.test(q) ||
+    /\binto earnings\b/i.test(q) ||
+    /\bbefore earnings\b/i.test(q) ||
+    /\bearnings desk pack\b/i.test(q) ||
+    /\bearnings pack\b/i.test(q)
+  );
+}
+
+/** Optional YYYY-MM-DD after "on/for <date>" in pre-earnings questions. */
+export function extractPreEarningsDate(question: string): string | null {
+  const m = String(question ?? "").match(/\b(20\d{2}-\d{2}-\d{2})\b/);
+  return m ? m[1]! : null;
 }
