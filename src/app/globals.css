@@ -17781,8 +17781,8 @@ body::before {
 .nh-deck-lifecycle-strip__lab{font-size:9px;font-weight:700;color:var(--dk-info);letter-spacing:.08em;text-transform:uppercase}
 .nh-deck-trade-hero__fresh{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:6px 0 2px}
 .nh-deck-trade-hero__fresh-time{font-size:10px;color:var(--dk-text-primary);font-variant-numeric:tabular-nums}
-/* ── Thermal Triple Desk (SPY | SPX | QQQ) ───────────────────────────────────
-   Ultra-dense expiry columns so three live matrices share one viewport.
+/* ── Thermal sector compare grid (5 names × nearest expiry) ───────────────────
+   Columns flex to fill the desk on wide viewports; narrow screens scroll/snap.
    Atmosphere + active-column pulse — institutional, not Discordy. */
 .thermal-triple-desk {
   --tt-cyan: #22d3ee;
@@ -17791,6 +17791,7 @@ body::before {
   --tt-line: rgba(125, 211, 252, 0.18);
   position: relative;
   isolation: isolate;
+  width: 100%;
   margin-top: 0.35rem;
   padding: 0.75rem 0.65rem 0.85rem;
   border-radius: 0.85rem;
@@ -18004,6 +18005,45 @@ body::before {
   transition:
     border-color 0.2s ease,
     box-shadow 0.25s ease;
+}
+
+/* Five-name sector grid: equal columns consume the full desk width (no dead right rail). */
+.thermal-triple-desk[data-cols="5"] .thermal-triple-grid {
+  width: 100%;
+}
+
+.thermal-triple-desk[data-cols="5"] .thermal-compact-table {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.thermal-triple-desk[data-cols="5"] .thermal-compact-corner,
+.thermal-triple-desk[data-cols="5"] .thermal-compact-strike {
+  width: 36%;
+}
+
+.thermal-triple-desk[data-cols="5"] .thermal-compact-table.is-0dte .thermal-compact-exp,
+.thermal-triple-desk[data-cols="5"] .thermal-compact-table.is-0dte .thermal-compact-cell {
+  min-width: 0;
+}
+
+@media (min-width: 900px) {
+  .thermal-triple-desk[data-cols="5"] .thermal-triple-grid {
+    overflow-x: visible;
+    scroll-snap-type: none;
+  }
+
+  .thermal-triple-desk[data-cols="5"] .thermal-triple-col {
+    flex: 1 1 0;
+    min-width: 0;
+    max-width: none;
+  }
+}
+
+@media (max-width: 899px) {
+  .thermal-triple-desk[data-cols="5"] .thermal-triple-col {
+    flex: 0 0 clamp(11.5rem, 78vw, 16.5rem);
+  }
 }
 
 .thermal-triple-col.is-active {
