@@ -1,5 +1,6 @@
 import { shiftPercentForStrike } from "@/features/thermal/lib/gex-heatmap/shift-math";
 import type { GexHeatmapLens } from "@/lib/gex-heatmap-display";
+import { matrixShiftDeltaForStrikeScoped, sumMetricCellsForExpiries } from "@/lib/gex-shift-scope";
 
 export type GexShiftLeader = {
   strike: number;
@@ -85,6 +86,13 @@ export function matrixShiftSinceMs(
   return matrixShiftForLens(lens, payload)?.since_ms;
 }
 
+export type PickGexShiftLeadersOpts = {
+  perSide?: number;
+  /** When set with `cells`, leaders rank scoped Δ (matches matrix DR% / King scope). */
+  cells?: Record<string, Record<string, number>>;
+  selectedExpiries?: string[] | null;
+};
+
 /**
  * Top N call-side (positive Δ) and put-side (negative Δ) intraday drift leaders.
  * Shared by Thermal, SPX matrix rail, and Vector terminal chrome.
@@ -92,18 +100,37 @@ export function matrixShiftSinceMs(
 export function pickGexShiftLeaders(
   strikeTotals: Record<string, number> | null | undefined,
   shift: GexShiftLike | null | undefined,
-  opts?: { perSide?: number }
+  opts?: PickGexShiftLeadersOpts
 ): GexShiftLeader[] {
   const perSide = opts?.perSide ?? 3;
   const totals = strikeTotals ?? {};
   if (!shift?.delta_by_strike) return [];
 
   const rows: Array<{ strike: number; delta: number; current: number }> = [];
-  for (const [key, delta] of Object.entries(shift.delta_by_strike)) {
+  const useScoped = opts?.cells != null && opts.selectedExpiries != null && opts.selectedExpiries.length > 0;
+  const strikeKeys = useScoped
+    ? new Set(
+        Object.keys(opts.cells!)
+          .map(Number)
+          .filter(Number.isFinite),
+      )
+    : new Set(Object.keys(shift.delta_by_strike).map(Number));
+
+  for (const strike of strikeKeys) {
+    const key = String(strike);
+    const delta = useScoped
+      ? matrixShiftDeltaForStrikeScoped({
+          shift,
+          cells: opts!.cells!,
+          selectedExpiries: opts!.selectedExpiries!,
+          strike,
+        })
+      : matrixShiftDeltaForStrike(shift, strike);
     if (delta == null || !Number.isFinite(delta) || delta === 0) continue;
-    const strike = Number(key);
-    if (!Number.isFinite(strike)) continue;
-    rows.push({ strike, delta, current: totals[key] ?? 0 });
+    const current = useScoped
+      ? sumMetricCellsForExpiries(opts!.cells![key], opts!.selectedExpiries!)
+      : totals[key] ?? 0;
+    rows.push({ strike, delta, current: current ?? 0 });
   }
 
   const calls = rows
@@ -139,16 +166,21 @@ export function pickGexShiftLeaderCells(
   cells: Record<string, Record<string, number>>,
   expiries: readonly string[],
   shift: GexShiftLike | null | undefined,
-  opts?: { perSide?: number }
+  opts?: PickGexShiftLeadersOpts
 ): Map<string, GexShiftLeader> {
-  const leaders = pickGexShiftLeaders(strikeTotals, shift, opts);
+  const totals = strikeTotals ?? {};
+  const columnExpiries =
+    opts?.selectedExpiries != null && opts.selectedExpiries.length > 0
+      ? expiries.filter((e) => opts.selectedExpiries!.includes(e))
+      : expiries;
+  const leaders = pickGexShiftLeaders(totals, shift, { ...opts, cells, selectedExpiries: opts?.selectedExpiries });
   const out = new Map<string, GexShiftLeader>();
   for (const leader of leaders) {
     const row = cells[String(leader.strike)];
     if (!row) continue;
     let bestExp: string | null = null;
     let bestMag = 0;
-    for (const e of expiries) {
+    for (const e of columnExpiries) {
       const v = row[e];
       if (typeof v !== "number" || !Number.isFinite(v) || v === 0) continue;
       const mag = Math.abs(v);
@@ -158,7 +190,7 @@ export function pickGexShiftLeaderCells(
       }
     }
     if (bestExp == null) {
-      bestExp = expiries.find((e) => {
+      bestExp = columnExpiries.find((e) => {
         const v = row[e];
         return typeof v === "number" && Number.isFinite(v);
       }) ?? null;

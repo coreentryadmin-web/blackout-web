@@ -7,7 +7,7 @@ import {
 import { fetchStockSnapshot, fetchIndexSnapshot } from "./polygon";
 import { todayEtYmd } from "./spx-session";
 import { liveExpiries } from "./expiry-liveness";
-import { buildGexDepthLadder, type DepthContract } from "@/lib/gex-depth";
+import { buildGexDepthLadder, type DepthContract, type GexDepthLadder } from "@/lib/gex-depth";
 import { polygonTrackedFetch } from "./polygon-rate-limiter";
 import { isHeatmapPreset } from "../heatmap-allowlist";
 import { isLiveOdteSession } from "./unusual-whales";
@@ -523,6 +523,12 @@ export type GexHeatmap = {
    * own `gex.total`, so the ladder describes the same book as the levels drawn beside it.
    */
   depth?: GexDepthBlock;
+  /**
+   * Per-expiry / per-preset forced-flow ladders — keyed by YYYY-MM-DD (single) or sorted
+   * `exp1|exp2|…` (multi). Lets the matrix Net flow rail match the selected DTE scope without
+   * per-request repricing. Near-term aggregate stays on `depth`.
+   */
+  depth_by_scope?: Record<string, GexDepthBlock>;
   source: "polygon";
   data_delay: string;
 };
@@ -1894,6 +1900,58 @@ const HEATMAP_UNFILTERED_PAGE_GUARD = 12;
 const DEPTH_RANGE_PCT = 0.08;
 const DEPTH_STEP_PCT = 0.005;
 
+function serializeGexDepthLadder(ladder: GexDepthLadder): GexDepthBlock | undefined {
+  if (ladder.levels.length === 0) return undefined;
+  return {
+    levels: ladder.levels.map((l) => ({
+      price: Number(l.price.toFixed(2)),
+      notional: Number(l.notional.toFixed(2)),
+      cumulative: Number(l.cumulative.toFixed(2)),
+      direction: l.direction,
+      gamma: Number(l.gamma.toFixed(2)),
+    })),
+    max_abs_notional: Number(ladder.maxAbsNotional.toFixed(2)),
+    crossing: ladder.crossing,
+    peak_buy: ladder.peakBuy == null ? null : Number(ladder.peakBuy.toFixed(2)),
+    peak_sell: ladder.peakSell == null ? null : Number(ladder.peakSell.toFixed(2)),
+    range_pct: DEPTH_RANGE_PCT,
+    step_pct: DEPTH_STEP_PCT,
+    calibration_factor: Number(ladder.calibrationFactor.toFixed(4)),
+    contracts_used: ladder.contractsUsed,
+  };
+}
+
+function netGexTotalForExpiries(
+  cells: Record<string, Record<string, number>>,
+  expirySet: ReadonlySet<string>,
+): number {
+  let total = 0;
+  for (const row of Object.values(cells)) {
+    for (const e of expirySet) {
+      const v = row[e];
+      if (typeof v === "number" && Number.isFinite(v)) total += v;
+    }
+  }
+  return total;
+}
+
+function buildDepthBlockForExpiries(
+  depthContracts: DepthContract[],
+  spot: number,
+  todayYmd: string,
+  expirySet: ReadonlySet<string>,
+  anchorNetGamma: number,
+): GexDepthBlock | undefined {
+  const ladder = buildGexDepthLadder(depthContracts, spot, {
+    todayYmd,
+    expiries: expirySet,
+    rangePct: DEPTH_RANGE_PCT,
+    stepPct: DEPTH_STEP_PCT,
+    anchorNetGamma,
+  });
+  return serializeGexDepthLadder(ladder);
+}
+
 async function fetchHeatmapBandLoHi(
   underlying: string,
   lo: number,
@@ -2315,6 +2373,15 @@ function computeMetricShift(
     return { available: false, status: "collecting" };
   }
   const baseline = pick(baselineSnap)!;
+  // DTE-scoped DR% needs baseline *cells*. Legacy ring entries pre-deploy omit them — pick the
+  // earliest pre-current snapshot that actually carries cells instead of failing closed forever.
+  const baselineCellsSnap =
+    usable.find((s) => {
+      if (s.ts >= current.ts) return false;
+      const cells = pick(s)?.cells;
+      return cells != null && Object.keys(cells).length > 0;
+    }) ?? null;
+  const baselineCells = baselineCellsSnap ? pick(baselineCellsSnap)!.cells : baseline.cells;
 
   const earlier = baseline.strike_totals;
   const now = current.strike_totals;
@@ -2383,7 +2450,7 @@ function computeMetricShift(
     summary,
     since_ms,
     baseline_ts: baselineSnap.ts,
-    ...(baseline.cells ? { baseline_cells: baseline.cells } : {}),
+    ...(baselineCells ? { baseline_cells: baselineCells } : {}),
   };
 }
 
@@ -3245,6 +3312,7 @@ async function buildGexHeatmapUncached(
   // levels beside it can never describe different books. Best-effort: any failure leaves `depth`
   // undefined and the view says so, rather than blocking a matrix that is otherwise fine.
   let depth: GexDepthBlock | undefined;
+  let depth_by_scope: Record<string, GexDepthBlock> | undefined;
   try {
     const depthContracts: DepthContract[] = [];
     for (const c of contracts) {
@@ -3261,34 +3329,46 @@ async function buildGexHeatmapUncached(
         sharesPerContract: Number(c.details?.shares_per_contract ?? 100),
       });
     }
-    const ladder = buildGexDepthLadder(depthContracts, spot, {
-      todayYmd: today,
-      expiries: nearTermKeep,
-      rangePct: DEPTH_RANGE_PCT,
-      stepPct: DEPTH_STEP_PCT,
-      anchorNetGamma: gexBuilt.total,
-    });
-    if (ladder.levels.length > 0) {
-      depth = {
-        levels: ladder.levels.map((l) => ({
-          price: Number(l.price.toFixed(2)),
-          // Round at the data layer — several endpoints have shipped unrounded floats like
-          // 7499.360000000001 before (see CLAUDE.md), and this block is ~33 rows per ticker.
-          notional: Number(l.notional.toFixed(2)),
-          cumulative: Number(l.cumulative.toFixed(2)),
-          direction: l.direction,
-          gamma: Number(l.gamma.toFixed(2)),
-        })),
-        max_abs_notional: Number(ladder.maxAbsNotional.toFixed(2)),
-        crossing: ladder.crossing,
-        peak_buy: ladder.peakBuy == null ? null : Number(ladder.peakBuy.toFixed(2)),
-        peak_sell: ladder.peakSell == null ? null : Number(ladder.peakSell.toFixed(2)),
-        range_pct: DEPTH_RANGE_PCT,
-        step_pct: DEPTH_STEP_PCT,
-        calibration_factor: Number(ladder.calibrationFactor.toFixed(4)),
-        contracts_used: ladder.contractsUsed,
-      };
+    depth = buildDepthBlockForExpiries(
+      depthContracts,
+      spot,
+      today,
+      nearTermKeep,
+      gexBuilt.total ?? totalGamma,
+    );
+    const scopeBlocks: Record<string, GexDepthBlock> = {};
+    for (const e of nearKeep) {
+      const block = buildDepthBlockForExpiries(
+        depthContracts,
+        spot,
+        today,
+        new Set([e]),
+        netGexTotalForExpiries(gexBuilt.cells, new Set([e])),
+      );
+      if (block) scopeBlocks[e] = block;
     }
+    const nearKey = [...nearKeep].sort().join("|");
+    const nearPresetBlock = buildDepthBlockForExpiries(
+      depthContracts,
+      spot,
+      today,
+      nearTermKeep,
+      gexBuilt.total ?? totalGamma,
+    );
+    if (nearPresetBlock) scopeBlocks[nearKey] = nearPresetBlock;
+    const farOnly = expiries.filter((e) => !nearKeep.includes(e));
+    if (farOnly.length > 0) {
+      const farSet = new Set(farOnly);
+      const farBlock = buildDepthBlockForExpiries(
+        depthContracts,
+        spot,
+        today,
+        farSet,
+        netGexTotalForExpiries(gexBuilt.cells, farSet),
+      );
+      if (farBlock) scopeBlocks[[...farOnly].sort().join("|")] = farBlock;
+    }
+    if (Object.keys(scopeBlocks).length > 0) depth_by_scope = scopeBlocks;
   } catch (err) {
     console.warn(`[gex-heatmap] depth ladder failed for ${root}:`, err);
   }
@@ -3468,6 +3548,7 @@ async function buildGexHeatmapUncached(
     // Omit `depth` when the ladder could not be built, so the view can say "unavailable" instead
     // of rendering an empty book that reads as "no dealer flow anywhere".
     ...(depth !== undefined ? { depth } : {}),
+    ...(depth_by_scope !== undefined ? { depth_by_scope } : {}),
     source: "polygon",
     data_delay: POLYGON_OPTIONS_DATA_DELAY,
   };

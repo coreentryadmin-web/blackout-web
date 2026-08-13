@@ -98,4 +98,27 @@ describe("pickGexShiftLeaders", () => {
     assert.ok(map.get(gexMatrixShiftCellKey(5800, "2026-07-21")));
     assert.ok(map.get(gexMatrixShiftCellKey(5700, "2026-07-21")));
   });
+
+  it("pickGexShiftLeaders ranks scoped deltas when selectedExpiries provided", () => {
+    const shift = {
+      available: true,
+      delta_by_strike: { "5800": 500_000, "5700": -800_000 },
+      baseline_cells: {
+        "5800": { "2026-08-14": 400_000, "2026-08-20": 900_000 },
+        "5700": { "2026-08-14": -100_000, "2026-08-20": -700_000 },
+      },
+    };
+    const cells = {
+      "5800": { "2026-08-14": 550_000, "2026-08-20": 900_000 },
+      "5700": { "2026-08-14": -150_000, "2026-08-20": -700_000 },
+    };
+    const leaders = pickGexShiftLeaders(
+      { "5800": 1_450_000, "5700": -850_000 },
+      shift,
+      { cells, selectedExpiries: ["2026-08-14"], perSide: 1 },
+    );
+    assert.equal(leaders.length, 2);
+    assert.equal(leaders.find((l) => l.strike === 5800)?.delta, 150_000);
+    assert.equal(leaders.find((l) => l.strike === 5700)?.delta, -50_000);
+  });
 });
