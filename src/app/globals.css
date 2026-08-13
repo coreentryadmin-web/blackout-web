@@ -9400,8 +9400,10 @@ body::before {
   }
 
   .thermal-matrix-head-strike {
-    padding-left: 0.35rem;
-    padding-right: 0.5rem;
+    width: 3.1rem;
+    max-width: 3.1rem;
+    padding-left: 0.25rem;
+    padding-right: 0.2rem;
     text-align: left;
   }
 
@@ -9426,8 +9428,44 @@ body::before {
 
   .thermal-matrix-head-flow {
     text-align: left;
-    padding-left: 0.4rem;
-    padding-right: 0.55rem;
+    min-width: 10.5rem;
+    width: 11.5rem;
+    padding-left: 0.35rem;
+    padding-right: 0.45rem;
+  }
+
+  .thermal-matrix-strike-cell {
+    width: 3.1rem;
+    max-width: 3.1rem;
+    padding-left: 0.25rem !important;
+    padding-right: 0.2rem !important;
+  }
+
+  .thermal-matrix-strike-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.05rem;
+    line-height: 1.05;
+  }
+
+  .thermal-matrix-strike-stack .thermal-matrix-strike-pct {
+    font-size: 9px;
+    font-weight: 800;
+  }
+
+  .thermal-matrix-flow-cell {
+    min-width: 10.5rem;
+    width: 11.5rem;
+    padding-left: 0.35rem !important;
+    padding-right: 0.45rem !important;
+  }
+
+  .thermal-matrix-flow-rail-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-width: 0;
   }
 
   .thermal-matrix-strike-pct {
@@ -9442,7 +9480,8 @@ body::before {
   .thermal-matrix-flow-rail {
     position: relative;
     display: block;
-    width: 72px;
+    flex: 1 1 auto;
+    min-width: 0;
     height: 13px;
   }
 
@@ -9476,6 +9515,28 @@ body::before {
   .thermal-matrix-flow-rail-bar.is-sell {
     left: 50%;
     background: #fb7185;
+  }
+
+  .thermal-matrix-flow-amt {
+    flex: 0 0 3.35rem;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 10px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .thermal-matrix-flow-amt.is-buy {
+    color: #34d399;
+  }
+
+  .thermal-matrix-flow-amt.is-sell {
+    color: #fb7185;
+  }
+
+  .thermal-matrix-flow-amt.is-flat {
+    color: rgba(125, 211, 252, 0.45);
   }
 
   .spx-gex-matrix-or-high {
