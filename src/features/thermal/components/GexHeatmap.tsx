@@ -70,9 +70,9 @@ import {
   readGexHeatmapSessionCache,
   writeGexHeatmapSessionCache,
 } from "@/lib/gex-heatmap-session-cache";
+import { matrixShiftDeltaForStrikeScoped } from "@/lib/gex-shift-scope";
 import {
   gexMatrixShiftCellKey,
-  matrixShiftDeltaForStrike,
   matrixShiftForLens,
   matrixShiftSinceMs,
   pickGexShiftLeaderCells,
@@ -745,6 +745,8 @@ function ExposureProfile({
   darkPoolLevels,
   showDarkPool,
   shift,
+  metricCells,
+  selectedExpiries,
 }: {
   rows: ProfileRow[];
   peak: number;
@@ -771,6 +773,9 @@ function ExposureProfile({
    * fabricate a shift).
    */
   shift?: GexShift | null;
+  /** Active lens cells — for DTE-scoped shift Δ when expiry filter is narrowed. */
+  metricCells: Record<string, Record<string, number>>;
+  selectedExpiries: string[] | null;
 }) {
   const c = LENS_COLORS[lens];
 
@@ -915,7 +920,12 @@ function ExposureProfile({
 
         // ── Shift badge: intraday %-built/melted for this strike, inline (mirrors the
         // Shift tab's build=green/melt=red convention: built = delta > 0). ──
-        const shiftDelta = matrixShiftDeltaForStrike(shift, r.strike);
+        const shiftDelta = matrixShiftDeltaForStrikeScoped({
+          shift,
+          cells: metricCells,
+          selectedExpiries,
+          strike: r.strike,
+        });
         const shiftPct = shiftPercentForStrike(r.value, shiftDelta);
         const shiftBuilt = shiftDelta != null && shiftDelta > 0;
         const shiftHex = shiftBuilt ? SHIFT_BUILD_HEX : SHIFT_MELT_HEX;
@@ -4080,6 +4090,8 @@ export function GexHeatmap({
         darkPoolLevels={darkPoolLevels}
         showDarkPool={showDarkPool && hasDarkPoolOverlay}
         shift={shift}
+        metricCells={cells}
+        selectedExpiries={selectedExpiries}
       />
       <p className="mt-2 text-[9px] font-mono uppercase tracking-widest text-sky-300/60">
         {`${vocab.pos} / ${vocab.neg} · `}
@@ -4177,7 +4189,14 @@ export function GexHeatmap({
               <tr className="thermal-matrix-head-row border-b border-white/10">
                 <th className="thermal-matrix-head thermal-matrix-head-strike sticky left-0 z-30 bg-[#08080e]">
                   <span className="block">Strike</span>
-                  <span className="thermal-matrix-head-sub" title="Intraday gamma build/melt % — same calculation as SPX Slayer DR%">
+                  <span
+                    className="thermal-matrix-head-sub"
+                    title={
+                      selectedExpiries != null
+                        ? "Intraday gamma build/melt % for the selected expiry scope — same formula as SPX Slayer DR%"
+                        : "Intraday gamma build/melt % — same calculation as SPX Slayer DR%"
+                    }
+                  >
                     DR%
                   </span>
                 </th>
@@ -4226,14 +4245,24 @@ export function GexHeatmap({
                 const row = cells[String(strike)] ?? {};
                 const isSpot = strike === spotStrike;
                 const isAnchor = matrixAnchorStrike != null && strike === matrixAnchorStrike;
-                const rowTotal = strikeTotals[String(strike)] ?? 0;
-                const shiftDelta = matrixShiftDeltaForStrike(shift, strike);
+                const rowTotal =
+                  selectedExpiries != null
+                    ? (filteredTotals[String(strike)] ?? 0)
+                    : (strikeTotals[String(strike)] ?? 0);
+                const shiftDelta = matrixShiftDeltaForStrikeScoped({
+                  shift,
+                  cells,
+                  selectedExpiries,
+                  strike,
+                });
                 const shiftPctLabel =
                   !isSpot && shouldShowMatrixDriftPct(strikeIdx, spotStrikeIdx)
                     ? fmtShiftPercentForStrike(rowTotal, shiftDelta)
                     : null;
                 const driftTitle = shift?.available
-                  ? "Intraday gamma build/melt vs prior snapshot"
+                  ? selectedExpiries != null
+                    ? "Intraday gamma build/melt for selected expiries vs prior snapshot"
+                    : "Intraday gamma build/melt vs prior snapshot"
                   : shiftDelta != null
                     ? "Session build/melt at close (market closed)"
                     : undefined;

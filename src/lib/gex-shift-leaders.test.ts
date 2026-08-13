@@ -44,17 +44,19 @@ describe("pickGexShiftLeaders", () => {
     assert.equal(leaders[0]?.strike, 100);
   });
 
-  it("gateShiftOffHours strips narrative but keeps delta_by_strike", () => {
+  it("gateShiftOffHours strips narrative but keeps delta_by_strike and baseline_cells", () => {
     const gated = gateShiftOffHours({
       available: true,
       summary: "Over the last 2h: flip migrated",
       delta_by_strike: { "635": 250_000 },
+      baseline_cells: { "635": { "2026-08-20": 1_000_000 } },
       since_ms: 3_600_000,
       flip_migration: { from: 630, to: 635, delta_pts: 5 },
     });
     assert.equal(gated.available, false);
     assert.equal(gated.status, "collecting");
     assert.deepEqual(gated.delta_by_strike, { "635": 250_000 });
+    assert.deepEqual(gated.baseline_cells, { "635": { "2026-08-20": 1_000_000 } });
     assert.equal(gated.since_ms, 3_600_000);
     assert.equal((gated as { summary?: string }).summary, undefined);
   });

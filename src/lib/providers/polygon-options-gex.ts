@@ -365,6 +365,11 @@ export type GexHistorySnapshot = {
   dex_strike_totals?: Record<string, number>;
   /** Per-strike NET dealer dollar-CHARM totals at capture (sparse). Additive — cheap to carry. */
   charm_strike_totals?: Record<string, number>;
+  /** Per-expiry cells at capture — powers DTE-scoped DR% (additive; legacy snaps omit). */
+  gex_cells?: Record<string, Record<string, number>>;
+  vex_cells?: Record<string, Record<string, number>>;
+  dex_cells?: Record<string, Record<string, number>>;
+  charm_cells?: Record<string, Record<string, number>>;
 };
 
 /** Gamma flip migration over the shift window — earlier flip → current flip. */
@@ -416,6 +421,8 @@ export type GexShift = {
   since_ms?: number;
   /** epoch-ms of the earliest (baseline) snapshot. */
   baseline_ts?: number;
+  /** Baseline per-expiry cells for the active metric — DTE-scoped DR% on the client. */
+  baseline_cells?: Record<string, Record<string, number>>;
 };
 
 export type GexHeatmap = {
@@ -2292,7 +2299,11 @@ const CHARM_SHIFT_SPEC: ShiftMetricSpec = {
 function computeMetricShift(
   ring: GexHistorySnapshot[],
   current: { ts: number; flip: number | null; strike_totals: Record<string, number> },
-  pick: (s: GexHistorySnapshot) => { strike_totals: Record<string, number>; flip: number | null } | null,
+  pick: (s: GexHistorySnapshot) => {
+    strike_totals: Record<string, number>;
+    flip: number | null;
+    cells?: Record<string, Record<string, number>>;
+  } | null,
   spec: ShiftMetricSpec
 ): GexShift {
   const usable = ring
@@ -2372,6 +2383,7 @@ function computeMetricShift(
     summary,
     since_ms,
     baseline_ts: baselineSnap.ts,
+    ...(baseline.cells ? { baseline_cells: baseline.cells } : {}),
   };
 }
 
@@ -2388,7 +2400,7 @@ function computeGexShift(
   return computeMetricShift(
     ring,
     current,
-    (s) => (s.strike_totals ? { strike_totals: s.strike_totals, flip: s.flip } : null),
+    (s) => (s.strike_totals ? { strike_totals: s.strike_totals, flip: s.flip, cells: s.gex_cells } : null),
     GEX_SHIFT_SPEC
   );
 }
@@ -2407,7 +2419,11 @@ function computeVexShift(
     current,
     (s) =>
       s.vex_strike_totals
-        ? { strike_totals: s.vex_strike_totals, flip: s.vex_flip ?? null }
+        ? {
+            strike_totals: s.vex_strike_totals,
+            flip: s.vex_flip ?? null,
+            cells: s.vex_cells,
+          }
         : null,
     VEX_SHIFT_SPEC
   );
@@ -2422,7 +2438,9 @@ function computeDexShift(
     ring,
     { ts: current.ts, flip: current.zero_level, strike_totals: current.strike_totals },
     (s) =>
-      s.dex_strike_totals ? { strike_totals: s.dex_strike_totals, flip: null } : null,
+      s.dex_strike_totals
+        ? { strike_totals: s.dex_strike_totals, flip: null, cells: s.dex_cells }
+        : null,
     DEX_SHIFT_SPEC
   );
 }
@@ -2436,7 +2454,9 @@ function computeCharmShift(
     ring,
     { ts: current.ts, flip: current.zero_level, strike_totals: current.strike_totals },
     (s) =>
-      s.charm_strike_totals ? { strike_totals: s.charm_strike_totals, flip: null } : null,
+      s.charm_strike_totals
+        ? { strike_totals: s.charm_strike_totals, flip: null, cells: s.charm_cells }
+        : null,
     CHARM_SHIFT_SPEC
   );
 }
@@ -3325,6 +3345,10 @@ async function buildGexHeatmapUncached(
       vex_flip: vexFlip,
       dex_strike_totals: dexBuilt.strikeTotals,
       charm_strike_totals: charmBuilt.strikeTotals,
+      gex_cells: gexBuilt.cells,
+      vex_cells: vexBuilt.cells,
+      dex_cells: dexBuilt.cells,
+      charm_cells: charmBuilt.cells,
     };
     // Events diff the PRIOR snapshot (before append) vs current — compute on the ring INCLUDING
     // the fresh snapshot (the prior is then the latest entry strictly before `now`).

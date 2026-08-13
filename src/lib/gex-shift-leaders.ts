@@ -13,6 +13,8 @@ export type GexShiftLike = {
   available?: boolean;
   status?: string;
   delta_by_strike?: Record<string, number>;
+  /** Baseline matrix cells at shift window start — enables per-DTE scoped DR%. */
+  baseline_cells?: Record<string, Record<string, number>>;
   since_ms?: number;
 };
 
@@ -38,10 +40,13 @@ export function gateShiftOffHours(shift: GexShiftLike | null | undefined): GexSh
   if (!shift) return { available: false, status: "collecting" };
   const deltas = shift.delta_by_strike;
   const hasDeltas = deltas != null && Object.keys(deltas).length > 0;
+  const baselineCells = shift.baseline_cells;
+  const hasBaselineCells = baselineCells != null && Object.keys(baselineCells).length > 0;
   return {
     available: false,
     status: "collecting",
     ...(hasDeltas ? { delta_by_strike: deltas, since_ms: shift.since_ms } : {}),
+    ...(hasBaselineCells ? { baseline_cells: baselineCells } : {}),
   };
 }
 

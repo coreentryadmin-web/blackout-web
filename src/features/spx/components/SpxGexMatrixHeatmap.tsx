@@ -32,7 +32,8 @@ import {
   writeGexHeatmapSessionCache,
 } from "@/lib/gex-heatmap-session-cache";
 import { spxMatrixScopeLabel } from "@/lib/gex-scope-labels";
-import { pickGexShiftLeaders, pickGexShiftLeaderCells, gexMatrixShiftCellKey, matrixShiftDeltaForStrike, matrixShiftForLens, matrixShiftSinceMs } from "@/lib/gex-shift-leaders";
+import { matrixShiftDeltaForStrikeScoped } from "@/lib/gex-shift-scope";
+import { pickGexShiftLeaders, pickGexShiftLeaderCells, gexMatrixShiftCellKey, matrixShiftForLens, matrixShiftSinceMs } from "@/lib/gex-shift-leaders";
 import { GexShiftLeadersStrip } from "@/components/gex/GexShiftLeadersStrip";
 import { GexMatrixShiftBadge } from "@/components/gex/GexMatrixShiftBadge";
 import { fmtShiftPercentForStrike } from "@/features/thermal/lib/gex-heatmap/shift-math";
@@ -703,7 +704,11 @@ export function SpxGexMatrixHeatmap({
                 const isOrHigh = orHighStrike === strike;
                 const isOrLow = orLowStrike === strike;
                 const rowCells = cells[String(strike)] ?? {};
-                const rowTotal = block?.strike_totals?.[String(strike)] ?? 0;
+                let rowTotal = 0;
+                for (const e of displayExpiries) {
+                  const v = rowCells[e];
+                  if (typeof v === "number" && Number.isFinite(v)) rowTotal += v;
+                }
                 const isKing =
                   lens === "gex" &&
                   odteLevels.king != null &&
@@ -712,7 +717,12 @@ export function SpxGexMatrixHeatmap({
                   odteLevels.callWall != null && strike === odteLevels.callWall;
                 const isPutWall =
                   odteLevels.putWall != null && strike === odteLevels.putWall;
-                const shiftDelta = matrixShiftDeltaForStrike(activeShift, strike);
+                const shiftDelta = matrixShiftDeltaForStrikeScoped({
+                  shift: activeShift,
+                  cells,
+                  selectedExpiries: displayExpiries,
+                  strike,
+                });
                 const driftLabel =
                   !isSpotRow && shouldShowMatrixDriftPct(si, spotIdx)
                     ? fmtShiftPercentForStrike(rowTotal, shiftDelta)

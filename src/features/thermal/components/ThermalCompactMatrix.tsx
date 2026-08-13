@@ -19,7 +19,7 @@ import {
 } from "@/lib/gex-heatmap-display";
 import { fmtShiftPercentForStrike } from "@/features/thermal/lib/gex-heatmap/shift-math";
 import type { GexShiftLike } from "@/lib/gex-shift-leaders";
-import { matrixShiftDeltaForStrike } from "@/lib/gex-shift-leaders";
+import { matrixShiftDeltaForStrikeScoped } from "@/lib/gex-shift-scope";
 import { scrollRowIntoViewCenter } from "@/features/spx/lib/spx-matrix-scroll";
 import {
   bandStrikesAroundSpot,
@@ -285,14 +285,14 @@ export default function ThermalCompactMatrix({
                   const isKing = has && n !== 0 && day?.king === strike;
                   const showDrift =
                     !isSpot && shouldShowMatrixDriftPct(si, spotIdx);
-                  let rowTotal = 0;
-                  for (const exp of expiries) {
-                    const v = row[exp];
-                    if (typeof v === "number" && Number.isFinite(v)) rowTotal += v;
-                  }
-                  const shiftDelta = matrixShiftDeltaForStrike(data.shift, strike);
+                  const shiftDelta = matrixShiftDeltaForStrikeScoped({
+                    shift: data.shift,
+                    cells: data.cells,
+                    selectedExpiries: [exp],
+                    strike,
+                  });
                   const driftLabel = showDrift
-                    ? fmtShiftPercentForStrike(rowTotal, shiftDelta)
+                    ? fmtShiftPercentForStrike(n, shiftDelta)
                     : null;
                   const pctToneClass =
                     driftLabel == null || driftLabel === "—"
