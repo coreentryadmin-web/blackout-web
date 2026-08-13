@@ -17967,7 +17967,8 @@ body::before {
   --tt-cyan: #22d3ee;
   --tt-sky: #7dd3fc;
   --tt-ink: #f8fafc;
-  --tt-line: rgba(125, 211, 252, 0.18);
+  --tt-line: rgba(125, 211, 252, 0.34);
+  --tt-line-strong: rgba(34, 211, 238, 0.48);
   position: relative;
   isolation: isolate;
   overflow: visible;
@@ -17975,11 +17976,11 @@ body::before {
   margin-top: 0.35rem;
   padding: 0.75rem 0.65rem 0.85rem;
   border-radius: 0.85rem;
-  border: 1px solid rgba(34, 211, 238, 0.18);
+  border: 1px solid rgba(34, 211, 238, 0.32);
   background: linear-gradient(180deg, rgba(8, 12, 22, 0.96), rgba(4, 4, 7, 0.99));
   overflow: hidden;
   box-shadow:
-    inset 0 1px 0 rgba(125, 211, 252, 0.06),
+    inset 0 1px 0 rgba(125, 211, 252, 0.1),
     0 12px 40px rgba(0, 0, 0, 0.35);
 }
 
@@ -18182,11 +18183,11 @@ body::before {
   gap: 0.35rem;
   padding: 0.5rem 0.45rem 0.55rem;
   border-radius: 0.65rem;
-  border: 1px solid rgba(125, 211, 252, 0.2);
-  background: linear-gradient(180deg, rgba(8, 12, 22, 0.88), rgba(4, 6, 12, 0.94));
+  border: 1.5px solid rgba(125, 211, 252, 0.38);
+  background: linear-gradient(180deg, rgba(8, 12, 22, 0.92), rgba(4, 6, 12, 0.96));
   box-shadow:
-    inset 0 1px 0 rgba(125, 211, 252, 0.05),
-    0 4px 16px rgba(0, 0, 0, 0.22);
+    inset 0 1px 0 rgba(125, 211, 252, 0.12),
+    0 4px 18px rgba(0, 0, 0, 0.28);
   transition:
     border-color 0.2s ease,
     box-shadow 0.25s ease;
@@ -18244,10 +18245,11 @@ body::before {
 }
 
 .thermal-triple-col.is-active {
-  border-color: rgba(34, 211, 238, 0.45);
+  border-color: rgba(34, 211, 238, 0.62);
   box-shadow:
-    0 0 0 1px rgba(34, 211, 238, 0.16),
-    0 8px 24px rgba(34, 211, 238, 0.08);
+    0 0 0 1px rgba(34, 211, 238, 0.28),
+    0 0 22px rgba(34, 211, 238, 0.12),
+    0 8px 24px rgba(34, 211, 238, 0.1);
 }
 
 .thermal-triple-col-head {
@@ -18262,9 +18264,9 @@ body::before {
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: 0.35rem 0.5rem;
-  padding-bottom: 0.35rem;
-  margin-bottom: 0.15rem;
-  border-bottom: 1px solid rgba(125, 211, 252, 0.14);
+  padding-bottom: 0.4rem;
+  margin-bottom: 0.2rem;
+  border-bottom: 1.5px solid var(--tt-line-strong);
 }
 
 .thermal-triple-col-head-ticker {
@@ -18302,10 +18304,10 @@ body::before {
   font-variant-numeric: tabular-nums;
   color: #f8fafc;
   letter-spacing: 0.02em;
-  padding: 0.12rem 0.35rem;
+  padding: 0.14rem 0.42rem;
   border-radius: 0.35rem;
-  border: 1px solid rgba(125, 211, 252, 0.22);
-  background: rgba(8, 12, 22, 0.72);
+  border: 1.5px solid rgba(125, 211, 252, 0.38);
+  background: rgba(8, 12, 22, 0.82);
   white-space: nowrap;
 }
 
@@ -18457,11 +18459,14 @@ body::before {
   min-height: clamp(420px, 62vh, 780px);
   overflow: auto;
   overscroll-behavior: contain;
-  border-radius: 0.35rem;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(0, 0, 0, 0.35);
+  border-radius: 0.45rem;
+  border: 1.5px solid var(--tt-line);
+  background: rgba(2, 4, 10, 0.78);
+  box-shadow:
+    inset 0 1px 0 rgba(125, 211, 252, 0.08),
+    inset 0 0 0 1px rgba(34, 211, 238, 0.06);
   scrollbar-width: thin;
-  scrollbar-color: rgba(34, 211, 238, 0.35) transparent;
+  scrollbar-color: rgba(34, 211, 238, 0.45) transparent;
 }
 
 .thermal-compact-scroll.is-0dte {
@@ -18523,7 +18528,7 @@ body::before {
   text-transform: uppercase;
   color: var(--tt-sky);
   text-align: left;
-  border-bottom: 1px solid var(--tt-line);
+  border-bottom: 1.5px solid var(--tt-line-strong);
 }
 
 .thermal-compact-exp {
@@ -18538,7 +18543,7 @@ body::before {
   text-transform: uppercase;
   color: var(--tt-cyan);
   text-align: center;
-  border-bottom: 1px solid var(--tt-line);
+  border-bottom: 1.5px solid var(--tt-line-strong);
   white-space: nowrap;
 }
 
@@ -18573,8 +18578,13 @@ body::before {
   min-width: 4.35rem;
   max-width: 5.5rem;
   padding: 0;
-  border-right: 1px solid rgba(125, 211, 252, 0.12);
+  border-right: 1.5px solid var(--tt-line-strong);
   vertical-align: middle;
+}
+
+.thermal-compact-row td,
+.thermal-compact-row th {
+  border-bottom: 1px solid var(--tt-line);
 }
 
 .thermal-compact-strike-btn {
@@ -18623,7 +18633,8 @@ body::before {
 
 .thermal-compact-row.is-spot td,
 .thermal-compact-row.is-spot th {
-  box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.45);
+  box-shadow: inset 0 0 0 1.5px rgba(34, 211, 238, 0.55);
+  border-bottom-color: rgba(34, 211, 238, 0.42);
 }
 
 .thermal-compact-row.is-spot .thermal-compact-strike-btn {
@@ -18647,8 +18658,7 @@ body::before {
   height: 2rem;
   text-align: center;
   vertical-align: middle;
-  border-right: 1px solid rgba(255, 255, 255, 0.03);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  border-right: 1px solid var(--tt-line);
   white-space: nowrap;
   overflow: hidden;
   /* Stay a real table-cell — never inline-block (breaks column alignment). */
