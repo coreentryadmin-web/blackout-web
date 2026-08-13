@@ -4168,10 +4168,18 @@ export function GexHeatmap({
           aria-label={`${data?.underlying ?? ticker} dealer ${vocab.noun.toLowerCase()} exposure matrix, strikes by expiration`}
         >
           <table
-            className="spx-gex-matrix-table w-max min-w-full border-collapse font-mono text-[12px] tabular-nums"
+            className="spx-gex-matrix-table thermal-matrix-table w-max min-w-full border-collapse font-mono text-[12px] tabular-nums"
             role="grid"
             aria-label={`${data?.underlying ?? ticker} dealer ${vocab.noun.toLowerCase()} matrix by strike and expiry`}
           >
+            <colgroup>
+              <col className="thermal-matrix-col-strike" />
+              {matrixExpiries.map((e) => (
+                <col key={e} className="thermal-matrix-col-expiry" />
+              ))}
+              <col className="thermal-matrix-col-net" />
+              {depthRail ? <col className="thermal-matrix-col-flow" /> : null}
+            </colgroup>
             <thead className="sticky top-0 z-20 bg-[#08080e]">
               <tr className="thermal-matrix-head-row border-b border-white/10">
                 <th className="thermal-matrix-head thermal-matrix-head-strike sticky left-0 z-30 bg-[#08080e]">
@@ -4213,9 +4221,13 @@ export function GexHeatmap({
                 {depthRail && (
                   <th
                     className="thermal-matrix-head thermal-matrix-head-flow"
-                    title="Forced dealer hedging flow if price reaches that strike — buying grows left, selling right. Conditional flow, not resting liquidity."
+                    title={
+                      selectedExpiries != null
+                        ? "Forced dealer hedging flow if price reaches that strike — same near-term book as the Depth tab, not re-scoped to selected expiries. Buying left, selling right."
+                        : "Forced dealer hedging flow if price reaches that strike — same near-term book as the Depth tab. Buying left, selling right."
+                    }
                   >
-                    Flow
+                    Net flow
                   </th>
                 )}
               </tr>
@@ -4404,7 +4416,7 @@ export function GexHeatmap({
                         clamped bar would paint the outermost band's flow onto every far strike and
                         read as a wall of forced trading exactly where there is none. */}
                     {depthRail && (
-                      <td className="whitespace-nowrap py-1 pl-1 pr-2">
+                      <td className="thermal-matrix-flow-cell whitespace-nowrap py-1 pl-1 pr-2">
                         {(() => {
                           const band = depthBandForPrice(depthRail.levels, data?.spot ?? 0, strike);
                           if (!band || band.direction === "flat") {
@@ -4415,20 +4427,29 @@ export function GexHeatmap({
                             Math.round((Math.abs(band.notional) / depthRail.max_abs_notional) * 100)
                           );
                           const buy = band.direction === "buy";
+                          const flowTitle = `If ${data?.underlying ?? ticker} reaches ${fmtStrike(strike)}, dealers must ${buy ? "BUY" : "SELL"} about ${fmtMoney(Math.abs(band.notional))} of stock to stay hedged.`;
                           return (
-                            <span
-                              className="thermal-matrix-flow-rail"
-                              title={`If ${data?.underlying ?? ticker} reaches ${fmtStrike(strike)}, dealers must ${buy ? "BUY" : "SELL"} about ${fmtMoney(Math.abs(band.notional))} of stock to stay hedged.`}
-                            >
-                              <span aria-hidden className="thermal-matrix-flow-rail-axis" />
+                            <span className="thermal-matrix-flow-rail-wrap">
+                              <span className="thermal-matrix-flow-rail" title={flowTitle}>
+                                <span aria-hidden className="thermal-matrix-flow-rail-axis" />
+                                <span
+                                  aria-hidden
+                                  className={clsx(
+                                    "thermal-matrix-flow-rail-bar",
+                                    buy ? "is-buy" : "is-sell"
+                                  )}
+                                  style={{ width: `${pct / 2}%` }}
+                                />
+                              </span>
                               <span
-                                aria-hidden
                                 className={clsx(
-                                  "thermal-matrix-flow-rail-bar",
+                                  "thermal-matrix-flow-amt",
                                   buy ? "is-buy" : "is-sell"
                                 )}
-                                style={{ width: `${pct / 2}%` }}
-                              />
+                                title={flowTitle}
+                              >
+                                {fmtMoney(Math.abs(band.notional))}
+                              </span>
                             </span>
                           );
                         })()}
@@ -4451,6 +4472,12 @@ export function GexHeatmap({
           the hero of this panel — shipped without one, so its five colour encodings were left to
           be inferred. Lens-aware, because the positive-side colour changes with the metric. */}
       <MatrixLegend lens={matrixLens} vocab={vocab} />
+      {depthRail && selectedExpiries != null ? (
+        <p className="mt-1.5 font-mono text-[9px] leading-snug text-sky-300/65">
+          Net flow shows the near-term forced hedging book (same as the Depth tab) — not re-scoped to{" "}
+          {scopeLabel}.
+        </p>
+      ) : null}
     </div>
   );
 
