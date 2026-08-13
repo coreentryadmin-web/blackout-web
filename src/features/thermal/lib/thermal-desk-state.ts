@@ -3,7 +3,13 @@
  * Kept out of GexHeatmap.tsx so unit tests don't need the 4k-line React surface.
  */
 
-export const THERMAL_COMPARE_TICKERS = ["SPY", "SPX", "QQQ"] as const;
+import {
+  type ThermalComparePresetId,
+  parseThermalComparePresetId,
+  THERMAL_COMPARE_TICKERS,
+} from "./thermal-compare-presets";
+
+export { THERMAL_COMPARE_TICKERS };
 export type ThermalCompareTicker = (typeof THERMAL_COMPARE_TICKERS)[number];
 
 export type ThermalLens = "gex" | "vex" | "dex" | "charm";
@@ -60,26 +66,37 @@ export function parseThermalUrlState(params: URLSearchParams): {
   ticker: string | null;
   lens: ThermalLens | null;
   compare: boolean;
+  compareSet: ThermalComparePresetId | null;
 } {
   return {
     ticker: parseThermalTicker(params.get("ticker")),
     lens: parseThermalLens(params.get("lens")),
     compare: params.get("compare") === "1" || params.get("compare") === "true",
+    compareSet: parseThermalComparePresetId(params.get("compareSet")),
   };
 }
 
 /** Build query string for the Thermal desk (preserves unrelated params). */
 export function buildThermalUrlSearch(
   current: URLSearchParams,
-  next: { ticker: string; lens: ThermalLens; compare: boolean }
+  next: {
+    ticker: string;
+    lens: ThermalLens;
+    compare: boolean;
+    compareSet?: ThermalComparePresetId | null;
+  }
 ): string {
   const p = new URLSearchParams(current.toString());
   p.set("ticker", next.ticker.toUpperCase());
   p.set("lens", next.lens);
   if (next.compare) p.set("compare", "1");
   else p.delete("compare");
+  if (next.compare && next.compareSet) p.set("compareSet", next.compareSet);
+  else p.delete("compareSet");
   return p.toString();
 }
+
+export type { ThermalComparePresetId };
 
 function statusFromAge(
   ageMs: number | null,

@@ -17911,15 +17911,22 @@ body::before {
   position: relative;
   z-index: 1;
   display: grid;
-  /* Three tall heat strips side-by-side (0DTE compare reference). */
-  grid-template-columns: repeat(3, minmax(18rem, 1fr));
+  grid-template-columns: repeat(var(--thermal-grid-cols, 3), minmax(var(--thermal-col-min, 16rem), 1fr));
   gap: 0.55rem;
   overflow-x: auto;
   padding-bottom: 0.15rem;
 }
 
 .thermal-triple-desk[data-mode="0dte"] .thermal-triple-grid {
-  grid-template-columns: repeat(3, minmax(16rem, 1fr));
+  --thermal-col-min: 10.5rem;
+}
+
+.thermal-triple-desk[data-sector="1"] .thermal-triple-grid {
+  --thermal-col-min: 9.75rem;
+}
+
+.thermal-triple-desk[data-mode="0dte"][data-sector="1"] .thermal-triple-grid {
+  --thermal-col-min: 9rem;
 }
 
 @media (max-width: 1280px) {

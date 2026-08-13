@@ -29,9 +29,15 @@ import {
   parseThermalTicker,
   parseThermalUrlState,
   shouldForceMatrixRefresh,
-  THERMAL_COMPARE_TICKERS,
+  type ThermalComparePresetId,
   type ThermalLens,
 } from "@/features/thermal/lib/thermal-desk-state";
+import {
+  THERMAL_COMPARE_PRESETS,
+  orderComparePresetTickers,
+  resolveComparePresetIdForTicker,
+  thermalComparePreset,
+} from "@/features/thermal/lib/thermal-compare-presets";
 import { prefetchGexHeatmapTickers } from "@/lib/gex-heatmap-prefetch";
 import { GEX_KING_COMPACT_LABEL, GEX_KING_DUAL_LABEL, GEX_KING_NODE_HELP, gexKingDualLabel } from "@/lib/gex-king-node-labels";
 import { shiftPercentForStrike } from "@/features/thermal/lib/gex-heatmap/shift-math";
@@ -2934,6 +2940,19 @@ export function GexHeatmap({
   // Reading urlBoot.compare (the shared, tested parser) instead of re-deriving the
   // default here fixes the inconsistency at its source. See docs/audit/FINDINGS.md.
   const [compare, setCompare] = useState(() => urlBoot.compare);
+  const [compareSet, setCompareSet] = useState<ThermalComparePresetId>(() =>
+    urlBoot.compareSet ?? resolveComparePresetIdForTicker(urlBoot.ticker ?? initialTicker),
+  );
+  const comparePreset = useMemo(() => thermalComparePreset(compareSet), [compareSet]);
+  const compareGridTickers = useMemo(
+    () => orderComparePresetTickers(comparePreset, ticker),
+    [comparePreset, ticker],
+  );
+
+  useEffect(() => {
+    if (!compare) return;
+    prefetchGexHeatmapTickers(compareGridTickers);
+  }, [compare, compareGridTickers]);
   const urlSyncedRef = useRef(false);
   // View selection ("pair-a" = Matrix (full width); "pair-b" = Profile + Curve + Shift).
   // Lifted to a controlled state (UI refactor) so the view TabList can live on the
@@ -2975,11 +2994,12 @@ export function GexHeatmap({
       ticker,
       lens: lens as ThermalLens,
       compare,
+      compareSet: compare ? compareSet : null,
     });
     const next = qs ? `${pathname}?${qs}` : pathname;
     const cur = searchParams.toString() ? `${pathname}?${searchParams.toString()}` : pathname;
     if (next !== cur) router.replace(next, { scroll: false });
-  }, [ticker, lens, compare, pathname, router, searchParams]);
+  }, [ticker, lens, compare, compareSet, pathname, router, searchParams]);
 
   // Fast-move bypass: when the live quote diverges from the cached matrix snapshot spot
   // by >0.5%, we append `&force=1` to the matrix key for ONE refetch (then clear it) so
@@ -4541,7 +4561,11 @@ export function GexHeatmap({
               setCompare((v) => {
                 const next = !v;
                 if (next) {
-                  prefetchGexHeatmapTickers(THERMAL_COMPARE_TICKERS);
+                  const presetId = compareSet ?? resolveComparePresetIdForTicker(ticker);
+                  setCompareSet(presetId);
+                  prefetchGexHeatmapTickers(
+                    orderComparePresetTickers(thermalComparePreset(presetId), ticker),
+                  );
                   setPairView("pair-a");
                 }
                 return next;
@@ -4554,10 +4578,37 @@ export function GexHeatmap({
                 ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-400"
                 : "border-white/15 text-sky-300/80 hover:text-white"
             )}
-            title="Toggle SPY | SPX | QQQ grid"
+            title="Toggle sector compare grid (0DTE / nearest expiry per name)"
           >
             Grid
           </button>
+          {compare ? (
+            <label className="flex items-center gap-1.5">
+              <span className="sr-only">Sector preset</span>
+              <select
+                value={compareSet}
+                onChange={(e) => {
+                  const id = e.target.value as ThermalComparePresetId;
+                  setCompareSet(id);
+                  prefetchGexHeatmapTickers(
+                    orderComparePresetTickers(thermalComparePreset(id), ticker),
+                  );
+                }}
+                className={clsx(
+                  "rounded-full border border-white/15 bg-[rgba(8,9,14,0.72)] px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-white outline-none",
+                  "focus-visible:ring-2 focus-visible:ring-sky-400",
+                  nativeShell && "min-h-[var(--ios-compact-touch,2.25rem)]",
+                )}
+                aria-label="Sector compare preset"
+              >
+                {THERMAL_COMPARE_PRESETS.map((p) => (
+                  <option key={p.id} value={p.id} className="bg-[#08080e] text-white">
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           {live ? (
             <Badge tone="bull" dot>
               Quote live
@@ -4684,23 +4735,24 @@ export function GexHeatmap({
         </div>
       )}
 
-      {/* Compare ON + Matrix tab → SPY | SPX | QQQ triple desk (each column self-fetches).
-          Bypasses the focused-ticker skeleton/empty gate so one quiet name never blanks the desk. */}
+      {/* Compare ON + Matrix tab → sector preset grid (each column self-fetches). */}
       {compare && pairView === "pair-a" ? (
         <div className="mt-1">
           {data && !stale && !empty ? <AlertsStrip events={events} /> : null}
           <ThermalTripleDesk
             lens={lens}
             activeTicker={ticker}
+            tickers={compareGridTickers}
+            presetLabel={comparePreset.label}
             onFocusTicker={setTicker}
             onLensChange={(l) => setLens(l as Lens)}
           />
           <p className="mt-4 border-t border-white/8 pt-3 text-[10px] leading-snug text-sky-300/75 gex-heatmap-methodology">
             <span aria-hidden className="mr-1 text-sky-300/70">ⓘ</span>
-            Grid defaults to 0DTE heat strips (SPY | SPX | QQQ) with green/red cells,
-            yellow + node, purple − node, and ★ king — same paint as the major matrix. Toggle
-            Near for multi-expiry. Keys 1/2/3 focus; 0/N mode; G/V/D/C lens. Pin strikes; CSV
-            exports the full chain.
+            Grid compares {compareGridTickers.join(" · ")} on one 0DTE / nearest-expiry column each —
+            green/red cells, yellow + node, purple − node, and ★ king. Pick a sector from the dropdown.
+            Keys 1–{compareGridTickers.length} focus; 0 = 0DTE; G/V/D/C lens. Pin strikes; CSV exports
+            the full chain.
           </p>
         </div>
       ) : (isLoading && !data) || stale ? (

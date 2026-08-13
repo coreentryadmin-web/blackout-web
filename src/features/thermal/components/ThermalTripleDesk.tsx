@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type MutableRefObject,
   type RefObject,
 } from "react";
@@ -16,7 +17,6 @@ import { usePollIntervalMs, useEtMarketOpen } from "@/hooks/use-et-market-open";
 import { useLiveQuoteStream } from "@/hooks/useLiveQuoteStream";
 import type { GexHeatmapLens } from "@/lib/gex-heatmap-display";
 import {
-  THERMAL_COMPARE_TICKERS,
   thermalLayerFreshness,
   isUsableGexHeatmapPayload,
   shouldForceMatrixRefresh,
@@ -427,34 +427,47 @@ function TripleColumn({
 type Props = {
   lens: GexHeatmapLens;
   activeTicker: string;
+  /** Column tickers for this compare preset (5–6 sector names or 3 indices). */
+  tickers: readonly string[];
+  /** Rail label, e.g. "Semis" or "AI". */
+  presetLabel: string;
   onFocusTicker: (ticker: string) => void;
   onLensChange?: (lens: GexHeatmapLens) => void;
 };
 
+function scrollRefFor(
+  store: MutableRefObject<Record<string, RefObject<HTMLDivElement | null>>>,
+  ticker: string,
+): RefObject<HTMLDivElement | null> {
+  if (!store.current[ticker]) {
+    store.current[ticker] = { current: null };
+  }
+  return store.current[ticker]!;
+}
+
 export default function ThermalTripleDesk({
   lens,
   activeTicker,
+  tickers,
+  presetLabel,
   onFocusTicker,
   onLensChange,
 }: Props) {
   const [pins, setPins] = useState<Record<string, number[]>>({});
-  // Default Near = five expiry days × SPY|SPX|QQQ (0DTE toggle still available).
-  const [mode, setMode] = useState<ThermalCompareMode>("near");
+  // Sector grids are built for a single 0DTE / nearest-expiry column per name.
+  const [mode, setMode] = useState<ThermalCompareMode>("0dte");
   const [crosshairIndex, setCrosshairIndex] = useState<number | null>(null);
   const [recenterEpoch, setRecenterEpoch] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [columnValidating, setColumnValidating] = useState<Record<string, boolean>>({});
-  const col0Scroll = useRef<HTMLDivElement | null>(null);
-  const col1Scroll = useRef<HTMLDivElement | null>(null);
-  const col2Scroll = useRef<HTMLDivElement | null>(null);
-  const scrollRefList = useMemo(
-    () => [col0Scroll, col1Scroll, col2Scroll],
-    [],
-  );
+  const scrollRefStore = useRef<Record<string, RefObject<HTMLDivElement | null>>>({});
   const syncingScroll = useRef(false);
   const suppressScrollSyncRef = useRef(false);
   const userPinnedScrollRef = useRef(false);
   const mutateByTickerRef = useRef<Record<string, () => Promise<unknown>>>({});
+
+  const columnTickers = useMemo(() => tickers.map((t) => t.toUpperCase()), [tickers]);
+  const isIndicesPreset = columnTickers.length <= 3;
 
   useEffect(() => {
     setPins(readPins());
@@ -500,8 +513,8 @@ export default function ThermalTripleDesk({
     (scrollTop: number, scrollLeft: number) => {
       if (syncingScroll.current || suppressScrollSyncRef.current) return;
       syncingScroll.current = true;
-      for (const ref of scrollRefList) {
-        const el = ref.current;
+      for (const ticker of columnTickers) {
+        const el = scrollRefFor(scrollRefStore, ticker).current;
         if (!el) continue;
         if (el.scrollTop !== scrollTop) el.scrollTop = scrollTop;
         if (el.scrollLeft !== scrollLeft) el.scrollLeft = scrollLeft;
@@ -510,23 +523,22 @@ export default function ThermalTripleDesk({
         syncingScroll.current = false;
       });
     },
-    [scrollRefList],
+    [columnTickers],
   );
 
-  const tickers = useMemo(() => [...THERMAL_COMPARE_TICKERS], []);
   const anyValidating =
-    refreshing || tickers.some((t) => columnValidating[t]);
+    refreshing || columnTickers.some((t) => columnValidating[t]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
-      if (e.key === "1") onFocusTicker(tickers[0]!);
-      else if (e.key === "2") onFocusTicker(tickers[1]!);
-      else if (e.key === "3") onFocusTicker(tickers[2]!);
-      else if (e.key === "0") setMode("0dte");
-      else if (e.key === "n" || e.key === "N") setMode("near");
+      const idx = Number.parseInt(e.key, 10);
+      if (idx >= 1 && idx <= columnTickers.length) {
+        onFocusTicker(columnTickers[idx - 1]!);
+      } else if (e.key === "0") setMode("0dte");
+      else if (isIndicesPreset && (e.key === "n" || e.key === "N")) setMode("near");
       else if (e.key === "r" || e.key === "R") {
         e.preventDefault();
         void refreshAndRecenter();
@@ -539,14 +551,24 @@ export default function ThermalTripleDesk({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onFocusTicker, onLensChange, tickers, refreshAndRecenter]);
+  }, [onFocusTicker, onLensChange, columnTickers, refreshAndRecenter, isIndicesPreset]);
+
+  const focusHint = columnTickers.slice(0, 6).map((_, i) => (
+    <kbd key={i}>{i + 1}</kbd>
+  ));
 
   return (
-    <div className="thermal-triple-desk" data-lens={lens} data-mode={mode}>
+    <div
+      className="thermal-triple-desk"
+      data-lens={lens}
+      data-mode={mode}
+      data-cols={columnTickers.length}
+      data-sector={isIndicesPreset ? "0" : "1"}
+    >
       <div className="thermal-triple-atmosphere" aria-hidden />
       <div className="thermal-triple-rail">
         <div className="thermal-triple-rail-label">
-          {mode === "0dte" ? "0DTE GRID" : "NEAR-TERM GRID"}
+          {presetLabel.toUpperCase()} · {mode === "0dte" ? "0DTE / NEAREST" : "NEAR-TERM"}
         </div>
         <div className="thermal-triple-rail-actions">
           <div className="thermal-triple-mode" role="group" aria-label="Compare expiry mode">
@@ -558,16 +580,17 @@ export default function ThermalTripleDesk({
             >
               0DTE
             </button>
-            <button
-              type="button"
-              className={`thermal-triple-mode-btn${mode === "near" ? " is-on" : ""}`}
-              onClick={() => setMode("near")}
-              aria-pressed={mode === "near"}
-            >
-              Near
-            </button>
+            {isIndicesPreset ? (
+              <button
+                type="button"
+                className={`thermal-triple-mode-btn${mode === "near" ? " is-on" : ""}`}
+                onClick={() => setMode("near")}
+                aria-pressed={mode === "near"}
+              >
+                Near
+              </button>
+            ) : null}
           </div>
-          {/* Slayer-parity: revalidate SPY|SPX|QQQ matrices and map each ladder to live spot. */}
           <button
             type="button"
             className={clsx(
@@ -576,24 +599,26 @@ export default function ThermalTripleDesk({
               anyValidating && "spx-matrix-refresh-btn--spinning",
             )}
             onClick={() => void refreshAndRecenter()}
-            title="Refresh all three matrices and recenter each on spot"
+            title="Refresh all matrices and recenter each on spot"
             aria-label="Refresh thermal matrices and recenter on spot"
           >
             ↻
           </button>
         </div>
         <div className="thermal-triple-rail-hint">
-          <kbd>1</kbd>
-          <kbd>2</kbd>
-          <kbd>3</kbd>
+          {focusHint}
           <span>focus</span>
           <span className="thermal-triple-rail-sep" aria-hidden>
             ·
           </span>
           <kbd>0</kbd>
           <span>0DTE</span>
-          <kbd>N</kbd>
-          <span>near</span>
+          {isIndicesPreset ? (
+            <>
+              <kbd>N</kbd>
+              <span>near</span>
+            </>
+          ) : null}
           <span className="thermal-triple-rail-sep" aria-hidden>
             ·
           </span>
@@ -609,8 +634,15 @@ export default function ThermalTripleDesk({
           <span>lens · synced cursor</span>
         </div>
       </div>
-      <div className="thermal-triple-grid">
-        {tickers.map((ticker, i) => (
+      <div
+        className="thermal-triple-grid"
+        style={
+          {
+            "--thermal-grid-cols": String(columnTickers.length),
+          } as CSSProperties
+        }
+      >
+        {columnTickers.map((ticker, i) => (
           <TripleColumn
             key={ticker}
             ticker={ticker}
@@ -623,7 +655,7 @@ export default function ThermalTripleDesk({
             shortcut={String(i + 1)}
             crosshairIndex={crosshairIndex}
             onCrosshairIndex={setCrosshairIndex}
-            scrollRef={scrollRefList[i]!}
+            scrollRef={scrollRefFor(scrollRefStore, ticker)}
             onScrollSync={onScrollSync}
             suppressScrollSyncRef={suppressScrollSyncRef}
             userPinnedScrollRef={userPinnedScrollRef}
