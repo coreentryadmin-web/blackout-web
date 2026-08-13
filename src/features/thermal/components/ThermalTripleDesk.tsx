@@ -365,6 +365,7 @@ function TripleColumn({
           data={{
             ticker,
             spot: view!.spot,
+            labelSpot: headerSpot,
             strikes: view!.strikes!,
             expiries: view!.expiries!,
             nearTermExpiries: view!.near_term_expiries,

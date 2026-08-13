@@ -140,6 +140,14 @@ describe("strike distance from spot", () => {
     assert.equal(fmtStrikeDistancePct(0, 100), "—");
   });
 
+  it("fmtStrikeDistancePct drifts when live spot moves between matrix polls", () => {
+    const at225 = fmtStrikeDistancePct(223.92, 225);
+    const drifted = fmtStrikeDistancePct(224.05, 225);
+    assert.notEqual(at225, drifted);
+    assert.match(at225, /^\+/);
+    assert.match(drifted, /^\+/);
+  });
+
   it("shouldShowStrikeDistancePct limits labels to 4 above + 4 below spot", () => {
     const spot = 5;
     assert.equal(STRIKE_DISTANCE_PCT_NEAR_SPOT, 4);

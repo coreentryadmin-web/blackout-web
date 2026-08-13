@@ -38,7 +38,14 @@ export type ThermalCompareMode = "0dte" | "near";
 
 export type ThermalCompactPayload = {
   ticker: string;
+  /** Matrix snapshot spot — drives ATM row highlight + scroll (5s cadence). */
   spot?: number | null;
+  /**
+   * Spot for % distance labels — defaults to `spot`. Compare grid passes the
+   * live header quote (push ?? matrix) so % drifts with the visible price
+   * between matrix refreshes; GEX cells still update on the matrix cadence.
+   */
+  labelSpot?: number | null;
   strikes: number[];
   expiries: string[];
   nearTermExpiries?: string[] | null;
@@ -125,6 +132,8 @@ export default function ThermalCompactMatrix({
     THERMAL_COMPARE_STRIKE_HALF,
   );
   const spotIdx = nearestStrikeIndex(strikes, data.spot ?? null);
+  const pctSpot = data.labelSpot ?? data.spot ?? null;
+  const pctSpotIdx = nearestStrikeIndex(strikes, pctSpot);
   const spotStrike = spotIdx >= 0 ? strikes[spotIdx]! : null;
   const pinSet = new Set(pinnedStrikes);
   const peak = compactMatrixPeak(data.cells, strikes, expiries);
@@ -278,7 +287,8 @@ export default function ThermalCompactMatrix({
                   const posRank = hl?.topPositive[strike];
                   const negRank = hl?.topNegative[strike];
                   const isKing = has && n !== 0 && day?.king === strike;
-                  const showPct = !isSpot && shouldShowStrikeDistancePct(si, spotIdx);
+                  const showPct =
+                    !isSpot && shouldShowStrikeDistancePct(si, pctSpotIdx);
 
                   let style: CSSProperties = {};
                   if (has && n !== 0) {
@@ -338,7 +348,7 @@ export default function ThermalCompactMatrix({
                       <span className="thermal-compact-cell-inner">
                         {showPct ? (
                           <span className="thermal-compact-cell-pct" title="Distance from spot">
-                            {fmtStrikeDistancePct(data.spot, strike)}
+                            {fmtStrikeDistancePct(pctSpot, strike)}
                           </span>
                         ) : null}
                         <span className="thermal-compact-cell-val">
