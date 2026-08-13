@@ -10,6 +10,8 @@ import {
 type Props = {
   value: ThermalComparePresetId;
   onChange: (id: ThermalComparePresetId) => void;
+  /** Hover prefetch — warm a preset before the member commits the selection. */
+  onPresetHover?: (id: ThermalComparePresetId) => void;
   compact?: boolean;
   nativeShell?: boolean;
   className?: string;
@@ -19,6 +21,7 @@ type Props = {
 export function ThermalGridSectorPicker({
   value,
   onChange,
+  onPresetHover,
   compact = false,
   nativeShell = false,
   className,
@@ -132,7 +135,10 @@ export function ThermalGridSectorPicker({
                   selected && "is-selected",
                   highlighted && "is-active",
                 )}
-                onMouseEnter={() => setActive(i)}
+                onMouseEnter={() => {
+                  setActive(i);
+                  onPresetHover?.(p.id);
+                }}
                 onClick={() => commit(p.id)}
               >
                 {p.label}

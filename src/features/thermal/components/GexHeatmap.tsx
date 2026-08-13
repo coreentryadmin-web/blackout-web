@@ -2961,6 +2961,12 @@ export function GexHeatmap({
     if (!compare) return;
     prefetchGexHeatmapTickers(compareGridTickers);
   }, [compare, compareGridTickers]);
+
+  // Warm the likely compare preset on landing so toggling Grid paints instantly.
+  useEffect(() => {
+    const presetId = compareSet ?? resolveComparePresetIdForTicker(ticker);
+    prefetchGexHeatmapTickers(orderComparePresetTickers(thermalComparePreset(presetId), ticker));
+  }, [compareSet, ticker]);
   const urlSyncedRef = useRef(false);
   // View selection ("pair-a" = Matrix (full width); "pair-b" = Profile + Curve + Shift).
   // Lifted to a controlled state (UI refactor) so the view TabList can live on the
@@ -4660,6 +4666,11 @@ export function GexHeatmap({
                 value={compareSet}
                 onChange={(id) => {
                   setCompareSet(id);
+                  prefetchGexHeatmapTickers(
+                    orderComparePresetTickers(thermalComparePreset(id), ticker),
+                  );
+                }}
+                onPresetHover={(id) => {
                   prefetchGexHeatmapTickers(
                     orderComparePresetTickers(thermalComparePreset(id), ticker),
                   );

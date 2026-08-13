@@ -21,7 +21,7 @@ import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
 import { listSharedUniverseTickers } from "@/features/vector/lib/vector-dynamic-universe";
-import { THERMAL_COMPARE_PRESETS } from "@/features/thermal/lib/thermal-compare-presets";
+import { comparePresetWarmTickers } from "@/features/thermal/lib/thermal-compare-presets";
 import { shouldRunCacheWarmer } from "@/lib/cache-warmer-gate";
 import { calculateMatrixDelta, type GexMatrix } from "@/lib/gex-matrix-delta";
 import { broadcastMatrixDelta } from "@/lib/gex-matrix-broadcast";
@@ -52,9 +52,7 @@ export async function GET(req: NextRequest) {
   // Shared with Vector bead recording: static allowlist ∪ dynamic (≤100, 14d retention).
   const tickers = await listSharedUniverseTickers();
   // Every Thermal compare-preset name — cache-first warm so opening Mag7/Semis paints instantly.
-  const comparePresetTickers = [
-    ...new Set(THERMAL_COMPARE_PRESETS.flatMap((p) => p.tickers.map((t) => t.toUpperCase()))),
-  ];
+  const comparePresetTickers = comparePresetWarmTickers();
   // Core Thermal compare desk (SPY|SPX|QQQ) first + forceRefresh so asof advances every warm
   // tick even when the 5s TTL hasn't expired — EventBridge floors at 1/min; without force the
   // cache can serve a 5–90s-stale matrix while members watch "MATRIX · 45s". Rest of the

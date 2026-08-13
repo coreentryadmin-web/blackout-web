@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
-import { fetchGexHeatmap, peekGexHeatmapCache, readGexHeatmapSnapshot } from "@/lib/providers/polygon-options-gex";
+import { fetchGexHeatmap, peekGexHeatmapCache } from "@/lib/providers/polygon-options-gex";
 import type {
   GexFlowByStrike,
   GexDarkPoolLevel,
@@ -14,13 +14,18 @@ import { isUwCircuitOpen } from "@/lib/providers/uw-rate-limiter";
 import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
 import { requireAnyToolApi } from "@/lib/tool-access-server";
 import { isHeatmapOverlayAllowed } from "@/lib/heatmap-allowlist";
-import { gexHeatmapEnrichmentMaxMs, gexHeatmapMemberRouteDeadlineMs } from "@/lib/providers/config";
+import { gexHeatmapEnrichmentMaxMs } from "@/lib/providers/config";
 import { dbConfigured, fetchLatestPlayableNighthawkEdition } from "@/lib/db";
 import { roundFloats, reconcileStrikeTotal, reconcileCellStrikeTotals } from "@/lib/round-floats";
 import { isEtCashRth } from "@/lib/et-market-hours";
 import { joinGexStrikeExpiryTicker, hasLiveGexStrikeExpiry, getGexStrikeExpiryLadder } from "@/lib/ws/uw-socket";
 import { registerVectorUniverseView } from "@/features/vector/lib/vector-universe";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
+import { compactHeatmapMemberPayload } from "@/lib/gex-heatmap-member";
+import {
+  loadHeatmapCacheReaderOnly,
+  scheduleHeatmapBackgroundWarm,
+} from "@/lib/gex-heatmap-member-serve";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -277,40 +282,6 @@ async function getOverlays(
   return { overlays, at: now };
 }
 
-/** Hard ceiling on matrix fetch — SPX cold rebuild can exceed ALB idle timeout (120s). */
-const MEMBER_MATRIX_DEADLINE_MS = gexHeatmapMemberRouteDeadlineMs();
-
-/**
- * Never hold a member GET open until the gateway 504s. On timeout, serve any cached snapshot
- * while the rebuild continues warming Redis.
- */
-async function loadHeatmapForMember(
-  ticker: string,
-  forceRefresh: boolean
-): Promise<Awaited<ReturnType<typeof fetchGexHeatmap>> | null> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const work = (async () => {
-    let heatmap = !forceRefresh ? await readGexHeatmapSnapshot(ticker) : null;
-    if (!heatmap) {
-      heatmap = await fetchGexHeatmap(ticker, { forceRefresh });
-    }
-    return heatmap;
-  })();
-  const timeout = new Promise<Awaited<ReturnType<typeof fetchGexHeatmap>> | null>((resolve) => {
-    timer = setTimeout(() => {
-      console.warn(
-        `[market/gex-heatmap] ${ticker}: matrix load exceeded ${MEMBER_MATRIX_DEADLINE_MS}ms — serving cached snapshot`
-      );
-      void readGexHeatmapSnapshot(ticker).then(resolve);
-    }, MEMBER_MATRIX_DEADLINE_MS);
-  });
-  try {
-    return await Promise.race([work, timeout]);
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 /**
  * GET /api/market/gex-heatmap?ticker=SPY
  *
@@ -359,7 +330,7 @@ export async function GET(req: NextRequest) {
     const matrixPeek = await peekGexHeatmapCache(ticker);
     const skipSlowEnrichment = matrixPeek.cached && !matrixPeek.stale;
 
-    let heatmap = await loadHeatmapForMember(ticker, forceRefresh);
+    let heatmap = await loadHeatmapCacheReaderOnly(ticker, forceRefresh);
     if (
       !forceRefresh &&
       matrixPeek.cached &&
@@ -367,7 +338,7 @@ export async function GET(req: NextRequest) {
       matrixPeek.ttl_sec != null &&
       matrixPeek.age_sec >= matrixPeek.ttl_sec
     ) {
-      void fetchGexHeatmap(ticker).catch(() => undefined);
+      scheduleHeatmapBackgroundWarm(ticker);
     }
     if (!heatmap) {
       // Polygon unavailable / empty chain — never fabricate. Client renders empty state.
@@ -514,7 +485,10 @@ export async function GET(req: NextRequest) {
     rounded.dex = reconcileStrikeTotal(reconcileCellStrikeTotals(rounded.dex, rounded.near_term_expiries));
     rounded.charm = reconcileStrikeTotal(reconcileCellStrikeTotals(rounded.charm, rounded.near_term_expiries));
 
-    return NextResponse.json(rounded, {
+    const compact = req.nextUrl.searchParams.get("compact") === "1";
+    const body = compact ? compactHeatmapMemberPayload(rounded) : rounded;
+
+    return NextResponse.json(body, {
       headers: NO_STORE_HEADERS,
     });
   } catch (error) {

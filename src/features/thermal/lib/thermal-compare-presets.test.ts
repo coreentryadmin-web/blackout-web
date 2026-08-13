@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   THERMAL_COMPARE_PRESETS,
+  comparePresetWarmTickers,
   orderComparePresetTickers,
   parseThermalComparePresetId,
   resolveComparePresetIdForTicker,
@@ -86,4 +87,11 @@ test("AI preset is disjoint from Semis — otherwise switching themes changes no
   const semis = new Set(thermalComparePreset("semis").tickers);
   const shared = [...ai].filter((t) => semis.has(t));
   assert.deepEqual(shared, [], `AI and Semis must not overlap; shared: ${shared.join(", ")}`);
+});
+
+test("comparePresetWarmTickers unions every preset name once", () => {
+  const warm = comparePresetWarmTickers();
+  const expected = new Set(THERMAL_COMPARE_PRESETS.flatMap((p) => p.tickers));
+  assert.equal(warm.length, expected.size);
+  for (const t of expected) assert.ok(warm.includes(t));
 });

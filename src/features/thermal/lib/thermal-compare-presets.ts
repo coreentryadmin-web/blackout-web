@@ -110,6 +110,13 @@ export const THERMAL_COMPARE_PRESETS: readonly ThermalComparePreset[] = [
 
 export const THERMAL_COMPARE_DEFAULT_PRESET_ID: ThermalComparePresetId = "semis";
 
+/** Single source of truth for heatmap-warm / boot-seed / prefetch union. */
+export function comparePresetWarmTickers(): string[] {
+  return [
+    ...new Set(THERMAL_COMPARE_PRESETS.flatMap((p) => p.tickers.map((t) => t.toUpperCase()))),
+  ];
+}
+
 const PRESET_BY_ID = new Map<ThermalComparePresetId, ThermalComparePreset>(
   THERMAL_COMPARE_PRESETS.map((p) => [p.id, p]),
 );
