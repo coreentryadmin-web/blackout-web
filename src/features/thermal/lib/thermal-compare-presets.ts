@@ -14,7 +14,14 @@ export type ThermalComparePresetId =
   | "energy"
   | "financials"
   | "biotech"
-  | "indices";
+  | "indices"
+  | "industrials"
+  | "cons-disc"
+  | "comm-svc"
+  | "staples"
+  | "utilities"
+  | "materials"
+  | "realestate";
 
 export type ThermalComparePreset = {
   id: ThermalComparePresetId;
@@ -70,6 +77,41 @@ export const THERMAL_COMPARE_PRESETS: readonly ThermalComparePreset[] = [
     id: "indices",
     label: "Indices",
     tickers: ["SPY", "SPX", "QQQ", "IWM", "DIA"],
+  },
+  {
+    id: "industrials",
+    label: "Industrials",
+    tickers: ["CAT", "GE", "RTX", "HON", "DE"],
+  },
+  {
+    id: "cons-disc",
+    label: "Cons. Disc.",
+    tickers: ["TSLA", "HD", "LOW", "NKE", "COST"],
+  },
+  {
+    id: "comm-svc",
+    label: "Comm. Svc.",
+    tickers: ["NFLX", "DIS", "GOOGL", "META", "SPOT"],
+  },
+  {
+    id: "staples",
+    label: "Staples",
+    tickers: ["WMT", "PG", "KO", "PEP", "COST"],
+  },
+  {
+    id: "utilities",
+    label: "Utilities",
+    tickers: ["NEE", "DUK", "SO", "AEP", "SRE"],
+  },
+  {
+    id: "materials",
+    label: "Materials",
+    tickers: ["FCX", "NEM", "CLF", "LIN", "AA"],
+  },
+  {
+    id: "realestate",
+    label: "Real Estate",
+    tickers: ["PLD", "AMT", "EQIX", "O", "SPG"],
   },
 ] as const;
 

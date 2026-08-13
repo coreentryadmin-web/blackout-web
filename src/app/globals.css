@@ -17792,13 +17792,14 @@ body::before {
   position: relative;
   isolation: isolate;
   margin-top: 0.35rem;
-  padding: 0.65rem 0.55rem 0.75rem;
+  padding: 0.75rem 0.65rem 0.85rem;
   border-radius: 0.85rem;
-  border: 1px solid rgba(34, 211, 238, 0.22);
-  background:
-    radial-gradient(120% 80% at 50% -20%, rgba(34, 211, 238, 0.12), transparent 55%),
-    linear-gradient(180deg, rgba(8, 12, 22, 0.92), rgba(4, 4, 7, 0.98));
+  border: 1px solid rgba(34, 211, 238, 0.18);
+  background: linear-gradient(180deg, rgba(8, 12, 22, 0.96), rgba(4, 4, 7, 0.99));
   overflow: hidden;
+  box-shadow:
+    inset 0 1px 0 rgba(125, 211, 252, 0.06),
+    0 12px 40px rgba(0, 0, 0, 0.35);
 }
 
 .thermal-triple-atmosphere {
@@ -17822,11 +17823,70 @@ body::before {
   z-index: 1;
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 0.5rem 1rem;
-  margin-bottom: 0.55rem;
-  padding: 0 0.15rem;
+  gap: 0.65rem 1rem;
+  margin-bottom: 0.65rem;
+  padding: 0 0.1rem;
+}
+
+.thermal-triple-rail-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-width: 0;
+  flex: 1 1 16rem;
+}
+
+.thermal-triple-ticker-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.thermal-triple-ticker-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 999px;
+  border: 1px solid rgba(125, 211, 252, 0.22);
+  background: rgba(8, 12, 22, 0.65);
+  padding: 0.22rem 0.55rem 0.22rem 0.35rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--tt-sky);
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.thermal-triple-ticker-chip:hover {
+  border-color: rgba(34, 211, 238, 0.45);
+  color: var(--tt-ink);
+}
+
+.thermal-triple-ticker-chip.is-active {
+  border-color: rgba(34, 211, 238, 0.55);
+  background: rgba(34, 211, 238, 0.12);
+  color: var(--tt-cyan);
+  box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.18);
+}
+
+.thermal-triple-ticker-chip-idx {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1rem;
+  height: 1rem;
+  border-radius: 999px;
+  background: rgba(34, 211, 238, 0.14);
+  color: var(--tt-cyan);
+  font-size: 9px;
+  font-weight: 800;
 }
 
 .thermal-triple-rail-actions {
@@ -17871,10 +17931,10 @@ body::before {
 .thermal-triple-rail-label {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.22em;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
   color: var(--tt-cyan);
-  text-shadow: 0 0 18px rgba(34, 211, 238, 0.35);
 }
 
 .thermal-triple-rail-hint {
@@ -17910,55 +17970,47 @@ body::before {
 .thermal-triple-grid {
   position: relative;
   z-index: 1;
-  display: grid;
-  grid-template-columns: repeat(var(--thermal-grid-cols, 3), minmax(var(--thermal-col-min, 16rem), 1fr));
-  gap: 0.55rem;
+  display: flex;
+  gap: 0.65rem;
   overflow-x: auto;
-  padding-bottom: 0.15rem;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  padding: 0.15rem 0.1rem 0.35rem;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(34, 211, 238, 0.35) transparent;
 }
 
-.thermal-triple-desk[data-mode="0dte"] .thermal-triple-grid {
-  --thermal-col-min: 10.5rem;
+.thermal-triple-grid::-webkit-scrollbar {
+  height: 6px;
 }
 
-.thermal-triple-desk[data-sector="1"] .thermal-triple-grid {
-  --thermal-col-min: 9.75rem;
-}
-
-.thermal-triple-desk[data-mode="0dte"][data-sector="1"] .thermal-triple-grid {
-  --thermal-col-min: 9rem;
-}
-
-@media (max-width: 1280px) {
-  .thermal-triple-grid {
-    grid-template-columns: 1fr;
-    gap: 0.85rem;
-  }
+.thermal-triple-grid::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(34, 211, 238, 0.35);
 }
 
 .thermal-triple-col {
   position: relative;
   min-width: 0;
+  flex: 0 0 clamp(11.5rem, 18vw, 16.5rem);
+  scroll-snap-align: start;
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
-  padding: 0.4rem 0.35rem 0.45rem;
-  border-radius: 0.55rem;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(4, 6, 12, 0.72);
+  gap: 0.35rem;
+  padding: 0.5rem 0.45rem 0.55rem;
+  border-radius: 0.65rem;
+  border: 1px solid rgba(125, 211, 252, 0.14);
+  background: rgba(4, 6, 12, 0.82);
   transition:
     border-color 0.2s ease,
-    box-shadow 0.25s ease,
-    transform 0.2s ease;
+    box-shadow 0.25s ease;
 }
 
 .thermal-triple-col.is-active {
-  border-color: rgba(34, 211, 238, 0.55);
+  border-color: rgba(34, 211, 238, 0.45);
   box-shadow:
-    0 0 0 1px rgba(34, 211, 238, 0.2),
-    0 0 28px rgba(34, 211, 238, 0.12),
-    inset 0 0 24px rgba(34, 211, 238, 0.04);
-  transform: translateY(-1px);
+    0 0 0 1px rgba(34, 211, 238, 0.16),
+    0 8px 24px rgba(34, 211, 238, 0.08);
 }
 
 .thermal-triple-col-head {
@@ -18371,6 +18423,90 @@ body::before {
 .thermal-compact-cell--extreme.is-pos-node .thermal-compact-cell-val,
 .thermal-compact-cell--extreme.is-neg-node .thermal-compact-cell-val {
   color: inherit;
+}
+
+.thermal-grid-toolbar {
+  display: inline-flex;
+  align-items: stretch;
+  border-radius: 999px;
+  border: 1px solid rgba(125, 211, 252, 0.2);
+  background: rgba(8, 9, 14, 0.72);
+  overflow: hidden;
+}
+
+.thermal-grid-toolbar--on {
+  border-color: rgba(34, 211, 238, 0.35);
+  box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.08);
+}
+
+.thermal-grid-toolbar-toggle {
+  border: 0;
+  background: transparent;
+  padding: 0.35rem 0.75rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(125, 211, 252, 0.85);
+  cursor: pointer;
+}
+
+.thermal-grid-toolbar-toggle.is-on {
+  background: rgba(34, 211, 238, 0.12);
+  color: #22d3ee;
+}
+
+.thermal-grid-toolbar-toggle:focus-visible {
+  outline: 2px solid rgba(34, 211, 238, 0.65);
+  outline-offset: 2px;
+}
+
+.thermal-grid-toolbar--native .thermal-grid-toolbar-toggle,
+.thermal-grid-toolbar--native .thermal-grid-sector-picker {
+  min-height: var(--ios-compact-touch, 2.25rem);
+}
+
+.thermal-grid-sector-picker {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border-left: 1px solid rgba(125, 211, 252, 0.18);
+  padding: 0 0.65rem 0 0.5rem;
+  min-width: 6.5rem;
+}
+
+.thermal-grid-sector-picker-value {
+  pointer-events: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #f8fafc;
+  white-space: nowrap;
+}
+
+.thermal-grid-sector-picker-chevron {
+  pointer-events: none;
+  margin-left: auto;
+  font-size: 10px;
+  color: rgba(125, 211, 252, 0.75);
+}
+
+.thermal-grid-sector-picker-select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.thermal-grid-sector-picker--compact {
+  min-width: 7.25rem;
 }
 
 .thermal-compact-empty {

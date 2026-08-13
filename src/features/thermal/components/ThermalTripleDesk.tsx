@@ -6,7 +6,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
   type MutableRefObject,
   type RefObject,
 } from "react";
@@ -549,8 +548,6 @@ export default function ThermalTripleDesk({
     return () => window.removeEventListener("keydown", onKey);
   }, [onFocusTicker, onLensChange, columnTickers, refreshAndRecenter]);
 
-  const focusHint = columnTickers.map((_, i) => <kbd key={i}>{i + 1}</kbd>);
-
   return (
     <div
       className="thermal-triple-desk"
@@ -560,8 +557,30 @@ export default function ThermalTripleDesk({
     >
       <div className="thermal-triple-atmosphere" aria-hidden />
       <div className="thermal-triple-rail">
-        <div className="thermal-triple-rail-label">
-          {presetLabel.toUpperCase()} · NEAREST EXPIRY
+        <div className="thermal-triple-rail-main">
+          <div className="thermal-triple-rail-label">
+            {presetLabel} · nearest expiry
+          </div>
+          <div className="thermal-triple-ticker-strip" role="tablist" aria-label="Compare tickers">
+            {columnTickers.map((sym, i) => (
+              <button
+                key={sym}
+                type="button"
+                role="tab"
+                aria-selected={activeTicker.toUpperCase() === sym}
+                className={clsx(
+                  "thermal-triple-ticker-chip",
+                  activeTicker.toUpperCase() === sym && "is-active",
+                )}
+                onClick={() => onFocusTicker(sym)}
+              >
+                <span className="thermal-triple-ticker-chip-idx" aria-hidden>
+                  {i + 1}
+                </span>
+                {sym}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="thermal-triple-rail-actions">
           <button
@@ -578,32 +597,11 @@ export default function ThermalTripleDesk({
             ↻
           </button>
         </div>
-        <div className="thermal-triple-rail-hint">
-          {focusHint}
-          <span>focus</span>
-          <span className="thermal-triple-rail-sep" aria-hidden>
-            ·
-          </span>
-          <kbd>R</kbd>
-          <span>recenter</span>
-          <span className="thermal-triple-rail-sep" aria-hidden>
-            ·
-          </span>
-          <kbd>G</kbd>
-          <kbd>V</kbd>
-          <kbd>D</kbd>
-          <kbd>C</kbd>
-          <span>lens · synced cursor</span>
-        </div>
+        <p className="thermal-triple-rail-hint sr-only">
+          Keys 1 through {columnTickers.length} focus a column. R refreshes. G V D C switch lens.
+        </p>
       </div>
-      <div
-        className="thermal-triple-grid"
-        style={
-          {
-            "--thermal-grid-cols": String(columnTickers.length),
-          } as CSSProperties
-        }
-      >
+      <div className="thermal-triple-grid">
         {columnTickers.map((ticker, i) => (
           <TripleColumn
             key={ticker}

@@ -21,6 +21,7 @@ import {
 import { AnchorGlyph, PanelLabel } from "@/features/thermal/lib/gex-heatmap/primitives";
 import { ThermalFreshnessBar } from "@/features/thermal/components/ThermalFreshnessBar";
 import ThermalTripleDesk from "@/features/thermal/components/ThermalTripleDesk";
+import { ThermalGridSectorPicker } from "@/features/thermal/components/ThermalGridSectorPicker";
 import {
   buildThermalUrlSearch,
   honestLevelEmpty,
@@ -4544,7 +4545,7 @@ export function GexHeatmap({
         {/* Spacer pushes the freshness dot + lens toggles to the far right of the row. */}
         <span className="ml-auto" aria-hidden />
 
-        <span className="flex items-center gap-2">
+        <span className="flex flex-wrap items-center gap-2">
           {fastFlash && (
             <span
               role="status"
@@ -4554,61 +4555,52 @@ export function GexHeatmap({
               <span aria-hidden>⚡</span> fast-move refresh
             </span>
           )}
-          <button
-            type="button"
-            aria-pressed={compare}
-            onClick={() => {
-              setCompare((v) => {
-                const next = !v;
-                if (next) {
-                  const presetId = compareSet ?? resolveComparePresetIdForTicker(ticker);
-                  setCompareSet(presetId);
-                  prefetchGexHeatmapTickers(
-                    orderComparePresetTickers(thermalComparePreset(presetId), ticker),
-                  );
-                  setPairView("pair-a");
-                }
-                return next;
-              });
-            }}
+          <div
             className={clsx(
-              "rounded-full border px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] transition-colors",
-              nativeShell && "min-h-[var(--ios-compact-touch,2.25rem)]",
-              compare
-                ? "border-cyan-400/40 bg-cyan-400/10 text-cyan-400"
-                : "border-white/15 text-sky-300/80 hover:text-white"
+              "thermal-grid-toolbar",
+              compare && "thermal-grid-toolbar--on",
+              nativeShell && "thermal-grid-toolbar--native",
             )}
-            title="Toggle sector compare grid (0DTE / nearest expiry per name)"
           >
-            Grid
-          </button>
-          {compare ? (
-            <label className="flex items-center gap-1.5">
-              <span className="sr-only">Sector preset</span>
-              <select
+            <button
+              type="button"
+              aria-pressed={compare}
+              onClick={() => {
+                setCompare((v) => {
+                  const next = !v;
+                  if (next) {
+                    const presetId = compareSet ?? resolveComparePresetIdForTicker(ticker);
+                    setCompareSet(presetId);
+                    prefetchGexHeatmapTickers(
+                      orderComparePresetTickers(thermalComparePreset(presetId), ticker),
+                    );
+                    setPairView("pair-a");
+                  }
+                  return next;
+                });
+              }}
+              className={clsx(
+                "thermal-grid-toolbar-toggle",
+                compare && "is-on",
+              )}
+              title="Toggle sector compare grid (nearest expiry per name)"
+            >
+              Grid
+            </button>
+            {compare ? (
+              <ThermalGridSectorPicker
                 value={compareSet}
-                onChange={(e) => {
-                  const id = e.target.value as ThermalComparePresetId;
+                onChange={(id) => {
                   setCompareSet(id);
                   prefetchGexHeatmapTickers(
                     orderComparePresetTickers(thermalComparePreset(id), ticker),
                   );
                 }}
-                className={clsx(
-                  "rounded-full border border-white/15 bg-[rgba(8,9,14,0.72)] px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-white outline-none",
-                  "focus-visible:ring-2 focus-visible:ring-sky-400",
-                  nativeShell && "min-h-[var(--ios-compact-touch,2.25rem)]",
-                )}
-                aria-label="Sector compare preset"
-              >
-                {THERMAL_COMPARE_PRESETS.map((p) => (
-                  <option key={p.id} value={p.id} className="bg-[#08080e] text-white">
-                    {p.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : null}
+                compact
+                nativeShell={nativeShell}
+              />
+            ) : null}
+          </div>
           {live ? (
             <Badge tone="bull" dot>
               Quote live
