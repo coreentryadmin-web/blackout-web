@@ -85,22 +85,23 @@ async function runClickthrough(page) {
     await page.waitForTimeout(2000);
     await shot(page, "02-triple-grid");
 
-    // Triple desk: 0DTE vs Near
-    await clickIfVisible(page, page.locator(".thermal-triple-mode-btn", { hasText: /^Near$/i }), "triple:mode-near");
-    await page.waitForTimeout(1500);
-    await shot(page, "03-triple-near");
-    await clickIfVisible(page, page.locator(".thermal-triple-mode-btn", { hasText: /^0DTE$/i }), "triple:mode-0dte");
-    await page.waitForTimeout(1500);
+    // Sector preset dropdown (Mag 7 / Semis / etc.)
+    const sectorPicker = page.locator(".thermal-grid-sector-picker-trigger").first();
+    if (await sectorPicker.isVisible().catch(() => false)) {
+      rec("grid:sector-picker", "PASS");
+    } else {
+      rec("grid:sector-picker", "WARN", "sector picker not visible");
+    }
 
-    // Refresh all three
+    // Refresh all compare columns
     await clickIfVisible(
       page,
-      page.getByRole("button", { name: /Refresh thermal matrices/i }),
+      page.getByRole("button", { name: /Refresh compare grids/i }),
       "triple:refresh",
     );
     await page.waitForTimeout(2500);
 
-    // Focus each column
+    // Focus each column via header ticker button
     for (const t of ["SPY", "SPX", "QQQ"]) {
       const col = page.locator(".thermal-triple-ticker-btn", { hasText: t }).first();
       if (await clickIfVisible(page, col, `triple:focus-${t}`, 5000)) {
@@ -108,12 +109,11 @@ async function runClickthrough(page) {
       }
     }
 
-    // Scroll sync in triple grid
-    const tripleScroll = page.locator(".thermal-triple-col .gex-matrix-scroll, .thermal-compact-scroll").first();
+    // Independent scroll per compare column
+    const tripleScroll = page.locator(".thermal-compact-scroll").first();
     if (await tripleScroll.isVisible().catch(() => false)) {
       await tripleScroll.evaluate((el) => {
         el.scrollTop += 100;
-        el.scrollLeft += 80;
       });
       rec("triple:scroll", "PASS");
     } else {
@@ -126,6 +126,25 @@ async function runClickthrough(page) {
   }
 
   await shot(page, "04-single-matrix");
+
+  // Matrix freshness + colour legend (single-ticker matrix)
+  const freshness = page.locator(".thermal-desk-freshness");
+  if ((await freshness.count()) > 0) {
+    rec("matrix:freshness-chip", "PASS");
+  } else {
+    rec("matrix:freshness-chip", "INFO", "hidden in compare mode or loading");
+  }
+  const legend = page.locator(".gex-matrix-legend");
+  if ((await legend.count()) > 0) rec("matrix:colour-legend", "PASS");
+  else rec("matrix:colour-legend", "WARN", "legend missing on matrix tab");
+
+  // Key levels box
+  const keyLevels = page.locator(".thermal-key-levels, .gex-key-levels").first();
+  if (await keyLevels.isVisible().catch(() => false)) {
+    rec("key-levels:visible", "PASS");
+  } else {
+    rec("key-levels:visible", "WARN", "key levels box not visible");
+  }
 
   // ── View tabs: Matrix | Profile | Depth ──
   if (await clickIfVisible(page, page.getByRole("tab", { name: /^Matrix$/i }), "tab:matrix")) {
