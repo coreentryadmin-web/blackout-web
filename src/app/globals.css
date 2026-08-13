@@ -18287,6 +18287,38 @@ body::before {
   pointer-events: none;
 }
 
+.thermal-triple-col-head-spot {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: flex-end;
+  justify-self: end;
+  min-width: 0;
+}
+
+.thermal-triple-spot--head {
+  font-size: 14px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: #f8fafc;
+  letter-spacing: 0.02em;
+  padding: 0.12rem 0.35rem;
+  border-radius: 0.35rem;
+  border: 1px solid rgba(125, 211, 252, 0.22);
+  background: rgba(8, 12, 22, 0.72);
+  white-space: nowrap;
+}
+
+.thermal-triple-spot--head.is-empty {
+  color: rgba(125, 211, 252, 0.65);
+  opacity: 0.85;
+}
+
+.thermal-triple-col.is-active .thermal-triple-spot--head {
+  border-color: rgba(34, 211, 238, 0.42);
+  box-shadow: 0 0 12px rgba(34, 211, 238, 0.1);
+}
+
 .thermal-triple-col-walls {
   display: inline-flex;
   flex-shrink: 0;
@@ -18639,7 +18671,7 @@ body::before {
   flex-direction: row;
   align-items: baseline;
   justify-content: center;
-  gap: 0.28rem;
+  gap: 0.55rem;
   line-height: 1.1;
   max-width: 100%;
 }
@@ -18660,25 +18692,27 @@ body::before {
 .thermal-compact-cell-pct {
   display: block;
   flex-shrink: 0;
-  font-size: 8px;
-  font-weight: 700;
+  min-width: 2.65rem;
+  font-size: 10px;
+  font-weight: 800;
   letter-spacing: 0.02em;
   font-variant-numeric: tabular-nums;
-  color: rgba(125, 211, 252, 0.72);
+  line-height: 1.2;
   white-space: nowrap;
-  opacity: 0.92;
 }
 
-.thermal-compact-cell.is-pos .thermal-compact-cell-pct {
-  color: rgba(110, 231, 183, 0.88);
+.thermal-compact-cell-pct.is-pct-pos {
+  color: #34d399;
+  text-shadow: 0 0 10px rgba(52, 211, 153, 0.22);
 }
 
-.thermal-compact-cell.is-neg .thermal-compact-cell-pct {
-  color: rgba(253, 164, 175, 0.88);
+.thermal-compact-cell-pct.is-pct-neg {
+  color: #f87171;
+  text-shadow: 0 0 10px rgba(248, 113, 113, 0.2);
 }
 
-.thermal-compact-cell.is-zero .thermal-compact-cell-pct {
-  color: rgba(125, 211, 252, 0.45);
+.thermal-compact-cell-pct.is-pct-flat {
+  color: rgba(186, 230, 253, 0.82);
 }
 
 .thermal-compact-cell.is-pos .thermal-compact-cell-val {
@@ -18693,8 +18727,7 @@ body::before {
   color: rgba(125, 211, 252, 0.4);
 }
 
-.thermal-compact-cell.is-neutral .thermal-compact-cell-val,
-.thermal-compact-cell.is-neutral .thermal-compact-cell-pct {
+.thermal-compact-cell.is-neutral .thermal-compact-cell-val {
   color: rgba(186, 230, 253, 0.82);
 }
 

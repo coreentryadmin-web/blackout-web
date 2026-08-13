@@ -103,24 +103,6 @@ function pickBlock(data: HeatmapPayload, lens: GexHeatmapLens): LensBlock | unde
   return data.charm;
 }
 
-function wallPair(block: LensBlock | undefined, lens: GexHeatmapLens): { a: string; b: string } {
-  if (!block) return { a: "—", b: "—" };
-  if (lens === "gex") {
-    return {
-      a: Number.isFinite(block.call_wall as number) ? String(Math.round(block.call_wall!)) : "—",
-      b: Number.isFinite(block.put_wall as number) ? String(Math.round(block.put_wall!)) : "—",
-    };
-  }
-  if (lens === "vex") {
-    return {
-      a: Number.isFinite(block.pos_wall as number) ? String(Math.round(block.pos_wall!)) : "—",
-      b: Number.isFinite(block.neg_wall as number) ? String(Math.round(block.neg_wall!)) : "—",
-    };
-  }
-  const z = Number.isFinite(block.zero_level as number) ? String(Math.round(block.zero_level!)) : "—";
-  return { a: z, b: "—" };
-}
-
 type ColumnProps = {
   ticker: string;
   lens: GexHeatmapLens;
@@ -303,7 +285,6 @@ function TripleColumn({
   }, [ticker, mutate, isValidating, forceActive, onRegisterMutate, triggerForce]);
 
   const block = view ? pickBlock(view, lens) : undefined;
-  const walls = wallPair(block, lens);
   const matrixSpot = view?.spot != null && view.spot > 0 ? view.spot : null;
   const headerSpot = pushSpot ?? matrixSpot;
   const zeroDteExpiry = useMemo(() => {
@@ -323,11 +304,6 @@ function TripleColumn({
             {shortcut}
           </span>
           <span className="thermal-triple-ticker">{ticker}</span>
-          {headerSpot != null ? (
-            <span className="thermal-triple-spot">{Number(headerSpot).toFixed(2)}</span>
-          ) : (
-            <span className="thermal-triple-spot is-empty">—</span>
-          )}
         </button>
         {zeroDteExpiry ? (
           <div className="thermal-triple-col-head-expiry" title={zeroDteExpiry}>
@@ -337,14 +313,13 @@ function TripleColumn({
         ) : (
           <div className="thermal-triple-col-head-expiry is-empty" aria-hidden />
         )}
-        <div className="thermal-triple-col-walls" aria-label={`${ticker} levels`}>
-          <span className="thermal-triple-wall is-call">
-            {lens === "gex" ? "C" : lens === "vex" ? "+" : "Ø"} {walls.a}
-          </span>
-          {(lens === "gex" || lens === "vex") && (
-            <span className="thermal-triple-wall is-put">
-              {lens === "gex" ? "P" : "−"} {walls.b}
+        <div className="thermal-triple-col-head-spot" aria-label={`${ticker} spot`}>
+          {headerSpot != null ? (
+            <span className="thermal-triple-spot thermal-triple-spot--head">
+              {Number(headerSpot).toFixed(2)}
             </span>
+          ) : (
+            <span className="thermal-triple-spot thermal-triple-spot--head is-empty">—</span>
           )}
         </div>
       </header>
