@@ -1,8 +1,9 @@
 /**
- * Thermal compare-grid sector/theme bundles — each preset is 5–6 liquid names shown
- * side-by-side on a single 0DTE (or nearest expiry) heat column so members can scan
- * dealer positioning across a thesis (Semis, AI, Space, …) without leaving the desk.
+ * Thermal compare-grid sector/theme bundles — each preset is five liquid names shown
+ * side-by-side on a single nearest-expiry (0DTE when listed) heat column.
  */
+
+export const THERMAL_COMPARE_PRESET_SIZE = 5;
 
 export type ThermalComparePresetId =
   | "semis"
@@ -19,7 +20,7 @@ export type ThermalComparePreset = {
   id: ThermalComparePresetId;
   /** Short desk label for the dropdown / rail. */
   label: string;
-  /** Up to six tickers — single-expiry columns stay narrow enough to fit. */
+  /** Five tickers — one nearest-expiry column each. */
   tickers: readonly string[];
 };
 
@@ -28,47 +29,47 @@ export const THERMAL_COMPARE_PRESETS: readonly ThermalComparePreset[] = [
   {
     id: "semis",
     label: "Semis",
-    tickers: ["NVDA", "AMD", "AVGO", "MU", "SMCI", "ARM"],
+    tickers: ["NVDA", "AMD", "AVGO", "MU", "SMCI"],
   },
   {
     id: "ai",
     label: "AI",
-    tickers: ["NVDA", "AMD", "SMCI", "PLTR", "ARM", "AVGO"],
+    tickers: ["NVDA", "AMD", "SMCI", "PLTR", "ARM"],
   },
   {
     id: "space",
     label: "Space",
-    tickers: ["RKLB", "ASTS", "LUNR", "BA", "PL", "LMT"],
+    tickers: ["RKLB", "ASTS", "LUNR", "BA", "PL"],
   },
   {
     id: "mega",
     label: "Mega cap",
-    tickers: ["NVDA", "AAPL", "MSFT", "META", "AMZN", "GOOGL"],
+    tickers: ["NVDA", "AAPL", "MSFT", "META", "AMZN"],
   },
   {
     id: "crypto",
     label: "Crypto",
-    tickers: ["COIN", "MSTR", "HOOD", "MARA", "RIOT", "CLSK"],
+    tickers: ["COIN", "MSTR", "HOOD", "MARA", "RIOT"],
   },
   {
     id: "energy",
     label: "Energy",
-    tickers: ["XOM", "CVX", "OXY", "SLB", "COP", "MPC"],
+    tickers: ["XOM", "CVX", "OXY", "SLB", "COP"],
   },
   {
     id: "financials",
     label: "Financials",
-    tickers: ["JPM", "GS", "BAC", "MS", "V", "MA"],
+    tickers: ["JPM", "GS", "BAC", "MS", "V"],
   },
   {
     id: "biotech",
     label: "Biotech",
-    tickers: ["LLY", "UNH", "MRK", "ABBV", "GILD", "MRNA"],
+    tickers: ["LLY", "UNH", "MRK", "ABBV", "GILD"],
   },
   {
     id: "indices",
     label: "Indices",
-    tickers: ["SPY", "SPX", "QQQ"],
+    tickers: ["SPY", "SPX", "QQQ", "IWM", "DIA"],
   },
 ] as const;
 

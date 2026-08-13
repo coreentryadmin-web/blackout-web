@@ -16,8 +16,8 @@ import {
   keyLevelsFootnote,
 } from "./thermal-desk-state.ts";
 
-test("THERMAL_COMPARE_TICKERS is SPY / SPX / QQQ", () => {
-  assert.deepEqual([...THERMAL_COMPARE_TICKERS], ["SPY", "SPX", "QQQ"]);
+test("THERMAL_COMPARE_TICKERS matches the indices preset (five names)", () => {
+  assert.deepEqual([...THERMAL_COMPARE_TICKERS], ["SPY", "SPX", "QQQ", "IWM", "DIA"]);
 });
 
 test("parseThermalTicker / lens / url state", () => {

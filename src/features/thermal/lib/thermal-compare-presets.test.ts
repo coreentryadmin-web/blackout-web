@@ -8,10 +8,10 @@ import {
   thermalComparePreset,
 } from "./thermal-compare-presets.ts";
 
-test("semis preset includes NVDA and six names", () => {
+test("semis preset includes NVDA and five names", () => {
   const semis = thermalComparePreset("semis");
   assert.equal(semis.label, "Semis");
-  assert.equal(semis.tickers.length, 6);
+  assert.equal(semis.tickers.length, 5);
   assert.ok(semis.tickers.includes("NVDA"));
 });
 
@@ -30,7 +30,6 @@ test("orderComparePresetTickers puts active ticker first", () => {
     "AVGO",
     "MU",
     "SMCI",
-    "ARM",
   ]);
 });
 
@@ -40,9 +39,9 @@ test("parseThermalComparePresetId accepts known ids only", () => {
   assert.equal(parseThermalComparePresetId("nope"), null);
 });
 
-test("every preset has 3–6 unique tickers", () => {
+test("every preset has exactly five unique tickers", () => {
   for (const preset of THERMAL_COMPARE_PRESETS) {
-    assert.ok(preset.tickers.length >= 3 && preset.tickers.length <= 6, preset.id);
-    assert.equal(new Set(preset.tickers).size, preset.tickers.length, preset.id);
+    assert.equal(preset.tickers.length, 5, preset.id);
+    assert.equal(new Set(preset.tickers).size, 5, preset.id);
   }
 });

@@ -454,8 +454,7 @@ export default function ThermalTripleDesk({
   onLensChange,
 }: Props) {
   const [pins, setPins] = useState<Record<string, number[]>>({});
-  // Sector grids are built for a single 0DTE / nearest-expiry column per name.
-  const [mode, setMode] = useState<ThermalCompareMode>("0dte");
+  const mode: ThermalCompareMode = "0dte";
   const [crosshairIndex, setCrosshairIndex] = useState<number | null>(null);
   const [recenterEpoch, setRecenterEpoch] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
@@ -467,7 +466,6 @@ export default function ThermalTripleDesk({
   const mutateByTickerRef = useRef<Record<string, () => Promise<unknown>>>({});
 
   const columnTickers = useMemo(() => tickers.map((t) => t.toUpperCase()), [tickers]);
-  const isIndicesPreset = columnTickers.length <= 3;
 
   useEffect(() => {
     setPins(readPins());
@@ -537,9 +535,7 @@ export default function ThermalTripleDesk({
       const idx = Number.parseInt(e.key, 10);
       if (idx >= 1 && idx <= columnTickers.length) {
         onFocusTicker(columnTickers[idx - 1]!);
-      } else if (e.key === "0") setMode("0dte");
-      else if (isIndicesPreset && (e.key === "n" || e.key === "N")) setMode("near");
-      else if (e.key === "r" || e.key === "R") {
+      } else if (e.key === "r" || e.key === "R") {
         e.preventDefault();
         void refreshAndRecenter();
       } else if (onLensChange) {
@@ -551,11 +547,9 @@ export default function ThermalTripleDesk({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onFocusTicker, onLensChange, columnTickers, refreshAndRecenter, isIndicesPreset]);
+  }, [onFocusTicker, onLensChange, columnTickers, refreshAndRecenter]);
 
-  const focusHint = columnTickers.slice(0, 6).map((_, i) => (
-    <kbd key={i}>{i + 1}</kbd>
-  ));
+  const focusHint = columnTickers.map((_, i) => <kbd key={i}>{i + 1}</kbd>);
 
   return (
     <div
@@ -563,34 +557,13 @@ export default function ThermalTripleDesk({
       data-lens={lens}
       data-mode={mode}
       data-cols={columnTickers.length}
-      data-sector={isIndicesPreset ? "0" : "1"}
     >
       <div className="thermal-triple-atmosphere" aria-hidden />
       <div className="thermal-triple-rail">
         <div className="thermal-triple-rail-label">
-          {presetLabel.toUpperCase()} · {mode === "0dte" ? "0DTE / NEAREST" : "NEAR-TERM"}
+          {presetLabel.toUpperCase()} · NEAREST EXPIRY
         </div>
         <div className="thermal-triple-rail-actions">
-          <div className="thermal-triple-mode" role="group" aria-label="Compare expiry mode">
-            <button
-              type="button"
-              className={`thermal-triple-mode-btn${mode === "0dte" ? " is-on" : ""}`}
-              onClick={() => setMode("0dte")}
-              aria-pressed={mode === "0dte"}
-            >
-              0DTE
-            </button>
-            {isIndicesPreset ? (
-              <button
-                type="button"
-                className={`thermal-triple-mode-btn${mode === "near" ? " is-on" : ""}`}
-                onClick={() => setMode("near")}
-                aria-pressed={mode === "near"}
-              >
-                Near
-              </button>
-            ) : null}
-          </div>
           <button
             type="button"
             className={clsx(
@@ -608,17 +581,6 @@ export default function ThermalTripleDesk({
         <div className="thermal-triple-rail-hint">
           {focusHint}
           <span>focus</span>
-          <span className="thermal-triple-rail-sep" aria-hidden>
-            ·
-          </span>
-          <kbd>0</kbd>
-          <span>0DTE</span>
-          {isIndicesPreset ? (
-            <>
-              <kbd>N</kbd>
-              <span>near</span>
-            </>
-          ) : null}
           <span className="thermal-triple-rail-sep" aria-hidden>
             ·
           </span>

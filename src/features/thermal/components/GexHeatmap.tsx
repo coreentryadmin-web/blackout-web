@@ -4749,10 +4749,9 @@ export function GexHeatmap({
           />
           <p className="mt-4 border-t border-white/8 pt-3 text-[10px] leading-snug text-sky-300/75 gex-heatmap-methodology">
             <span aria-hidden className="mr-1 text-sky-300/70">ⓘ</span>
-            Grid compares {compareGridTickers.join(" · ")} on one 0DTE / nearest-expiry column each —
-            green/red cells, yellow + node, purple − node, and ★ king. Pick a sector from the dropdown.
-            Keys 1–{compareGridTickers.length} focus; 0 = 0DTE; G/V/D/C lens. Pin strikes; CSV exports
-            the full chain.
+            Grid compares {compareGridTickers.join(" · ")} on one nearest-expiry column each
+            (0DTE when listed, else the front date on the chain). Pick a sector from the dropdown.
+            Keys 1–5 focus; G/V/D/C lens. Pin strikes; CSV exports the full chain.
           </p>
         </div>
       ) : (isLoading && !data) || stale ? (
