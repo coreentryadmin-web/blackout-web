@@ -178,6 +178,14 @@ before(async () => {
       // contributes nothing and no "since I last asked" window can be resolved.
       fetchPreviousUserTurn: async () => null,
       sessionOwnedByUser: async () => true,
+      // prepareLargoTurn now reads persisted session metadata (the watchlist memory) on EVERY
+      // turn. `mock.module` replaces the whole module, so an entry omitted here is not merely
+      // un-stubbed — it is undefined, and the call throws "is not a function" before any
+      // assertion in this file can run. Empty metadata is the right fixture: these tests cover
+      // the tool-loop path, not watchlist recall.
+      fetchLargoSessionMetadata: async () => ({}),
+      updateLargoSessionMetadata: async () => ({}),
+      maybePersistWatchlistFromQuestion: async () => null,
       appendLargoMessage: async (
         _sid: string,
         _userId: string,

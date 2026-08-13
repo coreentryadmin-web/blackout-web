@@ -50,7 +50,11 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     console.error("[cron/largo-morning-brief]", error);
+    // Detail goes to the LOG and the cron-run row, never to the HTTP body: a raw Error.message
+    // here can carry PG error text, internal hostnames or a provider response body, and this
+    // route answers an unauthenticated-until-checked HTTP surface. `cron-http-error-redaction`
+    // enforces this across every cron route — it caught this one.
     await logCronRun("largo-morning-brief", started, { ok: false, error: detail });
-    return NextResponse.json({ ok: false, error: detail }, { status: 500 });
+    return NextResponse.json({ ok: false, error: "cron failed" }, { status: 500 });
   }
 }

@@ -327,6 +327,22 @@ export const LARGO_CAPABILITIES: readonly LargoCapability[] = [
     joinsWith: ["helix.tape", "spx.structure", "vector.full_state"],
   },
   {
+    // Cross-product by design: it prefetches HELIX flow and Thermal GEX in PARALLEL and hands the
+    // model both sides unmerged, so the compare card can show them side by side rather than the
+    // model blending two reads into one claim. Filed under THERMAL because the gamma side is what
+    // the answer is anchored on.
+    id: "thermal.helix_compare",
+    product: "THERMAL",
+    tool: "get_helix_thermal_compare",
+    answers: "Do HELIX flow and Thermal dealer gamma AGREE or conflict on this ticker right now?",
+    temporal: "as_of",
+    freshness: "fast",
+    entities: ["ticker"],
+    entitlement: "premium",
+    keywords: ["compare", "conflict", "flow vs gex", "agree", "disagree", "cross-check"],
+    joinsWith: ["helix.tape", "thermal.heatmap"],
+  },
+  {
     id: "thermal.heatmap",
     product: "THERMAL",
     tool: "get_gex_heatmap",
