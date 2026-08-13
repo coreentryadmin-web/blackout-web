@@ -284,8 +284,7 @@ export default function ThermalCompactMatrix({
         <thead>
           <tr>
             <th className="thermal-compact-corner text-[11px]" scope="col">
-              <span className="thermal-compact-corner-strike">Strike</span>
-              <span className="thermal-compact-corner-pct">%</span>
+              Strike
             </th>
             {is0dte ? (
               <th className="thermal-compact-exp is-0dte-spacer" scope="col" aria-hidden />
@@ -335,11 +334,6 @@ export default function ThermalCompactMatrix({
                       {pinned ? "◆" : "◇"}
                     </span>
                     <span className="thermal-compact-strike-label">{fmtHeatmapStrike(strike)}</span>
-                    {!isSpot && shouldShowStrikeDistancePct(si, spotIdx) ? (
-                      <span className="thermal-compact-strike-pct" title="Distance from spot">
-                        {fmtStrikeDistancePct(data.spot, strike)}
-                      </span>
-                    ) : null}
                   </button>
                 </th>
                 {expiries.map((exp) => {
@@ -350,6 +344,7 @@ export default function ThermalCompactMatrix({
                   const isPosNode = has && day?.callWall === strike;
                   const isNegNode = has && day?.putWall === strike;
                   const isKing = has && n !== 0 && day?.king === strike;
+                  const showPct = !isSpot && shouldShowStrikeDistancePct(si, spotIdx);
 
                   const style: CSSProperties = has
                     ? isPosNode
@@ -391,8 +386,15 @@ export default function ThermalCompactMatrix({
                               : `${data.ticker} ${strike} ${exp} · ${lens.toUpperCase()} ${fmtHeatmapMoneySigned(n, { showZero: true })}`
                       }
                     >
-                      <span className="thermal-compact-cell-val">
-                        {fmtHeatmapMoneySigned(n, { showZero: true })}
+                      <span className="thermal-compact-cell-inner">
+                        <span className="thermal-compact-cell-val">
+                          {fmtHeatmapMoneySigned(n, { showZero: true })}
+                        </span>
+                        {showPct ? (
+                          <span className="thermal-compact-cell-pct" title="Distance from spot">
+                            {fmtStrikeDistancePct(data.spot, strike)}
+                          </span>
+                        ) : null}
                       </span>
                       {isKing ? (
                         <span

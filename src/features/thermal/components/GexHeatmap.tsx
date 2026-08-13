@@ -19,7 +19,9 @@ import {
   TabPanel,
 } from "@/components/ui";
 import { AnchorGlyph, PanelLabel } from "@/features/thermal/lib/gex-heatmap/primitives";
-import ThermalTripleDesk from "@/features/thermal/components/ThermalTripleDesk";
+import ThermalTripleDesk, {
+  type ThermalTripleDeskHandle,
+} from "@/features/thermal/components/ThermalTripleDesk";
 import { ThermalGridSectorPicker } from "@/features/thermal/components/ThermalGridSectorPicker";
 import {
   buildThermalUrlSearch,
@@ -2941,6 +2943,8 @@ export function GexHeatmap({
   // Reading urlBoot.compare (the shared, tested parser) instead of re-deriving the
   // default here fixes the inconsistency at its source. See docs/audit/FINDINGS.md.
   const [compare, setCompare] = useState(() => urlBoot.compare);
+  const compareDeskRef = useRef<ThermalTripleDeskHandle>(null);
+  const [compareDeskRefreshing, setCompareDeskRefreshing] = useState(false);
   const [compareSet, setCompareSet] = useState<ThermalComparePresetId>(() =>
     urlBoot.compareSet ?? resolveComparePresetIdForTicker(urlBoot.ticker ?? initialTicker),
   );
@@ -4628,6 +4632,25 @@ export function GexHeatmap({
                 nativeShell={nativeShell}
               />
             ) : null}
+            {compare ? (
+              <button
+                type="button"
+                className={clsx(
+                  "thermal-grid-refresh-btn spx-matrix-refresh-btn",
+                  compareDeskRefreshing && "spx-matrix-refresh-btn--spinning",
+                )}
+                onClick={() => {
+                  setCompareDeskRefreshing(true);
+                  void compareDeskRef.current?.refreshAndRecenter().finally(() => {
+                    setCompareDeskRefreshing(false);
+                  });
+                }}
+                title="Refresh all compare grids and recenter on spot"
+                aria-label="Refresh compare grids"
+              >
+                ↻
+              </button>
+            ) : null}
           </div>
           {live ? (
             <Badge tone="bull" dot>
@@ -4730,17 +4753,10 @@ export function GexHeatmap({
         <div className="mt-1">
           {data && !stale && !empty ? <AlertsStrip events={events} /> : null}
           <ThermalTripleDesk
+            ref={compareDeskRef}
             lens={lens}
             activeTicker={ticker}
             tickers={compareGridTickers}
-            compareSet={compareSet}
-            onCompareSetChange={(id) => {
-              setCompareSet(id);
-              prefetchGexHeatmapTickers(
-                orderComparePresetTickers(thermalComparePreset(id), ticker),
-              );
-            }}
-            presetLabel={comparePreset.label}
             onFocusTicker={setTicker}
             onLensChange={(l) => setLens(l as Lens)}
           />
