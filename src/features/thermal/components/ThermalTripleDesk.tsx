@@ -14,7 +14,8 @@ import useSWR from "swr";
 import { FreshnessChip } from "@/components/ui";
 import { usePollIntervalMs, useEtMarketOpen } from "@/hooks/use-et-market-open";
 import { useLiveQuoteStream } from "@/hooks/useLiveQuoteStream";
-import type { GexHeatmapLens } from "@/lib/gex-heatmap-display";
+import { fmtHeatmapExpiry, type GexHeatmapLens } from "@/lib/gex-heatmap-display";
+import { resolveZeroDteExpiry } from "@/features/thermal/lib/thermal-compact-matrix";
 import {
   thermalLayerFreshness,
   isUsableGexHeatmapPayload,
@@ -32,6 +33,15 @@ import { ThermalGridSectorPicker } from "@/features/thermal/components/ThermalGr
 import type { ThermalComparePresetId } from "@/features/thermal/lib/thermal-compare-presets";
 
 const PIN_STORAGE_KEY = "thermal:pinned-strikes:v1";
+
+function todayEtYmd(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
 
 type LensBlock = {
   cells: Record<string, Record<string, number>>;
@@ -308,6 +318,10 @@ function TripleColumn({
   const walls = wallPair(block, lens);
   const matrixSpot = view?.spot != null && view.spot > 0 ? view.spot : null;
   const headerSpot = pushSpot ?? matrixSpot;
+  const zeroDteExpiry = useMemo(() => {
+    if (!view?.expiries?.length) return null;
+    return resolveZeroDteExpiry(view.near_term_expiries, view.expiries, todayEtYmd());
+  }, [view?.expiries, view?.near_term_expiries]);
 
   return (
     <section
@@ -315,8 +329,8 @@ function TripleColumn({
       data-ticker={ticker}
       aria-label={`${ticker} thermal column`}
     >
-      <header className="thermal-triple-col-head">
-        <button type="button" className="thermal-triple-ticker-btn" onClick={onFocus}>
+      <header className="thermal-triple-col-head thermal-triple-col-head--band">
+        <button type="button" className="thermal-triple-ticker-btn thermal-triple-col-head-ticker" onClick={onFocus}>
           <span className="thermal-triple-shortcut" aria-hidden>
             {shortcut}
           </span>
@@ -327,6 +341,14 @@ function TripleColumn({
             <span className="thermal-triple-spot is-empty">—</span>
           )}
         </button>
+        {zeroDteExpiry ? (
+          <div className="thermal-triple-col-head-expiry" title={zeroDteExpiry}>
+            <span className="thermal-compact-exp-chip">0DTE</span>
+            <span className="thermal-compact-exp-date">{fmtHeatmapExpiry(zeroDteExpiry)}</span>
+          </div>
+        ) : (
+          <div className="thermal-triple-col-head-expiry is-empty" aria-hidden />
+        )}
         <div className="thermal-triple-col-walls" aria-label={`${ticker} levels`}>
           <span className="thermal-triple-wall is-call">
             {lens === "gex" ? "C" : lens === "vex" ? "+" : "Ø"} {walls.a}

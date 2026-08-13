@@ -18232,12 +18232,40 @@ body::before {
   gap: 0.35rem;
 }
 
+.thermal-triple-col-head--band {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+}
+
+.thermal-triple-col-head-ticker {
+  justify-self: start;
+  min-width: 0;
+}
+
+.thermal-triple-col-head-expiry {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  justify-self: center;
+  padding: 0.15rem 0.35rem;
+  white-space: nowrap;
+}
+
+.thermal-triple-col-head-expiry.is-empty {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .thermal-triple-col-walls {
   display: inline-flex;
   flex-shrink: 0;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: flex-end;
+  justify-self: end;
   gap: 0.25rem;
 }
 
@@ -18377,19 +18405,6 @@ body::before {
 .thermal-compact-scroll.is-0dte {
   max-height: clamp(620px, 82vh, 1080px);
   min-height: clamp(480px, 68vh, 900px);
-}
-
-.thermal-compact-expiry-center {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.45rem;
-  padding: 0.5rem 0.65rem;
-  border-bottom: 1px solid var(--tt-line);
-  background: rgba(4, 6, 12, 0.96);
-  position: sticky;
-  top: 0;
-  z-index: 3;
 }
 
 .thermal-compact-exp.is-0dte-spacer {
