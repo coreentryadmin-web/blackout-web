@@ -27,6 +27,25 @@ export const MATRIX_STALE_MS = 15_000;
 export const MATRIX_FORCE_REFRESH_AGE_MS = 5_000;
 /** Client-side spacing between force attempts (matches server FORCE_THROTTLE_MS). */
 export const MATRIX_FORCE_THROTTLE_MS = 5_000;
+
+/** Indices desk names where a lone blank column may still request ?force=1. */
+export const THERMAL_MATRIX_CORE_TICKERS = ["SPY", "SPX", "QQQ", "IWM"] as const;
+
+/**
+ * May a blank column auto-escalate to ?force=1?
+ *
+ * Sector compare grids open 3–7 tickers at once. Forcing every blank column fans out parallel
+ * cold Polygon rebuilds (~55s each) and wedges the whole desk in "Syncing …" — even when Redis
+ * already holds a warm matrix for the normal (non-force) read path.
+ */
+export function shouldForceBlankMatrixRefresh(
+  ticker: string,
+  opts: { activeColumn?: boolean } = {}
+): boolean {
+  const t = ticker.trim().toUpperCase();
+  if (!(THERMAL_MATRIX_CORE_TICKERS as readonly string[]).includes(t)) return false;
+  return opts.activeColumn === true;
+}
 /** Overlay cache is ~30s — treat as live under 45s. */
 export const OVERLAY_LIVE_MS = 45_000;
 export const OVERLAY_STALE_MS = 90_000;

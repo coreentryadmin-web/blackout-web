@@ -21,6 +21,7 @@ import {
   thermalLayerFreshness,
   isUsableGexHeatmapPayload,
   shouldForceMatrixRefresh,
+  shouldForceBlankMatrixRefresh,
   MATRIX_FORCE_THROTTLE_MS,
 } from "@/features/thermal/lib/thermal-desk-state";
 import {
@@ -74,13 +75,20 @@ type HeatmapPayload = {
 };
 
 async function fetchHeatmap(url: string): Promise<HeatmapPayload> {
-  const res = await fetch(url, {
-    credentials: "same-origin",
-    cache: "no-store",
-    headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
-  });
-  if (!res.ok) throw new Error(`heatmap ${res.status}`);
-  return res.json();
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 12_000);
+  try {
+    const res = await fetch(url, {
+      credentials: "same-origin",
+      cache: "no-store",
+      signal: ctrl.signal,
+      headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
+    });
+    if (!res.ok) throw new Error(`heatmap ${res.status}`);
+    return res.json();
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function readPins(): Record<string, number[]> {
@@ -126,6 +134,7 @@ type ColumnProps = {
     mutate: () => Promise<unknown>,
     isValidating: boolean,
   ) => void;
+  columnIndex: number;
 };
 
 function ThermalMatrixFreshnessChip({
@@ -173,9 +182,20 @@ function TripleColumn({
   userPinnedScrollRef,
   recenterEpoch,
   onRegisterMutate,
+  columnIndex,
 }: ColumnProps) {
   const pollMs = usePollIntervalMs(5_000, 5_000);
   const sessionLive = useEtMarketOpen();
+
+  // Stagger non-active compare columns so opening Mag7 / Semis does not fan out N parallel
+  // cold chain builds on the same tick. Active column loads immediately; neighbors follow.
+  const staggerMs = active ? 0 : columnIndex * 350;
+  const [fetchReady, setFetchReady] = useState(staggerMs === 0);
+  useEffect(() => {
+    if (fetchReady) return;
+    const t = window.setTimeout(() => setFetchReady(true), staggerMs);
+    return () => window.clearTimeout(t);
+  }, [fetchReady, staggerMs]);
 
   // Sub-second header spot overlay (PR 3/N of the sub-second-spot project —
   // see GexHeatmap.tsx for PR 3a). Display-only: this ticker column's header
@@ -206,10 +226,11 @@ function TripleColumn({
   const lastForceAtRef = useRef(0);
   const [lastGood, setLastGood] = useState<HeatmapPayload | null>(null);
 
-  const matrixKey =
-    forceActive && forceNonce > 0
+  const matrixKey = fetchReady
+    ? forceActive && forceNonce > 0
       ? `/api/market/gex-heatmap?ticker=${encodeURIComponent(ticker)}&force=1&n=${forceNonce}`
-      : `/api/market/gex-heatmap?ticker=${encodeURIComponent(ticker)}`;
+      : `/api/market/gex-heatmap?ticker=${encodeURIComponent(ticker)}`
+    : null;
 
   const clearForce = () => setForceActive(false);
 
@@ -225,6 +246,9 @@ function TripleColumn({
     {
       refreshInterval: pollMs,
       revalidateOnFocus: true,
+      revalidateIfStale: true,
+      errorRetryInterval: pollMs,
+      dedupingInterval: 2_000,
       keepPreviousData: true,
       fallbackData: readGexHeatmapSessionCache<HeatmapPayload>(ticker),
       onSuccess: (payload) => {
@@ -251,8 +275,6 @@ function TripleColumn({
       if (forceActive || isLoading || isValidating) return;
       if (error && !isUsableGexHeatmapPayload(view)) return;
       if (nowMs - lastForceAtRef.current < MATRIX_FORCE_THROTTLE_MS) return;
-      // Blank / unusable column: force immediately (throttled) so SPY doesn't sit on
-      // "No matrix yet" waiting for the 1-min warm cron while SPX/QQQ already painted.
       const blank = !isUsableGexHeatmapPayload(view);
       const asofRaw = view?.asof;
       const asofMs = asofRaw ? new Date(asofRaw).getTime() : NaN;
@@ -264,13 +286,18 @@ function TripleColumn({
           lastForceAtMs: lastForceAtRef.current,
           sessionLive,
         });
-      if (!blank && !stale) return;
+      if (blank) {
+        // Normal 5s poll + heatmap-warm Redis cache — never ?force=1 on cold sector names.
+        if (!shouldForceBlankMatrixRefresh(ticker, { activeColumn: active })) return;
+      } else if (!stale) {
+        return;
+      }
       triggerForce();
     };
     tick();
     const id = setInterval(tick, 1_000);
     return () => clearInterval(id);
-  }, [view, ticker, forceActive, triggerForce, sessionLive, isLoading, isValidating, error]);
+  }, [view, ticker, active, forceActive, triggerForce, sessionLive, isLoading, isValidating, error]);
 
   // Reset last-good when the column ticker changes so we never paint SPX cells under a SPY header.
   useEffect(() => {
@@ -356,6 +383,13 @@ function TripleColumn({
       {error && !isUsableGexHeatmapPayload(view) ? (
         <div className="thermal-compact-empty" role="alert">
           Feed error — retrying…
+        </div>
+      ) : !fetchReady ? (
+        <div className="thermal-compact-empty thermal-compact-syncing" role="status">
+          <ThermalMatrixFreshnessChip asof={view?.asof ?? null} matrixLoading />
+          <p className="mt-2 font-mono text-[10px] uppercase tracking-wider text-sky-300">
+            Syncing {ticker} matrix…
+          </p>
         </div>
       ) : isLoading && !isUsableGexHeatmapPayload(view) ? (
         <div className="thermal-compact-empty thermal-compact-syncing" role="status">
@@ -515,6 +549,7 @@ const ThermalTripleDesk = forwardRef<ThermalTripleDeskHandle, Props>(function Th
             userPinnedScrollRef={userPinnedScrollRefFor(userPinnedScrollRefStore, ticker)}
             recenterEpoch={recenterEpoch}
             onRegisterMutate={onRegisterMutate}
+            columnIndex={i}
           />
         ))}
       </div>

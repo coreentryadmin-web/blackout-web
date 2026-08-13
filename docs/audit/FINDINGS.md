@@ -84,6 +84,18 @@ Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 | **Fix** | Set `defaultLaunched: true` for Largo; add `largoMemberRouteDeadlineMs` (100s) route race on `/api/market/largo/query`; cap tool-loop via `largoToolLoopBudgetMs` (75s); client stream timeout 110s. |
 | **Blast radius** | All premium members gain `/terminal` + Largo API access. Long questions may return an honest 503/SSE error before gateway 504 instead of hanging. |
 
+## 2026-08-13 — [FINDING, P1 Thermal] Compare grid all columns stuck "Syncing …" (Mag7/Semis) — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Status** | FIXED on `cursor/spx-matrix-timeout-fix-3d11` |
+| **Symptom** | Opening `/heatmap?compare=1` with Mag7/Semis/Energy presets: every column stuck **"Syncing {TICKER} matrix…"** — not just SPX. No 5s refresh cadence. |
+| **Root cause** | **Not AWS ECS compute.** Each blank compare column auto-fired `?force=1`, bypassing the Redis cache and starting parallel cold Polygon chain rebuilds (55s block cap × N columns). While any column hung in force/load, SWR stayed `isLoading` with no `lastGood` → perpetual syncing. ALB 504s on SPX made it worse but the compare-grid force storm hit every ticker. |
+| **Fix** | `shouldForceBlankMatrixRefresh` — sector names never blank-force; only active SPY/SPX/QQQ/IWM may. Stagger non-active column fetches 350ms apart; 12s client fetch timeout; SWR `errorRetryInterval` + 5s poll. `heatmap-warm` cache-first pass for all compare-preset tickers before core force-refresh. |
+| **Blast radius** | All Thermal compare presets (3–7 columns). Warm Redis hits should paint in <1s; cold names show honest empty/retry instead of 55s+ force hangs. |
+
 
 > **kind:** `FINDING`
 

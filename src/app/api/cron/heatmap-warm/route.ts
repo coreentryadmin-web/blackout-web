@@ -21,6 +21,7 @@ import { isCronAuthorized } from "@/lib/market-api-auth";
 import { logCronRun } from "@/lib/cron-run";
 import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
 import { listSharedUniverseTickers } from "@/features/vector/lib/vector-dynamic-universe";
+import { THERMAL_COMPARE_PRESETS } from "@/features/thermal/lib/thermal-compare-presets";
 import { shouldRunCacheWarmer } from "@/lib/cache-warmer-gate";
 import { calculateMatrixDelta, type GexMatrix } from "@/lib/gex-matrix-delta";
 import { broadcastMatrixDelta } from "@/lib/gex-matrix-broadcast";
@@ -50,14 +51,30 @@ export async function GET(req: NextRequest) {
 
   // Shared with Vector bead recording: static allowlist ∪ dynamic (≤100, 14d retention).
   const tickers = await listSharedUniverseTickers();
+  // Every Thermal compare-preset name — cache-first warm so opening Mag7/Semis paints instantly.
+  const comparePresetTickers = [
+    ...new Set(THERMAL_COMPARE_PRESETS.flatMap((p) => p.tickers.map((t) => t.toUpperCase()))),
+  ];
   // Core Thermal compare desk (SPY|SPX|QQQ) first + forceRefresh so asof advances every warm
   // tick even when the 5s TTL hasn't expired — EventBridge floors at 1/min; without force the
   // cache can serve a 5–90s-stale matrix while members watch "MATRIX · 45s". Rest of the
   // shared universe warms after (cache-first; dynamic names already viewed are near-free).
   const CORE = ["SPY", "SPX", "QQQ"] as const;
   const coreSet = new Set<string>(CORE);
+  const prioritySet = new Set<string>([...CORE, ...comparePresetTickers]);
+  const priority = [...prioritySet].filter((t) => tickers.includes(t));
   const core = CORE.filter((t) => tickers.includes(t));
-  const rest = tickers.filter((t) => !coreSet.has(t));
+  const rest = tickers.filter((t) => !prioritySet.has(t));
+
+  const priorityResults: PromiseSettledResult<Awaited<ReturnType<typeof fetchGexHeatmap>>>[] = [];
+  for (const t of priority.filter((t) => !coreSet.has(t))) {
+    try {
+      const data = await fetchGexHeatmap(t);
+      priorityResults.push({ status: "fulfilled", value: data });
+    } catch (reason) {
+      priorityResults.push({ status: "rejected", reason });
+    }
+  }
 
   const coreResults: PromiseSettledResult<Awaited<ReturnType<typeof fetchGexHeatmap>>>[] = [];
   for (const t of core) {
@@ -69,8 +86,12 @@ export async function GET(req: NextRequest) {
     }
   }
   const restResults = await Promise.allSettled(rest.map((t) => fetchGexHeatmap(t)));
-  const orderedTickers = [...core, ...rest];
-  const results = [...coreResults, ...restResults];
+  const orderedTickers = [
+    ...priority.filter((t) => !coreSet.has(t)),
+    ...core,
+    ...rest,
+  ];
+  const results = [...priorityResults, ...coreResults, ...restResults];
 
   let warmed = 0;
   let deltasBroadcast = 0;
