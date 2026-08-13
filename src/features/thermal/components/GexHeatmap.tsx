@@ -4168,10 +4168,17 @@ export function GexHeatmap({
           aria-label={`${data?.underlying ?? ticker} dealer ${vocab.noun.toLowerCase()} exposure matrix, strikes by expiration`}
         >
           <table
-            className="spx-gex-matrix-table w-max min-w-full border-collapse font-mono text-[12px] tabular-nums"
+            className="spx-gex-matrix-table thermal-matrix-table border-collapse font-mono text-[12px] tabular-nums"
             role="grid"
             aria-label={`${data?.underlying ?? ticker} dealer ${vocab.noun.toLowerCase()} matrix by strike and expiry`}
           >
+            <colgroup>
+              <col className="thermal-matrix-col-strike" />
+              {matrixExpiries.map((e) => (
+                <col key={e} className="thermal-matrix-col-expiry" />
+              ))}
+              {depthRail ? <col className="thermal-matrix-col-flow" /> : null}
+            </colgroup>
             <thead className="sticky top-0 z-20 bg-[#08080e]">
               <tr className="thermal-matrix-head-row border-b border-white/10">
                 <th className="thermal-matrix-head thermal-matrix-head-strike sticky left-0 z-30 bg-[#08080e]">
