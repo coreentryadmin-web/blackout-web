@@ -1,15 +1,16 @@
 "use client";
 
 import {
+  forwardRef,
   useCallback,
   useEffect,
+  useImperativeHandle,
   useMemo,
   useRef,
   useState,
   type MutableRefObject,
   type RefObject,
 } from "react";
-import { clsx } from "clsx";
 import useSWR from "swr";
 import { FreshnessChip } from "@/components/ui";
 import { usePollIntervalMs, useEtMarketOpen } from "@/hooks/use-et-market-open";
@@ -29,8 +30,6 @@ import {
 import ThermalCompactMatrix, {
   type ThermalCompareMode,
 } from "@/features/thermal/components/ThermalCompactMatrix";
-import { ThermalGridSectorPicker } from "@/features/thermal/components/ThermalGridSectorPicker";
-import type { ThermalComparePresetId } from "@/features/thermal/lib/thermal-compare-presets";
 
 const PIN_STORAGE_KEY = "thermal:pinned-strikes:v1";
 
@@ -406,15 +405,13 @@ function TripleColumn({
 type Props = {
   lens: GexHeatmapLens;
   activeTicker: string;
-  /** Column tickers for this compare preset (five sector names). */
   tickers: readonly string[];
-  /** Active sector preset id — drives the rail dropdown. */
-  compareSet: ThermalComparePresetId;
-  onCompareSetChange: (id: ThermalComparePresetId) => void;
-  /** Rail label, e.g. "Semis" or "AI". */
-  presetLabel: string;
   onFocusTicker: (ticker: string) => void;
   onLensChange?: (lens: GexHeatmapLens) => void;
+};
+
+export type ThermalTripleDeskHandle = {
+  refreshAndRecenter: () => Promise<void>;
 };
 
 function scrollRefFor(
@@ -427,16 +424,10 @@ function scrollRefFor(
   return store.current[ticker]!;
 }
 
-export default function ThermalTripleDesk({
-  lens,
-  activeTicker,
-  tickers,
-  compareSet,
-  onCompareSetChange,
-  presetLabel,
-  onFocusTicker,
-  onLensChange,
-}: Props) {
+const ThermalTripleDesk = forwardRef<ThermalTripleDeskHandle, Props>(function ThermalTripleDesk(
+  { lens, activeTicker, tickers, onFocusTicker, onLensChange },
+  ref,
+) {
   const [pins, setPins] = useState<Record<string, number[]>>({});
   const mode: ThermalCompareMode = "0dte";
   const [crosshairIndex, setCrosshairIndex] = useState<number | null>(null);
@@ -479,6 +470,8 @@ export default function ThermalTripleDesk({
     }
   }, []);
 
+  useImperativeHandle(ref, () => ({ refreshAndRecenter }), [refreshAndRecenter]);
+
   const togglePin = useCallback((ticker: string, strike: number) => {
     setPins((prev) => {
       const cur = prev[ticker] ?? [];
@@ -507,9 +500,6 @@ export default function ThermalTripleDesk({
     },
     [columnTickers],
   );
-
-  const anyValidating =
-    refreshing || columnTickers.some((t) => columnValidating[t]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -541,57 +531,6 @@ export default function ThermalTripleDesk({
       data-cols={columnTickers.length}
     >
       <div className="thermal-triple-atmosphere" aria-hidden />
-      <div className="thermal-triple-rail">
-        <div className="thermal-triple-rail-main">
-          <div className="thermal-triple-rail-label">
-            {presetLabel} · nearest expiry
-          </div>
-          <div className="thermal-triple-ticker-strip" role="tablist" aria-label="Compare tickers">
-            {columnTickers.map((sym, i) => (
-              <button
-                key={sym}
-                type="button"
-                role="tab"
-                aria-selected={activeTicker.toUpperCase() === sym}
-                className={clsx(
-                  "thermal-triple-ticker-chip",
-                  activeTicker.toUpperCase() === sym && "is-active",
-                )}
-                onClick={() => onFocusTicker(sym)}
-              >
-                <span className="thermal-triple-ticker-chip-idx" aria-hidden>
-                  {i + 1}
-                </span>
-                {sym}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="thermal-triple-rail-actions">
-          <ThermalGridSectorPicker
-            value={compareSet}
-            onChange={onCompareSetChange}
-            compact
-            className="thermal-triple-sector-picker"
-          />
-          <button
-            type="button"
-            className={clsx(
-              "spx-matrix-refresh-btn",
-              "thermal-triple-refresh-btn",
-              anyValidating && "spx-matrix-refresh-btn--spinning",
-            )}
-            onClick={() => void refreshAndRecenter()}
-            title="Refresh all matrices and recenter each on spot"
-            aria-label="Refresh thermal matrices and recenter on spot"
-          >
-            ↻
-          </button>
-        </div>
-        <p className="thermal-triple-rail-hint sr-only">
-          Keys 1 through {columnTickers.length} focus a column. R refreshes. G V D C switch lens.
-        </p>
-      </div>
       <div className="thermal-triple-grid">
         {columnTickers.map((ticker, i) => (
           <TripleColumn
@@ -617,4 +556,6 @@ export default function ThermalTripleDesk({
       </div>
     </div>
   );
-}
+});
+
+export default ThermalTripleDesk;
