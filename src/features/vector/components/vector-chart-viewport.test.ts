@@ -107,11 +107,19 @@ test("wall-history route serves the blended 'all' rail instead of short-circuiti
     /if \(horizon === "all" \|\| !session\)/,
     'the "all" short-circuit is the bug — a caller with no SSR seed could never obtain the rail'
   );
-  // "all" reads the bare-ticker rail; a narrowed horizon reads its own composite-keyed one.
   assert.match(route, /horizon === "all"\s*\?\s*loadSessionWallHistory\(session, ticker\)/);
   assert.match(route, /loadSessionWallHistory\(session, ticker, horizon\)/);
-  // A missing session still cannot resolve to a rail — that guard must survive.
   assert.match(route, /if \(!session\)/);
+  assert.match(route, /enrichSessionWallHistory/, "blended rail must gap-fill like SSR seed");
+});
+
+test("VectorChart: session viewport keeps the full-day bead rail during live RTH", () => {
+  const src = read("src/features/vector/components/VectorChart.tsx");
+  assert.match(
+    src,
+    /liveSessionRef\.current && !replayModeRef\.current && !sessionOverview/
+  );
+  assert.match(src, /const sessionOverview = wantsSessionOverviewViewport/);
 });
 
 test("VectorChart fetches and uses the blended rail when it was given no seed", () => {

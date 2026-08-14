@@ -217,6 +217,16 @@ export const DOMINANT_WALLS_PER_BUCKET = 5;
 export const LIVE_TRAIL_LOOKBACK_SEC = 45 * 60;
 
 /**
+ * Holes shorter than this between recorded samples are normal recorder cadence jitter (5–15s).
+ * Longer stretches get honest modeled fill via {@link backfillRailGaps}. Was 5 minutes — that
+ * left 1–4 minute recorder-drop holes (SWEEP OVER BUDGET) as visible blank bands on every ticker.
+ */
+export const RAIL_GAP_FILL_MIN_SEC = 60;
+
+/** Fetch a session reconstruction when uncovered rail time exceeds this threshold. */
+export const RAIL_RECONSTRUCT_MIN_UNCOVERED_SEC = 5 * 60;
+
+/**
  * Append a wall reading into the session's history, keyed by the trail bucket time (5s for
  * oracle tickers, 15s for others — see vector-wall-sample.ts). Replaces in place when the
  * bucket is unchanged so magnitude updates within the same window don't duplicate beads.

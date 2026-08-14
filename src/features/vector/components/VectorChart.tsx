@@ -1700,9 +1700,13 @@ export function VectorChart({
       (horizon !== "all" || seedRailEmptyRef.current) && activeLens === "gex"
         ? horizonHistoryRef.current
         : null;
+    const sessionOverview = wantsSessionOverviewViewport(
+      defaultChartViewportRef.current,
+      liveFollowEnabledRef.current
+    );
     const history: WallHistorySample[] =
       composeHorizonTrail(recordedTrail, currentColumn) ??
-      (liveSessionRef.current && !replayModeRef.current
+      (liveSessionRef.current && !replayModeRef.current && !sessionOverview
         ? trimHistoryForLiveTrails(
             wallHistoryRef.current,
             undefined,

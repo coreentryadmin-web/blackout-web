@@ -19,9 +19,7 @@ test("Vector seed pipeline: /vector SSR-loads; dashboard client-embeds without i
   const pipelineInternals = [
     "fetchVectorSeedBars",
     "primeVectorWallScope",
-    "mergeWallHistory",
-    "backfillRailGaps",
-    "reconstructSessionRail",
+    "enrichSessionWallHistory",
     "seedWallHistoryForDisplay",
     "loadSessionWallHistory",
   ];
