@@ -6,7 +6,6 @@ import { VectorDteToggle } from "@/features/vector/components/VectorDteToggle";
 import { VectorLensToggle } from "@/features/vector/components/VectorLensToggle";
 import { VectorTimeframeSelect } from "@/features/vector/components/VectorTimeframeSelect";
 import {
-  VECTOR_COMPARE_MAX_PANES,
   VECTOR_COMPARE_PRESETS,
   type VectorComparePreset,
 } from "@/features/vector/lib/vector-compare";
@@ -52,7 +51,7 @@ export function VectorCompareCommandBar({
           <h1 className="vector-compare-command-title">Compare</h1>
         </div>
         <span className="vector-compare-command-count">
-          {paneCount}/{VECTOR_COMPARE_MAX_PANES} live
+          {paneCount} {paneCount === 1 ? "chart" : "charts"}
         </span>
       </div>
 

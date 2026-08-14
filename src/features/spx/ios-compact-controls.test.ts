@@ -25,8 +25,25 @@ test("VectorToolbar compare pane uses slim single-row toolbar", () => {
 
 test("compare pane CSS flex chain targets fillHost canvas", () => {
   const css = readFileSync(join(root, "src/app/globals.css"), "utf8");
+  assert.match(css, /\.vector-compare-grid\[data-pane-count="2"\]/);
+  assert.match(css, /\.vector-compare-grid\[data-pane-count="3"\]/);
   assert.match(css, /\.vector-compare-grid\[data-pane-count="4"\]/);
+  assert.match(css, /data-pane-count="3"\][\s\S]*:nth-child\(1\)[\s\S]*grid-row: 1 \/ -1/);
   assert.match(css, /vector-toolbar-compare-row/);
+});
+
+test("VectorCompareDesk grows grid slots dynamically (not always four)", () => {
+  const src = readFileSync(join(root, "src/features/vector/components/VectorCompareDesk.tsx"), "utf8");
+  assert.match(src, /gridSlotCount/);
+  assert.match(src, /showAddSlot/);
+  assert.doesNotMatch(src, /emptySlots/);
+  assert.match(src, /data-pane-count=\{gridSlotCount\}/);
+});
+
+test("VectorCompareCommandBar shows chart count without a /4 cap label", () => {
+  const src = readFileSync(join(root, "src/features/vector/components/VectorCompareCommandBar.tsx"), "utf8");
+  assert.match(src, /paneCount === 1 \? "chart" : "charts"/);
+  assert.doesNotMatch(src, /VECTOR_COMPARE_MAX_PANES/);
 });
 
 test("VectorReplayControls tags replay state for iOS collapse", () => {

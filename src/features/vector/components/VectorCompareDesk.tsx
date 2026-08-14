@@ -47,7 +47,9 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
 
   const exclude = useMemo(() => new Set(seeds.map((s) => s.ticker)), [seeds]);
   const liveSession = seeds.some((s) => s.liveSession) || todayEtYmd() === seeds[0]?.sessionYmd;
-  const emptySlots = Math.max(0, VECTOR_COMPARE_MAX_PANES - seeds.length);
+  /** One add slot at a time — grid grows 2 → 3 → 4 slots (50/50 → 50/25/25 → 2×2). */
+  const showAddSlot = seeds.length < VECTOR_COMPARE_MAX_PANES;
+  const gridSlotCount = seeds.length + (showAddSlot ? 1 : 0);
 
   const syncUrl = useCallback((next: VectorClientSeed[]) => {
     const path = comparePath(next.map((s) => s.ticker));
@@ -182,13 +184,13 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
         <div className="vector-compare-mobile-gate" role="status">
           <p className="vector-compare-mobile-gate-title">Compare needs a wider screen</p>
           <p className="vector-compare-mobile-gate-copy">
-            Open Vector Compare on desktop (1280px+) for up to four linked charts.
+            Open Vector Compare on desktop (1280px+) — start with one chart and add symbols as you go.
           </p>
         </div>
 
         <div
           className={clsx("vector-compare-grid", syncFlash && "is-sync-flash")}
-          data-pane-count={seeds.length + emptySlots}
+          data-pane-count={gridSlotCount}
         >
           {seeds.map((seed, i) => (
             <VectorComparePane
@@ -208,15 +210,15 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
               onFocus={() => setFocusedTicker(seed.ticker)}
             />
           ))}
-          {Array.from({ length: emptySlots }).map((_, i) => (
-            <div key={`empty-${i}`} className="vector-compare-slot-empty">
+          {showAddSlot ? (
+            <div key="add-slot" className="vector-compare-slot-empty">
               <VectorCompareAddSlot
                 onPick={(t) => void loadTicker(t)}
                 exclude={exclude}
                 disabled={loadingTickers.size > 0}
               />
             </div>
-          ))}
+          ) : null}
         </div>
 
         {seeds.length >= 2 ? (
