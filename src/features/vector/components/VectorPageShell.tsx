@@ -124,6 +124,9 @@ type Props = {
   onCompareSpotChange?: (spot: number) => void;
   compareDefaultLens?: VectorWallLens;
   suppressRegimeBanner?: boolean;
+  compareSync?: import("@/features/vector/lib/vector-compare-sync").VectorCompareChartSyncBind | null;
+  onCompareCrosshair?: (paneId: string, timeSec: number | null) => void;
+  onCompareVisibleRange?: (paneId: string, fromSec: number, toSec: number) => void;
 };
 
 type VectorIosPanel = "chart" | "pulse" | "ladder" | "scanner";
@@ -175,6 +178,9 @@ export function VectorPageShell({
   onCompareSpotChange,
   compareDefaultLens,
   suppressRegimeBanner,
+  compareSync = null,
+  onCompareCrosshair,
+  onCompareVisibleRange,
 }: Props) {
   const chartOnly = embed === "chart-only";
   const router = useRouter();
@@ -530,6 +536,9 @@ export function VectorPageShell({
           defaultChartViewport={defaultChartViewport}
           defaultLens={compareDefaultLens}
           toolbarHideLinkedControls={toolbarHideLinkedControls}
+          compareSync={compareSync}
+          onCompareCrosshair={onCompareCrosshair}
+          onCompareVisibleRange={onCompareVisibleRange}
           onPriceScaleRender={onPriceScaleRender}
           focusLevel={focusLevel}
           playLevels={playLevels}

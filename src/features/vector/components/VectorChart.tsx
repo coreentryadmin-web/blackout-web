@@ -138,6 +138,8 @@ import {
   wallsAtReplayTime,
   wallsForActiveLens,
 } from "@/features/vector/lib/vector-replay";
+import type { VectorCompareChartSyncBind } from "@/features/vector/lib/vector-compare-sync";
+import { barCloseAtOrBeforeTime, visibleRangeToEpochSec } from "@/features/vector/lib/vector-compare-sync";
 import {
   aggregateVectorBars,
   mergeBarsByTime,
@@ -344,6 +346,10 @@ type Props = {
   defaultLens?: VectorWallLens;
   /** Compare grid: TF/DTE/lens live in the command bar instead of each toolbar. */
   toolbarHideLinkedControls?: boolean;
+  /** Compare linked time sync — crosshair + optional zoom from the desk bus. */
+  compareSync?: VectorCompareChartSyncBind | null;
+  onCompareCrosshair?: (paneId: string, timeSec: number | null) => void;
+  onCompareVisibleRange?: (paneId: string, fromSec: number, toSec: number) => void;
 };
 
 function lensVisuals(lens: VectorWallLens) {
@@ -1183,6 +1189,9 @@ export function VectorChart({
   fillHost = false,
   defaultLens,
   toolbarHideLinkedControls = false,
+  compareSync = null,
+  onCompareCrosshair,
+  onCompareVisibleRange,
 }: Props) {
   const initialTimeframe = defaultTimeframe ?? VECTOR_DEFAULT_TIMEFRAME;
   const openingDteHorizon: VectorDteHorizon = defaultDteHorizon ?? VECTOR_DEFAULT_DTE_HORIZON;
@@ -1441,6 +1450,11 @@ export function VectorChart({
   const timelineRef = useRef<number[]>([]);
   const connRef = useRef<ReturnType<typeof createVectorEventSource> | null>(null);
   const replayTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const applyingExternalCrosshairRef = useRef(false);
+  const applyingExternalRangeRef = useRef(false);
+  const compareSyncRef = useRef(compareSync);
+  const onCompareCrosshairRef = useRef(onCompareCrosshair);
+  const onCompareVisibleRangeRef = useRef(onCompareVisibleRange);
   const replayModeRef = useRef(false);
   const liveSessionRef = useRef(liveSession);
   /**
@@ -1458,6 +1472,12 @@ export function VectorChart({
   const [cursorIndex, setCursorIndex] = useState(0);
   const [replaySpeed, setReplaySpeed] = useState(1);
   const [replayLoop, setReplayLoop] = useState(false);
+  useEffect(() => {
+    compareSyncRef.current = compareSync;
+    onCompareCrosshairRef.current = onCompareCrosshair;
+    onCompareVisibleRangeRef.current = onCompareVisibleRange;
+  }, [compareSync, onCompareCrosshair, onCompareVisibleRange]);
+
   const [crosshair, setCrosshair] = useState<VectorCrosshairState | null>(null);
   const [lens, setLens] = useState<VectorWallLens>(defaultLens ?? "gex");
   // Default WEEKLY: "All" is no longer a member-facing option (2026-07-13), and 0DTE is empty
@@ -1492,6 +1512,62 @@ export function VectorChart({
   // Aggregation is client-side from the same 1m bars.
   const [timeframe, setTimeframe] = useState<VectorTimeframeMinutes>(initialTimeframe);
   const [chartReady, setChartReady] = useState(false);
+
+  useEffect(() => {
+    if (!chartReady || !compareSync?.linkCrosshair) return;
+    const payload = compareSync.crosshair;
+    if (!payload || payload.sourceId === compareSync.paneId) return;
+
+    const chart = chartRef.current;
+    const series = seriesRef.current;
+    if (!chart || !series) return;
+
+    applyingExternalCrosshairRef.current = true;
+    try {
+      if (payload.timeSec == null) {
+        chart.clearCrosshairPosition();
+        setCrosshair(null);
+        return;
+      }
+      const price = barCloseAtOrBeforeTime(minuteBarsRef.current, payload.timeSec);
+      if (price != null && Number.isFinite(price)) {
+        chart.setCrosshairPosition(price, payload.timeSec as UTCTimestamp, series);
+      }
+    } finally {
+      applyingExternalCrosshairRef.current = false;
+    }
+  }, [
+    chartReady,
+    compareSync?.linkCrosshair,
+    compareSync?.paneId,
+    compareSync?.crosshair?.tick,
+    compareSync?.crosshair?.timeSec,
+    compareSync?.crosshair?.sourceId,
+  ]);
+
+  useEffect(() => {
+    if (!chartReady || !compareSync?.linkZoom) return;
+    const payload = compareSync.visibleRange;
+    if (!payload || payload.sourceId === compareSync.paneId) return;
+
+    const chart = chartRef.current;
+    if (!chart) return;
+
+    applyingExternalRangeRef.current = true;
+    try {
+      chart.timeScale().setVisibleRange({ from: payload.fromSec as UTCTimestamp, to: payload.toSec as UTCTimestamp });
+    } finally {
+      applyingExternalRangeRef.current = false;
+    }
+  }, [
+    chartReady,
+    compareSync?.linkZoom,
+    compareSync?.paneId,
+    compareSync?.visibleRange?.tick,
+    compareSync?.visibleRange?.fromSec,
+    compareSync?.visibleRange?.toSec,
+    compareSync?.visibleRange?.sourceId,
+  ]);
   // Enabled indicators — dealer gamma positioning (`gex-heatmap`) defaults on.
   const [indicators, setIndicators] = useState<Set<VectorIndicatorId>>(() => new Set(initialIndicators));
   // Opening-range window preset (5m/15m/30m/60m), default 15m — unchanged behavior for anyone who
@@ -3297,6 +3373,16 @@ export function VectorChart({
       enableLiveFollowIfAtEdge();
     });
 
+    const onVisibleTimeRangeChange = (range: { from: Time; to: Time } | null) => {
+      if (applyingExternalRangeRef.current || !range) return;
+      const sync = compareSyncRef.current;
+      if (!sync?.linkZoom) return;
+      const parsed = visibleRangeToEpochSec(range);
+      if (!parsed) return;
+      onCompareVisibleRangeRef.current?.(sync.paneId, parsed.fromSec, parsed.toSec);
+    };
+    chart.timeScale().subscribeVisibleTimeRangeChange(onVisibleTimeRangeChange);
+
     const onChartPointerDown = () => {
       chartUserPannedRef.current = true;
     };
@@ -3387,6 +3473,10 @@ export function VectorChart({
     chart.subscribeCrosshairMove((param) => {
       if (!param.time || !param.point) {
         setCrosshair(null);
+        const sync = compareSyncRef.current;
+        if (sync?.linkCrosshair && !applyingExternalCrosshairRef.current) {
+          onCompareCrosshairRef.current?.(sync.paneId, null);
+        }
         return;
       }
       const bar = param.seriesData.get(series) as VectorBar | undefined;
@@ -3396,6 +3486,10 @@ export function VectorChart({
           : String(param.time);
       const activeLens = lensRef.current;
       const hoverEpochSec = typeof param.time === "number" ? param.time : null;
+      const syncState = compareSyncRef.current;
+      if (syncState?.linkCrosshair && !applyingExternalCrosshairRef.current && hoverEpochSec != null) {
+        onCompareCrosshairRef.current?.(syncState.paneId, hoverEpochSec);
+      }
       const history = wallHistoryRef.current;
       const walls = wallsAtCrosshairTime(
         history,
@@ -3530,6 +3624,7 @@ export function VectorChart({
       container.removeEventListener("wheel", onWheel);
       container.removeEventListener("mousedown", onChartPointerDown);
       container.removeEventListener("touchstart", onChartPointerDown);
+      chart.timeScale().unsubscribeVisibleTimeRangeChange(onVisibleTimeRangeChange);
       stopReplayTimer();
       if (priceScaleTimer != null) clearInterval(priceScaleTimer);
       priceScaleThrottle?.cancel();

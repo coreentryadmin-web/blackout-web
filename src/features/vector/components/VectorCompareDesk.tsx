@@ -24,6 +24,7 @@ import { VECTOR_DEFAULT_DTE_HORIZON, type VectorDteHorizon } from "@/features/ve
 import type { VectorTimeframeMinutes } from "@/features/vector/lib/vector-bar-timeframes";
 import type { VectorWallLens } from "@/features/vector/lib/vector-wall-history";
 import { todayEtYmd } from "@/lib/providers/spx-session";
+import type { VectorCompareChartSyncBind } from "@/features/vector/lib/vector-compare-sync";
 
 type Props = {
   initialSeeds: VectorClientSeed[];
@@ -35,6 +36,7 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
   const [seeds, setSeeds] = useState<VectorClientSeed[]>(initialSeeds.slice(0, VECTOR_COMPARE_MAX_PANES));
   const [loadingTickers, setLoadingTickers] = useState<Set<string>>(new Set());
   const [linked, setLinked] = useState(true);
+  const [linkedZoom, setLinkedZoom] = useState(true);
   const [syncEpoch, setSyncEpoch] = useState(0);
   const [timeframe, setTimeframe] = useState<VectorTimeframeMinutes>(VECTOR_DEFAULT_TIMEFRAME);
   const [dteHorizon, setDteHorizon] = useState<VectorDteHorizon>(
@@ -47,6 +49,54 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
   const [syncFlash, setSyncFlash] = useState(false);
 
   const canFocusExpand = seeds.length >= 2;
+  const canLinkTime = linked && seeds.length >= 2;
+  const [crosshairSyncTick, setCrosshairSyncTick] = useState(0);
+  const [crosshairSync, setCrosshairSync] = useState<{ sourceId: string; timeSec: number | null } | null>(
+    null
+  );
+  const [rangeSyncTick, setRangeSyncTick] = useState(0);
+  const [rangeSync, setRangeSync] = useState<{ sourceId: string; fromSec: number; toSec: number } | null>(
+    null
+  );
+
+  const handleCompareCrosshair = useCallback(
+    (paneId: string, timeSec: number | null) => {
+      if (!canLinkTime) return;
+      setCrosshairSync({ sourceId: paneId, timeSec });
+      setCrosshairSyncTick((t) => t + 1);
+    },
+    [canLinkTime]
+  );
+
+  const handleCompareVisibleRange = useCallback(
+    (paneId: string, fromSec: number, toSec: number) => {
+      if (!canLinkTime || !linkedZoom) return;
+      setRangeSync({ sourceId: paneId, fromSec, toSec });
+      setRangeSyncTick((t) => t + 1);
+    },
+    [canLinkTime, linkedZoom]
+  );
+
+  const compareSyncBind = useMemo((): VectorCompareChartSyncBind | null => {
+    if (!canLinkTime) return null;
+    return {
+      paneId: "",
+      linkCrosshair: true,
+      linkZoom: linkedZoom,
+      crosshair: crosshairSync
+        ? { ...crosshairSync, tick: crosshairSyncTick }
+        : null,
+      visibleRange: rangeSync ? { ...rangeSync, tick: rangeSyncTick } : null,
+    };
+  }, [canLinkTime, linkedZoom, crosshairSync, crosshairSyncTick, rangeSync, rangeSyncTick]);
+
+  const paneCompareSync = useCallback(
+    (ticker: string): VectorCompareChartSyncBind | null => {
+      if (!compareSyncBind) return null;
+      return { ...compareSyncBind, paneId: ticker };
+    },
+    [compareSyncBind]
+  );
 
   const exclude = useMemo(() => new Set(seeds.map((s) => s.ticker)), [seeds]);
   const liveSession = seeds.some((s) => s.liveSession) || todayEtYmd() === seeds[0]?.sessionYmd;
@@ -217,6 +267,9 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
           paneCount={seeds.length}
           linked={linked}
           onToggleLinked={() => setLinked((v) => !v)}
+          linkedZoom={linkedZoom}
+          onToggleLinkedZoom={() => setLinkedZoom((v) => !v)}
+          canLinkTime={canLinkTime}
           focusExpanded={focusExpanded}
           canFocusExpand={canFocusExpand}
           onToggleFocusExpand={toggleFocusExpand}
@@ -274,6 +327,9 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
                 focusRail={isRail}
                 focusRailRow={railRow}
                 onRequestFocusExpand={() => enterFocusExpand(seed.ticker)}
+                compareSync={paneCompareSync(seed.ticker)}
+                onCompareCrosshair={handleCompareCrosshair}
+                onCompareVisibleRange={handleCompareVisibleRange}
               />
             );
           })}
