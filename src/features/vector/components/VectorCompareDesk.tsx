@@ -155,7 +155,12 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
   };
 
   return (
-    <PageShell fullBleed backdrop={false} className="vector-compare-page ios-native-page ios-native-page-vector">
+    <PageShell
+      fullBleed
+      backdrop={false}
+      contentClassName="vector-compare-page-inner"
+      className="vector-compare-page ios-native-page ios-native-page-vector"
+    >
       <div className="vector-compare-shell">
         <VectorCompareCommandBar
           paneCount={seeds.length}
