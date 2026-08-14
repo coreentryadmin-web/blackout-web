@@ -38,6 +38,23 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-08-14 — [FINDING, P3 latent] Night Hawk horizon board totals ignored the spliced SWING lane — FIXED
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Status** | FIXED — this PR (`fix/nighthawk-horizon-totals-swing-lane`) |
+| **Severity** | P3 **latent** — `GET /api/market/nighthawk/horizons` served wrong `board.totalCommitted`/`totalWatch` on the all-lanes view. No shipped UI reads those two fields today (each tab renders from its own lane's `committedCount`), so nothing member-visible was wrong; the defect is that the API's own summary contradicted its own lanes. |
+| **Symptom** | Captured live 2026-08-14 19:32:35Z (15:32 ET) — the all-lanes payload reported `totalCommitted: 0` on a board whose lanes read `ZERO_DTE.committedCount 0`, **`SWING.committedCount 16`**, `LEAPS.committedCount 0`. The board's own summary contradicted its own lanes by 16 plays. (An earlier, weaker 1-vs-non-zero observation from the 18:33 window pointed at the same defect; this is the clean capture.) Reproduced deterministically in the route test. |
+| **Root cause** | `src/app/api/market/nighthawk/horizons/route.ts` built the board from the 0DTE payload (`horizonBoardFromZeroDtePayload` → totals derived from the ZERO_DTE lane alone), then spliced the SWING lane in with a plain object spread: `board = { ...board, lanes: { ...board.lanes, SWING: swingLane } }`. A spread replaces the lane but cannot recompute a derived scalar. The next line, `scopeBoardToHorizon(board, horizon)`, *does* re-derive totals — but only for a non-null horizon; with `horizon === null` (the all-lanes view, no `?view=`) it is a documented early-return no-op, so nothing downstream ever fixed them. The scoped `?view=swings` / `?view=0dte` paths were correct by accident, which is why the bug never surfaced through the toggle. |
+| **Why it was not caught** | `horizon-board.test.ts` covers `assembleHorizonBoard` and `scopeBoardToHorizon`, both of which compute totals correctly — the defect lived in the *composition* the route performed between them, and the route test only asserted float rounding, no-store headers, and the swing splice's presence. Neither test asserted a board total. |
+| **Fix** | New pure helper `withLane(board, horizon, lane)` in `src/lib/horizon-board.ts`: swaps the lane and re-derives `totalCommitted`/`totalWatch` from **all three** lanes. Totals are recomputed rather than delta-adjusted — an incremental fixup is only correct if the replaced lane is the one the totals were built from, which is exactly the assumption that failed here. The route now calls it instead of spreading. |
+| **Blast radius** | `scopeBoardToHorizon` was audited and is correct (it already re-derives, and its `null` no-op is intentional — the all-lanes view is meant to pass through untouched, which is precisely why the caller owed it correct totals). The route is the only site that swapped a lane post-assembly; `horizonBoardFromZeroDtePayload` builds its board through `assembleHorizonBoard` and never mutates lanes afterwards. No other consumer of `HorizonBoard` was changed. |
+| **Deliberately unchanged** | `scopeBoardToHorizon(board, null)` still returns the board by reference — making it re-derive would paper over caller bugs of exactly this shape instead of surfacing them, and an existing test pins the identity return. |
+| **Tests** | 3 new unit tests in `src/lib/horizon-board.test.ts` (totals after a splice; totals after splicing an EMPTY lane, the symmetric stale-carry-over case; composition with `scopeBoardToHorizon` across all four views) + 1 new route test asserting the served `board.totalCommitted`/`totalWatch` count the spliced SWING lane. Node 20: `horizon-board.test.ts` 10/10, `horizons/route.test.ts` 5/5. |
+
+---
+
 ## 2026-08-14 — [FINDING, P1 member-visible] Vector universe recorder sweep thinned NVDA/AMD rails (narrowed-horizon fan-out) — FIXED
 > **kind:** `FINDING`
 

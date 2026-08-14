@@ -47,7 +47,15 @@ mock.module("../../../../../lib/zerodte/horizon-board-from-payload", {
     // A board carrying a raw float + an empty SWING lane placeholder (the shape the 0DTE payload
     // yields before the swing splice).
     horizonBoardFromZeroDtePayload: () => ({
-      lanes: { SWING: { plays: [] } },
+      // Totals describe the ZERO_DTE lane ONLY — that is exactly the pre-splice shape whose staleness
+      // the withLane fix exists to correct.
+      lanes: {
+        SWING: { plays: [], committedCount: 0, watchCount: 0 },
+        ZERO_DTE: { plays: [], committedCount: 1, watchCount: 0 },
+        LEAPS: { plays: [], committedCount: 0, watchCount: 0 },
+      },
+      totalCommitted: 1,
+      totalWatch: 0,
       generatedFloat: RAW_BOARD_FLOAT,
     }),
   },
@@ -58,15 +66,45 @@ mock.module("../../../../../lib/horizon-board", {
     scopeBoardToHorizon: (board: unknown) => board,
     assembleHorizonBoard: (_set: unknown, asOf: string) => ({
       asOf,
-      lanes: { SWING: { plays: [] }, ZERO_DTE: { plays: [] }, LEAPS: { plays: [] } },
+      lanes: {
+        SWING: { plays: [], committedCount: 0, watchCount: 0 },
+        ZERO_DTE: { plays: [], committedCount: 0, watchCount: 0 },
+        LEAPS: { plays: [], committedCount: 0, watchCount: 0 },
+      },
+      totalCommitted: 0,
+      totalWatch: 0,
       generatedFloat: RAW_BOARD_FLOAT,
     }),
     makePlaySet: (parts: unknown) => parts,
+    // Mirrors the real helper (horizon-board.test.ts owns its unit coverage): swap the lane, then
+    // re-derive the totals from ALL lanes rather than carrying the pre-splice ones forward.
+    withLane: (
+      board: { lanes: Record<string, { committedCount?: number; watchCount?: number }> },
+      horizon: string,
+      lane: unknown
+    ) => {
+      const lanes = { ...board.lanes, [horizon]: lane } as Record<
+        string,
+        { committedCount?: number; watchCount?: number }
+      >;
+      let totalCommitted = 0;
+      let totalWatch = 0;
+      for (const l of Object.values(lanes)) {
+        totalCommitted += l.committedCount ?? 0;
+        totalWatch += l.watchCount ?? 0;
+      }
+      return { ...board, lanes, totalCommitted, totalWatch };
+    },
   },
 });
 mock.module("../../../../../lib/swing/serving-lane", {
   namedExports: {
-    getSwingServingLane: async () => ({ swingFloat: RAW_SWING_FLOAT, sections: [] }),
+    getSwingServingLane: async () => ({
+      swingFloat: RAW_SWING_FLOAT,
+      sections: [],
+      committedCount: 2,
+      watchCount: 3,
+    }),
     // Route also reads the persisted snapshot / discover seam — stub so the mock module shape matches
     // the live import list (missing named exports → TypeError → degraded {available:false} body).
     discoverSwingFromPersisted: async () => null,
@@ -100,6 +138,16 @@ describe("/api/market/nighthawk/horizons roundFloats at the boundary", () => {
     const body = await res.json();
     assert.equal(body.session.epoch, EPOCH_MS);
     assert.equal(body.upstream_ok, true);
+  });
+
+  // The SWING lane is spliced in AFTER the board is assembled from the 0DTE payload, so the board's
+  // totals have to be re-derived at that point. A plain object spread did not, and the all-lanes view
+  // (?view absent → scopeBoardToHorizon is a documented no-op) had nothing downstream to fix them.
+  test("board totals count the spliced SWING lane, not just the 0DTE lane it was assembled from", async () => {
+    const res = await GET(new NextRequest("http://localhost/api/market/nighthawk/horizons"));
+    const body = await res.json();
+    assert.equal(body.board.totalCommitted, 3, "0DTE 1 + SWING 2 — not the pre-splice 1");
+    assert.equal(body.board.totalWatch, 3, "0DTE 0 + SWING 3 — not the pre-splice 0");
   });
 
   test("still ships no-store (behavior unchanged — rounding-only fix)", async () => {

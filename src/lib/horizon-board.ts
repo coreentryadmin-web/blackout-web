@@ -109,6 +109,30 @@ export function scopeBoardToHorizon(board: HorizonBoard, horizon: Horizon | null
   return { ...board, lanes, totalCommitted, totalWatch };
 }
 
+/**
+ * Replace ONE lane on an assembled board and re-derive the board totals from all three lanes.
+ *
+ * WHY THIS EXISTS: `assembleHorizonBoard` computes `totalCommitted`/`totalWatch` from the lanes it was
+ * handed, so a caller that later swaps a lane in with a plain object spread keeps the OLD totals. The
+ * horizons route did exactly that — it built the board from the 0DTE payload, then spliced the SWING lane
+ * in afterwards — and on the all-lanes view (`horizon === null`, where `scopeBoardToHorizon` is a no-op)
+ * nothing ever recomputed. The board reported the 0DTE lane's counts as the whole board's counts.
+ *
+ * Totals are re-derived from the lanes rather than adjusted by a delta: an incremental fixup is only
+ * correct if the lane being replaced is the one the totals were built from, which is precisely the
+ * assumption that failed.
+ */
+export function withLane(board: HorizonBoard, horizon: Horizon, lane: HorizonLaneBoard): HorizonBoard {
+  const lanes = { ...board.lanes, [horizon]: lane } as Record<Horizon, HorizonLaneBoard>;
+  let totalCommitted = 0;
+  let totalWatch = 0;
+  for (const h of HORIZON_ORDER) {
+    totalCommitted += lanes[h].committedCount;
+    totalWatch += lanes[h].watchCount;
+  }
+  return { ...board, lanes, totalCommitted, totalWatch };
+}
+
 /** Assemble the three-board payload from a composed play set. `asOf` is caller-stamped (keeps this pure). */
 export function assembleHorizonBoard(set: HorizonPlaySet, asOf: string): HorizonBoard {
   const lanes = {
