@@ -18494,9 +18494,9 @@ body::before {
   display: inline-flex;
   flex-shrink: 0;
   align-items: center;
-  justify-content: flex-end;
-  justify-self: end;
+  justify-content: flex-start;
   min-width: 0;
+  margin-left: 0.1rem;
 }
 
 .thermal-triple-spot-wrap {

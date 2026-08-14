@@ -11,6 +11,7 @@ import {
   type MutableRefObject,
 } from "react";
 import useSWR from "swr";
+import Link from "next/link";
 import { clsx } from "clsx";
 import { FreshnessChip } from "@/components/ui";
 import { usePollIntervalMs } from "@/hooks/use-et-market-open";
@@ -215,7 +216,7 @@ function TripleColumn({
       : null;
   const headerChangePct = pushChangePct ?? matrixChangePct;
   const changeUp = (headerChangePct ?? 0) >= 0;
-  const zeroDteExpiry = useMemo(() => {
+  const columnExpiry = useMemo(() => {
     if (!view?.expiries?.length) return null;
     return resolveZeroDteExpiry(view.near_term_expiries, view.expiries, todayEtYmd());
   }, [view?.expiries, view?.near_term_expiries]);
@@ -233,35 +234,41 @@ function TripleColumn({
           </span>
           <span className="thermal-triple-ticker">{ticker}</span>
         </button>
-        {zeroDteExpiry ? (
-          <div className="thermal-triple-col-head-expiry" title={zeroDteExpiry}>
-            <span className="thermal-compact-exp-chip">0DTE</span>
-            <span className="thermal-compact-exp-date">{fmtHeatmapExpiry(zeroDteExpiry)}</span>
-          </div>
-        ) : (
-          <div className="thermal-triple-col-head-expiry is-empty" aria-hidden />
-        )}
-        <div className="thermal-triple-col-head-spot" aria-label={`${ticker} spot`}>
-          {headerSpot != null ? (
-            <span className="thermal-triple-spot-wrap">
-              <span className="thermal-triple-spot thermal-triple-spot--head">
-                {Number(headerSpot).toFixed(2)}
-              </span>
-              {headerChangePct != null ? (
-                <span
-                  className={clsx(
-                    "thermal-triple-spot-chg",
-                    changeUp ? "is-up" : "is-down",
-                  )}
-                  title={`${ticker} day change`}
-                >
-                  {fmtHeaderPct(headerChangePct)}
-                </span>
-              ) : null}
+        <div className="thermal-triple-col-head-meta">
+          {columnExpiry ? (
+            <span className="thermal-triple-col-exp-date" title={columnExpiry}>
+              {fmtHeatmapExpiry(columnExpiry)}
             </span>
-          ) : (
-            <span className="thermal-triple-spot thermal-triple-spot--head is-empty">—</span>
-          )}
+          ) : null}
+          <Link
+            href={`/vector?ticker=${encodeURIComponent(ticker)}`}
+            className="thermal-triple-vector-link"
+            title={`Open ${ticker} on Vector`}
+          >
+            Vector
+          </Link>
+          <div className="thermal-triple-col-head-spot" aria-label={`${ticker} spot`}>
+            {headerSpot != null ? (
+              <span className="thermal-triple-spot-wrap">
+                <span className="thermal-triple-spot thermal-triple-spot--head">
+                  {Number(headerSpot).toFixed(2)}
+                </span>
+                {headerChangePct != null ? (
+                  <span
+                    className={clsx(
+                      "thermal-triple-spot-chg",
+                      changeUp ? "is-up" : "is-down",
+                    )}
+                    title={`${ticker} day change`}
+                  >
+                    {fmtHeaderPct(headerChangePct)}
+                  </span>
+                ) : null}
+              </span>
+            ) : (
+              <span className="thermal-triple-spot thermal-triple-spot--head is-empty">—</span>
+            )}
+          </div>
         </div>
       </header>
 
