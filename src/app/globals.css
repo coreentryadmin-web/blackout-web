@@ -18383,10 +18383,10 @@ body::before {
   gap: 0.35rem;
   padding: 0.5rem 0.45rem 0.55rem;
   border-radius: 0.65rem;
-  border: 1.5px solid rgba(125, 211, 252, 0.38);
+  border: 2.5px solid rgba(125, 211, 252, 0.58);
   background: linear-gradient(180deg, rgba(8, 12, 22, 0.92), rgba(4, 6, 12, 0.96));
   box-shadow:
-    inset 0 1px 0 rgba(125, 211, 252, 0.12),
+    inset 0 1px 0 rgba(125, 211, 252, 0.16),
     0 4px 18px rgba(0, 0, 0, 0.28);
   transition:
     border-color 0.2s ease,
@@ -18445,11 +18445,12 @@ body::before {
 }
 
 .thermal-triple-col.is-active {
-  border-color: rgba(34, 211, 238, 0.62);
+  border-color: rgba(34, 211, 238, 0.88);
+  border-width: 3px;
   box-shadow:
-    0 0 0 1px rgba(34, 211, 238, 0.28),
-    0 0 22px rgba(34, 211, 238, 0.12),
-    0 8px 24px rgba(34, 211, 238, 0.1);
+    0 0 0 1px rgba(34, 211, 238, 0.35),
+    0 0 22px rgba(34, 211, 238, 0.16),
+    0 8px 24px rgba(34, 211, 238, 0.12);
 }
 
 .thermal-triple-col-head {
@@ -18684,7 +18685,7 @@ body::before {
   overflow: auto;
   overscroll-behavior: contain;
   border-radius: 0.45rem;
-  border: 1.5px solid var(--tt-line);
+  border: 2px solid rgba(125, 211, 252, 0.42);
   background: rgba(2, 4, 10, 0.78);
   box-shadow:
     inset 0 1px 0 rgba(125, 211, 252, 0.08),
@@ -18802,13 +18803,13 @@ body::before {
   min-width: 4.35rem;
   max-width: 5.5rem;
   padding: 0;
-  border-right: 1.5px solid var(--tt-line-strong);
+  border-right: none;
   vertical-align: middle;
 }
 
 .thermal-compact-row td,
 .thermal-compact-row th {
-  border-bottom: 1px solid var(--tt-line);
+  border-bottom: none;
 }
 
 .thermal-compact-strike-btn {
@@ -18858,7 +18859,6 @@ body::before {
 .thermal-compact-row.is-spot td,
 .thermal-compact-row.is-spot th {
   box-shadow: inset 0 0 0 1.5px rgba(34, 211, 238, 0.55);
-  border-bottom-color: rgba(34, 211, 238, 0.42);
 }
 
 .thermal-compact-row.is-spot .thermal-compact-strike-btn {
