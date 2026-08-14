@@ -18021,6 +18021,25 @@ body::before {
   align-self: stretch;
 }
 
+.thermal-intensity-row {
+  min-height: 1.35rem;
+}
+
+.thermal-intensity-rail {
+  min-height: 18px;
+}
+
+.thermal-intensity-rail-track {
+  border: 1px solid rgba(125, 211, 252, 0.08);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thermal-intensity-rail-core,
+  .thermal-intensity-rail-glow {
+    transition: none !important;
+  }
+}
+
 .thermal-desk-view-tabs {
   padding: 0.2rem;
   border-radius: 999px;
