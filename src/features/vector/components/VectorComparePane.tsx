@@ -179,6 +179,7 @@ export function VectorComparePane({
           defaultChartViewport="session"
           toolbarHideLinkedControls={toolbarHideLinkedControls}
           suppressRegimeBanner
+          hideVolumePane
           onCompareRegimeChange={handleRegime}
           onCompareSpotChange={handleSpot}
           compareDefaultLens={linked ? linkedLens : undefined}

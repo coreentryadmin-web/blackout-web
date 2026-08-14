@@ -56,6 +56,14 @@ test("compare focus mode keeps panes mounted with hero + rail CSS", () => {
   assert.match(desk, /Escape/);
 });
 
+test("compare panes hide volume sub-pane for taller beads", () => {
+  const pane = readFileSync(join(root, "src/features/vector/components/VectorComparePane.tsx"), "utf8");
+  assert.match(pane, /hideVolumePane/);
+  const chart = readFileSync(join(root, "src/features/vector/components/VectorChart.tsx"), "utf8");
+  assert.match(chart, /hideVolumePaneRef/);
+  assert.match(chart, /hideVolumePaneRef\.current\)/);
+});
+
 test("compare linked crosshair sync wiring", () => {
   const desk = readFileSync(join(root, "src/features/vector/components/VectorCompareDesk.tsx"), "utf8");
   assert.match(desk, /handleCompareCrosshair/);
