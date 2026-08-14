@@ -49,7 +49,7 @@ export default async function VectorPage({ searchParams }: PageProps) {
       <VectorPageClient
         {...seed}
         initialCompareRaw={compareRaw ?? null}
-        defaultDteHorizon={VECTOR_ORACLE_TICKERS.has(ticker) ? "0dte" : undefined}
+        defaultDteHorizon={VECTOR_ORACLE_TICKERS.has(ticker) ? "0dte" : "all"}
         defaultChartViewport="session"
       />
     </Suspense>

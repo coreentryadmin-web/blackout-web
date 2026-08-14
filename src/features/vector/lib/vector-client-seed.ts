@@ -3,6 +3,7 @@
 import type { VectorBar } from "@/features/vector/components/VectorChart";
 import type { VectorDarkPoolLevel, VectorWalls } from "@/lib/api";
 import type { WallHistorySample } from "@/features/vector/lib/vector-wall-history";
+import { seedWallHistoryForDisplay } from "@/features/vector/lib/vector-wall-history";
 import { VECTOR_ORACLE_TICKERS } from "@/features/vector/lib/vector-ticker";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { isHeatmapOverlayAllowed } from "@/lib/heatmap-allowlist";
@@ -59,7 +60,14 @@ export async function fetchVectorClientSeed(ticker: string): Promise<VectorClien
     initialBars: barsPayload?.bars ?? [],
     initialWalls: wallsPayload?.walls ?? null,
     initialVexWalls: null,
-    initialWallHistory: historyPayload?.history ?? [],
+    initialWallHistory: seedWallHistoryForDisplay(
+      historyPayload?.history ?? [],
+      (barsPayload?.bars ?? []).map((b) => b.time),
+      wallsPayload?.walls ?? null,
+      wallsPayload?.flip ?? null,
+      null,
+      null
+    ),
     initialHorizonWallHistory: horizonHistory?.history ?? [],
     initialGammaFlip: wallsPayload?.flip ?? null,
     initialVexFlip: null,

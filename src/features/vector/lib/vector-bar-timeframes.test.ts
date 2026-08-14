@@ -7,8 +7,8 @@ import {
   VECTOR_WALL_NODES_PER_SIDE,
   VECTOR_PRESET_TIMEFRAMES,
   VECTOR_DEFAULT_TIMEFRAME,
+  VECTOR_0DTE_WALL_COUNT,
   isPresetTimeframe,
-  VECTOR_WALL_NODES_PER_SIDE,
 } from "./vector-bar-timeframes";
 
 const m1 = (
@@ -111,7 +111,7 @@ test("aggregateVectorBars: custom 10m interval buckets", () => {
 
 test("wallCountForTimeframe: preset timeframes map to the specified shown-counts", () => {
   assert.equal(wallCountForTimeframe(1), 6, "1m shows 6 near-spot walls");
-  assert.equal(wallCountForTimeframe(3), 8, "3m shows 8");
+  assert.equal(wallCountForTimeframe(3), VECTOR_0DTE_WALL_COUNT, "3m shows 10 — same row cap as 0DTE desk");
   assert.equal(wallCountForTimeframe(5), 10, "5m shows 10");
   assert.equal(wallCountForTimeframe(15), 12, "15m shows 12");
   assert.equal(wallCountForTimeframe(30), 14, "30m steps up to 14");
@@ -171,13 +171,14 @@ test("mergeBarsByTime: fills reconnect holes, prefers fetched OHLC, preserves li
   assert.equal(merged[4]!.close, 5, "existing bars beyond the fetch window survive");
 });
 
-test("wallCountForHorizon: 0DTE shows more bead rows than the base 3m cap", async () => {
+test("wallCountForHorizon: 0DTE matches the 3m desk row cap", async () => {
   const { wallCountForHorizon, wallCountForTimeframe, VECTOR_0DTE_WALL_COUNT } = await import(
     "./vector-bar-timeframes"
   );
-  assert.equal(wallCountForTimeframe(3), 8);
+  assert.equal(wallCountForTimeframe(3), VECTOR_0DTE_WALL_COUNT);
   assert.equal(wallCountForHorizon(3, "0dte"), VECTOR_0DTE_WALL_COUNT);
-  assert.equal(wallCountForHorizon(3, "weekly"), 8);
+  assert.equal(wallCountForHorizon(3, "weekly"), VECTOR_0DTE_WALL_COUNT);
+  assert.equal(wallCountForHorizon(3, "all"), VECTOR_0DTE_WALL_COUNT);
 });
 
 

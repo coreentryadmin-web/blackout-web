@@ -46,6 +46,7 @@ import { reassertPriceAutoScale } from "@/features/vector/lib/vector-price-autos
 import {
   normalizeDteHorizon,
   pickHorizonScopedValue,
+  VECTOR_DEFAULT_DTE_HORIZON,
   type VectorDteHorizon,
 } from "@/features/vector/lib/vector-dte-horizon";
 import { deriveVectorRegime, type VectorRegime } from "@/features/vector/lib/vector-regime";
@@ -1184,7 +1185,7 @@ export function VectorChart({
   toolbarHideLinkedControls = false,
 }: Props) {
   const initialTimeframe = defaultTimeframe ?? VECTOR_DEFAULT_TIMEFRAME;
-  const openingDteHorizon: VectorDteHorizon = defaultDteHorizon ?? "weekly";
+  const openingDteHorizon: VectorDteHorizon = defaultDteHorizon ?? VECTOR_DEFAULT_DTE_HORIZON;
   const initialIndicators = defaultVectorIndicators();
   const containerRef = useRef<HTMLDivElement>(null);
   const { fullscreen: chartFullscreen, exitFullscreen, chartStageRef } = useIosChartDoubleTapFullscreen(true);
@@ -1464,7 +1465,9 @@ export function VectorChart({
   // real chain to scope to. SPX day-traders tap 0DTE once; the choice persists per session.
   // Host desks may override the OPENING horizon (defaultDteHorizon — the SPX Slayer embed opens
   // on 0DTE); after mount the member's toggle rules either way.
-  const [dteHorizon, setDteHorizon] = useState<VectorDteHorizon>(defaultDteHorizon ?? "weekly");
+  const [dteHorizon, setDteHorizon] = useState<VectorDteHorizon>(
+    defaultDteHorizon ?? VECTOR_DEFAULT_DTE_HORIZON
+  );
   // Per-expiry walls are now computed from the Polygon options chain for EVERY ticker
   // (per-contract expiry + OI + IV → BSM GEX ladder at spot), not just the 3 UW-oracle
   // names, so the horizon toggle is real everywhere. Vector only ever loads optionable
@@ -1700,9 +1703,13 @@ export function VectorChart({
       (horizon !== "all" || seedRailEmptyRef.current) && activeLens === "gex"
         ? horizonHistoryRef.current
         : null;
+    const sessionOverview = wantsSessionOverviewViewport(
+      defaultChartViewportRef.current,
+      liveFollowEnabledRef.current
+    );
     const history: WallHistorySample[] =
       composeHorizonTrail(recordedTrail, currentColumn) ??
-      (liveSessionRef.current && !replayModeRef.current
+      (liveSessionRef.current && !replayModeRef.current && !sessionOverview
         ? trimHistoryForLiveTrails(
             wallHistoryRef.current,
             undefined,
@@ -2782,9 +2789,44 @@ export function VectorChart({
       requestAnimationFrame(() => fitSessionOverview());
     }
 
-    // "all" normally needs no fetch — /vector SSR-seeds the blended rail. With no seed (the SPX
-    // Slayer embed) it must fetch, or the dashboard draws no recorded beads at all.
+    // "all" with an SSR seed: off-hours needs no fetch. During live RTH still poll the enriched
+    // blended rail so recorder holes (SWEEP OVER BUDGET / per-ticker dark streaks) heal without a
+    // full reload — the 5s writer stamps Redis continuously but SSE only carries this tier's
+    // in-memory tail, so wallHistoryRef would otherwise freeze mid-session gaps in place.
     if (dteHorizon === "all" && !seedRailEmptyRef.current) {
+      const fetchBlendedHistory = async () => {
+        try {
+          const res = await fetch(
+            `/api/market/vector/wall-history?ticker=${encodeURIComponent(ticker)}&dte=all` +
+              `&session=${encodeURIComponent(sessionYmd)}`
+          );
+          if (cancelled || dteHorizonRef.current !== "all" || !res.ok) return;
+          const data = (await res.json()) as { history?: WallHistorySample[] };
+          if (cancelled || dteHorizonRef.current !== "all") return;
+          const remote = Array.isArray(data.history) ? data.history : [];
+          if (!remote.length) return;
+          const merged = mergeWallHistory(wallHistoryRef.current, remote);
+          if (merged === wallHistoryRef.current) return;
+          wallHistoryRef.current = merged;
+          setSessionHistory(merged);
+          if (hasVexInHistory(merged)) setVexAvailable(true);
+          repaint();
+        } catch {
+          /* supplementary — SSE + seed still drive the chart */
+        }
+      };
+
+      if (liveSession) {
+        void fetchBlendedHistory();
+        const blendedHistId = setInterval(fetchBlendedHistory, Math.max(wallTrailSec * 1000, 30_000));
+        repaint();
+        return () => {
+          cancelled = true;
+          clearInterval(blendedHistId);
+          if (heatmapId) clearInterval(heatmapId);
+        };
+      }
+
       repaint();
       return () => {
         cancelled = true;

@@ -38,6 +38,23 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-08-14 — [FINDING, P0 member-visible] Vector session viewport drew candles for the full day but beads for only the last 45 minutes — FIXED
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Status** | FIXED — PR on `cursor/vector-bead-gaps-3d11` |
+| **Severity** | P0 member-visible — every ticker on `/vector` (default `defaultChartViewport="session"`) showed large blank bead bands while candles printed normally; reported on GOOGL/META and "all stocks". |
+| **Symptom** | Live RTH screenshot: GOOGL/META 3m chart with dense candles 09:30→now but yellow/purple bead clusters only on the right ~45 minutes or with mid-session blank blocks (META red circle ~12:30–12:50); left/mid session entirely blank on session viewport. Same on ticker switch (soft nav) because client seed skipped SSR gap-fill. |
+| **Root cause (display)** | `VectorChart.applyFrame` always called `trimHistoryForLiveTrails` (45min lookback) whenever `liveSession && !replay`, **even when** `wantsSessionOverviewViewport("session", false)` framed the full session on load. Candles used the session viewport; beads did not — domain mismatch identical in spirit to #1844 but on the Y/time axis of the rail, not the x-axis fit. |
+| **Root cause (DTE)** | Non-oracle tickers (META) fell through to **weekly** DTE default while the 5s recorder writes the **blended All** rail — weekly composite keys are sparse (cron + live viewers only), so fewer strike rows and visible mid-session holes vs SPX (0DTE + oracle SSE). |
+| **Root cause (data path)** | `#2184` soft ticker nav uses `fetchVectorClientSeed` → raw `/api/market/vector/wall-history` with **no** `backfillRailGaps` / `reconstructSessionRail`. SSR path had gap-fill; client path did not. `backfillRailGaps` also ignored holes shorter than **5 minutes**, so 1–4 minute recorder-drop gaps (SWEEP OVER BUDGET) stayed blank even on SSR. Live **All** horizon never re-polled enriched history during RTH, so mid-session recorder holes froze until reload. |
+| **Fix** | (1) Skip `trimHistoryForLiveTrails` when session overview viewport is active (still trim on live-follow / live viewport). (2) Extract `enrichSessionWallHistory` shared by SSR + wall-history API. (3) Lower gap-fill threshold to `RAIL_GAP_FILL_MIN_SEC=60` and reconstruct when uncovered > 5min. (4) Default non-oracle `/vector` to blended **All** DTE (was falling through to **weekly**). (5) Live-poll enriched blended history on **All** every 30s during RTH to heal mid-session recorder holes. (6) 3m default row cap 8→10 to match SPX 0DTE desk density. |
+| **Blast radius** | All Vector desk + Compare panes; live-follow mode unchanged (still 45min bead window for perf). |
+| **Tests** | `vector-chart-viewport.test.ts` (session viewport bead guard, live All poll, default DTE), `vector-seed-props.test.ts` (enrich in pipeline), wall-history route asserts `enrichSessionWallHistory`. |
+
+---
+
 ## 2026-08-14 — [FINDING, P2 observability] 0DTE discovery lanes went dark SILENTLY — a 75%-smaller roster was byte-identical to a quiet market — FIXED
 > **kind:** `FINDING`
 

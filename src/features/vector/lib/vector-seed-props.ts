@@ -11,20 +11,16 @@ import {
   getVectorGexWalls,
   getVectorVexFlip,
   getVectorVexWalls,
-  getVectorWallHistory,
   primeVectorWallScope,
 } from "@/features/vector/lib/vector-snapshot";
 import {
-  backfillRailGaps,
-  railUncoveredSec,
-  mergeWallHistory,
   seedWallHistoryForDisplay,
   decimateSeedHistory,
   trimHistoryToSession,
   type WallHistorySample,
 } from "@/features/vector/lib/vector-wall-history";
+import { enrichSessionWallHistory } from "@/features/vector/lib/vector-wall-history-enrich";
 import { loadSessionWallHistory } from "@/features/vector/lib/vector-wall-persist";
-import { reconstructSessionRail } from "@/features/vector/lib/vector-gex-reconstruct-server";
 import { resolveWallTrailSampleSec } from "@/features/vector/lib/vector-wall-sample-server";
 import type { VectorDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
 
@@ -91,55 +87,16 @@ export async function loadVectorSeedProps(
   // that actually HAS price bars — so off-hours (weekend/overnight) this is the last RTH session,
   // and loadSessionWallHistory(sessionYmd) returns THAT session's real recorded beads. The bars
   // and the rail therefore always describe the same session and align on the time axis.
-  const combined = mergeWallHistory(getVectorWallHistory(ticker), persistedHistory);
-
-  // UNIVERSE PARITY (2026-07-13, user-directed): Vector must behave the same for EVERY optionable
-  // ticker, not just the pre-recorded ~20-name universe. A ticker with no viewer has no recorded
-  // rail before its first view, so the first member of the day saw single beads. Backfill ONLY the
-  // missing PREFIX (before the first observed sample) from the reconstruction: today's published OI
-  // with gamma recomputed along the session's REAL spot path — genuinely time-varying, and now
-  // rendered through the per-bucket DOMINANCE filter so it shows honest staggered births, not the
-  // flat axis-to-axis underlay that got the model removed on 2026-07-12 (that flatness was the
-  // dominance bug, since fixed). Modeled beads draw as faint ghosts (MODELED_ALPHA_SCALE) under
-  // solid observed ones, and the model never overwrites or extends past a real sample — a member
-  // can always tell recorded structure from reconstructed context. Redis-cached per ticker+session;
-  // best-effort (a reconstruction failure just leaves the honest gap).
-  // Bars of the LATEST session, not bars[0..]: the seed carries ~3 sessions, so bars[0] is the
-  // OLDEST session's open. Measuring coverage against a two-days-ago open would report the whole
-  // window as a gap on every load. The rail, the reconstruction (sessionYmd-scoped), and this
-  // coverage check must all describe the SAME (displayed/latest) session.
   const sessionBars = lastSessionBars(bars);
   const firstBar = sessionBars[0]?.time;
-  const lastBar = sessionBars[sessionBars.length - 1]?.time;
-  // FULL-DAY RAIL (FINDINGS 2026-08-07): reconstruct whenever the observed rail leaves ANY material
-  // hole in the session, not only a leading one. The recorder is viewer-driven for tickers outside
-  // the shared universe (`recordActiveNonUniverseWallSamples` samples `getActiveVectorTickers()`),
-  // so gaps appear wherever nobody had the chart open — mid-session and, every single day, from the
-  // 16:00 close to the last extended-hours bar. The old `firstObserved - firstBar > 20min` test only
-  // ever saw the front, so those blank blocks shipped to members untouched.
-  // `reconstructSessionRail` is Redis-cached per ticker+session, so asking more often is cheap.
-  const uncoveredSec = railUncoveredSec(combined, firstBar, lastBar);
-  const modeledRail =
-    bars.length > 0 && uncoveredSec > 20 * 60
-      ? await reconstructSessionRail({ ticker, sessionYmd }).catch(() => [] as WallHistorySample[])
-      : ([] as WallHistorySample[]);
-  const backfilled = backfillRailGaps(combined, modeledRail, firstBar, lastBar);
-
-  // SSR-payload size guard (2026-08-01): `combined`/`backfilled` can carry up to MAX_HISTORY
-  // (24h of 15s buckets, ~3-4 sessions) for recorder resilience across restarts, but this page
-  // renders ONE session (bars is session-scoped display data). Prior-session samples were riding
-  // along into every SSR payload as dead weight the client never draws — measured 28-50MB HTML /
-  // 10-12s downloads on /vector and the SPX Slayer embed before this trim. Never clips the
-  // backfilled prefix (always >= firstBar) or the current session's observed rail.
-  // …but ONE session at the oracle recorder's 5s cadence is still 5,760 samples x ~2.5KB of wall
-  // ladder. Measured live on /vector?ticker=SPX (2026-08-07): initialWallHistory 14.76MB +
-  // initialHorizonWallHistory 7.82MB = 22.6MB of a 22.8MB HTML document, next to 143KB of actual
-  // price bars. That is over-RESOLUTION, not just size — 5,760 bead columns on a ~1,600px chart is
-  // ~3.6 columns per pixel. decimateSeedHistory keeps the newest 30 minutes at full recorder
-  // fidelity and buckets the older tail to 15s (the cadence non-oracle tickers already ship), which
-  // the chart can actually resolve. The live SSE/poll path still appends at full cadence, so a
-  // member watching the session sees exactly what they see today.
-  const sessionScopedHistory = decimateSeedHistory(trimHistoryToSession(backfilled, firstBar));
+  const sessionScopedHistory = await enrichSessionWallHistory({
+    ticker,
+    sessionYmd,
+    persistedHistory,
+    bars,
+    mergeLiveMemory: true,
+    decimate: true,
+  });
 
   // Empty-case fallback: a single as-of-close snapshot at the last bar when there is genuinely
   // nothing recorded OR reconstructable for this session. No-ops whenever the rail already has

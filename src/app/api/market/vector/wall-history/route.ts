@@ -4,6 +4,10 @@ import { requireToolApi } from "@/lib/tool-access-server";
 import { normalizeVectorTicker, isVectorTickerAllowed } from "@/features/vector/lib/vector-ticker";
 import { loadSessionWallHistory } from "@/features/vector/lib/vector-wall-persist";
 import { resolveDteHorizonParam } from "@/features/vector/lib/vector-dte-horizon";
+import { fetchVectorSeedBars } from "@/features/vector/lib/vector-seed-bars";
+import { enrichSessionWallHistory } from "@/features/vector/lib/vector-wall-history-enrich";
+import { primeVectorWallScope } from "@/features/vector/lib/vector-snapshot";
+import { ensureDataSockets } from "@/lib/ws/init-data-sockets";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const runtime = "nodejs";
@@ -25,6 +29,10 @@ export const dynamic = "force-dynamic";
  * the rail and the price bars describe the SAME session and align on the time axis. Absent/`"all"`
  * horizon short-circuits to an empty trail — the "all" rail is already SSR-seeded, and there is no
  * separate composite rail to read for it.
+ *
+ * Blended "all" responses run through {@link enrichSessionWallHistory} (observed merge + modeled
+ * gap-fill) so soft ticker switches and Compare panes match SSR — raw Redis rows alone leave
+ * recorder holes as blank bands (FINDINGS 2026-08-14).
  */
 export async function GET(req: NextRequest) {
   const auth = await authorizePremiumDeskApi(req);
@@ -50,17 +58,26 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  // "all" USED to short-circuit to an empty trail here, on the premise that the blended rail is
-  // "already SSR-seeded". That is true for /vector — and false for the SPX Slayer dashboard, whose
-  // embed passes `initialWallHistory={[]}` on purpose (a cold Polygon reconstruct can block the
-  // HTML for 30-90s, see (site)/dashboard/page.tsx). With the seed empty AND this read refusing to
-  // serve it, the dashboard's blended rail was structurally always empty — no beads at all outside
-  // the 0DTE horizon. Serving it costs one Redis read and lets any caller without a seed ask.
-  // FINDINGS 2026-08-07.
-  const history = await (horizon === "all"
+  const persisted = await (horizon === "all"
     ? loadSessionWallHistory(session, ticker)
     : loadSessionWallHistory(session, ticker, horizon)
   ).catch(() => []);
+
+  let history = persisted;
+  if (horizon === "all") {
+    ensureDataSockets();
+    await primeVectorWallScope(ticker);
+    const { bars } = await fetchVectorSeedBars(ticker);
+    history = await enrichSessionWallHistory({
+      ticker,
+      sessionYmd: session,
+      persistedHistory: persisted,
+      bars,
+      mergeLiveMemory: true,
+      decimate: true,
+    });
+  }
+
   return NextResponse.json(
     { ticker, horizon, sessionYmd: session, history },
     { headers: NO_STORE_HEADERS }

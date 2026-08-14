@@ -51,7 +51,7 @@ export const VECTOR_WALL_NODES_PER_SIDE = 20;
 export function wallCountForTimeframe(tf: VectorTimeframeMinutes): number {
   let count: number;
   if (tf <= 1) count = 6;
-  else if (tf <= 3) count = 8;
+  else if (tf <= 3) count = VECTOR_0DTE_WALL_COUNT;
   else if (tf <= 5) count = 10;
   else if (tf <= 15) count = 12;
   else if (tf <= 30) count = 14;
