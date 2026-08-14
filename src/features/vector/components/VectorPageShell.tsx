@@ -476,14 +476,15 @@ export function VectorPageShell({
         ) : null}
       </div>
     );
-  const chartFreshness = spxIosEmbed ? null : (
-    <FreshnessChip
-      status={freshnessStatus}
-      asOf={liveSession && streamUpdatedAt ? new Date(streamUpdatedAt) : null}
-      staleAfterMs={liveSession ? CANDLE_STALE_MS : undefined}
-      label={liveSession ? "Live session" : `${sessionLabel} close`}
-    />
-  );
+  const chartFreshness =
+    spxIosEmbed || (chartOnly && suppressRegimeBanner) ? null : (
+      <FreshnessChip
+        status={freshnessStatus}
+        asOf={liveSession && streamUpdatedAt ? new Date(streamUpdatedAt) : null}
+        staleAfterMs={liveSession ? CANDLE_STALE_MS : undefined}
+        label={liveSession ? "Live session" : `${sessionLabel} close`}
+      />
+    );
   const embedRegimeSlot = spxIosEmbed || suppressRegimeBanner ? null : <VectorRegimeBanner regime={regime} />;
 
   const handleRegime = useCallback(

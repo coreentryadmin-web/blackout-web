@@ -508,6 +508,18 @@ async function browserVector(session) {
       rec("ui:compare-chart-canvas", "WARN", `${canvasN} chart canvas visible`);
     }
 
+    const canvasHeights = await canvases.evaluateAll((els) =>
+      els.map((el) => Math.round(el.getBoundingClientRect().height))
+    );
+    const minCanvasH = canvasHeights.length ? Math.min(...canvasHeights) : 0;
+    if (minCanvasH >= 200) {
+      rec("ui:compare-canvas-height", "PASS", `min ${minCanvasH}px (${canvasHeights.join(", ")})`);
+    } else if (minCanvasH > 0) {
+      rec("ui:compare-canvas-height", "FAIL", `squished ${minCanvasH}px — want ≥200px (${canvasHeights.join(", ")})`);
+    } else {
+      rec("ui:compare-canvas-height", "WARN", "no canvas heights measured");
+    }
+
     if (await page.locator(".vector-compare-strip").isVisible().catch(() => false)) {
       rec("ui:compare-summary-strip", "PASS");
     } else {

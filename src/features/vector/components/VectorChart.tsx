@@ -3500,19 +3500,33 @@ export function VectorChart({
       if (w > 0 && h > 0) chart.resize(w, h);
     });
     layoutObserver.observe(container);
+    // Compare grid starts `display:none` below 1280px and can mount before flex settles —
+    // nudge autosize when the pane scrolls into view or the container crosses a size threshold.
+    let intersectionObserver: IntersectionObserver | null = null;
+    const nudgeChartSize = () => {
+      const w = container.clientWidth;
+      const h = container.clientHeight;
+      if (w > 0 && h > 0) chart.resize(w, h);
+    };
+    if (fillHost && typeof IntersectionObserver !== "undefined") {
+      intersectionObserver = new IntersectionObserver(
+        (entries) => {
+          if (entries.some((e) => e.isIntersecting)) nudgeChartSize();
+        },
+        { threshold: 0.01 }
+      );
+      intersectionObserver.observe(container);
+    }
     // WKWebView flex layouts often settle one frame late — double-rAF resize for fillHost embeds.
     if (fillHost) {
       requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          const w = container.clientWidth;
-          const h = container.clientHeight;
-          if (w > 0 && h > 0) chart.resize(w, h);
-        });
+        requestAnimationFrame(nudgeChartSize);
       });
     }
 
     return () => {
       layoutObserver.disconnect();
+      intersectionObserver?.disconnect();
       container.removeEventListener("wheel", onWheel);
       container.removeEventListener("mousedown", onChartPointerDown);
       container.removeEventListener("touchstart", onChartPointerDown);
@@ -3960,6 +3974,7 @@ export function VectorChart({
         replayLeadSlot={replayLeadSlot}
         trailSlot={trailSlot}
         hideLinkedControls={toolbarHideLinkedControls}
+        comparePane={toolbarHideLinkedControls}
       />
 
       {/* Regime banner sits directly above the canvas (passed in from the shell) so it still leads

@@ -8712,6 +8712,8 @@ body::before {
     flex-direction: column;
     min-width: 0;
     min-height: 0;
+    height: 100%;
+    align-self: stretch;
     border-radius: 10px;
     border: 1px solid rgba(255, 255, 255, 0.07);
     background: linear-gradient(180deg, rgba(10, 14, 20, 0.98) 0%, rgba(4, 4, 7, 0.99) 100%);
@@ -8829,6 +8831,7 @@ body::before {
     flex: 1 1 0;
     min-height: 0;
     min-width: 0;
+    height: 100%;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -8842,23 +8845,45 @@ body::before {
     min-height: 0;
     min-width: 0;
     height: 100%;
+    overflow: hidden;
   }
+  .vector-compare-pane-body .vector-chart-wrap > .relative,
   .vector-compare-pane-body .vector-chart-wrap > .vector-chart-stage,
   .vector-compare-pane-body .vector-chart-stage {
     flex: 1 1 0;
     min-height: 0;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
   }
   .vector-compare-pane-body .vector-chart-canvas,
   .vector-compare-pane-body .vector-chart-canvas--fill-host {
     flex: 1 1 0;
-    min-height: 180px !important;
-    height: 100% !important;
+    min-height: 200px !important;
+    height: auto !important;
+    width: 100%;
   }
   .vector-compare-pane .vector-toolbar {
     flex-shrink: 0;
-    margin-bottom: 0.25rem !important;
+    margin-bottom: 0.15rem !important;
+  }
+  .vector-compare-pane .vector-toolbar--compare-pane {
+    margin-bottom: 0.1rem !important;
+  }
+  .vector-compare-pane .vector-toolbar-compare-row {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.35rem;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .vector-compare-pane .vector-toolbar-compare-row::-webkit-scrollbar {
+    display: none;
+  }
+  .vector-compare-pane .vector-toolbar-compare-row > * {
+    flex: 0 0 auto;
   }
   .vector-compare-pane-loading {
     display: flex;
