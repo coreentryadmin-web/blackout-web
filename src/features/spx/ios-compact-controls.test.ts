@@ -25,7 +25,7 @@ test("VectorToolbar compare pane uses slim single-row toolbar", () => {
 
 test("compare pane CSS flex chain targets fillHost canvas", () => {
   const css = readFileSync(join(root, "src/app/globals.css"), "utf8");
-  assert.match(css, /\.vector-compare-pane-body \.vector-chart-wrap > \.relative/);
+  assert.match(css, /\.vector-compare-grid\[data-pane-count="4"\]/);
   assert.match(css, /vector-toolbar-compare-row/);
 });
 
