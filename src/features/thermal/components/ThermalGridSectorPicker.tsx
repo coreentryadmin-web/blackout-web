@@ -41,11 +41,20 @@ export function ThermalGridSectorPicker({
 
   useEffect(() => {
     if (!open) return;
-    const onDoc = (e: MouseEvent) => {
+    // Outside-click / outside-tap dismiss. `mousedown` catches desktop clicks;
+    // `touchstart` catches mobile taps (which fire without a synthesized mousedown
+    // when the interaction is a tap-and-release outside a scrollable). Using both
+    // means mobile users get the same "tap-outside dismisses" affordance desktop
+    // users have.
+    const onDoc = (e: Event) => {
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
     };
     document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
+    document.addEventListener("touchstart", onDoc, { passive: true });
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("touchstart", onDoc);
+    };
   }, [open]);
 
   const commit = (id: ThermalComparePresetId) => {
@@ -115,38 +124,46 @@ export function ThermalGridSectorPicker({
         </span>
       </button>
 
-      <ul
-        id={`${btnId}-menu`}
-        role="listbox"
-        aria-labelledby={btnId}
-        className={clsx("thermal-grid-sector-menu", open && "is-open")}
-      >
-        {THERMAL_COMPARE_PRESETS.map((p, i) => {
-          const selected = p.id === value;
-          const highlighted = i === active;
-          return (
-            <li key={p.id} role="presentation">
-              <button
-                type="button"
-                role="option"
-                aria-selected={selected}
-                className={clsx(
-                  "thermal-grid-sector-option",
-                  selected && "is-selected",
-                  highlighted && "is-active",
-                )}
-                onMouseEnter={() => {
-                  setActive(i);
-                  onPresetHover?.(p.id);
-                }}
-                onClick={() => commit(p.id)}
-              >
-                {p.label}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+      {/* Menu is CONDITIONALLY rendered when open — previously it stayed mounted
+          with `opacity:0 + pointer-events:none`, which removes it visually but NOT
+          from the tab order or the accessibility tree. Every keyboard user tabbing
+          through the control row was hitting 6 phantom options. Guarding with
+          `{open && (...)}` fixes the a11y correctness AND lets React skip the
+          unnecessary reconciliation while the menu is closed. */}
+      {open && (
+        <ul
+          id={`${btnId}-menu`}
+          role="listbox"
+          aria-labelledby={btnId}
+          className="thermal-grid-sector-menu is-open"
+        >
+          {THERMAL_COMPARE_PRESETS.map((p, i) => {
+            const selected = p.id === value;
+            const highlighted = i === active;
+            return (
+              <li key={p.id} role="presentation">
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  className={clsx(
+                    "thermal-grid-sector-option",
+                    selected && "is-selected",
+                    highlighted && "is-active",
+                  )}
+                  onMouseEnter={() => {
+                    setActive(i);
+                    onPresetHover?.(p.id);
+                  }}
+                  onClick={() => commit(p.id)}
+                >
+                  {p.label}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 }

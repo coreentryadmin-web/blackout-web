@@ -23,7 +23,10 @@ export function ThermalSkeleton({ variant = "matrix" }: { variant?: "hero" | "ma
         role="status"
         aria-label="Loading BlackOut Thermal — dealer gamma matrix"
       >
-        <div className="h-[520px] rounded-2xl border border-white/10 bg-black/40 animate-pulse" />
+        {/* motion-safe: — was bare `animate-pulse` which ignores `prefers-reduced-motion`.
+            This fires on every cold-page paint and the built-in Skeleton primitive
+            below already uses the motion-safe pattern; mirror it here. */}
+        <div className="h-[520px] rounded-2xl border border-white/10 bg-black/40 motion-safe:animate-pulse" />
         <span className="sr-only">Loading heatmap…</span>
       </div>
     );

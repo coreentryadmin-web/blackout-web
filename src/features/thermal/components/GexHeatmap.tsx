@@ -4120,15 +4120,23 @@ export function GexHeatmap({
               <MatrixFreshness asof={data.asof} />
             </span>
           ) : null}
-          {fastFlash && (
+          {/* Reserved slot for the fast-move badge — before this, the badge
+              appearing/disappearing shifted the freshness chip + lens rail
+              left/right by ~140px on every fast-move refresh, causing a visible
+              layout jog. `min-w-[9rem]` holds the space; `visibility: hidden`
+              when off keeps the a11y tree clean without taking layout back. */}
+          <span className="inline-flex items-center min-w-[9rem]" aria-hidden={!fastFlash}>
             <span
               role="status"
-              className="inline-flex items-center gap-1 rounded-md bg-cyan-400/15 px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-cyan-400 outline outline-1 outline-cyan-400/40 motion-safe:animate-pulse"
+              className={clsx(
+                "inline-flex items-center gap-1 rounded-md bg-cyan-400/15 px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-cyan-400 outline outline-1 outline-cyan-400/40 motion-safe:animate-pulse",
+                !fastFlash && "invisible",
+              )}
               title="Fast move detected — gamma profile refreshed immediately"
             >
               <span aria-hidden>⚡</span> fast-move refresh
             </span>
-          )}
+          </span>
           <div
             className={clsx(
               "thermal-grid-toolbar",

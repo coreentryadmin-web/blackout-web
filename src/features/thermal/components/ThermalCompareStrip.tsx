@@ -81,10 +81,13 @@ function CompareCard({
       // Fixed min-h prevents the ~62→90px layout jump between "…" skeleton state
       // and the loaded card — cards used to grow AFTER the SWR resolved, shoving
       // everything below them down on every ticker switch.
+      // `motion-safe:` prefix on the press scale — the AlertsStrip fix (this
+      // PR, round 1) already established "any always-visible transform gets
+      // motion-safe:". Keeps `prefers-reduced-motion` users still.
       className={clsx(
         "min-w-0 flex-1 min-h-[92px] rounded-xl border px-3 py-2.5 text-left transition-colors",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60",
-        "active:scale-[0.99]",
+        "motion-safe:active:scale-[0.99]",
         active
           ? "border-cyan-400/50 bg-cyan-400/[0.08]"
           : "border-white/12 bg-[rgba(8,9,14,0.55)] hover:border-sky-300/35"
@@ -111,7 +114,10 @@ function CompareCard({
         )}
       </div>
       <div className="mt-1 font-mono text-[18px] font-bold tabular-nums text-white leading-none">
-        {fmtPx(spot, ticker === "SPX" ? 2 : 2)}
+        {/* Was `fmtPx(spot, ticker === "SPX" ? 2 : 2)` — dead ternary (both
+            branches identical). Cleaned to a single argument. SPX spot precision
+            deliberately stays at 2dp to line up with SPY/QQQ in the row. */}
+        {fmtPx(spot, 2)}
       </div>
       <div className="mt-2 grid grid-cols-3 gap-1.5 font-mono text-[9px] uppercase tracking-[0.12em]">
         <div>

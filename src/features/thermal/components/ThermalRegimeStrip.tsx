@@ -115,7 +115,14 @@ export function ThermalRegimeStrip({
               <Pipe />
             </>
           ) : (
-            <span className="font-mono text-[11px] font-bold uppercase tracking-[0.12em] text-sky-300/55">
+            <span
+              // Was `text-sky-300/55` — #7dd3fc at 55% α composited on the
+              // translucent panel bg falls to ~3.4:1 against the panel, below
+              // WCAG AA 4.5:1 for small (11px) text. Bumped to /85 which reads
+              // clean against the dark panel and matches the tone of the badge
+              // it replaces on regime-forming loads.
+              className="font-mono text-[11px] font-bold uppercase tracking-[0.12em] text-sky-300/85"
+            >
               Regime forming
             </span>
           )}
@@ -141,7 +148,11 @@ export function ThermalRegimeStrip({
       ) : null}
 
       {model.footnote ? (
-        <p className="mt-1.5 font-mono text-[9px] leading-snug text-sky-300/60">{model.footnote}</p>
+        // Was `text-sky-300/60` at 9px on the translucent panel — fails WCAG AA
+        // for small text (needs ≥4.5:1). Bumped to /85 so the footnote is
+        // legible against the dark bg without competing with the interpretation
+        // line above it.
+        <p className="mt-1.5 font-mono text-[9px] leading-snug text-sky-300/85">{model.footnote}</p>
       ) : null}
     </div>
   );
