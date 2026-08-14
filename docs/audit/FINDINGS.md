@@ -10212,4 +10212,4 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **How it was found** | Post-merge live validation after #2182: `validate:vector-e2e` FAIL on `ui:structure-feed` (looked for "Wall structure events") and `ui:browser-vector` (two `Replay position` sliders — compact iOS row still in DOM). `validate:bead-cadence` FAIL AMD/AAPL median 30s (n≈9–17) while NVDA/TSLA/META at 5s. |
 | **Root cause** | E2E checked obsolete aria-label (`VectorTickerComparisonStrip` uses "Cross-ticker wall comparison"). Replay scrub locator was global, matching hidden compact + visible desktop controls. Per-ticker heatmap blips returned `historyRecorded=false` without retry; combined with `recordInFlight` skip, AMD/AAPL rails went sparse. |
 | **Fix** | E2E: desktop-scoped toolbar selectors + correct comparison strip label (WARN if snapshot cold). Recorder: one immediate retry pass for failed universe tickers in `recordSharedUniverseWallSamples`. `vector-wall-trail-sec-validate.mjs`: read more SSE frames (no early exit on candle). Checklist: 5s/15s cadence policy. |
-| **Status** | FIXED — PR pending. |
+| **Status** | FIXED — PR #2183. |
