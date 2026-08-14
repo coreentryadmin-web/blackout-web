@@ -21,6 +21,7 @@ import type { ZeroDteBoardPayload } from "@/lib/platform/zerodte-service";
 import { sharedCacheDel, sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
 import { sessionHeat } from "@/lib/zerodte/board";
 import { etNowParts, isTradingDayEt, todayEt } from "@/features/nighthawk/lib/session";
+import { initialDiscoveryHealth } from "@/lib/zerodte/discovery-health";
 
 /** ISOLATED sim snapshot key — DISTINCT from the member key `zerodte:board:snapshot:v1`.
  *  Prefixed to `blackout:zerodte:board:snapshot:sim:v1` by sharedCacheSet, exactly as the
@@ -90,6 +91,8 @@ export function emptySimBoardPayload(): ZeroDteBoardPayload {
     upstream_ok: true,
     session: { date: today, trading_day: tradingDay, heat },
     setups: [],
+    // The sim board runs no discovery lanes — all-`disabled` is literally true here.
+    discovery_health: initialDiscoveryHealth(),
     ledger: [],
     covered_elsewhere: [],
     governor: null,

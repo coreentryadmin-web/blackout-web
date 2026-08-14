@@ -42,6 +42,12 @@ import { attachConfluence } from "./confluence";
 import { breakoutSourceEnabled, mergeDiscoveryOrigins } from "./breakout-source";
 import { deriveWhyNow } from "./why-now";
 import { pinSourceEnabled, mergePinOrigins } from "./pin-source";
+import {
+  initialDiscoveryHealth,
+  laneStatusFromBreakoutOutcome,
+  type DiscoveryHealth,
+} from "./discovery-health";
+import { pinWindowStatus } from "./pin-window";
 import { LEVERAGED_ETP_SET } from "@/features/nighthawk/lib/constants";
 import { createDossierBuildCache, fetchTickerDossier } from "@/features/nighthawk/lib/dossier";
 import { etNowParts, nextTradingDayEt, todayEt } from "@/features/nighthawk/lib/session";
@@ -211,6 +217,11 @@ export type ZeroDteScanResult = {
   rejections: ZeroDteGateRejection[];
   /** Market State Engine snapshot for this scan (Phase 1+) — used by discovery-event persist on cron. */
   market_state: MarketStateSnapshot;
+  /** Per-lane provenance for the two whole-market discovery origins (BREAKOUT / PIN). Both are
+   *  best-effort and degrade to zero contribution on a fail-closed snapshot or a throw; without
+   *  this, a roster that collapsed because a lane never ran is byte-identical to a quiet session.
+   *  Purely a provenance signal — it never gates scoring and never adds a candidate. */
+  discovery_health: DiscoveryHealth;
 };
 
 /**
@@ -341,6 +352,7 @@ export async function scanZeroDteBoard(flags?: {
   // gates (SETUP_MIN_GROSS / SETUP_MIN_AGGR_SHARE / dominance / moneyness) live INSIDE
   // deriveZeroDteSetups and structurally never touch a breakout setup — it enters the pipeline here,
   // AFTER that function, and is validated instead by its breakout score + the shared hard-gate stack.
+  const discoveryHealth: DiscoveryHealth = initialDiscoveryHealth();
   if (breakoutSourceEnabled()) {
     try {
       const { hour, minute } = etNowParts();
@@ -355,6 +367,11 @@ export async function scanZeroDteBoard(flags?: {
         excludeTickers: excludes,
       });
       const breakoutSetups = breakoutOutcome.setups;
+      discoveryHealth.BREAKOUT = {
+        status: laneStatusFromBreakoutOutcome(breakoutOutcome.status),
+        setups: breakoutSetups.length,
+        ...("reason" in breakoutOutcome && breakoutOutcome.reason ? { reason: breakoutOutcome.reason } : {}),
+      };
       if (breakoutSetups.length > 0) {
         mergeDiscoveryOrigins(setups, breakoutSetups);
         // Prefer true 0DTE over 1DTE, then score — concurrency budget goes to best same-day finds.
@@ -366,6 +383,9 @@ export async function scanZeroDteBoard(flags?: {
         });
       }
     } catch (err) {
+      // The board is deliberately unaffected (flow-only this cycle) — but the payload now SAYS so,
+      // instead of serving a 75%-smaller roster that reads as a quiet market.
+      discoveryHealth.BREAKOUT = { status: "failed", setups: 0, reason: "threw" };
       console.warn("[zerodte-breakout] discovery failed — flow-only board this cycle:", err);
     }
   }
@@ -391,6 +411,13 @@ export async function scanZeroDteBoard(flags?: {
         nowEtMinutes: hour * 60 + minute,
         excludeTickers: excludes,
       });
+      // discoverPinSetups returns a bare array, so "ran and found nothing" and "was outside its own
+      // window" are the same [] — pinWindowStatus separates them. Reporting a zero as `ok` at 8am
+      // would be a fabricated market read, which is the exact confusion this field exists to end.
+      discoveryHealth.PIN =
+        pinWindowStatus(hour * 60 + minute) === "off_hours"
+          ? { status: "off_hours", setups: 0 }
+          : { status: "ok", setups: pinSetups.length };
       if (pinSetups.length > 0) {
         mergePinOrigins(setups, pinSetups);
         // Prefer true 0DTE over 1DTE when scores tie — the board is a 0DTE product.
@@ -402,6 +429,7 @@ export async function scanZeroDteBoard(flags?: {
         });
       }
     } catch (err) {
+      discoveryHealth.PIN = { status: "failed", setups: 0, reason: "threw" };
       console.warn("[zerodte-pin] discovery failed — flow-only board this cycle:", err);
     }
   }
@@ -476,7 +504,14 @@ export async function scanZeroDteBoard(flags?: {
   });
   recordScanDuration(gatesCompletedAt - scanStartedAt);
 
-  return { setups, nighthawk_covered: nighthawkCovered, upstream_ok: upstreamOk, rejections, market_state: marketState };
+  return {
+    setups,
+    nighthawk_covered: nighthawkCovered,
+    upstream_ok: upstreamOk,
+    rejections,
+    market_state: marketState,
+    discovery_health: discoveryHealth,
+  };
 }
 
 /** Cached (3-min) intraday read from a name's own minute bars. */
