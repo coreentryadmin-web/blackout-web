@@ -91,6 +91,11 @@ import { GexMatrixShiftBadge } from "@/components/gex/GexMatrixShiftBadge";
 import { GexShiftLeadersStrip } from "@/components/gex/GexShiftLeadersStrip";
 import { ThermalRegimeStrip } from "@/features/thermal/components/ThermalRegimeStrip";
 import { buildThermalRegimeStrip } from "@/features/thermal/lib/thermal-regime-strip";
+import { ThermalIntensityRail } from "@/features/thermal/components/ThermalIntensityRail";
+import {
+  THERMAL_INTENSITY_MARKER_GLYPH,
+  thermalIntensityMarkerForRow,
+} from "@/features/thermal/lib/thermal-intensity";
 
 /** GEX regime read derived server-side from spot vs the gamma flip. */
 type GexRegime = {
@@ -828,7 +833,7 @@ function ExposureProfile({
 
   const v = LENS_VOCAB[lens];
   const flipLabel = v.pivot;
-  const profileLabel = `Net dealer ${v.noun.toLowerCase()} profile by strike — positive bars right of center, negative left`;
+  const profileLabel = `Thermal intensity profile — bar width scales to the largest ${v.noun.toLowerCase()} node in this scope; color shows sign`;
 
   return (
     <div role="img" aria-label={profileLabel}>
@@ -843,21 +848,18 @@ function ExposureProfile({
         className="max-h-[clamp(360px,56vh,600px)] space-y-px overflow-y-auto overscroll-contain pr-1"
       >
       {rows.map((r, i) => {
-        const mag = peak > 0 ? Math.min(1, Math.abs(r.value) / peak) : 0;
-        // Fill the FULL available track on each side: each half is 50% of the bar
-        // track, so a peak bar (mag→1) reaches the edge. A gentle gamma curve lets
-        // mid-magnitude bars fill more of their side (so the profile doesn't read
-        // as half-empty on wide monitors); a small floor keeps tiny bars visible.
-        const widthPct = (r.value !== 0 ? Math.max(3, Math.pow(mag, 0.82) * 50) : 0).toFixed(2);
         const positive = r.value > 0;
-        const barColor = positive ? c.posHex : c.negHex;
         const wall = r.isPosWall || r.isNegWall;
-        // ANCHOR — the dominant net-exposure strike in this scope. Bright-white marker +
-        // ring sit ON TOP of the bar's own emerald/bear magnitude color (white ≠ magnitude;
-        // gold is freed for the +GEX peak in the matrix).
         const isAnchor = anchor != null && r.strike === anchor;
+        const isFlipStrike = flipRowIdx === i;
+        const marker = thermalIntensityMarkerForRow({
+          isSpot: r.isSpot,
+          isFlipStrike,
+          isPosWall: r.isPosWall,
+          isNegWall: r.isNegWall,
+          isAnchor,
+        });
 
-        // ── Flow overlay: net premium hitting this strike, colored bull/bear. ──
         const flow = showFlow ? r.flow : null;
         const netFlow = flow?.net_prem ?? 0;
         const flowMag = flow && flowPeak > 0 ? Math.min(1, Math.abs(netFlow) / flowPeak) : 0;
@@ -868,12 +870,9 @@ function ExposureProfile({
             ? `Flow @ ${fmtStrike(r.strike)} · ${flowBull ? "bullish" : "bearish"} net ${fmtMoney(netFlow)} (calls ${fmtMoney(flow.call_prem)} / puts ${fmtMoney(flow.put_prem)})`
             : undefined;
 
-        // ── Dark-pool overlay: a level line drawn across this row's band. ──
         const dpLevel = darkPoolByRow.get(i) ?? null;
         const dpHex = dpLevel && i % 2 === 0 ? DARK_POOL_HEX : DARK_POOL_ALT_HEX;
 
-        // ── Shift badge: intraday %-built/melted for this strike, inline (mirrors the
-        // Shift tab's build=green/melt=red convention: built = delta > 0). ──
         const shiftDelta = matrixShiftDeltaForStrikeScoped({
           shift,
           cells: metricCells,
@@ -885,8 +884,6 @@ function ExposureProfile({
         const shiftHex = shiftBuilt ? SHIFT_BUILD_HEX : SHIFT_MELT_HEX;
 
         return (
-          // Tag the spot strike row's wrapper with the ref so the auto-center effect can
-          // scroll it into view. Only the spot row carries it (one ref, no per-row churn).
           <div key={r.strike} ref={r.isSpot ? spotRowRef : undefined}>
             {/* SPOT reference line between the bracketing strikes — cyan, mirrors the
                 Curve view's spot marker so price is instantly placeable in the ladder. */}
@@ -916,15 +913,12 @@ function ExposureProfile({
 
             <div
               className={clsx(
-                "group relative flex items-center gap-2 rounded-sm py-0.5 pr-1",
-                // ANCHOR ring wins the row treatment (the dominant node should pop hardest):
-                // a bright-white 2px outline + white wash, distinct from the spot row's cyan
-                // outline (and from the gold now reserved for the +GEX peak).
+                "group relative flex items-center gap-1.5 rounded-sm py-0.5 pr-1 thermal-intensity-row",
                 isAnchor
                   ? "outline outline-2 outline-white/85 bg-white/[0.10]"
                   : r.isSpot
                     ? "outline outline-1 outline-cyan-400/70 bg-cyan-400/[0.06]"
-                    : i === flipRowIdx && "bg-gold/[0.06]"
+                    : isFlipStrike && "bg-gold/[0.06]"
               )}
               style={isAnchor ? { boxShadow: "inset 0 0 18px rgba(255,255,255,0.12)" } : undefined}
               title={
@@ -933,110 +927,75 @@ function ExposureProfile({
                   : `${fmtStrike(r.strike)} · ${fmtMoney(r.value)}`
               }
             >
-              {/* strike label (left gutter) — compacted (w-12) so the bar keeps room
-                  in the now-narrower ~33% Profile column (UI refactor). */}
               <span
                 className={clsx(
-                  "w-12 shrink-0 text-right font-mono text-[11px] tabular-nums",
-                  isAnchor
+                  "w-11 shrink-0 text-right font-mono text-[11px] tabular-nums",
+                  isAnchor || r.isSpot
                     ? "font-bold text-white"
-                    : r.isSpot
-                      ? "font-bold text-white"
-                      : wall
-                        ? "font-semibold text-gold"
-                        : "text-sky-300"
+                    : wall
+                      ? "font-semibold text-gold"
+                      : "text-sky-300"
                 )}
               >
-                <span className="inline-flex items-center justify-end gap-1">
-                  {/* ANCHOR pin — bright-white ◆ diamond glyph, the unmistakable dominant-node marker. */}
-                  {isAnchor && (
-                    <span className="text-white" title={GEX_KING_NODE_HELP}>
-                      <AnchorGlyph size={11} />
-                    </span>
-                  )}
-                  {r.isSpot && !isAnchor && <span className="text-cyan-400">●</span>}
-                  {fmtStrike(r.strike)}
-                </span>
+                {fmtStrike(r.strike)}
               </span>
 
-              {/* bipolar bar track with a center axis — `flex-1` fills the column, so in the
-                  narrowed ~33% Profile column it compresses to fit. The max-w cap is relaxed
-                  (clamp 160→28vw→360) so the bar still reads in the slimmer column. */}
-              <span className="relative h-5 flex-1 max-w-[clamp(160px,28vw,360px)]">
-                {/* dark-pool level line — subtle horizontal rule across the band */}
-                {dpLevel != null && (
-                  <span
-                    aria-hidden
-                    className="pointer-events-none absolute inset-x-0 top-1/2 h-px -translate-y-1/2"
-                    style={{
-                      backgroundColor: dpHex,
-                      opacity: 0.5,
-                      boxShadow: `0 0 6px ${dpHex}99`,
-                    }}
-                  />
-                )}
-                <span
-                  aria-hidden
-                  className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-white/15"
-                />
-                <span
-                  aria-hidden
-                  className="absolute top-1/2 h-4 -translate-y-1/2 rounded-[3px] motion-safe:transition-all motion-safe:duration-300"
-                  style={{
-                    width: `${widthPct}%`,
-                    left: positive ? "50%" : undefined,
-                    right: positive ? undefined : "50%",
-                    backgroundColor: barColor,
-                    // ANCHOR bar keeps its emerald/bear magnitude fill, but gets a bright-white
-                    // ring + glow on TOP so the dominant node is unmistakable. The ring is an
-                    // outline (static, opacity-only glow) — reduced-motion safe.
-                    outline: isAnchor ? "1.5px solid #ffffff" : undefined,
-                    boxShadow: isAnchor
-                      ? "0 0 12px rgba(255,255,255,0.85)"
-                      : wall
-                        ? `0 0 10px ${barColor}`
-                        : mag > 0.55
-                          ? `0 0 8px ${barColor}88`
-                          : undefined,
-                    opacity: 0.35 + mag * 0.6,
-                  }}
-                />
-                {/* flow marker — secondary bar from center, sized by net premium */}
-                {flow != null && flowMag > 0 && (
-                  <span
-                    className="absolute top-1/2 z-10 h-[9px] -translate-y-1/2 rounded-full motion-safe:transition-all motion-safe:duration-300"
-                    style={{
-                      width: `${(flowMag * 46).toFixed(2)}%`,
-                      left: flowBull ? "50%" : undefined,
-                      right: flowBull ? undefined : "50%",
-                      backgroundColor: flowHex,
-                      boxShadow: `0 0 7px ${flowHex}`,
-                      opacity: 0.55 + flowMag * 0.45,
-                    }}
-                    title={flowTitle}
-                  />
-                )}
-                {/* flow dot anchored at the band center so even tiny flow is visible */}
-                {flow != null && (netFlow !== 0 || flow.call_prem > 0 || flow.put_prem > 0) && (
-                  <span
-                    className="absolute top-1/2 left-1/2 z-10 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full"
-                    style={{ backgroundColor: flowHex, boxShadow: `0 0 6px ${flowHex}` }}
-                    title={flowTitle}
-                  />
-                )}
-              </span>
-
-              {/* signed value — sits INLINE just past the bar end (left-aligned, not pinned
-                  to the far edge) so the eye doesn't cross a void. Tinted by lens identity. */}
               <span
-                className="w-20 shrink-0 text-left font-mono text-[11px] font-semibold tabular-nums"
+                className="flex w-5 shrink-0 items-center justify-center text-[12px] leading-none"
+                aria-hidden={marker == null}
+              >
+                {marker ? (
+                  <span title={marker === "anchor" ? GEX_KING_NODE_HELP : undefined}>
+                    {marker === "anchor" ? (
+                      <AnchorGlyph size={11} className="text-white" />
+                    ) : (
+                      THERMAL_INTENSITY_MARKER_GLYPH[marker]
+                    )}
+                  </span>
+                ) : null}
+              </span>
+
+              <span
+                className="w-[4.25rem] shrink-0 text-right font-mono text-[11px] font-bold tabular-nums"
                 style={{ color: r.value === 0 ? undefined : positive ? c.posHex : c.negHex }}
               >
                 {fmtMoneySigned(r.value)}
               </span>
-              {/* Intraday shift badge — small colored pill, same build(green)/melt(red)
-                  convention as the Shift tab. Omitted (not zeroed) when unavailable so a
-                  quiet/collecting shift window never renders a fabricated "0%". */}
+
+              <span className="relative min-w-0 flex-1 h-[18px]">
+                {dpLevel != null && (
+                  <span
+                    aria-hidden
+                    className="pointer-events-none absolute inset-x-0 top-1/2 z-20 h-px -translate-y-1/2"
+                    style={{
+                      backgroundColor: dpHex,
+                      opacity: 0.55,
+                      boxShadow: `0 0 6px ${dpHex}99`,
+                    }}
+                  />
+                )}
+                <ThermalIntensityRail
+                  value={r.value}
+                  peak={peak}
+                  positiveHex={c.posHex}
+                  negativeHex={c.negHex}
+                  className="h-[18px]"
+                  title={`${Math.round((Math.abs(r.value) / Math.max(peak, 1)) * 100)}% of peak node`}
+                />
+                {flow != null && flowMag > 0 && (
+                  <span
+                    className="pointer-events-none absolute bottom-0 left-0 z-10 h-[4px] rounded-r-full motion-safe:transition-all motion-safe:duration-300"
+                    style={{
+                      width: `${(flowMag * 55).toFixed(1)}%`,
+                      backgroundColor: flowHex,
+                      opacity: 0.65 + flowMag * 0.3,
+                      boxShadow: `0 0 6px ${flowHex}`,
+                    }}
+                    title={flowTitle}
+                  />
+                )}
+              </span>
+
               {shiftPct != null && (
                 <span
                   className="shrink-0 rounded px-1 py-0.5 font-mono text-[9px] font-bold tabular-nums"
@@ -1047,25 +1006,8 @@ function ExposureProfile({
                   {shiftPct.toFixed(0)}%
                 </span>
               )}
-              <span className="ml-auto w-16 shrink-0 text-left">
-                {/* ANCHOR tag — leads the row's tag slot when this is the dominant node. */}
-                {isAnchor && (
-                  <span className="inline-flex items-center gap-0.5 font-mono text-[8px] font-bold uppercase tracking-wider text-white">
-                    <AnchorGlyph size={9} /> {GEX_KING_COMPACT_LABEL}
-                  </span>
-                )}
-                {/* Wall tags only exist on GEX/VEX (DEX/CHARM have no walls → these never fire). */}
-                {!isAnchor && r.isPosWall && (
-                  <span className="font-mono text-[8px] uppercase tracking-wider text-gold">
-                    {lens === "gex" ? "call" : "+vex"}
-                  </span>
-                )}
-                {!isAnchor && r.isNegWall && (
-                  <span className="font-mono text-[8px] uppercase tracking-wider text-gold">
-                    {lens === "gex" ? "put" : "−vex"}
-                  </span>
-                )}
-                {!isAnchor && flow != null && netFlow !== 0 && !r.isPosWall && !r.isNegWall && (
+              <span className="ml-auto hidden w-14 shrink-0 text-left sm:inline">
+                {!isAnchor && flow != null && netFlow !== 0 && !wall && (
                   <span
                     className="font-mono text-[8px] uppercase tracking-wider"
                     style={{ color: flowHex }}
@@ -1081,20 +1023,16 @@ function ExposureProfile({
       })}
       </div>
 
-      {/* axis legend */}
-      <div className="mt-3 flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.2em] text-sky-300/70">
-        <span style={{ color: c.negHex }}>
-          ◀ {v.neg} (−)
-        </span>
+      {/* intensity legend */}
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 font-mono text-[9px] uppercase tracking-[0.18em] text-sky-300/75">
+        <span style={{ color: c.posHex }}>+ {v.pos} intensity →</span>
         <span
           className="text-sky-300"
-          title={spot > 0 ? "Profile reflects the 5s matrix snapshot; the header price updates live." : undefined}
+          title={spot > 0 ? "Bar width = |GEX| ÷ largest node in scope. Profile reflects the matrix snapshot." : undefined}
         >
-          {spot > 0 ? `spot ${fmtStrike(spot)}` : `net dealer ${v.noun.toLowerCase()}`}
+          {peak > 0 ? `peak node ${fmtMoney(peak)}` : `net dealer ${v.noun.toLowerCase()}`}
         </span>
-        <span style={{ color: c.posHex }}>
-          {v.pos} (+) ▶
-        </span>
+        <span style={{ color: c.negHex }}>← − {v.neg} intensity</span>
       </div>
 
       {/* ANCHOR legend — explains the white ◆ marker (the dominant node). Only when one
@@ -3721,7 +3659,7 @@ export function GexHeatmap({
 
   const profilePanel = (
     <div className="min-w-0">
-      <PanelLabel>{`${vocab.noun} Profile`}</PanelLabel>
+      <PanelLabel>{`${vocab.noun} Intensity`}</PanelLabel>
       <ExposureProfile
         rows={profileRows}
         peak={filteredPeak}
