@@ -196,6 +196,11 @@ export function buildThermalRegimeStrip(input: BuildThermalRegimeStripInput): Th
         segment("putWall", "Put Wall", fmtStrike(putWall), { icon: "🛡", tone: "bear" })
       );
     }
+    // Max pain is OI-gravity for the scoped front/nearest expiry — same tile the old Key Levels
+    // row showed on GEX. Omitted in the first strip pass to shorten the line; members still ask for it.
+    if (maxPain != null) {
+      segments.push(segment("maxPain", "Max Pain", fmtStrike(maxPain), { tone: "sky" }));
+    }
     const vol = volLabelForGamma(gammaPosture);
     if (vol) segments.push(segment("vol", "VOL", vol, { tone: "sky" }));
 
