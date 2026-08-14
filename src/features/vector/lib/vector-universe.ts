@@ -73,13 +73,16 @@ async function buildVectorUniverseRow(
     nowSec?: number;
     /** Universe recorder uses 5s buckets; live/active paths use 15s for non-oracle. */
     bucketScope?: import("./vector-wall-sample").WallTrailSampleScope;
+    /** 0DTE/weekly/monthly rails — expensive (3 extra scoped reads). Off on the 5s universe sweep. */
+    recordNarrowedHorizons?: boolean;
   } = {}
-): Promise<VectorUniverseRow | null> {
+): Promise<{ row: VectorUniverseRow; historyRecorded: boolean } | null> {
   const {
     recordWallHistory = false,
     sessionYmd,
     nowSec = Math.floor(Date.now() / 1000),
     bucketScope = "universe",
+    recordNarrowedHorizons = true,
   } = opts;
   const ticker = normalizeVectorTicker(raw);
   const hm = await fetchGexHeatmap(ticker);
@@ -95,6 +98,8 @@ async function buildVectorUniverseRow(
       })
     : { callWalls: [], putWalls: [] };
 
+  let historyRecorded = false;
+
   if (recordWallHistory && sessionYmd) {
     const sampleTime = bucketWallSampleTime(nowSec, wallTrailSampleSecForTicker(ticker, bucketScope));
     const sample = buildWallHistorySample({
@@ -104,14 +109,14 @@ async function buildVectorUniverseRow(
       vexWalls,
       vexFlip: hm?.vex?.flip ?? null,
     });
-    // The blended rail and the three narrowed rails are SEPARATE storage keys, so they were being
-    // written one after another — four sequential Redis round-trips per ticker, times ~122 tickers
-    // per sweep. Writing them together removes that serial tail; they cannot conflict because each
-    // targets its own (ticker, horizon) rail.
-    const writes: Promise<unknown>[] = [];
+    // The blended rail and the three narrowed rails are SEPARATE storage keys. Narrowed horizons
+    // cost three extra scoped reads per ticker — fine on the 5-min cron or a live viewer, but they
+    // were blowing the 5s universe sweep past its tick budget (measured 56s for 83 tickers on
+    // 2026-08-12), which dropped ticks and thinned NVDA/AMD/META rails to 10–30s effective cadence.
+    const writes: Promise<boolean>[] = [];
     if (sample) writes.push(appendSessionWallSample(sessionYmd, sample, ticker));
 
-    if (spot && spot > 0) {
+    if (recordNarrowedHorizons && spot && spot > 0) {
       const narrowed = await buildNarrowedHorizonWallSamples(ticker, sampleTime, {
         walls: gexWalls,
         flip: hm?.gex?.flip ?? null,
@@ -125,23 +130,28 @@ async function buildVectorUniverseRow(
         }
       }
     }
-    // allSettled, not all: one rail failing must not abort the others or reject this ticker's
-    // whole sample. appendSessionWallSample already swallows and logs its own errors, so this is
-    // belt-and-braces against an unexpected throw.
-    if (writes.length > 0) await Promise.allSettled(writes);
+    if (writes.length > 0) {
+      const settled = await Promise.allSettled(writes);
+      historyRecorded = settled.some(
+        (r) => r.status === "fulfilled" && r.value === true
+      );
+    }
   }
 
   const asOfMs = hm?.asof ? Date.parse(hm.asof) : NaN;
   return {
-    ticker,
-    spot,
-    gammaFlip: hm?.gex?.flip ?? null,
-    vexFlip: hm?.vex?.flip ?? null,
-    topCallWall: gexWalls.callWalls[0]?.strike ?? null,
-    topPutWall: gexWalls.putWalls[0]?.strike ?? null,
-    topCallPct: gexWalls.callWalls[0]?.pct ?? null,
-    topPutPct: gexWalls.putWalls[0]?.pct ?? null,
-    asOf: Number.isFinite(asOfMs) ? asOfMs : null,
+    row: {
+      ticker,
+      spot,
+      gammaFlip: hm?.gex?.flip ?? null,
+      vexFlip: hm?.vex?.flip ?? null,
+      topCallWall: gexWalls.callWalls[0]?.strike ?? null,
+      topPutWall: gexWalls.putWalls[0]?.strike ?? null,
+      topCallPct: gexWalls.callWalls[0]?.pct ?? null,
+      topPutPct: gexWalls.putWalls[0]?.pct ?? null,
+      asOf: Number.isFinite(asOfMs) ? asOfMs : null,
+    },
+    historyRecorded,
   };
 }
 
@@ -157,13 +167,16 @@ export async function recordVectorUniverseWallSample(
     bucketScope?: import("./vector-wall-sample").WallTrailSampleScope;
   }
 ): Promise<boolean> {
-  const row = await buildVectorUniverseRow(raw, {
+  const bucketScope = opts.bucketScope ?? "universe";
+  const built = await buildVectorUniverseRow(raw, {
     recordWallHistory: true,
     sessionYmd: opts.sessionYmd,
     nowSec: opts.nowSec ?? Math.floor(Date.now() / 1000),
-    bucketScope: opts.bucketScope ?? "universe",
+    bucketScope,
+    // 5s universe sweep: blended rail only — narrowed horizons stay on the 5-min cron + live viewers.
+    recordNarrowedHorizons: bucketScope === "live",
   });
-  return row != null;
+  return built?.historyRecorded ?? false;
 }
 
 export async function buildVectorUniverseSnapshot(
@@ -180,12 +193,17 @@ export async function buildVectorUniverseSnapshot(
 
   const results = await Promise.allSettled(
     tickers.map((raw) =>
-      buildVectorUniverseRow(raw, { recordWallHistory, sessionYmd, nowSec })
+      buildVectorUniverseRow(raw, {
+        recordWallHistory,
+        sessionYmd,
+        nowSec,
+        recordNarrowedHorizons: true,
+      })
     )
   );
 
   for (const r of results) {
-    if (r.status === "fulfilled" && r.value) rows.push(r.value);
+    if (r.status === "fulfilled" && r.value) rows.push(r.value.row);
   }
 
   rows.sort((a, b) => a.ticker.localeCompare(b.ticker));
@@ -208,10 +226,10 @@ export async function ensureTickerInUniverseSnapshot(rawTicker: string): Promise
     const snap = await loadVectorUniverseSnapshot();
     if (snap?.rows.some((r) => r.ticker === ticker)) return;
 
-    const row = await buildVectorUniverseRow(ticker);
-    if (!row) return;
+    const built = await buildVectorUniverseRow(ticker);
+    if (!built) return;
 
-    const mergedRows = [...(snap?.rows ?? []).filter((r) => r.ticker !== ticker), row];
+    const mergedRows = [...(snap?.rows ?? []).filter((r) => r.ticker !== ticker), built.row];
     mergedRows.sort((a, b) => a.ticker.localeCompare(b.ticker));
     await persistVectorUniverseSnapshot(roundFloats({ updatedAt: Date.now(), rows: mergedRows }));
   })().finally(() => {

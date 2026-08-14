@@ -38,6 +38,20 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-08-14 — [FINDING, P1 member-visible] Vector universe recorder sweep thinned NVDA/AMD rails (narrowed-horizon fan-out) — FIXED
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Status** | FIXED — PR on `cursor/vector-bead-recorder-sweep-3d11` |
+| **Severity** | P1 — non-oracle universe names recorded at 10–30s effective cadence vs designed 5s |
+| **Symptom** | Live RTH 2026-08-14: AMD 148 samples / 110min (~13% of expected), 10–20min holes; NVDA 37% of last-20min buckets; META/SPX ~97%+ (SPX also has always-on oracle SSE top-up). |
+| **Root cause** | Each 5s universe sweep called `buildNarrowedHorizonWallSamples` (3 scoped reads + 3 Redis writes) per ticker after the blended sample — ~4× work per name × ~122 tickers, pushing sweeps past the 5s tick budget so the leader dropped overlapping ticks. `recordVectorUniverseWallSample` also returned `true` when no sample was appended, hiding per-ticker dark streaks. |
+| **Fix** | 5s `universe` scope: record **blended rail only**; narrowed 0DTE/weekly/monthly rails stay on 5-min cron + live SSE viewers. Return `historyRecorded` from append so failed/empty wall passes count as failures. |
+| **Blast radius** | All shared-universe Vector bead rails; narrowed DTE toggles still advance via cron/stream when viewed. |
+
+---
+
 ## 2026-08-14 — [FINDING, P1 member-visible] Vector bead rail ~3× sparser on non-oracle universe names (META/NVDA) vs SPX — FIXED
 > **kind:** `FINDING`
 
