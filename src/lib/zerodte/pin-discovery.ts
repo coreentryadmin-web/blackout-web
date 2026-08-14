@@ -18,6 +18,11 @@
 // which way the fade points; a clean pin → pick an ATM fade contract off the live chain → build the
 // seed setup. NO clean pin, a provider miss, or off-hours → SKIP (return [], logged) — never fabricate.
 
+import {
+  PIN_CONDOR_LATE_CUTOFF_ET_MINUTES,
+  PIN_RTH_CUTOFF_ET_MINUTES,
+  PIN_RTH_OPEN_ET_MINUTES,
+} from "./pin-window";
 import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
 import { gexPositioningFromHeatmap } from "@/lib/providers/gex-positioning";
 import { computeGexWalls, mapFromStrikeTotalsRecord } from "@/lib/providers/gex-wall-levels";
@@ -35,13 +40,13 @@ import { selectIronCondor } from "./iron-condor";
 import type { EnrichedZeroDteSetup } from "./board";
 import { pinPassesTemporalStabilityGate } from "./pin-temporal-stability";
 
-/** Directional PIN window in ET minutes-since-midnight: [9:30, 15:30) — same gate as BREAKOUT /
- *  NEW_PLAY_CUTOFF / G-14. After 15:30, discovery continues ONLY for condor-eligible index roots
- *  until CONDOR_LATE_CUTOFF (no new seats after the directional cutoff). */
-const RTH_OPEN_ET_MINUTES = 9 * 60 + 30;
-const RTH_CUTOFF_ET_MINUTES = 15 * 60 + 30;
-/** Stop hunting new condors after the directional commit cutoff (3:30 PM ET). */
-const CONDOR_LATE_CUTOFF_ET_MINUTES = 15 * 60 + 30;
+// Window constants live in ./pin-window (pure, no `server-only`) so the scan orchestrator and unit
+// tests can read the SAME numbers without importing this provider-heavy module. Re-aliased to the
+// local names the body already uses. After 15:30, discovery continues ONLY for condor-eligible
+// index roots until CONDOR_LATE_CUTOFF (no new seats after the directional cutoff).
+const RTH_OPEN_ET_MINUTES = PIN_RTH_OPEN_ET_MINUTES;
+const RTH_CUTOFF_ET_MINUTES = PIN_RTH_CUTOFF_ET_MINUTES;
+const CONDOR_LATE_CUTOFF_ET_MINUTES = PIN_CONDOR_LATE_CUTOFF_ET_MINUTES;
 
 /** The curated LIQUID pin universe (see the file header). Index products first -- the deepest,
  *  most dealer-defended gamma and true daily 0DTE -- then mega-cap single names with high OI.

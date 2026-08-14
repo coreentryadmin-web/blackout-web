@@ -46,6 +46,13 @@ mock.module("../zerodte/scan", {
         upstream_ok: true,
         rejections: [],
         market_state: { confidence: 0, rail_weights: { FLOW: 1, BREAKOUT: 1, PIN: 1 }, regime_structure: null },
+        // Per-lane discovery provenance — a required field on ZeroDteScanResult, so the fake scan
+        // must carry it too or the payload gains a `discovery_health: undefined` key that survives
+        // an in-process compare but vanishes through JSON.
+        discovery_health: {
+          BREAKOUT: { status: "ok", setups: 0 },
+          PIN: { status: "ok", setups: 0 },
+        },
       };
     },
     gradeZeroDteLedger: async () => 0,

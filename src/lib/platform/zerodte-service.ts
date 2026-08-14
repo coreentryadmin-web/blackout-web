@@ -72,6 +72,7 @@ import { fetchDiscoveryFunnelHint, type DiscoveryFunnelHint } from "@/lib/zerodt
 // unchanged for callers that never touch the SPX badge.
 import { unavailableSpxSlayerBadge, type SpxSlayerBadge } from "@/features/spx/lib/spx-slayer-badge-map";
 import { gradeZeroDteLedger, readZeroDteLedgerChecked, scanZeroDteBoard, syncLedgerLiveState } from "@/lib/zerodte/scan";
+import { initialDiscoveryHealth, type DiscoveryHealth } from "@/lib/zerodte/discovery-health";
 import {
   readExitStampFromEntryContext,
   readTimelineTranchesFromEntryContext,
@@ -233,6 +234,11 @@ export type ZeroDteBoardPayload = {
     heat: ReturnType<typeof sessionHeat>;
   };
   setups: EnrichedZeroDteSetup[];
+  /** Per-lane provenance for the whole-market discovery origins (BREAKOUT / PIN). A lane that
+   *  fail-closed or threw contributes zero setups and the board keeps serving — this says WHICH,
+   *  so a shrunken roster reads as "a lane could not see" rather than "the market is quiet".
+   *  Never gates scoring; never adds a setup. */
+  discovery_health: DiscoveryHealth;
   ledger: ZeroDteBoardLedgerRow[];
   covered_elsewhere: string[];
   /** G-5 session risk state for the pane's governor strip — additive (PR-D). Null
@@ -629,7 +635,7 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
   const earningsFlags = matchEarnings(earningsSnap?.items ?? [], { today, nextDay });
   const newsFlags = matchHotNews(news, Date.now());
 
-  const { setups, nighthawk_covered, upstream_ok, market_state } = await scanZeroDteBoard({
+  const { setups, nighthawk_covered, upstream_ok, market_state, discovery_health } = await scanZeroDteBoard({
     earnings: earningsFlags,
     news: newsFlags,
   });
@@ -671,6 +677,7 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
     upstream_ok: upstream_ok && committedKnown,
     session: { date: today, trading_day: tradingDay, heat },
     setups: displaySetups,
+    discovery_health,
     ledger: ledgerRows.map((r) => {
       const row = mapLedgerRow(r, nighthawkEcho, liveMarks.get(r.ticker.toUpperCase()) ?? null);
       const setup = setupByTicker.get(r.ticker.toUpperCase()) ?? null;
@@ -878,6 +885,10 @@ function buildMinimalBoardFallback(): ZeroDteBoardPayload {
     upstream_ok: false,
     session: { date: today, trading_day: tradingDay, heat },
     setups: [],
+    // No scan ran on this path at all, so no lane has a market read to report — the all-`disabled`
+    // initial value is the honest one (paired with upstream_ok:false, which is what marks the board
+    // itself degraded). Reporting `ok` here would claim two lanes looked and saw nothing.
+    discovery_health: initialDiscoveryHealth(),
     ledger: [],
     covered_elsewhere: [],
     governor: null,
