@@ -9,6 +9,44 @@ already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
 
+## 2026-08-14 — [Thermal/GEX] Force-rebuild timing baseline — overnight, 20/20 clean, an order of magnitude under the cap
+
+**Severity.** — (no product defect found; this is a measurement, and it did NOT justify the config change it was run to justify)
+
+**Session.** First run of `scripts/audit/gex-force-rebuild-timing.mjs` (new), ~00:05 UTC, market phase **overnight**.
+
+**Why it ran.** `GEX_HEATMAP_FORCE_MAX_BLOCK_MS` defaults to 55s — a fail-closed deadline picked
+against the prod ALB's 120s idle timeout, not against measured rebuild cost. On 2026-08-13 SPY was
+observed at **56.7s WARM**, i.e. over the cap on a healthy system, which raised the question of
+whether the cap should move. A handful of ad-hoc samples is not enough to move a fail-closed
+deadline, so the point was to get a distribution.
+
+**Evidence** (n=5 per ticker after an excluded warmup, sequential, one long-lived session):
+
+| ticker | usable | p50 | p95 | max | over 55s cap |
+|---|---|---|---|---|---|
+| SPY | 5/5 | 5247ms | 5378ms | 5378ms | 0/5 |
+| SPX | 5/5 | 5667ms | 7299ms | 7299ms | 0/5 |
+| QQQ | 5/5 | 4175ms | 4438ms | 4438ms | 0/5 |
+| IWM | 5/5 | 1934ms | 2079ms | 2079ms | 0/5 |
+
+**Outcome — NO config change.** Overnight rebuilds run 2–7s, roughly an order of magnitude below
+the 55s cap. That does not vindicate the cap; it localises the 56.7s observation to load/RTH
+conditions this run cannot reproduce. Re-run during RTH before touching the env var — an overnight
+number is a floor, not the tail, and setting a fail-closed deadline from a floor is how you get a
+deadline that fires only when the system is busy.
+
+**Harness defect found and fixed in the same run (worth recording).** The first version
+authenticated once and never refreshed. A forced rebuild takes seconds, so the run outlived its
+~72s session JWT and the LAST tickers returned 401 in ~60ms while the first ones measured fine —
+printing `QQQ 1/5` and `IWM 0/5` on a healthy system. Read naively that says "IWM's matrix is broken
+and fast". Fixed with a 45s re-mint jar + one forced re-mint retry on a 401, and AUTH failures are
+now bucketed separately from rebuild failures so the probe can never blame the product for its own
+expired token. This is the same defect class as the thermal validator's 2026-08-13 fix — the second
+time one session's JWT lifetime has been mistaken for a product failure.
+
+**Status.** GREEN (measurement complete, config unchanged pending an RTH re-run).
+
 ## 2026-08-05 — [Grid/0DTE] Post-close fix agent — all validators GREEN (~3:18 PM PT / 6:18 PM ET)
 
 **Severity.** — (no additional product defects)
