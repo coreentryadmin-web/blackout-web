@@ -41,6 +41,11 @@ import {
   thermalComparePreset,
 } from "@/features/thermal/lib/thermal-compare-presets";
 import { prefetchGexHeatmapTickers } from "@/lib/gex-heatmap-prefetch";
+import {
+  downloadElementPng,
+  thermalCaptureFilename,
+  type ThermalCaptureView,
+} from "@/features/thermal/lib/capture-desk-png";
 // Client-safe by construction — heatmap-allowlist.ts is a pure data + predicate module and
 // deliberately does NOT `import "server-only"` (see the note at the top of that file).
 import { isHeatmapOverlayAllowed } from "@/lib/heatmap-allowlist";
@@ -2809,6 +2814,8 @@ export function GexHeatmap({
   // default here fixes the inconsistency at its source. See docs/audit/FINDINGS.md.
   const [compare, setCompare] = useState(() => urlBoot.compare);
   const compareDeskRef = useRef<ThermalTripleDeskHandle>(null);
+  const captureRef = useRef<HTMLDivElement>(null);
+  const [captureBusy, setCaptureBusy] = useState(false);
   const [compareDeskRefreshing, setCompareDeskRefreshing] = useState(false);
   const [compareSet, setCompareSet] = useState<ThermalComparePresetId>(() =>
     urlBoot.compareSet ?? resolveComparePresetIdForTicker(urlBoot.ticker ?? initialTicker),
@@ -3378,6 +3385,32 @@ export function GexHeatmap({
   // there's a real block to switch between (not during load / stale / empty states).
   const showViewTabs = !((isLoading && !data) || stale) && !empty && !blockEmpty;
   const showMatrixTabs = showViewTabs;
+
+  const captureView: ThermalCaptureView = compare
+    ? "grid"
+    : pairView === "pair-b"
+      ? "profile"
+      : pairView === "pair-c"
+        ? "depth"
+        : "matrix";
+  const canCaptureDesk = showViewTabs || (compare && !((isLoading && !data) || stale) && !empty);
+
+  const onDownloadCapture = useCallback(async () => {
+    const root = captureRef.current;
+    if (!root || captureBusy) return;
+    setCaptureBusy(true);
+    try {
+      await downloadElementPng(
+        root,
+        thermalCaptureFilename({ ticker, lens, view: captureView }),
+      );
+    } catch (err) {
+      console.error("[GexHeatmap] PNG capture failed:", err);
+      window.alert("Could not save PNG — try again after the matrix finishes loading.");
+    } finally {
+      setCaptureBusy(false);
+    }
+  }, [captureBusy, captureView, lens, ticker]);
 
   // Peak magnitude across the active block's cells drives the matrix color scale.
   const peak = useMemo(() => {
@@ -4176,6 +4209,7 @@ export function GexHeatmap({
             Recent Ranges was removed — matrix is the primary surface on this tab. */}
         <div
           ref={matrixScrollRef}
+          data-thermal-capture-expand
           className="spx-gex-matrix-scroll gex-matrix-scroll max-h-[clamp(480px,74vh,880px)] min-h-[clamp(360px,58vh,640px)] overflow-auto overscroll-contain"
           role="region"
           tabIndex={0}
@@ -4598,6 +4632,21 @@ export function GexHeatmap({
                 ↻
               </button>
             ) : null}
+            {canCaptureDesk ? (
+              <button
+                type="button"
+                className={clsx(
+                  "thermal-grid-refresh-btn thermal-capture-png-btn",
+                  captureBusy && "spx-matrix-refresh-btn--spinning",
+                )}
+                onClick={() => void onDownloadCapture()}
+                disabled={captureBusy}
+                title="Download a PNG snapshot of the current view to your device"
+                aria-label="Download PNG snapshot"
+              >
+                PNG
+              </button>
+            ) : null}
           </div>
           {live ? (
             <Badge tone="bull" dot>
@@ -4636,6 +4685,7 @@ export function GexHeatmap({
         </Tabs>
       </div>
 
+      <div ref={captureRef} className="thermal-desk-capture-root">
       {/* Key levels sit tight under the control row — matrix is the hero below. */}
       {showViewTabs && (
         <KeyLevelBox
@@ -4832,6 +4882,7 @@ export function GexHeatmap({
           )}
         </>
       )}
+      </div>
     </Panel>
   );
 }

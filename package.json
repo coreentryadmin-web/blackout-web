@@ -135,6 +135,7 @@
     "@whop/sdk": "0.0.42",
     "clsx": "^2.1.1",
     "framer-motion": "^11.18.2",
+    "html-to-image": "^1.11.13",
     "ioredis": "5.11.1",
     "jose": "^5.10.0",
     "lightweight-charts": "^5.2.0",
