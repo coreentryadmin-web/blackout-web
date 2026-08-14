@@ -8,6 +8,7 @@ import type { VectorDteHorizon } from "@/features/vector/lib/vector-dte-horizon"
 import type { VectorTimeframeMinutes } from "@/features/vector/lib/vector-bar-timeframes";
 import type { VectorWallLens } from "@/features/vector/lib/vector-wall-history";
 import type { VectorRegime } from "@/features/vector/lib/vector-regime";
+import type { VectorCompareChartSyncBind } from "@/features/vector/lib/vector-compare-sync";
 import { fmtCompareSpot } from "@/features/vector/lib/vector-compare-format";
 
 const VectorPageShell = dynamic(
@@ -47,6 +48,9 @@ type Props = {
   focusRail?: boolean;
   focusRailRow?: number;
   onRequestFocusExpand?: () => void;
+  compareSync?: VectorCompareChartSyncBind | null;
+  onCompareCrosshair?: (paneId: string, timeSec: number | null) => void;
+  onCompareVisibleRange?: (paneId: string, fromSec: number, toSec: number) => void;
 };
 
 export function VectorComparePane({
@@ -67,6 +71,9 @@ export function VectorComparePane({
   focusRail = false,
   focusRailRow,
   onRequestFocusExpand,
+  compareSync = null,
+  onCompareCrosshair,
+  onCompareVisibleRange,
 }: Props) {
   const [regime, setRegime] = useState<VectorRegime | null>(null);
   const [spot, setSpot] = useState<number | null>(
@@ -175,6 +182,9 @@ export function VectorComparePane({
           onCompareRegimeChange={handleRegime}
           onCompareSpotChange={handleSpot}
           compareDefaultLens={linked ? linkedLens : undefined}
+          compareSync={compareSync}
+          onCompareCrosshair={onCompareCrosshair}
+          onCompareVisibleRange={onCompareVisibleRange}
         />
       </div>
     </article>

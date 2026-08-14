@@ -17,6 +17,9 @@ type Props = {
   paneCount: number;
   linked: boolean;
   onToggleLinked: () => void;
+  linkedZoom: boolean;
+  onToggleLinkedZoom: () => void;
+  canLinkTime: boolean;
   focusExpanded: boolean;
   canFocusExpand: boolean;
   onToggleFocusExpand: () => void;
@@ -35,6 +38,9 @@ export function VectorCompareCommandBar({
   paneCount,
   linked,
   onToggleLinked,
+  linkedZoom,
+  onToggleLinkedZoom,
+  canLinkTime,
   focusExpanded,
   canFocusExpand,
   onToggleFocusExpand,
@@ -72,6 +78,7 @@ export function VectorCompareCommandBar({
           onClick={onToggleLinked}
           aria-pressed={linked}
           data-testid="vector-compare-linked"
+          title={linked ? "Linked — settings, crosshair, and optional zoom sync" : "Per-pane controls"}
         >
           <span className="vector-compare-link-icon" aria-hidden="true" />
           {linked ? "Linked" : "Per-pane"}
@@ -98,6 +105,19 @@ export function VectorCompareCommandBar({
             exposeTestIds={false}
           />
         </div>
+        {canLinkTime ? (
+          <button
+            type="button"
+            className={clsx("vector-compare-zoom-link-btn", linkedZoom && "is-active")}
+            onClick={onToggleLinkedZoom}
+            aria-pressed={linkedZoom}
+            disabled={!linked}
+            title="Sync pan/zoom window across charts"
+            data-testid="vector-compare-linked-zoom"
+          >
+            Sync zoom
+          </button>
+        ) : null}
       </div>
 
       <div className="vector-compare-command-presets" role="group" aria-label="Compare presets">

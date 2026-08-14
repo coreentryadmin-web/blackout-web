@@ -56,6 +56,16 @@ test("compare focus mode keeps panes mounted with hero + rail CSS", () => {
   assert.match(desk, /Escape/);
 });
 
+test("compare linked crosshair sync wiring", () => {
+  const desk = readFileSync(join(root, "src/features/vector/components/VectorCompareDesk.tsx"), "utf8");
+  assert.match(desk, /handleCompareCrosshair/);
+  assert.match(desk, /handleCompareVisibleRange/);
+  assert.match(desk, /compareSync=/);
+  const chart = readFileSync(join(root, "src/features/vector/components/VectorChart.tsx"), "utf8");
+  assert.match(chart, /setCrosshairPosition/);
+  assert.match(chart, /subscribeVisibleTimeRangeChange/);
+});
+
 test("VectorReplayControls tags replay state for iOS collapse", () => {
   const src = readFileSync(join(root, "src/features/vector/components/VectorReplayControls.tsx"), "utf8");
   assert.match(src, /data-replay-active/);
