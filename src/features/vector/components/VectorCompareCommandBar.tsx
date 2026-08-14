@@ -17,6 +17,9 @@ type Props = {
   paneCount: number;
   linked: boolean;
   onToggleLinked: () => void;
+  focusExpanded: boolean;
+  canFocusExpand: boolean;
+  onToggleFocusExpand: () => void;
   timeframe: VectorTimeframeMinutes;
   onTimeframe: (tf: VectorTimeframeMinutes) => void;
   dteHorizon: VectorDteHorizon;
@@ -32,6 +35,9 @@ export function VectorCompareCommandBar({
   paneCount,
   linked,
   onToggleLinked,
+  focusExpanded,
+  canFocusExpand,
+  onToggleFocusExpand,
   timeframe,
   onTimeframe,
   dteHorizon,
@@ -107,6 +113,19 @@ export function VectorCompareCommandBar({
           </button>
         ))}
       </div>
+
+      {canFocusExpand ? (
+        <button
+          type="button"
+          className={clsx("vector-compare-focus-btn", focusExpanded && "is-active")}
+          onClick={onToggleFocusExpand}
+          aria-pressed={focusExpanded}
+          title={focusExpanded ? "Return to grid (Esc)" : "Expand focused chart (F)"}
+          data-testid="vector-compare-focus-toggle"
+        >
+          {focusExpanded ? "Grid" : "Focus"}
+        </button>
+      ) : null}
 
       <button
         type="button"

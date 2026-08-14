@@ -43,6 +43,10 @@ type Props = {
   onMeta?: (ticker: string, meta: VectorComparePaneMeta) => void;
   focused: boolean;
   onFocus?: () => void;
+  focusHero?: boolean;
+  focusRail?: boolean;
+  focusRailRow?: number;
+  onRequestFocusExpand?: () => void;
 };
 
 export function VectorComparePane({
@@ -59,6 +63,10 @@ export function VectorComparePane({
   onMeta,
   focused,
   onFocus,
+  focusHero = false,
+  focusRail = false,
+  focusRailRow,
+  onRequestFocusExpand,
 }: Props) {
   const [regime, setRegime] = useState<VectorRegime | null>(null);
   const [spot, setSpot] = useState<number | null>(
@@ -100,11 +108,23 @@ export function VectorComparePane({
 
   return (
     <article
-      className={clsx("vector-compare-pane", focused && "is-focused")}
+      className={clsx(
+        "vector-compare-pane",
+        focused && "is-focused",
+        focusHero && "is-focus-hero",
+        focusRail && "is-focus-rail"
+      )}
       data-slot={slotIndex + 1}
-      onPointerDown={onFocus}
+      style={focusRail && focusRailRow ? { gridRow: focusRailRow } : undefined}
+      onPointerDown={() => onFocus?.()}
     >
-      <header className="vector-compare-pane-head">
+      <header
+        className="vector-compare-pane-head"
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          onRequestFocusExpand?.();
+        }}
+      >
         <div className="vector-compare-pane-head-left">
           <span className="vector-compare-pane-slot" aria-hidden="true">
             {slotIndex + 1}

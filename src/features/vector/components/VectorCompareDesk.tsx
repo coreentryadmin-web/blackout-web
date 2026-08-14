@@ -42,8 +42,11 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
   );
   const [lens, setLens] = useState<VectorWallLens>("gex");
   const [focusedTicker, setFocusedTicker] = useState<string | null>(seeds[0]?.ticker ?? null);
+  const [focusExpanded, setFocusExpanded] = useState(false);
   const [metaByTicker, setMetaByTicker] = useState<Record<string, VectorComparePaneMeta>>({});
   const [syncFlash, setSyncFlash] = useState(false);
+
+  const canFocusExpand = seeds.length >= 2;
 
   const exclude = useMemo(() => new Set(seeds.map((s) => s.ticker)), [seeds]);
   const liveSession = seeds.some((s) => s.liveSession) || todayEtYmd() === seeds[0]?.sessionYmd;
@@ -61,6 +64,22 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
     setSyncFlash(true);
     window.setTimeout(() => setSyncFlash(false), 420);
   }, []);
+
+  const enterFocusExpand = useCallback(
+    (ticker?: string) => {
+      if (seeds.length < 2) return;
+      if (ticker) setFocusedTicker(ticker);
+      setFocusExpanded(true);
+    },
+    [seeds.length]
+  );
+
+  const exitFocusExpand = useCallback(() => setFocusExpanded(false), []);
+
+  const toggleFocusExpand = useCallback(() => {
+    if (seeds.length < 2) return;
+    setFocusExpanded((v) => !v);
+  }, [seeds.length]);
 
   const loadTicker = useCallback(
     async (ticker: string) => {
@@ -136,14 +155,42 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
   }, [initialSeeds, seeds.length]);
 
   useEffect(() => {
+    if (!focusExpanded) return;
+    window.dispatchEvent(new Event("resize"));
+  }, [focusExpanded, focusedTicker]);
+
+  useEffect(() => {
+    if (!canFocusExpand) setFocusExpanded(false);
+  }, [canFocusExpand]);
+
+  useEffect(() => {
+    if (focusedTicker && !seeds.some((s) => s.ticker === focusedTicker)) {
+      setFocusedTicker(seeds[0]?.ticker ?? null);
+    }
+  }, [seeds, focusedTicker]);
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      if (e.key === "Escape" && focusExpanded) {
+        e.preventDefault();
+        exitFocusExpand();
+        return;
+      }
+
+      if ((e.key === "f" || e.key === "F") && !e.metaKey && !e.ctrlKey && !e.altKey && canFocusExpand) {
+        e.preventDefault();
+        toggleFocusExpand();
+        return;
+      }
+
       const idx = Number(e.key) - 1;
       if (idx >= 0 && idx < seeds.length) setFocusedTicker(seeds[idx]!.ticker);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [seeds]);
+  }, [seeds, focusExpanded, canFocusExpand, exitFocusExpand, toggleFocusExpand]);
 
   const onTimeframe = (tf: VectorTimeframeMinutes) => {
     setTimeframe(tf);
@@ -170,6 +217,9 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
           paneCount={seeds.length}
           linked={linked}
           onToggleLinked={() => setLinked((v) => !v)}
+          focusExpanded={focusExpanded}
+          canFocusExpand={canFocusExpand}
+          onToggleFocusExpand={toggleFocusExpand}
           timeframe={timeframe}
           onTimeframe={onTimeframe}
           dteHorizon={dteHorizon}
@@ -189,27 +239,44 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
         </div>
 
         <div
-          className={clsx("vector-compare-grid", syncFlash && "is-sync-flash")}
+          className={clsx(
+            "vector-compare-grid",
+            syncFlash && "is-sync-flash",
+            focusExpanded && canFocusExpand && "is-focus-expanded"
+          )}
           data-pane-count={gridSlotCount}
         >
-          {seeds.map((seed, i) => (
-            <VectorComparePane
-              key={seed.ticker}
-              seed={seed}
-              slotIndex={i}
-              syncEpoch={syncEpoch}
-              linked={linked}
-              linkedTimeframe={timeframe}
-              linkedDteHorizon={dteHorizon}
-              linkedLens={lens}
-              toolbarHideLinkedControls={linked}
-              onRemove={() => removeTicker(seed.ticker)}
-              removable={seeds.length > 1}
-              onMeta={handleMeta}
-              focused={focusedTicker === seed.ticker}
-              onFocus={() => setFocusedTicker(seed.ticker)}
-            />
-          ))}
+          {seeds.map((seed, i) => {
+            const isHero = focusExpanded && focusedTicker === seed.ticker;
+            const isRail = focusExpanded && focusedTicker !== seed.ticker;
+            const railRow = isRail
+              ? seeds.filter((s) => s.ticker !== focusedTicker).findIndex((s) => s.ticker === seed.ticker) +
+                1
+              : undefined;
+
+            return (
+              <VectorComparePane
+                key={seed.ticker}
+                seed={seed}
+                slotIndex={i}
+                syncEpoch={syncEpoch}
+                linked={linked}
+                linkedTimeframe={timeframe}
+                linkedDteHorizon={dteHorizon}
+                linkedLens={lens}
+                toolbarHideLinkedControls={linked}
+                onRemove={() => removeTicker(seed.ticker)}
+                removable={seeds.length > 1}
+                onMeta={handleMeta}
+                focused={focusedTicker === seed.ticker}
+                onFocus={() => setFocusedTicker(seed.ticker)}
+                focusHero={isHero}
+                focusRail={isRail}
+                focusRailRow={railRow}
+                onRequestFocusExpand={() => enterFocusExpand(seed.ticker)}
+              />
+            );
+          })}
           {showAddSlot ? (
             <div key="add-slot" className="vector-compare-slot-empty">
               <VectorCompareAddSlot
