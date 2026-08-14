@@ -108,6 +108,8 @@ export function VectorToolbar(props: Props) {
           interval={interval}
           onInterval={onInterval}
           disabled={timeframeDisabled}
+          exposeTestIds={false}
+          idSuffix="-compact"
         />
         <VectorIndicatorMenu
           enabled={indicators}

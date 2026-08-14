@@ -245,11 +245,19 @@ async function probeVectorStream(session) {
   if (issues.length) {
     rec("api:vector-stream-payload", "FAIL", issues.join("; "));
   } else {
+    const trail = last.wallTrailSec;
     rec(
       "api:vector-stream-payload",
       "PASS",
-      `gex=${hasGex} vex=${hasVex} candle=${hasCandle ? last.candle.close : "—"} hist=${last.wallHistory?.length ?? 0}`
+      `gex=${hasGex} vex=${hasVex} candle=${hasCandle ? last.candle.close : "—"} hist=${last.wallHistory?.length ?? 0} wallTrailSec=${trail ?? "—"}`
     );
+    if (trail == null || !Number.isFinite(trail)) {
+      rec("api:vector-stream-wallTrailSec", "FAIL", "missing wallTrailSec on SSE frame");
+    } else if (trail !== 5 && trail !== 15) {
+      rec("api:vector-stream-wallTrailSec", "FAIL", `unexpected wallTrailSec=${trail}`);
+    } else {
+      rec("api:vector-stream-wallTrailSec", "PASS", `${trail}s`);
+    }
   }
   return last;
 }
@@ -326,7 +334,8 @@ async function browserVector(session) {
 
   try {
     await page.goto(`${BASE}/vector`, { waitUntil: "domcontentloaded", timeout: 120_000 });
-    await page.waitForFunction(() => window.Clerk?.user?.id, { timeout: 60_000 });
+    // Cookies pre-injected — Clerk hydration can lag; wait for the chart shell instead.
+    await page.locator(".vector-chart-wrap").waitFor({ state: "visible", timeout: 90_000 });
 
     const comingSoon = await page.getByText("Coming soon", { exact: false }).count();
     if (comingSoon > 0) {
@@ -366,7 +375,7 @@ async function browserVector(session) {
     }
 
     // Timeframe selector (dropdown)
-    const tfSelect = page.locator('[data-testid="vector-tf-select"]');
+    const tfSelect = page.locator('.vector-toolbar > .flex.flex-wrap [data-testid="vector-tf-select"]');
     await tfSelect.waitFor({ state: "visible", timeout: 15_000 });
     for (const m of ["3", "5", "15", "1"]) {
       await tfSelect.selectOption(m);
