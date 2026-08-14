@@ -8695,12 +8695,13 @@ body::before {
     grid-template-columns: 1fr 1fr;
     grid-template-rows: minmax(0, 1fr);
   }
+  /* 50% hero left + two 25% stacks right (chart, chart, add — or three charts). */
   .vector-compare-grid[data-pane-count="3"] {
     grid-template-columns: 1fr 1fr;
     grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
   }
-  .vector-compare-grid[data-pane-count="3"] > :nth-child(3) {
-    grid-column: 1 / -1;
+  .vector-compare-grid[data-pane-count="3"] > :nth-child(1) {
+    grid-row: 1 / -1;
   }
   /* 2×2 quarters — use data-pane-count (purge-safe); dynamic BEM --N classes were stripped by Tailwind. */
   .vector-compare-grid[data-pane-count="4"] {
