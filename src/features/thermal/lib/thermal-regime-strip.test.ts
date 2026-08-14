@@ -53,6 +53,7 @@ describe("buildThermalRegimeStrip", () => {
     });
     assert.equal(model.badge?.text, "LONG GAMMA");
     assert.ok(model.segments.some((s) => s.key === "netGex" && s.value.includes("12.3B")));
+    assert.ok(model.segments.some((s) => s.key === "maxPain" && s.value === "763"));
     assert.ok(model.segments.some((s) => s.key === "vol" && s.value === "SUPPRESSED"));
     assert.ok(model.interpretation?.includes("dominant pin"));
   });
