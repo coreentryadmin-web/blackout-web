@@ -346,6 +346,8 @@ type Props = {
   defaultLens?: VectorWallLens;
   /** Compare grid: TF/DTE/lens live in the command bar instead of each toolbar. */
   toolbarHideLinkedControls?: boolean;
+  /** Compare grid: drop the volume sub-pane so price + beads get full height. */
+  hideVolumePane?: boolean;
   /** Compare linked time sync — crosshair + optional zoom from the desk bus. */
   compareSync?: VectorCompareChartSyncBind | null;
   onCompareCrosshair?: (paneId: string, timeSec: number | null) => void;
@@ -758,10 +760,15 @@ const PRICE_PANE_STRETCH = 8;
 const VOLUME_PANE_STRETCH = 1.4;
 const OSCILLATOR_PANE_STRETCH = 2.6;
 
-function applyPaneStretch(chart: IChartApi): void {
+function applyPaneStretch(chart: IChartApi, hideVolumePane = false): void {
   const panes = chart.panes();
   panes.forEach((pane, i) => {
-    const stretch = i === 0 ? PRICE_PANE_STRETCH : i === VOLUME_PANE_INDEX ? VOLUME_PANE_STRETCH : OSCILLATOR_PANE_STRETCH;
+    const stretch =
+      i === 0
+        ? PRICE_PANE_STRETCH
+        : !hideVolumePane && i === VOLUME_PANE_INDEX
+          ? VOLUME_PANE_STRETCH
+          : OSCILLATOR_PANE_STRETCH;
     pane.setStretchFactor(stretch);
   });
 }
@@ -1189,6 +1196,7 @@ export function VectorChart({
   fillHost = false,
   defaultLens,
   toolbarHideLinkedControls = false,
+  hideVolumePane = false,
   compareSync = null,
   onCompareCrosshair,
   onCompareVisibleRange,
@@ -1455,6 +1463,7 @@ export function VectorChart({
   const compareSyncRef = useRef(compareSync);
   const onCompareCrosshairRef = useRef(onCompareCrosshair);
   const onCompareVisibleRangeRef = useRef(onCompareVisibleRange);
+  const hideVolumePaneRef = useRef(hideVolumePane);
   const replayModeRef = useRef(false);
   const liveSessionRef = useRef(liveSession);
   /**
@@ -1476,7 +1485,8 @@ export function VectorChart({
     compareSyncRef.current = compareSync;
     onCompareCrosshairRef.current = onCompareCrosshair;
     onCompareVisibleRangeRef.current = onCompareVisibleRange;
-  }, [compareSync, onCompareCrosshair, onCompareVisibleRange]);
+    hideVolumePaneRef.current = hideVolumePane;
+  }, [compareSync, onCompareCrosshair, onCompareVisibleRange, hideVolumePane]);
 
   const [crosshair, setCrosshair] = useState<VectorCrosshairState | null>(null);
   const [lens, setLens] = useState<VectorWallLens>(defaultLens ?? "gex");
@@ -2123,14 +2133,16 @@ export function VectorChart({
     closes: number[]
   ) {
     const oscMap = oscillatorSeriesRef.current;
-    // Fixed order → contiguous pane indices starting at 2 (0 = price, 1 = the always-on volume pane).
+    const hideVolume = hideVolumePaneRef.current;
+    const oscPaneStart = hideVolume ? 1 : VOLUME_PANE_INDEX + 1;
+    // Fixed order → contiguous pane indices (0 = price; 1 = volume when shown; else oscillators at 1+).
     const active = (["rsi", "macd"] as const).filter((id) => enabled.has(id));
     const key = active.join(",");
     if (key !== lastOscKeyRef.current) {
       for (const s of oscMap.values()) chart.removeSeries(s);
       oscMap.clear();
       active.forEach((id, i) => {
-        const pane = i + VOLUME_PANE_INDEX + 1;
+        const pane = i + oscPaneStart;
         if (id === "rsi") {
           // `title` labels the pane's live value tag (2026-08-05 audit finding): an unlabeled
           // number in an unlabeled sub-pane gave no clue it was RSI without opening the toggle menu.
@@ -2151,8 +2163,8 @@ export function VectorChart({
       });
       lastOscKeyRef.current = key;
       // New oscillator panes start at the default stretch of 1 — reassert the layout so price stays
-      // dominant and the volume strip keeps its height as oscillators come and go.
-      applyPaneStretch(chart);
+      // dominant and the volume strip (when present) keeps its height as oscillators come and go.
+      applyPaneStretch(chart, hideVolume);
     }
     if (!active.length) return;
     if (active.includes("rsi")) {
@@ -3325,23 +3337,24 @@ export function VectorChart({
       },
     }, 0);
 
-    // Volume in its OWN sub-pane below price (like RSI/MACD), not overlaid on the candles. Pane 1 is
-    // reserved for volume; oscillator panes start at 2 (see paintOscillators). Stretch factors keep
-    // the price pane dominant and volume a thin strip — applyPaneStretch reasserts them whenever the
-    // oscillator panes are (re)built.
-    const volumeSeries = chart.addSeries(
-      HistogramSeries,
-      {
-        priceFormat: { type: "volume" },
-        lastValueVisible: false,
-        priceLineVisible: false,
-      },
-      VOLUME_PANE_INDEX
-    );
-    volumeSeries.priceScale().applyOptions({
-      scaleMargins: { top: 0.1, bottom: 0 },
-    });
-    applyPaneStretch(chart);
+    // Volume in its OWN sub-pane below price (like RSI/MACD), not overlaid on the candles. Compare
+    // panes omit volume entirely so candles + beads get the full pane height.
+    let volumeSeries: ISeriesApi<"Histogram"> | null = null;
+    if (!hideVolumePaneRef.current) {
+      volumeSeries = chart.addSeries(
+        HistogramSeries,
+        {
+          priceFormat: { type: "volume" },
+          lastValueVisible: false,
+          priceLineVisible: false,
+        },
+        VOLUME_PANE_INDEX
+      );
+      volumeSeries.priceScale().applyOptions({
+        scaleMargins: { top: 0.1, bottom: 0 },
+      });
+    }
+    applyPaneStretch(chart, hideVolumePaneRef.current);
 
     const initialDisplay = displayBarsFromMinute(initialBars, initialTimeframe);
     applyDisplayBars(series, volumeSeries, initialDisplay);
@@ -3708,7 +3721,7 @@ export function VectorChart({
    * as the session progresses, same cadence as spyVolumeForMinuteBar's own 55s server cache.
    */
   useEffect(() => {
-    if (!chartReady || ticker !== "SPX") return;
+    if (!chartReady || ticker !== "SPX" || hideVolumePaneRef.current) return;
     let cancelled = false;
     const backfill = async () => {
       try {

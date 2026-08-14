@@ -119,6 +119,8 @@ type Props = {
   onEnterCompare?: () => void;
   /** Compare pane: hide TF/DTE/lens in chart toolbar (command bar owns them). */
   toolbarHideLinkedControls?: boolean;
+  /** Compare pane: omit volume histogram sub-pane for taller price + beads. */
+  hideVolumePane?: boolean;
   /** Compare pane: lift regime/spot to pane header. */
   onCompareRegimeChange?: (regime: VectorRegime) => void;
   onCompareSpotChange?: (spot: number) => void;
@@ -174,6 +176,7 @@ export function VectorPageShell({
   tickerNavBusy,
   onEnterCompare,
   toolbarHideLinkedControls,
+  hideVolumePane,
   onCompareRegimeChange,
   onCompareSpotChange,
   compareDefaultLens,
@@ -536,6 +539,7 @@ export function VectorPageShell({
           defaultChartViewport={defaultChartViewport}
           defaultLens={compareDefaultLens}
           toolbarHideLinkedControls={toolbarHideLinkedControls}
+          hideVolumePane={hideVolumePane}
           compareSync={compareSync}
           onCompareCrosshair={onCompareCrosshair}
           onCompareVisibleRange={onCompareVisibleRange}
