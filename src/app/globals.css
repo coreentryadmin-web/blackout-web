@@ -9399,11 +9399,11 @@ body::before {
     white-space: nowrap;
   }
 
-  /* Thermal matrix — strike tight, expiry compact, net-flow column eats remaining width. */
+  /* Thermal matrix — strike tight, expiry readable, net-flow fixed (no width hog). */
   .thermal-matrix-table {
     table-layout: fixed;
-    width: 100%;
-    min-width: max-content;
+    width: max-content;
+    max-width: 100%;
   }
 
   .thermal-matrix-col-strike {
@@ -9411,12 +9411,13 @@ body::before {
   }
 
   .thermal-matrix-col-expiry {
-    width: 4.65rem;
+    width: 5.85rem;
   }
 
-  /* No explicit width — fixed-layout remainder goes to net flow. */
+  /* Fixed rail width — do not absorb leftover table width on wide desks. */
   .thermal-matrix-col-flow {
-    min-width: 14rem;
+    width: 10.75rem;
+    max-width: 10.75rem;
   }
 
   .thermal-matrix-head-strike {
@@ -9438,6 +9439,8 @@ body::before {
 
   .thermal-matrix-head-expiry {
     text-align: center;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
   }
 
   .thermal-matrix-head-net {
@@ -9475,6 +9478,11 @@ body::before {
   .thermal-matrix-flow-cell {
     padding-left: 0.35rem !important;
     padding-right: 0.45rem !important;
+  }
+
+  .thermal-matrix-expiry-cell {
+    padding-left: 0.5rem !important;
+    padding-right: 0.5rem !important;
   }
 
   .thermal-matrix-flow-rail-wrap {
