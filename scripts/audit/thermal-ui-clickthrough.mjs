@@ -140,12 +140,12 @@ async function runClickthrough(page) {
   if ((await legend.count()) > 0) rec("matrix:colour-legend", "PASS");
   else rec("matrix:colour-legend", "WARN", "legend missing on matrix tab");
 
-  // Key levels box
-  const keyLevels = page.locator(".thermal-key-levels, .gex-key-levels").first();
+  // Key levels / regime strip
+  const keyLevels = page.locator(".thermal-regime-strip, .thermal-key-levels, .gex-key-levels").first();
   if (await keyLevels.isVisible().catch(() => false)) {
     rec("key-levels:visible", "PASS");
   } else {
-    rec("key-levels:visible", "WARN", "key levels box not visible");
+    rec("key-levels:visible", "WARN", "regime strip not visible");
   }
 
   // ── View tabs: Matrix | Profile | Depth ──

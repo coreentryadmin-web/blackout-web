@@ -244,8 +244,11 @@ async function main() {
             ["Gamma Flip", flip, rendered.flip],
             ["Call Wall", callWall, rendered.callWall],
             ["Put Wall", putWall, rendered.putWall],
-            ["Max Pain", servedMaxPain, rendered.maxPain],
           ];
+          // Regime strip omits Max Pain on the GEX row — only assert when the tile is rendered.
+          if (rendered.maxPain != null) {
+            checks.push(["Max Pain", servedMaxPain, rendered.maxPain]);
+          }
           const bad = checks.filter(([n, w, g]) => !cmpStrike(n, w, g));
           const gotNet = parseTile(rendered.netGex);
           const netOk =

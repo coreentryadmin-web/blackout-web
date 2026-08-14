@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { gammaShareByExpiry } from "@/features/thermal/lib/gex-heatmap/per-expiry-levels";
 import { gexWallsFromStrikeTotals } from "@/lib/providers/gex-cross-validation-core";
@@ -25,7 +25,6 @@ import ThermalTripleDesk, {
 import { ThermalGridSectorPicker } from "@/features/thermal/components/ThermalGridSectorPicker";
 import {
   buildThermalUrlSearch,
-  honestLevelEmpty,
   keyLevelsKicker,
   keyLevelsFootnoteCompact,
   netFlowHeaderTooltip,
@@ -49,7 +48,7 @@ import {
 // Client-safe by construction — heatmap-allowlist.ts is a pure data + predicate module and
 // deliberately does NOT `import "server-only"` (see the note at the top of that file).
 import { isHeatmapOverlayAllowed } from "@/lib/heatmap-allowlist";
-import { GEX_KING_COMPACT_LABEL, GEX_KING_DUAL_LABEL, GEX_KING_NODE_HELP, gexKingDualLabel } from "@/lib/gex-king-node-labels";
+import { GEX_KING_COMPACT_LABEL, GEX_KING_DUAL_LABEL, GEX_KING_NODE_HELP } from "@/lib/gex-king-node-labels";
 import { shiftPercentForStrike, fmtShiftPercentForStrike } from "@/features/thermal/lib/gex-heatmap/shift-math";
 import { createPulseEventSource, type PulseStreamSnapshot } from "@/lib/api";
 import { usePollIntervalMs, useEtMarketOpen } from "@/hooks/use-et-market-open";
@@ -90,6 +89,8 @@ import {
 } from "@/lib/gex-shift-leaders";
 import { GexMatrixShiftBadge } from "@/components/gex/GexMatrixShiftBadge";
 import { GexShiftLeadersStrip } from "@/components/gex/GexShiftLeadersStrip";
+import { ThermalRegimeStrip } from "@/features/thermal/components/ThermalRegimeStrip";
+import { buildThermalRegimeStrip } from "@/features/thermal/lib/thermal-regime-strip";
 
 /** GEX regime read derived server-side from spot vs the gamma flip. */
 type GexRegime = {
@@ -611,65 +612,6 @@ function recomputeLevels(
     }
   }
   return { posWall, negWall, flip };
-}
-
-// ---------------------------------------------------------------------------
-// Accessible info affordance (Rank 8) — a focusable "ⓘ" trigger that reveals a
-// short plain-language explainer. No UI Tooltip/Popover primitive exists, so this
-// is a self-contained accessible implementation: the trigger is a real <button>,
-// labeled, with aria-describedby pointing at the bubble; hover OR focus opens it,
-// blur/mouseleave AND Escape close it. Brand colors only, reduced-motion safe.
-// ---------------------------------------------------------------------------
-
-function InfoTip({ label, text }: { label: string; text: string }) {
-  const [open, setOpen] = useState(false);
-  const id = useId();
-  return (
-    <span
-      className="relative inline-flex"
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
-    >
-      <button
-        type="button"
-        aria-label={`${label} — what this means`}
-        aria-describedby={open ? id : undefined}
-        aria-expanded={open}
-        onFocus={() => setOpen(true)}
-        onBlur={() => setOpen(false)}
-        onClick={(e) => {
-          e.stopPropagation();
-          setOpen((v) => !v);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Escape") setOpen(false);
-        }}
-        className={clsx(
-          "tap44 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border text-[8px] font-bold leading-none outline-none transition-colors",
-          "border-sky-400/40 text-sky-300 hover:border-sky-400/80 hover:text-white",
-          "focus-visible:ring-2 focus-visible:ring-sky-400"
-        )}
-      >
-        <span aria-hidden>i</span>
-      </button>
-      {open && (
-        <span
-          id={id}
-          role="tooltip"
-          className={clsx(
-            "absolute left-1/2 top-full z-40 mt-1.5 w-56 -translate-x-1/2 rounded-lg border border-sky-400/30 px-3 py-2",
-            "bg-[rgba(6,9,16,0.97)] text-[11px] leading-snug text-sky-100 shadow-xl backdrop-blur",
-            "motion-safe:transition-opacity"
-          )}
-        >
-          <span className="mb-0.5 block font-mono text-[9px] uppercase tracking-[0.18em] text-sky-300/80">
-            {label}
-          </span>
-          {text}
-        </span>
-      )}
-    </span>
-  );
 }
 
 /** Plain-language per-metric explainers — the SpotGamma "legibility" layer (Rank 8). */
@@ -2001,39 +1943,8 @@ function MatrixFreshness({ asof }: { asof: string | undefined }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Key-level tone palette — semantic color identity by meaning (walls gold, flip
-// cyan, support/net bear-or-bull, max-pain sky). Consumed by the consolidated
-// CompactLevel cells below. Brand tokens only, never grey.
-// ---------------------------------------------------------------------------
-
-type TileTone = "flip" | "wall" | "support" | "sky" | "bull" | "bear";
-
-const TILE_TONE: Record<
-  TileTone,
-  { value: string; border: string; glow: string; rgb: string }
-> = {
-  flip: { value: "text-cyan-300", border: "border-cyan-400/30", glow: "#22d3ee", rgb: "34,211,238" },
-  wall: { value: "text-gold", border: "border-gold/35", glow: "#ffd23f", rgb: "255,210,63" },
-  support: { value: "text-bear", border: "border-bear/30", glow: "#ff2d55", rgb: "255,45,85" },
-  sky: { value: "text-sky-300", border: "border-sky-400/30", glow: "#7dd3fc", rgb: "125,211,252" },
-  bull: { value: "text-bull", border: "border-bull/30", glow: "#a3e635", rgb: "0,230,118" },
-  bear: { value: "text-bear", border: "border-bear/30", glow: "#ff2d55", rgb: "255,45,85" },
-};
-
-/**
- * Optional "vs prior close" delta chip on a key-level cell. `text` is the already-formatted
- * change (e.g. "+5.0", "held", "+$1.2M"); `tone` colors it bull/bear/neutral. "held"
- * (no change) reads neutral sky. Rendered as a tiny chip on the CompactLevel cell — never
- * fabricated (callers pass `delta` only when a real prior value exists).
- */
+/** Optional vs-prior-close delta for the regime strip net-GEX chip — never fabricated. */
 type TileDelta = { text: string; tone: "bull" | "bear" | "neutral"; note?: string };
-
-const TILE_DELTA_HEX: Record<TileDelta["tone"], string> = {
-  bull: "#a3e635",
-  bear: "#ff2d55",
-  neutral: "#7dd3fc",
-};
 
 // ---------------------------------------------------------------------------
 // Flow summary — net premium tilt for the ticker today (bull calls / bear puts),
@@ -2353,93 +2264,6 @@ function AlertsStrip({ events }: { events: GexEvent[] }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Key-level box (consolidated) — ONE compact bordered panel of small label-over-
-// value cells, replacing the old ~6 big RegimeTile cards that ate vertical space.
-// Mirrors the SpxSniperHeader metric-block pattern: a tight grid of tiny cells in
-// a single grouped box. Values stay semantically colored (call=emerald, put=bear,
-// flip/max-pain=sky, net by sign). The ANCHOR cell is visually DISTINCT (bright-white-
-// accented, ◆ anchor glyph) so the dominant node still pops inside the box.
-// Brand tokens only, never grey; reduced-motion safe (static, opacity-only chrome).
-// ---------------------------------------------------------------------------
-
-/** One compact key-level cell — label over value, tinted by tone. The anchor cell
- *  carries a bright-white accent + ◆ glyph so it reads distinctly inside the grouped box. */
-type LevelCell = {
-  /** Stable key for the cell (also drives React keys). */
-  key: string;
-  label: string;
-  value: string;
-  /** Color identity — reuses the RegimeTile tone palette (flip/wall/support/sky/bull/bear). */
-  tone: TileTone;
-  /** Dim the cell when its level is absent (value "—") so empty levels recede. */
-  active?: boolean;
-  /** Plain-language explainer surfaced via the accessible InfoTip. */
-  help?: string;
-  /** Day-over-day "vs prior close" delta chip (GEX history) — never fabricated. */
-  delta?: TileDelta | null;
-  /** The ANCHOR cell — bright-white-accented, distinct, leads with the ◆ glyph. */
-  anchor?: boolean;
-};
-
-function CompactLevel({ cell }: { cell: LevelCell }) {
-  const t = TILE_TONE[cell.tone];
-  const active = cell.active ?? true;
-  return (
-    <div
-      // Stable hooks for the live UI validator. Without them a harness has to parse the box's
-      // innerText, which folds in the InfoTip copy and the "vs prior close" delta chips — so a
-      // wording change silently turns a real assertion into one that matches nothing.
-      data-level={cell.key}
-      className={clsx(
-        "relative flex min-w-0 flex-col gap-0.5 rounded-lg border px-2 py-1",
-        cell.anchor
-          ? "border-white/45 bg-[rgba(12,13,16,0.6)]"
-          : active
-            ? clsx(t.border, "bg-[rgba(8,9,14,0.55)]")
-            : "border-white/10 bg-[rgba(8,9,14,0.4)]"
-      )}
-      style={
-        cell.anchor
-          ? { boxShadow: "inset 0 0 18px rgba(255,255,255,0.08)" }
-          : undefined
-      }
-    >
-      <span
-        className={clsx(
-          "flex items-center gap-1 font-mono text-[8px] uppercase tracking-[0.16em]",
-          cell.anchor ? "text-white" : "text-sky-300/75"
-        )}
-      >
-        {cell.anchor && <AnchorGlyph size={9} />}
-        <span className="truncate">{cell.label}</span>
-        {cell.help && <InfoTip label={cell.label} text={cell.help} />}
-      </span>
-      <span
-        data-level-value={cell.key}
-        className={clsx(
-          "font-mono text-[14px] font-bold leading-none tabular-nums",
-          cell.anchor ? "text-white" : active ? t.value : "text-sky-300/55"
-        )}
-      >
-        {cell.value}
-      </span>
-      {cell.delta && (
-        <span
-          className="mt-0.5 inline-flex w-fit items-center rounded px-1 py-px font-mono text-[8px] font-bold tabular-nums"
-          style={{
-            color: TILE_DELTA_HEX[cell.delta.tone],
-            backgroundColor: `${TILE_DELTA_HEX[cell.delta.tone]}1f`,
-          }}
-          title={cell.delta.note}
-        >
-          {cell.delta.text}
-        </span>
-      )}
-    </div>
-  );
-}
-
 /**
  * SYNTHETIC ORDER BOOK — the depth ladder.
  *
@@ -2731,66 +2555,6 @@ function MatrixLegend({ lens, vocab }: { lens: GexHeatmapLens; vocab: LensVocab 
           </span>
         );
       })}
-    </div>
-  );
-}
-
-function KeyLevelBox({
-  cells,
-  kicker,
-  footnote,
-  className,
-  trailing,
-}: {
-  cells: LevelCell[];
-  kicker: string;
-  footnote?: string | null;
-  className?: string;
-  /** Optional trailing slot (e.g. Flow Today HELIX) — sits flush on the key-levels row. */
-  trailing?: ReactNode;
-}) {
-  return (
-    <div
-      className={clsx(
-        "rounded-xl border border-white/12 bg-[rgba(8,9,14,0.55)] px-3 py-2 backdrop-blur",
-        className
-      )}
-    >
-      <div className="mb-1.5 flex items-center justify-between">
-        <span className="font-mono text-[9px] uppercase tracking-[0.22em] text-sky-300/75">
-          Key levels
-        </span>
-        <span
-          // Addressable on its own: the box's innerText also carries every tile's InfoTip copy,
-          // and the Max Pain tip literally contains "Scoped to <date>" — so a scope assertion made
-          // against the whole box matches the TOOLTIP and passes while the kicker still reads
-          // "near-term". Caught by the pre-deploy control run of per-expiry-levels-ui-audit.
-          data-key-levels-kicker
-          className="font-mono text-[9px] uppercase tracking-[0.2em] text-sky-300/70"
-        >
-          {kicker}
-        </span>
-      </div>
-      <div className="flex flex-col gap-1.5 xl:flex-row xl:items-stretch">
-        <div
-          className={clsx(
-            "grid min-w-0 flex-1 gap-1.5",
-            trailing
-              ? "grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-6"
-              : "grid-cols-2 sm:grid-cols-3 lg:grid-cols-6"
-          )}
-        >
-          {cells.map((cell) => (
-            <CompactLevel key={cell.key} cell={cell} />
-          ))}
-        </div>
-        {trailing ? (
-          <div className="min-w-0 shrink-0 xl:w-[min(100%,15.5rem)]">{trailing}</div>
-        ) : null}
-      </div>
-      {footnote ? (
-        <p className="mt-1.5 font-mono text-[9px] leading-snug text-sky-300/60">{footnote}</p>
-      ) : null}
     </div>
   );
 }
@@ -3345,15 +3109,6 @@ export function GexHeatmap({
       ? data.max_pain_by_expiry[selectedExpiries[0]]
       : undefined;
   const keyMaxPain = scopedMaxPain !== undefined ? scopedMaxPain : maxPain;
-  // Is each wall actually on the side of price its label implies?
-  //
-  // computeGexWalls (and gexWallsFromStrikeTotals) split by the SIGN of net dealer gamma and take
-  // no spot argument at all, so neither wall is guaranteed to sit where its name suggests. Most
-  // sessions they do and nobody notices; when they do not, the tile would otherwise assert
-  // "support" for a strike overhead. Null spot or null wall degrades to the plain label rather
-  // than guessing a side.
-  const putWallIsSupport = keyNegWall == null || spot == null || !(spot > 0) || keyNegWall <= spot;
-  const callWallIsResistance = keyPosWall == null || spot == null || !(spot > 0) || keyPosWall >= spot;
 
   // Which expiry the row is actually describing, and how much of the near-spot gamma it owns.
   const scopedExpiryLabel = selectedExpiries?.length === 1 ? selectedExpiries[0] : null;
@@ -3809,14 +3564,6 @@ export function GexHeatmap({
   // The tooltip has to name the expiry the tile ACTUALLY used, which is the scoped one when the
   // member has picked a single expiry — naming `zeroDteExpiry` there would describe a value the
   // tile is not showing.
-  const maxPainHelp = useMemo(() => {
-    const label = scopedExpiryLabel ?? zeroDteExpiry;
-    if (label) {
-      return `${METRIC_HELP.maxPain} Scoped to ${fmtExpiry(label)}.`;
-    }
-    return METRIC_HELP.maxPain;
-  }, [scopedExpiryLabel, zeroDteExpiry]);
-
   const keyLevelsScopeKicker = useMemo(
     () => {
       const base = keyLevelsKicker(
@@ -3832,222 +3579,62 @@ export function GexHeatmap({
     },
     [compare, ticker, lensUpper, stale, data?.near_term_expiries, scopedExpiryLabel, scopedShare]
   );
-  // The old ~6 big cards (flip / call wall / put wall / max pain / net / anchor) collapse
-  // into ONE compact box of small label-over-value cells. Per-lens cell sets mirror the
-  // prior RegimeTile sets exactly (same values, tones, help, "vs prior close" deltas):
-  // GEX/VEX carry flip + two walls + max-pain + net; DEX/CHARM are zero-level + net + posture.
-  // The ANCHOR cell (GEX only, when a dominant node exists) is bright-white-accented + distinct so
-  // it still pops inside the grouped box — same all-expiry anchor the card used (matrixAnchorStrike).
-  const levelCells = useMemo<LevelCell[]>(() => {
-    if (lens === "gex") {
-      const cellsOut: LevelCell[] = [
-        {
-          key: "flip",
-          label: "Gamma Flip",
-          value: keyFlip != null ? fmtStrike(keyFlip) : honestLevelEmpty("flip").value,
-          tone: "flip",
-          active: keyFlip != null,
-          help: flip != null ? METRIC_HELP.gammaFlip : honestLevelEmpty("flip").help,
-          delta: gexTileDeltas?.flip ?? null,
-        },
-        {
-          key: "callWall",
-          label: "Call Wall",
-          value: keyPosWall != null ? fmtStrike(keyPosWall) : "—",
-          // A wall on the WRONG SIDE of price is not a directional level, so it must not be
-          // painted as one. See putWall below for the full reasoning; this is its mirror.
-          tone: callWallIsResistance ? "bull" : "wall",
-          active: keyPosWall != null,
-          help: callWallIsResistance ? METRIC_HELP.callWall : METRIC_HELP.callWallBelowSpot,
-          delta: gexTileDeltas?.callWall ?? null,
-        },
-        {
-          key: "putWall",
-          label: "Put Wall",
-          value: keyNegWall != null ? fmtStrike(keyNegWall) : "—",
-          // `tone: "support"` was unconditional. The wall is picked by the SIGN of net dealer
-          // gamma with no reference to spot, so it can sit ABOVE price — live 2026-08-12, SPX spot
-          // 7752 with 8000 at -1.605B beating 7400 at -1.485B. The strike is right; calling it
-          // SUPPORT when it is 250 points overhead is not, and "support above me" is the one
-          // reading a trader must never be handed. Neutral tone + honest copy in that case.
-          tone: putWallIsSupport ? "support" : "wall",
-          active: keyNegWall != null,
-          help: putWallIsSupport ? METRIC_HELP.putWall : METRIC_HELP.putWallAboveSpot,
-          delta: gexTileDeltas?.putWall ?? null,
-        },
-        {
-          key: "maxPain",
-          label: "Max Pain",
-          value: keyMaxPain != null ? fmtStrike(keyMaxPain) : "—",
-          tone: "sky",
-          active: keyMaxPain != null,
-          help: maxPainHelp,
-        },
-        {
-          key: "netGex",
-          label: "Net GEX",
-          value: fmtMoneySigned(keyTotal),
-          tone: keyTotal >= 0 ? "bull" : "bear",
-          help: METRIC_HELP.netGex,
-          delta: gexTileDeltas?.netGex ?? null,
-        },
-      ];
-      // ANCHOR cell — bright-white-distinct, the dominant all-expiry node (GEX only). Slots last
-      // so the structural levels read left→right; the white accent makes it pop regardless.
-      if (matrixAnchorStrike != null) {
-        const kingScope =
-          scopedExpiryLabel != null
-            ? fmtExpiry(scopedExpiryLabel)
-            : expiryScope === "all"
-              ? "near-term"
-              : scopeLabel;
-        cellsOut.push({
-          key: "anchor",
-          label: gexKingDualLabel(kingScope),
-          value: fmtStrike(matrixAnchorStrike),
-          tone: "wall",
-          anchor: true,
-          help: GEX_KING_NODE_HELP,
-        });
-      }
-      return cellsOut;
-    }
-    if (lens === "vex") {
-      return [
-        {
-          key: "flip",
-          label: "Vanna Flip",
-          value: keyFlip != null ? fmtStrike(keyFlip) : "—",
-          tone: "flip",
-          active: keyFlip != null,
-          help: METRIC_HELP.vannaFlip,
-        },
-        {
-          key: "posWall",
-          label: "+Vanna Wall",
-          value: keyPosWall != null ? fmtStrike(keyPosWall) : "—",
-          tone: "sky",
-          active: keyPosWall != null,
-          help: METRIC_HELP.posVannaWall,
-        },
-        {
-          key: "negWall",
-          label: "−Vanna Wall",
-          value: keyNegWall != null ? fmtStrike(keyNegWall) : "—",
-          tone: "wall",
-          active: keyNegWall != null,
-          help: METRIC_HELP.negVannaWall,
-        },
-        {
-          key: "maxPain",
-          label: "Max Pain",
-          value: keyMaxPain != null ? fmtStrike(keyMaxPain) : "—",
-          tone: "sky",
-          active: keyMaxPain != null,
-          help: maxPainHelp,
-        },
-        {
-          key: "netVex",
-          label: "Net VEX",
-          value: fmtMoneySigned(keyTotal),
-          tone: keyTotal >= 0 ? "sky" : "bear",
-          help: METRIC_HELP.netVex,
-        },
-      ];
-    }
-    if (lens === "dex") {
-      const cells: LevelCell[] = [
-        {
-          key: "zero",
-          label: "Delta-Zero",
-          value: keyFlip != null ? fmtStrike(keyFlip) : "—",
-          tone: "flip",
-          active: keyFlip != null,
-          help: METRIC_HELP.deltaZero,
-        },
-        {
-          key: "netDex",
-          label: "Net DEX",
-          value: fmtMoneySigned(keyTotal),
-          tone: keyTotal >= 0 ? "flip" : "bear",
-          help: METRIC_HELP.netDex,
-        },
-        {
-          key: "posture",
-          label: "Posture",
-          value: dexPosture === "long" ? "Long δ" : dexPosture === "short" ? "Short δ" : "—",
-          tone: dexPosture === "long" ? "bull" : "bear",
-          active: dexPosture != null,
-          help: METRIC_HELP.dexPosture,
-        },
-      ];
-      // GEX shift Δ — intraday net gamma migration since last snapshot (proxy for regime shift).
-      // Absent when no GEX shift history collected yet (honesty rule — never fabricated).
-      if (gexShiftNet != null) {
-        cells.push({
-          key: "gexShiftDelta",
-          label: "GEX Shift Δ",
-          value: fmtMoneySigned(gexShiftNet),
-          tone: gexShiftNet >= 0 ? "bull" : "bear",
-          help: "Net intraday GEX migration since the last snapshot — indicates whether dealer gamma is building (positive) or unwinding (negative) this session.",
-        });
-      }
-      return cells;
-    }
-    // charm
-    const charmCells: LevelCell[] = [
-      {
-        key: "zero",
-        label: "Charm-Zero",
-        value: keyFlip != null ? fmtStrike(keyFlip) : "—",
-        tone: "wall",
-        active: keyFlip != null,
-        help: METRIC_HELP.charmZero,
-      },
-      {
-        key: "netCharm",
-        label: "Net CHARM",
-        value: fmtMoneySigned(keyTotal),
-        tone: keyTotal >= 0 ? "wall" : "bear",
-        help: METRIC_HELP.netCharm,
-      },
-      {
-        key: "posture",
-        label: "Posture",
-        value: charmPosture === "positive" ? "Positive" : charmPosture === "negative" ? "Negative" : "—",
-        tone: charmPosture === "positive" ? "wall" : "bear",
-        active: charmPosture != null,
-        help: METRIC_HELP.charmPosture,
-      },
-    ];
-    // GEX shift Δ — same intraday proxy as DEX (charm has no own shift data).
-    if (gexShiftNet != null) {
-      charmCells.push({
-        key: "gexShiftDelta",
-        label: "GEX Shift Δ",
-        value: fmtMoneySigned(gexShiftNet),
-        tone: gexShiftNet >= 0 ? "bull" : "bear",
-        help: "Net intraday GEX migration since the last snapshot — indicates whether dealer gamma is building (positive) or unwinding (negative) this session.",
-      });
-    }
-    return charmCells;
-  }, [keyFlip, keyPosWall, keyNegWall, keyMaxPain, keyTotal, 
-    lens,
-    flip,
-    posWall,
-    negWall,
-    maxPain,
-    total,
-    matrixAnchorStrike,
-    gexTileDeltas,
-    dexPosture,
-    charmPosture,
-    gexShiftNet,
-    maxPainHelp,
-    scopedExpiryLabel,
-    expiryScope,
-    scopeLabel,
-  ]);
+  // Intelligence strip — one readable regime line + grounded interpretation (replaces tile grid).
+  const regimeStripModel = useMemo(
+    () =>
+      buildThermalRegimeStrip({
+        lens,
+        kicker: keyLevelsScopeKicker,
+        footnote: keyLevelsScopeFootnote,
+        spot,
+        flip: keyFlip,
+        callWall: keyPosWall,
+        putWall: keyNegWall,
+        maxPain: keyMaxPain,
+        netTotal: keyTotal,
+        magnetStrike: matrixAnchorStrike,
+        gammaPosture:
+          lens === "gex" && spot > 0 && keyFlip != null
+            ? spot >= keyFlip
+              ? "long"
+              : "short"
+            : data?.gex?.regime?.posture ?? null,
+        vannaPosture: data?.vex?.regime?.posture ?? null,
+        dexPosture,
+        charmPosture,
+        netDelta: lens === "gex" ? (gexTileDeltas?.netGex?.text ?? null) : null,
+        netDeltaTone: lens === "gex" ? (gexTileDeltas?.netGex?.tone ?? null) : null,
+        serverRead:
+          lens === "gex"
+            ? (data?.gex?.regime?.read ?? null)
+            : lens === "vex"
+              ? (data?.vex?.regime?.read ?? null)
+              : lens === "dex"
+                ? (data?.dex?.regime?.read ?? null)
+                : (data?.charm?.regime?.read ?? null),
+        gexShiftNet: lens === "dex" || lens === "charm" ? gexShiftNet : null,
+      }),
+    [
+      lens,
+      keyLevelsScopeKicker,
+      keyLevelsScopeFootnote,
+      spot,
+      keyFlip,
+      keyPosWall,
+      keyNegWall,
+      keyMaxPain,
+      keyTotal,
+      matrixAnchorStrike,
+      data?.gex?.regime,
+      data?.vex?.regime,
+      data?.dex?.regime,
+      data?.charm?.regime,
+      dexPosture,
+      charmPosture,
+      gexTileDeltas?.netGex,
+      gexShiftNet,
+    ]
+  );
 
   // ── View panels (Step 3) ─────────────────────────────────────────────────────
   // Tab A "Matrix" (default): the Strike × Expiry Matrix at full content width.
@@ -4713,11 +4300,9 @@ export function GexHeatmap({
       <div ref={captureRef} className="thermal-desk-capture-root">
       {/* Key levels sit tight under the control row — matrix is the hero below. */}
       {showViewTabs && (
-        <KeyLevelBox
-          cells={levelCells}
-          kicker={keyLevelsScopeKicker}
-          footnote={keyLevelsScopeFootnote}
-          className="mb-2 gex-key-levels thermal-key-levels"
+        <ThermalRegimeStrip
+          model={regimeStripModel}
+          className="mb-2 gex-key-levels thermal-regime-strip"
           trailing={
             !nativeShell ? (
               <FlowSummaryStrip flowByStrike={flowByStrike} overlaysLoaded={data != null} />
