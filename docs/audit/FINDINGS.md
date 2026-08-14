@@ -10304,4 +10304,4 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **How it was found** | Member screenshot (4-up Compare, LONG γ / SHORT γ panes) + follow-up to #2189 flex chain; E2E had canvas count but no height gate. |
 | **Root cause** | (1) Per-pane `VectorToolbar` still mounted the full desktop wrap row (indicators + replay + LIVE chip) even when linked controls were hidden — ~80px vertical tax per pane in a 2×2 grid. (2) Flex chain missed the SPX-embed `.relative` selector and `height:100%` on pane/grid items. (3) `fillHost` charts did not re-nudge autosize when the compare grid transitioned from hidden → visible. |
 | **Fix** | `VectorToolbar` `comparePane` mode: one slim row (indicators + replay). Suppress per-pane freshness chip in compare embeds. CSS: pane `height:100%`, wrap/stage overflow hidden, `.relative` flex child, canvas `min-height:200px` + flex-grow. `VectorChart` IntersectionObserver nudge for fillHost. E2E asserts compare canvas ≥200px. |
-| **Status** | FIXED — PR pending merge.
+| **Status** | FIXED — PR #2191.
