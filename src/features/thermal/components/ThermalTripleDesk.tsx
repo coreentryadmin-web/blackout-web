@@ -13,7 +13,8 @@ import {
 import useSWR from "swr";
 import Link from "next/link";
 import { clsx } from "clsx";
-import { FreshnessChip } from "@/components/ui";
+import { FreshnessChip, EmptyState } from "@/components/ui";
+import { Button } from "@/components/ui/Button";
 import { usePollIntervalMs } from "@/hooks/use-et-market-open";
 import { useLiveQuoteStream } from "@/hooks/useLiveQuoteStream";
 import { fmtHeatmapExpiry, type GexHeatmapLens } from "@/lib/gex-heatmap-display";
@@ -152,6 +153,10 @@ type ColumnProps = {
   view: HeatmapPayload | null;
   matrixLoading: boolean;
   hadError: boolean;
+  /** Retry the batched SWR fetch (parent-owned mutate) — powers the error
+      state's Retry button so users have a recovery path from a stuck poll
+      without needing a full page reload. */
+  onRetry: () => void;
 };
 
 function ThermalMatrixFreshnessChip({
@@ -200,6 +205,7 @@ function TripleColumn({
   view,
   matrixLoading,
   hadError,
+  onRetry,
 }: ColumnProps) {
   const { quotes: livePushQuotes } = useLiveQuoteStream([ticker]);
   const pushQuote = livePushQuotes[ticker.toUpperCase()];
@@ -272,10 +278,25 @@ function TripleColumn({
         </div>
       </header>
 
+      {/* Unified error state via shared <EmptyState> with a real Retry action —
+          the passive "Feed error — retrying…" dead-end silently kept spinning if
+          the underlying fetch never recovered, forcing a full page reload. */}
       {hadError && !isUsableGexHeatmapPayload(view) ? (
-        <div className="thermal-compact-empty" role="alert">
-          Feed error — retrying…
-        </div>
+        <EmptyState
+          style={{ minHeight: "12rem", padding: "1.25rem 1rem" }}
+          title={`${ticker} feed error`}
+          description="Couldn't reach the gamma matrix. The desk retries automatically; click below to try now."
+          action={
+            <Button
+              variant="ghost"
+              size="xs"
+              onClick={onRetry}
+              aria-label={`Retry ${ticker} matrix fetch`}
+            >
+              ↻ Retry
+            </Button>
+          }
+        />
       ) : matrixLoading && !isUsableGexHeatmapPayload(view) ? (
         <div className="thermal-compact-empty thermal-compact-syncing" role="status">
           <ThermalMatrixFreshnessChip asof={view?.asof ?? null} matrixLoading />
@@ -302,9 +323,21 @@ function TripleColumn({
           recenterEpoch={recenterEpoch}
         />
       ) : (
-        <div className="thermal-compact-empty" role="status">
-          No matrix yet.
-        </div>
+        <EmptyState
+          style={{ minHeight: "12rem", padding: "1.25rem 1rem" }}
+          title={`${ticker} matrix idle`}
+          description="Dealer gamma prints during regular trading hours. Data populates when the chain becomes active."
+          action={
+            <Button
+              variant="ghost"
+              size="xs"
+              onClick={onRetry}
+              aria-label={`Refresh ${ticker} matrix`}
+            >
+              ↻ Refresh
+            </Button>
+          }
+        />
       )}
     </section>
   );
@@ -437,7 +470,20 @@ const ThermalTripleDesk = forwardRef<ThermalTripleDeskHandle, Props>(function Th
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      // The `role="combobox"` guard fixes a real bug: the ticker search combobox
+      // in GexHeatmap is a DIV, not an INPUT, so the TAG-name check above waves
+      // it through — meaning typing "r" / "g" / "v" / "d" / "c" into the search
+      // silently fires the refresh or a lens switch on the desk below. Guarding
+      // `.closest('[role="combobox"], [role="listbox"], [role="option"]')` covers
+      // the whole widget tree.
+      if (
+        t &&
+        (t.tagName === "INPUT" ||
+          t.tagName === "TEXTAREA" ||
+          t.isContentEditable ||
+          t.closest('[role="combobox"], [role="listbox"], [role="option"]'))
+      )
+        return;
       const idx = Number.parseInt(e.key, 10);
       if (idx >= 1 && idx <= columnTickers.length) {
         onFocusTicker(columnTickers[idx - 1]!);
@@ -480,6 +526,7 @@ const ThermalTripleDesk = forwardRef<ThermalTripleDeskHandle, Props>(function Th
             view={viewByTicker[ticker] ?? null}
             matrixLoading={matrixLoading}
             hadError={Boolean(error)}
+            onRetry={() => { void mutate(); }}
           />
         ))}
       </div>
