@@ -87,7 +87,6 @@ Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 | **Why still OPEN** | Confirming it requires the origin mix (or the ECS `[zerodte-breakout]` warn) for a truncated pass. Three probe attempts were blocked by Clerk FAPI rate limits, and the information was not in the payload to recover — which is itself the finding above. |
 | **How to confirm next session** | Poll `GET /api/market/zerodte/board` and read the new `discovery_health` field whenever `setups.length < 40`. `BREAKOUT.status !== "ok"` on a truncated pass confirms this; `BREAKOUT.status === "ok"` with a real count refutes it and moves the search to the merge/cap path. Prefer the cron bearer over a Clerk temp user (`scripts/audit/lib/audit-auth-fetch.mjs`) so the poll does not burn the FAPI budget. |
 | **Not yet done** | No engine change. Nothing here justifies touching a cap or a gate until the dark-lane hypothesis is confirmed or refuted against the instrumented field. |
->>>>>>> origin/main
 
 ---
 
