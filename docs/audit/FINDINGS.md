@@ -38,6 +38,58 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-08-13 — [FINDING, P2 data-correctness] `price` and `change_pct` served from two different instants at four WS-overlay sites — FIXED
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Severity** | P2 (member-visible incoherence; no engine/trade behaviour affected) |
+| **Scope** | `src/app/api/market/indices/route.ts`, `src/lib/providers/polygon-options-gex.ts` (×2), `src/features/spx/lib/spx-desk.ts` |
+| **Status** | FIXED — shared helper `src/lib/providers/change-pct.ts` + 13 unit tests |
+
+**Root cause.** Four call sites overlay a fresher WebSocket price on a cached REST snapshot and
+then pass that snapshot's `change_pct` straight through:
+
+```ts
+// api/market/indices/route.ts (before)
+if (spxCandle.current && spxCandle.current.close > 0 && spx) spx = { ...spx, price: spxCandle.current.close };
+```
+
+The result is a quote whose two halves describe different moments — a price from *now* beside a
+day-change from whenever the snapshot was taken. `serverCache` is stale-while-revalidate up to
+`MAX_STALE_AGE_MS` (10 min), so on a fast move the desk can show a rising SPX next to a falling
+percentage. That is not a rendering glitch: the two numbers genuinely disagree.
+
+The GEX sites carry a second, smaller defect in the same expression —
+`change_pct: restSnap?.change_pct ?? 0`. A missing snapshot becomes a confident **0.00% on the
+day**, which is a claim, not an absence.
+
+**Fix.** `rebaseChangePct` / `withFreshPrice` re-derive the percentage against the snapshot's own
+prior-session close, so both halves move together. `IndexQuote` now carries `prev_close` (the
+indices snapshot already had `session.previous_close`; it was being discarded) so the reference is
+exact rather than recovered by inverting a 2dp percentage. When no reference can be recovered the
+helpers return **null** and the caller keeps the snapshot's own stale-but-real percentage — a real
+measurement from a moment ago beats an invented 0.00%.
+
+This is the same *derive, don't transport* principle as `features/spx/lib/spx-change-anchor.ts`
+(the 2026-08-07 P0), generalized one step: that helper needs the prior close already in the
+payload, while these sites often have only `price` + `change_pct`, so the reference has to be
+recovered before it can be derived from.
+
+**Blast radius.** All four sites fixed, not just the one tripped over. `spx-desk.ts`'s
+`mergeWsIndexSnapshots` had the identical shape hiding behind an existing correctness guard: its
+FIX-A check already refuses a non-authoritative WS change%, but its REST *fallback* was still
+copied across rather than rebased.
+
+**Evidence.** 13 unit tests on the helper (Node 20). Full suite 7597 tests / 7594 pass; the 2
+failures are `billing-lifecycle-email` and `welcome-sequence`, both `Cannot find module 'resend'`
+— a sandbox dependency gap, reproducible on a clean tree and unrelated. `tsc --noEmit` clean.
+
+**Deliberately not done.** `change_pct` is not made nullable end-to-end. The `?? 0` at the display
+layer stays, but it now only fires when there is genuinely no reference close anywhere in the
+chain, rather than on every WS overlay. Threading `number | null` to the UI is a wider typing
+change and belongs in its own PR.
+
 ## 2026-08-13 — [FINDING, P2 tooling] data-validator: ARM "frozen mark" was a FALSE POSITIVE, and a rotating sample hid it — FIXED
 > **kind:** `FINDING`
 
