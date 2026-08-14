@@ -38,6 +38,49 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-08-14 — [FINDING, P2 tooling] data-validator asserted a market REGULARITY as an invariant (`put_wall < call_wall`) — FIXED
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Severity** | P2 (tooling — the product is correct; the check was over-strong) |
+| **Scope** | `scripts/audit/data-validator.mjs` GEX wall check |
+| **Status** | FIXED — replaced with the definitional invariant in `scripts/audit/lib/gex-wall-invariants.mjs` (10 unit tests) |
+
+**Root cause.** The validator ran:
+
+```js
+rec('wall ordering put_wall < call_wall', (pw != null && cw != null && pw < cw) ? 'PASS' : 'FAIL', ...)
+```
+
+`put_wall < call_wall` is a market **regularity**, not an invariant. Live RTH validation on
+2026-08-14 found **SPX serving put_wall 8000 ABOVE call_wall 7800** with spot at 7788 — and nothing
+was wrong. At 8000 the near-term book was the most-negative-gamma strike in the chain
+(**-2.086e9**) even though the full-expiry book there was positive (+1.703e9); 7800 was the most
+positive (**+1.075e10**). `computeGexWalls` returned exactly what it is defined to return.
+
+**Why it never fired before:** the check only runs against SPY, whose book has been conventionally
+ordered. The first inverted book would have produced a confident FAIL on healthy data — the same
+failure mode as the ARM "frozen mark" false positive two days earlier, from the same cause:
+asserting *what is usually true* as *what must be true*.
+
+**Fix.** Assert the DEFINITION instead: the call wall IS the argmax and the put wall IS the argmin
+of the strike totals the payload already serves. That is checkable from the payload itself and is
+**strictly stronger** than the ordering test — it catches swapped walls, a stale wall, and a wall
+computed off a different chain, none of which ordering can see. Ordering is now reported as INFO,
+never asserted, and an inverted structure is labelled as legitimate. Missing strike totals SKIP
+rather than fail.
+
+**Evidence.** The definitional invariant holds on every ticker checked live, including the inverted
+one: SPY call 780/argmax 780, put 765/argmin 765 - **SPX call 7800/argmax 7800, put 8000/argmin
+8000** - QQQ 735/720 - NVDA 225/190. Live validator run after the change: **35 PASS, 6 INFO, 0
+FAIL**. Unit tests 10/10 on Node 20, including the real SPX inverted book and a swapped-wall case
+that the ordering test would have passed only by luck.
+
+**Blast radius.** Validator only — no product code touched, no board or matrix behaviour changed.
+NVDA's put wall sits 15.9% below spot, so no distance-band heuristic was added either; distance is
+reported for context, never asserted.
+
 ## 2026-08-14 — [FINDING, P3 a11y/UX] Thermal round-4 polish: retry action on top-level fetch banner, ticker-sheet focus ring, panel-caption AA contrast, matrix-refresh focus-visible — FIXED
 > **kind:** `FINDING`
 
