@@ -11,10 +11,12 @@ type Props = {
   onPick: (ticker: string) => void;
   exclude: Set<string>;
   disabled?: boolean;
+  /** Command-bar compact search (default) vs legacy grid slot (deprecated). */
+  variant?: "header" | "grid";
 };
 
-/** Inline symbol search for an empty compare slot. */
-export function VectorCompareAddSlot({ onPick, exclude, disabled }: Props) {
+/** Symbol search for Compare — lives in the command bar so charts always fill the grid. */
+export function VectorCompareAddSlot({ onPick, exclude, disabled, variant = "header" }: Props) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
@@ -38,13 +40,23 @@ export function VectorCompareAddSlot({ onPick, exclude, disabled }: Props) {
     onPick(next);
   };
 
+  const isHeader = variant === "header";
+
   return (
-    <div className="vector-compare-add-slot">
-      <div className="vector-compare-add-slot-icon" aria-hidden="true">
-        +
-      </div>
-      <p className="vector-compare-add-slot-title">Add symbol</p>
-      <p className="vector-compare-add-slot-hint">Search any optionable ticker</p>
+    <div className={clsx("vector-compare-add-slot", isHeader && "is-header")}>
+      {isHeader ? (
+        <span className="vector-compare-add-header-icon" aria-hidden="true">
+          +
+        </span>
+      ) : (
+        <>
+          <div className="vector-compare-add-slot-icon" aria-hidden="true">
+            +
+          </div>
+          <p className="vector-compare-add-slot-title">Add symbol</p>
+          <p className="vector-compare-add-slot-hint">Search any optionable ticker</p>
+        </>
+      )}
       <div
         className="vector-compare-add-search"
         role="combobox"
@@ -59,7 +71,7 @@ export function VectorCompareAddSlot({ onPick, exclude, disabled }: Props) {
           spellCheck={false}
           maxLength={8}
           disabled={disabled}
-          placeholder="e.g. NVDA"
+          placeholder={isHeader ? "Add symbol…" : "e.g. NVDA"}
           aria-label="Add compare symbol"
           data-testid="vector-compare-add-search"
           className="vector-compare-add-input"

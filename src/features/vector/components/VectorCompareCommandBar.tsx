@@ -9,6 +9,7 @@ import {
   VECTOR_COMPARE_PRESETS,
   type VectorComparePreset,
 } from "@/features/vector/lib/vector-compare";
+import { VectorCompareAddSlot } from "@/features/vector/components/VectorCompareAddSlot";
 import type { VectorDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
 import type { VectorTimeframeMinutes } from "@/features/vector/lib/vector-bar-timeframes";
 import type { VectorWallLens } from "@/features/vector/lib/vector-wall-history";
@@ -32,6 +33,10 @@ type Props = {
   onExitCompare: () => void;
   onApplyPreset: (preset: VectorComparePreset) => void;
   liveSession: boolean;
+  canAddSymbol: boolean;
+  addExclude: Set<string>;
+  addDisabled?: boolean;
+  onAddSymbol: (ticker: string) => void;
 };
 
 export function VectorCompareCommandBar({
@@ -53,6 +58,10 @@ export function VectorCompareCommandBar({
   onExitCompare,
   onApplyPreset,
   liveSession,
+  canAddSymbol,
+  addExclude,
+  addDisabled,
+  onAddSymbol,
 }: Props) {
   return (
     <header className="vector-compare-command">
@@ -119,6 +128,17 @@ export function VectorCompareCommandBar({
           </button>
         ) : null}
       </div>
+
+      {canAddSymbol ? (
+        <div className="vector-compare-command-add" role="group" aria-label="Add symbol">
+          <VectorCompareAddSlot
+            variant="header"
+            onPick={onAddSymbol}
+            exclude={addExclude}
+            disabled={addDisabled}
+          />
+        </div>
+      ) : null}
 
       <div className="vector-compare-command-presets" role="group" aria-label="Compare presets">
         {VECTOR_COMPARE_PRESETS.map((preset) => (

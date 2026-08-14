@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import { useRouter } from "next/navigation";
 import { PageShell } from "@/components/ui";
-import { VectorCompareAddSlot } from "@/features/vector/components/VectorCompareAddSlot";
 import { VectorCompareCommandBar } from "@/features/vector/components/VectorCompareCommandBar";
 import {
   VectorComparePane,
@@ -100,9 +99,9 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
 
   const exclude = useMemo(() => new Set(seeds.map((s) => s.ticker)), [seeds]);
   const liveSession = seeds.some((s) => s.liveSession) || todayEtYmd() === seeds[0]?.sessionYmd;
-  /** One add slot at a time — grid grows 2 → 3 → 4 slots (50/50 → 50/25/25 → 2×2). */
-  const showAddSlot = seeds.length < VECTOR_COMPARE_MAX_PANES;
-  const gridSlotCount = seeds.length + (showAddSlot ? 1 : 0);
+  /** Grid holds live charts only — add-symbol lives in the command bar. */
+  const canAddSymbol = seeds.length < VECTOR_COMPARE_MAX_PANES;
+  const gridSlotCount = seeds.length;
 
   const syncUrl = useCallback((next: VectorClientSeed[]) => {
     const path = comparePath(next.map((s) => s.ticker));
@@ -282,6 +281,10 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
           onExitCompare={() => router.push(deskPath(seeds[0]?.ticker ?? "SPX"))}
           onApplyPreset={applyPreset}
           liveSession={liveSession}
+          canAddSymbol={canAddSymbol}
+          addExclude={exclude}
+          addDisabled={loadingTickers.size > 0}
+          onAddSymbol={(t) => void loadTicker(t)}
         />
 
         <div className="vector-compare-mobile-gate" role="status">
@@ -333,15 +336,6 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
               />
             );
           })}
-          {showAddSlot ? (
-            <div key="add-slot" className="vector-compare-slot-empty">
-              <VectorCompareAddSlot
-                onPick={(t) => void loadTicker(t)}
-                exclude={exclude}
-                disabled={loadingTickers.size > 0}
-              />
-            </div>
-          ) : null}
         </div>
 
         {seeds.length >= 2 ? (

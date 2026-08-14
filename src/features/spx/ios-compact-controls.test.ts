@@ -32,12 +32,16 @@ test("compare pane CSS flex chain targets fillHost canvas", () => {
   assert.match(css, /vector-toolbar-compare-row/);
 });
 
-test("VectorCompareDesk grows grid slots dynamically (not always four)", () => {
-  const src = readFileSync(join(root, "src/features/vector/components/VectorCompareDesk.tsx"), "utf8");
-  assert.match(src, /gridSlotCount/);
-  assert.match(src, /showAddSlot/);
-  assert.doesNotMatch(src, /emptySlots/);
-  assert.match(src, /data-pane-count=\{gridSlotCount\}/);
+test("VectorCompareDesk grid uses live chart count only (add symbol in command bar)", () => {
+  const desk = readFileSync(join(root, "src/features/vector/components/VectorCompareDesk.tsx"), "utf8");
+  assert.match(desk, /gridSlotCount = seeds\.length/);
+  assert.match(desk, /canAddSymbol/);
+  assert.doesNotMatch(desk, /vector-compare-slot-empty/);
+  assert.match(desk, /data-pane-count=\{gridSlotCount\}/);
+  const bar = readFileSync(join(root, "src/features/vector/components/VectorCompareCommandBar.tsx"), "utf8");
+  assert.match(bar, /vector-compare-command-add/);
+  assert.match(bar, /VectorCompareAddSlot/);
+  assert.match(bar, /variant="header"/);
 });
 
 test("VectorCompareCommandBar shows chart count without a /4 cap label", () => {

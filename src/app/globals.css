@@ -8577,6 +8577,42 @@ body::before {
     gap: 6px;
     flex-wrap: wrap;
   }
+  .vector-compare-command-add {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  .vector-compare-add-slot.is-header {
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    width: auto;
+    padding: 0;
+    text-align: left;
+  }
+  .vector-compare-add-header-icon {
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    border: 1px solid rgba(34, 211, 238, 0.35);
+    color: #67e8f9;
+    font-size: 1.1rem;
+    font-weight: 300;
+    line-height: 1;
+    background: rgba(34, 211, 238, 0.06);
+    flex-shrink: 0;
+  }
+  .vector-compare-add-slot.is-header .vector-compare-add-search {
+    width: min(168px, 28vw);
+    margin-top: 0;
+  }
+  .vector-compare-add-slot.is-header .vector-compare-add-input {
+    padding: 5px 9px;
+    font-size: 0.62rem;
+  }
   .vector-compare-preset-btn {
     padding: 5px 10px;
     border-radius: 999px;
