@@ -4204,7 +4204,7 @@ export function GexHeatmap({
   );
 
   const matrixPanel = (
-    <div className="min-w-0">
+    <div className="min-w-0 w-full">
       {uwDiverged && (
         <p className="mb-2 font-mono text-[9px] leading-snug text-amber-300/90">
           Our two data sources disagree by {uwCross?.divergence?.toFixed(0)}pt on where the walls
@@ -4234,13 +4234,13 @@ export function GexHeatmap({
         <div
           ref={matrixScrollRef}
           data-thermal-capture-expand
-          className="spx-gex-matrix-scroll gex-matrix-scroll max-h-[clamp(480px,74vh,880px)] min-h-[clamp(360px,58vh,640px)] overflow-auto overscroll-contain"
+          className="spx-gex-matrix-scroll thermal-matrix-scroll gex-matrix-scroll w-full max-h-[clamp(480px,74vh,880px)] min-h-[clamp(360px,58vh,640px)] overflow-auto overscroll-contain"
           role="region"
           tabIndex={0}
           aria-label={`${data?.underlying ?? ticker} dealer ${vocab.noun.toLowerCase()} exposure matrix, strikes by expiration`}
         >
           <table
-            className="spx-gex-matrix-table thermal-matrix-table border-collapse font-mono text-[12px] tabular-nums"
+            className="spx-gex-matrix-table thermal-matrix-table border-collapse font-mono text-[13px] tabular-nums"
             role="grid"
             aria-label={`${data?.underlying ?? ticker} dealer ${vocab.noun.toLowerCase()} matrix by strike and expiry`}
           >
@@ -4338,7 +4338,7 @@ export function GexHeatmap({
                   >
                     <td
                       className={clsx(
-                        "thermal-matrix-strike-cell sticky left-0 z-10 bg-[#08080e] py-1 text-left font-bold",
+                        "thermal-matrix-strike-cell sticky left-0 z-10 bg-[#08080e] py-1.5 text-left font-bold",
                         isSpot && "text-cyan-300"
                       )}
                     >
@@ -4399,7 +4399,7 @@ export function GexHeatmap({
                         <td
                           key={e}
                           className={clsx(
-                            "thermal-matrix-expiry-cell whitespace-nowrap py-1 text-center font-bold",
+                            "thermal-matrix-expiry-cell whitespace-nowrap py-1.5 text-center font-bold",
                             shiftLeader && "gex-matrix-cell-with-badge",
                             has &&
                               val > 0 &&
@@ -4456,7 +4456,7 @@ export function GexHeatmap({
                       );
                     })}
                     {depthRail && (
-                      <td className="thermal-matrix-flow-cell whitespace-nowrap py-1">
+                      <td className="thermal-matrix-flow-cell whitespace-nowrap py-1.5">
                         {(() => {
                           const band = depthBandForPrice(depthRail.levels, data?.spot ?? 0, strike);
                           if (!band || band.direction === "flat") {

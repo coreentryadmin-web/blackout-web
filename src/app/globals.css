@@ -9388,49 +9388,55 @@ body::before {
     background: #08080e;
   }
 
+  /* Thermal single-ticker matrix — fill desk width; expiry cols share slack equally. */
+  .spx-gex-matrix-table.thermal-matrix-table {
+    table-layout: fixed;
+    width: 100%;
+    min-width: 100%;
+    max-width: none;
+  }
+
+  .spx-gex-matrix-scroll.thermal-matrix-scroll {
+    width: 100%;
+  }
+
   .thermal-matrix-head {
-    padding: 0.5rem 0.35rem;
+    padding: 0.55rem 0.45rem;
     font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 800;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: rgba(186, 230, 253, 0.98);
+    color: rgba(224, 242, 254, 0.98);
     white-space: nowrap;
   }
 
-  /* Thermal matrix — strike tight, expiry readable, net-flow fixed (no width hog). */
-  .thermal-matrix-table {
-    table-layout: fixed;
-    width: max-content;
-    max-width: 100%;
-  }
-
   .thermal-matrix-col-strike {
-    width: 2.5rem;
+    width: 3.1rem;
   }
 
+  /* 1% + min-width → equal flex of leftover width between strike and net flow. */
   .thermal-matrix-col-expiry {
-    width: 5.85rem;
+    width: 1%;
+    min-width: 7.25rem;
   }
 
-  /* Fixed rail width — do not absorb leftover table width on wide desks. */
   .thermal-matrix-col-flow {
-    width: 10.75rem;
-    max-width: 10.75rem;
+    width: 11.5rem;
+    max-width: 11.5rem;
   }
 
   .thermal-matrix-head-strike {
-    width: 2.5rem;
-    max-width: 2.5rem;
-    padding-left: 0.2rem;
-    padding-right: 0.15rem;
+    width: 3.1rem;
+    max-width: 3.1rem;
+    padding-left: 0.25rem;
+    padding-right: 0.2rem;
     text-align: left;
   }
 
   .thermal-matrix-head-sub {
     display: block;
-    margin-top: 0.1rem;
+    margin-top: 0.12rem;
     font-size: 10px;
     font-weight: 700;
     letter-spacing: 0.06em;
@@ -9439,8 +9445,8 @@ body::before {
 
   .thermal-matrix-head-expiry {
     text-align: center;
-    padding-left: 0.5rem;
-    padding-right: 0.5rem;
+    padding-left: 0.65rem;
+    padding-right: 0.65rem;
   }
 
   .thermal-matrix-head-net {
@@ -9456,10 +9462,10 @@ body::before {
   }
 
   .thermal-matrix-strike-cell {
-    width: 2.5rem;
-    max-width: 2.5rem;
-    padding-left: 0.2rem !important;
-    padding-right: 0.15rem !important;
+    width: 3.1rem;
+    max-width: 3.1rem;
+    padding-left: 0.25rem !important;
+    padding-right: 0.2rem !important;
   }
 
   .thermal-matrix-strike-stack {
@@ -9481,8 +9487,8 @@ body::before {
   }
 
   .thermal-matrix-expiry-cell {
-    padding-left: 0.5rem !important;
-    padding-right: 0.5rem !important;
+    padding-left: 0.65rem !important;
+    padding-right: 0.65rem !important;
   }
 
   .thermal-matrix-flow-rail-wrap {
@@ -9507,7 +9513,7 @@ body::before {
     display: block;
     flex: 1 1 auto;
     min-width: 0;
-    height: 16px;
+    height: 18px;
   }
 
   .thermal-matrix-flow-rail.is-empty {
@@ -18468,7 +18474,7 @@ body::before {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: 0.35rem 0.5rem;
+  gap: 0.35rem 0.55rem;
   padding-bottom: 0.4rem;
   margin-bottom: 0.2rem;
   border-bottom: 1.5px solid var(--tt-line-strong);
