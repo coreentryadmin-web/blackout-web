@@ -17,6 +17,18 @@ test("VectorToolbar exposes iOS compact scroll rows + desktop fallback row", () 
   assert.match(src, /ios-compact-scroll-row/);
 });
 
+test("VectorToolbar compare pane uses slim single-row toolbar", () => {
+  const src = readFileSync(join(root, "src/features/vector/components/VectorToolbar.tsx"), "utf8");
+  assert.match(src, /comparePane/);
+  assert.match(src, /vector-toolbar--compare-pane/);
+});
+
+test("compare pane CSS flex chain targets fillHost canvas", () => {
+  const css = readFileSync(join(root, "src/app/globals.css"), "utf8");
+  assert.match(css, /\.vector-compare-pane-body \.vector-chart-wrap > \.relative/);
+  assert.match(css, /vector-toolbar-compare-row/);
+});
+
 test("VectorReplayControls tags replay state for iOS collapse", () => {
   const src = readFileSync(join(root, "src/features/vector/components/VectorReplayControls.tsx"), "utf8");
   assert.match(src, /data-replay-active/);

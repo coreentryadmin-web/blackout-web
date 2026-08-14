@@ -10294,3 +10294,14 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Tier 3** | `VectorPageClient` + `vector-client-seed.ts`: ticker switches fetch client-side (history.replaceState) instead of full SSR (~1–3s soft nav). Scanner routes through same callback. |
 | **Tier 4** | `useVectorLivePoll` wired in shell; `vector-gex-heatmap-client.ts` dedupes shift-leader fetches; `vector-stream-hub.ts` coalesces overlapping refreshes; route tests for `/bars` + `/walls`. |
 | **Status** | FIXED — PR #2184.
+
+## 2026-08-14 — [P1, Vector Compare] Compare panes squished charts — beads/candles compressed to top band — FIXED (cursor/vector-compare-chart-fix-3d11)
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Severity** | P1 — Compare mode is unusable when each pane canvas collapses to ~35–180px while the grid cell is taller; beads appear as a thin strip at the top with empty chart below. |
+| **How it was found** | Member screenshot (4-up Compare, LONG γ / SHORT γ panes) + follow-up to #2189 flex chain; E2E had canvas count but no height gate. |
+| **Root cause** | (1) Per-pane `VectorToolbar` still mounted the full desktop wrap row (indicators + replay + LIVE chip) even when linked controls were hidden — ~80px vertical tax per pane in a 2×2 grid. (2) Flex chain missed the SPX-embed `.relative` selector and `height:100%` on pane/grid items. (3) `fillHost` charts did not re-nudge autosize when the compare grid transitioned from hidden → visible. |
+| **Fix** | `VectorToolbar` `comparePane` mode: one slim row (indicators + replay). Suppress per-pane freshness chip in compare embeds. CSS: pane `height:100%`, wrap/stage overflow hidden, `.relative` flex child, canvas `min-height:200px` + flex-grow. `VectorChart` IntersectionObserver nudge for fillHost. E2E asserts compare canvas ≥200px. |
+| **Status** | FIXED — PR pending merge.

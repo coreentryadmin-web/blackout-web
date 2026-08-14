@@ -58,6 +58,8 @@ type Props = {
   trailSlot?: React.ReactNode;
   /** Compare command bar owns TF/DTE/lens — hide them in each pane toolbar. */
   hideLinkedControls?: boolean;
+  /** Compare grid pane — one slim row (indicators + replay only). */
+  comparePane?: boolean;
 };
 
 /** Single compact toolbar — timeframe left, replay + lens right. */
@@ -101,7 +103,48 @@ export function VectorToolbar(props: Props) {
     trailSlot,
     replayLeadSlot,
     hideLinkedControls = false,
+    comparePane = false,
   } = props;
+
+  if (comparePane) {
+    return (
+      <div
+        className="vector-toolbar vector-toolbar--compare-pane ios-compact-toolbar mb-1"
+        role="group"
+        aria-label="Chart controls"
+      >
+        <div className="vector-toolbar-compare-row">
+          <VectorIndicatorMenu
+            enabled={indicators}
+            onToggle={onToggleIndicator}
+            onClear={onClearIndicators}
+            barCount={barCount}
+            openingRangeMinutes={openingRangeMinutes}
+            onOpeningRangeMinutes={onOpeningRangeMinutes}
+          />
+          {replayLeadSlot}
+          <VectorReplayControls
+            replayMode={replayMode}
+            playing={playing}
+            canReplay={canReplay}
+            cursorIndex={cursorIndex}
+            stepCount={stepCount}
+            clockLabel={clockLabel}
+            speed={speed}
+            loop={loop}
+            onToggleReplay={onToggleReplay}
+            onTogglePlay={onTogglePlay}
+            onScrub={onScrub}
+            onSpeed={onSpeed}
+            onStep={onStep}
+            onJumpOpen={onJumpOpen}
+            onJumpClose={onJumpClose}
+            onToggleLoop={onToggleLoop}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="vector-toolbar ios-compact-toolbar mb-2" role="group" aria-label="Chart timeframe">
