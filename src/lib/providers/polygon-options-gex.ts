@@ -5,6 +5,7 @@ import {
   gexHeatmapOverlayMaxMs,
 } from "./config";
 import { fetchStockSnapshot, fetchIndexSnapshot } from "./polygon";
+import { rebaseChangePct } from "./change-pct";
 import { todayEtYmd } from "./spx-session";
 import { liveExpiries } from "./expiry-liveness";
 import { buildGexDepthLadder, type DepthContract, type GexDepthLadder } from "@/lib/gex-depth";
@@ -1219,8 +1220,17 @@ async function resolveSpotSnapshot(
     const ws = await liveWsIndexSpot(root);
     if (ws) {
       // REST still needed for change_pct when the WS doesn't carry it authoritatively.
+      //
+      // When it doesn't, REBASE rather than pass the snapshot's percentage through: the WS price
+      // and the REST percentage are sampled at different instants, so pairing them serves a spot
+      // whose two halves disagree. rebaseChangePct re-measures against the snapshot's own
+      // prior-session close; it returns null only when that reference can't be recovered, in which
+      // case the snapshot's own (stale but real) percentage is still better than a manufactured 0.
       const restSnap = await fetchIndexSnapshot(root).catch(() => null);
-      return { price: ws.price, change_pct: ws.change_pct ?? restSnap?.change_pct ?? 0 };
+      return {
+        price: ws.price,
+        change_pct: ws.change_pct ?? rebaseChangePct(ws.price, restSnap) ?? restSnap?.change_pct ?? 0,
+      };
     }
     // Cross-replica fallback: ingest leader writes indexStore → Redis every ~1s. Web-tier
     // cache readers (heatmap-warm, getGexPositioning) must not return spot 0 when the
@@ -1235,8 +1245,14 @@ async function resolveSpotSnapshot(
     // Guard: never accept a non-positive WS print as "resolved" — that used to short-circuit
     // REST and feed emptyHeatmap(spot:0) → Thermal SPY column "0.00 / No matrix yet".
     if (ws && ws.price > 0) {
+      // Same rebase as the index branch above: the stock snapshot carries prev_close, so the
+      // percentage is re-measured against the WS price rather than paired with it from a
+      // different instant.
       const restSnap = await fetchStockSnapshot(root).catch(() => null);
-      return { price: ws.price, change_pct: restSnap?.change_pct ?? 0 };
+      return {
+        price: ws.price,
+        change_pct: rebaseChangePct(ws.price, restSnap) ?? restSnap?.change_pct ?? 0,
+      };
     }
   }
 

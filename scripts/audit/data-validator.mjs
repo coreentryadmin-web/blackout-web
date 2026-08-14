@@ -43,6 +43,7 @@ import { isTradingDayEt, todayEtYmd } from '../gha-et-window.mjs';
 import { isAuthFailureStatus } from './lib/auth-status.mjs';
 import { generateDefaultAuditPhone } from './lib/audit-phone.mjs';
 import { createOrAdoptAuditUserViaCurl } from './lib/clerk-audit-user.mjs';
+import { orderLedgerRowsForMarkCheck, classifyMarkEvidence } from './lib/ledger-mark-evidence.mjs';
 
 const SECRET = req('CLERK_SECRET_KEY');
 const PUB = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || '';
@@ -537,7 +538,21 @@ async function main() {
         }
 
         // --- ledger rows: top_strike (existence) + entry_premium/underlying_at_flag (historical) ---
-        for (const r0 of ledgerRows.slice(0, ZERODTE_LEDGER_CHECK_CAP)) {
+        // PRIORITISE the rows this check exists to interrogate, instead of taking whatever the
+        // board happened to return first.
+        //
+        // WHY: the cap is a COST control (each row costs a Polygon minute-bar fetch), but slicing
+        // raw board order made it a COVERAGE lottery. Board order changes between runs, so on
+        // 2026-08-13 the ARM row was audited at 15:57 and then silently skipped at 19:33, 20:33 and
+        // 23:xx — three consecutive runs reported "0 FAIL" while the row under suspicion was simply
+        // not looked at. A suite that rotates its sample can stop reporting a standing defect
+        // without anything changing, which is worse than not checking at all: it reads as all-clear.
+        //
+        // A row whose last_mark is bit-identical to entry_premium is the entire population the
+        // frozen-mark test is about, so those go first; the rest fill the remaining budget.
+        // (Sort + evidence classification live in lib/ledger-mark-evidence.mjs so both are
+        // unit-tested without a live board.)
+        for (const r0 of orderLedgerRowsForMarkCheck(ledgerRows).slice(0, ZERODTE_LEDGER_CHECK_CAP)) {
           const ticker = String(r0?.ticker || '').toUpperCase();
           if (!ticker) continue;
           // Unlike the live setup above, the ledger's top_strike column is NULLABLE
@@ -603,24 +618,31 @@ async function main() {
           // the number the app was showing. The entry_premium check above passed the whole
           // time, because entry_premium was correct. Nothing looked at the mark.
           //
-          // TWO tests, because they answer different questions:
+          // THREE tests, because they answer different questions:
           //   1. DIRECT — last_mark_at is stamped only when a real quote lands (db.ts). NULL
           //      means no quote was ever seen and the displayed mark is just the seeded entry.
           //      Exact, no bars needed. Rows written before that column existed report INFO.
           //   2. BEHAVIOURAL — a range test cannot catch this (0.93 was inside [0.24, 1.48]
           //      all day). The distinguishing question is whether the contract SPENT the
           //      session away from the mark while the mark never moved.
+          //   3. LANE-LATCH — peak_premium/trough_premium are written by the SAME lane as
+          //      last_mark (live-marks.ts), so a peak or trough away from entry proves the lane
+          //      wrote this row even when the mark landed back ON entry. Missing this branch is
+          //      why a breakeven-RATCHET exit (which closes AT entry by design) read as frozen.
           const lm = num(r0.last_mark);
           if (lm != null) {
-            const markAt = r0.last_mark_at ?? null;
-            // The frozen SIGNATURE: the mark is still bit-identical to the seeded entry premium.
-            // A mark that differs from entry is proof a real quote landed and overwrote it.
-            const seeded = ep != null && Math.abs(lm - ep) < 1e-9;
-
-            if (markAt != null) {
-              rec(`0DTE ledger ${ticker}: last_mark was actually observed`, 'PASS', `last_mark_at=${markAt} — a real quote landed on this row`);
-            } else if (!seeded) {
+            const ev = classifyMarkEvidence(r0);
+            if (ev.kind === 'mark_at') {
+              rec(`0DTE ledger ${ticker}: last_mark was actually observed`, 'PASS', `last_mark_at=${ev.mark_at} — a real quote landed on this row`);
+            } else if (ev.kind === 'differs') {
               rec(`0DTE ledger ${ticker}: last_mark was actually observed`, 'PASS', `pre-column row, but last_mark ${lm} differs from entry ${ep} — a real quote clearly landed`);
+            } else if (ev.kind === 'lane_wrote') {
+              rec(
+                `0DTE ledger ${ticker}: last_mark was actually observed`,
+                'PASS',
+                `last_mark === entry (${lm}), but peak=${ev.peak_premium} trough=${ev.trough_premium} differ from entry — the mark lane demonstrably wrote this row` +
+                  (ev.exit_reason ? ` (exit_reason=${ev.exit_reason}; a breakeven ratchet closes AT entry by design)` : '')
+              );
             } else {
               // Pre-column row AND still sitting on entry. Ambiguous on its own: could be a
               // contract that genuinely never moved. The tape decides.

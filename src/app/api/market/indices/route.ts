@@ -6,6 +6,7 @@ import { serverCache, TTL } from "@/lib/server-cache";
 import { roundFloats } from "@/lib/round-floats";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 import { getStockLiveCandle } from "@/lib/ws/stock-candle-store";
+import { withFreshPrice } from "@/lib/providers/change-pct";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -36,10 +37,16 @@ export async function GET(req: NextRequest) {
 
     // Overlay fresher WS prices when available — getStockLiveCandle reads from Redis
     // on follower replicas (wsSpotPrice was local-memory-only, always null on followers).
+    //
+    // `withFreshPrice` moves change_pct WITH the price. Overlaying the price alone used to serve a
+    // quote whose halves described different instants: a price from now beside a day-change from
+    // whenever the cached snapshot was taken — and serverCache is stale-while-revalidate for up to
+    // MAX_STALE_AGE_MS (10 min), so on a fast move the desk could show a rising SPX next to a
+    // falling percentage. Both are now measured against the same prior-session close.
     const spxCandle = getStockLiveCandle("SPX");
-    if (spxCandle.current && spxCandle.current.close > 0 && spx) spx = { ...spx, price: spxCandle.current.close };
+    if (spx) spx = withFreshPrice(spx, spxCandle.current?.close);
     const vixCandle = getStockLiveCandle("VIX");
-    if (vixCandle.current && vixCandle.current.close > 0 && vix) vix = { ...vix, price: vixCandle.current.close };
+    if (vix) vix = withFreshPrice(vix, vixCandle.current?.close);
 
     if (!spx && !vix) {
       return NextResponse.json(
