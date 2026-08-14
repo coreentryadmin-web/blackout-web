@@ -36,7 +36,7 @@ test("VectorPageShell — desktop action rail (Play/Technicals/Alerts) excluded 
 test("Vector route — no DeskShell double offset", () => {
   const page = readFileSync(join(root, "src/app/(site)/vector/page.tsx"), "utf8");
   assert.doesNotMatch(page, /DeskShell/);
-  assert.match(page, /VectorPageShell/);
+  assert.match(page, /VectorPageClient/);
 });
 
 test("NightHawkFeed hides view blurb on native shell", () => {

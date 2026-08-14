@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import type { VectorBar } from "@/features/vector/components/VectorChart";
+import { fetchVectorClientSeed } from "@/features/vector/lib/vector-client-seed";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 
 const VectorPageShell = dynamic(
@@ -33,6 +34,11 @@ type SpxVectorEmbedProps = {
 type VectorBarsSeed = {
   bars: VectorBar[];
   sessionYmd: string;
+  wallHistory: import("@/features/vector/lib/vector-wall-history").WallHistorySample[];
+  horizonWallHistory: import("@/features/vector/lib/vector-wall-history").WallHistorySample[];
+  walls: import("@/lib/api").VectorWalls | null;
+  gammaFlip: number | null;
+  wallTrailSec: number;
 };
 
 /**
@@ -56,21 +62,30 @@ export function SpxVectorEmbed({
 
   useEffect(() => {
     let cancelled = false;
-    void fetch("/api/market/vector/bars?ticker=SPX", { cache: "no-store" })
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`bars ${res.status}`);
-        return (await res.json()) as { bars?: VectorBar[]; sessionYmd?: string };
-      })
-      .then((data) => {
+    void fetchVectorClientSeed("SPX")
+      .then((seed) => {
         if (cancelled) return;
         setSeed({
-          bars: data.bars ?? [],
-          sessionYmd: data.sessionYmd ?? todayEtYmd(),
+          bars: seed.initialBars,
+          sessionYmd: seed.sessionYmd,
+          wallHistory: seed.initialWallHistory,
+          horizonWallHistory: seed.initialHorizonWallHistory,
+          walls: seed.initialWalls,
+          gammaFlip: seed.initialGammaFlip,
+          wallTrailSec: seed.initialWallTrailSec,
         });
       })
       .catch(() => {
         if (cancelled) return;
-        setSeed({ bars: [], sessionYmd: todayEtYmd() });
+        setSeed({
+          bars: [],
+          sessionYmd: todayEtYmd(),
+          wallHistory: [],
+          horizonWallHistory: [],
+          walls: null,
+          gammaFlip: null,
+          wallTrailSec: 5,
+        });
       });
     return () => {
       cancelled = true;
@@ -95,15 +110,16 @@ export function SpxVectorEmbed({
     <VectorPageShell
       ticker="SPX"
       initialBars={seed.bars}
-      initialWalls={null}
+      initialWalls={seed.walls}
       initialVexWalls={null}
-      initialWallHistory={[]}
-      initialHorizonWallHistory={[]}
-      initialGammaFlip={null}
+      initialWallHistory={seed.wallHistory}
+      initialHorizonWallHistory={seed.horizonWallHistory}
+      initialGammaFlip={seed.gammaFlip}
       initialVexFlip={null}
       initialDarkPoolLevels={[]}
       sessionYmd={seed.sessionYmd}
       liveSession={liveSession}
+      initialWallTrailSec={seed.wallTrailSec}
       embed="chart-only"
       defaultDteHorizon="0dte"
       defaultChartViewport="session"

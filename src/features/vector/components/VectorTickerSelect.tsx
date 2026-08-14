@@ -14,6 +14,9 @@ const PRESETS = vectorUniverseTickers();
 
 type Props = {
   ticker: string;
+  /** When set, avoids router.push full SSR navigation (client seed fetch). */
+  onTickerSelect?: (ticker: string) => void;
+  busy?: boolean;
 };
 
 /**
@@ -23,7 +26,7 @@ type Props = {
  * structure for a symbol with no options, and the chart says so rather than
  * erroring). Replaces the old fixed <select> that hid every symbol off the ~21 list.
  */
-export function VectorTickerSelect({ ticker }: Props) {
+export function VectorTickerSelect({ ticker, onTickerSelect, busy }: Props) {
   const router = useRouter();
   const active = normalizeVectorTicker(ticker);
   const [query, setQuery] = useState("");
@@ -50,6 +53,10 @@ export function VectorTickerSelect({ ticker }: Props) {
     setOpen(false);
     setQuery("");
     inputRef.current?.blur();
+    if (onTickerSelect) {
+      onTickerSelect(next);
+      return;
+    }
     router.push(next === VECTOR_DEFAULT_TICKER ? "/vector" : `/vector?ticker=${encodeURIComponent(next)}`);
   };
 
@@ -102,6 +109,7 @@ export function VectorTickerSelect({ ticker }: Props) {
         }}
         onKeyDown={onKeyDown}
         className="vector-ticker-search-input"
+        disabled={busy}
       />
       {open && options.length > 0 && (
         <ul id="vector-ticker-listbox" className="vector-ticker-search-menu" role="listbox">

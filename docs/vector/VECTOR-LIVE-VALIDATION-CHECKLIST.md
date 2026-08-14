@@ -18,8 +18,8 @@ file every run; refining this file refines what the agent checks. Companion to
 
 1. **Recurring agent** fires several times per trading day during RTH (see `§9 Cadence`). Each run
    is a fresh, standalone session in this environment (repo cloned, AWS creds, Playwright ready).
-2. Each run **reads this file**, executes the checks in `§2–§7` against **staging**
-   (`https://staging.blackouttrades.com`) for a rotating ticker set (`§8`), and records results.
+2. Each run **reads this file**, executes the checks in `§2–§7` against **production**
+   (`https://blackouttrades.com`) for a rotating ticker set (`§8`), and records results.
 3. **On any FAIL/anomaly:** open a **draft PR** that appends a dated entry to `docs/audit/FINDINGS.md`
    (severity, ticker, timeframe/horizon, expected vs actual, evidence, suspected root cause). Do NOT
    fix product code in the validation run unless the fix is trivial + obviously correct; the run's
@@ -31,21 +31,19 @@ file every run; refining this file refines what the agent checks. Companion to
    trigger prompt — new things to look out for, tickers that misbehave, thresholds to tighten.
 
 **Guardrails:** honesty over green — never fabricate a PASS; a check you couldn't run is `SKIPPED`
-with the reason, never `PASS`. One temp Clerk user per run, always deleted. Never push to `main`
-or any branch other than a fresh `fix/vector-live-*` / `docs/vector-live-*` branch off
-`origin/blackout-web-sandbox`. Keep PRs small + single-concern.
+with the reason, never `PASS`. One temp Clerk user per run, always deleted. Branch `fix/vector-live-*`
+or `cursor/vector-live-*` off `main`; auto-merge once CI is green.
 
 ---
 
 ## 1. Pre-open sanity (run once, ~09:25 ET / 13:25 UTC)
 
-- [ ] Staging reachable (HTTP 200 on `/vector` after auth-redirect).
-- [ ] Latest deploy = latest `blackout-web-sandbox` HEAD (ECS PRIMARY rollout COMPLETED; compare the
+- [ ] Production reachable (HTTP 200 on `/vector` after auth-redirect).
+- [ ] Latest deploy = latest `main` HEAD (ECS PRIMARY rollout COMPLETED; compare the
       running task image tag to the head SHA).
-- [ ] Recorder cron `blackout-staging-vector-universe-snapshot` EventBridge rule ENABLED
-      (`cron(*/5 11-21 ? * MON-FRI *)` unless we tightened it).
+- [ ] Recorder cron `blackout-production-vector-universe-snapshot` EventBridge rule ENABLED.
 - [ ] `CRON_SECRET`, `POLYGON_API_KEY` and the Clerk keys present in the production app env.
-- [ ] Redis (`blackout-staging-redis`) healthy: evictions ~0, memory < 70%.
+- [ ] Redis (`blackout-production-redis-rg`) healthy: evictions ~0, memory < 70%.
 - [ ] `vector_wall_history` table reachable (row count baseline captured for the diff below).
 
 ## 2. DYNAMIC / AUTOMATIC UPDATES — the headline (recheck every run)
@@ -147,15 +145,14 @@ IREN, ALAB, HOOD, etc.):
 - **Cadence:** ~4×/trading day — near the open (≈09:35 ET), late-morning (≈11:30), midday (≈13:30),
   and before the close (≈15:35). Weekdays only. (Cron min is hourly; see the Routine.)
 - **Per run:**
-  1. `git fetch origin blackout-web-sandbox && git checkout` a fresh `*/vector-live-*` branch off it.
+  1. `git fetch origin main && git checkout` a fresh `cursor/vector-live-*` branch off it.
   2. Read THIS file + the last few `docs/audit/FINDINGS.md` entries + the live-validation log tail.
   3. Sign into PRODUCTION with a temp Clerk user (`scripts/audit/lib/prod-clerk-session.mjs`
      `mintClerkPremiumSession`, released in a `finally`). `POLYGON_API_BASE=https://api.massive.com`.
-     (Staging and its Cognito flow were decommissioned 2026-07-25 — there is no pre-prod target.)
   4. Run §2–§7 for the rotation set; capture screenshots + structured JSON; run the Polygon
      ground-truth cross-check (§3).
   5. Diff `vector_wall_history` row counts vs the run's own pre-check baseline (proves accrual).
-  6. Write results to the live-validation log; open a draft PR **only if** there are findings
+  6. Write results to the live-validation log; open a PR **only if** there are findings
      (append to `FINDINGS.md`), else quiet.
   7. Notify the user: `[Vector live-check HH:MM ET] N checks, P pass / F fail; <top finding or "all healthy">`.
 - **Time budget:** keep each run under ~15 min; if the rotation is large, cover a subset and log
@@ -167,8 +164,8 @@ IREN, ALAB, HOOD, etc.):
   through an app endpoint / `railway`-side, or via the cron read-back (`spxRailLen`), not a raw `pg`
   socket. (`vector_wall_history` direct reads may not be possible from here — prefer the read-back /
   an HTTP debug path; note if a DB check is SKIPPED for this reason.)
-- Bead rail bucket = **15s** (`DEFAULT_WALL_TRAIL_SAMPLE_SEC`). Recorder cron baseline = 5 min
-  (universe only, zero-viewer). SSE while-viewed = 15s for ANY ticker.
+- Bead rail bucket = **5s shared universe / 15s on-demand** (`wallTrailSec`). Universe recorder cron
+  baseline = 5 min (shared universe). SSE while-viewed follows server-resolved cadence.
 - Oracle tickers = SPX/SPY/QQQ (UW per-expiry ladder). Everyone else = Polygon-chain BSM.
 - Clerk rate-limits rapid sign-in cycles — authenticate ONCE per run.
 

@@ -10213,3 +10213,15 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Root cause** | E2E checked obsolete aria-label (`VectorTickerComparisonStrip` uses "Cross-ticker wall comparison"). Replay scrub locator was global, matching hidden compact + visible desktop controls. Per-ticker heatmap blips returned `historyRecorded=false` without retry; combined with `recordInFlight` skip, AMD/AAPL rails went sparse. |
 | **Fix** | E2E: desktop-scoped toolbar selectors + correct comparison strip label (WARN if snapshot cold). Recorder: one immediate retry pass for failed universe tickers in `recordSharedUniverseWallSamples`. `vector-wall-trail-sec-validate.mjs`: read more SSE frames (no early exit on candle). Checklist: 5s/15s cadence policy. |
 | **Status** | FIXED — PR #2183. |
+
+## 2026-08-14 — [Vector tiers 1–4] Soft nav, validation loop, embed seed, SSE coalesce, route tests — FIXED (cursor/vector-tier1-4-fixes-3d11)
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **Scope** | Tier 1–4 Vector backlog after bead-cadence merge (#2180–#2183): validation harness auth refresh, 15s on-demand probe default, comparison-strip cold skeleton, checklist de-staging; SPX embed parallel wall seed; pin-forecast label; `/vector` client-side ticker nav; shift-leaders gex-heatmap dedupe; SSE hub pending-refresh coalesce; walls+bars route tests; play-invariants session refresh. |
+| **Tier 1** | `vector-play-invariants.mjs` re-mints Clerk on 401 instead of exiting invalid mid-sweep. `validate:bead-cadence` defaults `--nonuniverse=PLTR`. Comparison strip shows loading skeleton until universe snapshot arrives. Checklist updated for production-only validation. |
+| **Tier 2** | `SpxPinForecast` chart label distinguishes effective max pain from desk tile. `SpxVectorEmbed` uses `fetchVectorClientSeed` for walls + wall-history on first paint. |
+| **Tier 3** | `VectorPageClient` + `vector-client-seed.ts`: ticker switches fetch client-side (history.replaceState) instead of full SSR (~1–3s soft nav). Scanner routes through same callback. |
+| **Tier 4** | `useVectorLivePoll` wired in shell; `vector-gex-heatmap-client.ts` dedupes shift-leader fetches; `vector-stream-hub.ts` coalesces overlapping refreshes; route tests for `/bars` + `/walls`. |
+| **Status** | FIXED — PR pending.

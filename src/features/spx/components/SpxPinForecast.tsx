@@ -278,7 +278,7 @@ function WhyPanel({ pin, scenarios, onClose }: { pin: PinPayload; scenarios: Pin
 function buildChart(pin: PinPayload, cone: PinConeStep[], pinPx: number | null) {
   const W = 520, H = 300, padL = 46, padR = 150, padT = 16, padB = 20;
   const levels: { label: string; price: number; color: string; dash: string }[] = [];
-  if (pin.magnet) levels.push({ label: pin.magnet.kind === "put_wall" ? "PUT WALL" : pin.magnet.kind === "max_pain" ? "MAX PAIN" : "CALL WALL", price: pin.magnet.strike, color: pin.magnet.kind === "put_wall" ? C.put : pin.magnet.kind === "max_pain" ? C.pin : C.call, dash: "0" });
+  if (pin.magnet) levels.push({ label: pin.magnet.kind === "put_wall" ? "PUT WALL" : pin.magnet.kind === "max_pain" ? "EFF MAX PAIN" : "CALL WALL", price: pin.magnet.strike, color: pin.magnet.kind === "put_wall" ? C.put : pin.magnet.kind === "max_pain" ? C.pin : C.call, dash: "0" });
   if (pin.flip != null) levels.push({ label: "γ FLIP", price: pin.flip, color: C.flip, dash: "7 5" });
   const prices = [...cone.flatMap((c) => [c.p10, c.p90]), pin.spot, ...(pinPx != null ? [pinPx] : []), ...levels.map((l) => l.price)].filter((n) => Number.isFinite(n));
   let lo = Math.min(...prices), hi = Math.max(...prices);
