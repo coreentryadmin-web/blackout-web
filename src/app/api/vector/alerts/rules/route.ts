@@ -1,5 +1,6 @@
-import { auth } from "@clerk/nextjs/server";
 import { NextResponse, type NextRequest } from "next/server";
+import { requireTierApi } from "@/lib/market-api-auth";
+import { requireToolApi } from "@/lib/tool-access-server";
 import { dbConfigured, dbQuery } from "@/lib/db";
 import {
   ensureVectorAlertRulesTable,
@@ -30,9 +31,18 @@ function normalizeTicker(raw: string | null | undefined): string {
 /** GET ?ticker=SPY → that ticker's rules only. GET with no ticker → every rule for the account
  *  (used by the cron's "which tickers does this user care about" fan-out, and available to any
  *  future account-wide UI). */
+async function requireVectorAlertAuth(): Promise<{ userId: string } | Response> {
+  const tier = await requireTierApi("premium");
+  if (tier instanceof Response) return tier;
+  const locked = await requireToolApi("vector");
+  if (locked) return locked;
+  return { userId: tier.userId };
+}
+
 export async function GET(req: NextRequest) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: NO_STORE_HEADERS });
+  const auth = await requireVectorAlertAuth();
+  if (auth instanceof Response) return auth;
+  const { userId } = auth;
   if (!dbConfigured()) {
     // No server-side store configured — the client's localStorage copy is still authoritative,
     // so answer with an empty mirror rather than an error (this route is a best-effort add-on).
@@ -68,8 +78,9 @@ export async function GET(req: NextRequest) {
 /** Replace the authed user's rule set for ONE ticker (whole-ticker replace, matching the shell's
  *  `persistRules(next)` shape — it always saves the FULL rule array for the active ticker). */
 export async function PUT(req: NextRequest) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: NO_STORE_HEADERS });
+  const auth = await requireVectorAlertAuth();
+  if (auth instanceof Response) return auth;
+  const { userId } = auth;
   if (!dbConfigured()) {
     return NextResponse.json({ error: "Database not configured" }, { status: 503, headers: NO_STORE_HEADERS });
   }
@@ -117,8 +128,9 @@ export async function PUT(req: NextRequest) {
 
 /** Clear all rules for ONE ticker on the authed user's account (body: { ticker }). */
 export async function DELETE(req: NextRequest) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: NO_STORE_HEADERS });
+  const auth = await requireVectorAlertAuth();
+  if (auth instanceof Response) return auth;
+  const { userId } = auth;
   if (!dbConfigured()) {
     return NextResponse.json({ error: "Database not configured" }, { status: 503, headers: NO_STORE_HEADERS });
   }

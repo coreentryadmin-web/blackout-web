@@ -145,6 +145,7 @@ export function VectorToolbar(props: Props) {
           gexAsOf={gexAsOf}
           vexAsOf={vexAsOf}
           liveSession={liveSession}
+          exposeTestIds={false}
         />
         {/* Rendered under BOTH lenses. It was gex-only, which stranded the member: the GEX LADDER
             fetches with `dte=${dteHorizon}` and keeps rendering at the last-picked horizon, so

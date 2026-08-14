@@ -661,6 +661,9 @@ export function VectorPageShell({
               initialSpot={initialBars.length ? initialBars[initialBars.length - 1]!.close : null}
               liveSpot={liveSpot}
               dteHorizon={dteHorizon}
+              wallsPollMs={
+                initialWallTrailSec != null ? initialWallTrailSec * 1000 : undefined
+              }
               priceBand={priceBand}
             />
           </div>

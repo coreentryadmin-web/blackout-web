@@ -10164,7 +10164,6 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **What was deliberately NOT touched** | The 4400-line `GexHeatmap` control-row internal layout consolidation (needs designer sign-off, deserves its own PR). The bespoke pill-style de-duplication across `.thermal-*` classes (cross-feature CSS cleanup). The full `LargoRead` and `DarkPoolRail` sub-components (they live in a different branch's fork, not on main). |
 | **Status** | FIXED — awaiting CI + deploy. |
 
-
 ## 2026-08-14 — [P3, UI/UX round 3] Thermal follow-ons: hero-skeleton ignored `prefers-reduced-motion`, sector picker's 6 phantom listbox options in a11y tree even when closed, no touch-tap dismiss, regime-strip contrast below AA, fmtPx dead ternary, fastFlash badge caused layout jog — FIXED (claude/three-repos-review-36t217)
 > **kind:** `FINDING`
 
@@ -10178,3 +10177,15 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Deliberately not shipped** | Ranked-lower items from the round-3 review: extracting `PANEL_CAPTION_CLS` / `CHIP_BUTTON_BASE` module constants (mechanical, no behaviour change — worth its own janitorial PR), NH-play-active bespoke pill → `<Badge>` adoption (30-line rewrite — worth its own PR alongside a broader pill-consolidation sweep). |
 | **Status** | FIXED — bundled into PR #2174. |
 
+## 2026-08-14 — [P1, Vector cadence + security] Shared-universe beads 5s / on-demand 15s incomplete on server+client; daily-regime community gate; duplicate E2E lens testids — FIXED (cursor/vector-deep-audit-3d11)
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **How it was found** | RTH validation: `bead-cadence-validate.mjs` (SPX/META/NVDA median 5s GREEN; SPY/AMD 10s within tolerance), `validate:vector-e2e` (FAIL strict-mode duplicate `vector-lens-gex`), deep codebase audit of `src/features/vector/`. |
+| **Cadence (PR #2180 superseded by this branch)** | Dynamic shared-universe tickers (Redis ≤100/14d) were recorded at 5s but SSE hub re-stamped at 15s when outside static allowlist. Fix: `vector-shared-universe-cache.ts` + `wallTrailSec` on SSE/SSR seed; client follows server. |
+| **Security** | `daily-regime` used `authorizeMarketDeskApi` (community) — premium Vector session data exposed. Alert rules `/api/vector/alerts/rules` only checked Clerk auth, not premium+vector tool. |
+| **UI/E2E** | `VectorToolbar` mounted two `VectorLensToggle` rows (iOS compact + desktop); both carried identical `data-testid`s → Playwright strict-mode violation. |
+| **Other fixes** | SSE stream applies `NO_STORE_STREAM_HEADERS`; `.vp-t-muted` slate → sky (no grey on `#040407`); GEX ladder poll uses `initialWallTrailSec`; `validate:vector-play-invariants` npm script (tsx). |
+| **Live evidence (pre-deploy, prod @ main)** | Bead cadence: NVDA n=187 median 5s (was ~37% coverage pre-recorder fix); META n=221 median 5s. E2E API checks 9/9 PASS; UI browser FAIL until deploy. |
+| **Status** | FIXED — PR #2181. |

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
+import { authorizePremiumDeskApi } from "@/lib/market-api-auth";
+import { requireToolApi } from "@/lib/tool-access-server";
+import { isVectorTickerAllowed, normalizeVectorTicker } from "@/features/vector/lib/vector-ticker";
 import { loadDailyRegime } from "@/features/vector/lib/vector-daily-regime-server";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
@@ -17,11 +19,19 @@ export const dynamic = "force-dynamic";
  * two differently-tuned copies of the same walk.
  */
 export async function GET(req: NextRequest) {
-  const auth = await authorizeMarketDeskApi(req);
+  const auth = await authorizePremiumDeskApi(req);
   if (auth instanceof Response) return auth;
 
+  const locked = await requireToolApi("vector");
+  if (locked) return locked;
+
+  const rawTicker = req.nextUrl.searchParams.get("ticker") ?? "SPX";
+  if (!isVectorTickerAllowed(rawTicker)) {
+    return NextResponse.json({ error: "Invalid ticker" }, { status: 400, headers: NO_STORE_HEADERS });
+  }
+
   const payload = await loadDailyRegime(
-    req.nextUrl.searchParams.get("ticker") ?? "SPX",
+    normalizeVectorTicker(rawTicker),
     req.nextUrl.searchParams.get("days") ?? undefined
   );
   return NextResponse.json(payload, { headers: NO_STORE_HEADERS });

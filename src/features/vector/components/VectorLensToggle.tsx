@@ -11,6 +11,8 @@ type Props = {
   gexAsOf?: number | null;
   vexAsOf?: number | null;
   liveSession?: boolean;
+  /** When false, omit data-testid (compact toolbar row duplicates desktop controls in DOM). */
+  exposeTestIds?: boolean;
 };
 
 function formatLensAge(asOf: number | null | undefined, now: number | null): string | null {
@@ -28,6 +30,7 @@ export function VectorLensToggle({
   gexAsOf,
   vexAsOf,
   liveSession = false,
+  exposeTestIds = true,
 }: Props) {
   const [now, setNow] = useState<number | null>(null);
 
@@ -54,7 +57,7 @@ export function VectorLensToggle({
             disabled={disabled}
             onClick={() => onLens(key)}
             aria-pressed={active}
-            data-testid={`vector-lens-${key}`}
+            {...(exposeTestIds ? { "data-testid": `vector-lens-${key}` } : {})}
             className={clsx(
               "font-mono text-[10px] font-bold uppercase tracking-[0.16em] rounded-lg border px-2.5 py-1.5 transition-colors",
               active && key === "gex" && "border-[#ffd60a]/70 bg-[#ffd60a]/15 text-[#ffd60a]",

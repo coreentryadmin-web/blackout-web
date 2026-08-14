@@ -129,8 +129,8 @@ export async function GET(req: NextRequest) {
 
   return new NextResponse(stream, {
     headers: {
+      ...NO_STORE_STREAM_HEADERS,
       "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
       Connection: "keep-alive",
     },
   });
