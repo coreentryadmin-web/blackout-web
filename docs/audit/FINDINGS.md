@@ -38,6 +38,41 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-08-14 — [FINDING, P2 observability] 0DTE discovery lanes went dark SILENTLY — a 75%-smaller roster was byte-identical to a quiet market — FIXED
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Status** | FIXED — this PR (`fix/zerodte-discovery-lane-health`) |
+| **Severity** | P2 — observability, not behavior. No trade decision changes; what changes is whether a shrunken board can be TOLD APART from a calm one. This is the defect that made the truncated-roster observation below un-diagnosable from outside for a full session. |
+| **Symptom** | Live RTH 2026-08-14, two scan passes ~1 minute apart: `17:41:19 setups=84 as_of=17:40:32` then `17:42:27 setups=19 as_of=17:41:58`. A second, independent occurrence earlier the same session (`as_of 16:56:26`) also landed at 19–20. Nothing in either payload explained the collapse. Spot, walls, flip and max-pain were unchanged across the pair, so the market had not moved 75% of the opportunity set. |
+| **Root cause** | `src/lib/zerodte/scan.ts` merges two whole-market discovery origins on top of the FLOW pipeline. **Both are wrapped in best-effort `try/catch` blocks that degrade to "flow-only board this cycle" and log nothing but a `console.warn`.** `discoverBreakoutSetups` additionally fails CLOSED to an empty setups list on a grouped-daily snapshot it cannot prove fresh (`data_unavailable`), and returns `skip_off_hours` / `skip_empty_market` in two more cases — all of which the caller consumed as "the setups array happens to be empty". The degradation itself is CORRECT (a lane that cannot see must not fabricate candidates); the defect is that it was invisible. BREAKOUT alone contributes up to `BREAKOUT_MAX_CANDIDATES_CEILING` = 100 (dynamic cap, floor 40), so one dark lane plausibly accounts for the entire 84→19 gap. |
+| **Why it was not caught** | The only trace was a `console.warn` on an ECS task; nothing reached the payload. From an external audit — the only vantage available from this sandbox — "BREAKOUT fail-closed on a stale snapshot" and "a genuinely quiet tape" produce the same bytes. Three separate probe attempts across the session tried to recover the origin mix and were blocked by Clerk FAPI limits; the information simply was not in the response to recover. |
+| **Fix** | New pure module `src/lib/zerodte/discovery-health.ts` recording, per lane, WHY it contributed what it did (`ok` / `disabled` / `off_hours` / `empty_market` / `data_unavailable` / `failed`, plus the contributed count and an optional reason). `scan.ts` populates it — including in both catch blocks — and it rides out on `ZeroDteScanResult.discovery_health` and `ZeroDteBoardPayload.discovery_health`. The load-bearing distinction is `ok` vs everything else: **`ok` means the lane ran and its count is a real market read, zero included; every other status means the count is an absence and must not be read as the market's verdict.** |
+| **Supporting extraction** | `pin-window.ts` — `discoverPinSetups` returns a bare array, so "ran, no pins qualified" and "outside its own window" are the same `[]`. The window constants moved to a pure module (pin-discovery transitively imports `server-only`, so they were unreachable and untestable from outside) and `pinWindowStatus()` separates the two. Without it, an 8am zero would have been recorded as a measured "no pins qualified". |
+| **Deliberately NOT done** | (1) No behavior change — no lane retries, no gating, no candidate added or removed; a provenance field that changes what trades is not a provenance field. (2) The board still serves normally on a dark lane; failing the whole board because one origin blinked would be strictly worse for members. (3) `anyLaneDegraded()` treats `disabled` and `off_hours` as CONFIGURED absences, not degradation — a switched-off lane behaving as designed must not raise an alarm. |
+| **Blast radius** | `ZeroDteBoardPayload` gained a required field, so both non-scan payload constructors were audited and filled: `buildMinimalBoardFallback` (`zerodte-service.ts`) and `emptySimBoardPayload` (`zerodte-sim-board.ts`) — both get the all-`disabled` initial value, which is literally true (neither runs a discovery lane) and pairs with the `upstream_ok:false` the fallback already sets. `zerodte-board-convergence.test.ts`'s fake scan result was updated for the same reason: without it the payload gained a `discovery_health: undefined` key that survives an in-process compare but vanishes through JSON — which is exactly the class of asymmetry the convergence test exists to catch. |
+| **Tests** | 11 new (`discovery-health.test.ts` ×9, `pin-window.test.ts` ×2), including: a genuine zero from a lane that RAN is not degradation; `disabled`/`off_hours` are not degradation; an unknown upstream outcome status maps to `failed` rather than passing through as a string nothing understands; `initialDiscoveryHealth()` returns a fresh object per call (a shared singleton would leak one pass's lane status into the next board build). Node 20: 79/79 across the six affected suites. |
+| **Follow-up (observed, not changed)** | `pin-discovery.ts`'s `lateCondorOnly` is computed as `now >= RTH_CUTOFF && now < CONDOR_LATE_CUTOFF` where both constants are 15:30 — so it is **always false** and the post-cutoff condor-only branch is unreachable. Noted here rather than changed: it alters which trades can open after 15:30 and belongs in its own PR with its own evidence. |
+
+---
+
+## 2026-08-14 — [FINDING, P2 OPEN] 0DTE scan roster collapses ~84 → ~19 setups mid-session
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Status** | OPEN — mechanism identified and now instrumented (see the entry above); the specific triggering failure is NOT yet confirmed. |
+| **Severity** | P2 — if a discovery lane is going dark intermittently during RTH, members see a materially smaller opportunity set for those passes. |
+| **Evidence** | Two independent captures, live RTH 2026-08-14: (a) `as_of 16:56:26` → 20 setups; (b) `17:41:19 setups=84 as_of=17:40:32` immediately followed by `17:42:27 setups=19 as_of=17:41:58`. Both truncated passes landed at 19–20. Spot / walls / gamma-flip / max-pain were unchanged across pair (b), so this is not the market removing 75% of the opportunity set. |
+| **Hypothesis (superseded)** | Initially read as a PIN-only pass bounded by `PIN_EVAL_CAP = 20`. **Rejected on the code:** `PIN_MAX_CANDIDATES = 16` caps what PIN can RETURN, so a 19–20 roster cannot be PIN alone. |
+| **Current hypothesis** | The BREAKOUT lane contributed zero for those passes — either the fail-closed `data_unavailable` path (grouped-daily snapshot not provably fresh) or a throw caught by `scan.ts`'s best-effort guard. Its dynamic cap is `clamp(ceil(qualifying × 0.30), 40, 100)`, so a dark BREAKOUT lane comfortably covers the ~65-setup gap, leaving FLOW + PIN ≈ 19–20. |
+| **Why still OPEN** | Confirming it requires the origin mix (or the ECS `[zerodte-breakout]` warn) for a truncated pass. Three probe attempts were blocked by Clerk FAPI rate limits, and the information was not in the payload to recover — which is itself the finding above. |
+| **How to confirm next session** | Poll `GET /api/market/zerodte/board` and read the new `discovery_health` field whenever `setups.length < 40`. `BREAKOUT.status !== "ok"` on a truncated pass confirms this; `BREAKOUT.status === "ok"` with a real count refutes it and moves the search to the merge/cap path. Prefer the cron bearer over a Clerk temp user (`scripts/audit/lib/audit-auth-fetch.mjs`) so the poll does not burn the FAPI budget. |
+| **Not yet done** | No engine change. Nothing here justifies touching a cap or a gate until the dark-lane hypothesis is confirmed or refuted against the instrumented field. |
+
+---
+
 ## 2026-08-14 — [FINDING, P3 latent] Night Hawk horizon board totals ignored the spliced SWING lane — FIXED
 > **kind:** `FINDING`
 
