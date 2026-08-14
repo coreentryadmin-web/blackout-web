@@ -4374,7 +4374,7 @@ export function GexHeatmap({
                         <td
                           key={e}
                           className={clsx(
-                            "whitespace-nowrap px-0.5 py-1 text-center font-bold",
+                            "thermal-matrix-expiry-cell whitespace-nowrap py-1 text-center font-bold",
                             shiftLeader && "gex-matrix-cell-with-badge",
                             has &&
                               val > 0 &&
