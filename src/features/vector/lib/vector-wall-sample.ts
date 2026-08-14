@@ -1,4 +1,5 @@
 import type { GexWalls } from "@/lib/providers/gex-wall-levels";
+import { isHeatmapOverlayAllowed } from "@/lib/heatmap-allowlist";
 import { roundFloats } from "@/lib/round-floats";
 import type { WallHistorySample } from "./vector-wall-history";
 import { VECTOR_ORACLE_TICKERS, normalizeVectorTicker } from "./vector-ticker";
@@ -72,12 +73,20 @@ export function wallTrailSampleSec(): number {
   return Number.isFinite(n) && n >= 5 ? Math.floor(n) : NON_UNIVERSE_WALL_TRAIL_SAMPLE_SEC;
 }
 
-/** Client-safe trail cadence — no WS store; oracle names 5s, everything else 15s. */
+/** Client-safe trail cadence — no WS store.
+ *
+ * Must mirror server `wallTrailSampleSecForTicker(..., "live")` for static-universe names:
+ * the background recorder writes 5s buckets for every ticker on the shared allowlist, but this
+ * function previously treated only {SPX, SPY, QQQ} as 5s and collapsed everyone else to 15s at
+ * render time — so META/NVDA rails looked ~3× sparser than SPX even with identical server data.
+ * On-demand names outside the allowlist stay 15s. */
 export function vectorWallTrailSecClient(ticker?: string | null): number {
   if (!ticker) return NON_UNIVERSE_WALL_TRAIL_SAMPLE_SEC;
-  return VECTOR_ORACLE_TICKERS.has(normalizeVectorTicker(ticker))
-    ? ORACLE_WALL_TRAIL_SAMPLE_SEC
-    : NON_UNIVERSE_WALL_TRAIL_SAMPLE_SEC;
+  const t = normalizeVectorTicker(ticker);
+  if (VECTOR_ORACLE_TICKERS.has(t) || isHeatmapOverlayAllowed(t)) {
+    return UNIVERSE_WALL_TRAIL_SAMPLE_SEC;
+  }
+  return NON_UNIVERSE_WALL_TRAIL_SAMPLE_SEC;
 }
 
 /** Snap an epoch-second timestamp to the wall-trail bucket (15s default for live non-oracle). */

@@ -1,5 +1,6 @@
 /** Vector live-data cadence — single source of truth for client + server tuning. */
 
+import { isHeatmapOverlayAllowed } from "@/lib/heatmap-allowlist";
 import { VECTOR_ORACLE_TICKERS, normalizeVectorTicker } from "./vector-ticker";
 
 /** SSE hub tick — spot + forming candle for every ticker. */
@@ -34,7 +35,9 @@ export const VECTOR_NON_UNIVERSE_WALL_SCOPE_REFRESH_MS = 15_000;
 
 /** Client poll cadence for scoped walls / horizon history. */
 export function vectorWallsScopePollMs(ticker?: string | null): number {
-  if (ticker && VECTOR_ORACLE_TICKERS.has(normalizeVectorTicker(ticker))) {
+  if (!ticker) return VECTOR_NON_UNIVERSE_WALLS_SCOPE_POLL_MS;
+  const t = normalizeVectorTicker(ticker);
+  if (VECTOR_ORACLE_TICKERS.has(t) || isHeatmapOverlayAllowed(t)) {
     return VECTOR_WALLS_SCOPE_POLL_MS;
   }
   return VECTOR_NON_UNIVERSE_WALLS_SCOPE_POLL_MS;
