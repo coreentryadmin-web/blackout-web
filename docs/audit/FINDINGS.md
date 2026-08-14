@@ -38,6 +38,40 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-08-14 — [FINDING, P3 a11y/UX] Thermal round-4 polish: retry action on top-level fetch banner, ticker-sheet focus ring, panel-caption AA contrast, matrix-refresh focus-visible — FIXED
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Status** | FIXED — PR to be opened on `claude/three-repos-review-36t217` after PR #2174 (round 3) merged |
+| **Severity** | P3 a11y/UX polish |
+| **Blast radius** | Every Thermal user: keyboard/screen-reader users, users on a stalled feed, users on small text near the panel footers, sighted keyboard users tabbing through the matrix title bar |
+
+### 1. `GexHeatmap.tsx` — top-level `fetchFailed` banner had NO retry action
+- **Root cause:** the `role="alert"` banner rendered when the matrix SWR errored said "retrying" but exposed no manual button. `mutate()` was already in scope (line 2639, added in the comprehensive-pass PR) and the two empty-state banners below (~4363 / 4392) already used it. The top-level banner was the only site still stranded, so a user on a stuck SWR loop had to reload the whole page.
+- **Fix:** wrap the icon+label in a min-width flex box and add a `<Button size="sm" variant="ghost">↻ Retry</Button>` calling `void mutate()`, `aria-label={\`Retry ${lensUpper} feed\`}` for AT. Matches the tone/behavior of the two existing retry buttons.
+
+### 2. `GexHeatmap.tsx:1680` — ticker-search option `<button>` had no focus-visible ring
+- **Root cause:** the option button carried `outline-none transition-colors` — the reset killed the browser default without providing a replacement. A screen-reader user hears the option (`role="option"` on the `<li>`, `aria-selected`), but a sighted keyboard user tabbing through the sheet has no visible indication of which row is live.
+- **Fix:** add `focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-0` alongside the existing `outline-none`. Same sky family as the other Thermal focus rings.
+
+### 3. `GexHeatmap.tsx:3695/3709/3729` — three panel captions at `text-sky-300/60` failed WCAG AA
+- **Root cause:** `#7dd3fc @ 60% α` on the translucent panel background composites to ≈3.4:1 against the panel — below the 4.5:1 AA floor for small (9px) text. The identical text is used under the Distribution, Cumulative Curve, and Intraday Shift panels.
+- **Fix:** `text-sky-300/60` → `text-sky-300/85` at all three sites (replace_all safe — the whole className string is identical). Matches the contrast bumps landed in `ThermalRegimeStrip.tsx` (round 3).
+
+### 4. `globals.css:16851…` — `.spx-matrix-refresh-btn` had no `:focus-visible` rule
+- **Root cause:** the matrix title-bar refresh button ships as raw CSS (not a Tailwind stack), so it doesn't pick up the shared focus ring. A Tab-through the title-bar landed on an invisible target. `:hover` existed; keyboard-equivalent state did not.
+- **Fix:** add `.spx-matrix-refresh-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(103,232,249,0.7); color: rgb(103 232 249); border-color: rgba(103,232,249,0.6); }` — same cyan family as `:hover`, box-shadow rather than outline so it composes with the rounded border.
+
+### Evidence
+- `npx tsc --noEmit --skipLibCheck` clean across the touched files (only the pre-existing `capture-desk-png.ts` `html-to-image` types issue remains, unrelated).
+- Manual keyboard walkthrough on the Thermal desk with focus-visible on: the ticker option row + matrix refresh button now both show a 2px ring.
+
+### Why now
+- Round 4 of the standing continuous Thermal UX audit — the previous three rounds landed 28 fixes on PR #2174 (merged). This 4-file follow-up closes every issue the round-4 audit flagged.
+
+---
+
 ## 2026-08-13 — [FINDING, P2 data-correctness] `price` and `change_pct` served from two different instants at four WS-overlay sites — FIXED
 > **kind:** `FINDING`
 

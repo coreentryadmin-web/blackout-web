@@ -1676,8 +1676,14 @@ function TickerSwitcher({
                 type="button"
                 onMouseEnter={() => setActive(i)}
                 onClick={() => pick(o.ticker)}
+                // `focus-visible:ring` added so keyboard users tabbing through
+                // the ticker sheet see WHERE focus is — the outline-none reset
+                // above was killing the browser default without providing a
+                // replacement, so a screen-reader user could hear the option
+                // but a sighted keyboard user had no idea which row was live.
                 className={clsx(
                   "flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left outline-none transition-colors",
+                  "focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-0",
                   nativeShell ? "gex-ticker-native-sheet-option min-h-[var(--ios-touch,2.75rem)]" : "",
                   isActive ? "bg-cyan-400/12" : "hover:bg-cyan-400/10"
                 )}
@@ -3686,7 +3692,7 @@ export function GexHeatmap({
         metricCells={cells}
         selectedExpiries={selectedExpiries}
       />
-      <p className="mt-2 text-[9px] font-mono uppercase tracking-widest text-sky-300/60">
+      <p className="mt-2 text-[9px] font-mono uppercase tracking-widest text-sky-300/85">
         {`${vocab.pos} / ${vocab.neg} · `}
         {scopeLabel}{" "}
         <span className={clsx(filteredTotal >= 0 ? posColorClass : "text-bear-text")}>
@@ -3700,7 +3706,7 @@ export function GexHeatmap({
     <div className="min-w-0">
       <PanelLabel>Cumulative Curve</PanelLabel>
       <CumulativeCurve rows={profileRows} spot={spot} flip={profileFlip} lens={lens} />
-      <p className="mt-2 text-[9px] font-mono uppercase tracking-widest text-sky-300/60">
+      <p className="mt-2 text-[9px] font-mono uppercase tracking-widest text-sky-300/85">
         {`Zero-crossing = ${vocab.pivot} · `}
         {scopeLabel}{" "}
         <span className={clsx(filteredTotal >= 0 ? posColorClass : "text-bear-text")}>
@@ -3720,7 +3726,7 @@ export function GexHeatmap({
       {hasShiftForLens && shift && shift.available ? (
         <>
           <ShiftView shift={shift} strikes={strikes} spotStrike={spotStrike} lens={lens} />
-          <p className="mt-2 text-[9px] font-mono uppercase tracking-widest text-sky-300/60">
+          <p className="mt-2 text-[9px] font-mono uppercase tracking-widest text-sky-300/85">
             {`Δ ${vocab.unit} · built / melted`}
           </p>
         </>
@@ -4323,15 +4329,33 @@ export function GexHeatmap({
       )}
 
       {fetchFailed && (
+        // Top-level fetch-failure banner. Before this fix the copy said
+        // "retrying" but there was NO manual retry action — a user on a stalled
+        // SWR loop had to reload the whole page. `mutate` is already in scope
+        // (line 2639) and the two empty-state banners below (~4363/4392) already
+        // use it the same way; wiring one here just closes the last panel that
+        // stranded users on a stuck feed.
         <div
           role="alert"
-          className="mb-4 flex items-center gap-2 rounded-xl border border-bear/40 bg-bear/[0.08] px-4 py-3"
+          className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-bear/40 bg-bear/[0.08] px-4 py-3"
           style={{ boxShadow: "inset 0 0 16px rgba(255,45,85,0.06)" }}
         >
-          <span className="text-bear text-sm leading-none">⚠</span>
-          <span className="font-mono text-[12px] font-bold text-bear tracking-wide">
-            {lensUpper} feed unavailable — retrying
-          </span>
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-bear text-sm leading-none">⚠</span>
+            <span className="font-mono text-[12px] font-bold text-bear tracking-wide truncate">
+              {lensUpper} feed unavailable — retrying
+            </span>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="shrink-0 !py-1 !px-2 !text-[11px] font-mono"
+            onClick={() => { void mutate(); }}
+            aria-label={`Retry ${lensUpper} feed`}
+          >
+            ↻ Retry
+          </Button>
         </div>
       )}
 
