@@ -73,6 +73,8 @@ type Props = {
   initialDarkPoolLevels: VectorDarkPoolLevel[];
   sessionYmd: string;
   liveSession: boolean;
+  /** Server-resolved bead bucket size (5s shared universe, 15s on-demand). */
+  initialWallTrailSec?: number;
   /**
    * Embed seam (2026-07-13, member-directed desk consolidation): "chart-only" renders JUST the
    * Vector chart surface — toolbar (timeframe / DTE toggle / indicators / lens / replay), regime
@@ -142,6 +144,7 @@ export function VectorPageShell({
   initialDarkPoolLevels,
   sessionYmd,
   liveSession,
+  initialWallTrailSec,
   embed,
   defaultDteHorizon,
   defaultTimeframe,
@@ -462,6 +465,7 @@ export function VectorPageShell({
           initialGammaFlip={initialGammaFlip}
           initialVexFlip={initialVexFlip}
           initialDarkPoolLevels={initialDarkPoolLevels}
+          initialWallTrailSec={initialWallTrailSec}
           sessionYmd={sessionYmd}
           liveSession={liveSession}
           defaultDteHorizon={defaultDteHorizon}
@@ -566,6 +570,7 @@ export function VectorPageShell({
       initialGammaFlip={initialGammaFlip}
       initialVexFlip={initialVexFlip}
       initialDarkPoolLevels={initialDarkPoolLevels}
+      initialWallTrailSec={initialWallTrailSec}
       sessionYmd={sessionYmd}
       liveSession={liveSession}
       defaultDteHorizon={defaultDteHorizon}

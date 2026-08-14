@@ -157,9 +157,7 @@ import {
 import {
   VECTOR_GEX_HEATMAP_FAST_MOVE_PCT,
   VECTOR_GEX_HEATMAP_POLL_MS,
-  VECTOR_WALLS_SCOPE_POLL_MS,
   VECTOR_WALL_TRAIL_SEC,
-  vectorWallsScopePollMs,
 } from "@/features/vector/lib/vector-cadence";
 import { vectorWallTrailSecClient } from "@/features/vector/lib/vector-wall-sample";
 import { vectorHeatmapScopeLabel } from "@/lib/gex-scope-labels";
@@ -257,6 +255,8 @@ type Props = {
   initialDarkPoolLevels: VectorDarkPoolLevel[];
   sessionYmd: string;
   liveSession: boolean;
+  /** Server-resolved bead bucket size (5s shared universe, 15s on-demand). */
+  initialWallTrailSec?: number;
   onFreshness?: (updatedAt: number) => void;
   /** Live spot price from each candle tick — fed to GEX ladder for real-time updates. */
   onSpotChange?: (spot: number) => void;
@@ -1149,6 +1149,7 @@ export function VectorChart({
   initialDarkPoolLevels,
   sessionYmd,
   liveSession,
+  initialWallTrailSec,
   onFreshness,
   onSpotChange,
   onWallEventsChange,
@@ -1354,6 +1355,16 @@ export function VectorChart({
   // count changes. (No SILENT truncation: the cap is always announced when prints are dropped.)
   const lastFlowTruncatedRef = useRef<number>(-1);
   const wallHistoryRef = useRef<WallHistorySample[]>(initialWallHistory);
+  const [wallTrailSec, setWallTrailSec] = useState(
+    initialWallTrailSec ?? vectorWallTrailSecClient(ticker)
+  );
+  const wallTrailSecRef = useRef(wallTrailSec);
+  useEffect(() => {
+    wallTrailSecRef.current = wallTrailSec;
+  }, [wallTrailSec]);
+  useEffect(() => {
+    setWallTrailSec(initialWallTrailSec ?? vectorWallTrailSecClient(ticker));
+  }, [ticker, initialWallTrailSec]);
   /** Canonical 1m session bars — SSE live ticks and Polygon seed write here only. */
   const minuteBarsRef = useRef<VectorBar[]>(initialBars);
   const displayBarTimeRef = useRef<number>(0);
@@ -1694,7 +1705,7 @@ export function VectorChart({
         : wallHistoryRef.current);
     const liveBeads = liveSessionRef.current && !replayModeRef.current;
     const pinLiveAnchorBeads = liveFollowEnabledRef.current;
-    const trailBucketSec = vectorWallTrailSecClient(ticker);
+    const trailBucketSec = wallTrailSecRef.current;
     const call = applyWallBeadMarkers(
       callBeadsRef.current,
       history,
@@ -2287,7 +2298,7 @@ export function VectorChart({
 
       const visibleHistory = sliceHistoryToTime(sourceHistory, cursorTime);
       const v = lensVisuals(activeLens);
-      const trailBucketSec = vectorWallTrailSecClient(ticker);
+      const trailBucketSec = wallTrailSecRef.current;
       const call = applyWallBeadMarkers(
         callBeadsRef.current,
         visibleHistory,
@@ -2826,7 +2837,7 @@ export function VectorChart({
 
     void fetchScoped();
     void fetchHistory();
-    const scopePollMs = vectorWallsScopePollMs(ticker);
+    const scopePollMs = wallTrailSec * 1000;
     // Refresh both walls and wall history on the same cadence for coherent display.
     const id = liveSession ? setInterval(fetchScoped, scopePollMs) : null;
     const histId = liveSession ? setInterval(fetchHistory, scopePollMs) : null;
@@ -2839,6 +2850,7 @@ export function VectorChart({
   }, [
     dteHorizon,
     ticker,
+    wallTrailSec,
     sessionYmd,
     liveSession,
     timeframe,
@@ -2865,7 +2877,7 @@ export function VectorChart({
   // While viewing live, stamp scoped walls into the in-memory rail each trail bucket.
   useEffect(() => {
     if (!liveSession || dteHorizon === "all") return;
-    const trailSec = vectorWallTrailSecClient(ticker);
+    const trailSec = wallTrailSecRef.current;
     const id = setInterval(() => {
       if (replayModeRef.current) return;
       const walls = horizonWallsRef.current;
@@ -2885,7 +2897,7 @@ export function VectorChart({
       refreshTrails(lensRef.current);
     }, trailSec * 1000);
     return () => clearInterval(id);
-  }, [liveSession, dteHorizon, ticker, refreshTrails]);
+  }, [liveSession, dteHorizon, wallTrailSec, refreshTrails]);
 
   // Lens (GEX↔VEX) is a selection too: re-derive the terminal so the lens-gated wall-integrity line
   // (and the rest) reflect the new lens immediately, not on the next SSE frame — which never arrives
@@ -2963,6 +2975,10 @@ export function VectorChart({
       // 10-minute replay left a 10-bar hole in the session for the rest of the
       // day, silently corrupting higher-timeframe OHLC aggregates.
       const inReplay = replayModeRef.current;
+
+      if (snap.wallTrailSec != null && Number.isFinite(snap.wallTrailSec)) {
+        setWallTrailSec(Math.floor(snap.wallTrailSec));
+      }
 
       if (snap.wallHistory?.length) {
         const prevTail = wallHistoryRef.current[wallHistoryRef.current.length - 1];
