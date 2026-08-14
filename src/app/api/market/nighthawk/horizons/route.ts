@@ -7,7 +7,7 @@ import { NextResponse } from "next/server";
 import { requireDatabaseInProduction, fetchOpenSwingPositions, fetchLatestSwingSnapshotEvents } from "@/lib/db";
 import { authorizeCronOrTierApi } from "@/lib/market-api-auth";
 import { getZeroDteBoardPayload } from "@/lib/platform/zerodte-service";
-import { scopeBoardToHorizon, assembleHorizonBoard, makePlaySet } from "@/lib/horizon-board";
+import { scopeBoardToHorizon, assembleHorizonBoard, makePlaySet, withLane } from "@/lib/horizon-board";
 import {
   horizonForView,
   isKnownNightHawkView,
@@ -77,7 +77,12 @@ export async function GET(req: NextRequest) {
       fetchLatestManageEvents: (ids) => fetchLatestSwingSnapshotEvents(ids).catch(() => new Map()),
       spotsByTicker: snap?.spotsByTicker,
     });
-    board = { ...board, lanes: { ...board.lanes, SWING: swingLane } };
+    // withLane, not a raw spread: `board` was assembled from the 0DTE payload alone, so its
+    // totalCommitted/totalWatch describe the ZERO_DTE lane only. Splicing SWING in with a spread left
+    // those totals stale on the all-lanes view — `scopeBoardToHorizon(board, null)` is a documented
+    // no-op, so nothing downstream re-derived them (measured live 2026-08-14: totalCommitted 1 on a
+    // board whose SWING lane carried 14 committed plays). withLane re-derives from all three lanes.
+    board = withLane(board, "SWING", swingLane);
     board = scopeBoardToHorizon(board, horizon);
     // roundFloats at the boundary: the 0DTE lane is already rounded inside zerodte-service,
     // but the SWING lane is spliced in raw from getSwingServingLane() and the board totals are
