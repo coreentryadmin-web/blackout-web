@@ -19050,6 +19050,46 @@ body::before {
   flex-shrink: 0;
 }
 
+.thermal-capture-png-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.35rem;
+  height: 1.5rem;
+  padding: 0 0.35rem;
+  border-radius: 0.45rem;
+  border: 1px solid rgba(34, 211, 238, 0.35);
+  background: transparent;
+  color: rgb(34 211 238 / 0.9);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 120ms, border-color 120ms, opacity 120ms;
+}
+
+.thermal-capture-png-btn:hover:not(:disabled) {
+  color: rgb(103 232 249);
+  border-color: rgba(103, 232, 249, 0.6);
+}
+
+.thermal-capture-png-btn:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.thermal-capture-png-btn:focus-visible {
+  outline: 2px solid rgba(34, 211, 238, 0.65);
+  outline-offset: 2px;
+}
+
+.thermal-desk-capture-root {
+  /* Capture root stays in normal layout; html-to-image reads computed styles. */
+  background: #040407;
+}
+
 .thermal-grid-toolbar-toggle:focus-visible {
   outline: 2px solid rgba(34, 211, 238, 0.65);
   outline-offset: 2px;
