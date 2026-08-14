@@ -37,7 +37,7 @@ async function readSseWallTrailSec(base, cookieHeader, ticker) {
     const reader = res.body.getReader();
     const dec = new TextDecoder();
     let buf = "";
-    for (let i = 0; i < 25; i++) {
+    for (let i = 0; i < 40; i++) {
       const { value, done } = await reader.read();
       if (done) break;
       buf += dec.decode(value, { stream: true });
@@ -53,7 +53,6 @@ async function readSseWallTrailSec(base, cookieHeader, ticker) {
         }
       }
       if (last?.wallTrailSec != null) break;
-      if (last?.candle && i >= 8) break;
     }
     reader.cancel().catch(() => {});
   } catch {

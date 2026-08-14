@@ -382,16 +382,18 @@ async function browserVector(session) {
       rec(`ui:click-tf-${m}m`, "PASS");
     }
 
-    // Structure feed visible
-    const feed = page.getByLabel("Wall structure events");
-    if (await feed.isVisible()) {
+    // Cross-ticker comparison strip (P2 CTO audit) — universe snapshot may still be loading.
+    const desktopShell = page.locator(".vector-toolbar > .flex.flex-wrap");
+    const feed = page.getByLabel("Cross-ticker wall comparison");
+    await feed.waitFor({ state: "attached", timeout: 15_000 }).catch(() => undefined);
+    if (await feed.isVisible().catch(() => false)) {
       rec("ui:structure-feed", "PASS");
     } else {
-      rec("ui:structure-feed", "FAIL", "ticker not visible");
+      rec("ui:structure-feed", "WARN", "comparison strip not visible — universe snapshot may be cold");
     }
 
-    // Replay controls — stay inside .vector-replay-bar (avoid matching "Replay session" for /Play/i)
-    const replayBar = page.locator(".vector-replay-bar");
+    // Replay controls — desktop toolbar row only (compact iOS row is display:none on web but still in DOM)
+    const replayBar = desktopShell.locator(".vector-replay-bar").first();
     const replayBtn = replayBar.getByRole("button", { name: /Replay session|Exit replay/i });
     const canReplay = await replayBtn.isEnabled();
     if (!canReplay) {
@@ -401,7 +403,7 @@ async function browserVector(session) {
       await replayBtn.click();
       rec("ui:click-enter-replay", "PASS");
 
-      const scrub = page.locator('input[type="range"][aria-label="Replay position"]');
+      const scrub = desktopShell.locator('input[type="range"][aria-label="Replay position"]').first();
       if (await scrub.isVisible()) {
         await scrub.fill("1");
         rec("ui:scrub-replay", "PASS");

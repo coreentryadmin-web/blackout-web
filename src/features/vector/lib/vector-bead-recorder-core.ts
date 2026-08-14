@@ -89,6 +89,33 @@ export async function recordSharedUniverseWallSamples(opts?: {
     }
   }
 
+  // One immediate retry for cold heatmap blips — live 2026-08-14 AMD/AAPL showed ~30s median
+  // gaps with only ~9–17 samples in a 20m window while peers stayed at 5s. A transient Polygon
+  // miss returns historyRecorded=false without throwing, which used to leave a name dark until
+  // the next successful sweep (and the next tick may land while recordInFlight, skipping again).
+  if (failedTickers.length > 0) {
+    const retryTargets = [...failedTickers];
+    const retryResults = await mapInPool(retryTargets, concurrency, (ticker) =>
+      recordVectorUniverseWallSample(ticker, { sessionYmd, nowSec, bucketScope: "universe" })
+    );
+    const recovered: string[] = [];
+    for (let i = 0; i < retryResults.length; i++) {
+      const r = retryResults[i]!;
+      const t = retryTargets[i]!;
+      if (r.status === "fulfilled" && r.value) {
+        recorded += 1;
+        failed -= 1;
+        recovered.push(t);
+      }
+    }
+    if (recovered.length) {
+      for (const t of recovered) {
+        const idx = failedTickers.indexOf(t);
+        if (idx >= 0) failedTickers.splice(idx, 1);
+      }
+    }
+  }
+
   return {
     sessionYmd,
     total: tickers.length,
