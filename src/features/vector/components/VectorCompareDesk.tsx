@@ -187,12 +187,8 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
         </div>
 
         <div
-          className={clsx(
-            "vector-compare-grid",
-            `vector-compare-grid--${seeds.length}`,
-            syncFlash && "is-sync-flash"
-          )}
-          data-pane-count={seeds.length}
+          className={clsx("vector-compare-grid", syncFlash && "is-sync-flash")}
+          data-pane-count={seeds.length + emptySlots}
         >
           {seeds.map((seed, i) => (
             <VectorComparePane
