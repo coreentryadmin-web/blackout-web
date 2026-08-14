@@ -9390,9 +9390,18 @@ body::before {
 
   /* Thermal single-ticker matrix — fill desk width; expiry cols share slack equally. */
   .spx-gex-matrix-table.thermal-matrix-table {
+    --thermal-matrix-strike-w: 3.25rem;
+    --thermal-matrix-flow-w: 14rem;
+    --thermal-matrix-expiry-min: 7.25rem;
     table-layout: fixed;
     width: 100%;
-    min-width: 100%;
+    min-width: max(
+      100%,
+      calc(
+        var(--thermal-matrix-strike-w) + var(--thermal-matrix-flow-w) +
+          var(--thermal-expiry-cols, 1) * var(--thermal-matrix-expiry-min)
+      )
+    );
     max-width: none;
   }
 
@@ -9411,24 +9420,34 @@ body::before {
     white-space: nowrap;
   }
 
-  .thermal-matrix-col-strike {
-    width: 3.1rem;
+  .thermal-matrix-col-strike,
+  .thermal-matrix-head-strike,
+  .thermal-matrix-strike-cell {
+    width: var(--thermal-matrix-strike-w);
+    min-width: var(--thermal-matrix-strike-w);
+    max-width: var(--thermal-matrix-strike-w);
   }
 
-  /* 1% + min-width → equal flex of leftover width between strike and net flow. */
-  .thermal-matrix-col-expiry {
-    width: 1%;
-    min-width: 7.25rem;
+  /* Equal share of leftover width — never let Net flow absorb the slack (that misaligns the header). */
+  .thermal-matrix-col-expiry,
+  .thermal-matrix-head-expiry,
+  .thermal-matrix-expiry-cell {
+    width: calc(
+      (100% - var(--thermal-matrix-strike-w) - var(--thermal-matrix-flow-w)) /
+        var(--thermal-expiry-cols, 1)
+    );
+    min-width: var(--thermal-matrix-expiry-min);
   }
 
-  .thermal-matrix-col-flow {
-    width: 11.5rem;
-    max-width: 11.5rem;
+  .thermal-matrix-col-flow,
+  .thermal-matrix-head-flow,
+  .thermal-matrix-flow-cell {
+    width: var(--thermal-matrix-flow-w);
+    min-width: var(--thermal-matrix-flow-w);
+    max-width: var(--thermal-matrix-flow-w);
   }
 
   .thermal-matrix-head-strike {
-    width: 3.1rem;
-    max-width: 3.1rem;
     padding-left: 0.25rem;
     padding-right: 0.2rem;
     text-align: left;
@@ -9462,8 +9481,6 @@ body::before {
   }
 
   .thermal-matrix-strike-cell {
-    width: 3.1rem;
-    max-width: 3.1rem;
     padding-left: 0.25rem !important;
     padding-right: 0.2rem !important;
   }
