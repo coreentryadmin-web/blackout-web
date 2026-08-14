@@ -68,6 +68,18 @@ test("wallTrailSampleSecForTicker: a RECORDED-universe ticker gets 5s in live sc
   }
 });
 
+test("wallTrailSampleSecForTicker: dynamic shared-universe member gets 5s in live scope", async () => {
+  const { wallTrailSampleSecForTicker } = await mod();
+  const {
+    _setSharedUniverseForTest,
+    _resetSharedUniverseCacheForTest,
+  } = await import("./vector-shared-universe-cache");
+  _resetSharedUniverseCacheForTest();
+  _setSharedUniverseForTest([...vectorUniverseTickers(), "DYNMEM"]);
+  assert.equal(wallTrailSampleSecForTicker("DYNMEM"), UNIVERSE_WALL_TRAIL_SAMPLE_SEC);
+  _resetSharedUniverseCacheForTest();
+});
+
 test("wallTrailSampleSecForTicker: the env override still beats every ticker rule", async () => {
   const prev = process.env.VECTOR_WALL_TRAIL_SAMPLE_SEC;
   process.env.VECTOR_WALL_TRAIL_SAMPLE_SEC = "20";

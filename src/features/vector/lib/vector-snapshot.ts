@@ -16,7 +16,8 @@ import { todayEtYmd } from "@/lib/providers/spx-session";
 import { isEtCashRth } from "@/lib/et-market-hours";
 import { persistWallSampleDebounced, loadSessionWallHistory, appendSessionWallSample } from "./vector-wall-persist";
 import { bucketWallSampleTime, buildWallHistorySample } from "./vector-wall-sample";
-import { wallTrailSampleSecForTicker } from "./vector-wall-sample-server";
+import { resolveWallTrailSampleSec } from "./vector-wall-sample-server";
+import { refreshSharedUniverseCacheIfStale } from "./vector-shared-universe-cache";
 import {
   RECORDED_WALL_HORIZONS,
   pickNarrowedWallSample,
@@ -488,6 +489,8 @@ export type VectorStreamPayload = {
   vexAsOf: number;
   wallHistory: WallHistorySample[];
   sessionYmd: string;
+  /** Server-resolved bead bucket size (5s shared universe, 15s on-demand). */
+  wallTrailSec: number;
 };
 
 export function getVectorWallHistory(ticker: string = VECTOR_DEFAULT_TICKER): WallHistorySample[] {
@@ -558,7 +561,7 @@ export async function recordVectorWallSamplesFromWarm(ticker: string): Promise<b
   const vexRecordable = vexWalls != null && nowMs - s.cachedVexWallsAt <= STALE_RECORD_MAX_MS;
   if (!gexRecordable && !vexRecordable) return false;
 
-  const tickerBucketSec = wallTrailSampleSecForTicker(t);
+  const tickerBucketSec = await resolveWallTrailSampleSec(t);
   const sampleTime = bucketWallSampleTime(Math.floor(nowMs / 1000), tickerBucketSec);
   const sample = buildWallHistorySample({
     time: sampleTime,
@@ -590,6 +593,8 @@ export async function buildVectorStreamPayload(
   ticker: string = VECTOR_DEFAULT_TICKER
 ): Promise<VectorStreamPayload> {
   const t = normalizeVectorTicker(ticker);
+  await refreshSharedUniverseCacheIfStale();
+  const wallTrailSec = await resolveWallTrailSampleSec(t);
   // Dynamic WS subscription: ensure this ticker's gex_strike_expiry channel is
   // joined on the UW socket. Idempotent, leader-only, auto-unsubscribes on idle.
   joinGexStrikeExpiryTicker(t);
@@ -648,7 +653,7 @@ export async function buildVectorStreamPayload(
     // honest-gap semantics documented on buildWallHistorySample). Freshness
     // gating stays here: a lens whose cache is stale contributes nothing this
     // bucket (passed as null), recording an honest gap rather than a stale copy.
-    const tickerBucketSec = wallTrailSampleSecForTicker(t);
+    const tickerBucketSec = wallTrailSec;
     const sample = buildWallHistorySample({
       time: bucketWallSampleTime(Math.floor(nowMs / 1000), tickerBucketSec),
       gexWalls: gexRecordable ? walls : null,
@@ -705,6 +710,7 @@ export async function buildVectorStreamPayload(
     vexAsOf: s.cachedVexWallsAt,
     wallHistory: s.wallHistory,
     sessionYmd,
+    wallTrailSec,
   });
 }
 
