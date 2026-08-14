@@ -2,7 +2,10 @@ import "server-only";
 
 import { VECTOR_ORACLE_TICKERS, normalizeVectorTicker } from "./vector-ticker";
 import { hasLiveGexStrikeExpiry } from "@/lib/ws/uw-socket";
-import { vectorUniverseTickers } from "@/lib/heatmap-allowlist";
+import {
+  isSharedUniverseTickerSync,
+  refreshSharedUniverseCacheIfStale,
+} from "./vector-shared-universe-cache";
 import {
   NON_UNIVERSE_WALL_TRAIL_SAMPLE_SEC,
   ORACLE_WALL_TRAIL_SAMPLE_SEC,
@@ -48,24 +51,10 @@ import {
  * bucket survives for what it was actually meant for: a genuinely on-demand symbol nobody is
  * recording in the background, where the rail really is viewer-built.
  *
- * Deliberately the STATIC allowlist (sync) and not `listSharedUniverseTickers()` (async, Redis):
- * this runs on every SSE poll for every viewer, and an await here would put a Redis round-trip in
- * the hot path. Dynamic-universe names therefore still take the 15s branch — a narrower residual
- * gap, called out rather than papered over, and fixable later behind a cached membership set.
+ * Deliberately NOT `listSharedUniverseTickers()` on every call — that would Redis-round-trip on
+ * every SSE poll. A 30s in-process cache (`vector-shared-universe-cache.ts`) is refreshed by the
+ * bead recorder + stream builder so dynamic member-viewed names get 5s in live scope too.
  */
-/**
- * Static shared-universe membership, memoized.
- *
- * `vectorUniverseTickers()` builds a fresh array from a Set on every call, and this runs on every
- * SSE poll for every connected viewer — so the lookup is hoisted into a Set built once per
- * process. The list is a module-level constant, so there is nothing to invalidate.
- */
-let staticUniverseSet: Set<string> | null = null;
-function isStaticUniverseTicker(t: string): boolean {
-  staticUniverseSet ??= new Set(vectorUniverseTickers());
-  return staticUniverseSet.has(t);
-}
-
 export function wallTrailSampleSecForTicker(
   ticker?: string | null,
   scope: WallTrailSampleScope = "live"
@@ -83,9 +72,16 @@ export function wallTrailSampleSecForTicker(
     if (VECTOR_ORACLE_TICKERS.has(t) || hasLiveGexStrikeExpiry(t)) {
       return ORACLE_WALL_TRAIL_SAMPLE_SEC;
     }
-    // A ticker the background recorder already samples at 5s — its rail is a 5s rail no matter
-    // which writer is appending to it this tick.
-    if (isStaticUniverseTicker(t)) return UNIVERSE_WALL_TRAIL_SAMPLE_SEC;
+    if (isSharedUniverseTickerSync(t)) return UNIVERSE_WALL_TRAIL_SAMPLE_SEC;
   }
   return NON_UNIVERSE_WALL_TRAIL_SAMPLE_SEC;
+}
+
+/** Async entry — refreshes shared-universe cache when stale, then resolves cadence. */
+export async function resolveWallTrailSampleSec(
+  ticker?: string | null,
+  scope: WallTrailSampleScope = "live"
+): Promise<number> {
+  await refreshSharedUniverseCacheIfStale();
+  return wallTrailSampleSecForTicker(ticker, scope);
 }

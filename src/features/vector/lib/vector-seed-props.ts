@@ -25,6 +25,7 @@ import {
 } from "@/features/vector/lib/vector-wall-history";
 import { loadSessionWallHistory } from "@/features/vector/lib/vector-wall-persist";
 import { reconstructSessionRail } from "@/features/vector/lib/vector-gex-reconstruct-server";
+import { resolveWallTrailSampleSec } from "@/features/vector/lib/vector-wall-sample-server";
 import type { VectorDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
 
 /** Server-seeded props consumed by VectorPageShell (SSR snapshot for first paint). */
@@ -41,6 +42,8 @@ export type VectorSeedProps = {
   initialDarkPoolLevels: VectorDarkPoolLevel[];
   sessionYmd: string;
   liveSession: boolean;
+  /** Server-resolved bead bucket size (5s shared universe, 15s on-demand). */
+  initialWallTrailSec: number;
 };
 
 export type LoadVectorSeedOpts = {
@@ -63,7 +66,7 @@ export async function loadVectorSeedProps(
 ): Promise<VectorSeedProps> {
   ensureDataSockets();
   await primeVectorWallScope(ticker);
-  const [{ bars, sessionYmd }, walls, vexWalls, gammaFlip, vexFlip, darkPoolLevels] =
+  const [{ bars, sessionYmd }, walls, vexWalls, gammaFlip, vexFlip, darkPoolLevels, initialWallTrailSec] =
     await Promise.all([
       fetchVectorSeedBars(ticker),
       Promise.resolve(getVectorGexWalls(ticker)),
@@ -71,6 +74,7 @@ export async function loadVectorSeedProps(
       getVectorGammaFlip(ticker),
       Promise.resolve(getVectorVexFlip(ticker)),
       getVectorDarkPoolLevels(ticker),
+      resolveWallTrailSampleSec(ticker),
     ]);
   const persistedHistory = await loadSessionWallHistory(sessionYmd, ticker).catch(
     () => [] as WallHistorySample[]
@@ -174,5 +178,6 @@ export async function loadVectorSeedProps(
     initialDarkPoolLevels: darkPoolLevels,
     sessionYmd,
     liveSession,
+    initialWallTrailSec,
   };
 }

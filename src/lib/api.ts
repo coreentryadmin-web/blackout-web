@@ -919,6 +919,8 @@ export type VectorStreamSnapshot = {
   vexAsOf?: number;
   sessionYmd?: string;
   wallHistory?: import("@/features/vector").WallHistorySample[];
+  /** Bead bucket size in seconds (5 shared universe, 15 on-demand). */
+  wallTrailSec?: number;
 };
 
 let activeVectorStream: ReconnectingEventSource | null = null;

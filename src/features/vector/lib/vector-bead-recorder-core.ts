@@ -1,4 +1,5 @@
 import { todayEtYmd } from "@/lib/providers/spx-session";
+import { refreshSharedUniverseCacheIfStale } from "./vector-shared-universe-cache";
 import { listSharedUniverseTickers } from "./vector-dynamic-universe";
 import { recordVectorUniverseWallSample } from "./vector-universe";
 import {
@@ -52,6 +53,7 @@ export async function recordSharedUniverseWallSamples(opts?: {
     return { sessionYmd: "", total: 0, recorded: 0, failed: 0, failedTickers: [], attempted: [], elapsedMs: 0 };
   }
 
+  await refreshSharedUniverseCacheIfStale(true);
   const all = await listSharedUniverseTickers();
   // Own slice only, when the caller told us which shards are ours. `attempted`/`failedTickers`
   // below are then this replica's slice — which is what the dark-ticker tracker wants: a ticker
