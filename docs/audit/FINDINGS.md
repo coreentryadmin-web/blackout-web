@@ -10164,7 +10164,6 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **What was deliberately NOT touched** | The 4400-line `GexHeatmap` control-row internal layout consolidation (needs designer sign-off, deserves its own PR). The bespoke pill-style de-duplication across `.thermal-*` classes (cross-feature CSS cleanup). The full `LargoRead` and `DarkPoolRail` sub-components (they live in a different branch's fork, not on main). |
 | **Status** | FIXED — awaiting CI + deploy. |
 
-
 ## 2026-08-14 — [P3, UI/UX round 3] Thermal follow-ons: hero-skeleton ignored `prefers-reduced-motion`, sector picker's 6 phantom listbox options in a11y tree even when closed, no touch-tap dismiss, regime-strip contrast below AA, fmtPx dead ternary, fastFlash badge caused layout jog — FIXED (claude/three-repos-review-36t217)
 > **kind:** `FINDING`
 
@@ -10189,5 +10188,4 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **UI/E2E** | `VectorToolbar` mounted two `VectorLensToggle` rows (iOS compact + desktop); both carried identical `data-testid`s → Playwright strict-mode violation. |
 | **Other fixes** | SSE stream applies `NO_STORE_STREAM_HEADERS`; `.vp-t-muted` slate → sky (no grey on `#040407`); GEX ladder poll uses `initialWallTrailSec`; `validate:vector-play-invariants` npm script (tsx). |
 | **Live evidence (pre-deploy, prod @ main)** | Bead cadence: NVDA n=187 median 5s (was ~37% coverage pre-recorder fix); META n=221 median 5s. E2E API checks 9/9 PASS; UI browser FAIL until deploy. |
-| **Status** | FIXED on branch — PR pending CI. |
-
+| **Status** | FIXED — PR #2181. |
