@@ -115,6 +115,15 @@ type Props = {
   /** Client-side ticker nav (avoids full SSR on every symbol switch). */
   onTickerSelect?: (ticker: string) => void | Promise<void>;
   tickerNavBusy?: boolean;
+  /** Enter 4-up compare mode (desk only). */
+  onEnterCompare?: () => void;
+  /** Compare pane: hide TF/DTE/lens in chart toolbar (command bar owns them). */
+  toolbarHideLinkedControls?: boolean;
+  /** Compare pane: lift regime/spot to pane header. */
+  onCompareRegimeChange?: (regime: VectorRegime) => void;
+  onCompareSpotChange?: (spot: number) => void;
+  compareDefaultLens?: VectorWallLens;
+  suppressRegimeBanner?: boolean;
 };
 
 type VectorIosPanel = "chart" | "pulse" | "ladder" | "scanner";
@@ -160,6 +169,12 @@ export function VectorPageShell({
   toolbarReplayLeadSlot,
   onTickerSelect,
   tickerNavBusy,
+  onEnterCompare,
+  toolbarHideLinkedControls,
+  onCompareRegimeChange,
+  onCompareSpotChange,
+  compareDefaultLens,
+  suppressRegimeBanner,
 }: Props) {
   const chartOnly = embed === "chart-only";
   const router = useRouter();
@@ -447,6 +462,16 @@ export function VectorPageShell({
           · {kicker}
         </span>
         <VectorTickerSelect ticker={activeTicker} onTickerSelect={onTickerSelect ? navigateTicker : undefined} busy={tickerNavBusy} />
+        {onEnterCompare ? (
+          <button
+            type="button"
+            className="vector-compare-enter-btn"
+            onClick={onEnterCompare}
+            data-testid="vector-enter-compare"
+          >
+            Compare
+          </button>
+        ) : null}
       </div>
     );
   const chartFreshness = spxIosEmbed ? null : (
@@ -457,7 +482,23 @@ export function VectorPageShell({
       label={liveSession ? "Live session" : `${sessionLabel} close`}
     />
   );
-  const embedRegimeSlot = spxIosEmbed ? null : <VectorRegimeBanner regime={regime} />;
+  const embedRegimeSlot = spxIosEmbed || suppressRegimeBanner ? null : <VectorRegimeBanner regime={regime} />;
+
+  const handleRegime = useCallback(
+    (r: VectorRegime) => {
+      setRegime(r);
+      onCompareRegimeChange?.(r);
+    },
+    [onCompareRegimeChange]
+  );
+
+  const handleSpot = useCallback(
+    (s: number) => {
+      setLiveSpot(s);
+      onCompareSpotChange?.(s);
+    },
+    [onCompareSpotChange]
+  );
 
   // Chart-only embed (SPX Slayer flagship desk): the SAME VectorChart with the SAME seed props and
   // the SAME toolbar/regime/freshness/toast plumbing — just none of the page chrome or side rails.
@@ -484,12 +525,15 @@ export function VectorPageShell({
           defaultDteHorizon={defaultDteHorizon}
           defaultTimeframe={defaultTimeframe}
           defaultChartViewport={defaultChartViewport}
+          defaultLens={compareDefaultLens}
+          toolbarHideLinkedControls={toolbarHideLinkedControls}
           onPriceScaleRender={onPriceScaleRender}
           focusLevel={focusLevel}
           playLevels={playLevels}
           fillHost
           onFreshness={liveSession ? setStreamUpdatedAt : undefined}
-          onRegimeChange={setRegime}
+          onRegimeChange={handleRegime}
+          onSpotChange={liveSession ? handleSpot : undefined}
           alertRules={alertRules}
           onAlertsFired={handleAlertsFired}
           leadSlot={chartLead}

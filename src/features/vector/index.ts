@@ -5,6 +5,7 @@
 
 export { VectorPageShell } from "./components/VectorPageShell";
 export { VectorPageClient } from "./components/VectorPageClient";
+export { VectorCompareDesk } from "./components/VectorCompareDesk";
 export type { VectorBar } from "./components/VectorChart";
 
 export { fetchVectorSeedBars } from "./lib/vector-seed-bars";

@@ -339,6 +339,10 @@ type Props = {
   playLevels?: PlayLevelsInput;
   /** Host-desk embed (SPX Slayer): fill flex column — no standalone-page viewport height. */
   fillHost?: boolean;
+  /** Opening wall lens (GEX/VEX) — compare mode syncs this across panes via remount. */
+  defaultLens?: VectorWallLens;
+  /** Compare grid: TF/DTE/lens live in the command bar instead of each toolbar. */
+  toolbarHideLinkedControls?: boolean;
 };
 
 function lensVisuals(lens: VectorWallLens) {
@@ -1176,6 +1180,8 @@ export function VectorChart({
   focusLevel,
   playLevels,
   fillHost = false,
+  defaultLens,
+  toolbarHideLinkedControls = false,
 }: Props) {
   const initialTimeframe = defaultTimeframe ?? VECTOR_DEFAULT_TIMEFRAME;
   const openingDteHorizon: VectorDteHorizon = defaultDteHorizon ?? "weekly";
@@ -1452,7 +1458,7 @@ export function VectorChart({
   const [replaySpeed, setReplaySpeed] = useState(1);
   const [replayLoop, setReplayLoop] = useState(false);
   const [crosshair, setCrosshair] = useState<VectorCrosshairState | null>(null);
-  const [lens, setLens] = useState<VectorWallLens>("gex");
+  const [lens, setLens] = useState<VectorWallLens>(defaultLens ?? "gex");
   // Default WEEKLY: "All" is no longer a member-facing option (2026-07-13), and 0DTE is empty
   // mid-week for most single names (only SPX/SPY/QQQ have daily expiries) — weekly always has a
   // real chain to scope to. SPX day-traders tap 0DTE once; the choice persists per session.
@@ -3911,6 +3917,7 @@ export function VectorChart({
         leadSlot={leadSlot}
         replayLeadSlot={replayLeadSlot}
         trailSlot={trailSlot}
+        hideLinkedControls={toolbarHideLinkedControls}
       />
 
       {/* Regime banner sits directly above the canvas (passed in from the shell) so it still leads

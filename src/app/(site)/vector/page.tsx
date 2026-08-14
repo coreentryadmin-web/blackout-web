@@ -9,20 +9,21 @@ import {
   VECTOR_ORACLE_TICKERS,
 } from "@/features/vector";
 import { noindexPageMetadata } from "@/lib/page-metadata";
+import { Suspense } from "react";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = noindexPageMetadata("Vector · BlackOut", "/vector");
 
 type PageProps = {
-  searchParams: Promise<{ ticker?: string }>;
+  searchParams: Promise<{ ticker?: string; compare?: string }>;
 };
 
 export default async function VectorPage({ searchParams }: PageProps) {
   await requireTier("premium");
   if (!(await canAccessTool("vector"))) return <ComingSoon toolKey="vector" />;
 
-  const { ticker: rawTicker } = await searchParams;
+  const { ticker: rawTicker, compare: compareRaw } = await searchParams;
   const ticker = normalizeVectorTicker(rawTicker);
 
   // Shared seed loader (2026-07-13, member-directed desk consolidation): the SPX Slayer dashboard
@@ -35,10 +36,22 @@ export default async function VectorPage({ searchParams }: PageProps) {
   });
 
   return (
-    <VectorPageClient
-      {...seed}
-      defaultDteHorizon={VECTOR_ORACLE_TICKERS.has(ticker) ? "0dte" : undefined}
-      defaultChartViewport="session"
-    />
+    <Suspense
+      fallback={
+        <div
+          className="flex min-h-[60vh] items-center justify-center font-mono text-sm text-cyan-300"
+          role="status"
+        >
+          Loading Vector…
+        </div>
+      }
+    >
+      <VectorPageClient
+        {...seed}
+        initialCompareRaw={compareRaw ?? null}
+        defaultDteHorizon={VECTOR_ORACLE_TICKERS.has(ticker) ? "0dte" : undefined}
+        defaultChartViewport="session"
+      />
+    </Suspense>
   );
 }

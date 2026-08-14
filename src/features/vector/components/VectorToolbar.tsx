@@ -56,6 +56,8 @@ type Props = {
   replayLeadSlot?: React.ReactNode;
   /** Freshness/status chip, rendered at the far RIGHT of the toolbar row, aligned with the title. */
   trailSlot?: React.ReactNode;
+  /** Compare command bar owns TF/DTE/lens — hide them in each pane toolbar. */
+  hideLinkedControls?: boolean;
 };
 
 /** Single compact toolbar — timeframe left, replay + lens right. */
@@ -98,19 +100,22 @@ export function VectorToolbar(props: Props) {
     leadSlot,
     trailSlot,
     replayLeadSlot,
+    hideLinkedControls = false,
   } = props;
 
   return (
     <div className="vector-toolbar ios-compact-toolbar mb-2" role="group" aria-label="Chart timeframe">
       <div className="vector-toolbar-row-primary ios-compact-scroll-row">
         {leadSlot}
-        <VectorTimeframeSelect
-          interval={interval}
-          onInterval={onInterval}
-          disabled={timeframeDisabled}
-          exposeTestIds={false}
-          idSuffix="-compact"
-        />
+        {!hideLinkedControls ? (
+          <VectorTimeframeSelect
+            interval={interval}
+            onInterval={onInterval}
+            disabled={timeframeDisabled}
+            exposeTestIds={false}
+            idSuffix="-compact"
+          />
+        ) : null}
         <VectorIndicatorMenu
           enabled={indicators}
           onToggle={onToggleIndicator}
@@ -140,20 +145,18 @@ export function VectorToolbar(props: Props) {
         />
       </div>
       <div className="vector-toolbar-row-secondary ios-compact-scroll-row">
-        <VectorLensToggle
-          lens={lens}
-          vexAvailable={vexAvailable}
-          onLens={onLens}
-          gexAsOf={gexAsOf}
-          vexAsOf={vexAsOf}
-          liveSession={liveSession}
-          exposeTestIds={false}
-        />
-        {/* Rendered under BOTH lenses. It was gex-only, which stranded the member: the GEX LADDER
-            fetches with `dte=${dteHorizon}` and keeps rendering at the last-picked horizon, so
-            switching to VEX hid the only control that could re-scope it while the ladder went on
-            claiming "Monthly". `ladderOnly` keeps it honest about what it still governs. */}
-        {(
+        {!hideLinkedControls ? (
+          <VectorLensToggle
+            lens={lens}
+            vexAvailable={vexAvailable}
+            onLens={onLens}
+            gexAsOf={gexAsOf}
+            vexAsOf={vexAsOf}
+            liveSession={liveSession}
+            exposeTestIds={false}
+          />
+        ) : null}
+        {!hideLinkedControls ? (
           <VectorDteToggle
             ladderOnly={lens === "vex"}
             horizon={dteHorizon}
@@ -161,7 +164,7 @@ export function VectorToolbar(props: Props) {
             available={dteAvailable}
             disabled={replayMode}
           />
-        )}
+        ) : null}
         {trailSlot}
       </div>
       {/* Desktop / wide web — legacy wrap row (hidden on iOS via ios-native-compact-controls.css) */}
@@ -176,11 +179,13 @@ export function VectorToolbar(props: Props) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           {leadSlot}
-          <VectorTimeframeSelect
-            interval={interval}
-            onInterval={onInterval}
-            disabled={timeframeDisabled}
-          />
+          {!hideLinkedControls ? (
+            <VectorTimeframeSelect
+              interval={interval}
+              onInterval={onInterval}
+              disabled={timeframeDisabled}
+            />
+          ) : null}
           <VectorIndicatorMenu
             enabled={indicators}
             onToggle={onToggleIndicator}
@@ -210,17 +215,17 @@ export function VectorToolbar(props: Props) {
             onJumpClose={onJumpClose}
             onToggleLoop={onToggleLoop}
           />
-          <VectorLensToggle
-            lens={lens}
-            vexAvailable={vexAvailable}
-            onLens={onLens}
-            gexAsOf={gexAsOf}
-            vexAsOf={vexAsOf}
-            liveSession={liveSession}
-          />
-          {/* DTE horizon toggle: 0DTE / Weekly / Monthly. The "All" option was removed
-              (user-directed, 2026-07-13) — see VectorDteToggle for the rationale. */}
-          {(
+          {!hideLinkedControls ? (
+            <VectorLensToggle
+              lens={lens}
+              vexAvailable={vexAvailable}
+              onLens={onLens}
+              gexAsOf={gexAsOf}
+              vexAsOf={vexAsOf}
+              liveSession={liveSession}
+            />
+          ) : null}
+          {!hideLinkedControls ? (
             <VectorDteToggle
               ladderOnly={lens === "vex"}
               horizon={dteHorizon}
@@ -228,7 +233,7 @@ export function VectorToolbar(props: Props) {
               available={dteAvailable}
               disabled={replayMode}
             />
-          )}
+          ) : null}
           {trailSlot}
         </div>
       </div>
