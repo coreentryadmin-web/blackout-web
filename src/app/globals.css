@@ -9429,6 +9429,7 @@ body::before {
   }
 
   /* Equal share of leftover width — never let Net flow absorb the slack (that misaligns the header). */
+  .spx-gex-matrix-table.thermal-matrix-table .spx-gex-matrix-expiry-col,
   .thermal-matrix-col-expiry,
   .thermal-matrix-head-expiry,
   .thermal-matrix-expiry-cell {
@@ -9437,6 +9438,14 @@ body::before {
         var(--thermal-expiry-cols, 1)
     );
     min-width: var(--thermal-matrix-expiry-min);
+  }
+
+  .spx-gex-matrix-table.thermal-matrix-table col.thermal-matrix-col-strike {
+    width: var(--thermal-matrix-strike-w);
+  }
+
+  .spx-gex-matrix-table.thermal-matrix-table col.thermal-matrix-col-flow {
+    width: var(--thermal-matrix-flow-w);
   }
 
   .thermal-matrix-col-flow,

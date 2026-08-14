@@ -91,7 +91,8 @@ test("livePlayFromSwingPosition: latest manage snapshot overrides spot-only inta
 });
 
 test("livePlayFromSwingPosition: stamps real DTE, entry, and live P&L from ledger row", () => {
-  const play = livePlayFromSwingPosition(row(), 178)!;
+  // Future expiry so DTE stays >0 regardless of run date (0DTE on expiry day fails notEqual).
+  const play = livePlayFromSwingPosition(row({ contract_expiry: "2026-08-21" }), 178)!;
   assert.ok(play.contract.dte >= 0);
   assert.notEqual(play.contract.dte, 0);
   assert.equal(play.entryPremium, 5.1);

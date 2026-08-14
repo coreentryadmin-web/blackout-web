@@ -3728,6 +3728,13 @@ export function GexHeatmap({
     </div>
   );
 
+  const thermalMatrixStrikeColW = "3.25rem";
+  const thermalMatrixFlowColW = "14rem";
+  const thermalMatrixExpiryColW =
+    matrixExpiries.length > 0
+      ? `calc((100% - ${thermalMatrixStrikeColW} - ${depthRail ? thermalMatrixFlowColW : "0rem"}) / ${matrixExpiries.length})`
+      : undefined;
+
   const matrixPanel = (
     <div className="min-w-0 w-full">
       {uwDiverged && (
@@ -3776,11 +3783,17 @@ export function GexHeatmap({
             aria-label={`${data?.underlying ?? ticker} dealer ${vocab.noun.toLowerCase()} matrix by strike and expiry`}
           >
             <colgroup>
-              <col className="thermal-matrix-col-strike" />
+              <col className="thermal-matrix-col-strike" style={{ width: thermalMatrixStrikeColW }} />
               {matrixExpiries.map((e) => (
-                <col key={e} className="thermal-matrix-col-expiry" />
+                <col
+                  key={e}
+                  className="thermal-matrix-col-expiry"
+                  style={{ width: thermalMatrixExpiryColW }}
+                />
               ))}
-              {depthRail ? <col className="thermal-matrix-col-flow" /> : null}
+              {depthRail ? (
+                <col className="thermal-matrix-col-flow" style={{ width: thermalMatrixFlowColW }} />
+              ) : null}
             </colgroup>
             <thead className="sticky top-0 z-20 bg-[#08080e]">
               <tr className="thermal-matrix-head-row border-b border-white/10">
