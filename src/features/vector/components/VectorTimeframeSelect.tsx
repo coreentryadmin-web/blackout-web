@@ -17,6 +17,10 @@ type Props = {
   interval: VectorTimeframeMinutes;
   onInterval: (minutes: VectorTimeframeMinutes) => void;
   disabled?: boolean;
+  /** When false, omit data-testid (compact toolbar duplicates desktop controls in DOM). */
+  exposeTestIds?: boolean;
+  /** Suffix for id/htmlFor — avoids duplicate ids when both toolbar rows mount. */
+  idSuffix?: string;
 };
 
 function presetLabel(minutes: number): string {
@@ -26,7 +30,14 @@ function presetLabel(minutes: number): string {
 }
 
 /** Candle interval dropdown — presets plus custom whole-minute buckets. */
-export function VectorTimeframeSelect({ interval, onInterval, disabled = false }: Props) {
+export function VectorTimeframeSelect({
+  interval,
+  onInterval,
+  disabled = false,
+  exposeTestIds = true,
+  idSuffix = "",
+}: Props) {
+  const selectId = `vector-tf-select${idSuffix}`;
   const preset = isPresetTimeframe(interval);
   const [mode, setMode] = useState<"preset" | "custom">(preset ? "preset" : "custom");
   const [customDraft, setCustomDraft] = useState(String(preset ? 10 : interval));
@@ -44,12 +55,12 @@ export function VectorTimeframeSelect({ interval, onInterval, disabled = false }
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <label className="sr-only" htmlFor="vector-tf-select">
+      <label className="sr-only" htmlFor={selectId}>
         Chart timeframe
       </label>
       <select
-        id="vector-tf-select"
-        data-testid="vector-tf-select"
+        id={selectId}
+        {...(exposeTestIds ? { "data-testid": "vector-tf-select" } : {})}
         disabled={disabled}
         value={selectValue}
         onChange={(e) => {

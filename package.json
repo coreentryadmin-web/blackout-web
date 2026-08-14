@@ -86,6 +86,7 @@
     "validate:vector-e2e": "node scripts/vector-e2e-audit.mjs",
     "validate:vector-play-invariants": "node --import tsx scripts/audit/vector-play-invariants.mjs",
     "validate:bead-cadence": "node --import tsx scripts/audit/bead-cadence-validate.mjs",
+    "validate:vector-wall-trail-sec": "node --import tsx scripts/audit/vector-wall-trail-sec-validate.mjs",
     "validate:gex-parity": "node scripts/validate-gex-parity.mjs",
     "validate:thermal-matrix": "node scripts/audit/thermal-matrix-validator.mjs",
     "validate:thermal-ui": "node scripts/audit/thermal-ui-clickthrough.mjs",
