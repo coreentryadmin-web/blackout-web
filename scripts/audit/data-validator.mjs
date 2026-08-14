@@ -44,6 +44,7 @@ import { isAuthFailureStatus } from './lib/auth-status.mjs';
 import { generateDefaultAuditPhone } from './lib/audit-phone.mjs';
 import { createOrAdoptAuditUserViaCurl } from './lib/clerk-audit-user.mjs';
 import { orderLedgerRowsForMarkCheck, classifyMarkEvidence } from './lib/ledger-mark-evidence.mjs';
+import { checkWallInvariants } from './lib/gex-wall-invariants.mjs';
 
 const SECRET = req('CLERK_SECRET_KEY');
 const PUB = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || '';
@@ -449,9 +450,41 @@ async function main() {
   if (P.gex) {
     const pw = num(P.gex.put_wall), cw = num(P.gex.call_wall), g = num(P.gex.net_gex), dx = num(P.gex.net_dex), vx = num(P.gex.net_vex);
     if (!tradingDay && pw == null && cw == null) {
-      rec('wall ordering put_wall < call_wall', 'INFO', `skipped — market holiday; gex walls unavailable (spot=${aGexSpot})`);
+      rec('gex walls match their definition', 'INFO', `skipped — market holiday; gex walls unavailable (spot=${aGexSpot})`);
     } else {
-      rec('wall ordering put_wall < call_wall', (pw != null && cw != null && pw < cw) ? 'PASS' : 'FAIL', `put_wall=${pw} flip=${P.gex.flip} max_pain=${P.gex.max_pain} call_wall=${cw} spot=${aGexSpot}`);
+      // Assert the DEFINITION, not the usual ordering. `put_wall < call_wall` is a market
+      // REGULARITY, not an invariant: on 2026-08-14 SPX served put_wall 8000 above call_wall 7800
+      // with spot at 7788, and nothing was wrong — 8000 was genuinely the most-negative near-term
+      // strike (-2.086e9) while 7800 was the most positive (+1.075e10). The old assertion only
+      // ever passed because it runs against SPY; the first inverted book would have produced a
+      // confident FAIL on correct data (the ARM "frozen mark" failure mode again).
+      //
+      // The walls ARE by definition the argmax/argmin of the served strike totals, which is both
+      // checkable from the payload and strictly stronger: it catches swapped walls, a stale wall,
+      // and a wall computed off a different chain — none of which an ordering test can see.
+      const inv = checkWallInvariants({
+        callWall: cw,
+        putWall: pw,
+        strikeTotals: P.heatmap?.gex?.strike_totals,
+        spot: aGexSpot,
+      });
+      const base = `put_wall=${pw} flip=${P.gex.flip} max_pain=${P.gex.max_pain} call_wall=${cw} spot=${aGexSpot}`;
+      if (inv.definitional === 'skip') {
+        rec('gex walls match their definition', 'INFO', `${base} — ${inv.reason}`);
+      } else {
+        rec(
+          'gex walls match their definition',
+          inv.definitional === 'pass' ? 'PASS' : 'FAIL',
+          `${base} | expected call=${inv.expected.callWall} put=${inv.expected.putWall} over ${inv.strikes} strikes (callOk=${inv.callOk} putOk=${inv.putOk})`,
+        );
+      }
+      // Ordering is REPORTED, never asserted. An inverted book is a real structure worth seeing.
+      rec(
+        'gex wall structure (ordering is informational)',
+        'INFO',
+        `${inv.ordering}${inv.ordering === 'inverted' ? ' — put wall sits at/above the call wall; legitimate when the most-negative-gamma strike is above the most-positive one' : ''}` +
+          (inv.call_dist_pct != null ? ` | call ${inv.call_dist_pct.toFixed(1)}% / put ${inv.put_dist_pct.toFixed(1)}% from spot` : ''),
+      );
     }
     // gamma_posture is documented as spot-vs-flip ('long' at/above flip, 'short' below —
     // gex-positioning.ts:55), NOT sign(net_gex). The two are related but distinct measures
