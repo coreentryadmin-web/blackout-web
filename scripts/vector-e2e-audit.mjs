@@ -350,12 +350,12 @@ async function browserVector(session) {
     await chart.waitFor({ state: "visible", timeout: 60_000 });
     rec("ui:chart-canvas", "PASS");
 
-    // Lens toggle — wait for dynamic VectorChart toolbar (data-testid is stable vs nested roles)
-    const gexBtn = page.locator('[data-testid="vector-lens-gex"]');
+    // Lens toggle — desktop wrap row (compact iOS rows are display:none on web; may lack testids)
+    const gexBtn = page.locator('.vector-toolbar > .flex.flex-wrap [data-testid="vector-lens-gex"]');
     await gexBtn.waitFor({ state: "visible", timeout: 60_000 });
     await gexBtn.click({ timeout: 15_000 });
     rec("ui:click-gex-lens", "PASS");
-    const vexBtn = page.locator('[data-testid="vector-lens-vex"]');
+    const vexBtn = page.locator('.vector-toolbar > .flex.flex-wrap [data-testid="vector-lens-vex"]');
     const vexDisabled = await vexBtn.isDisabled();
     if (vexDisabled) {
       rec("ui:click-vex-lens", "WARN", "VEX disabled — no vanna ladder in session");

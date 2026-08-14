@@ -48,6 +48,8 @@ type Props = {
   /** DTE horizon from the chart's toggle — the ladder re-scopes to the SAME expiries so it matches
    *  the walls on the chart. "all" = near-term aggregate (default). */
   dteHorizon?: VectorDteHorizon;
+  /** Server-resolved wall poll cadence (ms) — matches chart bead bucket (5s universe / 15s on-demand). */
+  wallsPollMs?: number;
   /** Price under the chart crosshair, so the ladder can highlight the strike a member is reading
    *  at that level. The two panels sit side by side and were otherwise unlinked. */
   hoverPrice?: number | null;
@@ -103,6 +105,7 @@ export function VectorGexLadder({
   initialSpot = null,
   liveSpot = null,
   dteHorizon = "all",
+  wallsPollMs,
 }: Props) {
   const [ladder, setLadder] = useState<GexLadder>(() => buildGexLadder(null, initialSpot));
   const [depth, setDepth] = useState<DepthPayload>(null);
@@ -190,7 +193,7 @@ export function VectorGexLadder({
     void load();
     // Live: refresh ladder structure every 15s. Spot updates come from chart SSE every tick.
     // Off-hours: one fetch — the ladder is static. Pre-warm on ticker/horizon change for faster navigation.
-    const pollMs = vectorWallsScopePollMs(ticker);
+    const pollMs = wallsPollMs ?? vectorWallsScopePollMs(ticker);
     const id =
       liveSession && (Date.now() - lastFetchTimeRef.current > 10_000)
         ? setInterval(load, pollMs)
@@ -201,7 +204,7 @@ export function VectorGexLadder({
       for (const t of retryTimers.current) clearTimeout(t);
       retryTimers.current = [];
     };
-  }, [ticker, liveSession, dteHorizon, liveSpot]);
+  }, [ticker, liveSession, dteHorizon, liveSpot, wallsPollMs]);
 
   // Scope to the chart's visible band. Falls through to the full rail when no band is known or the
   // band excludes everything — a narrower rail is an improvement, a blank one is a regression.

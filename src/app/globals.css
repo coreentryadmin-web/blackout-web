@@ -8677,7 +8677,7 @@ body::before {
   }
 
   /* Intel tone utility */
-  .vp-t-muted { color: rgba(148, 163, 184, 0.7); }
+  .vp-t-muted { color: rgba(125, 211, 252, 0.75); }
   .vp-t-bull { color: #4ade80; }
   .vp-t-bear { color: #f87171; }
   .vp-t-warn { color: #fbbf24; }
