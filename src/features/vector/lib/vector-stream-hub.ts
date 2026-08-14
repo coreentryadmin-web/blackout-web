@@ -21,6 +21,8 @@ type TickerHub = {
   latestDeltaFrame: string | null;
   timer: ReturnType<typeof setInterval> | null;
   refreshInFlight: boolean;
+  /** Coalesce ticks that arrive while a slow refresh is still running. */
+  pendingRefresh: boolean;
 };
 
 const hubs = new Map<string, TickerHub>();
@@ -36,6 +38,7 @@ function hubFor(ticker: string): TickerHub {
       latestDeltaFrame: null,
       timer: null,
       refreshInFlight: false,
+      pendingRefresh: false,
     };
     hubs.set(t, hub);
   }
@@ -49,7 +52,11 @@ function frame(payload: unknown): string {
 async function refreshTickerHub(ticker: string): Promise<void> {
   const t = normalizeVectorTicker(ticker);
   const hub = hubs.get(t);
-  if (!hub || hub.refreshInFlight) return;
+  if (!hub) return;
+  if (hub.refreshInFlight) {
+    hub.pendingRefresh = true;
+    return;
+  }
   hub.refreshInFlight = true;
   try {
     const payload: VectorStreamPayload = await buildVectorStreamPayload(t);
@@ -60,6 +67,10 @@ async function refreshTickerHub(ticker: string): Promise<void> {
     /* keep previous frames on transient error */
   } finally {
     hub.refreshInFlight = false;
+    if (hub.pendingRefresh) {
+      hub.pendingRefresh = false;
+      void refreshTickerHub(t);
+    }
   }
 }
 

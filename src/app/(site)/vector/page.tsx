@@ -3,7 +3,7 @@ import { requireTier } from "@/lib/auth-access";
 import { canAccessTool } from "@/lib/tool-access-server";
 import { ComingSoon } from "@/components/ComingSoon";
 import {
-  VectorPageShell,
+  VectorPageClient,
   loadVectorSeedProps,
   normalizeVectorTicker,
   VECTOR_ORACLE_TICKERS,
@@ -35,7 +35,7 @@ export default async function VectorPage({ searchParams }: PageProps) {
   });
 
   return (
-    <VectorPageShell
+    <VectorPageClient
       {...seed}
       defaultDteHorizon={VECTOR_ORACLE_TICKERS.has(ticker) ? "0dte" : undefined}
       defaultChartViewport="session"

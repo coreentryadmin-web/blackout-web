@@ -21,6 +21,9 @@ export const VECTOR_NON_UNIVERSE_WALLS_SCOPE_POLL_MS = 15_000;
 /** Reconstructed GEX heatmap client poll during live session. */
 export const VECTOR_GEX_HEATMAP_POLL_MS = 5_000;
 
+/** SPY share-volume backfill poll for SPX chart proxy. */
+export const VECTOR_SPY_VOLUME_BACKFILL_MS = 60_000;
+
 /** Redis TTL for vector strike×time heatmap (server). */
 export const VECTOR_GEX_HEATMAP_CACHE_SEC = 5;
 

@@ -41,7 +41,9 @@ import { VECTOR_DEFAULT_TICKER } from "@/features/vector/lib/vector-ticker";
 import { GexShiftLeadersStrip } from "@/components/gex/GexShiftLeadersStrip";
 import { pickGexShiftLeaders, matrixShiftForLens, type GexShiftLeader } from "@/lib/gex-shift-leaders";
 import { vectorGexScopeLabel } from "@/lib/gex-scope-labels";
-import { VECTOR_GEX_HEATMAP_POLL_MS } from "@/features/vector/lib/vector-cadence";
+import { fetchVectorGexHeatmapDeduped } from "@/features/vector/lib/vector-gex-heatmap-client";
+import { useVectorLivePoll } from "@/features/vector/lib/use-vector-live-poll";
+import { defaultVectorIndicators } from "@/features/vector/lib/vector-indicators-config";
 
 const VectorChart = dynamic(
   () => import("@/features/vector/components/VectorChart").then((m) => m.VectorChart),
@@ -110,6 +112,9 @@ type Props = {
   /** Host-desk slot rendered in the chart toolbar immediately LEFT of the Replay control
    *  (user-directed 2026-07-14: the desk focus toggle lives there after the time bar's removal). */
   toolbarReplayLeadSlot?: React.ReactNode;
+  /** Client-side ticker nav (avoids full SSR on every symbol switch). */
+  onTickerSelect?: (ticker: string) => void | Promise<void>;
+  tickerNavBusy?: boolean;
 };
 
 type VectorIosPanel = "chart" | "pulse" | "ladder" | "scanner";
@@ -153,6 +158,8 @@ export function VectorPageShell({
   focusLevel,
   playLevels,
   toolbarReplayLeadSlot,
+  onTickerSelect,
+  tickerNavBusy,
 }: Props) {
   const chartOnly = embed === "chart-only";
   const router = useRouter();
@@ -175,6 +182,23 @@ export function VectorPageShell({
   const [hoverPrice, setHoverPrice] = useState<number | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
   const activeTicker = ticker || VECTOR_DEFAULT_TICKER;
+  const wallTrailSec = initialWallTrailSec ?? 15;
+  const livePoll = useVectorLivePoll({
+    ticker: activeTicker,
+    liveSession,
+    wallTrailSec,
+    indicators: defaultVectorIndicators(),
+  });
+  const navigateTicker = useCallback(
+    (t: string) => {
+      if (onTickerSelect) {
+        void onTickerSelect(t);
+        return;
+      }
+      router.push(t === VECTOR_DEFAULT_TICKER ? "/vector" : `/vector?ticker=${encodeURIComponent(t)}`);
+    },
+    [onTickerSelect, router]
+  );
   // Daily/Weekly/4H historical view (CTO audit P2 #5, and P2 "4h remains open" 2026-08-05) — a
   // separate chart surface from the intraday VectorChart (see VectorDailyChart's header comment
   // for why). Standalone-page-only; the chart-only embed (SPX Slayer) never renders this toggle
@@ -295,29 +319,18 @@ export function VectorPageShell({
   useEffect(() => {
     let cancelled = false;
     const loadShift = async () => {
-      try {
-        const res = await fetch(
-          `/api/market/gex-heatmap?ticker=${encodeURIComponent(activeTicker)}`,
-          { cache: "no-store" }
-        );
-        if (!res.ok || cancelled) return;
-        const payload = (await res.json()) as {
-          gex?: { strike_totals?: Record<string, number> };
-          shift?: { available?: boolean; delta_by_strike?: Record<string, number> };
-        };
-        if (cancelled) return;
-        setShiftLeaders(pickGexShiftLeaders(payload.gex?.strike_totals, matrixShiftForLens("gex", payload)));
-      } catch {
-        /* best-effort terminal chrome */
-      }
+      const payload = await fetchVectorGexHeatmapDeduped(activeTicker, dteHorizon);
+      if (cancelled || !payload) return;
+      setShiftLeaders(pickGexShiftLeaders(payload.gex?.strike_totals, matrixShiftForLens("gex", payload)));
     };
     void loadShift();
-    const id = liveSession ? setInterval(loadShift, VECTOR_GEX_HEATMAP_POLL_MS) : null;
+    const pollMs = livePoll.gexHeatmapPollMs;
+    const id = liveSession && pollMs ? setInterval(loadShift, pollMs) : null;
     return () => {
       cancelled = true;
       if (id) clearInterval(id);
     };
-  }, [activeTicker, liveSession]);
+  }, [activeTicker, liveSession, dteHorizon, livePoll.gexHeatmapPollMs]);
 
   // Auto-dismiss the toast a few seconds after the newest fire.
   useEffect(() => {
@@ -424,7 +437,7 @@ export function VectorPageShell({
           {activeTicker}
         </span>
       ) : (
-        <VectorTickerSelect ticker={activeTicker} />
+        <VectorTickerSelect ticker={activeTicker} onTickerSelect={onTickerSelect ? navigateTicker : undefined} busy={tickerNavBusy} />
       )
     : (
       <div className="flex items-center gap-2 pr-1">
@@ -433,7 +446,7 @@ export function VectorPageShell({
         <span className="hidden font-mono text-[10px] uppercase tracking-[0.2em] text-cyan-400/60 md:inline">
           · {kicker}
         </span>
-        <VectorTickerSelect ticker={activeTicker} />
+        <VectorTickerSelect ticker={activeTicker} onTickerSelect={onTickerSelect ? navigateTicker : undefined} busy={tickerNavBusy} />
       </div>
     );
   const chartFreshness = spxIosEmbed ? null : (
@@ -526,9 +539,7 @@ export function VectorPageShell({
           ticker resolves a row, so it never displaces the panels above/below it. */}
       <VectorTickerComparisonStrip
         activeTicker={activeTicker}
-        onSelect={(t) =>
-          router.push(t === VECTOR_DEFAULT_TICKER ? "/vector" : `/vector?ticker=${encodeURIComponent(t)}`)
-        }
+        onSelect={(t) => navigateTicker(t)}
         className="mb-2"
       />
     </>
@@ -732,9 +743,7 @@ export function VectorPageShell({
           >
             <VectorScanner
               activeTicker={activeTicker}
-              onSelect={(t) =>
-                router.push(t === VECTOR_DEFAULT_TICKER ? "/vector" : `/vector?ticker=${encodeURIComponent(t)}`)
-              }
+              onSelect={(t) => navigateTicker(t)}
             />
           </div>
         ) : (
@@ -754,9 +763,7 @@ export function VectorPageShell({
             <div className="vector-scanner-body">
               <VectorScanner
                 activeTicker={activeTicker}
-                onSelect={(t) =>
-                  router.push(t === VECTOR_DEFAULT_TICKER ? "/vector" : `/vector?ticker=${encodeURIComponent(t)}`)
-                }
+                onSelect={(t) => navigateTicker(t)}
               />
             </div>
           </details>

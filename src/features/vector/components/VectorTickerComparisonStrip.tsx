@@ -32,7 +32,23 @@ function fmtDist(pct: number | null): string {
  * shown as a placeholder — same convention the rest of Vector's overlays follow.
  */
 export function VectorTickerComparisonStrip({ activeTicker, onSelect, className }: Props) {
-  const { data } = useVectorUniverseSnapshot();
+  const { data, isLoading } = useVectorUniverseSnapshot();
+
+  if (isLoading && !data?.rows?.length) {
+    return (
+      <div
+        className={clsx("vector-comparison-strip vector-comparison-strip--loading", className)}
+        role="status"
+        aria-label="Loading cross-ticker wall comparison"
+        aria-busy="true"
+      >
+        {[0, 1, 2].map((i) => (
+          <span key={i} className="vector-comparison-chip vector-comparison-chip--skeleton" aria-hidden="true" />
+        ))}
+      </div>
+    );
+  }
+
   if (!data?.rows?.length) return null;
 
   const rows = buildTickerComparisonRows(activeTicker, data.rows);

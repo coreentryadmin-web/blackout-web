@@ -132,36 +132,59 @@ const INVARIANTS = [
  * 401/403 are therefore recorded and escalated to a RUN failure by the caller. A real HTTP error
  * (500, timeout) is still tolerated per-combination — that is legitimately "this one had no data".
  */
-const httpStats = { ok: 0, unauthorized: 0, otherError: 0, firstUnauthorizedAtMs: null };
+const httpStats = { ok: 0, unauthorized: 0, refreshed: 0, otherError: 0, firstUnauthorizedAtMs: null };
 const RUN_STARTED_AT = Date.now();
 
-async function json(cookie, path) {
-  try {
-    const r = await fetch(`${BASE}${path}`, { headers: { Cookie: cookie } });
-    if (r.status === 401 || r.status === 403) {
-      httpStats.unauthorized++;
-      if (httpStats.firstUnauthorizedAtMs == null) httpStats.firstUnauthorizedAtMs = Date.now() - RUN_STARTED_AT;
-      return null;
-    }
-    if (!r.ok) {
+/** Active Clerk session — refreshed automatically when the ~72s JWT expires mid-sweep. */
+let activeSession = null;
+
+async function ensureSession() {
+  if (activeSession) return activeSession;
+  const minted = await mintClerkPremiumSession({ appUrl: BASE });
+  if (minted.skip) return null;
+  activeSession = minted;
+  return activeSession;
+}
+
+async function json(path) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const session = await ensureSession();
+    if (!session) return null;
+    try {
+      const r = await fetch(`${BASE}${path}`, { headers: { Cookie: session.cookieHeader } });
+      if (r.status === 401 || r.status === 403) {
+        httpStats.unauthorized++;
+        if (httpStats.firstUnauthorizedAtMs == null) {
+          httpStats.firstUnauthorizedAtMs = Date.now() - RUN_STARTED_AT;
+        }
+        await session.cleanup();
+        activeSession = null;
+        const refreshed = await ensureSession();
+        if (!refreshed) return null;
+        httpStats.refreshed++;
+        continue;
+      }
+      if (!r.ok) {
+        httpStats.otherError++;
+        return null;
+      }
+      httpStats.ok++;
+      return await r.json();
+    } catch {
       httpStats.otherError++;
       return null;
     }
-    httpStats.ok++;
-    return await r.json();
-  } catch {
-    httpStats.otherError++;
-    return null;
   }
+  return null;
 }
 
-async function snapshotFor(cookie, ticker, horizon, timeframeMin) {
+async function snapshotFor(ticker, horizon, timeframeMin) {
   const t = encodeURIComponent(ticker);
   const [walls, ladder, maxPain, em] = await Promise.all([
-    json(cookie, `/api/market/vector/walls?ticker=${t}&dte=${horizon}`),
-    json(cookie, `/api/market/vector/gex-ladder?ticker=${t}&dte=${horizon}`),
-    json(cookie, `/api/market/vector/max-pain?ticker=${t}&dte=${horizon}`),
-    json(cookie, `/api/market/vector/expected-move?ticker=${t}&dte=${horizon}`),
+    json(`/api/market/vector/walls?ticker=${t}&dte=${horizon}`),
+    json(`/api/market/vector/gex-ladder?ticker=${t}&dte=${horizon}`),
+    json(`/api/market/vector/max-pain?ticker=${t}&dte=${horizon}`),
+    json(`/api/market/vector/expected-move?ticker=${t}&dte=${horizon}`),
   ]);
   const spot = num(ladder?.spot ?? walls?.spot);
   if (spot == null) return null;
@@ -207,9 +230,9 @@ async function snapshotFor(cookie, ticker, horizon, timeframeMin) {
   };
 }
 
-const session = await mintClerkPremiumSession({ appUrl: BASE });
-if (session.skip) {
-  console.error(`SKIP: ${session.reason}`);
+const boot = await ensureSession();
+if (!boot) {
+  console.error(`SKIP: Clerk session unavailable`);
   process.exit(2);
 }
 
@@ -218,7 +241,7 @@ try {
   for (const ticker of TICKERS) {
     for (const horizon of HORIZONS) {
       for (const tf of TIMEFRAMES) {
-        const snap = await snapshotFor(session.cookieHeader, ticker, horizon, tf);
+        const snap = await snapshotFor(ticker, horizon, tf);
         if (!snap) {
           results.push({ ticker, horizon, tf, noData: true });
           continue;
@@ -235,7 +258,8 @@ try {
     }
   }
 } finally {
-  await session.cleanup();
+  if (activeSession) await activeSession.cleanup();
+  activeSession = null;
   console.error("temp Clerk user deleted");
 }
 
@@ -269,19 +293,13 @@ for (const r of results) {
 }
 console.log(`\ninvariant failures: ${failures}`);
 console.log(`combinations with no snapshot: ${noData}${noData ? " (off-hours or unsupported horizon — NOT counted as a failure)" : ""}`);
-console.log(`http: ${httpStats.ok} ok · ${httpStats.unauthorized} unauthorized · ${httpStats.otherError} other-error`);
+console.log(`http: ${httpStats.ok} ok · ${httpStats.unauthorized} unauthorized · ${httpStats.refreshed} refreshed · ${httpStats.otherError} other-error`);
 
-// A run that lost its session is not a clean run, whatever the invariant tally says: every request
-// after the token died returned nothing, and "nothing" is indistinguishable from "this ticker has
-// no structure" once it reaches the invariant checks. Fail loudly instead of reporting a green
-// sweep over an unknown number of blanks.
-if (httpStats.unauthorized > 0) {
+if (httpStats.unauthorized > 0 && httpStats.refreshed === 0) {
   const at = (httpStats.firstUnauthorizedAtMs / 1000).toFixed(0);
   console.log(
-    `\nRUN INVALID: ${httpStats.unauthorized} request(s) came back 401/403, first at t+${at}s.\n` +
-      `The minted Clerk __session JWT expires ~72s after issue and cannot be extended by activity,\n` +
-      `so any sweep longer than that is unauthenticated for its remainder. Narrow the ticker set\n` +
-      `(AUDIT_TICKERS=...) or split the run so each stays inside the window.`
+    `\nRUN INVALID: ${httpStats.unauthorized} request(s) came back 401/403, first at t+${at}s, and session refresh did not recover.\n` +
+      `Check Clerk secrets and retry with a narrower AUDIT_TICKERS set if needed.`
   );
   process.exit(2);
 }
