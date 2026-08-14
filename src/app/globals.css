@@ -18509,7 +18509,7 @@ body::before {
 .thermal-triple-spot-chg {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 900;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
   white-space: nowrap;
@@ -18517,23 +18517,26 @@ body::before {
 
 .thermal-triple-spot-chg.is-up {
   color: #a3e635;
+  text-shadow: 0 0 10px rgba(163, 230, 53, 0.28);
 }
 
 .thermal-triple-spot-chg.is-down {
   color: #ff2d55;
+  text-shadow: 0 0 10px rgba(255, 45, 85, 0.28);
 }
 
 .thermal-triple-spot--head {
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 900;
   font-variant-numeric: tabular-nums;
-  color: #f8fafc;
+  color: #ffffff;
   letter-spacing: 0.02em;
   padding: 0.14rem 0.42rem;
   border-radius: 0.35rem;
-  border: 1.5px solid rgba(125, 211, 252, 0.38);
+  border: 1.5px solid rgba(125, 211, 252, 0.48);
   background: rgba(8, 12, 22, 0.82);
   white-space: nowrap;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
 }
 
 .thermal-triple-spot--head.is-empty {
@@ -18823,18 +18826,19 @@ body::before {
   background: transparent;
   font: inherit;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 800;
   font-variant-numeric: tabular-nums;
-  color: rgba(186, 230, 253, 0.88);
+  color: rgba(224, 242, 254, 0.98);
   cursor: pointer;
 }
 
 .thermal-compact-strike-label {
   text-align: left;
   min-width: 0;
-  color: #f8fafc;
-  font-weight: 800;
+  color: #ffffff;
+  font-weight: 900;
   letter-spacing: 0.02em;
+  text-shadow: 0 0 12px rgba(186, 230, 253, 0.18);
 }
 
 .thermal-compact-strike-btn:hover {
@@ -18882,7 +18886,7 @@ body::before {
   height: 2rem;
   text-align: center;
   vertical-align: middle;
-  border-right: 1px solid var(--tt-line);
+  border-right: none;
   white-space: nowrap;
   overflow: hidden;
   /* Stay a real table-cell — never inline-block (breaks column alignment). */
@@ -18916,14 +18920,15 @@ body::before {
   position: relative;
   z-index: 1;
   flex-shrink: 0;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
   font-variant-numeric: tabular-nums;
   line-height: 1.15;
-  color: rgba(248, 250, 252, 0.92);
+  color: #ffffff;
   white-space: nowrap;
   text-align: right;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.12);
 }
 
 .thermal-compact-cell-pct {
@@ -18932,7 +18937,7 @@ body::before {
   margin-right: auto;
   min-width: 3.1rem;
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 900;
   letter-spacing: 0.03em;
   font-variant-numeric: tabular-nums;
   line-height: 1.15;
@@ -18941,37 +18946,42 @@ body::before {
 }
 
 .thermal-compact-cell-pct.is-pct-pos {
-  color: #34d399;
-  text-shadow: 0 0 10px rgba(52, 211, 153, 0.22);
+  color: #4ade80;
+  text-shadow: 0 0 12px rgba(74, 222, 128, 0.35);
 }
 
 .thermal-compact-cell-pct.is-pct-neg {
-  color: #f87171;
-  text-shadow: 0 0 10px rgba(248, 113, 113, 0.2);
+  color: #ff2d55;
+  text-shadow: 0 0 12px rgba(255, 45, 85, 0.32);
 }
 
 .thermal-compact-cell-pct.is-pct-flat {
-  color: rgba(186, 230, 253, 0.82);
+  color: rgba(224, 242, 254, 0.95);
 }
 
 .thermal-compact-cell.is-pos .thermal-compact-cell-val {
-  color: #6ee7b7;
+  color: #4ade80;
+  text-shadow: 0 0 12px rgba(74, 222, 128, 0.28);
 }
 
 .thermal-compact-cell.is-neg .thermal-compact-cell-val {
-  color: #fda4af;
+  color: #ff2d55;
+  text-shadow: 0 0 12px rgba(255, 45, 85, 0.28);
 }
 
 .thermal-compact-cell.is-zero .thermal-compact-cell-val {
-  color: rgba(125, 211, 252, 0.4);
+  color: rgba(125, 211, 252, 0.58);
+  font-weight: 700;
 }
 
 .thermal-compact-cell.is-neutral .thermal-compact-cell-val {
-  color: rgba(186, 230, 253, 0.82);
+  color: rgba(224, 242, 254, 0.96);
+  font-weight: 800;
 }
 
 .thermal-compact-table.is-0dte .thermal-compact-cell-val {
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 900;
 }
 
 /* Corner king mark — does not inflate cell width like an inline ★. */
@@ -19004,7 +19014,9 @@ body::before {
 
 .thermal-compact-cell--extreme.is-pos-node .thermal-compact-cell-val,
 .thermal-compact-cell--extreme.is-neg-node .thermal-compact-cell-val {
-  color: inherit;
+  font-weight: 900;
+  color: #ffffff;
+  text-shadow: 0 0 14px rgba(255, 255, 255, 0.22);
 }
 
 .thermal-grid-toolbar {
