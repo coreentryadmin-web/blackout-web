@@ -53,6 +53,21 @@ test("VECTOR_COMPARE_PRESETS: every preset respects max panes", () => {
   }
 });
 
+test("loadCompareSeedsBounded: preserves order with concurrency cap", async () => {
+  const { loadCompareSeedsBounded } = await import("./vector-compare");
+  let peak = 0;
+  let active = 0;
+  const loaded = await loadCompareSeedsBounded(["NVDA", "TSLA", "META", "AMD"], async (t) => {
+    active++;
+    peak = Math.max(peak, active);
+    await new Promise((r) => setTimeout(r, 5));
+    active--;
+    return t;
+  }, 2);
+  assert.deepEqual(loaded, ["NVDA", "TSLA", "META", "AMD"]);
+  assert.ok(peak <= 2, `peak concurrency ${peak} should be <= 2`);
+});
+
 test("fmtCompareSpot via compare-format: formats finite spot", async () => {
   const { fmtCompareSpot } = await import("./vector-compare-format");
   assert.equal(fmtCompareSpot(null, "NVDA"), "—");

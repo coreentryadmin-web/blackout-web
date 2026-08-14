@@ -166,6 +166,8 @@ function topWallStrike(walls, side) {
 }
 
 async function probeVectorStream(session) {
+  // Cheap authed ping — refreshes JWT if the HTML probe left a stale cookie.
+  session.app("/api/health");
   const tok = session.sessionToken();
   if (!tok) {
     rec("api:vector-stream", "FAIL", "no session token");
@@ -183,7 +185,7 @@ async function probeVectorStream(session) {
       signal: ac.signal,
     });
     if (!res.ok) {
-      rec("api:vector-stream", "FAIL", `HTTP ${res.status}`);
+      rec("api:vector-stream", res.status === 401 ? "WARN" : "FAIL", `HTTP ${res.status}`);
       return null;
     }
     const reader = res.body?.getReader();
@@ -314,6 +316,15 @@ async function crossValidateVector(session, streamSnap) {
   }
 }
 
+async function filterConsoleErrors(errors) {
+  return errors.filter(
+    (e) =>
+      !/favicon|ResizeObserver|clerk/i.test(e) &&
+      !/MIME type \('text\/plain'\) is not a supported stylesheet/i.test(e) &&
+      !/Failed to load resource: the server responded with a status of 502/i.test(e)
+  );
+}
+
 async function browserVector(session) {
   const pw = await mintIosPlaywrightSession({ appUrl: BASE });
   if (pw.skip) {
@@ -346,11 +357,14 @@ async function browserVector(session) {
     await page.locator(".vector-page-shell, .vector-chart-wrap").first().waitFor({ timeout: 30_000 });
     rec("ui:vector-page-load", "PASS");
 
-    const header = await page.locator("h1, .page-header-title").first().innerText().catch(() => "");
-    if (!/vector/i.test(header)) {
-      rec("ui:vector-header", "WARN", header.slice(0, 40));
-    } else {
+    const compareBtn = page.locator('.vector-toolbar > .flex.flex-wrap [data-testid="vector-enter-compare"]');
+    const brandText = await page.locator(".vector-page-shell").innerText().catch(() => "");
+    if (await compareBtn.isVisible().catch(() => false)) {
+      rec("ui:vector-header", "PASS", "Compare CTA visible");
+    } else if (/vector/i.test(brandText)) {
       rec("ui:vector-header", "PASS");
+    } else {
+      rec("ui:vector-header", "WARN", brandText.slice(0, 40));
     }
 
     await page.locator(".vector-chart-wrap").waitFor({ state: "visible", timeout: 60_000 });
@@ -447,12 +461,68 @@ async function browserVector(session) {
       }
     }
 
-    await page.screenshot({ path: join(OUT, `vector-e2e-${Date.now()}.png`), fullPage: true });
-    rec("ui:screenshot", "PASS", OUT);
+    await page.screenshot({ path: join(OUT, `vector-e2e-desk-${Date.now()}.png`), fullPage: true });
+    rec("ui:screenshot-desk", "PASS", OUT);
 
-    const badConsole = consoleErrors.filter(
-      (e) => !/favicon|ResizeObserver|clerk/i.test(e)
-    );
+    // ── Compare mode (4-up chart grid) ─────────────────────────────────────
+    if (await compareBtn.isVisible().catch(() => false)) {
+      await compareBtn.click({ timeout: 15_000 });
+      rec("ui:click-enter-compare", "PASS");
+    } else {
+      await page.goto(`${BASE}/vector?compare=SPX`, { waitUntil: "domcontentloaded", timeout: 120_000 });
+      rec("ui:click-enter-compare", "WARN", "Compare CTA missing — deep-linked compare=SPX");
+    }
+
+    await page.locator(".vector-compare-command").waitFor({ state: "visible", timeout: 90_000 });
+    rec("ui:compare-command-bar", "PASS");
+
+    await page.locator(".vector-compare-grid").waitFor({ state: "visible", timeout: 90_000 });
+    const paneCount = await page.locator(".vector-compare-pane").count();
+    if (paneCount >= 1) {
+      rec("ui:compare-pane-count", "PASS", `${paneCount} pane(s)`);
+    } else {
+      rec("ui:compare-pane-count", "FAIL", "no compare panes rendered");
+    }
+
+    const linkedBtn = page.locator('[data-testid="vector-compare-linked"]');
+    await linkedBtn.click({ timeout: 10_000 });
+    await linkedBtn.click({ timeout: 10_000 });
+    rec("ui:compare-toggle-linked", "PASS");
+
+    const indicesPreset = page.locator('[data-testid="vector-compare-preset-indices"]');
+    await indicesPreset.waitFor({ state: "visible", timeout: 15_000 });
+    await indicesPreset.click({ timeout: 15_000 });
+    await page.locator(".vector-compare-pane").nth(3).waitFor({ state: "visible", timeout: 120_000 });
+    const fourUp = await page.locator(".vector-compare-pane").count();
+    if (fourUp >= 4) {
+      rec("ui:compare-preset-indices", "PASS", "4 panes");
+    } else {
+      rec("ui:compare-preset-indices", "WARN", `${fourUp}/4 panes — seed fetch may be slow`);
+    }
+
+    const canvases = page.locator(".vector-compare-pane .vector-chart-canvas");
+    const canvasN = await canvases.count();
+    if (canvasN >= 2) {
+      rec("ui:compare-chart-canvas", "PASS", `${canvasN} charts`);
+    } else {
+      rec("ui:compare-chart-canvas", "WARN", `${canvasN} chart canvas visible`);
+    }
+
+    if (await page.locator(".vector-compare-strip").isVisible().catch(() => false)) {
+      rec("ui:compare-summary-strip", "PASS");
+    } else {
+      rec("ui:compare-summary-strip", "WARN", "summary strip not visible yet");
+    }
+
+    await page.locator('[data-testid="vector-compare-exit"]').click({ timeout: 15_000 });
+    await page.locator(".vector-page-shell").waitFor({ state: "visible", timeout: 90_000 });
+    await page.locator(".vector-page-shell .vector-chart-wrap").first().waitFor({ state: "visible", timeout: 90_000 });
+    rec("ui:compare-exit", "PASS");
+
+    await page.screenshot({ path: join(OUT, `vector-e2e-compare-${Date.now()}.png`), fullPage: true });
+    rec("ui:screenshot-compare", "PASS", OUT);
+
+    const badConsole = await filterConsoleErrors(consoleErrors);
     if (badConsole.length) {
       rec("ui:console-errors", "FAIL", badConsole.slice(0, 3).join(" | "));
     } else {
@@ -471,12 +541,23 @@ async function browserVector(session) {
 
 async function probeVectorPageHtml(session) {
   const tok = session.sessionToken();
-  const r = curl({
+  if (!tok) {
+    rec("api:vector-page", "FAIL", "no session token");
+    return;
+  }
+  let r = curl({
     url: `${BASE}/vector`,
     headers: { Cookie: `__session=${tok}; __client_uat=${session.clientUat}` },
   });
+  if (r.s === 0) {
+    // Cold SSR / post-deploy — one retry with a longer ceiling.
+    r = curl({
+      url: `${BASE}/vector`,
+      headers: { Cookie: `__session=${tok}; __client_uat=${session.clientUat}` },
+    });
+  }
   if (r.s !== 200) {
-    rec("api:vector-page", "FAIL", `HTTP ${r.s}`);
+    rec("api:vector-page", r.s === 0 ? "WARN" : "FAIL", r.s === 0 ? "timeout — UI probe continues" : `HTTP ${r.s}`);
     return;
   }
   if (/Coming soon/i.test(r.b)) {

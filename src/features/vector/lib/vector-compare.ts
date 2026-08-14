@@ -56,3 +56,23 @@ export function deskPath(ticker: string): string {
   const t = normalizeVectorTicker(ticker);
   return t === "SPX" ? "/vector" : `/vector?ticker=${encodeURIComponent(t)}`;
 }
+
+/** Load compare seeds with bounded concurrency — 4× parallel burst was tripping ALB 502s. */
+export async function loadCompareSeedsBounded<T>(
+  tickers: string[],
+  fetchSeed: (ticker: string) => Promise<T>,
+  concurrency = 2
+): Promise<T[]> {
+  const uniq = parseCompareTickers(tickers.join(","));
+  if (!uniq.length) return [];
+  const out: T[] = new Array(uniq.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(concurrency, uniq.length) }, async () => {
+    while (next < uniq.length) {
+      const i = next++;
+      out[i] = await fetchSeed(uniq[i]!);
+    }
+  });
+  await Promise.all(workers);
+  return out;
+}

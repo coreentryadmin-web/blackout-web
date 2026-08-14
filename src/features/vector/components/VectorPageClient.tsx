@@ -11,6 +11,7 @@ import { VECTOR_DEFAULT_TICKER } from "@/features/vector/lib/vector-ticker";
 import {
   comparePath,
   isCompareMode,
+  loadCompareSeedsBounded,
   parseCompareTickers,
 } from "@/features/vector/lib/vector-compare";
 import type { VectorDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
@@ -83,7 +84,7 @@ export function VectorPageClient(initial: Props) {
         if (!cancelled) setCompareSeeds([primary]);
         return;
       }
-      const loaded = await Promise.all(others.map((t) => fetchVectorClientSeed(t)));
+      const loaded = await loadCompareSeedsBounded(others, (t) => fetchVectorClientSeed(t), 2);
       if (cancelled) return;
       const ordered = compareTickers
         .map((t) => [primary, ...loaded].find((s) => s.ticker === t))

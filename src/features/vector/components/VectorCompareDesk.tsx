@@ -15,6 +15,7 @@ import {
   VECTOR_COMPARE_MAX_PANES,
   comparePath,
   deskPath,
+  loadCompareSeedsBounded,
   type VectorComparePreset,
 } from "@/features/vector/lib/vector-compare";
 import type { VectorClientSeed } from "@/features/vector/lib/vector-client-seed";
@@ -104,8 +105,10 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
     async (preset: VectorComparePreset) => {
       setLoadingTickers(new Set(preset.tickers));
       try {
-        const loaded = await Promise.all(
-          preset.tickers.slice(0, VECTOR_COMPARE_MAX_PANES).map((t) => fetchVectorClientSeed(t))
+        const loaded = await loadCompareSeedsBounded(
+          preset.tickers.slice(0, VECTOR_COMPARE_MAX_PANES),
+          (t) => fetchVectorClientSeed(t),
+          2
         );
         setSeeds(loaded);
         syncUrl(loaded);
