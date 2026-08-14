@@ -18460,14 +18460,66 @@ body::before {
   gap: 0.35rem;
 }
 
+/* TWO columns, not three: the header is `[ticker][meta cluster]`. The 3-column form is what the
+   old center-expiry / right-spot layout needed; leaving it after the header dropped to two
+   children would park the meta cluster in the middle `auto` track and leave a dead 1fr gutter on
+   the right — the opposite of the left-aligned cluster this layout is for. */
 .thermal-triple-col-head--band {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 0.35rem 0.5rem;
   padding-bottom: 0.4rem;
   margin-bottom: 0.2rem;
   border-bottom: 1.5px solid var(--tt-line-strong);
+}
+
+/* Meta cluster: expiry date, Vector jump, spot + day change — all left-aligned beside the ticker. */
+.thermal-triple-col-head-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Replaces the old `.thermal-compact-exp-date` in this header; kept visually identical so the
+   date does not change weight/colour just because it moved out of the chip pairing. */
+.thermal-triple-col-exp-date {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--tt-sky);
+  white-space: nowrap;
+}
+
+/* Cross-tool jump to Vector for this ticker. Styled as a pill (mirrors `.thermal-compact-exp-chip`)
+   so it reads as an affordance — an unstyled inline link here is indistinguishable from the
+   surrounding meta text and nobody would know it is clickable. */
+.thermal-triple-vector-link {
+  flex-shrink: 0;
+  display: inline-block;
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.2rem;
+  border: 1px solid rgba(34, 211, 238, 0.45);
+  background: rgba(34, 211, 238, 0.12);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--tt-cyan);
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.thermal-triple-vector-link:hover,
+.thermal-triple-vector-link:focus-visible {
+  border-color: rgba(34, 211, 238, 0.85);
+  background: rgba(34, 211, 238, 0.22);
 }
 
 .thermal-triple-col-head-ticker {
