@@ -506,6 +506,23 @@ async function browserVector(session) {
       rec("ui:compare-preset-indices", "WARN", `${fourUp}/4 panes — seed fetch may be slow`);
     }
 
+    const focusBtn = page.locator('[data-testid="vector-compare-focus-toggle"]');
+    if (await focusBtn.isVisible().catch(() => false)) {
+      await focusBtn.click({ timeout: 10_000 });
+      const focusExpanded = await page.locator(".vector-compare-grid.is-focus-expanded").count();
+      const hero = await page.locator(".vector-compare-pane.is-focus-hero").count();
+      const rail = await page.locator(".vector-compare-pane.is-focus-rail").count();
+      if (focusExpanded === 1 && hero === 1 && rail >= 1) {
+        rec("ui:compare-focus-mode", "PASS", `${rail} rail + 1 hero`);
+      } else {
+        rec("ui:compare-focus-mode", "WARN", `expanded=${focusExpanded} hero=${hero} rail=${rail}`);
+      }
+      await focusBtn.click({ timeout: 10_000 });
+      rec("ui:compare-focus-exit", "PASS");
+    } else {
+      rec("ui:compare-focus-mode", "WARN", "focus toggle not visible — need 2+ charts");
+    }
+
     const canvases = page.locator(".vector-compare-pane .vector-chart-canvas");
     const canvasN = await canvases.count();
     if (canvasN >= 2) {

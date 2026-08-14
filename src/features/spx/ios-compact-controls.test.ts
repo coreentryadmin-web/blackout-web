@@ -46,6 +46,16 @@ test("VectorCompareCommandBar shows chart count without a /4 cap label", () => {
   assert.doesNotMatch(src, /VECTOR_COMPARE_MAX_PANES/);
 });
 
+test("compare focus mode keeps panes mounted with hero + rail CSS", () => {
+  const css = readFileSync(join(root, "src/app/globals.css"), "utf8");
+  assert.match(css, /\.vector-compare-grid\.is-focus-expanded/);
+  assert.match(css, /\.vector-compare-pane\.is-focus-rail[\s\S]*\.vector-compare-pane-body[\s\S]*display: none/);
+  const desk = readFileSync(join(root, "src/features/vector/components/VectorCompareDesk.tsx"), "utf8");
+  assert.match(desk, /focusExpanded/);
+  assert.match(desk, /enterFocusExpand/);
+  assert.match(desk, /Escape/);
+});
+
 test("VectorReplayControls tags replay state for iOS collapse", () => {
   const src = readFileSync(join(root, "src/features/vector/components/VectorReplayControls.tsx"), "utf8");
   assert.match(src, /data-replay-active/);
