@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { gammaShareByExpiry } from "@/features/thermal/lib/gex-heatmap/per-expiry-levels";
 import { gexWallsFromStrikeTotals } from "@/lib/providers/gex-cross-validation-core";
@@ -3766,6 +3766,12 @@ export function GexHeatmap({
         >
           <table
             className="spx-gex-matrix-table thermal-matrix-table border-collapse font-mono text-[13px] tabular-nums"
+            style={
+              {
+                ["--thermal-expiry-cols" as string]: String(matrixExpiries.length),
+                ["--thermal-matrix-flow-w" as string]: depthRail ? "14rem" : "0rem",
+              } as CSSProperties
+            }
             role="grid"
             aria-label={`${data?.underlying ?? ticker} dealer ${vocab.noun.toLowerCase()} matrix by strike and expiry`}
           >
