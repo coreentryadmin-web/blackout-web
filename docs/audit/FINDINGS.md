@@ -10224,4 +10224,4 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Tier 2** | `SpxPinForecast` chart label distinguishes effective max pain from desk tile. `SpxVectorEmbed` uses `fetchVectorClientSeed` for walls + wall-history on first paint. |
 | **Tier 3** | `VectorPageClient` + `vector-client-seed.ts`: ticker switches fetch client-side (history.replaceState) instead of full SSR (~1–3s soft nav). Scanner routes through same callback. |
 | **Tier 4** | `useVectorLivePoll` wired in shell; `vector-gex-heatmap-client.ts` dedupes shift-leader fetches; `vector-stream-hub.ts` coalesces overlapping refreshes; route tests for `/bars` + `/walls`. |
-| **Status** | FIXED — PR pending.
+| **Status** | FIXED — PR #2184.
