@@ -5,14 +5,20 @@
 // after a Thermal refactor) have a repeatable starting point — see the
 // 2026-08-14 UX pass in docs/audit/FINDINGS.md for the pattern.
 const fs = require('fs');
+const os = require('os');
+const nodePath = require('path');
 const { execSync } = require('child_process');
 const { createTunneledContext } = require('/home/user/blackout-web/scripts/audit/lib/proxy-tunnel-context.cjs');
 
-const OUT = '/tmp/thermal-ux';
-fs.mkdirSync(OUT, { recursive: true });
+// `mkdtempSync` gives us a race-free unique subdir under the OS temp dir with
+// mode 0700 — closes the symlink-attack window CodeQL flags on world-writable
+// `/tmp/thermal-ux/foo`. This is a dev-only harness (never ships to prod), but
+// the safer pattern is one grep away and keeps the security scan clean.
+const OUT = fs.mkdtempSync(nodePath.join(os.tmpdir(), 'thermal-ux-'));
 
 function mintCookies() {
-  const tmp = `/tmp/thermal-cookies-${Date.now()}.json`;
+  // Same race-free pattern for the ephemeral cookie handoff.
+  const tmp = nodePath.join(fs.mkdtempSync(nodePath.join(os.tmpdir(), 'thermal-cookies-')), 'cookies.json');
   execSync(
     `cd /home/user/blackout-web && env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY node --import tsx -e "
 import { mintIosPlaywrightSession } from './scripts/audit/lib/ios-playwright-auth.mjs';
