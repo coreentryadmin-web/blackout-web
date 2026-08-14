@@ -58,7 +58,7 @@ function seedFromProps(props: VectorSeedProps): VectorClientSeed {
 }
 
 /**
- * /vector client wrapper — desk mode (full terminal) or compare mode (up to 4 chart-only panes).
+ * /vector client wrapper — desk mode (full terminal) or compare mode (linked chart panes).
  */
 export function VectorPageClient(initial: Props) {
   const router = useRouter();

@@ -464,7 +464,7 @@ async function browserVector(session) {
     await page.screenshot({ path: join(OUT, `vector-e2e-desk-${Date.now()}.png`), fullPage: true });
     rec("ui:screenshot-desk", "PASS", OUT);
 
-    // ── Compare mode (4-up chart grid) ─────────────────────────────────────
+    // ── Compare mode (dynamic grid — 1 chart + add on entry) ───────────────
     if (await compareBtn.isVisible().catch(() => false)) {
       await compareBtn.click({ timeout: 15_000 });
       rec("ui:click-enter-compare", "PASS");
@@ -477,6 +477,12 @@ async function browserVector(session) {
     rec("ui:compare-command-bar", "PASS");
 
     await page.locator(".vector-compare-grid").waitFor({ state: "visible", timeout: 90_000 });
+    const gridSlotCount = await page.locator(".vector-compare-grid").getAttribute("data-pane-count");
+    if (gridSlotCount === "2") {
+      rec("ui:compare-grid-slots", "PASS", "1 chart + add slot (50/50)");
+    } else {
+      rec("ui:compare-grid-slots", "WARN", `data-pane-count=${gridSlotCount} — expected 2 on entry`);
+    }
     const paneCount = await page.locator(".vector-compare-pane").count();
     if (paneCount >= 1) {
       rec("ui:compare-pane-count", "PASS", `${paneCount} pane(s)`);

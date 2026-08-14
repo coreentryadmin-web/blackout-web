@@ -115,7 +115,7 @@ type Props = {
   /** Client-side ticker nav (avoids full SSR on every symbol switch). */
   onTickerSelect?: (ticker: string) => void | Promise<void>;
   tickerNavBusy?: boolean;
-  /** Enter 4-up compare mode (desk only). */
+  /** Enter compare mode with the current ticker (desk only). */
   onEnterCompare?: () => void;
   /** Compare pane: hide TF/DTE/lens in chart toolbar (command bar owns them). */
   toolbarHideLinkedControls?: boolean;

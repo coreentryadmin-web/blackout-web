@@ -40,6 +40,12 @@ test("VectorCompareDesk grows grid slots dynamically (not always four)", () => {
   assert.match(src, /data-pane-count=\{gridSlotCount\}/);
 });
 
+test("VectorCompareCommandBar shows chart count without a /4 cap label", () => {
+  const src = readFileSync(join(root, "src/features/vector/components/VectorCompareCommandBar.tsx"), "utf8");
+  assert.match(src, /paneCount === 1 \? "chart" : "charts"/);
+  assert.doesNotMatch(src, /VECTOR_COMPARE_MAX_PANES/);
+});
+
 test("VectorReplayControls tags replay state for iOS collapse", () => {
   const src = readFileSync(join(root, "src/features/vector/components/VectorReplayControls.tsx"), "utf8");
   assert.match(src, /data-replay-active/);

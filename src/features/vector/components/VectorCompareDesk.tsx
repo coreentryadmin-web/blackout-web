@@ -184,7 +184,7 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
         <div className="vector-compare-mobile-gate" role="status">
           <p className="vector-compare-mobile-gate-title">Compare needs a wider screen</p>
           <p className="vector-compare-mobile-gate-copy">
-            Open Vector Compare on desktop (1280px+) for up to four linked charts.
+            Open Vector Compare on desktop (1280px+) — start with one chart and add symbols as you go.
           </p>
         </div>
 
