@@ -78,6 +78,10 @@ import {
 } from "@/lib/gex-heatmap-session-cache";
 import { matrixShiftDeltaForStrikeScoped } from "@/lib/gex-shift-scope";
 import {
+  depthScopeUsesNearTermFallback,
+  resolveDepthForScope,
+} from "@/lib/gex-depth-scope";
+import {
   gexMatrixShiftCellKey,
   matrixShiftForLens,
   matrixShiftSinceMs,
@@ -293,6 +297,8 @@ type GexHeatmapResponse = {
    *  the chain needs per-contract IV the client never receives) and OPTIONAL: absent on a legacy
    *  cached payload, and deliberately DROPPED rather than pruned across the ET rollover. */
   depth?: GexDepthPayload;
+  /** Per-expiry / preset forced-flow ladders keyed by date or sorted `exp|exp` join. */
+  depth_by_scope?: Record<string, GexDepthPayload>;
   /** Near-term expiry set that feeds walls/flip — authoritative for wall-scope chip. */
   near_term_expiries?: string[];
   /** Overlay sample time (#9) — the dark-pool / flow-by-strike overlays ride a separate ~30s
@@ -3424,12 +3430,18 @@ export function GexHeatmap({
     return p;
   }, [cells]);
 
-  // The rail rides the SAME payload block the Depth tab uses, so the two can never disagree.
-  // GEX-only: the ladder is built from dealer gamma and means nothing under vanna/delta/charm,
-  // and `stale` gates it for the same reason the Depth tab does.
+  // The rail rides the SAME payload block the Depth tab uses, scoped to selected DTE when built.
+  const depthRailBlock = useMemo(
+    () => resolveDepthForScope(data?.depth, data?.depth_by_scope, selectedExpiries),
+    [data?.depth, data?.depth_by_scope, selectedExpiries],
+  );
+  const depthRailUsesNearTermFallback = useMemo(
+    () => depthScopeUsesNearTermFallback(data?.depth_by_scope, selectedExpiries),
+    [data?.depth_by_scope, selectedExpiries],
+  );
   const depthRail =
-    lens === "gex" && !stale && data?.depth && data.depth.levels.length > 0 && (data.spot ?? 0) > 0
-      ? data.depth
+    lens === "gex" && !stale && depthRailBlock && depthRailBlock.levels.length > 0 && (data?.spot ?? 0) > 0
+      ? depthRailBlock
       : null;
 
   const totalPeak = useMemo(() => {
@@ -3442,12 +3454,24 @@ export function GexHeatmap({
   }, [strikeTotals]);
 
   const shiftLeaderCells = useMemo(
-    () => pickGexShiftLeaderCells(strikeTotals, cells, expiries, shift),
-    [strikeTotals, cells, expiries, shift]
+    () =>
+      pickGexShiftLeaderCells(
+        selectedExpiries != null ? filteredTotals : strikeTotals,
+        cells,
+        matrixExpiries,
+        shift,
+        { cells, selectedExpiries },
+      ),
+    [selectedExpiries, filteredTotals, strikeTotals, cells, matrixExpiries, shift],
   );
   const shiftLeaders = useMemo(
-    () => pickGexShiftLeaders(strikeTotals, shift),
-    [strikeTotals, shift]
+    () =>
+      pickGexShiftLeaders(
+        selectedExpiries != null ? filteredTotals : strikeTotals,
+        shift,
+        { cells, selectedExpiries },
+      ),
+    [selectedExpiries, filteredTotals, strikeTotals, cells, shift],
   );
 
   const matrixLens = lens as GexHeatmapLens;
@@ -4261,9 +4285,10 @@ export function GexHeatmap({
                 {depthRail && (
                   <th
                     className="thermal-matrix-head thermal-matrix-head-flow"
-                    title={netFlowHeaderTooltip(
-                      scopedExpiryLabel ? fmtExpiry(scopedExpiryLabel) : null
-                    )}
+                    title={netFlowHeaderTooltip({
+                      scopeLabel: selectedExpiries != null ? scopeLabel : null,
+                      usesNearTermFallback: depthRailUsesNearTermFallback,
+                    })}
                   >
                     Net flow
                   </th>
@@ -4836,21 +4861,13 @@ export function GexHeatmap({
                 </div>
               </TabPanel>
               <TabPanel value="pair-c">
-                {data?.depth && data.depth.levels.length > 0 && !stale ? (
-                  /* The ladder alone, full width — the Cumulative Curve deliberately does NOT sit
-                     beside it (it lives on the Profile tab with the profile + shift, which is the
-                     trio it belongs to). Both are running sums over strikes and they LOOK alike,
-                     but they answer different questions: the curve sums the book as it stands at
-                     TODAY'S spot, so its zero-crossing is the gamma flip right now; the ladder
-                     REPRICES the whole chain at hypothetical spots, so its crossing is where the
-                     flip would MOVE TO. Side by side they read as one curve drawn twice, which
-                     buries the only thing the ladder adds. */
+                {depthRailBlock && depthRailBlock.levels.length > 0 && !stale && data ? (
                   <GexDepthLadderView
-                    depth={data.depth}
+                    depth={depthRailBlock}
                     spot={data.spot ?? 0}
                     underlying={data.underlying ?? ticker}
-                    callWall={data.gex?.call_wall ?? null}
-                    putWall={data.gex?.put_wall ?? null}
+                    callWall={profilePosWall}
+                    putWall={profileNegWall}
                     targetStrike={
                       data.nighthawk_context?.target_strike != null
                         ? Number(data.nighthawk_context.target_strike)

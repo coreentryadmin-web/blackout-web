@@ -219,10 +219,6 @@ export function SpxGexMatrixHeatmap({
   const block = lens === "gex" ? data?.gex : data?.vex;
   const hasVex = Boolean(data?.vex && Object.keys(data.vex.cells ?? {}).length > 0);
   const activeShift = matrixShiftForLens(lens, data);
-  const shiftLeaders = useMemo(
-    () => pickGexShiftLeaders(block?.strike_totals, activeShift),
-    [block?.strike_totals, activeShift]
-  );
   const cells = block?.cells ?? {};
   const expiriesAll = data?.expiries ?? [];
   // Full table by default (user wants the complete GEX/VEX matrix, every expiry as a column);
@@ -233,6 +229,14 @@ export function SpxGexMatrixHeatmap({
     () => (showAllCols ? expiriesAll : expiriesAll.slice(0, MAX_EXPIRY_COLS)),
     [expiriesAll, showAllCols]
   );
+  const shiftLeaders = useMemo(
+    () =>
+      pickGexShiftLeaders(block?.strike_totals, activeShift, {
+        cells,
+        selectedExpiries: displayExpiries,
+      }),
+    [block?.strike_totals, activeShift, cells, displayExpiries],
+  );
   // The near-term expiry set drives the COLOR scale split below: far-dated monthly OpEx cells are
   // orders of magnitude larger than near-term ones, so a single shared peak would wash the whole
   // near-term block to near-zero alpha. Near and far columns are each scaled to their OWN peak.
@@ -241,8 +245,12 @@ export function SpxGexMatrixHeatmap({
     [data?.near_term_expiries, expiriesAll]
   );
   const shiftLeaderCells = useMemo(
-    () => pickGexShiftLeaderCells(block?.strike_totals, cells, displayExpiries, activeShift),
-    [block?.strike_totals, cells, displayExpiries, activeShift]
+    () =>
+      pickGexShiftLeaderCells(block?.strike_totals, cells, displayExpiries, activeShift, {
+        cells,
+        selectedExpiries: displayExpiries,
+      }),
+    [block?.strike_totals, cells, displayExpiries, activeShift],
   );
   const shiftSinceMs = matrixShiftSinceMs(lens, data);
 

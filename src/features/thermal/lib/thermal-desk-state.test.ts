@@ -213,19 +213,29 @@ test("keyLevelsFootnoteCompact drops redundant scoped copy but keeps matrix peak
   assert.match(keyLevelsFootnoteCompact("Aug 4"), /sum near-term expiries/);
 });
 
-test("netFlowHeaderTooltip discloses that net flow is NOT rescoped when its neighbours are", () => {
-  // Unscoped: nothing to disclose — every column is the near-term book, so the base copy stands.
-  const plain = netFlowHeaderTooltip(null);
+test("netFlowHeaderTooltip discloses fallback vs scoped repricing", () => {
+  const plain = netFlowHeaderTooltip();
   assert.match(plain, /Forced dealer hedging flow/);
   assert.doesNotMatch(plain, /NOT re-scoped/);
+  assert.doesNotMatch(plain, /Repriced for/);
 
-  // Scoped: King node (#2154) and DR% (#2156) DO follow the scope, so a silent unscoped column
-  // reads as scoped. The disclosure must name the scope and say which columns differ.
-  const scoped = netFlowHeaderTooltip("Aug 14");
-  assert.match(scoped, /NOT re-scoped to Aug 14/);
-  assert.match(scoped, /King node and DR%/);
-  assert.match(scoped, /Depth tab/);
+  const fallback = netFlowHeaderTooltip({
+    scopeLabel: "Aug 14",
+    usesNearTermFallback: true,
+  });
+  assert.match(fallback, /NOT re-scoped to Aug 14/);
+  assert.match(fallback, /King node and DR%/);
 
-  // Whitespace-only is not a scope.
-  assert.equal(netFlowHeaderTooltip("   "), plain);
+  const scoped = netFlowHeaderTooltip({
+    scopeLabel: "near-term",
+    usesNearTermFallback: false,
+  });
+  assert.match(scoped, /Repriced for near-term contracts only/);
+  assert.doesNotMatch(scoped, /NOT re-scoped/);
+
+  const monthly = netFlowHeaderTooltip({
+    scopeLabel: "monthly OpEx",
+    usesNearTermFallback: true,
+  });
+  assert.match(monthly, /NOT re-scoped to monthly OpEx/);
 });
