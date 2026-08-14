@@ -10203,3 +10203,13 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Other fixes** | SSE stream applies `NO_STORE_STREAM_HEADERS`; `.vp-t-muted` slate → sky (no grey on `#040407`); GEX ladder poll uses `initialWallTrailSec`; `validate:vector-play-invariants` npm script (tsx). |
 | **Live evidence (pre-deploy, prod @ main)** | Bead cadence: NVDA n=187 median 5s (was ~37% coverage pre-recorder fix); META n=221 median 5s. E2E API checks 9/9 PASS; UI browser FAIL until deploy. |
 | **Status** | FIXED — PR #2181. |
+
+## 2026-08-14 — [P2, Vector E2E + recorder] structure-feed wrong aria-label; duplicate replay scrub strict-mode; AMD/AAPL intermittent 30s bead gaps — FIXED (cursor/vector-e2e-cadence-fix-3d11)
+> **kind:** `FINDING`
+
+| Field | Value |
+|-------|-------|
+| **How it was found** | Post-merge live validation after #2182: `validate:vector-e2e` FAIL on `ui:structure-feed` (looked for "Wall structure events") and `ui:browser-vector` (two `Replay position` sliders — compact iOS row still in DOM). `validate:bead-cadence` FAIL AMD/AAPL median 30s (n≈9–17) while NVDA/TSLA/META at 5s. |
+| **Root cause** | E2E checked obsolete aria-label (`VectorTickerComparisonStrip` uses "Cross-ticker wall comparison"). Replay scrub locator was global, matching hidden compact + visible desktop controls. Per-ticker heatmap blips returned `historyRecorded=false` without retry; combined with `recordInFlight` skip, AMD/AAPL rails went sparse. |
+| **Fix** | E2E: desktop-scoped toolbar selectors + correct comparison strip label (WARN if snapshot cold). Recorder: one immediate retry pass for failed universe tickers in `recordSharedUniverseWallSamples`. `vector-wall-trail-sec-validate.mjs`: read more SSE frames (no early exit on candle). Checklist: 5s/15s cadence policy. |
+| **Status** | FIXED — PR pending. |

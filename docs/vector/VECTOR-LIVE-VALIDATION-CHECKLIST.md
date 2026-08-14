@@ -56,8 +56,9 @@ This is the core "is everything live" question. For SPX + 2 rotating universe na
       stays fresh (< 30s during RTH), walls/flip values move with the tape.
 - [ ] **New walls appear dynamically** — over ≥30 min, a strike that was NOT a top wall early
       becomes one later → a **new bead row starts at that point in time** (not retroactively filled).
-- [ ] **Beads form/accumulate at 15s** — the rail densifies through the session; count beads in a
-      fixed strike row at T and T+5min → count grew by ~roughly (elapsed/15s).
+- [ ] **Beads form/accumulate at 5s (shared universe) / 15s (on-demand)** — shared-universe names
+      (static allowlist ∪ dynamic Redis members) densify at **5s**; on-demand tickers at **15s**.
+      Run `npm run validate:bead-cadence` + `npm run validate:vector-wall-trail-sec` during RTH.
 - [ ] **Beads thicken as a wall strengthens** — the dominant wall's band gets visibly fatter in the
       stretch where its `pct` share rose; a fading wall thins. (Strength×time, per #172.)
 - [ ] **`vector_wall_history` DB accrues** — row count for each viewed ticker increased vs the
