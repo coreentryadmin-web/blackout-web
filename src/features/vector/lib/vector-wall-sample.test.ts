@@ -20,9 +20,11 @@ test("bucketWallSampleTime: snaps to 5s floor for oracle cadence", () => {
   assert.equal(bucketWallSampleTime(107, 5), 105);
 });
 
-test("vectorWallTrailSecClient: oracle 5s, else 15s", () => {
+test("vectorWallTrailSecClient: oracle + shared universe 5s, on-demand 15s", () => {
   assert.equal(vectorWallTrailSecClient("SPY"), 5);
-  assert.equal(vectorWallTrailSecClient("PLTR"), 15);
+  assert.equal(vectorWallTrailSecClient("META"), 5);
+  assert.equal(vectorWallTrailSecClient("PLTR"), 5);
+  assert.equal(vectorWallTrailSecClient("ZZZZ"), 15);
 });
 
 const CALL = [{ strike: 7575, pct: 4, gex: 3_000_000_000 }];

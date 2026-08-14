@@ -38,6 +38,20 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-08-14 — [FINDING, P1 member-visible] Vector bead rail ~3× sparser on non-oracle universe names (META/NVDA) vs SPX — FIXED
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Status** | FIXED — PR on `cursor/vector-bead-cadence-client-3d11` |
+| **Severity** | P1 member-visible — chart reads as broken / stale for every non-oracle universe ticker |
+| **Root cause** | Server records shared-universe tickers at **5s** (`wallTrailSampleSecForTicker(..., "universe")` + static allowlist fix in `vector-wall-sample-server.ts`), but client display bucketing used `vectorWallTrailSecClient()` which treated only `{SPX, SPY, QQQ}` as 5s and collapsed everyone else to **15s** in `bucketWallHistoryForInterval(..., { liveBeads: true, minBucketSec: trailBucketSec })`. Same class of bug as the Aug SSE write-path fix — data collected at 5s, thrown away at render time. |
+| **Evidence** | Live RTH 2026-08-14: `bead-cadence-validate.mjs` — META rail 358 samples / median 5s gap (server OK); member screenshot — META beads sparse vs SPX dense on 3m chart. Simulating display bucket on live META history: 5s → ~39 buckets / 20min, 15s → ~13 buckets (exact 3× loss). |
+| **Fix** | `vectorWallTrailSecClient()` + `vectorWallsScopePollMs()` now treat static allowlist names (`isHeatmapOverlayAllowed`) as 5s, mirroring server live scope. On-demand names outside allowlist stay 15s. |
+| **Blast radius** | Every Vector chart view for ~80 shared-universe tickers; oracle trio unchanged; true on-demand tickers unchanged. |
+
+---
+
 ## 2026-08-14 — [FINDING, P3 a11y/UX] Thermal round-4 polish: retry action on top-level fetch banner, ticker-sheet focus ring, panel-caption AA contrast, matrix-refresh focus-visible — FIXED
 > **kind:** `FINDING`
 
