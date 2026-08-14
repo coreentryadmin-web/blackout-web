@@ -16864,6 +16864,15 @@ body::before {
   font-size: 0.85rem; line-height: 1; transition: color 120ms, border-color 120ms;
 }
 .spx-matrix-refresh-btn:hover { color: rgb(103 232 249); border-color: rgba(103, 232, 249, 0.6); }
+/* Keyboard focus ring — the button already resets `outline` via its `outline-none`
+   Tailwind class, so without this a Tab-through in the matrix title bar lands on
+   an invisible target. Same cyan family as :hover to keep the palette coherent. */
+.spx-matrix-refresh-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(103, 232, 249, 0.7);
+  color: rgb(103 232 249);
+  border-color: rgba(103, 232, 249, 0.6);
+}
 .spx-matrix-refresh-btn--spinning { animation: spx-matrix-refresh-spin 0.9s linear infinite; }
 @keyframes spx-matrix-refresh-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spx-matrix-refresh-btn--spinning { animation: none; opacity: 0.6; } }
