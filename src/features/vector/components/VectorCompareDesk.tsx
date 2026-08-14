@@ -20,7 +20,7 @@ import {
 } from "@/features/vector/lib/vector-compare";
 import type { VectorClientSeed } from "@/features/vector/lib/vector-client-seed";
 import { VECTOR_DEFAULT_TIMEFRAME } from "@/features/vector/lib/vector-bar-timeframes";
-import type { VectorDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
+import { VECTOR_DEFAULT_DTE_HORIZON, type VectorDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
 import type { VectorTimeframeMinutes } from "@/features/vector/lib/vector-bar-timeframes";
 import type { VectorWallLens } from "@/features/vector/lib/vector-wall-history";
 import { todayEtYmd } from "@/lib/providers/spx-session";
@@ -37,7 +37,9 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
   const [linked, setLinked] = useState(true);
   const [syncEpoch, setSyncEpoch] = useState(0);
   const [timeframe, setTimeframe] = useState<VectorTimeframeMinutes>(VECTOR_DEFAULT_TIMEFRAME);
-  const [dteHorizon, setDteHorizon] = useState<VectorDteHorizon>(defaultDteHorizon ?? "weekly");
+  const [dteHorizon, setDteHorizon] = useState<VectorDteHorizon>(
+    defaultDteHorizon ?? VECTOR_DEFAULT_DTE_HORIZON
+  );
   const [lens, setLens] = useState<VectorWallLens>("gex");
   const [focusedTicker, setFocusedTicker] = useState<string | null>(seeds[0]?.ticker ?? null);
   const [metaByTicker, setMetaByTicker] = useState<Record<string, VectorComparePaneMeta>>({});

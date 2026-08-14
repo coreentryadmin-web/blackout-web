@@ -17,7 +17,7 @@ test("SPX embed seeds 0DTE horizon history and opens on session viewport", () =>
 test("/vector page preloads 0DTE rail and opens on session viewport for oracle tickers", () => {
   const page = read("src/app/(site)/vector/page.tsx");
   assert.match(page, /VECTOR_ORACLE_TICKERS\.has\(ticker\)/);
-  assert.match(page, /defaultDteHorizon=\{VECTOR_ORACLE_TICKERS\.has\(ticker\) \? "0dte" : undefined\}/);
+  assert.match(page, /defaultDteHorizon=\{VECTOR_ORACLE_TICKERS\.has\(ticker\) \? "0dte" : "all"\}/);
   assert.match(page, /defaultChartViewport="session"/);
 });
 
@@ -120,6 +120,19 @@ test("VectorChart: session viewport keeps the full-day bead rail during live RTH
     /liveSessionRef\.current && !replayModeRef\.current && !sessionOverview/
   );
   assert.match(src, /const sessionOverview = wantsSessionOverviewViewport/);
+});
+
+test("VectorChart: live 'all' horizon polls enriched blended history during RTH", () => {
+  const src = read("src/features/vector/components/VectorChart.tsx");
+  assert.match(src, /fetchBlendedHistory/);
+  assert.match(src, /dteHorizon === "all" && !seedRailEmptyRef\.current/);
+  assert.match(src, /mergeWallHistory\(wallHistoryRef\.current, remote\)/);
+});
+
+test("Vector desk defaults to blended 'all' DTE when host does not override", () => {
+  const chart = read("src/features/vector/components/VectorChart.tsx");
+  assert.match(chart, /VECTOR_DEFAULT_DTE_HORIZON/);
+  assert.doesNotMatch(chart, /defaultDteHorizon \?\? "weekly"/);
 });
 
 test("VectorChart fetches and uses the blended rail when it was given no seed", () => {

@@ -13,7 +13,7 @@ import type { VectorBar } from "@/features/vector/components/VectorChart";
 import type { PlayLevelsInput } from "@/features/vector/lib/vector-play-levels";
 import type { VectorDarkPoolLevel, VectorWalls } from "@/lib/api";
 import type { WallHistorySample, VectorWallLens } from "@/features/vector/lib/vector-wall-history";
-import type { VectorDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
+import { VECTOR_DEFAULT_DTE_HORIZON, type VectorDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
 import type { VectorPriceScaleMap } from "@/features/vector/lib/vector-price-scale-map";
 import type { VectorTimeframeMinutes } from "@/features/vector/lib/vector-bar-timeframes";
 import type { TechnicalsLine } from "@/features/vector/lib/vector-technicals";
@@ -190,7 +190,9 @@ export function VectorPageShell({
   // copy drives the GEX ladder's scope label + fetch. When it defaulted to "all" while the chart
   // defaulted to weekly, the ladder's first paint showed the near-term aggregate against a
   // weekly-scoped chart until hydration converged them.
-  const [dteHorizon, setDteHorizon] = useState<VectorDteHorizon>(defaultDteHorizon ?? "weekly");
+  const [dteHorizon, setDteHorizon] = useState<VectorDteHorizon>(
+    defaultDteHorizon ?? VECTOR_DEFAULT_DTE_HORIZON
+  );
   // Price under the historical chart's crosshair, lifted here so the GEX ladder — a sibling, not
   // a child, of the chart — can highlight the matching strike. Null whenever the cursor is off
   // the plot.
