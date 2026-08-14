@@ -10552,7 +10552,13 @@ body::before {
   }
   .spx-gex-matrix-extreme-pop {
     display: inline-block;
-    animation: spx-gex-matrix-pop 1.8s ease-in-out infinite;
+    /* Was `infinite` — every "extreme" cell in the matrix pulsed forever, and
+       there are usually ~2 per expiry column. Forever = ambient GPU work + a
+       nervous grid that never rests. Three iterations is enough for the moving
+       eye to catch the cell then let the reader breathe; the color treatment
+       still marks the cell as extreme after the animation ends. Fix mirrored
+       below on the sibling `.gex-heatmap-extreme-pop` (Thermal's own copy). */
+    animation: spx-gex-matrix-pop 1.8s ease-in-out 3;
   }
 
   /* Top-3 call/put intraday shift % — inset pill (bead yellow / purple). */
@@ -10594,7 +10600,9 @@ body::before {
      as one visual language. */
   .gex-heatmap-extreme-pop {
     display: inline-block;
-    animation: spx-gex-matrix-pop 1.8s ease-in-out infinite;
+    /* Match the sibling `.spx-gex-matrix-extreme-pop` cap — three iterations
+       then rest. Same visual language across SPX Slayer + Thermal grids. */
+    animation: spx-gex-matrix-pop 1.8s ease-in-out 3;
   }
 
   .spx-gex-matrix-table td.sticky,
@@ -17995,11 +18003,17 @@ body::before {
   gap: 0.55rem 0.85rem;
   padding: 0.45rem 0.65rem;
   border-radius: 0.75rem;
-  border: 1px solid rgba(125, 211, 252, 0.22);
-  background: linear-gradient(135deg, rgba(10, 14, 26, 0.94), rgba(4, 6, 12, 0.98));
+  /* Chrome deliberately toned down — before this, the border+gradient+shadow
+     read as a heavy pre-matrix band competing with the KEY LEVELS box below
+     and the AlertsStrip above for the eye. Softer border, gentler bg, subtler
+     shadow → the row still separates on scroll (backdrop-blur kept) but the
+     matrix below reads as the visual primary. Interior tabs/badges keep their
+     own outline so the row's structure is still legible. */
+  border: 1px solid rgba(125, 211, 252, 0.10);
+  background: linear-gradient(135deg, rgba(8, 12, 22, 0.55), rgba(4, 6, 12, 0.7));
   box-shadow:
-    0 8px 28px rgba(0, 0, 0, 0.32),
-    inset 0 1px 0 rgba(125, 211, 252, 0.08);
+    0 4px 14px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 rgba(125, 211, 252, 0.04);
   backdrop-filter: blur(14px);
 }
 
@@ -18750,11 +18764,31 @@ body::before {
   letter-spacing: 0.1em;
   color: var(--tt-sky);
   cursor: pointer;
+  /* Match the rest of the desk's press feel — CSS-only detent, no JS. */
+  transition:
+    border-color 120ms ease,
+    color 120ms ease,
+    background 120ms ease,
+    transform 90ms ease;
 }
 
 .thermal-triple-export:hover:not(:disabled) {
   border-color: rgba(34, 211, 238, 0.5);
+  background: rgba(125, 211, 252, 0.14);
   color: var(--tt-cyan);
+}
+
+/* Visible focus ring — keyboard users had no indicator whatsoever before this;
+   the cyan halo matches the compare-card focus-visible ring for one system. */
+.thermal-triple-export:focus-visible {
+  outline: none;
+  border-color: rgba(34, 211, 238, 0.7);
+  box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.35);
+}
+
+.thermal-triple-export:active:not(:disabled) {
+  transform: scale(0.96);
+  background: rgba(125, 211, 252, 0.22);
 }
 
 .thermal-triple-export:disabled {

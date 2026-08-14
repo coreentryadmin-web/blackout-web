@@ -18,7 +18,9 @@ import {
   TabPanels,
   TabPanel,
 } from "@/components/ui";
+import { Button } from "@/components/ui/Button";
 import { AnchorGlyph, PanelLabel } from "@/features/thermal/lib/gex-heatmap/primitives";
+import { ThermalSkeleton } from "@/features/thermal/components/ThermalSkeleton";
 import ThermalTripleDesk, {
   type ThermalTripleDeskHandle,
 } from "@/features/thermal/components/ThermalTripleDesk";
@@ -2181,7 +2183,12 @@ function AlertsStrip({ events }: { events: GexEvent[] }) {
             >
               <span
                 aria-hidden
-                className={clsx("mt-px shrink-0 text-[12px] leading-none", warn && "motion-safe:animate-pulse")}
+                // Removed `warn && "motion-safe:animate-pulse"` — the bear-red border
+                // + tinted background + boxShadow already signal urgency once. A
+                // forever-pulsing glyph in the reader's periphery competed with the
+                // matrix for attention every second, and the alerts are dismissible
+                // anyway (they don't need to keep begging). Static wins here.
+                className="mt-px shrink-0 text-[12px] leading-none"
                 style={{ color: hex }}
               >
                 {eventGlyph(e)}
@@ -2626,7 +2633,10 @@ export function GexHeatmap({
     setForceNonce((n) => n + 1);
     setForceActive(true);
   };
-  const { data, isLoading, error } = useSWR<GexHeatmapResponse>(
+  // `mutate` powers the retry buttons on the empty/error states below. Was
+  // previously unused; adding it turns passive dead-ends into recoverable states
+  // without any second fetch layer.
+  const { data, isLoading, error, mutate } = useSWR<GexHeatmapResponse>(
     matrixKey,
     fetchGexHeatmap,
     {
@@ -4324,34 +4334,30 @@ export function GexHeatmap({
           </p>
         </div>
       ) : (isLoading && !data) || stale ? (
-        /* Skeleton on first load AND while stale — during a ticker switch the previous
-           ticker's payload is still in hand (keepPreviousData); showing the skeleton
-           stops the old matrix rendering under the new title. (Rank 10) */
-        <div className="space-y-5" aria-hidden>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <Skeleton key={i} height={92} rounded="xl" />
-            ))}
-          </div>
-          <Skeleton height={44} rounded="lg" />
-          <div className="grid gap-4 lg:grid-cols-[1.62fr_1fr]">
-            <div className="space-y-2">
-              <Skeleton height={28} rounded="lg" />
-              {Array.from({ length: 12 }).map((_, i) => (
-                <Skeleton key={i} height={22} rounded="md" />
-              ))}
-            </div>
-            <div className="space-y-3">
-              <Skeleton height={120} rounded="xl" />
-              <Skeleton height={160} rounded="xl" />
-              <Skeleton height={120} rounded="xl" />
-            </div>
-          </div>
-        </div>
+        /* Same-shape skeleton across the outer route paint AND this inner branch —
+           the previous inline copy was silent to screen readers (aria-hidden) and
+           diverged from Heatmap.tsx's simpler hero block; unified via
+           ThermalSkeleton with role="status" + SR label. */
+        <ThermalSkeleton variant="matrix" />
       ) : empty ? (
         <EmptyState
-          title="No options chain"
-          description={`No options chain for ${data?.underlying ?? ticker}. Pick a more liquid name or wait for the chain to print.`}
+          title="Dealer gamma quiet"
+          // The old copy told the user to "pick a more liquid name" — WRONG for
+          // SPY/QQQ/SPX (the most liquid options in the world). Off-hours the
+          // chain returns zero contracts because dealers aren't quoting; that's
+          // a session-timing signal, not a liquidity judgement. Keep it neutral,
+          // session-aware, and offer a retry instead of a passive dead-end.
+          description={`No live options chain for ${data?.underlying ?? ticker} right now. Dealer gamma prints during regular trading hours — try again at market open, switch tickers, or refresh.`}
+          action={
+            <Button
+              variant="ghost"
+              size="xs"
+              onClick={() => { void mutate(); }}
+              aria-label={`Refresh ${data?.underlying ?? ticker} options chain`}
+            >
+              ↻ Refresh now
+            </Button>
+          }
         />
       ) : blockEmpty ? (
         <EmptyState
@@ -4364,6 +4370,33 @@ export function GexHeatmap({
                 : lens === "dex"
                   ? "Net dealer delta needs live contracts on the chain. No qualifying open interest right now — try GEX or another ticker."
                   : "Charm needs implied vol + time-to-expiry on the chain. No qualifying contracts right now — try GEX or another ticker."
+          }
+          // Every non-GEX description above literally says "try GEX or another ticker" —
+          // give the user a real one-click affordance instead of asking them to hunt for
+          // the lens tab. Refresh handles the transient-empty case; the GEX shortcut
+          // handles the "lens not applicable to this snapshot" case. Both reuse
+          // in-scope handlers (mutate/setLens); no new state.
+          action={
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <Button
+                variant="ghost"
+                size="xs"
+                onClick={() => { void mutate(); }}
+                aria-label={`Refresh ${data?.underlying ?? ticker} options chain`}
+              >
+                ↻ Refresh now
+              </Button>
+              {!isGex && (
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => setLens("gex")}
+                  aria-label="Switch to the GEX lens"
+                >
+                  Switch to GEX
+                </Button>
+              )}
+            </div>
           }
         />
       ) : (

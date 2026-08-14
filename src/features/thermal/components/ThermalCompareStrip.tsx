@@ -64,10 +64,27 @@ function CompareCard({
       type="button"
       onClick={() => onPick(ticker)}
       aria-pressed={active}
-      aria-label={`${ticker} compare card${active ? ", selected" : ""}`}
+      // Rich a11y label — before this a screen reader only heard "SPY compare
+      // card, selected" with none of the numbers that make the card meaningful.
+      // Now the full spot + call/put/flip context is spoken on focus.
+      aria-label={[
+        `${ticker}`,
+        spot != null ? `spot ${fmtPx(spot)}` : "spot unavailable",
+        chg != null ? `${chg >= 0 ? "up" : "down"} ${Math.abs(chg).toFixed(2)} percent` : null,
+        call != null ? `call wall ${fmtPx(call, 0)}` : null,
+        put != null ? `put wall ${fmtPx(put, 0)}` : null,
+        flip != null ? `gamma flip ${fmtPx(flip, ticker === "SPX" ? 1 : 2)}` : null,
+        active ? "selected" : "click to select",
+      ]
+        .filter(Boolean)
+        .join(", ")}
+      // Fixed min-h prevents the ~62→90px layout jump between "…" skeleton state
+      // and the loaded card — cards used to grow AFTER the SWR resolved, shoving
+      // everything below them down on every ticker switch.
       className={clsx(
-        "min-w-0 flex-1 rounded-xl border px-3 py-2.5 text-left transition-colors",
+        "min-w-0 flex-1 min-h-[92px] rounded-xl border px-3 py-2.5 text-left transition-colors",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/60",
+        "active:scale-[0.99]",
         active
           ? "border-cyan-400/50 bg-cyan-400/[0.08]"
           : "border-white/12 bg-[rgba(8,9,14,0.55)] hover:border-sky-300/35"

@@ -3,19 +3,18 @@
 import { Suspense } from "react";
 import dynamic from "next/dynamic";
 import { clsx } from "clsx";
+import { ThermalSkeleton } from "@/features/thermal/components/ThermalSkeleton";
 
 // Code-split the ~4k-line GexHeatmap so it doesn't sit in the shared bundle or block
 // hydration. ssr:false → the page shell + skeleton paint immediately on navigation,
 // then the heavy chart chunk loads and hydrates. (/heatmap also has a route loading.tsx.)
+// Both fallbacks below share ONE `<ThermalSkeleton>` so the outer paint → inner paint
+// no longer shape-jumps between two shapes.
 const GexHeatmap = dynamic(
   () => import("@/features/thermal/components/GexHeatmap").then((m) => ({ default: m.GexHeatmap })),
   {
     ssr: false,
-    loading: () => (
-      <div className="desk-layout space-y-5">
-        <div className="h-[520px] rounded-2xl border border-white/10 bg-black/40 animate-pulse" />
-      </div>
-    ),
+    loading: () => <ThermalSkeleton variant="hero" />,
   }
 );
 
@@ -33,11 +32,7 @@ export function Heatmap({ nativeShell = false }: { nativeShell?: boolean }) {
   return (
     <div className={clsx("desk-layout gex-heatmap-desk space-y-2", nativeShell && "gex-heatmap-desk-native")}>
       {/* Suspense: GexHeatmap reads useSearchParams for ?ticker=&lens=&compare= deep-links. */}
-      <Suspense
-        fallback={
-          <div className="h-[520px] rounded-2xl border border-white/10 bg-black/40 animate-pulse" />
-        }
-      >
+      <Suspense fallback={<ThermalSkeleton variant="hero" />}>
         <GexHeatmap ticker="SPY" nativeShell={nativeShell} />
       </Suspense>
     </div>
