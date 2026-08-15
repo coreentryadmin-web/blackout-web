@@ -2,6 +2,7 @@ import {
   VECTOR_PRESET_TIMEFRAMES,
   type VectorTimeframeMinutes,
 } from "@/features/vector/lib/vector-bar-timeframes";
+import { isRthBarSec } from "@/features/vector/lib/vector-session-hours";
 
 /** Brand candle bodies — match VectorChart / institutional palette. */
 export const VECTOR_CANDLE_UP = "#a3e635";
@@ -21,6 +22,65 @@ export const VECTOR_MAX_BAR_SPACING = 22;
 export const VECTOR_STRUCTURE_ZOOM_BARS = 75;
 /** Trailing window for "Live" edge follow preset. */
 export const VECTOR_LIVE_ZOOM_BARS = 48;
+
+/** Body alpha for extended-hours candles when the seed includes pre/post-market bars. */
+export const VECTOR_EXTENDED_HOURS_ALPHA = 0.34;
+
+export type CandlestickBarInput = {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume?: number;
+};
+
+export type CandlestickDisplayBar = CandlestickBarInput & {
+  color?: string;
+  borderColor?: string;
+  wickColor?: string;
+};
+
+function hexToRgba(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+/** True when any bar in the series falls outside 09:30–16:00 ET RTH. */
+export function hasExtendedHoursBars(bars: readonly { time: number }[]): boolean {
+  for (const bar of bars) {
+    if (Number.isFinite(bar.time) && !isRthBarSec(bar.time)) return true;
+  }
+  return false;
+}
+
+/**
+ * Per-bar candle colors: RTH bars use series defaults; extended-hours bars render at lower
+ * opacity so the regular session pops on full-day / session-overview views.
+ */
+export function toCandlestickDisplayData<T extends CandlestickBarInput>(
+  bars: readonly T[]
+): CandlestickDisplayBar[] {
+  if (!bars.length || !hasExtendedHoursBars(bars)) return [...bars];
+  return bars.map((bar) => {
+    if (!Number.isFinite(bar.time) || isRthBarSec(bar.time)) return bar;
+    const up = bar.close >= bar.open;
+    const body = hexToRgba(up ? VECTOR_CANDLE_UP : VECTOR_CANDLE_DOWN, VECTOR_EXTENDED_HOURS_ALPHA);
+    const border = hexToRgba(
+      up ? VECTOR_CANDLE_BORDER_UP : VECTOR_CANDLE_BORDER_DOWN,
+      VECTOR_EXTENDED_HOURS_ALPHA * 0.9
+    );
+    return { ...bar, color: body, borderColor: border, wickColor: body };
+  });
+}
+
+/** Volume histogram alpha — dim extended-hours bars to match candle treatment. */
+export function volumeAlphaForBar(timeSec: number, extendedHoursPresent: boolean): number {
+  if (!extendedHoursPresent || !Number.isFinite(timeSec) || isRthBarSec(timeSec)) return 0.72;
+  return 0.26;
+}
 
 /** Shared candlestick series styling for Vector intraday + historical charts. */
 export function vectorCandlestickOptions() {

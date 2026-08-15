@@ -175,12 +175,15 @@ import {
 import {
   adaptiveBarSpacingForZoom,
   coarserTimeframeIfZoomedOut,
+  hasExtendedHoursBars,
   liveEdgeVisibleLogicalRange,
   overlayDimFactor,
   structureVisibleLogicalRange,
+  toCandlestickDisplayData,
   vectorCandlestickOptions,
   vectorTimeScaleSpacingOptions,
   visibleBarCountFromRange,
+  volumeAlphaForBar,
   type IntradayZoomPreset,
 } from "@/features/vector/lib/vector-candle-render";
 import { VectorIntradayZoomControls } from "@/features/vector/components/VectorIntradayZoomControls";
@@ -411,18 +414,28 @@ function pinCandlesOnTop(candleSeries: ISeriesApi<"Candlestick">): void {
 }
 
 
-const VOLUME_UP = "rgba(0, 230, 118, 0.72)";
-const VOLUME_DOWN = "rgba(255, 45, 85, 0.72)";
+const VOLUME_UP_BASE = "#00e676";
+const VOLUME_DOWN_BASE = "#ff2d55";
+
+function volumeColor(baseHex: string, alpha: number): string {
+  const r = parseInt(baseHex.slice(1, 3), 16);
+  const g = parseInt(baseHex.slice(3, 5), 16);
+  const b = parseInt(baseHex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
 
 function volumeHistogramData(bars: VectorBar[]): HistogramData<Time>[] {
+  const extended = hasExtendedHoursBars(bars);
   const out: HistogramData<Time>[] = [];
   for (const bar of bars) {
     const value = bar.volume;
     if (value == null || value <= 0) continue;
+    const alpha = volumeAlphaForBar(bar.time as number, extended);
+    const up = bar.close >= bar.open;
     out.push({
       time: bar.time as Time,
       value,
-      color: bar.close >= bar.open ? VOLUME_UP : VOLUME_DOWN,
+      color: volumeColor(up ? VOLUME_UP_BASE : VOLUME_DOWN_BASE, alpha),
     });
   }
   return out;
@@ -433,7 +446,7 @@ function applyDisplayBars(
   volumeSeries: ISeriesApi<"Histogram"> | null,
   bars: VectorBar[]
 ): void {
-  candleSeries.setData(bars);
+  candleSeries.setData(toCandlestickDisplayData(bars) as VectorBar[]);
   volumeSeries?.setData(volumeHistogramData(bars));
 }
 
