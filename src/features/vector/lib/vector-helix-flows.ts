@@ -9,7 +9,7 @@ import {
 
 export const VECTOR_HELIX_MIN_PREMIUM = 200_000;
 export const VECTOR_HELIX_WHALE_PREMIUM = 1_000_000;
-/** Max prints kept in the Live Helix tape (newest-first). */
+/** Max prints shown on the Live Helix rail — top by premium for the live session. */
 export const VECTOR_LIVE_HELIX_TAPE_CAP = 40;
 /** @deprecated Alias for legacy imports. */
 export const VECTOR_HELIX_FETCH_LIMIT = VECTOR_LIVE_HELIX_TAPE_CAP;
@@ -80,31 +80,36 @@ export function sortVectorHelixFlows(
   return sortFlows([...flows], sortKey, sortDir);
 }
 
-/** Live Helix tape — newest prints first, capped. */
+/** Premium desc, then newest — session #1 stays #1 until a larger print arrives live. */
+export function compareLiveHelixByPremium(a: FlowAlert, b: FlowAlert): number {
+  if (b.premium !== a.premium) return b.premium - a.premium;
+  return flowAlertedMs(b) - flowAlertedMs(a);
+}
+
+/** Live Helix tape — ranked by premium (largest session print stays #1 all day). */
 export function prepareVectorLiveHelixTape(
   flows: readonly FlowAlert[],
   filters: VectorHelixFlowFilters,
   cap = VECTOR_LIVE_HELIX_TAPE_CAP
 ): FlowAlert[] {
-  return sortVectorHelixFlows(filterVectorHelixFlows(flows, filters), "time", "desc").slice(
-    0,
-    cap
-  );
+  return filterVectorHelixFlows(flows, filters)
+    .sort(compareLiveHelixByPremium)
+    .slice(0, cap);
 }
 
 /** Subtitle for the Live Helix header. */
 export function vectorLiveHelixSubtitle(count: number, liveSession: boolean): string {
   if (!liveSession) return "Session closed · full history on Helix desk";
-  if (count === 0) return "Live tape · prints appear as they hit";
-  return `Live tape · ${count} print${count === 1 ? "" : "s"} today`;
+  if (count === 0) return "Ranked by premium · prints appear live as they hit";
+  return `Ranked by premium · ${count} live print${count === 1 ? "" : "s"} today`;
 }
 
-/** Trim in-memory pool — keep newest prints (live tape, not premium-ranked). */
+/** Trim in-memory pool — keep the largest prints so an early session leader is never dropped. */
 export function trimVectorHelixFlowPool(
   flows: readonly FlowAlert[],
   cap = VECTOR_LIVE_HELIX_TAPE_CAP
 ): FlowAlert[] {
-  return sortVectorHelixFlows(flows, "time", "desc").slice(0, cap);
+  return [...flows].sort(compareLiveHelixByPremium).slice(0, cap);
 }
 
 /** Dedupe key set for excluding hot lane duplicates (legacy helper). */

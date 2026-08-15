@@ -39,10 +39,12 @@ function SignalPill({ label, tone }: { label: string; tone: string }) {
 
 function FlowCard({
   flow,
+  rank,
   flash,
   onOpen,
 }: {
   flow: FlowAlert;
+  rank: number;
   flash?: boolean;
   onOpen: (flow: FlowAlert) => void;
 }) {
@@ -59,6 +61,7 @@ function FlowCard({
         "vector-helix-card",
         isCall ? "vector-helix-card--call" : "vector-helix-card--put",
         isWhale && "vector-helix-card--whale",
+        rank === 1 && "vector-helix-card--lead",
         flash && "vector-helix-card--flash"
       )}
       onClick={() => onOpen(flow)}
@@ -66,6 +69,9 @@ function FlowCard({
     >
       <div className="vector-helix-card-top">
         <div className="vector-helix-card-contract">
+          <span className="vector-helix-rank" aria-hidden>
+            #{rank}
+          </span>
           <span className={clsx("vector-helix-side", isCall ? "is-call" : "is-put")}>
             {isCall ? "CALL" : "PUT"}
           </span>
@@ -170,6 +176,7 @@ export function VectorHelixRail({ ticker, liveSession }: Props) {
               <FlowCard
                 key={cardKey(flow, i)}
                 flow={flow}
+                rank={i + 1}
                 flash={flashKeys.has(flowDedupeKey(flow))}
                 onOpen={setSelected}
               />

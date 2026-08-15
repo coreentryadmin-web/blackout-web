@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  compareLiveHelixByPremium,
   filterVectorHelixFlows,
   flowAlertedMs,
   isFlowSinceSessionOpen,
@@ -70,16 +71,33 @@ test("isFlowSinceSessionOpen: rejects pre-open prints", () => {
   assert.equal(isFlowSinceSessionOpen(afterOpen, sessionOpen), true);
 });
 
-test("prepareVectorLiveHelixTape: newest-first live ordering", () => {
+test("prepareVectorLiveHelixTape: early session leader stays #1 all day", () => {
+  const openLeader = flow({
+    premium: 500_000,
+    alerted_at: "2026-08-15T13:35:00Z",
+    strike: 900,
+  });
+  const laterSmaller = Array.from({ length: 8 }, (_, i) =>
+    flow({
+      premium: 220_000 + i * 10_000,
+      alerted_at: `2026-08-15T1${5 + Math.floor(i / 6)}:${String((i * 7) % 60).padStart(2, "0")}:00Z`,
+      strike: 901 + i,
+    })
+  );
+  const tape = prepareVectorLiveHelixTape([openLeader, ...laterSmaller], defaultFilters);
+  assert.equal(tape[0]!.premium, 500_000);
+  assert.equal(tape[0]!.strike, 900);
+});
+
+test("prepareVectorLiveHelixTape: larger live print later takes #1", () => {
   const rows = [
-    flow({ premium: 250_000, alerted_at: "2026-08-15T14:10:00Z", strike: 901 }),
-    flow({ premium: 800_000, alerted_at: "2026-08-15T14:55:00Z", strike: 902 }),
-    flow({ premium: 500_000, alerted_at: "2026-08-15T14:30:00Z", strike: 903 }),
+    flow({ premium: 500_000, alerted_at: "2026-08-15T13:35:00Z", strike: 900 }),
+    flow({ premium: 800_000, alerted_at: "2026-08-15T18:00:00Z", strike: 901 }),
+    flow({ premium: 300_000, alerted_at: "2026-08-15T17:00:00Z", strike: 902 }),
   ];
   const tape = prepareVectorLiveHelixTape(rows, defaultFilters);
-  assert.equal(tape[0]!.strike, 902);
-  assert.equal(tape[1]!.strike, 903);
-  assert.equal(tape[2]!.strike, 901);
+  assert.equal(tape[0]!.premium, 800_000);
+  assert.equal(tape[1]!.premium, 500_000);
 });
 
 test("prepareVectorLiveHelixTape: thin tickers surface without major floor", () => {
@@ -97,21 +115,27 @@ test("prepareVectorLiveHelixTape: thin tickers surface without major floor", () 
 });
 
 test("vectorLiveHelixSubtitle: honest empty live state", () => {
-  assert.match(vectorLiveHelixSubtitle(0, true), /prints appear as they hit/i);
+  assert.match(vectorLiveHelixSubtitle(0, true), /ranked by premium/i);
   assert.match(vectorLiveHelixSubtitle(0, false), /session closed/i);
-  assert.match(vectorLiveHelixSubtitle(3, true), /3 prints today/i);
+  assert.match(vectorLiveHelixSubtitle(3, true), /3 live prints today/i);
 });
 
-test("trimVectorHelixFlowPool: keeps newest cap for live tape", () => {
+test("trimVectorHelixFlowPool: keeps largest prints not newest", () => {
   const rows = [
-    flow({ premium: 100_000, alerted_at: "2026-08-15T14:00:00Z" }),
-    flow({ premium: 5_000_000, alerted_at: "2026-08-15T14:30:00Z" }),
-    flow({ premium: 2_000_000, alerted_at: "2026-08-15T14:45:00Z" }),
+    flow({ premium: 250_000, alerted_at: "2026-08-15T20:00:00Z" }),
+    flow({ premium: 500_000, alerted_at: "2026-08-15T13:35:00Z" }),
+    flow({ premium: 300_000, alerted_at: "2026-08-15T18:00:00Z" }),
   ];
   const trimmed = trimVectorHelixFlowPool(rows, 2);
   assert.equal(trimmed.length, 2);
-  assert.equal(flowAlertedMs(trimmed[0]!), flowAlertedMs(rows[2]!));
-  assert.equal(flowAlertedMs(trimmed[1]!), flowAlertedMs(rows[1]!));
+  assert.equal(trimmed[0]!.premium, 500_000);
+  assert.equal(trimmed[1]!.premium, 300_000);
+});
+
+test("compareLiveHelixByPremium: premium beats time", () => {
+  const early = flow({ premium: 500_000, alerted_at: "2026-08-15T13:35:00Z" });
+  const late = flow({ premium: 250_000, alerted_at: "2026-08-15T20:00:00Z" });
+  assert.ok(compareLiveHelixByPremium(early, late) < 0);
 });
 
 test("prepareVectorLiveHelixTape: respects tape cap", () => {
