@@ -158,13 +158,18 @@ class TierUser {
     return !!this.tok;
   }
 
-  fetch(path) {
+  fetch(path, opts = {}) {
     if (!this.tok) this.mint();
+    const method = opts.method || "GET";
+    const headers = {
+      Cookie: `__session=${this.tok}; __client_uat=${this.clientUat}`,
+      ...(opts.body ? { "Content-Type": "application/json" } : {}),
+    };
     return curl({
+      method,
       url: `${APP}${path}`,
-      headers: {
-        Cookie: `__session=${this.tok}; __client_uat=${this.clientUat}`,
-      },
+      headers,
+      json: opts.body,
     });
   }
 
@@ -328,15 +333,26 @@ async function main() {
   const apiTests = [
     { path: "/api/market/indices", label: "Indices (community+) ", free: 403, community: 200, premium: 200 },
     { path: "/api/market/anomalies", label: "Anomalies (premium)  ", free: 403, community: 403, premium: 200 },
+    { path: "/api/market/flows?limit=5", label: "HELIX flows (premium)", free: 403, community: 403, premium: 200 },
+    { path: "/api/market/heatmap?ticker=SPX", label: "Thermal (premium)    ", free: 403, community: 403, premium: 200 },
+    { path: "/api/market/zerodte/board", label: "0DTE board (premium)", free: 403, community: 403, premium: 200 },
+    { path: "/api/market/largo/query", label: "Largo POST (premium) ", free: 403, community: 403, premium: 403, method: "POST", body: { question: "SPX?", session_id: "tier-e2e" } },
+    { path: "/api/admin/health", label: "Admin health         ", free: 401, community: 401, premium: 401 },
   ];
 
   let apiTotal = 0, apiPassed = 0;
   for (const test of apiTests) {
     for (const u of [freeUser, communityUser, premiumUser]) {
       if (!u?.tok) continue;
-      const r = u.fetch(test.path);
+      const r = u.fetch(test.path, {
+        method: test.method || "GET",
+        body: test.body,
+      });
       const expectStatus = test[u.tier];
-      const pass = r.s === expectStatus || (expectStatus === 200 && r.s < 400) || (expectStatus === 403 && r.s >= 400);
+      const pass =
+        r.s === expectStatus ||
+        (expectStatus === 200 && r.s >= 200 && r.s < 400) ||
+        (expectStatus === 403 && (r.s === 403 || r.s === 401));
       apiTotal++;
       if (pass) apiPassed++;
       else anyFail = true;
