@@ -15,8 +15,18 @@ test("VectorPageClient wires client seed fetch on ticker switch", () => {
     "utf8"
   );
   assert.match(src, /fetchVectorClientSeed/);
-  assert.match(src, /history\.replaceState/);
+  assert.match(src, /router\.replace\(path, \{ scroll: false \}\)/);
+  assert.doesNotMatch(src, /history\.replaceState/);
   assert.match(src, /onTickerSelect=\{onTickerSelect\}/);
+});
+
+test("VectorCompareDesk syncs compare URL via router.replace (not raw history API)", () => {
+  const src = readFileSync(
+    join(process.cwd(), "src/features/vector/components/VectorCompareDesk.tsx"),
+    "utf8"
+  );
+  assert.match(src, /router\.replace\(comparePath/);
+  assert.doesNotMatch(src, /history\.replaceState/);
 });
 
 test("vector-play-invariants refreshes Clerk session on 401", () => {

@@ -101,7 +101,7 @@ export function VectorPageClient(initial: Props) {
     setNavBusy(true);
     const path =
       next === VECTOR_DEFAULT_TICKER ? "/vector" : `/vector?ticker=${encodeURIComponent(next)}`;
-    window.history.replaceState(null, "", path);
+    router.replace(path, { scroll: false });
     try {
       const clientSeed = await fetchVectorClientSeed(next);
       setSeed((prev) => ({
@@ -114,7 +114,7 @@ export function VectorPageClient(initial: Props) {
     } finally {
       setNavBusy(false);
     }
-  }, [seed.ticker]);
+  }, [router, seed.ticker]);
 
   const onEnterCompare = useCallback(() => {
     router.push(comparePath([seed.ticker]));

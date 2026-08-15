@@ -230,10 +230,13 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
   const canAddSymbol = seeds.length < VECTOR_COMPARE_MAX_PANES;
   const gridSlotCount = seeds.length;
 
-  const syncUrl = useCallback((next: VectorClientSeed[]) => {
-    const path = comparePath(next.map((s) => s.ticker));
-    window.history.replaceState(null, "", path);
-  }, []);
+  /** Keep App Router URL in sync — raw replaceState breaks <Link> nav (Features → SPX Slayer, etc.). */
+  const syncUrl = useCallback(
+    (next: VectorClientSeed[]) => {
+      router.replace(comparePath(next.map((s) => s.ticker)), { scroll: false });
+    },
+    [router]
+  );
 
   const bumpSync = useCallback(() => {
     setSyncEpoch((e) => e + 1);
