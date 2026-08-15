@@ -1714,6 +1714,10 @@ export function VectorChart({
         // Session reset is programmatic — must not lock the viewport (would block refits + full-day beads).
         chartUserPannedRef.current = false;
         wheelZoomCooldownRef.current = 0;
+        if (autoCoarsenTimerRef.current) {
+          clearTimeout(autoCoarsenTimerRef.current);
+          autoCoarsenTimerRef.current = null;
+        }
         // Auto-coarsen can step up to 1H (~7 bars/session) — restore the desk default on Session.
         const sessionTf =
           !timeframeUserLockedRef.current && timeframeRef.current !== initialTimeframe
