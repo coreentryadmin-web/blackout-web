@@ -56,10 +56,10 @@ try {
   const countBefore = Number((await page.locator('[data-testid="vector-draw-count"]').textContent())?.match(/\d+/)?.[0] ?? 0);
 
   // Simulate chart click via lightweight-charts subscribeClick path — click canvas center.
-  const canvas = page.locator(".vector-chart-stage canvas").first();
+  const canvas = page.locator(".vector-chart-canvas").first();
   const box = await canvas.boundingBox();
   if (box) {
-    await canvas.click({ position: { x: box.width * 0.5, y: box.height * 0.45 } });
+    await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.45);
     await page.waitForTimeout(800);
     const countAfter = Number((await page.locator('[data-testid="vector-draw-count"]').textContent())?.match(/\d+/)?.[0] ?? 0);
     if (countAfter > countBefore) {
@@ -73,9 +73,9 @@ try {
 
   await page.locator('[data-testid="vector-draw-tool-trend"]').click();
   if (box) {
-    await canvas.click({ position: { x: box.width * 0.35, y: box.height * 0.55 } });
+    await page.mouse.click(box.x + box.width * 0.35, box.y + box.height * 0.55);
     await page.waitForTimeout(400);
-    await canvas.click({ position: { x: box.width * 0.65, y: box.height * 0.35 } });
+    await page.mouse.click(box.x + box.width * 0.65, box.y + box.height * 0.35);
     await page.waitForTimeout(800);
     rec("trendline-two-click", "PASS", "two-click trend attempted");
   }
