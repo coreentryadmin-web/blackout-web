@@ -15,6 +15,12 @@ test("marketing homepage exposes mobile nav menu for small viewports", () => {
   assert.match(css, /\.mkt-mobile-menu\.is-open/);
 });
 
+test("mobile nav includes keyboard focus trap while open", () => {
+  const mobile = readFileSync(join(root, "src/components/landing/MarketingMobileNav.tsx"), "utf8");
+  assert.match(mobile, /e\.key !== "Tab"/);
+  assert.match(mobile, /focusables/);
+});
+
 test("marketing shell includes scroll progress and anchor offset", () => {
   const shell = readFileSync(join(root, "src/components/landing/MarketingPageShell.tsx"), "utf8");
   const css = readFileSync(join(root, "src/app/marketing-shell.css"), "utf8");
