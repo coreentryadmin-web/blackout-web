@@ -89,12 +89,18 @@ test("targetHalfPx: a real notional overrides the pct proxy", () => {
   assert.ok(large > small, `expected the larger notional to draw larger (${large} vs ${small})`);
 });
 
-test("compare bead profile shrinks radius and alpha vs default", () => {
+test("compare bead profile shrinks radius vs default but keeps weak beads legible", () => {
   const compare = beadRenderTuning("compare");
   assert.ok(compare.halfMax < BEAD_TUNING_DEFAULT.halfMax);
   assert.ok(compare.fillMax < BEAD_TUNING_DEFAULT.fillMax);
   assert.ok(targetHalfPx(50, undefined, 100, compare) < targetHalfPx(50, undefined, 100));
   assert.ok(fillAlpha(50, 100, compare) < fillAlpha(50, 100));
+  // Member feedback 2026-08-15: compare sizing was perfect; weak beads were invisible.
+  assert.ok(fillAlpha(5, 100, compare) >= 0.4, "weak compare bead stays visible on dark grid");
+  assert.ok(
+    fillAlpha(5, 100, compare) * (compare.modeledAlphaScale ?? 1) >= 0.2,
+    "modeled weak compare bead stays a ghost, not gone"
+  );
 });
 
 // ── fillAlpha ────────────────────────────────────────────────────────────────
