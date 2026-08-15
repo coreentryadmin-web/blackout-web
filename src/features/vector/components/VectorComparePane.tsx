@@ -55,6 +55,8 @@ type Props = {
   linkedReplay?: VectorLinkedReplayBind | null;
   hideReplayControls?: boolean;
   onReplayTimeline?: (timeline: number[]) => void;
+  compareFourUp?: boolean;
+  compareFourUpBackground?: boolean;
 };
 
 export function VectorComparePane({
@@ -81,6 +83,8 @@ export function VectorComparePane({
   linkedReplay = null,
   hideReplayControls = false,
   onReplayTimeline,
+  compareFourUp = false,
+  compareFourUpBackground = false,
 }: Props) {
   const [regime, setRegime] = useState<VectorRegime | null>(null);
   const [spot, setSpot] = useState<number | null>(
@@ -197,6 +201,8 @@ export function VectorComparePane({
           linkedReplay={linkedReplay}
           hideReplayControls={hideReplayControls}
           onReplayTimeline={onReplayTimeline}
+          compareFourUp={compareFourUp}
+          compareFourUpBackground={compareFourUpBackground}
         />
       </div>
     </article>

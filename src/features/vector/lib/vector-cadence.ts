@@ -30,6 +30,18 @@ export const VECTOR_GEX_HEATMAP_CACHE_SEC = 5;
 /** Refetch heatmap when spot moves more than this fraction vs last fetch. */
 export const VECTOR_GEX_HEATMAP_FAST_MOVE_PCT = 0.005;
 
+/** Compare 4-up: background panes poll overlays at 2× the normal cadence. */
+export const VECTOR_COMPARE_FOUR_UP_POLL_MULTIPLIER = 2;
+
+/** Compare 4-up: minimum ms between live-tick overlay repaints on background panes. */
+export const VECTOR_COMPARE_FOUR_UP_OVERLAY_REFRESH_MS = 2_000;
+
+/** Scale a live poll interval when a compare pane is an unfocused 4-up background chart. */
+export function vectorComparePerfPollMs(baseMs: number, backgroundPane: boolean): number {
+  if (!backgroundPane || !Number.isFinite(baseMs) || baseMs <= 0) return baseMs;
+  return Math.round(baseMs * VECTOR_COMPARE_FOUR_UP_POLL_MULTIPLIER);
+}
+
 /** Server wall-scope / heatmap fallback refresh — oracle path. */
 export const VECTOR_WALL_SCOPE_REFRESH_MS = 5_000;
 

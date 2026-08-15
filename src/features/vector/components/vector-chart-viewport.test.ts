@@ -56,6 +56,13 @@ test("VectorChart: off-hours candle dimming wired", () => {
   assert.match(read("src/features/vector/lib/vector-candle-render.ts"), /hasExtendedHoursBars/);
 });
 
+test("VectorChart: compare 4-up performance mode wired", () => {
+  const src = read("src/features/vector/components/VectorChart.tsx");
+  assert.match(src, /compareFourUpBackground/);
+  assert.match(src, /vectorComparePerfPollMs/);
+  assert.match(read("src/features/vector/components/VectorCompareDesk.tsx"), /compareFourUpBackground=/);
+});
+
 test("VectorChart: manual zoom/pan blocks programmatic session refits", () => {
   const src = read("src/features/vector/components/VectorChart.tsx");
   assert.match(src, /function memberViewportLocked/);
@@ -64,7 +71,7 @@ test("VectorChart: manual zoom/pan blocks programmatic session refits", () => {
   assert.match(src, /sessionOverview && !following && !viewportLocked/);
   assert.match(src, /Wall-history poll runs every 5s/);
   // Poll cadence follows server-resolved wallTrailSec (5s universe / 15s on-demand), not static client guess.
-  assert.match(src, /scopePollMs = wallTrailSec \* 1000/);
+  assert.match(src, /scopePollMs = vectorComparePerfPollMs/);
   assert.match(src, /wallTrailSecRef/);
   assert.match(src, /vectorWallTrailSecClient/);
 });

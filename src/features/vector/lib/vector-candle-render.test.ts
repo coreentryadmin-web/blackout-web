@@ -27,6 +27,12 @@ describe("vector-candle-render", () => {
     assert.equal(overlayDimFactor(400), 0.38);
   });
 
+  test("overlayDimFactor: compare 4-up baseline dim on focused and background panes", () => {
+    assert.equal(overlayDimFactor(60, { compareFourUp: true }), 0.88);
+    assert.equal(overlayDimFactor(60, { compareFourUpBackground: true }), 0.72);
+    assert.ok(overlayDimFactor(200, { compareFourUpBackground: true }) < overlayDimFactor(200, { compareFourUp: true }));
+  });
+
   test("adaptiveBarSpacingForZoom: widens spacing when few bars visible", () => {
     const tight = adaptiveBarSpacingForZoom(30);
     assert.ok(tight.barSpacing > VECTOR_SESSION_BAR_SPACING);

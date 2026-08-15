@@ -164,7 +164,9 @@ import {
 import {
   VECTOR_GEX_HEATMAP_FAST_MOVE_PCT,
   VECTOR_GEX_HEATMAP_POLL_MS,
+  VECTOR_COMPARE_FOUR_UP_OVERLAY_REFRESH_MS,
   VECTOR_WALL_TRAIL_SEC,
+  vectorComparePerfPollMs,
 } from "@/features/vector/lib/vector-cadence";
 import { vectorWallTrailSecClient } from "@/features/vector/lib/vector-wall-sample";
 import { vectorHeatmapScopeLabel } from "@/lib/gex-scope-labels";
@@ -377,6 +379,10 @@ type Props = {
   linkedReplay?: VectorLinkedReplayBind | null;
   /** Compare linked replay — hide per-pane replay controls when the command bar owns transport. */
   hideReplayControls?: boolean;
+  /** Compare 4-up grid is live — apply a light baseline overlay dim on every pane. */
+  compareFourUp?: boolean;
+  /** Compare 4-up unfocused pane — slower overlay polls + stronger dim + throttled repaints. */
+  compareFourUpBackground?: boolean;
   /** Reports this pane's replay timeline so Compare can build a union scrubber. */
   onReplayTimeline?: (timeline: number[]) => void;
 };
@@ -1244,6 +1250,8 @@ export function VectorChart({
   onCompareVisibleRange,
   linkedReplay = null,
   hideReplayControls = false,
+  compareFourUp = false,
+  compareFourUpBackground = false,
   onReplayTimeline,
 }: Props) {
   const initialTimeframe = defaultTimeframe ?? VECTOR_DEFAULT_TIMEFRAME;
@@ -1510,6 +1518,9 @@ export function VectorChart({
   const onCompareVisibleRangeRef = useRef(onCompareVisibleRange);
   const hideVolumePaneRef = useRef(hideVolumePane);
   const compareCompactBeadsRef = useRef(compareCompactBeads);
+  const compareFourUpRef = useRef(compareFourUp);
+  const compareFourUpBackgroundRef = useRef(compareFourUpBackground);
+  const lastFourUpOverlayRefreshRef = useRef(0);
   const linkedReplayControlledRef = useRef(false);
   const replayModeRef = useRef(false);
   const liveSessionRef = useRef(liveSession);
@@ -1534,7 +1545,9 @@ export function VectorChart({
     onCompareVisibleRangeRef.current = onCompareVisibleRange;
     hideVolumePaneRef.current = hideVolumePane;
     compareCompactBeadsRef.current = compareCompactBeads;
-  }, [compareSync, onCompareCrosshair, onCompareVisibleRange, hideVolumePane, compareCompactBeads]);
+    compareFourUpRef.current = compareFourUp;
+    compareFourUpBackgroundRef.current = compareFourUpBackground;
+  }, [compareSync, onCompareCrosshair, onCompareVisibleRange, hideVolumePane, compareCompactBeads, compareFourUp, compareFourUpBackground]);
 
   const [crosshair, setCrosshair] = useState<VectorCrosshairState | null>(null);
   const [lens, setLens] = useState<VectorWallLens>(defaultLens ?? "gex");
@@ -1592,7 +1605,12 @@ export function VectorChart({
       const range = chart.timeScale().getVisibleLogicalRange();
       const count = visibleBarCountFromRange(range);
       if (count == null) return;
-      applyOverlayDim(overlayDimFactor(count));
+      applyOverlayDim(
+        overlayDimFactor(count, {
+          compareFourUp,
+          compareFourUpBackground,
+        })
+      );
       chart.timeScale().applyOptions(adaptiveBarSpacingForZoom(count));
       if (timeframeUserLockedRef.current || replayModeRef.current) return;
       const coarser = coarserTimeframeIfZoomedOut(count, timeframeRef.current);
@@ -1602,7 +1620,7 @@ export function VectorChart({
         if (timeframeRef.current !== coarser) setTimeframeState(coarser);
       }, 650);
     },
-    [applyOverlayDim]
+    [applyOverlayDim, compareFourUp, compareFourUpBackground]
   );
 
   const handleIntradayZoom = useCallback(
@@ -1638,6 +1656,12 @@ export function VectorChart({
 
   const syncCandleViewportFromRangeRef = useRef(syncCandleViewportFromRange);
   syncCandleViewportFromRangeRef.current = syncCandleViewportFromRange;
+
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart || !chartReady) return;
+    syncCandleViewportFromRange(chart);
+  }, [compareFourUp, compareFourUpBackground, chartReady, syncCandleViewportFromRange]);
 
   useEffect(
     () => () => {
@@ -2976,7 +3000,7 @@ export function VectorChart({
         gexHeatmapSpotAtFetchRef.current > 0
       ) {
         const move = Math.abs(spotNow - gexHeatmapSpotAtFetchRef.current) / gexHeatmapSpotAtFetchRef.current;
-        if (move >= VECTOR_GEX_HEATMAP_FAST_MOVE_PCT) force = true;
+        if (move >= VECTOR_GEX_HEATMAP_FAST_MOVE_PCT && !compareFourUpBackgroundRef.current) force = true;
       }
       try {
         const forceQ = force ? "&force=1" : "";
@@ -3003,7 +3027,8 @@ export function VectorChart({
     void fetchExpectedMove();
     void fetchGexHeatmap(false);
 
-    const heatmapId = liveSession ? setInterval(() => void fetchGexHeatmap(false), GEX_HEATMAP_REFRESH_MS) : null;
+    const heatmapPollMs = vectorComparePerfPollMs(GEX_HEATMAP_REFRESH_MS, compareFourUpBackground);
+    const heatmapId = liveSession ? setInterval(() => void fetchGexHeatmap(false), heatmapPollMs) : null;
 
     // Clear stale horizon state UP FRONT on every DTE switch — prevents the terminal from
     // briefly narrating the PREVIOUS horizon's walls/confluence while the new fetch is in flight,
@@ -3050,7 +3075,11 @@ export function VectorChart({
 
       if (liveSession) {
         void fetchBlendedHistory();
-        const blendedHistId = setInterval(fetchBlendedHistory, Math.max(wallTrailSec * 1000, 30_000));
+        const blendedPollMs = vectorComparePerfPollMs(
+          Math.max(wallTrailSec * 1000, 30_000),
+          compareFourUpBackground
+        );
+        const blendedHistId = setInterval(fetchBlendedHistory, blendedPollMs);
         repaint();
         return () => {
           cancelled = true;
@@ -3117,7 +3146,7 @@ export function VectorChart({
 
     void fetchScoped();
     void fetchHistory();
-    const scopePollMs = wallTrailSec * 1000;
+    const scopePollMs = vectorComparePerfPollMs(wallTrailSec * 1000, compareFourUpBackground);
     // Refresh both walls and wall history on the same cadence for coherent display.
     const id = liveSession ? setInterval(fetchScoped, scopePollMs) : null;
     const histId = liveSession ? setInterval(fetchHistory, scopePollMs) : null;
@@ -3139,6 +3168,7 @@ export function VectorChart({
     // frame — which never arrives in a closed session (→ "had to refresh"). Re-running once the
     // series exists fires the initial emits against the SSR-seeded walls/spot refs.
     chartReady,
+    compareFourUpBackground,
     applyFrame,
     refreshOverlays,
     refreshTrails,
@@ -3342,6 +3372,7 @@ export function VectorChart({
         onSpotChange?.(curSpot);
         gexHeatmapPrimitiveRef.current?.setSpot(curSpot);
         if (
+          !compareFourUpBackgroundRef.current &&
           liveSessionRef.current &&
           !inReplay &&
           gexHeatmapSpotAtFetchRef.current != null &&
@@ -3379,21 +3410,29 @@ export function VectorChart({
       // Painting the live overlays during replay would overwrite the cursor-sliced
       // frame applyFrame just drew — same leak shape as the 2026-07-07 finding.
       if (!inReplay) {
-        refreshOverlays(
-          lensRef.current,
-          liveGexWalls(),
-          vexWallsRef.current,
-          liveGammaFlip(),
-          vexFlipRef.current,
-          darkPoolRef.current
-        );
-        emitRegime();
-        emitProximity();
-        emitMagnet();
-        emitConfluence();
-        paintConfluenceBand(); // live SSE tick moved the walls — re-fit the band to the new stack
-        emitWallIntegrity();
-        emitPlay();
+        const now = Date.now();
+        const throttleBackground = compareFourUpBackgroundRef.current;
+        const overlayDue =
+          !throttleBackground ||
+          now - lastFourUpOverlayRefreshRef.current >= VECTOR_COMPARE_FOUR_UP_OVERLAY_REFRESH_MS;
+        if (overlayDue) {
+          if (throttleBackground) lastFourUpOverlayRefreshRef.current = now;
+          refreshOverlays(
+            lensRef.current,
+            liveGexWalls(),
+            vexWallsRef.current,
+            liveGammaFlip(),
+            vexFlipRef.current,
+            darkPoolRef.current
+          );
+          emitRegime();
+          emitProximity();
+          emitMagnet();
+          emitConfluence();
+          paintConfluenceBand(); // live SSE tick moved the walls — re-fit the band to the new stack
+          emitWallIntegrity();
+          emitPlay();
+        }
         evaluateAlertsNow(); // spot/walls/flip just advanced — check the member's alert rules
       }
     });
