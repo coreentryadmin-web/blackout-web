@@ -8,23 +8,22 @@ import { SWRConfig } from "swr";
  *
  * MotionConfig: every framer-motion animation respects OS prefers-reduced-motion.
  *
- * SWRConfig: global data-fetch defaults tuned for ALWAYS-LIVE data.
- *  - `revalidateOnFocus: true` — the instant you return to the tab, every surface
- *    refreshes (SWR pauses refreshInterval while a tab is hidden, so this is what
- *    makes data feel live again immediately on return — no manual refresh, ever).
- *  - `dedupingInterval: 3000` — collapses duplicate in-flight requests for the same
- *    key across panels, so the on-focus refresh can't become a thundering herd.
+ * SWRConfig: global data-fetch defaults tuned for live desks WITHOUT tab-focus storms.
+ *  - `revalidateOnFocus: false` — returning to a tab used to refetch every mounted SWR
+ *    hook at once (Thermal matrix, SPX pulse, Vector universe, etc.) and freeze the UI.
+ *    Per-hook `refreshInterval` keeps data live while viewing; hooks that truly need a
+ *    focus refresh opt in explicitly.
+ *  - `dedupingInterval: 5000` — collapse duplicate in-flight keys across panels.
  *  - `errorRetryCount: 2` — bounded retries.
- * Per-component `refreshInterval`s drive continuous live updates while viewing; this
- * config guarantees freshness on tab re-entry too.
  */
 export function MotionProvider({ children }: { children: React.ReactNode }) {
   return (
     <MotionConfig reducedMotion="user">
       <SWRConfig
         value={{
-          revalidateOnFocus: true,
-          dedupingInterval: 3000,
+          revalidateOnFocus: false,
+          revalidateOnReconnect: true,
+          dedupingInterval: 5000,
           errorRetryCount: 2,
         }}
       >
