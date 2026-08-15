@@ -5,9 +5,12 @@ import { join } from "node:path";
 
 const root = process.cwd();
 
-test("ios-native-compact-controls.css loaded from site layout", () => {
+test("ios-native-compact-controls.css loaded for iOS shell only", () => {
+  const loader = readFileSync(join(root, "src/components/ios/IosNativeStylesLoader.tsx"), "utf8");
   const layout = readFileSync(join(root, "src/app/(site)/layout.tsx"), "utf8");
-  assert.match(layout, /ios-native-compact-controls\.css/);
+  assert.match(loader, /ios-native-compact-controls\.css/);
+  assert.match(layout, /IosNativeStylesLoader/);
+  assert.doesNotMatch(layout, /ios-native-compact-controls\.css/);
 });
 
 test("VectorToolbar exposes iOS compact scroll rows + desktop fallback row", () => {

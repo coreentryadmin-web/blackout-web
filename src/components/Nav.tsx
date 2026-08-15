@@ -124,7 +124,6 @@ export function Nav({
     (!isLoaded && initialSignedIn);
 
   const [isAdmin, setIsAdmin] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
   const [featuresOpen, setFeaturesOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -134,10 +133,16 @@ export function Nav({
   const hamburgerRef = useRef<HTMLButtonElement>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
   const scrolledRef = useRef(false);
+  const isHomeRef = useRef(isHome);
+  isHomeRef.current = isHome;
+
+  const applyNavSolid = (scrollScrolled: boolean) => {
+    const solid = scrollScrolled || !isHomeRef.current;
+    headerRef.current?.setAttribute("data-scrolled", solid ? "true" : "false");
+  };
 
   const showAdmin = isLoaded && isSignedIn && isAdmin;
   const isFeatureActive = FEATURE_LINKS.some((l) => path.startsWith(l.href));
-  const solid = scrolled || !isHome;
   const isLearnActive = path.startsWith("/learn");
   const isFaqActive = path.startsWith("/faq");
   const isPricingActive = path.startsWith("/pricing");
@@ -188,7 +193,7 @@ export function Nav({
       const next = scrolledRef.current ? y > OFF : y > ON;
       if (next !== scrolledRef.current) {
         scrolledRef.current = next;
-        setScrolled(next);
+        applyNavSolid(next);
       }
       const max = document.documentElement.scrollHeight - window.innerHeight;
       const p = max > 0 ? Math.min(1, Math.max(0, y / max)) : 0;
@@ -205,6 +210,10 @@ export function Nav({
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
+
+  useEffect(() => {
+    applyNavSolid(scrolledRef.current);
+  }, [path]);
 
   useEffect(() => {
     setFeaturesOpen(false);
@@ -246,7 +255,7 @@ export function Nav({
     <motion.header
       ref={headerRef}
       role="banner"
-      data-scrolled={solid ? "true" : "false"}
+      data-scrolled={!isHome ? "true" : "false"}
       initial={isHome && !reduced ? { opacity: 0, y: -20 } : undefined}
       animate={isHome && !reduced ? { opacity: 1, y: 0 } : undefined}
       transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}

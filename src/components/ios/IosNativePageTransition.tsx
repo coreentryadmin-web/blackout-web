@@ -50,7 +50,7 @@ export function IosNativePageTransition({ children }: Props) {
   // WKWebView can stick on opacity:0/blur initial states during fast tab switches —
   // keep tool routes opaque so desks never flash blank between instrument-rail taps.
   return (
-    <AnimatePresence mode="wait" initial={false}>
+    <AnimatePresence mode="sync" initial={false}>
       <motion.div
         key={path}
         className="ios-native-page-stage"

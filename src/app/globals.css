@@ -712,7 +712,6 @@ body {
     transparent 70%
   );
   animation: ambient-breathe var(--pulse-period, 6s) var(--ease-breath) infinite;
-  will-change: opacity, transform;
 }
 
 /* b. The EKG hairline — a thin lit top edge with one ~120px emerald pip that
@@ -749,7 +748,6 @@ body {
   box-shadow: 0 0 6px rgba(0, 230, 118, 0.7);
   transform: translateX(-120px);
   animation: ekg-trace var(--pulse-period, 6s) var(--ease-sweep) infinite;
-  will-change: transform;
 }
 
 @keyframes ekg-trace {
@@ -757,17 +755,11 @@ body {
   to { transform: translateX(100vw); }
 }
 
-/* c. Aurora mesh — two soft brand-light pools drifting like slow weather.
-   filter: blur() is set ONCE and never animated; only translate3d() moves.
-   Opacity scales with --pulse-dim so the mesh dims after hours. Kept subtle so
-   it coexists with the existing per-variant .platform-ambient glow. */
+/* c. Aurora mesh — disabled on product desks: two 60vmax blur(150px) orbs force
+   continuous GPU compositing on every frame and made the whole site feel lagged.
+   Wash + EKG hairline keep the ambient heartbeat without the heavy blur layers. */
 .market-pulse-aurora {
-  position: absolute;
-  width: 60vmax;
-  height: 60vmax;
-  border-radius: 50%;
-  filter: blur(150px);
-  will-change: transform;
+  display: none;
 }
 
 .market-pulse-aurora-a {
@@ -1526,7 +1518,7 @@ body::before {
     @apply fixed top-0 inset-x-0 z-[100];
     height: 76px;
     padding-top: env(safe-area-inset-top, 0px);
-    transition: height 0.32s var(--ease-draw);
+    transition: height 0.12s ease;
   }
   .nav-bar[data-scrolled="true"] { height: 60px; }
 
@@ -1534,12 +1526,10 @@ body::before {
   .nav-surface {
     @apply absolute inset-0 pointer-events-none;
     opacity: 0;
-    background: rgba(4, 4, 7, 0.72);
-    -webkit-backdrop-filter: blur(20px) saturate(1.5);
-    backdrop-filter: blur(20px) saturate(1.5);
+    background: rgba(4, 4, 7, 0.92);
     border-bottom: 1px solid rgba(125, 211, 252, 0.1);
     box-shadow: 0 8px 30px -12px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.04);
-    transition: opacity 0.32s var(--ease-draw);
+    transition: opacity 0.12s ease;
   }
   .nav-bar[data-scrolled="true"] .nav-surface { opacity: 1; }
 

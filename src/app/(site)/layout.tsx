@@ -8,6 +8,7 @@ import { IosNativePageTransition } from "@/components/ios/IosNativePageTransitio
 import { IosAppTabBar } from "@/components/IosAppTabBar";
 import { MarketSessionProvider } from "@/components/platform/MarketSessionProvider";
 import { MarketPulseLayer } from "@/components/platform/MarketPulseLayer";
+import { IosNativeStylesLoader } from "@/components/ios/IosNativeStylesLoader";
 import { isAdminUser } from "@/lib/admin-access";
 import { lockedToolKeys, type ToolKey } from "@/lib/tool-access";
 import { AppShellProviders } from "@/components/providers/AppShellProviders";
@@ -15,24 +16,6 @@ import { jetbrainsMono } from "@/lib/fonts-mono";
 import { inter } from "@/lib/fonts-sans";
 import "../globals.css";
 import "../desk-app.css";
-import "../nighthawk-v2.css";
-import "../ios-native.css";
-import "../ios-native-pages.css";
-import "../ios-native-nav.css";
-import "../ios-native-skin.css";
-import "../ios-native-motion.css";
-import "../ios-native-command.css";
-import "../ios-native-iphone16.css";
-import "../ios-native-viewport.css";
-import "../ios-native-input-lock.css";
-import "../ios-native-tokens.css";
-import "../ios-native-organize.css";
-import "../ios-native-tab-rail.css";
-import "../ios-native-cards.css";
-import "../ios-native-compact-controls.css";
-import "../ios-native-spx-desk.css";
-import "../ios-native-phase2.css";
-import "../styles/admin-console.css";
 
 /**
  * Transparent route group — does NOT affect URLs. Hoists the shared <Nav />
@@ -75,6 +58,7 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
           render behind the fixed nav banner and all page chrome. */}
       <MarketSessionProvider />
       <MarketPulseLayer />
+      <IosNativeStylesLoader />
       <Nav lockedTools={lockedTools} initialSignedIn={initialSignedIn} />
       <IosAppChrome lockedTools={lockedTools} />
       <IosAppTabBar lockedTools={lockedTools} />

@@ -31,7 +31,10 @@ test("IosNativeSegment supports compact variant", () => {
   assert.match(src, /ios-native-segment-compact/);
 });
 
-test("ios-native-spx-desk.css loaded", () => {
+test("ios-native-spx-desk.css loaded for iOS shell only", () => {
+  const loader = readFileSync(join(root, "src/components/ios/IosNativeStylesLoader.tsx"), "utf8");
   const layout = readFileSync(join(root, "src/app/(site)/layout.tsx"), "utf8");
-  assert.match(layout, /ios-native-spx-desk\.css/);
+  assert.match(loader, /ios-native-spx-desk\.css/);
+  assert.match(layout, /IosNativeStylesLoader/);
+  assert.doesNotMatch(layout, /ios-native-spx-desk\.css/);
 });
