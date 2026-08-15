@@ -28,6 +28,9 @@ import {
 } from "@/features/vector/lib/vector-play-levels";
 import { VectorCrosshairLegend, type VectorCrosshairState } from "@/features/vector/components/VectorCrosshairLegend";
 import { VectorToolbar } from "@/features/vector/components/VectorToolbar";
+import { VectorDrawToolbar } from "@/features/vector/components/VectorDrawToolbar";
+import { UserDrawingsPrimitive } from "@/features/vector/lib/vector-drawings-primitive";
+import { useVectorChartDrawings } from "@/features/vector/lib/use-vector-chart-drawings";
 import {
   createVectorEventSource,
   type VectorDarkPoolLevel,
@@ -1393,6 +1396,8 @@ export function VectorChart({
   // by EmConePrimitive at zOrder "bottom"; a null band/spot or off-hours clock draws nothing. Cleared
   // on ticker switch / unmount with the series (chart.remove disposes attached primitives).
   const emConePrimitiveRef = useRef<EmConePrimitive | null>(null);
+  // Member drawing annotations — hlines via price-lines; trend/zone/fib/text via canvas primitive.
+  const userDrawingsPrimitiveRef = useRef<UserDrawingsPrimitive | null>(null);
   // GEX positioning heatmap (#14): the strike×time surface primitive attached BEHIND the candles
   // (zOrder "bottom"), plus the last horizon-scoped grid it draws. The grid is fetched in the
   // DTE-scoped effect (like max-pain/expected-move) and visibility is gated on the "gex-heatmap"
@@ -1619,6 +1624,27 @@ export function VectorChart({
     setTimeframeState(next);
   }, []);
   const [chartReady, setChartReady] = useState(false);
+
+  const {
+    drawTool,
+    setDrawTool,
+    drawColor,
+    setDrawColor,
+    drawings,
+    selectedId,
+    handleUndo,
+    handleClear,
+    handleDeleteSelected,
+    bindChartClick,
+    updateDraftCursor,
+  } = useVectorChartDrawings({
+    ticker,
+    replayMode,
+    chartReady,
+    seriesRef,
+    minuteBarsRef,
+    drawingsPrimitiveRef: userDrawingsPrimitiveRef,
+  });
 
   const applyOverlayDim = useCallback((dim: number) => {
     overlayDimRef.current = dim;
@@ -3729,6 +3755,9 @@ export function VectorChart({
     const emCone = new EmConePrimitive();
     series.attachPrimitive(emCone);
     emConePrimitiveRef.current = emCone;
+    const userDrawings = new UserDrawingsPrimitive();
+    series.attachPrimitive(userDrawings);
+    userDrawingsPrimitiveRef.current = userDrawings;
 
     refreshTrails("gex");
     refreshOverlays("gex", initialWalls, initialVexWalls, initialGammaFlip, initialVexFlip, initialDarkPoolLevels);
@@ -3766,6 +3795,8 @@ export function VectorChart({
     };
     container.addEventListener("wheel", onWheel, { passive: true });
 
+    const unbindDrawClick = bindChartClick(chart, series);
+
     chart.subscribeCrosshairMove((param) => {
       if (!param.time || !param.point) {
         setCrosshair(null);
@@ -3795,6 +3826,13 @@ export function VectorChart({
         vexWallsRef.current
       );
       const hoverPrice = series.coordinateToPrice(param.point.y);
+      if (
+        typeof hoverEpochSec === "number" &&
+        hoverPrice != null &&
+        Number.isFinite(hoverPrice as number)
+      ) {
+        updateDraftCursor(hoverEpochSec, hoverPrice as number);
+      }
       const gexCell =
         indicatorsRef.current.has("gex-heatmap") &&
         gexHeatmapGridRef.current &&
@@ -3918,6 +3956,7 @@ export function VectorChart({
       layoutObserver.disconnect();
       intersectionObserver?.disconnect();
       container.removeEventListener("wheel", onWheel);
+      unbindDrawClick();
       container.removeEventListener("mousedown", onChartPointerDown);
       container.removeEventListener("touchstart", onChartPointerDown);
       chart.timeScale().unsubscribeVisibleTimeRangeChange(onVisibleTimeRangeChange);
@@ -3955,6 +3994,7 @@ export function VectorChart({
       // Same for the EM cone primitive — disposed with the series; drop the ref so a remount reattaches
       // (matches the field comment claiming it's cleared on remount).
       emConePrimitiveRef.current = null;
+      userDrawingsPrimitiveRef.current = null;
       // chart.remove() disposes the overlay line series too — swap in a fresh map so a remount
       // rebuilds instead of touching the now-disposed series (matches the sibling ref resets).
       overlaySeriesRef.current = new Map();
@@ -4424,6 +4464,20 @@ export function VectorChart({
         hideLinkedControls={toolbarHideLinkedControls}
         comparePane={toolbarHideLinkedControls}
         hideReplayControls={hideReplayControls}
+      />
+
+      <VectorDrawToolbar
+        tool={drawTool}
+        onTool={setDrawTool}
+        color={drawColor}
+        onColor={setDrawColor}
+        count={drawings.length}
+        selectedId={selectedId}
+        onUndo={handleUndo}
+        onClear={handleClear}
+        onDeleteSelected={handleDeleteSelected}
+        disabled={replayMode}
+        comparePane={comparePane}
       />
 
       <VectorIntradayZoomControls
