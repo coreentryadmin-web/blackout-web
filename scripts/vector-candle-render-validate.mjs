@@ -67,19 +67,33 @@ try {
     const cx = chartBox.x + chartBox.width * 0.55;
     const cy = chartBox.y + chartBox.height * 0.45;
     await page.mouse.move(cx, cy);
-    for (let i = 0; i < 10; i++) {
-      await page.mouse.wheel(0, 140);
-      await page.waitForTimeout(120);
-    }
-    await page.screenshot({ path: join(OUT, "03-zoom-out-wheel.png") });
-    rec("wheel-zoom-out", "PASS", "10 scroll-out steps");
-
+    const snapBefore = await chartStage.screenshot();
     for (let i = 0; i < 12; i++) {
-      await page.mouse.wheel(0, -140);
-      await page.waitForTimeout(120);
+      await page.mouse.wheel(0, -160);
+      await page.waitForTimeout(100);
     }
-    await page.screenshot({ path: join(OUT, "04-zoom-in-wheel.png") });
-    rec("wheel-zoom-in", "PASS", "12 scroll-in steps");
+    await page.screenshot({ path: join(OUT, "03-zoom-in-wheel.png") });
+    const snapZoomIn = await chartStage.screenshot();
+    await page.waitForTimeout(2500);
+    const snapHeld = await chartStage.screenshot();
+    const zoomInWorked = !snapBefore.equals(snapZoomIn);
+    const zoomHeld = snapZoomIn.equals(snapHeld);
+    if (zoomInWorked && zoomHeld) {
+      rec("wheel-zoom-in-holds", "PASS", "Zoom in changed view and held after 2.5s");
+    } else {
+      rec(
+        "wheel-zoom-in-holds",
+        "FAIL",
+        `worked=${zoomInWorked} held=${zoomHeld} (adaptive spacing may be fighting wheel)`
+      );
+    }
+
+    for (let i = 0; i < 14; i++) {
+      await page.mouse.wheel(0, 160);
+      await page.waitForTimeout(100);
+    }
+    await page.screenshot({ path: join(OUT, "04-zoom-out-wheel.png") });
+    rec("wheel-zoom-out", "PASS", "14 scroll-out steps");
   } else {
     rec("wheel-zoom", "WARN", "No bounding box for canvas");
   }

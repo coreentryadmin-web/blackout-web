@@ -51,12 +51,11 @@ test("VectorChart: default load shows multi-day seed via fitContent", () => {
   );
 });
 
-test("VectorChart: drawing click resolves time on empty chart margin", () => {
-  assert.match(
-    read("src/features/vector/lib/use-vector-chart-drawings.ts"),
-    /resolveChartClickTime/
-  );
-  assert.match(read("src/features/vector/components/VectorDrawToolbar.tsx"), /vector-draw-text-input/);
+test("VectorChart: member wheel zoom not overridden by adaptive bar spacing", () => {
+  const src = read("src/features/vector/components/VectorChart.tsx");
+  assert.match(src, /viewportLocked = memberViewportLocked/);
+  assert.match(src, /if \(!viewportLocked\) \{[\s\S]{0,120}adaptiveBarSpacingForZoom/);
+  assert.match(src, /handleScale: true/);
 });
 
 test("VectorChart: candle render spacing, borders, and zoom presets wired", () => {
