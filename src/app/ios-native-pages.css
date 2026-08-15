@@ -420,6 +420,12 @@ html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-heatmap-control-row
   display: none;
 }
 
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-heatmap-control-row > div:first-child {
+  position: relative;
+  z-index: 0;
+  flex-shrink: 0;
+}
+
 html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-heatmap-control-row [role="tablist"] {
   position: relative;
   z-index: 2;

@@ -1794,7 +1794,7 @@ function TickerSwitcher({
 
   return (
     <>
-      <div ref={boxRef} className="relative z-[1] flex max-w-full items-center gap-2 overflow-hidden pointer-events-none">
+      <div ref={boxRef} className="flex max-w-full items-center gap-2 overflow-hidden pointer-events-none">
       {/* Compact trigger — active ticker + caret. Opens the search dropdown. */}
       <button
         type="button"
