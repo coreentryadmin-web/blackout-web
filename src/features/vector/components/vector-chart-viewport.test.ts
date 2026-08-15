@@ -143,3 +143,24 @@ test("VectorChart fetches and uses the blended rail when it was given no seed", 
   // ...and the fetched rail must be allowed through as a recorded trail source.
   assert.match(src, /horizon !== "all" \|\| seedRailEmptyRef\.current/);
 });
+
+test("VectorPageShell: chart view toggle stays mounted when historical chart replaces intraday", () => {
+  const shell = read("src/features/vector/components/VectorPageShell.tsx");
+  assert.match(shell, /vector-chart-column-head/);
+  assert.match(shell, /data-testid="vector-chart-column-head"/);
+  assert.match(shell, /chartColumnHead/);
+  assert.match(shell, /chartView === "intraday" \? \(\s*chartBlock/);
+  assert.match(shell, /VectorDailyChart/);
+  assert.doesNotMatch(
+    shell,
+    /chartLead[\s\S]{0,400}VectorChartViewSelect/,
+    "view select must not live only inside VectorChart leadSlot"
+  );
+});
+
+test("VectorChartViewSelect: segmented Intraday/4H/1D/1W control", () => {
+  const src = read("src/features/vector/components/VectorChartViewSelect.tsx");
+  assert.match(src, /vector-chart-view-\$\{opt\.value\.toLowerCase\(\)\}/);
+  assert.match(src, /aria-pressed/);
+  assert.doesNotMatch(src, /<select/);
+});

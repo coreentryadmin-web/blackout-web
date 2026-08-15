@@ -448,7 +448,7 @@ export function VectorPageShell({
   /** SPX Slayer iOS embed — spot + gamma chips live in SpxIosMarketStrip above the segment. */
   const spxIosEmbed = chartOnly && nativeShell;
   const chartViewSelect = !spxIosEmbed ? (
-    <VectorChartViewSelect value={chartView} onChange={setChartView} idSuffix="-toolbar" />
+    <VectorChartViewSelect value={chartView} onChange={setChartView} idSuffix="-column" />
   ) : null;
   const chartLead = spxIosEmbed
     ? null
@@ -459,13 +459,11 @@ export function VectorPageShell({
         </span>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
-          {chartViewSelect}
           <VectorTickerSelect ticker={activeTicker} onTickerSelect={onTickerSelect ? navigateTicker : undefined} busy={tickerNavBusy} />
         </div>
       )
     : (
       <div className="vector-toolbar-brand flex flex-wrap items-center gap-2 pr-1">
-        {chartViewSelect}
         <ProductMark product="vector" size={22} animated={false} />
         <span className="font-mono text-sm font-bold uppercase tracking-[0.18em] text-cyan-100">Vector</span>
         <VectorTickerSelect ticker={activeTicker} onTickerSelect={onTickerSelect ? navigateTicker : undefined} busy={tickerNavBusy} />
@@ -491,6 +489,17 @@ export function VectorPageShell({
       />
     );
   const embedRegimeSlot = spxIosEmbed || suppressRegimeBanner ? null : <VectorRegimeBanner regime={regime} />;
+
+  /** Persistent chart chrome — must stay mounted when switching Intraday ↔ 1D/4H/1W. The view
+   *  select used to live inside VectorChart's toolbar (leadSlot), so choosing a historical view
+   *  unmounted the intraday chart and hid the only way back. */
+  const chartColumnHead =
+    chartViewSelect != null ? (
+      <div className="vector-chart-column-head" data-testid="vector-chart-column-head">
+        {chartViewSelect}
+        {chartView !== "intraday" ? chartFreshness : null}
+      </div>
+    ) : null;
 
   const handleRegime = useCallback(
     (r: VectorRegime) => {
@@ -719,6 +728,7 @@ export function VectorPageShell({
               compactPanels && nativeShell && iosPanel !== "chart" && "ios-native-panel-hidden"
             )}
           >
+            {chartColumnHead}
             {chartView === "intraday" ? (
               chartBlock
             ) : (
