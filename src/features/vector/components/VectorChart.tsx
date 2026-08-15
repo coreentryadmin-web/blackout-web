@@ -3637,7 +3637,7 @@ export function VectorChart({
       priceScaleThrottle = createRenderThrottle(emitPriceScale, 250);
       // Poll catch-all (autoscale/data paints have no public event) + immediate response to
       // pan/zoom via the logical-range subscription; both funnel through the same throttle.
-      priceScaleTimer = setInterval(() => priceScaleThrottle!.call(), 250);
+      priceScaleTimer = setInterval(() => priceScaleThrottle?.call(), 250);
       chart.timeScale().subscribeVisibleLogicalRangeChange(() => priceScaleThrottle?.call());
       emitPriceScale();
     }
