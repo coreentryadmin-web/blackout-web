@@ -7693,6 +7693,12 @@ body::before {
     @apply min-w-0;
     order: 1;
   }
+
+  /* Pinch/pan belong to lightweight-charts — prevent the page from swallowing trackpad/wheel gestures. */
+  .vector-chart-canvas {
+    touch-action: none;
+  }
+
   .vector-chart-column-head {
     @apply mb-1 flex flex-wrap items-center gap-2;
   }

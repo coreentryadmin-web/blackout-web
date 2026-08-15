@@ -1679,16 +1679,25 @@ export function VectorChart({
           compareFourUpBackground,
         })
       );
-      chart.timeScale().applyOptions(adaptiveBarSpacingForZoom(count));
+      const viewportLocked = memberViewportLocked(
+        chartUserPannedRef.current,
+        wheelZoomCooldownRef.current
+      );
+      // Wheel/pinch zoom adjusts barSpacing natively — re-applying adaptive spacing on every
+      // visible-range tick resets spacing from logical bar count (which lags) and cancels zoom.
+      if (!viewportLocked) {
+        chart.timeScale().applyOptions(adaptiveBarSpacingForZoom(count));
+      }
       // Session overview intentionally shows the whole day — auto-coarsen to 1H was collapsing
       // the tape to a handful of candles and hiding the intraday bead rail the member expects.
       if (sessionOverviewActive()) return;
-      if (timeframeUserLockedRef.current || replayModeRef.current) return;
+      if (viewportLocked || timeframeUserLockedRef.current || replayModeRef.current) return;
       const coarser = coarserTimeframeIfZoomedOut(count, timeframeRef.current);
       if (coarser == null) return;
       if (autoCoarsenTimerRef.current) clearTimeout(autoCoarsenTimerRef.current);
       autoCoarsenTimerRef.current = setTimeout(() => {
         if (sessionOverviewActive()) return;
+        if (memberViewportLocked(chartUserPannedRef.current, wheelZoomCooldownRef.current)) return;
         if (timeframeRef.current !== coarser) setTimeframeState(coarser);
       }, 650);
     },
@@ -3607,6 +3616,8 @@ export function VectorChart({
 
     const chart = createChart(container, {
       autoSize: true,
+      handleScroll: true,
+      handleScale: true,
       // Pin the axis locale instead of inheriting navigator.language — a rejected default
       // tag (e.g. "en-US@posix") throws inside the chart's Intl-based time-axis formatting
       // and blanks the whole canvas. See vector-chart-config.ts for the full write-up.
