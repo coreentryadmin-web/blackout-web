@@ -407,10 +407,9 @@ export const VECTOR_INDICATOR_GROUPS: ReadonlyArray<{
   },
 ];
 
-/** Indicators enabled on first paint — dealer gamma positioning + session volume profile. */
+/** Indicators enabled on first paint — dealer gamma positioning only; volume profile is opt-in. */
 export const VECTOR_DEFAULT_ENABLED_INDICATORS: readonly VectorIndicatorId[] = [
   "gex-heatmap",
-  "volume-profile",
 ] as const;
 
 export function defaultVectorIndicators(): Set<VectorIndicatorId> {

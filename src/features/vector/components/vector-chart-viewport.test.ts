@@ -42,13 +42,11 @@ test("VectorChart: session overview blocks live-follow flip and auto-coarsen", (
   assert.match(src, /fitContent\(\)/);
 });
 
-test("VectorChart: default load shows multi-day seed via fitContent", () => {
+test("VectorChart: default load frames session overview when defaultChartViewport is session", () => {
   const src = read("src/features/vector/components/VectorChart.tsx");
-  assert.match(src, /useState<IntradayZoomPreset \| null>\(null\)/);
-  assert.match(
-    src,
-    /intradayZoomPresetRef\.current === "session"[\s\S]{0,200}fitContent\(\)/
-  );
+  assert.match(src, /defaultChartViewport === "session" \? "session" : null/);
+  assert.match(src, /sessionFramedOnLoad/);
+  assert.match(src, /applySessionOverviewViewport\(chart, initialDisplay\)/);
 });
 
 test("VectorChart: member wheel zoom not overridden by adaptive bar spacing", () => {

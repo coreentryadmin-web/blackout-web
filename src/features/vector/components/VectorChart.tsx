@@ -186,6 +186,7 @@ import {
   intradayZoomPresetFromKeyboard,
   liveEdgeVisibleLogicalRange,
   overlayDimFactor,
+  beadOverlayDimFactor,
   structureVisibleLogicalRange,
   toCandlestickDisplayData,
   vectorCandlestickOptions,
@@ -1644,8 +1645,12 @@ export function VectorChart({
   const timeframeUserLockedRef = useRef(false);
   const autoCoarsenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const overlayDimRef = useRef(1);
-  const [intradayZoomPreset, setIntradayZoomPreset] = useState<IntradayZoomPreset | null>(null);
-  const intradayZoomPresetRef = useRef<IntradayZoomPreset | null>(null);
+  const [intradayZoomPreset, setIntradayZoomPreset] = useState<IntradayZoomPreset | null>(() =>
+    defaultChartViewport === "session" ? "session" : null
+  );
+  const intradayZoomPresetRef = useRef<IntradayZoomPreset | null>(
+    defaultChartViewport === "session" ? "session" : null
+  );
   useEffect(() => {
     intradayZoomPresetRef.current = intradayZoomPreset;
   }, [intradayZoomPreset]);
@@ -1688,11 +1693,26 @@ export function VectorChart({
     gexHeatmapPrimitiveRef.current?.setOverlayDim(dim);
     volumeProfilePrimitiveRef.current?.setOverlayDim(dim);
     gammaRegimePrimitiveRef.current?.setOverlayDim(dim);
-    wallRailPrimitiveRef.current?.setOverlayDim(dim);
   }, []);
 
+  const applyBeadOverlayDim = useCallback(
+    (count: number) => {
+      wallRailPrimitiveRef.current?.setOverlayDim(
+        beadOverlayDimFactor(count, {
+          compareFourUp,
+          compareFourUpBackground,
+          compareCompactBeads,
+        })
+      );
+    },
+    [compareFourUp, compareFourUpBackground, compareCompactBeads]
+  );
+
   const sessionOverviewActive = useCallback((): boolean => {
-    return intradayZoomPresetRef.current === "session";
+    return (
+      intradayZoomPresetRef.current === "session" ||
+      (intradayZoomPresetRef.current == null && defaultChartViewportRef.current === "session")
+    );
   }, []);
 
   const syncCandleViewportFromRange = useCallback(
@@ -1706,6 +1726,7 @@ export function VectorChart({
           compareFourUpBackground,
         })
       );
+      applyBeadOverlayDim(count);
       // Bar spacing is applied only on programmatic refits — NOT here. This callback runs
       // synchronously inside lightweight-charts' wheel handler before our bubble-phase wheel
       // listener stamps viewportLocked, so applyOptions here cancels every zoom tick.
@@ -1724,7 +1745,7 @@ export function VectorChart({
         if (timeframeRef.current !== coarser) setTimeframeState(coarser);
       }, 650);
     },
-    [applyOverlayDim, compareFourUp, compareFourUpBackground, sessionOverviewActive]
+    [applyOverlayDim, applyBeadOverlayDim, compareFourUp, compareFourUpBackground, sessionOverviewActive]
   );
 
   const handleIntradayZoom = useCallback(
@@ -3747,7 +3768,10 @@ export function VectorChart({
     // Session overview frames the newest ET day only (seed carries multiple sessions); live
     // follow fits the full seed. Background re-seeds route through applyDisplayBarsPreservingView.
     if (initialBars.length) {
-      if (intradayZoomPresetRef.current === "session") {
+      const sessionFramedOnLoad =
+        intradayZoomPresetRef.current === "session" ||
+        (intradayZoomPresetRef.current == null && defaultChartViewportRef.current === "session");
+      if (sessionFramedOnLoad) {
         applySessionOverviewViewport(chart, initialDisplay);
         chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
       } else {
@@ -3864,7 +3888,10 @@ export function VectorChart({
     refreshOverlays("gex", initialWalls, initialVexWalls, initialGammaFlip, initialVexFlip, initialDarkPoolLevels);
     pinCandlesOnTop(series);
 
-    if (intradayZoomPresetRef.current === "session") {
+    if (
+      intradayZoomPresetRef.current === "session" ||
+      (intradayZoomPresetRef.current == null && defaultChartViewportRef.current === "session")
+    ) {
       // Trails/overlays paint after the first viewport pass — re-frame once markers exist.
       requestAnimationFrame(() => {
         if (memberViewportLocked(chartUserPannedRef.current, wheelZoomCooldownRef.current)) return;
@@ -4432,7 +4459,9 @@ export function VectorChart({
       const timeframeChanged = timeframe !== lastFittedTimeframeRef.current;
       const timeScale = chart?.timeScale() ?? null;
       const following = chart ? chartIsFollowingLive(chart) : false;
-      const sessionFramed = intradayZoomPresetRef.current === "session";
+      const sessionFramed =
+        intradayZoomPresetRef.current === "session" ||
+        (intradayZoomPresetRef.current == null && defaultChartViewportRef.current === "session");
       const viewportLocked = memberViewportLocked(
         chartUserPannedRef.current,
         wheelZoomCooldownRef.current
