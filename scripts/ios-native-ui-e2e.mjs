@@ -507,6 +507,8 @@ async function testToolPage(page, tab, prefix = "") {
   }
 
   if (tab.route === "heatmap") {
+    // Matrix is default — switch to Profile first so tab clicks exercise real toggles.
+    if (await clickRoleTab(page, /^Profile$/i)) ok("thermal:tab-profile");
     if (await clickRoleTab(page, /^Matrix$/i)) ok("thermal:tab-matrix");
     if (await clickRoleTab(page, /^gex$/i)) ok("thermal:lens-gex");
     if (await clickRoleTab(page, /^vex$/i)) ok("thermal:lens-vex");
