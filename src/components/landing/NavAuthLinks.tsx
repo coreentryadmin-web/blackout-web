@@ -1,22 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { readClientSignedIn, resolveClientSignedIn } from "@/lib/client-signed-in";
+import { useMarketingSignedIn } from "@/lib/use-marketing-signed-in";
 
 // NavAuthLinks — marketing nav auth block, resilient to static generation and edge caching.
-// Server passes its best guess; __client_uat wins on the FIRST client render (not after an effect).
+// Server passes its best guess; __client_uat wins on the FIRST client render, then /api/auth/me
+// verifies the session so expired cookies don't keep showing "Open desk".
 
 /** @deprecated import from `@/lib/client-signed-in` */
 export { readClientSignedIn } from "@/lib/client-signed-in";
 
 export function NavAuthLinks({ signedIn: initial }: { signedIn: boolean }) {
-  const [signedIn, setSignedIn] = useState(() => resolveClientSignedIn(initial));
-
-  useEffect(() => {
-    const client = readClientSignedIn();
-    if (client !== null && client !== signedIn) setSignedIn(client);
-  }, [signedIn]);
+  const signedIn = useMarketingSignedIn(initial);
 
   if (signedIn) {
     return (

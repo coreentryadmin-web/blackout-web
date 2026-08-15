@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type ReactNode } from "react";
-import { readClientSignedIn, resolveClientSignedIn } from "@/lib/client-signed-in";
+import { type ReactNode } from "react";
+import { useMarketingSignedIn } from "@/lib/use-marketing-signed-in";
 
 type AuthCtaBase = {
   serverSignedIn: boolean;
@@ -10,18 +10,7 @@ type AuthCtaBase = {
   hrefSignedOut: string;
 };
 
-function useHealedSignedIn(serverSignedIn: boolean): boolean {
-  const [signedIn, setSignedIn] = useState(() => resolveClientSignedIn(serverSignedIn));
-
-  useEffect(() => {
-    const client = readClientSignedIn();
-    if (client !== null && client !== signedIn) setSignedIn(client);
-  }, [signedIn]);
-
-  return signedIn;
-}
-
-/** Auth-aware marketing link — first paint uses __client_uat, not stale SSR chrome. */
+/** Auth-aware marketing link — first paint uses __client_uat, then session verify. */
 export function MarketingAuthCta({
   serverSignedIn,
   hrefSignedIn,
@@ -38,7 +27,7 @@ export function MarketingAuthCta({
   prefetch?: boolean;
   children?: ReactNode | ((signedIn: boolean) => ReactNode);
 }) {
-  const signedIn = useHealedSignedIn(serverSignedIn);
+  const signedIn = useMarketingSignedIn(serverSignedIn);
   const body =
     typeof children === "function" ? children(signedIn) : children ?? (signedIn ? labelSignedIn : labelSignedOut);
 
@@ -59,7 +48,7 @@ export function MarketingAuthLabel({
   signedInLabel: string;
   signedOutLabel: string;
 }) {
-  const signedIn = useHealedSignedIn(serverSignedIn);
+  const signedIn = useMarketingSignedIn(serverSignedIn);
   return <>{signedIn ? signedInLabel : signedOutLabel}</>;
 }
 
@@ -74,7 +63,7 @@ export function MarketingAuthAnchor({
   className?: string;
   children: ReactNode;
 }) {
-  const signedIn = useHealedSignedIn(serverSignedIn);
+  const signedIn = useMarketingSignedIn(serverSignedIn);
 
   return (
     <a href={signedIn ? hrefSignedIn : hrefSignedOut} className={className}>
