@@ -1,6 +1,6 @@
 "use client";
 
-import { memo } from "react";
+import { forwardRef, memo } from "react";
 import type { VectorDarkPoolLevel, VectorWallLevel } from "@/lib/api";
 import type { VectorWallLens } from "@/features/vector/lib/vector-wall-history";
 
@@ -16,13 +16,6 @@ export type VectorCrosshairState = {
   gexCell?: { strike: number; value: number } | null;
 };
 
-type Props = {
-  state: VectorCrosshairState | null;
-  /** The active ticker — the price readout was hardcoded to "SPX", so every other
-   *  ticker (RKLB, SNOW, …) mislabeled its own spot as SPX. */
-  ticker: string;
-};
-
 function fmtStrike(n: number): string {
   return Math.round(n).toLocaleString("en-US");
 }
@@ -35,9 +28,32 @@ function fmtGex(n: number): string {
   return Math.round(n).toLocaleString("en-US");
 }
 
-function VectorCrosshairLegendInner({ state, ticker }: Props) {
-  if (!state) return null;
+function wallsLine(
+  walls: VectorWallLevel[],
+  label: string,
+  className: string
+): string {
+  if (!walls.length) return "";
+  const body = walls
+    .slice(0, 3)
+    .map((w) => `${fmtStrike(w.strike)} (${w.pct.toFixed(0)}%)`)
+    .join(" · ");
+  return `<div class="${className}">${label} ${body}</div>`;
+}
 
+/** Imperative paint — avoids re-rendering VectorChart on every crosshair tick. */
+export function renderVectorCrosshairLegend(
+  el: HTMLElement | null,
+  state: VectorCrosshairState | null,
+  ticker: string
+): void {
+  if (!el) return;
+  if (!state) {
+    el.hidden = true;
+    el.textContent = "";
+    return;
+  }
+  el.hidden = false;
   const isVex = state.lens === "vex";
   const callClass = isVex ? "text-sky-300" : "text-[#ffd60a]";
   const putClass = isVex ? "text-rose-300" : "text-[#b26bff]";
@@ -45,60 +61,52 @@ function VectorCrosshairLegendInner({ state, ticker }: Props) {
   const putLabel = isVex ? "Vanna −" : "Put";
   const flipLabel = isVex ? "Vanna flip" : "γ flip";
 
-  return (
-    <div
-      className="pointer-events-none absolute left-3 top-3 z-10 flex max-w-[min(100%,420px)] flex-col gap-1 rounded-md border border-white/10 bg-[#040407] px-3 py-2 font-mono text-[11px] leading-snug text-white shadow-lg"
-      aria-live="polite"
-    >
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
-        <span className="text-sky-300">{state.time}</span>
-        <span className="uppercase tracking-wider text-cyan-400">{state.lens}</span>
-        {state.close != null && (
-          <span>
-            {ticker} <span className="text-cyan-400">{fmtStrike(state.close)}</span>
-          </span>
-        )}
-        {state.flip != null && (
-          <span>
-            {flipLabel} <span className="text-cyan-400">{fmtStrike(state.flip)}</span>
-          </span>
-        )}
-      </div>
-      {state.callWalls.length > 0 && (
-        <div className={callClass}>
-          {callLabel}{" "}
-          {state.callWalls
-            .slice(0, 3)
-            .map((w) => `${fmtStrike(w.strike)} (${w.pct.toFixed(0)}%)`)
-            .join(" · ")}
-        </div>
-      )}
-      {state.putWalls.length > 0 && (
-        <div className={putClass}>
-          {putLabel}{" "}
-          {state.putWalls
-            .slice(0, 3)
-            .map((w) => `${fmtStrike(w.strike)} (${w.pct.toFixed(0)}%)`)
-            .join(" · ")}
-        </div>
-      )}
-      {state.darkPoolLevels.length > 0 && (
-        <div className="text-[#ff8a3d]">
-          DP{" "}
-          {state.darkPoolLevels
-            .slice(0, 3)
-            .map((l) => `${fmtStrike(l.strike)} (${l.pct.toFixed(0)}%)`)
-            .join(" · ")}
-        </div>
-      )}
-      {state.gexCell != null && (
-        <div className={state.gexCell.value > 0 ? "text-emerald-400" : "text-fuchsia-400"}>
-          GEX {fmtStrike(state.gexCell.strike)}{" "}
-          <span className="text-white/80">{fmtGex(state.gexCell.value)}</span>
-        </div>
-      )}
-    </div>
-  );
+  const head: string[] = [
+    `<span class="text-sky-300">${state.time}</span>`,
+    `<span class="uppercase tracking-wider text-cyan-400">${state.lens}</span>`,
+  ];
+  if (state.close != null) {
+    head.push(
+      `<span>${ticker} <span class="text-cyan-400">${fmtStrike(state.close)}</span></span>`
+    );
+  }
+  if (state.flip != null) {
+    head.push(
+      `<span>${flipLabel} <span class="text-cyan-400">${fmtStrike(state.flip)}</span></span>`
+    );
+  }
+
+  const lines = [`<div class="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">${head.join("")}</div>`];
+  lines.push(wallsLine(state.callWalls, callLabel, callClass));
+  lines.push(wallsLine(state.putWalls, putLabel, putClass));
+  if (state.darkPoolLevels.length) {
+    lines.push(
+      wallsLine(
+        state.darkPoolLevels.map((l) => ({ strike: l.strike, pct: l.pct })),
+        "DP",
+        "text-[#ff8a3d]"
+      )
+    );
+  }
+  if (state.gexCell != null) {
+    const tone = state.gexCell.value > 0 ? "text-emerald-400" : "text-fuchsia-400";
+    lines.push(
+      `<div class="${tone}">GEX ${fmtStrike(state.gexCell.strike)} <span class="text-white/80">${fmtGex(state.gexCell.value)}</span></div>`
+    );
+  }
+  el.innerHTML = lines.filter(Boolean).join("");
 }
 
-export const VectorCrosshairLegend = memo(VectorCrosshairLegendInner);
+/** Static shell — content is painted imperatively from the chart crosshair handler. */
+export const VectorCrosshairLegend = memo(
+  forwardRef<HTMLDivElement, { ticker: string }>(function VectorCrosshairLegend(_props, ref) {
+    return (
+      <div
+        ref={ref}
+        hidden
+        className="pointer-events-none absolute left-3 top-3 z-10 flex max-w-[min(100%,420px)] flex-col gap-1 rounded-md border border-white/10 bg-[#040407] px-3 py-2 font-mono text-[11px] leading-snug text-white shadow-lg"
+        aria-live="polite"
+      />
+    );
+  })
+);

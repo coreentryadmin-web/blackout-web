@@ -7807,7 +7807,6 @@ body::before {
     color: rgb(165, 243, 252);
     cursor: pointer;
     line-height: 1.2;
-    transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
 
   .vector-desk-select:hover:not(:disabled):not(.is-disabled) {
@@ -7860,7 +7859,6 @@ body::before {
     background: transparent;
     cursor: pointer;
     white-space: nowrap;
-    transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
   }
 
   .vector-desk-seg-btn:hover:not(:disabled):not(.is-active) {
@@ -7912,7 +7910,6 @@ body::before {
     font-size: 10px;
     color: rgb(165, 243, 252);
     cursor: pointer;
-    transition: border-color 0.15s ease, background 0.15s ease;
   }
 
   .vector-desk-btn-ghost:hover:not(:disabled) {
@@ -8005,7 +8002,6 @@ body::before {
     text-transform: uppercase;
     color: rgb(165, 243, 252);
     cursor: pointer;
-    transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
   }
 
   .vector-ind-trigger:hover {

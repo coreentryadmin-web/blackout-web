@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { clsx } from "clsx";
 import { useIosChartDoubleTapFullscreen } from "@/hooks/useIosChartDoubleTapFullscreen";
 import {
@@ -26,7 +26,7 @@ import {
   type PlayLevelsInput,
   type PlayLineKind,
 } from "@/features/vector/lib/vector-play-levels";
-import { VectorCrosshairLegend, type VectorCrosshairState } from "@/features/vector/components/VectorCrosshairLegend";
+import { VectorCrosshairLegend, renderVectorCrosshairLegend, type VectorCrosshairState } from "@/features/vector/components/VectorCrosshairLegend";
 import { VectorToolbar } from "@/features/vector/components/VectorToolbar";
 import { UserDrawingsPrimitive } from "@/features/vector/lib/vector-drawings-primitive";
 import { vectorCrosshairStatesEqual } from "@/features/vector/lib/vector-crosshair-equality";
@@ -111,6 +111,8 @@ import { EmConePrimitive } from "@/features/vector/lib/vector-em-cone-primitive"
 import { emConeFromExpectedMove } from "@/features/vector/lib/vector-em-cone";
 import { etMinutesOfDay } from "@/lib/swing/scan-cadence";
 import { GammaRegimePrimitive } from "@/features/vector/lib/vector-gamma-regime-primitive";
+import { ExtendedHoursShadePrimitive } from "@/features/vector/lib/vector-extended-hours-shade-primitive";
+import { extendedHoursShadeBands } from "@/features/vector/lib/vector-session-hours";
 import { computeVolumeProfile } from "@/features/vector/lib/vector-volume-profile";
 import { VolumeProfilePrimitive } from "@/features/vector/lib/vector-volume-profile-primitive";
 import type { WallBeadRenderProfile } from "@/features/vector/lib/vector-wall-rail-core";
@@ -1404,6 +1406,7 @@ export function VectorChart({
   // toggle; a null grid or the toggle off makes the primitive draw nothing. Cleared on ticker
   // switch / unmount — chart.remove() disposes the series (and its primitives), so we just drop refs.
   const gexHeatmapPrimitiveRef = useRef<GexHeatmapPrimitive | null>(null);
+  const extendedHoursShadePrimitiveRef = useRef<ExtendedHoursShadePrimitive | null>(null);
   const gexHeatmapGridRef = useRef<GexHeatmapGrid | null>(null);
   const gexHeatmapSpotAtFetchRef = useRef<number | null>(null);
   // Dealer-gamma REGIME boundary glow (default OFF, "gamma-regime" toggle): a low-alpha teal/amber
@@ -1582,20 +1585,29 @@ export function VectorChart({
     compareFourUpBackgroundRef.current = compareFourUpBackground;
   }, [compareSync, onCompareCrosshair, onCompareVisibleRange, hideVolumePane, compareCompactBeads, compareFourUp, compareFourUpBackground]);
 
-  const [crosshair, setCrosshair] = useState<VectorCrosshairState | null>(null);
+  const crosshairLegendRef = useRef<HTMLDivElement | null>(null);
   const crosshairLatestRef = useRef<VectorCrosshairState | null>(null);
   const crosshairDisplayedRef = useRef<VectorCrosshairState | null>(null);
   const crosshairRafRef = useRef<number | null>(null);
-  const scheduleCrosshairUpdate = useCallback((next: VectorCrosshairState | null) => {
-    crosshairLatestRef.current = next;
-    if (crosshairRafRef.current != null) return;
-    crosshairRafRef.current = requestAnimationFrame(() => {
-      crosshairRafRef.current = null;
-      const pending = crosshairLatestRef.current;
-      if (vectorCrosshairStatesEqual(crosshairDisplayedRef.current, pending)) return;
-      crosshairDisplayedRef.current = pending;
-      setCrosshair(pending);
-    });
+  const scheduleCrosshairUpdate = useCallback(
+    (next: VectorCrosshairState | null) => {
+      crosshairLatestRef.current = next;
+      if (crosshairRafRef.current != null) return;
+      crosshairRafRef.current = requestAnimationFrame(() => {
+        crosshairRafRef.current = null;
+        const pending = crosshairLatestRef.current;
+        if (vectorCrosshairStatesEqual(crosshairDisplayedRef.current, pending)) return;
+        crosshairDisplayedRef.current = pending;
+        renderVectorCrosshairLegend(crosshairLegendRef.current, pending, ticker);
+      });
+    },
+    [ticker]
+  );
+
+  const syncExtendedHoursShade = useCallback(() => {
+    extendedHoursShadePrimitiveRef.current?.setBands(
+      extendedHoursShadeBands(minuteBarsRef.current)
+    );
   }, []);
   const [lens, setLens] = useState<VectorWallLens>(defaultLens ?? "gex");
   // Default WEEKLY: "All" is no longer a member-facing option (2026-07-13), and 0DTE is empty
@@ -1672,6 +1684,7 @@ export function VectorChart({
 
   const applyOverlayDim = useCallback((dim: number) => {
     overlayDimRef.current = dim;
+    extendedHoursShadePrimitiveRef.current?.setOverlayDim(dim);
     gexHeatmapPrimitiveRef.current?.setOverlayDim(dim);
     volumeProfilePrimitiveRef.current?.setOverlayDim(dim);
     gammaRegimePrimitiveRef.current?.setOverlayDim(dim);
@@ -2270,6 +2283,7 @@ export function VectorChart({
     const chart = chartRef.current;
     if (!chart || !seriesRef.current) return;
     lastDisplayBarsRef.current = bars;
+    syncExtendedHoursShade();
     setDisplayBarCount(bars.length); // menu availability follows the shown-bar count (no-op if unchanged)
     const enabled = indicatorsRef.current;
     const map = overlaySeriesRef.current;
@@ -3803,6 +3817,9 @@ export function VectorChart({
     flowMarkersRef.current = createSeriesMarkers(series, []);
     // Wall ribbon rail — the primary bead visual (strength=thickness, magnitude=brightness,
     // build/fade/birth cues). Attached once; fed the composed call+put trails on each repaint.
+    const extendedHoursShade = new ExtendedHoursShadePrimitive();
+    series.attachPrimitive(extendedHoursShade);
+    extendedHoursShadePrimitiveRef.current = extendedHoursShade;
     const wallRail = new WallRailPrimitive();
     series.attachPrimitive(wallRail);
     wallRailPrimitiveRef.current = wallRail;
@@ -4087,6 +4104,7 @@ export function VectorChart({
       // a remount (ticker switch) re-attaches a fresh primitive instead of touching a dead one.
       gexHeatmapPrimitiveRef.current = null;
       gexHeatmapGridRef.current = null;
+      extendedHoursShadePrimitiveRef.current = null;
       // Same lifecycle as the heatmap primitive — chart.remove() disposed it; drop the refs so a
       // remount re-attaches a fresh glow instead of touching a dead one.
       gammaRegimePrimitiveRef.current = null;
@@ -4482,6 +4500,34 @@ export function VectorChart({
     setLens(next);
   };
 
+  const drawToolsProps = useMemo(
+    () => ({
+      tool: drawTool,
+      onTool: setDrawTool,
+      color: drawColor,
+      onColor: setDrawColor,
+      textLabel,
+      onTextLabel: setTextLabel,
+      count: drawings.length,
+      selectedId,
+      onUndo: handleUndo,
+      onClear: handleClear,
+      onDeleteSelected: handleDeleteSelected,
+      disabled: replayMode,
+    }),
+    [
+      drawTool,
+      drawColor,
+      textLabel,
+      drawings.length,
+      selectedId,
+      handleUndo,
+      handleClear,
+      handleDeleteSelected,
+      replayMode,
+    ]
+  );
+
   return (
     <div className="vector-chart-wrap">
       {!sessionBars.length && (
@@ -4531,20 +4577,7 @@ export function VectorChart({
         hideLinkedControls={toolbarHideLinkedControls}
         comparePane={toolbarHideLinkedControls}
         hideReplayControls={hideReplayControls}
-        drawTools={{
-          tool: drawTool,
-          onTool: setDrawTool,
-          color: drawColor,
-          onColor: setDrawColor,
-          textLabel,
-          onTextLabel: setTextLabel,
-          count: drawings.length,
-          selectedId,
-          onUndo: handleUndo,
-          onClear: handleClear,
-          onDeleteSelected: handleDeleteSelected,
-          disabled: replayMode,
-        }}
+        drawTools={drawToolsProps}
       />
 
       <VectorIntradayZoomControls
@@ -4572,7 +4605,7 @@ export function VectorChart({
             ✕
           </button>
         ) : null}
-        <VectorCrosshairLegend state={crosshair} ticker={ticker} />
+        <VectorCrosshairLegend ref={crosshairLegendRef} ticker={ticker} />
         <p className="pointer-events-none absolute bottom-2 left-2 z-10 font-mono text-[10px] uppercase tracking-wide text-sky-300">
           SPY vol
         </p>

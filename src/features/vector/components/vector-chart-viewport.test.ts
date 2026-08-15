@@ -137,7 +137,15 @@ test("VectorChart: crosshair hover throttled to animation frame", () => {
   const src = read("src/features/vector/components/VectorChart.tsx");
   assert.match(src, /scheduleCrosshairUpdate/);
   assert.match(src, /vectorCrosshairStatesEqual/);
-  assert.match(read("src/features/vector/components/VectorCrosshairLegend.tsx"), /memo\(/);
+  assert.match(src, /renderVectorCrosshairLegend/);
+  assert.match(read("src/features/vector/components/VectorCrosshairLegend.tsx"), /renderVectorCrosshairLegend/);
+});
+
+test("VectorChart: extended-hours background shade wired", () => {
+  const src = read("src/features/vector/components/VectorChart.tsx");
+  assert.match(src, /ExtendedHoursShadePrimitive/);
+  assert.match(src, /extendedHoursShadeBands/);
+  assert.match(read("src/features/vector/lib/vector-session-hours.ts"), /extendedHoursShadeBands/);
 });
 
 test("VectorChart: manual zoom/pan blocks programmatic session refits", () => {
