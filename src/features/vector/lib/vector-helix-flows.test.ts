@@ -2,15 +2,17 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   filterVectorHelixFlows,
-  pickVectorHelixSessionFlows,
+  flowAlertedMs,
+  isFlowSinceSessionOpen,
+  prepareVectorLiveHelixTape,
   trimVectorHelixFlowPool,
-  VECTOR_HELIX_HOT_TOP_N,
   VECTOR_HELIX_MIN_PREMIUM,
-  VECTOR_HELIX_SESSION_TOP_N,
   VECTOR_HELIX_WHALE_PREMIUM,
-  vectorHelixSessionSubtitle,
+  VECTOR_LIVE_HELIX_TAPE_CAP,
+  vectorLiveHelixSubtitle,
 } from "./vector-helix-flows";
 import type { FlowAlert } from "@/lib/api";
+import { sessionOpenMs } from "@/lib/largo/temporal/timeframe";
 
 function flow(partial: Partial<FlowAlert> & Pick<FlowAlert, "premium">): FlowAlert {
   return {
@@ -34,7 +36,8 @@ const defaultFilters = {
   minPremium: VECTOR_HELIX_MIN_PREMIUM,
 };
 
-const sessionNow = new Date("2026-08-15T15:00:00Z");
+const midday = Date.parse("2026-08-15T14:00:00-04:00");
+const sessionOpen = sessionOpenMs(midday);
 
 test("filterVectorHelixFlows: whales + side + 0DTE", () => {
   const rows = [
@@ -60,60 +63,64 @@ test("filterVectorHelixFlows: whales + side + 0DTE", () => {
   assert.equal(dte0.length, 2);
 });
 
-test("pickVectorHelixSessionFlows: hot lane surfaces recent prints by premium", () => {
-  const rows = [
-    flow({ premium: 250_000, alerted_at: "2026-08-15T14:55:00Z", strike: 901 }),
-    flow({ premium: 800_000, alerted_at: "2026-08-15T14:50:00Z", strike: 902 }),
-    flow({ premium: 5_000_000, alerted_at: "2026-08-15T10:00:00Z", strike: 903 }),
-  ];
-  const pick = pickVectorHelixSessionFlows(rows, defaultFilters, { now: sessionNow });
-  assert.equal(pick.hotNow.length, 2);
-  assert.equal(pick.hotNow[0]!.premium, 800_000);
-  assert.equal(pick.sessionLeaders.length, 1);
-  assert.equal(pick.sessionLeaders[0]!.premium, 5_000_000);
+test("isFlowSinceSessionOpen: rejects pre-open prints", () => {
+  const preOpen = flow({ premium: 500_000, alerted_at: "2026-08-15T13:00:00Z" });
+  const afterOpen = flow({ premium: 500_000, alerted_at: "2026-08-15T14:00:00Z" });
+  assert.equal(isFlowSinceSessionOpen(preOpen, sessionOpen), false);
+  assert.equal(isFlowSinceSessionOpen(afterOpen, sessionOpen), true);
 });
 
-test("pickVectorHelixSessionFlows: thin tickers rank session leaders without major floor", () => {
-  const asts = Array.from({ length: 8 }, (_, i) =>
+test("prepareVectorLiveHelixTape: newest-first live ordering", () => {
+  const rows = [
+    flow({ premium: 250_000, alerted_at: "2026-08-15T14:10:00Z", strike: 901 }),
+    flow({ premium: 800_000, alerted_at: "2026-08-15T14:55:00Z", strike: 902 }),
+    flow({ premium: 500_000, alerted_at: "2026-08-15T14:30:00Z", strike: 903 }),
+  ];
+  const tape = prepareVectorLiveHelixTape(rows, defaultFilters);
+  assert.equal(tape[0]!.strike, 902);
+  assert.equal(tape[1]!.strike, 903);
+  assert.equal(tape[2]!.strike, 901);
+});
+
+test("prepareVectorLiveHelixTape: thin tickers surface without major floor", () => {
+  const asts = Array.from({ length: 4 }, (_, i) =>
     flow({
       ticker: "ASTS",
       premium: 210_000 + i * 15_000,
       strike: 20 + i,
-      alerted_at: `2026-08-15T08:${String(i).padStart(2, "0")}:00Z`,
+      alerted_at: `2026-08-15T14:${String(10 + i).padStart(2, "0")}:00Z`,
     })
   );
-  const pick = pickVectorHelixSessionFlows(asts, defaultFilters, { now: sessionNow });
-  assert.equal(pick.hotNow.length, 0);
-  assert.equal(pick.sessionLeaders.length, 8);
-  assert.ok(pick.sessionLeaders.every((r) => r.premium >= VECTOR_HELIX_MIN_PREMIUM));
-  assert.match(vectorHelixSessionSubtitle(pick), /Top 12 by premium · session/);
+  const tape = prepareVectorLiveHelixTape(asts, defaultFilters);
+  assert.equal(tape.length, 4);
+  assert.ok(tape.every((r) => r.premium >= VECTOR_HELIX_MIN_PREMIUM));
 });
 
-test("pickVectorHelixSessionFlows: dedupes hot prints from session leaders", () => {
-  const rows = Array.from({ length: 20 }, (_, i) =>
-    flow({
-      premium: 400_000 + i * 50_000,
-      strike: 900 + i,
-      alerted_at: `2026-08-15T14:${String(59 - i).padStart(2, "0")}:00Z`,
-    })
-  );
-  const pick = pickVectorHelixSessionFlows(rows, defaultFilters, { now: sessionNow });
-  assert.equal(pick.hotNow.length, VECTOR_HELIX_HOT_TOP_N);
-  assert.equal(pick.sessionLeaders.length, VECTOR_HELIX_SESSION_TOP_N);
-  const hotKeys = new Set(pick.hotNow.map((f) => `${f.strike}|${f.alerted_at}`));
-  for (const leader of pick.sessionLeaders) {
-    assert.ok(!hotKeys.has(`${leader.strike}|${leader.alerted_at}`));
-  }
+test("vectorLiveHelixSubtitle: honest empty live state", () => {
+  assert.match(vectorLiveHelixSubtitle(0, true), /prints appear as they hit/i);
+  assert.match(vectorLiveHelixSubtitle(0, false), /session closed/i);
+  assert.match(vectorLiveHelixSubtitle(3, true), /3 prints today/i);
 });
 
-test("trimVectorHelixFlowPool: keeps premium-ranked cap", () => {
+test("trimVectorHelixFlowPool: keeps newest cap for live tape", () => {
   const rows = [
-    flow({ premium: 100_000 }),
-    flow({ premium: 5_000_000 }),
-    flow({ premium: 2_000_000 }),
+    flow({ premium: 100_000, alerted_at: "2026-08-15T14:00:00Z" }),
+    flow({ premium: 5_000_000, alerted_at: "2026-08-15T14:30:00Z" }),
+    flow({ premium: 2_000_000, alerted_at: "2026-08-15T14:45:00Z" }),
   ];
   const trimmed = trimVectorHelixFlowPool(rows, 2);
   assert.equal(trimmed.length, 2);
-  assert.equal(trimmed[0]!.premium, 5_000_000);
-  assert.equal(trimmed[1]!.premium, 2_000_000);
+  assert.equal(flowAlertedMs(trimmed[0]!), flowAlertedMs(rows[2]!));
+  assert.equal(flowAlertedMs(trimmed[1]!), flowAlertedMs(rows[1]!));
+});
+
+test("prepareVectorLiveHelixTape: respects tape cap", () => {
+  const rows = Array.from({ length: VECTOR_LIVE_HELIX_TAPE_CAP + 5 }, (_, i) =>
+    flow({
+      premium: 300_000 + i * 10_000,
+      strike: 900 + i,
+      alerted_at: `2026-08-15T14:${String(i).padStart(2, "0")}:00Z`,
+    })
+  );
+  assert.equal(prepareVectorLiveHelixTape(rows, defaultFilters).length, VECTOR_LIVE_HELIX_TAPE_CAP);
 });

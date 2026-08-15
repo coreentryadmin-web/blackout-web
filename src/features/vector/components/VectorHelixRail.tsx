@@ -16,11 +16,10 @@ import {
 import { flowDedupeKey } from "@/features/helix/lib/helix-flow-tape-merge";
 import { useVectorHelixFlows } from "@/features/vector/lib/use-vector-helix-flows";
 import {
-  pickVectorHelixSessionFlows,
+  prepareVectorLiveHelixTape,
   VECTOR_HELIX_DEFAULT_FILTERS,
-  VECTOR_HELIX_HOT_WINDOW_MIN,
   VECTOR_HELIX_WHALE_PREMIUM,
-  vectorHelixSessionSubtitle,
+  vectorLiveHelixSubtitle,
   type VectorHelixFlowFilters,
   type VectorHelixTypeFilter,
 } from "@/features/vector/lib/vector-helix-flows";
@@ -40,14 +39,10 @@ function SignalPill({ label, tone }: { label: string; tone: string }) {
 
 function FlowCard({
   flow,
-  rank,
-  badge,
   flash,
   onOpen,
 }: {
   flow: FlowAlert;
-  rank?: number;
-  badge?: string;
   flash?: boolean;
   onOpen: (flow: FlowAlert) => void;
 }) {
@@ -64,7 +59,6 @@ function FlowCard({
         "vector-helix-card",
         isCall ? "vector-helix-card--call" : "vector-helix-card--put",
         isWhale && "vector-helix-card--whale",
-        rank === 1 && "vector-helix-card--lead",
         flash && "vector-helix-card--flash"
       )}
       onClick={() => onOpen(flow)}
@@ -72,15 +66,6 @@ function FlowCard({
     >
       <div className="vector-helix-card-top">
         <div className="vector-helix-card-contract">
-          {badge ? (
-            <span className="vector-helix-badge vector-helix-badge--hot" aria-hidden>
-              {badge}
-            </span>
-          ) : rank != null ? (
-            <span className="vector-helix-rank" aria-hidden>
-              #{rank}
-            </span>
-          ) : null}
           <span className={clsx("vector-helix-side", isCall ? "is-call" : "is-put")}>
             {isCall ? "CALL" : "PUT"}
           </span>
@@ -113,7 +98,7 @@ function FlowCard({
   );
 }
 
-/** Vector desk — session Helix: hot recent prints + top-by-premium leaders. */
+/** Vector desk — Live Helix: real-time session tape (no historical backfill). */
 export function VectorHelixRail({ ticker, liveSession }: Props) {
   const normalized = ticker.trim().toUpperCase();
   const { flows, loading, live, flashKeys } = useVectorHelixFlows(normalized, liveSession);
@@ -121,13 +106,11 @@ export function VectorHelixRail({ ticker, liveSession }: Props) {
   const [filters, setFilters] = useState<VectorHelixFlowFilters>(VECTOR_HELIX_DEFAULT_FILTERS);
   const [selected, setSelected] = useState<FlowAlert | null>(null);
 
-  const sessionPick = useMemo(
-    () => pickVectorHelixSessionFlows(flows, filters),
+  const tape = useMemo(
+    () => prepareVectorLiveHelixTape(flows, filters),
     [flows, filters]
   );
-  const { hotNow, sessionLeaders } = sessionPick;
-  const subtitle = vectorHelixSessionSubtitle(sessionPick);
-  const hasAny = hotNow.length > 0 || sessionLeaders.length > 0;
+  const subtitle = vectorLiveHelixSubtitle(tape.length, liveSession);
 
   const setTypeFilter = (typeFilter: VectorHelixTypeFilter) => {
     setFilters((f) => ({ ...f, typeFilter }));
@@ -137,12 +120,12 @@ export function VectorHelixRail({ ticker, liveSession }: Props) {
     `${flow.alert_id ?? flow.alerted_at}-${flow.strike}-${i}`;
 
   return (
-    <section className="vector-helix-rail" aria-label={`${normalized} session flow prints`}>
+    <section className="vector-helix-rail" aria-label={`${normalized} Live Helix`}>
       <header className="vector-helix-head">
         <div className="vector-helix-head-row">
           <div>
-            <p className="vector-helix-kicker">Helix</p>
-            <h2 className="vector-helix-title">{normalized} session flows</h2>
+            <p className="vector-helix-kicker">Live Helix</p>
+            <h2 className="vector-helix-title">{normalized} live tape</h2>
             <p className="vector-helix-subtitle">{subtitle}</p>
           </div>
           <FreshnessChip status={liveSession && live ? "live" : "stale"} label={live ? "LIVE" : "STALE"} />
@@ -157,7 +140,7 @@ export function VectorHelixRail({ ticker, liveSession }: Props) {
       </header>
 
       <div className="vector-helix-controls vector-helix-controls--major">
-        <div className="vector-helix-filters" role="group" aria-label="Filter session flows">
+        <div className="vector-helix-filters" role="group" aria-label="Filter live tape">
           {(["ALL", "CALL", "PUT"] as const).map((side) => (
             <button
               key={side}
@@ -173,47 +156,24 @@ export function VectorHelixRail({ ticker, liveSession }: Props) {
       </div>
 
       <div className="vector-helix-scroll" role="log" aria-live="polite">
-        {loading && !hasAny ? (
-          <p className="vector-helix-empty">Loading session flows…</p>
-        ) : !hasAny ? (
-          <p className="vector-helix-empty">No session flows for {normalized} yet</p>
+        {loading && tape.length === 0 ? (
+          <p className="vector-helix-empty">Connecting Live Helix…</p>
+        ) : tape.length === 0 ? (
+          <p className="vector-helix-empty">
+            {liveSession
+              ? `Waiting for live ${normalized} prints…`
+              : "Session closed — Live Helix resumes at the open"}
+          </p>
         ) : (
-          <div className="vector-helix-sections">
-            {hotNow.length > 0 ? (
-              <div className="vector-helix-section" data-testid="vector-helix-hot-section">
-                <h3 className="vector-helix-section-title">Hot now</h3>
-                <p className="vector-helix-section-kicker">Last {VECTOR_HELIX_HOT_WINDOW_MIN}m · by premium</p>
-                <div className="vector-helix-cards">
-                  {hotNow.map((flow, i) => (
-                    <FlowCard
-                      key={cardKey(flow, i)}
-                      flow={flow}
-                      badge="NOW"
-                      flash={flashKeys.has(flowDedupeKey(flow))}
-                      onOpen={setSelected}
-                    />
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            {sessionLeaders.length > 0 ? (
-              <div className="vector-helix-section" data-testid="vector-helix-leaders-section">
-                <h3 className="vector-helix-section-title">Top by premium</h3>
-                <p className="vector-helix-section-kicker">Session leaders</p>
-                <div className="vector-helix-cards">
-                  {sessionLeaders.map((flow, i) => (
-                    <FlowCard
-                      key={cardKey(flow, i)}
-                      flow={flow}
-                      rank={i + 1}
-                      flash={flashKeys.has(flowDedupeKey(flow))}
-                      onOpen={setSelected}
-                    />
-                  ))}
-                </div>
-              </div>
-            ) : null}
+          <div className="vector-helix-cards" data-testid="vector-helix-live-tape">
+            {tape.map((flow, i) => (
+              <FlowCard
+                key={cardKey(flow, i)}
+                flow={flow}
+                flash={flashKeys.has(flowDedupeKey(flow))}
+                onOpen={setSelected}
+              />
+            ))}
           </div>
         )}
       </div>
