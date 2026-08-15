@@ -8571,6 +8571,37 @@ body::before {
     text-transform: uppercase;
   }
 
+  .vector-helix-subtitle {
+    margin: 0.15rem 0 0;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 0.58rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: rgb(125, 211, 252);
+  }
+
+  .vector-helix-controls--major {
+    padding: 0.35rem 0.65rem 0.4rem;
+  }
+
+  .vector-helix-rank {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.35rem;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 0.58rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    color: rgb(125, 211, 252);
+    opacity: 0.85;
+  }
+
+  .vector-helix-card--lead {
+    border-color: rgba(255, 214, 10, 0.45);
+    box-shadow: 0 0 14px rgba(255, 214, 10, 0.12);
+  }
+
   .vector-helix-open-full {
     display: inline-block;
     margin-top: 0.35rem;
