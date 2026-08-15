@@ -180,6 +180,7 @@ export function VectorComparePane({
           toolbarHideLinkedControls={toolbarHideLinkedControls}
           suppressRegimeBanner
           hideVolumePane
+          compareCompactBeads
           onCompareRegimeChange={handleRegime}
           onCompareSpotChange={handleSpot}
           compareDefaultLens={linked ? linkedLens : undefined}

@@ -151,9 +151,10 @@ test("the chart passes real spot into the picker at every bead call site", () =>
   // paths are separate call sites and it would be easy to update only one.
   const src = readFileSync("src/features/vector/components/VectorChart.tsx", "utf8");
   assert.match(src, /pickActiveStrikes\(trailMap, maxStrikes, \{ spot \}\)/, "picker receives spot");
-  const passes = src.match(/^\s*spotRef\.current$/gm) ?? [];
+  const passes = src.match(/^\s*spotRef\.current,?\s*$/gm) ?? [];
   assert.ok(
     passes.length >= 4,
     `all 4 applyWallBeadMarkers call sites (2 live + 2 replay) must pass spot, found ${passes.length}`
   );
+  assert.match(src, /compareCompactBeadsRef\.current/, "compare compact beads threaded to bead markers");
 });

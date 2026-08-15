@@ -41,6 +41,9 @@ export const NEAREST_WALL_VIEW_MAX_PCT = 0.12;
  *  already curated (top-N by strength per side), so revealing all of it is intended, not noise. */
 export const BEAD_VIEW_MAX_PCT = 0.2;
 
+/** Compare 4-up: slightly wider bead autoscale so more strike rows stay in frame when panes are short. */
+export const COMPARE_BEAD_VIEW_MAX_PCT = 0.24;
+
 export function extendRangeForWalls(
   base: PriceRange,
   spot: number | null | undefined,

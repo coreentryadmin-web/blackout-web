@@ -31,6 +31,50 @@ export const HALF_PX_MAX = 7.5;
 export const FILL_ALPHA_MIN = 0.6;
 export const FILL_ALPHA_MAX = 0.98;
 
+/** Render profile — Compare panes are ~¼ height; default bead sizing paints over candles. */
+export type WallBeadRenderProfile = "default" | "compare";
+
+export type BeadRenderTuning = {
+  halfMin: number;
+  halfMax: number;
+  fillMin: number;
+  fillMax: number;
+  /** King radius multiplier in the canvas draw pass. */
+  kingBoost: number;
+  /** Extra draw-time alpha scale (on top of fillAlpha). */
+  drawAlphaMul: number;
+  minRadiusPx: number;
+  /** King halo radius/opacity scale. */
+  kingHaloMul: number;
+};
+
+export const BEAD_TUNING_DEFAULT: BeadRenderTuning = {
+  halfMin: HALF_PX_MIN,
+  halfMax: HALF_PX_MAX,
+  fillMin: FILL_ALPHA_MIN,
+  fillMax: FILL_ALPHA_MAX,
+  kingBoost: 0.22,
+  drawAlphaMul: 1,
+  minRadiusPx: 1.6,
+  kingHaloMul: 1,
+};
+
+/** ~55% bead radius, ~45% opacity — keeps level rails readable without burying candles. */
+export const BEAD_TUNING_COMPARE: BeadRenderTuning = {
+  halfMin: 1.35,
+  halfMax: 4,
+  fillMin: 0.24,
+  fillMax: 0.55,
+  kingBoost: 0.1,
+  drawAlphaMul: 0.88,
+  minRadiusPx: 1,
+  kingHaloMul: 0.35,
+};
+
+export function beadRenderTuning(profile: WallBeadRenderProfile = "default"): BeadRenderTuning {
+  return profile === "compare" ? BEAD_TUNING_COMPARE : BEAD_TUNING_DEFAULT;
+}
+
 const HEX_6 = /^#[0-9a-fA-F]{6}$/;
 const HEX_3 = /^#[0-9a-fA-F]{3}$/;
 
@@ -75,16 +119,25 @@ export function withA(color: string, a: number): string {
  * usable magnitude at all (pct <= 0 / non-finite) drop to the frame-relative half-height, so
  * off-hours or degraded data still renders a rail instead of collapsing to the floor.
  */
-export function targetHalfPx(pct: number, notional: number | undefined, maxPct: number): number {
+export function targetHalfPx(
+  pct: number,
+  notional: number | undefined,
+  maxPct: number,
+  tuning: BeadRenderTuning = BEAD_TUNING_DEFAULT
+): number {
   const usd =
     Number.isFinite(notional) && (notional as number) > 0 ? (notional as number) : pctToNotionalProxy(pct);
-  if (usd > 0) return beadRadiusForNotional(usd, { floorPx: HALF_PX_MIN, ceilPx: HALF_PX_MAX });
-  return HALF_PX_MIN + relStrengthT(pct, maxPct) * (HALF_PX_MAX - HALF_PX_MIN);
+  if (usd > 0) return beadRadiusForNotional(usd, { floorPx: tuning.halfMin, ceilPx: tuning.halfMax });
+  return tuning.halfMin + relStrengthT(pct, maxPct) * (tuning.halfMax - tuning.halfMin);
 }
 
 /** Bead fill opacity from its strength relative to the strongest wall in frame. */
-export function fillAlpha(pct: number, maxPct: number): number {
-  return FILL_ALPHA_MIN + relStrengthT(pct, maxPct) * (FILL_ALPHA_MAX - FILL_ALPHA_MIN);
+export function fillAlpha(
+  pct: number,
+  maxPct: number,
+  tuning: BeadRenderTuning = BEAD_TUNING_DEFAULT
+): number {
+  return tuning.fillMin + relStrengthT(pct, maxPct) * (tuning.fillMax - tuning.fillMin);
 }
 
 /**

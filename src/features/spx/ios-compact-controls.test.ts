@@ -68,6 +68,15 @@ test("compare panes hide volume sub-pane for taller beads", () => {
   assert.match(chart, /hideVolumePaneRef\.current\)/);
 });
 
+test("compare panes use compact bead profile", () => {
+  const pane = readFileSync(join(root, "src/features/vector/components/VectorComparePane.tsx"), "utf8");
+  assert.match(pane, /compareCompactBeads/);
+  const core = readFileSync(join(root, "src/features/vector/lib/vector-wall-rail-core.ts"), "utf8");
+  assert.match(core, /BEAD_TUNING_COMPARE/);
+  const primitive = readFileSync(join(root, "src/features/vector/lib/vector-wall-rail-primitive.ts"), "utf8");
+  assert.match(primitive, /profile === "compare" \? "bottom"/);
+});
+
 test("compare linked crosshair sync wiring", () => {
   const desk = readFileSync(join(root, "src/features/vector/components/VectorCompareDesk.tsx"), "utf8");
   assert.match(desk, /handleCompareCrosshair/);

@@ -5,7 +5,9 @@ import {
   FILL_ALPHA_MIN,
   HALF_PX_MAX,
   HALF_PX_MIN,
+  BEAD_TUNING_DEFAULT,
   beadKey,
+  beadRenderTuning,
   fillAlpha,
   kingKey,
   kingStrikeByTime,
@@ -85,6 +87,14 @@ test("targetHalfPx: a real notional overrides the pct proxy", () => {
   const small = targetHalfPx(10, 1e3, 100);
   const large = targetHalfPx(10, 1e12, 100);
   assert.ok(large > small, `expected the larger notional to draw larger (${large} vs ${small})`);
+});
+
+test("compare bead profile shrinks radius and alpha vs default", () => {
+  const compare = beadRenderTuning("compare");
+  assert.ok(compare.halfMax < BEAD_TUNING_DEFAULT.halfMax);
+  assert.ok(compare.fillMax < BEAD_TUNING_DEFAULT.fillMax);
+  assert.ok(targetHalfPx(50, undefined, 100, compare) < targetHalfPx(50, undefined, 100));
+  assert.ok(fillAlpha(50, 100, compare) < fillAlpha(50, 100));
 });
 
 // ── fillAlpha ────────────────────────────────────────────────────────────────
