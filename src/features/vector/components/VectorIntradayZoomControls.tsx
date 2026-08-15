@@ -11,6 +11,10 @@ type Props = {
   disabled?: boolean;
   comparePane?: boolean;
   onZoom: (preset: IntradayZoomPreset) => void;
+  /** Override for compare command-bar sync row. */
+  ariaLabel?: string;
+  testIdPrefix?: string;
+  className?: string;
 };
 
 const PRESETS: { id: IntradayZoomPreset; label: string; title: string }[] = [
@@ -25,13 +29,16 @@ export function VectorIntradayZoomControls({
   disabled = false,
   comparePane = false,
   onZoom,
+  ariaLabel = "Chart zoom preset",
+  testIdPrefix = "vector-intraday-zoom",
+  className,
 }: Props) {
   return (
     <div
-      className="vector-intraday-zoom"
+      className={clsx("vector-intraday-zoom", className)}
       role="group"
-      aria-label="Chart zoom preset"
-      data-testid="vector-intraday-zoom"
+      aria-label={ariaLabel}
+      data-testid={testIdPrefix}
     >
       {PRESETS.map((p) => {
         const shortcut = intradayZoomShortcutLabel(p.id, comparePane);
@@ -44,7 +51,7 @@ export function VectorIntradayZoomControls({
             aria-keyshortcuts={shortcut}
             disabled={disabled}
             title={`${p.title} (${shortcut})`}
-            data-testid={`vector-intraday-zoom-${p.id}`}
+            data-testid={`${testIdPrefix}-${p.id}`}
             onClick={() => onZoom(p.id)}
           >
             {p.label}

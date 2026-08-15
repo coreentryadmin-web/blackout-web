@@ -34,6 +34,7 @@ import {
 } from "@/features/vector/lib/vector-compare-replay";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import type { VectorCompareChartSyncBind } from "@/features/vector/lib/vector-compare-sync";
+import type { IntradayZoomPreset } from "@/features/vector/lib/vector-candle-render";
 
 type Props = {
   initialSeeds: VectorClientSeed[];
@@ -170,6 +171,8 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
   const [rangeSync, setRangeSync] = useState<{ sourceId: string; fromSec: number; toSec: number } | null>(
     null
   );
+  const [syncZoomPreset, setSyncZoomPreset] = useState<IntradayZoomPreset | null>(null);
+  const [syncZoomPresetTick, setSyncZoomPresetTick] = useState(0);
 
   const handleCompareCrosshair = useCallback(
     (paneId: string, timeSec: number | null) => {
@@ -199,8 +202,19 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
         ? { ...crosshairSync, tick: crosshairSyncTick }
         : null,
       visibleRange: rangeSync ? { ...rangeSync, tick: rangeSyncTick } : null,
+      zoomPreset:
+        syncZoomPreset != null ? { preset: syncZoomPreset, tick: syncZoomPresetTick } : null,
     };
-  }, [canLinkTime, linkedZoom, crosshairSync, crosshairSyncTick, rangeSync, rangeSyncTick]);
+  }, [
+    canLinkTime,
+    linkedZoom,
+    crosshairSync,
+    crosshairSyncTick,
+    rangeSync,
+    rangeSyncTick,
+    syncZoomPreset,
+    syncZoomPresetTick,
+  ]);
 
   const paneCompareSync = useCallback(
     (ticker: string): VectorCompareChartSyncBind | null => {
@@ -226,6 +240,15 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
     setSyncFlash(true);
     window.setTimeout(() => setSyncFlash(false), 420);
   }, []);
+
+  const applySyncZoomPreset = useCallback(
+    (preset: IntradayZoomPreset) => {
+      setSyncZoomPreset(preset);
+      setSyncZoomPresetTick((t) => t + 1);
+      bumpSync();
+    },
+    [bumpSync]
+  );
 
   const enterFocusExpand = useCallback(
     (ticker?: string) => {
@@ -463,6 +486,8 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
           addExclude={exclude}
           addDisabled={loadingTickers.size > 0}
           onAddSymbol={(t) => void loadTicker(t)}
+          syncZoomPreset={syncZoomPreset}
+          onSyncZoomPreset={applySyncZoomPreset}
         />
 
         <div className="vector-compare-mobile-gate" role="status">

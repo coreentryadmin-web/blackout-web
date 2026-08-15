@@ -14,6 +14,8 @@ import { VectorCompareAddSlot } from "@/features/vector/components/VectorCompare
 import type { VectorDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
 import type { VectorTimeframeMinutes } from "@/features/vector/lib/vector-bar-timeframes";
 import type { VectorWallLens } from "@/features/vector/lib/vector-wall-history";
+import { VectorIntradayZoomControls } from "@/features/vector/components/VectorIntradayZoomControls";
+import type { IntradayZoomPreset } from "@/features/vector/lib/vector-candle-render";
 
 export type VectorCompareLinkedReplayProps = {
   mode: boolean;
@@ -58,6 +60,8 @@ type Props = {
   addExclude: Set<string>;
   addDisabled?: boolean;
   onAddSymbol: (ticker: string) => void;
+  syncZoomPreset: IntradayZoomPreset | null;
+  onSyncZoomPreset: (preset: IntradayZoomPreset) => void;
 };
 
 export function VectorCompareCommandBar({
@@ -84,6 +88,8 @@ export function VectorCompareCommandBar({
   addExclude,
   addDisabled,
   onAddSymbol,
+  syncZoomPreset,
+  onSyncZoomPreset,
 }: Props) {
   return (
     <header className="vector-compare-command">
@@ -148,6 +154,16 @@ export function VectorCompareCommandBar({
           >
             Sync zoom
           </button>
+        ) : null}
+        {canLinkTime ? (
+          <VectorIntradayZoomControls
+            active={syncZoomPreset}
+            disabled={!linked}
+            onZoom={onSyncZoomPreset}
+            ariaLabel="Sync zoom preset to all panes"
+            testIdPrefix="vector-compare-sync-zoom"
+            className="vector-compare-sync-zoom-preset"
+          />
         ) : null}
       </div>
 

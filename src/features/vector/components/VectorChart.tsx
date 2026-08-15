@@ -1682,6 +1682,15 @@ export function VectorChart({
     [syncCandleViewportFromRange]
   );
 
+  const handleIntradayZoomRef = useRef(handleIntradayZoom);
+  handleIntradayZoomRef.current = handleIntradayZoom;
+
+  useEffect(() => {
+    const payload = compareSync?.zoomPreset;
+    if (!chartReady || !payload) return;
+    handleIntradayZoomRef.current(payload.preset);
+  }, [chartReady, compareSync?.zoomPreset?.tick]);
+
   const syncCandleViewportFromRangeRef = useRef(syncCandleViewportFromRange);
   syncCandleViewportFromRangeRef.current = syncCandleViewportFromRange;
 
