@@ -88,6 +88,14 @@ test("VectorCompare: sync zoom preset command bar wired", () => {
   assert.match(read("src/features/vector/lib/vector-compare-sync.ts"), /VectorCompareZoomPresetSync/);
 });
 
+test("VectorChart: member drawing tools wired", () => {
+  const src = read("src/features/vector/components/VectorChart.tsx");
+  assert.match(src, /VectorDrawToolbar/);
+  assert.match(src, /UserDrawingsPrimitive/);
+  assert.match(src, /useVectorChartDrawings/);
+  assert.match(read("src/features/vector/lib/vector-drawings-store.ts"), /vector:drawings:v1:/);
+});
+
 test("VectorChart: manual zoom/pan blocks programmatic session refits", () => {
   const src = read("src/features/vector/components/VectorChart.tsx");
   assert.match(src, /function memberViewportLocked/);
