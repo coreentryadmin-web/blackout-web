@@ -6,8 +6,8 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useIosNativeShell } from "@/hooks/useIosNativeShell";
 import { getIosRouteKey, getIosToolRouteIndex } from "@/lib/ios-tool-routes";
 
-const SPRING = { type: "spring" as const, stiffness: 420, damping: 38, mass: 0.88 };
-const FADE = { duration: 0.28, ease: [0.22, 1, 0.36, 1] as const };
+const SPRING = { type: "spring" as const, stiffness: 520, damping: 42, mass: 0.72 };
+const FADE = { duration: 0.16, ease: [0.22, 1, 0.36, 1] as const };
 
 type Props = {
   children: React.ReactNode;
@@ -64,7 +64,7 @@ export function IosNativePageTransition({ children }: Props) {
           opacity: 1,
           x: 0,
           y: 0,
-          filter: "blur(0px)",
+          filter: "none",
         }}
         exit={{
           opacity: utility ? 0.92 : 0.85,

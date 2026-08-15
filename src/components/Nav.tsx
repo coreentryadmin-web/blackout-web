@@ -258,7 +258,7 @@ export function Nav({
       data-scrolled={!isHome ? "true" : "false"}
       initial={isHome && !reduced ? { opacity: 0, y: -20 } : undefined}
       animate={isHome && !reduced ? { opacity: 1, y: 0 } : undefined}
-      transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+      transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
       className={clsx("nav-bar", iosToolChrome && "nav-bar-ios-tool")}
     >
       <div className="nav-surface" aria-hidden>
@@ -311,11 +311,10 @@ export function Nav({
                   id="nav-mega"
                   role="menu"
                   className="nav-mega"
-                  initial={reduced ? { opacity: 0 } : { opacity: 0, y: -8, scale: 0.98 }}
-                  animate={reduced ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
-                  exit={reduced ? { opacity: 0 } : { opacity: 0, y: -8, scale: 0.98 }}
-                  transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-                  style={{ transformOrigin: "top" }}
+                  initial={reduced ? { opacity: 0 } : { opacity: 0, y: -6 }}
+                  animate={reduced ? { opacity: 1 } : { opacity: 1, y: 0 }}
+                  exit={reduced ? { opacity: 0 } : { opacity: 0, y: -6 }}
+                  transition={{ duration: 0.12, ease: [0.22, 1, 0.36, 1] }}
                 >
                   <div className="nav-mega-head">
                     <span className="nav-mega-kicker font-mono">Six instruments · one desk</span>

@@ -836,6 +836,34 @@ body::before {
   body::before { animation: none; opacity: 0.8; }
 }
 
+/* Product desks (SPX, HELIX, Thermal, Vector, …): hold a calm static frame instead of
+   three infinite CSS loops (body breathe + pulse wash + EKG trace). Premium = instant
+   paint and zero idle GPU work while charts/matrices render. Marketing pages keep motion. */
+html.product-shell body::before {
+  animation: none;
+  opacity: 0.78;
+  will-change: auto;
+}
+
+html.product-shell .market-pulse-wash {
+  animation: none;
+}
+
+html.product-shell .market-pulse-ekg::after {
+  animation: none;
+  opacity: 0;
+}
+
+html.product-shell .nav-pill {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+html.product-shell .nav-mega {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
 /* ── VITALS Phase 3 — Micro-interactions ────────────────────────────────────
    Card appear: slide-up + fade-in for panels/cards on mount.
    Nav underline: thin cyan bar slides in from left on hover.
