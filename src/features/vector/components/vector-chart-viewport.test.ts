@@ -24,12 +24,24 @@ test("/vector page preloads 0DTE rail and opens on session viewport for oracle t
 test("VectorChart: session viewport defers live-edge scroll until member pans", () => {
   const src = read("src/features/vector/components/VectorChart.tsx");
   assert.match(src, /liveFollowEnabledRef/);
-  assert.match(src, /defaultChartViewport === "live"/);
+  assert.match(src, /defaultChartViewport = "session"/);
   assert.match(src, /maybeScrollToLive\(chart, liveFollowEnabledRef\.current\)/);
   assert.match(src, /pinLiveAnchorBeads/);
   assert.match(src, /fitSessionOverview/);
   assert.match(src, /applySessionOverviewViewport/);
   assert.match(src, /wantsSessionOverviewViewport/);
+});
+
+test("VectorChart: session overview blocks live-follow flip and auto-coarsen", () => {
+  const src = read("src/features/vector/components/VectorChart.tsx");
+  assert.match(src, /sessionOverviewActive/);
+  assert.match(src, /intradayZoomPresetRef/);
+  assert.match(
+    src,
+    /preset === "session"[\s\S]{0,120}defaultChartViewportRef\.current === "session"/
+  );
+  assert.match(src, /if \(sessionOverviewActive\(\)\) return;/);
+  assert.match(src, /chartUserPannedRef\.current = false/);
 });
 
 test("VectorChart: candle render spacing, borders, and zoom presets wired", () => {

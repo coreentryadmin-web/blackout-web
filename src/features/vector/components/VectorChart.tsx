@@ -1263,7 +1263,7 @@ export function VectorChart({
   regimeSlot,
   defaultDteHorizon,
   defaultTimeframe,
-  defaultChartViewport = "live",
+  defaultChartViewport = "session",
   onPriceScaleRender,
   focusLevel,
   playLevels,
@@ -1618,7 +1618,15 @@ export function VectorChart({
   const timeframeUserLockedRef = useRef(false);
   const autoCoarsenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const overlayDimRef = useRef(1);
-  const [intradayZoomPreset, setIntradayZoomPreset] = useState<IntradayZoomPreset | null>(null);
+  const [intradayZoomPreset, setIntradayZoomPreset] = useState<IntradayZoomPreset | null>(
+    defaultChartViewport === "session" ? "session" : null
+  );
+  const intradayZoomPresetRef = useRef<IntradayZoomPreset | null>(
+    defaultChartViewport === "session" ? "session" : null
+  );
+  useEffect(() => {
+    intradayZoomPresetRef.current = intradayZoomPreset;
+  }, [intradayZoomPreset]);
   const setTimeframe = useCallback((next: VectorTimeframeMinutes) => {
     timeframeUserLockedRef.current = true;
     setTimeframeState(next);
@@ -1658,6 +1666,16 @@ export function VectorChart({
     wallRailPrimitiveRef.current?.setOverlayDim(dim);
   }, []);
 
+  const sessionOverviewActive = useCallback((): boolean => {
+    const preset = intradayZoomPresetRef.current;
+    if (preset === "live" || preset === "structure") return false;
+    if (preset === "session") return true;
+    return wantsSessionOverviewViewport(
+      defaultChartViewportRef.current,
+      liveFollowEnabledRef.current
+    );
+  }, []);
+
   const syncCandleViewportFromRange = useCallback(
     (chart: IChartApi) => {
       const range = chart.timeScale().getVisibleLogicalRange();
@@ -1670,6 +1688,9 @@ export function VectorChart({
         })
       );
       chart.timeScale().applyOptions(adaptiveBarSpacingForZoom(count));
+      // Session overview intentionally shows the whole day — auto-coarsen to 1H was collapsing
+      // the tape to a handful of candles and hiding the intraday bead rail the member expects.
+      if (sessionOverviewActive()) return;
       if (timeframeUserLockedRef.current || replayModeRef.current) return;
       const coarser = coarserTimeframeIfZoomedOut(count, timeframeRef.current);
       if (coarser == null) return;
@@ -1678,30 +1699,42 @@ export function VectorChart({
         if (timeframeRef.current !== coarser) setTimeframeState(coarser);
       }, 650);
     },
-    [applyOverlayDim, compareFourUp, compareFourUpBackground]
+    [applyOverlayDim, compareFourUp, compareFourUpBackground, sessionOverviewActive]
   );
 
   const handleIntradayZoom = useCallback(
     (preset: IntradayZoomPreset) => {
       const chart = chartRef.current;
       if (!chart) return;
-      chartUserPannedRef.current = true;
       setIntradayZoomPreset(preset);
+      intradayZoomPresetRef.current = preset;
       const display = displayBarsFromMinute(minuteBarsRef.current, timeframeRef.current);
       const barCount = display.length;
       if (preset === "session") {
-        applySessionOverviewViewport(chart, display);
+        // Session reset is programmatic — must not lock the viewport (would block refits + full-day beads).
+        chartUserPannedRef.current = false;
+        wheelZoomCooldownRef.current = 0;
+        // Auto-coarsen can step up to 1H (~7 bars/session) — restore the desk default on Session.
+        const sessionTf =
+          !timeframeUserLockedRef.current && timeframeRef.current !== initialTimeframe
+            ? initialTimeframe
+            : timeframeRef.current;
+        if (sessionTf !== timeframeRef.current) setTimeframeState(sessionTf);
+        const sessionDisplay = displayBarsFromMinute(minuteBarsRef.current, sessionTf);
+        applySessionOverviewViewport(chart, sessionDisplay);
         chart.timeScale().applyOptions({
           ...vectorTimeScaleSpacingOptions(),
           shiftVisibleRangeOnNewBar: false,
         });
         liveFollowEnabledRef.current = false;
       } else if (preset === "structure") {
+        chartUserPannedRef.current = true;
         const range = structureVisibleLogicalRange(barCount);
         if (range) chart.timeScale().setVisibleLogicalRange(range);
         chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
         liveFollowEnabledRef.current = false;
       } else {
+        chartUserPannedRef.current = true;
         const range = liveEdgeVisibleLogicalRange(barCount);
         if (range) chart.timeScale().setVisibleLogicalRange(range);
         liveFollowEnabledRef.current = true;
@@ -1709,7 +1742,7 @@ export function VectorChart({
       }
       syncCandleViewportFromRange(chart);
     },
-    [syncCandleViewportFromRange]
+    [syncCandleViewportFromRange, initialTimeframe]
   );
 
   const handleIntradayZoomRef = useRef(handleIntradayZoom);
@@ -3686,6 +3719,15 @@ export function VectorChart({
     }
 
     const enableLiveFollowIfAtEdge = () => {
+      // Session overview parks the right edge at the latest bar — that reads as "at live edge"
+      // but must NOT flip into live-follow (trims bead rail to ~45m and collapses the full-day view).
+      const preset = intradayZoomPresetRef.current;
+      if (
+        preset === "session" ||
+        (preset == null && defaultChartViewportRef.current === "session")
+      ) {
+        return;
+      }
       if (liveFollowEnabledRef.current || !chartUserPannedRef.current) return;
       if (!chartIsFollowingLive(chart)) return;
       liveFollowEnabledRef.current = true;
