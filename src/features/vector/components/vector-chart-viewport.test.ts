@@ -78,6 +78,16 @@ test("VectorChart: flow confluence candle pulse wired", () => {
   assert.match(read("src/features/vector/components/VectorPageShell.tsx"), /handleHelixFlowFlash/);
 });
 
+test("VectorCompare: sync zoom preset command bar wired", () => {
+  assert.match(
+    read("src/features/vector/components/VectorCompareCommandBar.tsx"),
+    /vector-compare-sync-zoom/
+  );
+  assert.match(read("src/features/vector/components/VectorCompareDesk.tsx"), /applySyncZoomPreset/);
+  assert.match(read("src/features/vector/components/VectorChart.tsx"), /compareSync\?\.zoomPreset/);
+  assert.match(read("src/features/vector/lib/vector-compare-sync.ts"), /VectorCompareZoomPresetSync/);
+});
+
 test("VectorChart: manual zoom/pan blocks programmatic session refits", () => {
   const src = read("src/features/vector/components/VectorChart.tsx");
   assert.match(src, /function memberViewportLocked/);

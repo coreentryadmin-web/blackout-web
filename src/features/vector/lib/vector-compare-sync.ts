@@ -1,3 +1,5 @@
+import type { IntradayZoomPreset } from "@/features/vector/lib/vector-candle-render";
+
 /** Compare desk broadcasts crosshair + visible range by session epoch seconds. */
 export type VectorCompareCrosshairSync = {
   sourceId: string;
@@ -12,12 +14,19 @@ export type VectorCompareRangeSync = {
   tick: number;
 };
 
+/** Command-bar zoom preset broadcast — all panes apply Session/Structure/Live together. */
+export type VectorCompareZoomPresetSync = {
+  preset: IntradayZoomPreset;
+  tick: number;
+};
+
 export type VectorCompareChartSyncBind = {
   paneId: string;
   linkCrosshair: boolean;
   linkZoom: boolean;
   crosshair: VectorCompareCrosshairSync | null;
   visibleRange: VectorCompareRangeSync | null;
+  zoomPreset: VectorCompareZoomPresetSync | null;
 };
 
 /** Close price at or before a unix-second cursor (for setCrosshairPosition). */

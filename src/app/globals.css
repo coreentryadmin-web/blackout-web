@@ -9558,6 +9558,19 @@ body::before {
     cursor: not-allowed;
   }
 
+  .vector-compare-sync-zoom-preset.vector-intraday-zoom {
+    gap: 4px;
+    padding: 2px;
+    border: 1px solid rgba(34, 211, 238, 0.14);
+    border-radius: 8px;
+    background: rgba(4, 4, 7, 0.55);
+  }
+  .vector-compare-sync-zoom-preset .vector-intraday-zoom-btn {
+    min-width: 4.6rem;
+    padding: 5px 8px;
+    font-size: 10px;
+  }
+
   .vector-compare-pane {
     display: flex;
     flex-direction: column;
