@@ -172,6 +172,172 @@
 .nav-join:hover .cta-arrow { transform: translateX(4px); }
 .nav-join:active { transform: scale(0.95); }
 
+/* Smooth in-page anchors + fixed-nav offset (marketing shell only) */
+.landing-page {
+  scroll-padding-top: 4.75rem;
+}
+@media (prefers-reduced-motion: no-preference) {
+  html:has(.landing-page) {
+    scroll-behavior: smooth;
+  }
+}
+.rl [id="modules"],
+.rl [id="protocol"],
+.rl [id="pricing"],
+.rl [id="faq"],
+.rl [id="academy"],
+.rl [id="edge"] {
+  scroll-margin-top: 5rem;
+}
+
+/* Scroll progress under fixed nav */
+.mkt-scroll-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  z-index: 60;
+  transform-origin: 0 50%;
+  background: linear-gradient(90deg, #a3e635, #22d3ee);
+  pointer-events: none;
+  opacity: 0.85;
+}
+
+/* ── Mobile nav menu ── */
+.mkt-nav-menu-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  margin-left: auto;
+  margin-right: 0.35rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.04);
+  color: #fff;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.mkt-nav-menu-btn:hover {
+  border-color: rgba(163, 230, 53, 0.35);
+  background: rgba(163, 230, 53, 0.08);
+}
+.mkt-nav-menu-btn:focus-visible {
+  outline: 2px solid rgba(163, 230, 53, 0.6);
+  outline-offset: 2px;
+}
+@media (min-width: 768px) {
+  .mkt-nav-menu-btn {
+    display: none;
+  }
+}
+.mkt-nav-menu-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 18px;
+}
+.mkt-nav-menu-bars span {
+  display: block;
+  height: 2px;
+  border-radius: 1px;
+  background: currentColor;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+.mkt-nav-menu-btn[aria-expanded="true"] .mkt-nav-menu-bars span:nth-child(1) {
+  transform: translateY(7px) rotate(45deg);
+}
+.mkt-nav-menu-btn[aria-expanded="true"] .mkt-nav-menu-bars span:nth-child(2) {
+  opacity: 0;
+}
+.mkt-nav-menu-btn[aria-expanded="true"] .mkt-nav-menu-bars span:nth-child(3) {
+  transform: translateY(-7px) rotate(-45deg);
+}
+
+.mkt-mobile-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  border: 0;
+  background: rgba(4, 4, 7, 0.72);
+  cursor: pointer;
+}
+.mkt-mobile-menu {
+  position: fixed;
+  top: 3.65rem;
+  left: 0.75rem;
+  right: 0.75rem;
+  z-index: 55;
+  max-height: calc(100dvh - 5rem);
+  overflow-y: auto;
+  border: 1px solid rgba(163, 230, 53, 0.14);
+  border-radius: 0.75rem;
+  background: rgba(6, 10, 18, 0.96);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+  padding: 1rem 1.1rem 1.25rem;
+  opacity: 0;
+  transform: translateY(-8px) scale(0.98);
+  pointer-events: none;
+  transition: opacity 0.22s ease, transform 0.22s ease;
+}
+.mkt-mobile-menu.is-open {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+.mkt-mobile-menu-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.mkt-mobile-menu-nav a {
+  display: flex;
+  align-items: center;
+  min-height: 2.75rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 0.45rem;
+  font-family: var(--font-syne), system-ui, sans-serif;
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.88);
+  text-decoration: none;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.mkt-mobile-menu-nav a:hover,
+.mkt-mobile-menu-nav a:focus-visible {
+  background: rgba(163, 230, 53, 0.1);
+  color: #a3e635;
+  outline: none;
+}
+.mkt-mobile-menu-auth {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+@media (min-width: 768px) {
+  .mkt-mobile-menu,
+  .mkt-mobile-menu-backdrop {
+    display: none !important;
+  }
+}
+html.mkt-menu-open {
+  overflow: hidden;
+}
+@media (max-width: 767px) {
+  /* Header keeps primary CTA; Sign in lives in the drawer to save horizontal space */
+  .mkt-nav-auth .nav-signin {
+    display: none;
+  }
+}
+
 /* Footer watermark */
 .mkt-footer {
   position: relative;
@@ -416,6 +582,10 @@
 
 @media (prefers-reduced-motion: reduce) {
 
+  .nav-join,
+  .mkt-scroll-progress,
+  .mkt-mobile-menu,
+  .mkt-nav-menu-bars span,
   .mkt-grid-drift,
   .mkt-orb,
   .mkt-kicker-dot,

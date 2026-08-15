@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { NavAuthLinks } from "./NavAuthLinks";
+import { MarketingMobileNav, type MarketingNavLink } from "./MarketingMobileNav";
 
 // Anchors must match the real section ids in RedesignHome:
 // #protocol = "Identify. Validate. Execute." (the platform process)
 // #modules  = "Six engines. One edge." (the product carousel)
-const LINKS = [
+export const MARKETING_NAV_LINKS: MarketingNavLink[] = [
   { href: "/#protocol", label: "Platform" },
   { href: "/#modules", label: "Products" },
   { href: "/tools/gamma-snapshot", label: "Free Tool" },
@@ -21,12 +22,13 @@ export function StaticMarketingNav({ signedIn = false }: { signedIn?: boolean })
           BLACKOUT
         </Link>
         <nav className="mkt-nav-links hide-in-ios-app" aria-label="Marketing">
-          {LINKS.map((l) => (
+          {MARKETING_NAV_LINKS.map((l) => (
             <Link key={l.href} href={l.href} prefetch={false} className={l.iosHide ? "hide-in-ios-app" : undefined}>
               {l.label}
             </Link>
           ))}
         </nav>
+        <MarketingMobileNav links={MARKETING_NAV_LINKS} signedIn={signedIn} />
         <div className="mkt-nav-auth">
           {/* Client-reconciled from the __client_uat cookie so the auth chrome is
               correct even on statically-generated / edge-cached marketing pages. */}
