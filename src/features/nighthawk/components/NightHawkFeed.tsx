@@ -1,7 +1,8 @@
 "use client";
 
 import useSWR from "swr";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { clsx } from "clsx";
 import { fetchNightHawkEdition } from "@/lib/api";
 import { ZeroDteDeck, HorizonDeck, LegacyDeck } from "@/features/nighthawk/command-deck/containers";
@@ -30,12 +31,24 @@ import { NIGHTHAWK_GOTO_SWING_EVENT, type NightHawkGotoSwingDetail } from "@/fea
  * empty lane) — see the header comment in `nighthawk-view.ts` for the full note and revival path.
  */
 export function NightHawkFeed({ seed }: { seed?: NightHawkSeedProps | null }) {
+  const router = useRouter();
   const nativeShell = useIosNativeShell();
   // SSR may pass view from ?view=; client still re-reads URL on mount for soft-nav edge cases.
   const [view, setView] = useState<NightHawkView>(seed?.view ?? DEFAULT_NIGHTHAWK_VIEW);
   // Set by a Legacy play's "moved to Swings Open" link (dispatchGotoSwing) — HorizonDeck uses it
   // to auto-select that ticker's row once the SWING view mounts/refetches.
   const [swingFocusTicker, setSwingFocusTicker] = useState<string | null>(null);
+
+  /** Keep App Router URL in sync — raw replaceState breaks <Link> nav after view toggles. */
+  const selectView = useCallback(
+    (next: NightHawkView) => {
+      setView(next);
+      const url = new URL(window.location.href);
+      url.searchParams.set("view", next.toLowerCase());
+      router.replace(url.pathname + url.search, { scroll: false });
+    },
+    [router]
+  );
 
   useEffect(() => {
     const raw = new URLSearchParams(window.location.search).get("view");
@@ -51,15 +64,7 @@ export function NightHawkFeed({ seed }: { seed?: NightHawkSeedProps | null }) {
     }
     window.addEventListener(NIGHTHAWK_GOTO_SWING_EVENT, onGotoSwing);
     return () => window.removeEventListener(NIGHTHAWK_GOTO_SWING_EVENT, onGotoSwing);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  function selectView(next: NightHawkView) {
-    setView(next);
-    const url = new URL(window.location.href);
-    url.searchParams.set("view", next.toLowerCase());
-    window.history.replaceState(null, "", url.toString());
-  }
+  }, [selectView]);
 
   const isLegacy = view === "LEGACY";
   // Legacy edition — fetched ONLY when the Legacy view is active (scope-to-selected rule).

@@ -1815,7 +1815,7 @@ function TickerSwitcher({
       {/* The ONE kept clean spot reference — small, beside the selector. */}
       {showSpot && spot != null && spot > 0 && (
         <span
-          className="flex items-baseline gap-1.5 font-mono"
+          className="pointer-events-none flex items-baseline gap-1.5 font-mono"
           role="status"
           aria-live="polite"
           aria-atomic="true"

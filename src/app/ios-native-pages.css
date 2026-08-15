@@ -421,10 +421,17 @@ html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-heatmap-control-row
 }
 
 html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-heatmap-control-row [role="tablist"] {
-  position: static;
+  position: relative;
+  z-index: 2;
   max-width: 100%;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-heatmap-control-row .thermal-desk-view-tabs {
+  position: relative;
+  z-index: 2;
+  flex-shrink: 0;
 }
 
 html.ios-app.ios-native-shell[data-ios-route="heatmap"] .gex-heatmap-control-row [role="tab"] {
