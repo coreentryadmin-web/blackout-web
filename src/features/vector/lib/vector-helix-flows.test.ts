@@ -2,13 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   filterVectorHelixFlows,
-  pickVectorHelixMajorFlows,
+  pickVectorHelixSessionFlows,
   trimVectorHelixFlowPool,
-  VECTOR_HELIX_MAJOR_MIN_PREMIUM,
-  VECTOR_HELIX_MAJOR_TOP_N,
+  VECTOR_HELIX_HOT_TOP_N,
   VECTOR_HELIX_MIN_PREMIUM,
+  VECTOR_HELIX_SESSION_TOP_N,
   VECTOR_HELIX_WHALE_PREMIUM,
-  vectorHelixMajorSubtitle,
+  vectorHelixSessionSubtitle,
 } from "./vector-helix-flows";
 import type { FlowAlert } from "@/lib/api";
 
@@ -31,8 +31,10 @@ const defaultFilters = {
   typeFilter: "ALL" as const,
   whalesOnly: false,
   dteOnly: false,
-  minPremium: VECTOR_HELIX_MAJOR_MIN_PREMIUM,
+  minPremium: VECTOR_HELIX_MIN_PREMIUM,
 };
+
+const sessionNow = new Date("2026-08-15T15:00:00Z");
 
 test("filterVectorHelixFlows: whales + side + 0DTE", () => {
   const rows = [
@@ -58,31 +60,50 @@ test("filterVectorHelixFlows: whales + side + 0DTE", () => {
   assert.equal(dte0.length, 2);
 });
 
-test("pickVectorHelixMajorFlows: liquid names use $350k+ major tier", () => {
-  const rows = Array.from({ length: 20 }, (_, i) =>
-    flow({ premium: 400_000 + i * 50_000, strike: 900 + i, alerted_at: `2026-08-15T14:${String(i).padStart(2, "0")}:00Z` })
-  );
-  const pick = pickVectorHelixMajorFlows(rows, defaultFilters);
-  assert.equal(pick.tier, "major");
-  assert.equal(pick.flows.length, VECTOR_HELIX_MAJOR_TOP_N);
-  assert.ok(pick.flows.every((r) => r.premium >= VECTOR_HELIX_MAJOR_MIN_PREMIUM));
+test("pickVectorHelixSessionFlows: hot lane surfaces recent prints by premium", () => {
+  const rows = [
+    flow({ premium: 250_000, alerted_at: "2026-08-15T14:55:00Z", strike: 901 }),
+    flow({ premium: 800_000, alerted_at: "2026-08-15T14:50:00Z", strike: 902 }),
+    flow({ premium: 5_000_000, alerted_at: "2026-08-15T10:00:00Z", strike: 903 }),
+  ];
+  const pick = pickVectorHelixSessionFlows(rows, defaultFilters, { now: sessionNow });
+  assert.equal(pick.hotNow.length, 2);
+  assert.equal(pick.hotNow[0]!.premium, 800_000);
+  assert.equal(pick.sessionLeaders.length, 1);
+  assert.equal(pick.sessionLeaders[0]!.premium, 5_000_000);
 });
 
-test("pickVectorHelixMajorFlows: thin tickers fall back to session top prints", () => {
+test("pickVectorHelixSessionFlows: thin tickers rank session leaders without major floor", () => {
   const asts = Array.from({ length: 8 }, (_, i) =>
     flow({
       ticker: "ASTS",
       premium: 210_000 + i * 15_000,
       strike: 20 + i,
-      alerted_at: `2026-08-15T14:${String(i).padStart(2, "0")}:00Z`,
+      alerted_at: `2026-08-15T08:${String(i).padStart(2, "0")}:00Z`,
     })
   );
-  const pick = pickVectorHelixMajorFlows(asts, defaultFilters);
-  assert.equal(pick.tier, "session");
-  assert.equal(pick.flows.length, 8);
-  assert.ok(pick.flows.every((r) => r.premium >= VECTOR_HELIX_MIN_PREMIUM));
-  assert.ok(pick.flows.every((r) => r.premium < VECTOR_HELIX_MAJOR_MIN_PREMIUM));
-  assert.match(vectorHelixMajorSubtitle(pick), /largest today/i);
+  const pick = pickVectorHelixSessionFlows(asts, defaultFilters, { now: sessionNow });
+  assert.equal(pick.hotNow.length, 0);
+  assert.equal(pick.sessionLeaders.length, 8);
+  assert.ok(pick.sessionLeaders.every((r) => r.premium >= VECTOR_HELIX_MIN_PREMIUM));
+  assert.match(vectorHelixSessionSubtitle(pick), /Top 12 by premium · session/);
+});
+
+test("pickVectorHelixSessionFlows: dedupes hot prints from session leaders", () => {
+  const rows = Array.from({ length: 20 }, (_, i) =>
+    flow({
+      premium: 400_000 + i * 50_000,
+      strike: 900 + i,
+      alerted_at: `2026-08-15T14:${String(59 - i).padStart(2, "0")}:00Z`,
+    })
+  );
+  const pick = pickVectorHelixSessionFlows(rows, defaultFilters, { now: sessionNow });
+  assert.equal(pick.hotNow.length, VECTOR_HELIX_HOT_TOP_N);
+  assert.equal(pick.sessionLeaders.length, VECTOR_HELIX_SESSION_TOP_N);
+  const hotKeys = new Set(pick.hotNow.map((f) => `${f.strike}|${f.alerted_at}`));
+  for (const leader of pick.sessionLeaders) {
+    assert.ok(!hotKeys.has(`${leader.strike}|${leader.alerted_at}`));
+  }
 });
 
 test("trimVectorHelixFlowPool: keeps premium-ranked cap", () => {

@@ -1,4 +1,5 @@
 import type { FlowAlert } from "@/lib/api";
+import { flowDedupeKey } from "@/features/helix/lib/helix-flow-tape-merge";
 import {
   daysToExpiry,
   sortFlows,
@@ -8,23 +9,17 @@ import {
 
 export const VECTOR_HELIX_MIN_PREMIUM = 200_000;
 export const VECTOR_HELIX_WHALE_PREMIUM = 1_000_000;
-/** How many cards the Vector desk rail shows — a highlight reel, not the full Helix tape. */
-export const VECTOR_HELIX_MAJOR_TOP_N = 12;
-/** Fetch pool size — enough to rank major prints without loading the whole session tape. */
+/** Recent lane — day-traders watch what is hitting now while on beads/walls. */
+export const VECTOR_HELIX_HOT_WINDOW_MIN = 20;
+export const VECTOR_HELIX_HOT_TOP_N = 3;
+/** Session leaders — largest prints today (deduped against hot lane). */
+export const VECTOR_HELIX_SESSION_TOP_N = 12;
+/** @deprecated Alias — session leader cap. */
+export const VECTOR_HELIX_MAJOR_TOP_N = VECTOR_HELIX_SESSION_TOP_N;
+/** Fetch pool size — enough to rank session leaders without loading the full tape. */
 export const VECTOR_HELIX_FETCH_LIMIT = 40;
 /** @deprecated Use VECTOR_HELIX_FETCH_LIMIT — kept for any stale imports. */
 export const VECTOR_HELIX_PAGE_SIZE = VECTOR_HELIX_FETCH_LIMIT;
-/** Preferred premium floor for liquid names (SPX/NVDA). Thin tickers fall back — see pickVectorHelixMajorFlows. */
-export const VECTOR_HELIX_MAJOR_MIN_PREMIUM = 350_000;
-
-export type VectorHelixMajorTier = "major" | "session";
-
-export type VectorHelixMajorPick = {
-  flows: FlowAlert[];
-  /** major = ≥ preferred floor; session = top prints from the $200k fetch pool when nothing clears major. */
-  tier: VectorHelixMajorTier;
-  effectiveMinPremium: number;
-};
 
 export type VectorHelixTypeFilter = "ALL" | "CALL" | "PUT";
 
@@ -39,7 +34,12 @@ export const VECTOR_HELIX_DEFAULT_FILTERS: VectorHelixFlowFilters = {
   typeFilter: "ALL",
   whalesOnly: false,
   dteOnly: false,
-  minPremium: VECTOR_HELIX_MAJOR_MIN_PREMIUM,
+  minPremium: VECTOR_HELIX_MIN_PREMIUM,
+};
+
+export type VectorHelixSessionPick = {
+  hotNow: FlowAlert[];
+  sessionLeaders: FlowAlert[];
 };
 
 function sideAndFlagsFilter(
@@ -57,6 +57,17 @@ function sideAndFlagsFilter(
     }
     return true;
   });
+}
+
+function flowAlertedMs(f: FlowAlert): number {
+  if (!f.alerted_at) return 0;
+  const ms = new Date(f.alerted_at).getTime();
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+function premiumThenTimeDesc(a: FlowAlert, b: FlowAlert): number {
+  if (b.premium !== a.premium) return b.premium - a.premium;
+  return flowAlertedMs(b) - flowAlertedMs(a);
 }
 
 /** Client-side tape filters for the Vector Helix rail (server already scopes ticker). */
@@ -78,47 +89,61 @@ export function sortVectorHelixFlows(
   return sorted;
 }
 
-/** Curated major prints — top N by premium. Uses $350k+ when available; otherwise top session prints (≥$200k). */
-export function pickVectorHelixMajorFlows(
+export type PickVectorHelixSessionOpts = {
+  now?: Date;
+  hotWindowMin?: number;
+  hotTopN?: number;
+  sessionTopN?: number;
+};
+
+/**
+ * Session-wise Vector Helix curation: recent "hot" prints + largest session leaders.
+ * No rigid major floor — thin names still surface their biggest session prints.
+ */
+export function pickVectorHelixSessionFlows(
   flows: readonly FlowAlert[],
   filters: VectorHelixFlowFilters,
-  limit = VECTOR_HELIX_MAJOR_TOP_N
-): VectorHelixMajorPick {
-  const preferredFloor = Math.max(VECTOR_HELIX_MAJOR_MIN_PREMIUM, filters.minPremium);
-  const strict = sideAndFlagsFilter(flows, filters).filter((f) => f.premium >= preferredFloor);
-  const strictTop = sortVectorHelixFlows(strict, "premium", "desc").slice(0, limit);
-  if (strictTop.length > 0) {
-    return {
-      flows: strictTop,
-      tier: "major",
-      effectiveMinPremium: preferredFloor,
-    };
-  }
+  opts: PickVectorHelixSessionOpts = {}
+): VectorHelixSessionPick {
+  const nowMs = (opts.now ?? new Date()).getTime();
+  const windowMs = (opts.hotWindowMin ?? VECTOR_HELIX_HOT_WINDOW_MIN) * 60_000;
+  const hotTopN = opts.hotTopN ?? VECTOR_HELIX_HOT_TOP_N;
+  const sessionTopN = opts.sessionTopN ?? VECTOR_HELIX_SESSION_TOP_N;
 
-  const relaxedFloor = VECTOR_HELIX_MIN_PREMIUM;
-  const relaxed = sideAndFlagsFilter(flows, filters).filter((f) => f.premium >= relaxedFloor);
-  const relaxedTop = sortVectorHelixFlows(relaxed, "premium", "desc").slice(0, limit);
-  return {
-    flows: relaxedTop,
-    tier: "session",
-    effectiveMinPremium: relaxedTop.length > 0 ? relaxedTop[relaxedTop.length - 1]!.premium : relaxedFloor,
-  };
+  const eligible = filterVectorHelixFlows(flows, filters);
+
+  const hotNow = eligible
+    .filter((f) => {
+      const t = flowAlertedMs(f);
+      return t > 0 && nowMs - t <= windowMs;
+    })
+    .sort(premiumThenTimeDesc)
+    .slice(0, hotTopN);
+
+  const hotKeys = new Set(hotNow.map((f) => flowDedupeKey(f)));
+
+  const sessionLeaders = [...eligible]
+    .sort(premiumThenTimeDesc)
+    .filter((f) => !hotKeys.has(flowDedupeKey(f)))
+    .slice(0, sessionTopN);
+
+  return { hotNow, sessionLeaders };
 }
 
-/** Subtitle copy — honest about which floor tier is active. */
-export function vectorHelixMajorSubtitle(pick: VectorHelixMajorPick): string {
-  if (pick.flows.length === 0) return `Top ${VECTOR_HELIX_MAJOR_TOP_N} by premium · session`;
-  if (pick.tier === "major") {
-    return `Top ${VECTOR_HELIX_MAJOR_TOP_N} by premium · ≥${formatHelixPremiumFloor(pick.effectiveMinPremium)}`;
+/** Header subtitle — honest about hot window + session ranking. */
+export function vectorHelixSessionSubtitle(
+  pick: VectorHelixSessionPick,
+  hotWindowMin = VECTOR_HELIX_HOT_WINDOW_MIN
+): string {
+  const hot = pick.hotNow.length;
+  const leaders = pick.sessionLeaders.length;
+  if (hot === 0 && leaders === 0) {
+    return `Hot now · last ${hotWindowMin}m · Top ${VECTOR_HELIX_SESSION_TOP_N} by premium · session`;
   }
-  const top = pick.flows[0]!.premium;
-  return `Top ${VECTOR_HELIX_MAJOR_TOP_N} by premium · largest today (≥${formatHelixPremiumFloor(pick.effectiveMinPremium)})`;
-}
-
-function formatHelixPremiumFloor(n: number): string {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1)}M`;
-  if (n >= 1_000) return `$${Math.round(n / 1_000)}K`;
-  return `$${n}`;
+  const parts: string[] = [];
+  if (hot > 0) parts.push(`Hot now · last ${hotWindowMin}m (${hot})`);
+  if (leaders > 0) parts.push(`Top ${VECTOR_HELIX_SESSION_TOP_N} by premium · session`);
+  return parts.join(" · ");
 }
 
 /** Trim the in-memory pool so live SSE merges do not grow an unbounded full tape. */
