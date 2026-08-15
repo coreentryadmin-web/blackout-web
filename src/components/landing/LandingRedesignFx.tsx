@@ -26,7 +26,8 @@ export function LandingRedesignFx() {
         window.addEventListener("resize", resizeHandler);
         cleanups.push(() => window.removeEventListener("resize", resizeHandler));
 
-        const particles = Array.from({ length: 80 }, () => ({
+        const particleCount = innerWidth < 768 ? 32 : 80;
+        const particles = Array.from({ length: particleCount }, () => ({
           x: Math.random() * innerWidth,
           y: Math.random() * innerHeight,
           vx: (Math.random() - 0.5) * 0.15,

@@ -3,6 +3,7 @@ import { StaticLandingBackdrop } from "./StaticLandingBackdrop";
 import { StaticMarketingNav } from "./StaticMarketingNav";
 import { StaticLandingFooter } from "./StaticLandingFooter";
 import { LazyExitIntentCapture } from "@/components/marketing/LazyExitIntentCapture";
+import { MarketingScrollProgress } from "./MarketingScrollProgress";
 
 type Props = {
   children: ReactNode;
@@ -17,6 +18,7 @@ export function MarketingPageShell({ children, showChart = true, footer = true }
   return (
     <div className="landing-page mkt-page min-h-screen void-bg text-white">
       <StaticLandingBackdrop showChart={showChart} />
+      <MarketingScrollProgress />
       <StaticMarketingNav signedIn={false} />
       <main id="main" className="relative z-10">
         {children}
