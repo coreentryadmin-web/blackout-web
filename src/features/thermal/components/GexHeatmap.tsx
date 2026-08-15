@@ -1794,7 +1794,7 @@ function TickerSwitcher({
 
   return (
     <>
-      <div ref={boxRef} className="relative z-[1] flex items-center gap-2">
+      <div ref={boxRef} className="relative z-[1] flex max-w-full items-center gap-2 overflow-hidden pointer-events-none">
       {/* Compact trigger — active ticker + caret. Opens the search dropdown. */}
       <button
         type="button"
@@ -1803,7 +1803,7 @@ function TickerSwitcher({
         aria-expanded={open}
         aria-label={`Ticker: ${ticker}. Change ticker`}
         className={clsx(
-          "thermal-desk-ticker-trigger inline-flex items-center gap-1.5 px-2.5 py-1.5 outline-none",
+          "thermal-desk-ticker-trigger pointer-events-auto inline-flex items-center gap-1.5 px-2.5 py-1.5 outline-none",
           nativeShell && "gex-ticker-native-trigger min-h-[var(--ios-touch,2.75rem)]"
         )}
       >
