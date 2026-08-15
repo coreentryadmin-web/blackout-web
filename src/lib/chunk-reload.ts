@@ -10,7 +10,7 @@
 
 /** Source-of-truth pattern. Kept as a string so the layout's inline script can embed it verbatim. */
 export const CHUNK_ERROR_PATTERN_SOURCE =
-  "ChunkLoadError|Loading chunk [0-9]+ failed|Loading CSS chunk|Failed to fetch dynamically imported module|error loading dynamically imported module|Refused to execute script|Importing a module script failed";
+  "ChunkLoadError|Loading chunk [0-9]+ failed|Loading CSS chunk|Failed to fetch dynamically imported module|error loading dynamically imported module|Refused to execute script|Refused to apply style|Importing a module script failed";
 
 const CHUNK_ERROR_RE = new RegExp(CHUNK_ERROR_PATTERN_SOURCE, "i");
 
