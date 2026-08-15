@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { extendRangeForWalls, NEAREST_WALL_VIEW_MAX_PCT, BEAD_VIEW_MAX_PCT } from "./vector-price-range";
+import { extendRangeForWalls, NEAREST_WALL_VIEW_MAX_PCT, BEAD_VIEW_MAX_PCT, SESSION_OVERVIEW_MAX_SPAN_PCT, filterStrikesNearSpot, clampPriceRangeSpan } from "./vector-price-range";
 
 // Candle band ~7510–7600 around spot 7575 (the live staging case), put walls far below.
 const base = { minValue: 7510, maxValue: 7600 };
@@ -83,4 +83,21 @@ test("BEAD_VIEW_MAX_PCT still bounds a pathologically far bead so candles aren't
   const out = extendRangeForWalls(candle, spot, [140], [60], BEAD_VIEW_MAX_PCT, BEAD_VIEW_MAX_PCT);
   assert.ok(out.maxValue < 140, "a +40% outlier stays clipped by the 20% bead cap");
   assert.ok(out.minValue > 60, "a -40% outlier stays clipped by the 20% bead cap");
+});
+
+test("filterStrikesNearSpot keeps only strikes within the pct window", () => {
+  const spot = 7785;
+  const out = filterStrikesNearSpot([7600, 7700, 7780, 7900, 8100], spot, 0.03);
+  assert.deepEqual(out, [7600, 7700, 7780, 7900]);
+});
+
+test("clampPriceRangeSpan: squashed SPX session overview reframes around spot", () => {
+  const spot = 7785;
+  const candles = { minValue: 7775, maxValue: 7795 };
+  const squashed = { minValue: 7620, maxValue: 7960 };
+  const out = clampPriceRangeSpan(squashed, spot, SESSION_OVERVIEW_MAX_SPAN_PCT, candles);
+  const span = out.maxValue - out.minValue;
+  assert.ok(span <= spot * SESSION_OVERVIEW_MAX_SPAN_PCT + 1, `span ${span} must fit cap`);
+  assert.ok(out.minValue <= candles.minValue);
+  assert.ok(out.maxValue >= candles.maxValue);
 });

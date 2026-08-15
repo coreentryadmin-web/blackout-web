@@ -227,6 +227,14 @@ test("wall-history route serves the blended 'all' rail instead of short-circuiti
   assert.match(route, /enrichSessionWallHistory/, "blended rail must gap-fill like SSR seed");
 });
 
+test("VectorChart: session overview tightens vertical autoscale for readable beads", () => {
+  const src = read("src/features/vector/components/VectorChart.tsx");
+  assert.match(src, /SESSION_OVERVIEW_BEAD_VIEW_MAX_PCT/);
+  assert.match(src, /SESSION_OVERVIEW_MAX_SPAN_PCT/);
+  assert.match(src, /clampPriceRangeSpan/);
+  assert.match(src, /sessionOverviewFrame/);
+});
+
 test("VectorChart: session viewport keeps the full-day bead rail during live RTH", () => {
   const src = read("src/features/vector/components/VectorChart.tsx");
   assert.match(
