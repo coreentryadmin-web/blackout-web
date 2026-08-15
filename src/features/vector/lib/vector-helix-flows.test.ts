@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   compareLiveHelixByPremium,
+  filterFlowsSinceSessionOpen,
   filterVectorHelixFlows,
-  flowAlertedMs,
+  hoursSinceSessionOpen,
   isFlowSinceSessionOpen,
   prepareVectorLiveHelixTape,
   trimVectorHelixFlowPool,
@@ -114,10 +115,44 @@ test("prepareVectorLiveHelixTape: thin tickers surface without major floor", () 
   assert.ok(tape.every((r) => r.premium >= VECTOR_HELIX_MIN_PREMIUM));
 });
 
+test("filterFlowsSinceSessionOpen: mid-day fetch excludes prior days", () => {
+  const openMs = sessionOpenMs(midday);
+  const rows = [
+    flow({ premium: 500_000, alerted_at: "2026-08-14T14:00:00Z" }),
+    flow({ premium: 500_000, alerted_at: "2026-08-15T14:00:00Z" }),
+  ];
+  const today = filterFlowsSinceSessionOpen(rows, openMs);
+  assert.equal(today.length, 1);
+  assert.ok(isFlowSinceSessionOpen(today[0]!, openMs));
+});
+
+test("hoursSinceSessionOpen: scales with clock", () => {
+  const elevenEt = Date.parse("2026-08-15T11:00:00-04:00");
+  assert.ok(hoursSinceSessionOpen(elevenEt) >= 1);
+  assert.ok(hoursSinceSessionOpen(elevenEt) <= 24);
+});
+
+test("prepareVectorLiveHelixTape: mid-day join still ranks morning leader #1", () => {
+  const morning = flow({
+    premium: 500_000,
+    alerted_at: "2026-08-15T13:35:00Z",
+    strike: 900,
+  });
+  const midDay = Array.from({ length: 5 }, (_, i) =>
+    flow({
+      premium: 220_000 + i * 10_000,
+      alerted_at: `2026-08-15T1${5 + i}:00:00Z`,
+      strike: 901 + i,
+    })
+  );
+  const tape = prepareVectorLiveHelixTape([morning, ...midDay], defaultFilters);
+  assert.equal(tape[0]!.premium, 500_000);
+});
+
 test("vectorLiveHelixSubtitle: honest empty live state", () => {
-  assert.match(vectorLiveHelixSubtitle(0, true), /ranked by premium/i);
+  assert.match(vectorLiveHelixSubtitle(0, true), /today's session/i);
   assert.match(vectorLiveHelixSubtitle(0, false), /session closed/i);
-  assert.match(vectorLiveHelixSubtitle(3, true), /3 live prints today/i);
+  assert.match(vectorLiveHelixSubtitle(3, true), /3 prints today/i);
 });
 
 test("trimVectorHelixFlowPool: keeps largest prints not newest", () => {

@@ -1,5 +1,6 @@
 import type { FlowAlert } from "@/lib/api";
 import { flowDedupeKey } from "@/features/helix/lib/helix-flow-tape-merge";
+import { sessionOpenMs } from "@/lib/largo/temporal/timeframe";
 import {
   daysToExpiry,
   sortFlows,
@@ -11,6 +12,8 @@ export const VECTOR_HELIX_MIN_PREMIUM = 200_000;
 export const VECTOR_HELIX_WHALE_PREMIUM = 1_000_000;
 /** Max prints shown on the Live Helix rail — top by premium for the live session. */
 export const VECTOR_LIVE_HELIX_TAPE_CAP = 40;
+/** Session seed fetch — enough rows to rank today's top prints (API returns recent-first). */
+export const VECTOR_LIVE_HELIX_SESSION_FETCH_LIMIT = 200;
 /** @deprecated Alias for legacy imports. */
 export const VECTOR_HELIX_FETCH_LIMIT = VECTOR_LIVE_HELIX_TAPE_CAP;
 /** @deprecated Alias for legacy imports. */
@@ -63,6 +66,22 @@ export function isFlowSinceSessionOpen(flow: FlowAlert, sessionOpenMs: number): 
   return ms > 0 && ms >= sessionOpenMs;
 }
 
+/** Keep only prints from today's RTH session (client guard after a since-hours fetch). */
+export function filterFlowsSinceSessionOpen(
+  flows: readonly FlowAlert[],
+  sessionOpenMs: number
+): FlowAlert[] {
+  return flows.filter((f) => isFlowSinceSessionOpen(f, sessionOpenMs));
+}
+
+/** Hours to request from /flows — from today's 09:30 ET open through now (min 1, max 24). */
+export function hoursSinceSessionOpen(nowMs = Date.now()): number {
+  const openMs = typeof nowMs === "number" ? sessionOpenMs(nowMs) : sessionOpenMs(Date.now());
+  const elapsed = nowMs - openMs;
+  if (elapsed <= 0) return 1;
+  return Math.min(Math.max(Math.ceil(elapsed / 3_600_000), 1), 24);
+}
+
 /** Client-side tape filters for the Vector Live Helix rail (server already scopes ticker). */
 export function filterVectorHelixFlows(
   flows: readonly FlowAlert[],
@@ -100,8 +119,8 @@ export function prepareVectorLiveHelixTape(
 /** Subtitle for the Live Helix header. */
 export function vectorLiveHelixSubtitle(count: number, liveSession: boolean): string {
   if (!liveSession) return "Session closed · full history on Helix desk";
-  if (count === 0) return "Ranked by premium · prints appear live as they hit";
-  return `Ranked by premium · ${count} live print${count === 1 ? "" : "s"} today`;
+  if (count === 0) return "Ranked by premium · today's session prints";
+  return `Ranked by premium · ${count} print${count === 1 ? "" : "s"} today`;
 }
 
 /** Trim in-memory pool — keep the largest prints so an early session leader is never dropped. */

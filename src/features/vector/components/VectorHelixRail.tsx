@@ -167,7 +167,7 @@ export function VectorHelixRail({ ticker, liveSession }: Props) {
         ) : tape.length === 0 ? (
           <p className="vector-helix-empty">
             {liveSession
-              ? `Waiting for live ${normalized} prints…`
+              ? `Waiting for ${normalized} session prints…`
               : "Session closed — Live Helix resumes at the open"}
           </p>
         ) : (
