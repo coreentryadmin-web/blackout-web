@@ -26,11 +26,9 @@ test("VectorPageShell — desktop action rail (Play/Technicals/Alerts) excluded 
   assert.match(src, /vector-action-rail/);
   assert.match(src, /!\(compactPanels && nativeShell\)/);
   assert.match(src, /VectorTechnicalsPanel/);
-  // The action rail must render VectorPlayCard/VectorAlertsPanel exactly once (moved, not duplicated)
-  // and VectorPulse must be told to suppress its own inline Technicals card.
+  assert.match(src, /VectorHelixRail/);
   assert.equal((src.match(/<VectorPlayCard/g) ?? []).length, 1);
   assert.equal((src.match(/<VectorAlertsPanel/g) ?? []).length, 1);
-  assert.match(src, /showTechnicals=\{false\}/);
 });
 
 test("Vector route — no DeskShell double offset", () => {

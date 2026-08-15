@@ -7731,7 +7731,8 @@ body::before {
       max-height: none;
     }
     .vector-terminal-rail .vector-desk-terminal,
-    .vector-terminal-rail .vector-pulse {
+    .vector-terminal-rail .vector-pulse,
+    .vector-terminal-rail .vector-helix-rail {
       flex: 1 1 auto;
       min-height: 0;
     }
@@ -8185,7 +8186,6 @@ body::before {
     font-variant-numeric: tabular-nums;
   }
 
-  /* ── Vector 0DTE matrix rail (replaces 1D GEX ladder) ── */
   .vector-odte-matrix-rail {
     display: flex;
     flex-direction: column;
@@ -8308,6 +8308,269 @@ body::before {
   .vector-odte-matrix-refresh {
     padding-top: 0.25rem;
     opacity: 0.7;
+  }
+
+  /* ── Vector Helix flow rail (replaces Pulse terminal) ── */
+  .vector-helix-rail {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    height: 100%;
+    border-radius: 0.75rem;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: #050508;
+    overflow: hidden;
+  }
+
+  .vector-helix-head {
+    flex: 0 0 auto;
+    padding: 0.55rem 0.65rem 0.45rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .vector-helix-head-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .vector-helix-kicker {
+    margin: 0;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 0.58rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: rgba(56, 189, 248, 0.85);
+  }
+
+  .vector-helix-title {
+    margin: 0.1rem 0 0;
+    font-family: var(--font-anton, sans-serif);
+    font-size: 1.05rem;
+    letter-spacing: 0.04em;
+    color: rgb(255, 214, 10);
+    text-transform: uppercase;
+  }
+
+  .vector-helix-open-full {
+    display: inline-block;
+    margin-top: 0.35rem;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 0.62rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: rgb(125, 211, 252);
+    text-decoration: none;
+  }
+
+  .vector-helix-open-full:hover {
+    color: rgb(34, 211, 238);
+  }
+
+  .vector-helix-controls {
+    flex: 0 0 auto;
+    padding: 0.45rem 0.55rem 0.35rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .vector-helix-sort,
+  .vector-helix-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+  }
+
+  .vector-helix-sort-btn,
+  .vector-helix-filter-btn {
+    border-radius: 0.35rem;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    background: rgba(148, 163, 184, 0.06);
+    padding: 0.18rem 0.42rem;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 0.58rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: rgba(203, 213, 225, 0.88);
+    cursor: pointer;
+  }
+
+  .vector-helix-sort-btn.is-active,
+  .vector-helix-filter-btn.is-active {
+    border-color: rgba(56, 189, 248, 0.55);
+    background: rgba(56, 189, 248, 0.12);
+    color: rgb(56, 189, 248);
+  }
+
+  .vector-helix-sort-dir {
+    margin-left: 0.15rem;
+    opacity: 0.85;
+  }
+
+  .vector-helix-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .vector-helix-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 0.45rem 0.5rem 0.65rem;
+  }
+
+  .vector-helix-card {
+    width: 100%;
+    text-align: left;
+    border-radius: 0.55rem;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.02);
+    padding: 0.45rem 0.5rem;
+    cursor: pointer;
+    transition: border-color 120ms ease, background-color 120ms ease;
+  }
+
+  .vector-helix-card:hover {
+    border-color: rgba(56, 189, 248, 0.35);
+    background: rgba(56, 189, 248, 0.05);
+  }
+
+  .vector-helix-card--call {
+    border-left: 2px solid rgba(52, 211, 153, 0.65);
+  }
+
+  .vector-helix-card--put {
+    border-left: 2px solid rgba(251, 113, 133, 0.65);
+  }
+
+  .vector-helix-card--whale {
+    box-shadow: inset 0 0 0 1px rgba(255, 214, 10, 0.18);
+  }
+
+  .vector-helix-card-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .vector-helix-card-contract {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem;
+    min-width: 0;
+  }
+
+  .vector-helix-side {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 0.58rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+  }
+
+  .vector-helix-side.is-call {
+    color: rgb(52, 211, 153);
+  }
+
+  .vector-helix-side.is-put {
+    color: rgb(251, 113, 133);
+  }
+
+  .vector-helix-strike {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 0.78rem;
+    font-weight: 800;
+    color: rgb(255, 214, 10);
+  }
+
+  .vector-helix-exp,
+  .vector-helix-dte {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 0.62rem;
+    color: rgb(125, 211, 252);
+  }
+
+  .vector-helix-dte.is-0dte {
+    color: rgb(34, 211, 238);
+    font-weight: 700;
+  }
+
+  .vector-helix-premium {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 0.92rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .vector-helix-premium.is-call {
+    color: rgb(52, 211, 153);
+  }
+
+  .vector-helix-premium.is-put {
+    color: rgb(251, 113, 133);
+  }
+
+  .vector-helix-card-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.35rem;
+    margin-top: 0.3rem;
+  }
+
+  .vector-helix-time {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 0.58rem;
+    color: rgba(148, 163, 184, 0.9);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .vector-helix-signals {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.2rem;
+  }
+
+  .vector-helix-score {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 0.58rem;
+    font-weight: 700;
+    color: rgb(125, 211, 252);
+  }
+
+  .vector-helix-score.is-high {
+    color: rgb(192, 132, 252);
+  }
+
+  .vector-helix-empty,
+  .vector-helix-load-more {
+    padding: 0.75rem 0.55rem;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 0.62rem;
+    color: rgb(125, 211, 252);
+  }
+
+  .vector-helix-load-more {
+    width: calc(100% - 1rem);
+    margin: 0.25rem auto 0;
+    border-radius: 0.45rem;
+    border: 1px dashed rgba(56, 189, 248, 0.35);
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .vector-helix-load-more:hover:not(:disabled) {
+    color: rgb(34, 211, 238);
   }
 
   /* ── Alerts: per-ticker rule definer (under the terminal) + the fired-alert toast ── */
