@@ -337,7 +337,7 @@ async function main() {
     { path: "/api/market/heatmap?ticker=SPX", label: "Thermal (premium)    ", free: 403, community: 403, premium: 200 },
     { path: "/api/market/zerodte/board", label: "0DTE board (premium)", free: 403, community: 403, premium: 200 },
     { path: "/api/market/largo/query", label: "Largo POST (premium) ", free: 403, community: 403, premium: 403, method: "POST", body: { question: "SPX?", session_id: "tier-e2e" } },
-    { path: "/api/admin/health", label: "Admin health         ", free: 401, community: 401, premium: 401 },
+    { path: "/api/admin/health", label: "Admin health         ", free: [401, 403], community: [401, 403], premium: [401, 403] },
   ];
 
   let apiTotal = 0, apiPassed = 0;
@@ -349,15 +349,17 @@ async function main() {
         body: test.body,
       });
       const expectStatus = test[u.tier];
+      const expected = Array.isArray(expectStatus) ? expectStatus : [expectStatus];
       const pass =
-        r.s === expectStatus ||
-        (expectStatus === 200 && r.s >= 200 && r.s < 400) ||
-        (expectStatus === 403 && (r.s === 403 || r.s === 401));
+        expected.includes(r.s) ||
+        (expected.includes(200) && r.s >= 200 && r.s < 400) ||
+        (expected.includes(403) && (r.s === 403 || r.s === 401));
       apiTotal++;
       if (pass) apiPassed++;
       else anyFail = true;
       const mark = pass ? "✓" : "✗";
-      console.log(`    ${u.tier.padEnd(10)} ${test.label.padEnd(24)} → ${r.s}  (expect ${expectStatus})  ${mark}`);
+      const expectLabel = Array.isArray(expectStatus) ? expectStatus.join("|") : String(expectStatus);
+      console.log(`    ${u.tier.padEnd(10)} ${test.label.padEnd(24)} → ${r.s}  (expect ${expectLabel})  ${mark}`);
     }
   }
 

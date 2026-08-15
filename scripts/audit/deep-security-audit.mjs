@@ -46,6 +46,7 @@ async function mintSession(metadata, label) {
   const email = `${label}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}@blackouttrades.com`;
   const phone = generateDefaultAuditPhone();
   const fapi = fapiHost(PUB);
+  const publicMetadata = { tier_managed_by: "admin", ...metadata };
   const backend = async (method, path, body) => {
     const r = await fetch(`${API}${path}`, {
       method,
@@ -57,9 +58,12 @@ async function mintSession(metadata, label) {
 
   // adopt:false — the e-mail already carries a timestamp+nonce, so only the random PHONE
   // can collide; the shared helper redraws it instead of throwing the audit away.
-  const created = await createAuditClerkUser({ secret: SECRET, email, phone, publicMetadata: metadata, adopt: false });
+  const created = await createAuditClerkUser({ secret: SECRET, email, phone, publicMetadata, adopt: false });
   const userId = created.userId;
   if (!userId) throw new Error(`Clerk create failed (${label}): ${String(created.error).slice(0, 160)}`);
+
+  const repatch = () =>
+    backend("PATCH", `/users/${userId}`, { public_metadata: publicMetadata });
 
   const ticket = (await backend("POST", "/sign_in_tokens", { user_id: userId, expires_in_seconds: 600 }))?.token;
   if (!ticket) throw new Error(`sign_in_token failed (${label})`);
@@ -74,16 +78,21 @@ async function mintSession(metadata, label) {
   if (!sid) throw new Error(`FAPI sign-in failed (${label})`);
 
   const clientUat = Math.floor(Date.now() / 1000);
-  const mint = await fetch(`${fapi}/v1/client/sessions/${sid}/tokens?_clerk_js_version=${CJS}`, {
-    method: "POST",
-    headers: {
-      Origin: APP,
-      Referer: `${APP}/`,
-      "Content-Type": "application/x-www-form-urlencoded",
-      Cookie: siCookies.join("; "),
-    },
-  });
-  const jwt = (await mint.json().catch(() => null))?.jwt;
+
+  async function mintJwt() {
+    const mint = await fetch(`${fapi}/v1/client/sessions/${sid}/tokens?_clerk_js_version=${CJS}`, {
+      method: "POST",
+      headers: {
+        Origin: APP,
+        Referer: `${APP}/`,
+        "Content-Type": "application/x-www-form-urlencoded",
+        Cookie: siCookies.join("; "),
+      },
+    });
+    return (await mint.json().catch(() => null))?.jwt ?? null;
+  }
+
+  let jwt = await mintJwt();
   if (!jwt) throw new Error(`JWT mint failed (${label})`);
 
   const cleanup = async () => {
@@ -95,7 +104,18 @@ async function mintSession(metadata, label) {
     } catch {}
   };
 
-  return { cookie: `__session=${jwt}; __client_uat=${clientUat}`, cleanup, userId, email };
+  return {
+    cookie: `__session=${jwt}; __client_uat=${clientUat}`,
+    cleanup,
+    userId,
+    email,
+    repatch,
+    remint: async () => {
+      jwt = await mintJwt();
+      if (!jwt) throw new Error(`JWT remint failed (${label})`);
+      return `__session=${jwt}; __client_uat=${clientUat}`;
+    },
+  };
 }
 
 async function probe(method, path, opts = {}) {
@@ -218,10 +238,19 @@ async function probeTierMatrix(tier, cookie) {
       continue;
     }
     if (!statusOkForTier(r.status, expected, tier)) {
+      const escalated = tier === "premium" && expected === "admin" && r.status >= 200 && r.status < 300;
+      const denied =
+        (tier === "premium" || tier === "admin") &&
+        (expected === "premium" || expected === "premium-engine") &&
+        (r.status === 403 || r.status === 401);
       rec(
-        tier === "premium" && expected === "admin" && r.status === 200 ? "P0" : "P1",
+        escalated ? "P0" : denied ? "P1" : "P1",
         `matrix-${tier}-${path.replace(/\W+/g, "-")}`,
-        `${tier} unexpected access: GET ${path}`,
+        escalated
+          ? `${tier} privilege escalation: GET ${path}`
+          : denied
+            ? `${tier} unexpected denial: GET ${path}`
+            : `${tier} gate mismatch: GET ${path}`,
         `Expected ${expected}-gate; got HTTP ${r.status}`,
         { tier, path, status: r.status, expected }
       );
@@ -242,7 +271,15 @@ async function main() {
     premA = await mintSession({ tier: "premium" }, "prem-a-audit");
     premB = await mintSession({ tier: "premium" }, "prem-b-audit");
     admin = await mintSession({ role: "admin", tier: "premium" }, "adm-audit");
-    console.log("Sessions minted: free, premium×2, admin\n");
+    // Whop membership webhook races temp users — re-patch after delay and remint JWTs.
+    console.log("  Waiting 4s for Clerk/Whop webhook, then re-patching tier locks...");
+    await new Promise((r) => setTimeout(r, 4000));
+    for (const s of [free, premA, premB, admin]) await s.repatch();
+    await new Promise((r) => setTimeout(r, 2000));
+    for (const s of [free, premA, premB, admin]) {
+      s.cookie = await s.remint();
+    }
+    console.log("Sessions minted: free, premium×2, admin (tier_managed_by=admin)\n");
   } catch (e) {
     console.error("FATAL:", e.message);
     process.exit(2);

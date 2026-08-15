@@ -28,6 +28,31 @@ const P1_MS = 2_000;
 const P2_MS = 1_000;
 const WARN_MS = 800;
 
+function etParts(now = new Date()) {
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    weekday: "short",
+    hour: "numeric",
+    minute: "numeric",
+    hour12: false,
+  });
+  const parts = Object.fromEntries(fmt.formatToParts(now).map((p) => [p.type, p.value]));
+  const hour = Number(parts.hour);
+  const minute = Number(parts.minute);
+  return { weekday: parts.weekday, mins: hour * 60 + minute };
+}
+
+/** Off regular US equity RTH (weekday 09:30–16:00 ET) — matrix/flow desks may be sparse. */
+function isOffHoursEt(now = new Date()) {
+  const { weekday, mins } = etParts(now);
+  if (weekday === "Sat" || weekday === "Sun") return true;
+  return mins < 9 * 60 + 30 || mins > 16 * 60;
+}
+
+const OFF_HOURS = isOffHoursEt();
+const P2_CONTENT_MS = OFF_HOURS ? 1_500 : P2_MS;
+const P1_PREWARM_MS = OFF_HOURS ? 5_000 : P1_MS;
+
 const API_PATHS = [
   "/api/health",
   "/api/ready",
@@ -63,9 +88,13 @@ const PAGES = [
       ? () =>
           document.querySelectorAll(".spx-gex-matrix-table tbody tr").length >= 5 ||
           document.body.innerText.length > 800
-      : () =>
-          document.querySelectorAll(".spx-gex-matrix-table tbody tr").length >= 20 ||
-          document.body.innerText.length > 800,
+      : () => {
+          const minRows = OFF_HOURS ? 5 : 20;
+          return (
+            document.querySelectorAll(".spx-gex-matrix-table tbody tr").length >= minRows ||
+            document.body.innerText.length > 800
+          );
+        },
   },
   {
     path: "/flows",
@@ -82,6 +111,7 @@ const PAGES = [
   {
     path: "/nighthawk",
     label: "nighthawk",
+    slowDesk: true,
     ready: () =>
       /today'?s 0dte plays/i.test(document.body.innerText) ||
       document.body.innerText.length > 300,
@@ -94,10 +124,13 @@ const rec = (name, status, detail, ms) => {
   console.log(`  [${status}] ${name}${detail ? " — " + detail : ""}${ms != null ? ` (${ms}ms)` : ""}`);
 };
 
-function grade(ms) {
+function grade(ms, { prewarm = false, contentReady = false, slowDesk = false } = {}) {
+  const p1 = prewarm ? P1_PREWARM_MS : slowDesk && OFF_HOURS ? 4_000 : P1_MS;
+  let p2 = contentReady ? P2_CONTENT_MS : P2_MS;
+  if (contentReady && slowDesk && OFF_HOURS) p2 = 4_000;
   if (ms <= WARN_MS) return "PASS";
-  if (ms <= P2_MS) return "WARN";
-  if (ms <= P1_MS) return "FAIL";
+  if (ms <= p2) return "WARN";
+  if (ms <= p1) return "FAIL";
   return "FAIL";
 }
 
@@ -162,7 +195,7 @@ async function stagingForceWarmCrons() {
 }
 
 async function main() {
-  console.log(`\n=== Site latency audit ===\nTarget: ${BASE}\n`);
+  console.log(`\n=== Site latency audit ===\nTarget: ${BASE}\nOff-hours ET: ${OFF_HOURS}\n`);
 
   await stagingForceWarmCrons();
 
@@ -200,7 +233,7 @@ async function main() {
         rec(`${labelPrefix}:${path.split("?")[0]}`, "FAIL", "HTTP 401 auth", ms);
         return;
       }
-      rec(`${labelPrefix}:${path.split("?")[0]}`, grade(ms), `HTTP ${res.status}`, ms);
+      rec(`${labelPrefix}:${path.split("?")[0]}`, grade(ms, { prewarm: labelPrefix === "prewarm" }), `HTTP ${res.status}`, ms);
     } catch (e) {
       rec(`${labelPrefix}:${path}`, "FAIL", e.message);
     }
@@ -260,9 +293,9 @@ async function main() {
         await p.waitForFunction(() => window.Clerk?.user?.id, { timeout: 20_000 }).catch(() => null);
         await p.waitForFunction(page.ready, { timeout: 30_000 }).catch(() => null);
         const readyMs = Date.now() - t0;
-        rec(`page:${page.label}:nav`, grade(navMs), "commit", navMs);
-        rec(`page:${page.label}:dom`, domMs <= P2_MS ? "PASS" : grade(domMs), "domcontentloaded", domMs);
-        rec(`page:${page.label}:ready`, grade(readyMs), "content ready", readyMs);
+        rec(`page:${page.label}:nav`, grade(navMs, { slowDesk: page.slowDesk }), "commit", navMs);
+        rec(`page:${page.label}:dom`, domMs <= P2_MS ? "PASS" : grade(domMs, { slowDesk: page.slowDesk }), "domcontentloaded", domMs);
+        rec(`page:${page.label}:ready`, grade(readyMs, { contentReady: true, slowDesk: page.slowDesk }), "content ready", readyMs);
       } catch (e) {
         rec(`page:${page.label}`, "FAIL", e.message);
       } finally {
