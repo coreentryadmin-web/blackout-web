@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import { clsx } from "clsx";
 import {
   fetchFlows, fetchEarningsCalendar, fetchDarkPoolPrints,
@@ -186,6 +187,7 @@ function exportCSV(alerts: FlowAlert[]) {
 }
 
 export function FlowFeed() {
+  const searchParams = useSearchParams();
   // Data
   const [alerts, setAlerts]               = useState<FlowAlert[]>([]);
   const nativeShell = useIosNativeShell();
@@ -212,6 +214,11 @@ export function FlowFeed() {
   const density: HelixTableDensity = "full";
   const [analyticsOpen, setAnalyticsOpen] = useState(true);
   const [tickerFilter, setTickerFilter]   = useState("");
+
+  useEffect(() => {
+    const t = searchParams.get("ticker")?.trim().toUpperCase();
+    if (t) setTickerFilter(t);
+  }, [searchParams]);
   // UI
   const [selectedTicker, setSelectedTicker] = useState<string | null>(null);
   // Store the FULL clicked print, not just ticker/strike/expiry — the drilldown window

@@ -19,8 +19,7 @@ import type { VectorTimeframeMinutes } from "@/features/vector/lib/vector-bar-ti
 import type { TechnicalsLine } from "@/features/vector/lib/vector-technicals";
 import { VectorTickerSelect } from "@/features/vector/components/VectorTickerSelect";
 import { VectorScanner } from "@/features/vector/components/VectorScanner";
-import { VectorTickerComparisonStrip } from "@/features/vector/components/VectorTickerComparisonStrip";
-import { VectorPulse } from "@/features/vector/components/VectorPulse";
+import { VectorHelixRail } from "@/features/vector/components/VectorHelixRail";
 import { VectorPlayCard } from "@/features/vector/components/VectorPlayCard";
 import { VectorTechnicalsPanel } from "@/features/vector/components/VectorTechnicalsPanel";
 import type { VectorPlay } from "@/features/vector/lib/vector-play-engine";
@@ -38,12 +37,6 @@ import { deriveGammaMagnet, type GammaMagnet } from "@/features/vector/lib/vecto
 import { scoreTopWalls, type WallIntegrity } from "@/features/vector/lib/vector-wall-integrity";
 import type { VectorWallEvent } from "@/features/vector/lib/vector-wall-events";
 import { VECTOR_DEFAULT_TICKER } from "@/features/vector/lib/vector-ticker";
-import { GexShiftLeadersStrip } from "@/components/gex/GexShiftLeadersStrip";
-import { pickGexShiftLeaders, matrixShiftForLens, type GexShiftLeader } from "@/lib/gex-shift-leaders";
-import { vectorGexScopeLabel } from "@/lib/gex-scope-labels";
-import { fetchVectorGexHeatmapDeduped } from "@/features/vector/lib/vector-gex-heatmap-client";
-import { useVectorLivePoll } from "@/features/vector/lib/use-vector-live-poll";
-import { defaultVectorIndicators } from "@/features/vector/lib/vector-indicators-config";
 
 const VectorChart = dynamic(
   () => import("@/features/vector/components/VectorChart").then((m) => m.VectorChart),
@@ -137,7 +130,7 @@ type VectorIosPanel = "chart" | "pulse" | "ladder" | "scanner";
 
 const VECTOR_IOS_PANELS: { id: VectorIosPanel; label: string }[] = [
   { id: "chart", label: "Chart" },
-  { id: "pulse", label: "Pulse" },
+  { id: "pulse", label: "Helix" },
   { id: "ladder", label: "Matrix" },
   { id: "scanner", label: "Scanner" },
 ];
@@ -211,13 +204,6 @@ export function VectorPageShell({
   const [hoverPrice, setHoverPrice] = useState<number | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
   const activeTicker = ticker || VECTOR_DEFAULT_TICKER;
-  const wallTrailSec = initialWallTrailSec ?? 15;
-  const livePoll = useVectorLivePoll({
-    ticker: activeTicker,
-    liveSession,
-    wallTrailSec,
-    indicators: defaultVectorIndicators(),
-  });
   const navigateTicker = useCallback(
     (t: string) => {
       if (onTickerSelect) {
@@ -305,7 +291,6 @@ export function VectorPageShell({
       }).posture,
     })
   );
-  const [shiftLeaders, setShiftLeaders] = useState<GexShiftLeader[]>([]);
   const [wallIntegrity, setWallIntegrity] = useState<{
     call: WallIntegrity | null;
     put: WallIntegrity | null;
@@ -344,22 +329,6 @@ export function VectorPageShell({
     setRecentAlerts([]);
     setToast(null);
   }, [activeTicker]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const loadShift = async () => {
-      const payload = await fetchVectorGexHeatmapDeduped(activeTicker, dteHorizon);
-      if (cancelled || !payload) return;
-      setShiftLeaders(pickGexShiftLeaders(payload.gex?.strike_totals, matrixShiftForLens("gex", payload)));
-    };
-    void loadShift();
-    const pollMs = livePoll.gexHeatmapPollMs;
-    const id = liveSession && pollMs ? setInterval(loadShift, pollMs) : null;
-    return () => {
-      cancelled = true;
-      if (id) clearInterval(id);
-    };
-  }, [activeTicker, liveSession, dteHorizon, livePoll.gexHeatmapPollMs]);
 
   // Auto-dismiss the toast a few seconds after the newest fire.
   useEffect(() => {
@@ -574,40 +543,7 @@ export function VectorPageShell({
     );
   }
 
-  const pulseRail = (
-    <>
-      <GexShiftLeadersStrip
-        leaders={shiftLeaders}
-        scopeLabel={`${vectorGexScopeLabel(dteHorizon)} matrix`}
-        className="mb-2"
-      />
-      <VectorPulse
-        ticker={activeTicker}
-        lens={lens}
-        wallEvents={wallEvents}
-        liveSession={liveSession}
-        streamUpdatedAt={streamUpdatedAt}
-        regime={regime}
-        proximity={proximity}
-        magnet={magnet}
-        confluence={confluence}
-        technicals={technicals}
-        showTechnicals={false}
-        expectedMove={expectedMove}
-        alerts={recentAlerts.slice(0, 5).map((f) => f.message)}
-        wallIntegrity={wallIntegrity}
-        liveSpot={liveSpot}
-      />
-      {/* Cross-ticker wall-structure comparison (P2, 2026-08-05 CTO audit) — additive, below the
-          Pulse rail. Renders nothing when the universe snapshot hasn't loaded or no comparison
-          ticker resolves a row, so it never displaces the panels above/below it. */}
-      <VectorTickerComparisonStrip
-        activeTicker={activeTicker}
-        onSelect={(t) => navigateTicker(t)}
-        className="mb-2"
-      />
-    </>
-  );
+  const helixRail = <VectorHelixRail ticker={activeTicker} liveSession={liveSession} />;
 
   // Desktop 4th "action" column (2026-08-05, member-directed): the things a member actually ACTS
   // on — the fused trade idea, the technical read, and the alert-rule builder — pulled out of the
@@ -780,7 +716,7 @@ export function VectorPageShell({
               compactPanels && nativeShell && iosPanel !== "pulse" && "ios-native-panel-hidden"
             )}
           >
-            {pulseRail}
+            {helixRail}
           </div>
 
           {/*
