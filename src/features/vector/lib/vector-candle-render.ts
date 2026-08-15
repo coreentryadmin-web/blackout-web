@@ -141,6 +141,24 @@ export function overlayDimFactor(
   return dim;
 }
 
+/** Bead rail floor — full-session overview must not ghost the dealer wall trail. */
+export const BEAD_OVERLAY_DIM_FLOOR = 0.84;
+/** Compare panes: tighter grid, beads need Thermal-grade contrast. */
+export const BEAD_OVERLAY_DIM_FLOOR_COMPARE = 0.94;
+
+export function beadOverlayDimFactor(
+  visibleBars: number,
+  opts?: {
+    compareFourUp?: boolean;
+    compareFourUpBackground?: boolean;
+    compareCompactBeads?: boolean;
+  }
+): number {
+  const base = overlayDimFactor(visibleBars, opts);
+  const floor = opts?.compareCompactBeads ? BEAD_OVERLAY_DIM_FLOOR_COMPARE : BEAD_OVERLAY_DIM_FLOOR;
+  return Math.max(base, floor);
+}
+
 /**
  * Nudge bar spacing when zoomed in (few bars → wider spacing) while respecting min/max bounds.
  * Zoom-out floor is enforced by minBarSpacing; this mainly widens the view when studying structure.

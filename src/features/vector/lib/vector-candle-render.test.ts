@@ -3,6 +3,9 @@ import { describe, test } from "node:test";
 import {
   adaptiveBarSpacingForZoom,
   applyAdaptiveBarSpacingToChart,
+  beadOverlayDimFactor,
+  BEAD_OVERLAY_DIM_FLOOR,
+  BEAD_OVERLAY_DIM_FLOOR_COMPARE,
   coarserTimeframeIfZoomedOut,
   hasExtendedHoursBars,
   intradayZoomPresetFromKeyboard,
@@ -30,10 +33,11 @@ describe("vector-candle-render", () => {
     assert.equal(overlayDimFactor(400), 0.38);
   });
 
-  test("overlayDimFactor: compare 4-up baseline dim on focused and background panes", () => {
-    assert.equal(overlayDimFactor(60, { compareFourUp: true }), 0.88);
-    assert.equal(overlayDimFactor(60, { compareFourUpBackground: true }), 0.72);
-    assert.ok(overlayDimFactor(200, { compareFourUpBackground: true }) < overlayDimFactor(200, { compareFourUp: true }));
+  test("beadOverlayDimFactor: floor keeps beads legible on full-session overview", () => {
+    assert.ok(beadOverlayDimFactor(390) >= BEAD_OVERLAY_DIM_FLOOR);
+    assert.ok(
+      beadOverlayDimFactor(200, { compareCompactBeads: true }) >= BEAD_OVERLAY_DIM_FLOOR_COMPARE
+    );
   });
 
   test("adaptiveBarSpacingForZoom: widens spacing when few bars visible", () => {

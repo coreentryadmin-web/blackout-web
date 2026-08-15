@@ -65,21 +65,20 @@ export const BEAD_TUNING_DEFAULT: BeadRenderTuning = {
   kingHaloMul: 1,
 };
 
-/** ~55% bead radius — keeps level rails readable without burying candles. Opacity retuned
- *  2026-08-15: sizing was right but fillMin/fillMax were too low — weak beads vanished on
- *  the black compare grid while strong beads read fine. Yellow/purple king nodes match Thermal. */
+/** ~55% bead radius — keeps level rails readable without burying candles. Contrast retuned
+ *  2026-08-15: member compare screenshots — beads read too dim vs Thermal yellow/purple kings. */
 export const BEAD_TUNING_COMPARE: BeadRenderTuning = {
-  halfMin: 1.35,
-  halfMax: 4,
-  fillMin: 0.42,
-  fillMax: 0.86,
-  kingBoost: 0.1,
-  drawAlphaMul: 1,
-  minRadiusPx: 1,
-  kingHaloMul: 0.72,
-  contrastExp: 1.25,
-  modeledAlphaScale: 0.52,
-  strokeAlphaBoost: 0.22,
+  halfMin: 1.5,
+  halfMax: 4.5,
+  fillMin: 0.58,
+  fillMax: 0.96,
+  kingBoost: 0.14,
+  drawAlphaMul: 1.08,
+  minRadiusPx: 1.1,
+  kingHaloMul: 0.88,
+  contrastExp: 1.12,
+  modeledAlphaScale: 0.68,
+  strokeAlphaBoost: 0.38,
 };
 
 export function beadRenderTuning(profile: WallBeadRenderProfile = "default"): BeadRenderTuning {
