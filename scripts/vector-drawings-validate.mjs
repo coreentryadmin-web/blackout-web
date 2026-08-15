@@ -126,10 +126,10 @@ try {
 
   // Text — toolbar input (no window.prompt)
   await page.locator('[data-testid="vector-draw-tool-text"]').click();
+  await page.waitForTimeout(400);
   const textInput = page.locator('[data-testid="vector-draw-text-input"]');
-  if (!(await textInput.count())) {
-    rec("text-input", "FAIL", "Text label input missing — deploy pending");
-  } else {
+  try {
+    await textInput.waitFor({ state: "visible", timeout: 8000 });
     rec("text-input", "PASS", "Label field visible");
     await textInput.fill("E2E TEST");
     const xBefore = count;
@@ -137,6 +137,8 @@ try {
     count = await getCount(page);
     if (count > xBefore) rec("text-place", "PASS", `${xBefore} → ${count}`);
     else rec("text-place", "FAIL", `count ${count}`);
+  } catch {
+    rec("text-input", "FAIL", "Text label input not visible after selecting Text tool");
   }
 
   // Undo + clear
