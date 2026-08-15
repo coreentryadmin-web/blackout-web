@@ -16,6 +16,9 @@ import {
   beadKey,
   kingKey,
   kingStrikeByTime,
+  beadRenderTuning,
+  type WallBeadRenderProfile,
+  type BeadRenderTuning,
 } from "./vector-wall-rail-core";
 import {
   relStrengthT,
@@ -69,6 +72,8 @@ export type WallRailData = {
   maxPct: number;
   callColor: string;
   putColor: string;
+  /** Compare grid uses smaller, more translucent beads behind candles. */
+  profile?: WallBeadRenderProfile;
 };
 
 type PaneRendererTarget = Parameters<IPrimitivePaneRenderer["draw"]>[0];
@@ -122,46 +127,36 @@ type Band = {
 };
 
 class WallRailRenderer implements IPrimitivePaneRenderer {
-  constructor(private readonly _bands: Band[]) {}
+  constructor(
+    private readonly _bands: Band[],
+    private readonly _tuning: BeadRenderTuning
+  ) {}
 
   draw(target: PaneRendererTarget): void {
     target.useMediaCoordinateSpace((scope) => {
       const ctx = scope.context;
+      const kingBoost = this._tuning.kingBoost;
+      const minR = this._tuning.minRadiusPx;
+      const haloMul = this._tuning.kingHaloMul;
       ctx.save();
       ctx.globalAlpha = RAIL_TRANSLUCENCY;
       for (const b of this._bands) {
         const pts = b.pts;
-        // King emphasis is PER BUCKET: the fatter bead, brighter rim and halo appear only in the
-        // buckets where this strike actually held the highest share, so a handover shows up as the
-        // crown leaving one row and appearing on another AT THAT MOMENT — not repainted across the
-        // whole session onto whoever happens to lead right now.
-        // BEADS (member-preferred): one round bead per bucket rather than a single filled ribbon.
-        // Each point still carries the full channel set the ribbon exposed — the beads just render it
-        // as discrete dots (which read as a rail of "beads" the way members like) instead of a solid
-        // band: BEAD RADIUS = absolute $-gamma magnitude (king wall = a fat bead, a straggler = a
-        // small one, from the same yTop/yBot half-height), BEAD BRIGHTNESS = per-bucket alpha (a
-        // growing wall brightens along its length, a fading one dims — the growth/fade channel), and
-        // a thin crisp rim keeps every bead readable over the bright GEX heatmap. A dense run of
-        // buckets reads as a near-continuous beaded rail; a sparse/fading run reads as scattered dots.
         for (const p of pts) {
           const emph = p.emph;
-          const rMul = 1 + emph * KING_RADIUS_BOOST;
+          const rMul = 1 + emph * kingBoost;
           const cy = (p.yTop + p.yBot) / 2;
-          const r = Math.max(1.6, ((p.yBot - p.yTop) / 2) * rMul); // half-height → bead radius
+          const r = Math.max(minR, ((p.yBot - p.yTop) / 2) * rMul);
           ctx.fillStyle = withA(b.color, p.a);
           ctx.beginPath();
           ctx.arc(p.x, cy, r, 0, Math.PI * 2);
           ctx.fill();
-          // King glow: a soft halo behind the dominant node's beads, fading in/out with the eased
-          // emphasis so the "which wall dominates now" cue tracks the migration smoothly.
-          if (emph > 0.05) {
-            ctx.fillStyle = withA(b.color, Math.min(0.5, p.a * 0.4) * emph);
+          if (emph > 0.05 && haloMul > 0) {
+            ctx.fillStyle = withA(b.color, Math.min(0.5, p.a * 0.4) * emph * haloMul);
             ctx.beginPath();
-            ctx.arc(p.x, cy, r + 2 + emph * 2, 0, Math.PI * 2);
+            ctx.arc(p.x, cy, r + (2 + emph * 2) * haloMul, 0, Math.PI * 2);
             ctx.fill();
           }
-          // Thin brighter rim so a bead reads as a defined dot over a busy background (the ribbon used
-          // crisp top/bottom edges for the same reason). King beads get an extra-bright rim.
           if (r >= 2.2) {
             ctx.lineWidth = 1;
             ctx.strokeStyle = withA(b.color, Math.min(1, p.a + 0.04 + emph * 0.3));
@@ -193,12 +188,14 @@ class WallRailRenderer implements IPrimitivePaneRenderer {
 class WallRailPaneView implements IPrimitivePaneView {
   constructor(private readonly _source: WallRailPrimitive) {}
   zOrder(): PrimitivePaneViewZOrder {
-    return "top"; // over the candles, but translucent so the tape stays readable
+    return this._source.beadZOrder();
   }
   renderer(): IPrimitivePaneRenderer | null {
-    const bands = this._source.project();
-    if (!bands || bands.length === 0) return null;
-    return new WallRailRenderer(bands);
+    const projected = this._source.project();
+    if (!projected) return null;
+    const { bands, tuning } = projected;
+    if (bands.length === 0) return null;
+    return new WallRailRenderer(bands, tuning);
   }
 }
 
@@ -268,10 +265,12 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
   setData(data: WallRailData | null, visible: boolean): void {
     this._data = data;
     this._visible = visible;
-    // Repaint (project recomputes targets from the new data) and kick the ease loop so existing beads
-    // glide from their current displayed size to the new target instead of snapping.
     this._requestUpdate?.();
     this._ensureAnimating();
+  }
+
+  beadZOrder(): PrimitivePaneViewZOrder {
+    return this._data?.profile === "compare" ? "bottom" : "top";
   }
 
   private _cancelRaf(): void {
@@ -342,10 +341,11 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
   /** Project every trail into media-space beaded bands. Also writes the per-bead TARGET half-heights
    *  and per-strike king-emphasis targets the rAF loop eases toward, and reads the eased values back
    *  so the drawn beads reflect the in-flight animation. Null when there's nothing honest to draw. */
-  project(): Band[] | null {
+  project(): { bands: Band[]; tuning: BeadRenderTuning } | null {
     if (!this._visible || !this._data || !this._chart || !this._series) return null;
-    const { callTrails, putTrails, maxPct, callColor, putColor } = this._data;
+    const { callTrails, putTrails, maxPct, callColor, putColor, profile } = this._data;
     if (!(maxPct > 0)) return null;
+    const tuning = beadRenderTuning(profile ?? "default");
     const ts = this._chart.timeScale();
     const series = this._series;
     const bands: Band[] = [];
@@ -430,7 +430,7 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
         const glow = magnitudeGlowBoost(p.pct); // absolute-magnitude brightness (frame-independent)
         // TARGET half = ABSOLUTE $-ladder magnitude (or relative fallback), then the growth/fade
         // velocity multiplier so a wall being STACKED this bucket still flares fatter.
-        const target = targetHalfPx(p.pct, p.notional, maxPct) * mod.sizeMul;
+        const target = targetHalfPx(p.pct, p.notional, maxPct, tuning) * mod.sizeMul;
         const key = beadKey(side, trail.strike, p.time);
         this._targetHalf.set(key, target);
         // Displayed half lags the target (eased by the rAF loop). Reduce-motion / first sight → snap
@@ -447,7 +447,10 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
             half = cur;
           }
         }
-        const a = Math.min(1, fillAlpha(p.pct, maxPct) * mod.alphaMul * (0.75 + 0.25 * Math.min(1.6, glow)));
+        const a = Math.min(
+          1,
+          fillAlpha(p.pct, maxPct, tuning) * mod.alphaMul * (0.75 + 0.25 * Math.min(1.6, glow)) * tuning.drawAlphaMul
+        );
         // Frozen truth for history; eased value only on the live edge.
         const wasKing = kingAt.get(p.time) === trail.strike;
         const pEmph = p.time === liveTime ? liveEmph : wasKing ? 1 : 0;
@@ -459,6 +462,6 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
     for (const t of callTrails) addTrail(t, callColor, "c", callKingAt);
     for (const t of putTrails) addTrail(t, putColor, "p", putKingAt);
     if (bands.length === 0) return null;
-    return bands;
+    return { bands, tuning };
   }
 }

@@ -121,6 +121,8 @@ type Props = {
   toolbarHideLinkedControls?: boolean;
   /** Compare pane: omit volume histogram sub-pane for taller price + beads. */
   hideVolumePane?: boolean;
+  /** Compare grid: compact bead rail (smaller, behind candles). */
+  compareCompactBeads?: boolean;
   /** Compare pane: lift regime/spot to pane header. */
   onCompareRegimeChange?: (regime: VectorRegime) => void;
   onCompareSpotChange?: (spot: number) => void;
@@ -177,6 +179,7 @@ export function VectorPageShell({
   onEnterCompare,
   toolbarHideLinkedControls,
   hideVolumePane,
+  compareCompactBeads,
   onCompareRegimeChange,
   onCompareSpotChange,
   compareDefaultLens,
@@ -540,6 +543,7 @@ export function VectorPageShell({
           defaultLens={compareDefaultLens}
           toolbarHideLinkedControls={toolbarHideLinkedControls}
           hideVolumePane={hideVolumePane}
+          compareCompactBeads={compareCompactBeads}
           compareSync={compareSync}
           onCompareCrosshair={onCompareCrosshair}
           onCompareVisibleRange={onCompareVisibleRange}

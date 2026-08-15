@@ -56,6 +56,7 @@ import {
   extendRangeForWalls,
   DEFAULT_WALL_VIEW_MAX_PCT,
   BEAD_VIEW_MAX_PCT,
+  COMPARE_BEAD_VIEW_MAX_PCT,
 } from "@/features/vector/lib/vector-price-range";
 import {
   scoreTopWalls,
@@ -109,6 +110,7 @@ import { etMinutesOfDay } from "@/lib/swing/scan-cadence";
 import { GammaRegimePrimitive } from "@/features/vector/lib/vector-gamma-regime-primitive";
 import { computeVolumeProfile } from "@/features/vector/lib/vector-volume-profile";
 import { VolumeProfilePrimitive } from "@/features/vector/lib/vector-volume-profile-primitive";
+import type { WallBeadRenderProfile } from "@/features/vector/lib/vector-wall-rail-core";
 import { WallRailPrimitive } from "@/features/vector/lib/vector-wall-rail-primitive";
 import { gexCellAtGridPoint, heatmapBucketSecForChartTimeframe } from "@/features/vector/lib/vector-gex-heatmap-paint";
 import type { GexHeatmapGrid } from "@/features/vector/lib/vector-gex-reconstruct";
@@ -348,6 +350,8 @@ type Props = {
   toolbarHideLinkedControls?: boolean;
   /** Compare grid: drop the volume sub-pane so price + beads get full height. */
   hideVolumePane?: boolean;
+  /** Compare grid: smaller translucent beads behind candles (4-up readability). */
+  compareCompactBeads?: boolean;
   /** Compare linked time sync — crosshair + optional zoom from the desk bus. */
   compareSync?: VectorCompareChartSyncBind | null;
   onCompareCrosshair?: (paneId: string, timeSec: number | null) => void;
@@ -1042,7 +1046,9 @@ function applyWallBeadMarkers(
   trailBucketSec = VECTOR_WALL_TRAIL_SEC,
   /** Live spot, used to prefer near-spot bead rows over far-OTM ones (see pickActiveStrikes).
    *  null is a supported state — the row ordering then falls back to pure strength. */
-  spot: number | null = null
+  spot: number | null = null,
+  /** Compare panes: dimmer, smaller zoom-anchor ghosts. */
+  compactBeads = false
 ): { strikes: number[]; rendered: StrikeTrail[] } {
   if (!beadsPlugin) return { strikes: [], rendered: [] };
   const bucketed = bucketWallHistoryForInterval(history, intervalMinutes, {
@@ -1087,8 +1093,9 @@ function applyWallBeadMarkers(
       if (!lastPoint) continue;
       // Skip if the trail already has a point at or very near the latest bar (within one candle)
       if (lastPoint.time >= lastBarTime - intervalMinutes * 60) continue;
-      const anchorAlpha = trail.active ? 0.5 : 0.15;
-      const anchorSize = markerSizeForPctRel(lastPoint.pct, maxPct) * (trail.active ? 0.8 : 0.5);
+      const anchorAlpha = (trail.active ? 0.5 : 0.15) * (compactBeads ? 0.35 : 1);
+      const anchorSize =
+        markerSizeForPctRel(lastPoint.pct, maxPct) * (trail.active ? 0.8 : 0.5) * (compactBeads ? 0.5 : 1);
       markers.push({
         time: anchorTime,
         position: "atPriceMiddle",
@@ -1116,14 +1123,15 @@ function feedWallRail(
   putRendered: StrikeTrail[],
   callColor: string,
   putColor: string,
-  visible: boolean
+  visible: boolean,
+  profile: WallBeadRenderProfile = "default"
 ): void {
   if (!rail) return;
   let maxPct = 0;
   for (const t of callRendered) for (const p of t.points) if (p.pct > maxPct) maxPct = p.pct;
   for (const t of putRendered) for (const p of t.points) if (p.pct > maxPct) maxPct = p.pct;
   rail.setData(
-    { callTrails: callRendered, putTrails: putRendered, maxPct, callColor, putColor },
+    { callTrails: callRendered, putTrails: putRendered, maxPct, callColor, putColor, profile },
     visible && maxPct > 0
   );
 }
@@ -1197,6 +1205,7 @@ export function VectorChart({
   defaultLens,
   toolbarHideLinkedControls = false,
   hideVolumePane = false,
+  compareCompactBeads = false,
   compareSync = null,
   onCompareCrosshair,
   onCompareVisibleRange,
@@ -1464,6 +1473,7 @@ export function VectorChart({
   const onCompareCrosshairRef = useRef(onCompareCrosshair);
   const onCompareVisibleRangeRef = useRef(onCompareVisibleRange);
   const hideVolumePaneRef = useRef(hideVolumePane);
+  const compareCompactBeadsRef = useRef(compareCompactBeads);
   const replayModeRef = useRef(false);
   const liveSessionRef = useRef(liveSession);
   /**
@@ -1486,7 +1496,8 @@ export function VectorChart({
     onCompareCrosshairRef.current = onCompareCrosshair;
     onCompareVisibleRangeRef.current = onCompareVisibleRange;
     hideVolumePaneRef.current = hideVolumePane;
-  }, [compareSync, onCompareCrosshair, onCompareVisibleRange, hideVolumePane]);
+    compareCompactBeadsRef.current = compareCompactBeads;
+  }, [compareSync, onCompareCrosshair, onCompareVisibleRange, hideVolumePane, compareCompactBeads]);
 
   const [crosshair, setCrosshair] = useState<VectorCrosshairState | null>(null);
   const [lens, setLens] = useState<VectorWallLens>(defaultLens ?? "gex");
@@ -1805,6 +1816,7 @@ export function VectorChart({
     const liveBeads = liveSessionRef.current && !replayModeRef.current;
     const pinLiveAnchorBeads = liveFollowEnabledRef.current;
     const trailBucketSec = wallTrailSecRef.current;
+    const beadProfile: WallBeadRenderProfile = compareCompactBeadsRef.current ? "compare" : "default";
     const call = applyWallBeadMarkers(
       callBeadsRef.current,
       history,
@@ -1817,7 +1829,8 @@ export function VectorChart({
       beadRowCap,
       pinLiveAnchorBeads,
       trailBucketSec,
-      spotRef.current
+      spotRef.current,
+      compareCompactBeadsRef.current
     );
     const put = applyWallBeadMarkers(
       putBeadsRef.current,
@@ -1831,10 +1844,19 @@ export function VectorChart({
       beadRowCap,
       pinLiveAnchorBeads,
       trailBucketSec,
-      spotRef.current
+      spotRef.current,
+      compareCompactBeadsRef.current
     );
     // Feed the ribbon rail the SAME composed call+put trails (both sides share one frame reference).
-    feedWallRail(wallRailPrimitiveRef.current, call.rendered, put.rendered, v.callColor, v.putColor, true);
+    feedWallRail(
+      wallRailPrimitiveRef.current,
+      call.rendered,
+      put.rendered,
+      v.callColor,
+      v.putColor,
+      true,
+      beadProfile
+    );
     // Record what was actually drawn so the autoscale provider widens to reveal these exact beads
     // at every zoom level, then nudge a rescale (off-hours there is no tick to trigger it).
     beadStrikesRef.current = { call: call.strikes, put: put.strikes };
@@ -2412,7 +2434,8 @@ export function VectorChart({
         wallCountForTimeframe(timeframeRef.current),
         true,
         trailBucketSec,
-        spotRef.current
+        spotRef.current,
+        compareCompactBeadsRef.current
       );
       const put = applyWallBeadMarkers(
         putBeadsRef.current,
@@ -2426,10 +2449,19 @@ export function VectorChart({
         wallCountForTimeframe(timeframeRef.current),
         true,
         trailBucketSec,
-        spotRef.current
+        spotRef.current,
+        compareCompactBeadsRef.current
       );
       // Feed the ribbon rail the point-in-time trails so replay scrubs the bands too, not just dots.
-      feedWallRail(wallRailPrimitiveRef.current, call.rendered, put.rendered, v.callColor, v.putColor, true);
+      feedWallRail(
+        wallRailPrimitiveRef.current,
+        call.rendered,
+        put.rendered,
+        v.callColor,
+        v.putColor,
+        true,
+        compareCompactBeadsRef.current ? "compare" : "default"
+      );
       // Same zoom-stability guarantee in replay: widen the axis for the beads this frame drew.
       beadStrikesRef.current = { call: call.strikes, put: put.strikes };
       pinCandlesOnTop(series);
@@ -3323,6 +3355,7 @@ export function VectorChart({
           rangeWallsRef.current.put,
           WALL_VIEW_MAX_PCT
         );
+        const beadViewPct = compareCompactBeadsRef.current ? COMPARE_BEAD_VIEW_MAX_PCT : BEAD_VIEW_MAX_PCT;
         return {
           ...res,
           priceRange: extendRangeForWalls(
@@ -3330,8 +3363,8 @@ export function VectorChart({
             spotRef.current,
             beadStrikesRef.current.call,
             beadStrikesRef.current.put,
-            BEAD_VIEW_MAX_PCT,
-            BEAD_VIEW_MAX_PCT
+            beadViewPct,
+            beadViewPct
           ),
         };
       },
