@@ -479,6 +479,7 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
             focusExpanded && canFocusExpand && "is-focus-expanded"
           )}
           data-pane-count={gridSlotCount}
+          data-four-up-perf={gridSlotCount >= 4 ? "true" : undefined}
         >
           {seeds.map((seed, i) => {
             const isHero = focusExpanded && focusedTicker === seed.ticker;
@@ -514,6 +515,8 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
                 linkedReplay={linkedReplayBind}
                 hideReplayControls={linked}
                 onReplayTimeline={(timeline) => handleReplayTimeline(seed.ticker, timeline)}
+                compareFourUp={seeds.length >= 4}
+                compareFourUpBackground={seeds.length >= 4 && focusedTicker !== seed.ticker}
               />
             );
           })}

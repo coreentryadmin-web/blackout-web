@@ -120,12 +120,25 @@ export function visibleBarCountFromRange(range: LogicalRangeLike): number | null
 /**
  * Dim background overlays (heatmap, volume profile, regime glow, bead rail) when the member zooms
  * out so candles stay the focal layer. Full opacity at ≤90 visible bars; ~38% at ≥400.
+ * Compare 4-up applies an extra baseline dim so candles stay primary on weaker devices.
  */
-export function overlayDimFactor(visibleBars: number): number {
-  if (visibleBars <= 90) return 1;
-  if (visibleBars >= 400) return 0.38;
-  const t = (visibleBars - 90) / (400 - 90);
-  return 1 - t * (1 - 0.38);
+export const VECTOR_COMPARE_FOUR_UP_OVERLAY_DIM = 0.72;
+export const VECTOR_COMPARE_FOUR_UP_FOCUSED_OVERLAY_DIM = 0.88;
+
+export function overlayDimFactor(
+  visibleBars: number,
+  opts?: { compareFourUp?: boolean; compareFourUpBackground?: boolean }
+): number {
+  let dim: number;
+  if (visibleBars <= 90) dim = 1;
+  else if (visibleBars >= 400) dim = 0.38;
+  else {
+    const t = (visibleBars - 90) / (400 - 90);
+    dim = 1 - t * (1 - 0.38);
+  }
+  if (opts?.compareFourUpBackground) return dim * VECTOR_COMPARE_FOUR_UP_OVERLAY_DIM;
+  if (opts?.compareFourUp) return dim * VECTOR_COMPARE_FOUR_UP_FOCUSED_OVERLAY_DIM;
+  return dim;
 }
 
 /**

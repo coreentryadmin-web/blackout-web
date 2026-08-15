@@ -128,6 +128,8 @@ type Props = {
   linkedReplay?: import("@/features/vector/lib/vector-compare-replay").VectorLinkedReplayBind | null;
   hideReplayControls?: boolean;
   onReplayTimeline?: (timeline: number[]) => void;
+  compareFourUp?: boolean;
+  compareFourUpBackground?: boolean;
 };
 
 type VectorIosPanel = "chart" | "pulse" | "ladder" | "scanner";
@@ -187,6 +189,8 @@ export function VectorPageShell({
   linkedReplay = null,
   hideReplayControls = false,
   onReplayTimeline,
+  compareFourUp = false,
+  compareFourUpBackground = false,
 }: Props) {
   const chartOnly = embed === "chart-only";
   const router = useRouter();
@@ -552,6 +556,8 @@ export function VectorPageShell({
           linkedReplay={linkedReplay}
           hideReplayControls={hideReplayControls}
           onReplayTimeline={onReplayTimeline}
+          compareFourUp={compareFourUp}
+          compareFourUpBackground={compareFourUpBackground}
           onPriceScaleRender={onPriceScaleRender}
           focusLevel={focusLevel}
           playLevels={playLevels}
