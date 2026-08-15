@@ -10,6 +10,11 @@
   display: none;
 }
 
+/* Desktop aligned toolbar — hidden on iOS native shell (uses compact rows instead) */
+html.ios-app.ios-native-shell .vector-toolbar-desk {
+  display: none !important;
+}
+
 html.ios-app.ios-native-shell {
   --ios-compact-touch: 2.5rem; /* 40px — dense desk; still tappable */
   --ios-compact-pad-x: 0.65rem;

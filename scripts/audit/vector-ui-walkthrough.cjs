@@ -76,10 +76,10 @@ const STEPS = [
  * broken for correctly showing the intraday chart. The harness was wrong, not the page.
  */
 const DAILY_STEPS = [
-  { id: "12-view-1D", label: "chart view 1D", text: "1D", settle: 9000, daily: true, effect: { kind: "viewActive", text: "1D" } },
-  { id: "13-view-1W", label: "chart view 1W", text: "1W", settle: 9000, daily: true, effect: { kind: "viewActive", text: "1W" } },
-  { id: "14-view-4H", label: "chart view 4H", text: "4H", settle: 9000, daily: true, effect: { kind: "viewActive", text: "4H" } },
-  { id: "15-view-intraday", label: "chart view Intraday", text: "Intraday", settle: 9000, daily: false, effect: { kind: "viewActive", text: "Intraday" } },
+  { id: "12-view-1D", label: "chart view 1D", select: ["[data-testid=vector-chart-view-select]", "1D"], settle: 9000, daily: true, effect: { kind: "selectValue", sel: "[data-testid=vector-chart-view-select]", value: "1D" } },
+  { id: "13-view-1W", label: "chart view 1W", select: ["[data-testid=vector-chart-view-select]", "1W"], settle: 9000, daily: true, effect: { kind: "selectValue", sel: "[data-testid=vector-chart-view-select]", value: "1W" } },
+  { id: "14-view-4H", label: "chart view 4H", select: ["[data-testid=vector-chart-view-select]", "4H"], settle: 9000, daily: true, effect: { kind: "selectValue", sel: "[data-testid=vector-chart-view-select]", value: "4H" } },
+  { id: "15-view-intraday", label: "chart view Intraday", select: ["[data-testid=vector-chart-view-select]", "intraday"], settle: 9000, daily: false, effect: { kind: "selectValue", sel: "[data-testid=vector-chart-view-select]", value: "intraday" } },
 ];
 
 const BROKEN_TEXT = /something went wrong|we couldn['’]t load|failed to load|unhandled runtime error|application error/i;
@@ -144,15 +144,6 @@ async function verifyEffect(page, effect) {
       }
       case "exists":
         return q(e.sel) ? null : `${e.sel} never appeared`;
-      case "viewActive": {
-        const btns = [...document.querySelectorAll(".vector-chart-view-btn")].filter((b) => {
-          const r = b.getBoundingClientRect();
-          return r.width > 0 && r.height > 0;
-        });
-        const hit = btns.find((b) => (b.textContent || "").trim() === e.text);
-        if (!hit) return `view button "${e.text}" not found`;
-        return isActive(hit) ? null : `view "${e.text}" did not become active`;
-      }
       case "spotInLadderView": {
         // The reset button's whole job: put the spot marker back inside the visible rail.
         const list = q(".vector-gex-ladder-rows");
@@ -409,17 +400,6 @@ async function run(session) {
           if (await loc.count()) {
             await loc.selectOption(value);
             acted = "select";
-          } else acted = "missing";
-        } else if (step.text) {
-          // The 1D/1W/4H/Intraday buttons carry no testid — matched on exact label within the
-          // view-toggle group so a stray "1D" elsewhere on the desk can't be clicked by mistake.
-          const btn = page
-            .locator(".vector-chart-view-btn", { hasText: new RegExp(`^${step.text}$`) })
-            .filter({ visible: true })
-            .last();
-          if (await btn.count()) {
-            await btn.click({ timeout: 8000 });
-            acted = "click";
           } else acted = "missing";
         } else if (step.sel) {
           const loc = visibleLocator(page, step.sel);

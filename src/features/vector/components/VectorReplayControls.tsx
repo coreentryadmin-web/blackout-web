@@ -23,8 +23,7 @@ type Props = {
 
 const SPEEDS = [0.5, 1, 2, 4, 8] as const;
 
-const iconBtn =
-  "font-mono text-[10px] rounded-lg border border-white/15 px-2 py-1 text-sky-300 hover:border-white/25 disabled:cursor-not-allowed disabled:opacity-30";
+const iconBtn = "vector-desk-btn-ghost";
 
 /** Session replay — compact transport in toolbar + expanded scrub row when active. */
 export function VectorReplayControls({
@@ -58,7 +57,7 @@ export function VectorReplayControls({
           aria-label={replayMode ? "Exit replay" : "Replay session"}
           title={replayMode ? "Exit replay (Esc)" : "Replay session"}
           className={clsx(
-            "font-mono text-[10px] font-semibold rounded-lg border px-2.5 py-1.5 transition-all",
+            "vector-desk-btn-ghost font-semibold px-2.5",
             replayMode
               ? "border-gold/70 text-gold bg-gold/15"
               : "border-[rgba(0,230,118,0.3)] text-[#a3e635] disabled:cursor-not-allowed disabled:opacity-30"
@@ -131,7 +130,7 @@ export function VectorReplayControls({
               value={String(speed)}
               onChange={(e) => onSpeed(Number(e.target.value))}
               aria-label="Replay speed"
-              className="rounded-lg border border-white/15 bg-black/40 px-1.5 py-1 font-mono text-[10px] text-cyan-400"
+              className="vector-desk-select vector-desk-select--tf min-w-[3.25rem] py-1"
             >
               {SPEEDS.map((s) => (
                 <option key={s} value={String(s)}>
