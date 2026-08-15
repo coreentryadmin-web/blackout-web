@@ -7693,6 +7693,12 @@ body::before {
     @apply min-w-0;
     order: 1;
   }
+  .vector-chart-column-head {
+    @apply mb-1 flex flex-wrap items-center gap-2;
+  }
+  .vector-chart-view-seg {
+    @apply shrink-0;
+  }
   .vector-terminal-rail {
     order: 2;
     min-width: 0;

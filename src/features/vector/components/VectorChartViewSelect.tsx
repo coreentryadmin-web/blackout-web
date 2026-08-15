@@ -19,29 +19,39 @@ type Props = {
   idSuffix?: string;
 };
 
-/** Chart horizon — intraday session vs multi-day historical views. */
+/** Chart horizon — intraday session vs multi-day historical views. Segmented control so the
+ *  active view stays visible when the intraday chart unmounts for 1D/4H/1W. */
 export function VectorChartViewSelect({ value, onChange, disabled = false, idSuffix = "" }: Props) {
-  const selectId = `vector-chart-view${idSuffix}`;
+  const groupId = `vector-chart-view${idSuffix}`;
 
   return (
-    <div className="vector-desk-select-wrap">
-      <label className="sr-only" htmlFor={selectId}>
-        Chart view
-      </label>
-      <select
-        id={selectId}
-        data-testid="vector-chart-view-select"
-        disabled={disabled}
-        value={value}
-        onChange={(e) => onChange(e.target.value as VectorChartView)}
-        className={clsx("vector-desk-select vector-desk-select--view", disabled && "is-disabled")}
-      >
-        {OPTIONS.map((opt) => (
-          <option key={opt.value} value={opt.value}>
+    <div
+      className="vector-desk-seg vector-chart-view-seg"
+      role="group"
+      aria-label="Chart view"
+      id={groupId}
+      data-testid="vector-chart-view-select"
+    >
+      {OPTIONS.map((opt) => {
+        const active = value === opt.value;
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            disabled={disabled}
+            aria-pressed={active}
+            data-testid={`vector-chart-view-${opt.value.toLowerCase()}`}
+            className={clsx(
+              "vector-desk-seg-btn",
+              active && "is-active",
+              disabled && "is-disabled"
+            )}
+            onClick={() => onChange(opt.value)}
+          >
             {opt.label}
-          </option>
-        ))}
-      </select>
+          </button>
+        );
+      })}
     </div>
   );
 }
