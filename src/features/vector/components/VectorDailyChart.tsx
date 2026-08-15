@@ -14,6 +14,12 @@ import {
   type Time,
 } from "lightweight-charts";
 import { VECTOR_CHART_LOCALE } from "@/features/vector/lib/vector-chart-config";
+import {
+  adaptiveBarSpacingForZoom,
+  vectorCandlestickOptions,
+  vectorTimeScaleSpacingOptions,
+  visibleBarCountFromRange,
+} from "@/features/vector/lib/vector-candle-render";
 import { smaSeries } from "@/features/vector/lib/vector-indicators";
 import type { VectorDailyUnit } from "@/features/vector/lib/vector-daily-bars";
 import {
@@ -174,15 +180,16 @@ export function VectorDailyChart({ ticker, unit, onHoverPrice }: Props) {
         horzLines: { color: "rgba(148, 163, 184, 0.08)" },
       },
       rightPriceScale: { borderColor: "rgba(148, 163, 184, 0.15)" },
-      timeScale: { borderColor: "rgba(148, 163, 184, 0.15)" },
+      timeScale: {
+        borderColor: "rgba(148, 163, 184, 0.15)",
+        ...vectorTimeScaleSpacingOptions(),
+      },
       localization: { locale: VECTOR_CHART_LOCALE },
     });
     const candleSeries = chart.addSeries(CandlestickSeries, {
-      upColor: "#00e676",
-      downColor: "#ff2d55",
-      borderVisible: false,
-      wickUpColor: "#00e676",
-      wickDownColor: "#ff2d55",
+      ...vectorCandlestickOptions(),
+      priceLineVisible: false,
+      lastValueVisible: true,
     });
     const volumeSeries = chart.addSeries(HistogramSeries, {
       priceFormat: { type: "volume" },
@@ -235,6 +242,13 @@ export function VectorDailyChart({ ticker, unit, onHoverPrice }: Props) {
         ...d,
         changePct: d.open ? ((d.close - d.open) / d.open) * 100 : 0,
       });
+    });
+
+    chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
+      const range = chart.timeScale().getVisibleLogicalRange();
+      const count = visibleBarCountFromRange(range);
+      if (count == null) return;
+      chart.timeScale().applyOptions(adaptiveBarSpacingForZoom(count));
     });
 
     return () => {

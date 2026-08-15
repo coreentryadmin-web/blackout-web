@@ -43,11 +43,16 @@ type ProjectedBucket = { yTop: number; yBottom: number; xLeft: number; isPoc: bo
 type Projected = { rightX: number; pocY: number | null; bars: ProjectedBucket[] };
 
 class VolumeProfileRenderer implements IPrimitivePaneRenderer {
-  constructor(private readonly _p: Projected) {}
+  constructor(
+    private readonly _p: Projected,
+    private readonly _overlayDim: number
+  ) {}
 
   draw(target: PaneRendererTarget): void {
     target.useMediaCoordinateSpace((scope) => {
       const ctx = scope.context;
+      ctx.save();
+      ctx.globalAlpha = this._overlayDim;
       const { rightX, pocY, bars } = this._p;
       for (const b of bars) {
         ctx.fillStyle = b.isPoc ? POC_FILL : b.inValueArea ? VALUE_AREA_FILL : BAR_FILL;
@@ -65,6 +70,7 @@ class VolumeProfileRenderer implements IPrimitivePaneRenderer {
         ctx.stroke();
         ctx.setLineDash([]);
       }
+      ctx.restore();
     });
   }
 }
@@ -78,7 +84,7 @@ class VolumeProfilePaneView implements IPrimitivePaneView {
   renderer(): IPrimitivePaneRenderer | null {
     const projected = this._source.project();
     if (!projected || !projected.bars.length) return null;
-    return new VolumeProfileRenderer(projected);
+    return new VolumeProfileRenderer(projected, this._source.overlayDim());
   }
 }
 
@@ -88,6 +94,7 @@ export class VolumeProfilePrimitive implements ISeriesPrimitive<Time> {
   private _requestUpdate: (() => void) | null = null;
   private _profile: VolumeProfile | null = null;
   private _enabled = false;
+  private _overlayDim = 1;
   private readonly _paneViews: readonly IPrimitivePaneView[] = [new VolumeProfilePaneView(this)];
 
   attached(param: SeriesAttachedParameter<Time>): void {
@@ -107,6 +114,17 @@ export class VolumeProfilePrimitive implements ISeriesPrimitive<Time> {
   setData(profile: VolumeProfile | null, enabled: boolean): void {
     this._profile = profile;
     this._enabled = enabled;
+    this._requestUpdate?.();
+  }
+
+  overlayDim(): number {
+    return this._overlayDim;
+  }
+
+  setOverlayDim(factor: number): void {
+    const next = Math.max(0, Math.min(1, factor));
+    if (Math.abs(next - this._overlayDim) < 0.02) return;
+    this._overlayDim = next;
     this._requestUpdate?.();
   }
 

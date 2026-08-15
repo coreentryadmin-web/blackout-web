@@ -50,11 +50,16 @@ const LABEL_X = 8;
 const LABEL_GAP = 5;
 
 class GammaRegimeRenderer implements IPrimitivePaneRenderer {
-  constructor(private readonly _geo: GammaRegimeGeometry) {}
+  constructor(
+    private readonly _geo: GammaRegimeGeometry,
+    private readonly _overlayDim: number
+  ) {}
 
   draw(target: PaneRendererTarget): void {
     target.useMediaCoordinateSpace((scope) => {
       const ctx = scope.context;
+      ctx.save();
+      ctx.globalAlpha = this._overlayDim;
       const width = scope.mediaSize.width;
       const geo = this._geo;
 
@@ -81,6 +86,7 @@ class GammaRegimeRenderer implements IPrimitivePaneRenderer {
       ctx.textBaseline = "top";
       ctx.fillText(geo.below.label, LABEL_X, geo.flipY + LABEL_GAP);
       ctx.restore();
+      ctx.restore();
     });
   }
 }
@@ -97,7 +103,7 @@ class GammaRegimePaneView implements IPrimitivePaneView {
   renderer(): IPrimitivePaneRenderer | null {
     const geo = this._source.geometry();
     if (!geo) return null;
-    return new GammaRegimeRenderer(geo);
+    return new GammaRegimeRenderer(geo, this._source.overlayDim());
   }
 }
 
@@ -111,6 +117,7 @@ export class GammaRegimePrimitive implements ISeriesPrimitive<Time> {
   private _flip: number | null = null;
   private _spot: number | null = null;
   private _enabled = false;
+  private _overlayDim = 1;
   // Stable single-view array — the library caches on the array reference, so it must not churn.
   private readonly _paneViews: readonly IPrimitivePaneView[] = [new GammaRegimePaneView(this)];
 
@@ -136,6 +143,17 @@ export class GammaRegimePrimitive implements ISeriesPrimitive<Time> {
     this._flip = flip;
     this._spot = spot;
     this._enabled = enabled;
+    this._requestUpdate?.();
+  }
+
+  overlayDim(): number {
+    return this._overlayDim;
+  }
+
+  setOverlayDim(factor: number): void {
+    const next = Math.max(0, Math.min(1, factor));
+    if (Math.abs(next - this._overlayDim) < 0.02) return;
+    this._overlayDim = next;
     this._requestUpdate?.();
   }
 

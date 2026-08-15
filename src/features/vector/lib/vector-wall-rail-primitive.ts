@@ -129,7 +129,8 @@ type Band = {
 class WallRailRenderer implements IPrimitivePaneRenderer {
   constructor(
     private readonly _bands: Band[],
-    private readonly _tuning: BeadRenderTuning
+    private readonly _tuning: BeadRenderTuning,
+    private readonly _overlayDim: number
   ) {}
 
   draw(target: PaneRendererTarget): void {
@@ -139,7 +140,7 @@ class WallRailRenderer implements IPrimitivePaneRenderer {
       const minR = this._tuning.minRadiusPx;
       const haloMul = this._tuning.kingHaloMul;
       ctx.save();
-      ctx.globalAlpha = RAIL_TRANSLUCENCY;
+      ctx.globalAlpha = RAIL_TRANSLUCENCY * this._overlayDim;
       for (const b of this._bands) {
         const pts = b.pts;
         for (const p of pts) {
@@ -203,7 +204,7 @@ class WallRailPaneView implements IPrimitivePaneView {
     if (!projected) return null;
     const { bands, tuning } = projected;
     if (bands.length === 0) return null;
-    return new WallRailRenderer(bands, tuning);
+    return new WallRailRenderer(bands, tuning, this._source.overlayDim());
   }
 }
 
@@ -213,6 +214,8 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
   private _requestUpdate: (() => void) | null = null;
   private _data: WallRailData | null = null;
   private _visible = false;
+  /** Background dim when member zooms out — candles stay dominant. */
+  private _overlayDim = 1;
   private readonly _paneViews: readonly IPrimitivePaneView[] = [new WallRailPaneView(this)];
 
   // ── Animation state ──
@@ -275,6 +278,17 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
     this._visible = visible;
     this._requestUpdate?.();
     this._ensureAnimating();
+  }
+
+  overlayDim(): number {
+    return this._overlayDim;
+  }
+
+  setOverlayDim(factor: number): void {
+    const next = Math.max(0, Math.min(1, factor));
+    if (Math.abs(next - this._overlayDim) < 0.02) return;
+    this._overlayDim = next;
+    this._requestUpdate?.();
   }
 
   beadZOrder(): PrimitivePaneViewZOrder {
