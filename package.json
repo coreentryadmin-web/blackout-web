@@ -18,6 +18,8 @@
     "clerk:purge-test-users": "node scripts/clerk-purge-test-users.mjs --dry-run",
     "test": "node scripts/run-tests.mjs",
     "validate:deploy": "node scripts/validate-deploy.mjs",
+    "validate:homepage": "node scripts/audit/homepage-link-audit.mjs",
+    "validate:homepage-e2e": "node scripts/audit/homepage-e2e-audit.mjs",
     "deploy:ecs": "node scripts/deploy/roll-ecs.mjs",
     "validate:ga4": "node scripts/audit/ga4-live-probe.mjs",
     "validate:seo": "node --import tsx scripts/audit/seo-visibility-audit.mjs",

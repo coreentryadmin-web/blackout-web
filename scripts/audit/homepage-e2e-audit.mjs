@@ -11,6 +11,24 @@ const BASE = (process.env.VALIDATE_BASE || "https://blackouttrades.com").replace
 const OUT = "/opt/cursor/artifacts/homepage-e2e-audit.json";
 mkdirSync(join(OUT, ".."), { recursive: true });
 
+function homeUrl() {
+  return `${BASE}/?_cb=${Date.now()}`;
+}
+
+/** @param {import('playwright').Page} page */
+async function gotoHome(page, opts = {}) {
+  const url = homeUrl();
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000, ...opts });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (!/interrupted by another navigation/i.test(msg) || attempt === 2) throw e;
+      await page.waitForTimeout(400);
+    }
+  }
+}
+
 /** @typedef {{ severity: string, code: string, detail: string }} Issue */
 
 /** @param {import('playwright').Page} page */
@@ -44,7 +62,7 @@ async function runDesktop(browser) {
     if (msg.type() === "error") consoleErrors.push(msg.text());
   });
 
-  await page.goto(`${BASE}/`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+  await gotoHome(page);
   await page.waitForTimeout(2000);
   passes.push("homepage loaded (desktop)");
 
@@ -60,16 +78,16 @@ async function runDesktop(browser) {
     passes.push("back from sign-in → homepage");
   }
 
-  const getAccess = page.locator('.mkt-nav-auth a[href="/sign-up"], .nav-join[href="/sign-up"]');
+  const getAccess = page.locator('.mkt-nav-auth a.nav-join[href="/sign-up"]');
   if ((await getAccess.count()) > 0) {
-    await getAccess.first().click();
+    await getAccess.click();
     await page.waitForURL(/\/sign-up/, { timeout: 15_000 });
     passes.push("Get access → /sign-up");
     await page.goBack({ waitUntil: "domcontentloaded" });
   }
 
   // In-page anchor from hero
-  await page.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
+  await gotoHome(page);
   const explore = page.locator('a.btn-g[href="#modules"], a[href="#modules"]').first();
   if ((await explore.count()) > 0) {
     await explore.click();
@@ -98,7 +116,7 @@ async function runDesktop(browser) {
     ["Terms", "/terms"],
     ["Privacy", "/privacy"],
   ]) {
-    await page.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
+    await gotoHome(page);
     const link = page.locator(`footer a[href="${path}"]`).first();
     if ((await link.count()) === 0) {
       issues.push({ severity: "P1", code: "FOOTER_LINK_MISSING", detail: `${label} ${path}` });
@@ -111,7 +129,7 @@ async function runDesktop(browser) {
   }
 
   // External links open new tab
-  await page.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
+  await gotoHome(page);
   const discord = page.locator('footer a[href*="discord"]').first();
   if ((await discord.count()) > 0) {
     const target = await discord.getAttribute("target");
@@ -140,7 +158,7 @@ async function runMobile(browser) {
 
   const ctx = await browser.newContext({ ...devices["iPhone 13"] });
   const page = await ctx.newPage();
-  await page.goto(`${BASE}/`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+  await gotoHome(page);
   await page.waitForTimeout(1500);
 
   const menuBtn = page.locator(".mkt-nav-menu-btn");
@@ -148,8 +166,10 @@ async function runMobile(browser) {
     issues.push({ severity: "P0", code: "MOBILE_NAV_MISSING", detail: "No hamburger button" });
   } else {
     passes.push("mobile menu button present");
+    await menuBtn.waitFor({ state: "visible", timeout: 10_000 });
     await menuBtn.click();
-    const drawer = page.locator("#mkt-mobile-menu.is-open");
+    await page.waitForSelector('.mkt-nav-menu-btn[aria-expanded="true"]', { timeout: 8000 });
+    const drawer = page.locator("#mkt-mobile-menu");
     await drawer.waitFor({ state: "visible", timeout: 5000 });
     passes.push("mobile drawer opens");
 
@@ -168,13 +188,16 @@ async function runMobile(browser) {
     }
 
     // Re-open menu and test Escape
-    await page.goto(`${BASE}/`, { waitUntil: "domcontentloaded" });
-    await menuBtn.click();
-    await drawer.waitFor({ state: "visible" });
+    await gotoHome(page);
+    await page.waitForTimeout(800);
+    const menuBtn2 = page.locator(".mkt-nav-menu-btn");
+    await menuBtn2.waitFor({ state: "visible", timeout: 10_000 });
+    await menuBtn2.click();
+    await page.waitForSelector('.mkt-nav-menu-btn[aria-expanded="true"]', { timeout: 8000 });
     await page.keyboard.press("Escape");
-    await page.waitForTimeout(300);
-    const hidden = await drawer.evaluate((el) => !el.classList.contains("is-open"));
-    if (!hidden) {
+    await page.waitForTimeout(400);
+    const expanded = await menuBtn2.getAttribute("aria-expanded");
+    if (expanded !== "false") {
       issues.push({ severity: "P2", code: "MOBILE_ESCAPE", detail: "Escape did not close drawer" });
     } else {
       passes.push("Escape closes mobile drawer");
@@ -187,8 +210,29 @@ async function runMobile(browser) {
 }
 
 const browser = await chromium.launch({ headless: true });
-const desktop = await runDesktop(browser);
-const mobile = await runMobile(browser);
+let desktop;
+let mobile;
+try {
+  desktop = await runDesktop(browser);
+} catch (e) {
+  desktop = {
+    label: "desktop",
+    issues: [{ severity: "P0", code: "DESKTOP_CRASH", detail: e instanceof Error ? e.message : String(e) }],
+    passes: [],
+    perf: {},
+    consoleErrors: [],
+  };
+}
+try {
+  mobile = await runMobile(browser);
+} catch (e) {
+  mobile = {
+    label: "mobile",
+    issues: [{ severity: "P0", code: "MOBILE_CRASH", detail: e instanceof Error ? e.message : String(e) }],
+    passes: [],
+    perf: {},
+  };
+}
 await browser.close();
 
 const report = {
