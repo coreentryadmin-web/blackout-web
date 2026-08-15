@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import {
   adaptiveBarSpacingForZoom,
+  applyAdaptiveBarSpacingToChart,
   coarserTimeframeIfZoomedOut,
   hasExtendedHoursBars,
   intradayZoomPresetFromKeyboard,
@@ -41,6 +42,21 @@ describe("vector-candle-render", () => {
     assert.equal(tight.minBarSpacing, VECTOR_MIN_BAR_SPACING);
     const wide = adaptiveBarSpacingForZoom(250);
     assert.equal(wide.minBarSpacing, VECTOR_MIN_BAR_SPACING);
+  });
+
+  test("applyAdaptiveBarSpacingToChart: applies spacing from visible logical range", () => {
+    let applied: { barSpacing: number; minBarSpacing: number } | null = null;
+    const chart = {
+      timeScale: () => ({
+        getVisibleLogicalRange: () => ({ from: 0, to: 50 }),
+        applyOptions: (o: { barSpacing: number; minBarSpacing: number }) => {
+          applied = o;
+        },
+      }),
+    };
+    applyAdaptiveBarSpacingToChart(chart);
+    assert.ok(applied);
+    assert.equal(applied!.barSpacing, VECTOR_SESSION_BAR_SPACING);
   });
 
   test("structure and live zoom presets frame trailing windows", () => {

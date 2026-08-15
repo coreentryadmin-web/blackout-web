@@ -53,8 +53,17 @@ test("VectorChart: default load shows multi-day seed via fitContent", () => {
 
 test("VectorChart: member wheel zoom not overridden by adaptive bar spacing", () => {
   const src = read("src/features/vector/components/VectorChart.tsx");
+  const render = read("src/features/vector/lib/vector-candle-render.ts");
   assert.match(src, /viewportLocked = memberViewportLocked/);
-  assert.match(src, /if \(!viewportLocked\) \{[\s\S]{0,120}adaptiveBarSpacingForZoom/);
+  // Spacing must NOT run inside subscribeVisibleLogicalRangeChange — that callback fires
+  // synchronously during wheel zoom and would cancel every tick before capture-phase stamp.
+  assert.doesNotMatch(
+    src,
+    /syncCandleViewportFromRange[\s\S]{0,800}adaptiveBarSpacingForZoom/
+  );
+  assert.match(render, /applyAdaptiveBarSpacingToChart/);
+  assert.match(src, /applyAdaptiveBarSpacingToChart/);
+  assert.match(src, /addEventListener\("wheel", onWheel, \{ passive: true, capture: true \}/);
   assert.match(src, /handleScale: true/);
 });
 
