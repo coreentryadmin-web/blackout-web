@@ -9,6 +9,7 @@ import type { VectorTimeframeMinutes } from "@/features/vector/lib/vector-bar-ti
 import type { VectorWallLens } from "@/features/vector/lib/vector-wall-history";
 import type { VectorRegime } from "@/features/vector/lib/vector-regime";
 import type { VectorCompareChartSyncBind } from "@/features/vector/lib/vector-compare-sync";
+import type { VectorLinkedReplayBind } from "@/features/vector/lib/vector-compare-replay";
 import { fmtCompareSpot } from "@/features/vector/lib/vector-compare-format";
 
 const VectorPageShell = dynamic(
@@ -51,6 +52,9 @@ type Props = {
   compareSync?: VectorCompareChartSyncBind | null;
   onCompareCrosshair?: (paneId: string, timeSec: number | null) => void;
   onCompareVisibleRange?: (paneId: string, fromSec: number, toSec: number) => void;
+  linkedReplay?: VectorLinkedReplayBind | null;
+  hideReplayControls?: boolean;
+  onReplayTimeline?: (timeline: number[]) => void;
 };
 
 export function VectorComparePane({
@@ -74,6 +78,9 @@ export function VectorComparePane({
   compareSync = null,
   onCompareCrosshair,
   onCompareVisibleRange,
+  linkedReplay = null,
+  hideReplayControls = false,
+  onReplayTimeline,
 }: Props) {
   const [regime, setRegime] = useState<VectorRegime | null>(null);
   const [spot, setSpot] = useState<number | null>(
@@ -187,6 +194,9 @@ export function VectorComparePane({
           compareSync={compareSync}
           onCompareCrosshair={onCompareCrosshair}
           onCompareVisibleRange={onCompareVisibleRange}
+          linkedReplay={linkedReplay}
+          hideReplayControls={hideReplayControls}
+          onReplayTimeline={onReplayTimeline}
         />
       </div>
     </article>

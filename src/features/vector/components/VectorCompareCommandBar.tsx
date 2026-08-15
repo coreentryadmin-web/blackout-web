@@ -4,6 +4,7 @@ import clsx from "clsx";
 import { ProductMark } from "@/components/marks/ProductMark";
 import { VectorDteToggle } from "@/features/vector/components/VectorDteToggle";
 import { VectorLensToggle } from "@/features/vector/components/VectorLensToggle";
+import { VectorReplayControls } from "@/features/vector/components/VectorReplayControls";
 import { VectorTimeframeSelect } from "@/features/vector/components/VectorTimeframeSelect";
 import {
   VECTOR_COMPARE_PRESETS,
@@ -13,6 +14,25 @@ import { VectorCompareAddSlot } from "@/features/vector/components/VectorCompare
 import type { VectorDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
 import type { VectorTimeframeMinutes } from "@/features/vector/lib/vector-bar-timeframes";
 import type { VectorWallLens } from "@/features/vector/lib/vector-wall-history";
+
+export type VectorCompareLinkedReplayProps = {
+  mode: boolean;
+  playing: boolean;
+  canReplay: boolean;
+  cursorIndex: number;
+  stepCount: number;
+  clockLabel: string;
+  speed: number;
+  loop: boolean;
+  onToggleReplay: () => void;
+  onTogglePlay: () => void;
+  onScrub: (index: number) => void;
+  onSpeed: (speed: number) => void;
+  onStep: (delta: number) => void;
+  onJumpOpen: () => void;
+  onJumpClose: () => void;
+  onToggleLoop: () => void;
+};
 
 type Props = {
   paneCount: number;
@@ -24,6 +44,7 @@ type Props = {
   focusExpanded: boolean;
   canFocusExpand: boolean;
   onToggleFocusExpand: () => void;
+  linkedReplay: VectorCompareLinkedReplayProps | null;
   timeframe: VectorTimeframeMinutes;
   onTimeframe: (tf: VectorTimeframeMinutes) => void;
   dteHorizon: VectorDteHorizon;
@@ -49,6 +70,7 @@ export function VectorCompareCommandBar({
   focusExpanded,
   canFocusExpand,
   onToggleFocusExpand,
+  linkedReplay,
   timeframe,
   onTimeframe,
   dteHorizon,
@@ -136,6 +158,29 @@ export function VectorCompareCommandBar({
             onPick={onAddSymbol}
             exclude={addExclude}
             disabled={addDisabled}
+          />
+        </div>
+      ) : null}
+
+      {linkedReplay ? (
+        <div className="vector-compare-command-replay" role="group" aria-label="Linked session replay">
+          <VectorReplayControls
+            replayMode={linkedReplay.mode}
+            playing={linkedReplay.playing}
+            canReplay={linkedReplay.canReplay}
+            cursorIndex={linkedReplay.cursorIndex}
+            stepCount={linkedReplay.stepCount}
+            clockLabel={linkedReplay.clockLabel}
+            speed={linkedReplay.speed}
+            loop={linkedReplay.loop}
+            onToggleReplay={linkedReplay.onToggleReplay}
+            onTogglePlay={linkedReplay.onTogglePlay}
+            onScrub={linkedReplay.onScrub}
+            onSpeed={linkedReplay.onSpeed}
+            onStep={linkedReplay.onStep}
+            onJumpOpen={linkedReplay.onJumpOpen}
+            onJumpClose={linkedReplay.onJumpClose}
+            onToggleLoop={linkedReplay.onToggleLoop}
           />
         </div>
       ) : null}

@@ -136,12 +136,14 @@ import {
   sliceHistoryToTime,
   timelineIndexAtOrAfterEtClock,
   timelineIndexAtOrBeforeEtClock,
+  timelineIndexAtOrBeforeTime,
   wallsAtCrosshairTime,
   wallsAtReplayTime,
   wallsForActiveLens,
 } from "@/features/vector/lib/vector-replay";
 import type { VectorCompareChartSyncBind } from "@/features/vector/lib/vector-compare-sync";
 import { barCloseAtOrBeforeTime, visibleRangeToEpochSec } from "@/features/vector/lib/vector-compare-sync";
+import type { VectorLinkedReplayBind } from "@/features/vector/lib/vector-compare-replay";
 import {
   aggregateVectorBars,
   mergeBarsByTime,
@@ -356,6 +358,12 @@ type Props = {
   compareSync?: VectorCompareChartSyncBind | null;
   onCompareCrosshair?: (paneId: string, timeSec: number | null) => void;
   onCompareVisibleRange?: (paneId: string, fromSec: number, toSec: number) => void;
+  /** Compare linked replay — desk owns transport; pane follows cursorTimeSec. */
+  linkedReplay?: VectorLinkedReplayBind | null;
+  /** Compare linked replay — hide per-pane replay controls when the command bar owns transport. */
+  hideReplayControls?: boolean;
+  /** Reports this pane's replay timeline so Compare can build a union scrubber. */
+  onReplayTimeline?: (timeline: number[]) => void;
 };
 
 function lensVisuals(lens: VectorWallLens) {
@@ -1209,6 +1217,9 @@ export function VectorChart({
   compareSync = null,
   onCompareCrosshair,
   onCompareVisibleRange,
+  linkedReplay = null,
+  hideReplayControls = false,
+  onReplayTimeline,
 }: Props) {
   const initialTimeframe = defaultTimeframe ?? VECTOR_DEFAULT_TIMEFRAME;
   const openingDteHorizon: VectorDteHorizon = defaultDteHorizon ?? VECTOR_DEFAULT_DTE_HORIZON;
@@ -1474,6 +1485,7 @@ export function VectorChart({
   const onCompareVisibleRangeRef = useRef(onCompareVisibleRange);
   const hideVolumePaneRef = useRef(hideVolumePane);
   const compareCompactBeadsRef = useRef(compareCompactBeads);
+  const linkedReplayControlledRef = useRef(false);
   const replayModeRef = useRef(false);
   const liveSessionRef = useRef(liveSession);
   /**
@@ -3803,7 +3815,7 @@ export function VectorChart({
   }, [chartReady, sessionYmd, ticker, paintOverlays]);
 
   useEffect(() => {
-    if (!replayMode || !playing || timelineRef.current.length === 0) {
+    if (!replayMode || !playing || timelineRef.current.length === 0 || linkedReplayControlledRef.current) {
       stopReplayTimer();
       return;
     }
@@ -3885,6 +3897,42 @@ export function VectorChart({
     else enterReplay();
   };
 
+  const applyLinkedReplayAtTime = useCallback(
+    (epochSec: number) => {
+      if (!replayModeRef.current) {
+        replayModeRef.current = true;
+        timelineRef.current = buildReplayTimeline(wallHistoryRef.current, minuteBarsRef.current);
+        setReplayMode(true);
+        setPlaying(false);
+      }
+      applyFrame(epochSec, minuteBarsRef.current, wallHistoryRef.current, lensRef.current);
+      const idx = timelineIndexAtOrBeforeTime(timelineRef.current, epochSec);
+      cursorIndexRef.current = idx;
+      setCursorIndex(idx);
+    },
+    [applyFrame]
+  );
+
+  useEffect(() => {
+    if (!onReplayTimeline) return;
+    onReplayTimeline(buildReplayTimeline(sessionHistory, sessionBars));
+  }, [sessionHistory, sessionBars, onReplayTimeline]);
+
+  useEffect(() => {
+    if (!linkedReplay?.active) {
+      if (linkedReplayControlledRef.current) {
+        linkedReplayControlledRef.current = false;
+        exitReplay();
+      }
+      return;
+    }
+    linkedReplayControlledRef.current = true;
+    if (linkedReplay.cursorTimeSec != null) {
+      applyLinkedReplayAtTime(linkedReplay.cursorTimeSec);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- exitReplay stable enough; tick drives re-scrub
+  }, [linkedReplay?.active, linkedReplay?.cursorTimeSec, linkedReplay?.tick, applyLinkedReplayAtTime]);
+
   const scrubTo = (index: number) => {
     setPlaying(false);
     const clamped = clampTimelineIndex(timelineRef.current, index);
@@ -3912,7 +3960,7 @@ export function VectorChart({
   };
 
   useEffect(() => {
-    if (!replayMode) return;
+    if (!replayMode || hideReplayControls) return;
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
@@ -3939,7 +3987,7 @@ export function VectorChart({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [replayMode]);
+  }, [replayMode, hideReplayControls]);
 
   const stepCount = replayMode ? timelineRef.current.length : replayTimeline.length;
   const cursorTime = timelineRef.current[cursorIndex] ?? 0;
@@ -4116,6 +4164,7 @@ export function VectorChart({
         trailSlot={trailSlot}
         hideLinkedControls={toolbarHideLinkedControls}
         comparePane={toolbarHideLinkedControls}
+        hideReplayControls={hideReplayControls}
       />
 
       {/* Regime banner sits directly above the canvas (passed in from the shell) so it still leads

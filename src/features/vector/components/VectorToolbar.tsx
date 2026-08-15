@@ -60,6 +60,8 @@ type Props = {
   hideLinkedControls?: boolean;
   /** Compare grid pane — one slim row (indicators + replay only). */
   comparePane?: boolean;
+  /** Compare linked mode — replay transport lives in the command bar. */
+  hideReplayControls?: boolean;
 };
 
 /** Single compact toolbar — timeframe left, replay + lens right. */
@@ -104,6 +106,7 @@ export function VectorToolbar(props: Props) {
     replayLeadSlot,
     hideLinkedControls = false,
     comparePane = false,
+    hideReplayControls = false,
   } = props;
 
   if (comparePane) {
@@ -123,24 +126,26 @@ export function VectorToolbar(props: Props) {
             onOpeningRangeMinutes={onOpeningRangeMinutes}
           />
           {replayLeadSlot}
-          <VectorReplayControls
-            replayMode={replayMode}
-            playing={playing}
-            canReplay={canReplay}
-            cursorIndex={cursorIndex}
-            stepCount={stepCount}
-            clockLabel={clockLabel}
-            speed={speed}
-            loop={loop}
-            onToggleReplay={onToggleReplay}
-            onTogglePlay={onTogglePlay}
-            onScrub={onScrub}
-            onSpeed={onSpeed}
-            onStep={onStep}
-            onJumpOpen={onJumpOpen}
-            onJumpClose={onJumpClose}
-            onToggleLoop={onToggleLoop}
-          />
+          {!hideReplayControls ? (
+            <VectorReplayControls
+              replayMode={replayMode}
+              playing={playing}
+              canReplay={canReplay}
+              cursorIndex={cursorIndex}
+              stepCount={stepCount}
+              clockLabel={clockLabel}
+              speed={speed}
+              loop={loop}
+              onToggleReplay={onToggleReplay}
+              onTogglePlay={onTogglePlay}
+              onScrub={onScrub}
+              onSpeed={onSpeed}
+              onStep={onStep}
+              onJumpOpen={onJumpOpen}
+              onJumpClose={onJumpClose}
+              onToggleLoop={onToggleLoop}
+            />
+          ) : null}
         </div>
       </div>
     );

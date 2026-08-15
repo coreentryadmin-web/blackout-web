@@ -87,6 +87,14 @@ test("compare linked crosshair sync wiring", () => {
   assert.match(chart, /subscribeVisibleTimeRangeChange/);
 });
 
+test("compare linked replay uses command-bar transport when linked", () => {
+  const desk = readFileSync(join(root, "src/features/vector/components/VectorCompareDesk.tsx"), "utf8");
+  assert.match(desk, /hideReplayControls=\{linked\}/);
+  assert.match(desk, /mergeReplayTimelines/);
+  const bar = readFileSync(join(root, "src/features/vector/components/VectorCompareCommandBar.tsx"), "utf8");
+  assert.match(bar, /vector-compare-command-replay/);
+});
+
 test("VectorReplayControls tags replay state for iOS collapse", () => {
   const src = readFileSync(join(root, "src/features/vector/components/VectorReplayControls.tsx"), "utf8");
   assert.match(src, /data-replay-active/);
