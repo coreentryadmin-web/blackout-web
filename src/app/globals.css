@@ -8046,6 +8046,29 @@ body::before {
     gap: 0.35rem;
   }
 
+  .vector-draw-text-label {
+    flex: 1 1 12rem;
+    min-width: 10rem;
+    max-width: 18rem;
+  }
+
+  .vector-draw-text-input {
+    width: 100%;
+    height: 1.65rem;
+    padding: 0 0.45rem;
+    border-radius: 0.4rem;
+    border: 1px solid rgba(34, 211, 238, 0.28);
+    background: rgba(4, 4, 7, 0.9);
+    color: rgb(224, 251, 255);
+    font-family: ui-monospace, monospace;
+    font-size: 0.72rem;
+  }
+
+  .vector-draw-text-input::placeholder {
+    color: rgb(125, 211, 252);
+    opacity: 0.75;
+  }
+
   .vector-draw-toolbar-tools,
   .vector-draw-toolbar-colors,
   .vector-draw-toolbar-actions {

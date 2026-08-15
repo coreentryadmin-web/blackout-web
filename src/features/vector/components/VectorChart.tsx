@@ -1618,12 +1618,8 @@ export function VectorChart({
   const timeframeUserLockedRef = useRef(false);
   const autoCoarsenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const overlayDimRef = useRef(1);
-  const [intradayZoomPreset, setIntradayZoomPreset] = useState<IntradayZoomPreset | null>(
-    defaultChartViewport === "session" ? "session" : null
-  );
-  const intradayZoomPresetRef = useRef<IntradayZoomPreset | null>(
-    defaultChartViewport === "session" ? "session" : null
-  );
+  const [intradayZoomPreset, setIntradayZoomPreset] = useState<IntradayZoomPreset | null>(null);
+  const intradayZoomPresetRef = useRef<IntradayZoomPreset | null>(null);
   useEffect(() => {
     intradayZoomPresetRef.current = intradayZoomPreset;
   }, [intradayZoomPreset]);
@@ -1645,6 +1641,8 @@ export function VectorChart({
     handleDeleteSelected,
     bindChartClick,
     updateDraftCursor,
+    textLabel,
+    setTextLabel,
   } = useVectorChartDrawings({
     ticker,
     replayMode,
@@ -1667,13 +1665,7 @@ export function VectorChart({
   }, []);
 
   const sessionOverviewActive = useCallback((): boolean => {
-    const preset = intradayZoomPresetRef.current;
-    if (preset === "live" || preset === "structure") return false;
-    if (preset === "session") return true;
-    return wantsSessionOverviewViewport(
-      defaultChartViewportRef.current,
-      liveFollowEnabledRef.current
-    );
+    return intradayZoomPresetRef.current === "session";
   }, []);
 
   const syncCandleViewportFromRange = useCallback(
@@ -1696,6 +1688,7 @@ export function VectorChart({
       if (coarser == null) return;
       if (autoCoarsenTimerRef.current) clearTimeout(autoCoarsenTimerRef.current);
       autoCoarsenTimerRef.current = setTimeout(() => {
+        if (sessionOverviewActive()) return;
         if (timeframeRef.current !== coarser) setTimeframeState(coarser);
       }, 650);
     },
@@ -1757,6 +1750,9 @@ export function VectorChart({
     if (!chartReady || !payload) return;
     handleIntradayZoomRef.current(payload.preset);
   }, [chartReady, compareSync?.zoomPreset?.tick]);
+
+  const bindChartClickRef = useRef(bindChartClick);
+  bindChartClickRef.current = bindChartClick;
 
   const syncCandleViewportFromRangeRef = useRef(syncCandleViewportFromRange);
   syncCandleViewportFromRangeRef.current = syncCandleViewportFromRange;
@@ -3057,6 +3053,7 @@ export function VectorChart({
     };
 
     const fitSessionOverview = () => {
+      if (intradayZoomPresetRef.current !== "session") return;
       if (liveFollowEnabledRef.current) return;
       // Wall-history poll runs every 5s for 0DTE session overview — must not yank a manual zoom.
       if (memberViewportLocked(chartUserPannedRef.current, wheelZoomCooldownRef.current)) return;
@@ -3712,9 +3709,7 @@ export function VectorChart({
     // Session overview frames the newest ET day only (seed carries multiple sessions); live
     // follow fits the full seed. Background re-seeds route through applyDisplayBarsPreservingView.
     if (initialBars.length) {
-      if (
-        wantsSessionOverviewViewport(defaultChartViewport, liveFollowEnabledRef.current)
-      ) {
+      if (intradayZoomPresetRef.current === "session") {
         applySessionOverviewViewport(chart, initialDisplay);
         chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
       } else {
@@ -3813,9 +3808,7 @@ export function VectorChart({
     refreshOverlays("gex", initialWalls, initialVexWalls, initialGammaFlip, initialVexFlip, initialDarkPoolLevels);
     pinCandlesOnTop(series);
 
-    if (
-      wantsSessionOverviewViewport(defaultChartViewport, liveFollowEnabledRef.current)
-    ) {
+    if (intradayZoomPresetRef.current === "session") {
       // Trails/overlays paint after the first viewport pass — re-frame once markers exist.
       requestAnimationFrame(() => {
         if (memberViewportLocked(chartUserPannedRef.current, wheelZoomCooldownRef.current)) return;
@@ -3845,7 +3838,7 @@ export function VectorChart({
     };
     container.addEventListener("wheel", onWheel, { passive: true });
 
-    const unbindDrawClick = bindChartClick(chart, series);
+    const unbindDrawClick = bindChartClickRef.current(chart, series);
 
     chart.subscribeCrosshairMove((param) => {
       if (!param.time || !param.point) {
@@ -4395,16 +4388,13 @@ export function VectorChart({
       const timeframeChanged = timeframe !== lastFittedTimeframeRef.current;
       const timeScale = chart?.timeScale() ?? null;
       const following = chart ? chartIsFollowingLive(chart) : false;
-      const sessionOverview = wantsSessionOverviewViewport(
-        defaultChartViewportRef.current,
-        liveFollowEnabledRef.current
-      );
+      const sessionFramed = intradayZoomPresetRef.current === "session";
       const viewportLocked = memberViewportLocked(
         chartUserPannedRef.current,
         wheelZoomCooldownRef.current
       );
       const prevRange =
-        timeScale && !timeframeChanged && !following && (!sessionOverview || viewportLocked)
+        timeScale && !timeframeChanged && !following && (!sessionFramed || viewportLocked)
           ? timeScale.getVisibleLogicalRange()
           : null;
       applyDisplayBars(series, volumeSeriesRef.current, display);
@@ -4418,14 +4408,14 @@ export function VectorChart({
         // squished into that sliver and look absent. fitContent recomputes the spacing so the bars —
         // and their overlays — fill the chart width at every timeframe. This is the deliberate,
         // user-expected refit; the create effect is the only other deliberate first-load refit.
-        if (sessionOverview) {
+        if (sessionFramed) {
           applySessionOverviewViewport(chart!, display);
           chart?.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
         } else {
           chart?.timeScale().fitContent();
         }
         lastFittedTimeframeRef.current = timeframe;
-      } else if (sessionOverview && !following && !viewportLocked) {
+      } else if (sessionFramed && !following && !viewportLocked) {
         // Session overview refit only while the member hasn't taken manual control — background
         // effect re-runs (SSE/wall polls) must not reset a zoom/pan the member set.
         applySessionOverviewViewport(chart!, display);
@@ -4521,6 +4511,8 @@ export function VectorChart({
         onTool={setDrawTool}
         color={drawColor}
         onColor={setDrawColor}
+        textLabel={textLabel}
+        onTextLabel={setTextLabel}
         count={drawings.length}
         selectedId={selectedId}
         onUndo={handleUndo}

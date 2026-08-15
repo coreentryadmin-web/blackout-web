@@ -36,12 +36,27 @@ test("VectorChart: session overview blocks live-follow flip and auto-coarsen", (
   const src = read("src/features/vector/components/VectorChart.tsx");
   assert.match(src, /sessionOverviewActive/);
   assert.match(src, /intradayZoomPresetRef/);
-  assert.match(
-    src,
-    /preset === "session"[\s\S]{0,120}defaultChartViewportRef\.current === "session"/
-  );
+  assert.match(src, /intradayZoomPresetRef\.current === "session"/);
   assert.match(src, /if \(sessionOverviewActive\(\)\) return;/);
   assert.match(src, /chartUserPannedRef\.current = false/);
+  assert.match(src, /fitContent\(\)/);
+});
+
+test("VectorChart: default load shows multi-day seed via fitContent", () => {
+  const src = read("src/features/vector/components/VectorChart.tsx");
+  assert.match(src, /useState<IntradayZoomPreset \| null>\(null\)/);
+  assert.match(
+    src,
+    /intradayZoomPresetRef\.current === "session"[\s\S]{0,200}fitContent\(\)/
+  );
+});
+
+test("VectorChart: drawing click resolves time on empty chart margin", () => {
+  assert.match(
+    read("src/features/vector/lib/use-vector-chart-drawings.ts"),
+    /resolveChartClickTime/
+  );
+  assert.match(read("src/features/vector/components/VectorDrawToolbar.tsx"), /vector-draw-text-input/);
 });
 
 test("VectorChart: candle render spacing, borders, and zoom presets wired", () => {
@@ -113,7 +128,7 @@ test("VectorChart: manual zoom/pan blocks programmatic session refits", () => {
   assert.match(src, /function memberViewportLocked/);
   assert.match(src, /chartUserPannedRef\.current = true/);
   assert.match(src, /memberViewportLocked\(chartUserPannedRef\.current, wheelZoomCooldownRef\.current\)/);
-  assert.match(src, /sessionOverview && !following && !viewportLocked/);
+  assert.match(src, /sessionFramed && !following && !viewportLocked/);
   assert.match(src, /Wall-history poll runs every 5s/);
   // Poll cadence follows server-resolved wallTrailSec (5s universe / 15s on-demand), not static client guess.
   assert.match(src, /scopePollMs = vectorComparePerfPollMs/);
