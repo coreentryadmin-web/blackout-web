@@ -14,6 +14,8 @@ export const VECTOR_HELIX_WHALE_PREMIUM = 1_000_000;
 export const VECTOR_LIVE_HELIX_TAPE_CAP = 40;
 /** Session seed fetch — enough rows to rank today's top prints (API returns recent-first). */
 export const VECTOR_LIVE_HELIX_SESSION_FETCH_LIMIT = 200;
+/** Recent strip — latest prints by time (above premium-ranked session list). */
+export const VECTOR_LIVE_HELIX_RECENT_N = 3;
 /** @deprecated Alias for legacy imports. */
 export const VECTOR_HELIX_FETCH_LIMIT = VECTOR_LIVE_HELIX_TAPE_CAP;
 /** @deprecated Alias for legacy imports. */
@@ -116,11 +118,52 @@ export function prepareVectorLiveHelixTape(
     .slice(0, cap);
 }
 
+export type VectorLiveHelixLayout = {
+  recent: FlowAlert[];
+  ranked: FlowAlert[];
+};
+
+/**
+ * Live Helix layout — Recent strip (newest by time, excluding session #1) +
+ * premium-ranked session list. Session leader always lives in ranked as #1.
+ */
+export function pickVectorLiveHelixLayout(
+  flows: readonly FlowAlert[],
+  filters: VectorHelixFlowFilters,
+  opts: { recentN?: number; rankedCap?: number } = {}
+): VectorLiveHelixLayout {
+  const recentN = opts.recentN ?? VECTOR_LIVE_HELIX_RECENT_N;
+  const rankedCap = opts.rankedCap ?? VECTOR_LIVE_HELIX_TAPE_CAP;
+  const eligible = filterVectorHelixFlows(flows, filters);
+
+  const rankedFull = [...eligible].sort(compareLiveHelixByPremium);
+  const leader = rankedFull[0];
+  const leaderKey = leader ? flowDedupeKey(leader) : null;
+
+  const recent = sortVectorHelixFlows(eligible, "time", "desc")
+    .filter((f) => !leaderKey || flowDedupeKey(f) !== leaderKey)
+    .slice(0, recentN);
+
+  const recentKeys = new Set(recent.map((f) => flowDedupeKey(f)));
+  const ranked = rankedFull
+    .filter((f) => !recentKeys.has(flowDedupeKey(f)))
+    .slice(0, rankedCap);
+
+  return { recent, ranked };
+}
+
 /** Subtitle for the Live Helix header. */
-export function vectorLiveHelixSubtitle(count: number, liveSession: boolean): string {
+export function vectorLiveHelixSubtitle(
+  layout: Pick<VectorLiveHelixLayout, "recent" | "ranked">,
+  liveSession: boolean
+): string {
+  const count = layout.recent.length + layout.ranked.length;
   if (!liveSession) return "Session closed · full history on Helix desk";
-  if (count === 0) return "Ranked by premium · today's session prints";
-  return `Ranked by premium · ${count} print${count === 1 ? "" : "s"} today`;
+  if (count === 0) return "Recent + ranked by premium · today's session";
+  const parts: string[] = [];
+  if (layout.recent.length > 0) parts.push("Recent");
+  parts.push(`ranked by premium · ${count} print${count === 1 ? "" : "s"} today`);
+  return parts.join(" · ");
 }
 
 /** Trim in-memory pool — keep the largest prints so an early session leader is never dropped. */

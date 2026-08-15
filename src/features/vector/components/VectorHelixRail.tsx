@@ -16,7 +16,7 @@ import {
 import { flowDedupeKey } from "@/features/helix/lib/helix-flow-tape-merge";
 import { useVectorHelixFlows } from "@/features/vector/lib/use-vector-helix-flows";
 import {
-  prepareVectorLiveHelixTape,
+  pickVectorLiveHelixLayout,
   VECTOR_HELIX_DEFAULT_FILTERS,
   VECTOR_HELIX_WHALE_PREMIUM,
   vectorLiveHelixSubtitle,
@@ -44,7 +44,7 @@ function FlowCard({
   onOpen,
 }: {
   flow: FlowAlert;
-  rank: number;
+  rank?: number;
   flash?: boolean;
   onOpen: (flow: FlowAlert) => void;
 }) {
@@ -69,9 +69,11 @@ function FlowCard({
     >
       <div className="vector-helix-card-top">
         <div className="vector-helix-card-contract">
-          <span className="vector-helix-rank" aria-hidden>
-            #{rank}
-          </span>
+          {rank != null ? (
+            <span className="vector-helix-rank" aria-hidden>
+              #{rank}
+            </span>
+          ) : null}
           <span className={clsx("vector-helix-side", isCall ? "is-call" : "is-put")}>
             {isCall ? "CALL" : "PUT"}
           </span>
@@ -104,7 +106,7 @@ function FlowCard({
   );
 }
 
-/** Vector desk — Live Helix: real-time session tape (no historical backfill). */
+/** Vector desk — Live Helix: Recent strip + premium-ranked session tape. */
 export function VectorHelixRail({ ticker, liveSession }: Props) {
   const normalized = ticker.trim().toUpperCase();
   const { flows, loading, live, flashKeys } = useVectorHelixFlows(normalized, liveSession);
@@ -112,11 +114,13 @@ export function VectorHelixRail({ ticker, liveSession }: Props) {
   const [filters, setFilters] = useState<VectorHelixFlowFilters>(VECTOR_HELIX_DEFAULT_FILTERS);
   const [selected, setSelected] = useState<FlowAlert | null>(null);
 
-  const tape = useMemo(
-    () => prepareVectorLiveHelixTape(flows, filters),
+  const layout = useMemo(
+    () => pickVectorLiveHelixLayout(flows, filters),
     [flows, filters]
   );
-  const subtitle = vectorLiveHelixSubtitle(tape.length, liveSession);
+  const { recent, ranked } = layout;
+  const subtitle = vectorLiveHelixSubtitle(layout, liveSession);
+  const hasAny = recent.length > 0 || ranked.length > 0;
 
   const setTypeFilter = (typeFilter: VectorHelixTypeFilter) => {
     setFilters((f) => ({ ...f, typeFilter }));
@@ -162,25 +166,50 @@ export function VectorHelixRail({ ticker, liveSession }: Props) {
       </div>
 
       <div className="vector-helix-scroll" role="log" aria-live="polite">
-        {loading && tape.length === 0 ? (
+        {loading && !hasAny ? (
           <p className="vector-helix-empty">Connecting Live Helix…</p>
-        ) : tape.length === 0 ? (
+        ) : !hasAny ? (
           <p className="vector-helix-empty">
             {liveSession
               ? `Waiting for ${normalized} session prints…`
               : "Session closed — Live Helix resumes at the open"}
           </p>
         ) : (
-          <div className="vector-helix-cards" data-testid="vector-helix-live-tape">
-            {tape.map((flow, i) => (
-              <FlowCard
-                key={cardKey(flow, i)}
-                flow={flow}
-                rank={i + 1}
-                flash={flashKeys.has(flowDedupeKey(flow))}
-                onOpen={setSelected}
-              />
-            ))}
+          <div className="vector-helix-sections">
+            {recent.length > 0 ? (
+              <div className="vector-helix-section" data-testid="vector-helix-recent-section">
+                <h3 className="vector-helix-section-title">Recent</h3>
+                <p className="vector-helix-section-kicker">Latest prints · by time</p>
+                <div className="vector-helix-cards">
+                  {recent.map((flow, i) => (
+                    <FlowCard
+                      key={cardKey(flow, i)}
+                      flow={flow}
+                      flash={flashKeys.has(flowDedupeKey(flow))}
+                      onOpen={setSelected}
+                    />
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {ranked.length > 0 ? (
+              <div className="vector-helix-section" data-testid="vector-helix-ranked-section">
+                <h3 className="vector-helix-section-title">Top by premium</h3>
+                <p className="vector-helix-section-kicker">Session rank</p>
+                <div className="vector-helix-cards" data-testid="vector-helix-live-tape">
+                  {ranked.map((flow, i) => (
+                    <FlowCard
+                      key={cardKey(flow, i)}
+                      flow={flow}
+                      rank={i + 1}
+                      flash={flashKeys.has(flowDedupeKey(flow))}
+                      onOpen={setSelected}
+                    />
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
         )}
       </div>

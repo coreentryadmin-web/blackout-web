@@ -6,13 +6,16 @@ import {
   filterVectorHelixFlows,
   hoursSinceSessionOpen,
   isFlowSinceSessionOpen,
+  pickVectorLiveHelixLayout,
   prepareVectorLiveHelixTape,
   trimVectorHelixFlowPool,
   VECTOR_HELIX_MIN_PREMIUM,
   VECTOR_HELIX_WHALE_PREMIUM,
+  VECTOR_LIVE_HELIX_RECENT_N,
   VECTOR_LIVE_HELIX_TAPE_CAP,
   vectorLiveHelixSubtitle,
 } from "./vector-helix-flows";
+import { flowDedupeKey } from "@/features/helix/lib/helix-flow-tape-merge";
 import type { FlowAlert } from "@/lib/api";
 import { sessionOpenMs } from "@/lib/largo/temporal/timeframe";
 
@@ -149,10 +152,52 @@ test("prepareVectorLiveHelixTape: mid-day join still ranks morning leader #1", (
   assert.equal(tape[0]!.premium, 500_000);
 });
 
-test("vectorLiveHelixSubtitle: honest empty live state", () => {
-  assert.match(vectorLiveHelixSubtitle(0, true), /today's session/i);
-  assert.match(vectorLiveHelixSubtitle(0, false), /session closed/i);
-  assert.match(vectorLiveHelixSubtitle(3, true), /3 prints today/i);
+test("pickVectorLiveHelixLayout: recent strip shows newest, ranked keeps session #1", () => {
+  const morningLeader = flow({
+    premium: 500_000,
+    alerted_at: "2026-08-15T13:35:00Z",
+    strike: 900,
+  });
+  const newestSmall = flow({
+    premium: 250_000,
+    alerted_at: "2026-08-15T20:00:00Z",
+    strike: 901,
+  });
+  const mid = flow({
+    premium: 280_000,
+    alerted_at: "2026-08-15T18:00:00Z",
+    strike: 902,
+  });
+  const layout = pickVectorLiveHelixLayout([morningLeader, newestSmall, mid], defaultFilters);
+  assert.equal(layout.recent.length, 2);
+  assert.equal(layout.recent[0]!.strike, 901);
+  assert.equal(layout.ranked.length, 1);
+  assert.equal(layout.ranked[0]!.premium, 500_000);
+});
+
+test("pickVectorLiveHelixLayout: dedupes recent from ranked", () => {
+  const only = flow({ premium: 500_000, alerted_at: "2026-08-15T20:00:00Z", strike: 900 });
+  const layout = pickVectorLiveHelixLayout([only], defaultFilters);
+  assert.equal(layout.recent.length, 0);
+  assert.equal(layout.ranked.length, 1);
+  assert.equal(layout.ranked[0]!.premium, 500_000);
+});
+
+test("pickVectorLiveHelixLayout: newest session leader stays ranked #1 not recent", () => {
+  const leader = flow({ premium: 800_000, alerted_at: "2026-08-15T20:00:00Z", strike: 900 });
+  const older = flow({ premium: 500_000, alerted_at: "2026-08-15T13:35:00Z", strike: 901 });
+  const layout = pickVectorLiveHelixLayout([leader, older], defaultFilters);
+  assert.equal(layout.ranked[0]!.premium, 800_000);
+  assert.equal(layout.recent.length, 1);
+  assert.equal(layout.recent[0]!.premium, 500_000);
+});
+
+test("vectorLiveHelixSubtitle: mentions Recent when strip populated", () => {
+  assert.match(
+    vectorLiveHelixSubtitle({ recent: [flow({ premium: 300_000 })], ranked: [] }, true),
+    /Recent/i
+  );
+  assert.match(vectorLiveHelixSubtitle({ recent: [], ranked: [] }, false), /session closed/i);
 });
 
 test("trimVectorHelixFlowPool: keeps largest prints not newest", () => {
