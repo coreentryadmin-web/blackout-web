@@ -1645,6 +1645,10 @@ export function VectorChart({
     minuteBarsRef,
     drawingsPrimitiveRef: userDrawingsPrimitiveRef,
   });
+  const updateDraftCursorRef = useRef(updateDraftCursor);
+  useEffect(() => {
+    updateDraftCursorRef.current = updateDraftCursor;
+  }, [updateDraftCursor]);
 
   const applyOverlayDim = useCallback((dim: number) => {
     overlayDimRef.current = dim;
@@ -3831,7 +3835,7 @@ export function VectorChart({
         hoverPrice != null &&
         Number.isFinite(hoverPrice as number)
       ) {
-        updateDraftCursor(hoverEpochSec, hoverPrice as number);
+        updateDraftCursorRef.current(hoverEpochSec, hoverPrice as number);
       }
       const gexCell =
         indicatorsRef.current.has("gex-heatmap") &&
