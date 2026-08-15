@@ -39,12 +39,15 @@ const SPOT_LINE_COLOR = "rgba(34, 211, 238, 0.85)"; // gamma-flip cyan — spot 
 class GexHeatmapRenderer implements IPrimitivePaneRenderer {
   constructor(
     private readonly _rects: readonly HeatmapRect[],
-    private readonly _spotY: number | null
+    private readonly _spotY: number | null,
+    private readonly _overlayDim: number
   ) {}
 
   draw(target: PaneRendererTarget): void {
     target.useMediaCoordinateSpace((scope) => {
       const ctx = scope.context;
+      ctx.save();
+      ctx.globalAlpha = this._overlayDim;
       for (const r of this._rects) {
         ctx.fillStyle = r.color;
         ctx.fillRect(r.x, r.y, r.w, r.h);
@@ -61,6 +64,7 @@ class GexHeatmapRenderer implements IPrimitivePaneRenderer {
         ctx.stroke();
         ctx.restore();
       }
+      ctx.restore();
     });
   }
 }
@@ -77,7 +81,7 @@ class GexHeatmapPaneView implements IPrimitivePaneView {
     const rects = this._source.computeRects();
     const spotY = this._source.spotCoordinate();
     if (!rects.length && spotY == null) return null;
-    return new GexHeatmapRenderer(rects, spotY);
+    return new GexHeatmapRenderer(rects, spotY, this._source.overlayDim());
   }
 }
 
@@ -87,6 +91,8 @@ export class GexHeatmapPrimitive implements ISeriesPrimitive<Time> {
   private _requestUpdate: (() => void) | null = null;
   private _grid: GexHeatmapGrid | null = null;
   private _visible = false;
+  /** Dim when zoomed out so candles dominate. */
+  private _overlayDim = 1;
   /** Live spot — horizontal guide aligned with candle price scale. */
   private _spot: number | null = null;
   // A stable single-view array — the library caches on the array reference, so it must not churn.
@@ -122,6 +128,17 @@ export class GexHeatmapPrimitive implements ISeriesPrimitive<Time> {
   setSpot(spot: number | null): void {
     if (this._spot === spot) return;
     this._spot = spot;
+    this._requestUpdate?.();
+  }
+
+  overlayDim(): number {
+    return this._overlayDim;
+  }
+
+  setOverlayDim(factor: number): void {
+    const next = Math.max(0, Math.min(1, factor));
+    if (Math.abs(next - this._overlayDim) < 0.02) return;
+    this._overlayDim = next;
     this._requestUpdate?.();
   }
 

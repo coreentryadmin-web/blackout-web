@@ -32,6 +32,23 @@ test("VectorChart: session viewport defers live-edge scroll until member pans", 
   assert.match(src, /wantsSessionOverviewViewport/);
 });
 
+test("VectorChart: candle render spacing, borders, and zoom presets wired", () => {
+  const src = read("src/features/vector/components/VectorChart.tsx");
+  assert.match(src, /vectorCandlestickOptions/);
+  assert.match(src, /vectorTimeScaleSpacingOptions/);
+  assert.match(read("src/features/vector/lib/vector-candle-render.ts"), /VECTOR_MIN_BAR_SPACING/);
+  assert.match(src, /VectorIntradayZoomControls/);
+  assert.match(src, /syncCandleViewportFromRange/);
+  assert.match(src, /setOverlayDim/);
+});
+
+test("VectorDailyChart: shared candle spacing and borders", () => {
+  const src = read("src/features/vector/components/VectorDailyChart.tsx");
+  assert.match(src, /vectorCandlestickOptions/);
+  assert.match(src, /vectorTimeScaleSpacingOptions/);
+  assert.match(src, /adaptiveBarSpacingForZoom/);
+});
+
 test("VectorChart: manual zoom/pan blocks programmatic session refits", () => {
   const src = read("src/features/vector/components/VectorChart.tsx");
   assert.match(src, /function memberViewportLocked/);

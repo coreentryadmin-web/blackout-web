@@ -172,6 +172,18 @@ import {
   applySessionOverviewViewport,
   wantsSessionOverviewViewport,
 } from "@/features/vector/lib/vector-chart-viewport";
+import {
+  adaptiveBarSpacingForZoom,
+  coarserTimeframeIfZoomedOut,
+  liveEdgeVisibleLogicalRange,
+  overlayDimFactor,
+  structureVisibleLogicalRange,
+  vectorCandlestickOptions,
+  vectorTimeScaleSpacingOptions,
+  visibleBarCountFromRange,
+  type IntradayZoomPreset,
+} from "@/features/vector/lib/vector-candle-render";
+import { VectorIntradayZoomControls } from "@/features/vector/components/VectorIntradayZoomControls";
 
 export type VectorBar = {
   time: UTCTimestamp;
@@ -1543,8 +1555,83 @@ export function VectorChart({
   const [vexAsOf, setVexAsOf] = useState<number | null>(null);
   // 1m is the seed resolution; host desks may open on a coarser preset (defaultTimeframe — 3m default).
   // Aggregation is client-side from the same 1m bars.
-  const [timeframe, setTimeframe] = useState<VectorTimeframeMinutes>(initialTimeframe);
+  const [timeframe, setTimeframeState] = useState<VectorTimeframeMinutes>(initialTimeframe);
+  const timeframeUserLockedRef = useRef(false);
+  const autoCoarsenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const overlayDimRef = useRef(1);
+  const [intradayZoomPreset, setIntradayZoomPreset] = useState<IntradayZoomPreset | null>(null);
+  const setTimeframe = useCallback((next: VectorTimeframeMinutes) => {
+    timeframeUserLockedRef.current = true;
+    setTimeframeState(next);
+  }, []);
   const [chartReady, setChartReady] = useState(false);
+
+  const applyOverlayDim = useCallback((dim: number) => {
+    overlayDimRef.current = dim;
+    gexHeatmapPrimitiveRef.current?.setOverlayDim(dim);
+    volumeProfilePrimitiveRef.current?.setOverlayDim(dim);
+    gammaRegimePrimitiveRef.current?.setOverlayDim(dim);
+    wallRailPrimitiveRef.current?.setOverlayDim(dim);
+  }, []);
+
+  const syncCandleViewportFromRange = useCallback(
+    (chart: IChartApi) => {
+      const range = chart.timeScale().getVisibleLogicalRange();
+      const count = visibleBarCountFromRange(range);
+      if (count == null) return;
+      applyOverlayDim(overlayDimFactor(count));
+      chart.timeScale().applyOptions(adaptiveBarSpacingForZoom(count));
+      if (timeframeUserLockedRef.current || replayModeRef.current) return;
+      const coarser = coarserTimeframeIfZoomedOut(count, timeframeRef.current);
+      if (coarser == null) return;
+      if (autoCoarsenTimerRef.current) clearTimeout(autoCoarsenTimerRef.current);
+      autoCoarsenTimerRef.current = setTimeout(() => {
+        if (timeframeRef.current !== coarser) setTimeframeState(coarser);
+      }, 650);
+    },
+    [applyOverlayDim]
+  );
+
+  const handleIntradayZoom = useCallback(
+    (preset: IntradayZoomPreset) => {
+      const chart = chartRef.current;
+      if (!chart) return;
+      chartUserPannedRef.current = true;
+      setIntradayZoomPreset(preset);
+      const display = displayBarsFromMinute(minuteBarsRef.current, timeframeRef.current);
+      const barCount = display.length;
+      if (preset === "session") {
+        applySessionOverviewViewport(chart, display);
+        chart.timeScale().applyOptions({
+          ...vectorTimeScaleSpacingOptions(),
+          shiftVisibleRangeOnNewBar: false,
+        });
+        liveFollowEnabledRef.current = false;
+      } else if (preset === "structure") {
+        const range = structureVisibleLogicalRange(barCount);
+        if (range) chart.timeScale().setVisibleLogicalRange(range);
+        chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: false });
+        liveFollowEnabledRef.current = false;
+      } else {
+        const range = liveEdgeVisibleLogicalRange(barCount);
+        if (range) chart.timeScale().setVisibleLogicalRange(range);
+        liveFollowEnabledRef.current = true;
+        chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: true });
+      }
+      syncCandleViewportFromRange(chart);
+    },
+    [syncCandleViewportFromRange]
+  );
+
+  const syncCandleViewportFromRangeRef = useRef(syncCandleViewportFromRange);
+  syncCandleViewportFromRangeRef.current = syncCandleViewportFromRange;
+
+  useEffect(
+    () => () => {
+      if (autoCoarsenTimerRef.current) clearTimeout(autoCoarsenTimerRef.current);
+    },
+    []
+  );
 
   useEffect(() => {
     if (!chartReady || !compareSync?.linkCrosshair) return;
@@ -3325,6 +3412,7 @@ export function VectorChart({
         // Leave whitespace between the last candle and the price axis so the bead bands stop short
         // of the axis (Skylit-style) instead of running flush into it.
         rightOffset: VECTOR_RIGHT_OFFSET_BARS,
+        ...vectorTimeScaleSpacingOptions(),
       },
       rightPriceScale: { borderColor: "rgba(255,255,255,0.12)" },
       crosshair: {
@@ -3334,11 +3422,7 @@ export function VectorChart({
     });
 
     const series = chart.addSeries(CandlestickSeries, {
-      upColor: "#a3e635",
-      downColor: "#ff2d55",
-      borderVisible: false,
-      wickUpColor: "#a3e635",
-      wickDownColor: "#ff2d55",
+      ...vectorCandlestickOptions(),
       priceLineVisible: false,
       lastValueVisible: true,
       // Widen the auto-fitted candle range to also include the drawn walls within
@@ -3429,6 +3513,7 @@ export function VectorChart({
 
     chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
       enableLiveFollowIfAtEdge();
+      syncCandleViewportFromRangeRef.current(chart);
     });
 
     const onVisibleTimeRangeChange = (range: { from: Time; to: Time } | null) => {
@@ -3510,6 +3595,8 @@ export function VectorChart({
         refreshTrails(lensRef.current);
       });
     }
+
+    syncCandleViewportFromRangeRef.current(chart);
 
     // SCROLL-ZOOM FIX: stamp a cooldown on every wheel event so the autoscaleInfoProvider
     // and reassertPriceAutoScale calls respect the member's zoom for 8s instead of
@@ -4165,6 +4252,12 @@ export function VectorChart({
         hideLinkedControls={toolbarHideLinkedControls}
         comparePane={toolbarHideLinkedControls}
         hideReplayControls={hideReplayControls}
+      />
+
+      <VectorIntradayZoomControls
+        active={intradayZoomPreset}
+        disabled={replayMode}
+        onZoom={handleIntradayZoom}
       />
 
       {/* Regime banner sits directly above the canvas (passed in from the shell) so it still leads
