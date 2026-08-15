@@ -393,7 +393,7 @@ const ThermalTripleDesk = forwardRef<ThermalTripleDeskHandle, Props>(function Th
     fetchHeatmapBatch,
     {
       refreshInterval: pollMs,
-      revalidateOnFocus: true,
+      revalidateOnFocus: false,
       revalidateIfStale: true,
       errorRetryInterval: pollMs,
       dedupingInterval: 2_000,

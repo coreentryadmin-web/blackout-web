@@ -9,6 +9,7 @@ import type { ToolKey } from "@/lib/tool-access";
 import { IosNativeHeader } from "./IosNativeHeader";
 import { IosNativeMenu } from "./IosNativeMenu";
 import { IosLargoFab } from "./IosLargoFab";
+import { useAdminFlag } from "@/hooks/use-admin-flag";
 
 /**
  * Native iOS product shell — replaces the web Nav on signed-in routes inside
@@ -16,11 +17,11 @@ import { IosLargoFab } from "./IosLargoFab";
  */
 export function IosAppChrome({ lockedTools = [] }: { lockedTools?: ToolKey[] }) {
   const path = usePathname();
-  const { isSignedIn, isLoaded, userId } = useAppAuth();
+  const { isSignedIn, isLoaded } = useAppAuth();
   const [iosApp, setIosApp] = useState(false);
   const [nativeEmbed, setNativeEmbed] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const isAdmin = useAdminFlag();
 
   useEffect(() => {
     setIosApp(isIosAppShell());
@@ -35,34 +36,6 @@ export function IosAppChrome({ lockedTools = [] }: { lockedTools?: ToolKey[] }) 
     document.documentElement.classList.toggle("nav-locked", menuOpen);
     return () => document.documentElement.classList.remove("nav-locked");
   }, [menuOpen]);
-
-  useEffect(() => {
-    if (!isLoaded || !isSignedIn || !userId) {
-      setIsAdmin(false);
-      return;
-    }
-    const cacheKey = `__admin_flag:${userId}`;
-    const cached = sessionStorage.getItem(cacheKey);
-    if (cached !== null) {
-      setIsAdmin(cached === "1");
-      return;
-    }
-    let cancelled = false;
-    fetch("/api/admin/me")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (cancelled) return;
-        const admin = Boolean(data?.admin);
-        setIsAdmin(admin);
-        sessionStorage.setItem(cacheKey, admin ? "1" : "0");
-      })
-      .catch(() => {
-        if (!cancelled) setIsAdmin(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [isLoaded, isSignedIn, userId]);
 
   const nativeActive =
     iosApp && isLoaded && isSignedIn && isIosNativeShellRoute(path);

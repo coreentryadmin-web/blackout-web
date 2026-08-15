@@ -2648,11 +2648,9 @@ export function GexHeatmap({
     {
       refreshInterval: matrixPollMs,
       refreshWhenHidden: false,
-      // Refresh the moment the user returns to the tab.
-      // the tab is hidden, so WITHOUT this the matrix reads up to 20s stale on return —
-      // which feels like "it only updates when I refresh". Server-cached (20s) + SWR
-      // deduping keep focus-triggered refetches cheap (they hit the warm cache).
-      revalidateOnFocus: true,
+      // Global shell disables focus revalidation (#2224). Matrix stays live via refreshInterval
+      // while the tab is visible; server cache keeps focus returns cheap when re-enabled per-hook.
+      revalidateOnFocus: false,
       keepPreviousData: true,
       fallbackData: readGexHeatmapSessionCache<GexHeatmapResponse>(ticker),
       onSuccess: (payload) => {
@@ -2673,7 +2671,7 @@ export function GexHeatmap({
   const { data: quote } = useSWR<QuoteResponse>(
     `/api/market/quote?ticker=${encodeURIComponent(ticker)}`,
     fetchQuote,
-    { refreshInterval: quotePollMs, refreshWhenHidden: false, revalidateOnFocus: true, keepPreviousData: true }
+    { refreshInterval: quotePollMs, refreshWhenHidden: false, revalidateOnFocus: false, keepPreviousData: true }
   );
 
   // Sub-second stock/ETF push (PR 3/3 of the sub-second-spot project) — reads the

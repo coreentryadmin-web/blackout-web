@@ -12,6 +12,12 @@ import { polygonRateLimiterStats } from "@/lib/providers/polygon-rate-limiter";
 import { getLaunchStatusSnapshot, type LaunchStatusSnapshot } from "@/lib/tool-access";
 import { buildOpsConfigStatus, type OpsConfigStatus } from "@/lib/ops-config-status";
 import { getDatabasePoolStats } from "@/lib/db";
+import { withServerCache } from "@/lib/server-cache";
+
+/** Shared cache lane for admin vitals — polled every 15s by multiple SWR consumers. */
+export const ADMIN_HEALTH_CACHE_KEY = "admin:health:snapshot:v1";
+/** Match client poll cadence; SWR dedupes but cold builds were ~3s (live perf audit 2026-08-15). */
+export const ADMIN_HEALTH_CACHE_TTL_MS = 12_000;
 
 export type AdminHealthPayload = {
   generated_at: string;
@@ -63,6 +69,19 @@ export type AdminHealthPayload = {
 };
 
 export async function buildAdminHealthSnapshot(): Promise<AdminHealthPayload> {
+  return withServerCache(
+    ADMIN_HEALTH_CACHE_KEY,
+    ADMIN_HEALTH_CACHE_TTL_MS,
+    buildAdminHealthSnapshotUncached,
+    {
+      staleWhileRevalidate: true,
+      staleOnInflight: true,
+      maxBlockMs: 400,
+    }
+  );
+}
+
+async function buildAdminHealthSnapshotUncached(): Promise<AdminHealthPayload> {
   const [{ merged }, marketHealth] = await Promise.all([
     loadMergedSpxDesk(),
     buildMarketHealthSnapshot(),

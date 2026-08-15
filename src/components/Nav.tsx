@@ -14,6 +14,7 @@ import { PushNotificationToggle } from "@/components/PushNotificationToggle";
 import { isIosAppShell } from "@/lib/ios-app-shell";
 import { getIosToolNavLabel } from "@/lib/ios-tool-routes";
 import { readClientSignedIn } from "@/lib/client-signed-in";
+import { useAdminFlag } from "@/hooks/use-admin-flag";
 
 type Accent = "green" | "purple" | "orange" | "blue" | "red" | "teal";
 type FeatureLink = { href: string; label: string; sub: string; accent: Accent };
@@ -123,7 +124,7 @@ export function Nav({
     cookieSignedIn === true ||
     (!isLoaded && initialSignedIn);
 
-  const [isAdmin, setIsAdmin] = useState(false);
+  const isAdmin = useAdminFlag();
   const [featuresOpen, setFeaturesOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -155,35 +156,6 @@ export function Nav({
   const brandHref = "/";
   const iosToolLabel = iosApp && isSignedIn ? getIosToolNavLabel(path) : null;
   const iosToolChrome = Boolean(iosToolLabel);
-
-  useEffect(() => {
-    if (!isLoaded) return;
-    if (!isSignedIn || !userId) {
-      setIsAdmin(false);
-      return;
-    }
-    const cacheKey = `__admin_flag:${userId}`;
-    const cached = sessionStorage.getItem(cacheKey);
-    if (cached !== null) {
-      setIsAdmin(cached === "1");
-      return;
-    }
-    let cancelled = false;
-    fetch("/api/admin/me")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (cancelled) return;
-        const isAdminUser = Boolean(data?.admin);
-        setIsAdmin(isAdminUser);
-        sessionStorage.setItem(cacheKey, isAdminUser ? "1" : "0");
-      })
-      .catch(() => {
-        if (!cancelled) setIsAdmin(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [isLoaded, isSignedIn, userId]);
 
   useEffect(() => {
     let ticking = false;
