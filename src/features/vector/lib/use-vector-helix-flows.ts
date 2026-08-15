@@ -2,28 +2,61 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createFlowEventSource, fetchFlows, type FlowAlert } from "@/lib/api";
+import { sessionOpenMs } from "@/lib/largo/temporal/timeframe";
 import { findMatchingFlow, mergeFlowAlerts } from "@/features/helix/lib/helix-flow-merge";
 import {
   flowDedupeKey,
   mergeFlowTapeHead,
 } from "@/features/helix/lib/helix-flow-tape-merge";
-import { HELIX_FLOW_DEFAULT_SINCE_HOURS } from "@/features/helix/lib/helix-flow-limits";
 import {
+  filterFlowsSinceSessionOpen,
+  hoursSinceSessionOpen,
+  isFlowSinceSessionOpen,
   trimVectorHelixFlowPool,
-  VECTOR_HELIX_FETCH_LIMIT,
   VECTOR_HELIX_MIN_PREMIUM,
+  VECTOR_LIVE_HELIX_SESSION_FETCH_LIMIT,
+  VECTOR_LIVE_HELIX_TAPE_CAP,
 } from "@/features/vector/lib/vector-helix-flows";
 
 const FLOW_POLL_MS = 30_000;
+const FLASH_MS = 2_000;
 
-/** Vector desk Helix rail — small premium-ranked pool for major-print curation (not full tape). */
+/**
+ * Vector Live Helix — today's session tape for the ticker.
+ * On load: seed from Postgres/cache (since today's 09:30 ET open) so a mid-day join
+ * still sees the 9:30 anchor. Then SSE + poll keep the ranked list live.
+ */
 export function useVectorHelixFlows(ticker: string, liveSession: boolean) {
   const normalized = ticker.trim().toUpperCase();
-  const [flows, setFlows] = useState<FlowAlert[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [live, setLive] = useState(false);
-  const seenRef = useRef(new Set<string>());
+  const sessionOpenMsRef = useRef(sessionOpenMs(Date.now()));
   const loadGenRef = useRef(0);
+
+  const [flows, setFlows] = useState<FlowAlert[]>([]);
+  const [loading, setLoading] = useState(liveSession);
+  const [live, setLive] = useState(false);
+  const [flashKeys, setFlashKeys] = useState<ReadonlySet<string>>(() => new Set());
+  const seenRef = useRef(new Set<string>());
+  const flashTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  const markFlash = useCallback((key: string) => {
+    setFlashKeys((prev) => {
+      const next = new Set(prev);
+      next.add(key);
+      return next;
+    });
+    const existing = flashTimersRef.current.get(key);
+    if (existing) clearTimeout(existing);
+    const timer = setTimeout(() => {
+      flashTimersRef.current.delete(key);
+      setFlashKeys((prev) => {
+        if (!prev.has(key)) return prev;
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    }, FLASH_MS);
+    flashTimersRef.current.set(key, timer);
+  }, []);
 
   const seedSeen = useCallback((rows: FlowAlert[]) => {
     const seeded = new Set<string>();
@@ -36,39 +69,79 @@ export function useVectorHelixFlows(ticker: string, liveSession: boolean) {
   const fetchParams = useCallback(
     () => ({
       ticker: normalized,
-      limit: VECTOR_HELIX_FETCH_LIMIT,
-      since_hours: HELIX_FLOW_DEFAULT_SINCE_HOURS,
+      limit: VECTOR_LIVE_HELIX_SESSION_FETCH_LIMIT,
+      since_hours: hoursSinceSessionOpen(),
       min_premium: VECTOR_HELIX_MIN_PREMIUM,
     }),
     [normalized]
   );
 
-  const applyPool = useCallback((rows: FlowAlert[]) => trimVectorHelixFlowPool(rows), []);
+  const applySessionPool = useCallback((rows: FlowAlert[]) => {
+    const sessionRows = filterFlowsSinceSessionOpen(rows, sessionOpenMsRef.current);
+    return trimVectorHelixFlowPool(sessionRows, VECTOR_LIVE_HELIX_TAPE_CAP);
+  }, []);
 
-  const loadInitial = useCallback(async () => {
+  const setPool = useCallback(
+    (rows: FlowAlert[]) => {
+      const pool = applySessionPool(rows);
+      seedSeen(pool);
+      setFlows(pool);
+      return pool;
+    },
+    [applySessionPool, seedSeen]
+  );
+
+  const ingestFlow = useCallback(
+    (alert: FlowAlert, opts: { flash: boolean }) => {
+      if (!isFlowSinceSessionOpen(alert, sessionOpenMsRef.current)) return false;
+      const key = flowDedupeKey(alert);
+      const isNew = !seenRef.current.has(key);
+      if (isNew) seenRef.current.add(key);
+
+      setFlows((prev) => {
+        const idx = findMatchingFlow(prev, alert);
+        let next: FlowAlert[];
+        if (idx >= 0) {
+          const merged = mergeFlowAlerts(alert, prev[idx]!);
+          const rest = prev.filter((_, i) => i !== idx);
+          next = [merged, ...rest];
+        } else {
+          next = [alert, ...prev];
+        }
+        return applySessionPool(next);
+      });
+
+      if (isNew && opts.flash) markFlash(key);
+      setLive(true);
+      return true;
+    },
+    [applySessionPool, markFlash]
+  );
+
+  const loadSessionTape = useCallback(async () => {
     const gen = ++loadGenRef.current;
     setLoading(true);
     try {
+      sessionOpenMsRef.current = sessionOpenMs(Date.now());
       const data = await fetchFlows(fetchParams());
       if (gen !== loadGenRef.current) return;
-      const pool = applyPool(data.flows);
-      seedSeen(pool);
-      setFlows(pool);
+      setPool(data.flows);
       setLive(true);
     } catch {
       if (gen === loadGenRef.current) setLive(false);
     } finally {
       if (gen === loadGenRef.current) setLoading(false);
     }
-  }, [applyPool, fetchParams, seedSeen]);
+  }, [fetchParams, setPool]);
 
-  const refreshHead = useCallback(async () => {
+  const refreshSessionTape = useCallback(async () => {
     const gen = ++loadGenRef.current;
     try {
+      sessionOpenMsRef.current = sessionOpenMs(Date.now());
       const data = await fetchFlows(fetchParams());
       if (gen !== loadGenRef.current) return;
       setFlows((prev) => {
-        const merged = applyPool(mergeFlowTapeHead(prev, data.flows));
+        const merged = applySessionPool(mergeFlowTapeHead(prev, data.flows));
         seedSeen(merged);
         return merged;
       });
@@ -76,17 +149,38 @@ export function useVectorHelixFlows(ticker: string, liveSession: boolean) {
     } catch {
       if (gen === loadGenRef.current) setLive(false);
     }
-  }, [applyPool, fetchParams, seedSeen]);
+  }, [applySessionPool, fetchParams, seedSeen]);
 
   useEffect(() => {
-    void loadInitial();
-  }, [loadInitial]);
+    sessionOpenMsRef.current = sessionOpenMs(Date.now());
+    seenRef.current = new Set();
+    setFlows([]);
+    setFlashKeys(new Set());
+    setLive(false);
+
+    if (!liveSession) {
+      setLoading(false);
+      return;
+    }
+
+    void loadSessionTape();
+  }, [liveSession, loadSessionTape, normalized]);
+
+  useEffect(() => {
+    return () => {
+      for (const timer of flashTimersRef.current.values()) {
+        clearTimeout(timer);
+      }
+      flashTimersRef.current.clear();
+    };
+  }, []);
 
   useEffect(() => {
     if (!liveSession) return;
+
     let poll: ReturnType<typeof setInterval> | null = null;
     const go = () => {
-      if (!poll) poll = setInterval(() => void refreshHead(), FLOW_POLL_MS);
+      if (!poll) poll = setInterval(() => void refreshSessionTape(), FLOW_POLL_MS);
     };
     const stop = () => {
       if (poll) {
@@ -98,22 +192,7 @@ export function useVectorHelixFlows(ticker: string, liveSession: boolean) {
     const conn = createFlowEventSource(
       (alert) => {
         if (alert.ticker?.toUpperCase() !== normalized) return;
-        const key = flowDedupeKey(alert);
-        if (seenRef.current.has(key)) return;
-        seenRef.current.add(key);
-        setFlows((prev) => {
-          const idx = findMatchingFlow(prev, alert);
-          let next: FlowAlert[];
-          if (idx >= 0) {
-            const merged = mergeFlowAlerts(alert, prev[idx]!);
-            const rest = prev.filter((_, i) => i !== idx);
-            next = [merged, ...rest];
-          } else {
-            next = [alert, ...prev];
-          }
-          return applyPool(next);
-        });
-        setLive(true);
+        ingestFlow(alert, { flash: true });
       },
       {
         onOpen: () => {
@@ -123,7 +202,7 @@ export function useVectorHelixFlows(ticker: string, liveSession: boolean) {
         onClose: () => {
           setLive(false);
           go();
-          void refreshHead();
+          void refreshSessionTape();
         },
       },
       normalized
@@ -135,11 +214,12 @@ export function useVectorHelixFlows(ticker: string, liveSession: boolean) {
     };
     go();
     return () => stop();
-  }, [applyPool, liveSession, normalized, refreshHead]);
+  }, [ingestFlow, liveSession, normalized, refreshSessionTape]);
 
   return {
     flows,
     loading,
     live,
+    flashKeys,
   };
 }

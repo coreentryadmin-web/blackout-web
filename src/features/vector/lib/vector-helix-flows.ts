@@ -1,4 +1,6 @@
 import type { FlowAlert } from "@/lib/api";
+import { flowDedupeKey } from "@/features/helix/lib/helix-flow-tape-merge";
+import { sessionOpenMs } from "@/lib/largo/temporal/timeframe";
 import {
   daysToExpiry,
   sortFlows,
@@ -8,14 +10,18 @@ import {
 
 export const VECTOR_HELIX_MIN_PREMIUM = 200_000;
 export const VECTOR_HELIX_WHALE_PREMIUM = 1_000_000;
-/** How many cards the Vector desk rail shows — a highlight reel, not the full Helix tape. */
-export const VECTOR_HELIX_MAJOR_TOP_N = 12;
-/** Fetch pool size — enough to rank major prints without loading the whole session tape. */
-export const VECTOR_HELIX_FETCH_LIMIT = 40;
-/** @deprecated Use VECTOR_HELIX_FETCH_LIMIT — kept for any stale imports. */
-export const VECTOR_HELIX_PAGE_SIZE = VECTOR_HELIX_FETCH_LIMIT;
-/** Default premium floor for the Vector major-prints rail (full Helix tape stays at $200k). */
-export const VECTOR_HELIX_MAJOR_MIN_PREMIUM = 350_000;
+/** Max prints shown on the Live Helix rail — top by premium for the live session. */
+export const VECTOR_LIVE_HELIX_TAPE_CAP = 40;
+/** Session seed fetch — enough rows to rank today's top prints (API returns recent-first). */
+export const VECTOR_LIVE_HELIX_SESSION_FETCH_LIMIT = 200;
+/** Recent strip — latest prints by time (above premium-ranked session list). */
+export const VECTOR_LIVE_HELIX_RECENT_N = 3;
+/** @deprecated Alias for legacy imports. */
+export const VECTOR_HELIX_FETCH_LIMIT = VECTOR_LIVE_HELIX_TAPE_CAP;
+/** @deprecated Alias for legacy imports. */
+export const VECTOR_HELIX_MAJOR_TOP_N = VECTOR_LIVE_HELIX_TAPE_CAP;
+/** @deprecated Alias for legacy imports. */
+export const VECTOR_HELIX_PAGE_SIZE = VECTOR_LIVE_HELIX_TAPE_CAP;
 
 export type VectorHelixTypeFilter = "ALL" | "CALL" | "PUT";
 
@@ -30,19 +36,16 @@ export const VECTOR_HELIX_DEFAULT_FILTERS: VectorHelixFlowFilters = {
   typeFilter: "ALL",
   whalesOnly: false,
   dteOnly: false,
-  minPremium: VECTOR_HELIX_MAJOR_MIN_PREMIUM,
+  minPremium: VECTOR_HELIX_MIN_PREMIUM,
 };
 
-/** Client-side tape filters for the Vector Helix rail (server already scopes ticker). */
-export function filterVectorHelixFlows(
+function sideAndFlagsFilter(
   flows: readonly FlowAlert[],
   filters: VectorHelixFlowFilters
 ): FlowAlert[] {
-  const floor = Math.max(VECTOR_HELIX_MIN_PREMIUM, filters.minPremium);
   return flows.filter((f) => {
     const side = f.option_type?.toUpperCase();
     if (side !== "CALL" && side !== "PUT") return false;
-    if (f.premium < floor) return false;
     if (filters.whalesOnly && f.premium < VECTOR_HELIX_WHALE_PREMIUM) return false;
     if (filters.typeFilter !== "ALL" && side !== filters.typeFilter) return false;
     if (filters.dteOnly) {
@@ -53,30 +56,123 @@ export function filterVectorHelixFlows(
   });
 }
 
+export function flowAlertedMs(f: FlowAlert): number {
+  if (!f.alerted_at) return 0;
+  const ms = new Date(f.alerted_at).getTime();
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+/** True when a print belongs to today's live RTH session (09:30 ET onward). */
+export function isFlowSinceSessionOpen(flow: FlowAlert, sessionOpenMs: number): boolean {
+  const ms = flowAlertedMs(flow);
+  return ms > 0 && ms >= sessionOpenMs;
+}
+
+/** Keep only prints from today's RTH session (client guard after a since-hours fetch). */
+export function filterFlowsSinceSessionOpen(
+  flows: readonly FlowAlert[],
+  sessionOpenMs: number
+): FlowAlert[] {
+  return flows.filter((f) => isFlowSinceSessionOpen(f, sessionOpenMs));
+}
+
+/** Hours to request from /flows — from today's 09:30 ET open through now (min 1, max 24). */
+export function hoursSinceSessionOpen(nowMs = Date.now()): number {
+  const openMs = typeof nowMs === "number" ? sessionOpenMs(nowMs) : sessionOpenMs(Date.now());
+  const elapsed = nowMs - openMs;
+  if (elapsed <= 0) return 1;
+  return Math.min(Math.max(Math.ceil(elapsed / 3_600_000), 1), 24);
+}
+
+/** Client-side tape filters for the Vector Live Helix rail (server already scopes ticker). */
+export function filterVectorHelixFlows(
+  flows: readonly FlowAlert[],
+  filters: VectorHelixFlowFilters
+): FlowAlert[] {
+  const floor = Math.max(VECTOR_HELIX_MIN_PREMIUM, filters.minPremium);
+  return sideAndFlagsFilter(flows, filters).filter((f) => f.premium >= floor);
+}
+
 export function sortVectorHelixFlows(
   flows: readonly FlowAlert[],
   sortKey: HelixFlowSortKey,
   sortDir: HelixFlowSortDir
 ): FlowAlert[] {
-  const sorted = sortFlows([...flows], sortKey, sortDir);
-  if (sortKey === "time") return sorted;
-  return sorted;
+  return sortFlows([...flows], sortKey, sortDir);
 }
 
-/** Curated major prints for the Vector desk — top N by premium after filters. */
-export function pickVectorHelixMajorFlows(
+/** Premium desc, then newest — session #1 stays #1 until a larger print arrives live. */
+export function compareLiveHelixByPremium(a: FlowAlert, b: FlowAlert): number {
+  if (b.premium !== a.premium) return b.premium - a.premium;
+  return flowAlertedMs(b) - flowAlertedMs(a);
+}
+
+/** Live Helix tape — ranked by premium (largest session print stays #1 all day). */
+export function prepareVectorLiveHelixTape(
   flows: readonly FlowAlert[],
   filters: VectorHelixFlowFilters,
-  limit = VECTOR_HELIX_MAJOR_TOP_N
+  cap = VECTOR_LIVE_HELIX_TAPE_CAP
 ): FlowAlert[] {
-  const filtered = filterVectorHelixFlows(flows, filters);
-  return sortVectorHelixFlows(filtered, "premium", "desc").slice(0, limit);
+  return filterVectorHelixFlows(flows, filters)
+    .sort(compareLiveHelixByPremium)
+    .slice(0, cap);
 }
 
-/** Trim the in-memory pool so live SSE merges do not grow an unbounded full tape. */
+export type VectorLiveHelixLayout = {
+  recent: FlowAlert[];
+  ranked: FlowAlert[];
+};
+
+/**
+ * Live Helix layout — Recent strip (newest by time, excluding session #1) +
+ * premium-ranked session list. Session leader always lives in ranked as #1.
+ */
+export function pickVectorLiveHelixLayout(
+  flows: readonly FlowAlert[],
+  filters: VectorHelixFlowFilters,
+  opts: { recentN?: number; rankedCap?: number } = {}
+): VectorLiveHelixLayout {
+  const recentN = opts.recentN ?? VECTOR_LIVE_HELIX_RECENT_N;
+  const rankedCap = opts.rankedCap ?? VECTOR_LIVE_HELIX_TAPE_CAP;
+  const eligible = filterVectorHelixFlows(flows, filters);
+
+  const rankedFull = [...eligible].sort(compareLiveHelixByPremium);
+  const leader = rankedFull[0];
+  const leaderKey = leader ? flowDedupeKey(leader) : null;
+
+  const recent = sortVectorHelixFlows(eligible, "time", "desc")
+    .filter((f) => !leaderKey || flowDedupeKey(f) !== leaderKey)
+    .slice(0, recentN);
+
+  const recentKeys = new Set(recent.map((f) => flowDedupeKey(f)));
+  const ranked = rankedFull
+    .filter((f) => !recentKeys.has(flowDedupeKey(f)))
+    .slice(0, rankedCap);
+
+  return { recent, ranked };
+}
+
+/** Subtitle for the Live Helix header. */
+export function vectorLiveHelixSubtitle(
+  layout: Pick<VectorLiveHelixLayout, "recent" | "ranked">,
+  liveSession: boolean
+): string {
+  const count = layout.recent.length + layout.ranked.length;
+  if (!liveSession) return "Session closed · full history on Helix desk";
+  if (count === 0) return "Recent + ranked by premium · today's session";
+  const parts: string[] = [];
+  if (layout.recent.length > 0) parts.push("Recent");
+  parts.push(`ranked by premium · ${count} print${count === 1 ? "" : "s"} today`);
+  return parts.join(" · ");
+}
+
+/** Trim in-memory pool — keep the largest prints so an early session leader is never dropped. */
 export function trimVectorHelixFlowPool(
   flows: readonly FlowAlert[],
-  cap = VECTOR_HELIX_FETCH_LIMIT
+  cap = VECTOR_LIVE_HELIX_TAPE_CAP
 ): FlowAlert[] {
-  return sortVectorHelixFlows(flows, "premium", "desc").slice(0, cap);
+  return [...flows].sort(compareLiveHelixByPremium).slice(0, cap);
 }
+
+/** Dedupe key set for excluding hot lane duplicates (legacy helper). */
+export { flowDedupeKey };

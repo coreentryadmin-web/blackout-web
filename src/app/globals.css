@@ -8602,6 +8602,62 @@ body::before {
     box-shadow: 0 0 14px rgba(255, 214, 10, 0.12);
   }
 
+  .vector-helix-card--flash {
+    animation: flow-alert-flash 1.2s ease-out;
+  }
+
+  .vector-helix-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .vector-helix-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+
+  .vector-helix-section-title {
+    margin: 0;
+    padding: 0.45rem 0.65rem 0;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 0.62rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: rgb(255, 214, 10);
+  }
+
+  .vector-helix-section-kicker {
+    margin: 0;
+    padding: 0 0.65rem 0.15rem;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 0.55rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: rgb(125, 211, 252);
+  }
+
+  .vector-helix-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.75rem;
+    padding: 0.05rem 0.25rem;
+    border-radius: 0.25rem;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 0.52rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+  }
+
+  .vector-helix-badge--hot {
+    background: rgba(255, 214, 10, 0.15);
+    color: rgb(255, 214, 10);
+    border: 1px solid rgba(255, 214, 10, 0.35);
+  }
+
   .vector-helix-open-full {
     display: inline-block;
     margin-top: 0.35rem;
