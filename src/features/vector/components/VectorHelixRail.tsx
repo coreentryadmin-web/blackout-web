@@ -12,26 +12,16 @@ import {
   flowSignals,
   fmtExpiryShort,
   fmtFullTimestamp,
-  type HelixFlowSortDir,
-  type HelixFlowSortKey,
 } from "@/features/helix/lib/helix-flow-format";
 import { useVectorHelixFlows } from "@/features/vector/lib/use-vector-helix-flows";
 import {
-  filterVectorHelixFlows,
-  sortVectorHelixFlows,
+  pickVectorHelixMajorFlows,
   VECTOR_HELIX_DEFAULT_FILTERS,
+  VECTOR_HELIX_MAJOR_TOP_N,
   VECTOR_HELIX_WHALE_PREMIUM,
   type VectorHelixFlowFilters,
   type VectorHelixTypeFilter,
 } from "@/features/vector/lib/vector-helix-flows";
-
-const SORT_OPTIONS: { key: HelixFlowSortKey; label: string }[] = [
-  { key: "premium", label: "Premium" },
-  { key: "time", label: "Time" },
-  { key: "strike", label: "Strike" },
-  { key: "score", label: "Score" },
-  { key: "dte", label: "DTE" },
-];
 
 type Props = {
   ticker: string;
@@ -48,11 +38,11 @@ function SignalPill({ label, tone }: { label: string; tone: string }) {
 
 function FlowCard({
   flow,
-  isNew,
+  rank,
   onOpen,
 }: {
   flow: FlowAlert;
-  isNew: boolean;
+  rank: number;
   onOpen: (flow: FlowAlert) => void;
 }) {
   const isCall = flow.option_type?.toUpperCase() === "CALL";
@@ -68,13 +58,16 @@ function FlowCard({
         "vector-helix-card",
         isCall ? "vector-helix-card--call" : "vector-helix-card--put",
         isWhale && "vector-helix-card--whale",
-        isNew && "vector-helix-card--flash"
+        rank === 1 && "vector-helix-card--lead"
       )}
       onClick={() => onOpen(flow)}
       data-testid="vector-helix-flow-card"
     >
       <div className="vector-helix-card-top">
         <div className="vector-helix-card-contract">
+          <span className="vector-helix-rank" aria-hidden>
+            #{rank}
+          </span>
           <span className={clsx("vector-helix-side", isCall ? "is-call" : "is-put")}>
             {isCall ? "CALL" : "PUT"}
           </span>
@@ -97,7 +90,8 @@ function FlowCard({
               ▲{flow.score.toFixed(1)}
             </span>
           ) : null}
-          {signals.slice(0, 3).map((s) => (
+          {isWhale ? <SignalPill label="WHALE" tone="gold" /> : null}
+          {signals.slice(0, 2).map((s) => (
             <SignalPill key={s.id} label={s.label} tone={s.tone} />
           ))}
         </div>
@@ -106,43 +100,33 @@ function FlowCard({
   );
 }
 
+/** Vector desk — curated major prints (top by premium), not the full Helix tape. */
 export function VectorHelixRail({ ticker, liveSession }: Props) {
   const normalized = ticker.trim().toUpperCase();
-  const { flows, loading, loadingOlder, live, hasMore, loadOlder } = useVectorHelixFlows(
-    normalized,
-    liveSession
-  );
+  const { flows, loading, live } = useVectorHelixFlows(normalized, liveSession);
 
-  const [sortKey, setSortKey] = useState<HelixFlowSortKey>("premium");
-  const [sortDir, setSortDir] = useState<HelixFlowSortDir>("desc");
   const [filters, setFilters] = useState<VectorHelixFlowFilters>(VECTOR_HELIX_DEFAULT_FILTERS);
   const [selected, setSelected] = useState<FlowAlert | null>(null);
 
-  const visible = useMemo(() => {
-    const filtered = filterVectorHelixFlows(flows, filters);
-    return sortVectorHelixFlows(filtered, sortKey, sortDir);
-  }, [flows, filters, sortKey, sortDir]);
-
-  const toggleSort = (key: HelixFlowSortKey) => {
-    if (sortKey === key) {
-      setSortDir((d) => (d === "desc" ? "asc" : "desc"));
-      return;
-    }
-    setSortKey(key);
-    setSortDir(key === "time" ? "desc" : "desc");
-  };
+  const major = useMemo(
+    () => pickVectorHelixMajorFlows(flows, filters),
+    [flows, filters]
+  );
 
   const setTypeFilter = (typeFilter: VectorHelixTypeFilter) => {
     setFilters((f) => ({ ...f, typeFilter }));
   };
 
   return (
-    <section className="vector-helix-rail" aria-label={`${normalized} Helix flow tape`}>
+    <section className="vector-helix-rail" aria-label={`${normalized} major flow prints`}>
       <header className="vector-helix-head">
         <div className="vector-helix-head-row">
           <div>
             <p className="vector-helix-kicker">Helix</p>
-            <h2 className="vector-helix-title">{normalized} flows</h2>
+            <h2 className="vector-helix-title">{normalized} major prints</h2>
+            <p className="vector-helix-subtitle">
+              Top {VECTOR_HELIX_MAJOR_TOP_N} by premium · session
+            </p>
           </div>
           <FreshnessChip status={liveSession && live ? "live" : "stale"} label={live ? "LIVE" : "STALE"} />
         </div>
@@ -151,30 +135,12 @@ export function VectorHelixRail({ ticker, liveSession }: Props) {
           className="vector-helix-open-full"
           data-testid="vector-helix-open-full"
         >
-          Open full tape →
+          Full Helix tape →
         </Link>
       </header>
 
-      <div className="vector-helix-controls">
-        <div className="vector-helix-sort" role="group" aria-label="Sort flows">
-          {SORT_OPTIONS.map(({ key, label }) => (
-            <button
-              key={key}
-              type="button"
-              className={clsx("vector-helix-sort-btn", sortKey === key && "is-active")}
-              aria-pressed={sortKey === key}
-              onClick={() => toggleSort(key)}
-            >
-              {label}
-              {sortKey === key ? (
-                <span className="vector-helix-sort-dir" aria-hidden>
-                  {sortDir === "desc" ? "↓" : "↑"}
-                </span>
-              ) : null}
-            </button>
-          ))}
-        </div>
-        <div className="vector-helix-filters" role="group" aria-label="Filter flows">
+      <div className="vector-helix-controls vector-helix-controls--major">
+        <div className="vector-helix-filters" role="group" aria-label="Filter major prints">
           {(["ALL", "CALL", "PUT"] as const).map((side) => (
             <button
               key={side}
@@ -186,50 +152,24 @@ export function VectorHelixRail({ ticker, liveSession }: Props) {
               {side}
             </button>
           ))}
-          <button
-            type="button"
-            className={clsx("vector-helix-filter-btn", filters.whalesOnly && "is-active")}
-            aria-pressed={filters.whalesOnly}
-            onClick={() => setFilters((f) => ({ ...f, whalesOnly: !f.whalesOnly }))}
-          >
-            Whales
-          </button>
-          <button
-            type="button"
-            className={clsx("vector-helix-filter-btn", filters.dteOnly && "is-active")}
-            aria-pressed={filters.dteOnly}
-            onClick={() => setFilters((f) => ({ ...f, dteOnly: !f.dteOnly }))}
-          >
-            0DTE
-          </button>
         </div>
       </div>
 
       <div className="vector-helix-scroll" role="log" aria-live="polite">
-        {loading && visible.length === 0 ? (
-          <p className="vector-helix-empty">Loading Helix tape…</p>
-        ) : visible.length === 0 ? (
-          <p className="vector-helix-empty">No qualifying prints for {normalized}</p>
+        {loading && major.length === 0 ? (
+          <p className="vector-helix-empty">Loading major prints…</p>
+        ) : major.length === 0 ? (
+          <p className="vector-helix-empty">No major prints for {normalized} yet</p>
         ) : (
           <div className="vector-helix-cards">
-            {visible.map((flow, i) => (
+            {major.map((flow, i) => (
               <FlowCard
                 key={`${flow.alert_id ?? flow.alerted_at}-${flow.strike}-${i}`}
                 flow={flow}
-                isNew={i === 0 && sortKey === "time" && sortDir === "desc"}
+                rank={i + 1}
                 onOpen={setSelected}
               />
             ))}
-            {hasMore ? (
-              <button
-                type="button"
-                className="vector-helix-load-more"
-                disabled={loadingOlder}
-                onClick={() => void loadOlder()}
-              >
-                {loadingOlder ? "Loading…" : "Load older"}
-              </button>
-            ) : null}
           </div>
         )}
       </div>
