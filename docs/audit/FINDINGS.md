@@ -38,6 +38,45 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-08-15 — [FINDING, P1 iOS] Thermal iOS Matrix tab clicks blocked by ticker spot overlay — FIXED (follow-up #2231)
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Status** | FIXED — #2229 partial; #2231 removes `z-[1]` stack + E2E clicks Profile before Matrix |
+| **Severity** | P1 — `npm run test:ios-ui-e2e` hard-failed on `/heatmap`; native Matrix/Profile tabs untappable in QA |
+| **Symptom** | Playwright iPhone pass: spot chip `776.34` subtree intercepts pointer events on `role=tab` Matrix button |
+| **Root cause** | `TickerSwitcher` wrapper had `relative z-[1]` painting above tablist on iOS flex-wrap chrome; spot row extended over tab hit targets |
+| **Fix** | `pointer-events-none` on wrapper + `pointer-events-auto` on trigger (#2229); drop `z-[1]`, iOS CSS z-index 0/2 (#2231) |
+| **Tests** | `thermal-ios-tab-hit.test.ts`; `ios-native-ui-e2e.mjs` clicks Profile then Matrix |
+
+---
+
+## 2026-08-15 — [FINDING, P1 nav] Night Hawk view toggle broke App Router link nav — FIXED (#2229)
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Status** | FIXED — #2229 |
+| **Severity** | P1 — same class as Vector compare #2227 |
+| **Root cause** | `NightHawkFeed.selectView` used `history.replaceState` |
+| **Fix** | `router.replace(pathname + search, { scroll: false })` |
+| **Tests** | `nighthawk-feed-nav.test.ts` |
+
+---
+
+## 2026-08-15 — [NEGATIVE-RESULT] Production "site down" MIME/chunk P0 during QA — deploy skew, not systemic
+> **kind:** `NEGATIVE-RESULT`
+
+| Field | Detail |
+|---|---|
+| **Claim** | computerUse QA reported sign-in/heatmap completely broken (CSS/JS 404 + text/plain MIME) |
+| **Verdict** | **Not reproducible** after ECS rollout COMPLETED — curl + Playwright confirm chunks return `application/javascript` / `text/css` 200 |
+| **Actual gap** | Inline chunk-reload guard missed **CSS** 404 paths → fixed #2230 |
+| **Note** | Stale browser HTML mid-rollout can still blank pages until reload; guard now covers `/_next/static/css/` |
+
+---
+
 ## 2026-08-14 — [FINDING, P0 member-visible] Vector session viewport drew candles for the full day but beads for only the last 45 minutes — FIXED
 > **kind:** `FINDING`
 
