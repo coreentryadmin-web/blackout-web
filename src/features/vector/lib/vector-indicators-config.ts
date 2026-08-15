@@ -407,8 +407,11 @@ export const VECTOR_INDICATOR_GROUPS: ReadonlyArray<{
   },
 ];
 
-/** Indicators enabled on first paint — dealer gamma positioning surface behind candles. */
-export const VECTOR_DEFAULT_ENABLED_INDICATORS: readonly VectorIndicatorId[] = ["gex-heatmap"] as const;
+/** Indicators enabled on first paint — dealer gamma positioning + session volume profile. */
+export const VECTOR_DEFAULT_ENABLED_INDICATORS: readonly VectorIndicatorId[] = [
+  "gex-heatmap",
+  "volume-profile",
+] as const;
 
 export function defaultVectorIndicators(): Set<VectorIndicatorId> {
   return new Set(VECTOR_DEFAULT_ENABLED_INDICATORS);

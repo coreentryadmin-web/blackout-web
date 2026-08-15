@@ -150,10 +150,11 @@ test("expected-move-cone: opt-in companion to the flat band, in the Expected mov
   assert.ok(!defaultVectorIndicators().has("expected-move-cone"));
 });
 
-test("VECTOR_DEFAULT_ENABLED_INDICATORS: dealer gamma positioning on by default (gamma-regime OFF)", () => {
-  assert.deepEqual([...VECTOR_DEFAULT_ENABLED_INDICATORS], ["gex-heatmap"]);
+test("VECTOR_DEFAULT_ENABLED_INDICATORS: dealer gamma + session volume profile on by default", () => {
+  assert.deepEqual([...VECTOR_DEFAULT_ENABLED_INDICATORS], ["gex-heatmap", "volume-profile"]);
   assert.ok(defaultVectorIndicators().has("gex-heatmap"));
-  assert.equal(defaultVectorIndicators().size, 1);
+  assert.ok(defaultVectorIndicators().has("volume-profile"));
+  assert.equal(defaultVectorIndicators().size, 2);
   // The new regime glow is opt-in — it must NOT be enabled on first paint.
   assert.ok(!defaultVectorIndicators().has("gamma-regime"));
 });

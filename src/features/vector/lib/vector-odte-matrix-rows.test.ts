@@ -12,7 +12,7 @@ test("buildOdteMatrixRows: 0DTE column values + DR% near spot", () => {
   const out = buildOdteMatrixRows({
     strikes: [102, 101, 100],
     cells,
-    odteExpiry: exp,
+    scopeExpiries: [exp],
     spot: 101,
     lens: "gex",
     shift: {
@@ -46,7 +46,7 @@ test("buildOdteMatrixRows: priceBand scopes visible strikes", () => {
   const out = buildOdteMatrixRows({
     strikes: [110, 100, 90],
     cells,
-    odteExpiry: exp,
+    scopeExpiries: [exp],
     spot: 100,
     lens: "gex",
     shift: null,
@@ -68,7 +68,7 @@ test("buildOdteMatrixRows: marks king and walls from scoped levels", () => {
   const out = buildOdteMatrixRows({
     strikes: [102, 101, 100],
     cells,
-    odteExpiry: exp,
+    scopeExpiries: [exp],
     spot: 101,
     lens: "gex",
     shift: null,
@@ -78,4 +78,22 @@ test("buildOdteMatrixRows: marks king and walls from scoped levels", () => {
   assert.ok(king, "king strike tagged");
   const putWall = out.rows.find((r) => r.isPutWall);
   assert.ok(putWall, "put wall tagged");
+});
+
+test("buildOdteMatrixRows: weekly scope sums multiple expiries per strike", () => {
+  const cells: Record<string, Record<string, number>> = {
+    "100": { "2026-08-15": 1_000_000, "2026-08-22": 500_000 },
+    "101": { "2026-08-15": -200_000, "2026-08-22": -300_000 },
+  };
+  const out = buildOdteMatrixRows({
+    strikes: [101, 100],
+    cells,
+    scopeExpiries: ["2026-08-15", "2026-08-22"],
+    spot: 100,
+    lens: "gex",
+    shift: null,
+    priceBand: null,
+  });
+  assert.equal(out.rows.find((r) => r.strike === 100)?.value, 1_500_000);
+  assert.equal(out.rows.find((r) => r.strike === 101)?.value, -500_000);
 });
