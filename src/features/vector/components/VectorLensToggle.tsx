@@ -45,7 +45,7 @@ export function VectorLensToggle({
   const vexAge = formatLensAge(vexAsOf, now);
 
   return (
-    <div className="flex items-center gap-1.5" role="group" aria-label="Wall exposure lens">
+    <div className="vector-desk-seg" role="group" aria-label="Wall exposure lens">
       {(["gex", "vex"] as const).map((key) => {
         const active = lens === key;
         const disabled = key === "vex" && !vexAvailable;
@@ -59,16 +59,15 @@ export function VectorLensToggle({
             aria-pressed={active}
             {...(exposeTestIds ? { "data-testid": `vector-lens-${key}` } : {})}
             className={clsx(
-              "font-mono text-[10px] font-bold uppercase tracking-[0.16em] rounded-lg border px-2.5 py-1.5 transition-colors",
-              active && key === "gex" && "border-[#ffd60a]/70 bg-[#ffd60a]/15 text-[#ffd60a]",
-              active && key === "vex" && "border-sky-400/70 bg-sky-400/15 text-sky-300",
-              !active && !disabled && "border-white/15 text-cyan-400 hover:border-white/25",
-              disabled && "cursor-not-allowed border-white/10 text-white/30"
+              "vector-desk-seg-btn",
+              active && key === "gex" && "is-active is-gex",
+              active && key === "vex" && "is-active is-vex",
+              disabled && "is-disabled"
             )}
           >
             {key === "gex" ? "GEX" : "VEX"}
             {liveSession && age != null ? (
-              <span className="ml-1 font-normal tracking-normal text-sky-300">· {age}</span>
+              <span className="vector-desk-seg-meta">· {age}</span>
             ) : null}
           </button>
         );

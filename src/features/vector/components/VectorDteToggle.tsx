@@ -42,7 +42,7 @@ export function VectorDteToggle({
     ? "Scopes the GEX ladder. The VEX chart rail covers all expiries — per-expiry vanna is not recorded."
     : undefined;
   return (
-    <div className="flex items-center gap-1" role="group" aria-label={groupLabel} title={hint}>
+    <div className="vector-desk-seg" role="group" aria-label={groupLabel} title={hint}>
       {VECTOR_DTE_HORIZONS.filter((k) => k !== "all").map((key) => {
         const active = horizon === key;
         return (
@@ -54,10 +54,9 @@ export function VectorDteToggle({
             aria-pressed={active}
             data-testid={`vector-dte-${key}`}
             className={clsx(
-              "font-mono text-[10px] font-bold uppercase tracking-[0.12em] rounded-lg border px-2 py-1.5 transition-colors",
-              active && "border-emerald-400/70 bg-emerald-400/15 text-emerald-300",
-              !active && !disabled && "border-white/15 text-cyan-400 hover:border-white/25",
-              disabled && "cursor-not-allowed border-white/10 text-white/30"
+              "vector-desk-seg-btn",
+              active && "is-active is-dte",
+              disabled && "is-disabled"
             )}
           >
             {dteHorizonLabel(key)}

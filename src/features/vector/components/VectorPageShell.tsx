@@ -25,6 +25,7 @@ import { VectorTechnicalsPanel } from "@/features/vector/components/VectorTechni
 import type { VectorPlay } from "@/features/vector/lib/vector-play-engine";
 import { VectorOdteMatrixRail } from "@/features/vector/components/VectorOdteMatrixRail";
 import { VectorDailyChart } from "@/features/vector/components/VectorDailyChart";
+import { VectorChartViewSelect, type VectorChartView } from "@/features/vector/components/VectorChartViewSelect";
 import { VectorRegimeBanner } from "@/features/vector/components/VectorRegimeBanner";
 import { VectorAlertsPanel } from "@/features/vector/components/VectorAlertsPanel";
 import type { AlertRule, AlertKind, FiredAlert } from "@/features/vector/lib/vector-alerts";
@@ -224,7 +225,7 @@ export function VectorPageShell({
   // separate chart surface from the intraday VectorChart (see VectorDailyChart's header comment
   // for why). Standalone-page-only; the chart-only embed (SPX Slayer) never renders this toggle
   // and always stays intraday.
-  const [chartView, setChartView] = useState<"intraday" | "1D" | "1W" | "4H">("intraday");
+  const [chartView, setChartView] = useState<VectorChartView>("intraday");
 
   useEffect(() => {
     if (!compactPanels) return;
@@ -430,19 +431,8 @@ export function VectorPageShell({
   const iosCompactChrome = compactPanels && nativeShell;
   /** SPX Slayer iOS embed — spot + gamma chips live in SpxIosMarketStrip above the segment. */
   const spxIosEmbed = chartOnly && nativeShell;
-  const chartViewToggle = !iosCompactChrome ? (
-    <div className="vector-chart-view-toggle vector-chart-view-toggle--inline" role="group" aria-label="Chart view">
-      {(["intraday", "1D", "1W", "4H"] as const).map((v) => (
-        <button
-          key={v}
-          type="button"
-          onClick={() => setChartView(v)}
-          className={clsx("vector-chart-view-btn", v === chartView && "is-active")}
-        >
-          {v === "intraday" ? "Intraday" : v}
-        </button>
-      ))}
-    </div>
+  const chartViewSelect = !spxIosEmbed ? (
+    <VectorChartViewSelect value={chartView} onChange={setChartView} idSuffix="-toolbar" />
   ) : null;
   const chartLead = spxIosEmbed
     ? null
@@ -452,11 +442,14 @@ export function VectorPageShell({
           {activeTicker}
         </span>
       ) : (
-        <VectorTickerSelect ticker={activeTicker} onTickerSelect={onTickerSelect ? navigateTicker : undefined} busy={tickerNavBusy} />
+        <div className="flex flex-wrap items-center gap-2">
+          {chartViewSelect}
+          <VectorTickerSelect ticker={activeTicker} onTickerSelect={onTickerSelect ? navigateTicker : undefined} busy={tickerNavBusy} />
+        </div>
       )
     : (
-      <div className="flex flex-wrap items-center gap-2 pr-1">
-        {chartViewToggle}
+      <div className="vector-toolbar-brand flex flex-wrap items-center gap-2 pr-1">
+        {chartViewSelect}
         <ProductMark product="vector" size={22} animated={false} />
         <span className="font-mono text-sm font-bold uppercase tracking-[0.18em] text-cyan-100">Vector</span>
         <VectorTickerSelect ticker={activeTicker} onTickerSelect={onTickerSelect ? navigateTicker : undefined} busy={tickerNavBusy} />
@@ -703,7 +696,6 @@ export function VectorPageShell({
               compactPanels && nativeShell && iosPanel !== "chart" && "ios-native-panel-hidden"
             )}
           >
-            {!iosCompactChrome && chartView !== "intraday" ? chartViewToggle : null}
             {chartView === "intraday" ? (
               chartBlock
             ) : (
