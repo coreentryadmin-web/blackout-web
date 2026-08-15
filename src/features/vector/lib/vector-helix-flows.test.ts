@@ -6,7 +6,9 @@ import {
   trimVectorHelixFlowPool,
   VECTOR_HELIX_MAJOR_MIN_PREMIUM,
   VECTOR_HELIX_MAJOR_TOP_N,
+  VECTOR_HELIX_MIN_PREMIUM,
   VECTOR_HELIX_WHALE_PREMIUM,
+  vectorHelixMajorSubtitle,
 } from "./vector-helix-flows";
 import type { FlowAlert } from "@/lib/api";
 
@@ -56,14 +58,31 @@ test("filterVectorHelixFlows: whales + side + 0DTE", () => {
   assert.equal(dte0.length, 2);
 });
 
-test("pickVectorHelixMajorFlows: top N by premium with major floor", () => {
+test("pickVectorHelixMajorFlows: liquid names use $350k+ major tier", () => {
   const rows = Array.from({ length: 20 }, (_, i) =>
     flow({ premium: 400_000 + i * 50_000, strike: 900 + i, alerted_at: `2026-08-15T14:${String(i).padStart(2, "0")}:00Z` })
   );
-  const top = pickVectorHelixMajorFlows(rows, defaultFilters);
-  assert.equal(top.length, VECTOR_HELIX_MAJOR_TOP_N);
-  assert.ok(top[0]!.premium >= top[top.length - 1]!.premium);
-  assert.ok(top.every((r) => r.premium >= VECTOR_HELIX_MAJOR_MIN_PREMIUM));
+  const pick = pickVectorHelixMajorFlows(rows, defaultFilters);
+  assert.equal(pick.tier, "major");
+  assert.equal(pick.flows.length, VECTOR_HELIX_MAJOR_TOP_N);
+  assert.ok(pick.flows.every((r) => r.premium >= VECTOR_HELIX_MAJOR_MIN_PREMIUM));
+});
+
+test("pickVectorHelixMajorFlows: thin tickers fall back to session top prints", () => {
+  const asts = Array.from({ length: 8 }, (_, i) =>
+    flow({
+      ticker: "ASTS",
+      premium: 210_000 + i * 15_000,
+      strike: 20 + i,
+      alerted_at: `2026-08-15T14:${String(i).padStart(2, "0")}:00Z`,
+    })
+  );
+  const pick = pickVectorHelixMajorFlows(asts, defaultFilters);
+  assert.equal(pick.tier, "session");
+  assert.equal(pick.flows.length, 8);
+  assert.ok(pick.flows.every((r) => r.premium >= VECTOR_HELIX_MIN_PREMIUM));
+  assert.ok(pick.flows.every((r) => r.premium < VECTOR_HELIX_MAJOR_MIN_PREMIUM));
+  assert.match(vectorHelixMajorSubtitle(pick), /largest today/i);
 });
 
 test("trimVectorHelixFlowPool: keeps premium-ranked cap", () => {

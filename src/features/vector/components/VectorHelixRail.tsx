@@ -17,8 +17,8 @@ import { useVectorHelixFlows } from "@/features/vector/lib/use-vector-helix-flow
 import {
   pickVectorHelixMajorFlows,
   VECTOR_HELIX_DEFAULT_FILTERS,
-  VECTOR_HELIX_MAJOR_TOP_N,
   VECTOR_HELIX_WHALE_PREMIUM,
+  vectorHelixMajorSubtitle,
   type VectorHelixFlowFilters,
   type VectorHelixTypeFilter,
 } from "@/features/vector/lib/vector-helix-flows";
@@ -108,10 +108,12 @@ export function VectorHelixRail({ ticker, liveSession }: Props) {
   const [filters, setFilters] = useState<VectorHelixFlowFilters>(VECTOR_HELIX_DEFAULT_FILTERS);
   const [selected, setSelected] = useState<FlowAlert | null>(null);
 
-  const major = useMemo(
+  const majorPick = useMemo(
     () => pickVectorHelixMajorFlows(flows, filters),
     [flows, filters]
   );
+  const major = majorPick.flows;
+  const subtitle = vectorHelixMajorSubtitle(majorPick);
 
   const setTypeFilter = (typeFilter: VectorHelixTypeFilter) => {
     setFilters((f) => ({ ...f, typeFilter }));
@@ -124,9 +126,7 @@ export function VectorHelixRail({ ticker, liveSession }: Props) {
           <div>
             <p className="vector-helix-kicker">Helix</p>
             <h2 className="vector-helix-title">{normalized} major prints</h2>
-            <p className="vector-helix-subtitle">
-              Top {VECTOR_HELIX_MAJOR_TOP_N} by premium · session
-            </p>
+            <p className="vector-helix-subtitle">{subtitle}</p>
           </div>
           <FreshnessChip status={liveSession && live ? "live" : "stale"} label={live ? "LIVE" : "STALE"} />
         </div>
