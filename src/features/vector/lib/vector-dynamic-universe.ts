@@ -22,6 +22,8 @@ import { normalizeVectorTicker, isVectorTickerAllowed } from "./vector-ticker";
  *    tickers kept warm, that should be a bulk union of discovery output, not this per-view path.
  *  - The recorder cron unions `listDynamicUniverseTickers()` into its ticker set, so a name viewed
  *    today is recorded from TOMORROW'S OPENING BELL onward, viewer or not.
+ *  - `warmDynamicTickerSessionWall` (via `registerVectorUniverseView`) also seeds TODAY's bead rail
+ *    on first open so dynamic names do not start with an empty morning rail.
  *  - Thermal `heatmap-warm` uses the SAME union (`listSharedUniverseTickers`) so a viewed name's
  *    GEX matrix stays cache-hot for every consumer — one shared sticky universe, not N lists.
  *  - Retention: names not viewed for RETENTION_DAYS drop out (a one-time curiosity must not tax

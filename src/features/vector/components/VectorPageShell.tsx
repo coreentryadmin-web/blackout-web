@@ -11,14 +11,7 @@ import { useIosNativeShell } from "@/hooks/useIosNativeShell";
 import { useCompactDeskPanels } from "@/hooks/useCompactDeskPanels";
 import type { VectorBar } from "@/features/vector/components/VectorChart";
 import type { PlayLevelsInput } from "@/features/vector/lib/vector-play-levels";
-import type { VectorDarkPoolLevel, VectorWalls } from "@/lib/api";
-import type { WallHistorySample, VectorWallLens } from "@/features/vector/lib/vector-wall-history";
-import { VECTOR_DEFAULT_DTE_HORIZON, type VectorDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
-import type { VectorPriceScaleMap } from "@/features/vector/lib/vector-price-scale-map";
-import type { VectorTimeframeMinutes } from "@/features/vector/lib/vector-bar-timeframes";
-import type { TechnicalsLine } from "@/features/vector/lib/vector-technicals";
-import { VectorTickerSelect } from "@/features/vector/components/VectorTickerSelect";
-import { VectorScanner } from "@/features/vector/components/VectorScanner";
+import type { FlowAlert, VectorDarkPoolLevel, VectorWalls } from "@/lib/api";
 import { VectorHelixRail } from "@/features/vector/components/VectorHelixRail";
 import { VectorPlayCard } from "@/features/vector/components/VectorPlayCard";
 import { VectorTechnicalsPanel } from "@/features/vector/components/VectorTechnicalsPanel";
@@ -37,6 +30,13 @@ import { deriveWallProximity, type WallProximity } from "@/features/vector/lib/v
 import { deriveGammaMagnet, type GammaMagnet } from "@/features/vector/lib/vector-gamma-magnet";
 import { scoreTopWalls, type WallIntegrity } from "@/features/vector/lib/vector-wall-integrity";
 import type { VectorWallEvent } from "@/features/vector/lib/vector-wall-events";
+import type { WallHistorySample, VectorWallLens } from "@/features/vector/lib/vector-wall-history";
+import { VECTOR_DEFAULT_DTE_HORIZON, type VectorDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
+import type { VectorPriceScaleMap } from "@/features/vector/lib/vector-price-scale-map";
+import type { VectorTimeframeMinutes } from "@/features/vector/lib/vector-bar-timeframes";
+import type { TechnicalsLine } from "@/features/vector/lib/vector-technicals";
+import { VectorTickerSelect } from "@/features/vector/components/VectorTickerSelect";
+import { VectorScanner } from "@/features/vector/components/VectorScanner";
 import { VECTOR_DEFAULT_TICKER } from "@/features/vector/lib/vector-ticker";
 
 const VectorChart = dynamic(
@@ -209,6 +209,22 @@ export function VectorPageShell({
   // a child, of the chart — can highlight the matching strike. Null whenever the cursor is off
   // the plot.
   const [hoverPrice, setHoverPrice] = useState<number | null>(null);
+  // Live Helix → chart strike flash (same seq pattern as SPX Pulse → chart focusLevel).
+  const [chartFocus, setChartFocus] = useState<{
+    price: number;
+    label: string;
+    tone: string;
+    seq: number;
+  } | null>(null);
+  const handleHelixStrikeFocus = useCallback((strike: number, flow: FlowAlert) => {
+    const isCall = flow.option_type?.toUpperCase() === "CALL";
+    setChartFocus((prev) => ({
+      price: strike,
+      label: `${strike}${isCall ? "C" : "P"}`,
+      tone: isCall ? "bull" : "bear",
+      seq: (prev?.seq ?? 0) + 1,
+    }));
+  }, []);
   const [scannerOpen, setScannerOpen] = useState(false);
   const activeTicker = ticker || VECTOR_DEFAULT_TICKER;
   const navigateTicker = useCallback(
@@ -554,7 +570,13 @@ export function VectorPageShell({
     );
   }
 
-  const helixRail = <VectorHelixRail ticker={activeTicker} liveSession={liveSession} />;
+  const helixRail = (
+    <VectorHelixRail
+      ticker={activeTicker}
+      liveSession={liveSession}
+      onStrikeFocus={handleHelixStrikeFocus}
+    />
+  );
 
   // Desktop 4th "action" column (2026-08-05, member-directed): the things a member actually ACTS
   // on — the fused trade idea, the technical read, and the alert-rule builder — pulled out of the
@@ -611,6 +633,7 @@ export function VectorPageShell({
       onTechnicalsChange={setTechnicals}
       onExpectedMoveChange={setExpectedMove}
       onPlayChange={setPlay}
+      focusLevel={chartFocus}
       // The chart-only embed returns earlier with its own VectorChart, so in practice only the
       // standalone page reaches here and `onPriceScaleRender` is undefined. The `??` keeps a host's
       // callback authoritative anyway rather than silently stealing the seam — the two consumers

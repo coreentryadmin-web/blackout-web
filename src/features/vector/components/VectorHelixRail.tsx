@@ -27,6 +27,8 @@ import {
 type Props = {
   ticker: string;
   liveSession: boolean;
+  /** Flash the flow's strike on the chart (alongside drilldown). */
+  onStrikeFocus?: (strike: number, flow: FlowAlert) => void;
 };
 
 function SignalPill({ label, tone }: { label: string; tone: string }) {
@@ -42,11 +44,13 @@ function FlowCard({
   rank,
   flash,
   onOpen,
+  onStrikeFocus,
 }: {
   flow: FlowAlert;
   rank?: number;
   flash?: boolean;
   onOpen: (flow: FlowAlert) => void;
+  onStrikeFocus?: (strike: number, flow: FlowAlert) => void;
 }) {
   const isCall = flow.option_type?.toUpperCase() === "CALL";
   const isWhale = flow.premium >= VECTOR_HELIX_WHALE_PREMIUM;
@@ -64,7 +68,12 @@ function FlowCard({
         rank === 1 && "vector-helix-card--lead",
         flash && "vector-helix-card--flash"
       )}
-      onClick={() => onOpen(flow)}
+      onClick={() => {
+        if (typeof flow.strike === "number" && Number.isFinite(flow.strike)) {
+          onStrikeFocus?.(flow.strike, flow);
+        }
+        onOpen(flow);
+      }}
       data-testid="vector-helix-flow-card"
     >
       <div className="vector-helix-card-top">
@@ -107,7 +116,7 @@ function FlowCard({
 }
 
 /** Vector desk — Live Helix: Recent strip + premium-ranked session tape. */
-export function VectorHelixRail({ ticker, liveSession }: Props) {
+export function VectorHelixRail({ ticker, liveSession, onStrikeFocus }: Props) {
   const normalized = ticker.trim().toUpperCase();
   const { flows, loading, live, flashKeys } = useVectorHelixFlows(normalized, liveSession);
 
@@ -187,6 +196,7 @@ export function VectorHelixRail({ ticker, liveSession }: Props) {
                       flow={flow}
                       flash={flashKeys.has(flowDedupeKey(flow))}
                       onOpen={setSelected}
+                      onStrikeFocus={onStrikeFocus}
                     />
                   ))}
                 </div>
@@ -205,6 +215,7 @@ export function VectorHelixRail({ ticker, liveSession }: Props) {
                       rank={i + 1}
                       flash={flashKeys.has(flowDedupeKey(flow))}
                       onOpen={setSelected}
+                      onStrikeFocus={onStrikeFocus}
                     />
                   ))}
                 </div>

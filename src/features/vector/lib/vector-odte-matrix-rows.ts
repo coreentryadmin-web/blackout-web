@@ -1,7 +1,5 @@
-import {
-  odteStrikeTotalsFromCells,
-  recomputeScopedGexLevels,
-} from "@/lib/correctness/gex-odte-scope";
+import { recomputeScopedGexLevels } from "@/lib/correctness/gex-odte-scope";
+import { strikeTotalsForScope } from "@/features/vector/lib/vector-matrix-horizon";
 import { shouldShowMatrixDriftPct } from "@/lib/gex-heatmap-display";
 import { matrixShiftDeltaForStrikeScoped } from "@/lib/gex-shift-scope";
 import type { GexShiftLike } from "@/lib/gex-shift-leaders";
@@ -23,7 +21,8 @@ export type OdteMatrixRow = {
 export type OdteMatrixBuildInput = {
   strikes: readonly number[];
   cells: Record<string, Record<string, number>>;
-  odteExpiry: string | null;
+  /** Expiry columns included — one for 0DTE, many for weekly/monthly/all horizons. */
+  scopeExpiries: readonly string[];
   spot: number | null;
   lens: GexHeatmapLens;
   shift: GexShiftLike | null | undefined;
@@ -51,10 +50,11 @@ function nearestStrikeIndex(strikes: readonly number[], spot: number | null): nu
   return best;
 }
 
-/** Build strike rows for the Vector 0DTE matrix rail (gamma $ + intraday DR%). */
+/** Build strike rows for the Vector matrix rail (gamma $ + intraday DR%). */
 export function buildOdteMatrixRows(input: OdteMatrixBuildInput): OdteMatrixBuildResult {
-  const { strikes, cells, odteExpiry, spot, lens, shift, priceBand } = input;
+  const { strikes, cells, scopeExpiries, spot, lens, shift, priceBand } = input;
   const activeShift = shift;
+  const scoped = scopeExpiries.length > 0;
 
   const banded = rowsInBand(
     strikes.map((strike) => ({ strike })),
@@ -64,30 +64,25 @@ export function buildOdteMatrixRows(input: OdteMatrixBuildInput): OdteMatrixBuil
   ).map((r) => r.strike);
 
   const levels =
-    lens === "gex" && odteExpiry
+    lens === "gex" && scoped
       ? recomputeScopedGexLevels(
-          odteStrikeTotalsFromCells(cells, [...banded], odteExpiry),
+          strikeTotalsForScope(cells, banded, scopeExpiries),
           spot ?? 0
         )
       : { king: null, callWall: null, putWall: null, flip: null, netTotal: 0 };
 
   let peak = 0;
   const raw: OdteMatrixRow[] = banded.map((strike, si) => {
-    const value =
-      odteExpiry != null
-        ? (cells[String(strike)]?.[odteExpiry] ?? 0)
-        : 0;
-    const n = typeof value === "number" && Number.isFinite(value) ? value : 0;
+    const n = scoped ? strikeTotalsForScope(cells, [strike], scopeExpiries)[String(strike)] ?? 0 : 0;
     peak = Math.max(peak, Math.abs(n));
-    const shiftDeltaRaw =
-      odteExpiry != null
-        ? matrixShiftDeltaForStrikeScoped({
-            shift: activeShift,
-            cells,
-            selectedExpiries: [odteExpiry],
-            strike,
-          })
-        : null;
+    const shiftDeltaRaw = scoped
+      ? matrixShiftDeltaForStrikeScoped({
+          shift: activeShift,
+          cells,
+          selectedExpiries: [...scopeExpiries],
+          strike,
+        })
+      : null;
     const shiftDelta = shiftDeltaRaw ?? null;
     const spotIdx = nearestStrikeIndex(banded, spot);
     const isSpotRow = si === spotIdx;

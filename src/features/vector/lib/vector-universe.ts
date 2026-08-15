@@ -1,4 +1,6 @@
 import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
+import { vectorUniverseTickers } from "@/lib/heatmap-allowlist";
+import { todayEtYmd } from "@/lib/providers/spx-session";
 import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
 import {
   computeGexWalls,
@@ -240,16 +242,60 @@ export async function ensureTickerInUniverseSnapshot(rawTicker: string): Promise
   return p;
 }
 
+function isStaticUniverseTicker(ticker: string): boolean {
+  return vectorUniverseTickers().includes(ticker);
+}
+
+const sessionWarmInFlight = new Map<string, Promise<void>>();
+
+/**
+ * Seed today's bead rail when a dynamic ticker is opened for the first time.
+ * Static allowlist names are already on the 5s universe recorder — skip them.
+ * Deduped once per ticker per ET session so hot revisits do not fan out heatmap builds.
+ */
+export async function warmDynamicTickerSessionWall(rawTicker: string): Promise<void> {
+  if (!isVectorTickerAllowed(rawTicker)) return;
+  const ticker = normalizeVectorTicker(rawTicker);
+  if (!ticker || isStaticUniverseTicker(ticker)) return;
+
+  const sessionYmd = todayEtYmd();
+  const dedupeKey = `vector:universe:session-warm:${ticker}:${sessionYmd}`;
+  const inflightKey = `${ticker}:${sessionYmd}`;
+  const existing = sessionWarmInFlight.get(inflightKey);
+  if (existing) return existing;
+
+  const p = (async () => {
+    const already = await sharedCacheGet<boolean>(dedupeKey);
+    if (already) return;
+
+    const recorded = await recordVectorUniverseWallSample(ticker, {
+      sessionYmd,
+      bucketScope: "live",
+    });
+    if (recorded) {
+      await sharedCacheSet(dedupeKey, true, 24 * 3600);
+    }
+  })().finally(() => {
+    sessionWarmInFlight.delete(inflightKey);
+  });
+
+  sessionWarmInFlight.set(inflightKey, p);
+  return p;
+}
+
 /**
  * A member opened a ticker on Thermal, Helix, Vector, or asked Largo for its GEX heatmap — track
- * it in the (platform-wide, despite the module name) dynamic universe and surface it in the
- * scanner snapshot on the next poll (~5s) without waiting for the cron rebuild.
+ * it in the (platform-wide, despite the module name) dynamic universe, surface it in the
+ * scanner snapshot on the next poll (~5s), and seed today's bead rail for dynamic names.
  */
 export function registerVectorUniverseView(rawTicker: string): void {
   void (async () => {
     try {
       await touchDynamicUniverse(rawTicker);
-      await ensureTickerInUniverseSnapshot(rawTicker);
+      await Promise.all([
+        ensureTickerInUniverseSnapshot(rawTicker),
+        warmDynamicTickerSessionWall(rawTicker),
+      ]);
     } catch {
       /* best-effort: universe tracking must never disturb desk hot paths */
     }

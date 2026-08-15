@@ -10,7 +10,7 @@ import {
   heatmapCellTextStyle,
   type GexHeatmapLens,
 } from "@/lib/gex-heatmap-display";
-import { resolveOdteExpiry } from "@/lib/correctness/gex-odte-scope";
+import { matrixScopeExpiries, matrixRailTitle } from "@/features/vector/lib/vector-matrix-horizon";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import {
   readGexHeatmapSessionCache,
@@ -85,6 +85,7 @@ export function VectorOdteMatrixRail({
   liveSession,
   initialSpot = null,
   liveSpot = null,
+  dteHorizon = "0dte",
   wallsPollMs,
   hoverPrice = null,
   priceBand = null,
@@ -113,10 +114,12 @@ export function VectorOdteMatrixRail({
   const block = lens === "gex" ? data?.gex : data?.vex;
   const cells = block?.cells ?? {};
   const strikesAxis = data?.strikes ?? [];
-  const odteExpiry = useMemo(
-    () => resolveOdteExpiry(data?.expiries ?? [], todayEtYmd()),
-    [data?.expiries]
+  const todayYmd = todayEtYmd();
+  const scopeExpiries = useMemo(
+    () => matrixScopeExpiries(data?.expiries ?? [], dteHorizon, todayYmd),
+    [data?.expiries, dteHorizon, todayYmd]
   );
+  const matrixTitle = matrixRailTitle(dteHorizon);
 
   const activeShift = matrixShiftForLens(lens, {
     shift: data?.shift ?? null,
@@ -128,13 +131,13 @@ export function VectorOdteMatrixRail({
       buildOdteMatrixRows({
         strikes: strikesAxis,
         cells,
-        odteExpiry,
+        scopeExpiries,
         spot,
         lens,
         shift: activeShift,
         priceBand,
       }),
-    [strikesAxis, cells, odteExpiry, spot, lens, activeShift, priceBand]
+    [strikesAxis, cells, scopeExpiries, spot, lens, activeShift, priceBand]
   );
 
   const hoverStrike = useMemo(() => {
@@ -159,16 +162,18 @@ export function VectorOdteMatrixRail({
 
   useLayoutEffect(() => {
     resetToSpot();
-  }, [ticker, odteExpiry, resetToSpot]);
+  }, [ticker, dteHorizon, scopeExpiries.join(","), resetToSpot]);
 
-  const hasData = Boolean(data?.available && built.rows.length > 0 && odteExpiry);
+  const hasData = Boolean(data?.available && built.rows.length > 0 && scopeExpiries.length > 0);
   const asOf = fmtAsof(data?.asof);
+  const emptyLabel =
+    dteHorizon === "0dte" ? "No 0DTE structure near spot" : `No ${matrixTitle.toLowerCase()} structure near spot`;
 
   return (
-    <section className="vector-odte-matrix-rail" aria-label={`${ticker} 0DTE gamma matrix`}>
+    <section className="vector-odte-matrix-rail" aria-label={`${ticker} ${matrixTitle}`}>
       <header className="vector-odte-matrix-head">
         <div className="vector-odte-matrix-head-top">
-          <span className="vector-odte-matrix-title">0DTE Matrix</span>
+          <span className="vector-odte-matrix-title">{matrixTitle}</span>
           <button
             type="button"
             className="vector-gex-ladder-reset vector-odte-matrix-reset"
@@ -204,9 +209,9 @@ export function VectorOdteMatrixRail({
       {error && !hasData ? (
         <p className="vector-odte-matrix-empty">Matrix unavailable — retrying…</p>
       ) : isLoading && !hasData ? (
-        <p className="vector-odte-matrix-empty">Loading 0DTE matrix…</p>
+        <p className="vector-odte-matrix-empty">Loading {matrixTitle.toLowerCase()}…</p>
       ) : !hasData ? (
-        <p className="vector-odte-matrix-empty">No 0DTE structure near spot</p>
+        <p className="vector-odte-matrix-empty">{emptyLabel}</p>
       ) : (
         <div
           ref={scrollRef}
