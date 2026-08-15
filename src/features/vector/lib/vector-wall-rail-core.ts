@@ -46,6 +46,12 @@ export type BeadRenderTuning = {
   minRadiusPx: number;
   /** King halo radius/opacity scale. */
   kingHaloMul: number;
+  /** Strength curve exponent — lower = gentler fade for weak walls (Compare panes). */
+  contrastExp?: number;
+  /** Modeled (reconstructed) bead alpha scale — dim ghost, not invisible. */
+  modeledAlphaScale?: number;
+  /** Outline boost so small compare beads stay legible on #040407. */
+  strokeAlphaBoost?: number;
 };
 
 export const BEAD_TUNING_DEFAULT: BeadRenderTuning = {
@@ -59,16 +65,21 @@ export const BEAD_TUNING_DEFAULT: BeadRenderTuning = {
   kingHaloMul: 1,
 };
 
-/** ~55% bead radius, ~45% opacity — keeps level rails readable without burying candles. */
+/** ~55% bead radius — keeps level rails readable without burying candles. Opacity retuned
+ *  2026-08-15: sizing was right but fillMin/fillMax were too low — weak beads vanished on
+ *  the black compare grid while strong beads read fine. Yellow/purple king nodes match Thermal. */
 export const BEAD_TUNING_COMPARE: BeadRenderTuning = {
   halfMin: 1.35,
   halfMax: 4,
-  fillMin: 0.24,
-  fillMax: 0.55,
+  fillMin: 0.42,
+  fillMax: 0.86,
   kingBoost: 0.1,
-  drawAlphaMul: 0.88,
+  drawAlphaMul: 1,
   minRadiusPx: 1,
-  kingHaloMul: 0.35,
+  kingHaloMul: 0.72,
+  contrastExp: 1.25,
+  modeledAlphaScale: 0.52,
+  strokeAlphaBoost: 0.22,
 };
 
 export function beadRenderTuning(profile: WallBeadRenderProfile = "default"): BeadRenderTuning {
@@ -137,7 +148,10 @@ export function fillAlpha(
   maxPct: number,
   tuning: BeadRenderTuning = BEAD_TUNING_DEFAULT
 ): number {
-  return tuning.fillMin + relStrengthT(pct, maxPct) * (tuning.fillMax - tuning.fillMin);
+  const exp = tuning.contrastExp ?? 1.6;
+  if (!Number.isFinite(pct) || pct <= 0 || !(maxPct > 0)) return tuning.fillMin;
+  const t = Math.pow(Math.min(1, pct / maxPct), exp);
+  return tuning.fillMin + t * (tuning.fillMax - tuning.fillMin);
 }
 
 /**

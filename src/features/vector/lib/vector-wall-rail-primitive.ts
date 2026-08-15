@@ -159,7 +159,15 @@ class WallRailRenderer implements IPrimitivePaneRenderer {
           }
           if (r >= 2.2) {
             ctx.lineWidth = 1;
-            ctx.strokeStyle = withA(b.color, Math.min(1, p.a + 0.04 + emph * 0.3));
+            ctx.strokeStyle = withA(
+              b.color,
+              Math.min(1, p.a + 0.04 + emph * 0.3 + (this._tuning.strokeAlphaBoost ?? 0))
+            );
+            ctx.stroke();
+          } else if ((this._tuning.strokeAlphaBoost ?? 0) > 0 && r >= minR) {
+            // Compare panes: tiny weak beads still get a crisp outline on #040407.
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = withA(b.color, Math.min(1, p.a + (this._tuning.strokeAlphaBoost ?? 0)));
             ctx.stroke();
           }
         }
@@ -447,9 +455,14 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
             half = cur;
           }
         }
+        const modeledScale = p.modeled === true ? (tuning.modeledAlphaScale ?? 0.26) : 1;
         const a = Math.min(
           1,
-          fillAlpha(p.pct, maxPct, tuning) * mod.alphaMul * (0.75 + 0.25 * Math.min(1.6, glow)) * tuning.drawAlphaMul
+          fillAlpha(p.pct, maxPct, tuning) *
+            mod.alphaMul *
+            (0.75 + 0.25 * Math.min(1.6, glow)) *
+            tuning.drawAlphaMul *
+            modeledScale
         );
         // Frozen truth for history; eased value only on the live edge.
         const wasKing = kingAt.get(p.time) === trail.strike;
