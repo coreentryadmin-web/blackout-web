@@ -124,6 +124,9 @@ type Props = {
   compareSync?: import("@/features/vector/lib/vector-compare-sync").VectorCompareChartSyncBind | null;
   onCompareCrosshair?: (paneId: string, timeSec: number | null) => void;
   onCompareVisibleRange?: (paneId: string, fromSec: number, toSec: number) => void;
+  linkedReplay?: import("@/features/vector/lib/vector-compare-replay").VectorLinkedReplayBind | null;
+  hideReplayControls?: boolean;
+  onReplayTimeline?: (timeline: number[]) => void;
 };
 
 type VectorIosPanel = "chart" | "pulse" | "ladder" | "scanner";
@@ -180,6 +183,9 @@ export function VectorPageShell({
   compareSync = null,
   onCompareCrosshair,
   onCompareVisibleRange,
+  linkedReplay = null,
+  hideReplayControls = false,
+  onReplayTimeline,
 }: Props) {
   const chartOnly = embed === "chart-only";
   const router = useRouter();
@@ -516,6 +522,9 @@ export function VectorPageShell({
           compareSync={compareSync}
           onCompareCrosshair={onCompareCrosshair}
           onCompareVisibleRange={onCompareVisibleRange}
+          linkedReplay={linkedReplay}
+          hideReplayControls={hideReplayControls}
+          onReplayTimeline={onReplayTimeline}
           onPriceScaleRender={onPriceScaleRender}
           focusLevel={focusLevel}
           playLevels={playLevels}

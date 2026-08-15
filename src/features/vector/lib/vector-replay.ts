@@ -169,3 +169,14 @@ export function clampTimelineIndex(timeline: number[], index: number): number {
   if (!timeline.length) return 0;
   return Math.max(0, Math.min(timeline.length - 1, index));
 }
+
+/** Index of last timeline step at or before an epoch second (linked compare scrub). */
+export function timelineIndexAtOrBeforeTime(timeline: readonly number[], epochSec: number): number {
+  if (!timeline.length) return 0;
+  let best = 0;
+  for (let i = 0; i < timeline.length; i++) {
+    if (timeline[i]! <= epochSec) best = i;
+    else break;
+  }
+  return best;
+}

@@ -8955,6 +8955,18 @@ body::before {
     50% { box-shadow: 0 0 8px rgba(34, 211, 238, 0.65); }
   }
 
+  .vector-compare-command-replay {
+    display: flex;
+    flex: 1 1 280px;
+    min-width: min(100%, 280px);
+    max-width: 100%;
+    align-items: flex-start;
+  }
+  .vector-compare-command-replay .vector-replay-controls {
+    width: 100%;
+    min-width: 0;
+  }
+
   .vector-compare-command-presets {
     display: flex;
     align-items: center;

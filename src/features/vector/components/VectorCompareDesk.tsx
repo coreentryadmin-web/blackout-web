@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import { useRouter } from "next/navigation";
 import { PageShell } from "@/components/ui";
@@ -22,6 +22,16 @@ import { VECTOR_DEFAULT_TIMEFRAME } from "@/features/vector/lib/vector-bar-timef
 import { VECTOR_DEFAULT_DTE_HORIZON, type VectorDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
 import type { VectorTimeframeMinutes } from "@/features/vector/lib/vector-bar-timeframes";
 import type { VectorWallLens } from "@/features/vector/lib/vector-wall-history";
+import type { VectorCompareLinkedReplayProps } from "@/features/vector/components/VectorCompareCommandBar";
+import {
+  LINKED_REPLAY_STEP_MS,
+  clampTimelineIndex,
+  linkedReplayClockLabel,
+  mergeReplayTimelines,
+  timelineIndexAtOrAfterEtClock,
+  timelineIndexAtOrBeforeEtClock,
+  type VectorLinkedReplayBind,
+} from "@/features/vector/lib/vector-compare-replay";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import type { VectorCompareChartSyncBind } from "@/features/vector/lib/vector-compare-sync";
 
@@ -46,6 +56,109 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
   const [focusExpanded, setFocusExpanded] = useState(false);
   const [metaByTicker, setMetaByTicker] = useState<Record<string, VectorComparePaneMeta>>({});
   const [syncFlash, setSyncFlash] = useState(false);
+  const [linkedReplayMode, setLinkedReplayMode] = useState(false);
+  const [linkedReplayPlaying, setLinkedReplayPlaying] = useState(false);
+  const [linkedReplayIndex, setLinkedReplayIndex] = useState(0);
+  const [linkedReplaySpeed, setLinkedReplaySpeed] = useState(1);
+  const [linkedReplayLoop, setLinkedReplayLoop] = useState(false);
+  const [linkedReplayTick, setLinkedReplayTick] = useState(0);
+  const [unionTimeline, setUnionTimeline] = useState<number[]>([]);
+  const timelinesRef = useRef<Map<string, number[]>>(new Map());
+
+  const sessionYmd = seeds[0]?.sessionYmd ?? todayEtYmd();
+  const canLinkReplay = linked && seeds.length >= 2;
+  const linkedReplayCursorTime =
+    linkedReplayMode && unionTimeline.length > 0 ? (unionTimeline[linkedReplayIndex] ?? null) : null;
+
+  const linkedReplayBind: VectorLinkedReplayBind | null = canLinkReplay
+    ? {
+        active: linkedReplayMode,
+        cursorTimeSec: linkedReplayCursorTime,
+        tick: linkedReplayTick,
+      }
+    : null;
+
+  const bumpLinkedReplay = useCallback(() => {
+    setLinkedReplayTick((t) => t + 1);
+  }, []);
+
+  const exitLinkedReplay = useCallback(() => {
+    setLinkedReplayMode(false);
+    setLinkedReplayPlaying(false);
+    bumpLinkedReplay();
+  }, [bumpLinkedReplay]);
+
+  const handleReplayTimeline = useCallback(
+    (ticker: string, timeline: number[]) => {
+      timelinesRef.current.set(ticker, timeline);
+      const active = new Set(seeds.map((s) => s.ticker));
+      for (const key of timelinesRef.current.keys()) {
+        if (!active.has(key)) timelinesRef.current.delete(key);
+      }
+      setUnionTimeline(mergeReplayTimelines([...timelinesRef.current.values()]));
+    },
+    [seeds]
+  );
+
+  const linkedReplayUi = useMemo((): VectorCompareLinkedReplayProps | null => {
+    if (!canLinkReplay) return null;
+    const stepCount = unionTimeline.length;
+    const cursorIndex = clampTimelineIndex(unionTimeline, linkedReplayIndex);
+    return {
+      mode: linkedReplayMode,
+      playing: linkedReplayPlaying,
+      canReplay: stepCount > 1,
+      cursorIndex,
+      stepCount,
+      clockLabel: linkedReplayClockLabel(unionTimeline, cursorIndex),
+      speed: linkedReplaySpeed,
+      loop: linkedReplayLoop,
+      onToggleReplay: () => {
+        if (linkedReplayMode) {
+          exitLinkedReplay();
+          return;
+        }
+        setLinkedReplayMode(true);
+        setLinkedReplayPlaying(false);
+        setLinkedReplayIndex(0);
+        bumpLinkedReplay();
+      },
+      onTogglePlay: () => setLinkedReplayPlaying((p) => !p),
+      onScrub: (index: number) => {
+        setLinkedReplayPlaying(false);
+        setLinkedReplayIndex(clampTimelineIndex(unionTimeline, index));
+        bumpLinkedReplay();
+      },
+      onSpeed: setLinkedReplaySpeed,
+      onStep: (delta: number) => {
+        setLinkedReplayPlaying(false);
+        setLinkedReplayIndex((prev) => clampTimelineIndex(unionTimeline, prev + delta));
+        bumpLinkedReplay();
+      },
+      onJumpOpen: () => {
+        setLinkedReplayPlaying(false);
+        setLinkedReplayIndex(timelineIndexAtOrAfterEtClock(unionTimeline, sessionYmd, 9, 30));
+        bumpLinkedReplay();
+      },
+      onJumpClose: () => {
+        setLinkedReplayPlaying(false);
+        setLinkedReplayIndex(timelineIndexAtOrBeforeEtClock(unionTimeline, sessionYmd, 16, 0));
+        bumpLinkedReplay();
+      },
+      onToggleLoop: () => setLinkedReplayLoop((v) => !v),
+    };
+  }, [
+    bumpLinkedReplay,
+    canLinkReplay,
+    exitLinkedReplay,
+    linkedReplayIndex,
+    linkedReplayLoop,
+    linkedReplayMode,
+    linkedReplayPlaying,
+    linkedReplaySpeed,
+    sessionYmd,
+    unionTimeline,
+  ]);
 
   const canFocusExpand = seeds.length >= 2;
   const canLinkTime = linked && seeds.length >= 2;
@@ -198,6 +311,38 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
   }, []);
 
   useEffect(() => {
+    setLinkedReplayIndex((prev) => clampTimelineIndex(unionTimeline, prev));
+  }, [unionTimeline]);
+
+  useEffect(() => {
+    if (!linked) exitLinkedReplay();
+  }, [linked, exitLinkedReplay]);
+
+  useEffect(() => {
+    if (!linkedReplayMode || !linkedReplayPlaying || unionTimeline.length < 2) return;
+    const id = window.setInterval(() => {
+      setLinkedReplayIndex((prev) => {
+        const next = prev + 1;
+        if (next >= unionTimeline.length) {
+          if (linkedReplayLoop) return 0;
+          setLinkedReplayPlaying(false);
+          return prev;
+        }
+        return next;
+      });
+      bumpLinkedReplay();
+    }, LINKED_REPLAY_STEP_MS / Math.max(0.25, linkedReplaySpeed));
+    return () => window.clearInterval(id);
+  }, [
+    bumpLinkedReplay,
+    linkedReplayLoop,
+    linkedReplayMode,
+    linkedReplayPlaying,
+    linkedReplaySpeed,
+    unionTimeline.length,
+  ]);
+
+  useEffect(() => {
     if (initialSeeds.length > 1 && seeds.length === 1) {
       setSeeds(initialSeeds.slice(0, VECTOR_COMPARE_MAX_PANES));
     }
@@ -222,6 +367,29 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
+      if (linkedReplayMode) {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          exitLinkedReplay();
+          return;
+        }
+        if (e.key === " " || e.code === "Space") {
+          e.preventDefault();
+          setLinkedReplayPlaying((p) => !p);
+          return;
+        }
+        if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          linkedReplayUi?.onStep(-1);
+          return;
+        }
+        if (e.key === "ArrowRight") {
+          e.preventDefault();
+          linkedReplayUi?.onStep(1);
+          return;
+        }
+      }
+
       if (e.key === "Escape" && focusExpanded) {
         e.preventDefault();
         exitFocusExpand();
@@ -239,7 +407,16 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [seeds, focusExpanded, canFocusExpand, exitFocusExpand, toggleFocusExpand]);
+  }, [
+    seeds,
+    linkedReplayMode,
+    exitLinkedReplay,
+    linkedReplayUi,
+    focusExpanded,
+    canFocusExpand,
+    exitFocusExpand,
+    toggleFocusExpand,
+  ]);
 
   const onTimeframe = (tf: VectorTimeframeMinutes) => {
     setTimeframe(tf);
@@ -272,6 +449,7 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
           focusExpanded={focusExpanded}
           canFocusExpand={canFocusExpand}
           onToggleFocusExpand={toggleFocusExpand}
+          linkedReplay={linkedReplayUi}
           timeframe={timeframe}
           onTimeframe={onTimeframe}
           dteHorizon={dteHorizon}
@@ -333,6 +511,9 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
                 compareSync={paneCompareSync(seed.ticker)}
                 onCompareCrosshair={handleCompareCrosshair}
                 onCompareVisibleRange={handleCompareVisibleRange}
+                linkedReplay={linkedReplayBind}
+                hideReplayControls={linked}
+                onReplayTimeline={(timeline) => handleReplayTimeline(seed.ticker, timeline)}
               />
             );
           })}
