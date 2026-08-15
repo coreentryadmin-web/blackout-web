@@ -44,6 +44,48 @@ export const BEAD_VIEW_MAX_PCT = 0.2;
 /** Compare 4-up: slightly wider bead autoscale so more strike rows stay in frame when panes are short. */
 export const COMPARE_BEAD_VIEW_MAX_PCT = 0.24;
 
+/** Session overview first paint — only nearby bead rows widen the axis (not the full 20% trail). */
+export const SESSION_OVERVIEW_BEAD_VIEW_MAX_PCT = 0.03;
+
+/** Hard cap on total vertical span on session overview so candles + beads read large (member ref: image 2). */
+export const SESSION_OVERVIEW_MAX_SPAN_PCT = 0.024;
+
+export function filterStrikesNearSpot(
+  strikes: readonly number[],
+  spot: number,
+  maxPct: number
+): number[] {
+  if (!(spot > 0) || !(maxPct > 0)) return strikes.filter((s) => Number.isFinite(s) && s > 0);
+  const floor = spot * (1 - maxPct);
+  const ceil = spot * (1 + maxPct);
+  return strikes.filter((s) => Number.isFinite(s) && s > 0 && s >= floor && s <= ceil);
+}
+
+/** Clamp an over-wide autoscale band to a spot-centered window while keeping the candle range visible. */
+export function clampPriceRangeSpan(
+  range: PriceRange,
+  spot: number,
+  maxSpanPct: number,
+  mustInclude: PriceRange
+): PriceRange {
+  if (!(spot > 0) || !(maxSpanPct > 0)) return range;
+  const span = range.maxValue - range.minValue;
+  const maxSpan = spot * maxSpanPct;
+  if (!Number.isFinite(span) || span <= maxSpan) return range;
+
+  let min = spot - maxSpan / 2;
+  let max = spot + maxSpan / 2;
+  if (mustInclude.minValue < min) {
+    min = mustInclude.minValue;
+    max = min + maxSpan;
+  }
+  if (mustInclude.maxValue > max) {
+    max = mustInclude.maxValue;
+    min = max - maxSpan;
+  }
+  return { minValue: min, maxValue: max };
+}
+
 export function extendRangeForWalls(
   base: PriceRange,
   spot: number | null | undefined,

@@ -60,6 +60,10 @@ import {
   DEFAULT_WALL_VIEW_MAX_PCT,
   BEAD_VIEW_MAX_PCT,
   COMPARE_BEAD_VIEW_MAX_PCT,
+  SESSION_OVERVIEW_BEAD_VIEW_MAX_PCT,
+  SESSION_OVERVIEW_MAX_SPAN_PCT,
+  filterStrikesNearSpot,
+  clampPriceRangeSpan,
 } from "@/features/vector/lib/vector-price-range";
 import {
   scoreTopWalls,
@@ -3711,6 +3715,14 @@ export function VectorChart({
         if (memberViewportLocked(chartUserPannedRef.current, wheelZoomCooldownRef.current)) {
           return res;
         }
+        const preset = intradayZoomPresetRef.current;
+        const sessionOverviewFrame =
+          (preset === "session" ||
+            (preset == null && defaultChartViewportRef.current === "session")) &&
+          !liveFollowEnabledRef.current;
+        const wallViewPct = sessionOverviewFrame
+          ? SESSION_OVERVIEW_BEAD_VIEW_MAX_PCT
+          : WALL_VIEW_MAX_PCT;
         // Two composed widenings (each only ever WIDENS, never narrows the candle band):
         // 1) the current live ladder (rangeWallsRef) within the tight ±WALL_VIEW_MAX_PCT window;
         // 2) the strikes ACTUALLY drawn as beads (beadStrikesRef) within the wider BEAD_VIEW_MAX_PCT.
@@ -3723,19 +3735,36 @@ export function VectorChart({
           spotRef.current,
           rangeWallsRef.current.call,
           rangeWallsRef.current.put,
-          WALL_VIEW_MAX_PCT
+          wallViewPct,
+          sessionOverviewFrame ? SESSION_OVERVIEW_BEAD_VIEW_MAX_PCT : undefined
         );
-        const beadViewPct = compareCompactBeadsRef.current ? COMPARE_BEAD_VIEW_MAX_PCT : BEAD_VIEW_MAX_PCT;
+        let beadViewPct = compareCompactBeadsRef.current ? COMPARE_BEAD_VIEW_MAX_PCT : BEAD_VIEW_MAX_PCT;
+        if (sessionOverviewFrame) beadViewPct = SESSION_OVERVIEW_BEAD_VIEW_MAX_PCT;
+        const beadCalls = sessionOverviewFrame
+          ? filterStrikesNearSpot(beadStrikesRef.current.call, spotRef.current ?? 0, beadViewPct)
+          : beadStrikesRef.current.call;
+        const beadPuts = sessionOverviewFrame
+          ? filterStrikesNearSpot(beadStrikesRef.current.put, spotRef.current ?? 0, beadViewPct)
+          : beadStrikesRef.current.put;
+        let priceRange = extendRangeForWalls(
+          ladderRange,
+          spotRef.current,
+          beadCalls,
+          beadPuts,
+          beadViewPct,
+          beadViewPct
+        );
+        if (sessionOverviewFrame && spotRef.current != null && spotRef.current > 0) {
+          priceRange = clampPriceRangeSpan(
+            priceRange,
+            spotRef.current,
+            SESSION_OVERVIEW_MAX_SPAN_PCT,
+            res.priceRange
+          );
+        }
         return {
           ...res,
-          priceRange: extendRangeForWalls(
-            ladderRange,
-            spotRef.current,
-            beadStrikesRef.current.call,
-            beadStrikesRef.current.put,
-            beadViewPct,
-            beadViewPct
-          ),
+          priceRange,
         };
       },
     }, 0);
