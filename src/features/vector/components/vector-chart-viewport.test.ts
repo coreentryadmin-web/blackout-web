@@ -125,10 +125,19 @@ test("VectorCompare: sync zoom preset command bar wired", () => {
 
 test("VectorChart: member drawing tools wired", () => {
   const src = read("src/features/vector/components/VectorChart.tsx");
-  assert.match(src, /VectorDrawToolbar/);
+  const toolbar = read("src/features/vector/components/VectorToolbar.tsx");
+  assert.match(src, /drawTools=\{/);
+  assert.match(toolbar, /VectorDrawToolsMenu/);
   assert.match(src, /UserDrawingsPrimitive/);
   assert.match(src, /useVectorChartDrawings/);
   assert.match(read("src/features/vector/lib/vector-drawings-store.ts"), /vector:drawings:v1:/);
+});
+
+test("VectorChart: crosshair hover throttled to animation frame", () => {
+  const src = read("src/features/vector/components/VectorChart.tsx");
+  assert.match(src, /scheduleCrosshairUpdate/);
+  assert.match(src, /vectorCrosshairStatesEqual/);
+  assert.match(read("src/features/vector/components/VectorCrosshairLegend.tsx"), /memo\(/);
 });
 
 test("VectorChart: manual zoom/pan blocks programmatic session refits", () => {

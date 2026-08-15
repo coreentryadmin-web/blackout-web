@@ -6,6 +6,10 @@ import { VectorLensToggle } from "@/features/vector/components/VectorLensToggle"
 import { VectorReplayControls } from "@/features/vector/components/VectorReplayControls";
 import { VectorTimeframeSelect } from "@/features/vector/components/VectorTimeframeSelect";
 import { VectorIndicatorMenu } from "@/features/vector/components/VectorIndicatorMenu";
+import {
+  VectorDrawToolsMenu,
+  type VectorDrawToolsProps,
+} from "@/features/vector/components/VectorDrawToolbar";
 import type { VectorWallLens } from "@/features/vector/lib/vector-wall-history";
 import type { VectorTimeframeMinutes } from "@/features/vector/lib/vector-bar-timeframes";
 import type { VectorDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
@@ -62,6 +66,8 @@ type Props = {
   comparePane?: boolean;
   /** Compare linked mode — replay transport lives in the command bar. */
   hideReplayControls?: boolean;
+  /** Member drawing tools — consolidated under one Tools dropdown. */
+  drawTools?: VectorDrawToolsProps;
 };
 
 /** Single compact toolbar — timeframe left, replay + lens right. */
@@ -107,7 +113,10 @@ export function VectorToolbar(props: Props) {
     hideLinkedControls = false,
     comparePane = false,
     hideReplayControls = false,
+    drawTools,
   } = props;
+
+  const drawMenu = drawTools ? <VectorDrawToolsMenu {...drawTools} /> : null;
 
   if (comparePane) {
     return (
@@ -125,6 +134,7 @@ export function VectorToolbar(props: Props) {
             openingRangeMinutes={openingRangeMinutes}
             onOpeningRangeMinutes={onOpeningRangeMinutes}
           />
+          {drawMenu}
           {replayLeadSlot}
           {!hideReplayControls ? (
             <VectorReplayControls
@@ -172,6 +182,7 @@ export function VectorToolbar(props: Props) {
           openingRangeMinutes={openingRangeMinutes}
           onOpeningRangeMinutes={onOpeningRangeMinutes}
         />
+        {drawMenu}
         {replayLeadSlot}
         <VectorReplayControls
           replayMode={replayMode}
@@ -231,6 +242,7 @@ export function VectorToolbar(props: Props) {
             openingRangeMinutes={openingRangeMinutes}
             onOpeningRangeMinutes={onOpeningRangeMinutes}
           />
+          {drawMenu}
         </div>
         <div className="vector-toolbar-desk-spacer" aria-hidden="true" />
         <div className="vector-toolbar-desk-right">

@@ -28,8 +28,8 @@ import {
 } from "@/features/vector/lib/vector-play-levels";
 import { VectorCrosshairLegend, type VectorCrosshairState } from "@/features/vector/components/VectorCrosshairLegend";
 import { VectorToolbar } from "@/features/vector/components/VectorToolbar";
-import { VectorDrawToolbar } from "@/features/vector/components/VectorDrawToolbar";
 import { UserDrawingsPrimitive } from "@/features/vector/lib/vector-drawings-primitive";
+import { vectorCrosshairStatesEqual } from "@/features/vector/lib/vector-crosshair-equality";
 import { useVectorChartDrawings } from "@/features/vector/lib/use-vector-chart-drawings";
 import {
   createVectorEventSource,
@@ -1583,6 +1583,20 @@ export function VectorChart({
   }, [compareSync, onCompareCrosshair, onCompareVisibleRange, hideVolumePane, compareCompactBeads, compareFourUp, compareFourUpBackground]);
 
   const [crosshair, setCrosshair] = useState<VectorCrosshairState | null>(null);
+  const crosshairLatestRef = useRef<VectorCrosshairState | null>(null);
+  const crosshairDisplayedRef = useRef<VectorCrosshairState | null>(null);
+  const crosshairRafRef = useRef<number | null>(null);
+  const scheduleCrosshairUpdate = useCallback((next: VectorCrosshairState | null) => {
+    crosshairLatestRef.current = next;
+    if (crosshairRafRef.current != null) return;
+    crosshairRafRef.current = requestAnimationFrame(() => {
+      crosshairRafRef.current = null;
+      const pending = crosshairLatestRef.current;
+      if (vectorCrosshairStatesEqual(crosshairDisplayedRef.current, pending)) return;
+      crosshairDisplayedRef.current = pending;
+      setCrosshair(pending);
+    });
+  }, []);
   const [lens, setLens] = useState<VectorWallLens>(defaultLens ?? "gex");
   // Default WEEKLY: "All" is no longer a member-facing option (2026-07-13), and 0DTE is empty
   // mid-week for most single names (only SPX/SPY/QQQ have daily expiries) — weekly always has a
@@ -1790,7 +1804,7 @@ export function VectorChart({
     try {
       if (payload.timeSec == null) {
         chart.clearCrosshairPosition();
-        setCrosshair(null);
+        scheduleCrosshairUpdate(null);
         return;
       }
       const price = barCloseAtOrBeforeTime(minuteBarsRef.current, payload.timeSec);
@@ -1807,6 +1821,7 @@ export function VectorChart({
     compareSync?.crosshair?.tick,
     compareSync?.crosshair?.timeSec,
     compareSync?.crosshair?.sourceId,
+    scheduleCrosshairUpdate,
   ]);
 
   useEffect(() => {
@@ -3849,7 +3864,7 @@ export function VectorChart({
 
     chart.subscribeCrosshairMove((param) => {
       if (!param.time || !param.point) {
-        setCrosshair(null);
+        scheduleCrosshairUpdate(null);
         const sync = compareSyncRef.current;
         if (sync?.linkCrosshair && !applyingExternalCrosshairRef.current) {
           onCompareCrosshairRef.current?.(sync.paneId, null);
@@ -3891,7 +3906,7 @@ export function VectorChart({
         Number.isFinite(hoverPrice)
           ? gexCellAtGridPoint(gexHeatmapGridRef.current, hoverEpochSec, hoverPrice as number)
           : null;
-      setCrosshair({
+      scheduleCrosshairUpdate({
         time,
         close: bar?.close ?? null,
         lens: activeLens,
@@ -4007,6 +4022,10 @@ export function VectorChart({
       intersectionObserver?.disconnect();
       container.removeEventListener("wheel", onWheel);
       unbindDrawClick();
+      if (crosshairRafRef.current != null) {
+        cancelAnimationFrame(crosshairRafRef.current);
+        crosshairRafRef.current = null;
+      }
       container.removeEventListener("mousedown", onChartPointerDown);
       container.removeEventListener("touchstart", onChartPointerDown);
       chart.timeScale().unsubscribeVisibleTimeRangeChange(onVisibleTimeRangeChange);
@@ -4512,22 +4531,20 @@ export function VectorChart({
         hideLinkedControls={toolbarHideLinkedControls}
         comparePane={toolbarHideLinkedControls}
         hideReplayControls={hideReplayControls}
-      />
-
-      <VectorDrawToolbar
-        tool={drawTool}
-        onTool={setDrawTool}
-        color={drawColor}
-        onColor={setDrawColor}
-        textLabel={textLabel}
-        onTextLabel={setTextLabel}
-        count={drawings.length}
-        selectedId={selectedId}
-        onUndo={handleUndo}
-        onClear={handleClear}
-        onDeleteSelected={handleDeleteSelected}
-        disabled={replayMode}
-        comparePane={comparePane}
+        drawTools={{
+          tool: drawTool,
+          onTool: setDrawTool,
+          color: drawColor,
+          onColor: setDrawColor,
+          textLabel,
+          onTextLabel: setTextLabel,
+          count: drawings.length,
+          selectedId,
+          onUndo: handleUndo,
+          onClear: handleClear,
+          onDeleteSelected: handleDeleteSelected,
+          disabled: replayMode,
+        }}
       />
 
       <VectorIntradayZoomControls

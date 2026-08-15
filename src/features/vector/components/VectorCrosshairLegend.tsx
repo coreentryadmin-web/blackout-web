@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import type { VectorDarkPoolLevel, VectorWallLevel } from "@/lib/api";
 import type { VectorWallLens } from "@/features/vector/lib/vector-wall-history";
 
@@ -34,7 +35,7 @@ function fmtGex(n: number): string {
   return Math.round(n).toLocaleString("en-US");
 }
 
-export function VectorCrosshairLegend({ state, ticker }: Props) {
+function VectorCrosshairLegendInner({ state, ticker }: Props) {
   if (!state) return null;
 
   const isVex = state.lens === "vex";
@@ -46,7 +47,7 @@ export function VectorCrosshairLegend({ state, ticker }: Props) {
 
   return (
     <div
-      className="pointer-events-none absolute left-3 top-3 z-10 flex max-w-[min(100%,420px)] flex-col gap-1 rounded-md border border-white/10 bg-[#040407]/90 px-3 py-2 font-mono text-[11px] leading-snug text-white shadow-lg backdrop-blur-sm"
+      className="pointer-events-none absolute left-3 top-3 z-10 flex max-w-[min(100%,420px)] flex-col gap-1 rounded-md border border-white/10 bg-[#040407] px-3 py-2 font-mono text-[11px] leading-snug text-white shadow-lg"
       aria-live="polite"
     >
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
@@ -99,3 +100,5 @@ export function VectorCrosshairLegend({ state, ticker }: Props) {
     </div>
   );
 }
+
+export const VectorCrosshairLegend = memo(VectorCrosshairLegendInner);
