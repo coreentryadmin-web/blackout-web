@@ -178,7 +178,7 @@ import {
   wantsSessionOverviewViewport,
 } from "@/features/vector/lib/vector-chart-viewport";
 import {
-  adaptiveBarSpacingForZoom,
+  applyAdaptiveBarSpacingToChart,
   coarserTimeframeIfZoomedOut,
   hasExtendedHoursBars,
   intradayZoomPresetFromKeyboard,
@@ -1679,18 +1679,14 @@ export function VectorChart({
           compareFourUpBackground,
         })
       );
+      // Bar spacing is applied only on programmatic refits — NOT here. This callback runs
+      // synchronously inside lightweight-charts' wheel handler before our bubble-phase wheel
+      // listener stamps viewportLocked, so applyOptions here cancels every zoom tick.
+      if (sessionOverviewActive()) return;
       const viewportLocked = memberViewportLocked(
         chartUserPannedRef.current,
         wheelZoomCooldownRef.current
       );
-      // Wheel/pinch zoom adjusts barSpacing natively — re-applying adaptive spacing on every
-      // visible-range tick resets spacing from logical bar count (which lags) and cancels zoom.
-      if (!viewportLocked) {
-        chart.timeScale().applyOptions(adaptiveBarSpacingForZoom(count));
-      }
-      // Session overview intentionally shows the whole day — auto-coarsen to 1H was collapsing
-      // the tape to a handful of candles and hiding the intraday bead rail the member expects.
-      if (sessionOverviewActive()) return;
       if (viewportLocked || timeframeUserLockedRef.current || replayModeRef.current) return;
       const coarser = coarserTimeframeIfZoomedOut(count, timeframeRef.current);
       if (coarser == null) return;
@@ -1747,6 +1743,7 @@ export function VectorChart({
         chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: true });
       }
       syncCandleViewportFromRange(chart);
+      applyAdaptiveBarSpacingToChart(chart);
     },
     [syncCandleViewportFromRange, initialTimeframe]
   );
@@ -1770,6 +1767,7 @@ export function VectorChart({
     const chart = chartRef.current;
     if (!chart || !chartReady) return;
     syncCandleViewportFromRange(chart);
+    applyAdaptiveBarSpacingToChart(chart);
   }, [compareFourUp, compareFourUpBackground, chartReady, syncCandleViewportFromRange]);
 
   useEffect(
@@ -3726,7 +3724,22 @@ export function VectorChart({
       } else {
         chart.timeScale().fitContent();
       }
+      applyAdaptiveBarSpacingToChart(chart);
     }
+
+    // Capture-phase wheel stamp runs BEFORE lightweight-charts handles the tick — otherwise
+    // subscribeVisibleLogicalRangeChange sees viewportLocked=false and auto-coarsen/spacing fight zoom.
+    const onWheel = (e: WheelEvent) => {
+      wheelZoomCooldownRef.current = Date.now();
+      chartUserPannedRef.current = true;
+      const rect = container.getBoundingClientRect();
+      const xInChart = e.clientX - rect.left;
+      const priceAxisZone = rect.width - 65;
+      if (xInChart >= priceAxisZone) {
+        series.priceScale().applyOptions({ autoScale: false });
+      }
+    };
+    container.addEventListener("wheel", onWheel, { passive: true, capture: true });
 
     const enableLiveFollowIfAtEdge = () => {
       // Session overview parks the right edge at the latest bar — that reads as "at live edge"
@@ -3831,23 +3844,6 @@ export function VectorChart({
     }
 
     syncCandleViewportFromRangeRef.current(chart);
-
-    // SCROLL-ZOOM FIX: stamp a cooldown on every wheel event so the autoscaleInfoProvider
-    // and reassertPriceAutoScale calls respect the member's zoom for 8s instead of
-    // snapping back to the wide wall-inclusive range on the next SSE tick. When the wheel
-    // lands on the price-axis strip (rightmost ~65px), also disable autoScale entirely so
-    // the member can hold a manual vertical zoom (double-click restores it).
-    const onWheel = (e: WheelEvent) => {
-      wheelZoomCooldownRef.current = Date.now();
-      chartUserPannedRef.current = true;
-      const rect = container.getBoundingClientRect();
-      const xInChart = e.clientX - rect.left;
-      const priceAxisZone = rect.width - 65;
-      if (xInChart >= priceAxisZone) {
-        series.priceScale().applyOptions({ autoScale: false });
-      }
-    };
-    container.addEventListener("wheel", onWheel, { passive: true });
 
     const unbindDrawClick = bindChartClickRef.current(chart, series);
 
@@ -4425,6 +4421,7 @@ export function VectorChart({
         } else {
           chart?.timeScale().fitContent();
         }
+        applyAdaptiveBarSpacingToChart(chart!);
         lastFittedTimeframeRef.current = timeframe;
       } else if (sessionFramed && !following && !viewportLocked) {
         // Session overview refit only while the member hasn't taken manual control — background

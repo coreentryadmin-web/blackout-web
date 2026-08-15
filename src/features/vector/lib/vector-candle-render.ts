@@ -158,6 +158,15 @@ export function adaptiveBarSpacingForZoom(visibleBars: number): {
   return { barSpacing: Math.max(VECTOR_MIN_BAR_SPACING, 5), minBarSpacing: VECTOR_MIN_BAR_SPACING };
 }
 
+/** Programmatic spacing nudge — never call from a visible-range subscription (fights wheel zoom). */
+export function applyAdaptiveBarSpacingToChart(chart: {
+  timeScale: () => { getVisibleLogicalRange: () => LogicalRangeLike; applyOptions: (o: object) => void };
+}): void {
+  const count = visibleBarCountFromRange(chart.timeScale().getVisibleLogicalRange());
+  if (count == null) return;
+  chart.timeScale().applyOptions(adaptiveBarSpacingForZoom(count));
+}
+
 /** Logical range framing the newest session (delegates shape to viewport helper consumers). */
 export function structureVisibleLogicalRange(
   barCount: number,
