@@ -11,6 +11,14 @@ const BASE = (process.env.VALIDATE_BASE || "https://blackouttrades.com").replace
 const OUT = "/opt/cursor/artifacts/homepage-audit-report.json";
 mkdirSync(join(OUT, ".."), { recursive: true });
 
+function homeUrl() {
+  return `${BASE}/?_cb=${Date.now()}`;
+}
+
+async function gotoHome(page) {
+  await page.goto(homeUrl(), { waitUntil: "domcontentloaded", timeout: 60_000 });
+}
+
 const REQUIRED_PATHS = [
   "/sign-in",
   "/sign-up",
@@ -43,7 +51,7 @@ async function auditViewport(browser, label, viewport, isMobile) {
   const perf = {};
 
   const navStart = Date.now();
-  const resp = await page.goto(`${BASE}/`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+  const resp = await page.goto(homeUrl(), { waitUntil: "domcontentloaded", timeout: 60_000 });
   perf.domContentLoaded = Date.now() - navStart;
   perf.status = resp?.status() ?? null;
 
