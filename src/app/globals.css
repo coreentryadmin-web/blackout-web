@@ -10110,6 +10110,12 @@ body::before {
   .vector-chart-view-toggle {
     @apply mb-2 flex w-fit gap-1 rounded-lg border border-cyan-400/30 bg-black/40 p-0.5;
   }
+  .vector-chart-view-toggle--inline {
+    @apply mb-0 shrink-0;
+  }
+  .vector-page-shell .vector-toolbar {
+    @apply mb-1;
+  }
   .vector-chart-view-btn {
     @apply rounded-md px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-cyan-300/70 transition-colors;
   }

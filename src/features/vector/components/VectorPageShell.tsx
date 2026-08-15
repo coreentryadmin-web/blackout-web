@@ -424,15 +424,26 @@ export function VectorPageShell({
       ? "syncing"
       : "live";
 
-  const kicker =
-    activeTicker === "SPX" ? "Live SPX chart" : `Live ${activeTicker} chart`;
-
   // Compact page title cluster — folded INTO the chart toolbar row (far left) so the header and the
   // timeframe/indicator controls share one line, reclaiming the vertical space the old full-width
   // PageHeader + separate regime block ate. Product decision per member request: maximise chart area.
   const iosCompactChrome = compactPanels && nativeShell;
   /** SPX Slayer iOS embed — spot + gamma chips live in SpxIosMarketStrip above the segment. */
   const spxIosEmbed = chartOnly && nativeShell;
+  const chartViewToggle = !iosCompactChrome ? (
+    <div className="vector-chart-view-toggle vector-chart-view-toggle--inline" role="group" aria-label="Chart view">
+      {(["intraday", "1D", "1W", "4H"] as const).map((v) => (
+        <button
+          key={v}
+          type="button"
+          onClick={() => setChartView(v)}
+          className={clsx("vector-chart-view-btn", v === chartView && "is-active")}
+        >
+          {v === "intraday" ? "Intraday" : v}
+        </button>
+      ))}
+    </div>
+  ) : null;
   const chartLead = spxIosEmbed
     ? null
     : chartOnly || iosCompactChrome
@@ -444,12 +455,10 @@ export function VectorPageShell({
         <VectorTickerSelect ticker={activeTicker} onTickerSelect={onTickerSelect ? navigateTicker : undefined} busy={tickerNavBusy} />
       )
     : (
-      <div className="flex items-center gap-2 pr-1">
+      <div className="flex flex-wrap items-center gap-2 pr-1">
+        {chartViewToggle}
         <ProductMark product="vector" size={22} animated={false} />
         <span className="font-mono text-sm font-bold uppercase tracking-[0.18em] text-cyan-100">Vector</span>
-        <span className="hidden font-mono text-[10px] uppercase tracking-[0.2em] text-cyan-400/60 md:inline">
-          · {kicker}
-        </span>
         <VectorTickerSelect ticker={activeTicker} onTickerSelect={onTickerSelect ? navigateTicker : undefined} busy={tickerNavBusy} />
         {onEnterCompare ? (
           <button
@@ -641,11 +650,11 @@ export function VectorPageShell({
         "vector-page-shell ios-native-page ios-native-page-vector",
         nativeShell && "vector-page-shell-native"
       )}
-      contentClassName={clsx(nativeShell && "vector-page-content-native !py-0")}
+      contentClassName={clsx("vector-page-content !py-0", nativeShell && "vector-page-content-native")}
     >
       <div
         className={clsx(
-          nativeShell ? "vector-page-inner-native px-2 pt-0 sm:px-3" : "px-2 pt-2 sm:px-4 xl:px-6"
+          nativeShell ? "vector-page-inner-native px-2 pt-0 sm:px-3" : "px-2 pt-0 sm:px-4 xl:px-6"
         )}
       >
         {compactPanels && nativeShell ? (
@@ -694,20 +703,7 @@ export function VectorPageShell({
               compactPanels && nativeShell && iosPanel !== "chart" && "ios-native-panel-hidden"
             )}
           >
-            {!iosCompactChrome && (
-              <div className="vector-chart-view-toggle" role="group" aria-label="Chart view">
-                {(["intraday", "1D", "1W", "4H"] as const).map((v) => (
-                  <button
-                    key={v}
-                    type="button"
-                    onClick={() => setChartView(v)}
-                    className={clsx("vector-chart-view-btn", v === chartView && "is-active")}
-                  >
-                    {v === "intraday" ? "Intraday" : v}
-                  </button>
-                ))}
-              </div>
-            )}
+            {!iosCompactChrome && chartView !== "intraday" ? chartViewToggle : null}
             {chartView === "intraday" ? (
               chartBlock
             ) : (
