@@ -25,7 +25,7 @@ export function useVectorUniverseSnapshot(
 ): SWRResponse<VectorUniverseSnapshot> {
   return useSWR(VECTOR_UNIVERSE_SWR_KEY, fetchVectorUniverseSnapshot, {
     refreshInterval: 5_000,
-    revalidateOnFocus: true,
+    revalidateOnFocus: false,
     ...config,
   });
 }

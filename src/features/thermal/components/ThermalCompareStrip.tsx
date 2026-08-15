@@ -49,7 +49,7 @@ function CompareCard({
   const { data, isLoading } = useSWR<ComparePayload>(
     `/api/market/gex-heatmap?ticker=${ticker}`,
     fetchCompare,
-    { refreshInterval: pollMs, revalidateOnFocus: true, keepPreviousData: true }
+    { refreshInterval: pollMs, revalidateOnFocus: false, keepPreviousData: true }
   );
 
   const spot = data?.spot ?? null;
