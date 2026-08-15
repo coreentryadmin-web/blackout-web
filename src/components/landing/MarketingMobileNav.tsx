@@ -35,6 +35,35 @@ export function MarketingMobileNav({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, close]);
 
+  // Keep keyboard focus inside the drawer while open.
+  useEffect(() => {
+    if (!open) return;
+    const menu = document.getElementById("mkt-mobile-menu");
+    const btn = document.querySelector<HTMLButtonElement>(".mkt-nav-menu-btn");
+    const focusables = menu?.querySelectorAll<HTMLElement>(
+      'a[href], button:not([tabindex="-1"])',
+    );
+    focusables?.[0]?.focus();
+    const onTab = (e: KeyboardEvent) => {
+      if (e.key !== "Tab" || !focusables?.length) return;
+      const list = Array.from(focusables);
+      const first = list[0];
+      const last = list[list.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onTab);
+    return () => {
+      document.removeEventListener("keydown", onTab);
+      btn?.focus();
+    };
+  }, [open]);
+
   return (
     <>
       <button

@@ -582,6 +582,10 @@ html.mkt-menu-open {
 
 @media (prefers-reduced-motion: reduce) {
 
+  .nav-join,
+  .mkt-scroll-progress,
+  .mkt-mobile-menu,
+  .mkt-nav-menu-bars span,
   .mkt-grid-drift,
   .mkt-orb,
   .mkt-kicker-dot,

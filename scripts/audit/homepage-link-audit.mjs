@@ -94,14 +94,19 @@ async function auditViewport(browser, label, viewport, isMobile) {
     }
   }
 
-  // Anchor links
+  // Anchor links (nav uses /#section on marketing shell)
   for (const hash of ["#modules", "#protocol", "#pricing", "#faq"]) {
+    const id = hash.slice(1);
     const el = await page
-      .locator(`a[href='${hash}'], a[href='/${hash}'], a[href='/${hash.slice(1)}']`)
+      .locator(
+        `a[href='${hash}'], a[href='/${hash}'], a[href='/${id}'], a[href='${BASE}${hash}']`,
+      )
       .first()
       .count();
     if (el === 0) {
       issues.push({ severity: "P1", code: "ANCHOR_MISSING", detail: `No link to ${hash}` });
+    } else {
+      passes.push(`anchor link ${hash} present`);
     }
   }
 
