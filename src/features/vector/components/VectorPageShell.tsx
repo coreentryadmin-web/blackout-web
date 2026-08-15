@@ -130,6 +130,9 @@ type Props = {
   onReplayTimeline?: (timeline: number[]) => void;
   compareFourUp?: boolean;
   compareFourUpBackground?: boolean;
+  /** Compare grid — forwarded to VectorChart for Shift+1/2/3 zoom shortcuts. */
+  comparePane?: boolean;
+  compareKeyboardActive?: boolean;
 };
 
 type VectorIosPanel = "chart" | "pulse" | "ladder" | "scanner";
@@ -191,6 +194,8 @@ export function VectorPageShell({
   onReplayTimeline,
   compareFourUp = false,
   compareFourUpBackground = false,
+  comparePane = false,
+  compareKeyboardActive = true,
 }: Props) {
   const chartOnly = embed === "chart-only";
   const router = useRouter();
@@ -558,6 +563,8 @@ export function VectorPageShell({
           onReplayTimeline={onReplayTimeline}
           compareFourUp={compareFourUp}
           compareFourUpBackground={compareFourUpBackground}
+          comparePane={comparePane}
+          compareKeyboardActive={compareKeyboardActive}
           onPriceScaleRender={onPriceScaleRender}
           focusLevel={focusLevel}
           playLevels={playLevels}

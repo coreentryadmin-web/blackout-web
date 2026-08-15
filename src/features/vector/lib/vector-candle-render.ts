@@ -198,3 +198,41 @@ export function coarserTimeframeIfZoomedOut(
 }
 
 export type IntradayZoomPreset = "session" | "structure" | "live";
+
+const INTRADAY_ZOOM_KEY_MAP: Record<string, IntradayZoomPreset> = {
+  "1": "session",
+  "2": "structure",
+  "3": "live",
+};
+
+export type IntradayZoomKeyboardContext = {
+  /** Compare grid — pane focus uses bare 1–4, so zoom requires Shift+1/2/3. */
+  comparePane: boolean;
+  /** Compare grid — only the focused pane should react to zoom shortcuts. */
+  compareKeyboardActive: boolean;
+  shiftKey: boolean;
+  metaKey: boolean;
+  ctrlKey: boolean;
+  altKey: boolean;
+};
+
+/** Map 1/2/3 (desk) or Shift+1/2/3 (compare) to Session / Structure / Live zoom presets. */
+export function intradayZoomPresetFromKeyboard(
+  key: string,
+  ctx: IntradayZoomKeyboardContext
+): IntradayZoomPreset | null {
+  const preset = INTRADAY_ZOOM_KEY_MAP[key];
+  if (!preset) return null;
+  if (ctx.metaKey || ctx.ctrlKey || ctx.altKey) return null;
+  if (ctx.comparePane) {
+    if (!ctx.compareKeyboardActive || !ctx.shiftKey) return null;
+  } else if (ctx.shiftKey) {
+    return null;
+  }
+  return preset;
+}
+
+export function intradayZoomShortcutLabel(preset: IntradayZoomPreset, comparePane: boolean): string {
+  const key = preset === "session" ? "1" : preset === "structure" ? "2" : "3";
+  return comparePane ? `Shift+${key}` : key;
+}

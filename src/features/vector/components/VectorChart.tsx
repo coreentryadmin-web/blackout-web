@@ -178,6 +178,7 @@ import {
   adaptiveBarSpacingForZoom,
   coarserTimeframeIfZoomedOut,
   hasExtendedHoursBars,
+  intradayZoomPresetFromKeyboard,
   liveEdgeVisibleLogicalRange,
   overlayDimFactor,
   structureVisibleLogicalRange,
@@ -383,6 +384,10 @@ type Props = {
   compareFourUp?: boolean;
   /** Compare 4-up unfocused pane — slower overlay polls + stronger dim + throttled repaints. */
   compareFourUpBackground?: boolean;
+  /** Compare grid — zoom shortcuts use Shift+1/2/3 so bare 1–4 stay pane-focus keys. */
+  comparePane?: boolean;
+  /** Compare grid — only the focused pane handles zoom keyboard shortcuts. */
+  compareKeyboardActive?: boolean;
   /** Reports this pane's replay timeline so Compare can build a union scrubber. */
   onReplayTimeline?: (timeline: number[]) => void;
 };
@@ -1252,6 +1257,8 @@ export function VectorChart({
   hideReplayControls = false,
   compareFourUp = false,
   compareFourUpBackground = false,
+  comparePane = false,
+  compareKeyboardActive = true,
   onReplayTimeline,
 }: Props) {
   const initialTimeframe = defaultTimeframe ?? VECTOR_DEFAULT_TIMEFRAME;
@@ -4128,6 +4135,27 @@ export function VectorChart({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [replayMode, hideReplayControls]);
 
+  useEffect(() => {
+    if (replayMode) return;
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+      const preset = intradayZoomPresetFromKeyboard(e.key, {
+        comparePane,
+        compareKeyboardActive,
+        shiftKey: e.shiftKey,
+        metaKey: e.metaKey,
+        ctrlKey: e.ctrlKey,
+        altKey: e.altKey,
+      });
+      if (!preset) return;
+      e.preventDefault();
+      handleIntradayZoom(preset);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [replayMode, comparePane, compareKeyboardActive, handleIntradayZoom]);
+
   const stepCount = replayMode ? timelineRef.current.length : replayTimeline.length;
   const cursorTime = timelineRef.current[cursorIndex] ?? 0;
   const clockLabel = cursorTime ? formatReplayClock(cursorTime) : "—";
@@ -4309,6 +4337,7 @@ export function VectorChart({
       <VectorIntradayZoomControls
         active={intradayZoomPreset}
         disabled={replayMode}
+        comparePane={comparePane}
         onZoom={handleIntradayZoom}
       />
 

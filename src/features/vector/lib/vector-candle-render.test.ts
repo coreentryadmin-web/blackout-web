@@ -4,6 +4,8 @@ import {
   adaptiveBarSpacingForZoom,
   coarserTimeframeIfZoomedOut,
   hasExtendedHoursBars,
+  intradayZoomPresetFromKeyboard,
+  intradayZoomShortcutLabel,
   liveEdgeVisibleLogicalRange,
   overlayDimFactor,
   structureVisibleLogicalRange,
@@ -86,5 +88,22 @@ describe("vector-candle-render", () => {
     assert.equal(volumeAlphaForBar(etSec(10, 0), true), 0.72);
     assert.equal(volumeAlphaForBar(etSec(4, 0), true), 0.26);
     assert.equal(volumeAlphaForBar(etSec(4, 0), false), 0.72);
+  });
+
+  test("intradayZoomPresetFromKeyboard: desk uses 1/2/3, compare uses Shift+1/2/3 on focused pane", () => {
+    const desk = { comparePane: false, compareKeyboardActive: true, shiftKey: false, metaKey: false, ctrlKey: false, altKey: false };
+    assert.equal(intradayZoomPresetFromKeyboard("1", desk), "session");
+    assert.equal(intradayZoomPresetFromKeyboard("3", desk), "live");
+    assert.equal(intradayZoomPresetFromKeyboard("3", { ...desk, shiftKey: true }), null);
+
+    const compare = { comparePane: true, compareKeyboardActive: true, shiftKey: true, metaKey: false, ctrlKey: false, altKey: false };
+    assert.equal(intradayZoomPresetFromKeyboard("2", compare), "structure");
+    assert.equal(intradayZoomPresetFromKeyboard("2", { ...compare, shiftKey: false }), null);
+    assert.equal(intradayZoomPresetFromKeyboard("2", { ...compare, compareKeyboardActive: false }), null);
+  });
+
+  test("intradayZoomShortcutLabel: shows modifier in compare", () => {
+    assert.equal(intradayZoomShortcutLabel("live", false), "3");
+    assert.equal(intradayZoomShortcutLabel("live", true), "Shift+3");
   });
 });
