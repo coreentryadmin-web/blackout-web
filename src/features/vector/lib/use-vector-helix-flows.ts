@@ -26,7 +26,11 @@ const FLASH_MS = 2_000;
  * On load: seed from Postgres/cache (since today's 09:30 ET open) so a mid-day join
  * still sees the 9:30 anchor. Then SSE + poll keep the ranked list live.
  */
-export function useVectorHelixFlows(ticker: string, liveSession: boolean) {
+export function useVectorHelixFlows(
+  ticker: string,
+  liveSession: boolean,
+  onFlowFlash?: (flow: FlowAlert) => void
+) {
   const normalized = ticker.trim().toUpperCase();
   const sessionOpenMsRef = useRef(sessionOpenMs(Date.now()));
   const loadGenRef = useRef(0);
@@ -37,6 +41,11 @@ export function useVectorHelixFlows(ticker: string, liveSession: boolean) {
   const [flashKeys, setFlashKeys] = useState<ReadonlySet<string>>(() => new Set());
   const seenRef = useRef(new Set<string>());
   const flashTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  const onFlowFlashRef = useRef(onFlowFlash);
+  useEffect(() => {
+    onFlowFlashRef.current = onFlowFlash;
+  }, [onFlowFlash]);
 
   const markFlash = useCallback((key: string) => {
     setFlashKeys((prev) => {
@@ -111,7 +120,10 @@ export function useVectorHelixFlows(ticker: string, liveSession: boolean) {
         return applySessionPool(next);
       });
 
-      if (isNew && opts.flash) markFlash(key);
+      if (isNew && opts.flash) {
+        markFlash(key);
+        onFlowFlashRef.current?.(alert);
+      }
       setLive(true);
       return true;
     },

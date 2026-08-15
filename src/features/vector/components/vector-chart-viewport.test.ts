@@ -63,6 +63,21 @@ test("VectorChart: compare 4-up performance mode wired", () => {
   assert.match(read("src/features/vector/components/VectorCompareDesk.tsx"), /compareFourUpBackground=/);
 });
 
+test("VectorChart: intraday zoom keyboard shortcuts wired", () => {
+  const src = read("src/features/vector/components/VectorChart.tsx");
+  assert.match(src, /intradayZoomPresetFromKeyboard/);
+  assert.match(src, /compareKeyboardActive/);
+  assert.match(read("src/features/vector/components/VectorIntradayZoomControls.tsx"), /intradayZoomShortcutLabel/);
+});
+
+test("VectorChart: flow confluence candle pulse wired", () => {
+  const src = read("src/features/vector/components/VectorChart.tsx");
+  assert.match(src, /pushFlowConfluencePulse/);
+  assert.match(src, /applyFlowConfluenceToCandles/);
+  assert.match(read("src/features/vector/lib/use-vector-helix-flows.ts"), /onFlowFlashRef/);
+  assert.match(read("src/features/vector/components/VectorPageShell.tsx"), /handleHelixFlowFlash/);
+});
+
 test("VectorChart: manual zoom/pan blocks programmatic session refits", () => {
   const src = read("src/features/vector/components/VectorChart.tsx");
   assert.match(src, /function memberViewportLocked/);

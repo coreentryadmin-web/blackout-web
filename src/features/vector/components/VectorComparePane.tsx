@@ -203,6 +203,8 @@ export function VectorComparePane({
           onReplayTimeline={onReplayTimeline}
           compareFourUp={compareFourUp}
           compareFourUpBackground={compareFourUpBackground}
+          comparePane
+          compareKeyboardActive={focused}
         />
       </div>
     </article>

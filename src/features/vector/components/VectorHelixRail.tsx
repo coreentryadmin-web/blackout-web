@@ -29,6 +29,8 @@ type Props = {
   liveSession: boolean;
   /** Flash the flow's strike on the chart (alongside drilldown). */
   onStrikeFocus?: (strike: number, flow: FlowAlert) => void;
+  /** Live SSE print — auto flash strike + pulse the matching candle. */
+  onFlowFlash?: (flow: FlowAlert) => void;
 };
 
 function SignalPill({ label, tone }: { label: string; tone: string }) {
@@ -116,9 +118,9 @@ function FlowCard({
 }
 
 /** Vector desk — Live Helix: Recent strip + premium-ranked session tape. */
-export function VectorHelixRail({ ticker, liveSession, onStrikeFocus }: Props) {
+export function VectorHelixRail({ ticker, liveSession, onStrikeFocus, onFlowFlash }: Props) {
   const normalized = ticker.trim().toUpperCase();
-  const { flows, loading, live, flashKeys } = useVectorHelixFlows(normalized, liveSession);
+  const { flows, loading, live, flashKeys } = useVectorHelixFlows(normalized, liveSession, onFlowFlash);
 
   const [filters, setFilters] = useState<VectorHelixFlowFilters>(VECTOR_HELIX_DEFAULT_FILTERS);
   const [selected, setSelected] = useState<FlowAlert | null>(null);
