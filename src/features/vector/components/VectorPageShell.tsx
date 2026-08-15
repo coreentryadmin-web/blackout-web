@@ -24,7 +24,7 @@ import { VectorPulse } from "@/features/vector/components/VectorPulse";
 import { VectorPlayCard } from "@/features/vector/components/VectorPlayCard";
 import { VectorTechnicalsPanel } from "@/features/vector/components/VectorTechnicalsPanel";
 import type { VectorPlay } from "@/features/vector/lib/vector-play-engine";
-import { VectorGexLadder } from "@/features/vector/components/VectorGexLadder";
+import { VectorOdteMatrixRail } from "@/features/vector/components/VectorOdteMatrixRail";
 import { VectorDailyChart } from "@/features/vector/components/VectorDailyChart";
 import { VectorRegimeBanner } from "@/features/vector/components/VectorRegimeBanner";
 import { VectorAlertsPanel } from "@/features/vector/components/VectorAlertsPanel";
@@ -138,7 +138,7 @@ type VectorIosPanel = "chart" | "pulse" | "ladder" | "scanner";
 const VECTOR_IOS_PANELS: { id: VectorIosPanel; label: string }[] = [
   { id: "chart", label: "Chart" },
   { id: "pulse", label: "Pulse" },
-  { id: "ladder", label: "Ladder" },
+  { id: "ladder", label: "Matrix" },
   { id: "scanner", label: "Scanner" },
 ];
 
@@ -729,7 +729,7 @@ export function VectorPageShell({
               compactPanels && nativeShell && iosPanel !== "ladder" && "ios-native-panel-hidden"
             )}
           >
-            <VectorGexLadder
+            <VectorOdteMatrixRail
               hoverPrice={hoverPrice}
               ticker={activeTicker}
               liveSession={liveSession}
