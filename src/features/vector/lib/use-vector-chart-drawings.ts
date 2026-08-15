@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { IChartApi, IPriceLine, ISeriesApi, MouseEventParams, Time } from "lightweight-charts";
+import { resolveChartClickTime } from "@/features/vector/lib/vector-draw-click";
 import {
   createDrawingFromClick,
   drawingNeedsSecondClick,
@@ -42,6 +43,7 @@ export function useVectorChartDrawings(opts: {
 
   const [drawTool, setDrawTool] = useState<VectorDrawTool>("select");
   const [drawColor, setDrawColor] = useState<VectorDrawColorId>("cyan");
+  const [textLabel, setTextLabel] = useState("");
   const [drawings, setDrawings] = useState<VectorDrawing[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -49,17 +51,25 @@ export function useVectorChartDrawings(opts: {
   const draftAnchorRef = useRef<{ t: number; p: number } | null>(null);
   const undoRef = useRef(new DrawingUndoStack());
   const shiftHeldRef = useRef(false);
+  const replayModeRef = useRef(replayMode);
   const drawToolRef = useRef(drawTool);
   const drawColorRef = useRef(drawColor);
+  const textLabelRef = useRef(textLabel);
   const drawingsRef = useRef(drawings);
   const selectedIdRef = useRef(selectedId);
 
+  useEffect(() => {
+    replayModeRef.current = replayMode;
+  }, [replayMode]);
   useEffect(() => {
     drawToolRef.current = drawTool;
   }, [drawTool]);
   useEffect(() => {
     drawColorRef.current = drawColor;
   }, [drawColor]);
+  useEffect(() => {
+    textLabelRef.current = textLabel;
+  }, [textLabel]);
   useEffect(() => {
     drawingsRef.current = drawings;
   }, [drawings]);
@@ -82,6 +92,7 @@ export function useVectorChartDrawings(opts: {
     const loaded = loadDrawings(ticker);
     setDrawings(loaded);
     setSelectedId(null);
+    setTextLabel("");
     draftAnchorRef.current = null;
     undoRef.current.clear();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- ticker switch only
@@ -116,10 +127,12 @@ export function useVectorChartDrawings(opts: {
   );
 
   const handleChartClick = useCallback(
-    (param: MouseEventParams<Time>, series: ISeriesApi<"Candlestick">) => {
-      if (replayMode || !param.point || param.time == null) return;
-      const t = typeof param.time === "number" ? param.time : null;
+    (chart: IChartApi, param: MouseEventParams<Time>, series: ISeriesApi<"Candlestick">) => {
+      if (replayModeRef.current || !param.point) return;
+
+      const t = resolveChartClickTime(chart, param, minuteBarsRef.current ?? []);
       if (t == null) return;
+
       let p = series.coordinateToPrice(param.point.y) as number | null;
       if (p == null || !Number.isFinite(p)) return;
 
@@ -136,9 +149,8 @@ export function useVectorChartDrawings(opts: {
       }
 
       if (tool === "text") {
-        const text = typeof window !== "undefined" ? window.prompt("Label", "") : null;
-        if (!text?.trim()) return;
-        const d = createDrawingFromClick(tool, color, { t, p }, null, text.trim());
+        const label = textLabelRef.current.trim() || "Note";
+        const d = createDrawingFromClick(tool, color, { t, p }, null, label);
         if (d) addDrawing(d);
         return;
       }
@@ -147,10 +159,7 @@ export function useVectorChartDrawings(opts: {
         const anchor = draftAnchorRef.current;
         if (!anchor) {
           draftAnchorRef.current = { t, p };
-          drawingsPrimitiveRef.current?.setDraft(
-            { t, p, color: color },
-            { t, p }
-          );
+          drawingsPrimitiveRef.current?.setDraft({ t, p, color }, { t, p });
           return;
         }
         const d = createDrawingFromClick(tool, color, { t, p }, anchor);
@@ -161,7 +170,7 @@ export function useVectorChartDrawings(opts: {
       const d = createDrawingFromClick(tool, color, { t, p }, null);
       if (d) addDrawing(d);
     },
-    [addDrawing, drawingsPrimitiveRef, replayMode]
+    [addDrawing, drawingsPrimitiveRef, minuteBarsRef]
   );
 
   const handleUndo = useCallback(() => {
@@ -196,7 +205,7 @@ export function useVectorChartDrawings(opts: {
       if (e.key === "Shift") shiftHeldRef.current = true;
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
-      if (replayMode) return;
+      if (replayModeRef.current) return;
 
       const key = e.key.length === 1 ? e.key.toUpperCase() : e.key;
 
@@ -225,11 +234,11 @@ export function useVectorChartDrawings(opts: {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [handleDeleteSelected, replayMode]);
+  }, [handleDeleteSelected]);
 
   const bindChartClick = useCallback(
     (chart: IChartApi, series: ISeriesApi<"Candlestick">) => {
-      const handler = (param: MouseEventParams<Time>) => handleChartClick(param, series);
+      const handler = (param: MouseEventParams<Time>) => handleChartClick(chart, param, series);
       chart.subscribeClick(handler);
       return () => chart.unsubscribeClick(handler);
     },
@@ -250,6 +259,8 @@ export function useVectorChartDrawings(opts: {
     setDrawTool,
     drawColor,
     setDrawColor: handleDrawColor,
+    textLabel,
+    setTextLabel,
     drawings,
     selectedId,
     handleUndo,

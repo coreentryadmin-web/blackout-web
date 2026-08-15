@@ -15,6 +15,8 @@ type Props = {
   onTool: (tool: VectorDrawTool) => void;
   color: VectorDrawColorId;
   onColor: (color: VectorDrawColorId) => void;
+  textLabel: string;
+  onTextLabel: (label: string) => void;
   count: number;
   selectedId: string | null;
   onUndo: () => void;
@@ -31,6 +33,8 @@ export function VectorDrawToolbar({
   onTool,
   color,
   onColor,
+  textLabel,
+  onTextLabel,
   count,
   selectedId,
   onUndo,
@@ -69,6 +73,22 @@ export function VectorDrawToolbar({
           );
         })}
       </div>
+
+      {tool === "text" ? (
+        <label className="vector-draw-text-label">
+          <span className="sr-only">Text label</span>
+          <input
+            type="text"
+            className="vector-draw-text-input"
+            value={textLabel}
+            onChange={(e) => onTextLabel(e.target.value)}
+            placeholder="Label — click chart to place"
+            maxLength={120}
+            disabled={disabled}
+            data-testid="vector-draw-text-input"
+          />
+        </label>
+      ) : null}
 
       <div className="vector-draw-toolbar-colors" role="group" aria-label="Drawing color">
         {VECTOR_DRAW_COLOR_IDS.map((c) => (
