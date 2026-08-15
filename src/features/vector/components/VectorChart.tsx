@@ -189,6 +189,14 @@ import {
   volumeAlphaForBar,
   type IntradayZoomPreset,
 } from "@/features/vector/lib/vector-candle-render";
+import {
+  applyFlowConfluenceToCandles,
+  FLOW_CONFLUENCE_PULSE_INTERVAL_MS,
+  FLOW_CONFLUENCE_PULSE_MS,
+  resolveFlowPrintBarTime,
+  type FlowConfluencePulse,
+  type FlowConfluenceTone,
+} from "@/features/vector/lib/vector-flow-confluence";
 import { VectorIntradayZoomControls } from "@/features/vector/components/VectorIntradayZoomControls";
 
 export type VectorBar = {
@@ -352,7 +360,7 @@ type Props = {
    * Strictly optional: when undefined (the standalone /vector page) no effect runs and behavior is
    * byte-identical.
    */
-  focusLevel?: { price: number; label: string; tone: string; seq: number } | null;
+  focusLevel?: { price: number; label: string; tone: string; seq: number; barTimeSec?: number } | null;
   /**
    * PLAYS ON THE CHART seam (2026-07-26): the member's ACTIVE SPX play mapped to entry/stop/target/
    * invalidation price-lines. When present, the chart reconciles a DEDICATED set of labeled price-
@@ -428,6 +436,17 @@ function pinCandlesOnTop(candleSeries: ISeriesApi<"Candlestick">): void {
 const VOLUME_UP_BASE = "#00e676";
 const VOLUME_DOWN_BASE = "#ff2d55";
 
+/** Optional flow-confluence pulse styling — set by VectorChart mount. */
+const flowPulseRenderRef: {
+  current: ((bars: VectorBar[]) => ReturnType<typeof toCandlestickDisplayData>) | null;
+} = { current: null };
+
+function candlestickDisplayData(bars: VectorBar[]) {
+  return flowPulseRenderRef.current
+    ? flowPulseRenderRef.current(bars)
+    : toCandlestickDisplayData(bars);
+}
+
 function volumeColor(baseHex: string, alpha: number): string {
   const r = parseInt(baseHex.slice(1, 3), 16);
   const g = parseInt(baseHex.slice(3, 5), 16);
@@ -457,7 +476,7 @@ function applyDisplayBars(
   volumeSeries: ISeriesApi<"Histogram"> | null,
   bars: VectorBar[]
 ): void {
-  candleSeries.setData(toCandlestickDisplayData(bars) as VectorBar[]);
+  candleSeries.setData(candlestickDisplayData(bars) as VectorBar[]);
   volumeSeries?.setData(volumeHistogramData(bars));
 }
 
@@ -1345,6 +1364,8 @@ export function VectorChart({
   // (and cancel its pending fade) before drawing the next one, and clean both up on unmount.
   const focusLineRef = useRef<IPriceLine | null>(null);
   const focusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flowPulsesRef = useRef<FlowConfluencePulse[]>([]);
+  const flowPulseIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // PLAYS ON THE CHART (2026-07-26): the member's ACTIVE SPX play drawn as entry/stop/target/
   // invalidation price-lines, kept in a DEDICATED map keyed by line kind so it reconciles
   // independently and never clobbers the flip / max-pain / EM / pin / confluence / focus lines.
@@ -1791,6 +1812,53 @@ export function VectorChart({
     cursorIndexRef.current = cursorIndex;
   }, [cursorIndex]);
 
+  const repaintCandlePulse = useCallback(() => {
+    const series = seriesRef.current;
+    if (!series) return;
+    const bars = displayBarsFromMinute(minuteBarsRef.current, timeframeRef.current);
+    applyDisplayBars(series, volumeSeriesRef.current, bars);
+  }, []);
+
+  const ensureFlowPulseLoop = useCallback(() => {
+    if (flowPulseIntervalRef.current) return;
+    flowPulseIntervalRef.current = setInterval(() => {
+      const now = Date.now();
+      flowPulsesRef.current = flowPulsesRef.current.filter(
+        (p) => now < p.startedAtMs + FLOW_CONFLUENCE_PULSE_MS
+      );
+      if (!flowPulsesRef.current.length && flowPulseIntervalRef.current) {
+        clearInterval(flowPulseIntervalRef.current);
+        flowPulseIntervalRef.current = null;
+      }
+      repaintCandlePulse();
+    }, FLOW_CONFLUENCE_PULSE_INTERVAL_MS);
+  }, [repaintCandlePulse]);
+
+  const pushFlowConfluencePulse = useCallback(
+    (barTimeSec: number, tone: FlowConfluenceTone) => {
+      flowPulsesRef.current = [
+        ...flowPulsesRef.current.filter((p) => p.barTimeSec !== barTimeSec),
+        { barTimeSec, tone, startedAtMs: Date.now() },
+      ];
+      ensureFlowPulseLoop();
+      repaintCandlePulse();
+    },
+    [ensureFlowPulseLoop, repaintCandlePulse]
+  );
+
+  useEffect(() => {
+    flowPulseRenderRef.current = (bars) =>
+      applyFlowConfluenceToCandles(toCandlestickDisplayData(bars), flowPulsesRef.current, Date.now());
+    return () => {
+      flowPulseRenderRef.current = null;
+      if (flowPulseIntervalRef.current) {
+        clearInterval(flowPulseIntervalRef.current);
+        flowPulseIntervalRef.current = null;
+      }
+      flowPulsesRef.current = [];
+    };
+  }, []);
+
   // PULSE → CHART ANCHOR (2026-07-26): flash a transient labeled price-line when a host desk's Pulse
   // rail asks to anchor an event level. Keyed on `focusLevel?.seq` so re-clicking the SAME level
   // re-fires (the {price,label,tone} object is otherwise referentially stable-ish and wouldn't).
@@ -1833,6 +1901,21 @@ export function VectorChart({
       }
       focusTimeoutRef.current = null;
     }, 3000);
+
+    if (focusLevel.barTimeSec != null) {
+      const display = displayBarsFromMinute(minuteBarsRef.current, timeframeRef.current);
+      const barTime = resolveFlowPrintBarTime(
+        focusLevel.barTimeSec,
+        timeframeRef.current,
+        display
+      );
+      if (barTime != null) {
+        const tone: FlowConfluenceTone =
+          focusLevel.tone === "bull" ? "bull" : focusLevel.tone === "bear" ? "bear" : "bull";
+        pushFlowConfluencePulse(barTime, tone);
+      }
+    }
+
     return () => {
       // Cleanup on unmount / next fire: drop the timer and the line so nothing lingers on a dead series.
       if (focusTimeoutRef.current) {

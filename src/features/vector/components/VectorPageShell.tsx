@@ -13,6 +13,7 @@ import type { VectorBar } from "@/features/vector/components/VectorChart";
 import type { PlayLevelsInput } from "@/features/vector/lib/vector-play-levels";
 import type { FlowAlert, VectorDarkPoolLevel, VectorWalls } from "@/lib/api";
 import { VectorHelixRail } from "@/features/vector/components/VectorHelixRail";
+import { flowAlertTimeSec } from "@/features/vector/lib/vector-flow-confluence";
 import { VectorPlayCard } from "@/features/vector/components/VectorPlayCard";
 import { VectorTechnicalsPanel } from "@/features/vector/components/VectorTechnicalsPanel";
 import type { VectorPlay } from "@/features/vector/lib/vector-play-engine";
@@ -97,7 +98,7 @@ type Props = {
    *  rail, forwarded verbatim to VectorChart so it flashes a highlight line at the event's price.
    *  Meaningful ONLY for the chart-only embed (the SPX desk); the standalone /vector page never
    *  sets it and never receives it. `seq` re-fires the flash on repeat clicks of the same level. */
-  focusLevel?: { price: number; label: string; tone: string; seq: number } | null;
+  focusLevel?: { price: number; label: string; tone: string; seq: number; barTimeSec?: number } | null;
   /** PLAYS ON THE CHART seam (2026-07-26): the member's ACTIVE SPX play (entry/stop/target/
    *  invalidation) mapped to price-lines, forwarded verbatim to VectorChart so its risk levels draw
    *  on the tape. Meaningful ONLY for the chart-only embed (the SPX desk); the standalone /vector
@@ -224,16 +225,32 @@ export function VectorPageShell({
     label: string;
     tone: string;
     seq: number;
+    barTimeSec?: number;
   } | null>(null);
-  const handleHelixStrikeFocus = useCallback((strike: number, flow: FlowAlert) => {
+  const pushHelixChartFocus = useCallback((flow: FlowAlert) => {
+    if (typeof flow.strike !== "number" || !Number.isFinite(flow.strike)) return;
     const isCall = flow.option_type?.toUpperCase() === "CALL";
+    const barTimeSec = flowAlertTimeSec(flow);
     setChartFocus((prev) => ({
-      price: strike,
-      label: `${strike}${isCall ? "C" : "P"}`,
+      price: flow.strike,
+      label: `${flow.strike}${isCall ? "C" : "P"}`,
       tone: isCall ? "bull" : "bear",
       seq: (prev?.seq ?? 0) + 1,
+      ...(barTimeSec != null ? { barTimeSec } : {}),
     }));
   }, []);
+  const handleHelixStrikeFocus = useCallback(
+    (strike: number, flow: FlowAlert) => {
+      pushHelixChartFocus({ ...flow, strike });
+    },
+    [pushHelixChartFocus]
+  );
+  const handleHelixFlowFlash = useCallback(
+    (flow: FlowAlert) => {
+      pushHelixChartFocus(flow);
+    },
+    [pushHelixChartFocus]
+  );
   const [scannerOpen, setScannerOpen] = useState(false);
   const activeTicker = ticker || VECTOR_DEFAULT_TICKER;
   const navigateTicker = useCallback(
@@ -597,6 +614,7 @@ export function VectorPageShell({
       ticker={activeTicker}
       liveSession={liveSession}
       onStrikeFocus={handleHelixStrikeFocus}
+      onFlowFlash={handleHelixFlowFlash}
     />
   );
 
