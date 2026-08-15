@@ -7709,15 +7709,10 @@ body::before {
   }
 
   @media (min-width: 1280px) {
-    /* Proportions per member spec: ~10% ladder · ~60% chart · ~30% terminal.
-       The ladder stays THIN on purpose. Unlike the Thermal forced-flow ladder, which owns a
-       standalone page and can spend width freely, this one is a rail beside the chart — the chart
-       is the main event on /vector and does not give up pixels to a sidebar. So the fix for the
-       0px bar and the clipped values is to tighten the ROW to fit this rail (see
-       .vector-gex-ladder-row), not to widen the rail to fit a loose row. Min 96px so it never
-       collapses. */
+    /* Left rail: 0DTE matrix (strike · gamma · Δ%). Wider than the old 1D ladder — three
+       columns need readable GEX $ + DR% without clipping. */
     .vector-chart-terminal-grid {
-      grid-template-columns: minmax(96px, 10%) minmax(0, 1fr) minmax(300px, 30%);
+      grid-template-columns: minmax(168px, 14%) minmax(0, 1fr) minmax(300px, 30%);
     }
     .vector-ladder-rail,
     .vector-chart-terminal-chart,
@@ -7730,7 +7725,8 @@ body::before {
       flex-direction: column;
       height: 100%;
     }
-    .vector-ladder-rail .vector-gex-ladder {
+    .vector-ladder-rail .vector-gex-ladder,
+    .vector-ladder-rail .vector-odte-matrix-rail {
       flex: 1 1 auto;
       max-height: none;
     }
@@ -7753,7 +7749,7 @@ body::before {
        (10/53/25/12) rather than keeping the terminal's 30% and cramming the action rail in free
        space that doesn't exist. */
     .vector-chart-terminal-grid {
-      grid-template-columns: minmax(96px, 10%) minmax(0, 1fr) minmax(280px, 25%) minmax(260px, 12%);
+      grid-template-columns: minmax(168px, 14%) minmax(0, 1fr) minmax(280px, 25%) minmax(260px, 12%);
     }
     .vector-action-rail {
       grid-column: auto;
@@ -8187,6 +8183,131 @@ body::before {
     margin-top: -0.55rem;
     margin-left: 0.4rem;
     font-variant-numeric: tabular-nums;
+  }
+
+  /* ── Vector 0DTE matrix rail (replaces 1D GEX ladder) ── */
+  .vector-odte-matrix-rail {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    height: 100%;
+    border-radius: 0.75rem;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: #050508;
+    overflow: hidden;
+  }
+
+  .vector-odte-matrix-head {
+    flex: 0 0 auto;
+    padding: 0.45rem 0.5rem 0.35rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .vector-odte-matrix-head-top {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .vector-odte-matrix-title {
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(56, 189, 248, 0.95);
+  }
+
+  .vector-odte-matrix-reset {
+    margin-left: auto;
+  }
+
+  .vector-odte-matrix-head-meta {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.35rem;
+    margin-top: 0.2rem;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 0.62rem;
+    color: rgba(148, 163, 184, 0.85);
+  }
+
+  .vector-odte-matrix-spot {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: rgb(34, 211, 238);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .vector-odte-matrix-lens {
+    display: flex;
+    gap: 0.25rem;
+    margin-top: 0.35rem;
+  }
+
+  .vector-odte-matrix-lens-btn {
+    flex: 1;
+    border-radius: 0.35rem;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    background: rgba(148, 163, 184, 0.06);
+    padding: 0.2rem 0.35rem;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 0.58rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: rgba(203, 213, 225, 0.85);
+    cursor: pointer;
+  }
+
+  .vector-odte-matrix-lens-btn.is-active {
+    border-color: rgba(56, 189, 248, 0.55);
+    background: rgba(56, 189, 248, 0.12);
+    color: rgb(56, 189, 248);
+  }
+
+  .vector-odte-matrix-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .vector-odte-matrix-table th,
+  .vector-odte-matrix-table td {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .vector-odte-matrix-row.vector-odte-matrix-hover td,
+  .vector-odte-matrix-row.vector-odte-matrix-hover th {
+    outline: 1px solid rgba(56, 189, 248, 0.45);
+    outline-offset: -1px;
+  }
+
+  .vector-odte-matrix-row .is-pct-pos {
+    color: rgb(52, 211, 153);
+  }
+
+  .vector-odte-matrix-row .is-pct-neg {
+    color: rgb(251, 113, 133);
+  }
+
+  .vector-odte-matrix-crown {
+    color: rgba(255, 214, 10, 0.95);
+    font-size: 0.58rem;
+  }
+
+  .vector-odte-matrix-empty,
+  .vector-odte-matrix-refresh {
+    padding: 0.75rem 0.5rem;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 0.62rem;
+    color: rgb(125, 211, 252);
+  }
+
+  .vector-odte-matrix-refresh {
+    padding-top: 0.25rem;
+    opacity: 0.7;
   }
 
   /* ── Alerts: per-ticker rule definer (under the terminal) + the fired-alert toast ── */
