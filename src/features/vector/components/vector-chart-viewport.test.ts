@@ -49,6 +49,13 @@ test("VectorDailyChart: shared candle spacing and borders", () => {
   assert.match(src, /adaptiveBarSpacingForZoom/);
 });
 
+test("VectorChart: off-hours candle dimming wired", () => {
+  const src = read("src/features/vector/components/VectorChart.tsx");
+  assert.match(src, /toCandlestickDisplayData/);
+  assert.match(src, /volumeAlphaForBar/);
+  assert.match(read("src/features/vector/lib/vector-candle-render.ts"), /hasExtendedHoursBars/);
+});
+
 test("VectorChart: manual zoom/pan blocks programmatic session refits", () => {
   const src = read("src/features/vector/components/VectorChart.tsx");
   assert.match(src, /function memberViewportLocked/);
