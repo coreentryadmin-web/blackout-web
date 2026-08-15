@@ -306,3 +306,41 @@ First orchestrator attempt failed on missing `node_modules` (tsx/playwright/pg/r
 **Fix.** Runbook `GRID-RTH-ALL-DAY-AGENT.md` updated: classic `/grid` deleted 2026-07-07; Step 2 now `/nighthawk`; coverage list matches `grid-rth-all-day-audit.mjs` (zerodte-warm, not grid-warm).
 
 **Status.** FIXED on `fix/grid-runbook-nighthawk-20260730`.
+
+---
+
+## 2026-08-15 — [Full-stack production audit] Membership, security, latency, deploy — required stages GREEN
+
+**Session.** Off-hours ET (~18:15 ET Sat). Branch `cursor/full-stack-production-audit-3d11`.
+
+**Tier / membership (live prod).**
+- `tier-access-e2e.mjs` — **39/39 GREEN** (free/community/premium × 6 desk pages + 7 API gates incl. Largo POST + admin health)
+- Tier model: `free` / `community` (SPX Slayer) / `premium`; `pro`/`elite` alias → `premium`; admin = role overlay
+- Whop webhook overwrites temp tiers unless `tier_managed_by: "admin"` — harness lock verified
+
+**Security.**
+- `deep-security-audit.mjs` — **P0=0 P1=0** after harness tier-lock fix; P2×3 CSP `unsafe-eval` (TradingView embed — accepted)
+- `validate:api-auth` — 201 routes, 17 public allowlist, all guarded
+- Cron/webhook bypass, open redirects, IDOR, admin escalation — no leaks
+- Headers: HSTS, CSP, X-Frame-Options, nosniff via Cloudflare; no source maps in prod build
+
+**Deploy / ops.**
+- `validate:deploy` — GREEN (ECS rollout IN_PROGRESS noted)
+- `ops:collect` — 0 action items
+
+**Latency (optional).**
+- APIs warm 30–100ms; cold `/api/ready` spike during rollout (4.1s one sample)
+- Browser paint: dashboard/heatmap `content ready` hit 30s selector timeout during deploy (transient); nighthawk ~1.1s off-hours after threshold tuning
+
+**Harness fixes shipped in PR.**
+- `tier-access-e2e`: POST APIs, admin 401|403, extended matrix
+- `deep-security-audit`: `tier_managed_by` + JWT remint; clearer denial vs escalation titles
+- `site-latency-audit`: off-hours ET thresholds + Night Hawk slow-desk carve-out
+- `full-stack-production-audit.mjs` orchestrator + `npm run validate:full-stack-audit`
+
+**Scalability notes (evidence-based, no load test).**
+- Prod: ECS web 8–15 tasks (`REPLICA_COUNT=8`), 1 market worker, UW **2 RPS cluster-wide** hard cap
+- First stress points: UW cache-miss storms + Clerk tier cache cold path before raw CPU; PG pool = `PG_POOL_MAX × REPLICA_COUNT` vs PgBouncer budget
+- 1k concurrent: likely OK on cache hits; 10k+: UW/Redis hot-path saturation; 50k–100k: upstream provider ceiling before horizontal web scale helps
+
+**Status.** GREEN required gates; optional latency flaky during deploy — re-run RTH for paint baselines.
