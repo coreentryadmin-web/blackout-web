@@ -149,6 +149,7 @@ function scheduleRowToEvent(e: { date: string; event: string; impact: "high" | "
     impact: e.impact,
     actual: null,
     estimate: null,
+    date: e.date,
   };
 }
 
@@ -237,12 +238,8 @@ export function fetchUpcomingMacroEvents(daysAhead = 7): MacroEvent[] {
   const end = todayEtYmd(endDate);
 
   return ALL_MACRO_SCHEDULE.filter((e) => e.date >= today && e.date <= end).map((e) => ({
-    time: eventReleaseTime(e.event),
-    event: e.event,
-    country: "US",
-    impact: e.impact,
-    actual: null,
-    estimate: null,
+    ...scheduleRowToEvent(e),
+    date: e.date,
   }));
 }
 

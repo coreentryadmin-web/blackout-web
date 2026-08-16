@@ -8,7 +8,7 @@
 // flipping defaultLaunched. The locked set remains env-overridable (LAUNCHED_TOOLS) for additive
 // unlocks — default-launched tools cannot be locked via env.
 
-export type ToolKey = "spx" | "flows" | "heatmap" | "largo" | "nighthawk" | "vector";
+export type ToolKey = "spx" | "flows" | "heatmap" | "largo" | "nighthawk" | "vector" | "meridian";
 
 /** ProductMark sigil keys — kept inline (not imported) so this module stays alias-free + test-safe.
  *  Structurally identical to MarkProduct in components/marks/ProductMark.tsx, so a ToolMeta.product
@@ -34,6 +34,13 @@ export const TOOLS: readonly ToolMeta[] = [
   { key: "largo", label: "Largo", href: "/terminal", product: "largo", defaultLaunched: false },
   { key: "nighthawk", label: "Night Hawk", href: "/nighthawk", product: "nighthawk", defaultLaunched: true },
   { key: "vector", label: "Vector", href: "/vector", product: "vector", defaultLaunched: true },
+  {
+    key: "meridian",
+    label: "Meridian",
+    href: "/meridian",
+    product: "largo",
+    defaultLaunched: false,
+  },
 ] as const;
 
 const TOOL_BY_KEY = new Map<ToolKey, ToolMeta>(TOOLS.map((t) => [t.key, t]));
