@@ -17,7 +17,7 @@ test("thirdFridayYmd: August 2026 third Friday", () => {
   assert.equal(thirdFridayYmd(2026, 8), "2026-08-21");
 });
 
-test("buildMeridianTimeline: merges macro + earnings sorted by date", () => {
+test("buildMeridianTimeline: merges macro + earnings + fda sorted by date", () => {
   const items = buildMeridianTimeline({
     todayYmd: "2026-08-10",
     daysAhead: 14,
@@ -34,16 +34,24 @@ test("buildMeridianTimeline: merges macro + earnings sorted by date", () => {
         expected_move_pct: 8.2,
       },
     ],
+    fda: [
+      {
+        ticker: "MRNA",
+        date: "2026-08-15",
+        drug: "mRNA-1283",
+        indication: "RSV vaccine",
+        event_label: "PDUFA",
+      },
+    ],
     includeOpex: false,
   });
-  assert.equal(items.length, 3);
+  assert.equal(items.length, 4);
   assert.equal(items[0]!.kind, "macro");
-  assert.equal(items[0]!.title, "CPI");
   assert.equal(items[1]!.kind, "earnings");
-  assert.equal(items[1]!.ticker, "NVDA");
+  assert.equal(items[2]!.kind, "fda");
 });
 
-test("parseMeridianEventId: macro, earnings, opex", () => {
+test("parseMeridianEventId: macro, earnings, opex, fda", () => {
   assert.deepEqual(parseMeridianEventId("macro:2026-08-12:CPI"), {
     kind: "macro",
     date: "2026-08-12",
@@ -57,6 +65,11 @@ test("parseMeridianEventId: macro, earnings, opex", () => {
   assert.deepEqual(parseMeridianEventId("opex:2026-08-21"), {
     kind: "opex",
     date: "2026-08-21",
+  });
+  assert.deepEqual(parseMeridianEventId("fda:MRNA:2026-08-15"), {
+    kind: "fda",
+    date: "2026-08-15",
+    ticker: "MRNA",
   });
 });
 

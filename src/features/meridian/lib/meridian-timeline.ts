@@ -2,11 +2,18 @@ import type { MacroEvent } from "@/lib/providers/macro-events";
 import type { ZeroDteEarningsItem } from "@/lib/zerodte/earnings";
 import type { MeridianEventKind, MeridianImpact, MeridianTimelineItem } from "./meridian-types";
 
-export type MacroTimelineInput = Pick<MacroEvent, "event" | "date" | "time" | "impact">;
+export type MacroTimelineInput = Pick<MacroEvent, "event" | "date" | "time" | "impact" | "estimate">;
 export type EarningsTimelineInput = Pick<
   ZeroDteEarningsItem,
   "ticker" | "name" | "report_date" | "when" | "expected_move_pct"
 >;
+export type FdaTimelineInput = {
+  ticker: string;
+  date: string;
+  drug: string | null;
+  indication: string | null;
+  event_label: string | null;
+};
 
 /** Calendar-day distance in ET (today → event date). */
 export function daysUntilEt(eventYmd: string, todayYmd: string): number {
@@ -35,6 +42,10 @@ function earningsId(ticker: string, date: string): string {
 
 function opexId(date: string): string {
   return `opex:${date}`;
+}
+
+function fdaId(ticker: string, date: string): string {
+  return `fda:${ticker.toUpperCase()}:${date}`;
 }
 
 /** Third Friday of a calendar month (US equity monthly OpEx). */
@@ -81,9 +92,10 @@ export function buildMeridianTimeline(input: {
   daysAhead: number;
   macro: readonly MacroTimelineInput[];
   earnings: readonly EarningsTimelineInput[];
+  fda?: readonly FdaTimelineInput[];
   includeOpex?: boolean;
 }): MeridianTimelineItem[] {
-  const { todayYmd, daysAhead, macro, earnings, includeOpex = true } = input;
+  const { todayYmd, daysAhead, macro, earnings, fda = [], includeOpex = true } = input;
   const endLimit = daysAhead;
   const items: MeridianTimelineItem[] = [];
 
@@ -128,6 +140,26 @@ export function buildMeridianTimeline(input: {
     });
   }
 
+  for (const row of fda) {
+    const date = row.date?.slice(0, 10) ?? "";
+    const ticker = row.ticker?.trim().toUpperCase() ?? "";
+    if (!date || !ticker || date < todayYmd) continue;
+    const du = daysUntilEt(date, todayYmd);
+    if (du > endLimit) continue;
+    const drug = row.drug?.trim() || null;
+    items.push({
+      id: fdaId(ticker, date),
+      kind: "fda",
+      title: `${ticker} FDA`,
+      subtitle: drug ?? row.event_label ?? row.indication ?? "PDUFA / decision window",
+      date,
+      time: null,
+      impact: "high",
+      days_until: du,
+      ticker,
+    });
+  }
+
   if (includeOpex) {
     for (const date of upcomingOpexDates(todayYmd, daysAhead)) {
       const du = daysUntilEt(date, todayYmd);
@@ -147,7 +179,7 @@ export function buildMeridianTimeline(input: {
 
   items.sort((a, b) => {
     if (a.date !== b.date) return a.date.localeCompare(b.date);
-    const rank: Record<MeridianEventKind, number> = { macro: 0, opex: 1, earnings: 2 };
+    const rank: Record<MeridianEventKind, number> = { macro: 0, fda: 1, opex: 2, earnings: 3 };
     return rank[a.kind] - rank[b.kind];
   });
 
@@ -171,6 +203,9 @@ export function parseMeridianEventId(id: string): {
   }
   if (kind === "opex" && parts.length >= 2) {
     return { kind, date: parts[1]! };
+  }
+  if (kind === "fda" && parts.length >= 3) {
+    return { kind, date: parts[2]!, ticker: parts[1]!.toUpperCase() };
   }
   return null;
 }

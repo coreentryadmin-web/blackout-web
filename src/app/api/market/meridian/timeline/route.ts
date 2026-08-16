@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/admin-access";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { fetchUpcomingMacroEventsLive } from "@/lib/providers/macro-events";
-import { loadMeridianEarningsTimeline } from "@/lib/meridian/meridian-timeline-server";
+import {
+  loadMeridianEarningsTimeline,
+  loadMeridianFdaTimeline,
+} from "@/lib/meridian/meridian-timeline-server";
 import { buildMeridianTimeline } from "@/features/meridian/lib/meridian-timeline";
 import { roundFloats } from "@/lib/round-floats";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
@@ -23,9 +26,10 @@ export async function GET(req: NextRequest) {
 
   try {
     const today = todayEtYmd();
-    const [macro, earningsRows] = await Promise.all([
+    const [macro, earningsRows, fdaRows] = await Promise.all([
       fetchUpcomingMacroEventsLive(daysAhead),
       loadMeridianEarningsTimeline(today, daysAhead),
+      loadMeridianFdaTimeline(today, daysAhead),
     ]);
 
     const items = buildMeridianTimeline({
@@ -36,8 +40,10 @@ export async function GET(req: NextRequest) {
         date: m.date ?? today,
         time: m.time,
         impact: m.impact,
+        estimate: m.estimate ?? null,
       })),
       earnings: earningsRows,
+      fda: fdaRows,
     });
 
     return NextResponse.json(

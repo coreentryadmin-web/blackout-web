@@ -14,6 +14,7 @@ function impactLabel(impact: string): string {
 function kindChip(kind: MeridianTimelineItem["kind"]): string {
   if (kind === "macro") return "Macro";
   if (kind === "opex") return "OpEx";
+  if (kind === "fda") return "FDA";
   return "Earnings";
 }
 
@@ -30,6 +31,20 @@ type Props = {
   loading: boolean;
   error: string | null;
 };
+
+function HeadlineList({ items, empty }: { items: Array<{ title: string; channel: string | null; published: string | null }>; empty: string }) {
+  if (!items.length) return <p className="meridian-card-muted">{empty}</p>;
+  return (
+    <ul className="meridian-card-list">
+      {items.map((row) => (
+        <li key={`${row.title}-${row.published ?? ""}`}>
+          {row.title}
+          {row.channel ? ` · ${row.channel}` : ""}
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 export function MeridianEventDetailPanel({ item, detail, loading, error }: Props) {
   return (
@@ -52,6 +67,27 @@ export function MeridianEventDetailPanel({ item, detail, loading, error }: Props
 
       {!loading && !error && detail?.kind === "macro" && (
         <div className="meridian-detail-grid">
+          {(detail.estimate || detail.macro_indicator) && (
+            <section className="meridian-card meridian-card-wide">
+              <h3 className="meridian-card-label">Macro context</h3>
+              {detail.estimate && <p className="meridian-card-value">Consensus {detail.estimate}</p>}
+              {detail.macro_indicator && (
+                <ul className="meridian-card-list">
+                  <li>
+                    Last {detail.macro_indicator.label}
+                    {detail.macro_indicator.latest_value != null
+                      ? `: ${detail.macro_indicator.latest_value}`
+                      : ""}
+                    {detail.macro_indicator.change_pct != null
+                      ? ` (${detail.macro_indicator.change_pct >= 0 ? "+" : ""}${detail.macro_indicator.change_pct}% vs prior)`
+                      : ""}
+                  </li>
+                  {detail.macro_indicator.as_of && <li>As of {detail.macro_indicator.as_of}</li>}
+                </ul>
+              )}
+            </section>
+          )}
+
           <section className="meridian-card">
             <h3 className="meridian-card-label">SPX positioning into event</h3>
             {detail.spx_positioning.available ? (
@@ -113,7 +149,7 @@ export function MeridianEventDetailPanel({ item, detail, loading, error }: Props
 
       {!loading && !error && detail?.kind === "opex" && (
         <div className="meridian-detail-grid">
-          <section className="meridian-card meridian-card-wide">
+          <section className="meridian-card">
             <h3 className="meridian-card-label">SPX structure into OpEx</h3>
             {detail.spx_positioning.available ? (
               <ul className="meridian-card-list">
@@ -132,13 +168,96 @@ export function MeridianEventDetailPanel({ item, detail, loading, error }: Props
               <p className="meridian-card-muted">SPX positioning unavailable.</p>
             )}
           </section>
+
+          <section className="meridian-card">
+            <h3 className="meridian-card-label">Expiry pin & flow</h3>
+            <ul className="meridian-card-list">
+              {detail.expiry_read.max_pain != null && (
+                <li>Max pain {detail.expiry_read.max_pain.toLocaleString()}</li>
+              )}
+              {detail.expiry_read.greek_headline && <li>{detail.expiry_read.greek_headline}</li>}
+              {detail.expiry_read.net_flow_label && <li>{detail.expiry_read.net_flow_label}</li>}
+              {!detail.expiry_read.max_pain &&
+                !detail.expiry_read.greek_headline &&
+                !detail.expiry_read.net_flow_label && (
+                  <li className="meridian-card-muted">Expiry flow unavailable.</li>
+                )}
+            </ul>
+          </section>
+        </div>
+      )}
+
+      {!loading && !error && detail?.kind === "fda" && (
+        <div className="meridian-detail-grid">
+          <section className="meridian-card">
+            <h3 className="meridian-card-label">Decision window</h3>
+            <ul className="meridian-card-list">
+              {detail.drug && <li>{detail.drug}</li>}
+              {detail.indication && <li>{detail.indication}</li>}
+              {!detail.drug && !detail.indication && <li>FDA decision date on calendar</li>}
+            </ul>
+          </section>
+
+          <section className="meridian-card">
+            <h3 className="meridian-card-label">{detail.ticker} positioning</h3>
+            {detail.positioning.available ? (
+              <ul className="meridian-card-list">
+                {detail.positioning.gamma_regime && <li>{detail.positioning.gamma_regime}</li>}
+                {detail.positioning.spot != null && <li>Spot {detail.positioning.spot}</li>}
+                {detail.positioning.flip != null && <li>Flip {detail.positioning.flip}</li>}
+              </ul>
+            ) : (
+              <p className="meridian-card-muted">Positioning unavailable.</p>
+            )}
+          </section>
+
+          <section className="meridian-card meridian-card-wide">
+            <h3 className="meridian-card-label">Recent catalyst headlines</h3>
+            <HeadlineList items={detail.catalysts} empty="No recent catalyst headlines." />
+          </section>
         </div>
       )}
 
       {!loading && !error && detail?.kind === "earnings" && (
-        <div className="meridian-earn-wrap">
-          <LargoPreEarningsPackCard card={detail.pack} />
-        </div>
+        <>
+          {(detail.enrichment.street_estimates.length > 0 ||
+            detail.enrichment.catalysts.length > 0 ||
+            detail.enrichment.earnings_headlines.length > 0) && (
+            <div className="meridian-detail-grid meridian-earn-enrich">
+              {detail.enrichment.street_estimates.length > 0 && (
+                <section className="meridian-card">
+                  <h3 className="meridian-card-label">Street estimates</h3>
+                  <ul className="meridian-card-list">
+                    {detail.enrichment.street_estimates.map((row) => (
+                      <li key={row.period ?? `${row.eps_estimate}`}>
+                        {row.period ?? "Next print"}
+                        {row.eps_estimate != null ? ` · EPS ${row.eps_estimate}` : ""}
+                        {row.revenue_estimate != null
+                          ? ` · Rev ${row.revenue_estimate.toLocaleString()}`
+                          : ""}
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+              {detail.enrichment.catalysts.length > 0 && (
+                <section className="meridian-card">
+                  <h3 className="meridian-card-label">Catalyst headlines</h3>
+                  <HeadlineList items={detail.enrichment.catalysts} empty="" />
+                </section>
+              )}
+              {detail.enrichment.earnings_headlines.length > 0 && (
+                <section className="meridian-card meridian-card-wide">
+                  <h3 className="meridian-card-label">Earnings headlines</h3>
+                  <HeadlineList items={detail.enrichment.earnings_headlines} empty="" />
+                </section>
+              )}
+            </div>
+          )}
+          <div className="meridian-earn-wrap">
+            <LargoPreEarningsPackCard card={detail.pack} />
+          </div>
+        </>
       )}
 
       <footer className="meridian-detail-actions">
@@ -154,6 +273,11 @@ export function MeridianEventDetailPanel({ item, detail, loading, error }: Props
         {item.kind === "earnings" && item.ticker && (
           <Link href={`/vector?ticker=${encodeURIComponent(item.ticker)}`} className="meridian-action">
             Open Vector · {item.ticker}
+          </Link>
+        )}
+        {(item.kind === "fda" || item.kind === "earnings") && item.ticker && (
+          <Link href={`/heatmap?ticker=${encodeURIComponent(item.ticker)}`} className="meridian-action">
+            Open Thermal · {item.ticker}
           </Link>
         )}
       </footer>

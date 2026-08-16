@@ -5,6 +5,8 @@ import { preEarningsPackForLargo } from "@/lib/largo/pre-earnings-pack";
 import {
   buildMeridianMacroBrief,
   buildMeridianOpexDetail,
+  buildMeridianFdaDetail,
+  loadMeridianEarningsEnrichment,
 } from "@/lib/meridian/meridian-event-brief";
 import { parseMeridianEventId } from "@/features/meridian/lib/meridian-timeline";
 import { roundFloats } from "@/lib/round-floats";
@@ -32,11 +34,25 @@ export async function GET(req: NextRequest) {
       if (!ticker) {
         return NextResponse.json({ error: "Missing ticker" }, { status: 400, headers: NO_STORE_HEADERS });
       }
-      const pack = await preEarningsPackForLargo(ticker, parsed.date);
+      const [pack, enrichment] = await Promise.all([
+        preEarningsPackForLargo(ticker, parsed.date),
+        loadMeridianEarningsEnrichment(ticker),
+      ]);
       if (!pack) {
         return NextResponse.json({ error: "Earnings pack unavailable" }, { status: 404, headers: NO_STORE_HEADERS });
       }
-      return NextResponse.json(roundFloats({ kind: "earnings", pack }), { headers: NO_STORE_HEADERS });
+      return NextResponse.json(roundFloats({ kind: "earnings", pack, enrichment }), {
+        headers: NO_STORE_HEADERS,
+      });
+    }
+
+    if (parsed.kind === "fda") {
+      const ticker = parsed.ticker;
+      if (!ticker) {
+        return NextResponse.json({ error: "Missing ticker" }, { status: 400, headers: NO_STORE_HEADERS });
+      }
+      const detail = await buildMeridianFdaDetail({ ticker, date: parsed.date });
+      return NextResponse.json(detail, { headers: NO_STORE_HEADERS });
     }
 
     if (parsed.kind === "opex") {
@@ -59,6 +75,7 @@ export async function GET(req: NextRequest) {
       date: parsed.date,
       time: match.time?.trim() || null,
       impact: match.impact === "high" ? "high" : match.impact === "medium" ? "medium" : "low",
+      estimate: match.estimate ?? null,
     });
     return NextResponse.json(brief, { headers: NO_STORE_HEADERS });
   } catch (error) {

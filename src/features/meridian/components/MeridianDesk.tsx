@@ -17,6 +17,7 @@ const fetcher = (url: string) =>
 function kindBadge(kind: string): string {
   if (kind === "macro") return "Macro";
   if (kind === "opex") return "OpEx";
+  if (kind === "fda") return "FDA";
   return "Earnings";
 }
 
