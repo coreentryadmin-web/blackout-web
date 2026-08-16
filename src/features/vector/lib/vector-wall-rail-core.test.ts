@@ -119,10 +119,17 @@ test("fillAlpha: spans [MIN, MAX] and never leaves the band", () => {
   assert.ok(fillAlpha(100, 100) > fillAlpha(1, 100), "the dominant wall is the most opaque");
 });
 
-test("default bead tuning caps fill alpha so king beads do not paint solid over candles", () => {
+test("default bead tuning: full strength spread for regular beads, king-only cap", () => {
   const tuning = beadRenderTuning("default");
-  assert.ok((tuning.beadAlphaCap ?? 1) <= 0.65, "default profile must cap bead opacity");
-  assert.ok(tuning.kingBoost <= 0.14, "king radius boost stays subtle");
+  assert.ok((tuning.kingAlphaCap ?? 1) <= 0.75, "king fill capped so candles stay visible");
+  assert.ok(tuning.kingBoost >= 0.2, "king size emphasis preserved");
+  assert.ok(tuning.kingHaloMul <= 0.45, "king halo trimmed — not global dim");
+  assert.ok(fillAlpha(80, 100, tuning) >= 0.85, "strong regular wall stays bright");
+  assert.ok(fillAlpha(3, 100, tuning) >= 0.6, "weak wall stays legible");
+  assert.ok(
+    targetHalfPx(5, undefined, 100, tuning) < targetHalfPx(80, undefined, 100, tuning),
+    "size ladder still separates weak vs strong"
+  );
 });
 
 // ── keys ─────────────────────────────────────────────────────────────────────
