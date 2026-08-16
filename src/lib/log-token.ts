@@ -18,8 +18,19 @@
 const MAX_LOG_TOKEN = 64;
 
 /** C0 (NUL, TAB, LF, CR, ESC and friends) plus DEL and the C1 range.
- *  Built from an escaped STRING, not a regex literal: a literal character class here would put
- *  real control bytes into this source file, which is both unreadable and easy to mangle. */
+ *
+ *  Built from an escaped STRING, not a regex literal: a literal character class here would put real
+ *  control bytes — including NUL — into this source file, which is unreadable and easily mangled by
+ *  anything that rewrites raw bytes.
+ *
+ *  KNOWN TRADEOFF: `new RegExp(someString)` is opaque to CodeQL, so it cannot prove this function
+ *  strips newlines and keeps reporting `js/log-injection` (MEDIUM) at each call site. Those alerts
+ *  are accepted as analyser blind spots, NOT as unfixed bugs — the control-character removal is
+ *  covered by log-token.test.ts, and the call sites are additionally guarded by
+ *  vector-wall-log-safety.test.ts. The HIGH `js/format-string-injection` alerts are genuinely fixed,
+ *  by keeping untrusted values out of console's argument 0 rather than by this regex. If someone
+ *  later switches this to a `\u`-escaped regex LITERAL (same bytes, analyser-visible), the mediums
+ *  should clear too — that is a safe change, provided no real control byte lands in the file. */
 const CONTROL_CHARS = new RegExp("[\\u0000-\\u001F\\u007F-\\u009F]", "g");
 
 /** What a control character renders as — visible, so tampering stays evident in the log. */
