@@ -19,9 +19,20 @@ import { readFileSync } from "node:fs";
  */
 
 const SNAPSHOT = "src/features/vector/lib/vector-snapshot.ts";
+const UNIVERSE = "src/features/vector/lib/vector-universe.ts";
+const WALL_WRITE = "src/features/vector/lib/vector-wall-write.ts";
 
 function read(path: string): string {
   return readFileSync(path, "utf8");
+}
+
+function writerLinesIn(path: string, pattern: RegExp): number[] {
+  const lines = read(path).split("\n");
+  const hits: number[] = [];
+  lines.forEach((line, i) => {
+    if (pattern.test(line) && !/^\s*import/.test(line)) hits.push(i);
+  });
+  return hits;
 }
 
 test("vector-snapshot imports the ET cash-RTH clock", () => {
@@ -32,28 +43,35 @@ test("vector-snapshot imports the ET cash-RTH clock", () => {
   );
 });
 
-test("every appendSessionWallSample / persistWallSampleDebounced writer sits behind an RTH gate", () => {
-  const src = read(SNAPSHOT);
-  const lines = src.split("\n");
-  const writerLines: number[] = [];
-  lines.forEach((line, i) => {
-    if (/\b(appendSessionWallSample|persistWallSampleDebounced)\s*\(/.test(line) && !/^\s*import/.test(line)) {
-      writerLines.push(i);
-    }
-  });
-  assert.ok(writerLines.length >= 4, `expected the known rail writers, found ${writerLines.length}`);
+test("vector-snapshot SSE writers sit behind wallRailRecordingOpen before persistWallSampleDebounced", () => {
+  const lines = read(SNAPSHOT).split("\n");
+  const writerLines = writerLinesIn(SNAPSHOT, /\bpersistWallSampleDebounced\s*\(/);
+  assert.ok(writerLines.length >= 2, `expected SSE debounced writers, found ${writerLines.length}`);
 
-  // Each writer must have a wallRailRecordingOpen()/isEtCashRth() guard above it inside the same
-  // function body. 80 lines is comfortably wider than the widest real writer block and narrower
-  // than the gap to the previous function.
   for (const idx of writerLines) {
     const window = lines.slice(Math.max(0, idx - 80), idx).join("\n");
     assert.match(
       window,
-      /wallRailRecordingOpen\(\)|isEtCashRth\(\)/,
-      `rail writer at line ${idx + 1} has no RTH gate above it — off-hours samples would reach the session rail`
+      /wallRailRecordingOpen\(\)/,
+      `persistWallSampleDebounced at line ${idx + 1} has no wallRailRecordingOpen gate above it`
     );
   }
+});
+
+test("vector-universe durable writes route through writeWallHistorySample (canonical RTH gate inside)", () => {
+  const src = read(UNIVERSE);
+  assert.match(src, /writeWallHistorySample\(/, "universe must use the canonical wall writer");
+  assert.doesNotMatch(
+    src,
+    /\bappendSessionWallSample\s*\(/,
+    "universe must not bypass the observability writer"
+  );
+});
+
+test("writeWallHistorySample applies isEtCashRth by default", () => {
+  const src = read(WALL_WRITE);
+  assert.match(src, /isEtCashRth\(\)/, "canonical writer must gate on cash RTH");
+  assert.match(src, /rthRequired\s*=\s*true/, "RTH gate is on by default");
 });
 
 test("the RTH gate is evaluated BEFORE the staleness check, not merged into it", () => {

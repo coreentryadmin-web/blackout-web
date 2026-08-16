@@ -13,6 +13,7 @@ import { getLaunchStatusSnapshot, type LaunchStatusSnapshot } from "@/lib/tool-a
 import { buildOpsConfigStatus, type OpsConfigStatus } from "@/lib/ops-config-status";
 import { getDatabasePoolStats } from "@/lib/db";
 import { withServerCache } from "@/lib/server-cache";
+import { getWallWriteObservabilitySnapshot } from "@/features/vector/lib/vector-wall-write";
 
 /** Shared cache lane for admin vitals — polled every 15s by multiple SWR consumers. */
 export const ADMIN_HEALTH_CACHE_KEY = "admin:health:snapshot:v1";
@@ -66,6 +67,8 @@ export type AdminHealthPayload = {
   launch_status: LaunchStatusSnapshot;
   /** Env guardrails (no secret values) — audit R-2/R-6/R-18. */
   ops_config: OpsConfigStatus;
+  /** Per-source wall-history write counters + dark tickers (in-process, this replica). */
+  vector_wall_writes: import("@/features/vector/lib/vector-wall-write").WallWriteObservabilitySnapshot;
 };
 
 export async function buildAdminHealthSnapshot(): Promise<AdminHealthPayload> {
@@ -108,6 +111,7 @@ async function buildAdminHealthSnapshotUncached(): Promise<AdminHealthPayload> {
   // and does not yet know about the limiter, so we surface the signal HERE: synthesize a critical
   // issue, bump the critical count, and fold it into health_ok so the admin console flags it (#8/#78).
   const redisDegraded = uwStats.degraded === true;
+  const wallWrites = getWallWriteObservabilitySnapshot();
   const syntheticIssues = [
     ...(redisDegraded
       ? [
@@ -140,6 +144,17 @@ async function buildAdminHealthSnapshotUncached(): Promise<AdminHealthPayload> {
           },
         ]
       : []),
+    ...(wallWrites.darkTickers.length > 0
+      ? [
+          {
+            id: "vector_wall_write:dark_tickers",
+            severity: "warning" as const,
+            category: "vector",
+            title: "Vector bead rail — tickers with consecutive write failures",
+            detail: `Dark tickers on this replica: ${wallWrites.darkTickers.join(", ")}. See vector_wall_writes in admin health.`,
+          },
+        ]
+      : []),
   ];
   const issues = [...syntheticIssues, ...issuesPayload.issues];
 
@@ -151,7 +166,7 @@ async function buildAdminHealthSnapshotUncached(): Promise<AdminHealthPayload> {
         issuesPayload.counts.critical +
         (redisDegraded ? 1 : 0) +
         (dbPoolSaturated ? 1 : 0),
-      warning: issuesPayload.counts.warning + (dbPoolWaiting > 0 && !dbPoolSaturated ? 1 : 0),
+      warning: issuesPayload.counts.warning + (dbPoolWaiting > 0 && !dbPoolSaturated ? 1 : 0) + (wallWrites.darkTickers.length > 0 ? 1 : 0),
       info: issuesPayload.counts.info,
       api_errors: issuesPayload.api_errors.length,
     },
@@ -173,5 +188,6 @@ async function buildAdminHealthSnapshotUncached(): Promise<AdminHealthPayload> {
     redis_degraded: redisDegraded,
     launch_status: getLaunchStatusSnapshot(),
     ops_config: buildOpsConfigStatus(),
+    vector_wall_writes: wallWrites,
   };
 }

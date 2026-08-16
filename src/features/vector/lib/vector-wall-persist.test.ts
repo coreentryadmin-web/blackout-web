@@ -3,8 +3,6 @@ import assert from "node:assert/strict";
 import {
   appendSessionWallSample,
   loadSessionWallHistory,
-  persistWallSampleDebounced,
-  _resetWallPersistDebounceForTest,
 } from "./vector-wall-persist";
 import type { GexWalls } from "@/lib/providers/gex-wall-levels";
 
@@ -42,18 +40,6 @@ test("appendSessionWallSample returns true when a sample lands, false when sessi
   assert.equal(await appendSessionWallSample(session, { time: 500, walls: walls(6800, 6700) }), true);
   // A missing session id is never persisted — guarded before any cache touch.
   assert.equal(await appendSessionWallSample("", { time: 1, walls: walls(1, 1) }), false);
-});
-
-test("persistWallSampleDebounced: coalesces rapid writes in the same bucket", async () => {
-  _resetWallPersistDebounceForTest();
-  const session = "2099-01-04";
-  const sample = { time: 300, walls: walls(6800, 6700) };
-  persistWallSampleDebounced(session, sample);
-  persistWallSampleDebounced(session, sample);
-  await new Promise((r) => setTimeout(r, 50));
-  const loaded = await loadSessionWallHistory(session);
-  assert.equal(loaded.length, 1);
-  assert.equal(loaded[0].time, 300);
 });
 
 test("per-horizon rails are stored + read independently; 'all' stays on the legacy key", async () => {

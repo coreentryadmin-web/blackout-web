@@ -70,11 +70,11 @@ mock.module("../../../lib/providers/polygon-options-gex", {
   },
 });
 
-mock.module("./vector-wall-persist", {
+mock.module("./vector-wall-write", {
   namedExports: {
-    appendSessionWallSample: async (sessionYmd: string, _sample: unknown, ticker: string) => {
-      wallSampleCalls.push(`${sessionYmd}:${ticker}`);
-      return true;
+    writeWallHistorySample: async (opts: { sessionYmd: string; ticker: string }) => {
+      wallSampleCalls.push(`${opts.sessionYmd}:${opts.ticker}`);
+      return { written: true };
     },
   },
 });
