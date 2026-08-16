@@ -20,14 +20,26 @@
  * Run from the REPO ROOT with NODE_USE_ENV_PROXY=1.
  */
 import { createRequire } from "node:module";
-import { writeFileSync, mkdirSync } from "node:fs";
+import { writeFileSync, mkdirSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { mintClerkPremiumSession } from "./lib/prod-clerk-session.mjs";
 
 const require = createRequire(import.meta.url);
 const { createTunneledContext } = require("./lib/proxy-tunnel-context.cjs");
 
 const BASE = process.env.VALIDATE_BASE || "https://blackouttrades.com";
-const OUT = "/tmp/claude-0/-home-user/4e81061a-28b0-5b7a-b55b-1ebd214f8951/scratchpad/vector-audit";
+/**
+ * Output dir. `--out=DIR` when you want the artifacts somewhere durable, otherwise a fresh
+ * mkdtemp under the OS temp dir.
+ *
+ * NOT a hardcoded /tmp path: a fixed, predictable name in a world-writable directory is the
+ * "insecure temporary file" pattern (another user can pre-create or symlink it), and — more
+ * mundanely — the first version of this script baked in the authoring session's own scratchpad
+ * path, so for anyone else it wrote artifacts into a directory that had nothing to do with them.
+ */
+const OUT = process.argv.find((a) => a.startsWith("--out="))?.split("=")[1]
+  || mkdtempSync(join(tmpdir(), "vector-audit-"));
 mkdirSync(OUT, { recursive: true });
 
 const flag = (n, d) => process.argv.find((a) => a.startsWith(`--${n}=`))?.split("=")[1] ?? d;
