@@ -119,6 +119,12 @@ test("fillAlpha: spans [MIN, MAX] and never leaves the band", () => {
   assert.ok(fillAlpha(100, 100) > fillAlpha(1, 100), "the dominant wall is the most opaque");
 });
 
+test("default bead tuning caps fill alpha so king beads do not paint solid over candles", () => {
+  const tuning = beadRenderTuning("default");
+  assert.ok((tuning.beadAlphaCap ?? 1) <= 0.65, "default profile must cap bead opacity");
+  assert.ok(tuning.kingBoost <= 0.14, "king radius boost stays subtle");
+});
+
 // ── keys ─────────────────────────────────────────────────────────────────────
 
 test("beadKey: side, strike and bucket are all part of identity", () => {
