@@ -87,10 +87,32 @@ test("targetHalfPx: a real notional uses the absolute $ ladder", () => {
   assert.ok(large > small, `expected the larger notional to draw larger (${large} vs ${small})`);
 });
 
-test("targetHalfPx: dollarMode false ignores notional (frame-relative only)", () => {
-  const withNotional = targetHalfPx(50, 2e9, 100, BEAD_TUNING_DEFAULT, { dollarMode: false });
-  const without = targetHalfPx(50, undefined, 100, BEAD_TUNING_DEFAULT, { dollarMode: false });
-  assert.equal(withNotional, without);
+// REGRESSION GUARD (member report 2026-08-16, "all beads look the same size").
+//
+// #2242 removed the pct proxy so a bead with no recorded notional fell back to the frame-relative
+// curve (pct/maxPct)^1.6. Per-strike gamma is heavy-tailed, so that curve collapses the field:
+// measured on live data it put 78% (SPX) / 88% (SPY) of beads within 1px of the floor — visually
+// one dot. Sizing must stay on the LOG $ ladder, whose spread survives the same tail.
+test("targetHalfPx: a missing notional still sizes on the $ ladder, NOT the crushed relative curve", () => {
+  // A typical heavy-tail field: one dominant strike, a long thin tail.
+  const maxPct = 18.9;
+  const median = targetHalfPx(0.61, undefined, maxPct, BEAD_TUNING_DEFAULT);
+  const strong = targetHalfPx(6.0, undefined, maxPct, BEAD_TUNING_DEFAULT);
+  const king = targetHalfPx(maxPct, undefined, maxPct, BEAD_TUNING_DEFAULT);
+
+  // The three must be TELLABLE APART — at least ~1px between each rung, which is the threshold
+  // below which two beads read as the same dot.
+  assert.ok(strong - median >= 1, `median ${median.toFixed(2)} vs strong ${strong.toFixed(2)} — under 1px apart`);
+  assert.ok(king - strong >= 0.5, `strong ${strong.toFixed(2)} vs king ${king.toFixed(2)} — under 0.5px apart`);
+  assert.ok(king <= BEAD_TUNING_DEFAULT.halfMax + 1e-6);
+});
+
+test("targetHalfPx: ordering is monotonic in pct when no notional is recorded", () => {
+  const maxPct = 20;
+  const radii = [0.2, 1, 3, 8, 15, 20].map((p) => targetHalfPx(p, undefined, maxPct, BEAD_TUNING_DEFAULT));
+  for (let i = 1; i < radii.length; i++) {
+    assert.ok(radii[i] >= radii[i - 1], `radius must not shrink as pct grows: ${radii.join(", ")}`);
+  }
 });
 
 test("compare bead profile shrinks radius vs default but keeps weak beads legible", () => {
@@ -119,11 +141,18 @@ test("fillAlpha: spans [MIN, MAX] and never leaves the band", () => {
   assert.ok(fillAlpha(100, 100) > fillAlpha(1, 100), "the dominant wall is the most opaque");
 });
 
-test("default bead tuning: full strength spread for regular beads, king-only cap", () => {
+test("default bead tuning: full strength spread for regular beads, king trimmed only SLIGHTLY", () => {
   const tuning = beadRenderTuning("default");
-  assert.ok((tuning.kingAlphaCap ?? 1) <= 0.75, "king fill capped so candles stay visible");
+  // The member asked for the king to stop painting over the candles — "reduce it by a little".
+  // #2244/#2247 read that as halo 1.0 -> 0.38 and a 0.72 alpha cap, which flattened the crowned
+  // bead into its neighbours and lost the King-node read entirely. The bounds below encode the
+  // ACTUAL intent: visibly eased off full strength, still unmistakably the dominant bead.
+  const cap = tuning.kingAlphaCap ?? 1;
+  assert.ok(cap < 1, "king fill must be eased off full so candles stay visible");
+  assert.ok(cap >= 0.85, `king fill must not be gutted — ${cap} is a heavy trim, not a little`);
   assert.ok(tuning.kingBoost >= 0.2, "king size emphasis preserved");
-  assert.ok(tuning.kingHaloMul <= 0.45, "king halo trimmed — not global dim");
+  assert.ok(tuning.kingHaloMul < 1, "king halo eased off full");
+  assert.ok(tuning.kingHaloMul >= 0.8, `king halo must stay dominant — ${tuning.kingHaloMul} is a heavy trim`);
   assert.ok(fillAlpha(80, 100, tuning) >= 0.85, "strong regular wall stays bright");
   assert.ok(fillAlpha(3, 100, tuning) >= 0.6, "weak wall stays legible");
   assert.ok(

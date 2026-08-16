@@ -1,4 +1,4 @@
-import { relStrengthT, beadRadiusForNotional } from "./vector-wall-visual";
+import { relStrengthT, beadRadiusForNotional, pctToNotionalProxy } from "./vector-wall-visual";
 
 /**
  * Pure colour / size / identity helpers for the Vector bead rail.
@@ -63,10 +63,14 @@ export const BEAD_TUNING_DEFAULT: BeadRenderTuning = {
   fillMax: FILL_ALPHA_MAX,
   kingBoost: 0.22,
   drawAlphaMul: 1,
-  kingAlphaCap: 0.72,
+  // A LITTLE off the king, not most of it. #2244/#2247 took the halo to 0.38 (a 62% cut) and capped
+  // king alpha at 0.72, which flattened the crowned bead into its neighbours — the member asked only
+  // that it stop painting over the candles. 0.88 halo / 0.92 cap keeps the king unmistakably the
+  // brightest bead on its row while lifting the paint off the candles underneath.
+  kingAlphaCap: 0.92,
   minRadiusPx: 1.6,
   /** King-only — regular beads stay bright; this trims the halo that buried candles. */
-  kingHaloMul: 0.38,
+  kingHaloMul: 0.88,
 };
 
 /** ~55% bead radius — keeps level rails readable without burying candles. Contrast retuned
@@ -123,7 +127,6 @@ export function withA(color: string, a: number): string {
 
 export type TargetHalfPxOpts = {
   /** When false, force frame-relative sizing even if `notional` is present ($ Size off). */
-  dollarMode?: boolean;
 };
 
 /**
@@ -142,13 +145,29 @@ export function targetHalfPx(
   const frameRelative = () =>
     tuning.halfMin + relStrengthT(pct, maxPct) * (tuning.halfMax - tuning.halfMin);
 
-  if (opts?.dollarMode === false) return frameRelative();
-
   if (Number.isFinite(notional) && (notional as number) > 0) {
     return beadRadiusForNotional(notional as number, {
       floorPx: tuning.halfMin,
       ceilPx: tuning.halfMax,
     });
+  }
+
+  // NO recorded notional → fall back to the pct PROXY on the same $ ladder, NOT to frame-relative.
+  //
+  // WHY (regression #2242 → member report 2026-08-16 "all beads look the same size"): the relative
+  // curve is (pct/maxPct)^1.6, and per-strike gamma is heavy-tailed — SPY's median strike is 0.61%
+  // of an 18.86% max, so (0.032)^1.6 ≈ 0.005 and the bead lands 0.02px off the floor. Measured on
+  // live data, the relative path put 78% (SPX) / 88% (SPY) of beads within 1px of the floor: they
+  // are literally the same dot. The $ ladder is LOG, so it keeps a readable spread across the same
+  // heavy tail (SPX: 3% at floor, 10 distinct sizes).
+  //
+  // The proxy's $ CALIBRATION is nominal — but it is strictly monotonic in pct, so bead ORDERING
+  // and relative magnitude are exact, which is the whole job of the size channel. That is the
+  // trade #2242 got backwards: it removed a slightly-miscalibrated ladder in favour of an
+  // honestly-scaled curve that renders 4 out of 5 walls identically.
+  const proxy = pctToNotionalProxy(pct);
+  if (proxy > 0) {
+    return beadRadiusForNotional(proxy, { floorPx: tuning.halfMin, ceilPx: tuning.halfMax });
   }
   return frameRelative();
 }
