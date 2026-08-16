@@ -17,6 +17,8 @@ export type WallEventGlyph = {
   shape: WallEventGlyphShape;
   side: "call" | "put" | "flip" | "spot";
   severity: "info" | "warn";
+  /** Human-readable line — shown on hover when Events is enabled. */
+  label: string;
 };
 
 /** Event kinds worth drawing — building/fading are narrated in terminal only (too dense for the rail). */
@@ -53,6 +55,57 @@ function sideFromKind(kind: VectorWallEventKind): "call" | "put" | "flip" | "spo
   return "spot";
 }
 
+function fmtStrike(strike: number): string {
+  return Math.round(strike).toLocaleString("en-US");
+}
+
+function sideNoun(side: "call" | "put" | "flip" | "spot"): string {
+  if (side === "call") return "Call";
+  if (side === "put") return "Put";
+  if (side === "flip") return "Gamma flip";
+  return "Spot";
+}
+
+function trailGlyphLabel(
+  shape: WallEventGlyphShape,
+  side: "call" | "put",
+  strike: number
+): string {
+  const s = fmtStrike(strike);
+  switch (shape) {
+    case "birth_tick":
+      return `${sideNoun(side)} wall forming at ${s}`;
+    case "death_x":
+      return `${sideNoun(side)} wall dissolved at ${s}`;
+    case "handover_diamond":
+      return `${sideNoun(side)} king handover → ${s}`;
+    default:
+      return `${sideNoun(side)} event at ${s}`;
+  }
+}
+
+/** Nearest projected glyph within `radiusPx` (media/chart coordinates). */
+export function hitTestProjectedWallEventGlyph(
+  glyphs: ReadonlyArray<{ x: number; y: number }>,
+  x: number,
+  y: number,
+  radiusPx = 16
+): number {
+  let bestIdx = -1;
+  let bestDist = radiusPx * radiusPx;
+  for (let i = 0; i < glyphs.length; i++) {
+    const g = glyphs[i]!;
+    const dx = g.x - x;
+    const dy = g.y - y;
+    const d2 = dx * dx + dy * dy;
+    if (d2 <= bestDist) {
+      bestDist = d2;
+      bestIdx = i;
+    }
+  }
+  return bestIdx;
+}
+
 function glyphKey(g: WallEventGlyph): string {
   return `${g.time}:${Math.round(g.strike)}:${g.shape}`;
 }
@@ -82,6 +135,7 @@ export function wallEventToGlyph(ev: VectorWallEvent): WallEventGlyph | null {
     shape,
     side: ev.side ?? sideFromKind(ev.kind),
     severity: ev.severity,
+    label: ev.message,
   };
 }
 
@@ -103,6 +157,7 @@ export function trailDerivedGlyphs(
         shape: "birth_tick",
         side,
         severity: "info",
+        label: trailGlyphLabel("birth_tick", side, trail.strike),
       });
     }
     if (!trail.active && pts.length > 0) {
@@ -113,6 +168,7 @@ export function trailDerivedGlyphs(
         shape: "death_x",
         side,
         severity: "info",
+        label: trailGlyphLabel("death_x", side, trail.strike),
       });
     }
   }
@@ -130,6 +186,7 @@ export function trailDerivedGlyphs(
         shape: "handover_diamond",
         side,
         severity: "info",
+        label: trailGlyphLabel("handover_diamond", side, k1),
       });
     }
   }

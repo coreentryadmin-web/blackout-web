@@ -35,6 +35,7 @@ import type { VectorWallEvent } from "./vector-wall-events";
 import {
   composeWallEventGlyphs,
   drawWallEventGlyph,
+  hitTestProjectedWallEventGlyph,
   type WallEventGlyph,
 } from "./vector-wall-event-glyphs";
 
@@ -271,6 +272,8 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
   private _reduceMotion = false;
   private _mql: MediaQueryList | null = null;
   private _mqlHandler: ((e: MediaQueryListEvent) => void) | null = null;
+  /** Last media-space glyph positions — used for hover hit-testing from the crosshair handler. */
+  private _lastGlyphs: ProjectedGlyph[] = [];
 
   attached(param: SeriesAttachedParameter<Time>): void {
     this._chart = param.chart;
@@ -343,6 +346,13 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
     return Boolean(this._data?.showEventGlyphs);
   }
 
+  /** Nearest event glyph within hit radius (media/chart coordinates), or null. */
+  hitTestEventGlyph(x: number, y: number, radiusPx = 16): ProjectedGlyph | null {
+    if (!this._data?.showEventGlyphs || this._lastGlyphs.length === 0) return null;
+    const idx = hitTestProjectedWallEventGlyph(this._lastGlyphs, x, y, radiusPx);
+    return idx >= 0 ? (this._lastGlyphs[idx] ?? null) : null;
+  }
+
   private _cancelRaf(): void {
     if (this._rafId != null && typeof window !== "undefined") window.cancelAnimationFrame(this._rafId);
     this._rafId = null;
@@ -412,7 +422,10 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
    *  and per-strike king-emphasis targets the rAF loop eases toward, and reads the eased values back
    *  so the drawn beads reflect the in-flight animation. Null when there's nothing honest to draw. */
   project(): { bands: Band[]; glyphs: ProjectedGlyph[]; tuning: BeadRenderTuning } | null {
-    if (!this._visible || !this._data || !this._chart || !this._series) return null;
+    if (!this._visible || !this._data || !this._chart || !this._series) {
+      this._lastGlyphs = [];
+      return null;
+    }
     const {
       callTrails,
       putTrails,
@@ -557,7 +570,10 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
 
     for (const t of callTrails) addTrail(t, callColor, "c", callKingAt, callTierByStrike);
     for (const t of putTrails) addTrail(t, putColor, "p", putKingAt, putTierByStrike);
-    if (bands.length === 0) return null;
+    if (bands.length === 0) {
+      this._lastGlyphs = [];
+      return null;
+    }
 
     const earliestBucket = Number.isFinite(earliest) ? earliest : 0;
     const rawGlyphs = showEventGlyphs
@@ -581,6 +597,7 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
       glyphs.push({ ...g, x, y, color });
     }
 
+    this._lastGlyphs = showEventGlyphs ? glyphs : [];
     return { bands, glyphs, tuning };
   }
 }

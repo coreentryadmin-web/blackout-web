@@ -348,7 +348,7 @@ export const VECTOR_BEAD_DISPLAY: ReadonlyArray<{
     label: "Event glyphs (birth, handover, flip cross, break)",
     toolbarLabel: "Events",
     color: "#d946ef",
-    hint: "Sparse punctuation on the bead rail — birth tick, king handover, flip cross, wall break",
+    hint: "Sparse punctuation on the bead rail — hover a glyph for the full event",
   },
 ] as const;
 
