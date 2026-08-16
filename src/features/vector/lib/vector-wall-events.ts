@@ -30,6 +30,11 @@ export type VectorWallEvent = {
   kind: VectorWallEventKind;
   message: string;
   severity: "info" | "warn";
+  /** Strike row for wall-tied chart glyphs (shift/new/gone/break). */
+  strike?: number;
+  /** Flip level for flip-tied glyphs (cross/shift). */
+  flip?: number;
+  side?: "call" | "put";
 };
 
 const MAX_EVENTS = 12;
@@ -118,7 +123,7 @@ function wallStrengthEvents(
   for (const l of nextWalls?.[side] ?? []) next.set(Math.round(l.strike), l.pct);
   const key = SIDE_KEY[side];
 
-  const cand: Array<{ kind: VectorWallEventKind; message: string; mag: number }> = [];
+  const cand: Array<{ kind: VectorWallEventKind; message: string; mag: number; strike: number }> = [];
   const pct = (n: number) => `${n.toFixed(0)}%`;
 
   for (const [strike, npct] of next) {
@@ -129,6 +134,7 @@ function wallStrengthEvents(
           kind: `${key}_new` as VectorWallEventKind,
           message: `New ${label.toLowerCase()} forming at ${fmtStrike(strike)} (${pct(npct)} gamma)`,
           mag: npct,
+          strike,
         });
       }
       continue;
@@ -139,12 +145,14 @@ function wallStrengthEvents(
         kind: `${key}_building` as VectorWallEventKind,
         message: `${label} ${fmtStrike(strike)} building — ${pct(ppct)} → ${pct(npct)} gamma`,
         mag: delta,
+        strike,
       });
     } else if (delta <= -BUILD_DELTA_PCT) {
       cand.push({
         kind: `${key}_fading` as VectorWallEventKind,
         message: `${label} ${fmtStrike(strike)} fading — ${pct(ppct)} → ${pct(npct)} gamma`,
         mag: -delta,
+        strike,
       });
     }
   }
@@ -155,6 +163,7 @@ function wallStrengthEvents(
         kind: `${key}_gone` as VectorWallEventKind,
         message: `${label} ${fmtStrike(strike)} dissolved — was ${pct(ppct)} gamma`,
         mag: ppct,
+        strike,
       });
     }
   }
@@ -167,6 +176,8 @@ function wallStrengthEvents(
     kind: c.kind,
     severity: "info" as const,
     message: c.message,
+    strike: c.strike,
+    side: side === "callWalls" ? ("call" as const) : ("put" as const),
   }));
 }
 
@@ -204,6 +215,8 @@ export function diffVectorWallSample(
       kind: "call_wall_shift",
       severity: "info",
       message: `${labels.call} shifted ${fmtStrike(prevCall)} → ${fmtStrike(nextCall)}`,
+      strike: nextCall,
+      side: "call",
     });
   }
 
@@ -222,6 +235,8 @@ export function diffVectorWallSample(
       kind: "put_wall_shift",
       severity: "info",
       message: `${labels.put} shifted ${fmtStrike(prevPut)} → ${fmtStrike(nextPut)}`,
+      strike: nextPut,
+      side: "put",
     });
   }
 
@@ -243,6 +258,7 @@ export function diffVectorWallSample(
       kind: "flip_shift",
       severity: "info",
       message: `${labels.flip} moved ${fmtStrike(prevFlip)} → ${fmtStrike(nextFlip)}`,
+      flip: nextFlip,
     });
   }
 
@@ -295,6 +311,7 @@ export function detectSpotStructureEvents(
         message: isAbove
           ? `${ticker ?? "Spot"} crossed above ${labels.flip.toLowerCase()} ${fmtStrike(flip)} — supportive dealer hedging`
           : `${ticker ?? "Spot"} crossed below ${labels.flip.toLowerCase()} ${fmtStrike(flip)} — momentum / vol expansion risk`,
+        flip,
       });
     }
   }
@@ -309,6 +326,8 @@ export function detectSpotStructureEvents(
       kind: "spot_broke_call",
       severity: "warn",
       message: `${ticker ?? "Spot"} broke above ${labels.call.toLowerCase()} ${fmtStrike(callWall)} — resistance gave way`,
+      strike: callWall,
+      side: "call",
     });
   }
 
@@ -322,6 +341,8 @@ export function detectSpotStructureEvents(
       kind: "spot_broke_put",
       severity: "warn",
       message: `${ticker ?? "Spot"} broke below ${labels.put.toLowerCase()} ${fmtStrike(putWall)} — support gave way`,
+      strike: putWall,
+      side: "put",
     });
   }
 

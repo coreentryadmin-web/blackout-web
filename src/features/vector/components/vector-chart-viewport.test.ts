@@ -131,6 +131,15 @@ test("VectorChart: member drawing tools wired", () => {
   assert.match(read("src/features/vector/lib/vector-drawings-store.ts"), /vector:drawings:v1:/);
 });
 
+test("Vector desk: toolbar can portal full-width above the page grid", () => {
+  const chart = read("src/features/vector/components/VectorChart.tsx");
+  const shell = read("src/features/vector/components/VectorPageShell.tsx");
+  assert.match(chart, /toolbarPortalEl/);
+  assert.match(chart, /createPortal\(toolbar, toolbarPortalEl\)/);
+  assert.match(shell, /vector-page-toolbar/);
+  assert.match(shell, /toolbarPortalEl=\{toolbarPortalEl\}/);
+});
+
 test("VectorChart: crosshair hover throttled to animation frame", () => {
   const src = read("src/features/vector/components/VectorChart.tsx");
   assert.match(src, /scheduleCrosshairUpdate/);

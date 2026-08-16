@@ -38,6 +38,8 @@ test("computeGexWalls sizes each wall by its share of total |gamma| across the l
   const { callWalls, putWalls } = computeGexWalls(ladder);
   assert.ok(Math.abs(callWalls[0]!.pct - (200 / 3)) < 1e-9);
   assert.ok(Math.abs(putWalls[0]!.pct - (100 / 3)) < 1e-9);
+  assert.equal(callWalls[0]!.notional, 2e9);
+  assert.equal(putWalls[0]!.notional, 1e9);
 });
 
 test("computeGexWalls caps each side at maxPerSide, dropping the weakest strikes", () => {

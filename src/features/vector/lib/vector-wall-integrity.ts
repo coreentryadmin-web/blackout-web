@@ -1,5 +1,5 @@
 import type { GexWalls, GexWallLevel } from "@/lib/providers/gex-wall-levels";
-import type { WallHistorySample } from "./vector-wall-history";
+import type { VectorWallLens, WallHistorySample } from "./vector-wall-history";
 
 /**
  * Wall integrity / confidence — "is this wall real, or a thin level about to fold?"
@@ -185,6 +185,22 @@ export function integrityByStrike(
     call: scoreSide(walls?.callWalls, "call"),
     put: scoreSide(walls?.putWalls, "put"),
   };
+}
+
+/** Per-strike firm/moderate/thin tiers for bead-ring rendering (GEX lens only). */
+export function beadIntegrityTierMaps(
+  history: readonly WallHistorySample[],
+  lens: VectorWallLens = "gex"
+): { call: Map<number, WallIntegrityTier>; put: Map<number, WallIntegrityTier> } | null {
+  if (lens !== "gex") return null;
+  const latestWalls = history[history.length - 1]?.walls;
+  if (!latestWalls) return null;
+  const scored = integrityByStrike(latestWalls, history);
+  const call = new Map<number, WallIntegrityTier>();
+  const put = new Map<number, WallIntegrityTier>();
+  for (const [strike, wi] of scored.call) call.set(strike, wi.tier);
+  for (const [strike, wi] of scored.put) put.set(strike, wi.tier);
+  return { call, put };
 }
 
 function round2(n: number): number {

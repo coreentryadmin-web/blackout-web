@@ -291,9 +291,19 @@ export function trailsByStrike(
       // Carry the sample's modeled flag onto the emitted point so the marker layer can
       // render reconstructed beads dim/ghosted vs solid observed ones (same bucket time).
       if (last?.time === sample.time) {
-        pts[pts.length - 1] = { time: sample.time, pct: level.pct, modeled: sample.modeled };
+        pts[pts.length - 1] = {
+          time: sample.time,
+          pct: level.pct,
+          modeled: sample.modeled,
+          ...(level.notional != null && level.notional > 0 ? { notional: level.notional } : {}),
+        };
       } else {
-        pts.push({ time: sample.time, pct: level.pct, modeled: sample.modeled });
+        pts.push({
+          time: sample.time,
+          pct: level.pct,
+          modeled: sample.modeled,
+          ...(level.notional != null && level.notional > 0 ? { notional: level.notional } : {}),
+        });
       }
     }
   }

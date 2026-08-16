@@ -18,6 +18,7 @@ test("VectorToolbar exposes iOS compact scroll rows + desktop fallback row", () 
   assert.match(src, /vector-toolbar-row-primary/);
   assert.match(src, /vector-toolbar-row-secondary/);
   assert.match(src, /ios-compact-scroll-row/);
+  assert.match(src, /VectorBeadRailToggle/);
 });
 
 test("VectorToolbar compare pane uses slim single-row toolbar", () => {

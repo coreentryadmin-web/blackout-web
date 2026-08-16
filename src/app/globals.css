@@ -7902,6 +7902,24 @@ html.product-shell .nav-mega {
     box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.3);
   }
 
+  .vector-desk-seg-btn.is-active.is-bead-rings {
+    background: rgba(234, 179, 8, 0.22);
+    color: rgb(254, 243, 199);
+    box-shadow: inset 0 0 0 1px rgba(234, 179, 8, 0.42);
+  }
+
+  .vector-desk-seg-btn.is-active.is-bead-dollar {
+    background: rgba(124, 58, 237, 0.22);
+    color: rgb(233, 213, 255);
+    box-shadow: inset 0 0 0 1px rgba(124, 58, 237, 0.42);
+  }
+
+  .vector-desk-seg-btn.is-active.is-bead-events {
+    background: rgba(217, 70, 239, 0.22);
+    color: rgb(250, 232, 255);
+    box-shadow: inset 0 0 0 1px rgba(217, 70, 239, 0.42);
+  }
+
   .vector-desk-seg-btn.is-disabled,
   .vector-desk-seg-btn:disabled {
     opacity: 0.35;
@@ -10601,6 +10619,28 @@ html.product-shell .nav-mega {
 
   .vector-page-shell .vector-toolbar {
     @apply mb-1;
+  }
+
+  /* Full-width desk toolbar — spans the whole page grid, not just the chart column. */
+  .vector-page-toolbar {
+    width: 100%;
+    min-width: 0;
+    margin-bottom: 0.5rem;
+  }
+  .vector-page-toolbar:empty {
+    display: none;
+  }
+  .vector-page-toolbar .vector-toolbar {
+    margin-bottom: 0;
+  }
+  @media (min-width: 768px) {
+    .vector-page-toolbar .vector-toolbar-desk {
+      flex-wrap: wrap;
+      row-gap: 0.375rem;
+    }
+  }
+  .spx-desk-vector-toolbar {
+    margin-bottom: 0.625rem;
   }
 
   /* ── Daily/Weekly historical price view (P2 #5, separate from the intraday VectorChart) ── */

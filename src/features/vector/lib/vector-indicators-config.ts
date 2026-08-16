@@ -311,6 +311,47 @@ export function isVectorVolumeProfileId(v: unknown): v is VectorVolumeProfileId 
   return v === "volume-profile";
 }
 
+/** Bead-rail display toggles — canvas primitive channels (not separate chart layers). */
+export type VectorBeadDisplayId =
+  | "bead-integrity-rings"
+  | "bead-dollar-sizing"
+  | "bead-event-glyphs";
+
+export function isVectorBeadDisplayId(v: unknown): v is VectorBeadDisplayId {
+  return v === "bead-integrity-rings" || v === "bead-dollar-sizing" || v === "bead-event-glyphs";
+}
+
+export const VECTOR_BEAD_DISPLAY: ReadonlyArray<{
+  id: VectorBeadDisplayId;
+  label: string;
+  /** Short label for the desk toolbar on/off chip. */
+  toolbarLabel: string;
+  color: string;
+  hint?: string;
+}> = [
+  {
+    id: "bead-integrity-rings",
+    label: "Integrity rings (firm / moderate / thin)",
+    toolbarLabel: "Rings",
+    color: "#eab308",
+    hint: "Outer halo shows wall confidence — matches the desk terminal score",
+  },
+  {
+    id: "bead-dollar-sizing",
+    label: "Dollar gamma sizing ($200M–$2.5B ladder)",
+    toolbarLabel: "$ Size",
+    color: "#7c3aed",
+    hint: "Bead size from live $|gamma| — off uses frame-relative strength only",
+  },
+  {
+    id: "bead-event-glyphs",
+    label: "Event glyphs (birth, handover, flip cross, break)",
+    toolbarLabel: "Events",
+    color: "#d946ef",
+    hint: "Sparse punctuation on the bead rail — birth tick, king handover, flip cross, wall break",
+  },
+] as const;
+
 /**
  * Every toggleable indicator id — a moving-average FAMILY (not an individual line), a level, a
  * structure toggle, or an oscillator. This is what the enabled Set and the menu deal in; the chart
@@ -327,7 +368,8 @@ export type VectorIndicatorId =
   | VectorExpectedMoveConeId
   | VectorGexHeatmapId
   | VectorGammaRegimeId
-  | VectorVolumeProfileId;
+  | VectorVolumeProfileId
+  | VectorBeadDisplayId;
 
 /** Menu structure — the toggle menu renders straight from this (title + its items). */
 export const VECTOR_INDICATOR_GROUPS: ReadonlyArray<{
@@ -405,11 +447,22 @@ export const VECTOR_INDICATOR_GROUPS: ReadonlyArray<{
       { id: "volume-profile", label: "Volume profile (session, by price)", color: "#94a3b8" },
     ],
   },
+  {
+    title: "Bead rail",
+    items: VECTOR_BEAD_DISPLAY.map((b) => ({
+      id: b.id,
+      label: b.label,
+      color: b.color,
+      hint: b.hint,
+    })),
+  },
 ];
 
-/** Indicators enabled on first paint — dealer gamma positioning only; volume profile is opt-in. */
+/** Indicators enabled on first paint — dealer gamma positioning + bead integrity rings + event glyphs. */
 export const VECTOR_DEFAULT_ENABLED_INDICATORS: readonly VectorIndicatorId[] = [
   "gex-heatmap",
+  "bead-integrity-rings",
+  "bead-event-glyphs",
 ] as const;
 
 export function defaultVectorIndicators(): Set<VectorIndicatorId> {

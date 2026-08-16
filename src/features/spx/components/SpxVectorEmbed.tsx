@@ -29,6 +29,7 @@ type SpxVectorEmbedProps = {
   focusLevel?: { price: number; label: string; tone: string; seq: number } | null;
   playLevels?: import("@/features/vector/lib/vector-play-levels").PlayLevelsInput;
   toolbarReplayLeadSlot?: React.ReactNode;
+  toolbarPortalEl?: HTMLElement | null;
 };
 
 type VectorBarsSeed = {
@@ -57,6 +58,7 @@ export function SpxVectorEmbed({
   focusLevel,
   playLevels,
   toolbarReplayLeadSlot,
+  toolbarPortalEl = null,
 }: SpxVectorEmbedProps) {
   const [seed, setSeed] = useState<VectorBarsSeed | null>(null);
 
@@ -128,6 +130,7 @@ export function SpxVectorEmbed({
       focusLevel={focusLevel}
       playLevels={playLevels}
       toolbarReplayLeadSlot={toolbarReplayLeadSlot}
+      toolbarPortalEl={toolbarPortalEl}
     />
   );
 }

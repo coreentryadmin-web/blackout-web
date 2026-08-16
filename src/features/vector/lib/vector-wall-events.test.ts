@@ -22,6 +22,8 @@ test("diffVectorWallSample: detects call wall migration", () => {
   const events = diffVectorWallSample(prev, next, "gex");
   assert.equal(events.length, 1);
   assert.equal(events[0]!.kind, "call_wall_shift");
+  assert.equal(events[0]!.strike, 6810);
+  assert.equal(events[0]!.side, "call");
   assert.match(events[0]!.message, /6,800/);
   assert.match(events[0]!.message, /6,810/);
 });
@@ -49,6 +51,7 @@ test("detectSpotStructureEvents: flip cross warns on breakdown", () => {
   assert.equal(events.length, 1);
   assert.equal(events[0]!.kind, "spot_crossed_flip");
   assert.equal(events[0]!.severity, "warn");
+  assert.equal(events[0]!.flip, 6750);
 });
 
 test("detectSpotStructureEvents: call wall break", () => {
