@@ -11,7 +11,7 @@ import { isVectorTickerAllowed, normalizeVectorTicker } from "./vector-ticker";
 import { roundFloats } from "@/lib/round-floats";
 import { bucketWallSampleTime, buildWallHistorySample } from "./vector-wall-sample";
 import { wallTrailSampleSecForTicker } from "./vector-wall-sample-server";
-import { appendSessionWallSample } from "./vector-wall-persist";
+import { writeWallHistorySample, type WallWriteSource } from "./vector-wall-write";
 import { VECTOR_WALL_NODES_PER_SIDE } from "./vector-bar-timeframes";
 import { buildNarrowedHorizonWallSamples } from "./vector-snapshot";
 
@@ -26,6 +26,8 @@ export type VectorUniverseBuildOpts = {
   recordWallHistory?: boolean;
   /** ET session date (YYYY-MM-DD) the recorded samples are filed under. */
   sessionYmd?: string;
+  /** Observability tag for durable wall writes when recordWallHistory is set. */
+  wallWriteSource?: import("./vector-wall-write").WallWriteSource;
 };
 
 export type VectorUniverseRow = {
@@ -77,6 +79,7 @@ async function buildVectorUniverseRow(
     bucketScope?: import("./vector-wall-sample").WallTrailSampleScope;
     /** 0DTE/weekly/monthly rails — expensive (3 extra scoped reads). Off on the 5s universe sweep. */
     recordNarrowedHorizons?: boolean;
+    wallWriteSource?: WallWriteSource;
   } = {}
 ): Promise<{ row: VectorUniverseRow; historyRecorded: boolean } | null> {
   const {
@@ -85,6 +88,7 @@ async function buildVectorUniverseRow(
     nowSec = Math.floor(Date.now() / 1000),
     bucketScope = "universe",
     recordNarrowedHorizons = true,
+    wallWriteSource = bucketScope === "live" ? "bead-recorder-active" : "bead-recorder-universe",
   } = opts;
   const ticker = normalizeVectorTicker(raw);
   const hm = await fetchGexHeatmap(ticker);
@@ -115,8 +119,17 @@ async function buildVectorUniverseRow(
     // cost three extra scoped reads per ticker — fine on the 5-min cron or a live viewer, but they
     // were blowing the 5s universe sweep past its tick budget (measured 56s for 83 tickers on
     // 2026-08-12), which dropped ticks and thinned NVDA/AMD/META rails to 10–30s effective cadence.
-    const writes: Promise<boolean>[] = [];
-    if (sample) writes.push(appendSessionWallSample(sessionYmd, sample, ticker));
+    const writes: Promise<import("./vector-wall-write").WallWriteResult>[] = [];
+    if (sample) {
+      writes.push(
+        writeWallHistorySample({
+          source: wallWriteSource,
+          sessionYmd,
+          ticker,
+          sample,
+        })
+      );
+    }
 
     if (recordNarrowedHorizons && spot && spot > 0) {
       const narrowed = await buildNarrowedHorizonWallSamples(ticker, sampleTime, {
@@ -124,8 +137,17 @@ async function buildVectorUniverseRow(
         flip: hm?.gex?.flip ?? null,
       });
       for (const r of narrowed) {
-        if (r.sample) writes.push(appendSessionWallSample(sessionYmd, r.sample, ticker, r.horizon));
-        else if (r.source === "error") {
+        if (r.sample) {
+          writes.push(
+            writeWallHistorySample({
+              source: wallWriteSource,
+              sessionYmd,
+              ticker,
+              sample: r.sample,
+              horizon: r.horizon,
+            })
+          );
+        } else if (r.source === "error") {
           console.warn(
             `[vector-universe] ${ticker} ${r.horizon} narrowed-wall recording threw: ${r.reason ?? "unknown"}`
           );
@@ -135,7 +157,7 @@ async function buildVectorUniverseRow(
     if (writes.length > 0) {
       const settled = await Promise.allSettled(writes);
       historyRecorded = settled.some(
-        (r) => r.status === "fulfilled" && r.value === true
+        (r) => r.status === "fulfilled" && r.value.written === true
       );
     }
   }
@@ -167,6 +189,7 @@ export async function recordVectorUniverseWallSample(
     sessionYmd: string;
     nowSec?: number;
     bucketScope?: import("./vector-wall-sample").WallTrailSampleScope;
+    wallWriteSource?: WallWriteSource;
   }
 ): Promise<boolean> {
   const bucketScope = opts.bucketScope ?? "universe";
@@ -175,6 +198,7 @@ export async function recordVectorUniverseWallSample(
     sessionYmd: opts.sessionYmd,
     nowSec: opts.nowSec ?? Math.floor(Date.now() / 1000),
     bucketScope,
+    wallWriteSource: opts.wallWriteSource,
     // 5s universe sweep: blended rail only — narrowed horizons stay on the 5-min cron + live viewers.
     recordNarrowedHorizons: bucketScope === "live",
   });
@@ -184,7 +208,7 @@ export async function recordVectorUniverseWallSample(
 export async function buildVectorUniverseSnapshot(
   opts: VectorUniverseBuildOpts = {}
 ): Promise<VectorUniverseSnapshot> {
-  const { recordWallHistory = false, sessionYmd } = opts;
+  const { recordWallHistory = false, sessionYmd, wallWriteSource } = opts;
   // Shared sticky universe with Thermal heatmap-warm: static allowlist ∪ dynamic (≤100 / 14d).
   // Dynamic names are Polygon-cache-first once warm; `registerVectorUniverseView` also appends a
   // single row immediately after a Thermal/Helix/Vector view so the scanner does not wait for the
@@ -200,6 +224,7 @@ export async function buildVectorUniverseSnapshot(
         sessionYmd,
         nowSec,
         recordNarrowedHorizons: true,
+        wallWriteSource,
       })
     )
   );
@@ -271,6 +296,7 @@ export async function warmDynamicTickerSessionWall(rawTicker: string): Promise<v
     const recorded = await recordVectorUniverseWallSample(ticker, {
       sessionYmd,
       bucketScope: "live",
+      wallWriteSource: "dynamic-ticker-warm",
     });
     if (recorded) {
       await sharedCacheSet(dedupeKey, true, 24 * 3600);

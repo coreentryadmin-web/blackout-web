@@ -3,7 +3,7 @@
 import type { VectorBar } from "@/features/vector/components/VectorChart";
 import type { VectorDarkPoolLevel, VectorWalls } from "@/lib/api";
 import type { WallHistorySample } from "@/features/vector/lib/vector-wall-history";
-import { seedWallHistoryForDisplay } from "@/features/vector/lib/vector-wall-history";
+import { seedWallHistoryForDisplay, prepareRailBootstrapHistory } from "@/features/vector/lib/vector-wall-history";
 import { VECTOR_ORACLE_TICKERS } from "@/features/vector/lib/vector-ticker";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { isHeatmapOverlayAllowed } from "@/lib/heatmap-allowlist";
@@ -32,6 +32,11 @@ async function fetchJson<T>(url: string): Promise<T | null> {
     return null;
   }
 }
+
+export type VectorRailBootstrapPayload = {
+  blended: WallHistorySample[];
+  narrowed: WallHistorySample[];
+};
 
 /** Client-side seed for ticker switches — avoids full SSR on every VectorTickerSelect navigation. */
 export async function fetchVectorClientSeed(ticker: string): Promise<VectorClientSeed> {
@@ -68,12 +73,77 @@ export async function fetchVectorClientSeed(ticker: string): Promise<VectorClien
       null,
       null
     ),
-    initialHorizonWallHistory: horizonHistory?.history ?? [],
+    initialHorizonWallHistory:
+      horizon !== "all"
+        ? prepareRailBootstrapHistory(
+            horizonHistory?.history ?? [],
+            barsPayload?.bars?.[0]?.time
+          )
+        : [],
     initialGammaFlip: wallsPayload?.flip ?? null,
     initialVexFlip: null,
     initialDarkPoolLevels: [],
     sessionYmd,
     liveSession: sessionYmd === todayEtYmd(),
+    initialWallTrailSec: isHeatmapOverlayAllowed(ticker) ? 5 : 15,
+  };
+}
+
+type VectorEmbedFastSeed = Pick<
+  VectorClientSeed,
+  | "initialBars"
+  | "initialWalls"
+  | "initialWallHistory"
+  | "initialHorizonWallHistory"
+  | "initialGammaFlip"
+  | "sessionYmd"
+  | "initialWallTrailSec"
+>;
+
+/**
+ * Fast first paint for desk embeds (SPX Slayer): bars + walls + decimated rail bootstrap in
+ * parallel — no Polygon reconstruct. Call `fetchVectorClientSeed` afterward to upgrade history.
+ */
+export async function fetchVectorEmbedFastSeed(ticker: string): Promise<VectorEmbedFastSeed> {
+  const t = encodeURIComponent(ticker);
+  const barsPayload = await fetchJson<{ bars?: VectorBar[]; sessionYmd?: string }>(
+    `/api/market/vector/bars?ticker=${t}`
+  );
+  const bars = barsPayload?.bars ?? [];
+  const sessionYmd = barsPayload?.sessionYmd ?? todayEtYmd();
+  const firstBar = bars[0]?.time;
+  const horizon = VECTOR_ORACLE_TICKERS.has(ticker) ? "0dte" : "all";
+
+  const [wallsPayload, bootstrap] = await Promise.all([
+    fetchJson<{ walls?: VectorWalls; flip?: number | null }>(
+      `/api/market/vector/walls?ticker=${t}&dte=all`
+    ),
+    VECTOR_ORACLE_TICKERS.has(ticker)
+      ? fetchJson<VectorRailBootstrapPayload>(
+          `/api/market/vector/rail-bootstrap?ticker=${t}&session=${encodeURIComponent(sessionYmd)}&dte=${horizon}${
+            firstBar != null ? `&firstBar=${firstBar}` : ""
+          }`
+        )
+      : Promise.resolve(null),
+  ]);
+
+  const blended = bootstrap?.blended ?? [];
+  const narrowed = bootstrap?.narrowed ?? [];
+
+  return {
+    initialBars: bars,
+    initialWalls: wallsPayload?.walls ?? null,
+    initialWallHistory: seedWallHistoryForDisplay(
+      blended,
+      bars.map((b) => b.time),
+      wallsPayload?.walls ?? null,
+      wallsPayload?.flip ?? null,
+      null,
+      null
+    ),
+    initialHorizonWallHistory: narrowed,
+    initialGammaFlip: wallsPayload?.flip ?? null,
+    sessionYmd,
     initialWallTrailSec: isHeatmapOverlayAllowed(ticker) ? 5 : 15,
   };
 }

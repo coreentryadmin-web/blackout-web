@@ -81,12 +81,16 @@ test("targetHalfPx: degenerate magnitude still renders a bead, never a collapse"
   }
 });
 
-test("targetHalfPx: a real notional overrides the pct proxy", () => {
-  // Same pct, wildly different $ — the absolute ladder must win, else threading a real notional
-  // through later would silently change nothing.
-  const small = targetHalfPx(10, 1e3, 100);
+test("targetHalfPx: a real notional uses the absolute $ ladder", () => {
+  const small = targetHalfPx(10, 1e8, 100);
   const large = targetHalfPx(10, 1e12, 100);
   assert.ok(large > small, `expected the larger notional to draw larger (${large} vs ${small})`);
+});
+
+test("targetHalfPx: dollarMode false ignores notional (frame-relative only)", () => {
+  const withNotional = targetHalfPx(50, 2e9, 100, BEAD_TUNING_DEFAULT, { dollarMode: false });
+  const without = targetHalfPx(50, undefined, 100, BEAD_TUNING_DEFAULT, { dollarMode: false });
+  assert.equal(withNotional, without);
 });
 
 test("compare bead profile shrinks radius vs default but keeps weak beads legible", () => {

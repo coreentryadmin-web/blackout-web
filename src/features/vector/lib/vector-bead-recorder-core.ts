@@ -71,7 +71,12 @@ export async function recordSharedUniverseWallSamples(opts?: {
   // slowest ticker. See mapInPool + vectorBeadRecordConcurrency for the measured 10s-instead-of-5s
   // regression this fixes.
   const results = await mapInPool(tickers, concurrency, (ticker) =>
-    recordVectorUniverseWallSample(ticker, { sessionYmd, nowSec, bucketScope: "universe" })
+    recordVectorUniverseWallSample(ticker, {
+      sessionYmd,
+      nowSec,
+      bucketScope: "universe",
+      wallWriteSource: "bead-recorder-universe",
+    })
   );
 
   let recorded = 0;
@@ -96,7 +101,12 @@ export async function recordSharedUniverseWallSamples(opts?: {
   if (failedTickers.length > 0) {
     const retryTargets = [...failedTickers];
     const retryResults = await mapInPool(retryTargets, concurrency, (ticker) =>
-      recordVectorUniverseWallSample(ticker, { sessionYmd, nowSec, bucketScope: "universe" })
+      recordVectorUniverseWallSample(ticker, {
+        sessionYmd,
+        nowSec,
+        bucketScope: "universe",
+        wallWriteSource: "bead-recorder-universe",
+      })
     );
     const recovered: string[] = [];
     for (let i = 0; i < retryResults.length; i++) {
@@ -151,7 +161,12 @@ export async function recordActiveNonUniverseWallSamples(opts?: {
   const nowSec = Math.floor(Date.now() / 1000);
   const results = await Promise.allSettled(
     tickers.map((ticker) =>
-      recordVectorUniverseWallSample(ticker, { sessionYmd, nowSec, bucketScope: "live" })
+      recordVectorUniverseWallSample(ticker, {
+        sessionYmd,
+        nowSec,
+        bucketScope: "live",
+        wallWriteSource: "bead-recorder-active",
+      })
     )
   );
 

@@ -1,4 +1,4 @@
-import { relStrengthT, beadRadiusForNotional, pctToNotionalProxy } from "./vector-wall-visual";
+import { relStrengthT, beadRadiusForNotional } from "./vector-wall-visual";
 
 /**
  * Pure colour / size / identity helpers for the Vector bead rail.
@@ -117,28 +117,36 @@ export function withA(color: string, a: number): string {
   return color;
 }
 
+export type TargetHalfPxOpts = {
+  /** When false, force frame-relative sizing even if `notional` is present ($ Size off). */
+  dollarMode?: boolean;
+};
+
 /**
- * TARGET bead half-height (radius) in px — ABSOLUTE-magnitude first, frame-relative fallback.
+ * TARGET bead half-height (radius) in px.
  *
- * Scale-independent (a pure function of the point's magnitude) so the rAF easing loop can move it
- * without touching the chart's time/price scales.
- *
- * Absolute path: a resolvable $ notional — a real `StrikeTrailPoint.notional` if one is ever
- * threaded through, else the documented proxy from pct — sizes the bead on the perceptual $ ladder,
- * so a genuinely bigger wall reads bigger regardless of what else is in frame. Fallback: with no
- * usable magnitude at all (pct <= 0 / non-finite) drop to the frame-relative half-height, so
- * off-hours or degraded data still renders a rail instead of collapsing to the floor.
+ * Honest sizing: real recorded `notional` → perceptual $ ladder; otherwise frame-relative strength.
+ * The pct×nominal proxy is never used on the rail — it mis-calibrated absolute size.
  */
 export function targetHalfPx(
   pct: number,
   notional: number | undefined,
   maxPct: number,
-  tuning: BeadRenderTuning = BEAD_TUNING_DEFAULT
+  tuning: BeadRenderTuning = BEAD_TUNING_DEFAULT,
+  opts?: TargetHalfPxOpts
 ): number {
-  const usd =
-    Number.isFinite(notional) && (notional as number) > 0 ? (notional as number) : pctToNotionalProxy(pct);
-  if (usd > 0) return beadRadiusForNotional(usd, { floorPx: tuning.halfMin, ceilPx: tuning.halfMax });
-  return tuning.halfMin + relStrengthT(pct, maxPct) * (tuning.halfMax - tuning.halfMin);
+  const frameRelative = () =>
+    tuning.halfMin + relStrengthT(pct, maxPct) * (tuning.halfMax - tuning.halfMin);
+
+  if (opts?.dollarMode === false) return frameRelative();
+
+  if (Number.isFinite(notional) && (notional as number) > 0) {
+    return beadRadiusForNotional(notional as number, {
+      floorPx: tuning.halfMin,
+      ceilPx: tuning.halfMax,
+    });
+  }
+  return frameRelative();
 }
 
 /** Bead fill opacity from its strength relative to the strongest wall in frame. */

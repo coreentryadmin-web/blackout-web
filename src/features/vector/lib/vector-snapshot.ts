@@ -14,7 +14,8 @@ import {
 } from "@/lib/providers/gex-wall-levels";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { isEtCashRth } from "@/lib/et-market-hours";
-import { persistWallSampleDebounced, loadSessionWallHistory, appendSessionWallSample } from "./vector-wall-persist";
+import { loadSessionWallHistory } from "./vector-wall-persist";
+import { persistWallSampleDebounced, writeWallHistorySample } from "./vector-wall-write";
 import { bucketWallSampleTime, buildWallHistorySample } from "./vector-wall-sample";
 import { resolveWallTrailSampleSec } from "./vector-wall-sample-server";
 import { refreshSharedUniverseCacheIfStale } from "./vector-shared-universe-cache";
@@ -573,7 +574,13 @@ export async function recordVectorWallSamplesFromWarm(ticker: string): Promise<b
   if (!sample) return false;
 
   s.wallHistory = recordWallSample(s.wallHistory, sample);
-  await appendSessionWallSample(sessionYmd, sample, t);
+  await writeWallHistorySample({
+    source: "walls-warm",
+    sessionYmd,
+    ticker: t,
+    sample,
+    rthRequired: false,
+  });
 
   if (gexRecordable) {
     const rows = await buildNarrowedHorizonWallSamples(t, sampleTime, {
@@ -581,7 +588,16 @@ export async function recordVectorWallSamplesFromWarm(ticker: string): Promise<b
       flip: gammaFlip,
     });
     for (const r of rows) {
-      if (r.sample) await appendSessionWallSample(sessionYmd, r.sample, t, r.horizon);
+      if (r.sample) {
+        await writeWallHistorySample({
+          source: "walls-warm",
+          sessionYmd,
+          ticker: t,
+          sample: r.sample,
+          horizon: r.horizon,
+          rthRequired: false,
+        });
+      }
     }
     s.lastNarrowedWallBucket = sampleTime;
   }

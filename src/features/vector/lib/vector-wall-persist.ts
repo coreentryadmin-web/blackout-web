@@ -263,38 +263,6 @@ export async function appendSessionWallSample(
 }
 
 /**
- * Debounced Redis persist — one write per 15s bucket per TICKER per replica.
- * The debounce state was previously module-global: with two tickers streaming
- * concurrently they shared one slot, so within each window only the first
- * ticker's write went through and the others' buckets were permanently missing
- * from persisted history (K tickers → each persists roughly every 2·K seconds).
- */
-const lastPersistByTicker = new Map<string, { bucket: number; at: number }>();
-
-export function persistWallSampleDebounced(
-  sessionYmd: string,
-  sample: WallHistorySample,
-  ticker = "SPX",
-  horizon: VectorDteHorizon = "all"
-): void {
-  if (!sessionYmd) return;
-  const now = Date.now();
-  const bucket = sample.time;
-  // Debounce per (ticker, horizon) — each horizon's rail persists independently, so a weekly
-  // sample must not be suppressed by a same-bucket "all" write for the same ticker.
-  const key = wallRailStorageId(ticker, horizon);
-  const last = lastPersistByTicker.get(key);
-  if (last && last.bucket === bucket && now - last.at < 2_000) return;
-  lastPersistByTicker.set(key, { bucket, at: now });
-  void appendSessionWallSample(sessionYmd, sample, ticker, horizon);
-}
-
-/** Test-only reset. */
-export function _resetWallPersistDebounceForTest(): void {
-  lastPersistByTicker.clear();
-}
-
-/**
  * Load only the newest `limit` samples of a session's rail.
  *
  * FOR CALLERS THAT WANT A SESSION'S LAST READING, NOT ITS SESSION. `daily-regime` keeps one sample

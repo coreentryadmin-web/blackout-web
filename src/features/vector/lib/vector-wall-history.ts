@@ -42,13 +42,9 @@ export type StrikeTrailPoint = {
   pct: number;
   modeled?: boolean;
   /**
-   * ABSOLUTE dealer-gamma exposure at this strike, in $ (dollar notional). Optional/absent today:
-   * the recorded wall ladder (GexWallLevel) only carries `pct` (share of total |gamma|), and no real
-   * gamma-$ total is threaded through the recorder/persist layer yet — so the bead-size renderer
-   * falls back to a documented proxy (share × a nominal book, see pctToNotionalProxy). This field is
-   * the seam: once a real per-ticker |gamma| $ total is available on the trail, populate it here as
-   * (pct/100) × total and the ABSOLUTE bead ladder (beadRadiusForNotional) becomes literal $, no
-   * renderer change. */
+   * Recorded $|gamma| at this strike (`GexWallLevel.notional` from `computeGexWalls`). When present,
+   * the bead rail sizes on the honest absolute $ ladder; when absent, frame-relative strength.
+   */
   notional?: number;
 };
 
@@ -748,6 +744,14 @@ export function trimHistoryToSession(
   const firstIdx = history.findIndex((s) => s.time >= firstBarTime);
   if (firstIdx <= 0) return history;
   return history.slice(firstIdx);
+}
+
+/** Trim + decimate a persisted rail for fast embed/bootstrap transport (same rules as SSR seed). */
+export function prepareRailBootstrapHistory(
+  history: WallHistorySample[],
+  firstBarTime?: number
+): WallHistorySample[] {
+  return decimateSeedHistory(trimHistoryToSession(history, firstBarTime));
 }
 
 /**

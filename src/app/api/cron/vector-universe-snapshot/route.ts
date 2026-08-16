@@ -19,6 +19,7 @@ async function runVectorUniverseSnapshot(started: number): Promise<void> {
     const snap = await refreshVectorUniverseSnapshot({
       recordWallHistory: true,
       sessionYmd,
+      wallWriteSource: "cron-universe-snapshot",
     });
     // Read-back verification of the flagship rail. The recorder persists to Redis as
     // a side effect, but a green {ok, rows} said nothing about whether the wall-history

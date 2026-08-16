@@ -24,9 +24,10 @@ import {
   relStrengthT,
   growthModulation,
   magnitudeGlowBoost,
+  // haloRingForTier stays (integrity halos are still drawn here); beadRadiusForNotional and
+  // pctToNotionalProxy are gone — bead radius now comes from targetHalfPx() off recorded $|gamma|,
+  // so the pct×$8B proxy has no caller left on this path.
   haloRingForTier,
-  beadRadiusForNotional,
-  pctToNotionalProxy,
 } from "./vector-wall-visual";
 import type { WallIntegrityTier } from "./vector-wall-integrity";
 import type { StrikeTrail } from "./vector-wall-history";
