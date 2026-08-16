@@ -472,6 +472,31 @@ export type BucketWallHistoryOpts = {
 };
 
 /**
+ * Snap wall-history sample times onto the chart's visible bar grid so lightweight-charts
+ * `timeToCoordinate` resolves (exact bar time required — see vector-bead-bucket-grid.test.ts).
+ * Each sample maps to the latest bar time ≤ its bucket; duplicates coalesce last-wins.
+ */
+export function alignWallHistoryToBarTimes(
+  history: WallHistorySample[],
+  barTimes: readonly number[]
+): WallHistorySample[] {
+  if (!history.length || !barTimes.length) return history;
+  const sorted = [...barTimes].sort((a, b) => a - b);
+  const map = new Map<number, WallHistorySample>();
+  for (const sample of history) {
+    let snap = sorted[0]!;
+    for (const t of sorted) {
+      if (t <= sample.time) snap = t;
+      else break;
+    }
+    map.set(snap, { ...sample, time: snap });
+  }
+  return [...map.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([, s]) => s);
+}
+
+/**
  * Resample wall-history for chart beads. Live mode keeps the trail sample cadence (5s);
  * replay / higher-TF views collapse to candle buckets.
  */
