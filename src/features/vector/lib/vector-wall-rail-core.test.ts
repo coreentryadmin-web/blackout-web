@@ -121,8 +121,11 @@ test("fillAlpha: spans [MIN, MAX] and never leaves the band", () => {
 
 test("default bead tuning caps fill alpha so king beads do not paint solid over candles", () => {
   const tuning = beadRenderTuning("default");
-  assert.ok((tuning.beadAlphaCap ?? 1) <= 0.65, "default profile must cap bead opacity");
-  assert.ok(tuning.kingBoost <= 0.14, "king radius boost stays subtle");
+  assert.ok((tuning.beadAlphaCap ?? 1) <= 0.75, "default profile must cap bead opacity");
+  assert.ok(tuning.kingBoost <= 0.2, "king radius boost stays moderate");
+  assert.ok((tuning.strokeAlphaBoost ?? 0) > 0, "default desk beads get crisp outlines");
+  assert.ok(fillAlpha(80, 100, tuning) >= 0.68, "strong wall reads boldly");
+  assert.ok(fillAlpha(3, 100, tuning) >= 0.48, "weak wall stays legible");
 });
 
 // ── keys ─────────────────────────────────────────────────────────────────────

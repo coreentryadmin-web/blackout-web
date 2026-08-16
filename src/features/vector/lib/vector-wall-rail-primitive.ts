@@ -177,7 +177,7 @@ class WallRailRenderer implements IPrimitivePaneRenderer {
             ctx.arc(p.x, cy, ringR, 0, Math.PI * 2);
             ctx.fill();
           }
-          const fillA = emph > 0.05 ? p.a * (1 - emph * 0.18) : p.a;
+          const fillA = emph > 0.05 ? p.a * (1 - emph * 0.1) : p.a;
           ctx.fillStyle = withA(b.color, fillA);
           ctx.beginPath();
           ctx.arc(p.x, cy, r, 0, Math.PI * 2);
@@ -189,10 +189,10 @@ class WallRailRenderer implements IPrimitivePaneRenderer {
             ctx.fill();
           }
           if (r >= 2.2) {
-            ctx.lineWidth = emph > 0.5 ? 1.25 : 1;
+            ctx.lineWidth = emph > 0.5 ? 1.35 : 1.05;
             ctx.strokeStyle = withA(
               b.color,
-              Math.min(1, fillA + 0.12 + emph * 0.35 + (this._tuning.strokeAlphaBoost ?? 0))
+              Math.min(1, fillA + 0.14 + emph * 0.42 + (this._tuning.strokeAlphaBoost ?? 0))
             );
             ctx.stroke();
           } else if ((this._tuning.strokeAlphaBoost ?? 0) > 0 && r >= minR) {
