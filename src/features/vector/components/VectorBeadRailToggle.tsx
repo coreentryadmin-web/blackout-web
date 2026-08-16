@@ -41,7 +41,6 @@ export function VectorBeadRailToggle({
             className={clsx(
               "vector-desk-seg-btn",
               on && bead.id === "bead-integrity-rings" && "is-active is-bead-rings",
-              on && bead.id === "bead-dollar-sizing" && "is-active is-bead-dollar",
               on && bead.id === "bead-event-glyphs" && "is-active is-bead-events",
               disabled && "is-disabled"
             )}

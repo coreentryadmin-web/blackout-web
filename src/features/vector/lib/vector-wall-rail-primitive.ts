@@ -90,7 +90,6 @@ export type WallRailData = {
   /** When false, integrity rings are not drawn (core + king only). */
   showIntegrityRings?: boolean;
   /** When true, bead size uses recorded $|gamma| notional; when false, frame-relative sizing. */
-  useDollarSizing?: boolean;
   /** Sparse punctuation glyphs (birth, handover, flip cross, …) — drawn above beads. */
   showEventGlyphs?: boolean;
   wallEvents?: readonly VectorWallEvent[];
@@ -439,7 +438,6 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
       callTierByStrike,
       putTierByStrike,
       showIntegrityRings = false,
-      useDollarSizing = false,
       showEventGlyphs = false,
       wallEvents = [],
       eventLens = "gex",
@@ -537,8 +535,10 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
         const glow = magnitudeGlowBoost(p.pct); // absolute-magnitude brightness (frame-independent)
         // TARGET half = ABSOLUTE $-ladder magnitude (or relative fallback), then the growth/fade
         // velocity multiplier so a wall being STACKED this bucket still flares fatter.
-        const notional = useDollarSizing ? p.notional : undefined;
-        const target = targetHalfPx(p.pct, notional, maxPct, tuning) * mod.sizeMul;
+        // Sizing is ALWAYS the $ ladder: the recorded notional when there is one, else the pct
+        // proxy (see targetHalfPx). There is no longer a mode switch — the "$ Size" chip was
+        // removed because with the proxy restored both settings render the same ladder.
+        const target = targetHalfPx(p.pct, p.notional, maxPct, tuning) * mod.sizeMul;
         const key = beadKey(side, trail.strike, p.time);
         this._targetHalf.set(key, target);
         // Displayed half lags the target (eased by the rAF loop). Reduce-motion / first sight → snap

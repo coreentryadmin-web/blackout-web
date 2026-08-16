@@ -314,11 +314,10 @@ export function isVectorVolumeProfileId(v: unknown): v is VectorVolumeProfileId 
 /** Bead-rail display toggles — canvas primitive channels (not separate chart layers). */
 export type VectorBeadDisplayId =
   | "bead-integrity-rings"
-  | "bead-dollar-sizing"
   | "bead-event-glyphs";
 
 export function isVectorBeadDisplayId(v: unknown): v is VectorBeadDisplayId {
-  return v === "bead-integrity-rings" || v === "bead-dollar-sizing" || v === "bead-event-glyphs";
+  return v === "bead-integrity-rings" || v === "bead-event-glyphs";
 }
 
 export const VECTOR_BEAD_DISPLAY: ReadonlyArray<{
@@ -335,13 +334,6 @@ export const VECTOR_BEAD_DISPLAY: ReadonlyArray<{
     toolbarLabel: "Rings",
     color: "#eab308",
     hint: "Outer halo shows wall confidence — matches the desk terminal score",
-  },
-  {
-    id: "bead-dollar-sizing",
-    label: "Dollar gamma sizing ($200M–$2.5B ladder)",
-    toolbarLabel: "$ Size",
-    color: "#7c3aed",
-    hint: "Bead size from live $|gamma| — off uses frame-relative strength only",
   },
   {
     id: "bead-event-glyphs",

@@ -135,7 +135,6 @@ test("VECTOR_INDICATOR_GROUPS: covers every family + level + structure id exactl
     "gamma-regime",
     "volume-profile",
     "bead-integrity-rings",
-    "bead-dollar-sizing",
     "bead-event-glyphs",
   ];
   assert.deepEqual([...grouped].sort(), [...expected].sort());
@@ -162,7 +161,6 @@ test("VECTOR_DEFAULT_ENABLED_INDICATORS: dealer gamma + bead rings + event glyph
   assert.ok(defaultVectorIndicators().has("gex-heatmap"));
   assert.ok(defaultVectorIndicators().has("bead-integrity-rings"));
   assert.ok(defaultVectorIndicators().has("bead-event-glyphs"));
-  assert.ok(!defaultVectorIndicators().has("bead-dollar-sizing"));
   assert.ok(!defaultVectorIndicators().has("volume-profile"));
   assert.equal(defaultVectorIndicators().size, 3);
   // The new regime glow is opt-in — it must NOT be enabled on first paint.

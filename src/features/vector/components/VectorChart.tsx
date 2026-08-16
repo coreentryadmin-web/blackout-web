@@ -1216,7 +1216,6 @@ function feedWallRail(
   history: WallHistorySample[] = [],
   activeLens: VectorWallLens = "gex",
   showIntegrityRings = false,
-  useDollarSizing = false,
   showEventGlyphs = false,
   wallEvents: readonly VectorWallEvent[] = [],
   eventCursorTime?: number
@@ -1237,7 +1236,6 @@ function feedWallRail(
       callTierByStrike: tierMaps?.call,
       putTierByStrike: tierMaps?.put,
       showIntegrityRings,
-      useDollarSizing,
       showEventGlyphs,
       wallEvents,
       eventLens: activeLens,
@@ -2297,7 +2295,6 @@ export function VectorChart({
       history,
       activeLens,
       enabled.has("bead-integrity-rings"),
-      enabled.has("bead-dollar-sizing"),
       enabled.has("bead-event-glyphs"),
       wallEventsRef.current,
       eventCursorTime
@@ -2923,7 +2920,6 @@ export function VectorChart({
         visibleHistory,
         activeLens,
         enabled.has("bead-integrity-rings"),
-        enabled.has("bead-dollar-sizing"),
         enabled.has("bead-event-glyphs"),
         wallEventsRef.current,
         cursorTime
