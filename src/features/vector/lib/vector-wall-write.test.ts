@@ -1,4 +1,4 @@
-import { before, test } from "node:test";
+import { before, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { mock } from "node:test";
 
@@ -8,7 +8,11 @@ let appendCalls = 0;
 let appendReturns = true;
 let rthOpen = true;
 
-mock.module("@/lib/et-market-hours", {
+// Relative, NOT the "@/" alias: mock.module() resolves the specifier against THIS file's directory
+// and does not consult tsconfig paths, so "@/lib/et-market-hours" looked for
+// src/features/vector/lib/@/lib/et-market-hours and died with ERR_MODULE_NOT_FOUND. Same convention
+// the route tests use.
+mock.module("../../../lib/et-market-hours", {
   namedExports: {
     isEtCashRth: () => rthOpen,
   },
@@ -34,7 +38,12 @@ before(async () => {
   _resetWallWriteObservabilityForTest = mod._resetWallWriteObservabilityForTest;
 });
 
-before(() => {
+// beforeEach, NOT before: every test here depends on fresh state — test 2 asserts appendCalls === 0
+// after test 1 already incremented it, and test 3 needs rthOpen restored to true after test 2 set it
+// false. As a one-shot `before` it also raced the async import hook above and called an
+// unassigned binding ("_resetWallWriteObservabilityForTest is not a function"); beforeEach is
+// ordered after all before hooks, so the binding is guaranteed to exist.
+beforeEach(() => {
   appendCalls = 0;
   appendReturns = true;
   rthOpen = true;
