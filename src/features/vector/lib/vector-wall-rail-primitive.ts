@@ -177,22 +177,25 @@ class WallRailRenderer implements IPrimitivePaneRenderer {
             ctx.arc(p.x, cy, ringR, 0, Math.PI * 2);
             ctx.fill();
           }
-          const fillA = emph > 0.05 ? p.a * (1 - emph * 0.1) : p.a;
+          const fillA =
+            emph > 0.05
+              ? Math.min(this._tuning.kingAlphaCap ?? 0.72, p.a * (1 - emph * 0.12))
+              : p.a;
           ctx.fillStyle = withA(b.color, fillA);
           ctx.beginPath();
           ctx.arc(p.x, cy, r, 0, Math.PI * 2);
           ctx.fill();
           if (emph > 0.05 && haloMul > 0) {
-            ctx.fillStyle = withA(b.color, Math.min(0.28, p.a * 0.22) * emph * haloMul);
+            ctx.fillStyle = withA(b.color, Math.min(0.22, p.a * 0.16) * emph * haloMul);
             ctx.beginPath();
             ctx.arc(p.x, cy, r + (2 + emph * 2) * haloMul, 0, Math.PI * 2);
             ctx.fill();
           }
           if (r >= 2.2) {
-            ctx.lineWidth = emph > 0.5 ? 1.35 : 1.05;
+            ctx.lineWidth = emph > 0.5 ? 1.25 : 1;
             ctx.strokeStyle = withA(
               b.color,
-              Math.min(1, fillA + 0.14 + emph * 0.42 + (this._tuning.strokeAlphaBoost ?? 0))
+              Math.min(1, fillA + 0.04 + emph * 0.3 + (this._tuning.strokeAlphaBoost ?? 0))
             );
             ctx.stroke();
           } else if ((this._tuning.strokeAlphaBoost ?? 0) > 0 && r >= minR) {
@@ -553,10 +556,13 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
           }
         }
         const modeledScale = p.modeled === true ? (tuning.modeledAlphaScale ?? 0.26) : 1;
-        const glowMul = 0.62 + 0.12 * Math.min(1.2, glow);
-        let a = Math.min(
-          tuning.beadAlphaCap ?? 1,
-          fillAlpha(p.pct, maxPct, tuning) * mod.alphaMul * glowMul * tuning.drawAlphaMul * modeledScale
+        const a = Math.min(
+          1,
+          fillAlpha(p.pct, maxPct, tuning) *
+            mod.alphaMul *
+            (0.75 + 0.25 * Math.min(1.6, glow)) *
+            tuning.drawAlphaMul *
+            modeledScale
         );
         // Frozen truth for history; eased value only on the live edge.
         const wasKing = kingAt.get(p.time) === trail.strike;

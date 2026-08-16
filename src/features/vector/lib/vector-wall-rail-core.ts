@@ -27,11 +27,9 @@ import { relStrengthT, beadRadiusForNotional } from "./vector-wall-visual";
 export const HALF_PX_MIN = 2.2;
 export const HALF_PX_MAX = 7.5;
 
-/** Bead fill opacity bounds — retuned 2026-08-16 (member: king beads buried candles) then lifted
- *  2026-08-16b (member: preferred earlier rail where size/strength read clearly). Opacity stays
- *  below the pre-$-sizing 0.6–0.98 band; dominance reads via radius + rim/halo, not a solid disc. */
-export const FILL_ALPHA_MIN = 0.48;
-export const FILL_ALPHA_MAX = 0.76;
+/** Bead fill opacity bounds — full strength for regular beads; king glow is tamed in the draw pass only. */
+export const FILL_ALPHA_MIN = 0.6;
+export const FILL_ALPHA_MAX = 0.98;
 
 /** Render profile — Compare panes are ~¼ height; default bead sizing paints over candles. */
 export type WallBeadRenderProfile = "default" | "compare";
@@ -45,8 +43,8 @@ export type BeadRenderTuning = {
   kingBoost: number;
   /** Extra draw-time alpha scale (on top of fillAlpha). */
   drawAlphaMul: number;
-  /** Hard cap on per-bead fill alpha after glow/growth — keeps candles visible under kings. */
-  beadAlphaCap?: number;
+  /** Hard cap on KING bead fill only (draw pass) — regular beads keep full strength spread. */
+  kingAlphaCap?: number;
   minRadiusPx: number;
   /** King halo radius/opacity scale. */
   kingHaloMul: number;
@@ -63,15 +61,12 @@ export const BEAD_TUNING_DEFAULT: BeadRenderTuning = {
   halfMax: HALF_PX_MAX,
   fillMin: FILL_ALPHA_MIN,
   fillMax: FILL_ALPHA_MAX,
-  kingBoost: 0.18,
-  drawAlphaMul: 1.04,
-  beadAlphaCap: 0.72,
+  kingBoost: 0.22,
+  drawAlphaMul: 1,
+  kingAlphaCap: 0.72,
   minRadiusPx: 1.6,
-  kingHaloMul: 0.58,
-  /** Gentler curve — weak walls stay legible; kings still top out at fillMax. */
-  contrastExp: 1.35,
-  /** Crisp outline on every bead so size/strength read on #040407 (compare panes already had this). */
-  strokeAlphaBoost: 0.22,
+  /** King-only — regular beads stay bright; this trims the halo that buried candles. */
+  kingHaloMul: 0.38,
 };
 
 /** ~55% bead radius — keeps level rails readable without burying candles. Contrast retuned
