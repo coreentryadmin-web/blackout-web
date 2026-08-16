@@ -24,9 +24,12 @@ import {
   relStrengthT,
   growthModulation,
   magnitudeGlowBoost,
+<<<<<<< HEAD
   haloRingForTier,
   beadRadiusForNotional,
   pctToNotionalProxy,
+=======
+>>>>>>> ca490ee9 (fix(vector): honest $ notional sizing + SPX embed rail bootstrap)
 } from "./vector-wall-visual";
 import type { WallIntegrityTier } from "./vector-wall-integrity";
 import type { StrikeTrail } from "./vector-wall-history";

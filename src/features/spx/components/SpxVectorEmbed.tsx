@@ -3,7 +3,10 @@
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import type { VectorBar } from "@/features/vector/components/VectorChart";
-import { fetchVectorClientSeed } from "@/features/vector/lib/vector-client-seed";
+import {
+  fetchVectorClientSeed,
+  fetchVectorEmbedFastSeed,
+} from "@/features/vector/lib/vector-client-seed";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 
 const VectorPageShell = dynamic(
@@ -48,10 +51,9 @@ type VectorBarsSeed = {
  * reconstruct + wall history) and was the main source of multi-second dashboard
  * TTFB.
  *
- * Bars + sessionYmd MUST come from `/api/market/vector/bars`: fetchVectorSeedBars
- * pins sessionYmd to the latest trading day that actually has minute bars (often
- * yesterday pre-open / weekend). Hardcoding calendar today caused connectLive to
- * reject every backfill (`data.sessionYmd !== sessionYmd`) → blank chart on SPX.
+ * Cold-load rail: phase 1 hits `/api/market/vector/rail-bootstrap` (decimated Redis/
+ * Postgres only) in parallel with bars + walls so beads span the session on first
+ * paint. Phase 2 upgrades via full `fetchVectorClientSeed` (enriched gap-fill).
  */
 export function SpxVectorEmbed({
   onPriceScaleRender,
@@ -64,20 +66,33 @@ export function SpxVectorEmbed({
 
   useEffect(() => {
     let cancelled = false;
-    void fetchVectorClientSeed("SPX")
-      .then((seed) => {
+
+    void (async () => {
+      try {
+        const fast = await fetchVectorEmbedFastSeed("SPX");
         if (cancelled) return;
         setSeed({
-          bars: seed.initialBars,
-          sessionYmd: seed.sessionYmd,
-          wallHistory: seed.initialWallHistory,
-          horizonWallHistory: seed.initialHorizonWallHistory,
-          walls: seed.initialWalls,
-          gammaFlip: seed.initialGammaFlip,
-          wallTrailSec: seed.initialWallTrailSec,
+          bars: fast.initialBars,
+          sessionYmd: fast.sessionYmd,
+          wallHistory: fast.initialWallHistory,
+          horizonWallHistory: fast.initialHorizonWallHistory,
+          walls: fast.initialWalls,
+          gammaFlip: fast.initialGammaFlip,
+          wallTrailSec: fast.initialWallTrailSec,
         });
-      })
-      .catch(() => {
+
+        const full = await fetchVectorClientSeed("SPX");
+        if (cancelled) return;
+        setSeed({
+          bars: full.initialBars,
+          sessionYmd: full.sessionYmd,
+          wallHistory: full.initialWallHistory,
+          horizonWallHistory: full.initialHorizonWallHistory,
+          walls: full.initialWalls,
+          gammaFlip: full.initialGammaFlip,
+          wallTrailSec: full.initialWallTrailSec,
+        });
+      } catch {
         if (cancelled) return;
         setSeed({
           bars: [],
@@ -88,7 +103,9 @@ export function SpxVectorEmbed({
           gammaFlip: null,
           wallTrailSec: 5,
         });
-      });
+      }
+    })();
+
     return () => {
       cancelled = true;
     };
