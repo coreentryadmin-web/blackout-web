@@ -55,6 +55,24 @@ Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
 ---
 
+## 2026-08-16 — [FINDING, P2 security] Log injection: unnormalized ticker interpolated into wall-persistence logs — FIXED
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Status** | FIXED — this PR (`fix/log-injection-ticker`) |
+| **Severity** | P2 — CodeQL rates 2 of the 4 alerts HIGH (`js/format-string-injection`) and 2 MEDIUM (`js/log-injection`). No crash, no data exposure: the impact is that an operator can no longer trust the logs, in **exactly the logs the wall-write observability lane added by #2242 is meant to be read through.** |
+| **Discovered** | CodeQL on PR #2242, 2026-08-16 — "4 new alerts including 2 high severity security vulnerabilities". **The alerts were NOT introduced by that PR**: `vector-wall-db.ts` is byte-identical to `main`, and #2242 changed no `console.warn` in `vector-wall-persist.ts`. CodeQL attributes alerts to a PR when the surrounding *file* is touched, so a pre-existing defect surfaced under a PR that did not cause it. Verified before drawing any conclusion — reporting it as "#2242 introduced a security bug" would have been wrong. |
+| **Root cause** | `wallRailStorageId()` (`vector-wall-persist.ts:21`) returns the caller's ticker **unnormalized** (`horizon === "all" ? ticker : ticker + "::" + horizon`), so the value reaching the log template is whatever a request supplied. Six `console.warn` sites across the two files then interpolate it directly. A ticker containing a newline **forges log lines** — `AAPL\n[vector-wall-db] persist failed SPY:…` prints as two entries, the second indistinguishable from a genuine one written by the same module. A raw `ESC` additionally lets a hostile value repaint an operator's terminal. |
+| **Fix** | New pure helper `logToken()` (`src/lib/log-token.ts`): replaces C0/C1 control characters with U+FFFD, caps length at 64 with a visible ellipsis, and renders null/undefined/"" as an explicit `<empty>`. Applied at all **six** call sites (`vector-wall-db.ts` ×3, `vector-wall-persist.ts` ×3). |
+| **Fix rationale** | Sanitizing at the **log site**, not at the ticker's origin. Normalizing the ticker upstream would also change Redis keys (`redisKey(storageTicker, sessionYmd)`) and DB rows — a behavioural change with a real blast radius on already-persisted data. The log-site fix is purely presentational: it cannot alter what is stored or fetched. |
+| **Design notes** | (1) Control characters are **REPLACED, not stripped** — stripping welds two fields into one plausible-looking token (`"SPY\nQQQ"` → `"SPYQQQ"`), which is its own kind of lie; a visible marker keeps the tampering evident. (2) Absent values render as `<empty>` rather than vanishing, because a blank gap in `failed :2026-08-16:` reads as a formatting bug instead of as missing data. (3) The character class is built from an escaped **string** via `new RegExp(...)`, not a regex literal — a literal class puts real control bytes (including NUL) into the source file, which is unreadable and trivially mangled by tooling. The test file builds its control characters with `String.fromCharCode` for the same reason. |
+| **Blast radius** | Swept `src/features/vector/lib/` for the same pattern: exactly six sites, all in these two files, all now sanitized (verified — zero residual raw `${ticker}`/`${st}`/`${sessionYmd}` interpolations in a `console.*` template). The numeric-only sites (`${usable.length} rows`, `${batch.length} rows`) were deliberately left alone: a row count is not user-controlled and sanitizing it would add noise without removing risk. |
+| **Deliberately unchanged** | `wallRailStorageId()` still passes the ticker through — see fix rationale. If ticker normalization is wanted, it belongs in its own PR with a migration story for existing Redis keys and DB rows. |
+| **Tests** | 9 new in `src/lib/log-token.test.ts`, including the forged-log-line attack asserted as "renders as exactly one line", ANSI-escape neutralization, replace-not-strip, the length cap, `<empty>` for absent values, `logToken(0) === "0"` (zero is a value, not an absence), and statelessness across calls (a `/g` regex reused via `.test()` would carry `lastIndex` between calls). Node 20: 9/9. |
+
+---
+
 ## 2026-08-14 — [FINDING, P2 observability] 0DTE discovery lanes went dark SILENTLY — a 75%-smaller roster was byte-identical to a quiet market — FIXED
 > **kind:** `FINDING`
 

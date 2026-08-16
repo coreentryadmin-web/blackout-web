@@ -1,5 +1,7 @@
 import "server-only";
 
+import { logToken } from "@/lib/log-token";
+
 import { dbConfigured, dbQuery } from "@/lib/db";
 import type { WallHistorySample } from "./vector-wall-history";
 import { rowToWallSample, type WallRow } from "./vector-wall-db-row";
@@ -56,7 +58,7 @@ export async function persistWallSampleToDb(
     );
     return true;
   } catch (err) {
-    console.warn(`[vector-wall-db] persist failed ${ticker}:${sessionYmd}:`, err);
+    console.warn(`[vector-wall-db] persist failed ${logToken(ticker)}:${logToken(sessionYmd)}:`, err);
     return false;
   }
 }
@@ -166,7 +168,7 @@ export async function loadSessionWallTailFromDb(
     );
     return res.rows.map(rowToWallSample).reverse();
   } catch (err) {
-    console.warn(`[vector-wall-db] tail load failed ${ticker}:${sessionYmd}:`, err);
+    console.warn(`[vector-wall-db] tail load failed ${logToken(ticker)}:${logToken(sessionYmd)}:`, err);
     return [];
   }
 }
@@ -188,7 +190,7 @@ export async function loadSessionWallHistoryFromDb(
     );
     return res.rows.map(rowToWallSample);
   } catch (err) {
-    console.warn(`[vector-wall-db] load failed ${ticker}:${sessionYmd}:`, err);
+    console.warn(`[vector-wall-db] load failed ${logToken(ticker)}:${logToken(sessionYmd)}:`, err);
     return [];
   }
 }
