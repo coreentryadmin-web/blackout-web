@@ -17,7 +17,7 @@ import { readClientSignedIn } from "@/lib/client-signed-in";
 import { useAdminFlag } from "@/hooks/use-admin-flag";
 
 type Accent = "green" | "purple" | "orange" | "blue" | "red" | "teal";
-type FeatureLink = { href: string; label: string; sub: string; accent: Accent };
+type FeatureLink = { href: string; label: string; sub: string; accent: Accent; adminOnly?: boolean };
 
 const FEATURE_LINKS: FeatureLink[] = [
   { href: "/dashboard", label: "SPX Slayer", sub: "SPX structure & 0DTE desk", accent: "green" },
@@ -26,6 +26,13 @@ const FEATURE_LINKS: FeatureLink[] = [
   { href: "/terminal", label: "Largo", sub: "BlackOut Intelligence desk analyst", accent: "blue" },
   { href: "/nighthawk", label: "Night Hawk", sub: "Playbook + 0DTE Command", accent: "red" },
   { href: "/vector", label: "Vector", sub: "Live SPX chart with dealer gamma & vanna structure", accent: "teal" },
+  {
+    href: "/meridian",
+    label: "Meridian",
+    sub: "Catalyst structure desk · admin preview",
+    accent: "blue",
+    adminOnly: true,
+  },
 ];
 
 /** Tool routes mount heavy client trees — disable RSC prefetch burst (503 under concurrent ?_rsc=). */
@@ -57,15 +64,19 @@ const CLERK_APPEARANCE = {
 function FeatureCards({
   path,
   lockedTools = [],
+  showAdmin = false,
   onNavigate,
 }: {
   path: string;
   lockedTools?: ToolKey[];
+  showAdmin?: boolean;
   onNavigate?: () => void;
 }) {
+  const links = FEATURE_LINKS.filter((it) => !it.adminOnly || showAdmin);
+
   return (
     <>
-      {FEATURE_LINKS.map((it) => {
+      {links.map((it) => {
         const key = toolKeyForHref(it.href);
         const locked = key != null && lockedTools.includes(key);
         return (
@@ -83,7 +94,11 @@ function FeatureCards({
             )}
           >
             <span className="nav-card-chip" aria-hidden>
-              <ProductMark product={NAV_TO_MARK[it.accent]} size={46} />
+              {it.href === "/meridian" ? (
+                <span className="meridian-mark text-[1.1rem]">✦</span>
+              ) : (
+                <ProductMark product={NAV_TO_MARK[it.accent]} size={46} />
+              )}
             </span>
             <span className="nav-card-label font-syne">{it.label}</span>
             {path.startsWith(it.href) && (
@@ -289,7 +304,7 @@ export function Nav({
                   transition={{ duration: 0.12, ease: [0.22, 1, 0.36, 1] }}
                 >
                   <div className="nav-mega-head">
-                    <span className="nav-mega-kicker font-mono">Six instruments · one desk</span>
+                    <span className="nav-mega-kicker font-mono">All instruments · one desk</span>
                     <Link
                       href={isHome ? "#features" : "/#features"}
                       className="nav-mega-all font-mono"
@@ -299,7 +314,12 @@ export function Nav({
                     </Link>
                   </div>
                   <div className="nav-mega-grid">
-                    <FeatureCards path={path} lockedTools={lockedTools} onNavigate={() => setFeaturesOpen(false)} />
+                    <FeatureCards
+                      path={path}
+                      lockedTools={lockedTools}
+                      showAdmin={showAdmin}
+                      onNavigate={() => setFeaturesOpen(false)}
+                    />
                   </div>
                   <div className="nav-mega-foot font-mono">Tab to explore · Esc to close</div>
                 </motion.div>
@@ -413,7 +433,12 @@ export function Nav({
               </div>
               <p className="nav-sheet-label font-mono">Features</p>
               <div className="nav-sheet-cards">
-                <FeatureCards path={path} onNavigate={() => setMobileOpen(false)} />
+                <FeatureCards
+                  path={path}
+                  lockedTools={lockedTools}
+                  showAdmin={showAdmin}
+                  onNavigate={() => setMobileOpen(false)}
+                />
               </div>
               <div className="nav-sheet-divider" />
               {TOP_LINKS.map(({ href, label, iosHide }) => {
