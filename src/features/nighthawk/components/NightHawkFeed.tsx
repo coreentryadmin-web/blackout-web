@@ -1,12 +1,11 @@
 "use client";
 
 import useSWR from "swr";
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { clsx } from "clsx";
 import { fetchNightHawkEdition } from "@/lib/api";
-import { ZeroDteDeck, HorizonDeck, LegacyDeck } from "@/features/nighthawk/command-deck/containers";
-import { BangerBoard } from "@/features/nighthawk/components/BangerBoard";
 import { IosNativeSegment } from "@/components/ios/IosNativeSegment";
 import { useIosNativeShell } from "@/hooks/useIosNativeShell";
 import {
@@ -19,6 +18,24 @@ import {
 import type { NightHawkSeedProps } from "@/features/nighthawk/lib/nighthawk-seed-props";
 import type { BoardResp } from "@/features/nighthawk/command-deck/zerodte-sources";
 import { NIGHTHAWK_GOTO_SWING_EVENT, type NightHawkGotoSwingDetail } from "@/features/nighthawk/lib/goto-swing";
+import { NightHawkLoadingSkeleton } from "@/features/nighthawk/components/NightHawkLoadingSkeleton";
+
+const ZeroDteDeck = dynamic(
+  () => import("@/features/nighthawk/command-deck/containers").then((m) => m.ZeroDteDeck),
+  { loading: () => <NightHawkLoadingSkeleton /> }
+);
+const HorizonDeck = dynamic(
+  () => import("@/features/nighthawk/command-deck/containers").then((m) => m.HorizonDeck),
+  { loading: () => <NightHawkLoadingSkeleton /> }
+);
+const LegacyDeck = dynamic(
+  () => import("@/features/nighthawk/command-deck/containers").then((m) => m.LegacyDeck),
+  { loading: () => <NightHawkLoadingSkeleton /> }
+);
+const BangerBoard = dynamic(
+  () => import("@/features/nighthawk/components/BangerBoard").then((m) => m.BangerBoard),
+  { loading: () => <NightHawkLoadingSkeleton /> }
+);
 
 /**
  * Night Hawk — one surface, four views (0DTE / Swings / Bangers / Legacy), single-select. ZERO_DTE/SWING/

@@ -18,16 +18,18 @@ import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
 import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
 import { seedUwCacheFromWsStores } from "@/lib/uw-ws-cache-bridge";
 import { shouldRunCacheWarmer } from "@/lib/cache-warmer-gate";
+import { warmFlowsMemberCaches } from "@/lib/flows-member-cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 async function runDeskWarm(started: number): Promise<void> {
-  const [mergedResult, gexResults, bootstrapResult] = await Promise.allSettled([
+  const [mergedResult, gexResults, bootstrapResult, flowsWarmResult] = await Promise.allSettled([
     loadMergedSpxDesk(),
     Promise.allSettled(["SPX", "SPY"].map((t) => fetchGexHeatmap(t))),
     loadBootstrapBundle(),
+    warmFlowsMemberCaches(),
   ]);
 
   try {
@@ -42,6 +44,8 @@ async function runDeskWarm(started: number): Promise<void> {
     gexResults.status === "fulfilled" &&
     gexResults.value.some((r) => r.status === "fulfilled");
   const bootstrapOk = bootstrapResult.status === "fulfilled";
+  const flowsWarmOk =
+    flowsWarmResult.status === "fulfilled" && (flowsWarmResult.value?.warmed ?? 0) > 0;
 
   let enrichOk = false;
   try {
@@ -66,7 +70,7 @@ async function runDeskWarm(started: number): Promise<void> {
   }
 
   console.info(
-    `[cron/desk-warm] background done — desk=${deskOk} gex=${gexOk} bootstrap=${bootstrapOk} enrich=${enrichOk} elapsed=${Date.now() - started}ms`
+    `[cron/desk-warm] background done — desk=${deskOk} gex=${gexOk} bootstrap=${bootstrapOk} flowsWarm=${flowsWarmOk} enrich=${enrichOk} elapsed=${Date.now() - started}ms`
   );
 }
 

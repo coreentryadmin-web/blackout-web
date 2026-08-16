@@ -1,12 +1,22 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { clsx } from "clsx";
 import { PageShell, PageHeader, FreshnessChip } from "@/components/ui";
 import { ProductMark } from "@/components/marks/ProductMark";
-import { NightHawkFeed } from "@/features/nighthawk/components/NightHawkFeed";
 import { NighthawkRadarBackdrop } from "@/features/nighthawk/components/NighthawkRadarBackdrop";
+import { NightHawkLoadingSkeleton } from "@/features/nighthawk/components/NightHawkLoadingSkeleton";
 import { useIosNativeShell } from "@/hooks/useIosNativeShell";
 import type { NightHawkSeedProps } from "@/features/nighthawk/lib/nighthawk-seed-props";
+
+const NightHawkFeed = dynamic(
+  () =>
+    import("@/features/nighthawk/components/NightHawkFeed").then((m) => m.NightHawkFeed),
+  {
+    ssr: false,
+    loading: () => <NightHawkLoadingSkeleton />,
+  }
+);
 
 /** /nighthawk page frame — radar ambient + v2 column polish. */
 export function NighthawkPageShell({ seed }: { seed?: NightHawkSeedProps | null }) {
