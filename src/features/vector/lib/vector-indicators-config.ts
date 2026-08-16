@@ -321,18 +321,22 @@ export function isVectorBeadDisplayId(v: unknown): v is VectorBeadDisplayId {
 export const VECTOR_BEAD_DISPLAY: ReadonlyArray<{
   id: VectorBeadDisplayId;
   label: string;
+  /** Short label for the desk toolbar on/off chip. */
+  toolbarLabel: string;
   color: string;
   hint?: string;
 }> = [
   {
     id: "bead-integrity-rings",
     label: "Integrity rings (firm / moderate / thin)",
+    toolbarLabel: "Rings",
     color: "#eab308",
     hint: "Outer halo shows wall confidence — matches the desk terminal score",
   },
   {
     id: "bead-dollar-sizing",
     label: "Dollar gamma sizing ($200M–$2.5B ladder)",
+    toolbarLabel: "$ Size",
     color: "#7c3aed",
     hint: "Bead size from live $|gamma| — off uses frame-relative strength only",
   },

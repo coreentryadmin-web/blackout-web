@@ -7902,6 +7902,18 @@ html.product-shell .nav-mega {
     box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.3);
   }
 
+  .vector-desk-seg-btn.is-active.is-bead-rings {
+    background: rgba(234, 179, 8, 0.22);
+    color: rgb(254, 243, 199);
+    box-shadow: inset 0 0 0 1px rgba(234, 179, 8, 0.42);
+  }
+
+  .vector-desk-seg-btn.is-active.is-bead-dollar {
+    background: rgba(124, 58, 237, 0.22);
+    color: rgb(233, 213, 255);
+    box-shadow: inset 0 0 0 1px rgba(124, 58, 237, 0.42);
+  }
+
   .vector-desk-seg-btn.is-disabled,
   .vector-desk-seg-btn:disabled {
     opacity: 0.35;

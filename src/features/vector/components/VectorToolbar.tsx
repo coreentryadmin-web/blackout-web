@@ -3,6 +3,7 @@
 import { VectorDteToggle } from "@/features/vector/components/VectorDteToggle";
 
 import { VectorLensToggle } from "@/features/vector/components/VectorLensToggle";
+import { VectorBeadRailToggle } from "@/features/vector/components/VectorBeadRailToggle";
 import { VectorReplayControls } from "@/features/vector/components/VectorReplayControls";
 import { VectorTimeframeSelect } from "@/features/vector/components/VectorTimeframeSelect";
 import { VectorIndicatorMenu } from "@/features/vector/components/VectorIndicatorMenu";
@@ -134,6 +135,7 @@ export function VectorToolbar(props: Props) {
             openingRangeMinutes={openingRangeMinutes}
             onOpeningRangeMinutes={onOpeningRangeMinutes}
           />
+          <VectorBeadRailToggle enabled={indicators} onToggle={onToggleIndicator} lens={lens} />
           {drawMenu}
           {replayLeadSlot}
           {!hideReplayControls ? (
@@ -224,6 +226,12 @@ export function VectorToolbar(props: Props) {
             disabled={replayMode}
           />
         ) : null}
+        <VectorBeadRailToggle
+          enabled={indicators}
+          onToggle={onToggleIndicator}
+          lens={lens}
+          exposeTestIds={false}
+        />
         {trailSlot}
       </div>
 
@@ -284,6 +292,7 @@ export function VectorToolbar(props: Props) {
               disabled={replayMode}
             />
           ) : null}
+          <VectorBeadRailToggle enabled={indicators} onToggle={onToggleIndicator} lens={lens} />
           {trailSlot}
         </div>
       </div>
