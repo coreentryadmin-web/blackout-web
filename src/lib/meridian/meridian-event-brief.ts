@@ -17,6 +17,12 @@ import type {
   MeridianSpxPositioning,
   MeridianFdaDetail,
 } from "@/features/meridian/lib/meridian-types";
+import {
+  buildMacroCorrelationRail,
+  buildOpexPinAccuracy,
+  macroSurpriseScore,
+} from "@/lib/meridian/meridian-analytics-core";
+import type { MeridianMacroSurprise } from "@/features/meridian/lib/meridian-types";
 import { loadMeridianEarningsEnrichment } from "@/lib/meridian/meridian-earnings-enrich";
 
 function flipDistancePts(spot: number | null, flip: number | null): number | null {
@@ -224,8 +230,22 @@ export async function buildMeridianMacroBrief(input: {
     loadSpxPositioning(),
     loadIndexFlowSkew("SPX"),
     loadMacroIndicator(input.event),
-    loadMeridianMacroHistory({ event: input.event, beforeYmd: input.date }),
+    loadMeridianMacroHistory({
+      event: input.event,
+      beforeYmd: input.date,
+      releaseTimeEt: input.time,
+    }),
   ]);
+
+  const correlation_rail = buildMacroCorrelationRail(macroHistory.release_history, input.event);
+
+  let surprise: MeridianMacroSurprise | null = null;
+  const estNum = input.estimate != null ? Number(String(input.estimate).replace(/[^0-9.-]/g, "")) : null;
+  const latestActual = macro_indicator?.latest_value ?? null;
+  if (latestActual != null || estNum != null) {
+    surprise = macroSurpriseScore(latestActual, Number.isFinite(estNum!) ? estNum : null, macroHistory.release_history);
+  }
+
   return roundFloats({
     kind: "macro",
     event: input.event,
@@ -236,6 +256,8 @@ export async function buildMeridianMacroBrief(input: {
     estimate: input.estimate?.trim() || null,
     macro_indicator,
     release_history: macroHistory.release_history,
+    correlation_rail,
+    surprise,
     related_headlines: macroHistory.related_headlines,
     spx_positioning,
     flow,
@@ -253,6 +275,7 @@ export async function buildMeridianOpexDetail(date: string): Promise<MeridianOpe
     fetchGexHeatmap("SPX").catch(() => null),
   ]);
   const prior_opex = await loadMeridianOpexHistoryWithHeatmap(date, hm);
+  const pin_accuracy = buildOpexPinAccuracy(prior_opex);
   return roundFloats({
     kind: "opex",
     date,
@@ -260,6 +283,7 @@ export async function buildMeridianOpexDetail(date: string): Promise<MeridianOpe
     spx_positioning,
     expiry_read,
     prior_opex,
+    pin_accuracy,
     as_of: new Date().toISOString(),
   });
 }
@@ -273,10 +297,12 @@ export async function buildMeridianFdaDetail(input: {
 }): Promise<MeridianFdaDetail> {
   const ticker = input.ticker.toUpperCase();
   const { loadMeridianFdaHistory } = await import("@/lib/meridian/meridian-fda-history");
-  const [positioning, flow, fdaHistory] = await Promise.all([
+  const { loadMeridianCatalystBundle } = await import("@/lib/meridian/meridian-catalyst-enrich");
+  const [positioning, flow, fdaHistory, catalystBundle] = await Promise.all([
     loadTickerPositioning(ticker),
     loadIndexFlowSkew(ticker),
     loadMeridianFdaHistory({ ticker, beforeYmd: input.date }),
+    loadMeridianCatalystBundle(ticker),
   ]);
   const drug = input.drug?.trim() || null;
   const indication = input.indication?.trim() || null;
@@ -292,6 +318,8 @@ export async function buildMeridianFdaDetail(input: {
       channel: c.channel,
       published: c.published,
     })),
+    insider_activity: catalystBundle.insider_activity,
+    congress_trades: catalystBundle.congress_trades,
     prior_decisions: fdaHistory.prior_decisions,
     positioning,
     flow,

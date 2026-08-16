@@ -58,6 +58,8 @@ export type MeridianMacroBrief = {
   macro_indicator: MeridianMacroIndicatorRead | null;
   /** Prior prints of the same macro family with SPX reaction. */
   release_history: MeridianMacroRelease[];
+  correlation_rail: MeridianCorrelationRail;
+  surprise: MeridianMacroSurprise | null;
   related_headlines: MeridianCatalystHeadline[];
   spx_positioning: MeridianSpxPositioning;
   flow: MeridianFlowSkew;
@@ -72,6 +74,56 @@ export type MeridianMacroRelease = {
   prior: number | null;
   spx_session_pct: number | null;
   spx_next_day_pct: number | null;
+  /** SPX move in the 60m after release (Polygon minute bars). */
+  spx_intraday_60_pct: number | null;
+};
+
+export type MeridianCorrelationRail = {
+  sample_size: number;
+  avg_spx_session_pct: number | null;
+  avg_spx_next_day_pct: number | null;
+  avg_intraday_60_pct: number | null;
+  regime_tag: "risk_on" | "risk_off" | "mixed" | "unknown";
+  headline: string;
+};
+
+export type MeridianMacroSurprise = {
+  actual: number | null;
+  estimate: number | null;
+  surprise_pct: number | null;
+  verdict: "beat" | "miss" | "inline" | "unknown";
+  historical: {
+    beats: number;
+    misses: number;
+    avg_surprise_pct: number | null;
+  };
+};
+
+export type MeridianAnalystRevision = {
+  title: string;
+  firm: string | null;
+  action: string | null;
+  published: string | null;
+};
+
+export type MeridianInsiderActivity = {
+  title: string;
+  published: string | null;
+};
+
+export type MeridianCongressActivity = {
+  politician: string | null;
+  ticker: string | null;
+  transaction: string | null;
+  published: string | null;
+};
+
+export type MeridianExpectedVsRealized = {
+  expected_move_pct: number | null;
+  realized_move_pct: number | null;
+  ratio: number | null;
+  verdict: "under" | "over" | "inline" | "unknown";
+  headline: string | null;
 };
 
 export type MeridianCatalystHeadline = {
@@ -92,6 +144,10 @@ export type MeridianEarningsEnrichment = {
   street_estimates: MeridianStreetEstimate[];
   print_history: MeridianEarningsPrint[];
   print_history_summary: string | null;
+  analyst_revisions: MeridianAnalystRevision[];
+  insider_activity: MeridianInsiderActivity[];
+  congress_trades: MeridianCongressActivity[];
+  expected_vs_realized: MeridianExpectedVsRealized | null;
 };
 
 export type MeridianEarningsPrint = {
@@ -125,7 +181,16 @@ export type MeridianOpexDetail = {
   spx_positioning: MeridianSpxPositioning;
   expiry_read: MeridianOpexExpiryRead;
   prior_opex: MeridianOpexHistoryRow[];
+  pin_accuracy: MeridianOpexPinAccuracy;
   as_of: string;
+};
+
+export type MeridianOpexPinAccuracy = {
+  graded: number;
+  held: number;
+  accuracy_pct: number | null;
+  tolerance_pct: number;
+  headline: string;
 };
 
 export type MeridianOpexHistoryRow = {
@@ -133,6 +198,8 @@ export type MeridianOpexHistoryRow = {
   spx_session_pct: number | null;
   spx_next_day_pct: number | null;
   max_pain: number | null;
+  spx_close: number | null;
+  pin_held: boolean | null;
 };
 
 export type MeridianFdaDetail = {
@@ -143,6 +210,8 @@ export type MeridianFdaDetail = {
   drug: string | null;
   indication: string | null;
   catalysts: MeridianCatalystHeadline[];
+  insider_activity: MeridianInsiderActivity[];
+  congress_trades: MeridianCongressActivity[];
   prior_decisions: MeridianFdaPriorDecision[];
   positioning: MeridianSpxPositioning;
   flow: MeridianFlowSkew;
@@ -163,8 +232,20 @@ export type MeridianEventDetail =
   | MeridianOpexDetail
   | MeridianFdaDetail;
 
+export type MeridianTimelineStats = {
+  total: number;
+  macro: number;
+  earnings: number;
+  fda: number;
+  opex: number;
+  high_impact: number;
+  next_24h: number;
+};
+
 export type MeridianTimelinePayload = {
   as_of: string;
   days_ahead: number;
   items: MeridianTimelineItem[];
+  stats: MeridianTimelineStats;
+  board_tickers: string[];
 };

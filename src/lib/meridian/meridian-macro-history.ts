@@ -5,6 +5,7 @@ import { fetchBenzingaNews } from "@/lib/providers/polygon";
 import { fetchUwEconomyIndicator } from "@/lib/providers/unusual-whales";
 import { roundFloats } from "@/lib/round-floats";
 import { spxReactionsForDates } from "@/lib/meridian/meridian-reaction";
+import { macroIntradayReactions } from "@/lib/meridian/meridian-intraday-reaction";
 import type { MeridianCatalystHeadline, MeridianMacroRelease } from "@/features/meridian/lib/meridian-types";
 
 function macroIndicatorIdForEvent(event: string): string | null {
@@ -52,6 +53,7 @@ function headlineFilter(event: string, title: string): boolean {
 export async function loadMeridianMacroHistory(input: {
   event: string;
   beforeYmd: string;
+  releaseTimeEt?: string | null;
 }): Promise<{ release_history: MeridianMacroRelease[]; related_headlines: MeridianCatalystHeadline[] }> {
   const prior = priorScheduledMacroEvents({
     event: input.event,
@@ -61,8 +63,9 @@ export async function loadMeridianMacroHistory(input: {
   const dates = prior.map((p) => p.date);
 
   const indicatorId = macroIndicatorIdForEvent(input.event);
-  const [reactions, indicator, news] = await Promise.all([
+  const [reactions, intradayMap, indicator, news] = await Promise.all([
     spxReactionsForDates(dates),
+    macroIntradayReactions(dates, input.releaseTimeEt ?? null),
     indicatorId
       ? fetchUwEconomyIndicator(indicatorId).catch(() => null)
       : Promise.resolve(null),
@@ -89,6 +92,7 @@ export async function loadMeridianMacroHistory(input: {
       prior: priorVal,
       spx_session_pct: rx?.session_change_pct ?? null,
       spx_next_day_pct: rx?.next_day_change_pct ?? null,
+      spx_intraday_60_pct: intradayMap.get(p.date) ?? null,
     };
   });
 

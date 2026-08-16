@@ -15,22 +15,40 @@ import {
   buildMeridianFdaDetail,
   loadMeridianEarningsEnrichment,
 } from "@/lib/meridian/meridian-event-brief";
-import type { MeridianEventDetail, MeridianTimelinePayload } from "@/features/meridian/lib/meridian-types";
+import { readMeridianBoardTickers } from "@/lib/meridian/meridian-board-tickers";
+import type {
+  MeridianEventDetail,
+  MeridianTimelinePayload,
+  MeridianTimelineStats,
+} from "@/features/meridian/lib/meridian-types";
 import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
 import { prefetchSpxDeskEnrichment } from "@/features/spx/lib/spx-desk";
 
 export const MERIDIAN_TIMELINE_TTL_MS = 120_000;
 export const MERIDIAN_EVENT_TTL_MS = 120_000;
 
+function buildTimelineStats(items: MeridianTimelinePayload["items"]): MeridianTimelineStats {
+  return {
+    total: items.length,
+    macro: items.filter((i) => i.kind === "macro").length,
+    earnings: items.filter((i) => i.kind === "earnings").length,
+    fda: items.filter((i) => i.kind === "fda").length,
+    opex: items.filter((i) => i.kind === "opex").length,
+    high_impact: items.filter((i) => i.impact === "high").length,
+    next_24h: items.filter((i) => i.days_until <= 1).length,
+  };
+}
+
 const DEFAULT_WARM_DAYS = 21;
 
 /** Build the Meridian timeline payload (shared by API route + warm cron). */
 export async function loadMeridianTimelineResponse(daysAhead: number): Promise<MeridianTimelinePayload> {
   const today = todayEtYmd();
-  const [macro, earningsRows, fdaRows] = await Promise.all([
+  const [macro, earningsRows, fdaRows, board_tickers] = await Promise.all([
     fetchUpcomingMacroEventsLive(daysAhead),
     loadMeridianEarningsTimeline(today, daysAhead),
     loadMeridianFdaTimeline(today, daysAhead),
+    readMeridianBoardTickers(),
   ]);
 
   const items = buildMeridianTimeline({
@@ -51,6 +69,8 @@ export async function loadMeridianTimelineResponse(daysAhead: number): Promise<M
     as_of: new Date().toISOString(),
     days_ahead: daysAhead,
     items,
+    stats: buildTimelineStats(items),
+    board_tickers,
   });
 }
 
@@ -62,11 +82,9 @@ export async function loadMeridianEventResponse(id: string): Promise<MeridianEve
   if (parsed.kind === "earnings") {
     const ticker = parsed.ticker;
     if (!ticker) return null;
-    const [pack, enrichment] = await Promise.all([
-      preEarningsPackForLargo(ticker, parsed.date),
-      loadMeridianEarningsEnrichment(ticker),
-    ]);
+    const pack = await preEarningsPackForLargo(ticker, parsed.date);
     if (!pack) return null;
+    const enrichment = await loadMeridianEarningsEnrichment(ticker, pack.expected_move_pct);
     return roundFloats({ kind: "earnings", pack, enrichment });
   }
 
