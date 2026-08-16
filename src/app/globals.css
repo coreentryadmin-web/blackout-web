@@ -7914,6 +7914,12 @@ html.product-shell .nav-mega {
     box-shadow: inset 0 0 0 1px rgba(124, 58, 237, 0.42);
   }
 
+  .vector-desk-seg-btn.is-active.is-bead-events {
+    background: rgba(217, 70, 239, 0.22);
+    color: rgb(250, 232, 255);
+    box-shadow: inset 0 0 0 1px rgba(217, 70, 239, 0.42);
+  }
+
   .vector-desk-seg-btn.is-disabled,
   .vector-desk-seg-btn:disabled {
     opacity: 0.35;

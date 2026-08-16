@@ -11,6 +11,8 @@ test("VectorBeadRailToggle: toolbar chips wired with on/off + GEX-only rings gua
   assert.match(src, /VECTOR_BEAD_DISPLAY/);
   assert.match(src, /aria-pressed=\{on\}/);
   assert.match(src, /bead-integrity-rings/s);
+  assert.match(src, /bead-event-glyphs/s);
+  assert.match(src, /is-bead-events/s);
   assert.match(src, /lens !== "gex"/);
   assert.match(src, /toolbarLabel/);
 });

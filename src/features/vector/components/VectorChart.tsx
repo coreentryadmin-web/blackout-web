@@ -1205,7 +1205,10 @@ function feedWallRail(
   history: WallHistorySample[] = [],
   activeLens: VectorWallLens = "gex",
   showIntegrityRings = false,
-  useDollarSizing = false
+  useDollarSizing = false,
+  showEventGlyphs = false,
+  wallEvents: readonly VectorWallEvent[] = [],
+  eventCursorTime?: number
 ): void {
   if (!rail) return;
   let maxPct = 0;
@@ -1224,6 +1227,10 @@ function feedWallRail(
       putTierByStrike: tierMaps?.put,
       showIntegrityRings,
       useDollarSizing,
+      showEventGlyphs,
+      wallEvents,
+      eventLens: activeLens,
+      eventCursorTime,
     },
     visible && maxPct > 0
   );
@@ -1657,6 +1664,10 @@ export function VectorChart({
       ...eventsFromWallHistory(initialWallHistory, "vex"),
     ])
   );
+  const wallEventsRef = useRef(wallEvents);
+  useEffect(() => {
+    wallEventsRef.current = wallEvents;
+  }, [wallEvents]);
   const [vexAvailable, setVexAvailable] = useState(
     () =>
       Boolean(initialVexWalls?.callWalls?.length || initialVexWalls?.putWalls?.length) ||
@@ -2228,6 +2239,8 @@ export function VectorChart({
     );
     // Feed the ribbon rail the SAME composed call+put trails (both sides share one frame reference).
     const enabled = indicatorsRef.current;
+    const eventCursorTime =
+      replayModeRef.current ? (timelineRef.current[cursorIndexRef.current] ?? undefined) : undefined;
     feedWallRail(
       wallRailPrimitiveRef.current,
       call.rendered,
@@ -2239,7 +2252,10 @@ export function VectorChart({
       history,
       activeLens,
       enabled.has("bead-integrity-rings"),
-      enabled.has("bead-dollar-sizing")
+      enabled.has("bead-dollar-sizing"),
+      enabled.has("bead-event-glyphs"),
+      wallEventsRef.current,
+      eventCursorTime
     );
     // Record what was actually drawn so the autoscale provider widens to reveal these exact beads
     // at every zoom level, then nudge a rescale (off-hours there is no tick to trigger it).
@@ -2851,7 +2867,10 @@ export function VectorChart({
         visibleHistory,
         activeLens,
         enabled.has("bead-integrity-rings"),
-        enabled.has("bead-dollar-sizing")
+        enabled.has("bead-dollar-sizing"),
+        enabled.has("bead-event-glyphs"),
+        wallEventsRef.current,
+        cursorTime
       );
       // Same zoom-stability guarantee in replay: widen the axis for the beads this frame drew.
       beadStrikesRef.current = { call: call.strikes, put: put.strikes };

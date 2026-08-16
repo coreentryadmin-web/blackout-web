@@ -312,10 +312,13 @@ export function isVectorVolumeProfileId(v: unknown): v is VectorVolumeProfileId 
 }
 
 /** Bead-rail display toggles — canvas primitive channels (not separate chart layers). */
-export type VectorBeadDisplayId = "bead-integrity-rings" | "bead-dollar-sizing";
+export type VectorBeadDisplayId =
+  | "bead-integrity-rings"
+  | "bead-dollar-sizing"
+  | "bead-event-glyphs";
 
 export function isVectorBeadDisplayId(v: unknown): v is VectorBeadDisplayId {
-  return v === "bead-integrity-rings" || v === "bead-dollar-sizing";
+  return v === "bead-integrity-rings" || v === "bead-dollar-sizing" || v === "bead-event-glyphs";
 }
 
 export const VECTOR_BEAD_DISPLAY: ReadonlyArray<{
@@ -339,6 +342,13 @@ export const VECTOR_BEAD_DISPLAY: ReadonlyArray<{
     toolbarLabel: "$ Size",
     color: "#7c3aed",
     hint: "Bead size from live $|gamma| — off uses frame-relative strength only",
+  },
+  {
+    id: "bead-event-glyphs",
+    label: "Event glyphs (birth, handover, flip cross, break)",
+    toolbarLabel: "Events",
+    color: "#d946ef",
+    hint: "Sparse punctuation on the bead rail — birth tick, king handover, flip cross, wall break",
   },
 ] as const;
 
@@ -448,10 +458,11 @@ export const VECTOR_INDICATOR_GROUPS: ReadonlyArray<{
   },
 ];
 
-/** Indicators enabled on first paint — dealer gamma positioning + bead integrity rings. */
+/** Indicators enabled on first paint — dealer gamma positioning + bead integrity rings + event glyphs. */
 export const VECTOR_DEFAULT_ENABLED_INDICATORS: readonly VectorIndicatorId[] = [
   "gex-heatmap",
   "bead-integrity-rings",
+  "bead-event-glyphs",
 ] as const;
 
 export function defaultVectorIndicators(): Set<VectorIndicatorId> {

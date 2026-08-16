@@ -30,6 +30,12 @@ import {
 } from "./vector-wall-visual";
 import type { WallIntegrityTier } from "./vector-wall-integrity";
 import type { StrikeTrail } from "./vector-wall-history";
+import type { VectorWallEvent } from "./vector-wall-events";
+import {
+  composeWallEventGlyphs,
+  drawWallEventGlyph,
+  type WallEventGlyph,
+} from "./vector-wall-event-glyphs";
 
 /**
  * WALL RAIL as a lightweight-charts SERIES PRIMITIVE — the dealer-wall "beads" drawn as CANVAS BEADS
@@ -83,6 +89,11 @@ export type WallRailData = {
   showIntegrityRings?: boolean;
   /** When true, bead size uses recorded $|gamma| notional; when false, frame-relative sizing. */
   useDollarSizing?: boolean;
+  /** Sparse punctuation glyphs (birth, handover, flip cross, …) — drawn above beads. */
+  showEventGlyphs?: boolean;
+  wallEvents?: readonly VectorWallEvent[];
+  eventLens?: "gex" | "vex";
+  eventCursorTime?: number;
 };
 
 type PaneRendererTarget = Parameters<IPrimitivePaneRenderer["draw"]>[0];
@@ -135,12 +146,16 @@ type Band = {
   death: { x: number; y: number; half: number } | null;
 };
 
+type ProjectedGlyph = WallEventGlyph & { x: number; y: number; color: string };
+
 class WallRailRenderer implements IPrimitivePaneRenderer {
   constructor(
     private readonly _bands: Band[],
+    private readonly _glyphs: ProjectedGlyph[],
     private readonly _tuning: BeadRenderTuning,
     private readonly _overlayDim: number,
-    private readonly _showIntegrityRings: boolean
+    private readonly _showIntegrityRings: boolean,
+    private readonly _showEventGlyphs: boolean
   ) {}
 
   draw(target: PaneRendererTarget): void {
@@ -190,8 +205,8 @@ class WallRailRenderer implements IPrimitivePaneRenderer {
             ctx.stroke();
           }
         }
-        // Birth: a bright vertical flash at the wall's first in-window bucket ("formed here").
-        if (b.birth) {
+        // Birth/death: drawn by the unified event-glyph layer when enabled.
+        if (!this._showEventGlyphs && b.birth) {
           ctx.strokeStyle = withA(b.color, EDGE_ALPHA);
           ctx.lineWidth = 2;
           ctx.beginPath();
@@ -199,12 +214,16 @@ class WallRailRenderer implements IPrimitivePaneRenderer {
           ctx.lineTo(b.birth.x, b.birth.y + b.birth.half + 3);
           ctx.stroke();
         }
-        // Death: a faint dot at a departed wall's grave ("dissolved here").
-        if (b.death) {
+        if (!this._showEventGlyphs && b.death) {
           ctx.fillStyle = withA(b.color, 0.5);
           ctx.beginPath();
           ctx.arc(b.death.x, b.death.y, Math.max(1.5, b.death.half), 0, Math.PI * 2);
           ctx.fill();
+        }
+      }
+      if (this._showEventGlyphs) {
+        for (const g of this._glyphs) {
+          drawWallEventGlyph(ctx, g.shape, g.x, g.y, g.color, g.severity === "warn" ? 0.95 : 0.82, g.severity);
         }
       }
       ctx.restore();
@@ -220,9 +239,16 @@ class WallRailPaneView implements IPrimitivePaneView {
   renderer(): IPrimitivePaneRenderer | null {
     const projected = this._source.project();
     if (!projected) return null;
-    const { bands, tuning } = projected;
+    const { bands, glyphs, tuning } = projected;
     if (bands.length === 0) return null;
-    return new WallRailRenderer(bands, tuning, this._source.overlayDim(), this._source.showIntegrityRings());
+    return new WallRailRenderer(
+      bands,
+      glyphs,
+      tuning,
+      this._source.overlayDim(),
+      this._source.showIntegrityRings(),
+      this._source.showEventGlyphs()
+    );
   }
 }
 
@@ -317,6 +343,10 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
     return Boolean(this._data?.showIntegrityRings);
   }
 
+  showEventGlyphs(): boolean {
+    return Boolean(this._data?.showEventGlyphs);
+  }
+
   private _cancelRaf(): void {
     if (this._rafId != null && typeof window !== "undefined") window.cancelAnimationFrame(this._rafId);
     this._rafId = null;
@@ -385,7 +415,7 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
   /** Project every trail into media-space beaded bands. Also writes the per-bead TARGET half-heights
    *  and per-strike king-emphasis targets the rAF loop eases toward, and reads the eased values back
    *  so the drawn beads reflect the in-flight animation. Null when there's nothing honest to draw. */
-  project(): { bands: Band[]; tuning: BeadRenderTuning } | null {
+  project(): { bands: Band[]; glyphs: ProjectedGlyph[]; tuning: BeadRenderTuning } | null {
     if (!this._visible || !this._data || !this._chart || !this._series) return null;
     const {
       callTrails,
@@ -398,6 +428,10 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
       putTierByStrike,
       showIntegrityRings = false,
       useDollarSizing = false,
+      showEventGlyphs = false,
+      wallEvents = [],
+      eventLens = "gex",
+      eventCursorTime,
     } = this._data;
     if (!(maxPct > 0)) return null;
     const tuning = beadRenderTuning(profile ?? "default");
@@ -531,6 +565,29 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
     for (const t of callTrails) addTrail(t, callColor, "c", callKingAt, callTierByStrike);
     for (const t of putTrails) addTrail(t, putColor, "p", putKingAt, putTierByStrike);
     if (bands.length === 0) return null;
-    return { bands, tuning };
+
+    const earliestBucket = Number.isFinite(earliest) ? earliest : 0;
+    const rawGlyphs = showEventGlyphs
+      ? composeWallEventGlyphs({
+          events: wallEvents,
+          callTrails,
+          putTrails,
+          lens: eventLens,
+          earliestBucket,
+          cursorTime: eventCursorTime,
+        })
+      : [];
+
+    const glyphs: ProjectedGlyph[] = [];
+    for (const g of rawGlyphs) {
+      const x = ts.timeToCoordinate(g.time as Time);
+      const y = series.priceToCoordinate(g.strike);
+      if (x == null || y == null) continue;
+      const color =
+        g.side === "call" ? callColor : g.side === "put" ? putColor : g.side === "flip" ? "#22d3ee" : "#fbbf24";
+      glyphs.push({ ...g, x, y, color });
+    }
+
+    return { bands, glyphs, tuning };
   }
 }

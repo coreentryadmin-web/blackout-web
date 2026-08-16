@@ -136,6 +136,7 @@ test("VECTOR_INDICATOR_GROUPS: covers every family + level + structure id exactl
     "volume-profile",
     "bead-integrity-rings",
     "bead-dollar-sizing",
+    "bead-event-glyphs",
   ];
   assert.deepEqual([...grouped].sort(), [...expected].sort());
 });
@@ -152,13 +153,18 @@ test("expected-move-cone: opt-in companion to the flat band, in the Expected mov
   assert.ok(!defaultVectorIndicators().has("expected-move-cone"));
 });
 
-test("VECTOR_DEFAULT_ENABLED_INDICATORS: dealer gamma + bead integrity rings on by default; volume profile opt-in", () => {
-  assert.deepEqual([...VECTOR_DEFAULT_ENABLED_INDICATORS], ["gex-heatmap", "bead-integrity-rings"]);
+test("VECTOR_DEFAULT_ENABLED_INDICATORS: dealer gamma + bead rings + event glyphs on by default; volume profile opt-in", () => {
+  assert.deepEqual([...VECTOR_DEFAULT_ENABLED_INDICATORS], [
+    "gex-heatmap",
+    "bead-integrity-rings",
+    "bead-event-glyphs",
+  ]);
   assert.ok(defaultVectorIndicators().has("gex-heatmap"));
   assert.ok(defaultVectorIndicators().has("bead-integrity-rings"));
+  assert.ok(defaultVectorIndicators().has("bead-event-glyphs"));
   assert.ok(!defaultVectorIndicators().has("bead-dollar-sizing"));
   assert.ok(!defaultVectorIndicators().has("volume-profile"));
-  assert.equal(defaultVectorIndicators().size, 2);
+  assert.equal(defaultVectorIndicators().size, 3);
   // The new regime glow is opt-in — it must NOT be enabled on first paint.
   assert.ok(!defaultVectorIndicators().has("gamma-regime"));
 });
