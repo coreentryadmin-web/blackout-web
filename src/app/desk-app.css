@@ -217,6 +217,16 @@ html.nav-locked body { overflow: hidden; }
   color: #7dd3fc;
   font-size: 0.78rem;
 }
+.meridian-history-list li {
+  margin-bottom: 0.35rem;
+}
+.meridian-history-date {
+  color: #fff;
+  font-weight: 600;
+}
+.meridian-history-move {
+  color: #22d3ee;
+}
 .meridian-detail-actions {
   display: flex;
   flex-wrap: wrap;

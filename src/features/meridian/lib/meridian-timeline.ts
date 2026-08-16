@@ -87,6 +87,24 @@ export function upcomingOpexDates(startYmd: string, daysAhead: number): string[]
   return [...new Set(out)].sort();
 }
 
+/** Prior monthly OpEx (third Friday) dates strictly before `beforeYmd`. */
+export function priorOpexDates(beforeYmd: string, limit = 6): string[] {
+  const parts = beforeYmd.split("-").map(Number) as [number, number, number];
+  let y = parts[0];
+  let m = parts[1];
+  const out: string[] = [];
+  for (let i = 0; i < 36 && out.length < limit; i++) {
+    m -= 1;
+    if (m < 1) {
+      m = 12;
+      y -= 1;
+    }
+    const opex = thirdFridayYmd(y, m);
+    if (opex && opex < beforeYmd) out.push(opex);
+  }
+  return out.sort((a, b) => b.localeCompare(a)).slice(0, limit);
+}
+
 export function buildMeridianTimeline(input: {
   todayYmd: string;
   daysAhead: number;

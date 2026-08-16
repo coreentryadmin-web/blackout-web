@@ -3,7 +3,6 @@ import "server-only";
 import { roundFloats } from "@/lib/round-floats";
 import { fmtPremium } from "@/lib/fmt-money";
 import { todayEtYmd } from "@/lib/providers/spx-session";
-import { fetchBenzingaCatalysts } from "@/lib/providers/polygon";
 import {
   maxPainForExpiryFromHeatmap,
   summarizeHeatmapGammaByExpiry,
@@ -220,10 +219,12 @@ export async function buildMeridianMacroBrief(input: {
   impact: "high" | "medium" | "low";
   estimate?: string | null;
 }): Promise<MeridianMacroBrief> {
-  const [spx_positioning, flow, macro_indicator] = await Promise.all([
+  const { loadMeridianMacroHistory } = await import("@/lib/meridian/meridian-macro-history");
+  const [spx_positioning, flow, macro_indicator, macroHistory] = await Promise.all([
     loadSpxPositioning(),
     loadIndexFlowSkew("SPX"),
     loadMacroIndicator(input.event),
+    loadMeridianMacroHistory({ event: input.event, beforeYmd: input.date }),
   ]);
   return roundFloats({
     kind: "macro",
@@ -234,6 +235,8 @@ export async function buildMeridianMacroBrief(input: {
     event_window: macroEventWindow(input.date, input.time),
     estimate: input.estimate?.trim() || null,
     macro_indicator,
+    release_history: macroHistory.release_history,
+    related_headlines: macroHistory.related_headlines,
     spx_positioning,
     flow,
     as_of: new Date().toISOString(),
@@ -242,16 +245,21 @@ export async function buildMeridianMacroBrief(input: {
 
 /** OpEx structure read — walls, max pain, gamma pin, expiry net flow. */
 export async function buildMeridianOpexDetail(date: string): Promise<MeridianOpexDetail> {
-  const [spx_positioning, expiry_read] = await Promise.all([
+  const { fetchGexHeatmap } = await import("@/lib/providers/polygon-options-gex");
+  const { loadMeridianOpexHistoryWithHeatmap } = await import("@/lib/meridian/meridian-opex-history");
+  const [spx_positioning, expiry_read, hm] = await Promise.all([
     loadSpxPositioning(),
     loadOpexExpiryRead(date),
+    fetchGexHeatmap("SPX").catch(() => null),
   ]);
+  const prior_opex = await loadMeridianOpexHistoryWithHeatmap(date, hm);
   return roundFloats({
     kind: "opex",
     date,
     title: "Monthly OpEx",
     spx_positioning,
     expiry_read,
+    prior_opex,
     as_of: new Date().toISOString(),
   });
 }
@@ -264,10 +272,11 @@ export async function buildMeridianFdaDetail(input: {
   indication?: string | null;
 }): Promise<MeridianFdaDetail> {
   const ticker = input.ticker.toUpperCase();
-  const [positioning, flow, catalystRows] = await Promise.all([
+  const { loadMeridianFdaHistory } = await import("@/lib/meridian/meridian-fda-history");
+  const [positioning, flow, fdaHistory] = await Promise.all([
     loadTickerPositioning(ticker),
     loadIndexFlowSkew(ticker),
-    fetchBenzingaCatalysts(ticker, 6).catch(() => []),
+    loadMeridianFdaHistory({ ticker, beforeYmd: input.date }),
   ]);
   const drug = input.drug?.trim() || null;
   const indication = input.indication?.trim() || null;
@@ -278,11 +287,12 @@ export async function buildMeridianFdaDetail(input: {
     date: input.date,
     drug,
     indication,
-    catalysts: catalystRows.slice(0, 6).map((c) => ({
+    catalysts: fdaHistory.catalysts.slice(0, 6).map((c) => ({
       title: c.title,
-      channel: c.channel ?? c.type ?? null,
-      published: c.published ?? null,
+      channel: c.channel,
+      published: c.published,
     })),
+    prior_decisions: fdaHistory.prior_decisions,
     positioning,
     flow,
     as_of: new Date().toISOString(),

@@ -56,9 +56,22 @@ export type MeridianMacroBrief = {
   /** Consensus / forecast when the live calendar carries it. */
   estimate: string | null;
   macro_indicator: MeridianMacroIndicatorRead | null;
+  /** Prior prints of the same macro family with SPX reaction. */
+  release_history: MeridianMacroRelease[];
+  related_headlines: MeridianCatalystHeadline[];
   spx_positioning: MeridianSpxPositioning;
   flow: MeridianFlowSkew;
   as_of: string;
+};
+
+export type MeridianMacroRelease = {
+  date: string;
+  label: string;
+  actual: number | null;
+  estimate: number | null;
+  prior: number | null;
+  spx_session_pct: number | null;
+  spx_next_day_pct: number | null;
 };
 
 export type MeridianCatalystHeadline = {
@@ -77,6 +90,18 @@ export type MeridianEarningsEnrichment = {
   catalysts: MeridianCatalystHeadline[];
   earnings_headlines: MeridianCatalystHeadline[];
   street_estimates: MeridianStreetEstimate[];
+  print_history: MeridianEarningsPrint[];
+  print_history_summary: string | null;
+};
+
+export type MeridianEarningsPrint = {
+  report_date: string | null;
+  eps_estimate: number | null;
+  eps_actual: number | null;
+  surprise_pct: number | null;
+  beat: boolean | null;
+  session_change_pct: number | null;
+  next_day_change_pct: number | null;
 };
 
 export type MeridianEarningsDetail = {
@@ -99,7 +124,15 @@ export type MeridianOpexDetail = {
   title: string;
   spx_positioning: MeridianSpxPositioning;
   expiry_read: MeridianOpexExpiryRead;
+  prior_opex: MeridianOpexHistoryRow[];
   as_of: string;
+};
+
+export type MeridianOpexHistoryRow = {
+  date: string;
+  spx_session_pct: number | null;
+  spx_next_day_pct: number | null;
+  max_pain: number | null;
 };
 
 export type MeridianFdaDetail = {
@@ -110,9 +143,18 @@ export type MeridianFdaDetail = {
   drug: string | null;
   indication: string | null;
   catalysts: MeridianCatalystHeadline[];
+  prior_decisions: MeridianFdaPriorDecision[];
   positioning: MeridianSpxPositioning;
   flow: MeridianFlowSkew;
   as_of: string;
+};
+
+export type MeridianFdaPriorDecision = {
+  date: string;
+  drug: string | null;
+  headline: string | null;
+  session_change_pct: number | null;
+  next_day_change_pct: number | null;
 };
 
 export type MeridianEventDetail =

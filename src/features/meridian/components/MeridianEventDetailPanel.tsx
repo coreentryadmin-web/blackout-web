@@ -25,6 +25,11 @@ function fmtPrem(n: number): string {
   return `$${n.toFixed(0)}`;
 }
 
+function fmtPct(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  return `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`;
+}
+
 type Props = {
   item: MeridianTimelineItem;
   detail: MeridianEventDetail | null;
@@ -144,6 +149,39 @@ export function MeridianEventDetailPanel({ item, detail, loading, error }: Props
               <p className="meridian-card-muted">{detail.event_window}</p>
             </section>
           )}
+
+          {detail.release_history.length > 0 && (
+            <section className="meridian-card meridian-card-wide">
+              <h3 className="meridian-card-label">Prior prints · SPX reaction</h3>
+              <ul className="meridian-card-list meridian-history-list">
+                {detail.release_history.map((row) => (
+                  <li key={row.date}>
+                    <span className="meridian-history-date">{row.date.slice(5)}</span>
+                    {row.actual != null && row.estimate != null ? (
+                      <span>
+                        {" "}
+                        actual {row.actual} vs est {row.estimate}
+                      </span>
+                    ) : row.actual != null ? (
+                      <span> actual {row.actual}</span>
+                    ) : null}
+                    <span className="meridian-history-move">
+                      {" "}
+                      · SPX {fmtPct(row.spx_session_pct)} session
+                      {row.spx_next_day_pct != null ? ` / ${fmtPct(row.spx_next_day_pct)} next` : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {detail.related_headlines.length > 0 && (
+            <section className="meridian-card meridian-card-wide">
+              <h3 className="meridian-card-label">Macro headlines</h3>
+              <HeadlineList items={detail.related_headlines} empty="" />
+            </section>
+          )}
         </div>
       )}
 
@@ -184,6 +222,24 @@ export function MeridianEventDetailPanel({ item, detail, loading, error }: Props
                 )}
             </ul>
           </section>
+
+          {detail.prior_opex.length > 0 && (
+            <section className="meridian-card meridian-card-wide">
+              <h3 className="meridian-card-label">Prior OpEx · SPX reaction</h3>
+              <ul className="meridian-card-list meridian-history-list">
+                {detail.prior_opex.map((row) => (
+                  <li key={row.date}>
+                    <span className="meridian-history-date">{row.date.slice(5)}</span>
+                    <span className="meridian-history-move">
+                      {" "}
+                      · SPX {fmtPct(row.spx_session_pct)} session
+                      {row.spx_next_day_pct != null ? ` / ${fmtPct(row.spx_next_day_pct)} next` : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
         </div>
       )}
 
@@ -215,15 +271,76 @@ export function MeridianEventDetailPanel({ item, detail, loading, error }: Props
             <h3 className="meridian-card-label">Recent catalyst headlines</h3>
             <HeadlineList items={detail.catalysts} empty="No recent catalyst headlines." />
           </section>
+
+          {detail.prior_decisions.length > 0 && (
+            <section className="meridian-card meridian-card-wide">
+              <h3 className="meridian-card-label">Prior FDA windows · {detail.ticker}</h3>
+              <ul className="meridian-card-list meridian-history-list">
+                {detail.prior_decisions.map((row) => (
+                  <li key={row.date}>
+                    <span className="meridian-history-date">{row.date.slice(5)}</span>
+                    {row.drug ? ` · ${row.drug}` : ""}
+                    {row.headline ? ` · ${row.headline}` : ""}
+                    <span className="meridian-history-move">
+                      {" "}
+                      · {fmtPct(row.session_change_pct)} session
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
         </div>
       )}
 
       {!loading && !error && detail?.kind === "earnings" && (
         <>
-          {(detail.enrichment.street_estimates.length > 0 ||
+          {(detail.enrichment.print_history_summary ||
+            detail.enrichment.street_estimates.length > 0 ||
             detail.enrichment.catalysts.length > 0 ||
-            detail.enrichment.earnings_headlines.length > 0) && (
+            detail.enrichment.earnings_headlines.length > 0 ||
+            detail.enrichment.print_history.length > 0) && (
             <div className="meridian-detail-grid meridian-earn-enrich">
+              {detail.enrichment.print_history_summary && (
+                <section className="meridian-card meridian-card-wide">
+                  <h3 className="meridian-card-label">Earnings track record</h3>
+                  <p className="meridian-card-value">{detail.enrichment.print_history_summary}</p>
+                </section>
+              )}
+              {detail.enrichment.print_history.length > 0 && (
+                <section className="meridian-card meridian-card-wide">
+                  <h3 className="meridian-card-label">Prior prints · estimate vs actual</h3>
+                  <ul className="meridian-card-list meridian-history-list">
+                    {detail.enrichment.print_history.map((row) => (
+                      <li key={row.report_date ?? "unknown"}>
+                        <span className="meridian-history-date">{row.report_date?.slice(5) ?? "—"}</span>
+                        {row.eps_estimate != null && row.eps_actual != null ? (
+                          <span>
+                            {" "}
+                            EPS {row.eps_actual} vs est {row.eps_estimate}
+                            {row.surprise_pct != null ? ` (${fmtPct(row.surprise_pct)} surprise)` : ""}
+                          </span>
+                        ) : null}
+                        {row.beat != null && (
+                          <span className="meridian-history-move">
+                            {" "}
+                            · {row.beat ? "beat" : "miss"}
+                          </span>
+                        )}
+                        {row.session_change_pct != null && (
+                          <span className="meridian-history-move">
+                            {" "}
+                            · {fmtPct(row.session_change_pct)} session
+                            {row.next_day_change_pct != null
+                              ? ` / ${fmtPct(row.next_day_change_pct)} next`
+                              : ""}
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
               {detail.enrichment.street_estimates.length > 0 && (
                 <section className="meridian-card">
                   <h3 className="meridian-card-label">Street estimates</h3>

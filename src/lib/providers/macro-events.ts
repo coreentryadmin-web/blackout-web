@@ -243,6 +243,30 @@ export function fetchUpcomingMacroEvents(daysAhead = 7): MacroEvent[] {
   }));
 }
 
+/** Prior scheduled macro prints of the same family (CPI / FOMC / NFP …) before a date. */
+export function priorScheduledMacroEvents(input: {
+  event: string;
+  beforeYmd: string;
+  limit?: number;
+}): Array<{ date: string; event: string; impact: "high" | "medium" }> {
+  const needle = input.event.toLowerCase();
+  const matches = (label: string): boolean => {
+    const u = label.toLowerCase();
+    if (needle.includes("cpi")) return u.includes("cpi");
+    if (needle.includes("fomc")) return u.includes("fomc");
+    if (needle.includes("nfp") || needle.includes("payroll") || needle.includes("nonfarm")) {
+      return u.includes("payroll") || u.includes("nonfarm") || u.includes("nfp");
+    }
+    if (needle.includes("gdp")) return u.includes("gdp");
+    if (needle.includes("pce")) return u.includes("pce");
+    if (needle.includes("ppi")) return u.includes("ppi");
+    return u.includes(needle.slice(0, 6)) || needle.includes(u.slice(0, 6));
+  };
+  return ALL_MACRO_SCHEDULE.filter((e) => e.date < input.beforeYmd && matches(e.event))
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, input.limit ?? 6);
+}
+
 // ---------------------------------------------------------------------------
 // Live macro calendar — UW /api/market/economic-calendar is the PRIMARY source.
 // The curated literal above is the offline FALLBACK: every consumer adopts live data only

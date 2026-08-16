@@ -4,6 +4,7 @@ import {
   buildMeridianTimeline,
   daysUntilEt,
   parseMeridianEventId,
+  priorOpexDates,
   thirdFridayYmd,
   upcomingOpexDates,
 } from "./meridian-timeline";
@@ -76,4 +77,11 @@ test("parseMeridianEventId: macro, earnings, opex, fda", () => {
 test("upcomingOpexDates: includes third Friday within window", () => {
   const dates = upcomingOpexDates("2026-08-01", 30);
   assert.ok(dates.includes("2026-08-21"));
+});
+
+test("priorOpexDates: walks back monthly third Fridays", () => {
+  const dates = priorOpexDates("2026-08-21", 3);
+  assert.ok(dates.every((d) => d < "2026-08-21"));
+  assert.equal(dates.length, 3);
+  assert.equal(dates[0], thirdFridayYmd(2026, 7));
 });

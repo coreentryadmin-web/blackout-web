@@ -3,6 +3,7 @@ import "server-only";
 import { fetchBenzingaCatalysts, fetchBenzingaEarnings } from "@/lib/providers/polygon";
 import { fetchUwEarningsEstimates } from "@/lib/providers/unusual-whales";
 import { roundFloats } from "@/lib/round-floats";
+import { loadMeridianEarningsPrintHistory } from "@/lib/meridian/meridian-earnings-history";
 import type { MeridianEarningsEnrichment } from "@/features/meridian/lib/meridian-types";
 
 function shapeHeadlines(
@@ -32,13 +33,14 @@ function shapeEstimates(rows: Record<string, unknown>[]): MeridianEarningsEnrich
   });
 }
 
-/** Benzinga catalysts + earnings headlines + street estimates for an earnings row. */
+/** Benzinga catalysts + earnings headlines + street estimates + print history for an earnings row. */
 export async function loadMeridianEarningsEnrichment(ticker: string): Promise<MeridianEarningsEnrichment> {
   const sym = ticker.trim().toUpperCase();
-  const [catalysts, earningsNews, estimateRows] = await Promise.all([
+  const [catalysts, earningsNews, estimateRows, history] = await Promise.all([
     fetchBenzingaCatalysts(sym, 6).catch(() => []),
     fetchBenzingaEarnings(sym, 6).catch(() => []),
     fetchUwEarningsEstimates(sym).catch(() => [] as Record<string, unknown>[]),
+    loadMeridianEarningsPrintHistory(sym, 6),
   ]);
 
   return roundFloats({
@@ -58,5 +60,7 @@ export async function loadMeridianEarningsEnrichment(ticker: string): Promise<Me
       }))
     ),
     street_estimates: shapeEstimates(estimateRows),
+    print_history: history.print_history,
+    print_history_summary: history.print_history_summary,
   });
 }
