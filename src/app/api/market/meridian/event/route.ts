@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authorizePremiumDeskApi } from "@/lib/market-api-auth";
-import { requireToolApiForDeskCaller } from "@/lib/tool-access-server";
+import { requireAdminApi } from "@/lib/admin-access";
 import { macroEventsOnDateLive } from "@/lib/providers/macro-events";
 import { preEarningsPackForLargo } from "@/lib/largo/pre-earnings-pack";
 import {
@@ -14,10 +13,8 @@ import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
-  const auth = await authorizePremiumDeskApi(req);
-  if (auth instanceof Response) return auth;
-  const gate = await requireToolApiForDeskCaller(auth, "meridian");
-  if (gate) return gate;
+  const denied = await requireAdminApi();
+  if (denied) return denied;
 
   const id = req.nextUrl.searchParams.get("id")?.trim();
   if (!id) {

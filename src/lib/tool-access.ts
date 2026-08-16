@@ -39,6 +39,7 @@ export const TOOLS: readonly ToolMeta[] = [
     label: "Meridian",
     href: "/meridian",
     product: "largo",
+    /** Admin-only preview route until fully developed; stays locked for members via LAUNCHED_TOOLS. */
     defaultLaunched: false,
   },
 ] as const;

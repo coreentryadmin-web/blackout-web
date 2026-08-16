@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authorizePremiumDeskApi } from "@/lib/market-api-auth";
-import { requireToolApiForDeskCaller } from "@/lib/tool-access-server";
+import { requireAdminApi } from "@/lib/admin-access";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { fetchUpcomingMacroEventsLive } from "@/lib/providers/macro-events";
 import { loadMeridianEarningsTimeline } from "@/lib/meridian/meridian-timeline-server";
@@ -14,10 +13,8 @@ const DEFAULT_DAYS = 14;
 const MAX_DAYS = 45;
 
 export async function GET(req: NextRequest) {
-  const auth = await authorizePremiumDeskApi(req);
-  if (auth instanceof Response) return auth;
-  const gate = await requireToolApiForDeskCaller(auth, "meridian");
-  if (gate) return gate;
+  const denied = await requireAdminApi();
+  if (denied) return denied;
 
   const rawDays = Number(req.nextUrl.searchParams.get("days") ?? DEFAULT_DAYS);
   const daysAhead = Number.isFinite(rawDays)
