@@ -100,6 +100,7 @@ import {
   recordWallSample,
   strikeTrailLifecycle,
   trimHistoryForLiveTrails,
+  alignWallHistoryToBarTimes,
   type StrikeTrail,
   type VectorWallLens,
   type WallHistorySample,
@@ -1130,13 +1131,18 @@ function applyWallBeadMarkers(
    *  null is a supported state — the row ordering then falls back to pure strength. */
   spot: number | null = null,
   /** Compare panes: dimmer, smaller zoom-anchor ghosts. */
-  compactBeads = false
+  compactBeads = false,
+  /** Replay: snap bucket times to visible bar timestamps so the canvas rail can project x. */
+  alignBarTimes?: readonly number[]
 ): { strikes: number[]; rendered: StrikeTrail[] } {
   if (!beadsPlugin) return { strikes: [], rendered: [] };
-  const bucketed = bucketWallHistoryForInterval(history, intervalMinutes, {
+  let bucketed = bucketWallHistoryForInterval(history, intervalMinutes, {
     minBucketSec: trailBucketSec,
     liveBeads,
   });
+  if (alignBarTimes?.length) {
+    bucketed = alignWallHistoryToBarTimes(bucketed, alignBarTimes);
+  }
   // Lifecycle carries each strike's birth/last-seen/active flags so the marker layer can anchor
   // beads to the birth candle and fade departed walls (BUG 3). It wraps trailsByStrike, so the
   // point lists are identical to before — only the per-strike metadata is added.
@@ -1597,6 +1603,10 @@ export function VectorChart({
   const lastFourUpOverlayRefreshRef = useRef(0);
   const linkedReplayControlledRef = useRef(false);
   const replayModeRef = useRef(false);
+  /** Imperative replay frame paint — synced from applyFrame for effects declared above it. */
+  const applyFrameRef = useRef<
+    ((cursorTime: number, bars: VectorBar[], history: WallHistorySample[], activeLens: VectorWallLens) => void) | null
+  >(null);
   const liveSessionRef = useRef(liveSession);
   /**
    * Mirrors cursorIndex for reads outside React's render cycle (replay timer, lens
@@ -2194,6 +2204,10 @@ export function VectorChart({
   const refreshTrails = useCallback((activeLens: VectorWallLens) => {
     const series = seriesRef.current;
     if (!series) return;
+    // Replay bead rail is owned by applyFrame (cursor-sliced history + bar-aligned buckets).
+    // The live composeHorizonTrail path unions a session-end "current column" that has no
+    // matching bar on the cursor-sliced series — feeding it here wipes formations to candles-only.
+    if (replayModeRef.current) return;
     const v = lensVisuals(activeLens);
     // NARROWED DTE HORIZON (0DTE/weekly/monthly) — two sources, in precedence order:
     //   1. horizonHistoryRef: the RECORDED per-horizon trail (composite-keyed rail, PR #186),
@@ -2653,7 +2667,14 @@ export function VectorChart({
   useEffect(() => {
     indicatorsRef.current = indicators;
     paintOverlays(lastDisplayBarsRef.current);
-    refreshTrails(lensRef.current);
+    if (replayModeRef.current) {
+      const t = timelineRef.current[cursorIndexRef.current];
+      if (t != null) {
+        applyFrameRef.current?.(t, minuteBarsRef.current, wallHistoryRef.current, lensRef.current);
+      }
+    } else {
+      refreshTrails(lensRef.current);
+    }
   }, [indicators, paintOverlays, refreshTrails]);
 
   // Same sync-then-repaint idiom for the opening-range window preset: picking a new window must
@@ -2837,6 +2858,8 @@ export function VectorChart({
       const visibleBars = displayBarsFromMinute(bars, timeframeRef.current, cursorTime);
       applyDisplayBars(series, volumeSeriesRef.current, visibleBars);
       paintOverlays(visibleBars);
+      lastDisplayBarsRef.current = visibleBars;
+      const barTimes = visibleBars.map((b) => b.time);
 
       // Horizon-aware replay: when the member has narrowed the DTE (GEX lens) and that horizon
       // has a recorded trail, replay THAT horizon's beads forming point-in-time — not the blended
@@ -2863,12 +2886,13 @@ export function VectorChart({
         activeLens,
         timeframeRef.current,
         cursorTime,
-        false,
+        true,
         wallCountForTimeframe(timeframeRef.current),
         true,
         trailBucketSec,
         spotRef.current,
-        compareCompactBeadsRef.current
+        compareCompactBeadsRef.current,
+        barTimes
       );
       const put = applyWallBeadMarkers(
         putBeadsRef.current,
@@ -2878,12 +2902,13 @@ export function VectorChart({
         activeLens,
         timeframeRef.current,
         cursorTime,
-        false,
+        true,
         wallCountForTimeframe(timeframeRef.current),
         true,
         trailBucketSec,
         spotRef.current,
-        compareCompactBeadsRef.current
+        compareCompactBeadsRef.current,
+        barTimes
       );
       // Feed the ribbon rail the point-in-time trails so replay scrubs the bands too, not just dots.
       const enabled = indicatorsRef.current;
@@ -2925,6 +2950,8 @@ export function VectorChart({
     },
     [initialWalls, initialVexWalls, initialGammaFlip, initialVexFlip, refreshOverlays, paintOverlays]
   );
+
+  applyFrameRef.current = applyFrame;
 
   const stopReplayTimer = useCallback(() => {
     if (replayTimerRef.current) {
@@ -3196,6 +3223,7 @@ export function VectorChart({
     };
 
     const fitSessionOverview = () => {
+      if (replayModeRef.current) return;
       if (intradayZoomPresetRef.current !== "session") return;
       if (liveFollowEnabledRef.current) return;
       // Wall-history poll runs every 5s for 0DTE session overview — must not yank a manual zoom.

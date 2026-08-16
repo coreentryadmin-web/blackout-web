@@ -12,6 +12,7 @@ import {
   SEED_FULL_RESOLUTION_SEC,
   SEED_TAIL_BUCKET_SEC,
   bucketWallHistoryForInterval,
+  alignWallHistoryToBarTimes,
   composeHorizonTrail,
   liveTrailAnchorSec,
   pickReplayTrailSource,
@@ -517,6 +518,32 @@ test("bucketWallHistoryForInterval: liveBeads keeps 5s density on 1m chart", () 
   ];
   const out = bucketWallHistoryForInterval(history, 1, { minBucketSec: 5, liveBeads: true });
   assert.deepEqual(out.map((s) => s.time), [100, 105, 110, 115]);
+});
+
+test("alignWallHistoryToBarTimes: 5s buckets snap to 1m bar grid for canvas projection", () => {
+  const barTimes = [1_000_000, 1_000_060, 1_000_120];
+  const history: WallHistorySample[] = [
+    { time: 1_000_005, walls: walls([6800], [6700]) },
+    { time: 1_000_055, walls: walls([6805], [6700]) },
+    { time: 1_000_065, walls: walls([6810], [6700]) },
+  ];
+  const out = alignWallHistoryToBarTimes(history, barTimes);
+  assert.deepEqual(out.map((s) => s.time), [1_000_000, 1_000_060]);
+  assert.equal(out[0]!.walls.callWalls[0]!.strike, 6805);
+  assert.equal(out[1]!.walls.callWalls[0]!.strike, 6810);
+});
+
+test("composeHorizonTrail: empty recorded + current column alone is replay-unsafe (session-end only)", () => {
+  const w = walls([105], [95]);
+  const sessionEnd = 1_700_010_000;
+  const current = [{ time: sessionEnd, walls: w, gammaFlip: 100 }];
+  const trail = composeHorizonTrail([], current);
+  assert.deepEqual(trail?.map((s) => s.time), [sessionEnd]);
+  // Cursor-sliced replay bars stop at mid-session — this lone sample has no matching bar → no beads.
+  const midSessionBars = [1_700_000_000, 1_700_003_600, 1_700_007_200];
+  const aligned = alignWallHistoryToBarTimes(trail!, midSessionBars);
+  assert.equal(aligned.length, 1);
+  assert.ok(aligned[0]!.time <= midSessionBars[midSessionBars.length - 1]!);
 });
 
 test("bucketWallHistoryForInterval: 5m aligns to five-minute candle buckets", () => {

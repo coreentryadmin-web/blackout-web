@@ -253,6 +253,13 @@ test("VectorChart: session viewport keeps the full-day bead rail during live RTH
   assert.match(src, /const sessionOverview = wantsSessionOverviewViewport/);
 });
 
+test("VectorChart: refreshTrails is a no-op during replay so applyFrame owns the bead rail", () => {
+  const src = read("src/features/vector/components/VectorChart.tsx");
+  assert.match(src, /if \(replayModeRef\.current\) return;/);
+  assert.match(src, /alignWallHistoryToBarTimes/);
+  assert.match(src, /applyFrameRef\.current/);
+});
+
 test("VectorChart: live 'all' horizon polls enriched blended history during RTH", () => {
   const src = read("src/features/vector/components/VectorChart.tsx");
   assert.match(src, /fetchBlendedHistory/);
