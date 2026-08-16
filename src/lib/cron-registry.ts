@@ -127,6 +127,18 @@ export const CRON_JOBS: CronJobDefinition[] = [
     description: "Pre-warm general platform cache (bootstrap bundle) for 24/7 admin/member page loads outside RTH",
   },
   {
+    key: "meridian-warm",
+    name: "Meridian Warm",
+    kind: "http",
+    path: "/api/cron/meridian-warm",
+    schedule_label: "~Every 5 min (extended warm window)",
+    stale_after_min: 10,
+    weekdays_only: true,
+    market_hours_only: true,
+    description:
+      "Pre-warm Meridian catalyst timeline + Polygon SPX GEX matrix + SPX desk enrichment so member polls stay cache-reader (no UW REST fan-out per request)",
+  },
+  {
     key: "vector-walls-warm",
     name: "Vector Walls Warm",
     kind: "http",

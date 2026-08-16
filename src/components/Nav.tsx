@@ -29,9 +29,8 @@ const FEATURE_LINKS: FeatureLink[] = [
   {
     href: "/meridian",
     label: "Meridian",
-    sub: "Catalyst structure desk · admin preview",
+    sub: "Catalyst structure desk — macro, earnings, OpEx, FDA",
     accent: "blue",
-    adminOnly: true,
   },
 ];
 

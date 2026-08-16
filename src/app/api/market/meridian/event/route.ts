@@ -1,83 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdminApi } from "@/lib/admin-access";
-import { macroEventsOnDateLive } from "@/lib/providers/macro-events";
-import { preEarningsPackForLargo } from "@/lib/largo/pre-earnings-pack";
+import { authorizePremiumDeskApi } from "@/lib/market-api-auth";
+import { requireToolApi } from "@/lib/tool-access-server";
+import { serverCache } from "@/lib/server-cache";
 import {
-  buildMeridianMacroBrief,
-  buildMeridianOpexDetail,
-  buildMeridianFdaDetail,
-  loadMeridianEarningsEnrichment,
-} from "@/lib/meridian/meridian-event-brief";
-import { parseMeridianEventId } from "@/features/meridian/lib/meridian-timeline";
-import { roundFloats } from "@/lib/round-floats";
+  loadMeridianEventResponse,
+  MERIDIAN_EVENT_TTL_MS,
+} from "@/lib/meridian/meridian-snapshot";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
-  const denied = await requireAdminApi();
-  if (denied) return denied;
+  const auth = await authorizePremiumDeskApi(req);
+  if (auth instanceof Response) return auth;
+
+  const locked = await requireToolApi("meridian");
+  if (locked) return locked;
 
   const id = req.nextUrl.searchParams.get("id")?.trim();
   if (!id) {
     return NextResponse.json({ error: "id is required" }, { status: 400, headers: NO_STORE_HEADERS });
   }
 
-  const parsed = parseMeridianEventId(id);
-  if (!parsed) {
-    return NextResponse.json({ error: "Invalid event id" }, { status: 400, headers: NO_STORE_HEADERS });
-  }
-
   try {
-    if (parsed.kind === "earnings") {
-      const ticker = parsed.ticker;
-      if (!ticker) {
-        return NextResponse.json({ error: "Missing ticker" }, { status: 400, headers: NO_STORE_HEADERS });
-      }
-      const [pack, enrichment] = await Promise.all([
-        preEarningsPackForLargo(ticker, parsed.date),
-        loadMeridianEarningsEnrichment(ticker),
-      ]);
-      if (!pack) {
-        return NextResponse.json({ error: "Earnings pack unavailable" }, { status: 404, headers: NO_STORE_HEADERS });
-      }
-      return NextResponse.json(roundFloats({ kind: "earnings", pack, enrichment }), {
-        headers: NO_STORE_HEADERS,
-      });
+    const detail = await serverCache(`meridian:event:v1:${id}`, MERIDIAN_EVENT_TTL_MS, () =>
+      loadMeridianEventResponse(id)
+    );
+    if (!detail) {
+      return NextResponse.json({ error: "Event not found" }, { status: 404, headers: NO_STORE_HEADERS });
     }
-
-    if (parsed.kind === "fda") {
-      const ticker = parsed.ticker;
-      if (!ticker) {
-        return NextResponse.json({ error: "Missing ticker" }, { status: 400, headers: NO_STORE_HEADERS });
-      }
-      const detail = await buildMeridianFdaDetail({ ticker, date: parsed.date });
-      return NextResponse.json(detail, { headers: NO_STORE_HEADERS });
-    }
-
-    if (parsed.kind === "opex") {
-      const detail = await buildMeridianOpexDetail(parsed.date);
-      return NextResponse.json(detail, { headers: NO_STORE_HEADERS });
-    }
-
-    const rows = await macroEventsOnDateLive(parsed.date);
-    const slug = parsed.slug?.replace(/-/g, " ") ?? "";
-    const match =
-      rows.find((r) => r.event.toLowerCase() === slug.toLowerCase()) ??
-      rows.find((r) => slug && r.event.toLowerCase().includes(slug.toLowerCase())) ??
-      rows[0];
-    if (!match) {
-      return NextResponse.json({ error: "Macro event not found" }, { status: 404, headers: NO_STORE_HEADERS });
-    }
-
-    const brief = await buildMeridianMacroBrief({
-      event: match.event,
-      date: parsed.date,
-      time: match.time?.trim() || null,
-      impact: match.impact === "high" ? "high" : match.impact === "medium" ? "medium" : "low",
-      estimate: match.estimate ?? null,
-    });
-    return NextResponse.json(brief, { headers: NO_STORE_HEADERS });
+    return NextResponse.json(detail, { headers: NO_STORE_HEADERS });
   } catch (error) {
     console.error("[market/meridian/event]", error);
     return NextResponse.json({ error: "Event detail failed" }, { status: 502, headers: NO_STORE_HEADERS });

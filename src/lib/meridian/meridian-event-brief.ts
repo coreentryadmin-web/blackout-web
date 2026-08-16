@@ -1,10 +1,14 @@
 import "server-only";
 
-import { summarizeGreekExposureByExpiry } from "@/lib/greek-exposure-summary";
 import { roundFloats } from "@/lib/round-floats";
 import { fmtPremium } from "@/lib/fmt-money";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { fetchBenzingaCatalysts } from "@/lib/providers/polygon";
+import {
+  maxPainForExpiryFromHeatmap,
+  summarizeHeatmapGammaByExpiry,
+} from "@/lib/meridian/meridian-gex-reads";
+import { readMeridianDeskLane } from "@/lib/meridian/meridian-desk-lane";
 import type {
   MeridianFlowSkew,
   MeridianMacroBrief,
@@ -146,6 +150,25 @@ function macroIndicatorIdForEvent(event: string): string | null {
 async function loadMacroIndicator(event: string): Promise<MeridianMacroIndicatorRead | null> {
   const id = macroIndicatorIdForEvent(event);
   if (!id) return null;
+
+  const { loadSpxDesk } = await import("@/features/spx/lib/spx-desk-loader");
+  const desk = await loadSpxDesk().catch(() => null);
+  const fromDesk = desk?.macro_indicators?.find(
+    (m) =>
+      m.indicator.toUpperCase() === id ||
+      m.label.toUpperCase().includes(id) ||
+      (id === "PAYROLLS" && /payroll|nfp|nonfarm/i.test(m.label))
+  );
+  if (fromDesk) {
+    return {
+      label: fromDesk.label,
+      latest_value: fromDesk.latest_value,
+      prior_value: fromDesk.prior_value,
+      change_pct: fromDesk.change_pct,
+      as_of: fromDesk.as_of,
+    };
+  }
+
   const { fetchUwEconomyIndicator } = await import("@/lib/providers/unusual-whales");
   const snap = await fetchUwEconomyIndicator(id).catch(() => null);
   if (!snap) return null;
@@ -158,34 +181,19 @@ async function loadMacroIndicator(event: string): Promise<MeridianMacroIndicator
   };
 }
 
-async function maxPainForExpiry(ticker: string, expiryYmd: string): Promise<number | null> {
-  const { fetchUwMaxPainRows } = await import("@/lib/providers/unusual-whales");
-  const rows = await fetchUwMaxPainRows(ticker).catch(() => [] as Record<string, unknown>[]);
-  for (const row of rows) {
-    const exp = String(row.expiry ?? "").slice(0, 10);
-    const strike = Number(row.max_pain ?? 0);
-    if (exp === expiryYmd && strike > 0) return strike;
-  }
-  for (const row of rows) {
-    const strike = Number(row.max_pain ?? 0);
-    if (strike > 0) return strike;
-  }
-  return null;
-}
-
 async function loadOpexExpiryRead(opexDate: string): Promise<MeridianOpexExpiryRead> {
   const today = todayEtYmd();
-  const { fetchUwGreekExposureExpiry, fetchUwNetFlowExpiry } = await import(
-    "@/lib/providers/unusual-whales"
-  );
-  const [greekRows, netFlowRows, maxPain] = await Promise.all([
-    fetchUwGreekExposureExpiry("SPX").catch(() => [] as Record<string, unknown>[]),
-    fetchUwNetFlowExpiry(25).catch(() => [] as Record<string, unknown>[]),
-    maxPainForExpiry("SPX", opexDate),
+  const { fetchGexHeatmap } = await import("@/lib/providers/polygon-options-gex");
+  const [hm, deskLane] = await Promise.all([
+    fetchGexHeatmap("SPX").catch(() => null),
+    readMeridianDeskLane(),
   ]);
 
-  const greek = summarizeGreekExposureByExpiry(greekRows as Record<string, unknown>[], today);
-  const opexFlow = (netFlowRows as Record<string, unknown>[]).find(
+  const maxPain = maxPainForExpiryFromHeatmap(hm, opexDate);
+  const greekFromCells = summarizeHeatmapGammaByExpiry(hm?.gex?.cells, today);
+  const greek = greekFromCells ?? deskLane.greek_exposure;
+  const netFlowRows = deskLane.net_flow_by_expiry;
+  const opexFlow = netFlowRows.find(
     (r) => String(r.expiry ?? r.expiration ?? "").slice(0, 10) === opexDate
   );
   const netCall = opexFlow ? Number(opexFlow.net_call_premium ?? opexFlow.call_premium ?? 0) : 0;
