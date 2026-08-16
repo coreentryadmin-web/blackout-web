@@ -1,13 +1,30 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { clsx } from "clsx";
 import { PageShell } from "@/components/ui";
 import { ProductMark } from "@/components/marks/ProductMark";
-import { FlowFeed } from "@/features/helix/components/FlowFeed";
 import { FlowAnomalyBanner } from "@/components/FlowAnomalyBanner";
 import { HelixTideBar } from "@/features/helix/components/HelixTideBar";
 import { IosIntelligenceHubSegment } from "@/components/ios/IosIntelligenceHubSegment";
 import { useIosNativeShell } from "@/hooks/useIosNativeShell";
+
+const FlowFeed = dynamic(
+  () => import("@/features/helix/components/FlowFeed").then((m) => m.FlowFeed),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="helix-tape-skeleton" aria-busy="true" aria-label="Loading HELIX tape">
+        <div className="nighthawk-skeleton-bar nighthawk-skeleton-bar-lg" />
+        <div className="nighthawk-skeleton-rows">
+          {Array.from({ length: 8 }, (_, i) => (
+            <div key={i} className="nighthawk-skeleton-row" />
+          ))}
+        </div>
+      </div>
+    ),
+  }
+);
 
 /** /flows page frame — tide + tape on native; full header on web. */
 export function HelixPageShell() {
