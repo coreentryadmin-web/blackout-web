@@ -325,6 +325,12 @@ async function filterConsoleErrors(errors) {
   );
 }
 
+/** Sticky desk nav covers the Vector toolbar at scrollY≈0 — nudge down before toolbar clicks. */
+async function clearStickyNavForToolbar(page) {
+  await page.evaluate(() => window.scrollTo({ top: 120, behavior: "instant" }));
+  await page.waitForTimeout(200);
+}
+
 async function browserVector(session) {
   const pw = await mintIosPlaywrightSession({ appUrl: BASE });
   if (pw.skip) {
@@ -357,7 +363,7 @@ async function browserVector(session) {
     await page.locator(".vector-page-shell, .vector-chart-wrap").first().waitFor({ timeout: 30_000 });
     rec("ui:vector-page-load", "PASS");
 
-    const compareBtn = page.locator('.vector-toolbar > .flex.flex-wrap [data-testid="vector-enter-compare"]');
+    const compareBtn = page.locator('[data-testid="vector-enter-compare"]');
     const brandText = await page.locator(".vector-page-shell").innerText().catch(() => "");
     if (await compareBtn.isVisible().catch(() => false)) {
       rec("ui:vector-header", "PASS", "Compare CTA visible");
@@ -373,12 +379,18 @@ async function browserVector(session) {
     await chart.waitFor({ state: "visible", timeout: 60_000 });
     rec("ui:chart-canvas", "PASS");
 
-    // Lens toggle — desktop wrap row (compact iOS rows are display:none on web; may lack testids)
-    const gexBtn = page.locator('.vector-toolbar > .flex.flex-wrap [data-testid="vector-lens-gex"]');
+    await clearStickyNavForToolbar(page);
+
+    // Desktop aligned toolbar (768px+); compact iOS rows are display:none on web.
+    const desktopShell = page.locator(".vector-toolbar-desk");
+    await desktopShell.waitFor({ state: "visible", timeout: 60_000 });
+    const lensGroup = desktopShell.getByRole("group", { name: "Wall exposure lens" });
+
+    const gexBtn = lensGroup.getByRole("button", { name: /^GEX\b/i });
     await gexBtn.waitFor({ state: "visible", timeout: 60_000 });
     await gexBtn.click({ timeout: 15_000 });
     rec("ui:click-gex-lens", "PASS");
-    const vexBtn = page.locator('.vector-toolbar > .flex.flex-wrap [data-testid="vector-lens-vex"]');
+    const vexBtn = lensGroup.getByRole("button", { name: /^VEX\b/i });
     const vexDisabled = await vexBtn.isDisabled();
     if (vexDisabled) {
       rec("ui:click-vex-lens", "WARN", "VEX disabled — no vanna ladder in session");
@@ -388,8 +400,8 @@ async function browserVector(session) {
       await gexBtn.click({ timeout: 15_000 });
     }
 
-    // Timeframe selector (dropdown)
-    const tfSelect = page.locator('.vector-toolbar > .flex.flex-wrap [data-testid="vector-tf-select"]');
+    // Timeframe dropdown — label "Chart timeframe" (testids omitted when exposeTestIds=false)
+    const tfSelect = desktopShell.getByLabel("Chart timeframe");
     await tfSelect.waitFor({ state: "visible", timeout: 15_000 });
     for (const m of ["3", "5", "15", "1"]) {
       await tfSelect.selectOption(m);
@@ -397,7 +409,6 @@ async function browserVector(session) {
     }
 
     // Cross-ticker comparison strip (P2 CTO audit) — universe snapshot may still be loading.
-    const desktopShell = page.locator(".vector-toolbar > .flex.flex-wrap");
     const feed = page.getByLabel("Cross-ticker wall comparison");
     await feed.waitFor({ state: "attached", timeout: 15_000 }).catch(() => undefined);
     if (await feed.isVisible().catch(() => false)) {
@@ -406,33 +417,33 @@ async function browserVector(session) {
       rec("ui:structure-feed", "WARN", "comparison strip not visible — universe snapshot may be cold");
     }
 
-    // Replay controls — desktop toolbar row only (compact iOS row is display:none on web but still in DOM)
-    const replayBar = desktopShell.locator(".vector-replay-bar").first();
-    const replayBtn = replayBar.getByRole("button", { name: /Replay session|Exit replay/i });
-    const canReplay = await replayBtn.isEnabled();
+    // Replay controls — desk-right only (compact iOS row stays in DOM with display:none).
+    const replayBar = desktopShell.locator(".vector-toolbar-desk-right .vector-replay-bar");
+    const replayToggle = replayBar.locator('[data-testid="vector-replay-toggle"]');
+    const canReplay = await replayToggle.isEnabled();
     if (!canReplay) {
       rec("ui:replay-available", "WARN", "replay disabled — need >1 timeline step");
     } else {
       rec("ui:replay-available", "PASS");
-      await replayBtn.click();
+      await clearStickyNavForToolbar(page);
+      await replayToggle.click({ force: true, timeout: 15_000 });
       rec("ui:click-enter-replay", "PASS");
 
-      const scrub = desktopShell.locator('input[type="range"][aria-label="Replay position"]').first();
+      const scrub = desktopShell.locator(
+        '.vector-toolbar-desk-right input[type="range"][aria-label="Replay position"]',
+      );
       if (await scrub.isVisible()) {
         await scrub.fill("1");
         rec("ui:scrub-replay", "PASS");
       }
 
-      const playBtn = replayBar.locator("button").filter({ hasText: /^▶ Play$|^⏸ Pause$/ });
+      const playBtn = replayBar.locator('[data-testid="vector-replay-play"]');
       if (await playBtn.isVisible()) {
-        await playBtn.click();
+        await playBtn.click({ force: true });
         await page.waitForTimeout(800);
         rec("ui:click-play", "PASS");
-        const pauseBtn = replayBar.locator("button").filter({ hasText: /^⏸ Pause$/ });
-        if (await pauseBtn.isVisible()) {
-          await pauseBtn.click();
-          rec("ui:click-pause", "PASS");
-        }
+        await playBtn.click({ force: true });
+        rec("ui:click-pause", "PASS");
       }
 
       for (const speed of ["2", "4"]) {
@@ -443,8 +454,7 @@ async function browserVector(session) {
         }
       }
 
-      const exitBtn = replayBar.getByRole("button", { name: "Exit replay" });
-      await exitBtn.click();
+      await replayToggle.click({ force: true, timeout: 15_000 });
       rec("ui:click-exit-replay", "PASS");
     }
 
@@ -550,8 +560,8 @@ async function browserVector(session) {
     }
 
     await page.locator('[data-testid="vector-compare-exit"]').click({ timeout: 15_000 });
-    await page.locator(".vector-page-shell").waitFor({ state: "visible", timeout: 90_000 });
-    await page.locator(".vector-page-shell .vector-chart-wrap").first().waitFor({ state: "visible", timeout: 90_000 });
+    await page.locator(".vector-compare-command").waitFor({ state: "hidden", timeout: 90_000 }).catch(() => {});
+    await page.locator(".vector-chart-wrap").first().waitFor({ state: "visible", timeout: 90_000 });
     rec("ui:compare-exit", "PASS");
 
     await page.screenshot({ path: join(OUT, `vector-e2e-compare-${Date.now()}.png`), fullPage: true });
