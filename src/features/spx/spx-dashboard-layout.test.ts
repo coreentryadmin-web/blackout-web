@@ -82,6 +82,9 @@ test("SpxDashboard mounts triple desk: intel rail (Pulse default + Largo toggle)
   assert.match(embed, /defaultChartViewport="session"/);
   assert.match(embed, /defaultTimeframe=\{3\}/);
   assert.match(src, /spx-sniper-triple--desk-v3/);
+  assert.match(src, /vector-page-toolbar/, "Vector toolbar portals full-width above the desk grid");
+  assert.match(src, /toolbarPortalEl=\{vectorToolbarPortalEl\}/);
+  assert.match(embed, /toolbarPortalEl/);
 });
 
 test("SpxDashboard: play poll + verdict bar gate on sessionActive (not resolveDeskLive)", () => {

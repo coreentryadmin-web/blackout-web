@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { clsx } from "clsx";
 import { PageShell, FreshnessChip } from "@/components/ui";
 import { ProductMark } from "@/components/marks/ProductMark";
@@ -134,6 +134,8 @@ type Props = {
   /** Compare grid — forwarded to VectorChart for Shift+1/2/3 zoom shortcuts. */
   comparePane?: boolean;
   compareKeyboardActive?: boolean;
+  /** Host desk portal target — renders the Vector toolbar full-width above the desk grid. */
+  toolbarPortalEl?: HTMLElement | null;
 };
 
 type VectorIosPanel = "chart" | "pulse" | "ladder" | "scanner";
@@ -197,11 +199,19 @@ export function VectorPageShell({
   compareFourUpBackground = false,
   comparePane = false,
   compareKeyboardActive = true,
+  toolbarPortalEl: hostToolbarPortalEl = null,
 }: Props) {
   const chartOnly = embed === "chart-only";
   const router = useRouter();
   const nativeShell = useIosNativeShell();
   const compactPanels = useCompactDeskPanels(nativeShell);
+  const pageToolbarPortalRef = useRef<HTMLDivElement>(null);
+  const [pageToolbarPortalEl, setPageToolbarPortalEl] = useState<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    if (chartOnly || hostToolbarPortalEl) return;
+    setPageToolbarPortalEl(pageToolbarPortalRef.current);
+  }, [chartOnly, hostToolbarPortalEl]);
+  const toolbarPortalEl = hostToolbarPortalEl ?? pageToolbarPortalEl;
   const [iosPanel, setIosPanel] = useState<VectorIosPanel>("chart");
   const sessionLabel = formatSessionLabel(sessionYmd);
   const [streamUpdatedAt, setStreamUpdatedAt] = useState<number | null>(null);
@@ -595,6 +605,7 @@ export function VectorPageShell({
           trailSlot={chartFreshness}
           replayLeadSlot={toolbarReplayLeadSlot}
           regimeSlot={embedRegimeSlot}
+          toolbarPortalEl={toolbarPortalEl}
         />
         {toast && (
           <div className="vector-alert-toast" role="status" aria-live="polite">
@@ -684,6 +695,7 @@ export function VectorPageShell({
       leadSlot={chartLead}
       trailSlot={chartFreshness}
       regimeSlot={<VectorRegimeBanner regime={regime} />}
+      toolbarPortalEl={toolbarPortalEl}
     />
   );
 
@@ -722,6 +734,14 @@ export function VectorPageShell({
             aria-label="Vector desk view"
             className="ios-native-desk-segment ios-native-desk-segment-vector"
             segments={VECTOR_IOS_PANELS}
+          />
+        ) : null}
+
+        {!chartOnly && !hostToolbarPortalEl ? (
+          <div
+            ref={pageToolbarPortalRef}
+            className="vector-page-toolbar"
+            data-testid="vector-page-toolbar"
           />
         ) : null}
 

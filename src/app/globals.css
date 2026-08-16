@@ -10603,6 +10603,28 @@ html.product-shell .nav-mega {
     @apply mb-1;
   }
 
+  /* Full-width desk toolbar — spans the whole page grid, not just the chart column. */
+  .vector-page-toolbar {
+    width: 100%;
+    min-width: 0;
+    margin-bottom: 0.5rem;
+  }
+  .vector-page-toolbar:empty {
+    display: none;
+  }
+  .vector-page-toolbar .vector-toolbar {
+    margin-bottom: 0;
+  }
+  @media (min-width: 768px) {
+    .vector-page-toolbar .vector-toolbar-desk {
+      flex-wrap: wrap;
+      row-gap: 0.375rem;
+    }
+  }
+  .spx-desk-vector-toolbar {
+    margin-bottom: 0.625rem;
+  }
+
   /* ── Daily/Weekly historical price view (P2 #5, separate from the intraday VectorChart) ── */
   /* h-[...] (not min-h) is load-bearing: .vector-daily-chart-canvas below is h-full, and a
      percentage-height child only resolves through a flex column ancestor whose OWN height is

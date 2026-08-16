@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { clsx } from "clsx";
 import { useAppAuth } from "@/lib/auth-client";
@@ -106,6 +106,11 @@ export function SpxDashboard({ vectorEnabled }: SpxDashboardProps) {
   // through the VectorPageShell seam; the matrix column's ladder view consumes it so bars
   // and the spot line land at the SAME pixel heights as the chart.
   const [priceScaleMap, setPriceScaleMap] = useState<VectorPriceScaleMap | null>(null);
+  const vectorToolbarPortalRef = useRef<HTMLDivElement>(null);
+  const [vectorToolbarPortalEl, setVectorToolbarPortalEl] = useState<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    setVectorToolbarPortalEl(vectorToolbarPortalRef.current);
+  }, []);
 
   // PULSE → CHART ANCHOR (2026-07-26): a Pulse event's "→ chart" click flows UP through
   // SpxIntelRail as a focus request and DOWN into the embedded Vector chart via `focusLevel`.
@@ -322,6 +327,11 @@ export function SpxDashboard({ vectorEnabled }: SpxDashboardProps) {
         The former Plays (kanban) and Terminal columns were removed in favour of the Vector
         chart — the components remain in the repo unused so a reversal is one render away.
       */}
+      <div
+        ref={vectorToolbarPortalRef}
+        className="vector-page-toolbar spx-desk-vector-toolbar"
+        data-testid="vector-page-toolbar"
+      />
       {/* --desk-v2 keeps the shared rail styling (gap, borders, Largo/matrix columns);
           --desk-v3 swaps the grid template from four rails to three and adds the vector column. */}
       <div
@@ -426,6 +436,7 @@ export function SpxDashboard({ vectorEnabled }: SpxDashboardProps) {
                     onPriceScaleRender={setPriceScaleMap}
                     focusLevel={chartFocus}
                     playLevels={playLevels}
+                    toolbarPortalEl={vectorToolbarPortalEl}
                     toolbarReplayLeadSlot={
                     // Focus toggle relocated here from the removed session time bar
                     // (user-directed 2026-07-14: "move Focus to left of Replay").

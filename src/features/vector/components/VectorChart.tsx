@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { clsx } from "clsx";
 import { useIosChartDoubleTapFullscreen } from "@/hooks/useIosChartDoubleTapFullscreen";
 import {
@@ -408,6 +409,8 @@ type Props = {
   compareKeyboardActive?: boolean;
   /** Reports this pane's replay timeline so Compare can build a union scrubber. */
   onReplayTimeline?: (timeline: number[]) => void;
+  /** When set, the chart toolbar portals here (full-page desk bar) instead of nesting in the chart column. */
+  toolbarPortalEl?: HTMLElement | null;
 };
 
 function lensVisuals(lens: VectorWallLens) {
@@ -1289,6 +1292,7 @@ export function VectorChart({
   comparePane = false,
   compareKeyboardActive = true,
   onReplayTimeline,
+  toolbarPortalEl = null,
 }: Props) {
   const initialTimeframe = defaultTimeframe ?? VECTOR_DEFAULT_TIMEFRAME;
   const openingDteHorizon: VectorDteHorizon = defaultDteHorizon ?? VECTOR_DEFAULT_DTE_HORIZON;
@@ -4586,6 +4590,52 @@ export function VectorChart({
     ]
   );
 
+  const toolbar = (
+    <VectorToolbar
+      interval={timeframe}
+      onInterval={setTimeframe}
+      timeframeDisabled={replayMode}
+      lens={lens}
+      vexAvailable={vexAvailable}
+      onLens={handleLens}
+      dteHorizon={dteHorizon}
+      onDteHorizon={(h) => setDteHorizon(normalizeDteHorizon(h))}
+      dteAvailable={dteAvailable}
+      gexAsOf={gexAsOf}
+      vexAsOf={vexAsOf}
+      liveSession={liveSession && !replayMode}
+      replayMode={replayMode}
+      playing={playing}
+      canReplay={canReplay}
+      cursorIndex={cursorIndex}
+      stepCount={stepCount}
+      clockLabel={clockLabel}
+      speed={replaySpeed}
+      loop={replayLoop}
+      onToggleReplay={toggleReplay}
+      onTogglePlay={() => setPlaying((p) => !p)}
+      onScrub={scrubTo}
+      onSpeed={setReplaySpeed}
+      onStep={stepReplay}
+      onJumpOpen={jumpReplayOpen}
+      onJumpClose={jumpReplayClose}
+      onToggleLoop={() => setReplayLoop((v) => !v)}
+      indicators={indicators}
+      onToggleIndicator={toggleIndicator}
+      onClearIndicators={clearIndicators}
+      barCount={displayBarCount}
+      openingRangeMinutes={openingRangeMinutes}
+      onOpeningRangeMinutes={setOpeningRangeMinutes}
+      leadSlot={leadSlot}
+      replayLeadSlot={replayLeadSlot}
+      trailSlot={trailSlot}
+      hideLinkedControls={toolbarHideLinkedControls}
+      comparePane={toolbarHideLinkedControls}
+      hideReplayControls={hideReplayControls}
+      drawTools={drawToolsProps}
+    />
+  );
+
   return (
     <div className="vector-chart-wrap">
       {!sessionBars.length && (
@@ -4594,49 +4644,7 @@ export function VectorChart({
         </p>
       )}
 
-      <VectorToolbar
-        interval={timeframe}
-        onInterval={setTimeframe}
-        timeframeDisabled={replayMode}
-        lens={lens}
-        vexAvailable={vexAvailable}
-        onLens={handleLens}
-        dteHorizon={dteHorizon}
-        onDteHorizon={(h) => setDteHorizon(normalizeDteHorizon(h))}
-        dteAvailable={dteAvailable}
-        gexAsOf={gexAsOf}
-        vexAsOf={vexAsOf}
-        liveSession={liveSession && !replayMode}
-        replayMode={replayMode}
-        playing={playing}
-        canReplay={canReplay}
-        cursorIndex={cursorIndex}
-        stepCount={stepCount}
-        clockLabel={clockLabel}
-        speed={replaySpeed}
-        loop={replayLoop}
-        onToggleReplay={toggleReplay}
-        onTogglePlay={() => setPlaying((p) => !p)}
-        onScrub={scrubTo}
-        onSpeed={setReplaySpeed}
-        onStep={stepReplay}
-        onJumpOpen={jumpReplayOpen}
-        onJumpClose={jumpReplayClose}
-        onToggleLoop={() => setReplayLoop((v) => !v)}
-        indicators={indicators}
-        onToggleIndicator={toggleIndicator}
-        onClearIndicators={clearIndicators}
-        barCount={displayBarCount}
-        openingRangeMinutes={openingRangeMinutes}
-        onOpeningRangeMinutes={setOpeningRangeMinutes}
-        leadSlot={leadSlot}
-        replayLeadSlot={replayLeadSlot}
-        trailSlot={trailSlot}
-        hideLinkedControls={toolbarHideLinkedControls}
-        comparePane={toolbarHideLinkedControls}
-        hideReplayControls={hideReplayControls}
-        drawTools={drawToolsProps}
-      />
+      {toolbarPortalEl ? createPortal(toolbar, toolbarPortalEl) : toolbar}
 
       <VectorIntradayZoomControls
         active={intradayZoomPreset}
