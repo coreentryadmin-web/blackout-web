@@ -417,6 +417,20 @@ test("trailsByStrike: threads the sample's modeled flag onto each emitted trail 
   );
 });
 
+test("trailsByStrike: threads wall notional onto trail points when present on GexWallLevel", () => {
+  const history: WallHistorySample[] = [
+    {
+      time: 100,
+      walls: {
+        callWalls: [{ strike: 6800, pct: 40, notional: 1.2e9 }],
+        putWalls: [],
+      },
+    },
+  ];
+  const trail = trailsByStrike(history, "callWalls").get(6800)!;
+  assert.equal(trail[0]!.notional, 1.2e9);
+});
+
 test("trailForGammaFlip: horizontal bead row when flip is present", () => {
   const history: WallHistorySample[] = [
     { time: 100, walls: walls([6800], [6700]), gammaFlip: 6745 },

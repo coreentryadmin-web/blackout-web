@@ -24,9 +24,11 @@ import {
   relStrengthT,
   growthModulation,
   magnitudeGlowBoost,
+  haloRingForTier,
   beadRadiusForNotional,
   pctToNotionalProxy,
 } from "./vector-wall-visual";
+import type { WallIntegrityTier } from "./vector-wall-integrity";
 import type { StrikeTrail } from "./vector-wall-history";
 
 /**
@@ -74,6 +76,13 @@ export type WallRailData = {
   putColor: string;
   /** Compare grid uses smaller, more translucent beads behind candles. */
   profile?: WallBeadRenderProfile;
+  /** Per-strike integrity tier → outer confidence ring (GEX lens). */
+  callTierByStrike?: ReadonlyMap<number, WallIntegrityTier>;
+  putTierByStrike?: ReadonlyMap<number, WallIntegrityTier>;
+  /** When false, integrity rings are not drawn (core + king only). */
+  showIntegrityRings?: boolean;
+  /** When true, bead size uses recorded $|gamma| notional; when false, frame-relative sizing. */
+  useDollarSizing?: boolean;
 };
 
 type PaneRendererTarget = Parameters<IPrimitivePaneRenderer["draw"]>[0];
@@ -112,7 +121,7 @@ const SETTLE_EPS = 0.02;
 // that the crowned bucket is still unmistakably the biggest dot on its row.
 const KING_RADIUS_BOOST = 0.22;
 
-type BandPt = { x: number; yTop: number; yBot: number; a: number; emph: number };
+type BandPt = { x: number; yTop: number; yBot: number; a: number; emph: number; tier?: WallIntegrityTier };
 /** One run of adjacent buckets for a wall (no time gap). Rendered as a ROW OF BEADS — one round dot
  *  per bucket, each sized by its yTop/yBot half-height (magnitude) and brightened by its own alpha
  *  (growth/fade). A dead-stretch gap splits the run so beads don't bridge time the wall was absent.
@@ -130,7 +139,8 @@ class WallRailRenderer implements IPrimitivePaneRenderer {
   constructor(
     private readonly _bands: Band[],
     private readonly _tuning: BeadRenderTuning,
-    private readonly _overlayDim: number
+    private readonly _overlayDim: number,
+    private readonly _showIntegrityRings: boolean
   ) {}
 
   draw(target: PaneRendererTarget): void {
@@ -148,6 +158,14 @@ class WallRailRenderer implements IPrimitivePaneRenderer {
           const rMul = 1 + emph * kingBoost;
           const cy = (p.yTop + p.yBot) / 2;
           const r = Math.max(minR, ((p.yBot - p.yTop) / 2) * rMul);
+          if (this._showIntegrityRings && p.tier) {
+            const ring = haloRingForTier(p.tier);
+            const ringR = Math.max(minR + 1, r * (1.45 * ring.sizeMul));
+            ctx.fillStyle = withA(b.color, Math.min(0.55, p.a * 0.38 * ring.alphaMul));
+            ctx.beginPath();
+            ctx.arc(p.x, cy, ringR, 0, Math.PI * 2);
+            ctx.fill();
+          }
           ctx.fillStyle = withA(b.color, p.a);
           ctx.beginPath();
           ctx.arc(p.x, cy, r, 0, Math.PI * 2);
@@ -204,7 +222,7 @@ class WallRailPaneView implements IPrimitivePaneView {
     if (!projected) return null;
     const { bands, tuning } = projected;
     if (bands.length === 0) return null;
-    return new WallRailRenderer(bands, tuning, this._source.overlayDim());
+    return new WallRailRenderer(bands, tuning, this._source.overlayDim(), this._source.showIntegrityRings());
   }
 }
 
@@ -295,6 +313,10 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
     return this._data?.profile === "compare" ? "bottom" : "top";
   }
 
+  showIntegrityRings(): boolean {
+    return Boolean(this._data?.showIntegrityRings);
+  }
+
   private _cancelRaf(): void {
     if (this._rafId != null && typeof window !== "undefined") window.cancelAnimationFrame(this._rafId);
     this._rafId = null;
@@ -365,7 +387,18 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
    *  so the drawn beads reflect the in-flight animation. Null when there's nothing honest to draw. */
   project(): { bands: Band[]; tuning: BeadRenderTuning } | null {
     if (!this._visible || !this._data || !this._chart || !this._series) return null;
-    const { callTrails, putTrails, maxPct, callColor, putColor, profile } = this._data;
+    const {
+      callTrails,
+      putTrails,
+      maxPct,
+      callColor,
+      putColor,
+      profile,
+      callTierByStrike,
+      putTierByStrike,
+      showIntegrityRings = false,
+      useDollarSizing = false,
+    } = this._data;
     if (!(maxPct > 0)) return null;
     const tuning = beadRenderTuning(profile ?? "default");
     const ts = this._chart.timeScale();
@@ -399,7 +432,13 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
       if (last && last.time > liveTime) liveTime = last.time;
     }
 
-    const addTrail = (trail: StrikeTrail, color: string, side: "c" | "p", kingAt: Map<number, number>) => {
+    const addTrail = (
+      trail: StrikeTrail,
+      color: string,
+      side: "c" | "p",
+      kingAt: Map<number, number>,
+      tierByStrike?: ReadonlyMap<number, WallIntegrityTier>
+    ) => {
       const y = series.priceToCoordinate(trail.strike);
       if (y == null) return;
       const pts = trail.points;
@@ -452,7 +491,8 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
         const glow = magnitudeGlowBoost(p.pct); // absolute-magnitude brightness (frame-independent)
         // TARGET half = ABSOLUTE $-ladder magnitude (or relative fallback), then the growth/fade
         // velocity multiplier so a wall being STACKED this bucket still flares fatter.
-        const target = targetHalfPx(p.pct, p.notional, maxPct, tuning) * mod.sizeMul;
+        const notional = useDollarSizing ? p.notional : undefined;
+        const target = targetHalfPx(p.pct, notional, maxPct, tuning) * mod.sizeMul;
         const key = beadKey(side, trail.strike, p.time);
         this._targetHalf.set(key, target);
         // Displayed half lags the target (eased by the rAF loop). Reduce-motion / first sight → snap
@@ -481,13 +521,15 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
         // Frozen truth for history; eased value only on the live edge.
         const wasKing = kingAt.get(p.time) === trail.strike;
         const pEmph = p.time === liveTime ? liveEmph : wasKing ? 1 : 0;
-        run.push({ x, yTop: y - half, yBot: y + half, a, emph: pEmph });
+        const tier =
+          showIntegrityRings && tierByStrike ? tierByStrike.get(trail.strike) : undefined;
+        run.push({ x, yTop: y - half, yBot: y + half, a, emph: pEmph, tier });
       }
       flush(pts.length - 1);
     };
 
-    for (const t of callTrails) addTrail(t, callColor, "c", callKingAt);
-    for (const t of putTrails) addTrail(t, putColor, "p", putKingAt);
+    for (const t of callTrails) addTrail(t, callColor, "c", callKingAt, callTierByStrike);
+    for (const t of putTrails) addTrail(t, putColor, "p", putKingAt, putTierByStrike);
     if (bands.length === 0) return null;
     return { bands, tuning };
   }

@@ -69,6 +69,7 @@ import {
 import {
   scoreTopWalls,
   integrityByStrike,
+  beadIntegrityTierMaps,
   type WallIntegrity,
 } from "@/features/vector/lib/vector-wall-integrity";
 import {
@@ -1200,14 +1201,30 @@ function feedWallRail(
   callColor: string,
   putColor: string,
   visible: boolean,
-  profile: WallBeadRenderProfile = "default"
+  profile: WallBeadRenderProfile = "default",
+  history: WallHistorySample[] = [],
+  activeLens: VectorWallLens = "gex",
+  showIntegrityRings = false,
+  useDollarSizing = false
 ): void {
   if (!rail) return;
   let maxPct = 0;
   for (const t of callRendered) for (const p of t.points) if (p.pct > maxPct) maxPct = p.pct;
   for (const t of putRendered) for (const p of t.points) if (p.pct > maxPct) maxPct = p.pct;
+  const tierMaps = showIntegrityRings ? beadIntegrityTierMaps(history, activeLens) : null;
   rail.setData(
-    { callTrails: callRendered, putTrails: putRendered, maxPct, callColor, putColor, profile },
+    {
+      callTrails: callRendered,
+      putTrails: putRendered,
+      maxPct,
+      callColor,
+      putColor,
+      profile,
+      callTierByStrike: tierMaps?.call,
+      putTierByStrike: tierMaps?.put,
+      showIntegrityRings,
+      useDollarSizing,
+    },
     visible && maxPct > 0
   );
 }
@@ -2210,6 +2227,7 @@ export function VectorChart({
       compareCompactBeadsRef.current
     );
     // Feed the ribbon rail the SAME composed call+put trails (both sides share one frame reference).
+    const enabled = indicatorsRef.current;
     feedWallRail(
       wallRailPrimitiveRef.current,
       call.rendered,
@@ -2217,7 +2235,11 @@ export function VectorChart({
       v.callColor,
       v.putColor,
       true,
-      beadProfile
+      beadProfile,
+      history,
+      activeLens,
+      enabled.has("bead-integrity-rings"),
+      enabled.has("bead-dollar-sizing")
     );
     // Record what was actually drawn so the autoscale provider widens to reveal these exact beads
     // at every zoom level, then nudge a rescale (off-hours there is no tick to trigger it).
@@ -2584,7 +2606,8 @@ export function VectorChart({
   useEffect(() => {
     indicatorsRef.current = indicators;
     paintOverlays(lastDisplayBarsRef.current);
-  }, [indicators, paintOverlays]);
+    refreshTrails(lensRef.current);
+  }, [indicators, paintOverlays, refreshTrails]);
 
   // Same sync-then-repaint idiom for the opening-range window preset: picking a new window must
   // redraw the OR lines immediately, without waiting for the next tick/timeframe change.
@@ -2816,6 +2839,7 @@ export function VectorChart({
         compareCompactBeadsRef.current
       );
       // Feed the ribbon rail the point-in-time trails so replay scrubs the bands too, not just dots.
+      const enabled = indicatorsRef.current;
       feedWallRail(
         wallRailPrimitiveRef.current,
         call.rendered,
@@ -2823,7 +2847,11 @@ export function VectorChart({
         v.callColor,
         v.putColor,
         true,
-        compareCompactBeadsRef.current ? "compare" : "default"
+        compareCompactBeadsRef.current ? "compare" : "default",
+        visibleHistory,
+        activeLens,
+        enabled.has("bead-integrity-rings"),
+        enabled.has("bead-dollar-sizing")
       );
       // Same zoom-stability guarantee in replay: widen the axis for the beads this frame drew.
       beadStrikesRef.current = { call: call.strikes, put: put.strikes };

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { scoreWallIntegrity, scoreTopWalls, integrityByStrike } from "./vector-wall-integrity";
+import { scoreWallIntegrity, scoreTopWalls, integrityByStrike, beadIntegrityTierMaps } from "./vector-wall-integrity";
 import type { GexWalls } from "@/lib/providers/gex-wall-levels";
 import type { WallHistorySample } from "./vector-wall-history";
 
@@ -135,4 +135,12 @@ test("integrityByStrike: null / empty sides → empty maps, never fabricated ent
   const oneSide = integrityByStrike({ callWalls: [{ strike: 7600, pct: 10 }], putWalls: [] });
   assert.equal(oneSide.call.size, 1);
   assert.equal(oneSide.put.size, 0);
+});
+
+test("beadIntegrityTierMaps: GEX lens → strike→tier maps; VEX / empty → null", () => {
+  const maps = beadIntegrityTierMaps(persistentHistory, "gex");
+  assert.ok(maps);
+  assert.equal(maps!.call.get(7600), "firm");
+  assert.equal(beadIntegrityTierMaps(persistentHistory, "vex"), null);
+  assert.equal(beadIntegrityTierMaps([], "gex"), null);
 });

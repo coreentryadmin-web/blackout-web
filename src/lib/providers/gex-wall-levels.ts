@@ -1,7 +1,7 @@
 import { strikeTotalsFromLadder } from "@/lib/providers/gex-cross-validation-core";
 
 /** One gamma-wall level for the Vector chart overlay: the strike plus its share of concentration. */
-export type GexWallLevel = { strike: number; pct: number };
+export type GexWallLevel = { strike: number; pct: number; /** Absolute $|gamma| at this strike (dealer $-gamma per 1% move scale). */ notional?: number };
 
 /**
  * NAMING, and why VEX reuses this (audited 2026-08-09 — do not "fix" the ordering).
@@ -59,8 +59,9 @@ export function computeGexWalls(
     const strike = Number(strikeStr);
     if (!Number.isFinite(strike) || !Number.isFinite(g) || g === 0) continue;
     const pct = (Math.abs(g) / totalAbsGamma) * 100;
-    if (g > 0) callWalls.push({ strike, pct });
-    else putWalls.push({ strike, pct });
+    const notional = Math.abs(g);
+    if (g > 0) callWalls.push({ strike, pct, notional });
+    else putWalls.push({ strike, pct, notional });
   }
   callWalls.sort((a, b) => b.pct - a.pct);
   putWalls.sort((a, b) => b.pct - a.pct);
