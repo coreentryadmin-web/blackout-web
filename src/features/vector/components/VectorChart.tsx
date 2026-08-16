@@ -28,6 +28,11 @@ import {
   type PlayLineKind,
 } from "@/features/vector/lib/vector-play-levels";
 import { VectorCrosshairLegend, renderVectorCrosshairLegend, type VectorCrosshairState } from "@/features/vector/components/VectorCrosshairLegend";
+import {
+  VectorWallEventTooltip,
+  renderWallEventTooltip,
+  type WallEventTooltipState,
+} from "@/features/vector/components/VectorWallEventTooltip";
 import { VectorToolbar } from "@/features/vector/components/VectorToolbar";
 import { UserDrawingsPrimitive } from "@/features/vector/lib/vector-drawings-primitive";
 import { vectorCrosshairStatesEqual } from "@/features/vector/lib/vector-crosshair-equality";
@@ -1619,6 +1624,10 @@ export function VectorChart({
   }, [compareSync, onCompareCrosshair, onCompareVisibleRange, hideVolumePane, compareCompactBeads, compareFourUp, compareFourUpBackground]);
 
   const crosshairLegendRef = useRef<HTMLDivElement | null>(null);
+  const wallEventTooltipRef = useRef<HTMLDivElement | null>(null);
+  const wallEventTooltipLatestRef = useRef<WallEventTooltipState | null>(null);
+  const wallEventTooltipDisplayedRef = useRef<WallEventTooltipState | null>(null);
+  const wallEventTooltipRafRef = useRef<number | null>(null);
   const crosshairLatestRef = useRef<VectorCrosshairState | null>(null);
   const crosshairDisplayedRef = useRef<VectorCrosshairState | null>(null);
   const crosshairRafRef = useRef<number | null>(null);
@@ -1636,6 +1645,28 @@ export function VectorChart({
     },
     [ticker]
   );
+
+  const scheduleWallEventTooltipUpdate = useCallback((next: WallEventTooltipState | null) => {
+    wallEventTooltipLatestRef.current = next;
+    if (wallEventTooltipRafRef.current != null) return;
+    wallEventTooltipRafRef.current = requestAnimationFrame(() => {
+      wallEventTooltipRafRef.current = null;
+      const pending = wallEventTooltipLatestRef.current;
+      const prev = wallEventTooltipDisplayedRef.current;
+      if (
+        pending === prev ||
+        (pending != null &&
+          prev != null &&
+          pending.label === prev.label &&
+          pending.x === prev.x &&
+          pending.y === prev.y)
+      ) {
+        return;
+      }
+      wallEventTooltipDisplayedRef.current = pending;
+      renderWallEventTooltip(wallEventTooltipRef.current, pending);
+    });
+  }, []);
 
   const syncExtendedHoursShade = useCallback(() => {
     extendedHoursShadePrimitiveRef.current?.setBands(
@@ -3989,6 +4020,7 @@ export function VectorChart({
     chart.subscribeCrosshairMove((param) => {
       if (!param.time || !param.point) {
         scheduleCrosshairUpdate(null);
+        scheduleWallEventTooltipUpdate(null);
         const sync = compareSyncRef.current;
         if (sync?.linkCrosshair && !applyingExternalCrosshairRef.current) {
           onCompareCrosshairRef.current?.(sync.paneId, null);
@@ -4055,6 +4087,18 @@ export function VectorChart({
             ? darkPoolRef.current
             : [],
       });
+
+      if (indicatorsRef.current.has("bead-event-glyphs")) {
+        const hit = wallRailPrimitiveRef.current?.hitTestEventGlyph(
+          param.point.x,
+          param.point.y
+        );
+        scheduleWallEventTooltipUpdate(
+          hit ? { label: hit.label, x: hit.x, y: hit.y } : null
+        );
+      } else {
+        scheduleWallEventTooltipUpdate(null);
+      }
     });
 
     // SHARED PRICE AXIS seam — only wired when a host asked for it at mount (the SPX desk
@@ -4150,6 +4194,11 @@ export function VectorChart({
         cancelAnimationFrame(crosshairRafRef.current);
         crosshairRafRef.current = null;
       }
+      if (wallEventTooltipRafRef.current != null) {
+        cancelAnimationFrame(wallEventTooltipRafRef.current);
+        wallEventTooltipRafRef.current = null;
+      }
+      renderWallEventTooltip(wallEventTooltipRef.current, null);
       container.removeEventListener("mousedown", onChartPointerDown);
       container.removeEventListener("touchstart", onChartPointerDown);
       chart.timeScale().unsubscribeVisibleTimeRangeChange(onVisibleTimeRangeChange);
@@ -4719,6 +4768,7 @@ export function VectorChart({
           </button>
         ) : null}
         <VectorCrosshairLegend ref={crosshairLegendRef} ticker={ticker} />
+        <VectorWallEventTooltip ref={wallEventTooltipRef} />
         <p className="pointer-events-none absolute bottom-2 left-2 z-10 font-mono text-[10px] uppercase tracking-wide text-sky-300">
           SPY vol
         </p>

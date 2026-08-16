@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   CHART_GLYPH_EVENT_KINDS,
   composeWallEventGlyphs,
+  hitTestProjectedWallEventGlyph,
   trailDerivedGlyphs,
   wallEventToGlyph,
 } from "./vector-wall-event-glyphs";
@@ -41,6 +42,7 @@ test("wallEventToGlyph: shift maps to handover diamond at new strike", () => {
   assert.ok(g);
   assert.equal(g!.shape, "handover_diamond");
   assert.equal(g!.strike, 6810);
+  assert.equal(g!.label, "shift");
 });
 
 test("wallEventToGlyph: flip cross uses flip anchor", () => {
@@ -122,4 +124,21 @@ test("composeWallEventGlyphs: dedupes event + trail glyphs at same time/strike/s
   });
   const births = composed.filter((g) => g.shape === "birth_tick" && g.strike === 6800);
   assert.equal(births.length, 1);
+});
+
+test("hitTestProjectedWallEventGlyph: returns nearest glyph within radius", () => {
+  const glyphs = [
+    { x: 100, y: 200 },
+    { x: 300, y: 400 },
+  ];
+  assert.equal(hitTestProjectedWallEventGlyph(glyphs, 102, 198, 16), 0);
+  assert.equal(hitTestProjectedWallEventGlyph(glyphs, 50, 50, 16), -1);
+  assert.equal(hitTestProjectedWallEventGlyph(glyphs, 295, 405, 16), 1);
+});
+
+test("trailDerivedGlyphs: labels are human-readable", () => {
+  const glyphs = trailDerivedGlyphs([trail(6800, [100, 115, 130])], "call", 95);
+  const birth = glyphs.find((g) => g.shape === "birth_tick");
+  assert.ok(birth?.label.includes("6,800"));
+  assert.match(birth!.label, /Call wall forming/i);
 });
