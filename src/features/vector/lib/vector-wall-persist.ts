@@ -76,7 +76,7 @@ export async function loadSessionWallHistory(
       return warmed;
     }
   } catch (err) {
-    console.warn(`[vector-wall-persist] db fallback failed ${logToken(st)}:${logToken(sessionYmd)}:`, err);
+    console.warn("[vector-wall-persist] db fallback failed", `${logToken(st)}:${logToken(sessionYmd)}`, err);
   }
   return hit ?? [];
 }
@@ -258,7 +258,7 @@ export async function appendSessionWallSample(
     // off-hours rail) behind a green {ok} cron for hours. Log it so the failure is
     // observable in CloudWatch without changing the non-blocking contract, and
     // return false so callers can tally how many samples actually landed.
-    console.warn(`[vector-wall-persist] append failed ${logToken(st)}:${logToken(sessionYmd)}:`, err);
+    console.warn("[vector-wall-persist] append failed", `${logToken(st)}:${logToken(sessionYmd)}`, err);
     return false;
   }
 }
@@ -303,7 +303,7 @@ export async function loadSessionWallTail(
       const tail = await loadSessionWallTailFromDb(sessionYmd, st, limit);
       if (tail.length) return tail;
     } catch (err) {
-      console.warn(`[vector-wall-persist] tail read failed ${logToken(st)}:${logToken(sessionYmd)}:`, err);
+      console.warn("[vector-wall-persist] tail read failed", `${logToken(st)}:${logToken(sessionYmd)}`, err);
     }
   }
 

@@ -58,7 +58,7 @@ export async function persistWallSampleToDb(
     );
     return true;
   } catch (err) {
-    console.warn(`[vector-wall-db] persist failed ${logToken(ticker)}:${logToken(sessionYmd)}:`, err);
+    console.warn("[vector-wall-db] persist failed", `${logToken(ticker)}:${logToken(sessionYmd)}`, err);
     return false;
   }
 }
@@ -168,7 +168,7 @@ export async function loadSessionWallTailFromDb(
     );
     return res.rows.map(rowToWallSample).reverse();
   } catch (err) {
-    console.warn(`[vector-wall-db] tail load failed ${logToken(ticker)}:${logToken(sessionYmd)}:`, err);
+    console.warn("[vector-wall-db] tail load failed", `${logToken(ticker)}:${logToken(sessionYmd)}`, err);
     return [];
   }
 }
@@ -190,7 +190,7 @@ export async function loadSessionWallHistoryFromDb(
     );
     return res.rows.map(rowToWallSample);
   } catch (err) {
-    console.warn(`[vector-wall-db] load failed ${logToken(ticker)}:${logToken(sessionYmd)}:`, err);
+    console.warn("[vector-wall-db] load failed", `${logToken(ticker)}:${logToken(sessionYmd)}`, err);
     return [];
   }
 }
