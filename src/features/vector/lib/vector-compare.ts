@@ -33,6 +33,28 @@ export function parseCompareTickers(raw: string | null | undefined): string[] {
   return out;
 }
 
+/**
+ * Which `compare` value the client should honour: the LIVE URL, never the page-load prop.
+ *
+ * This exists because the trap it prevents is invisible in review. `/vector` renders one client
+ * component that receives `initialCompareRaw` (derived server-side from this same `compare` search
+ * param) and also reads `useSearchParams()`. Writing the obvious
+ *
+ *   searchParams.get("compare") ?? initialCompareRaw
+ *
+ * looks like a harmless hydration fallback and is in fact a one-way door: "Exit compare" navigates
+ * to `/vector`, the param goes away, `searchParams.get("compare")` correctly returns null — and the
+ * `??` immediately hands back the value the URL had when the page FIRST loaded. Compare mode can be
+ * entered but never left, and the same staleness breaks any other same-route navigation out of it.
+ *
+ * ABSENCE OF THE PARAM IS MEANINGFUL. The server prop is only ever a first-paint convenience, and
+ * `/vector` is force-dynamic so the two always agree on first paint anyway — it can be ignored
+ * outright. Kept as a named function so the rule is testable and the next reader sees the WHY.
+ */
+export function resolveCompareRaw(urlCompareParam: string | null | undefined): string | null {
+  return urlCompareParam ?? null;
+}
+
 export function isCompareMode(compareParam: string | null | undefined): boolean {
   return compareParam != null && compareParam.length > 0;
 }
