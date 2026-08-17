@@ -154,6 +154,7 @@ async function main() {
       answer,
       question: scenario.question,
       archetype,
+      ticker: socialTicker !== "SPX" ? socialTicker : undefined,
     });
 
     const draftApi = await draftXPost(live.cookieHeader, {
