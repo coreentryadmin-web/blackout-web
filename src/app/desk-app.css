@@ -1495,3 +1495,10 @@ html.nav-locked body { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .mea-cal-cell, .mea-dotpt-label { transition: none; }
 }
+
+/* Mounted earnings-analytics block on the Meridian Analytics view. */
+.meridian-earnings-analytics { display: flex; flex-direction: column; gap: 14px; margin-bottom: 18px; }
+/* Two-up above 980px; the clock and the scatter are complementary reads (what's coming vs how it
+   graded), so they belong side by side on a desk and stacked on anything narrower. */
+.meridian-mea-split { display: grid; grid-template-columns: 1fr; gap: 14px; }
+@media (min-width: 980px) { .meridian-mea-split { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }

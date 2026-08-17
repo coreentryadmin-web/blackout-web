@@ -15,6 +15,7 @@ import {
 } from "@/lib/meridian/meridian-benzinga-analytics";
 import {
   buildEarningsWeekRows,
+  buildEarningsAnalyticsRows,
   buildRecentEarningsRevisions,
   parseNextEarningsFromBenzinga,
 } from "@/lib/meridian/meridian-benzinga-earnings-core";
@@ -45,6 +46,7 @@ export type BenzingaEarningsBundle = {
   entitled: boolean;
   error: string | null;
   earnings_week: ReturnType<typeof buildEarningsWeekRows>;
+  earnings_analytics_rows: ReturnType<typeof buildEarningsAnalyticsRows>;
   earnings_week_analytics: MeridianEarningsWeekAnalytics | null;
   recent_revisions: ReturnType<typeof buildRecentEarningsRevisions>;
   estimate_revision_timeline: MeridianEstimateRevisionEntry[];
@@ -79,6 +81,7 @@ export async function loadBenzingaEarningsBundle(
 
     const window_rows = windowRes.rows;
     const earnings_week = buildEarningsWeekRows(window_rows, todayYmd, daysAhead);
+    const earnings_analytics_rows = buildEarningsAnalyticsRows(window_rows, todayYmd, daysAhead);
     const weekTickers = [...new Set(earnings_week.map((r) => r.ticker))].slice(0, 24);
 
     let historicalRows: BenzingaStructuredEarnings[] = [];
@@ -97,6 +100,7 @@ export async function loadBenzingaEarningsBundle(
 
     return {
       window_rows,
+      earnings_analytics_rows,
       entitled: windowRes.entitled,
       error: windowRes.error,
       earnings_week,
@@ -114,6 +118,7 @@ export async function loadBenzingaEarningsBundle(
     entitled: true,
     error: "cache_error",
     earnings_week: [],
+    earnings_analytics_rows: [],
     earnings_week_analytics: null,
     recent_revisions: [],
     estimate_revision_timeline: [],

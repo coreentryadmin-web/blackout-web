@@ -12,7 +12,30 @@
  * real defects in this repo already. Callers render `null` as an em-dash, never as a number.
  */
 
-import type { BenzingaStructuredEarnings } from "@/lib/providers/polygon";
+/**
+ * The MINIMUM shape these transforms read — deliberately structural, not the provider type.
+ *
+ * `EarningsAnalyticsRow` satisfies this, and so does the server payload row the desk carries,
+ * so the same tested maths runs on both without an adapter and without the analytics layer taking a
+ * hard dependency on one provider's field set. If a second earnings source ever lands, it conforms
+ * to this instead of the core being rewritten.
+ */
+export type EarningsAnalyticsRow = {
+  ticker: string;
+  company_name: string | null;
+  date: string;
+  time: string | null;
+  date_status: string | null;
+  importance: number | null;
+  fiscal_period: string | null;
+  fiscal_year: number | null;
+  estimated_eps: number | null;
+  actual_eps: number | null;
+  estimated_revenue: number | null;
+  actual_revenue: number | null;
+  eps_surprise_pct: number | null;
+  revenue_surprise_pct: number | null;
+};
 
 /** ET session bucket a print lands in — the thing that decides whether it is tradeable today. */
 export type PrintSession = "pre" | "post" | "intraday" | "unknown";
@@ -39,7 +62,7 @@ export function classifyPrintSession(time: string | null | undefined): PrintSess
 }
 
 /** Has this row actually printed? The single predicate every "is it real yet" branch must use. */
-export function hasPrinted(row: BenzingaStructuredEarnings): boolean {
+export function hasPrinted(row: EarningsAnalyticsRow): boolean {
   return row.actual_eps != null && Number.isFinite(row.actual_eps);
 }
 
@@ -102,7 +125,7 @@ function scatterBound(points: ScatterPoint[]): number {
   return Math.max(0.05, max * 1.15);
 }
 
-export function buildSurpriseScatter(rows: readonly BenzingaStructuredEarnings[]): SurpriseScatter {
+export function buildSurpriseScatter(rows: readonly EarningsAnalyticsRow[]): SurpriseScatter {
   const points: ScatterPoint[] = [];
   let incomplete = 0;
   let pending = 0;
@@ -143,7 +166,7 @@ export function buildSurpriseScatter(rows: readonly BenzingaStructuredEarnings[]
 export type CalendarCell = {
   date: string;
   /** Every row on that date, importance-desc then ticker for a stable render. */
-  rows: BenzingaStructuredEarnings[];
+  rows: EarningsAnalyticsRow[];
   total: number;
   megaCap: number;
   printed: number;
@@ -159,8 +182,8 @@ export type CalendarCell = {
  * would drag every forward day toward "in line" and paint an un-printed Friday the same colour as a
  * genuinely in-line one. A day with nothing printed returns null and renders unshaded.
  */
-export function buildCalendarGrid(rows: readonly BenzingaStructuredEarnings[]): CalendarCell[] {
-  const byDate = new Map<string, BenzingaStructuredEarnings[]>();
+export function buildCalendarGrid(rows: readonly EarningsAnalyticsRow[]): CalendarCell[] {
+  const byDate = new Map<string, EarningsAnalyticsRow[]>();
   for (const row of rows) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(row.date)) continue;
     const list = byDate.get(row.date);
@@ -229,7 +252,7 @@ export type BeatMissStreak = {
  */
 export function buildBeatMissStreak(
   ticker: string,
-  rows: readonly BenzingaStructuredEarnings[]
+  rows: readonly EarningsAnalyticsRow[]
 ): BeatMissStreak {
   const mine = rows
     .filter((r) => r.ticker === ticker && hasPrinted(r))
@@ -308,7 +331,7 @@ export type PrintClockEntry = {
  * would hide a confirmed mega-cap print purely because Benzinga has not stamped its hour yet.
  */
 export function buildPrintClock(
-  rows: readonly BenzingaStructuredEarnings[],
+  rows: readonly EarningsAnalyticsRow[],
   nowMs: number,
   horizonHours = 24
 ): PrintClockEntry[] {
@@ -365,7 +388,7 @@ function median(xs: number[]): number | null {
 }
 
 /** Headline roll-up for the top-of-dashboard stat strip. */
-export function buildWeekPulse(rows: readonly BenzingaStructuredEarnings[]): WeekPulse {
+export function buildWeekPulse(rows: readonly EarningsAnalyticsRow[]): WeekPulse {
   let megaCap = 0;
   let confirmed = 0;
   let printed = 0;
