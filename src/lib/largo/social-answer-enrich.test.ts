@@ -16,7 +16,7 @@ describe("enrichSocialAnswerIfNeeded", () => {
   });
 
   it("does not duplicate when Post already present", () => {
-    const answer = "## Post\n**Copy**\nAlready here.";
+    const answer = "## Post\n**Copy**\nAlready here — desk read is live with honest empty-state copy.";
     assert.equal(enrichSocialAnswerIfNeeded(answer, "X post", null), answer);
   });
 });

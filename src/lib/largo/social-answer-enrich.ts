@@ -37,7 +37,7 @@ export type SocialPackSlice = {
 };
 
 function hasPostSection(answer: string): boolean {
-  return /(?:^|\n)#+\s*Post\b/i.test(answer);
+  return /(?:^|\n)(?:#+\s*Post\b|\*\*Post\*\*)/i.test(answer);
 }
 
 export function enrichSocialAnswerIfNeeded(
@@ -46,7 +46,7 @@ export function enrichSocialAnswerIfNeeded(
   pack: SocialPackSlice | null,
   ticker?: string | null,
 ): string {
-  if (!answer.trim() || hasPostSection(answer)) return answer;
+  if (!answer.trim()) return answer;
   if (extractPostCopyFromAnswer(answer)) return answer;
 
   const archetype: SocialContentArchetype = detectSocialArchetype(question);
