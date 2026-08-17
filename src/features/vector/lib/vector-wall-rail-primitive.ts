@@ -24,6 +24,7 @@ import {
 import {
   relStrengthT,
   beadModulation,
+  ageTaperAlpha,
   magnitudeGlowBoost,
   // haloRingForTier stays (integrity halos are still drawn here); beadRadiusForNotional and
   // pctToNotionalProxy are gone — bead radius now comes from targetHalfPx() off recorded $|gamma|,
@@ -565,13 +566,18 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
           }
         }
         const modeledScale = p.modeled === true ? (tuning.modeledAlphaScale ?? 0.26) : 1;
+        // Recency, measured against the newest bucket ON THIS RAIL rather than wall-clock now: an
+        // off-hours or replayed rail has no "now" to be old relative to, and using Date.now() there
+        // would fade an entire frozen session toward the floor for no reason a member could read.
+        const ageScale = ageTaperAlpha(liveTime - p.time);
         const a = Math.min(
           1,
           fillAlpha(p.pct, maxPct, tuning) *
             mod.alphaMul *
             (0.75 + 0.25 * Math.min(1.6, glow)) *
             tuning.drawAlphaMul *
-            modeledScale
+            modeledScale *
+            ageScale
         );
         // Frozen truth for history; eased value only on the live edge.
         const wasKing = kingAt.get(p.time) === trail.strike;
