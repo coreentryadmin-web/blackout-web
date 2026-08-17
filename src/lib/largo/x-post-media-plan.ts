@@ -38,6 +38,7 @@ const ARCHETYPE_STACK: Partial<Record<SocialContentArchetype, string[]>> = {
   morning_hook: ["nighthawk", "vector", "thermal"],
   live_desk: ["vector", "helix", "thermal", "slayer"],
   earnings_catalyst: ["meridian", "helix", "thermal", "vector"],
+  ticker_post: ["vector", "helix", "thermal", "nighthawk"],
 };
 
 const TOOL_SIGNALS: ReadonlyArray<{

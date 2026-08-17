@@ -51,6 +51,14 @@ const SCENARIOS = [
     expectTools: ["Meridian", "Helix"],
   },
   {
+    id: "x-ticker-nvda",
+    label: "X · post for NVDA",
+    question:
+      "Generate me a post for NVDA — what to tweet, how to post it, which tools to screenshot, what to capture in each panel, and every applicable product on the platform.",
+    expectArchetype: "ticker_post",
+    expectTools: ["Vector", "Helix", "Thermal", "Meridian"],
+  },
+  {
     id: "x-full-workflow",
     label: "X · full screenshot guide",
     question:
@@ -136,10 +144,12 @@ async function main() {
     }
 
     const { enrichSocialAnswerIfNeeded } = await import("../src/lib/largo/social-answer-enrich.ts");
-    const answer = enrichSocialAnswerIfNeeded(rawAnswer, scenario.question, null, "SPX");
+    const { extractSocialPostTicker } = await import("../src/lib/largo/ticker-social-guide.ts");
+    const socialTicker = extractSocialPostTicker(scenario.question, "SPX") ?? "SPX";
+    const answer = enrichSocialAnswerIfNeeded(rawAnswer, scenario.question, null, socialTicker);
 
-    const score = scoreSocialAnswer(answer);
     const archetype = detectSocialArchetype(scenario.question);
+    const score = scoreSocialAnswer(answer, { archetype });
     const draft = formatLargoXPost({
       answer,
       question: scenario.question,

@@ -44,6 +44,16 @@ export type SocialContentPack = {
     sample_size: number;
   } | null;
   post_angles: string[];
+  /** Flow vs gamma for the focus ticker when not SPX. */
+  ticker_desk: {
+    ticker: string;
+    spot: number | null;
+    flip: number | null;
+    helix_bias: string | null;
+    thermal_bias: string | null;
+    gamma_regime: string | null;
+    conflict: boolean;
+  } | null;
 };
 
 function parsePnl(play: Record<string, unknown>): number | null {
@@ -77,9 +87,12 @@ export async function buildSocialContentPack(
   const archetype = detectSocialArchetype(question);
   const focus = tickerFocus?.trim().toUpperCase() ?? null;
 
-  const [boardRaw, compare, record] = await Promise.all([
+  const [boardRaw, compare, tickerCompare, record] = await Promise.all([
     zeroDtePlaysForLargo().catch(() => null),
     helixThermalCompareForLargo("SPX").catch(() => null),
+    focus && focus !== "SPX"
+      ? helixThermalCompareForLargo(focus).catch(() => null)
+      : Promise.resolve(null),
     zerodteRecordForLargo(7).catch(() => null),
   ]);
 
@@ -140,8 +153,21 @@ export async function buildSocialContentPack(
 
   const post_angles = buildPostAngles(archetype, { winners, board, spx, record_7d: record7d });
 
+  const tickerDesk =
+    tickerCompare && focus
+      ? {
+          ticker: focus,
+          spot: tickerCompare.thermal.spot ?? null,
+          flip: tickerCompare.thermal.flip ?? null,
+          helix_bias: tickerCompare.helix.bias,
+          thermal_bias: tickerCompare.thermal.bias,
+          gamma_regime: tickerCompare.thermal.gamma_regime ?? null,
+          conflict: tickerCompare.conflict,
+        }
+      : null;
+
   return roundFloats({
-    available: plays.length > 0 || spx != null || record7d != null,
+    available: plays.length > 0 || spx != null || record7d != null || tickerDesk != null,
     archetype,
     as_of: new Date().toISOString(),
     ticker_focus: focus,
@@ -151,5 +177,6 @@ export async function buildSocialContentPack(
     spx,
     record_7d: record7d,
     post_angles,
+    ticker_desk: tickerDesk,
   });
 }

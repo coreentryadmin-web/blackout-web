@@ -6,6 +6,7 @@ import type { LargoXPostDraft } from "@/lib/api";
 import { draftLargoXPost, shareLargoToDiscord } from "@/lib/api";
 import { detectSocialArchetype } from "@/lib/largo/social-content-core";
 import { formatLargoXPost } from "@/lib/largo/format-x-post";
+import { extractSocialPostTicker } from "@/lib/largo/ticker-social-guide";
 
 type ShareState = "idle" | "sending" | "done" | "err";
 
@@ -18,7 +19,9 @@ function localXDraft(input: {
   question?: string | null;
 }): LargoXPostDraft {
   const archetype = input.question ? detectSocialArchetype(input.question) : undefined;
-  return formatLargoXPost({ ...input, archetype });
+  const ticker =
+    extractSocialPostTicker(input.question ?? "", input.ticker ?? undefined) ?? input.ticker;
+  return formatLargoXPost({ ...input, ticker, archetype });
 }
 
 async function applyXDraft(draft: LargoXPostDraft, setXDraft: (d: LargoXPostDraft) => void) {

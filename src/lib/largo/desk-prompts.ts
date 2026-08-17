@@ -133,6 +133,14 @@ export const LARGO_DESK_PROMPTS: LargoDeskPrompt[] = [
       "I shared a desk read in Discord — repackage it as an X post with tighter hook, copy, alt hooks, CTA (Discord invite in reply), and which desk screenshots to attach.",
     socialPack: true,
   },
+  {
+    id: "x-ticker-post",
+    label: "X · post for NVDA",
+    hint: "Full post kit — copy, how to post, every desk screenshot",
+    question:
+      "Generate me a post for NVDA — what to tweet, how to post it, which tools to screenshot, what to capture in each panel, and every applicable product on the platform.",
+    socialPack: true,
+  },
 ];
 
 /** Empty-state showcase — same three intents, phrased as questions. */
@@ -300,6 +308,8 @@ export function questionWantsSocialContentPack(question: string): boolean {
   if (!q) return false;
   return (
     /\b(x post|twitter post|tweet|social post|content for x|banger post|marketing post|post for x|draft.*post|create.*post|what should we post|social media|ads expert)\b/i.test(q) ||
+    /\b(generate|write|create|draft|make)\s+(?:me\s+)?(?:a\s+)?(?:an\s+)?(?:x\s+|twitter\s+)?post\b/i.test(q) ||
+    /\bpost\s+(?:for|about)\s+\$?[A-Z]{2,5}\b/i.test(q) ||
     /\b(win recap|showcase post|platform post|winning plays post|attach.*screenshot|screenshot.*attach|screenshot workflow)\b/i.test(q)
   );
 }
@@ -310,7 +320,8 @@ export function questionWantsMeridianPrefetch(question: string): boolean {
   return (
     /\b(meridian|catalyst calendar|opex preview|macro desk|earnings post|earnings intel|fda calendar)\b/i.test(q) ||
     (questionWantsSocialContentPack(q) &&
-      /\b(earnings|macro|opex|catalyst|cpi|fomc|nfp)\b/i.test(q))
+      /\b(earnings|macro|opex|catalyst|cpi|fomc|nfp)\b/i.test(q)) ||
+    /\bpost\s+(?:for|about)\s+\$?(?:NVDA|AAPL|TSLA|META|AMZN|MSFT|GOOG|AMD)\b/i.test(q)
   );
 }
 

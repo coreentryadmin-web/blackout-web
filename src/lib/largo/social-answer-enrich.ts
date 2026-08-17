@@ -12,6 +12,11 @@ import {
 } from "@/lib/largo/social-content-core";
 import { formatMediaPlanForClipboard, buildXPostMediaPlan } from "@/lib/largo/x-post-media-plan";
 import { LARGO_PLATFORM_LINKS } from "@/lib/largo/platform-links";
+import {
+  buildTickerSocialGuide,
+  extractSocialPostTicker,
+  formatHowToPostBlock,
+} from "@/lib/largo/ticker-social-guide";
 
 export type SocialPackSlice = {
   available: boolean;
@@ -50,6 +55,19 @@ export function enrichSocialAnswerIfNeeded(
   if (extractPostCopyFromAnswer(answer)) return answer;
 
   const archetype: SocialContentArchetype = detectSocialArchetype(question);
+  const socialTicker =
+    extractSocialPostTicker(question, ticker ?? undefined) ?? ticker ?? "SPX";
+  const onBoard = pack?.winners.some((w) => w.ticker === socialTicker) ?? false;
+
+  const guide = buildTickerSocialGuide({
+    ticker: socialTicker,
+    question,
+    answer,
+    archetype,
+    onZerodteBoard: onBoard,
+    earningsSoon: /\b(earnings|meridian|catalyst)\b/i.test(question),
+  });
+
   const verdict = extractVerdictLine(answer);
   const angles = pack?.available
     ? buildPostAngles(archetype, {
@@ -60,13 +78,10 @@ export function enrichSocialAnswerIfNeeded(
       })
     : [];
 
-  const attachments = buildXPostMediaPlan({
-    answer,
-    question,
-    ticker,
-    archetype,
-  });
-  const workflow = formatMediaPlanForClipboard(attachments).replace(/^\n+/, "");
+  const attachments = guide.essentialAttachments;
+  const workflow =
+    guide.workflowClipboard ||
+    formatMediaPlanForClipboard(attachments).replace(/^\n+/, "");
 
   const hook = angles[0] ?? verdict.slice(0, 120);
   const copyLine = verdict.length >= 40 && verdict.length <= 220 ? verdict : hook;
@@ -83,6 +98,12 @@ ${copyLine}
 
 **CTA**
 Default: @BlackOutTrade · link in bio (${LARGO_PLATFORM_LINKS.pricing}). Discord for live reads: ${LARGO_PLATFORM_LINKS.discord}
+
+**How to post**
+${formatHowToPostBlock()}
+
+**Products for ${guide.ticker}**
+${guide.products.map((p) => `- ${p.tool} (${p.essential ? "attach on X" : "optional"}): ${p.why} — capture: ${p.mustCapture.join("; ")}`).join("\n")}
 
 **Screenshot workflow**
 ${workflow}

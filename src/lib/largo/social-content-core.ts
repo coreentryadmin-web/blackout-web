@@ -5,7 +5,8 @@ export type SocialContentArchetype =
   | "track_record"
   | "play_evolution"
   | "morning_hook"
-  | "earnings_catalyst";
+  | "earnings_catalyst"
+  | "ticker_post";
 
 export type SocialContentPlayRow = {
   ticker: string;
@@ -17,10 +18,16 @@ export type SocialContentPlayRow = {
   last_mark: number | null;
 };
 
+const TICKER_POST_RE =
+  /\b(?:generate|write|create|draft|make)\s+(?:me\s+)?(?:a\s+)?(?:an\s+)?(?:x\s+|twitter\s+)?post\s+(?:for|about)\s+\$?[A-Z]{2,5}\b|\bpost\s+(?:for|about)\s+\$?[A-Z]{2,5}\b/i;
+
 export function detectSocialArchetype(question: string): SocialContentArchetype {
   const q = question.toLowerCase();
-  if (/\b(win recap|winning play|winning 0dte|banger|doubled|runner|green on|hit target)\b/.test(q)) {
+  if (/\b(winning|win recap|winners|won today|green plays|0dte plays)\b/.test(q)) {
     return "win_recap";
+  }
+  if (TICKER_POST_RE.test(question)) {
+    return "ticker_post";
   }
   if (/\b(track record|win rate|hit rate|our record|graded|performance stats)\b/.test(q)) {
     return "track_record";
@@ -107,6 +114,11 @@ export function buildPostAngles(
     case "earnings_catalyst":
       angles.push("Lead with catalyst timing + implied move — Meridian detail, not a guess.");
       angles.push("Attach Meridian event → Helix flow into print → Thermal positioning.");
+      break;
+    case "ticker_post":
+      angles.push("Lead with the ticker-specific hook — level, flow, or board commit.");
+      angles.push("Name which products prove the story (Vector + Helix + Thermal minimum).");
+      angles.push("Optional: Night Hawk card if on board; Meridian if earnings catalyst.");
       break;
     default:
       if (pack.spx?.spot != null) {
