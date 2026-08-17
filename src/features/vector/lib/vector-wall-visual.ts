@@ -177,9 +177,97 @@ export function magnitudeGlowBoost(pct: number): number {
 
 const GROWTH_EPS = 0.02; // |Δ share-of-king| below this is "steady" — ignore honest bucket jitter.
 
+/**
+ * Self-relative thresholds for the TRAILING decay/build channel. A wall must be this far off its OWN
+ * recent baseline before the channel engages (12%), and saturates at 65% off — a wall trading at
+ * ~35% of its recent peak is fully dimmed.
+ */
+const DECAY_EPS = 0.12;
+const DECAY_FULL = 0.65;
+const BUILD_EPS = 0.12;
+const BUILD_FULL = 0.65;
+
+/**
+ * SELF-RELATIVE growth/decay — the channel that actually catches a wall bleeding out.
+ *
+ * THE BUG THIS EXISTS FOR (member-reported 2026-08-17: "once beads are formed we don't fade them —
+ * how do members know a wall that was strong is now weak?"). growthModulation below compares a bead
+ * ONLY to the immediately previous bucket, normalized by the FRAME KING (`maxPct`). Both choices
+ * blind it to the cases that matter:
+ *
+ *  1. SLOW DECAY NEVER FIRES. A wall sliding 20% -> 2% share over an hour, on 5s buckets, moves
+ *     ~0.025% of king per bucket — roughly 80x below GROWTH_EPS. Every bucket returns `neutral`, so
+ *     the wall dies across ~720 beads and the fade channel never engages once. The slow structural
+ *     bleed a member most needs to see is precisely what it cannot see.
+ *  2. SMALL WALLS NEVER FADE AT ALL. Normalizing by the frame king means a 3% wall collapsing to
+ *     0.3% moves 0.0027/maxPct — invisible for any king of reasonable size. Only walls comparable to
+ *     the king could ever trip the threshold.
+ *
+ * The fix measures against the wall's OWN trailing reference (its recent baseline) rather than the
+ * previous bucket, and normalizes by that reference rather than the frame king. Both halves are
+ * needed: the trailing window makes gradual change legible, and self-normalization makes the channel
+ * scale-free so a small wall dying reads as strongly as a big one dying.
+ *
+ * IT DOES NOT REWRITE HISTORY. Each bead is modulated using only data at or before ITS OWN bucket
+ * (see trailingRefs, which reads strictly-earlier points), so a bead's appearance stays a true
+ * statement about its own moment. Deliberate: re-fading old beads to reflect a wall's CURRENT
+ * strength would repaint the past and reintroduce exactly the defect fixed in kingStrikeByTime,
+ * where the crown was applied retroactively and no member ever saw a king lose it.
+ */
+export function decayModulation(
+  pct: number,
+  trailingRef: number | null | undefined
+): { alphaMul: number; sizeMul: number; building: boolean; fading: boolean } {
+  const neutral = { alphaMul: 1, sizeMul: 1, building: false, fading: false };
+  if (!Number.isFinite(pct) || trailingRef == null || !Number.isFinite(trailingRef)) return neutral;
+  const ref = trailingRef;
+  if (!(ref > 0)) return neutral;
+
+  const dSelf = (pct - ref) / ref;
+
+  if (dSelf < -DECAY_EPS) {
+    const drive = Math.min(1, (-dSelf - DECAY_EPS) / (DECAY_FULL - DECAY_EPS));
+    // Same multiplier envelope as the per-bucket channel, so a rail tuned for one reads the same as
+    // the other — this changes WHEN a fade fires, not how strong a full fade looks.
+    return { alphaMul: 1 - drive * 0.32, sizeMul: 1 - drive * 0.22, building: false, fading: true };
+  }
+  if (dSelf > BUILD_EPS) {
+    const drive = Math.min(1, (dSelf - BUILD_EPS) / (BUILD_FULL - BUILD_EPS));
+    return { alphaMul: 1 + drive * 0.35, sizeMul: 1 + drive * 0.28, building: true, fading: false };
+  }
+  return neutral;
+}
+
+/**
+ * Combine the fast per-bucket velocity channel with the slow self-relative trailing channel.
+ *
+ * Both are real and answer different questions: growthModulation catches a VIOLENT one-bucket move
+ * (dealers slamming a strike right now); decayModulation catches a SUSTAINED drift off the wall's
+ * own baseline. Taking the more extreme of the two keeps the fast flare that already works while
+ * adding the slow bleed that never fired, instead of trading one for the other.
+ *
+ * The multipliers are NOT multiplied together: a fast collapse is also a drop off baseline, so both
+ * channels see it, and compounding would double-count one event and drive a bead to ~0.46 alpha in a
+ * single bucket.
+ */
+export function beadModulation(
+  pct: number,
+  prevPct: number | null | undefined,
+  trailingRef: number | null | undefined,
+  maxPct: number
+): { alphaMul: number; sizeMul: number; building: boolean; fading: boolean } {
+  const bucket = growthModulation(pct, prevPct, maxPct);
+  const trailing = decayModulation(pct, trailingRef);
+  // "More extreme" = furthest from neutral in ALPHA, the channel a member actually reads.
+  return Math.abs(trailing.alphaMul - 1) > Math.abs(bucket.alphaMul - 1) ? trailing : bucket;
+}
+
 /** Per-bead growth/decay modulation from the change in frame-relative share vs the previous bucket.
  *  `prevPct` null/undefined (first bead in a trail) → neutral. Returns clamped alpha/size multipliers
- *  plus building/fading flags for the caller (e.g. a birth/afterglow cue). */
+ *  plus building/fading flags for the caller (e.g. a birth/afterglow cue).
+ *
+ *  This is the FAST channel ONLY — deliberately blind to gradual decay (see decayModulation for
+ *  why). Prefer beadModulation, which combines both. */
 export function growthModulation(
   pct: number,
   prevPct: number | null | undefined,

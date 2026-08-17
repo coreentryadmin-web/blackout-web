@@ -158,6 +158,52 @@ export function targetHalfPx(
   return tuning.halfMin + relStrengthT(pct, maxPct) * (tuning.halfMax - tuning.halfMin);
 }
 
+/**
+ * Trailing-reference window for the decay channel, in seconds.
+ *
+ * 15 minutes: long enough that a wall's recent PEAK stays the reference while it bleeds (so the fade
+ * builds and HOLDS rather than flickering), short enough that a wall which genuinely rebuilt stops
+ * being judged against an hours-old high.
+ */
+export const TRAILING_REF_WINDOW_SEC = 900;
+
+/**
+ * Per-point trailing reference = the max pct over the window STRICTLY BEFORE each point.
+ *
+ * "Strictly before" is the whole correctness argument: a bead is compared only to its own past, so
+ * its rendered appearance never depends on data that did not exist yet at its bucket. That keeps the
+ * rail an honest historical record — the same principle that makes kingStrikeByTime compute the king
+ * per bucket instead of painting the current king across the whole session.
+ *
+ * The first point of a trail has no prior window and returns null (caller renders it neutral): a
+ * wall's BIRTH is not a fade, and inventing a reference for it would flag every new wall as decayed.
+ *
+ * O(n) via a monotonic deque — a per-strike trail can carry thousands of buckets in a session and
+ * this runs inside the chart's repaint path.
+ */
+export function trailingRefs(
+  points: ReadonlyArray<{ time: number; pct: number }>,
+  windowSec: number = TRAILING_REF_WINDOW_SEC
+): Array<number | null> {
+  const out: Array<number | null> = new Array(points.length).fill(null);
+  // Indices of candidate maxima, pct descending. Front is the window max.
+  const deque: number[] = [];
+  let head = 0;
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i]!;
+    if (!Number.isFinite(p.time)) continue;
+    // Evict anything older than the window relative to THIS point.
+    while (head < deque.length && points[deque[head]!]!.time < p.time - windowSec) head++;
+    out[i] = head < deque.length ? points[deque[head]!]!.pct : null;
+    // Push AFTER reading, so a point never references itself.
+    if (Number.isFinite(p.pct)) {
+      while (deque.length > head && points[deque[deque.length - 1]!]!.pct <= p.pct) deque.pop();
+      deque.push(i);
+    }
+  }
+  return out;
+}
+
 /** Bead fill opacity from its strength relative to the strongest wall in frame. */
 export function fillAlpha(
   pct: number,

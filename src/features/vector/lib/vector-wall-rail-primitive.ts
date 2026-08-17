@@ -16,13 +16,14 @@ import {
   beadKey,
   kingKey,
   kingStrikeByTime,
+  trailingRefs,
   beadRenderTuning,
   type WallBeadRenderProfile,
   type BeadRenderTuning,
 } from "./vector-wall-rail-core";
 import {
   relStrengthT,
-  growthModulation,
+  beadModulation,
   magnitudeGlowBoost,
   // haloRingForTier stays (integrity halos are still drawn here); beadRadiusForNotional and
   // pctToNotionalProxy are gone — bead radius now comes from targetHalfPx() off recorded $|gamma|,
@@ -496,6 +497,10 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
       // Median bucket step → gap threshold. A jump beyond GAP_SPLIT_FACTOR× the median means the wall
       // genuinely dropped out of the dominant set (a dead stretch), so we break the band there rather
       // than bridging a solid ribbon across time it wasn't a wall.
+      // Trailing reference per bucket — drives the SLOW-decay channel (see decayModulation). Computed
+      // ONCE per trail, not per bead: it is O(n) and this runs on every repaint.
+      const refs = trailingRefs(pts);
+
       const steps: number[] = [];
       for (let i = 1; i < pts.length; i++) steps.push(pts[i]!.time - pts[i - 1]!.time);
       steps.sort((a, b) => a - b);
@@ -531,7 +536,11 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
         } else if (run.length === 0) {
           runStartIdx = i;
         }
-        const mod = growthModulation(p.pct, prev ? prev.pct : null, maxPct);
+        // BOTH channels: the fast per-bucket flare AND the sustained drift off this wall's own recent
+        // baseline. The per-bucket channel alone never fires on gradual decay (a 20%->2% bleed over an
+        // hour moves ~0.025% of king per 5s bucket, ~80x under its threshold), which is why a dying
+        // wall used to render as a row of unchanged beads.
+        const mod = beadModulation(p.pct, prev ? prev.pct : null, refs[i] ?? null, maxPct);
         const glow = magnitudeGlowBoost(p.pct); // absolute-magnitude brightness (frame-independent)
         // TARGET half = ABSOLUTE $-ladder magnitude (or relative fallback), then the growth/fade
         // velocity multiplier so a wall being STACKED this bucket still flares fatter.

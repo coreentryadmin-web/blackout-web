@@ -38,6 +38,74 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-08-17 — [FINDING, P1 member-visible] Bead rail never showed a wall decaying: the fade channel is blind to gradual decline — FIXED
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Severity** | P1 (member-visible — the rail's core job is showing where walls are and whether they hold) |
+| **Scope** | `vector-wall-visual.ts` (`growthModulation`), `vector-wall-rail-core.ts`, `vector-wall-rail-primitive.ts` |
+| **Status** | FIXED — self-relative trailing channel added; 7 unit tests |
+
+**Reported.** "I don't see the existing beads fade — they need to fade if strength reduces. Once
+beads are formed we don't really touch them. How do members know a wall that was once strong is now
+weak?"
+
+**Root cause.** `growthModulation` is the rail's build/fade channel and it makes two choices that
+together blind it to the case that matters:
+
+```ts
+const dRel = (pct - prevPct) / maxPct;   // vs the PREVIOUS BUCKET, normalized by the FRAME KING
+if (dRel < -GROWTH_EPS) { /* fade */ }   // GROWTH_EPS = 0.02
+return neutral;
+```
+
+1. **Slow decay never fires.** A wall sliding 20% → 2% share over an hour, on 5s buckets, moves
+   ~0.025% of king per bucket — about **80x below the threshold**. Every one of ~720 buckets returns
+   `neutral`. The wall dies across the whole afternoon and the fade channel never engages once.
+2. **Small walls never fade at all.** Normalizing by the frame king means a 3% wall collapsing to
+   0.3% moves 0.0027/maxPct — invisible for any king of reasonable size. Only walls comparable to
+   the king could ever trip the threshold, in either direction.
+
+So the channel only ever fired on a violent one-bucket move on a near-king wall. Everything else —
+including every gradual bleed — rendered as a row of unchanged beads.
+
+**Why it wasn't caught.** The unit tests exercised exactly the case that works (`growthModulation(8,
+20, 40)` — a 30%-of-king drop in ONE bucket) and asserted it fades. That test passes and always did.
+Nothing tested a realistic decay *rate*, so the gap sat behind a green suite.
+
+**Fix.** A second, self-relative channel measured against each wall's OWN trailing baseline:
+- `trailingRefs(points, 900)` — per-bucket max over the 15-minute window **strictly before** each
+  point, O(n) via a monotonic deque.
+- `decayModulation(pct, trailingRef)` — fades on `(pct - ref) / ref`, so it is **scale-free**: a 3%
+  wall dying to 0.3% modulates identically to a 20% wall dying to 2%.
+- `beadModulation(...)` — takes the **more extreme** of the two channels, never their product
+  (compounding would double-count a fast collapse, which both channels see, and drive a bead to
+  ~0.46 alpha in a single bucket).
+
+**What was deliberately NOT done: history is not rewritten.** Every bead is still modulated using
+only data at or before its own bucket — `trailingRefs` reads strictly-earlier points. Re-fading old
+beads to reflect a wall's *current* strength would make the chart claim a wall was weak at a time it
+was strong, and would reintroduce precisely the defect fixed in `kingStrikeByTime`, where the crown
+was painted retroactively across a session so no member ever saw a king lose it. A wall that was
+strong and is now weak now reads as a fat bright run that visibly thins and dims into the present —
+which is the requested outcome, reached without lying about the past.
+
+A wall with NO point inside its trailing window returns `null` → neutral. That is intentional: a
+wall returning after a long absence is REBORN, not decayed, and judging it against a stale high
+would paint every re-entry as dying.
+
+**Blast radius.** `growthModulation` keeps its exact previous behaviour and signature (still
+exported, still tested) — it is now documented as the FAST channel only, and the primitive is its
+one caller, switched to `beadModulation`. Bead SIZE (`targetHalfPx`), `fillAlpha`, king emphasis and
+the birth/death glyphs are untouched.
+
+**Evidence.** 7 new unit tests, including the exact regression: `growthModulation(9.975, 10, 40)`
+returns neutral (the old blindness, asserted) while `decayModulation(9.975, 20)` fades. Scale-freeness
+asserted by `decayModulation(2, 20)` deep-equalling `decayModulation(0.3, 3)`. 59/59 pass on Node 20;
+`tsc --noEmit` clean.
+
+
 ## 2026-08-17 — [FINDING, P2 tooling] Audit sessions silently died at ~72s: the client cookie jar never rotated — FIXED
 > **kind:** `FINDING`
 
