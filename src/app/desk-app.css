@@ -1268,3 +1268,230 @@ html.nav-locked body { overflow: hidden; }
   .meridian-dock-btn:hover,
   .meridian-stat-card:hover { transform: none; }
 }
+
+/* ── MERIDIAN EARNINGS ANALYTICS (mea-*) ────────────────────────────────────────────────────────
+   Panels for the structured Benzinga earnings feed. Two encoding rules run through the whole
+   block and are worth stating once:
+     - COLOUR carries direction (beat/miss), SIZE carries magnitude or volume. Never both on one
+       channel, so a big miss and a small beat cannot read as the same thing.
+     - "unknown" has its own muted treatment and is never painted in a directional colour. A dash
+       must be visibly not-a-number, because a fabricated 0 looks exactly like an in-line print.
+   ──────────────────────────────────────────────────────────────────────────────────────────── */
+
+.mea-tone-cyan { color: #22d3ee; }
+.mea-tone-violet { color: #c4b5fd; }
+.mea-tone-emerald { color: #34d399; }
+.mea-tone-rose { color: #fb7185; }
+
+.mea-empty {
+  padding: 18px 14px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: rgba(226, 232, 240, 0.55);
+  border: 1px dashed rgba(148, 163, 184, 0.22);
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.35);
+}
+
+/* Delta — the signed-number primitive every panel shares. */
+.mea-delta { font-variant-numeric: tabular-nums; font-weight: 600; }
+.mea-delta-up { color: #34d399; }
+.mea-delta-down { color: #fb7185; }
+.mea-delta-flat { color: #94a3b8; }
+.mea-delta-unknown { color: rgba(148, 163, 184, 0.45); }
+
+/* Importance meter — 5 pips, Benzinga's own scale. */
+.mea-imp { display: inline-flex; gap: 2px; align-items: center; }
+.mea-imp-pip {
+  width: 3px; height: 10px; border-radius: 1px;
+  background: rgba(148, 163, 184, 0.22);
+}
+.mea-imp-pip.is-on { background: #c4b5fd; box-shadow: 0 0 6px rgba(196, 181, 253, 0.5); }
+
+/* Session chip — BMO / AMC / INTRA / TBD. */
+.mea-session {
+  display: inline-block; padding: 1px 5px; border-radius: 4px;
+  font-size: 9px; font-weight: 700; letter-spacing: 0.06em;
+  border: 1px solid transparent;
+}
+.mea-session-pre { color: #fbbf24; border-color: rgba(251, 191, 36, 0.35); background: rgba(251, 191, 36, 0.08); }
+.mea-session-post { color: #38bdf8; border-color: rgba(56, 189, 248, 0.35); background: rgba(56, 189, 248, 0.08); }
+.mea-session-intraday { color: #34d399; border-color: rgba(52, 211, 153, 0.3); background: rgba(52, 211, 153, 0.07); }
+.mea-session-unknown { color: rgba(148,163,184,0.7); border-color: rgba(148,163,184,0.25); }
+
+.mea-badge {
+  display: inline-block; padding: 1px 5px; margin-left: 5px;
+  border-radius: 4px; font-size: 9px; font-weight: 700; letter-spacing: 0.05em;
+}
+/* Projected dates get a distinct, deliberately un-authoritative treatment. */
+.mea-badge-projected {
+  color: #fbbf24; background: rgba(251, 191, 36, 0.1);
+  border: 1px dashed rgba(251, 191, 36, 0.45);
+}
+
+/* 1. PULSE STRIP */
+.mea-pulse {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px; margin-bottom: 14px;
+}
+.mea-pulse-cell {
+  display: flex; flex-direction: column; gap: 4px; padding: 12px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.16); border-radius: 12px;
+  background: linear-gradient(160deg, rgba(30, 41, 59, 0.55), rgba(15, 23, 42, 0.35));
+}
+.mea-pulse-value { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; color: #e2e8f0; line-height: 1; }
+.mea-pulse-label { font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase; color: rgba(148, 163, 184, 0.75); }
+
+/* 2. PRINT CLOCK */
+.mea-clock { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.mea-clock-row { border-radius: 10px; border: 1px solid rgba(148, 163, 184, 0.14); background: rgba(15, 23, 42, 0.4); }
+.mea-clock-row.is-imminent { border-color: rgba(251, 191, 36, 0.5); background: rgba(251, 191, 36, 0.06); }
+.mea-clock-row.is-printed { opacity: 0.72; }
+.mea-clock-hit {
+  width: 100%; display: grid; grid-template-columns: 130px 1fr auto; align-items: center; gap: 12px;
+  padding: 9px 12px; background: none; border: 0; cursor: pointer; text-align: left; color: inherit;
+}
+.mea-clock-hit:disabled { cursor: default; }
+.mea-clock-when { display: flex; flex-direction: column; gap: 3px; }
+.mea-clock-count { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; color: #e2e8f0; }
+.mea-clock-id { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mea-clock-ticker { font-size: 13px; font-weight: 700; letter-spacing: 0.03em; color: #f8fafc; }
+.mea-clock-co { font-size: 11px; color: rgba(148, 163, 184, 0.8); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mea-clock-meta { display: flex; align-items: center; gap: 8px; }
+.mea-clock-est { font-size: 11px; font-variant-numeric: tabular-nums; color: rgba(226, 232, 240, 0.75); }
+
+/* 3. CALENDAR HEAT GRID */
+.mea-cal { display: grid; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: 8px; }
+.mea-cal-cell {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 10px 6px 8px; border-radius: 10px; cursor: pointer; color: inherit;
+  border: 1px solid rgba(148, 163, 184, 0.16); background: rgba(15, 23, 42, 0.4);
+  transition: transform 120ms ease, border-color 120ms ease;
+}
+.mea-cal-cell:disabled { cursor: default; }
+.mea-cal-cell:hover:not(:disabled) { transform: translateY(-2px); }
+.mea-cal-cell.is-selected { border-color: #22d3ee; box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.35); }
+.mea-cal-dow { font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(148,163,184,0.7); }
+.mea-cal-day { font-size: 15px; font-weight: 700; color: #e2e8f0; line-height: 1; }
+.mea-cal-bar { display: block; width: 100%; height: 34px; display: flex; align-items: flex-end; }
+.mea-cal-bar-fill { display: block; width: 100%; border-radius: 3px; background: currentColor; opacity: 0.55; }
+.mea-cal-count { font-size: 11px; font-variant-numeric: tabular-nums; color: rgba(226,232,240,0.85); }
+.mea-cal-mega { position: absolute; top: 6px; right: 6px; font-size: 9px; font-weight: 700; color: #c4b5fd; }
+.mea-cal-sessions { display: flex; gap: 3px; }
+.mea-dot { width: 5px; height: 5px; border-radius: 50%; display: block; }
+.mea-dot-pre { background: #fbbf24; }
+.mea-dot-post { background: #38bdf8; }
+.mea-dot-unknown { background: rgba(148,163,184,0.5); }
+/* Colour = realized surprise. A day with nothing printed carries NO directional colour. */
+.mea-cal-tone-none { color: rgba(148, 163, 184, 0.55); }
+.mea-cal-tone-beat-strong { color: #34d399; border-color: rgba(52, 211, 153, 0.4); }
+.mea-cal-tone-beat { color: #6ee7b7; }
+.mea-cal-tone-flat { color: #94a3b8; }
+.mea-cal-tone-miss { color: #fda4af; }
+.mea-cal-tone-miss-strong { color: #fb7185; border-color: rgba(251, 113, 133, 0.4); }
+
+/* 4. SURPRISE SCATTER */
+.mea-scatter-wrap { display: flex; flex-direction: column; gap: 8px; }
+.mea-scatter {
+  position: relative; width: 100%; aspect-ratio: 1 / 1; max-height: 420px;
+  border: 1px solid rgba(148, 163, 184, 0.16); border-radius: 12px;
+  background:
+    linear-gradient(rgba(148,163,184,0.05) 1px, transparent 1px) 0 0 / 100% 10%,
+    linear-gradient(90deg, rgba(148,163,184,0.05) 1px, transparent 1px) 0 0 / 10% 100%,
+    rgba(15, 23, 42, 0.45);
+}
+.mea-scatter-axis { position: absolute; background: rgba(148, 163, 184, 0.32); }
+.mea-scatter-axis-x { left: 0; right: 0; top: 50%; height: 1px; }
+.mea-scatter-axis-y { top: 0; bottom: 0; left: 50%; width: 1px; }
+.mea-scatter-q {
+  position: absolute; font-size: 9px; letter-spacing: 0.05em; text-transform: uppercase;
+  color: rgba(148, 163, 184, 0.6); pointer-events: none;
+}
+.mea-scatter-q-tr { top: 8px; right: 10px; }
+.mea-scatter-q-tl { top: 8px; left: 10px; }
+.mea-scatter-q-br { bottom: 8px; right: 10px; }
+.mea-scatter-q-bl { bottom: 8px; left: 10px; }
+.mea-dotpt {
+  position: absolute; transform: translate(-50%, 50%); width: 9px; height: 9px; padding: 0;
+  border-radius: 50%; border: 1px solid rgba(2, 6, 23, 0.6); cursor: pointer;
+}
+.mea-dotpt.is-mega { width: 13px; height: 13px; }
+.mea-dotpt-double_beat { background: #34d399; }
+.mea-dotpt-eps_beat_rev_miss { background: #fbbf24; }
+.mea-dotpt-eps_miss_rev_beat { background: #38bdf8; }
+.mea-dotpt-double_miss { background: #fb7185; }
+.mea-dotpt-label {
+  position: absolute; left: 50%; top: -14px; transform: translateX(-50%);
+  font-size: 9px; font-weight: 700; color: #e2e8f0; opacity: 0; transition: opacity 120ms ease;
+  pointer-events: none; white-space: nowrap;
+}
+.mea-dotpt:hover .mea-dotpt-label, .mea-dotpt:focus .mea-dotpt-label { opacity: 1; }
+.mea-dotpt.is-mega .mea-dotpt-label { opacity: 0.85; }
+.mea-scatter-foot { display: flex; flex-wrap: wrap; gap: 12px; font-size: 10px; color: rgba(148,163,184,0.75); }
+.mea-scatter-omitted { color: #fbbf24; }
+
+/* 5. BEAT/MISS STREAK RAIL */
+.mea-streak { display: flex; flex-direction: column; gap: 8px; }
+.mea-streak-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
+.mea-streak-ticker { font-size: 14px; font-weight: 700; color: #f8fafc; }
+.mea-streak-badge {
+  font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 999px;
+  border: 1px solid rgba(148,163,184,0.3); color: rgba(226,232,240,0.8);
+}
+.mea-streak-badge.is-beat { color: #34d399; border-color: rgba(52,211,153,0.45); background: rgba(52,211,153,0.08); }
+.mea-streak-badge.is-miss { color: #fb7185; border-color: rgba(251,113,133,0.45); background: rgba(251,113,133,0.08); }
+.mea-streak-rate, .mea-streak-avg { font-size: 11px; color: rgba(148,163,184,0.85); font-variant-numeric: tabular-nums; }
+.mea-streak-n { color: rgba(148,163,184,0.55); }
+.mea-streak-rail {
+  list-style: none; margin: 0; padding: 0; display: flex; align-items: flex-end; gap: 4px;
+  height: 74px; overflow-x: auto;
+}
+.mea-streak-mark { flex: 0 0 26px; display: flex; flex-direction: column; align-items: center; gap: 3px; height: 100%; justify-content: flex-end; }
+.mea-streak-mark-bar { display: block; width: 100%; border-radius: 3px 3px 0 0; background: #94a3b8; }
+.mea-streak-mark.is-beat .mea-streak-mark-bar { background: #34d399; }
+.mea-streak-mark.is-miss .mea-streak-mark-bar { background: #fb7185; }
+/* Ungraded is hatched, not coloured — visibly "no data", never mistaken for a miss. */
+.mea-streak-mark.is-ungraded .mea-streak-mark-bar {
+  background: repeating-linear-gradient(45deg, rgba(148,163,184,0.35) 0 3px, transparent 3px 6px);
+  border: 1px dashed rgba(148,163,184,0.4);
+}
+.mea-streak-mark-label { font-size: 9px; color: rgba(148,163,184,0.65); }
+
+/* 6. PRINT TABLE */
+.mea-table-wrap { display: flex; flex-direction: column; gap: 8px; }
+.mea-table-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.mea-toggle {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.04em; padding: 4px 10px; border-radius: 999px;
+  border: 1px solid rgba(148,163,184,0.28); background: rgba(15,23,42,0.5); color: rgba(226,232,240,0.8);
+  cursor: pointer;
+}
+.mea-toggle.is-on { border-color: #22d3ee; color: #22d3ee; background: rgba(34, 211, 238, 0.1); }
+.mea-table-count { font-size: 10px; color: rgba(148,163,184,0.7); margin-left: auto; }
+/* The table scrolls inside its OWN box so a wide desk never scrolls sideways. */
+.mea-table-scroll { overflow-x: auto; border: 1px solid rgba(148,163,184,0.14); border-radius: 12px; }
+.mea-table { width: 100%; border-collapse: collapse; font-size: 11px; min-width: 760px; }
+.mea-th {
+  position: sticky; top: 0; z-index: 1; text-align: left; padding: 8px 10px; cursor: pointer;
+  font-size: 9px; letter-spacing: 0.07em; text-transform: uppercase; color: rgba(148,163,184,0.8);
+  background: rgba(15, 23, 42, 0.95); border-bottom: 1px solid rgba(148,163,184,0.18); white-space: nowrap;
+}
+.mea-th.is-sorted { color: #22d3ee; }
+.mea-th-caret { margin-left: 4px; }
+.mea-num { text-align: right; font-variant-numeric: tabular-nums; }
+.mea-tr { border-bottom: 1px solid rgba(148,163,184,0.07); cursor: pointer; }
+.mea-tr:hover { background: rgba(34, 211, 238, 0.05); }
+.mea-tr.is-pending { opacity: 0.78; }
+.mea-td { padding: 7px 10px; color: rgba(226,232,240,0.9); white-space: nowrap; }
+.mea-td-date { font-variant-numeric: tabular-nums; color: rgba(148,163,184,0.9); }
+.mea-tk { font-weight: 700; color: #f8fafc; }
+.mea-fiscal { margin-left: 6px; font-size: 9px; color: rgba(148,163,184,0.6); }
+
+@media (max-width: 720px) {
+  .mea-clock-hit { grid-template-columns: 110px 1fr; row-gap: 6px; }
+  .mea-clock-meta { grid-column: 1 / -1; }
+  .mea-scatter { max-height: 320px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mea-cal-cell, .mea-dotpt-label { transition: none; }
+}

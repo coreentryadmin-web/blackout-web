@@ -85,6 +85,53 @@ glyphs are untouched.
 monotonic in age, non-finite/negative age never invents a fade, and the strength-ordering invariant
 above for BOTH tunings. 63/63 pass on Node 20; `tsc --noEmit` clean.
 
+## 2026-08-17 — [FINDING, P1 security] Provider API key written into thrown errors (and CI logs) by the disallowed-host guard — FIXED
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Severity** | P1 (security — a live provider credential reaching logs, including public CI output) |
+| **Scope** | `src/lib/api-tracked-fetch.ts` — every caller of `trackedFetch` |
+| **Status** | FIXED — sanitized url in the throw; security regression test added |
+
+**Root cause.** The SSRF host-allowlist guard threw with a raw-URL fallback:
+
+```ts
+const destHost = hostnameOf(url);
+if (!destHost || !ALLOWED_FETCH_HOSTS.has(destHost)) {
+  throw new Error(`trackedFetch: refusing to fetch disallowed host "${destHost ?? url}"`);
+}
+```
+
+The `?? url` branch fires **precisely when the URL has no parseable hostname** — which is exactly
+what an unresolved `${{shared.*}}` base placeholder produces:
+
+```
+POLYGON_API_BASE/benzinga/v1/earnings?limit=200&apiKey=<live key>
+```
+
+So the one case that reaches the fallback is the one whose string still carries the credential. The
+key landed in the thrown message, and from there into every log that catches it — **CI output
+included**, since the full test suite hits this path.
+
+**Evidence.** Observed twice on 2026-08-17: once in a local full `npm test` run, once in a live
+Meridian smoke of `fetchBenzingaStructuredEarningsRows`. Both printed the complete key in plaintext.
+
+**Fix.** Use the already-computed `safeUrl`. `sanitizeUrl` was being computed a few lines above for
+exactly this purpose (telemetry scrubbing) and its regex fallback handles the unparseable case, so
+the fix is to stop bypassing it — no new redaction logic was needed.
+
+**Blast radius.** Every `trackedFetch` caller benefits; nothing else changes, since this branch only
+runs on a request that was going to be refused anyway. The guard's behaviour (refuse, do not retry)
+is unchanged.
+
+**Test.** A security regression test asserts the thrown message contains `[REDACTED]` and does NOT
+contain the key or a `token=` value. It fails on the pre-fix code by construction.
+
+**Operational follow-up (NOT closed by this fix):** the exposed Polygon key should still be rotated
+— it has been emitted to logs repeatedly before this fix landed.
+
+
 ## 2026-08-17 — [FINDING, P1 member-visible] Bead rail never showed a wall decaying: the fade channel is blind to gradual decline — FIXED
 > **kind:** `FINDING`
 
