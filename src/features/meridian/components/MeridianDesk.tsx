@@ -5,8 +5,15 @@ import { useMemo, useState } from "react";
 import type {
   MeridianEventDetail,
   MeridianEventKind,
+  MeridianTickerLookup,
+  MeridianTimelineItem,
   MeridianTimelinePayload,
 } from "@/features/meridian/lib/meridian-types";
+import {
+  filterMeridianTimelineItems,
+  isTickerLikeQuery,
+  normalizeMeridianSearchQuery,
+} from "@/features/meridian/lib/meridian-search-core";
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { MeridianEventDetailPanel } from "./MeridianEventDetailPanel";
 import { MeridianHero } from "./MeridianHero";
@@ -49,8 +56,9 @@ export function MeridianDesk() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterKind>("all");
   const [view, setView] = useState<DeskView>("timeline");
+  const [searchQuery, setSearchQuery] = useState("");
 
-  const filteredItems = useMemo(() => {
+  const kindFilteredItems = useMemo(() => {
     if (filter === "all") return allItems;
     if (filter === "watchlist") {
       if (!watchlistReady) return allItems;
@@ -62,11 +70,48 @@ export function MeridianDesk() {
     return allItems.filter((i) => i.kind === filter);
   }, [allItems, filter, watchlistReady, watchlistSet, boardSet]);
 
+  const filteredItems = useMemo(
+    () => filterMeridianTimelineItems(kindFilteredItems, searchQuery),
+    [kindFilteredItems, searchQuery]
+  );
+
+  const normalizedSearch = normalizeMeridianSearchQuery(searchQuery);
+  const shouldLookup =
+    normalizedSearch.length > 0 &&
+    isTickerLikeQuery(normalizedSearch) &&
+    filteredItems.length === 0;
+
+  const timelineIdCsv = useMemo(() => allItems.map((i) => i.id).join(","), [allItems]);
+  const lookupKey = shouldLookup
+    ? `/api/market/meridian/lookup?ticker=${encodeURIComponent(normalizedSearch)}&timeline_ids=${encodeURIComponent(timelineIdCsv)}`
+    : null;
+
+  const { data: lookup, isLoading: lookupLoading } = useSWR<MeridianTickerLookup>(lookupKey, fetcher, {
+    revalidateOnFocus: false,
+  });
+
   const activeId = selectedId ?? filteredItems[0]?.id ?? null;
+
+  const lookupTimelineItem = useMemo((): MeridianTimelineItem | null => {
+    if (!lookup?.found || !lookup.timeline_id || !lookup.earnings) return null;
+    const e = lookup.earnings;
+    return {
+      id: lookup.timeline_id,
+      kind: "earnings",
+      title: `${lookup.ticker} earnings`,
+      subtitle: e.company_name,
+      date: e.date,
+      time: e.when === "premarket" ? "08:00" : e.when === "afterhours" ? "16:20" : e.time,
+      impact: "high",
+      days_until: e.days_until,
+      ticker: lookup.ticker,
+    };
+  }, [lookup]);
+
   const activeItem =
     filteredItems.find((i) => i.id === activeId) ??
     allItems.find((i) => i.id === activeId) ??
-    null;
+    (activeId && lookupTimelineItem?.id === activeId ? lookupTimelineItem : null);
 
   const detailKey = activeId ? `/api/market/meridian/event?id=${encodeURIComponent(activeId)}` : null;
   const {
@@ -176,6 +221,31 @@ export function MeridianDesk() {
         <aside className="meridian-rail meridian-rail-v2" aria-label="Catalyst timeline">
           <div className="meridian-rail-head">
             <h2 className="meridian-rail-title">Catalyst lane</h2>
+            <label className="meridian-search-wrap">
+              <span className="sr-only">Search catalysts by ticker or name</span>
+              <input
+                type="search"
+                className="meridian-search-input"
+                placeholder="Search ticker or name…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                autoComplete="off"
+                spellCheck={false}
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  className="meridian-search-clear"
+                  aria-label="Clear search"
+                  onClick={() => setSearchQuery("")}
+                >
+                  ×
+                </button>
+              )}
+            </label>
+            {normalizedSearch && filteredItems.length > 0 && (
+              <p className="meridian-search-meta">{filteredItems.length} match{filteredItems.length === 1 ? "" : "es"}</p>
+            )}
           </div>
 
           <div className="meridian-filter-row" role="tablist" aria-label="Filter catalysts">
@@ -195,7 +265,50 @@ export function MeridianDesk() {
           {isLoading && <MeridianShimmer lines={5} />}
           {error && !isLoading && <MeridianEmpty message="Timeline unavailable — try refresh." />}
           {!isLoading && !error && filteredItems.length === 0 && (
-            <MeridianEmpty message="No catalysts match this filter." />
+            <div className="meridian-search-empty">
+              <MeridianEmpty
+                message={
+                  normalizedSearch
+                    ? `No catalysts match “${searchQuery.trim()}”.`
+                    : "No catalysts match this filter."
+                }
+              />
+              {shouldLookup && lookupLoading && <MeridianShimmer lines={2} />}
+              {shouldLookup && !lookupLoading && lookup?.found && lookup.timeline_id && (
+                <button
+                  type="button"
+                  className="meridian-lookup-card"
+                  onClick={() => {
+                    setSelectedId(lookup.timeline_id);
+                    if (lookup.in_timeline) return;
+                    setSearchQuery("");
+                    setFilter("all");
+                  }}
+                >
+                  <span className="meridian-lookup-kicker">Earnings lookup</span>
+                  <span className="meridian-lookup-title">
+                    {lookup.ticker}
+                    {lookup.earnings?.company_name ? ` · ${lookup.earnings.company_name}` : ""}
+                  </span>
+                  <span className="meridian-lookup-meta">
+                    {lookup.earnings?.days_until === 0
+                      ? "Today"
+                      : `${lookup.earnings?.days_until}d`}{" "}
+                    · {lookup.earnings?.date}
+                    {lookup.earnings?.status_label ? ` · ${lookup.earnings.status_label}` : ""}
+                    {lookup.earnings?.estimated_eps != null
+                      ? ` · Est EPS ${lookup.earnings.estimated_eps}`
+                      : ""}
+                  </span>
+                  <span className="meridian-lookup-action">
+                    {lookup.in_timeline ? "Jump to row →" : "Open earnings brief →"}
+                  </span>
+                </button>
+              )}
+              {shouldLookup && !lookupLoading && lookup && !lookup.found && (
+                <p className="meridian-lookup-miss">{lookup.message}</p>
+              )}
+            </div>
           )}
 
           {grouped.map(([month, rows]) => (

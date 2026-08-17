@@ -463,6 +463,80 @@ export async function fetchBenzingaEarnings(ticker: string, limit = 15) {
   return fetchBenzingaNews(limit, { ticker, channels: "earnings" });
 }
 
+/** Structured earnings row from Benzinga /benzinga/v1/earnings (EPS, revenue, date status). */
+export type BenzingaStructuredEarnings = {
+  ticker: string;
+  company_name: string | null;
+  date: string;
+  time: string | null;
+  date_status: string | null;
+  importance: number | null;
+  estimated_eps: number | null;
+  estimated_revenue: number | null;
+  fiscal_period: string | null;
+  fiscal_year: number | null;
+  actual_eps: number | null;
+  actual_revenue: number | null;
+};
+
+function shapeBenzingaStructuredEarnings(row: Record<string, unknown>): BenzingaStructuredEarnings | null {
+  const ticker = String(row.ticker ?? "").trim().toUpperCase();
+  const date = String(row.date ?? "").slice(0, 10);
+  if (!ticker || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  const num = (k: string) => {
+    const v = row[k];
+    return v != null && Number.isFinite(Number(v)) ? Number(v) : null;
+  };
+  return {
+    ticker,
+    company_name: String(row.company_name ?? "").trim() || null,
+    date,
+    time: String(row.time ?? "").trim() || null,
+    date_status: String(row.date_status ?? "").trim() || null,
+    importance: num("importance"),
+    estimated_eps: num("estimated_eps"),
+    estimated_revenue: num("estimated_revenue"),
+    fiscal_period: String(row.fiscal_period ?? "").trim() || null,
+    fiscal_year: num("fiscal_year"),
+    actual_eps: num("actual_eps"),
+    actual_revenue: num("actual_revenue"),
+  };
+}
+
+/**
+ * Structured earnings calendar via Benzinga v1 — used for Meridian ticker lookup and timeline backfill.
+ * Filter by ticker and/or date range; sorted by date ascending when `sort` omitted.
+ */
+export async function fetchBenzingaStructuredEarnings(opts: {
+  ticker?: string;
+  dateGte?: string;
+  dateLte?: string;
+  limit?: number;
+}): Promise<BenzingaStructuredEarnings[]> {
+  const params: Record<string, string> = {
+    limit: String(Math.min(50, Math.max(1, opts.limit ?? 10))),
+    sort: "date.asc",
+  };
+  if (opts.ticker?.trim()) params.ticker = opts.ticker.trim().toUpperCase();
+  if (opts.dateGte) params["date.gte"] = opts.dateGte;
+  if (opts.dateLte) params["date.lte"] = opts.dateLte;
+
+  try {
+    const data = await polygonGet<{ results?: Array<Record<string, unknown>> }>(
+      "/benzinga/v1/earnings",
+      params
+    );
+    const out: BenzingaStructuredEarnings[] = [];
+    for (const row of data.results ?? []) {
+      const shaped = shapeBenzingaStructuredEarnings(row);
+      if (shaped) out.push(shaped);
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchBenzingaAnalystRatings(ticker: string, limit = 15) {
   // Benzinga channel names are SPACE-delimited + lowercase (verified live vs api.massive.com).
   // "analyst-ratings" (hyphen) returns ZERO results — the working name is "analyst ratings".

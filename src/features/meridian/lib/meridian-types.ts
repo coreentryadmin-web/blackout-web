@@ -459,6 +459,26 @@ export type MeridianTimelineStats = {
   next_24h: number;
 };
 
+export type MeridianTickerLookup = {
+  ticker: string;
+  found: boolean;
+  in_timeline: boolean;
+  earnings: {
+    date: string;
+    time: string | null;
+    company_name: string | null;
+    date_status: string | null;
+    estimated_eps: number | null;
+    fiscal_period: string | null;
+    fiscal_year: number | null;
+    days_until: number;
+    when: "premarket" | "afterhours" | null;
+    status_label: string | null;
+  } | null;
+  timeline_id: string | null;
+  message: string;
+};
+
 export type MeridianTimelinePayload = {
   as_of: string;
   days_ahead: number;
