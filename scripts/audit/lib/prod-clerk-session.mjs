@@ -24,6 +24,21 @@ function fapiHost(publishableKey) {
   return "https://clerk.blackouttrades.com";
 }
 
+/**
+ * Merge freshly-issued `name=value` cookies into an existing jar IN PLACE, replacing any prior
+ * entry with the same name. Clerk rotates `__client` on the token endpoint, so a jar that only
+ * ever appends (or never updates) goes stale and the session silently stops refreshing.
+ */
+export function mergeCookies(jar, incoming) {
+  for (const c of incoming) {
+    const name = c.split("=")[0];
+    const at = jar.findIndex((existing) => existing.split("=")[0] === name);
+    if (at >= 0) jar[at] = c;
+    else jar.push(c);
+  }
+  return jar;
+}
+
 function collectSetCookies(res) {
   // Node's fetch (undici) exposes multiple Set-Cookie headers via
   // getSetCookie(); older runtimes only expose the first via .get(). Both
@@ -90,7 +105,9 @@ export async function mintClerkPremiumSession({
       headers: { Origin: appUrl, Referer: `${appUrl}/`, "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ strategy: "ticket", ticket }),
     });
-    const signInCookies = collectSetCookies(signInRes);
+    // MUTABLE jar: `refresh()` rotates these in place (see the WHY on refresh below). It was a
+    // `const` snapshot, which is what made long-running sessions die at ~72s.
+    const clientCookies = collectSetCookies(signInRes);
     const signInJson = await signInRes.json().catch(() => null);
     const sessionId = signInJson?.response?.created_session_id;
     if (!sessionId) return { skip: true, reason: "FAPI ticket exchange did not return created_session_id" };
@@ -105,7 +122,7 @@ export async function mintClerkPremiumSession({
         Origin: appUrl,
         Referer: `${appUrl}/`,
         "Content-Type": "application/x-www-form-urlencoded",
-        Cookie: signInCookies.join("; "),
+        Cookie: clientCookies.join("; "),
       },
     });
     const jwt = (await mintRes.json().catch(() => null))?.jwt;
@@ -135,9 +152,21 @@ export async function mintClerkPremiumSession({
           Origin: appUrl,
           Referer: `${appUrl}/`,
           "Content-Type": "application/x-www-form-urlencoded",
-          Cookie: signInCookies.join("; "),
+          Cookie: clientCookies.join("; "),
         },
       });
+      // ROTATE the client cookies from the response before reading the JWT.
+      //
+      // WHY: Clerk rotates the `__client` cookie on this endpoint. The original implementation
+      // captured the sign-in cookies ONCE and replayed them forever, so after ~50s the replayed
+      // `__client` was stale, FAPI stopped issuing, and refresh() returned null — silently, since
+      // it fails open. Every long-running audit then ran on the ORIGINAL JWT until it died at ~72s
+      // and 401'd for the rest of the run. MEASURED 2026-08-17: refresh OK at t=0, null at t=50s,
+      // while three back-to-back calls at t=0 all succeeded — i.e. time-based staleness of the
+      // client cookie, not a per-call limit. This had already been mis-read as a product failure
+      // three separate times (thermal validator sectors, force-rebuild "IWM 0/5", the Vector
+      // board poll), which is why the rotation is done here rather than worked around per-harness.
+      mergeCookies(clientCookies, collectSetCookies(r));
       const next = (await r.json().catch(() => null))?.jwt;
       if (!next) return null;
       return { jwt: next, cookieHeader: `__session=${next}; __client_uat=${clientUat}` };

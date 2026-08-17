@@ -38,6 +38,43 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-08-17 — [FINDING, P2 tooling] Audit sessions silently died at ~72s: the client cookie jar never rotated — FIXED
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Severity** | P2 (tooling — but it has produced three false product reports) |
+| **Scope** | `scripts/audit/lib/prod-clerk-session.mjs` — every harness that runs longer than ~72s |
+| **Status** | FIXED — cookie jar now rotates; 5 unit tests |
+
+**Root cause.** `mintClerkPremiumSession` captured the FAPI sign-in cookies once
+(`const signInCookies = collectSetCookies(signInRes)`) and replayed that snapshot on every
+`refresh()` call. Clerk **rotates the `__client` cookie** on the token endpoint, so after ~50s the
+replayed copy was stale, FAPI stopped issuing, and `refresh()` returned `null` — silently, because
+it fails open. Callers then kept using the ORIGINAL JWT, which dies at ~72s, and every subsequent
+request 401'd for the remainder of the run.
+
+**Evidence (measured, 2026-08-17).** `refresh()` OK at t=0, **null at t=50s**. Three back-to-back
+calls at t=0 all succeeded — so it is time-based staleness of the client cookie, not a per-call
+limit. After the fix: refresh OK and live probe **200 at t+50s, t+100s, t+160s, t+220s**.
+
+**Why it matters more than a tooling nit — it has lied three times.** A 401 renders as an empty
+panel, so this reads as a PRODUCT failure:
+- the thermal validator reporting 4 sectors "FAILING";
+- `gex-force-rebuild-timing` printing `QQQ 1/5, IWM 0/5` (i.e. "IWM's matrix is broken and fast");
+- the 2026-08-17 Vector board poll dying mid-capture.
+Each was diagnosed separately and worked around per-harness. Fixing the shared lib retires the
+whole class.
+
+**Fix.** The jar is now mutable and `refresh()` merges the response's `Set-Cookie` back into it
+before reading the JWT (`mergeCookies`, replace-by-name, in place so the closure sees it).
+
+**Blast radius.** Every harness importing `mintClerkPremiumSession` gets longer-lived sessions —
+strictly an improvement; no caller passes or inspects the cookie jar. The per-harness 45s re-mint
+timers and 401 buckets stay: they are still correct, and belt-and-braces is right for something
+that fails open. `data-validator.mjs` uses its own curl cookie-jar path and is untouched.
+
+
 ## 2026-08-14 — [FINDING, P0 member-visible] Vector session viewport drew candles for the full day but beads for only the last 45 minutes — FIXED
 > **kind:** `FINDING`
 
