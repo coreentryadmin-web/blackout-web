@@ -432,7 +432,6 @@ html.nav-locked body { overflow: hidden; }
   --mer-text: #fff;
   --mer-muted: #bae6fd;
   --mer-label: #7dd3fc;
-}
   display: flex;
   flex-direction: column;
   min-height: 0;
