@@ -468,8 +468,9 @@ html.nav-locked body { overflow: hidden; }
 .meridian-main-v2 { padding: 0.85rem; overflow: auto; }
 .meridian-rail-head {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.45rem;
   margin-bottom: 0.65rem;
 }
 .meridian-rail-title {
@@ -478,6 +479,92 @@ html.nav-locked body { overflow: hidden; }
   font-weight: 800;
   color: #fff;
   letter-spacing: -0.02em;
+}
+.meridian-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.meridian-search-input {
+  width: 100%;
+  border-radius: 0.45rem;
+  border: 1px solid rgba(34, 211, 238, 0.22);
+  background: rgba(4, 4, 7, 0.65);
+  color: #fff;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.72rem;
+  padding: 0.45rem 1.6rem 0.45rem 0.55rem;
+  outline: none;
+}
+.meridian-search-input::placeholder { color: #67e8f9; opacity: 0.55; }
+.meridian-search-input:focus {
+  border-color: rgba(34, 211, 238, 0.55);
+  box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.15);
+}
+.meridian-search-clear {
+  position: absolute;
+  right: 0.35rem;
+  border: none;
+  background: transparent;
+  color: #67e8f9;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.15rem 0.25rem;
+}
+.meridian-search-meta {
+  margin: 0;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #67e8f9;
+}
+.meridian-search-empty { display: flex; flex-direction: column; gap: 0.55rem; }
+.meridian-lookup-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  text-align: left;
+  border-radius: 0.55rem;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  background: rgba(56, 189, 248, 0.08);
+  padding: 0.65rem 0.75rem;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.meridian-lookup-card:hover {
+  border-color: rgba(56, 189, 248, 0.55);
+  background: rgba(56, 189, 248, 0.12);
+}
+.meridian-lookup-kicker {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #38bdf8;
+}
+.meridian-lookup-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #fff;
+}
+.meridian-lookup-meta {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.65rem;
+  color: #bae6fd;
+}
+.meridian-lookup-action {
+  margin-top: 0.15rem;
+  font-size: 0.68rem;
+  color: #67e8f9;
+}
+.meridian-lookup-miss {
+  margin: 0;
+  font-size: 0.72rem;
+  color: #bae6fd;
+  padding: 0 0.15rem;
 }
 
 /* Filter pills */
