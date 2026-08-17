@@ -200,8 +200,8 @@ async function run(session) {
   // The minted __session JWT dies ~72s after issue and this run is several minutes long. Without
   // re-minting into the CONTEXT (not just the Node-side header), the desk's own fetches 401 and the
   // panes render empty — which reads as a product fault. See prod-clerk-session.mjs.
-  const keepSessionAlive = async () => {
-    if (Date.now() - lastRefresh < 40_000) return;
+  const keepSessionAlive = async (force = false) => {
+    if (!force && Date.now() - lastRefresh < 40_000) return;
     const next = await session.refresh?.().catch(() => null);
     if (!next) return;
     lastRefresh = Date.now();
@@ -213,8 +213,27 @@ async function run(session) {
   try {
     for (const c of CASES) {
       const url = `${BASE}/vector?compare=${c.tickers.join(",")}`;
-      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
+      // REFRESH BEFORE NAVIGATING, never after. The __session JWT dies ~72s after issue and each
+      // case here takes 15-25s, so by the third goto the cookie is stale — and a stale Clerk cookie
+      // on a protected route does not 401, it REDIRECTS, which Chromium reports as
+      // ERR_TOO_MANY_REDIRECTS. That killed the second live run of this harness and reads exactly
+      // like "the compare route is broken" when the desk is fine and the harness expired.
       await keepSessionAlive();
+      try {
+        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
+      } catch (e) {
+        // One unreachable case must not discard the cases already captured.
+        results.push({
+          id: c.id,
+          label: `${c.tickers.length} panes: ${c.tickers.join(" / ")}`,
+          fails: [`navigation failed: ${String(e.message).split("\n")[0].slice(0, 140)}`],
+          paneCount: null,
+          panes: [],
+          spread: {},
+          shot: null,
+        });
+        continue;
+      }
       // Compare loads its seeds with bounded concurrency (2 at a time), so a 4-pane grid needs
       // roughly twice the settle of a 2-pane one before absence means anything.
       await page.waitForTimeout(9000 + c.tickers.length * 2500);
@@ -260,9 +279,13 @@ async function run(session) {
     results.push({ id: "exit-button", label: "Exit compare → desk", fails: exitFails, paneCount: null, panes: [], spread: {} });
 
     // ---- CROSS-ROUTE NAV out of compare (the "can't reach SPX Slayer" report). ----
-    await keepSessionAlive();
     const navFails = [];
-    await page.goto(`${BASE}/vector?compare=${CASES[2].tickers.join(",")}`, { waitUntil: "domcontentloaded", timeout: 45000 });
+    await keepSessionAlive(true);
+    try {
+      await page.goto(`${BASE}/vector?compare=${CASES[2].tickers.join(",")}`, { waitUntil: "domcontentloaded", timeout: 60000 });
+    } catch (e) {
+      navFails.push(`navigation failed: ${String(e.message).split("\n")[0].slice(0, 140)}`);
+    }
     await page.waitForTimeout(12000);
     const link = page.locator('a[href^="/nighthawk"]').filter({ visible: true }).first();
     if (!(await link.count())) {
