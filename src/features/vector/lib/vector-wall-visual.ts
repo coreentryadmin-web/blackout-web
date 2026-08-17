@@ -239,6 +239,53 @@ export function decayModulation(
 }
 
 /**
+ * AGE TAPER — older beads render dimmer purely BECAUSE they are older.
+ *
+ * A separate channel from decay, and the distinction matters. `decayModulation` answers "is this
+ * wall weakening?"; this answers "how long ago was this?". Today a bead from 09:35 and a bead from
+ * 14:35 at identical strength paint at identical opacity, so the rail has no depth cue and the LIVE
+ * edge — the only part describing the book right now — does not stand out from five hours of history.
+ *
+ * Purely temporal, so it cannot lie about strength: it is applied to ALPHA ONLY, never to radius.
+ * Bead SIZE stays a pure function of the wall's own gamma share, which is what preserves the
+ * "this wall WAS big" reading that the whole rail exists for. Dimming an old bead says "this is
+ * older"; shrinking it would say "this was weaker", which would be false.
+ *
+ * THE FLOOR IS BOUNDED BY A CORRECTNESS CONSTRAINT, not by taste. The taper must never let an old
+ * STRONG wall render dimmer than a fresh WEAK one — that would make the channel lie about strength
+ * while claiming to speak about time. The strongest bead sits at FILL_ALPHA_MAX and the weakest at
+ * FILL_ALPHA_MIN, so the floor must satisfy `FILL_ALPHA_MAX * floor > FILL_ALPHA_MIN`:
+ * 0.6 / 0.98 = 0.612 for the default tuning, 0.58 / 0.96 = 0.604 for the Compare tuning. 0.68 clears
+ * both with margin. A unit test pins this so a later "make it fade more" tweak cannot silently
+ * invert the ordering — the first draft of this constant was 0.55 and did exactly that
+ * (0.98 x 0.55 = 0.539, below a fresh straggler's 0.6).
+ *
+ * It also keeps the rail off the "too light, barely visible" complaint that once forced
+ * FILL_ALPHA_MIN 0.26 -> 0.6: the oldest bead keeps roughly two thirds of its weight.
+ *
+ * Linear in AGE (not in bead index): a rail is unevenly sampled — 5s live buckets compact to ~300s
+ * historical ones — so an index-based ramp would taper by sampling density rather than by time, and
+ * two rails of the same span would fade differently for no reason a member could see.
+ */
+export const AGE_TAPER_FLOOR = 0.68;
+/** Age at which the taper reaches its floor. One RTH session (6.5h) — a full day of context. */
+export const AGE_TAPER_FULL_SEC = 6.5 * 3600;
+
+export function ageTaperAlpha(
+  ageSec: number,
+  opts?: { floor?: number; fullSec?: number }
+): number {
+  const floor = opts?.floor ?? AGE_TAPER_FLOOR;
+  const fullSec = opts?.fullSec ?? AGE_TAPER_FULL_SEC;
+  // A non-finite or negative age means "we do not know how old this is" — never invent a fade.
+  // Negative specifically guards the live bucket, whose time can sit a hair ahead of the reference.
+  if (!Number.isFinite(ageSec) || ageSec <= 0) return 1;
+  if (!(fullSec > 0)) return 1;
+  const t = Math.min(1, ageSec / fullSec);
+  return 1 - t * (1 - floor);
+}
+
+/**
  * Combine the fast per-bucket velocity channel with the slow self-relative trailing channel.
  *
  * Both are real and answer different questions: growthModulation catches a VIOLENT one-bucket move

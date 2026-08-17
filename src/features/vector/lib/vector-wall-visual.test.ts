@@ -11,12 +11,17 @@ import {
   growthModulation,
   decayModulation,
   beadModulation,
+  ageTaperAlpha,
+  AGE_TAPER_FLOOR,
+  AGE_TAPER_FULL_SEC,
   magnitudeGlowBoost,
   MODELED_ALPHA_SCALE,
   haloRingForTier,
   beadRadiusForNotional,
   pctToNotionalProxy,
 } from "./vector-wall-visual";
+// FILL_ALPHA_* live in rail-core (that module owns the tuning; this one owns the ladders).
+import { FILL_ALPHA_MIN, FILL_ALPHA_MAX } from "./vector-wall-rail-core";
 
 test("alphaForPct: a 0% wall gets the faint visual floor, not fully invisible", () => {
   assert.equal(alphaForPct(0), 0.05);
@@ -320,4 +325,44 @@ test("beadModulation: takes the MORE EXTREME channel, never compounds them", () 
   assert.deepEqual(beadModulation(10, 10, 10, 40), {
     alphaMul: 1, sizeMul: 1, building: false, fading: false,
   });
+});
+
+test("ageTaperAlpha: the live edge is full weight, the oldest bead sits at the floor", () => {
+  assert.equal(ageTaperAlpha(0), 1, "the live bucket never tapers");
+  assert.equal(ageTaperAlpha(AGE_TAPER_FULL_SEC), AGE_TAPER_FLOOR);
+  assert.equal(ageTaperAlpha(AGE_TAPER_FULL_SEC * 5), AGE_TAPER_FLOOR, "clamps, never goes under");
+  // Halfway through the ramp sits halfway between 1 and the floor.
+  const mid = ageTaperAlpha(AGE_TAPER_FULL_SEC / 2);
+  assert.ok(Math.abs(mid - (1 + AGE_TAPER_FLOOR) / 2) < 1e-9);
+});
+
+test("ageTaperAlpha: monotonic in AGE, and old beads stay legible", () => {
+  const ages = [0, 600, 3600, 3600 * 3, AGE_TAPER_FULL_SEC];
+  for (let i = 1; i < ages.length; i++) {
+    assert.ok(ageTaperAlpha(ages[i]!) <= ageTaperAlpha(ages[i - 1]!), "never brightens with age");
+  }
+  // The floor is the guard against re-breaking the "beads too light" report that raised
+  // FILL_ALPHA_MIN 0.26 -> 0.6. Over half weight at the oldest bead, not a fade to nothing.
+  assert.ok(AGE_TAPER_FLOOR >= 0.5, "oldest bead keeps >= half its weight");
+});
+
+test("ageTaperAlpha: unknown or negative age never invents a fade", () => {
+  assert.equal(ageTaperAlpha(NaN), 1);
+  assert.equal(ageTaperAlpha(Infinity), 1);
+  // Negative guards the live bucket, whose time can sit a hair ahead of the reference.
+  assert.equal(ageTaperAlpha(-30), 1);
+  assert.equal(ageTaperAlpha(3600, { fullSec: 0 }), 1, "a zero ramp is a no-op, not a divide-by-zero");
+});
+
+test("ageTaperAlpha: STRENGTH CONTRAST survives the taper — age never outranks magnitude", () => {
+  // The taper must not let an old strong wall read weaker than a fresh weak one, or it would be
+  // lying about strength rather than about recency. Strongest-vs-weakest alpha spread is
+  // FILL_ALPHA_MAX/FILL_ALPHA_MIN; the taper's worst case is the floor.
+  // Derived from the real constants, not hardcoded, so a retune of either end re-checks the
+  // invariant instead of silently drifting past it.
+  const strongOld = FILL_ALPHA_MAX * AGE_TAPER_FLOOR;
+  const weakFresh = FILL_ALPHA_MIN * ageTaperAlpha(0);
+  assert.ok(strongOld > weakFresh, "an old king still outranks a fresh straggler");
+  // Same guarantee for the Compare pane tuning, which has its own narrower alpha band.
+  assert.ok(0.96 * AGE_TAPER_FLOOR > 0.58, "holds for BEAD_TUNING_COMPARE too");
 });

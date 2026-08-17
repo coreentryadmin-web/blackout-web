@@ -38,6 +38,53 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-08-17 — [FINDING, P2 member-visible] Bead rail had no recency cue — a 5-hour-old bead painted exactly like the live edge — FIXED
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Severity** | P2 (member-visible legibility — the live edge is the only part describing the book *now*) |
+| **Scope** | `vector-wall-visual.ts` (`ageTaperAlpha`), `vector-wall-rail-primitive.ts` |
+| **Status** | FIXED — alpha-only age taper; 4 unit tests incl. an ordering invariant |
+
+**Root cause.** Nothing in the rail encoded recency. A bead from 09:35 and a bead from 14:35 at
+identical strength painted at identical opacity, so the rail had no depth and the LIVE edge did not
+stand out from five hours of history. Companion to the decay finding above: that one answers "is
+this wall weakening?", this one answers "how long ago was this?".
+
+**Fix.** `ageTaperAlpha(ageSec)` ramps linearly from 1.0 at the live bucket to `AGE_TAPER_FLOOR`
+at `AGE_TAPER_FULL_SEC` (6.5h, one RTH session), applied to **alpha only**.
+
+Three deliberate constraints:
+1. **Never applied to radius.** Bead SIZE stays a pure function of the wall's gamma share. Dimming
+   an old bead says "this is older"; shrinking it would say "this was weaker", which is false and
+   would destroy the "this wall WAS big" reading the rail exists for.
+2. **Linear in AGE, not in bead index.** A rail is unevenly sampled (5s live buckets compact to
+   ~300s historical ones), so an index ramp would taper by sampling density rather than by time.
+3. **Age measured against the newest bucket ON THE RAIL, not `Date.now()`.** An off-hours or
+   replayed rail has no "now" to be old relative to; wall-clock would fade a whole frozen session
+   to the floor for no reason a member could read.
+
+**The floor is a correctness bound, not taste — and the first draft got it wrong.** The taper must
+never let an old STRONG wall render dimmer than a fresh WEAK one, i.e.
+`FILL_ALPHA_MAX * floor > FILL_ALPHA_MIN` — 0.612 for the default tuning, 0.604 for Compare. The
+first value chosen was **0.55**, which gives `0.98 x 0.55 = 0.539` against a fresh straggler's 0.60:
+a fully-aged king would have rendered dimmer than a brand-new weak wall, inverting the strength
+ordering. Caught by the unit test written for exactly that invariant, before any commit. Floor is
+now **0.68**, clearing both tunings with margin, and the test derives its bounds from the real
+constants so a later "make it fade more" tweak re-checks the invariant instead of drifting past it.
+
+0.68 also keeps the rail clear of the "too light, barely visible" complaint that once forced
+`FILL_ALPHA_MIN` 0.26 -> 0.6 — the oldest bead keeps roughly two thirds of its weight.
+
+**Blast radius.** One multiplier added to the bead alpha composition in the primitive. Nothing else
+reads `ageTaperAlpha`. Bead size, `fillAlpha`, the decay channel, king emphasis and birth/death
+glyphs are untouched.
+
+**Evidence.** 4 new tests: live edge is exactly 1.0, floor reached and clamped at full age,
+monotonic in age, non-finite/negative age never invents a fade, and the strength-ordering invariant
+above for BOTH tunings. 63/63 pass on Node 20; `tsc --noEmit` clean.
+
 ## 2026-08-17 — [FINDING, P1 member-visible] Bead rail never showed a wall decaying: the fade channel is blind to gradual decline — FIXED
 > **kind:** `FINDING`
 
@@ -105,7 +152,6 @@ returns neutral (the old blindness, asserted) while `decayModulation(9.975, 20)`
 asserted by `decayModulation(2, 20)` deep-equalling `decayModulation(0.3, 3)`. 59/59 pass on Node 20;
 `tsc --noEmit` clean.
 
-
 ## 2026-08-17 — [FINDING, P1 member-visible] Vector compare mode was a one-way door: Exit compare (and every same-route nav out of it) was a no-op — FIXED
 > **kind:** `FINDING`
 
@@ -150,7 +196,6 @@ was already correct — it pushed the right URL and the client ignored it.
 `null` and `isCompareMode` is false for `null`/`undefined`/`""`, which is precisely the state the
 old expression could not represent. 10/10 pass on Node 20.
 
-
 ## 2026-08-17 — [FINDING, P2 tooling] Audit sessions silently died at ~72s: the client cookie jar never rotated — FIXED
 > **kind:** `FINDING`
 
@@ -186,7 +231,6 @@ before reading the JWT (`mergeCookies`, replace-by-name, in place so the closure
 strictly an improvement; no caller passes or inspects the cookie jar. The per-harness 45s re-mint
 timers and 401 buckets stay: they are still correct, and belt-and-braces is right for something
 that fails open. `data-validator.mjs` uses its own curl cookie-jar path and is untouched.
-
 
 ## 2026-08-14 — [FINDING, P0 member-visible] Vector session viewport drew candles for the full day but beads for only the last 45 minutes — FIXED
 > **kind:** `FINDING`
