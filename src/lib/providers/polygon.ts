@@ -465,8 +465,10 @@ export async function fetchBenzingaEarnings(ticker: string, limit = 15) {
 
 /** Structured earnings row from Benzinga /benzinga/v1/earnings (EPS, revenue, date status). */
 export type BenzingaStructuredEarnings = {
+  benzinga_id: string | null;
   ticker: string;
   company_name: string | null;
+  currency: string | null;
   date: string;
   time: string | null;
   date_status: string | null;
@@ -477,10 +479,49 @@ export type BenzingaStructuredEarnings = {
   fiscal_year: number | null;
   actual_eps: number | null;
   actual_revenue: number | null;
+  eps_surprise: number | null;
   eps_surprise_pct: number | null;
+  revenue_surprise: number | null;
   revenue_surprise_pct: number | null;
   previous_eps: number | null;
   previous_revenue: number | null;
+  eps_method: string | null;
+  revenue_method: string | null;
+  notes: string | null;
+  last_updated: string | null;
+};
+
+/** Corporate guidance row — `/benzinga/v1/guidance` (separate plan SKU). */
+export type BenzingaCorporateGuidance = {
+  benzinga_id: string | null;
+  ticker: string;
+  company_name: string | null;
+  date: string;
+  time: string | null;
+  fiscal_period: string | null;
+  fiscal_year: number | null;
+  importance: number | null;
+  release_type: string | null;
+  min_eps_guidance: number | null;
+  max_eps_guidance: number | null;
+  min_revenue_guidance: number | null;
+  max_revenue_guidance: number | null;
+  estimated_eps_guidance: number | null;
+  estimated_revenue_guidance: number | null;
+  previous_min_eps_guidance: number | null;
+  previous_max_eps_guidance: number | null;
+  eps_method: string | null;
+  revenue_method: string | null;
+  notes: string | null;
+  last_updated: string | null;
+};
+
+export type BenzingaPartnerFetchResult<T> = {
+  rows: T[];
+  entitled: boolean;
+  error: string | null;
+  /** Relative or absolute next page URL when the upstream API paginates. */
+  nextUrl?: string | null;
 };
 
 function shapeBenzingaStructuredEarnings(row: Record<string, unknown>): BenzingaStructuredEarnings | null {
@@ -492,8 +533,10 @@ function shapeBenzingaStructuredEarnings(row: Record<string, unknown>): Benzinga
     return v != null && Number.isFinite(Number(v)) ? Number(v) : null;
   };
   return {
+    benzinga_id: String(row.benzinga_id ?? "").trim() || null,
     ticker,
     company_name: String(row.company_name ?? "").trim() || null,
+    currency: String(row.currency ?? "").trim() || null,
     date,
     time: String(row.time ?? "").trim() || null,
     date_status: String(row.date_status ?? "").trim() || null,
@@ -504,45 +547,163 @@ function shapeBenzingaStructuredEarnings(row: Record<string, unknown>): Benzinga
     fiscal_year: num("fiscal_year"),
     actual_eps: num("actual_eps"),
     actual_revenue: num("actual_revenue"),
+    eps_surprise: num("eps_surprise"),
     eps_surprise_pct: num("eps_surprise_percent"),
+    revenue_surprise: num("revenue_surprise"),
     revenue_surprise_pct: num("revenue_surprise_percent"),
     previous_eps: num("previous_eps"),
     previous_revenue: num("previous_revenue"),
+    eps_method: String(row.eps_method ?? "").trim().toLowerCase() || null,
+    revenue_method: String(row.revenue_method ?? "").trim().toLowerCase() || null,
+    notes: String(row.notes ?? "").trim() || null,
+    last_updated: String(row.last_updated ?? "").trim() || null,
   };
 }
 
+function shapeBenzingaCorporateGuidance(row: Record<string, unknown>): BenzingaCorporateGuidance | null {
+  const ticker = String(row.ticker ?? "").trim().toUpperCase();
+  const date = String(row.date ?? "").slice(0, 10);
+  if (!ticker || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  const num = (k: string) => {
+    const v = row[k];
+    return v != null && Number.isFinite(Number(v)) ? Number(v) : null;
+  };
+  return {
+    benzinga_id: String(row.benzinga_id ?? "").trim() || null,
+    ticker,
+    company_name: String(row.company_name ?? "").trim() || null,
+    date,
+    time: String(row.time ?? "").trim() || null,
+    fiscal_period: String(row.fiscal_period ?? "").trim() || null,
+    fiscal_year: num("fiscal_year"),
+    importance: num("importance"),
+    release_type: String(row.release_type ?? "").trim() || null,
+    min_eps_guidance: num("min_eps_guidance"),
+    max_eps_guidance: num("max_eps_guidance"),
+    min_revenue_guidance: num("min_revenue_guidance"),
+    max_revenue_guidance: num("max_revenue_guidance"),
+    estimated_eps_guidance: num("estimated_eps_guidance"),
+    estimated_revenue_guidance: num("estimated_revenue_guidance"),
+    previous_min_eps_guidance: num("previous_min_eps_guidance"),
+    previous_max_eps_guidance: num("previous_max_eps_guidance"),
+    eps_method: String(row.eps_method ?? "").trim().toLowerCase() || null,
+    revenue_method: String(row.revenue_method ?? "").trim().toLowerCase() || null,
+    notes: String(row.notes ?? "").trim() || null,
+    last_updated: String(row.last_updated ?? "").trim() || null,
+  };
+}
+
+async function fetchBenzingaPartnerPage<T>(
+  path: string,
+  params: Record<string, string>,
+  shape: (row: Record<string, unknown>) => T | null
+): Promise<BenzingaPartnerFetchResult<T>> {
+  try {
+    const data = await polygonGet<{
+      results?: Array<Record<string, unknown>>;
+      next_url?: string;
+      status?: string;
+      error?: string;
+    }>(path, params);
+    const rows: T[] = [];
+    for (const row of data.results ?? []) {
+      const shaped = shape(row);
+      if (shaped) rows.push(shaped);
+    }
+    return { rows, entitled: true, error: null, nextUrl: data.next_url ?? null };
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    const notEntitled = /not entitled|403|NOT ENTITLED/i.test(detail);
+    if (notEntitled) {
+      console.warn(`[benzinga] ${path} not entitled on current plan`);
+      return { rows: [], entitled: false, error: "not_entitled", nextUrl: null };
+    }
+    console.error(`[benzinga] ${path} fetch failed:`, detail);
+    return { rows: [], entitled: true, error: detail, nextUrl: null };
+  }
+}
+
 /**
- * Structured earnings calendar via Benzinga v1 — used for Meridian ticker lookup and timeline backfill.
- * Filter by ticker and/or date range; sorted by date ascending when `sort` omitted.
+ * Structured earnings calendar via Benzinga v1 — Meridian timeline, lookup, print history.
+ * Returns entitlement metadata so callers can distinguish empty vs blocked.
  */
 export async function fetchBenzingaStructuredEarnings(opts: {
   ticker?: string;
+  tickers?: string[];
   dateGte?: string;
   dateLte?: string;
+  importanceGte?: number;
+  dateStatus?: string;
+  lastUpdatedGte?: string;
   limit?: number;
-}): Promise<BenzingaStructuredEarnings[]> {
+  sort?: string;
+  paginate?: boolean;
+}): Promise<BenzingaPartnerFetchResult<BenzingaStructuredEarnings>> {
   const params: Record<string, string> = {
-    limit: String(Math.min(50, Math.max(1, opts.limit ?? 10))),
-    sort: "date.asc",
+    limit: String(Math.min(200, Math.max(1, opts.limit ?? 100))),
+    sort: opts.sort ?? "date.asc",
+  };
+  if (opts.ticker?.trim()) params.ticker = opts.ticker.trim().toUpperCase();
+  if (opts.tickers?.length) params["ticker.any_of"] = opts.tickers.map((t) => t.trim().toUpperCase()).join(",");
+  if (opts.dateGte) params["date.gte"] = opts.dateGte;
+  if (opts.dateLte) params["date.lte"] = opts.dateLte;
+  if (opts.importanceGte != null) params["importance.gte"] = String(opts.importanceGte);
+  if (opts.dateStatus) params.date_status = opts.dateStatus;
+  if (opts.lastUpdatedGte) params["last_updated.gte"] = opts.lastUpdatedGte;
+
+  const first = await fetchBenzingaPartnerPage(
+    "/benzinga/v1/earnings",
+    params,
+    shapeBenzingaStructuredEarnings
+  );
+  if (!opts.paginate || !first.entitled || first.error) return first;
+
+  // Follow up to two next_url pages for busy earnings weeks.
+  let rows = [...first.rows];
+  let nextPath = first.nextUrl ?? "";
+
+  for (let page = 0; page < 2 && nextPath; page += 1) {
+    try {
+      const url = new URL(nextPath, BASE);
+      const pageParams = Object.fromEntries(url.searchParams.entries());
+      delete pageParams.apiKey;
+      const pageRes = await fetchBenzingaPartnerPage(
+        url.pathname,
+        pageParams,
+        shapeBenzingaStructuredEarnings
+      );
+      if (!pageRes.entitled || pageRes.error) break;
+      rows = rows.concat(pageRes.rows);
+      nextPath = pageRes.nextUrl ?? "";
+    } catch {
+      break;
+    }
+  }
+
+  return { ...first, rows, nextUrl: null };
+}
+
+/** Legacy helper — rows only (empty when blocked). */
+export async function fetchBenzingaStructuredEarningsRows(
+  opts: Parameters<typeof fetchBenzingaStructuredEarnings>[0]
+): Promise<BenzingaStructuredEarnings[]> {
+  const res = await fetchBenzingaStructuredEarnings(opts);
+  return res.rows;
+}
+
+/** Corporate guidance — separate Benzinga SKU; fails closed to [] when not entitled. */
+export async function fetchBenzingaCorporateGuidance(opts: {
+  ticker?: string;
+  dateGte?: string;
+  limit?: number;
+}): Promise<BenzingaPartnerFetchResult<BenzingaCorporateGuidance>> {
+  const params: Record<string, string> = {
+    limit: String(Math.min(20, Math.max(1, opts.limit ?? 8))),
+    sort: "date.desc",
   };
   if (opts.ticker?.trim()) params.ticker = opts.ticker.trim().toUpperCase();
   if (opts.dateGte) params["date.gte"] = opts.dateGte;
-  if (opts.dateLte) params["date.lte"] = opts.dateLte;
-
-  try {
-    const data = await polygonGet<{ results?: Array<Record<string, unknown>> }>(
-      "/benzinga/v1/earnings",
-      params
-    );
-    const out: BenzingaStructuredEarnings[] = [];
-    for (const row of data.results ?? []) {
-      const shaped = shapeBenzingaStructuredEarnings(row);
-      if (shaped) out.push(shaped);
-    }
-    return out;
-  } catch {
-    return [];
-  }
+  return fetchBenzingaPartnerPage("/benzinga/v1/guidance", params, shapeBenzingaCorporateGuidance);
 }
 
 export async function fetchBenzingaAnalystRatings(ticker: string, limit = 15) {

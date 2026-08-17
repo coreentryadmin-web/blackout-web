@@ -155,7 +155,13 @@ export function MeridianDesk() {
       {stats && (
         <div className="meridian-stats-strip" aria-label="Timeline summary">
           <MeridianStatCard value={stats.total} label="Catalysts" tone="cyan" delay={0} />
-          <MeridianStatCard value={stats.high_impact} label="High impact" tone="amber" delay={60} />
+          <MeridianStatCard value={stats.earnings} label="Earnings" tone="cyan" delay={60} />
+          <MeridianStatCard
+            value={stats.earnings_mega_cap ?? 0}
+            label="Mega-cap ER"
+            tone="amber"
+            delay={90}
+          />
           <MeridianStatCard value={stats.next_24h} label="Next 24h" tone="violet" delay={120} />
           <MeridianStatCard
             value={data?.board_tickers?.length ?? 0}
@@ -191,30 +197,85 @@ export function MeridianDesk() {
       </div>
 
       {view === "analytics" && (
-        <section className="meridian-analytics-grid" aria-label="High impact catalyst grid">
-          {isLoading && <MeridianShimmer lines={4} />}
-          {!isLoading && highImpact.length === 0 && (
-            <MeridianEmpty message="No high-impact catalysts in the current window." />
+        <>
+          <section className="meridian-analytics-grid" aria-label="High impact catalyst grid">
+            {isLoading && <MeridianShimmer lines={4} />}
+            {!isLoading && highImpact.length === 0 && (
+              <MeridianEmpty message="No high-impact catalysts in the current window." />
+            )}
+            {highImpact.map((item, i) => (
+              <button
+                key={item.id}
+                type="button"
+                className={`meridian-analytics-card meridian-theme-${item.kind}${item.id === activeId ? " is-active" : ""}`}
+                style={{ animationDelay: `${i * 70}ms` }}
+                onClick={() => {
+                  setSelectedId(item.id);
+                  setView("timeline");
+                }}
+              >
+                <span className="meridian-analytics-card-kind">{item.kind}</span>
+                <span className="meridian-analytics-card-title">{item.title}</span>
+                <span className="meridian-analytics-card-meta">
+                  {item.days_until === 0 ? "Today" : `${item.days_until}d`} · {item.date}
+                </span>
+              </button>
+            ))}
+          </section>
+          {(data?.earnings_week?.length ?? 0) > 0 && (
+            <section className="meridian-earnings-week" aria-label="Mega-cap earnings week">
+              <h3 className="meridian-earnings-week-title">Mega-cap earnings week</h3>
+              <div className="meridian-analytics-grid">
+                {data!.earnings_week.map((row, i) => (
+                  <button
+                    key={`${row.ticker}-${row.date}`}
+                    type="button"
+                    className={`meridian-analytics-card meridian-theme-earnings${row.is_printed ? " is-printed" : ""}`}
+                    style={{ animationDelay: `${i * 50}ms` }}
+                    onClick={() => {
+                      setSelectedId(`earnings:${row.ticker}:${row.date}`);
+                      setView("timeline");
+                      setFilter("earnings");
+                    }}
+                  >
+                    <span className="meridian-analytics-card-kind">imp {row.importance ?? "—"}</span>
+                    <span className="meridian-analytics-card-title">
+                      {row.ticker}
+                      {row.company_name ? ` · ${row.company_name}` : ""}
+                    </span>
+                    <span className="meridian-analytics-card-meta">
+                      {row.date}
+                      {row.time_et ? ` · ${row.time_et} ET` : ""}
+                      {row.estimated_eps != null ? ` · est ${row.estimated_eps}` : ""}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </section>
           )}
-          {highImpact.map((item, i) => (
-            <button
-              key={item.id}
-              type="button"
-              className={`meridian-analytics-card meridian-theme-${item.kind}${item.id === activeId ? " is-active" : ""}`}
-              style={{ animationDelay: `${i * 70}ms` }}
-              onClick={() => {
-                setSelectedId(item.id);
-                setView("timeline");
-              }}
-            >
-              <span className="meridian-analytics-card-kind">{item.kind}</span>
-              <span className="meridian-analytics-card-title">{item.title}</span>
-              <span className="meridian-analytics-card-meta">
-                {item.days_until === 0 ? "Today" : `${item.days_until}d`} · {item.date}
-              </span>
-            </button>
-          ))}
-        </section>
+          {(data?.recent_earnings_revisions?.length ?? 0) > 0 && (
+            <section className="meridian-earnings-revisions" aria-label="Recent calendar revisions">
+              <h3 className="meridian-earnings-week-title">Calendar updates (36h)</h3>
+              <ul className="meridian-card-list meridian-revisions-list">
+                {data!.recent_earnings_revisions.slice(0, 8).map((r) => (
+                  <li key={`${r.ticker}-${r.last_updated}`}>
+                    <button
+                      type="button"
+                      className="meridian-revision-link"
+                      onClick={() => {
+                        setSelectedId(`earnings:${r.ticker}:${r.date}`);
+                        setView("timeline");
+                        setFilter("earnings");
+                      }}
+                    >
+                      {r.headline}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </>
       )}
 
       <div className={`meridian-desk-body${view === "analytics" ? " meridian-desk-body-compact" : ""}`}>

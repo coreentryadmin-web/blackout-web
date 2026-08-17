@@ -28,9 +28,17 @@ function fmtRev(n: number | null): string {
   return `$${n.toFixed(0)}`;
 }
 
-function fmtSurprise(n: number | null): string {
+function fmtSurprisePct(n: number | null): string {
   if (n == null || !Number.isFinite(n)) return "—";
-  return `${n >= 0 ? "+" : ""}${(n * 100).toFixed(1)}%`;
+  return `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`;
+}
+
+function methodLabel(method: string | null): string | null {
+  if (!method) return null;
+  if (method === "gaap") return "GAAP";
+  if (method === "adj") return "Adj";
+  if (method === "ffo") return "FFO";
+  return method.toUpperCase();
 }
 
 function HeadlineList({
@@ -58,9 +66,10 @@ type Props = {
 };
 
 export function MeridianEarningsTabs({ detail }: Props) {
-  const [tab, setTab] = useState<EarningsTab>("report");
   const { enrichment, intel, pack } = detail;
   const cal = enrichment.earnings_calendar;
+  const defaultTab: EarningsTab = enrichment.post_print?.headline ? "estimates" : "report";
+  const [tab, setTab] = useState<EarningsTab>(defaultTab);
 
   return (
     <div className="meridian-earnings-tabs">
@@ -92,6 +101,14 @@ export function MeridianEarningsTabs({ detail }: Props) {
             }}
           />
           <div className="meridian-banner-stack">
+            {enrichment.post_print?.headline && (
+              <MeridianAnalyticsBanner
+                label="Latest print"
+                headline={enrichment.post_print.headline}
+                tone="earnings"
+                icon={enrichment.post_print.lean === "miss" ? "▼" : "▲"}
+              />
+            )}
             {enrichment.expected_vs_realized?.headline && (
               <MeridianAnalyticsBanner
                 label="Expected vs realized"
@@ -132,9 +149,9 @@ export function MeridianEarningsTabs({ detail }: Props) {
               }
               sub={
                 cal.fiscal_period && cal.fiscal_year != null
-                  ? `${cal.fiscal_period} FY${String(cal.fiscal_year).slice(-2)}${cal.time ? ` · ${cal.time.slice(0, 5)} ET` : ""}`
-                  : cal.time
-                    ? `${cal.time.slice(0, 5)} ET`
+                  ? `${cal.fiscal_period} FY${String(cal.fiscal_year).slice(-2)}${cal.report_time_et ? ` · ${cal.report_time_et} ET` : ""}`
+                  : cal.report_time_et
+                    ? `${cal.report_time_et} ET`
                     : null
               }
               tone="earnings"
@@ -148,13 +165,76 @@ export function MeridianEarningsTabs({ detail }: Props) {
                   {cal.estimated_eps != null && <li>EPS est {cal.estimated_eps.toFixed(2)}</li>}
                   {cal.actual_eps != null && <li>EPS actual {cal.actual_eps.toFixed(2)}</li>}
                   {cal.eps_surprise_pct != null && (
-                    <li>EPS surprise {fmtSurprise(cal.eps_surprise_pct)}</li>
+                    <li>EPS surprise {fmtSurprisePct(cal.eps_surprise_pct)}</li>
+                  )}
+                  {cal.revenue_surprise_pct != null && (
+                    <li>Rev surprise {fmtSurprisePct(cal.revenue_surprise_pct)}</li>
+                  )}
+                  {(cal.eps_method || cal.revenue_method) && (
+                    <li>
+                      Methodology
+                      {cal.eps_method ? ` · EPS ${methodLabel(cal.eps_method)}` : ""}
+                      {cal.revenue_method ? ` · Rev ${methodLabel(cal.revenue_method)}` : ""}
+                    </li>
                   )}
                   {cal.estimated_revenue != null && (
                     <li>Revenue est {fmtRev(cal.estimated_revenue)}</li>
                   )}
                   {cal.actual_revenue != null && <li>Revenue actual {fmtRev(cal.actual_revenue)}</li>}
                   {cal.previous_eps != null && <li>Prior EPS {cal.previous_eps.toFixed(2)}</li>}
+                </ul>
+              </MeridianDataCard>
+            )}
+            {enrichment.earnings_yoy && (
+              <MeridianDataCard label="YoY estimate trajectory" tone="earnings" delay={40}>
+                <ul className="meridian-card-list meridian-fin-grid">
+                  {enrichment.earnings_yoy.eps_yoy_pct != null && (
+                    <li>EPS est {fmtPct(enrichment.earnings_yoy.eps_yoy_pct)} YoY</li>
+                  )}
+                  {enrichment.earnings_yoy.revenue_yoy_pct != null && (
+                    <li>Revenue est {fmtPct(enrichment.earnings_yoy.revenue_yoy_pct)} YoY</li>
+                  )}
+                </ul>
+              </MeridianDataCard>
+            )}
+            {enrichment.corporate_guidance && (
+              <MeridianDataCard label="Management guidance" wide tone="earnings" delay={120}>
+                <ul className="meridian-card-list meridian-fin-grid">
+                  {enrichment.corporate_guidance.min_eps != null &&
+                    enrichment.corporate_guidance.max_eps != null && (
+                      <li>
+                        EPS guide {enrichment.corporate_guidance.min_eps} – {enrichment.corporate_guidance.max_eps}
+                      </li>
+                    )}
+                  {enrichment.corporate_guidance.min_revenue != null &&
+                    enrichment.corporate_guidance.max_revenue != null && (
+                      <li>
+                        Rev guide {fmtRev(enrichment.corporate_guidance.min_revenue)} –{" "}
+                        {fmtRev(enrichment.corporate_guidance.max_revenue)}
+                      </li>
+                    )}
+                  {enrichment.corporate_guidance.notes && (
+                    <li>{enrichment.corporate_guidance.notes}</li>
+                  )}
+                </ul>
+              </MeridianDataCard>
+            )}
+            {!enrichment.guidance_entitled && !enrichment.corporate_guidance && (
+              <MeridianDataCard label="Management guidance" tone="earnings" delay={120}>
+                <p className="meridian-card-muted">
+                  Corporate guidance feed not enabled on this plan — earnings calendar still live.
+                </p>
+              </MeridianDataCard>
+            )}
+            {enrichment.beat_rates && (
+              <MeridianDataCard label="Historical beat rates" tone="earnings" delay={160}>
+                <ul className="meridian-card-list meridian-fin-grid">
+                  {enrichment.beat_rates.eps_beat_rate != null && (
+                    <li>EPS beats {Math.round(enrichment.beat_rates.eps_beat_rate * 100)}%</li>
+                  )}
+                  {enrichment.beat_rates.revenue_beat_rate != null && (
+                    <li>Revenue beats {Math.round(enrichment.beat_rates.revenue_beat_rate * 100)}%</li>
+                  )}
                 </ul>
               </MeridianDataCard>
             )}

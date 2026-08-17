@@ -169,6 +169,12 @@ export function MeridianTimelineRow({ item, active, onBoard, index, onSelect }: 
         <span className="meridian-timeline-meta">
           {item.date}
           {item.time ? ` · ${item.time} ET` : ""}
+          {item.kind === "earnings" && item.date_status === "confirmed" ? " · confirmed" : ""}
+          {item.kind === "earnings" && item.date_status === "projected" ? " · projected" : ""}
+          {item.kind === "earnings" && item.is_printed ? " · printed" : ""}
+          {item.kind === "earnings" && item.importance != null && item.importance >= 4
+            ? ` · imp ${item.importance}`
+            : ""}
           {onBoard ? " · board" : ""}
         </span>
       </button>

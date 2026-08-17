@@ -21,6 +21,8 @@ type ReportInput = {
   put_wall: number | null;
   expected_move_pct: number | null;
   beat_rate: number | null;
+  post_print: { lean: "beat" | "miss" | "inline" | "unknown"; headline: string | null } | null;
+  earnings_yoy: { eps_yoy_pct: number | null; revenue_yoy_pct: number | null } | null;
   financials: MeridianFinancialsContext | null;
   analyst_revisions: AnalystRow[];
   earnings_headlines: MeridianCatalystHeadline[];
@@ -240,6 +242,42 @@ export function buildMeridianEarningsReport(input: ReportInput): MeridianEarning
     total += score;
   }
 
+  if (input.post_print?.headline && input.post_print.lean !== "unknown") {
+    const ppScore =
+      input.post_print.lean === "beat" ? 2 : input.post_print.lean === "miss" ? -2 : 0;
+    pushSignal(signals, {
+      pillar: "surprise",
+      label: "Latest print",
+      lean: input.post_print.lean === "beat" ? "bullish" : input.post_print.lean === "miss" ? "bearish" : "neutral",
+      weight: 2,
+      detail: input.post_print.headline,
+      score: ppScore,
+    });
+    total += ppScore;
+  }
+
+  if (input.earnings_yoy?.eps_yoy_pct != null || input.earnings_yoy?.revenue_yoy_pct != null) {
+    const eps = input.earnings_yoy.eps_yoy_pct;
+    const rev = input.earnings_yoy.revenue_yoy_pct;
+    let score = 0;
+    if (eps != null && eps >= 15) score += 1;
+    else if (eps != null && eps < 0) score -= 1;
+    if (rev != null && rev >= 10) score += 1;
+    else if (rev != null && rev < 0) score -= 1;
+    const parts: string[] = [];
+    if (eps != null) parts.push(`EPS est ${eps >= 0 ? "+" : ""}${eps}% YoY`);
+    if (rev != null) parts.push(`Rev est ${rev >= 0 ? "+" : ""}${rev}% YoY`);
+    pushSignal(signals, {
+      pillar: "yoy",
+      label: "YoY trajectory",
+      lean: score >= 1 ? "bullish" : score <= -1 ? "bearish" : "neutral",
+      weight: 1,
+      detail: parts.join(" · ") || "YoY estimates loaded",
+      score: Math.max(-2, Math.min(2, score)),
+    });
+    total += Math.max(-2, Math.min(2, score));
+  }
+
   const fund = fundamentalsLean(input.financials);
   pushSignal(signals, {
     pillar: "fundamentals",
@@ -297,8 +335,16 @@ export function buildMeridianEarningsReport(input: ReportInput): MeridianEarning
   }
 
   const imminent = input.days_until != null && input.days_until <= 1;
+  const hasFreshPrint = input.post_print?.lean === "beat" || input.post_print?.lean === "miss";
   let verdict: MeridianEarningsReport["verdict"] = "neutral";
-  if (!imminent) {
+  if (hasFreshPrint) {
+    verdict =
+      input.post_print!.lean === "beat"
+        ? "bullish"
+        : input.post_print!.lean === "miss"
+          ? "bearish"
+          : "neutral";
+  } else if (!imminent) {
     if (total >= 3) verdict = "bullish";
     else if (total <= -3) verdict = "bearish";
   }

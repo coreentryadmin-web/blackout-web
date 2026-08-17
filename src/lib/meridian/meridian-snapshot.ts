@@ -37,6 +37,7 @@ function buildTimelineStats(items: MeridianTimelinePayload["items"]): MeridianTi
     opex: items.filter((i) => i.kind === "opex").length,
     high_impact: items.filter((i) => i.impact === "high").length,
     next_24h: items.filter((i) => i.days_until <= 1).length,
+    earnings_mega_cap: items.filter((i) => i.kind === "earnings" && (i.importance ?? 0) >= 4).length,
   };
 }
 
@@ -45,11 +46,11 @@ const DEFAULT_WARM_DAYS = 21;
 /** Build the Meridian timeline payload (shared by API route + warm cron). */
 export async function loadMeridianTimelineResponse(daysAhead: number): Promise<MeridianTimelinePayload> {
   const today = todayEtYmd();
-  const [macro, earningsRows, fdaRows, board_tickers] = await Promise.all([
+  const board_tickers = await readMeridianBoardTickers();
+  const [macro, earningsBundle, fdaRows] = await Promise.all([
     fetchUpcomingMacroEventsLive(daysAhead),
-    loadMeridianEarningsTimeline(today, daysAhead),
+    loadMeridianEarningsTimeline(today, daysAhead, board_tickers),
     loadMeridianFdaTimeline(today, daysAhead),
-    readMeridianBoardTickers(),
   ]);
 
   const items = buildMeridianTimeline({
@@ -62,7 +63,7 @@ export async function loadMeridianTimelineResponse(daysAhead: number): Promise<M
       impact: m.impact,
       estimate: m.estimate ?? null,
     })),
-    earnings: earningsRows,
+    earnings: earningsBundle.rows,
     fda: fdaRows,
   });
 
@@ -72,6 +73,9 @@ export async function loadMeridianTimelineResponse(daysAhead: number): Promise<M
     items,
     stats: buildTimelineStats(items),
     board_tickers,
+    earnings_week: earningsBundle.earnings_week,
+    recent_earnings_revisions: earningsBundle.recent_revisions,
+    earnings_calendar_entitled: earningsBundle.calendar_entitled,
   });
 }
 
@@ -90,12 +94,7 @@ export async function loadMeridianEventResponse(id: string): Promise<MeridianEve
       ticker,
       pack,
       print_history: enrichment.print_history,
-      enrichment: {
-        analyst_revisions: enrichment.analyst_revisions,
-        earnings_headlines: enrichment.earnings_headlines,
-        catalysts: enrichment.catalysts,
-        insider_activity: enrichment.insider_activity,
-      },
+      enrichment,
     });
     return roundFloats({ kind: "earnings", pack, enrichment, intel });
   }

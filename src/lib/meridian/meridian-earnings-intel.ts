@@ -33,10 +33,7 @@ export async function loadMeridianEarningsIntel(input: {
   ticker: string;
   pack: PreEarningsPackCard;
   print_history: MeridianEarningsPrint[];
-  enrichment: Pick<
-    MeridianEarningsEnrichment,
-    "analyst_revisions" | "earnings_headlines" | "catalysts" | "insider_activity"
-  >;
+  enrichment: MeridianEarningsEnrichment;
 }): Promise<MeridianEarningsIntel> {
   const sym = input.ticker.trim().toUpperCase();
   const windowHours = flowWindowHours(input.pack.days_until);
@@ -94,7 +91,7 @@ export async function loadMeridianEarningsIntel(input: {
     gamma_regime,
     expected_move_pct,
     days_until: input.pack.days_until,
-    beat_rate: beatRateFromPrints(input.print_history),
+    beat_rate: input.enrichment.beat_rates?.combined_beat_rate ?? beatRateFromPrints(input.print_history),
     spot,
     call_wall: input.pack.positioning.call_wall ?? thermal?.call_wall ?? null,
     put_wall: input.pack.positioning.put_wall ?? thermal?.put_wall ?? null,
@@ -117,7 +114,9 @@ export async function loadMeridianEarningsIntel(input: {
     call_wall: input.pack.positioning.call_wall ?? thermal?.call_wall ?? null,
     put_wall: input.pack.positioning.put_wall ?? thermal?.put_wall ?? null,
     expected_move_pct,
-    beat_rate: beatRateFromPrints(input.print_history),
+    beat_rate: input.enrichment.beat_rates?.combined_beat_rate ?? beatRateFromPrints(input.print_history),
+    post_print: input.enrichment.post_print,
+    earnings_yoy: input.enrichment.earnings_yoy,
     financials: buildMeridianFinancialsContext(fundamentals),
     analyst_revisions: input.enrichment.analyst_revisions,
     earnings_headlines: input.enrichment.earnings_headlines,

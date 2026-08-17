@@ -17,6 +17,12 @@ export type MeridianTimelineItem = {
   impact: MeridianImpact;
   days_until: number;
   ticker: string | null;
+  /** Earnings-only: confirmed/projected date status from calendar feed. */
+  date_status?: string | null;
+  /** Earnings-only: Benzinga importance 0–5. */
+  importance?: number | null;
+  /** Earnings-only: true when actual EPS/revenue landed. */
+  is_printed?: boolean;
 };
 
 export type MeridianSpxPositioning = {
@@ -169,20 +175,73 @@ export type MeridianStreetEstimate = {
 
 /** Structured earnings print row from the earnings calendar feed. */
 export type MeridianEarningsCalendarRow = {
+  benzinga_id: string | null;
   date: string;
   time: string | null;
+  report_time_et: string | null;
   date_status: string | null;
   fiscal_period: string | null;
   fiscal_year: number | null;
   importance: number | null;
+  currency: string | null;
   estimated_eps: number | null;
   actual_eps: number | null;
+  eps_surprise: number | null;
   eps_surprise_pct: number | null;
   estimated_revenue: number | null;
   actual_revenue: number | null;
+  revenue_surprise: number | null;
   revenue_surprise_pct: number | null;
   previous_eps: number | null;
   previous_revenue: number | null;
+  eps_method: string | null;
+  revenue_method: string | null;
+  notes: string | null;
+  last_updated: string | null;
+  is_printed: boolean;
+};
+
+export type MeridianEarningsYoY = {
+  eps_yoy_pct: number | null;
+  revenue_yoy_pct: number | null;
+};
+
+export type MeridianEarningsGuidanceRow = {
+  date: string;
+  fiscal_period: string | null;
+  fiscal_year: number | null;
+  release_type: string | null;
+  min_eps: number | null;
+  max_eps: number | null;
+  min_revenue: number | null;
+  max_revenue: number | null;
+  street_eps: number | null;
+  street_revenue: number | null;
+  eps_method: string | null;
+  revenue_method: string | null;
+  notes: string | null;
+  last_updated: string | null;
+};
+
+export type MeridianEarningsRevision = {
+  ticker: string;
+  date: string;
+  company_name: string | null;
+  last_updated: string | null;
+  date_status: string | null;
+  importance: number | null;
+  headline: string;
+};
+
+export type MeridianEarningsWeekRow = {
+  ticker: string;
+  company_name: string | null;
+  date: string;
+  time_et: string | null;
+  importance: number | null;
+  date_status: string | null;
+  estimated_eps: number | null;
+  is_printed: boolean;
 };
 
 export type MeridianEarningsEnrichment = {
@@ -190,8 +249,20 @@ export type MeridianEarningsEnrichment = {
   earnings_headlines: MeridianCatalystHeadline[];
   street_estimates: MeridianStreetEstimate[];
   earnings_calendar: MeridianEarningsCalendarRow | null;
+  earnings_yoy: MeridianEarningsYoY | null;
+  corporate_guidance: MeridianEarningsGuidanceRow | null;
+  guidance_entitled: boolean;
+  post_print: {
+    lean: "beat" | "miss" | "inline" | "unknown";
+    headline: string | null;
+  } | null;
   print_history: MeridianEarningsPrint[];
   print_history_summary: string | null;
+  beat_rates: {
+    eps_beat_rate: number | null;
+    revenue_beat_rate: number | null;
+    combined_beat_rate: number | null;
+  } | null;
   analyst_revisions: MeridianAnalystRevision[];
   insider_activity: MeridianInsiderActivity[];
   congress_trades: MeridianCongressActivity[];
@@ -202,8 +273,14 @@ export type MeridianEarningsPrint = {
   report_date: string | null;
   eps_estimate: number | null;
   eps_actual: number | null;
+  revenue_estimate?: number | null;
+  revenue_actual?: number | null;
+  revenue_surprise_pct?: number | null;
   surprise_pct: number | null;
   beat: boolean | null;
+  eps_method?: string | null;
+  revenue_method?: string | null;
+  source?: "earnings_calendar" | "uw" | null;
   /** Options-implied move into that print when UW carries it. */
   expected_move_pct: number | null;
   session_change_pct: number | null;
@@ -298,7 +375,18 @@ export type MeridianEarningsVectorRead = {
 };
 
 export type MeridianEarningsReportSignal = {
-  pillar: "flow" | "dark_pool" | "thermal" | "vector" | "history" | "fundamentals" | "analyst" | "news" | "insider";
+  pillar:
+    | "flow"
+    | "dark_pool"
+    | "thermal"
+    | "vector"
+    | "history"
+    | "fundamentals"
+    | "analyst"
+    | "news"
+    | "insider"
+    | "surprise"
+    | "yoy";
   label: string;
   lean: "bullish" | "bearish" | "neutral";
   weight: number;
@@ -477,6 +565,7 @@ export type MeridianTimelineStats = {
   opex: number;
   high_impact: number;
   next_24h: number;
+  earnings_mega_cap: number;
 };
 
 export type MeridianTickerLookup = {
@@ -505,4 +594,7 @@ export type MeridianTimelinePayload = {
   items: MeridianTimelineItem[];
   stats: MeridianTimelineStats;
   board_tickers: string[];
+  earnings_week: MeridianEarningsWeekRow[];
+  recent_earnings_revisions: MeridianEarningsRevision[];
+  earnings_calendar_entitled: boolean;
 };

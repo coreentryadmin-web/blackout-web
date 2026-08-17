@@ -1,12 +1,23 @@
 import type { MacroEvent } from "@/lib/providers/macro-events";
-import type { ZeroDteEarningsItem } from "@/lib/zerodte/earnings";
 import type { MeridianEventKind, MeridianImpact, MeridianTimelineItem } from "./meridian-types";
+import { impactFromEarningsImportance } from "@/lib/meridian/meridian-benzinga-earnings-core";
 
 export type MacroTimelineInput = Pick<MacroEvent, "event" | "date" | "time" | "impact" | "estimate">;
-export type EarningsTimelineInput = Pick<
-  ZeroDteEarningsItem,
-  "ticker" | "name" | "report_date" | "when" | "expected_move_pct"
->;
+export type EarningsTimelineInput = {
+  ticker: string;
+  name: string;
+  report_date: string;
+  when?: "premarket" | "afterhours";
+  expected_move_pct: number | null;
+  report_time?: string | null;
+  date_status?: string | null;
+  importance?: number | null;
+  is_printed?: boolean;
+  eps_method?: string | null;
+  revenue_method?: string | null;
+  estimated_eps?: number | null;
+  source?: "earnings_calendar" | "uw_grid" | null;
+};
 export type FdaTimelineInput = {
   ticker: string;
   date: string;
@@ -145,16 +156,33 @@ export function buildMeridianTimeline(input: {
       row.expected_move_pct != null && Number.isFinite(row.expected_move_pct)
         ? ` ~${row.expected_move_pct}% implied move`
         : "";
+    const statusChip =
+      row.date_status === "projected"
+        ? " · projected date"
+        : row.is_printed
+          ? " · printed"
+          : row.date_status === "confirmed"
+            ? " · confirmed"
+            : "";
+    const impChip =
+      row.importance != null && row.importance >= 4 ? ` · imp ${row.importance}` : "";
     items.push({
       id: earningsId(ticker, date),
       kind: "earnings",
       title: `${ticker} earnings`,
-      subtitle: row.name ? `${row.name}${em}` : em ? em.slice(3) : row.when ?? null,
+      subtitle: row.name
+        ? `${row.name}${em}${statusChip}${impChip}`
+        : em
+          ? em.slice(3) + statusChip + impChip
+          : (row.when ?? null),
       date,
-      time: row.when === "premarket" ? "08:00" : row.when === "afterhours" ? "16:20" : null,
-      impact: "high",
+      time: row.report_time ?? (row.when === "premarket" ? "08:00" : row.when === "afterhours" ? "16:20" : null),
+      impact: impactFromEarningsImportance(row.importance),
       days_until: du,
       ticker,
+      date_status: row.date_status ?? null,
+      importance: row.importance ?? null,
+      is_printed: row.is_printed ?? false,
     });
   }
 

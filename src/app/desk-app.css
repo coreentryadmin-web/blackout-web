@@ -964,6 +964,23 @@ html.nav-locked body { overflow: hidden; }
   box-shadow: 0 4px 16px -6px rgba(56, 189, 248, 0.45);
 }
 .meridian-earnings-tabpanel { animation: meridian-fade-in 0.25s ease; }
+.meridian-earnings-week { margin: 0.75rem 0 1rem; }
+.meridian-earnings-week-title {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #38bdf8;
+  margin: 0 0 0.45rem 0.15rem;
+}
+.meridian-revisions-list { margin-bottom: 0.75rem; }
+.meridian-revision-link {
+  all: unset;
+  cursor: pointer;
+  color: #e0f2fe;
+}
+.meridian-revision-link:hover { color: #38bdf8; }
+.meridian-analytics-card.is-printed { opacity: 0.72; }
 .meridian-print-track .meridian-print-arrow { font-weight: 800; margin-left: 0.15rem; }
 .meridian-print-arrow-↑ { color: #34d399; }
 .meridian-print-arrow-↓ { color: #f87171; }
