@@ -18,6 +18,14 @@ import { useWatchlist } from "@/hooks/useWatchlist";
 import { MeridianEventDetailPanel } from "./MeridianEventDetailPanel";
 import { MeridianHero } from "./MeridianHero";
 import {
+  MeridianEarningsPulse,
+  MeridianPrintClock,
+  MeridianEarningsCalendar,
+  MeridianSurpriseScatter,
+  MeridianEarningsTable,
+} from "./MeridianEarningsAnalytics";
+import {
+  MeridianDataCard,
   MeridianFilterPill,
   MeridianStatCard,
   MeridianTimelineRow,
@@ -58,6 +66,35 @@ export function MeridianDesk() {
   const [filter, setFilter] = useState<FilterKind>("all");
   const [view, setView] = useState<DeskView>("timeline");
   const [searchQuery, setSearchQuery] = useState("");
+  /** Calendar day drill-down — clicking a day filters the print ledger; clicking it again clears. */
+  const [earningsDate, setEarningsDate] = useState<string | null>(null);
+  /**
+   * "Now" for the print clock, captured ONCE per mount rather than read inside the component.
+   *
+   * Two reasons. The countdown must be a pure function of props so the panel renders
+   * deterministically and can be reasoned about; and calling Date.now() during render would make
+   * every parent re-render silently shift every countdown, which reads as flicker on a panel whose
+   * whole job is a stable "in 2h 14m".
+   */
+  const [nowMs] = useState(() => Date.now());
+
+  /**
+   * Clicking a ticker in any earnings panel jumps to that name's timeline event.
+   *
+   * Mirrors what the high-impact catalyst cards below already do, so "click a thing to inspect it"
+   * behaves the same everywhere on this view. When the window has no timeline row for that ticker
+   * (the analytics window carries a 14-day lookback the timeline does not), the click is a NO-OP
+   * rather than a navigation to nothing — silently switching views to an unchanged timeline reads
+   * as a broken button.
+   */
+  const selectEarningsTicker = (ticker: string) => {
+    const match = allItems.find(
+      (it) => it.kind === "earnings" && (it.ticker ?? "").toUpperCase() === ticker.toUpperCase()
+    );
+    if (!match) return;
+    setSelectedId(match.id);
+    setView("timeline");
+  };
 
   const kindFilteredItems = useMemo(() => {
     if (filter === "all") return allItems;
@@ -210,6 +247,63 @@ export function MeridianDesk() {
 
       {view === "analytics" && (
         <>
+          {/*
+            Earnings analytics block. Mounted ABOVE the catalyst grid because it answers the
+            first question a member opens this view with — what prints, when, and how has the
+            week actually graded — before the per-event browse below.
+
+            `earnings_analytics_rows` is the FULL window (all importances, plus a 14-day lookback
+            so the scatter is not empty every morning); the mega-cap strip further down keeps its
+            own curated 24-row imp>=4 dataset. Two datasets on purpose — see the type comment.
+          */}
+          {(data?.earnings_analytics_rows?.length ?? 0) > 0 && (
+            <section className="meridian-earnings-analytics" aria-label="Earnings analytics">
+              <MeridianEarningsPulse rows={data!.earnings_analytics_rows} />
+
+              <div className="meridian-mea-split">
+                <MeridianDataCard label="Next 24 hours" tone="earnings">
+                  <MeridianPrintClock
+                    rows={data!.earnings_analytics_rows}
+                    /* `nowMs` is owned here, not read inside the component, so the clock stays a
+                       pure function of its props and re-renders deterministically. */
+                    nowMs={nowMs}
+                    onSelectTicker={selectEarningsTicker}
+                  />
+                </MeridianDataCard>
+
+                <MeridianDataCard label="Surprise map · EPS vs revenue" tone="earnings">
+                  <MeridianSurpriseScatter
+                    rows={data!.earnings_analytics_rows}
+                    onSelectTicker={selectEarningsTicker}
+                  />
+                </MeridianDataCard>
+              </div>
+
+              <MeridianDataCard label="Print calendar" tone="earnings" wide>
+                <MeridianEarningsCalendar
+                  rows={data!.earnings_analytics_rows}
+                  selectedDate={earningsDate}
+                  onSelectDate={(d) => setEarningsDate((cur) => (cur === d ? null : d))}
+                />
+              </MeridianDataCard>
+
+              <MeridianDataCard
+                label={earningsDate ? `Prints on ${earningsDate}` : "All prints in window"}
+                tone="earnings"
+                wide
+              >
+                <MeridianEarningsTable
+                  rows={
+                    earningsDate
+                      ? data!.earnings_analytics_rows.filter((r) => r.date === earningsDate)
+                      : data!.earnings_analytics_rows
+                  }
+                  onSelectTicker={selectEarningsTicker}
+                />
+              </MeridianDataCard>
+            </section>
+          )}
+
           <section className="meridian-analytics-grid" aria-label="High impact catalyst grid">
             {isLoading && <MeridianShimmer lines={4} />}
             {!isLoading && highImpact.length === 0 && (

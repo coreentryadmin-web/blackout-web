@@ -9,6 +9,7 @@ import type {
   MeridianEarningsPrint,
   MeridianEarningsRevision,
   MeridianEarningsWeekRow,
+  MeridianEarningsAnalyticsRow,
   MeridianEarningsYoY,
   MeridianImpact,
   MeridianStreetEstimate,
@@ -328,6 +329,44 @@ export function buildEarningsWeekRows(
       date_status: r.date_status,
       estimated_eps: r.estimated_eps,
       is_printed: r.actual_eps != null,
+    }));
+}
+
+/**
+ * Project the full window onto the analytics row shape.
+ *
+ * Deliberately NOT `buildEarningsWeekRows`: that one curates (importance >=4, capped at 24) for the
+ * mega-cap strip. Analytics needs the whole window — a beat rate over the biggest 24 names is not
+ * the week's beat rate, and a calendar built from them shows a fraction of each day's prints. The
+ * projection drops only provider bookkeeping (benzinga_id, notes, methods) to keep the payload lean.
+ */
+export function buildEarningsAnalyticsRows(
+  rows: BenzingaStructuredEarnings[],
+  todayYmd: string,
+  daysAhead: number
+): MeridianEarningsAnalyticsRow[] {
+  const end = addDaysYmd(todayYmd, daysAhead);
+  // Include a short lookback so already-printed names stay in the surprise scatter and beat rate;
+  // a window that starts at today would show an empty scatter every morning.
+  const start = addDaysYmd(todayYmd, -14);
+  return rows
+    .filter((r) => r.date >= start && r.date <= end)
+    .sort((a, b) => a.date.localeCompare(b.date) || (b.importance ?? 0) - (a.importance ?? 0))
+    .map((r) => ({
+      ticker: r.ticker,
+      company_name: r.company_name,
+      date: r.date,
+      time: r.time,
+      date_status: r.date_status,
+      importance: r.importance,
+      fiscal_period: r.fiscal_period,
+      fiscal_year: r.fiscal_year,
+      estimated_eps: r.estimated_eps,
+      actual_eps: r.actual_eps,
+      estimated_revenue: r.estimated_revenue,
+      actual_revenue: r.actual_revenue,
+      eps_surprise_pct: r.eps_surprise_pct,
+      revenue_surprise_pct: r.revenue_surprise_pct,
     }));
 }
 

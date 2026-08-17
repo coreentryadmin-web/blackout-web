@@ -75,6 +75,7 @@ export async function loadMeridianFdaTimeline(
 export type MeridianEarningsTimelineResult = {
   rows: EarningsTimelineInput[];
   earnings_week: Awaited<ReturnType<typeof loadBenzingaEarningsBundle>>["earnings_week"];
+  earnings_analytics_rows: Awaited<ReturnType<typeof loadBenzingaEarningsBundle>>["earnings_analytics_rows"];
   earnings_week_analytics: Awaited<ReturnType<typeof loadBenzingaEarningsBundle>>["earnings_week_analytics"];
   recent_revisions: Awaited<ReturnType<typeof loadBenzingaEarningsBundle>>["recent_revisions"];
   estimate_revision_timeline: Awaited<
@@ -109,6 +110,7 @@ export async function loadMeridianEarningsTimeline(
   return {
     rows,
     earnings_week: bundle.earnings_week,
+    earnings_analytics_rows: bundle.earnings_analytics_rows,
     earnings_week_analytics: bundle.earnings_week_analytics,
     recent_revisions: bundle.recent_revisions,
     estimate_revision_timeline: bundle.estimate_revision_timeline,

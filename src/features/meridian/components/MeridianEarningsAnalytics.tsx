@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { BenzingaStructuredEarnings } from "@/lib/providers/polygon";
+
 import {
   buildCalendarGrid,
   buildPrintClock,
@@ -16,6 +16,7 @@ import {
   type CalendarCell,
   type PrintSession,
   type ScatterPoint,
+  type EarningsAnalyticsRow,
 } from "@/lib/meridian/meridian-earnings-analytics-core";
 
 /**
@@ -75,7 +76,7 @@ function Delta({ value, digits = 1 }: { value: number | null | undefined; digits
 
 // ── 1. WEEK PULSE — the top stat strip ────────────────────────────────────────────────────────
 
-export function MeridianEarningsPulse({ rows }: { rows: readonly BenzingaStructuredEarnings[] }) {
+export function MeridianEarningsPulse({ rows }: { rows: readonly EarningsAnalyticsRow[] }) {
   const p = useMemo(() => buildWeekPulse(rows), [rows]);
   const beatPct = p.beatRate == null ? "—" : `${Math.round(p.beatRate * 100)}%`;
 
@@ -121,7 +122,7 @@ export function MeridianPrintClock({
   nowMs,
   onSelectTicker,
 }: {
-  rows: readonly BenzingaStructuredEarnings[];
+  rows: readonly EarningsAnalyticsRow[];
   /** Owned by the caller so this component is deterministic and testable. */
   nowMs: number;
   onSelectTicker?: (ticker: string) => void;
@@ -197,7 +198,7 @@ export function MeridianEarningsCalendar({
   onSelectDate,
   selectedDate,
 }: {
-  rows: readonly BenzingaStructuredEarnings[];
+  rows: readonly EarningsAnalyticsRow[];
   onSelectDate?: (date: string) => void;
   selectedDate?: string | null;
 }) {
@@ -257,7 +258,7 @@ export function MeridianSurpriseScatter({
   rows,
   onSelectTicker,
 }: {
-  rows: readonly BenzingaStructuredEarnings[];
+  rows: readonly EarningsAnalyticsRow[];
   onSelectTicker?: (ticker: string) => void;
 }) {
   const s = useMemo(() => buildSurpriseScatter(rows), [rows]);
@@ -332,7 +333,7 @@ export function MeridianBeatStreak({
   rows,
 }: {
   ticker: string;
-  rows: readonly BenzingaStructuredEarnings[];
+  rows: readonly EarningsAnalyticsRow[];
 }) {
   const s = useMemo(() => buildBeatMissStreak(ticker, rows), [ticker, rows]);
 
@@ -386,7 +387,7 @@ export function MeridianEarningsTable({
   rows,
   onSelectTicker,
 }: {
-  rows: readonly BenzingaStructuredEarnings[];
+  rows: readonly EarningsAnalyticsRow[];
   onSelectTicker?: (ticker: string) => void;
 }) {
   const [sort, setSort] = useState<SortKey>("date");
@@ -400,7 +401,7 @@ export function MeridianEarningsTable({
     if (onlyPrinted) list = list.filter(hasPrinted);
     // Nulls always sort LAST regardless of direction — an unknown is not "the smallest value",
     // and letting it float to the top of a desc sort buries the real leaders.
-    const cmp = (a: BenzingaStructuredEarnings, b: BenzingaStructuredEarnings): number => {
+    const cmp = (a: EarningsAnalyticsRow, b: EarningsAnalyticsRow): number => {
       const num = (x: number | null | undefined) => (x != null && Number.isFinite(x) ? x : null);
       switch (sort) {
         case "ticker":

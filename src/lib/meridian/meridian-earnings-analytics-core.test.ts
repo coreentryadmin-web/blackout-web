@@ -12,11 +12,12 @@ import {
   fmtSurprisePct,
   fmtCompactMoney,
   fmtCountdown,
+  type EarningsAnalyticsRow,
 } from "./meridian-earnings-analytics-core";
-import type { BenzingaStructuredEarnings } from "@/lib/providers/polygon";
+
 
 /** Minimal row builder — every field the core reads, nothing it doesn't. */
-function row(over: Partial<BenzingaStructuredEarnings> = {}): BenzingaStructuredEarnings {
+function row(over: Partial<EarningsAnalyticsRow> = {}): EarningsAnalyticsRow {
   return {
     ticker: "NVDA",
     company_name: "NVIDIA",
@@ -43,7 +44,7 @@ function row(over: Partial<BenzingaStructuredEarnings> = {}): BenzingaStructured
     benzinga_id: null,
     currency: "USD",
     ...over,
-  } as BenzingaStructuredEarnings;
+  } as EarningsAnalyticsRow;
 }
 
 test("classifyPrintSession: pre / post / intraday split on the ET session boundaries", () => {

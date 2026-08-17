@@ -301,6 +301,35 @@ export type MeridianEarningsWeekRow = {
   is_printed: boolean;
 };
 
+/**
+ * The FULL earnings window the analytics panels read — deliberately separate from
+ * `earnings_week`.
+ *
+ * `earnings_week` is a curated grid: importance >=4, capped at 24 rows. That curation is right for
+ * a "mega-cap week" strip and wrong for analytics — a beat rate computed over only the biggest 24
+ * names is not the week's beat rate, and a calendar built from them shows a fraction of the day's
+ * prints. So the analytics window carries every row in range with the surprise/actual fields the
+ * curated projection drops, rather than widening (and thereby changing) the existing grid.
+ *
+ * Structurally satisfies `EarningsAnalyticsRow` in meridian-earnings-analytics-core.
+ */
+export type MeridianEarningsAnalyticsRow = {
+  ticker: string;
+  company_name: string | null;
+  date: string;
+  time: string | null;
+  date_status: string | null;
+  importance: number | null;
+  fiscal_period: string | null;
+  fiscal_year: number | null;
+  estimated_eps: number | null;
+  actual_eps: number | null;
+  estimated_revenue: number | null;
+  actual_revenue: number | null;
+  eps_surprise_pct: number | null;
+  revenue_surprise_pct: number | null;
+};
+
 export type MeridianEarningsEnrichment = {
   catalysts: MeridianCatalystHeadline[];
   earnings_headlines: MeridianCatalystHeadline[];
@@ -658,6 +687,7 @@ export type MeridianTimelinePayload = {
   board_tickers: string[];
   earnings_week: MeridianEarningsWeekRow[];
   earnings_week_analytics: MeridianEarningsWeekAnalytics | null;
+  earnings_analytics_rows: MeridianEarningsAnalyticsRow[];
   recent_earnings_revisions: MeridianEarningsRevision[];
   estimate_revision_timeline: MeridianEstimateRevisionEntry[];
   after_hours_movers: MeridianAfterHoursMover[];
