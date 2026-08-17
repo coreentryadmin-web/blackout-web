@@ -39,6 +39,15 @@ describe("detectSocialArchetype", () => {
       "win_recap",
     );
   });
+
+  it("detects SPX session read as live_desk not ticker_post", () => {
+    assert.equal(
+      detectSocialArchetype(
+        "Draft an X post for the current SPX setup — flip, walls, flow vs gamma",
+      ),
+      "live_desk",
+    );
+  });
 });
 
 describe("buildTickerSocialGuide", () => {
