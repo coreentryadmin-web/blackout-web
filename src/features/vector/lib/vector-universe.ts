@@ -13,7 +13,8 @@ import { bucketWallSampleTime, buildWallHistorySample } from "./vector-wall-samp
 import { wallTrailSampleSecForTicker } from "./vector-wall-sample-server";
 import { writeWallHistorySample, type WallWriteSource } from "./vector-wall-write";
 import { VECTOR_WALL_NODES_PER_SIDE } from "./vector-bar-timeframes";
-import { buildNarrowedHorizonWallSamples } from "./vector-snapshot";
+import { strikeTotalsForHorizonFromCells } from "./vector-narrowed-walls-from-cells";
+import { RECORDED_WALL_HORIZONS } from "./vector-narrowed-wall-core";
 
 /**
  * Options for the universe build. `recordWallHistory` makes the build ALSO
@@ -115,10 +116,20 @@ async function buildVectorUniverseRow(
       vexWalls,
       vexFlip: hm?.vex?.flip ?? null,
     });
-    // The blended rail and the three narrowed rails are SEPARATE storage keys. Narrowed horizons
-    // cost three extra scoped reads per ticker — fine on the 5-min cron or a live viewer, but they
-    // were blowing the 5s universe sweep past its tick budget (measured 56s for 83 tickers on
-    // 2026-08-12), which dropped ticks and thinned NVDA/AMD/META rails to 10–30s effective cadence.
+    // The blended rail and the three narrowed rails are SEPARATE storage keys.
+    //
+    // Narrowed horizons USED to be excluded from this 5s sweep because
+    // `buildNarrowedHorizonWallSamples` costs six scoped upstream reads per ticker (three horizons
+    // × walls + flip) — measured 56s for an 83-ticker slice on 2026-08-12, which blew the tick
+    // budget, dropped ticks, and thinned the blended rail for everyone. They were left to the
+    // 5-minute cron and to live viewers, which is exactly why an un-viewed ticker's 0DTE trail had
+    // ~300s holes (measured 2026-08-17: SPY 56 samples / 90 min with 17 gaps of ~300s vs SPX 586).
+    //
+    // They are affordable now because they no longer re-read anything: a narrowed horizon is a
+    // SUBSET OF EXPIRY COLUMNS of the matrix this function already fetched above, so the totals are
+    // summed in memory (strikeTotalsForHorizonFromCells) and run through the SAME computeGexWalls
+    // reduction as the blended rail. Zero network, zero cache, zero provider — the sweep's cost per
+    // ticker is unchanged, and every rail records at the sweep's own cadence.
     const writes: Promise<import("./vector-wall-write").WallWriteResult>[] = [];
     if (sample) {
       writes.push(
@@ -131,29 +142,41 @@ async function buildVectorUniverseRow(
       );
     }
 
-    if (recordNarrowedHorizons && spot && spot > 0) {
-      const narrowed = await buildNarrowedHorizonWallSamples(ticker, sampleTime, {
-        walls: gexWalls,
-        flip: hm?.gex?.flip ?? null,
-      });
-      for (const r of narrowed) {
-        if (r.sample) {
+    if (recordNarrowedHorizons && hm?.gex?.cells && hm?.expiries?.length) {
+      const todayYmd = todayEtYmd();
+      for (const horizon of RECORDED_WALL_HORIZONS) {
+        const totals = strikeTotalsForHorizonFromCells(
+          hm.gex.cells,
+          hm.expiries,
+          horizon,
+          todayYmd
+        );
+        if (!totals) continue;
+        const horizonWalls = computeGexWalls(totals, { maxPerSide: VECTOR_WALL_NODES_PER_SIDE });
+        const horizonSample = buildWallHistorySample({
+          time: sampleTime,
+          gexWalls: horizonWalls,
+          // Flip is a whole-book level, not a per-strike sum, so it is NOT derivable from the
+          // scoped columns here. Carrying the blended flip would mislabel a narrowed rail with a
+          // level computed over expiries it excludes, so the narrowed sample records walls only.
+          gammaFlip: null,
+          vexWalls: null,
+          vexFlip: null,
+        });
+        if (horizonSample) {
           writes.push(
             writeWallHistorySample({
               source: wallWriteSource,
               sessionYmd,
               ticker,
-              sample: r.sample,
-              horizon: r.horizon,
+              sample: horizonSample,
+              horizon,
             })
-          );
-        } else if (r.source === "error") {
-          console.warn(
-            `[vector-universe] ${ticker} ${r.horizon} narrowed-wall recording threw: ${r.reason ?? "unknown"}`
           );
         }
       }
     }
+
     if (writes.length > 0) {
       const settled = await Promise.allSettled(writes);
       historyRecorded = settled.some(
@@ -199,8 +222,10 @@ export async function recordVectorUniverseWallSample(
     nowSec: opts.nowSec ?? Math.floor(Date.now() / 1000),
     bucketScope,
     wallWriteSource: opts.wallWriteSource,
-    // 5s universe sweep: blended rail only — narrowed horizons stay on the 5-min cron + live viewers.
-    recordNarrowedHorizons: bucketScope === "live",
+    // Narrowed horizons now ride EVERY sweep, universe scope included — they are summed from the
+    // matrix already in hand rather than re-read, so there is no longer a cost reason to ration
+    // them, and no ticker gets a sparser trail than any other.
+    recordNarrowedHorizons: true,
   });
   return built?.historyRecorded ?? false;
 }
