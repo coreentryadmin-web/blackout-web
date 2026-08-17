@@ -156,14 +156,94 @@ export type MeridianEarningsPrint = {
   eps_actual: number | null;
   surprise_pct: number | null;
   beat: boolean | null;
+  /** Options-implied move into that print when UW carries it. */
+  expected_move_pct: number | null;
   session_change_pct: number | null;
   next_day_change_pct: number | null;
+};
+
+export type MeridianFinancialsContext = {
+  available: boolean;
+  as_of: string | null;
+  headline: string | null;
+  pe_ratio: number | null;
+  price_to_sales: number | null;
+  roe_pct: number | null;
+  revenue_yoy_pct: number | null;
+  net_margin_pct: number | null;
+  margin_trend: "expanding" | "contracting" | "flat" | null;
+  fcf_positive: boolean | null;
+  fcf_trend: "rising" | "falling" | "flat" | null;
+  eps_trajectory: string | null;
+  net_cash_positive: boolean | null;
+  price_target: number | null;
+  price_target_upside_pct: number | null;
+};
+
+export type MeridianErPlayRead = {
+  available: boolean;
+  lean: "bullish" | "bearish" | "neutral" | "avoid_directional";
+  confidence: "low" | "medium" | "high";
+  headline: string;
+  rationale: string[];
+  structure_hint: string | null;
+  risk_note: string;
+};
+
+export type MeridianEarningsFlowPrint = {
+  premium: number;
+  premium_label: string;
+  option_type: string | null;
+  strike: number | null;
+  expiry: string | null;
+  dte: number | null;
+};
+
+export type MeridianEarningsStrikeStack = {
+  strike: number;
+  premium: number;
+  premium_label: string;
+  hit_count: number;
+  dominant_type: string | null;
+};
+
+export type MeridianEarningsThermalRead = {
+  available: boolean;
+  spot: number | null;
+  gex_king_strike: number | null;
+  call_wall: number | null;
+  put_wall: number | null;
+  flip: number | null;
+  max_pain: number | null;
+  net_gex_label: string | null;
+  gamma_regime: string | null;
+  top_strikes: Array<{ strike: number; net_label: string; pct_of_total: number }>;
+  nearest_wall: { strike: number; kind: "resistance" | "support"; distance_pts: number } | null;
+};
+
+export type MeridianEarningsIntel = {
+  expected_move_pct: number | null;
+  expected_move_source: "calendar" | "chain_iv" | null;
+  expected_move_band: { spot: number; up: number; down: number } | null;
+  financials: MeridianFinancialsContext | null;
+  flow_into_print: {
+    available: boolean;
+    window_hours: number;
+    bias: string;
+    net_premium: number | null;
+    net_premium_label: string | null;
+    top_prints: MeridianEarningsFlowPrint[];
+    strike_stacks: MeridianEarningsStrikeStack[];
+  };
+  thermal: MeridianEarningsThermalRead;
+  play_read: MeridianErPlayRead;
 };
 
 export type MeridianEarningsDetail = {
   kind: "earnings";
   pack: PreEarningsPackCard;
   enrichment: MeridianEarningsEnrichment;
+  intel: MeridianEarningsIntel;
 };
 
 export type MeridianOpexExpiryRead = {

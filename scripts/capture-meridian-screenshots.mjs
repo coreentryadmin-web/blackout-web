@@ -76,12 +76,16 @@ async function main() {
     console.log(`✓ ${ART}/meridian-desk-full.png`);
 
     const title = await page.locator(".meridian-hero-title-main, .meridian-rail-title").first().textContent().catch(() => null);
+    const earnRow = page.locator('.meridian-timeline-row[data-kind="earnings"], .meridian-row[data-kind="earnings"]');
     const rows = page.locator(".meridian-timeline-row, .meridian-row");
-    if ((await rows.count()) > 0) {
-      await rows.first().click();
-      await page.waitForTimeout(3000);
+    const clickTarget = (await earnRow.count()) > 0 ? earnRow.first() : rows.first();
+    if ((await clickTarget.count()) > 0) {
+      await clickTarget.click();
+      await page.waitForTimeout(4000);
       await page.screenshot({ path: `${ART}/meridian-event-detail.png`, fullPage: true });
       console.log(`✓ ${ART}/meridian-event-detail.png`);
+      const playRead = await page.locator(".meridian-analytics-banner-label", { hasText: "Play read" }).count();
+      console.log(`Play read banner visible: ${playRead > 0 ? "yes" : "no"}`);
     }
 
     const analyticsTab = page.getByRole("tab", { name: /Analytics grid/i });

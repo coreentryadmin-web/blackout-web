@@ -12,6 +12,7 @@ import {
   MeridianShimmer,
   kindTheme,
 } from "./meridian-ui";
+import { MeridianEarningsIntelPanel } from "./MeridianEarningsIntelPanel";
 
 function fmtPrem(n: number): string {
   const abs = Math.abs(n);
@@ -304,27 +305,39 @@ export function MeridianEventDetailPanel({
             )}
           </div>
 
+          <MeridianEarningsIntelPanel
+            intel={detail.intel}
+            printHistory={detail.enrichment.print_history}
+            tickerExpectedMovePct={detail.pack.expected_move_pct}
+          />
+
           <div className="meridian-detail-grid-v2 meridian-earn-enrich">
             {detail.enrichment.print_history_summary && (
               <MeridianDataCard label="Track record" wide tone="earnings" delay={0}>
                 <p className="meridian-card-value">{detail.enrichment.print_history_summary}</p>
               </MeridianDataCard>
             )}
-            {detail.enrichment.print_history.length > 0 && (
-              <MeridianDataCard label="Prior prints" wide tone="earnings" delay={80}>
-                <ul className="meridian-card-list meridian-history-list">
-                  {detail.enrichment.print_history.map((row) => (
-                    <li key={row.report_date ?? "unknown"}>
-                      <span className="meridian-history-date">{row.report_date?.slice(5) ?? "—"}</span>
-                      {row.eps_estimate != null && row.eps_actual != null ? (
-                        <span> EPS {row.eps_actual} vs est {row.eps_estimate}</span>
-                      ) : null}
-                      {row.session_change_pct != null && (
-                        <span className="meridian-history-move"> · {fmtPct(row.session_change_pct)} session</span>
-                      )}
+            {detail.enrichment.street_estimates.length > 0 && (
+              <MeridianDataCard label="Street estimates" wide tone="earnings" delay={80}>
+                <ul className="meridian-card-list">
+                  {detail.enrichment.street_estimates.map((row) => (
+                    <li key={row.period ?? "unknown"}>
+                      {row.period ?? "Next"}
+                      {row.eps_estimate != null ? ` · EPS est ${row.eps_estimate}` : ""}
+                      {row.revenue_estimate != null
+                        ? ` · Rev est $${(row.revenue_estimate / 1_000_000).toFixed(0)}M`
+                        : ""}
                     </li>
                   ))}
                 </ul>
+              </MeridianDataCard>
+            )}
+            {(detail.enrichment.catalysts.length > 0 || detail.enrichment.earnings_headlines.length > 0) && (
+              <MeridianDataCard label="Catalyst headlines" wide tone="earnings" delay={160}>
+                <HeadlineList
+                  items={[...detail.enrichment.earnings_headlines, ...detail.enrichment.catalysts].slice(0, 6)}
+                  empty="No recent catalyst headlines."
+                />
               </MeridianDataCard>
             )}
           </div>

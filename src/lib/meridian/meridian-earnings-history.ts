@@ -5,6 +5,13 @@ import { roundFloats } from "@/lib/round-floats";
 import { stockReactionsForDates } from "@/lib/meridian/meridian-reaction";
 import type { MeridianEarningsPrint } from "@/features/meridian/lib/meridian-types";
 
+function parseExpectedMovePct(row: Record<string, unknown>): number | null {
+  const emRaw = row.expected_move_perc ?? row.expected_move_pct ?? null;
+  if (emRaw == null || !Number.isFinite(Number(emRaw))) return null;
+  const n = Number(emRaw);
+  return Number((n * (n <= 1 ? 100 : 1)).toFixed(1));
+}
+
 function parseEarningsPrint(row: Record<string, unknown>): Omit<
   MeridianEarningsPrint,
   "session_change_pct" | "next_day_change_pct"
@@ -30,6 +37,7 @@ function parseEarningsPrint(row: Record<string, unknown>): Omit<
     eps_actual: actN != null && Number.isFinite(actN) ? Number(actN.toFixed(2)) : null,
     surprise_pct,
     beat,
+    expected_move_pct: parseExpectedMovePct(row),
   };
 }
 
