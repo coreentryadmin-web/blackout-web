@@ -88,11 +88,22 @@ export function VectorPageClient(initial: Props) {
         if (!cancelled) setCompareSeeds([primary]);
         return;
       }
-      const loaded = await loadCompareSeedsBounded(others, (t) => fetchVectorClientSeed(t), 2);
+      // Belt-and-braces around the loader's own per-item catch: whatever happens, compare must end
+      // up with SEEDS rather than stuck on the boot screen. Before this, an unhandled rejection here
+      // meant setCompareSeeds was never called and the grid loaded forever.
+      let loaded: Array<VectorClientSeed | null> = [];
+      try {
+        loaded = await loadCompareSeedsBounded(others, (t) => fetchVectorClientSeed(t), 2);
+      } catch {
+        loaded = [];
+      }
       if (cancelled) return;
+      const available = [primary, ...loaded.filter(Boolean)] as VectorClientSeed[];
       const ordered = compareTickers
-        .map((t) => [primary, ...loaded].find((s) => s.ticker === t))
+        .map((t) => available.find((s) => s.ticker === t))
         .filter(Boolean) as VectorClientSeed[];
+      // The primary seed came from props and is always in hand, so there is ALWAYS something to
+      // render — a partial grid beats an eternal spinner.
       setCompareSeeds(ordered.length ? ordered : [primary]);
     })();
     return () => {

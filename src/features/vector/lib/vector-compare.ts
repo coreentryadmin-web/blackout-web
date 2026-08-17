@@ -84,15 +84,29 @@ export async function loadCompareSeedsBounded<T>(
   tickers: string[],
   fetchSeed: (ticker: string) => Promise<T>,
   concurrency = 2
-): Promise<T[]> {
+): Promise<Array<T | null>> {
   const uniq = parseCompareTickers(tickers.join(","));
   if (!uniq.length) return [];
-  const out: T[] = new Array(uniq.length);
+  const out: Array<T | null> = new Array(uniq.length).fill(null);
   let next = 0;
   const workers = Array.from({ length: Math.min(concurrency, uniq.length) }, async () => {
     while (next < uniq.length) {
       const i = next++;
-      out[i] = await fetchSeed(uniq[i]!);
+      // SETTLE PER ITEM, never reject the batch.
+      //
+      // THE BUG THIS FIXES (member-visible). A rejection here used to propagate out of the worker,
+      // reject the Promise.all below, and throw out of the caller's void-ed async effect — so
+      // `setCompareSeeds` was never called and the grid sat on "Loading Vector Compare…" FOREVER,
+      // with no error state, no retry and no partial render. Ask for NVDA,META,AMD,TSLA and if AMD
+      // alone fails you lose all four, including the primary seed that was already in hand.
+      //
+      // One unreachable ticker is a fact about that ticker, not a reason to lose the others. A null
+      // slot lets the caller render the panes that DID load and mark the one that did not.
+      try {
+        out[i] = await fetchSeed(uniq[i]!);
+      } catch {
+        out[i] = null;
+      }
     }
   });
   await Promise.all(workers);
