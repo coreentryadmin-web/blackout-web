@@ -225,6 +225,17 @@ async function createTunneledContext({
   viewport = "430x932",
   desktop = false,
   seedStorage = null,
+  /**
+   * Per-request tunnel deadline for NON-streaming requests. Default (undefined) keeps proxyFetch's
+   * own 20s, which every existing caller was written against.
+   *
+   * Raise it for harnesses that drive pages whose upstreams are legitimately slow: a forced GEX
+   * matrix rebuild has been measured at 5-7s p95 with a 56s tail, so a 20s deadline turns "this
+   * ticker's matrix is slow today" into "this ticker's panel is missing" — a latency observation
+   * reported as a rendering defect. The right fix is a deadline the harness chose on purpose, not
+   * a silently-truncated page.
+   */
+  requestTimeoutMs = undefined,
 } = {}) {
   const [vw, vh] = String(viewport).split("x").map(Number);
 
@@ -309,7 +320,7 @@ async function createTunneledContext({
         req.method(),
         req.headers(),
         req.postDataBuffer(),
-        streaming ? STREAM_TIMEOUT_MS : undefined
+        streaming ? STREAM_TIMEOUT_MS : requestTimeoutMs
       );
       counts.ok++;
       await route.fulfill({ status: r.status, headers: r.headers, body: r.body });

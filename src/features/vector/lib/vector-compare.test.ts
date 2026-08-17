@@ -74,3 +74,23 @@ test("fmtCompareSpot via compare-format: formats finite spot", async () => {
   assert.equal(fmtCompareSpot(123.456, "NVDA"), "123.46");
   assert.match(fmtCompareSpot(5432.1, "SPX"), /5,432\.10/);
 });
+
+test("resolveCompareRaw: URL is the only source of truth for compare state", async () => {
+  const { resolveCompareRaw, isCompareMode } = await import("./vector-compare");
+
+  // In compare mode: the URL carries the param.
+  assert.equal(resolveCompareRaw("SPX,NVDA"), "SPX,NVDA");
+  assert.equal(isCompareMode(resolveCompareRaw("SPX,NVDA")), true);
+
+  // Exit compare pushes `/vector` — the param is GONE, and that must win over whatever the page
+  // was loaded with. This is the regression: a `?? initialCompareRaw` fallback here made the Exit
+  // button (and every same-route nav out of compare) a no-op.
+  assert.equal(resolveCompareRaw(null), null);
+  assert.equal(isCompareMode(resolveCompareRaw(null)), false);
+  assert.equal(resolveCompareRaw(undefined), null);
+  assert.equal(isCompareMode(resolveCompareRaw(undefined)), false);
+
+  // An explicitly empty param is also "not compare" — buildCompareSearch never emits one, but a
+  // hand-typed `?compare=` must not trap the member either.
+  assert.equal(isCompareMode(resolveCompareRaw("")), false);
+});
