@@ -193,8 +193,8 @@ html.nav-locked body { overflow: hidden; }
   font-weight: 800;
   letter-spacing: -0.03em;
   line-height: 1;
-  background: linear-gradient(120deg, #fff 0%, #22d3ee 45%, #7dd3fc 70%, #fff 100%);
-  background-size: 200% auto;
+  background: linear-gradient(120deg, #fff 0%, #34d399 22%, #22d3ee 42%, #a78bfa 62%, #fb7185 78%, #fff 100%);
+  background-size: 220% auto;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -205,14 +205,14 @@ html.nav-locked body { overflow: hidden; }
   font-size: 0.7rem;
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: #7dd3fc;
+  color: var(--mer-violet, #c4b5fd);
   font-weight: 600;
 }
 .meridian-hero-tagline {
   margin: 0.5rem 0 0;
   max-width: 36rem;
   font-size: 0.82rem;
-  color: #7dd3fc;
+  color: var(--mer-muted, #bae6fd);
   line-height: 1.45;
 }
 .meridian-hero-right {
@@ -345,9 +345,9 @@ html.nav-locked body { overflow: hidden; }
   transition: color 0.2s, background 0.2s, box-shadow 0.2s;
 }
 .meridian-view-tab.is-active {
-  color: #040407;
-  background: linear-gradient(135deg, #22d3ee, #38bdf8);
-  box-shadow: 0 4px 18px -6px rgba(34, 211, 238, 0.55);
+  color: var(--mer-ink, #040407);
+  background: linear-gradient(135deg, #34d399, #22d3ee 45%, #a78bfa);
+  box-shadow: 0 4px 18px -6px rgba(52, 211, 153, 0.45);
 }
 .meridian-refresh-btn {
   margin-left: auto;
@@ -418,6 +418,20 @@ html.nav-locked body { overflow: hidden; }
 
 /* Desk layout */
 .meridian-desk-v2 {
+  --mer-cyan: #22d3ee;
+  --mer-sky: #38bdf8;
+  --mer-violet: #a78bfa;
+  --mer-emerald: #34d399;
+  --mer-amber: #fbbf24;
+  --mer-rose: #fb7185;
+  --mer-coral: #fb923c;
+  --mer-bull: #34d399;
+  --mer-bear: #fb7185;
+  --mer-neutral: #fbbf24;
+  --mer-ink: #040407;
+  --mer-text: #fff;
+  --mer-muted: #bae6fd;
+  --mer-label: #7dd3fc;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -842,6 +856,224 @@ html.nav-locked body { overflow: hidden; }
 .meridian-flow-prints li,
 .meridian-strike-stacks li { font-size: 0.8125rem; }
 .meridian-risk-note { margin-top: 0.5rem; font-size: 0.75rem; }
+
+/* Earnings report — composite verdict */
+.meridian-earnings-report { margin-bottom: 0.85rem; }
+.meridian-report-hero {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(220px, 0.9fr);
+  gap: 0.85rem;
+  border-radius: 0.75rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(125, 211, 252, 0.16);
+  background: linear-gradient(145deg, rgba(12, 14, 24, 0.96), rgba(6, 7, 12, 0.92));
+  overflow: hidden;
+  animation: meridian-card-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@media (max-width: 760px) {
+  .meridian-report-hero { grid-template-columns: 1fr; }
+}
+.meridian-report-hero-glow {
+  position: absolute;
+  inset: -20%;
+  pointer-events: none;
+  opacity: 0.35;
+  filter: blur(40px);
+}
+.meridian-report-hero.meridian-verdict-bull .meridian-report-hero-glow {
+  background: radial-gradient(circle at 20% 30%, rgba(52, 211, 153, 0.35), transparent 55%);
+}
+.meridian-report-hero.meridian-verdict-bear .meridian-report-hero-glow {
+  background: radial-gradient(circle at 20% 30%, rgba(251, 113, 133, 0.35), transparent 55%);
+}
+.meridian-report-hero.meridian-verdict-neutral .meridian-report-hero-glow {
+  background: radial-gradient(circle at 20% 30%, rgba(251, 191, 36, 0.28), transparent 55%);
+}
+.meridian-report-hero-main,
+.meridian-report-play { position: relative; z-index: 1; }
+.meridian-report-kicker {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--mer-violet, #a78bfa);
+  margin: 0 0 0.35rem;
+}
+.meridian-report-verdict-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+.meridian-report-verdict {
+  font-family: var(--font-syne, sans-serif);
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.meridian-report-verdict.meridian-verdict-bull { color: var(--mer-bull, #34d399); text-shadow: 0 0 24px rgba(52, 211, 153, 0.35); }
+.meridian-report-verdict.meridian-verdict-bear { color: var(--mer-bear, #fb7185); text-shadow: 0 0 24px rgba(251, 113, 133, 0.35); }
+.meridian-report-verdict.meridian-verdict-neutral { color: var(--mer-neutral, #fbbf24); text-shadow: 0 0 24px rgba(251, 191, 36, 0.25); }
+.meridian-report-confidence,
+.meridian-report-score {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--mer-muted, #bae6fd);
+  border: 1px solid rgba(186, 230, 253, 0.18);
+  border-radius: 999px;
+  padding: 0.2rem 0.5rem;
+}
+.meridian-report-headline {
+  font-family: var(--font-syne, sans-serif);
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #fff;
+  margin: 0 0 0.35rem;
+  letter-spacing: -0.02em;
+}
+.meridian-report-summary {
+  font-size: 0.78rem;
+  color: var(--mer-muted, #bae6fd);
+  margin: 0;
+  line-height: 1.45;
+}
+.meridian-report-play {
+  border-left: 1px solid rgba(125, 211, 252, 0.12);
+  padding-left: 0.85rem;
+}
+@media (max-width: 760px) {
+  .meridian-report-play {
+    border-left: none;
+    border-top: 1px solid rgba(125, 211, 252, 0.12);
+    padding-left: 0;
+    padding-top: 0.75rem;
+  }
+}
+.meridian-report-play-label {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.55rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--mer-coral, #fb923c);
+  margin: 0 0 0.25rem;
+}
+.meridian-report-play-headline {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #fff;
+  margin: 0 0 0.25rem;
+}
+.meridian-report-play-structure,
+.meridian-report-play-risk {
+  font-size: 0.72rem;
+  color: var(--mer-muted, #bae6fd);
+  margin: 0.15rem 0 0;
+  line-height: 1.4;
+}
+.meridian-report-signals {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.45rem;
+  margin: 0.65rem 0;
+}
+.meridian-report-signal {
+  border-radius: 0.55rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid rgba(125, 211, 252, 0.1);
+  background: rgba(255, 255, 255, 0.02);
+  position: relative;
+}
+.meridian-report-signal.meridian-signal-bull { border-color: rgba(52, 211, 153, 0.28); background: rgba(52, 211, 153, 0.06); }
+.meridian-report-signal.meridian-signal-bear { border-color: rgba(251, 113, 133, 0.28); background: rgba(251, 113, 133, 0.06); }
+.meridian-report-signal.meridian-signal-neutral { border-color: rgba(251, 191, 36, 0.18); }
+.meridian-report-signal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.2rem;
+}
+.meridian-report-signal-label {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.52rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--mer-label, #7dd3fc);
+}
+.meridian-report-signal-lean {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.5rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.meridian-report-signal-lean.meridian-signal-bull { color: var(--mer-bull, #34d399); }
+.meridian-report-signal-lean.meridian-signal-bear { color: var(--mer-bear, #fb7185); }
+.meridian-report-signal-lean.meridian-signal-neutral { color: var(--mer-neutral, #fbbf24); }
+.meridian-report-signal-detail {
+  font-size: 0.68rem;
+  color: var(--mer-muted, #bae6fd);
+  margin: 0;
+  line-height: 1.35;
+}
+.meridian-report-signal-score {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.45rem;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.55rem;
+  font-weight: 700;
+  color: #fff;
+  opacity: 0.65;
+}
+.meridian-report-grid { margin-bottom: 0.5rem; }
+.meridian-report-disclaimer {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.58rem;
+  color: var(--mer-label, #7dd3fc);
+  margin: 0.35rem 0 0;
+  opacity: 0.85;
+}
+.meridian-news-list li { font-size: 0.75rem; }
+
+.meridian-macro-warnings {
+  margin: 0.55rem 0 0.65rem;
+  border-radius: 0.55rem;
+  border: 1px solid rgba(251, 113, 133, 0.35);
+  background: rgba(251, 113, 133, 0.08);
+  padding: 0.6rem 0.75rem;
+}
+.meridian-macro-warnings-label {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--mer-bear, #fb7185);
+  margin: 0 0 0.35rem;
+}
+.meridian-macro-warnings-list {
+  margin: 0;
+  padding-left: 1rem;
+  color: #fecdd3;
+  font-size: 0.75rem;
+}
+.meridian-macro-warnings-list li { margin-bottom: 0.25rem; }
+.meridian-macro-impact-high {
+  color: var(--mer-coral, #fb923c) !important;
+  border-color: rgba(251, 146, 60, 0.35) !important;
+}
+.meridian-watch-list li { font-size: 0.78rem; color: var(--mer-muted, #bae6fd); }
+
+.meridian-stat-tone-rose { border-color: rgba(251, 113, 133, 0.25); }
+.meridian-stat-tone-rose .meridian-stat-card-value { color: #fb7185; }
 
 @media (prefers-reduced-motion: reduce) {
   .meridian-page-shell::before,

@@ -22,6 +22,7 @@ import {
   buildOpexPinAccuracy,
   macroSurpriseScore,
 } from "@/lib/meridian/meridian-analytics-core";
+import { buildMeridianMacroReport } from "@/lib/meridian/meridian-macro-report-core";
 import type { MeridianMacroSurprise } from "@/features/meridian/lib/meridian-types";
 import { loadMeridianEarningsEnrichment } from "@/lib/meridian/meridian-earnings-enrich";
 
@@ -246,6 +247,26 @@ export async function buildMeridianMacroBrief(input: {
     surprise = macroSurpriseScore(latestActual, Number.isFinite(estNum!) ? estNum : null, macroHistory.release_history);
   }
 
+  const today = todayEtYmd();
+  const days_until = Math.max(
+    0,
+    Math.round((Date.parse(`${input.date}T12:00:00-04:00`) - Date.parse(`${today}T12:00:00-04:00`)) / 86_400_000)
+  );
+
+  const report = buildMeridianMacroReport({
+    event: input.event,
+    date: input.date,
+    time: input.time,
+    impact: input.impact,
+    estimate: input.estimate?.trim() || null,
+    days_until,
+    correlation_rail,
+    surprise,
+    related_headlines: macroHistory.related_headlines,
+    spx_positioning,
+    flow,
+  });
+
   return roundFloats({
     kind: "macro",
     event: input.event,
@@ -261,6 +282,7 @@ export async function buildMeridianMacroBrief(input: {
     related_headlines: macroHistory.related_headlines,
     spx_positioning,
     flow,
+    report,
     as_of: new Date().toISOString(),
   });
 }

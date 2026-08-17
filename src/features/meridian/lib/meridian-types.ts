@@ -63,7 +63,35 @@ export type MeridianMacroBrief = {
   related_headlines: MeridianCatalystHeadline[];
   spx_positioning: MeridianSpxPositioning;
   flow: MeridianFlowSkew;
+  report: MeridianMacroReport;
   as_of: string;
+};
+
+export type MeridianMacroReport = {
+  available: boolean;
+  expected_move: {
+    available: boolean;
+    session_pct: number | null;
+    intraday_60_pct: number | null;
+    headline: string | null;
+    source: "historical";
+  };
+  expectations: {
+    available: boolean;
+    consensus: string | null;
+    headline: string;
+    surprise_verdict: MeridianMacroSurprise["verdict"] | null;
+  };
+  outlook: {
+    lean: "risk_on" | "risk_off" | "neutral";
+    headline: string;
+    summary: string;
+  };
+  watch_list: string[];
+  warnings: string[];
+  scenarios: string[];
+  news_context: string[];
+  disclaimer: string;
 };
 
 export type MeridianMacroRelease = {
@@ -241,6 +269,40 @@ export type MeridianEarningsDarkPool = {
   top_prints: MeridianEarningsDarkPoolPrint[];
 };
 
+export type MeridianEarningsVectorRead = {
+  available: boolean;
+  expiry: string | null;
+  move_pct: number | null;
+  spot: number | null;
+  bands: Array<{ sigma: number; low: number; high: number }> | null;
+};
+
+export type MeridianEarningsReportSignal = {
+  pillar: "flow" | "dark_pool" | "thermal" | "vector" | "history" | "fundamentals" | "analyst" | "news" | "insider";
+  label: string;
+  lean: "bullish" | "bearish" | "neutral";
+  weight: number;
+  detail: string;
+  score: number;
+};
+
+export type MeridianEarningsReport = {
+  available: boolean;
+  verdict: "bullish" | "bearish" | "neutral";
+  confidence: "low" | "medium" | "high";
+  /** Composite score from weighted pillars (negative = bearish). */
+  score: number;
+  headline: string;
+  summary: string;
+  signals: MeridianEarningsReportSignal[];
+  best_play: {
+    headline: string;
+    structure: string;
+    risk: string;
+  };
+  risk_note: string;
+};
+
 export type MeridianEarningsIntel = {
   expected_move_pct: number | null;
   expected_move_source: "calendar" | "chain_iv" | null;
@@ -257,6 +319,8 @@ export type MeridianEarningsIntel = {
   };
   dark_pool: MeridianEarningsDarkPool;
   thermal: MeridianEarningsThermalRead;
+  vector: MeridianEarningsVectorRead;
+  report: MeridianEarningsReport;
   play_read: MeridianErPlayRead;
 };
 
