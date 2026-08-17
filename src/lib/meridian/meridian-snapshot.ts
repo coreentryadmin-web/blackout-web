@@ -15,6 +15,7 @@ import {
   buildMeridianFdaDetail,
   loadMeridianEarningsEnrichment,
 } from "@/lib/meridian/meridian-event-brief";
+import { loadMeridianEarningsIntel } from "@/lib/meridian/meridian-earnings-intel";
 import { readMeridianBoardTickers } from "@/lib/meridian/meridian-board-tickers";
 import type {
   MeridianEventDetail,
@@ -85,7 +86,12 @@ export async function loadMeridianEventResponse(id: string): Promise<MeridianEve
     const pack = await preEarningsPackForLargo(ticker, parsed.date);
     if (!pack) return null;
     const enrichment = await loadMeridianEarningsEnrichment(ticker, pack.expected_move_pct);
-    return roundFloats({ kind: "earnings", pack, enrichment });
+    const intel = await loadMeridianEarningsIntel({
+      ticker,
+      pack,
+      print_history: enrichment.print_history,
+    });
+    return roundFloats({ kind: "earnings", pack, enrichment, intel });
   }
 
   if (parsed.kind === "fda") {

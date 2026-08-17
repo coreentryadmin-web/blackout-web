@@ -832,6 +832,16 @@ html.nav-locked body { overflow: hidden; }
 
 .meridian-earn-wrap { margin-top: 0.5rem; }
 .meridian-earn-enrich { margin-bottom: 0.75rem; }
+.meridian-earn-intel { margin-bottom: 0.75rem; }
+.meridian-print-track .meridian-print-arrow { font-weight: 800; margin-left: 0.15rem; }
+.meridian-print-arrow-↑ { color: #34d399; }
+.meridian-print-arrow-↓ { color: #f87171; }
+.meridian-print-arrow-→ { color: #22d3ee; }
+.meridian-fin-grid li,
+.meridian-thermal-strikes li,
+.meridian-flow-prints li,
+.meridian-strike-stacks li { font-size: 0.8125rem; }
+.meridian-risk-note { margin-top: 0.5rem; font-size: 0.75rem; }
 
 @media (prefers-reduced-motion: reduce) {
   .meridian-page-shell::before,
