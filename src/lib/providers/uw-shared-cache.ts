@@ -179,6 +179,7 @@ export const UW_KEYS = {
   ivRank:              (ticker: string)  => `iv_rank:${ticker}`,
   ivRankSeries:        (ticker: string, limit: number) => `iv_rank_series:${ticker}:l${limit}`,
   fdaCalendar:         ()                => 'fda_calendar',
+  fdaCalendarAll:      ()                => 'fda_calendar_all',
   unusualTrades:       ()                => 'unusual_trades',
   litFlow:             (ticker: string)  => `lit_flow:${ticker}`,
 }

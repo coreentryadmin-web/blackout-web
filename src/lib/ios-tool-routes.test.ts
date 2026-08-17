@@ -19,6 +19,7 @@ describe("isIosToolRoute", () => {
     assert.equal(isIosToolRoute("/terminal"), true);
     assert.equal(isIosToolRoute("/nighthawk/edition"), true);
     assert.equal(isIosToolRoute("/vector"), true);
+    assert.equal(isIosToolRoute("/meridian"), true);
     assert.equal(isIosToolRoute("/vector?ticker=SPY"), true);
   });
 
@@ -53,13 +54,13 @@ describe("isIosNativeShellRoute", () => {
 });
 
 describe("IOS_TOOLS metadata", () => {
-  it("defines six primary tools with accents and instrument codes", () => {
-    assert.equal(IOS_TOOLS.length, 6);
+  it("defines seven primary tools with accents and instrument codes", () => {
+    assert.equal(IOS_TOOLS.length, 7);
     assert.ok(IOS_TOOLS.every((t) => t.accent.startsWith("#")));
     assert.ok(IOS_TOOLS.every((t) => t.code.length >= 2 && t.code.length <= 4));
     assert.deepEqual(
       IOS_TOOLS.map((t) => t.code),
-      ["SPX", "HLX", "THM", "LRG", "HWK", "VEC"]
+      ["SPX", "HLX", "THM", "LRG", "HWK", "VEC", "MRD"]
     );
   });
 
@@ -74,6 +75,7 @@ describe("IOS_TOOLS metadata", () => {
     assert.equal(getIosToolRouteIndex("/flows"), 1);
     assert.equal(getIosToolRouteIndex("/nighthawk"), 4);
     assert.equal(getIosToolRouteIndex("/vector"), 5);
+    assert.equal(getIosToolRouteIndex("/meridian"), 6);
     assert.equal(getIosToolRouteIndex("/account"), -1);
   });
 });
@@ -82,6 +84,7 @@ describe("getIosRouteKey", () => {
   it("maps tool and utility paths to route keys", () => {
     assert.equal(getIosRouteKey("/dashboard"), "dashboard");
     assert.equal(getIosRouteKey("/terminal"), "largo");
+    assert.equal(getIosRouteKey("/meridian"), "meridian");
     assert.equal(getIosRouteKey("/faq"), "faq");
     assert.equal(getIosRouteKey("/learn/spx-slayer"), "learn");
     assert.equal(getIosRouteKey("/admin/health"), "admin");
@@ -101,6 +104,13 @@ describe("getIosHeaderMeta", () => {
     assert.equal(vector.title, "Vector");
     assert.equal(vector.kicker, "Gamma-wall radar · cross-ticker");
     assert.equal(vector.showBack, false);
+  });
+
+  it("returns Meridian as a first-class tool with no back button", () => {
+    const meridian = getIosHeaderMeta("/meridian");
+    assert.equal(meridian.title, "Meridian");
+    assert.equal(meridian.kicker, "Catalyst structure desk");
+    assert.equal(meridian.showBack, false);
   });
 
   it("returns utility titles with back affordance", () => {

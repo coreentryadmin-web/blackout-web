@@ -8,6 +8,7 @@ export const IOS_TOOL_ROUTES = [
   "/terminal",
   "/nighthawk",
   "/vector",
+  "/meridian",
 ] as const;
 
 export type IosToolRoute = (typeof IOS_TOOL_ROUTES)[number];
@@ -23,6 +24,7 @@ export type IosRouteKey =
   | "largo"
   | "nighthawk"
   | "vector"
+  | "meridian"
   | "account"
   | "faq"
   | "learn"
@@ -97,6 +99,15 @@ export const IOS_TOOLS: IosToolMeta[] = [
     tagline: "Gamma-wall radar · cross-ticker",
     code: "VEC",
   },
+  {
+    href: "/meridian",
+    label: "Meridian",
+    short: "Meridian",
+    mark: "largo",
+    accent: "#22d3ee",
+    tagline: "Catalyst structure desk",
+    code: "MRD",
+  },
 ];
 
 const IOS_UTILITY_META: Record<
@@ -119,6 +130,7 @@ export function getIosRouteKey(path: string): IosRouteKey {
   if (path.startsWith("/terminal")) return "largo";
   if (path.startsWith("/nighthawk")) return "nighthawk";
   if (path.startsWith("/vector")) return "vector";
+  if (path.startsWith("/meridian")) return "meridian";
   if (path.startsWith("/account")) return "account";
   if (path.startsWith("/faq")) return "faq";
   if (path.startsWith("/learn")) return "learn";
@@ -224,6 +236,7 @@ export const IOS_NATIVE_SHELL_PATH_PREFIXES = [
   "/terminal",
   "/nighthawk",
   "/vector",
+  "/meridian",
   "/account",
   "/faq",
   "/learn",

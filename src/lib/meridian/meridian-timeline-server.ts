@@ -1,12 +1,13 @@
 import "server-only";
 
 import { serverCache } from "@/lib/server-cache";
-import type { EarningsTimelineInput } from "@/features/meridian/lib/meridian-timeline";
+import type { EarningsTimelineInput, FdaTimelineInput } from "@/features/meridian/lib/meridian-timeline";
 import { readGridEarnings, type ZeroDteEarningsItem } from "@/lib/zerodte/earnings";
 import { daysUntilEt } from "@/features/meridian/lib/meridian-timeline";
 
 const AV_KEY = process.env.ALPHAVANTAGE_API_KEY?.trim() || "";
 const TTL_12H = 12 * 60 * 60 * 1000;
+const FDA_CACHE_TTL = 30 * 60 * 1000;
 
 async function loadAvEarningsMap(): Promise<Record<string, string>> {
   if (!AV_KEY || AV_KEY === "demo") return {};
@@ -38,6 +39,50 @@ function gridToInput(row: ZeroDteEarningsItem): EarningsTimelineInput {
     when: row.when,
     expected_move_pct: row.expected_move_pct,
   };
+}
+
+function firstYmd(row: Record<string, unknown>): string {
+  for (const key of ["date", "decision_date", "pdufa_date", "event_date", "target_date", "due_date"]) {
+    const v = String(row[key] ?? "").slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+  }
+  return "";
+}
+
+function shapeFdaRow(row: Record<string, unknown>): FdaTimelineInput | null {
+  const ticker = String(row.ticker ?? row.symbol ?? "").trim().toUpperCase();
+  const date = firstYmd(row);
+  if (!ticker || !date) return null;
+  const drug = String(row.drug ?? row.drug_name ?? row.product ?? row.name ?? "").trim() || null;
+  const indication = String(row.indication ?? row.description ?? "").trim() || null;
+  const event_label = String(row.event ?? row.event_type ?? row.title ?? "").trim() || null;
+  return { ticker, date, drug, indication, event_label };
+}
+
+/** Market-wide FDA calendar rows for the Meridian timeline (cluster-cached). */
+export async function loadMeridianFdaTimeline(
+  todayYmd: string,
+  daysAhead: number
+): Promise<FdaTimelineInput[]> {
+  const rows = await serverCache("meridian:fda-calendar:all:v1", FDA_CACHE_TTL, async () => {
+    const { uwConfigured } = await import("@/lib/providers/config");
+    if (!uwConfigured()) return [] as Record<string, unknown>[];
+    const { fetchUwFdaCalendarAll } = await import("@/lib/providers/unusual-whales");
+    return fetchUwFdaCalendarAll(50);
+  }).catch(() => [] as Record<string, unknown>[]);
+
+  const seen = new Set<string>();
+  const out: FdaTimelineInput[] = [];
+  for (const row of rows) {
+    const shaped = shapeFdaRow(row);
+    if (!shaped) continue;
+    if (shaped.date < todayYmd || daysUntilEt(shaped.date, todayYmd) > daysAhead) continue;
+    const key = `${shaped.ticker}:${shaped.date}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(shaped);
+  }
+  return out.sort((a, b) => a.date.localeCompare(b.date));
 }
 
 /** Earnings rows for the Meridian timeline — grid snapshot + optional AV 3-month calendar. */

@@ -521,8 +521,7 @@ export async function fetchUwOdteGexLadder(
 }
 
 export async function fetchUwMaxPain(ticker = "SPX") {
-  const data = await uwGetSafe<unknown>(`/api/stock/${safeTicker(ticker)}/max-pain`, {});
-  const rows = extractRows(data);
+  const rows = await fetchUwMaxPainRows(ticker);
   const today = todayEt();
   let chosen: number | null = null;
   for (const row of rows) {
@@ -533,6 +532,11 @@ export async function fetchUwMaxPain(ticker = "SPX") {
     if (chosen == null) chosen = strike;
   }
   return chosen;
+}
+
+export async function fetchUwMaxPainRows(ticker = "SPX") {
+  const data = await uwGetSafe<unknown>(`/api/stock/${safeTicker(ticker)}/max-pain`, {});
+  return extractRows(data);
 }
 
 export async function fetchUwMarketTide() {
@@ -1708,6 +1712,17 @@ export async function fetchUwFdaCalendar(ticker: string, limit = 10) {
       limit: Math.min(limit, 20),
     });
     return extractRows(data).slice(0, limit);
+  });
+}
+
+/** Market-wide FDA calendar (no ticker filter) — Meridian timeline + desk scans. */
+export async function fetchUwFdaCalendarAll(limit = 50) {
+  const redis = await getUwCacheRedis();
+  return uwCacheGet(redis, UW_KEYS.fdaCalendarAll(), UW_CACHE_TTL.fdaCalendar, async () => {
+    const data = await uwGetSafe<unknown>("/api/market/fda-calendar", {
+      limit: Math.min(limit, 50),
+    });
+    return extractRows(data);
   });
 }
 

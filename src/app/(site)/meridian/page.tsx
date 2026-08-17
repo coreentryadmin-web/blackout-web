@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
-import { requireAdmin } from "@/lib/admin-access";
+import { requireTier } from "@/lib/auth-access";
+import { canAccessTool } from "@/lib/tool-access-server";
+import { ComingSoon } from "@/components/ComingSoon";
 import { MeridianPageShell } from "@/features/meridian/components/MeridianPageShell";
 import { noindexPageMetadata } from "@/lib/page-metadata";
 
@@ -7,8 +9,8 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = noindexPageMetadata("Meridian · BlackOut", "/meridian");
 
-/** Admin-only preview until Meridian is fully developed and launch-gated for members. */
 export default async function MeridianPage() {
-  await requireAdmin();
+  await requireTier("premium");
+  if (!(await canAccessTool("meridian"))) return <ComingSoon toolKey="meridian" />;
   return <MeridianPageShell />;
 }
