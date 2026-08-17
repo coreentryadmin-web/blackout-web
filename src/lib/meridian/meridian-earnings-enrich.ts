@@ -1,7 +1,6 @@
 import "server-only";
 
 import { fetchBenzingaCatalysts, fetchBenzingaEarnings } from "@/lib/providers/polygon";
-import { fetchUwEarningsEstimates } from "@/lib/providers/unusual-whales";
 import { roundFloats } from "@/lib/round-floats";
 import { loadMeridianEarningsPrintHistory } from "@/lib/meridian/meridian-earnings-history";
 import { loadMeridianCatalystBundle } from "@/lib/meridian/meridian-catalyst-enrich";
@@ -33,20 +32,6 @@ function shapeHeadlines(
     }));
 }
 
-function shapeEstimates(rows: Record<string, unknown>[]): MeridianEarningsEnrichment["street_estimates"] {
-  return rows.slice(0, 4).map((r) => {
-    const eps = r.eps_estimate ?? r.estimated_eps ?? r.street_mean_est ?? r.eps ?? null;
-    const rev = r.revenue_estimate ?? r.estimated_revenue ?? r.revenue ?? null;
-    const period = String(r.fiscal_date ?? r.period ?? r.quarter ?? r.report_date ?? "").trim() || null;
-    return {
-      period,
-      eps_estimate: eps != null && Number.isFinite(Number(eps)) ? Number(Number(eps).toFixed(2)) : null,
-      revenue_estimate:
-        rev != null && Number.isFinite(Number(rev)) ? Number(Number(rev).toFixed(0)) : null,
-      source: "uw" as const,
-    };
-  });
-}
 
 /** Benzinga calendar + headlines + street estimates + print history for an earnings row. */
 export async function loadMeridianEarningsEnrichment(
@@ -55,11 +40,10 @@ export async function loadMeridianEarningsEnrichment(
   eventDate?: string | null
 ): Promise<MeridianEarningsEnrichment> {
   const sym = ticker.trim().toUpperCase();
-  const [catalysts, earningsNews, estimateRows, history, catalystBundle, benzingaRes, guidanceRes] =
+  const [catalysts, earningsNews, history, catalystBundle, benzingaRes, guidanceRes] =
     await Promise.all([
       fetchBenzingaCatalysts(sym, 6).catch(() => []),
       fetchBenzingaEarnings(sym, 6).catch(() => []),
-      fetchUwEarningsEstimates(sym).catch(() => [] as Record<string, unknown>[]),
       loadMeridianEarningsPrintHistory(sym, 8, eventDate),
       loadMeridianCatalystBundle(sym),
       loadBenzingaTickerEarnings(sym, eventDate ?? null),
@@ -67,8 +51,7 @@ export async function loadMeridianEarningsEnrichment(
     ]);
 
   const benzingaRows = benzingaRes.rows;
-  const uwEstimates = shapeEstimates(estimateRows);
-  const street_estimates = mergeStreetEstimates(benzingaRows, uwEstimates);
+  const street_estimates = mergeStreetEstimates(benzingaRows, []);
   const earnings_calendar = pickEarningsCalendarRow(benzingaRows, eventDate);
   const earnings_yoy = earnings_calendar ? computeEarningsYoY(earnings_calendar) : null;
   const post_print = postPrintSurpriseLean(earnings_calendar);

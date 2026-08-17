@@ -9,7 +9,10 @@ import { serverCache } from "@/lib/server-cache";
 import {
   buildEarningsWeekRows,
   buildRecentEarningsRevisions,
+  parseNextEarningsFromBenzinga,
 } from "@/lib/meridian/meridian-benzinga-earnings-core";
+import { todayEtYmd } from "@/lib/providers/spx-session";
+import type { NextEarnings } from "@/lib/providers/uw-earnings";
 
 const BENZINGA_TIMELINE_TTL_MS = 20 * 60 * 1000;
 const BENZINGA_TICKER_TTL_MS = 10 * 60 * 1000;
@@ -112,4 +115,12 @@ export async function loadBenzingaTickerGuidance(ticker: string) {
   return serverCache(`meridian:benzinga:guidance:${sym}`, BENZINGA_TICKER_TTL_MS, () =>
     fetchBenzingaCorporateGuidance({ ticker: sym, dateGte: yearAgo, limit: 6 })
   ).catch(() => ({ rows: [], entitled: false, error: "cache_error" }));
+}
+
+/** Next earnings date from Benzinga structured calendar (Meridian/Largo — no UW REST). */
+export async function loadNextEarningsFromBenzinga(ticker: string): Promise<NextEarnings | null> {
+  const sym = ticker.trim().toUpperCase();
+  const today = todayEtYmd();
+  const res = await loadBenzingaTickerEarnings(sym, null);
+  return parseNextEarningsFromBenzinga(sym, res.rows, today);
 }

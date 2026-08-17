@@ -1,28 +1,20 @@
 import "server-only";
 
-import { serverCache } from "@/lib/server-cache";
-import type { EarningsTimelineInput, FdaTimelineInput } from "@/features/meridian/lib/meridian-timeline";
-import { readGridEarnings, type ZeroDteEarningsItem } from "@/lib/zerodte/earnings";
 import { daysUntilEt } from "@/features/meridian/lib/meridian-timeline";
-import { mergeEarningsTimelineSources } from "@/lib/meridian/meridian-benzinga-earnings-core";
+import type { EarningsTimelineInput, FdaTimelineInput } from "@/features/meridian/lib/meridian-timeline";
+import { serverCache } from "@/lib/server-cache";
+import {
+  benzingaRowsToTimelineInputs,
+  overlayTimelineExpectedMoves,
+} from "@/lib/meridian/meridian-benzinga-earnings-core";
 import {
   loadBenzingaBoardEarnings,
   loadBenzingaEarningsBundle,
 } from "@/lib/meridian/meridian-benzinga-earnings";
+import { batchLoadEarningsExpectedMovePct } from "@/lib/meridian/meridian-earnings-expected-move";
 import type { BenzingaStructuredEarnings } from "@/lib/providers/polygon";
 
 const FDA_CACHE_TTL = 30 * 60 * 1000;
-
-function gridToInput(row: ZeroDteEarningsItem & { report_date: string }): EarningsTimelineInput {
-  return {
-    ticker: row.ticker,
-    name: row.name,
-    report_date: row.report_date,
-    when: row.when,
-    expected_move_pct: row.expected_move_pct,
-    source: "uw_grid",
-  };
-}
 
 function firstYmd(row: Record<string, unknown>): string {
   for (const key of ["date", "decision_date", "pdufa_date", "event_date", "target_date", "due_date"]) {
@@ -87,32 +79,27 @@ export type MeridianEarningsTimelineResult = {
   calendar_entitled: boolean;
 };
 
-/** Earnings rows for the Meridian timeline — Benzinga calendar primary, UW grid overlay for implied move. */
+/** Earnings rows — Benzinga calendar + Polygon chain-IV expected move (no UW earnings REST). */
 export async function loadMeridianEarningsTimeline(
   todayYmd: string,
   daysAhead: number,
   boardTickers: string[] = []
 ): Promise<MeridianEarningsTimelineResult> {
-  const [grid, bundle, boardRes] = await Promise.all([
-    readGridEarnings().catch(() => null),
+  const [bundle, boardRes] = await Promise.all([
     loadBenzingaEarningsBundle(todayYmd, daysAhead),
     loadBenzingaBoardEarnings(boardTickers, todayYmd, daysAhead),
   ]);
-
-  const gridRows: EarningsTimelineInput[] = [];
-  for (const row of grid?.items ?? []) {
-    const reportDate = row.report_date?.slice(0, 10);
-    if (!row.ticker || !reportDate) continue;
-    if (daysUntilEt(reportDate, todayYmd) > daysAhead) continue;
-    gridRows.push(gridToInput({ ...row, report_date: reportDate }));
-  }
 
   const benzingaRows = dedupeBenzingaRows([
     ...bundle.window_rows,
     ...boardRes.rows,
   ]).filter((r) => r.date >= todayYmd && daysUntilEt(r.date, todayYmd) <= daysAhead);
 
-  const rows = mergeEarningsTimelineSources(benzingaRows, gridRows);
+  let rows = benzingaRowsToTimelineInputs(benzingaRows);
+  const emByTicker = await batchLoadEarningsExpectedMovePct(
+    rows.map((r) => ({ ticker: r.ticker, report_date: r.report_date }))
+  );
+  rows = overlayTimelineExpectedMoves(rows, emByTicker);
 
   return {
     rows,

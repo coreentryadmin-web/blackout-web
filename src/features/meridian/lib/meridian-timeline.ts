@@ -16,7 +16,7 @@ export type EarningsTimelineInput = {
   eps_method?: string | null;
   revenue_method?: string | null;
   estimated_eps?: number | null;
-  source?: "earnings_calendar" | "uw_grid" | null;
+  source?: "earnings_calendar" | "chain_iv" | null;
 };
 export type FdaTimelineInput = {
   ticker: string;

@@ -7,6 +7,8 @@ import {
   computeEarningsYoY,
   dualBeatRateFromPrints,
   earningsWhenFromTime,
+  overlayTimelineExpectedMoves,
+  parseNextEarningsFromBenzinga,
   mergeEarningsTimelineSources,
   mergeStreetEstimates,
   pickEarningsCalendarRow,
@@ -52,7 +54,38 @@ test("benzingaSurpriseToDisplayPct normalizes ratio to percent", () => {
   assert.equal(benzingaSurpriseToDisplayPct(6.25), 6.3);
 });
 
-test("mergeEarningsTimelineSources overlays UW expected move on Benzinga row", () => {
+test("overlayTimelineExpectedMoves applies chain-IV expected move by ticker", () => {
+  const rows = [
+    {
+      ticker: "NVDA",
+      name: "NVIDIA",
+      report_date: "2026-08-26",
+      when: "afterhours" as const,
+      expected_move_pct: null,
+      source: "earnings_calendar" as const,
+    },
+  ];
+  const em = new Map([["NVDA", 6.2]]);
+  const out = overlayTimelineExpectedMoves(rows, em);
+  assert.equal(out[0]?.expected_move_pct, 6.2);
+});
+
+test("parseNextEarningsFromBenzinga picks nearest upcoming print", () => {
+  const next = parseNextEarningsFromBenzinga(
+    "NVDA",
+    [
+      bz({ ticker: "NVDA", date: "2026-08-26", time: "16:20:00", date_status: "confirmed" }),
+      bz({ ticker: "NVDA", date: "2026-05-01", actual_eps: 1.1 }),
+    ],
+    "2026-08-17"
+  );
+  assert.equal(next?.earnings_date, "2026-08-26");
+  assert.equal(next?.days_until, 9);
+  assert.equal(next?.report_time, "afterhours");
+  assert.equal(next?.is_confirmed, true);
+});
+
+test("mergeEarningsTimelineSources overlays expected move on Benzinga row", () => {
   const merged = mergeEarningsTimelineSources(
     [bz({ ticker: "NVDA", company_name: "NVIDIA", date: "2026-08-26", time: "16:20:00" })],
     [
@@ -62,7 +95,7 @@ test("mergeEarningsTimelineSources overlays UW expected move on Benzinga row", (
         report_date: "2026-08-26",
         when: "afterhours",
         expected_move_pct: 6.2,
-        source: "uw_grid",
+        source: "chain_iv",
       },
     ]
   );
@@ -82,7 +115,7 @@ test("mergeEarningsTimelineSources drops stale UW-only date when Benzinga confir
         report_date: "2026-08-20",
         when: "afterhours",
         expected_move_pct: 5,
-        source: "uw_grid",
+        source: "chain_iv",
       },
     ]
   );

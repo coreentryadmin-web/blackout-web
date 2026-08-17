@@ -83,3 +83,47 @@ export function deriveExpectedMoveInputs(
 
   return { spot, atmIv, dteDays, expiry: frontExpiry };
 }
+
+/**
+ * Earnings-scoped expected move: quote the nearest listed expiry ON OR AFTER the print date
+ * (the weekly/monthly bracketing the event). Falls back to the latest expiry before the print
+ * when the chain has no future-dated series (honest last resort). Returns null when no usable IV.
+ */
+export function deriveExpectedMoveInputsForEarningsDate(
+  contracts: readonly ReconstructContract[],
+  spot: number,
+  earningsDateYmd: string,
+  _todayYmd: string
+): ExpectedMoveDerived | null {
+  if (!(spot > 0) || contracts.length === 0 || !/^\d{4}-\d{2}-\d{2}$/.test(earningsDateYmd)) {
+    return null;
+  }
+
+  const allExpiries = [...new Set(contracts.map((c) => c.expiry))].sort();
+  const onOrAfter = allExpiries.filter((e) => e >= earningsDateYmd);
+  const frontExpiry =
+    onOrAfter[0] ?? allExpiries.filter((e) => e <= earningsDateYmd).at(-1) ?? null;
+  if (!frontExpiry) return null;
+
+  const atExpiry = contracts.filter((c) => c.expiry === frontExpiry && c.iv > 0);
+  if (atExpiry.length === 0) return null;
+
+  let atmStrike = atExpiry[0]!.strike;
+  let bestDist = Math.abs(atmStrike - spot);
+  for (const c of atExpiry) {
+    const d = Math.abs(c.strike - spot);
+    if (d < bestDist) {
+      bestDist = d;
+      atmStrike = c.strike;
+    }
+  }
+
+  const atmLegs = atExpiry.filter((c) => c.strike === atmStrike);
+  const ivs = atmLegs.map((c) => c.iv).filter((v) => v > 0);
+  if (ivs.length === 0) return null;
+  const atmIv = ivs.reduce((s, v) => s + v, 0) / ivs.length;
+
+  const dteDays = remainingYearsToExpiry(frontExpiry) * DAYS_PER_YEAR;
+
+  return { spot, atmIv, dteDays, expiry: frontExpiry };
+}

@@ -2,6 +2,7 @@ import type {
   BenzingaCorporateGuidance,
   BenzingaStructuredEarnings,
 } from "@/lib/providers/polygon";
+import { daysBetweenYmd, type NextEarnings } from "@/lib/providers/uw-earnings";
 import type {
   MeridianEarningsCalendarRow,
   MeridianEarningsGuidanceRow,
@@ -126,9 +127,56 @@ function earningsTimelineKey(ticker: string, date: string): string {
 }
 
 /**
- * Merge Benzinga calendar (primary) with UW grid overlay (expected move only).
- * Keyed by ticker:date so multiple prints in-window are preserved.
- * When UW date conflicts with Benzinga confirmed date, Benzinga wins.
+ * Benzinga calendar rows → timeline inputs (sorted by report date).
+ */
+export function benzingaRowsToTimelineInputs(
+  benzingaRows: BenzingaStructuredEarnings[]
+): EarningsTimelineInput[] {
+  return benzingaRows
+    .map(benzingaRowToTimelineInput)
+    .sort((a, b) => (a.report_date ?? "").localeCompare(b.report_date ?? ""));
+}
+
+/** Overlay Polygon chain-IV expected move onto timeline rows (keyed by ticker). */
+export function overlayTimelineExpectedMoves(
+  rows: EarningsTimelineInput[],
+  emByTicker: Map<string, number | null>
+): EarningsTimelineInput[] {
+  return rows.map((row) => {
+    const em = emByTicker.get(row.ticker.trim().toUpperCase());
+    if (em == null) return row;
+    return { ...row, expected_move_pct: em, source: row.source ?? "earnings_calendar" };
+  });
+}
+
+/** Next upcoming print from Benzinga structured earnings (Meridian/Largo — no UW REST). */
+export function parseNextEarningsFromBenzinga(
+  ticker: string,
+  rows: BenzingaStructuredEarnings[],
+  todayYmd: string
+): NextEarnings | null {
+  const sym = ticker.trim().toUpperCase();
+  const upcoming = rows
+    .filter((r) => r.date >= todayYmd)
+    .sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? "").localeCompare(b.time ?? ""));
+  const row = upcoming[0];
+  if (!row) return null;
+  const days = daysBetweenYmd(todayYmd, row.date);
+  if (days == null || days < 0) return null;
+  const when = earningsWhenFromTime(row.time);
+  return {
+    ticker: sym,
+    earnings_date: row.date,
+    days_until: days,
+    report_time: when ?? null,
+    is_confirmed:
+      row.date_status === "confirmed" ? true : row.date_status === "projected" ? false : null,
+  };
+}
+
+/**
+ * @deprecated UW grid removed — use benzingaRowsToTimelineInputs + overlayTimelineExpectedMoves.
+ * Kept for tests migrating off the old merge shape.
  */
 export function mergeEarningsTimelineSources(
   benzingaRows: BenzingaStructuredEarnings[],
@@ -161,14 +209,13 @@ export function mergeEarningsTimelineSources(
 
     const bz = benzingaByTicker.get(ticker);
     if (bz && bz.date !== date && bz.date_status === "confirmed") {
-      // Stale UW-only row — Benzinga confirmed a different print date.
       continue;
     }
     byKey.set(key, {
       ...grid,
       ticker,
       report_date: date,
-      source: "uw_grid",
+      source: "chain_iv",
     });
   }
 
