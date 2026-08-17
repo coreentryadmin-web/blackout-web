@@ -15,6 +15,7 @@ import {
 import { MeridianEarningsIntelPanel } from "./MeridianEarningsIntelPanel";
 import { MeridianEarningsReportPanel } from "./MeridianEarningsReportPanel";
 import { MeridianMacroReportPanel } from "./MeridianMacroReportPanel";
+import { MeridianOpexCrossMarketPanel } from "./MeridianOpexCrossMarketPanel";
 
 function fmtPrem(n: number): string {
   const abs = Math.abs(n);
@@ -196,6 +197,7 @@ export function MeridianEventDetailPanel({
             tone="opex"
             icon="◇"
           />
+          <MeridianOpexCrossMarketPanel detail={detail} />
           <div className="meridian-detail-grid-v2">
             <MeridianDataCard label="SPX structure" tone="opex" delay={0}>
               {detail.spx_positioning.available ? (
