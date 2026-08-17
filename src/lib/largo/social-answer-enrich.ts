@@ -8,13 +8,14 @@ import {
   buildPostAngles,
   detectSocialArchetype,
   type SocialContentArchetype,
+  type SocialContentPlayRow,
 } from "@/lib/largo/social-content-core";
 import { formatMediaPlanForClipboard, buildXPostMediaPlan } from "@/lib/largo/x-post-media-plan";
 import { LARGO_PLATFORM_LINKS } from "@/lib/largo/platform-links";
 
 export type SocialPackSlice = {
   available: boolean;
-  winners: Array<{ ticker: string; direction: string | null; live_pnl_pct: number | null }>;
+  winners: SocialContentPlayRow[];
   board: {
     open_count: number;
     closed_today: number;
