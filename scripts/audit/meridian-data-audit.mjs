@@ -80,6 +80,12 @@ async function main() {
         `${POLY_BASE}/benzinga/v2/news?limit=5&channels.any_of=fda&apiKey=${polyKey}`
       )
     );
+    checks.push(
+      await probe(
+        "Benzinga structured earnings NVDA",
+        `${POLY_BASE}/benzinga/v1/earnings?ticker=NVDA&date.gte=2026-08-01&limit=3&sort=date.asc&apiKey=${polyKey}`
+      )
+    );
   }
 
   if (uwKey) {

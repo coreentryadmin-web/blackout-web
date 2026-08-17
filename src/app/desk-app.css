@@ -934,6 +934,36 @@ html.nav-locked body { overflow: hidden; }
 .meridian-earn-wrap { margin-top: 0.5rem; }
 .meridian-earn-enrich { margin-bottom: 0.75rem; }
 .meridian-earn-intel { margin-bottom: 0.75rem; }
+.meridian-earnings-tabs { margin-top: 0.35rem; }
+.meridian-earnings-tablist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
+  padding: 0.25rem;
+  border-radius: 0.65rem;
+  border: 1px solid rgba(56, 189, 248, 0.14);
+  background: rgba(8, 10, 16, 0.55);
+}
+.meridian-earnings-tab {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #38bdf8;
+  border: none;
+  border-radius: 0.45rem;
+  padding: 0.38rem 0.75rem;
+  background: transparent;
+  transition: color 0.2s, background 0.2s, box-shadow 0.2s;
+}
+.meridian-earnings-tab.is-active {
+  color: var(--mer-ink, #040407);
+  background: linear-gradient(135deg, #38bdf8, #22d3ee 55%, #34d399);
+  box-shadow: 0 4px 16px -6px rgba(56, 189, 248, 0.45);
+}
+.meridian-earnings-tabpanel { animation: meridian-fade-in 0.25s ease; }
 .meridian-print-track .meridian-print-arrow { font-weight: 800; margin-left: 0.15rem; }
 .meridian-print-arrow-↑ { color: #34d399; }
 .meridian-print-arrow-↓ { color: #f87171; }

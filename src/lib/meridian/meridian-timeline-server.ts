@@ -4,6 +4,8 @@ import { serverCache } from "@/lib/server-cache";
 import type { EarningsTimelineInput, FdaTimelineInput } from "@/features/meridian/lib/meridian-timeline";
 import { readGridEarnings, type ZeroDteEarningsItem } from "@/lib/zerodte/earnings";
 import { daysUntilEt } from "@/features/meridian/lib/meridian-timeline";
+import { mergeBenzingaTimelineRows } from "@/lib/meridian/meridian-benzinga-earnings-core";
+import { loadBenzingaEarningsWindow } from "@/lib/meridian/meridian-benzinga-earnings";
 
 const AV_KEY = process.env.ALPHAVANTAGE_API_KEY?.trim() || "";
 const TTL_12H = 12 * 60 * 60 * 1000;
@@ -90,9 +92,10 @@ export async function loadMeridianEarningsTimeline(
   todayYmd: string,
   daysAhead: number
 ): Promise<EarningsTimelineInput[]> {
-  const [grid, avMap] = await Promise.all([
+  const [grid, avMap, benzingaRows] = await Promise.all([
     readGridEarnings().catch(() => null),
     loadAvEarningsMap(),
+    loadBenzingaEarningsWindow(todayYmd, daysAhead),
   ]);
 
   const byTicker = new Map<string, EarningsTimelineInput>();
@@ -102,6 +105,8 @@ export async function loadMeridianEarningsTimeline(
     if (daysUntilEt(row.report_date, todayYmd) > daysAhead) continue;
     byTicker.set(row.ticker.toUpperCase(), gridToInput(row));
   }
+
+  mergeBenzingaTimelineRows(byTicker, benzingaRows).forEach((v, k) => byTicker.set(k, v));
 
   for (const [ticker, date] of Object.entries(avMap)) {
     if (date < todayYmd || daysUntilEt(date, todayYmd) > daysAhead) continue;

@@ -477,6 +477,10 @@ export type BenzingaStructuredEarnings = {
   fiscal_year: number | null;
   actual_eps: number | null;
   actual_revenue: number | null;
+  eps_surprise_pct: number | null;
+  revenue_surprise_pct: number | null;
+  previous_eps: number | null;
+  previous_revenue: number | null;
 };
 
 function shapeBenzingaStructuredEarnings(row: Record<string, unknown>): BenzingaStructuredEarnings | null {
@@ -500,6 +504,10 @@ function shapeBenzingaStructuredEarnings(row: Record<string, unknown>): Benzinga
     fiscal_year: num("fiscal_year"),
     actual_eps: num("actual_eps"),
     actual_revenue: num("actual_revenue"),
+    eps_surprise_pct: num("eps_surprise_percent"),
+    revenue_surprise_pct: num("revenue_surprise_percent"),
+    previous_eps: num("previous_eps"),
+    previous_revenue: num("previous_revenue"),
   };
 }
 

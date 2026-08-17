@@ -85,7 +85,7 @@ export async function loadMeridianEventResponse(id: string): Promise<MeridianEve
     if (!ticker) return null;
     const pack = await preEarningsPackForLargo(ticker, parsed.date);
     if (!pack) return null;
-    const enrichment = await loadMeridianEarningsEnrichment(ticker, pack.expected_move_pct);
+    const enrichment = await loadMeridianEarningsEnrichment(ticker, pack.expected_move_pct, parsed.date);
     const intel = await loadMeridianEarningsIntel({
       ticker,
       pack,

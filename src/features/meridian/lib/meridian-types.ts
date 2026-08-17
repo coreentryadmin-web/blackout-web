@@ -164,12 +164,32 @@ export type MeridianStreetEstimate = {
   period: string | null;
   eps_estimate: number | null;
   revenue_estimate: number | null;
+  source?: "earnings_calendar" | "uw" | null;
+};
+
+/** Structured earnings print row from the earnings calendar feed. */
+export type MeridianEarningsCalendarRow = {
+  date: string;
+  time: string | null;
+  date_status: string | null;
+  fiscal_period: string | null;
+  fiscal_year: number | null;
+  importance: number | null;
+  estimated_eps: number | null;
+  actual_eps: number | null;
+  eps_surprise_pct: number | null;
+  estimated_revenue: number | null;
+  actual_revenue: number | null;
+  revenue_surprise_pct: number | null;
+  previous_eps: number | null;
+  previous_revenue: number | null;
 };
 
 export type MeridianEarningsEnrichment = {
   catalysts: MeridianCatalystHeadline[];
   earnings_headlines: MeridianCatalystHeadline[];
   street_estimates: MeridianStreetEstimate[];
+  earnings_calendar: MeridianEarningsCalendarRow | null;
   print_history: MeridianEarningsPrint[];
   print_history_summary: string | null;
   analyst_revisions: MeridianAnalystRevision[];
