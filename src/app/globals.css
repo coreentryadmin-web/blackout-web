@@ -21709,6 +21709,15 @@ html.product-shell .nav-mega {
     cursor: pointer;
     text-decoration: underline;
   }
+  .largo-share-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+  }
+  .largo-share-row .largo-share-discord-btn {
+    margin-top: 0;
+  }
   .largo-chart-guide {
     font-size: 12px;
     color: #22d3ee;

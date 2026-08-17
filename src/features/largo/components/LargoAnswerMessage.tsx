@@ -1,15 +1,15 @@
 "use client";
 
-import { Component, useMemo, useState, type ReactNode } from "react";
+import { Component, useMemo, type ReactNode } from "react";
 import type { BieAnswerEnvelope } from "@/lib/bie/answer-envelope";
 import type { LargoCompareCard as LargoCompareCardPayload } from "@/lib/largo/compare-card-types";
 import type { PlaySimilarityCard } from "@/lib/largo/play-similarity";
 import type { PreEarningsPackCard } from "@/lib/largo/pre-earnings-pack";
 import type { LargoAction } from "@/lib/largo/largo-actions";
-import { shareLargoToDiscord } from "@/lib/api";
 import { LargoMessageBody } from "@/features/largo/components/LargoMessageBody";
 import { LargoStructuredCards } from "@/features/largo/components/LargoStructuredCards";
 import { LargoActionsBar } from "@/features/largo/components/LargoActionsBar";
+import { LargoShareRow } from "@/features/largo/components/LargoShareRow";
 import { BieAnswer } from "@/features/largo/answer/BieAnswer";
 import { LargoDeskRead } from "@/features/largo/answer/LargoDeskRead";
 import { LargoAnswerCaveats } from "@/features/largo/answer/LargoAnswerCaveats";
@@ -66,7 +66,6 @@ export function LargoAnswerMessage({
   sessionId?: string;
   ticker?: string | null;
 }) {
-  const [shareState, setShareState] = useState<"idle" | "sending" | "done" | "err">("idle");
   const fallback = <LargoMessageBody content={content} className={className} />;
 
   const rich = useMemo<ReactNode | null>(() => {
@@ -97,33 +96,34 @@ export function LargoAnswerMessage({
             <BieScenarioCards scenarios={envelope.scenarios} />
             <LargoAnswerCaveats caveats={caveats} />
             {!streaming && (
-              <button
-                type="button"
-                className="largo-share-discord-btn"
-                disabled={shareState === "sending"}
-                onClick={() => {
-                  setShareState("sending");
-                  void shareLargoToDiscord({
-                    answer: content,
-                    headline: envelope.headline ?? null,
-                    ticker: ticker ?? null,
-                  })
-                    .then(() => setShareState("done"))
-                    .catch(() => setShareState("err"));
-                }}
-              >
-                {shareState === "done" ? "Shared" : shareState === "err" ? "Share failed" : "Share to Discord"}
-              </button>
+              <LargoShareRow
+                answer={content}
+                headline={envelope.headline ?? null}
+                ticker={ticker ?? null}
+                bias={envelope.bias ?? null}
+                levels={envelope.levels}
+              />
             )}
           </>
         );
       }
       return (
-        <BieAnswer
-          envelope={{ ...envelope, sections: proseSections(envelope.sections) }}
-          bodyClassName={className}
-          onFollowup={onFollowup}
-        />
+        <>
+          <BieAnswer
+            envelope={{ ...envelope, sections: proseSections(envelope.sections) }}
+            bodyClassName={className}
+            onFollowup={onFollowup}
+          />
+          {!streaming && (
+            <LargoShareRow
+              answer={content}
+              headline={envelope.headline ?? null}
+              ticker={ticker ?? null}
+              bias={envelope.bias ?? null}
+              levels={envelope.levels}
+            />
+          )}
+        </>
       );
     }
 
@@ -151,12 +151,21 @@ export function LargoAnswerMessage({
             onFollowup={onFollowup}
           />
           <LargoAnswerCaveats caveats={caveats} />
+          {!streaming && (
+            <LargoShareRow
+              answer={content}
+              headline={built.envelope.headline ?? null}
+              ticker={ticker ?? null}
+              bias={built.envelope.bias ?? null}
+              levels={built.envelope.levels}
+            />
+          )}
         </>
       );
     } catch {
       return null;
     }
-  }, [content, source, createdAt, envelope, streaming, className, onFollowup, question, compareCard, playSimilarity, preEarningsPack, actions, sessionId, ticker, shareState]);
+  }, [content, source, createdAt, envelope, streaming, className, onFollowup, question, compareCard, playSimilarity, preEarningsPack, actions, sessionId, ticker]);
 
 
   if (!rich) return fallback;
