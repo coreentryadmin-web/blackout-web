@@ -90,3 +90,21 @@ test("trackedFetch refuses a disallowed host even when it's just a differently-c
     /disallowed host/i
   );
 });
+
+test("SECURITY: the disallowed-host throw never carries a live API key", async () => {
+  // THE LEAK (observed twice, 2026-08-17). An unresolved base placeholder produces a URL with no
+  // parseable hostname, so the guard's fallback printed the RAW url — including `apiKey=<real key>`
+  // — into the thrown message and from there into CI logs. The sanitized url must be used instead.
+  const leaky =
+    "POLYGON_API_BASE/benzinga/v1/earnings?limit=200&apiKey=SUPERSECRETKEYVALUE123&token=alsosecret";
+  let msg = "";
+  try {
+    await trackedFetch("polygon", "/test", leaky);
+  } catch (e) {
+    msg = String((e as Error).message);
+  }
+  assert.ok(msg.includes("refusing to fetch disallowed host"), `unexpected error: ${msg}`);
+  assert.ok(!msg.includes("SUPERSECRETKEYVALUE123"), "the API key must never reach the message");
+  assert.ok(!msg.includes("alsosecret"), "nor any other credential query param");
+  assert.ok(msg.includes("[REDACTED]"), "the value is redacted, not silently dropped");
+});
