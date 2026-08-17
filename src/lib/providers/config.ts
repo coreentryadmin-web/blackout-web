@@ -95,6 +95,28 @@ export function gexHeatmapOverlayMaxMs(): number {
   return Math.round(ms);
 }
 
+/**
+ * Max ms `/api/market/vector/flow` may block before returning an HONEST unavailable payload.
+ *
+ * WHY: the flow read awaits three unbounded upstreams (positioning → front expiry → large prints)
+ * with no deadline, so a stall rides all the way to the prod ALB's 120s idle timeout and the member
+ * gets a 504 instead of a panel. MEASURED live 2026-08-17 with auth rotation (so these are real
+ * server latencies, not token expiry): SPY 3.0s / **504 @ 120.1s** / 6.8s / **85.9s** / 0.5s;
+ * NVDA 16.4s / 1.3s / 21.9s / 1.3s / **41.7s**; SPX max 25.4s. Fast and slow calls interleave
+ * seconds apart on the SAME ticker, so this is a stall, not load.
+ *
+ * Default 25s is deliberately generous rather than tight: the same measurement shows genuine,
+ * data-carrying responses at 11.6s / 16.4s / 21.9s, and a 10s cap would convert those real reads
+ * into empty panels. 25s kills only the pathological tail (41.7s / 85.9s / 120s) while preserving
+ * every successful read observed. Tighten via env once the underlying stall is fixed — no deploy.
+ */
+export function vectorFlowMaxBlockMs(): number {
+  const raw = process.env.VECTOR_FLOW_MAX_BLOCK_MS?.trim();
+  const ms = raw ? Number(raw) : 25_000;
+  if (!Number.isFinite(ms) || ms < 1_000) return 25_000;
+  return Math.min(Math.round(ms), 115_000);
+}
+
 /** Member POST /api/market/largo/query hard ceiling before ALB idle timeout (120s). Default 100s. */
 export function largoMemberRouteDeadlineMs(): number {
   const raw = process.env.LARGO_MEMBER_ROUTE_DEADLINE_MS?.trim();
