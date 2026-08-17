@@ -6,10 +6,12 @@ import { getVectorExpectedMove } from "@/features/vector/lib/vector-expected-mov
 import { marketPlatform } from "@/lib/platform";
 import { roundFloats } from "@/lib/round-floats";
 import { buildMeridianFinancialsContext } from "@/lib/meridian/meridian-financials-context";
+import { fetchUwDarkPool } from "@/lib/providers/unusual-whales";
 import {
   beatRateFromPrints,
   buildErPlayRead,
   flowWindowHours,
+  shapeMeridianDarkPool,
 } from "@/lib/meridian/meridian-earnings-intel-core";
 import type { PreEarningsPackCard } from "@/lib/largo/pre-earnings-pack";
 import type {
@@ -33,7 +35,7 @@ export async function loadMeridianEarningsIntel(input: {
   const sym = input.ticker.trim().toUpperCase();
   const windowHours = flowWindowHours(input.pack.days_until);
 
-  const [fundamentals, thermal, vectorEm, flowSummary] = await Promise.all([
+  const [fundamentals, thermal, vectorEm, flowSummary, darkPoolRaw] = await Promise.all([
     fetchTickerFundamentalsBundle(sym).catch(() => null),
     gexHeatmapForLargo(sym, { lens: "gex", top_strikes: 8 }).catch(() => null),
     input.pack.expected_move_pct == null
@@ -42,7 +44,10 @@ export async function loadMeridianEarningsIntel(input: {
     marketPlatform.flows
       .getFlowTapeSummary({ ticker: sym, limit: 30, since_hours: windowHours })
       .catch(() => null),
+    fetchUwDarkPool(sym, { limit: 20 }).catch(() => null),
   ]);
+
+  const dark_pool = shapeMeridianDarkPool(darkPoolRaw);
 
   const expected_move_pct =
     input.pack.expected_move_pct ??
@@ -77,6 +82,7 @@ export async function loadMeridianEarningsIntel(input: {
 
   const play_read = buildErPlayRead({
     flow_bias: input.pack.flow.bias,
+    dark_pool_bias: dark_pool.available ? dark_pool.bias : null,
     gamma_regime: input.pack.positioning.gamma_regime,
     expected_move_pct,
     days_until: input.pack.days_until,
@@ -113,6 +119,7 @@ export async function loadMeridianEarningsIntel(input: {
       top_prints: top_flows,
       strike_stacks,
     },
+    dark_pool,
     thermal: thermal?.available
       ? {
           available: true,

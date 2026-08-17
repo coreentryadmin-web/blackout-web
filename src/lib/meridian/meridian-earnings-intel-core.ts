@@ -1,7 +1,51 @@
 import type {
   MeridianErPlayRead,
+  MeridianEarningsDarkPool,
   MeridianEarningsPrint,
 } from "@/features/meridian/lib/meridian-types";
+import type { DarkPoolSnapshot } from "@/lib/providers/unusual-whales";
+
+function fmtPremShort(n: number): string {
+  const abs = Math.abs(n);
+  if (abs >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1_000) return `$${(n / 1_000).toFixed(0)}K`;
+  return `$${n.toFixed(0)}`;
+}
+
+/** Map UW dark pool snapshot → Meridian earnings card slice (today's session prints). */
+export function shapeMeridianDarkPool(snapshot: DarkPoolSnapshot | null): MeridianEarningsDarkPool {
+  if (!snapshot || snapshot.prints.length === 0) {
+    return {
+      available: false,
+      bias: snapshot?.bias ?? "neutral",
+      total_premium: snapshot?.total_premium ?? 0,
+      total_premium_label: null,
+      call_premium_label: null,
+      put_premium_label: null,
+      pcr: snapshot?.pcr ?? null,
+      detail: snapshot?.detail ?? null,
+      top_prints: [],
+    };
+  }
+
+  return {
+    available: true,
+    bias: snapshot.bias,
+    total_premium: snapshot.total_premium,
+    total_premium_label: fmtPremShort(snapshot.total_premium),
+    call_premium_label: snapshot.call_premium > 0 ? fmtPremShort(snapshot.call_premium) : null,
+    put_premium_label: snapshot.put_premium > 0 ? fmtPremShort(snapshot.put_premium) : null,
+    pcr: snapshot.pcr,
+    detail: snapshot.detail,
+    top_prints: snapshot.prints.slice(0, 8).map((p) => ({
+      premium: p.premium,
+      premium_label: fmtPremShort(p.premium),
+      strike: p.strike > 0 ? p.strike : null,
+      side: p.side || null,
+      executed_at: p.executed_at?.slice(11, 16) ?? null,
+    })),
+  };
+}
 
 /** HELIX flow window scaled to days until print (cap 7d). */
 export function flowWindowHours(daysUntil: number | null | undefined): number {
@@ -26,6 +70,7 @@ export function moveArrow(pct: number | null): "↑" | "↓" | "→" | null {
 
 type PlayInput = {
   flow_bias: string;
+  dark_pool_bias?: string | null;
   gamma_regime: string | null;
   expected_move_pct: number | null;
   days_until: number | null;
@@ -53,6 +98,15 @@ export function buildErPlayRead(input: PlayInput): MeridianErPlayRead {
   } else if (input.flow_bias === "bearish") {
     bearish += 2;
     rationale.push("HELIX flow skew is put-heavy into the print");
+  }
+
+  const dpBias = (input.dark_pool_bias ?? "").toLowerCase();
+  if (dpBias === "bullish") {
+    bullish += 1;
+    rationale.push("Dark pool tape skews bullish on today's institutional prints");
+  } else if (dpBias === "bearish") {
+    bearish += 1;
+    rationale.push("Dark pool tape skews bearish on today's institutional prints");
   }
 
   const regime = (input.gamma_regime ?? "").toLowerCase();

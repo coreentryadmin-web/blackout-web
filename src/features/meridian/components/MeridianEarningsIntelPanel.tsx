@@ -185,6 +185,36 @@ export function MeridianEarningsIntelPanel({ intel, printHistory, tickerExpected
           </MeridianDataCard>
         )}
 
+        {intel.dark_pool.available && (
+          <MeridianDataCard label="Dark pool · today" tone="earnings" delay={280}>
+            {intel.dark_pool.total_premium_label && (
+              <p className="meridian-card-value">
+                {intel.dark_pool.total_premium_label} total · {intel.dark_pool.bias}
+                {intel.dark_pool.pcr != null ? ` · P/C ${intel.dark_pool.pcr.toFixed(2)}` : ""}
+              </p>
+            )}
+            {(intel.dark_pool.call_premium_label || intel.dark_pool.put_premium_label) && (
+              <p className="meridian-card-muted">
+                {intel.dark_pool.call_premium_label ? `Calls ${intel.dark_pool.call_premium_label}` : ""}
+                {intel.dark_pool.call_premium_label && intel.dark_pool.put_premium_label ? " · " : ""}
+                {intel.dark_pool.put_premium_label ? `Puts ${intel.dark_pool.put_premium_label}` : ""}
+              </p>
+            )}
+            {intel.dark_pool.top_prints.length > 0 && (
+              <ul className="meridian-card-list meridian-flow-prints">
+                {intel.dark_pool.top_prints.map((row, i) => (
+                  <li key={`dp-${row.strike}-${row.executed_at}-${i}`}>
+                    {row.premium_label}
+                    {row.strike != null ? ` @ ${row.strike}` : ""}
+                    {row.side ? ` · ${row.side}` : ""}
+                    {row.executed_at ? ` · ${row.executed_at}` : ""}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </MeridianDataCard>
+        )}
+
         {play_read.rationale.length > 1 && (
           <MeridianDataCard label="Structure rationale" wide tone="earnings" delay={320}>
             <ul className="meridian-card-list">

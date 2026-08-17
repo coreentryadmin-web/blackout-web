@@ -85,7 +85,9 @@ async function main() {
       await page.screenshot({ path: `${ART}/meridian-event-detail.png`, fullPage: true });
       console.log(`✓ ${ART}/meridian-event-detail.png`);
       const playRead = await page.locator(".meridian-analytics-banner-label", { hasText: "Play read" }).count();
+      const darkPool = await page.locator(".meridian-data-card-label", { hasText: "Dark pool" }).count();
       console.log(`Play read banner visible: ${playRead > 0 ? "yes" : "no"}`);
+      console.log(`Dark pool card visible: ${darkPool > 0 ? "yes" : "no"}`);
     }
 
     const analyticsTab = page.getByRole("tab", { name: /Analytics grid/i });

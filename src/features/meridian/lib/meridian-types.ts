@@ -221,6 +221,26 @@ export type MeridianEarningsThermalRead = {
   nearest_wall: { strike: number; kind: "resistance" | "support"; distance_pts: number } | null;
 };
 
+export type MeridianEarningsDarkPoolPrint = {
+  premium: number;
+  premium_label: string;
+  strike: number | null;
+  side: string | null;
+  executed_at: string | null;
+};
+
+export type MeridianEarningsDarkPool = {
+  available: boolean;
+  bias: string;
+  total_premium: number;
+  total_premium_label: string | null;
+  call_premium_label: string | null;
+  put_premium_label: string | null;
+  pcr: number | null;
+  detail: string | null;
+  top_prints: MeridianEarningsDarkPoolPrint[];
+};
+
 export type MeridianEarningsIntel = {
   expected_move_pct: number | null;
   expected_move_source: "calendar" | "chain_iv" | null;
@@ -235,6 +255,7 @@ export type MeridianEarningsIntel = {
     top_prints: MeridianEarningsFlowPrint[];
     strike_stacks: MeridianEarningsStrikeStack[];
   };
+  dark_pool: MeridianEarningsDarkPool;
   thermal: MeridianEarningsThermalRead;
   play_read: MeridianErPlayRead;
 };
