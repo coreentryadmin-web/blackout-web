@@ -743,6 +743,45 @@ export async function shareLargoToDiscord(input: {
   return res.json() as Promise<{ ok: boolean }>;
 }
 
+export type LargoXPostDraft = {
+  text: string;
+  charCount: number;
+  intentUrl: string;
+  truncated: boolean;
+  attachments: Array<{
+    tool: string;
+    label: string;
+    deskPath: string;
+    captureHint: string;
+    order: number;
+    primary?: boolean;
+    steps: string[];
+    screenshotTarget: string;
+    verifyBeforeCapture: string;
+  }>;
+  clipboardText: string;
+  archetype: string;
+  altHooks: string[];
+};
+
+export async function draftLargoXPost(input: {
+  answer: string;
+  headline?: string | null;
+  ticker?: string | null;
+  bias?: string | null;
+  question?: string | null;
+  levels?: Array<{ label: string; price: number; note?: string }>;
+}): Promise<LargoXPostDraft> {
+  const res = await fetch(`${MARKET_BASE}/largo/draft-x-post`, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error(`draft x post → ${res.status}`);
+  return res.json() as Promise<LargoXPostDraft>;
+}
+
 // ── Live flow stream
 
 export type PulseStreamSnapshot = {

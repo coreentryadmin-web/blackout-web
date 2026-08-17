@@ -28,5 +28,5 @@ test("system prompt embeds full product knowledge block", () => {
 
 test("system prompt no longer promises PNG card generation", () => {
   assert.doesNotMatch(LARGO_SYSTEM_PROMPT, /shareable BLACKOUT card — a real PNG/);
-  assert.match(LARGO_SYSTEM_PROMPT, /Shareable PNG\/card generation was removed/);
+  assert.match(LARGO_SYSTEM_PROMPT, /does NOT render PNGs/);
 });

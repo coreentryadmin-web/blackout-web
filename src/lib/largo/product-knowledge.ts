@@ -180,4 +180,38 @@ key levels + floor pivots, OpEx calendar, daily dealer-regime series, screener p
 2. For "what changed" on Vector → get_vector_pulse; for "what is the matrix" on Thermal → get_gex_heatmap + lens param.
 3. For cross-desk synthesis → get_platform_snapshot (include largo) or get_ecosystem_context per ticker.
 4. If the member asks about a panel listed above, CALL the tool — never describe the panel from memory.
+
+---
+
+### Meridian (/meridian) — catalyst + earnings intelligence desk
+
+**Timeline rail:** macro (CPI, FOMC, NFP), earnings, FDA, OpEx — searchable by ticker, filterable by kind/impact.
+- call_internal_api: GET /api/market/meridian/timeline?days=14
+
+**Event detail:** earnings intel (financials, est vs actual, flow, thermal nodes, dark pool, play read), macro report, OpEx cross-market history.
+- call_internal_api: GET /api/market/meridian/event?id=<event_id>
+- Lookup: GET /api/market/meridian/lookup?ticker=NVDA (next earnings on calendar)
+
+**When to use Meridian vs get_earnings:** Meridian is the FULL desk panel (timeline + multi-signal detail). get_earnings / get_earnings_calendar are lighter fund tools — use Meridian for "earnings post", "catalyst this week", "OpEx preview".
+
+---
+
+### 0DTE Command / Grid (/grid) — same board as Night Hawk tab 1
+
+Whole-market 0DTE scanner ledger (multi-ticker). Night Hawk hub wraps the same board with Swings/Bangers/Legacy tabs.
+- Tool: get_zerodte_plays (plays + fresh_finds + funnel)
+
+---
+
+### Largo (/terminal) — this AI desk
+
+Members ask natural-language questions; answers use the tool map above. Social posts: draft Copy + step-by-step screenshot workflow; **Copy for X** button on each answer.
+
+---
+
+### Public surfaces (social / funnel — not provider names)
+
+- Track record: /track-record (public graded stats)
+- Pricing: /pricing · Whop checkout linked from upgrade page
+- X @BlackOutTrade · Discord invite in site footer
 `;

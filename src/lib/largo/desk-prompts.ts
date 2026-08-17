@@ -15,6 +15,8 @@ export type LargoDeskPrompt = {
   peerCompare?: boolean;
   playSimilarity?: boolean;
   preEarningsPack?: boolean;
+  /** When true, server prefetches social content pack (winners, SPX, record). */
+  socialPack?: boolean;
 };
 
 /** Compact chips in the composer and native terminal. */
@@ -58,6 +60,78 @@ export const LARGO_DESK_PROMPTS: LargoDeskPrompt[] = [
     hint: "Positioning, flow, history, and board exposure in one pack",
     question: "Pre-earnings desk pack for NVDA — positioning, flow into the print, historical moves, and any 0DTE exposure.",
     preEarningsPack: true,
+  },
+  {
+    id: "x-winners",
+    label: "X · today's winners",
+    hint: "Banger post from live 0DTE board P&L + screenshot list",
+    question:
+      "Draft an X post about today's winning 0DTE plays — hook, tweet copy, alt hooks, and exactly which desk screenshots to attach. Use only live board numbers.",
+    socialPack: true,
+  },
+  {
+    id: "x-platform",
+    label: "X · platform showcase",
+    hint: "Full-desk story for @BlackOutTrade",
+    question:
+      "Draft an X post showcasing the BlackOut desk — what makes it different, one provocative hook, tweet copy, and which tool screenshots to attach.",
+    socialPack: true,
+  },
+  {
+    id: "x-spx-desk",
+    label: "X · SPX live read",
+    hint: "Live SPX levels + flow vs gamma post",
+    question:
+      "Draft an X post for the current SPX setup — flip, walls, flow vs gamma, tweet copy, and screenshot list.",
+    socialPack: true,
+  },
+  {
+    id: "x-win-recap",
+    label: "X · win recap",
+    hint: "Single play evolution — Night Hawk → Helix → Thermal",
+    question:
+      "Draft an X win-recap post for the best green play on today's 0DTE board — timeline story, copy, and panels to screenshot.",
+    socialPack: true,
+  },
+  {
+    id: "x-meridian-earnings",
+    label: "X · earnings catalyst",
+    hint: "Meridian intel + Helix + Thermal screenshot workflow",
+    question:
+      "Draft an X post for the next high-impact earnings name on Meridian — copy, CTA, and step-by-step screenshots from Meridian, Helix, and Thermal.",
+    socialPack: true,
+  },
+  {
+    id: "x-full-workflow",
+    label: "X · full screenshot guide",
+    hint: "Baby-sit every desk panel for a platform post",
+    question:
+      "I'm posting on X today — give me tweet copy AND a complete screenshot workflow: Helix filters, Thermal (Mag7 if relevant), Vector, Night Hawk plays, SPX Slayer if needed, with exact clicks and what to capture from each tool.",
+    socialPack: true,
+  },
+  {
+    id: "x-realtime-whale",
+    label: "X · whale print now",
+    hint: "Live flow banger — Helix + Thermal + Vector",
+    question:
+      "Draft an X post for the biggest options print on the tape right now — hook, copy, alt hooks, CTA, and screenshot workflow from Helix, Thermal, and Vector. Use live numbers only.",
+    socialPack: true,
+  },
+  {
+    id: "x-mag7-grid",
+    label: "X · Mag7 gamma grid",
+    hint: "Thermal compare grid post for mega-cap day",
+    question:
+      "Draft an X post using the Thermal Mag 7 compare grid — why it matters today, tweet copy, CTA, and step-by-step screenshot workflow.",
+    socialPack: true,
+  },
+  {
+    id: "x-discord-recycle",
+    label: "X · Discord → X",
+    hint: "Repurpose desk read for @BlackOutTrade",
+    question:
+      "I shared a desk read in Discord — repackage it as an X post with tighter hook, copy, alt hooks, CTA (Discord invite in reply), and which desk screenshots to attach.",
+    socialPack: true,
   },
 ];
 
@@ -217,6 +291,26 @@ export function questionWantsPreEarningsPack(question: string): boolean {
     /\bbefore earnings\b/i.test(q) ||
     /\bearnings desk pack\b/i.test(q) ||
     /\bearnings pack\b/i.test(q)
+  );
+}
+
+/** True when the member wants X/Twitter/social post copy (prefetch winners + record). */
+export function questionWantsSocialContentPack(question: string): boolean {
+  const q = String(question ?? "").trim();
+  if (!q) return false;
+  return (
+    /\b(x post|twitter post|tweet|social post|content for x|banger post|marketing post|post for x|draft.*post|create.*post|what should we post|social media|ads expert)\b/i.test(q) ||
+    /\b(win recap|showcase post|platform post|winning plays post|attach.*screenshot|screenshot.*attach|screenshot workflow)\b/i.test(q)
+  );
+}
+
+export function questionWantsMeridianPrefetch(question: string): boolean {
+  const q = String(question ?? "").trim();
+  if (!q) return false;
+  return (
+    /\b(meridian|catalyst calendar|opex preview|macro desk|earnings post|earnings intel|fda calendar)\b/i.test(q) ||
+    (questionWantsSocialContentPack(q) &&
+      /\b(earnings|macro|opex|catalyst|cpi|fomc|nfp)\b/i.test(q))
   );
 }
 

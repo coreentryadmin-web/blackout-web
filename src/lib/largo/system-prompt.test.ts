@@ -108,9 +108,9 @@ test("no hardcoded SPX level: a stale anchor becomes a reason to distrust live d
  */
 test("Largo is told card/PNG generation was removed — must not promise images", () => {
   const p = LARGO_SYSTEM_PROMPT;
-  assert.match(p, /Shareable PNG\/card generation was removed/);
+  assert.match(p, /does NOT render PNGs/);
   assert.doesNotMatch(p, /\*\*You CAN produce one, and it is already built\.\*\*/);
-  assert.match(p, /Do NOT promise images/);
+  assert.match(p, /Do NOT auto-post/);
 });
 
 test("missing subject is still a data answer, not a capability answer", () => {
