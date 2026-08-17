@@ -291,13 +291,17 @@ export async function buildMeridianMacroBrief(input: {
 export async function buildMeridianOpexDetail(date: string): Promise<MeridianOpexDetail> {
   const { fetchGexHeatmap } = await import("@/lib/providers/polygon-options-gex");
   const { loadMeridianOpexHistoryWithHeatmap } = await import("@/lib/meridian/meridian-opex-history");
-  const [spx_positioning, expiry_read, hm] = await Promise.all([
+  const { loadMeridianOpexCrossMarket } = await import("@/lib/meridian/meridian-opex-cross-market");
+  const { buildMeridianOpexReport } = await import("@/lib/meridian/meridian-opex-cross-market-core");
+  const [spx_positioning, expiry_read, hm, cross_market] = await Promise.all([
     loadSpxPositioning(),
     loadOpexExpiryRead(date),
     fetchGexHeatmap("SPX").catch(() => null),
+    loadMeridianOpexCrossMarket(date),
   ]);
   const prior_opex = await loadMeridianOpexHistoryWithHeatmap(date, hm);
   const pin_accuracy = buildOpexPinAccuracy(prior_opex);
+  const report = buildMeridianOpexReport({ cross_market, pin_accuracy, spx_positioning });
   return roundFloats({
     kind: "opex",
     date,
@@ -306,6 +310,8 @@ export async function buildMeridianOpexDetail(date: string): Promise<MeridianOpe
     expiry_read,
     prior_opex,
     pin_accuracy,
+    cross_market,
+    report,
     as_of: new Date().toISOString(),
   });
 }

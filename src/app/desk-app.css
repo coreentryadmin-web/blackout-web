@@ -1072,6 +1072,47 @@ html.nav-locked body { overflow: hidden; }
 }
 .meridian-watch-list li { font-size: 0.78rem; color: var(--mer-muted, #bae6fd); }
 
+.meridian-opex-cross-market { margin-bottom: 0.65rem; }
+.meridian-opex-table-wrap {
+  overflow-x: auto;
+  margin: -0.15rem -0.1rem 0;
+}
+.meridian-opex-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.68rem;
+}
+.meridian-opex-table th {
+  text-align: left;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--mer-accent, #67e8f9);
+  padding: 0.35rem 0.45rem 0.45rem 0;
+  border-bottom: 1px solid rgba(103, 232, 249, 0.15);
+  white-space: nowrap;
+}
+.meridian-opex-table td {
+  padding: 0.4rem 0.45rem 0.4rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  color: #fff;
+  white-space: nowrap;
+}
+.meridian-opex-date { color: var(--mer-muted, #bae6fd); }
+.meridian-opex-sub { color: var(--mer-muted, #bae6fd); font-size: 0.62rem; }
+.meridian-opex-move { font-weight: 600; }
+.meridian-pct-up { color: var(--mer-bull, #34d399); }
+.meridian-pct-down { color: var(--mer-bear, #fb7185); }
+.meridian-pct-flat { color: #fff; }
+.meridian-mag7-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.meridian-mag7-ticker { font-weight: 600; color: #fff; }
+.meridian-mag7-pct { font-family: var(--font-mono, monospace); font-size: 0.72rem; }
+
 .meridian-stat-tone-rose { border-color: rgba(251, 113, 133, 0.25); }
 .meridian-stat-tone-rose .meridian-stat-card-value { color: #fb7185; }
 

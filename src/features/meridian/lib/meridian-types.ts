@@ -339,6 +339,56 @@ export type MeridianOpexExpiryRead = {
   net_flow_label: string | null;
 };
 
+export type MeridianOpexMover = {
+  ticker: string;
+  session_pct: number;
+  close: number;
+  volume: number;
+};
+
+export type MeridianOpexMag7Summary = {
+  avg_session_pct: number | null;
+  best: { ticker: string; session_pct: number } | null;
+  worst: { ticker: string; session_pct: number } | null;
+  members: Array<{ ticker: string; session_pct: number | null }>;
+};
+
+export type MeridianOpexCrossMarketRow = {
+  date: string;
+  spx_session_pct: number | null;
+  spy_session_pct: number | null;
+  qqq_session_pct: number | null;
+  iwm_session_pct: number | null;
+  mag7: MeridianOpexMag7Summary;
+  top_gainer: MeridianOpexMover | null;
+  top_loser: MeridianOpexMover | null;
+};
+
+export type MeridianOpexCrossMarket = {
+  available: boolean;
+  sample_size: number;
+  rows: MeridianOpexCrossMarketRow[];
+  aggregates: {
+    avg_spx_session_pct: number | null;
+    avg_qqq_session_pct: number | null;
+    avg_mag7_session_pct: number | null;
+    mag7_led_count: number;
+    divergence_headline: string | null;
+  };
+  headline: string | null;
+};
+
+export type MeridianOpexReport = {
+  available: boolean;
+  outlook: {
+    lean: "risk_on" | "risk_off" | "neutral";
+    headline: string;
+    summary: string;
+  };
+  watch_list: string[];
+  warnings: string[];
+};
+
 export type MeridianOpexDetail = {
   kind: "opex";
   date: string;
@@ -347,6 +397,8 @@ export type MeridianOpexDetail = {
   expiry_read: MeridianOpexExpiryRead;
   prior_opex: MeridianOpexHistoryRow[];
   pin_accuracy: MeridianOpexPinAccuracy;
+  cross_market: MeridianOpexCrossMarket;
+  report: MeridianOpexReport;
   as_of: string;
 };
 
