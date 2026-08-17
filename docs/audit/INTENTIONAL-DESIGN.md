@@ -210,3 +210,44 @@ env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY node --import tsx \
 Every tool above is **evidence, not gating** (calibration-first): it informs a future change, it does
 not itself change what the board commits. None alters production behavior. Keep this file and
 `docs/audit/FINDINGS.md` updated as the measurements run and any of these decisions is revisited.
+
+
+## 5. G-11 earnings block is DATE-grained, not PRINT-TIME-grained (measured 2026-08-17)
+
+**The decision.** G-11 blocks a fresh 0DTE commit when the ticker reports today or next-day. With
+the old coarse feed that was the most the gate could honestly say: the snapshot carried
+`report_date` and a premarket/afterhours bucket *inferred from the date*, not an actual print time.
+
+**What changed.** The Benzinga structured earnings feed (`/benzinga/v1/earnings`, entitled
+2026-08-17) carries the exact ET print time and a `confirmed`/`projected` status. That makes a
+sharper statement possible: a 0DTE is flat at 16:00, so a confirmed **after-close** print cannot gap
+the position, and a confirmed **pre-open** print that already landed resolved its gap before the
+session began.
+
+**The measurement** (`src/lib/zerodte/earnings-print-window.ts`, 10 unit tests). Classifier run over
+every reporter on 2026-08-20 (33 rows), evaluated at several times of day:
+
+| eval time (ET) | exemptible / total | after-close | pre-open landed | still pending |
+|---|---|---|---|---|
+| 06:00 | 21/33 | 6 | 15 | **12** |
+| 09:00 | 32/33 | 6 | 26 | 1 |
+| 09:35 → close | **33/33** | 6 | 27 | 0 |
+
+Four-day window (08-18…08-21, 95 rows): **zero intraday prints, zero untimed rows.** Every print was
+pre-open or after-close.
+
+**Read it carefully.** The headline "100%" is a *mid-session* number. Pre-market it is materially
+lower (21/33 at 06:00) because un-landed pre-open prints are still ahead — and the classifier keeps
+blocking those, correctly. The time-independent claim is the narrower one: the **6 after-close
+prints are exempt at any hour**, and once the session opens the pre-open ones have resolved.
+
+**What was NOT done, deliberately.** No gate was changed. G-11 behaves exactly as before. Changing a
+live risk gate changes what trades with real money, and the repo's pattern for that (see the
+iron-condor calibration table) is evidence first, gating second. The missing half of the evidence is
+the graded outcome of the would-be commits this would unlock — the counterfactual needs real minute
+bars, not just a count of what was blocked.
+
+**Fail-closed posture is preserved in the classifier itself**: unknown time, projected date, or an
+unreadable date all classify as THREATENING. A projected date does not earn the after-close
+exemption, because that exemption rests entirely on knowing the print lands after the position is
+flat.
