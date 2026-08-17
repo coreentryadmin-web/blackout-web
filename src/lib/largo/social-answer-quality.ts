@@ -50,8 +50,20 @@ export function scoreSocialAnswer(answer: string): SocialAnswerScore {
   if (hashtagLeak) issues.push("hashtag-leak");
   if (sanitized.length < 200) issues.push("answer-too-short");
 
+  // Honest empty-board decline — still require Post section, but don't RED for missing copy if verdict explains why
+  const honestEmptyBoard =
+    /\b(empty|no committed|no fresh finds|can't draft|cannot draft|nothing to screenshot)\b/i.test(sanitized) &&
+    /\b0dte|board|ledger\b/i.test(sanitized);
+  if (honestEmptyBoard && !hasPostSection) {
+    /* keep missing-post-section */
+  } else if (honestEmptyBoard && hasPostSection && !copy) {
+    const idx = issues.indexOf("missing-copy");
+    if (idx >= 0) issues.splice(idx, 1);
+  }
+
   const red = issues.some((i) =>
-    ["missing-post-section", "missing-copy", "vendor-leak", "answer-too-short"].includes(i),
+    ["missing-post-section", "vendor-leak", "answer-too-short"].includes(i) ||
+    (i === "missing-copy" && !honestEmptyBoard),
   );
   const amber = issues.length > 0 && !red;
 

@@ -110,9 +110,10 @@ import {
 } from "@/lib/largo/helix-thermal-compare";
 import { playSimilarityForLargo, type PlaySimilarityCard } from "@/lib/largo/play-similarity";
 import { preEarningsPackForLargo, type PreEarningsPackCard } from "@/lib/largo/pre-earnings-pack";
-import { buildSocialContentPack } from "@/lib/largo/social-content-pack";
+import { buildSocialContentPack, type SocialContentPack } from "@/lib/largo/social-content-pack";
 import { meridianTimelineForLargo } from "@/lib/largo/meridian-for-largo";
 import { LARGO_SOCIAL_CONTENT_VOICE } from "@/lib/largo/social-content-voice";
+import { enrichSocialAnswerIfNeeded } from "@/lib/largo/social-answer-enrich";
 import { formatDepthBlock, largoDepthConfig, parseLargoDepth, type LargoDepth } from "@/lib/largo/largo-depth";
 import { largoToolLoopBudgetMs } from "@/lib/providers/config";
 import { buildLargoActions, type LargoAction } from "@/lib/largo/largo-actions";
@@ -366,6 +367,7 @@ async function prepareLargoTurn(
   compareCard: LargoCompareCard | null;
   playSimilarity: PlaySimilarityCard | null;
   preEarningsPack: PreEarningsPackCard | null;
+  socialPack: SocialContentPack | null;
   sessionMetadata: Awaited<ReturnType<typeof fetchLargoSessionMetadata>>;
 }> {
   let sid = sessionId.trim() || `web-${userId}-${Date.now()}`;
@@ -549,8 +551,9 @@ async function prepareLargoTurn(
   }
 
   let socialContentBlock = "";
+  let socialPack: SocialContentPack | null = null;
   if (questionWantsSocialContentPack(question)) {
-    const socialPack = await buildSocialContentPack(question, intentTicker).catch(() => null);
+    socialPack = await buildSocialContentPack(question, intentTicker).catch(() => null);
     if (socialPack?.available) {
       toolsUsed.push("social_content_pack_prefetch");
       socialContentBlock =
@@ -658,6 +661,7 @@ async function prepareLargoTurn(
     compareCard,
     playSimilarity,
     preEarningsPack,
+    socialPack,
     sessionMetadata,
   };
 }
@@ -751,7 +755,7 @@ export async function runLargoQuery(
 
   const {
     sid, history, system, filteredTools, toolsUsed, tickerHint, viewer, timeframe, persistedQuestion,
-    liveFeedResults, depth, compareCard, playSimilarity, preEarningsPack,
+    liveFeedResults, depth, compareCard, playSimilarity, preEarningsPack, socialPack,
   } = await prepareLargoTurn(
     question,
     sessionId,
@@ -856,6 +860,9 @@ export async function runLargoQuery(
       startedAt
     );
     text = sanitizeLargoMemberText(gatedText);
+    if (questionWantsSocialContentPack(question)) {
+      text = enrichSocialAnswerIfNeeded(text, question, socialPack, tickerHint);
+    }
 
     // Per-tool timing summary. Turns "Largo is slow" into "get_postgres_flows took 9.2s of an 11s
     // turn" — a question with an answer. Also surfaces DENIED and silently-EMPTY tool results,
@@ -973,7 +980,7 @@ export async function runLargoQueryStream(
 
   const {
     sid, history, system, filteredTools, toolsUsed, tickerHint, viewer, timeframe, persistedQuestion,
-    liveFeedResults, depth, compareCard, playSimilarity, preEarningsPack,
+    liveFeedResults, depth, compareCard, playSimilarity, preEarningsPack, socialPack,
   } = await prepareLargoTurn(
     question,
     sessionId,
@@ -1106,6 +1113,9 @@ export async function runLargoQueryStream(
       startedAt
     );
     text = sanitizeLargoMemberText(gatedText);
+    if (questionWantsSocialContentPack(question)) {
+      text = enrichSocialAnswerIfNeeded(text, question, socialPack, tickerHint);
+    }
 
     // Per-tool timing summary. Turns "Largo is slow" into "get_postgres_flows took 9.2s of an 11s
     // turn" — a question with an answer. Also surfaces DENIED and silently-EMPTY tool results,

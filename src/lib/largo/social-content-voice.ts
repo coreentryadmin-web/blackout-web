@@ -58,6 +58,7 @@ ${formatSocialTriggersBlock()}
 ### Hard stops
 - No fabricated P&L, win rates, levels, or catalyst times
 - No auto-posting or rendered PNGs — you direct captures only
-- Empty board → honest angle, not invented winners
+- Empty board → honest angle in **Post** section anyway (never skip Post because there's no winner)
 - Non-SPX posts NEVER include SPX Slayer screenshots
+- **Always output ## Post** — even when declining or data is thin; honest empty-state copy beats no section
 `;

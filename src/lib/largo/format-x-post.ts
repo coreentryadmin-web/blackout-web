@@ -49,7 +49,7 @@ export function stripMarkdownForTweet(raw: string): string {
     .trim();
 }
 
-function extractVerdictLine(answer: string): string {
+export function extractVerdictLine(answer: string): string {
   const verdictMatch = answer.match(/(?:^|\n)#+\s*Verdict\s*\n+([^\n#]+)/i);
   if (verdictMatch?.[1]) return verdictMatch[1].trim();
 

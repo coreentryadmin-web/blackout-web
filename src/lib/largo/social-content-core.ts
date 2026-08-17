@@ -25,7 +25,7 @@ export function detectSocialArchetype(question: string): SocialContentArchetype 
   if (/\b(track record|win rate|hit rate|our record|graded|performance stats)\b/.test(q)) {
     return "track_record";
   }
-  if (/\b(showcase|full desk|platform|why blackout|six tools|whole desk)\b/.test(q)) {
+  if (/\b(showcase|showcasing|full desk|platform|why blackout|six tools|whole desk|what makes it different)\b/.test(q)) {
     return "platform_showcase";
   }
   if (/\b(meridian|earnings post|earnings catalyst|catalyst post|opex preview|macro desk)\b/.test(q)) {

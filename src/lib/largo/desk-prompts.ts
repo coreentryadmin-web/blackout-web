@@ -109,6 +109,30 @@ export const LARGO_DESK_PROMPTS: LargoDeskPrompt[] = [
       "I'm posting on X today — give me tweet copy AND a complete screenshot workflow: Helix filters, Thermal (Mag7 if relevant), Vector, Night Hawk plays, SPX Slayer if needed, with exact clicks and what to capture from each tool.",
     socialPack: true,
   },
+  {
+    id: "x-realtime-whale",
+    label: "X · whale print now",
+    hint: "Live flow banger — Helix + Thermal + Vector",
+    question:
+      "Draft an X post for the biggest options print on the tape right now — hook, copy, alt hooks, CTA, and screenshot workflow from Helix, Thermal, and Vector. Use live numbers only.",
+    socialPack: true,
+  },
+  {
+    id: "x-mag7-grid",
+    label: "X · Mag7 gamma grid",
+    hint: "Thermal compare grid post for mega-cap day",
+    question:
+      "Draft an X post using the Thermal Mag 7 compare grid — why it matters today, tweet copy, CTA, and step-by-step screenshot workflow.",
+    socialPack: true,
+  },
+  {
+    id: "x-discord-recycle",
+    label: "X · Discord → X",
+    hint: "Repurpose desk read for @BlackOutTrade",
+    question:
+      "I shared a desk read in Discord — repackage it as an X post with tighter hook, copy, alt hooks, CTA (Discord invite in reply), and which desk screenshots to attach.",
+    socialPack: true,
+  },
 ];
 
 /** Empty-state showcase — same three intents, phrased as questions. */
