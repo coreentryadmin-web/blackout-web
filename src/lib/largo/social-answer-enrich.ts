@@ -9,9 +9,31 @@ import {
   detectSocialArchetype,
   type SocialContentArchetype,
 } from "@/lib/largo/social-content-core";
-import type { SocialContentPack } from "@/lib/largo/social-content-pack";
 import { formatMediaPlanForClipboard, buildXPostMediaPlan } from "@/lib/largo/x-post-media-plan";
 import { LARGO_PLATFORM_LINKS } from "@/lib/largo/platform-links";
+
+export type SocialPackSlice = {
+  available: boolean;
+  winners: Array<{ ticker: string; direction: string | null; live_pnl_pct: number | null }>;
+  board: {
+    open_count: number;
+    closed_today: number;
+    best_winner_pct: number | null;
+    worst_loser_pct: number | null;
+  };
+  spx: {
+    spot: number | null;
+    flip: number | null;
+    gamma_regime: string | null;
+    conflict: boolean;
+  } | null;
+  record_7d: {
+    wins: number;
+    losses: number;
+    win_rate_pct: number | null;
+    sample_size: number;
+  } | null;
+};
 
 function hasPostSection(answer: string): boolean {
   return /(?:^|\n)#+\s*Post\b/i.test(answer);
@@ -20,7 +42,7 @@ function hasPostSection(answer: string): boolean {
 export function enrichSocialAnswerIfNeeded(
   answer: string,
   question: string,
-  pack: SocialContentPack | null,
+  pack: SocialPackSlice | null,
   ticker?: string | null,
 ): string {
   if (!answer.trim() || hasPostSection(answer)) return answer;

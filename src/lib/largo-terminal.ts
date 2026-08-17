@@ -110,9 +110,8 @@ import {
 } from "@/lib/largo/helix-thermal-compare";
 import { playSimilarityForLargo, type PlaySimilarityCard } from "@/lib/largo/play-similarity";
 import { preEarningsPackForLargo, type PreEarningsPackCard } from "@/lib/largo/pre-earnings-pack";
-import { buildSocialContentPack, type SocialContentPack } from "@/lib/largo/social-content-pack";
-import { meridianTimelineForLargo } from "@/lib/largo/meridian-for-largo";
 import { LARGO_SOCIAL_CONTENT_VOICE } from "@/lib/largo/social-content-voice";
+import type { SocialPackSlice } from "@/lib/largo/social-answer-enrich";
 import { enrichSocialAnswerIfNeeded } from "@/lib/largo/social-answer-enrich";
 import { formatDepthBlock, largoDepthConfig, parseLargoDepth, type LargoDepth } from "@/lib/largo/largo-depth";
 import { largoToolLoopBudgetMs } from "@/lib/providers/config";
@@ -367,7 +366,7 @@ async function prepareLargoTurn(
   compareCard: LargoCompareCard | null;
   playSimilarity: PlaySimilarityCard | null;
   preEarningsPack: PreEarningsPackCard | null;
-  socialPack: SocialContentPack | null;
+  socialPack: SocialPackSlice | null;
   sessionMetadata: Awaited<ReturnType<typeof fetchLargoSessionMetadata>>;
 }> {
   let sid = sessionId.trim() || `web-${userId}-${Date.now()}`;
@@ -551,8 +550,9 @@ async function prepareLargoTurn(
   }
 
   let socialContentBlock = "";
-  let socialPack: SocialContentPack | null = null;
+  let socialPack: SocialPackSlice | null = null;
   if (questionWantsSocialContentPack(question)) {
+    const { buildSocialContentPack } = await import("@/lib/largo/social-content-pack");
     socialPack = await buildSocialContentPack(question, intentTicker).catch(() => null);
     if (socialPack?.available) {
       toolsUsed.push("social_content_pack_prefetch");
@@ -564,6 +564,7 @@ async function prepareLargoTurn(
   }
 
   if (questionWantsMeridianPrefetch(question)) {
+    const { meridianTimelineForLargo } = await import("@/lib/largo/meridian-for-largo");
     const meridian = await meridianTimelineForLargo(14).catch(() => null);
     if (meridian?.available) {
       toolsUsed.push("meridian_timeline_prefetch");
