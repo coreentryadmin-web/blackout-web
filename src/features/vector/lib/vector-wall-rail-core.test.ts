@@ -13,6 +13,7 @@ import {
   kingStrikeByTime,
   targetHalfPx,
   withA,
+  trailingRefs,
 } from "./vector-wall-rail-core";
 
 // ── withA ────────────────────────────────────────────────────────────────────
@@ -268,4 +269,43 @@ test("kingStrikeByTime: junk points and strikes are skipped, never crowned", () 
 test("kingStrikeByTime: empty input yields no kings", () => {
   assert.equal(kingStrikeByTime([]).size, 0);
   assert.equal(kingStrikeByTime([{ strike: 100, points: [] }]).size, 0);
+});
+
+test("trailingRefs: each point references only STRICTLY EARLIER points", () => {
+  const pts = [
+    { time: 0, pct: 5 },
+    { time: 10, pct: 20 },
+    { time: 20, pct: 8 },
+    { time: 30, pct: 2 },
+  ];
+  const refs = trailingRefs(pts, 900);
+  // First bead has no past — null, so a wall's BIRTH is never rendered as a fade.
+  assert.equal(refs[0], null);
+  assert.equal(refs[1], 5, "sees only the 5 before it, NOT its own 20");
+  assert.equal(refs[2], 20, "peak so far");
+  assert.equal(refs[3], 20, "still measured against the peak while bleeding");
+});
+
+test("trailingRefs: the window EXPIRES an old peak so a rebuilt wall isn't judged forever", () => {
+  const pts = [
+    { time: 0, pct: 50 },      // a big early peak
+    { time: 100, pct: 5 },
+    { time: 1200, pct: 6 },    // 900s window from here starts at 300 — the peak has aged out
+    { time: 2000, pct: 6 },    // nothing at all within 900s of here
+  ];
+  const refs = trailingRefs(pts, 900);
+  assert.equal(refs[1], 50, "inside the window, still measured against the peak");
+  assert.equal(refs[2], null, "both earlier points aged out — no baseline in window");
+  // A wall with NO point in its trailing window has no baseline, and null renders neutral. That is
+  // the intended reading: a wall returning after a long absence is REBORN, not decayed, and judging
+  // it against a stale high would paint every re-entry as a dying wall.
+  assert.equal(refs[3], 6, "the 1200 bucket is within 900s and becomes the baseline");
+});
+
+test("trailingRefs: handles empty, single-point and non-finite pct without throwing", () => {
+  assert.deepEqual(trailingRefs([], 900), []);
+  assert.deepEqual(trailingRefs([{ time: 0, pct: 3 }], 900), [null]);
+  const withNaN = trailingRefs([{ time: 0, pct: NaN }, { time: 10, pct: 4 }], 900);
+  assert.equal(withNaN[0], null);
+  assert.equal(withNaN[1], null, "a NaN point is never adopted as a baseline");
 });

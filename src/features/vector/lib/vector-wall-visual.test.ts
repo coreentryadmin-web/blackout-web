@@ -9,6 +9,8 @@ import {
   radiusForPct,
   widthForPct,
   growthModulation,
+  decayModulation,
+  beadModulation,
   magnitudeGlowBoost,
   MODELED_ALPHA_SCALE,
   haloRingForTier,
@@ -259,4 +261,63 @@ test("real notional takes precedence over the proxy when present (seam is honour
   const viaReal = beadRadiusForNotional(600e6, LADDER);
   const viaProxy = beadRadiusForNotional(pctToNotionalProxy(7.5), LADDER); // 7.5% × $8B nominal = $600M
   assert.ok(Math.abs(viaReal - viaProxy) < 1e-9, "proxy at 7.5% reproduces the $600M real-notional bead");
+});
+
+test("decayModulation: a wall bleeding SLOWLY off its own baseline still fades", () => {
+  // THE REGRESSION. Per-bucket velocity is blind here: on 5s buckets a 20%->2% bleed over an hour
+  // moves ~0.025% of king per bucket, ~80x under GROWTH_EPS, so growthModulation returns neutral for
+  // every one of ~720 beads. Measured against the wall's OWN trailing peak, the same bead is clearly
+  // decayed and must render that way.
+  const slowStep = growthModulation(9.975, 10, 40);
+  assert.deepEqual(slowStep, { alphaMul: 1, sizeMul: 1, building: false, fading: false });
+
+  const vsBaseline = decayModulation(9.975, 20); // half its recent peak
+  assert.ok(vsBaseline.fading && !vsBaseline.building, "flagged fading vs its own baseline");
+  assert.ok(vsBaseline.alphaMul < 1 && vsBaseline.sizeMul < 1, "dims and narrows");
+});
+
+test("decayModulation: is SCALE-FREE — a small wall collapsing fades as hard as a big one", () => {
+  // The second half of the bug: normalizing by the frame king meant only walls comparable to the
+  // king could ever trip the threshold, so a 3% wall dying to 0.3% was rendered unchanged.
+  const bigCollapse = decayModulation(2, 20); // 20% -> 2%
+  const smallCollapse = decayModulation(0.3, 3); // 3% -> 0.3%, same RATIO
+  assert.deepEqual(bigCollapse, smallCollapse, "identical ratio => identical modulation");
+  assert.ok(smallCollapse.fading, "the small wall fades too");
+});
+
+test("decayModulation: steady, rebuilt, first-bead and bad input behave", () => {
+  const neutral = { alphaMul: 1, sizeMul: 1, building: false, fading: false };
+  assert.deepEqual(decayModulation(10, 10), neutral, "at baseline => neutral");
+  assert.deepEqual(decayModulation(10, null), neutral, "no baseline (first bead) => neutral");
+  assert.deepEqual(decayModulation(10, undefined), neutral);
+  assert.deepEqual(decayModulation(10, 0), neutral, "zero baseline can't be divided by");
+  assert.deepEqual(decayModulation(NaN, 10), neutral);
+  // Within the noise band nothing fires — a wall wobbling a few percent is not "dying".
+  assert.deepEqual(decayModulation(9.5, 10), neutral, "5% off baseline is jitter, not decay");
+  const rebuilt = decayModulation(20, 10);
+  assert.ok(rebuilt.building && !rebuilt.fading, "back above its baseline reads as building");
+  // Fade is bounded — a total collapse cannot drive a bead past the envelope.
+  const total = decayModulation(0.001, 100);
+  assert.ok(total.alphaMul >= 1 - 0.32 - 1e-9 && total.sizeMul >= 1 - 0.22 - 1e-9, "bounded");
+});
+
+test("beadModulation: takes the MORE EXTREME channel, never compounds them", () => {
+  // A fast collapse is ALSO a drop off baseline, so both channels see it. Compounding would
+  // double-count one event (0.68 * 0.68 = 0.46 alpha in a single bucket).
+  const both = beadModulation(2, 20, 20, 40);
+  assert.ok(both.alphaMul >= 1 - 0.32 - 1e-9, "no compounding below the single-channel floor");
+  assert.ok(both.fading);
+
+  // Slow bleed: bucket channel neutral, trailing channel carries it.
+  const slow = beadModulation(9.975, 10, 20, 40);
+  assert.ok(slow.fading, "trailing channel wins when the bucket channel is asleep");
+
+  // Fast one-bucket flare with no meaningful baseline change: bucket channel carries it.
+  const flare = beadModulation(20, 8, 20, 40);
+  assert.ok(flare.building, "bucket channel wins when the trailing channel is neutral");
+
+  // Both neutral => neutral.
+  assert.deepEqual(beadModulation(10, 10, 10, 40), {
+    alphaMul: 1, sizeMul: 1, building: false, fading: false,
+  });
 });
