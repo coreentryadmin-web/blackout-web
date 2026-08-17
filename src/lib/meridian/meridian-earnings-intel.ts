@@ -13,8 +13,10 @@ import {
   flowWindowHours,
   shapeMeridianDarkPool,
 } from "@/lib/meridian/meridian-earnings-intel-core";
+import { buildMeridianEarningsReport } from "@/lib/meridian/meridian-earnings-report-core";
 import type { PreEarningsPackCard } from "@/lib/largo/pre-earnings-pack";
 import type {
+  MeridianEarningsEnrichment,
   MeridianEarningsIntel,
   MeridianEarningsPrint,
 } from "@/features/meridian/lib/meridian-types";
@@ -31,6 +33,10 @@ export async function loadMeridianEarningsIntel(input: {
   ticker: string;
   pack: PreEarningsPackCard;
   print_history: MeridianEarningsPrint[];
+  enrichment: Pick<
+    MeridianEarningsEnrichment,
+    "analyst_revisions" | "earnings_headlines" | "catalysts" | "insider_activity"
+  >;
 }): Promise<MeridianEarningsIntel> {
   const sym = input.ticker.trim().toUpperCase();
   const windowHours = flowWindowHours(input.pack.days_until);
@@ -38,9 +44,7 @@ export async function loadMeridianEarningsIntel(input: {
   const [fundamentals, thermal, vectorEm, flowSummary, darkPoolRaw] = await Promise.all([
     fetchTickerFundamentalsBundle(sym).catch(() => null),
     gexHeatmapForLargo(sym, { lens: "gex", top_strikes: 8 }).catch(() => null),
-    input.pack.expected_move_pct == null
-      ? getVectorExpectedMove(sym, "weekly").catch(() => null)
-      : Promise.resolve(null),
+    getVectorExpectedMove(sym, "weekly").catch(() => null),
     marketPlatform.flows
       .getFlowTapeSummary({ ticker: sym, limit: 30, since_hours: windowHours })
       .catch(() => null),
@@ -80,17 +84,47 @@ export async function loadMeridianEarningsIntel(input: {
     dominant_type: s.option_type ?? null,
   }));
 
+  const spot = input.pack.positioning.spot ?? thermal?.spot ?? null;
+  const gamma_regime =
+    thermal?.gamma_regime_read ?? input.pack.positioning.gamma_regime ?? null;
+
   const play_read = buildErPlayRead({
     flow_bias: input.pack.flow.bias,
     dark_pool_bias: dark_pool.available ? dark_pool.bias : null,
-    gamma_regime: input.pack.positioning.gamma_regime,
+    gamma_regime,
     expected_move_pct,
     days_until: input.pack.days_until,
     beat_rate: beatRateFromPrints(input.print_history),
-    spot: input.pack.positioning.spot ?? thermal?.spot ?? null,
+    spot,
     call_wall: input.pack.positioning.call_wall ?? thermal?.call_wall ?? null,
     put_wall: input.pack.positioning.put_wall ?? thermal?.put_wall ?? null,
     king_strike: thermal?.gex_king_strike ?? null,
+  });
+
+  const vector_move_pct =
+    vectorEm?.movePct != null ? Number((vectorEm.movePct * 100).toFixed(1)) : null;
+
+  const report = buildMeridianEarningsReport({
+    ticker: sym,
+    days_until: input.pack.days_until,
+    flow_bias: input.pack.flow.bias,
+    dark_pool_bias: dark_pool.available ? dark_pool.bias : null,
+    dark_pool_available: dark_pool.available,
+    gamma_regime,
+    thermal_available: thermal?.available ?? false,
+    spot,
+    king_strike: thermal?.gex_king_strike ?? null,
+    call_wall: input.pack.positioning.call_wall ?? thermal?.call_wall ?? null,
+    put_wall: input.pack.positioning.put_wall ?? thermal?.put_wall ?? null,
+    expected_move_pct,
+    beat_rate: beatRateFromPrints(input.print_history),
+    financials: buildMeridianFinancialsContext(fundamentals),
+    analyst_revisions: input.enrichment.analyst_revisions,
+    earnings_headlines: input.enrichment.earnings_headlines,
+    catalysts: input.enrichment.catalysts,
+    insider_activity_count: input.enrichment.insider_activity.length,
+    vector_move_pct,
+    vector_expiry: vectorEm?.expiry ?? null,
   });
 
   return roundFloats({
@@ -152,6 +186,26 @@ export async function loadMeridianEarningsIntel(input: {
           top_strikes: [],
           nearest_wall: null,
         },
+    vector: vectorEm
+      ? {
+          available: true,
+          expiry: vectorEm.expiry,
+          move_pct: vector_move_pct,
+          spot,
+          bands: vectorEm.bands?.map((b) => ({
+            sigma: b.sigma,
+            low: Number(b.low.toFixed(2)),
+            high: Number(b.high.toFixed(2)),
+          })) ?? null,
+        }
+      : {
+          available: false,
+          expiry: null,
+          move_pct: vector_move_pct,
+          spot,
+          bands: null,
+        },
+    report,
     play_read,
   });
 }

@@ -90,6 +90,12 @@ export async function loadMeridianEventResponse(id: string): Promise<MeridianEve
       ticker,
       pack,
       print_history: enrichment.print_history,
+      enrichment: {
+        analyst_revisions: enrichment.analyst_revisions,
+        earnings_headlines: enrichment.earnings_headlines,
+        catalysts: enrichment.catalysts,
+        insider_activity: enrichment.insider_activity,
+      },
     });
     return roundFloats({ kind: "earnings", pack, enrichment, intel });
   }

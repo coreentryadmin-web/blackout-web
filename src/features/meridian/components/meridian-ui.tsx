@@ -40,7 +40,7 @@ export function kindTheme(kind: MeridianEventKind | string) {
 type StatProps = {
   value: string | number;
   label: string;
-  tone?: "cyan" | "amber" | "violet" | "emerald";
+  tone?: "cyan" | "amber" | "violet" | "emerald" | "rose";
   delay?: number;
 };
 

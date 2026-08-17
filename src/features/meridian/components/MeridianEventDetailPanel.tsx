@@ -13,6 +13,8 @@ import {
   kindTheme,
 } from "./meridian-ui";
 import { MeridianEarningsIntelPanel } from "./MeridianEarningsIntelPanel";
+import { MeridianEarningsReportPanel } from "./MeridianEarningsReportPanel";
+import { MeridianMacroReportPanel } from "./MeridianMacroReportPanel";
 
 function fmtPrem(n: number): string {
   const abs = Math.abs(n);
@@ -88,6 +90,8 @@ export function MeridianEventDetailPanel({
 
       {!loading && !error && detail?.kind === "macro" && (
         <>
+          <MeridianMacroReportPanel detail={detail} />
+
           <div className="meridian-banner-stack">
             <MeridianAnalyticsBanner
               label="Correlation rail"
@@ -280,6 +284,17 @@ export function MeridianEventDetailPanel({
 
       {!loading && !error && detail?.kind === "earnings" && (
         <>
+          <MeridianEarningsReportPanel
+            ticker={detail.pack.ticker}
+            intel={detail.intel}
+            enrichment={{
+              earnings_headlines: detail.enrichment.earnings_headlines,
+              catalysts: detail.enrichment.catalysts,
+              analyst_revisions: detail.enrichment.analyst_revisions,
+              insider_activity: detail.enrichment.insider_activity,
+            }}
+          />
+
           <div className="meridian-banner-stack">
             {detail.enrichment.expected_vs_realized?.headline && (
               <MeridianAnalyticsBanner
@@ -330,14 +345,6 @@ export function MeridianEventDetailPanel({
                     </li>
                   ))}
                 </ul>
-              </MeridianDataCard>
-            )}
-            {(detail.enrichment.catalysts.length > 0 || detail.enrichment.earnings_headlines.length > 0) && (
-              <MeridianDataCard label="Catalyst headlines" wide tone="earnings" delay={160}>
-                <HeadlineList
-                  items={[...detail.enrichment.earnings_headlines, ...detail.enrichment.catalysts].slice(0, 6)}
-                  empty="No recent catalyst headlines."
-                />
               </MeridianDataCard>
             )}
           </div>

@@ -76,16 +76,20 @@ async function main() {
     console.log(`✓ ${ART}/meridian-desk-full.png`);
 
     const title = await page.locator(".meridian-hero-title-main, .meridian-rail-title").first().textContent().catch(() => null);
+    const macroRow = page.locator('.meridian-timeline-row[data-kind="macro"], .meridian-row[data-kind="macro"]');
     const earnRow = page.locator('.meridian-timeline-row[data-kind="earnings"], .meridian-row[data-kind="earnings"]');
     const rows = page.locator(".meridian-timeline-row, .meridian-row");
-    const clickTarget = (await earnRow.count()) > 0 ? earnRow.first() : rows.first();
+    const clickTarget =
+      (await earnRow.count()) > 0 ? earnRow.first() : (await macroRow.count()) > 0 ? macroRow.first() : rows.first();
     if ((await clickTarget.count()) > 0) {
       await clickTarget.click();
       await page.waitForTimeout(4000);
       await page.screenshot({ path: `${ART}/meridian-event-detail.png`, fullPage: true });
       console.log(`✓ ${ART}/meridian-event-detail.png`);
+      const reportVerdict = await page.locator(".meridian-report-verdict").first().textContent().catch(() => null);
       const playRead = await page.locator(".meridian-analytics-banner-label", { hasText: "Play read" }).count();
       const darkPool = await page.locator(".meridian-data-card-label", { hasText: "Dark pool" }).count();
+      console.log(`Earnings report verdict: ${reportVerdict ?? "not visible"}`);
       console.log(`Play read banner visible: ${playRead > 0 ? "yes" : "no"}`);
       console.log(`Dark pool card visible: ${darkPool > 0 ? "yes" : "no"}`);
     }
