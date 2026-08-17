@@ -75,13 +75,21 @@ async function main() {
     await page.screenshot({ path: `${ART}/meridian-desk-full.png`, fullPage: true });
     console.log(`✓ ${ART}/meridian-desk-full.png`);
 
-    const title = await page.locator(".meridian-detail-title, .meridian-rail-title").first().textContent().catch(() => null);
-    const rows = page.locator(".meridian-row");
+    const title = await page.locator(".meridian-hero-title-main, .meridian-rail-title").first().textContent().catch(() => null);
+    const rows = page.locator(".meridian-timeline-row, .meridian-row");
     if ((await rows.count()) > 0) {
       await rows.first().click();
       await page.waitForTimeout(3000);
       await page.screenshot({ path: `${ART}/meridian-event-detail.png`, fullPage: true });
       console.log(`✓ ${ART}/meridian-event-detail.png`);
+    }
+
+    const analyticsTab = page.getByRole("tab", { name: /Analytics grid/i });
+    if ((await analyticsTab.count()) > 0) {
+      await analyticsTab.click();
+      await page.waitForTimeout(1500);
+      await page.screenshot({ path: `${ART}/meridian-analytics-grid.png`, fullPage: true });
+      console.log(`✓ ${ART}/meridian-analytics-grid.png`);
     }
 
     await page.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded", timeout: 120_000 });

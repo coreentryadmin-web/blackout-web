@@ -9,6 +9,14 @@ import type {
 } from "@/features/meridian/lib/meridian-types";
 import { useWatchlist } from "@/hooks/useWatchlist";
 import { MeridianEventDetailPanel } from "./MeridianEventDetailPanel";
+import { MeridianHero } from "./MeridianHero";
+import {
+  MeridianFilterPill,
+  MeridianStatCard,
+  MeridianTimelineRow,
+  MeridianEmpty,
+  MeridianShimmer,
+} from "./meridian-ui";
 
 const fetcher = (url: string) =>
   fetch(url, { credentials: "include" }).then(async (res) => {
@@ -20,13 +28,7 @@ const fetcher = (url: string) =>
   });
 
 type FilterKind = "all" | MeridianEventKind | "watchlist" | "board";
-
-function kindBadge(kind: string): string {
-  if (kind === "macro") return "Macro";
-  if (kind === "opex") return "OpEx";
-  if (kind === "fda") return "FDA";
-  return "Earnings";
-}
+type DeskView = "timeline" | "analytics";
 
 function fmtPct(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "—";
@@ -46,6 +48,7 @@ export function MeridianDesk() {
   const allItems = data?.items ?? [];
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterKind>("all");
+  const [view, setView] = useState<DeskView>("timeline");
 
   const filteredItems = useMemo(() => {
     if (filter === "all") return allItems;
@@ -60,7 +63,10 @@ export function MeridianDesk() {
   }, [allItems, filter, watchlistReady, watchlistSet, boardSet]);
 
   const activeId = selectedId ?? filteredItems[0]?.id ?? null;
-  const activeItem = filteredItems.find((i) => i.id === activeId) ?? allItems.find((i) => i.id === activeId) ?? null;
+  const activeItem =
+    filteredItems.find((i) => i.id === activeId) ??
+    allItems.find((i) => i.id === activeId) ??
+    null;
 
   const detailKey = activeId ? `/api/market/meridian/event?id=${encodeURIComponent(activeId)}` : null;
   const {
@@ -81,109 +87,137 @@ export function MeridianDesk() {
   }, [filteredItems]);
 
   const stats = data?.stats;
-  const filters: { id: FilterKind; label: string; count?: number }[] = [
+  const filters: { id: FilterKind; label: string; count?: number; tone?: string }[] = [
     { id: "all", label: "All", count: stats?.total },
-    { id: "macro", label: "Macro", count: stats?.macro },
-    { id: "earnings", label: "Earnings", count: stats?.earnings },
-    { id: "fda", label: "FDA", count: stats?.fda },
-    { id: "opex", label: "OpEx", count: stats?.opex },
+    { id: "macro", label: "Macro", count: stats?.macro, tone: "meridian-theme-macro" },
+    { id: "earnings", label: "Earnings", count: stats?.earnings, tone: "meridian-theme-earnings" },
+    { id: "fda", label: "FDA", count: stats?.fda, tone: "meridian-theme-fda" },
+    { id: "opex", label: "OpEx", count: stats?.opex, tone: "meridian-theme-opex" },
     { id: "watchlist", label: "Watchlist" },
     { id: "board", label: "Board", count: data?.board_tickers?.length },
   ];
 
+  const highImpact = allItems.filter((i) => i.impact === "high").slice(0, 6);
+
   return (
-    <div className="meridian-desk">
+    <div className="meridian-desk meridian-desk-v2">
+      <MeridianHero
+        catalystCount={stats?.total}
+        next24h={stats?.next_24h}
+        asOf={data?.as_of}
+      />
+
       {stats && (
-        <div className="meridian-stats-bar" aria-label="Timeline summary">
-          <div className="meridian-stat">
-            <span className="meridian-stat-value">{stats.total}</span>
-            <span className="meridian-stat-label">Catalysts</span>
-          </div>
-          <div className="meridian-stat">
-            <span className="meridian-stat-value">{stats.high_impact}</span>
-            <span className="meridian-stat-label">High impact</span>
-          </div>
-          <div className="meridian-stat">
-            <span className="meridian-stat-value">{stats.next_24h}</span>
-            <span className="meridian-stat-label">Next 24h</span>
-          </div>
-          <div className="meridian-stat meridian-stat-wide">
-            <span className="meridian-stat-value">{data?.board_tickers?.length ?? 0}</span>
-            <span className="meridian-stat-label">Night Hawk board names</span>
-          </div>
+        <div className="meridian-stats-strip" aria-label="Timeline summary">
+          <MeridianStatCard value={stats.total} label="Catalysts" tone="cyan" delay={0} />
+          <MeridianStatCard value={stats.high_impact} label="High impact" tone="amber" delay={60} />
+          <MeridianStatCard value={stats.next_24h} label="Next 24h" tone="violet" delay={120} />
+          <MeridianStatCard
+            value={data?.board_tickers?.length ?? 0}
+            label="Board names"
+            tone="emerald"
+            delay={180}
+          />
         </div>
       )}
 
-      <div className="meridian-desk-body">
-        <aside className="meridian-rail" aria-label="Catalyst timeline">
-          <div className="meridian-rail-head">
-            <h2 className="meridian-rail-title">Catalyst timeline</h2>
-            <button type="button" className="meridian-refresh" onClick={() => mutate()}>
-              Refresh
+      <div className="meridian-view-nav" role="tablist" aria-label="Desk view">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === "timeline"}
+          className={`meridian-view-tab${view === "timeline" ? " is-active" : ""}`}
+          onClick={() => setView("timeline")}
+        >
+          Timeline
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === "analytics"}
+          className={`meridian-view-tab${view === "analytics" ? " is-active" : ""}`}
+          onClick={() => setView("analytics")}
+        >
+          Analytics grid
+        </button>
+        <button type="button" className="meridian-refresh-btn" onClick={() => mutate()}>
+          Refresh
+        </button>
+      </div>
+
+      {view === "analytics" && (
+        <section className="meridian-analytics-grid" aria-label="High impact catalyst grid">
+          {isLoading && <MeridianShimmer lines={4} />}
+          {!isLoading && highImpact.length === 0 && (
+            <MeridianEmpty message="No high-impact catalysts in the current window." />
+          )}
+          {highImpact.map((item, i) => (
+            <button
+              key={item.id}
+              type="button"
+              className={`meridian-analytics-card meridian-theme-${item.kind}${item.id === activeId ? " is-active" : ""}`}
+              style={{ animationDelay: `${i * 70}ms` }}
+              onClick={() => {
+                setSelectedId(item.id);
+                setView("timeline");
+              }}
+            >
+              <span className="meridian-analytics-card-kind">{item.kind}</span>
+              <span className="meridian-analytics-card-title">{item.title}</span>
+              <span className="meridian-analytics-card-meta">
+                {item.days_until === 0 ? "Today" : `${item.days_until}d`} · {item.date}
+              </span>
             </button>
+          ))}
+        </section>
+      )}
+
+      <div className={`meridian-desk-body${view === "analytics" ? " meridian-desk-body-compact" : ""}`}>
+        <aside className="meridian-rail meridian-rail-v2" aria-label="Catalyst timeline">
+          <div className="meridian-rail-head">
+            <h2 className="meridian-rail-title">Catalyst lane</h2>
           </div>
 
           <div className="meridian-filter-row" role="tablist" aria-label="Filter catalysts">
             {filters.map((f) => (
-              <button
+              <MeridianFilterPill
                 key={f.id}
-                type="button"
-                role="tab"
-                aria-selected={filter === f.id}
-                className={`meridian-filter-chip${filter === f.id ? " is-active" : ""}`}
+                id={f.id}
+                label={f.label}
+                count={f.count}
+                tone={f.tone}
+                active={filter === f.id}
                 onClick={() => setFilter(f.id)}
-              >
-                {f.label}
-                {f.count != null ? ` · ${f.count}` : ""}
-              </button>
+              />
             ))}
           </div>
 
-          {isLoading && <p className="meridian-rail-empty">Loading timeline…</p>}
-          {error && !isLoading && (
-            <p className="meridian-rail-empty">Timeline unavailable — try refresh.</p>
-          )}
+          {isLoading && <MeridianShimmer lines={5} />}
+          {error && !isLoading && <MeridianEmpty message="Timeline unavailable — try refresh." />}
           {!isLoading && !error && filteredItems.length === 0 && (
-            <p className="meridian-rail-empty">No catalysts match this filter.</p>
+            <MeridianEmpty message="No catalysts match this filter." />
           )}
 
           {grouped.map(([month, rows]) => (
-            <div key={month} className="meridian-month">
+            <div key={month} className="meridian-month-block">
               <p className="meridian-month-label">{month}</p>
-              <ul className="meridian-list">
-                {rows.map((item) => (
-                  <li key={item.id}>
-                    <button
-                      type="button"
-                      className={`meridian-row${item.id === activeId ? " is-active" : ""}`}
-                      onClick={() => setSelectedId(item.id)}
-                    >
-                      <span className="meridian-row-top">
-                        <span className={`meridian-row-kind meridian-kind-${item.kind}`}>
-                          {kindBadge(item.kind)}
-                        </span>
-                        <span className={`meridian-row-impact impact-${item.impact}`}>
-                          {item.impact === "high" ? "High" : item.impact === "medium" ? "Med" : "Low"}
-                        </span>
-                        <span className="meridian-row-days">
-                          {item.days_until === 0 ? "Today" : `${item.days_until}d`}
-                        </span>
-                      </span>
-                      <span className="meridian-row-title">{item.title}</span>
-                      <span className="meridian-row-meta">
-                        {item.date}
-                        {item.time ? ` · ${item.time} ET` : ""}
-                        {item.ticker && boardSet.has(item.ticker) ? " · board" : ""}
-                      </span>
-                    </button>
-                  </li>
+              <ul className="meridian-timeline-list">
+                {rows.map((item, index) => (
+                  <MeridianTimelineRow
+                    key={item.id}
+                    item={item}
+                    active={item.id === activeId}
+                    onBoard={Boolean(item.ticker && boardSet.has(item.ticker))}
+                    index={index}
+                    onSelect={() => setSelectedId(item.id)}
+                  />
                 ))}
               </ul>
             </div>
           ))}
         </aside>
 
-        <div className="meridian-main">
+        <div className="meridian-main meridian-main-v2">
           {activeItem ? (
             <MeridianEventDetailPanel
               item={activeItem}
@@ -193,7 +227,7 @@ export function MeridianDesk() {
               boardTickers={data?.board_tickers ?? []}
             />
           ) : (
-            <p className="meridian-detail-empty">Select a catalyst to see structure context.</p>
+            <MeridianEmpty message="Select a catalyst to open the structure brief." />
           )}
         </div>
       </div>
