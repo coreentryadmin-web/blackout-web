@@ -14,7 +14,7 @@ import { isHeatmapPreset } from "../heatmap-allowlist";
 import { isLiveOdteSession } from "./unusual-whales";
 import { fmtPremium } from "@/lib/fmt-money";
 import { persistGexRegimeEvents } from "./gex-regime-events";
-import { zeroGammaFlip as computeZeroGammaFlip, cumulativeGammaFlip, cumulativeGammaFlipDetail, gexWallsFromStrikeTotals, type GammaFlipReason } from "@/lib/providers/gex-cross-validation-core";
+import { zeroGammaFlip as computeZeroGammaFlip, cumulativeGammaFlipDetail, gexWallsFromStrikeTotals, type GammaFlipReason } from "@/lib/providers/gex-cross-validation-core";
 import { applySpxOdteGexUwOverlay } from "@/lib/providers/spx-odte-gex-uw-overlay";
 export { zeroGammaFlip as computeZeroGammaFlip, cumulativeGammaFlip } from "@/lib/providers/gex-cross-validation-core";
 
