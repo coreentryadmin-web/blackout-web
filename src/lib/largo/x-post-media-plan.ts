@@ -3,21 +3,25 @@
  * ticker-scoped, SPX-only surfaces never on non-SPX posts, max 4 attachments.
  */
 
+import type { SocialContentArchetype } from "@/lib/largo/social-content-core";
+import {
+  buildCapturePlaybook,
+  wantsMag7Thermal,
+  type CapturePlaybook,
+} from "@/lib/largo/x-post-capture-playbook";
+
 export type XPostMediaAttachment = {
-  /** Public desk name (Vector, Helix, Thermal, …). */
   tool: string;
-  /** One-line label for the collage caption. */
   label: string;
-  /** In-app path to open before screenshot. */
   deskPath: string;
-  /** What region to capture (human operator or showcase script). */
   captureHint: string;
   order: number;
-  /** Primary hero panel when building a collage. */
   primary?: boolean;
+  /** Full babysitting steps for this panel. */
+  steps: string[];
+  screenshotTarget: string;
+  verifyBeforeCapture: string;
 };
-
-import type { SocialContentArchetype } from "@/lib/largo/social-content-core";
 
 export type XPostMediaPlanInput = {
   ticker?: string | null;
@@ -33,6 +37,7 @@ const ARCHETYPE_STACK: Partial<Record<SocialContentArchetype, string[]>> = {
   track_record: ["nighthawk", "vector", "helix"],
   morning_hook: ["nighthawk", "vector", "thermal"],
   live_desk: ["vector", "helix", "thermal", "slayer"],
+  earnings_catalyst: ["meridian", "helix", "thermal", "vector"],
 };
 
 const TOOL_SIGNALS: ReadonlyArray<{
@@ -76,95 +81,29 @@ function attachmentFor(
   id: string,
   ticker: string,
   order: number,
+  archetype?: SocialContentArchetype,
+  corpus?: string,
   primary?: boolean,
 ): XPostMediaAttachment | null {
-  const sym = ticker;
-  switch (id) {
-    case "vector":
-      return {
-        tool: "Vector",
-        label: `${sym} · 0DTE beads + flip`,
-        deskPath: `/vector?ticker=${encodeURIComponent(sym)}`,
-        captureHint:
-          "Open Vector, select 0DTE + 15m timeframe, screenshot `.vector-chart-wrap` (walls + beads visible).",
-        order,
-        primary,
-      };
-    case "helix":
-      return {
-        tool: "Helix",
-        label: `${sym} · flow tape`,
-        deskPath: "/flows",
-        captureHint:
-          `Filter #helix-ticker-search to ${sym}, wait until tape rows match, screenshot the flow desk panel.`,
-        order,
-        primary,
-      };
-    case "thermal":
-      return {
-        tool: "Thermal",
-        label: `${sym} · GEX matrix`,
-        deskPath: "/heatmap",
-        captureHint:
-          `Search the ticker combobox for ${sym} (page boots SPY), screenshot \`.gex-heatmap-desk\`.`,
-        order,
-        primary,
-      };
-    case "slayer":
-      return {
-        tool: "SPX Slayer",
-        label: "SPX · play engine + matrix rail",
-        deskPath: "/dashboard",
-        captureHint:
-          "Full SPX Slayer desk — left GEX matrix rail + center play engine with live phase/grade.",
-        order,
-        primary,
-      };
-    case "nighthawk":
-      return {
-        tool: "Night Hawk",
-        label: `${sym} · 0DTE Command`,
-        deskPath: "/nighthawk",
-        captureHint:
-          sym === "SPX"
-            ? "Night Hawk overview or 0DTE Command column with today's committed plans."
-            : `0DTE Command card for ${sym} — expand the play row before capture.`,
-        order,
-        primary,
-      };
-    case "largo":
-      return {
-        tool: "Largo",
-        label: `${sym} · desk read`,
-        deskPath: "/terminal",
-        captureHint:
-          `Ask Largo about ${sym}, screenshot the answer card (verdict + levels rail).`,
-        order,
-        primary,
-      };
-    case "meridian":
-      return {
-        tool: "Meridian",
-        label: `${sym} · catalyst intel`,
-        deskPath: "/meridian",
-        captureHint:
-          `Open Meridian, search ${sym}, screenshot earnings/macro detail with live signal grid.`,
-        order,
-        primary,
-      };
-    case "track_record":
-      return {
-        tool: "Track Record",
-        label: "Graded outcomes · public record",
-        deskPath: "/track-record",
-        captureHint:
-          "Track record page with graded win/loss stats visible — only if the post cites grades.",
-        order,
-        primary,
-      };
-    default:
-      return null;
-  }
+  const useMag7 = id === "thermal" && corpus && wantsMag7Thermal(corpus);
+  const playbook = buildCapturePlaybook({
+    toolId: id,
+    ticker,
+    archetype,
+    thermalPreset: useMag7 ? "mega" : null,
+  });
+  if (!playbook) return null;
+  return {
+    tool: playbook.tool,
+    label: playbook.goal,
+    deskPath: playbook.deskPath,
+    captureHint: playbook.steps[playbook.steps.length - 1] ?? playbook.goal,
+    order,
+    primary,
+    steps: playbook.steps,
+    screenshotTarget: playbook.screenshotTarget,
+    verifyBeforeCapture: playbook.verifyBeforeCapture,
+  };
 }
 
 /** Default showcase stack when the answer doesn't strongly favor one panel. */
@@ -224,7 +163,9 @@ export function buildXPostMediaPlan(input: XPostMediaPlanInput): XPostMediaAttac
   }
 
   return picked
-    .map((id, idx) => attachmentFor(id, ticker, idx + 1, idx === 0))
+    .map((id, idx) =>
+      attachmentFor(id, ticker, idx + 1, input.archetype, corpus, idx === 0),
+    )
     .filter((a): a is XPostMediaAttachment => a != null);
 }
 
@@ -232,9 +173,15 @@ export function formatMediaPlanForClipboard(
   attachments: XPostMediaAttachment[],
 ): string {
   if (!attachments.length) return "";
-  const lines = attachments.map(
-    (a) =>
-      `${a.order}. ${a.tool} — ${a.deskPath}\n   ${a.captureHint}`,
-  );
-  return `\n\nAttach (${attachments.length} image${attachments.length === 1 ? "" : "s"}):\n${lines.join("\n")}`;
+  const blocks = attachments.map((a) => {
+    const stepLines = a.steps.map((s, i) => `   ${i + 1}. ${s}`).join("\n");
+    return (
+      `${a.order}. ${a.tool} — ${a.deskPath}\n` +
+      `   Goal: ${a.label}\n` +
+      `   Verify: ${a.verifyBeforeCapture}\n` +
+      `${stepLines}\n` +
+      `   → Screenshot: ${a.screenshotTarget}`
+    );
+  });
+  return `\n\nScreenshot workflow (${attachments.length} panel${attachments.length === 1 ? "" : "s"} — attach best 4 on X):\n${blocks.join("\n\n")}`;
 }

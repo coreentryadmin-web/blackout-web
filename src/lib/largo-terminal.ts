@@ -97,6 +97,7 @@ import {
   questionWantsPeerCompare,
   extractPeerCompareTickers,
   questionWantsSocialContentPack,
+  questionWantsMeridianPrefetch,
   questionWantsPlaySimilarity,
   questionWantsPreEarningsPack,
   extractStructuredTicker,
@@ -110,6 +111,7 @@ import {
 import { playSimilarityForLargo, type PlaySimilarityCard } from "@/lib/largo/play-similarity";
 import { preEarningsPackForLargo, type PreEarningsPackCard } from "@/lib/largo/pre-earnings-pack";
 import { buildSocialContentPack } from "@/lib/largo/social-content-pack";
+import { meridianTimelineForLargo } from "@/lib/largo/meridian-for-largo";
 import { LARGO_SOCIAL_CONTENT_VOICE } from "@/lib/largo/social-content-voice";
 import { formatDepthBlock, largoDepthConfig, parseLargoDepth, type LargoDepth } from "@/lib/largo/largo-depth";
 import { largoToolLoopBudgetMs } from "@/lib/providers/config";
@@ -555,6 +557,15 @@ async function prepareLargoTurn(
         `\n\n${LARGO_SOCIAL_CONTENT_VOICE}\n\n## Social content pack (prefetched — cite these numbers)\n${JSON.stringify(socialPack, null, 0).slice(0, 6000)}\n`;
     } else {
       socialContentBlock = `\n\n${LARGO_SOCIAL_CONTENT_VOICE}\n`;
+    }
+  }
+
+  if (questionWantsMeridianPrefetch(question)) {
+    const meridian = await meridianTimelineForLargo(14).catch(() => null);
+    if (meridian?.available) {
+      toolsUsed.push("meridian_timeline_prefetch");
+      socialContentBlock +=
+        `\n\n## Meridian timeline (prefetched — cite for catalyst/earnings posts)\n${JSON.stringify(meridian, null, 0).slice(0, 4000)}\n`;
     }
   }
 

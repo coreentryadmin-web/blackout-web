@@ -4,7 +4,8 @@ export type SocialContentArchetype =
   | "platform_showcase"
   | "track_record"
   | "play_evolution"
-  | "morning_hook";
+  | "morning_hook"
+  | "earnings_catalyst";
 
 export type SocialContentPlayRow = {
   ticker: string;
@@ -26,6 +27,9 @@ export function detectSocialArchetype(question: string): SocialContentArchetype 
   }
   if (/\b(showcase|full desk|platform|why blackout|six tools|whole desk)\b/.test(q)) {
     return "platform_showcase";
+  }
+  if (/\b(meridian|earnings post|earnings catalyst|catalyst post|opex preview|macro desk)\b/.test(q)) {
+    return "earnings_catalyst";
   }
   if (/\b(morning|pre-?open|before the bell|overnight)\b/.test(q)) {
     return "morning_hook";
@@ -96,6 +100,10 @@ export function buildPostAngles(
       break;
     case "play_evolution":
       angles.push("Three-panel story: Night Hawk plan → Helix prints → Thermal flip/wall.");
+      break;
+    case "earnings_catalyst":
+      angles.push("Lead with catalyst timing + implied move — Meridian detail, not a guess.");
+      angles.push("Attach Meridian event → Helix flow into print → Thermal positioning.");
       break;
     default:
       if (pack.spx?.spot != null) {

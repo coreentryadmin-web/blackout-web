@@ -29,7 +29,7 @@ describe("formatLargoXPost", () => {
     assert.ok(draft.intentUrl.startsWith("https://x.com/intent/tweet?text="));
     assert.ok(Array.isArray(draft.attachments));
     assert.ok(draft.attachments.length >= 1);
-    assert.match(draft.clipboardText, /Attach/);
+    assert.match(draft.clipboardText, /Screenshot workflow/);
   });
 
   it("strips vendor names from the body", () => {

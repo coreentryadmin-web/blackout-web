@@ -36,7 +36,7 @@ describe("buildXPostMediaPlan", () => {
   it("formats clipboard attachment block", () => {
     const plan = buildXPostMediaPlan({ ticker: "SPX", answer: "flow and gex" });
     const block = formatMediaPlanForClipboard(plan);
-    assert.match(block, /Attach \(4 images\):/);
+    assert.match(block, /Screenshot workflow \(4 panels/);
     assert.match(block, /\/heatmap/);
   });
 });

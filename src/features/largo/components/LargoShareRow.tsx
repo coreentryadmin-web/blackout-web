@@ -58,7 +58,7 @@ export function LargoShareRow({
                 try {
                   await navigator.clipboard.writeText(draft.clipboardText);
                 } catch {
-                  /* clipboard blocked — intent URL still opens compose */
+                  /* clipboard blocked */
                 }
                 window.open(draft.intentUrl, "_blank", "noopener,noreferrer");
                 setXState("done");
@@ -74,15 +74,20 @@ export function LargoShareRow({
         </button>
       </div>
       {xDraft?.attachments?.length ? (
-        <div className="largo-x-attachments" aria-label="Suggested X post images">
+        <div className="largo-x-attachments" aria-label="Screenshot workflow for X post">
           <p className="largo-x-attachments-title">
-            Attach from these desks
+            Screenshot workflow
             {xDraft.archetype ? ` · ${xDraft.archetype.replace(/_/g, " ")}` : ""}
+          </p>
+          <p className="largo-x-attachments-note">
+            Attach up to 4 images on X — follow each panel in order.
           </p>
           <ol className="largo-x-attachments-list">
             {xDraft.attachments.map((a) => (
               <li key={`${a.tool}-${a.order}`}>
-                <strong>{a.tool}</strong>
+                <strong>
+                  {a.order}. {a.tool}
+                </strong>
                 <span className="largo-x-attachments-label">{a.label}</span>
                 <a
                   className="largo-x-attachments-path"
@@ -92,14 +97,25 @@ export function LargoShareRow({
                 >
                   {a.deskPath}
                 </a>
-                <span className="largo-x-attachments-hint">{a.captureHint}</span>
+                {a.steps?.length ? (
+                  <ol className="largo-x-attachment-steps">
+                    {a.steps.map((step) => (
+                      <li key={step.slice(0, 48)}>{step}</li>
+                    ))}
+                  </ol>
+                ) : (
+                  <span className="largo-x-attachments-hint">{a.captureHint}</span>
+                )}
+                <span className="largo-x-attachments-hint">
+                  Capture: {a.screenshotTarget ?? a.captureHint}
+                </span>
               </li>
             ))}
           </ol>
           {xDraft.altHooks?.length ? (
             <div className="largo-x-alt-hooks">
               <p className="largo-x-attachments-title">Alt hooks</p>
-              <ul className="largo-x-attachments-list">
+              <ul className="largo-x-alt-hooks-list">
                 {xDraft.altHooks.map((hook) => (
                   <li key={hook}>{hook}</li>
                 ))}

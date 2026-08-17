@@ -93,6 +93,22 @@ export const LARGO_DESK_PROMPTS: LargoDeskPrompt[] = [
       "Draft an X win-recap post for the best green play on today's 0DTE board — timeline story, copy, and panels to screenshot.",
     socialPack: true,
   },
+  {
+    id: "x-meridian-earnings",
+    label: "X · earnings catalyst",
+    hint: "Meridian intel + Helix + Thermal screenshot workflow",
+    question:
+      "Draft an X post for the next high-impact earnings name on Meridian — copy, CTA, and step-by-step screenshots from Meridian, Helix, and Thermal.",
+    socialPack: true,
+  },
+  {
+    id: "x-full-workflow",
+    label: "X · full screenshot guide",
+    hint: "Baby-sit every desk panel for a platform post",
+    question:
+      "I'm posting on X today — give me tweet copy AND a complete screenshot workflow: Helix filters, Thermal (Mag7 if relevant), Vector, Night Hawk plays, SPX Slayer if needed, with exact clicks and what to capture from each tool.",
+    socialPack: true,
+  },
 ];
 
 /** Empty-state showcase — same three intents, phrased as questions. */
@@ -259,8 +275,18 @@ export function questionWantsSocialContentPack(question: string): boolean {
   const q = String(question ?? "").trim();
   if (!q) return false;
   return (
-    /\b(x post|twitter post|tweet|social post|content for x|banger post|marketing post|post for x|draft.*post|create.*post|what should we post)\b/i.test(q) ||
-    /\b(win recap|showcase post|platform post|winning plays post|attach.*screenshot|screenshot.*attach)\b/i.test(q)
+    /\b(x post|twitter post|tweet|social post|content for x|banger post|marketing post|post for x|draft.*post|create.*post|what should we post|social media|ads expert)\b/i.test(q) ||
+    /\b(win recap|showcase post|platform post|winning plays post|attach.*screenshot|screenshot.*attach|screenshot workflow)\b/i.test(q)
+  );
+}
+
+export function questionWantsMeridianPrefetch(question: string): boolean {
+  const q = String(question ?? "").trim();
+  if (!q) return false;
+  return (
+    /\b(meridian|catalyst calendar|opex preview|macro desk|earnings post|earnings intel|fda calendar)\b/i.test(q) ||
+    (questionWantsSocialContentPack(q) &&
+      /\b(earnings|macro|opex|catalyst|cpi|fomc|nfp)\b/i.test(q))
   );
 }
 

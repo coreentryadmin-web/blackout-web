@@ -755,6 +755,9 @@ export type LargoXPostDraft = {
     captureHint: string;
     order: number;
     primary?: boolean;
+    steps: string[];
+    screenshotTarget: string;
+    verifyBeforeCapture: string;
   }>;
   clipboardText: string;
   archetype: string;
