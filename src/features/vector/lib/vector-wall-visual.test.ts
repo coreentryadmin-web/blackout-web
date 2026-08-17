@@ -17,8 +17,6 @@ import {
   beadRadiusForNotional,
   pctToNotionalProxy,
 } from "./vector-wall-visual";
-// FILL_ALPHA_* live in rail-core (that module owns the tuning; this one owns the ladders).
-import { FILL_ALPHA_MIN, FILL_ALPHA_MAX } from "./vector-wall-rail-core";
 
 test("alphaForPct: a 0% wall gets the faint visual floor, not fully invisible", () => {
   assert.equal(alphaForPct(0), 0.05);
