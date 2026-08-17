@@ -3,6 +3,7 @@ import "server-only";
 import { fetchLargeOptionPrints } from "@/lib/providers/option-trades";
 import { getGexPositioning } from "@/lib/providers/gex-positioning";
 import { todayEtYmd } from "@/lib/providers/spx-session";
+import { vectorFlowMaxBlockMs } from "@/lib/providers/config";
 import { normalizeVectorTicker } from "./vector-ticker";
 import { loadCurrentChainContracts } from "./vector-gex-reconstruct-server";
 import { expiriesForHorizon, type VectorDteHorizon } from "./vector-dte-horizon";
@@ -89,6 +90,33 @@ export async function getVectorFlowMarkers(
   ticker: string,
   horizon: VectorDteHorizon,
   maxMarkers: number = DEFAULT_FLOW_MAX_MARKERS
+): Promise<VectorFlowMarkers> {
+  // DEADLINE. The three upstreams below (positioning → front expiry → large prints) are each
+  // unbounded, so one stall used to ride all the way to the prod ALB's 120s idle timeout and the
+  // member got a 504 rather than a panel. Measured live 2026-08-17: SPY 504 @ 120.1s and 85.9s,
+  // NVDA 41.7s, on the same tickers that answered in 0.5-6.8s seconds earlier.
+  //
+  // Racing (rather than threading an AbortSignal through three provider layers) is deliberate: it
+  // bounds the RESPONSE, which is the member-visible failure, without touching provider plumbing
+  // mid-session. The loser keeps running and still warms the caches it would have warmed, so the
+  // next request benefits. The trade is that a stalled upstream is not cancelled — acceptable for
+  // a read this size, and the honest-empty payload below tells the client exactly what happened.
+  const deadlineMs = vectorFlowMaxBlockMs();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<VectorFlowMarkers>((resolve) => {
+    timer = setTimeout(() => resolve(emptyMarkers(`timed out after ${deadlineMs}ms`)), deadlineMs);
+  });
+  try {
+    return await Promise.race([buildVectorFlowMarkers(ticker, horizon, maxMarkers), timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function buildVectorFlowMarkers(
+  ticker: string,
+  horizon: VectorDteHorizon,
+  maxMarkers: number
 ): Promise<VectorFlowMarkers> {
   const t = normalizeVectorTicker(ticker);
   try {
