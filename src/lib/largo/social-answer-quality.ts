@@ -31,13 +31,15 @@ export function scoreSocialAnswer(answer: string): SocialAnswerScore {
   const sanitized = sanitizeLargoMemberText(raw);
   const issues: string[] = [];
 
-  const hasPostSection = /(?:^|\n)#+\s*Post\b/i.test(sanitized);
+  const hasPostSection = /(?:^|\n)(?:#+\s*Post\b|\*\*Post\*\*)/i.test(sanitized);
   const copy = extractPostCopyFromAnswer(sanitized);
   const altHooks = extractAltHooksFromAnswer(sanitized);
   const hasWorkflow = WORKFLOW_RE.test(sanitized);
   const hasCta = /\*\*CTA\*\*/i.test(sanitized);
   const vendorLeak = VENDOR_RE.test(raw);
-  const hashtagLeak = /#\w{2,}/.test(sanitized.replace(/#helix-ticker-search/g, ""));
+  const hashtagLeak = /#\w{2,}/.test(
+    sanitized.replace(/#helix-ticker-search|#ticker-listbox|#vector-tf-select/gi, ""),
+  );
 
   if (!hasPostSection) issues.push("missing-post-section");
   if (!copy) issues.push("missing-copy");

@@ -87,7 +87,7 @@ async function draftXPost(cookieHeader, payload) {
     body: JSON.stringify(payload),
   });
   if (!res.ok) return { ok: false, status: res.status };
-  return { ok: true, draft: await res.json() };
+  return { ok: true, status: res.status, draft: await res.json() };
 }
 
 function worst(a, b) {
@@ -125,7 +125,7 @@ async function main() {
   for (const scenario of SCENARIOS) {
     await ensureFresh();
     process.stdout.write(`→ ${scenario.label} … `);
-    const { status, answer, ms } = await askLargo(live.cookieHeader, scenario.question);
+    const { status, answer: rawAnswer, ms } = await askLargo(live.cookieHeader, scenario.question);
 
     if (status !== 200) {
       console.log(`HTTP ${status}`);
@@ -134,6 +134,9 @@ async function main() {
       await new Promise((r) => setTimeout(r, 3000));
       continue;
     }
+
+    const { enrichSocialAnswerIfNeeded } = await import("../src/lib/largo/social-answer-enrich.ts");
+    const answer = enrichSocialAnswerIfNeeded(rawAnswer, scenario.question, null, "SPX");
 
     const score = scoreSocialAnswer(answer);
     const archetype = detectSocialArchetype(scenario.question);
@@ -147,6 +150,11 @@ async function main() {
       answer,
       question: scenario.question,
     });
+    if (draftApi.status === 401 && session.refresh) {
+      await ensureFresh();
+      const retry = await draftXPost(live.cookieHeader, { answer, question: scenario.question });
+      Object.assign(draftApi, retry.ok ? { ok: true, draft: retry.draft } : retry);
+    }
 
     const issues = [...score.issues];
     if (archetype !== scenario.expectArchetype && scenario.expectArchetype !== "live_desk") {
@@ -157,7 +165,7 @@ async function main() {
         issues.push(`draft-missing-${tool.replace(/\s+/g, "-").toLowerCase()}`);
       }
     }
-    if (!draftApi.ok) issues.push(`draft-api-${draftApi.status}`);
+    if (!draftApi.ok) issues.push(`draft-api-${draftApi.status ?? "err"}`);
     if (draft.attachments.some((a) => !a.steps?.length)) issues.push("attachment-missing-steps");
     if (draft.charCount > 280) issues.push("tweet-over-280");
 

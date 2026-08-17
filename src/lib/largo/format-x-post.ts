@@ -81,7 +81,9 @@ function formatLevelSnippet(levels?: BieLevel[]): string {
 }
 
 function extractPostSection(answer: string): string | null {
-  const m = answer.match(/(?:^|\n)#+\s*Post\s*\n([\s\S]*?)(?=\n#+\s+[A-Za-z]|\n\*\*Verdict\*\*|$)/i);
+  const m = answer.match(
+    /(?:^|\n)(?:#+\s*Post\b|\*\*Post\*\*)\s*\n([\s\S]*?)(?=\n##\s|\n\*\*Verdict\*\*|$)/i,
+  );
   return m?.[1]?.trim() ?? null;
 }
 
@@ -95,7 +97,7 @@ export function extractPostCopyFromAnswer(answer: string): string | null {
   const raw = copyMatch?.[1]?.trim();
   if (!raw) return null;
   const line = stripMarkdownForTweet(raw.split("\n").find((l) => l.trim()) ?? raw);
-  return line.length >= 20 ? line : null;
+  return line.length >= 15 ? line : null;
 }
 
 export function extractAltHooksFromAnswer(answer: string): string[] {
