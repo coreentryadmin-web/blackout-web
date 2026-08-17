@@ -16,6 +16,8 @@ const baseInput = {
   put_wall: 480,
   expected_move_pct: 8,
   beat_rate: 0.75,
+  post_print: null,
+  earnings_yoy: { eps_yoy_pct: 20, revenue_yoy_pct: 15 },
   financials: {
     available: true,
     as_of: "2026-08-01",
@@ -55,6 +57,7 @@ test("buildMeridianEarningsReport: bearish flow flips lean", () => {
     flow_bias: "bearish",
     dark_pool_bias: "bearish",
     beat_rate: 0.25,
+    earnings_yoy: null,
     financials: {
       ...baseInput.financials!,
       revenue_yoy_pct: -5,
@@ -66,7 +69,7 @@ test("buildMeridianEarningsReport: bearish flow flips lean", () => {
 });
 
 test("buildMeridianEarningsReport: imminent print stays neutral verdict", () => {
-  const report = buildMeridianEarningsReport({ ...baseInput, days_until: 0 });
+  const report = buildMeridianEarningsReport({ ...baseInput, days_until: 0, earnings_yoy: null });
   assert.equal(report.verdict, "neutral");
   assert.equal(report.confidence, "low");
   assert.match(report.best_play.headline, /Wait for the print/i);
@@ -78,8 +81,26 @@ test("buildMeridianEarningsReport: mixed signals → neutral", () => {
     flow_bias: "neutral",
     dark_pool_available: false,
     beat_rate: 0.5,
+    earnings_yoy: null,
     financials: null,
     analyst_revisions: [],
   });
   assert.equal(report.verdict, "neutral");
+});
+
+test("buildMeridianEarningsReport: fresh beat print adds surprise pillar", () => {
+  const report = buildMeridianEarningsReport({
+    ...baseInput,
+    days_until: 0,
+    post_print: { lean: "beat", headline: "Beat · EPS +4.2%", score: 2 },
+  });
+  assert.ok(report.signals.some((s) => s.pillar === "surprise" && s.lean === "bullish"));
+});
+
+test("buildMeridianEarningsReport: YoY growth adds yoy pillar", () => {
+  const report = buildMeridianEarningsReport({
+    ...baseInput,
+    earnings_yoy: { eps_yoy_pct: 22, revenue_yoy_pct: 18 },
+  });
+  assert.ok(report.signals.some((s) => s.pillar === "yoy"));
 });

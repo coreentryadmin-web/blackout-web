@@ -1,45 +1,20 @@
 import "server-only";
 
-import { serverCache } from "@/lib/server-cache";
-import type { EarningsTimelineInput, FdaTimelineInput } from "@/features/meridian/lib/meridian-timeline";
-import { readGridEarnings, type ZeroDteEarningsItem } from "@/lib/zerodte/earnings";
 import { daysUntilEt } from "@/features/meridian/lib/meridian-timeline";
+import type { EarningsTimelineInput, FdaTimelineInput } from "@/features/meridian/lib/meridian-timeline";
+import { serverCache } from "@/lib/server-cache";
+import {
+  benzingaRowsToTimelineInputs,
+  overlayTimelineExpectedMoves,
+} from "@/lib/meridian/meridian-benzinga-earnings-core";
+import {
+  loadBenzingaBoardEarnings,
+  loadBenzingaEarningsBundle,
+} from "@/lib/meridian/meridian-benzinga-earnings";
+import { batchLoadEarningsExpectedMovePct } from "@/lib/meridian/meridian-earnings-expected-move";
+import type { BenzingaStructuredEarnings } from "@/lib/providers/polygon";
 
-const AV_KEY = process.env.ALPHAVANTAGE_API_KEY?.trim() || "";
-const TTL_12H = 12 * 60 * 60 * 1000;
 const FDA_CACHE_TTL = 30 * 60 * 1000;
-
-async function loadAvEarningsMap(): Promise<Record<string, string>> {
-  if (!AV_KEY || AV_KEY === "demo") return {};
-  return serverCache("meridian:earnings-calendar:av:3m", TTL_12H, async () => {
-    const url = `https://www.alphavantage.co/query?function=EARNINGS_CALENDAR&horizon=3month&apikey=${AV_KEY}`;
-    const res = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(10_000) });
-    if (!res.ok) return {};
-    const csv = await res.text();
-    const lines = csv.trim().split("\n");
-    if (lines.length < 2) return {};
-    const out: Record<string, string> = {};
-    for (let i = 1; i < lines.length; i++) {
-      const cols = lines[i]!.split(",");
-      const symbol = cols[0]?.trim().toUpperCase();
-      const date = cols[2]?.trim();
-      if (symbol && date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
-        if (!out[symbol] || date < out[symbol]!) out[symbol] = date;
-      }
-    }
-    return out;
-  }).catch(() => ({}));
-}
-
-function gridToInput(row: ZeroDteEarningsItem): EarningsTimelineInput {
-  return {
-    ticker: row.ticker,
-    name: row.name,
-    report_date: row.report_date,
-    when: row.when,
-    expected_move_pct: row.expected_move_pct,
-  };
-}
 
 function firstYmd(row: Record<string, unknown>): string {
   for (const key of ["date", "decision_date", "pdufa_date", "event_date", "target_date", "due_date"]) {
@@ -57,6 +32,18 @@ function shapeFdaRow(row: Record<string, unknown>): FdaTimelineInput | null {
   const indication = String(row.indication ?? row.description ?? "").trim() || null;
   const event_label = String(row.event ?? row.event_type ?? row.title ?? "").trim() || null;
   return { ticker, date, drug, indication, event_label };
+}
+
+function dedupeBenzingaRows(rows: BenzingaStructuredEarnings[]): BenzingaStructuredEarnings[] {
+  const seen = new Set<string>();
+  const out: BenzingaStructuredEarnings[] = [];
+  for (const row of rows) {
+    const key = row.benzinga_id ?? `${row.ticker}:${row.date}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(row);
+  }
+  return out;
 }
 
 /** Market-wide FDA calendar rows for the Meridian timeline (cluster-cached). */
@@ -85,37 +72,47 @@ export async function loadMeridianFdaTimeline(
   return out.sort((a, b) => a.date.localeCompare(b.date));
 }
 
-/** Earnings rows for the Meridian timeline — grid snapshot + optional AV 3-month calendar. */
+export type MeridianEarningsTimelineResult = {
+  rows: EarningsTimelineInput[];
+  earnings_week: Awaited<ReturnType<typeof loadBenzingaEarningsBundle>>["earnings_week"];
+  earnings_week_analytics: Awaited<ReturnType<typeof loadBenzingaEarningsBundle>>["earnings_week_analytics"];
+  recent_revisions: Awaited<ReturnType<typeof loadBenzingaEarningsBundle>>["recent_revisions"];
+  estimate_revision_timeline: Awaited<
+    ReturnType<typeof loadBenzingaEarningsBundle>
+  >["estimate_revision_timeline"];
+  after_hours_movers: Awaited<ReturnType<typeof loadBenzingaEarningsBundle>>["after_hours_movers"];
+  calendar_entitled: boolean;
+};
+
+/** Earnings rows — Benzinga calendar + Polygon chain-IV expected move (no UW earnings REST). */
 export async function loadMeridianEarningsTimeline(
   todayYmd: string,
-  daysAhead: number
-): Promise<EarningsTimelineInput[]> {
-  const [grid, avMap] = await Promise.all([
-    readGridEarnings().catch(() => null),
-    loadAvEarningsMap(),
+  daysAhead: number,
+  boardTickers: string[] = []
+): Promise<MeridianEarningsTimelineResult> {
+  const [bundle, boardRes] = await Promise.all([
+    loadBenzingaEarningsBundle(todayYmd, daysAhead),
+    loadBenzingaBoardEarnings(boardTickers, todayYmd, daysAhead),
   ]);
 
-  const byTicker = new Map<string, EarningsTimelineInput>();
+  const benzingaRows = dedupeBenzingaRows([
+    ...bundle.window_rows,
+    ...boardRes.rows,
+  ]).filter((r) => r.date >= todayYmd && daysUntilEt(r.date, todayYmd) <= daysAhead);
 
-  for (const row of grid?.items ?? []) {
-    if (!row.ticker || !row.report_date) continue;
-    if (daysUntilEt(row.report_date, todayYmd) > daysAhead) continue;
-    byTicker.set(row.ticker.toUpperCase(), gridToInput(row));
-  }
-
-  for (const [ticker, date] of Object.entries(avMap)) {
-    if (date < todayYmd || daysUntilEt(date, todayYmd) > daysAhead) continue;
-    if (byTicker.has(ticker)) continue;
-    byTicker.set(ticker, {
-      ticker,
-      name: ticker,
-      report_date: date,
-      when: "afterhours",
-      expected_move_pct: null,
-    });
-  }
-
-  return [...byTicker.values()].sort((a, b) =>
-    (a.report_date ?? "").localeCompare(b.report_date ?? "")
+  let rows = benzingaRowsToTimelineInputs(benzingaRows);
+  const emByTicker = await batchLoadEarningsExpectedMovePct(
+    rows.map((r) => ({ ticker: r.ticker, report_date: r.report_date }))
   );
+  rows = overlayTimelineExpectedMoves(rows, emByTicker);
+
+  return {
+    rows,
+    earnings_week: bundle.earnings_week,
+    earnings_week_analytics: bundle.earnings_week_analytics,
+    recent_revisions: bundle.recent_revisions,
+    estimate_revision_timeline: bundle.estimate_revision_timeline,
+    after_hours_movers: bundle.after_hours_movers,
+    calendar_entitled: bundle.entitled && boardRes.entitled,
+  };
 }

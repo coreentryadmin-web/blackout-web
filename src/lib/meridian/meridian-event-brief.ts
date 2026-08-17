@@ -280,6 +280,7 @@ export async function buildMeridianMacroBrief(input: {
     correlation_rail,
     surprise,
     related_headlines: macroHistory.related_headlines,
+    economics_narrative: macroHistory.economics_narrative,
     spx_positioning,
     flow,
     report,
@@ -346,6 +347,9 @@ export async function buildMeridianFdaDetail(input: {
       channel: c.channel,
       published: c.published,
     })),
+    catalyst_briefs: catalystBundle.catalyst_briefs.filter(
+      (c) => c.type === "binary" || /fda|approval|pdufa/i.test(c.title)
+    ),
     insider_activity: catalystBundle.insider_activity,
     congress_trades: catalystBundle.congress_trades,
     prior_decisions: fdaHistory.prior_decisions,

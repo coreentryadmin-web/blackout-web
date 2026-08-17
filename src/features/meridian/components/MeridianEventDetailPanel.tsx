@@ -1,7 +1,6 @@
 "use client";
 
 import type { MeridianEventDetail, MeridianTimelineItem } from "@/features/meridian/lib/meridian-types";
-import { LargoPreEarningsPackCard } from "@/features/largo/components/LargoPreEarningsPackCard";
 import { FreshnessChip } from "@/components/ui";
 import { fmtPct } from "./MeridianDesk";
 import {
@@ -12,8 +11,7 @@ import {
   MeridianShimmer,
   kindTheme,
 } from "./meridian-ui";
-import { MeridianEarningsIntelPanel } from "./MeridianEarningsIntelPanel";
-import { MeridianEarningsReportPanel } from "./MeridianEarningsReportPanel";
+import { MeridianEarningsTabs } from "./MeridianEarningsTabs";
 import { MeridianMacroReportPanel } from "./MeridianMacroReportPanel";
 import { MeridianOpexCrossMarketPanel } from "./MeridianOpexCrossMarketPanel";
 
@@ -94,6 +92,14 @@ export function MeridianEventDetailPanel({
           <MeridianMacroReportPanel detail={detail} />
 
           <div className="meridian-banner-stack">
+            {detail.economics_narrative && (
+              <MeridianAnalyticsBanner
+                label="Economics narrative"
+                headline={detail.economics_narrative}
+                tone="macro"
+                icon="◈"
+              />
+            )}
             <MeridianAnalyticsBanner
               label="Correlation rail"
               headline={detail.correlation_rail.headline}
@@ -281,79 +287,23 @@ export function MeridianEventDetailPanel({
           <MeridianDataCard label="Catalyst headlines" wide tone="fda" delay={240}>
             <HeadlineList items={detail.catalysts} empty="No recent catalyst headlines." />
           </MeridianDataCard>
+
+          {detail.catalyst_briefs.length > 0 && (
+            <MeridianDataCard label="Event briefs" wide tone="fda" delay={320}>
+              <ul className="meridian-card-list">
+                {detail.catalyst_briefs.map((c) => (
+                  <li key={`${c.type}-${c.title}`}>
+                    {c.type.toUpperCase()} · {c.title}
+                  </li>
+                ))}
+              </ul>
+            </MeridianDataCard>
+          )}
         </div>
       )}
 
       {!loading && !error && detail?.kind === "earnings" && (
-        <>
-          <MeridianEarningsReportPanel
-            ticker={detail.pack.ticker}
-            intel={detail.intel}
-            enrichment={{
-              earnings_headlines: detail.enrichment.earnings_headlines,
-              catalysts: detail.enrichment.catalysts,
-              analyst_revisions: detail.enrichment.analyst_revisions,
-              insider_activity: detail.enrichment.insider_activity,
-            }}
-          />
-
-          <div className="meridian-banner-stack">
-            {detail.enrichment.expected_vs_realized?.headline && (
-              <MeridianAnalyticsBanner
-                label="Expected vs realized"
-                headline={detail.enrichment.expected_vs_realized.headline}
-                sub={
-                  detail.pack.expected_move_pct != null
-                    ? `Implied ~${detail.pack.expected_move_pct}% into print`
-                    : null
-                }
-                tone="earnings"
-                icon="◆"
-              />
-            )}
-            {detail.enrichment.analyst_revisions.length > 0 && (
-              <MeridianAnalyticsBanner
-                label="Analyst cluster"
-                headline={`${detail.enrichment.analyst_revisions.length} recent revisions`}
-                sub={detail.enrichment.analyst_revisions[0]?.title.slice(0, 90) ?? null}
-                tone="earnings"
-                icon="✦"
-              />
-            )}
-          </div>
-
-          <MeridianEarningsIntelPanel
-            intel={detail.intel}
-            printHistory={detail.enrichment.print_history}
-            tickerExpectedMovePct={detail.pack.expected_move_pct}
-          />
-
-          <div className="meridian-detail-grid-v2 meridian-earn-enrich">
-            {detail.enrichment.print_history_summary && (
-              <MeridianDataCard label="Track record" wide tone="earnings" delay={0}>
-                <p className="meridian-card-value">{detail.enrichment.print_history_summary}</p>
-              </MeridianDataCard>
-            )}
-            {detail.enrichment.street_estimates.length > 0 && (
-              <MeridianDataCard label="Street estimates" wide tone="earnings" delay={80}>
-                <ul className="meridian-card-list">
-                  {detail.enrichment.street_estimates.map((row) => (
-                    <li key={row.period ?? "unknown"}>
-                      {row.period ?? "Next"}
-                      {row.eps_estimate != null ? ` · EPS est ${row.eps_estimate}` : ""}
-                      {row.revenue_estimate != null
-                        ? ` · Rev est $${(row.revenue_estimate / 1_000_000).toFixed(0)}M`
-                        : ""}
-                    </li>
-                  ))}
-                </ul>
-              </MeridianDataCard>
-            )}
-          </div>
-          <div className="meridian-earn-wrap">
-            <LargoPreEarningsPackCard card={detail.pack} />
-          </div>
-        </>
+        <MeridianEarningsTabs detail={detail} />
       )}
 
       <MeridianActionDock item={item} boardTickers={boardTickers} />
