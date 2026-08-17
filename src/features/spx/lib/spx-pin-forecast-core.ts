@@ -9,7 +9,12 @@
 //
 // The BSM gamma + ladder math mirrors vector-gex-reconstruct.ts (gammaPerShare / gexLadderAtSpot);
 // it is re-stated here as tiny pure functions so this core pulls no server/ws import chain. The
-// cumulative gamma-flip mirrors gex-cross-validation-core.ts:cumulativeGammaFlip.
+// cumulative gamma-flip DELEGATES to gex-cross-validation-core.ts:cumulativeGammaFlip.
+
+import {
+  cumulativeGammaFlip,
+  strikeTotalsFromLadder,
+} from "@/lib/providers/gex-cross-validation-core";
 
 export type PinContract = {
   strike: number;
@@ -234,22 +239,19 @@ export function pinLadderAtSpot(contracts: readonly PinContract[], spot: number,
   return ladder;
 }
 
-/** Cumulative zero-gamma flip (SpotGamma std) nearest spot, ±12% band. Mirrors cumulativeGammaFlip. */
+/**
+ * Cumulative zero-gamma flip (SpotGamma std) nearest spot, ±12% band.
+ *
+ * This was a hand-copied RE-STATEMENT of `cumulativeGammaFlip` (identical crossing collection,
+ * identical 0.12 band, identical toFixed(2)) kept local to avoid a server import chain. That
+ * chain never existed — `gex-cross-validation-core` is a pure, import-free module — so the copy
+ * bought nothing and cost the usual price of duplicated math: a fix to one flip definition would
+ * have silently left the SPX pin forecaster on the old one. It now DELEGATES, which is what the
+ * "mirrors cumulativeGammaFlip" comment always claimed. Ladder→strike-totals conversion goes
+ * through the shared `strikeTotalsFromLadder` for the same reason.
+ */
 export function pinFlip(ladder: Map<number, number>, spot: number): number | null {
-  const rows = [...ladder.entries()].map(([s, g]) => ({ s, g })).filter((r) => fin(r.s) && fin(r.g)).sort((a, b) => a.s - b.s);
-  if (rows.length < 2) return null;
-  const crossings: number[] = [];
-  let cum = 0, ps = rows[0]!.s, pc = 0;
-  for (const r of rows) {
-    cum += r.g;
-    if (pc <= 0 && cum > 0) crossings.push(Number((ps + (-pc / (cum - pc)) * (r.s - ps)).toFixed(2)));
-    ps = r.s; pc = cum;
-  }
-  if (!crossings.length) return null;
-  if (!(spot > 0)) return crossings[crossings.length - 1]!;
-  const plausible = crossings.filter((c) => Math.abs(c - spot) <= spot * 0.12);
-  if (!plausible.length) return null;
-  return plausible.reduce((b, c) => (Math.abs(c - spot) < Math.abs(b - spot) ? c : b));
+  return cumulativeGammaFlip(strikeTotalsFromLadder(ladder), spot);
 }
 
 /** Max-pain: strike minimising total option value paid out at expiry (standard). */
