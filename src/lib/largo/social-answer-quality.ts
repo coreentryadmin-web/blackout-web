@@ -25,8 +25,9 @@ const VENDOR_RE =
   /\b(unusual whales|polygon\.io|massive\.com|clerk|whop api|redis|postgres|aws|anthropic)\b/i;
 const WORKFLOW_RE =
   /\*\*(?:screenshot workflow|attach)\*\*|screenshot workflow|#\s*helix-ticker-search|\/heatmap|\/flows|\/meridian/i;
+const TICKER_GUIDE_RE = /\*\*(?:how to post|products for)\*\*|how to post|products for/i;
 
-export function scoreSocialAnswer(answer: string): SocialAnswerScore {
+export function scoreSocialAnswer(answer: string, opts?: { archetype?: string }): SocialAnswerScore {
   const raw = String(answer ?? "");
   const sanitized = sanitizeLargoMemberText(raw);
   const issues: string[] = [];
@@ -48,6 +49,9 @@ export function scoreSocialAnswer(answer: string): SocialAnswerScore {
   if (altHooks.length < 2) issues.push("alt-hooks-lt-2");
   if (!hasWorkflow) issues.push("missing-screenshot-workflow");
   if (!hasCta) issues.push("missing-cta");
+  if (opts?.archetype === "ticker_post" && !TICKER_GUIDE_RE.test(sanitized)) {
+    issues.push("missing-ticker-product-guide");
+  }
   if (vendorLeak) issues.push("vendor-leak");
   if (hashtagLeak) issues.push("hashtag-leak");
   if (sanitized.length < 200) issues.push("answer-too-short");

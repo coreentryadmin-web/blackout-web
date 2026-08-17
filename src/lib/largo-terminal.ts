@@ -553,13 +553,31 @@ async function prepareLargoTurn(
   let socialPack: SocialPackSlice | null = null;
   if (questionWantsSocialContentPack(question)) {
     const { buildSocialContentPack } = await import("@/lib/largo/social-content-pack");
-    socialPack = await buildSocialContentPack(question, intentTicker).catch(() => null);
+    const { detectSocialArchetype } = await import("@/lib/largo/social-content-core");
+    const {
+      extractSocialPostTicker,
+      buildTickerSocialGuide,
+      formatTickerSocialGuideBlock,
+    } = await import("@/lib/largo/ticker-social-guide");
+    const socialTicker = extractSocialPostTicker(question, intentTicker) ?? intentTicker;
+    socialPack = await buildSocialContentPack(question, socialTicker).catch(() => null);
     if (socialPack?.available) {
       toolsUsed.push("social_content_pack_prefetch");
       socialContentBlock =
         `\n\n${LARGO_SOCIAL_CONTENT_VOICE}\n\n## Social content pack (prefetched — cite these numbers)\n${JSON.stringify(socialPack, null, 0).slice(0, 6000)}\n`;
     } else {
       socialContentBlock = `\n\n${LARGO_SOCIAL_CONTENT_VOICE}\n`;
+    }
+    if (socialTicker) {
+      const guide = buildTickerSocialGuide({
+        ticker: socialTicker,
+        question,
+        archetype: detectSocialArchetype(question),
+        onZerodteBoard: socialPack?.winners?.some((w) => w.ticker === socialTicker.toUpperCase()),
+        earningsSoon: questionWantsMeridianPrefetch(question),
+      });
+      toolsUsed.push("ticker_social_guide_prefetch");
+      socialContentBlock += `\n\n${formatTickerSocialGuideBlock(guide)}\n`;
     }
   }
 

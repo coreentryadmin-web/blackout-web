@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import type { BieLevel } from "@/lib/bie/answer-envelope";
 import { formatLargoXPost } from "@/lib/largo/format-x-post";
 import { detectSocialArchetype } from "@/lib/largo/social-content-core";
+import { extractSocialPostTicker } from "@/lib/largo/ticker-social-guide";
 import { requireTierApi } from "@/lib/market-api-auth";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 import { requireToolApi } from "@/lib/tool-access-server";
@@ -38,15 +39,19 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const questionStr = body.question ? String(body.question) : null;
+  const tickerFromQuestion = questionStr ? extractSocialPostTicker(questionStr, body.ticker) : null;
+  const ticker = tickerFromQuestion ?? body.ticker ?? null;
+
   const draft = formatLargoXPost({
     answer,
     headline: body.headline ?? null,
-    ticker: body.ticker ?? null,
+    ticker,
     bias: body.bias ?? null,
     levels: Array.isArray(body.levels) ? body.levels : undefined,
-    question: body.question ?? null,
-    archetype: body.question
-      ? detectSocialArchetype(String(body.question))
+    question: questionStr,
+    archetype: questionStr
+      ? detectSocialArchetype(questionStr)
       : detectSocialArchetype(answer),
   });
 

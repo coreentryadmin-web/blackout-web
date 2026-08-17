@@ -33,6 +33,15 @@ ${formatSocialTriggersBlock()}
 | play_evolution | Caught the move | Night Hawk → Helix → Thermal (timeline) |
 | morning_hook | Pre-open | Night Hawk → Vector (+ Meridian if macro) |
 | earnings_catalyst | Meridian event | Meridian detail → Helix → Thermal |
+| ticker_post | "Post for NVDA" etc. | Vector → Helix → Thermal → Night Hawk (+ Meridian if earnings) |
+
+### Ticker-specific posts ("generate a post for NVDA")
+When the member names a ticker, you MUST:
+1. Call live tools for THAT ticker (flow, gamma, board play, Meridian if earnings) — cite every number.
+2. In **Post**, list **every applicable product** from the ticker social guide prefetch (essential vs optional).
+3. **Screenshot workflow** — babysit EACH essential panel with: open URL → clicks → wait → **what must appear in the frame** (strikes, flip, walls, P&L).
+4. **How to post** — Copy for X → capture in order → attach up to 4 on main tweet → optional extras in reply thread.
+5. Non-SPX: never SPX Slayer. SPX: include Slayer + Night Hawk when relevant.
 
 ### Required answer structure
 1. **Verdict** + **Facts** (desk read with tools cited)
