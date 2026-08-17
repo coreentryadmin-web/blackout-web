@@ -7,10 +7,10 @@ import { LARGO_PLATFORM_LINKS } from "@/lib/largo/platform-links";
 import {
   buildCapturePlaybook,
   platformShowcaseWorkflow,
+  wantsMag7Thermal,
   type CapturePlaybook,
 } from "@/lib/largo/x-post-capture-playbook";
 import {
-  buildXPostMediaPlan,
   formatMediaPlanForClipboard,
   type XPostMediaAttachment,
 } from "@/lib/largo/x-post-media-plan";
@@ -82,13 +82,6 @@ export function extractSocialPostTicker(question: string, fallback?: string | nu
   if (cashtags?.length) {
     for (const raw of cashtags) {
       const t = raw.replace(/^\$/, "");
-      if (isLikelyTickerSymbol(t)) return normalizeTicker(t);
-    }
-  }
-
-  const bare = q.match(/\b([A-Z]{2,5})\b/g);
-  if (bare?.length) {
-    for (const t of bare) {
       if (isLikelyTickerSymbol(t)) return normalizeTicker(t);
     }
   }
@@ -200,6 +193,76 @@ export function buildTickerFullWorkflow(
   return workflows;
 }
 
+const MAX_ESSENTIAL_ATTACHMENTS = 4;
+
+const TICKER_ATTACHMENT_ORDER = [
+  "vector",
+  "helix",
+  "thermal",
+  "meridian",
+  "nighthawk",
+  "slayer",
+  "largo",
+  "thermal_mag7",
+];
+
+function playbookToAttachment(
+  pb: CapturePlaybook,
+  order: number,
+  primary?: boolean,
+): XPostMediaAttachment {
+  return {
+    tool: pb.tool,
+    label: pb.goal,
+    deskPath: pb.deskPath,
+    captureHint: pb.steps[pb.steps.length - 1] ?? pb.goal,
+    order,
+    primary,
+    steps: pb.steps,
+    screenshotTarget: pb.screenshotTarget,
+    verifyBeforeCapture: pb.verifyBeforeCapture,
+  };
+}
+
+function buildTickerEssentialAttachments(input: {
+  ticker: string;
+  products: TickerProductSlot[];
+  archetype?: SocialContentArchetype;
+  corpus?: string;
+}): XPostMediaAttachment[] {
+  const ticker = normalizeTicker(input.ticker);
+  const includeAllProducts = /\bevery applicable product|all products|whole platform\b/i.test(
+    input.corpus ?? "",
+  );
+  const productById = new Map(input.products.map((p) => [p.id, p]));
+  const attachments: XPostMediaAttachment[] = [];
+  const seenTools = new Set<string>();
+
+  for (const id of TICKER_ATTACHMENT_ORDER) {
+    if (attachments.length >= MAX_ESSENTIAL_ATTACHMENTS) break;
+    const product = productById.get(id);
+    if (!product) continue;
+    if (!product.essential && !includeAllProducts) continue;
+    if (id === "nighthawk" && !product.essential) continue;
+
+    const toolId = id === "thermal_mag7" ? "thermal" : id;
+    const useMag7 =
+      id === "thermal_mag7" ||
+      (toolId === "thermal" && input.corpus && wantsMag7Thermal(input.corpus));
+    const pb = buildCapturePlaybook({
+      toolId,
+      ticker,
+      archetype: input.archetype,
+      thermalPreset: useMag7 ? "mega" : null,
+    });
+    if (!pb || seenTools.has(pb.tool)) continue;
+    seenTools.add(pb.tool);
+    attachments.push(playbookToAttachment(pb, attachments.length + 1, attachments.length === 0));
+  }
+
+  return attachments;
+}
+
 export type TickerSocialGuide = {
   ticker: string;
   products: TickerProductSlot[];
@@ -227,11 +290,11 @@ export function buildTickerSocialGuide(input: {
 
   const essential: XPostMediaAttachment[] = [];
   const optional: XPostMediaAttachment[] = [];
-  const essentialPlan = buildXPostMediaPlan({
+  const essentialPlan = buildTickerEssentialAttachments({
     ticker,
-    answer: input.answer ?? "",
-    question: input.question,
+    products,
     archetype: input.archetype,
+    corpus,
   });
 
   for (const att of essentialPlan) {

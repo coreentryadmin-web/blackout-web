@@ -1,3 +1,5 @@
+import { extractSocialPostTicker } from "./ticker-social-guide";
+
 export type SocialContentArchetype =
   | "win_recap"
   | "live_desk"
@@ -18,15 +20,15 @@ export type SocialContentPlayRow = {
   last_mark: number | null;
 };
 
-const TICKER_POST_RE =
-  /\b(?:generate|write|create|draft|make)\s+(?:me\s+)?(?:a\s+)?(?:an\s+)?(?:x\s+|twitter\s+)?post\s+(?:for|about)\s+\$?[A-Z]{2,5}\b|\bpost\s+(?:for|about)\s+\$?[A-Z]{2,5}\b/i;
+const TICKER_POST_ASK_RE =
+  /\b(?:generate|write|create|draft|make)\s+(?:me\s+)?(?:a\s+)?(?:an\s+)?(?:x\s+|twitter\s+)?post\b|\bpost\s+(?:for|about)\s+\$?[A-Z]{2,5}\b/;
 
 export function detectSocialArchetype(question: string): SocialContentArchetype {
   const q = question.toLowerCase();
   if (/\b(winning|win recap|winners|won today|green plays|0dte plays)\b/.test(q)) {
     return "win_recap";
   }
-  if (TICKER_POST_RE.test(question)) {
+  if (TICKER_POST_ASK_RE.test(question) && extractSocialPostTicker(question)) {
     return "ticker_post";
   }
   if (/\b(track record|win rate|hit rate|our record|graded|performance stats)\b/.test(q)) {

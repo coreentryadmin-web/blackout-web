@@ -9,6 +9,7 @@ import {
   wantsMag7Thermal,
   type CapturePlaybook,
 } from "@/lib/largo/x-post-capture-playbook";
+import { buildTickerSocialGuide } from "@/lib/largo/ticker-social-guide";
 
 export type XPostMediaAttachment = {
   tool: string;
@@ -124,6 +125,20 @@ export function buildXPostMediaPlan(input: XPostMediaPlanInput): XPostMediaAttac
   const ticker = normalizeTicker(input.ticker);
   const spx = isSpxTicker(ticker);
   const corpus = `${input.question ?? ""}\n${input.answer}`.trim();
+
+  if (input.archetype === "ticker_post" && input.ticker) {
+    const guide = buildTickerSocialGuide({
+      ticker,
+      question: input.question,
+      answer: input.answer,
+      archetype: input.archetype,
+      earningsSoon: /\b(earnings|meridian|catalyst|every applicable product)\b/i.test(corpus),
+    });
+    if (guide.essentialAttachments.length) {
+      return guide.essentialAttachments.slice(0, MAX_ATTACHMENTS);
+    }
+  }
+
   const scores = scoreTools(corpus, spx);
 
   let ranked = [...scores.entries()]

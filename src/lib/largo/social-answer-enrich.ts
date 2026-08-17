@@ -45,48 +45,24 @@ function hasPostSection(answer: string): boolean {
   return /(?:^|\n)(?:#+\s*Post\b|\*\*Post\*\*)/i.test(answer);
 }
 
-export function enrichSocialAnswerIfNeeded(
-  answer: string,
-  question: string,
-  pack: SocialPackSlice | null,
-  ticker?: string | null,
+function hasTickerProductGuide(answer: string): boolean {
+  return /\*\*(?:how to post|products for)\*\*|how to post|products for/i.test(answer);
+}
+
+function buildTickerGuideBlock(
+  guide: ReturnType<typeof buildTickerSocialGuide>,
+  angles: string[],
+  verdict: string,
+  includeFullPost: boolean,
 ): string {
-  if (!answer.trim()) return answer;
-  if (extractPostCopyFromAnswer(answer)) return answer;
-
-  const archetype: SocialContentArchetype = detectSocialArchetype(question);
-  const socialTicker =
-    extractSocialPostTicker(question, ticker ?? undefined) ?? ticker ?? "SPX";
-  const onBoard = pack?.winners.some((w) => w.ticker === socialTicker) ?? false;
-
-  const guide = buildTickerSocialGuide({
-    ticker: socialTicker,
-    question,
-    answer,
-    archetype,
-    onZerodteBoard: onBoard,
-    earningsSoon: /\b(earnings|meridian|catalyst)\b/i.test(question),
-  });
-
-  const verdict = extractVerdictLine(answer);
-  const angles = pack?.available
-    ? buildPostAngles(archetype, {
-        winners: pack.winners,
-        board: pack.board,
-        spx: pack.spx,
-        record_7d: pack.record_7d,
-      })
-    : [];
-
-  const attachments = guide.essentialAttachments;
   const workflow =
     guide.workflowClipboard ||
-    formatMediaPlanForClipboard(attachments).replace(/^\n+/, "");
-
+    formatMediaPlanForClipboard(guide.essentialAttachments).replace(/^\n+/, "");
   const hook = angles[0] ?? verdict.slice(0, 120);
   const copyLine = verdict.length >= 40 && verdict.length <= 220 ? verdict : hook;
 
-  const block = `
+  if (includeFullPost) {
+    return `
 ## Post
 
 **Copy**
@@ -108,6 +84,62 @@ ${guide.products.map((p) => `- ${p.tool} (${p.essential ? "attach on X" : "optio
 **Screenshot workflow**
 ${workflow}
 `.trim();
+  }
 
+  return `
+**How to post**
+${formatHowToPostBlock()}
+
+**Products for ${guide.ticker}**
+${guide.products.map((p) => `- ${p.tool} (${p.essential ? "attach on X" : "optional"}): ${p.why} — capture: ${p.mustCapture.join("; ")}`).join("\n")}
+
+**Screenshot workflow**
+${workflow}
+`.trim();
+}
+
+export function enrichSocialAnswerIfNeeded(
+  answer: string,
+  question: string,
+  pack: SocialPackSlice | null,
+  ticker?: string | null,
+): string {
+  if (!answer.trim()) return answer;
+
+  const archetype: SocialContentArchetype = detectSocialArchetype(question);
+  const socialTicker =
+    extractSocialPostTicker(question, ticker ?? undefined) ??
+    (archetype === "ticker_post" ? ticker ?? null : null);
+  const onBoard = pack?.winners.some((w) => w.ticker === socialTicker) ?? false;
+
+  const needsTickerGuide =
+    archetype === "ticker_post" &&
+    Boolean(socialTicker) &&
+    !hasTickerProductGuide(answer);
+  const needsPostSection = !extractPostCopyFromAnswer(answer) && !hasPostSection(answer);
+
+  if (!needsTickerGuide && !needsPostSection) return answer;
+  if (!socialTicker && needsTickerGuide) return answer;
+
+  const guide = buildTickerSocialGuide({
+    ticker: socialTicker ?? ticker ?? "SPX",
+    question,
+    answer,
+    archetype,
+    onZerodteBoard: onBoard,
+    earningsSoon: /\b(earnings|meridian|catalyst)\b/i.test(question),
+  });
+
+  const verdict = extractVerdictLine(answer);
+  const angles = pack?.available
+    ? buildPostAngles(archetype, {
+        winners: pack.winners,
+        board: pack.board,
+        spx: pack.spx,
+        record_7d: pack.record_7d,
+      })
+    : [];
+
+  const block = buildTickerGuideBlock(guide, angles, verdict, needsPostSection);
   return `${answer.trim()}\n\n${block}`;
 }

@@ -32,9 +32,12 @@ export async function POST(req: NextRequest) {
   }
 
   const answer = String(body.answer ?? "").trim();
-  if (!answer || answer.length > 8000) {
+  if (!answer) {
+    return NextResponse.json({ error: "answer required" }, { status: 400 });
+  }
+  if (answer.length > 12000) {
     return NextResponse.json(
-      { error: "answer required (max 8000 chars)" },
+      { error: "answer too long (max 12000 chars)" },
       { status: 400 },
     );
   }
