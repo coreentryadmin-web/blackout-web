@@ -144,11 +144,56 @@ export function zeroGammaFlip(strikeTotals: Record<string, number>, spot = 0): n
  * using the per-strike `zeroGammaFlip` — only the gamma flip is cumulative. See docs/audit/FINDINGS.md.
  */
 export function cumulativeGammaFlip(strikeTotals: Record<string, number>, spot = 0): number | null {
+  return cumulativeGammaFlipDetail(strikeTotals, spot).flip;
+}
+
+/**
+ * WHY a gamma flip is null. The bare `number | null` return above collapses THREE materially
+ * different states into one value, and every downstream consumer (`gammaRegime`, the Vector
+ * regime paint, the SPX desk) maps all three to the same `"unknown"` — so an operator seeing a
+ * blank flip cannot tell an honest structural fact from a data outage:
+ *
+ *  - `net_short_everywhere` — cumulative gamma never turns positive. Dealers are net-short at
+ *    EVERY strike, so there IS no long-gamma region and no flip exists. This is a real, tradeable
+ *    read (unstable/accelerating regime), not missing data. Observed live on IWM 2026-08-17
+ *    (spot 304.03, 115 strikes, zero crossings) while SPX/SPY/QQQ/NVDA/TSLA all resolved.
+ *  - `crossings_far_from_spot` — crossings exist but all lie beyond ±12% of spot, i.e. thin
+ *    far-strike artifacts of a banded chain snapshot. Suspicious data, not a regime read.
+ *  - `insufficient_strikes` — fewer than 2 usable strikes. A pure data outage.
+ *
+ * `nearestCrossing` is retained even when rejected so the far-crossing case can be inspected
+ * without a re-run: the whole reason this distinction had to be caught live is that the null
+ * carried no evidence about which branch produced it.
+ */
+export type GammaFlipReason =
+  | "resolved"
+  | "insufficient_strikes"
+  | "net_short_everywhere"
+  | "crossings_far_from_spot";
+
+export type GammaFlipDetail = {
+  flip: number | null;
+  reason: GammaFlipReason;
+  /** Count of net-short→net-long cumulative crossings found, before the plausibility filter. */
+  crossings: number;
+  /** Crossing nearest spot, INCLUDING ones rejected as implausible. Null when none exist. */
+  nearestCrossing: number | null;
+};
+
+const FLIP_MAX_DIST_PCT = 0.12;
+
+/** `cumulativeGammaFlip` with the null cause attached — see GammaFlipReason. */
+export function cumulativeGammaFlipDetail(
+  strikeTotals: Record<string, number>,
+  spot = 0
+): GammaFlipDetail {
   const rows = Object.entries(strikeTotals)
     .map(([s, g]) => ({ strike: Number(s), gamma: g }))
     .filter((r) => Number.isFinite(r.strike) && Number.isFinite(r.gamma))
     .sort((a, b) => a.strike - b.strike);
-  if (rows.length < 2) return null;
+  if (rows.length < 2) {
+    return { flip: null, reason: "insufficient_strikes", crossings: 0, nearestCrossing: null };
+  }
 
   const crossings: number[] = [];
   let cum = 0;
@@ -164,13 +209,39 @@ export function cumulativeGammaFlip(strikeTotals: Record<string, number>, spot =
     prevStrike = r.strike;
     prevCum = cum;
   }
-  if (crossings.length === 0) return null;
-  if (!(spot > 0)) return crossings[crossings.length - 1];
+  if (crossings.length === 0) {
+    return { flip: null, reason: "net_short_everywhere", crossings: 0, nearestCrossing: null };
+  }
 
-  const FLIP_MAX_DIST_PCT = 0.12;
+  const nearest =
+    spot > 0
+      ? crossings.reduce((best, c) => (Math.abs(c - spot) < Math.abs(best - spot) ? c : best))
+      : crossings[crossings.length - 1]!;
+
+  if (!(spot > 0)) {
+    return {
+      flip: crossings[crossings.length - 1]!,
+      reason: "resolved",
+      crossings: crossings.length,
+      nearestCrossing: nearest,
+    };
+  }
+
   const plausible = crossings.filter((c) => Math.abs(c - spot) <= spot * FLIP_MAX_DIST_PCT);
-  if (plausible.length === 0) return null;
-  return plausible.reduce((best, c) => (Math.abs(c - spot) < Math.abs(best - spot) ? c : best));
+  if (plausible.length === 0) {
+    return {
+      flip: null,
+      reason: "crossings_far_from_spot",
+      crossings: crossings.length,
+      nearestCrossing: nearest,
+    };
+  }
+  return {
+    flip: plausible.reduce((best, c) => (Math.abs(c - spot) < Math.abs(best - spot) ? c : best)),
+    reason: "resolved",
+    crossings: crossings.length,
+    nearestCrossing: nearest,
+  };
 }
 
 export function strikeTotalsFromLadder(ladder: Map<number, number>): Record<string, number> {

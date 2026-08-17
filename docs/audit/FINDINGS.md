@@ -10617,3 +10617,58 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Root cause** | (1) Per-pane `VectorToolbar` still mounted the full desktop wrap row (indicators + replay + LIVE chip) even when linked controls were hidden — ~80px vertical tax per pane in a 2×2 grid. (2) Flex chain missed the SPX-embed `.relative` selector and `height:100%` on pane/grid items. (3) `fillHost` charts did not re-nudge autosize when the compare grid transitioned from hidden → visible. |
 | **Fix** | `VectorToolbar` `comparePane` mode: one slim row (indicators + replay). Suppress per-pane freshness chip in compare embeds. CSS: pane `height:100%`, wrap/stage overflow hidden, `.relative` flex child, canvas `min-height:200px` + flex-grow. `VectorChart` IntersectionObserver nudge for fillHost. E2E asserts compare canvas ≥200px. |
 | **Status** | FIXED — PR pending merge.
+
+## 2026-08-17 — [P2, GEX] `gex.flip` null conflated three unrelated causes; SPX pin forecaster kept a hand-copied second flip — FIXED (fix/gamma-flip-null-reason)
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED — `cumulativeGammaFlipDetail` added; `gex.flip_reason` served; `pinFlip` now delegates |
+| **Where** | `src/lib/providers/gex-cross-validation-core.ts:146`, `src/lib/providers/polygon-options-gex.ts` (2 build sites), `src/features/spx/lib/spx-pin-forecast-core.ts:238` |
+
+**Symptom.** `gex.flip` came back `null` seven times across the 2026-08-17 RTH monitoring day. A
+null flip makes `gammaRegime` report `"unknown"`, so the operator-visible result is identical
+whether the book genuinely has no long-gamma region or the upstream chain came back empty.
+
+**Root cause.** `cumulativeGammaFlip` has THREE `return null` paths — `rows.length < 2`,
+`crossings.length === 0`, and `plausible.length === 0` (the ±12% band) — and they mean completely
+different things. The first is a data outage; the second is an honest structural read (dealers
+net-short at every strike, so no flip EXISTS); the third is a suspicious far-strike artifact. All
+three returned the same bare `null`, so the cause could only be recovered by catching it live.
+
+**Evidence.** Live probe against prod, recomputing the flip in-process from `gex.strike_totals`:
+
+```
+SPX   spot=7745.06  strikes=184  served=7823.62  recomputed=7823.62  resolved
+SPY   spot=772.63   strikes=264  served=799.82   recomputed=799.82   resolved
+QQQ   spot=729.59   strikes=292  served=737.74   recomputed=737.74   resolved
+IWM   spot=304.03   strikes=115  served=null     recomputed=null     crossings=0
+NVDA  spot=225.04   strikes=63   served=217.43   recomputed=217.43   resolved
+TSLA  spot=339.79   strikes=54   served=352.58   recomputed=352.58   resolved
+```
+
+Five exact recompute matches validate the probe. IWM reproduces the null and identifies the path
+as **`net_short_everywhere`** — 115 strikes present, zero cumulative crossings. **This refutes the
+working hypothesis**, which was that the ±12% plausibility gate was rejecting a real level. IWM's
+null is CORRECT; the defect is that nothing said so.
+
+**Fix.** `cumulativeGammaFlipDetail` returns `{flip, reason, crossings, nearestCrossing}` with
+`reason ∈ resolved | insufficient_strikes | net_short_everywhere | crossings_far_from_spot`.
+`cumulativeGammaFlip` is now a one-line wrapper, so no call site changed behaviour, and a test
+asserts the two agree byte-for-byte across all five paths. `GexMetricBlock` gains an optional
+`flip_reason`, populated at both build sites — the next null identifies its own cause from the
+payload with no live catch needed. `nearestCrossing` is retained even when rejected, so the
+far-crossing case is diagnosable after the fact.
+
+**Blast radius.** `spx-pin-forecast-core.ts:238`'s `pinFlip` was a hand-copied restatement of the
+same math (identical crossings, identical 0.12 band, identical `toFixed(2)`), commented "mirrors
+cumulativeGammaFlip". The stated reason for the copy — avoiding a server import chain — was not
+real: `gex-cross-validation-core` is a pure, import-free module. It now delegates, so the SPX pin
+forecaster cannot drift off the canonical flip definition. Pin tests pass unchanged (59/59 on
+Node v20.20.2), which is the evidence the two were in fact identical.
+
+**Deliberately NOT changed.** The UW-REST fallback path (`polygon-options-gex.ts` ~2893) computes
+its flip with the PER-STRIKE `zeroGammaFlip`, not the cumulative one — a pre-existing definitional
+inconsistency, but correcting it changes served numbers on a fallback path and belongs in its own
+PR with its own before/after. Logged here rather than folded in silently.

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   crossValidateGexLevels,
   cumulativeGammaFlip,
+  cumulativeGammaFlipDetail,
   resolveNearTermExpiriesForCrossValidation,
   restFallbackAllowed,
   uwLevelsFromLadder,
@@ -33,6 +34,65 @@ test("cumulativeGammaFlip: rejects a crossing outside the ±12% plausibility ban
 
 test("cumulativeGammaFlip: fewer than 2 strikes → null", () => {
   assert.equal(cumulativeGammaFlip({ "100": 50 }, 100), null);
+});
+
+// ── the null CAUSE. The three tests above are the three distinct ways `flip` becomes null, and
+// until now they were indistinguishable to every caller. Each one is re-asserted here through the
+// detail API so a future refactor cannot silently collapse two causes back into one.
+test("cumulativeGammaFlipDetail: a resolved flip reports reason=resolved and its crossing count", () => {
+  const d = cumulativeGammaFlipDetail({ "90": -30, "100": 10, "110": 40 }, 100);
+  assert.equal(d.flip, 105);
+  assert.equal(d.reason, "resolved");
+  assert.equal(d.crossings, 1);
+  assert.equal(d.nearestCrossing, 105);
+});
+
+test("cumulativeGammaFlipDetail: net-short everywhere → net_short_everywhere, NOT a data outage", () => {
+  // Same ladder as the regime-inversion test above. This null is an honest structural read —
+  // there is no long-gamma region — and must never be reported as missing data.
+  const d = cumulativeGammaFlipDetail({ "698": -2e9, "700": -3e9, "710": 1e8, "720": 2e9, "730": -1e8 }, 715);
+  assert.equal(d.flip, null);
+  assert.equal(d.reason, "net_short_everywhere");
+  assert.equal(d.crossings, 0);
+  assert.equal(d.nearestCrossing, null);
+});
+
+test("cumulativeGammaFlipDetail: far crossing → crossings_far_from_spot, and KEEPS the rejected level", () => {
+  const d = cumulativeGammaFlipDetail({ "45": -10, "55": 30, "150": -1 }, 100);
+  assert.equal(d.flip, null);
+  assert.equal(d.reason, "crossings_far_from_spot");
+  assert.equal(d.crossings, 1);
+  // The rejected crossing survives on the detail so this case is diagnosable without a re-run —
+  // that is the whole point of the field, and a null here would defeat it.
+  assert.ok(d.nearestCrossing !== null && d.nearestCrossing < 55);
+});
+
+test("cumulativeGammaFlipDetail: fewer than 2 strikes → insufficient_strikes (a data outage)", () => {
+  const d = cumulativeGammaFlipDetail({ "100": 50 }, 100);
+  assert.equal(d.flip, null);
+  assert.equal(d.reason, "insufficient_strikes");
+});
+
+test("cumulativeGammaFlipDetail: the three null causes are all distinct", () => {
+  const reasons = new Set([
+    cumulativeGammaFlipDetail({ "698": -2e9, "700": -3e9, "710": 1e8, "720": 2e9, "730": -1e8 }, 715).reason,
+    cumulativeGammaFlipDetail({ "45": -10, "55": 30, "150": -1 }, 100).reason,
+    cumulativeGammaFlipDetail({ "100": 50 }, 100).reason,
+  ]);
+  assert.equal(reasons.size, 3);
+});
+
+test("cumulativeGammaFlip stays byte-identical to the detail's flip across every path", () => {
+  const cases: Array<[Record<string, number>, number]> = [
+    [{ "90": -30, "100": 10, "110": 40 }, 100],
+    [{ "698": -2e9, "700": -3e9, "710": 1e8, "720": 2e9, "730": -1e8 }, 715],
+    [{ "45": -10, "55": 30, "150": -1 }, 100],
+    [{ "100": 50 }, 100],
+    [{ "90": -30, "100": 10, "110": 40 }, 0], // spot unknown → last crossing, no band filter
+  ];
+  for (const [totals, spot] of cases) {
+    assert.equal(cumulativeGammaFlip(totals, spot), cumulativeGammaFlipDetail(totals, spot).flip);
+  }
 });
 
 test("REST fallback is disallowed when the caller requires expiry scoping", () => {

@@ -14,7 +14,7 @@ import { isHeatmapPreset } from "../heatmap-allowlist";
 import { isLiveOdteSession } from "./unusual-whales";
 import { fmtPremium } from "@/lib/fmt-money";
 import { persistGexRegimeEvents } from "./gex-regime-events";
-import { zeroGammaFlip as computeZeroGammaFlip, cumulativeGammaFlip, gexWallsFromStrikeTotals } from "@/lib/providers/gex-cross-validation-core";
+import { zeroGammaFlip as computeZeroGammaFlip, cumulativeGammaFlipDetail, gexWallsFromStrikeTotals, type GammaFlipReason } from "@/lib/providers/gex-cross-validation-core";
 import { applySpxOdteGexUwOverlay } from "@/lib/providers/spx-odte-gex-uw-overlay";
 export { zeroGammaFlip as computeZeroGammaFlip, cumulativeGammaFlip } from "@/lib/providers/gex-cross-validation-core";
 
@@ -280,6 +280,14 @@ export type GexMetricBlock = {
   total: number;
   /** Linear-interpolated zero-gamma flip strike, or null when undetermined. */
   flip: number | null;
+  /**
+   * WHY `flip` is null — see GammaFlipReason. A null flip has three distinct causes and they are
+   * not interchangeable: `net_short_everywhere` is an honest structural read (no long-gamma region
+   * exists), while `insufficient_strikes` is a data outage. Without this, every one presents to an
+   * operator as the same blank field, and `regime` reports "unknown" for all of them.
+   * Optional/additive — snapshots written before this field simply omit it.
+   */
+  flip_reason?: GammaFlipReason;
   /** Regime read derived from spot vs the gamma flip. */
   regime: GexRegime;
 };
@@ -1351,7 +1359,8 @@ export function prunePastExpiriesFromHeatmap(hm: GexHeatmap, todayYmd: string): 
   const dexPruned = hm.dex ? pruneMetricCells(hm.dex.cells) : null;
   const charmPruned = hm.charm ? pruneMetricCells(hm.charm.cells) : null;
 
-  const gexFlip = cumulativeGammaFlip(gexPruned.strikeTotals, hm.spot);
+  const gexFlipDetail = cumulativeGammaFlipDetail(gexPruned.strikeTotals, hm.spot);
+  const gexFlip = gexFlipDetail.flip;
   const { callWall, putWall, regime: gexRegime } = computeGexRegime(
     gexPruned.strikeTotals,
     hm.spot,
@@ -1408,6 +1417,7 @@ export function prunePastExpiriesFromHeatmap(hm: GexHeatmap, todayYmd: string): 
       strike_totals: gexPruned.strikeTotals,
       total: gexPruned.total,
       flip: gexFlip,
+      flip_reason: gexFlipDetail.reason,
       call_wall: callWall,
       put_wall: putWall,
       regime: gexRegime,
@@ -3314,7 +3324,8 @@ async function buildGexHeatmapUncached(
   // GEX levels + regime. Gamma flip = CUMULATIVE zero-gamma boundary (SpotGamma-standard), the
   // aggregate net-short→net-long crossing — NOT the per-strike sign flip (VEX/DEX/CHARM below still
   // use that generic per-strike helper). See cumulativeGammaFlip / docs/audit/FINDINGS.md 2026-07-21.
-  const gexFlip = cumulativeGammaFlip(gexBuilt.strikeTotals, spot);
+  const gexFlipDetail = cumulativeGammaFlipDetail(gexBuilt.strikeTotals, spot);
+  const gexFlip = gexFlipDetail.flip;
   const { callWall, putWall, regime: gexRegime } = computeGexRegime(
     gexBuilt.strikeTotals,
     spot,
@@ -3539,6 +3550,7 @@ async function buildGexHeatmapUncached(
       put_wall: putWall,
       total: gexBuilt.total ?? totalGamma,
       flip: gexFlip,
+      flip_reason: gexFlipDetail.reason,
       regime: gexRegime,
     },
     vex: {
