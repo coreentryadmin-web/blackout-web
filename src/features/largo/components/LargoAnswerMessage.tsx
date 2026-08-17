@@ -17,6 +17,17 @@ import { splitAnswerCaveats } from "@/features/largo/answer/answer-caveats";
 import { largoAnswerToEnvelope } from "@/features/largo/answer/answer-format";
 import { proseSections } from "@/features/largo/answer/section-policy";
 import { BieScenarioCards } from "@/features/largo/answer/BieScenarioCards";
+import { questionWantsSocialContentPack } from "@/lib/largo/desk-prompts";
+
+function wantsLargoShareRow(
+  streaming: boolean,
+  content: string,
+  question?: string | null,
+): boolean {
+  if (streaming || !content.trim()) return false;
+  if (questionWantsSocialContentPack(question ?? "")) return true;
+  return /(?:^|\n)(?:#+\s*Post\b|\*\*Post\*\*)/i.test(content);
+}
 
 /**
  * Renders a COMPLETED Largo assistant turn through the rich <BieAnswer> surface
@@ -171,12 +182,28 @@ export function LargoAnswerMessage({
   }, [content, source, createdAt, envelope, streaming, className, onFollowup, question, compareCard, playSimilarity, preEarningsPack, actions, sessionId, ticker]);
 
 
-  if (!rich) return fallback;
+  const shareRow = wantsLargoShareRow(streaming, content, question) ? (
+    <LargoShareRow
+      answer={content}
+      headline={envelope?.headline ?? null}
+      ticker={ticker ?? null}
+      bias={envelope?.bias ?? null}
+      levels={envelope?.levels}
+      question={question}
+    />
+  ) : null;
+
+  if (!rich) {
+    return (
+      <>
+        {fallback}
+        {shareRow}
+      </>
+    );
+  }
 
   return (
-    <>
-      <BieAnswerBoundary fallback={fallback}>{rich}</BieAnswerBoundary>
-    </>
+    <BieAnswerBoundary fallback={<>{fallback}{shareRow}</>}>{rich}</BieAnswerBoundary>
   );
 }
 
