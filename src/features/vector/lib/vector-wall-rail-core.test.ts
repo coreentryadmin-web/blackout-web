@@ -13,6 +13,7 @@ import {
   kingStrikeByTime,
   targetHalfPx,
   withA,
+  trailingRefs,
 } from "./vector-wall-rail-core";
 
 // ── withA ────────────────────────────────────────────────────────────────────
@@ -271,7 +272,6 @@ test("kingStrikeByTime: empty input yields no kings", () => {
 });
 
 test("trailingRefs: each point references only STRICTLY EARLIER points", () => {
-  const { trailingRefs } = require("./vector-wall-rail-core") as typeof import("./vector-wall-rail-core");
   const pts = [
     { time: 0, pct: 5 },
     { time: 10, pct: 20 },
@@ -287,7 +287,6 @@ test("trailingRefs: each point references only STRICTLY EARLIER points", () => {
 });
 
 test("trailingRefs: the window EXPIRES an old peak so a rebuilt wall isn't judged forever", () => {
-  const { trailingRefs } = require("./vector-wall-rail-core") as typeof import("./vector-wall-rail-core");
   const pts = [
     { time: 0, pct: 50 },      // a big early peak
     { time: 100, pct: 5 },
@@ -304,7 +303,6 @@ test("trailingRefs: the window EXPIRES an old peak so a rebuilt wall isn't judge
 });
 
 test("trailingRefs: handles empty, single-point and non-finite pct without throwing", () => {
-  const { trailingRefs } = require("./vector-wall-rail-core") as typeof import("./vector-wall-rail-core");
   assert.deepEqual(trailingRefs([], 900), []);
   assert.deepEqual(trailingRefs([{ time: 0, pct: 3 }], 900), [null]);
   const withNaN = trailingRefs([{ time: 0, pct: NaN }, { time: 10, pct: 4 }], 900);
