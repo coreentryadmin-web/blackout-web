@@ -13,6 +13,7 @@ import {
   isCompareMode,
   loadCompareSeedsBounded,
   parseCompareTickers,
+  resolveCompareRaw,
 } from "@/features/vector/lib/vector-compare";
 import type { VectorDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
 
@@ -63,7 +64,10 @@ function seedFromProps(props: VectorSeedProps): VectorClientSeed {
 export function VectorPageClient(initial: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const compareRaw = searchParams.get("compare") ?? initial.initialCompareRaw ?? null;
+  // Compare state comes from the LIVE URL ONLY — see resolveCompareRaw for the trap this avoids.
+  // (Was `searchParams.get("compare") ?? initial.initialCompareRaw`, which made Exit compare and
+  // every same-route navigation out of compare mode a no-op.)
+  const compareRaw = resolveCompareRaw(searchParams.get("compare"));
   const compareTickers = useMemo(() => parseCompareTickers(compareRaw), [compareRaw]);
   const inCompare = isCompareMode(compareRaw) && compareTickers.length > 0;
 

@@ -106,6 +106,47 @@ asserted by `decayModulation(2, 20)` deep-equalling `decayModulation(0.3, 3)`. 5
 `tsc --noEmit` clean.
 
 
+## 2026-08-17 — [FINDING, P1 member-visible] Vector compare mode was a one-way door: Exit compare (and every same-route nav out of it) was a no-op — FIXED
+| **Severity** | P1 (member-visible — a member who entered compare could not leave it without a hard reload) |
+| **Scope** | `src/features/vector/components/VectorPageClient.tsx` (the only consumer of `initialCompareRaw`) |
+| **Status** | FIXED — compare state now reads the live URL only; `resolveCompareRaw` + regression test |
+
+**Root cause.** The client resolved compare state as
+
+```ts
+const compareRaw = searchParams.get("compare") ?? initial.initialCompareRaw ?? null;
+```
+
+`initialCompareRaw` is the server prop captured at PAGE LOAD. "Exit compare" calls
+`router.push(deskPath(...))`, which navigates to `/vector` — the `compare` param is gone, so
+`searchParams.get("compare")` correctly returns `null`, and the `??` then handed back the value the
+URL had when the page first rendered, which still carried the compare string. `inCompare` never
+went false. Same mechanism for any other same-route navigation out of compare (`/vector?ticker=…`):
+the pane grid stayed mounted over the desk.
+
+**Why it was not caught.** It reads as a harmless hydration fallback, and it is invisible on the
+only path anyone tests by hand — ENTERING compare, where the URL and the prop agree. It only
+misbehaves on the transition where the param DISAPPEARS. `/vector` is a client-navigated route, so
+a browser reload (which re-runs the server component and re-derives the prop) always cleared it —
+which is exactly why the bug looked intermittent.
+
+**Fix.** `resolveCompareRaw(urlParam)` in `vector-compare.ts` — absence of the param is meaningful
+and wins outright. The server prop is dropped from the resolution: `/vector` is `force-dynamic` and
+its server component derives `initialCompareRaw` from this same `compare` search param, so the two
+always agree on first paint and the fallback bought nothing. Named function rather than an inline
+expression so the rule is unit-testable and the WHY survives the next refactor.
+
+**Blast radius.** One call site — `app/(site)/vector/page.tsx` is the only caller of
+`VectorPageClient`, and `initialCompareRaw` had no other consumer. The prop is left on the type
+(harmless, and removing it is a separate cleanup). No change to `parseCompareTickers`,
+`buildCompareSearch`, `comparePath`, or the pane grid itself; the `VectorCompareDesk` exit handler
+was already correct — it pushed the right URL and the client ignored it.
+
+**Evidence.** Regression test in `vector-compare.test.ts` asserts `resolveCompareRaw(null)` is
+`null` and `isCompareMode` is false for `null`/`undefined`/`""`, which is precisely the state the
+old expression could not represent. 10/10 pass on Node 20.
+
+
 ## 2026-08-17 — [FINDING, P2 tooling] Audit sessions silently died at ~72s: the client cookie jar never rotated — FIXED
 > **kind:** `FINDING`
 
