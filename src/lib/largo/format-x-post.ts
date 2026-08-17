@@ -8,6 +8,7 @@ import {
 } from "@/lib/largo/x-post-media-plan";
 import { SITE } from "@/lib/site";
 import { truncateText } from "@/lib/truncate-text";
+import { extractSocialPostTicker } from "@/lib/largo/ticker-social-guide";
 
 const X_CHAR_LIMIT = 280;
 const DEFAULT_FOOTER = `@${SITE.social.x.handle}`;
@@ -118,7 +119,10 @@ export function extractAltHooksFromAnswer(answer: string): string[] {
 export function formatLargoXPost(input: LargoXPostInput): LargoXPostDraft {
   const sanitized = sanitizeLargoMemberText(input.answer);
   const headline = input.headline?.trim();
-  const ticker = input.ticker?.trim().toUpperCase();
+  const ticker =
+    input.ticker?.trim().toUpperCase() ??
+    extractSocialPostTicker(input.question ?? "", input.ticker) ??
+    undefined;
   const authoredCopy = extractPostCopyFromAnswer(sanitized);
   const verdict = extractVerdictLine(sanitized);
   const levelSnippet = formatLevelSnippet(input.levels);
