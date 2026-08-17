@@ -91,18 +91,26 @@ const VIEWPORT = "1680x1050";
 async function readBeadPayloadSpread(page, tickers) {
   const out = {};
   for (const t of tickers) {
+    // A failed in-page fetch must NOT take the run down. The first live run of this harness died
+    // here: one `TypeError: Failed to fetch` propagated out of evaluate and killed every remaining
+    // case, so a run that had already captured three healthy pane grids reported nothing at all.
+    // An unreachable ladder is a datum about one ticker, not a reason to lose the other twelve.
     out[t] = await page.evaluate(async (ticker) => {
-      const r = await fetch(`/api/market/vector/gex-ladder?ticker=${encodeURIComponent(ticker)}&dte=weekly`);
-      if (!r.ok) return { error: `HTTP ${r.status}` };
-      const j = await r.json();
-      const pcts = (j?.ladder?.rows ?? [])
-        .map((x) => Number(x.pct))
-        .filter((n) => Number.isFinite(n) && n > 0);
-      if (!pcts.length) return { rows: 0, min: null, max: null, ratio: null };
-      const min = Math.min(...pcts);
-      const max = Math.max(...pcts);
-      return { rows: pcts.length, min, max, ratio: min > 0 ? max / min : null };
-    }, t);
+      try {
+        const r = await fetch(`/api/market/vector/gex-ladder?ticker=${encodeURIComponent(ticker)}&dte=weekly`);
+        if (!r.ok) return { error: `HTTP ${r.status}` };
+        const j = await r.json();
+        const pcts = (j?.ladder?.rows ?? [])
+          .map((x) => Number(x.pct))
+          .filter((n) => Number.isFinite(n) && n > 0);
+        if (!pcts.length) return { rows: 0, min: null, max: null, ratio: null };
+        const min = Math.min(...pcts);
+        const max = Math.max(...pcts);
+        return { rows: pcts.length, min, max, ratio: min > 0 ? max / min : null };
+      } catch (e) {
+        return { error: `fetch failed: ${String(e && e.message).slice(0, 80)}` };
+      }
+    }, t).catch((e) => ({ error: `evaluate failed: ${String(e && e.message).split("\n")[0].slice(0, 80)}` }));
   }
   return out;
 }
@@ -179,6 +187,10 @@ async function run(session) {
     cookie: session.cookieHeader,
     viewport: VIEWPORT,
     desktop: true,
+    // A 4-pane compare fires four ticker's worth of walls/heatmap/ladder calls at once, and a
+    // forced GEX rebuild has a measured multi-second tail. The lib's 20s default timed the first
+    // live run's Vector calls out and rendered empty panes — latency reported as a missing feature.
+    requestTimeoutMs: 45_000,
   });
   const page = await ctx.newPage();
   const results = [];
