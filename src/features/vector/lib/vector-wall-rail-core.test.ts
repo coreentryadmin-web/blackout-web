@@ -81,10 +81,48 @@ test("targetHalfPx: degenerate magnitude still renders a bead, never a collapse"
   }
 });
 
-test("targetHalfPx: a real notional uses the absolute $ ladder", () => {
-  const small = targetHalfPx(10, 1e8, 100);
-  const large = targetHalfPx(10, 1e12, 100);
-  assert.ok(large > small, `expected the larger notional to draw larger (${large} vs ${small})`);
+// CONTRACT CHANGE 2026-08-17: size comes from the per-ticker SHARE, not absolute dollars.
+//
+// This test previously asserted the opposite — same pct, bigger notional → bigger bead. That is
+// precisely what broke single names: absolute dollars are not comparable across underlyings, so a
+// ladder anchored at $200M-$2.5B (calibrated on SPX) clamped 100% of META/TSLA beads to one size.
+// Two strikes holding the SAME share of their own book must now render the same, whichever ticker
+// they belong to.
+test("targetHalfPx: identical share renders identically regardless of absolute $ notional", () => {
+  const indexScale = targetHalfPx(10, 1e12, 100); // SPX-scale book
+  const singleName = targetHalfPx(10, 1e7, 100); // META-scale book, same 10% share
+  assert.ok(
+    Math.abs(indexScale - singleName) < 1e-9,
+    `same 10% share must draw the same bead (${indexScale} vs ${singleName})`
+  );
+});
+
+// REGRESSION GUARD for the 2026-08-17 member report ("all beads look the same size" on
+// META/NVDA/TSLA). Measured live: the absolute ladder put 100% of META and TSLA beads at the floor
+// with exactly ONE distinct size, 93.2% of NVDA at the floor with four. Feed each ticker its OWN
+// measured share distribution and require the size channel to actually carry information.
+test("targetHalfPx: every ticker's own share spread yields distinguishable beads", () => {
+  // p25 / p50 / p75 / p90 of the live 2026-08-17 session, per ticker.
+  const measured: Record<string, number[]> = {
+    SPX: [0.77, 1.26, 2.31, 4.43],
+    SPY: [0.65, 1.23, 2.01, 5.03],
+    QQQ: [0.51, 0.96, 2.41, 6.09],
+    NVDA: [0.05, 0.73, 3.22, 12.11],
+    META: [1.01, 1.62, 3.16, 5.58],
+    TSLA: [0.67, 1.9, 4.27, 9.52],
+  };
+  for (const [ticker, pcts] of Object.entries(measured)) {
+    const radii = pcts.map((p) => targetHalfPx(p, undefined, Math.max(...pcts), BEAD_TUNING_DEFAULT));
+    const distinct = new Set(radii.map((r) => Math.round(r * 2) / 2));
+    assert.ok(
+      distinct.size >= 3,
+      `${ticker}: quartile beads collapsed to ${distinct.size} size(s) — ${radii.map((r) => r.toFixed(2)).join(", ")}`
+    );
+    assert.ok(
+      radii[radii.length - 1] - radii[0] >= 1.5,
+      `${ticker}: p25→p90 spread only ${(radii[radii.length - 1] - radii[0]).toFixed(2)}px — reads as one dot`
+    );
+  }
 });
 
 // REGRESSION GUARD (member report 2026-08-16, "all beads look the same size").
@@ -92,8 +130,9 @@ test("targetHalfPx: a real notional uses the absolute $ ladder", () => {
 // #2242 removed the pct proxy so a bead with no recorded notional fell back to the frame-relative
 // curve (pct/maxPct)^1.6. Per-strike gamma is heavy-tailed, so that curve collapses the field:
 // measured on live data it put 78% (SPX) / 88% (SPY) of beads within 1px of the floor — visually
-// one dot. Sizing must stay on the LOG $ ladder, whose spread survives the same tail.
-test("targetHalfPx: a missing notional still sizes on the $ ladder, NOT the crushed relative curve", () => {
+// one dot. Sizing must stay on a LOG ladder (now the per-ticker SHARE ladder), whose spread
+// survives the same tail.
+test("targetHalfPx: sizing uses the LOG share ladder, NOT the crushed relative curve", () => {
   // A typical heavy-tail field: one dominant strike, a long thin tail.
   const maxPct = 18.9;
   const median = targetHalfPx(0.61, undefined, maxPct, BEAD_TUNING_DEFAULT);

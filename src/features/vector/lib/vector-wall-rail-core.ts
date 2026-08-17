@@ -1,4 +1,4 @@
-import { relStrengthT, beadRadiusForNotional, pctToNotionalProxy } from "./vector-wall-visual";
+import { relStrengthT, beadRadiusForPctShare } from "./vector-wall-visual";
 
 /**
  * Pure colour / size / identity helpers for the Vector bead rail.
@@ -132,8 +132,15 @@ export type TargetHalfPxOpts = {
 /**
  * TARGET bead half-height (radius) in px.
  *
- * Honest sizing: real recorded `notional` → perceptual $ ladder; otherwise frame-relative strength.
- * The pct×nominal proxy is never used on the rail — it mis-calibrated absolute size.
+ * Sized off the per-strike gamma SHARE (`pct`) on a LOG ladder — see beadRadiusForPctShare. `pct`
+ * is a share of the ticker's OWN book, so every ticker is treated identically, which is the whole
+ * point: the previous absolute-$ ladder was calibrated on SPX and clamped 100% of META/TSLA beads
+ * to a single size (measured 2026-08-17).
+ *
+ * `notional` is deliberately NO LONGER the primary channel. It is a real recorded quantity, but an
+ * absolute one, and absolute dollars are not comparable across underlyings — which is exactly how
+ * the size channel died on single names. It is kept in the signature (and used only as a tie-break
+ * when share is unusable) so callers and the recorded payload need no change.
  */
 export function targetHalfPx(
   pct: number,
@@ -142,34 +149,13 @@ export function targetHalfPx(
   tuning: BeadRenderTuning = BEAD_TUNING_DEFAULT,
   opts?: TargetHalfPxOpts
 ): number {
-  const frameRelative = () =>
-    tuning.halfMin + relStrengthT(pct, maxPct) * (tuning.halfMax - tuning.halfMin);
-
-  if (Number.isFinite(notional) && (notional as number) > 0) {
-    return beadRadiusForNotional(notional as number, {
-      floorPx: tuning.halfMin,
-      ceilPx: tuning.halfMax,
-    });
+  if (Number.isFinite(pct) && pct > 0) {
+    return beadRadiusForPctShare(pct, { floorPx: tuning.halfMin, ceilPx: tuning.halfMax });
   }
 
-  // NO recorded notional → fall back to the pct PROXY on the same $ ladder, NOT to frame-relative.
-  //
-  // WHY (regression #2242 → member report 2026-08-16 "all beads look the same size"): the relative
-  // curve is (pct/maxPct)^1.6, and per-strike gamma is heavy-tailed — SPY's median strike is 0.61%
-  // of an 18.86% max, so (0.032)^1.6 ≈ 0.005 and the bead lands 0.02px off the floor. Measured on
-  // live data, the relative path put 78% (SPX) / 88% (SPY) of beads within 1px of the floor: they
-  // are literally the same dot. The $ ladder is LOG, so it keeps a readable spread across the same
-  // heavy tail (SPX: 3% at floor, 10 distinct sizes).
-  //
-  // The proxy's $ CALIBRATION is nominal — but it is strictly monotonic in pct, so bead ORDERING
-  // and relative magnitude are exact, which is the whole job of the size channel. That is the
-  // trade #2242 got backwards: it removed a slightly-miscalibrated ladder in favour of an
-  // honestly-scaled curve that renders 4 out of 5 walls identically.
-  const proxy = pctToNotionalProxy(pct);
-  if (proxy > 0) {
-    return beadRadiusForNotional(proxy, { floorPx: tuning.halfMin, ceilPx: tuning.halfMax });
-  }
-  return frameRelative();
+  // No usable share. Frame-relative is the last resort — with no share there is nothing per-ticker
+  // to normalise against, and a bead must still render rather than collapse.
+  return tuning.halfMin + relStrengthT(pct, maxPct) * (tuning.halfMax - tuning.halfMin);
 }
 
 /** Bead fill opacity from its strength relative to the strongest wall in frame. */

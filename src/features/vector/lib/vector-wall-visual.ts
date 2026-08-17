@@ -232,6 +232,54 @@ export function beadRadiusForNotional(
   return floorPx + clamped * (ceilPx - floorPx);
 }
 
+// ── PER-TICKER SHARE LADDER (primary sizing) ─────────────────────────────────────────────────────
+//
+// `pct` is a per-strike share of THAT TICKER'S OWN total |gamma|, so it is already normalised per
+// ticker — which is exactly the property the absolute $ ladder throws away.
+//
+// WHY THIS REPLACED THE $ LADDER AS PRIMARY (member report 2026-08-17, measured live):
+// beadRadiusForNotional anchors on ABSOLUTE dollars ($200M floor → $2.5B ceil) and was calibrated
+// on SPX, whose median per-strike gamma is ~$863M and sits mid-ladder. Single-name gamma is two
+// orders of magnitude smaller, so their whole distribution fell BELOW the floor anchor and clamped:
+//
+//   ticker   % of beads at the floor   distinct sizes   median $gamma
+//   SPX       0.0%                     12               $863M
+//   SPY      44.8%                     12               $212M
+//   QQQ      70.1%                     10               $99.5M
+//   NVDA     93.2%                      4               $10.3M
+//   META    100.0%                      1               $7.12M
+//   TSLA    100.0%                      1               $9.32M
+//
+// META and TSLA rendered EVERY bead at one size: the size channel carried literally zero
+// information. This is the same failure mode as #2242 — that fix swapped a relative curve which
+// crushed SPX/SPY into the floor for an absolute ladder, validated on SPX alone, and so created a
+// worse version of the bug for every single-name.
+//
+// The share ladder is LOG for the same reason the $ one was: per-strike gamma is heavy-tailed, and
+// a linear map crushes the low end (the (pct/maxPct)^1.6 power curve is what put 78-88% of beads
+// within 1px of the floor). Anchors sit at the shoulders of the measured live distribution — across
+// SPX/SPY/QQQ/NVDA/META/TSLA/IWM/AAPL the p05 runs 0.01-0.53% and the p90 runs 4.4-12.1%, so 0.3%
+// and 12% bracket the real spread on EVERY ticker rather than on one.
+//
+// Measured effect (same live data): 11-12 distinct sizes on every ticker, floor share 0.0% (SPX) to
+// 42% (NVDA, whose book genuinely has a long tail of tiny strikes) — vs 1 size / 100% before.
+const PCT_FLOOR_SHARE = 0.3; // % of ticker gamma — "small" dot
+const PCT_CEIL_SHARE = 12; // % of ticker gamma — "huge" dot
+
+/** Perceptual (log) map from a per-strike gamma SHARE (`pct`, 0-100) → bead pixel radius, clamped
+ *  to [floorPx, ceilPx]. Identical treatment for every ticker because `pct` is already relative to
+ *  that ticker's own book. NaN / 0 / negative → floorPx (never throws). */
+export function beadRadiusForPctShare(
+  pct: number,
+  { floorPx, ceilPx }: { floorPx: number; ceilPx: number }
+): number {
+  if (!Number.isFinite(pct) || pct <= 0) return floorPx;
+  const lo = Math.log(PCT_FLOOR_SHARE);
+  const hi = Math.log(PCT_CEIL_SHARE);
+  const t = (Math.log(pct) - lo) / (hi - lo);
+  return floorPx + Math.max(0, Math.min(1, t)) * (ceilPx - floorPx);
+}
+
 // PROXY (documented, pending a real notional) ─────────────────────────────────────────────────────
 // The bead trail carries a per-strike gamma SHARE (`pct`, % of the ticker's total |gamma|), NOT a $
 // figure: GexWallLevel is only { strike, pct }, and the one absolute quantity upstream
