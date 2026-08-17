@@ -85,6 +85,55 @@ glyphs are untouched.
 monotonic in age, non-finite/negative age never invents a fade, and the strength-ordering invariant
 above for BOTH tunings. 63/63 pass on Node 20; `tsc --noEmit` clean.
 
+## 2026-08-17 — [FINDING, P1 member-visible] One failed seed fetch stranded Vector compare on "Loading…" forever — FIXED
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Severity** | P1 (member-visible — an unrecoverable loading screen with no error, retry, or partial render) |
+| **Scope** | `vector-compare.ts` (`loadCompareSeedsBounded`) + BOTH call sites |
+| **Status** | FIXED — loader settles per item; 3 regression tests |
+
+**Root cause.** `loadCompareSeedsBounded` awaited each seed inside its workers and `Promise.all`'d
+them, so ANY single rejection rejected the whole batch:
+
+```ts
+out[i] = await fetchSeed(uniq[i]!);   // a throw here rejects Promise.all below
+```
+
+In `VectorPageClient` that rejection threw out of a `void`-ed async IIFE with no `catch`, so
+`setCompareSeeds` was never called. State stayed `null` and the component rendered its boot screen:
+
+```ts
+if (!compareSeeds?.length) return <div …>Loading Vector Compare…</div>;
+```
+
+**Forever.** No error state, no retry, no timeout, and no partial render — the primary seed was
+already in hand from props and got discarded along with everything else. Ask for
+`NVDA,META,AMD,TSLA` and if AMD alone fails, you lose all four.
+
+**Evidence.** Reproduced live during the compare-mode audit: a screenshot showing the page signed in,
+nav rendered, and "Loading Vector Compare…" with zero panes across 2/3/4-pane cases. The trigger in
+that run was harness tunnel timeouts — but the trigger and the failure mode are separate things. Any
+member on a flaky connection, or during one of the slow-upstream windows logged all day (the 0DTE
+board took >45s in the same session), hits an unrecoverable screen.
+
+**Fix.** The loader settles per item and returns `Array<T | null>` — one unreachable ticker is a
+fact about that ticker, not a reason to lose the others. Callers render the panes that DID load.
+`VectorPageClient` also gained a belt-and-braces `try/catch`, and always falls back to the primary
+seed it already holds, so compare can never end up with nothing to render.
+
+**Blast radius — the type change found a SECOND latent instance.** Widening the return type to
+`(T | null)[]` broke `VectorCompareDesk.applyPreset`, which had the same swallow-everything shape:
+applying "Mag 7" and having one name 502 would have blanked the grid. It now drops failed panes and
+keeps the existing grid if every pane fails. That second site would not have been found by reading
+the first.
+
+**Tests.** One failing ticker leaves `["NVDA","META",null,"TSLA"]` (3 panes survive); an all-failing
+batch resolves to all-nulls rather than rejecting; and a thrower does not stall the concurrency
+window.
+
+
 ## 2026-08-17 — [FINDING, P1 security] Provider API key written into thrown errors (and CI logs) by the disallowed-host guard — FIXED
 > **kind:** `FINDING`
 

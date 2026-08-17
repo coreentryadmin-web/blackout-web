@@ -321,9 +321,15 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
           (t) => fetchVectorClientSeed(t),
           2
         );
-        setSeeds(loaded);
-        syncUrl(loaded);
-        setFocusedTicker(loaded[0]?.ticker ?? null);
+        // Drop panes that failed to load rather than letting one bad ticker sink the preset.
+        // Applying "Mag 7" and getting nothing because a single name 502'd is worse than getting
+        // the three that loaded; the loader returns a null slot per failure precisely so this
+        // choice is available here.
+        const ok = loaded.filter(Boolean) as VectorClientSeed[];
+        if (!ok.length) return; // keep the existing grid — never blank the desk on a failed preset
+        setSeeds(ok);
+        syncUrl(ok);
+        setFocusedTicker(ok[0]?.ticker ?? null);
         bumpSync();
       } finally {
         setLoadingTickers(new Set());
