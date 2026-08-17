@@ -74,7 +74,10 @@ export async function loadMeridianTimelineResponse(daysAhead: number): Promise<M
     stats: buildTimelineStats(items),
     board_tickers,
     earnings_week: earningsBundle.earnings_week,
+    earnings_week_analytics: earningsBundle.earnings_week_analytics,
     recent_earnings_revisions: earningsBundle.recent_revisions,
+    estimate_revision_timeline: earningsBundle.estimate_revision_timeline,
+    after_hours_movers: earningsBundle.after_hours_movers,
     earnings_calendar_entitled: earningsBundle.calendar_entitled,
   });
 }

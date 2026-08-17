@@ -1,20 +1,8 @@
 /**
  * NEXT EARNINGS DATE READER (task #62 — data arsenal).
  *
- * A clean, typed, cached reader for a ticker's NEXT expected earnings report, wrapping the existing
- * governed UW call `fetchUwTickerNextEarnings` (GET /api/earnings/{ticker}, rate-limited + cached via
- * uwGetSafe). "Into earnings Thursday" is one of the most verdict-changing facts a synthesis pass can
- * hold — a bullish setup one day before a print is a different trade (binary gap risk) — so this
- * surfaces the date PLUS the two things that actually change the decision: how many days out it is,
- * and whether the print lands before or after the bell.
- *
- * WHY a NEW file (not more surface on the 2000-line unusual-whales.ts): keeps this reader small,
- * standalone, and unit-testable, and avoids merge churn on the shared UW file. It reuses UW's own
- * exported reader for the network + governance (limiter + cache stay in-path); this module only adds
- * the typed parse + a thin result cache. No composer/ecosystem-context edits (Track A's wiring).
- *
- * HONESTY: null when UW has no future earnings row for the ticker; every derived field (days_until,
- * report_time, is_confirmed) is null when the source doesn't carry it — nothing is guessed.
+ * Benzinga structured calendar first (`loadNextEarningsFromBenzinga`); UW REST fallback when
+ * Benzinga has no future row. Cached on the 1h REFERENCE tier.
  */
 import { fetchUwTickerNextEarnings } from "./unusual-whales";
 import { todayEtYmd } from "./spx-session";
@@ -107,17 +95,18 @@ export function parseNextEarnings(
 }
 
 /**
- * Fetch the next expected earnings for a ticker. Cached per-name on the 1h REFERENCE tier — the date
- * is stable and `days_until` is day-granularity, so an hourly recompute is plenty. Returns null when
- * Polygon/UW yields nothing usable; a real "no upcoming earnings" also surfaces as null earnings_date
- * inside the object is avoided by returning null only when there is truly no future row.
+ * Fetch the next expected earnings for a ticker. Benzinga structured calendar first; UW REST fallback.
+ * Cached per-name on the 1h REFERENCE tier.
  */
 export async function fetchNextEarningsDate(ticker: string): Promise<NextEarnings | null> {
   const sym = ticker.toUpperCase();
-  return serverCache<NextEarnings | null>(`uw:next-earnings:v1:${sym}`, TTL.REFERENCE, async () => {
+  return serverCache<NextEarnings | null>(`next-earnings:v2:${sym}`, TTL.REFERENCE, async () => {
+    const { loadNextEarningsFromBenzinga } = await import("@/lib/meridian/meridian-benzinga-earnings");
+    const bz = await loadNextEarningsFromBenzinga(sym).catch(() => null);
+    if (bz?.earnings_date) return bz;
+
     const row = await fetchUwTickerNextEarnings(sym).catch(() => null);
     const parsed = parseNextEarnings(sym, (row as Record<string, unknown> | null) ?? null, todayEtYmd());
-    // No usable future date ⇒ null (honest "unknown"), not an object full of nulls.
     return parsed.earnings_date ? parsed : null;
   });
 }

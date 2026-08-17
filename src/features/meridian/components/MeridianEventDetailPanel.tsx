@@ -92,6 +92,14 @@ export function MeridianEventDetailPanel({
           <MeridianMacroReportPanel detail={detail} />
 
           <div className="meridian-banner-stack">
+            {detail.economics_narrative && (
+              <MeridianAnalyticsBanner
+                label="Economics narrative"
+                headline={detail.economics_narrative}
+                tone="macro"
+                icon="◈"
+              />
+            )}
             <MeridianAnalyticsBanner
               label="Correlation rail"
               headline={detail.correlation_rail.headline}
@@ -279,6 +287,18 @@ export function MeridianEventDetailPanel({
           <MeridianDataCard label="Catalyst headlines" wide tone="fda" delay={240}>
             <HeadlineList items={detail.catalysts} empty="No recent catalyst headlines." />
           </MeridianDataCard>
+
+          {detail.catalyst_briefs.length > 0 && (
+            <MeridianDataCard label="Event briefs" wide tone="fda" delay={320}>
+              <ul className="meridian-card-list">
+                {detail.catalyst_briefs.map((c) => (
+                  <li key={`${c.type}-${c.title}`}>
+                    {c.type.toUpperCase()} · {c.title}
+                  </li>
+                ))}
+              </ul>
+            </MeridianDataCard>
+          )}
         </div>
       )}
 

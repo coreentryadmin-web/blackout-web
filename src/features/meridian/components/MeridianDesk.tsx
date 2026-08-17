@@ -23,6 +23,7 @@ import {
   MeridianTimelineRow,
   MeridianEmpty,
   MeridianShimmer,
+  MeridianAnalyticsBanner,
 } from "./meridian-ui";
 
 const fetcher = (url: string) =>
@@ -34,7 +35,7 @@ const fetcher = (url: string) =>
     return res.json();
   });
 
-type FilterKind = "all" | MeridianEventKind | "watchlist" | "board";
+type FilterKind = "all" | MeridianEventKind | "watchlist" | "board" | "mega_cap";
 type DeskView = "timeline" | "analytics";
 
 function fmtPct(n: number | null | undefined): string {
@@ -46,7 +47,7 @@ export function MeridianDesk() {
   const { data, error, isLoading, mutate } = useSWR<MeridianTimelinePayload>(
     "/api/market/meridian/timeline?days=21",
     fetcher,
-    { refreshInterval: 120_000 }
+    { refreshInterval: 90_000 }
   );
 
   const { watchlistSet, ready: watchlistReady } = useWatchlist();
@@ -66,6 +67,9 @@ export function MeridianDesk() {
     }
     if (filter === "board") {
       return allItems.filter((i) => i.ticker && boardSet.has(i.ticker.toUpperCase()));
+    }
+    if (filter === "mega_cap") {
+      return allItems.filter((i) => i.kind === "earnings" && (i.importance ?? 0) >= 4);
     }
     return allItems.filter((i) => i.kind === filter);
   }, [allItems, filter, watchlistReady, watchlistSet, boardSet]);
@@ -113,12 +117,19 @@ export function MeridianDesk() {
     allItems.find((i) => i.id === activeId) ??
     (activeId && lookupTimelineItem?.id === activeId ? lookupTimelineItem : null);
 
+  const detailRefreshMs = useMemo(() => {
+    if (activeItem?.kind !== "earnings") return 60_000;
+    if (activeItem.is_printed) return 15_000;
+    const weekPrinted = (data?.earnings_week ?? []).some((r) => r.is_printed);
+    return weekPrinted ? 30_000 : 60_000;
+  }, [activeItem, data?.earnings_week]);
+
   const detailKey = activeId ? `/api/market/meridian/event?id=${encodeURIComponent(activeId)}` : null;
   const {
     data: detail,
     error: detailError,
     isLoading: detailLoading,
-  } = useSWR<MeridianEventDetail>(detailKey, fetcher, { refreshInterval: 60_000 });
+  } = useSWR<MeridianEventDetail>(detailKey, fetcher, { refreshInterval: detailRefreshMs });
 
   const grouped = useMemo(() => {
     const map = new Map<string, typeof filteredItems>();
@@ -136,6 +147,7 @@ export function MeridianDesk() {
     { id: "all", label: "All", count: stats?.total },
     { id: "macro", label: "Macro", count: stats?.macro, tone: "meridian-theme-macro" },
     { id: "earnings", label: "Earnings", count: stats?.earnings, tone: "meridian-theme-earnings" },
+    { id: "mega_cap", label: "Imp ≥4", count: stats?.earnings_mega_cap, tone: "meridian-theme-earnings" },
     { id: "fda", label: "FDA", count: stats?.fda, tone: "meridian-theme-fda" },
     { id: "opex", label: "OpEx", count: stats?.opex, tone: "meridian-theme-opex" },
     { id: "watchlist", label: "Watchlist" },
@@ -225,6 +237,19 @@ export function MeridianDesk() {
           {(data?.earnings_week?.length ?? 0) > 0 && (
             <section className="meridian-earnings-week" aria-label="Mega-cap earnings week">
               <h3 className="meridian-earnings-week-title">Mega-cap earnings week</h3>
+              {data?.earnings_week_analytics && (
+                <MeridianAnalyticsBanner
+                  label="Universe analytics"
+                  headline={data.earnings_week_analytics.headline}
+                  sub={
+                    data.earnings_week_analytics.eps_beat_rate != null
+                      ? `${data.earnings_week_analytics.printed_this_week}/${data.earnings_week_analytics.names_count} printed · rev beat ${data.earnings_week_analytics.revenue_beat_rate != null ? Math.round(data.earnings_week_analytics.revenue_beat_rate * 100) : "—"}%`
+                      : `${data.earnings_week_analytics.printed_this_week}/${data.earnings_week_analytics.names_count} printed`
+                  }
+                  tone="earnings"
+                  icon="▣"
+                />
+              )}
               <div className="meridian-analytics-grid">
                 {data!.earnings_week.map((row, i) => (
                   <button
@@ -253,6 +278,32 @@ export function MeridianDesk() {
               </div>
             </section>
           )}
+          {(data?.estimate_revision_timeline?.length ?? 0) > 0 && (
+            <section className="meridian-earnings-revisions" aria-label="Estimate revision timeline">
+              <h3 className="meridian-earnings-week-title">Estimate revisions (36h)</h3>
+              <ul className="meridian-card-list meridian-revisions-list">
+                {data!.estimate_revision_timeline.slice(0, 10).map((r) => (
+                  <li key={`${r.ticker}-${r.last_updated}-${r.change_kind}`}>
+                    <button
+                      type="button"
+                      className="meridian-revision-link"
+                      onClick={() => {
+                        setSelectedId(`earnings:${r.ticker}:${r.date}`);
+                        setView("timeline");
+                        setFilter("earnings");
+                      }}
+                    >
+                      {r.headline}
+                      {r.eps_delta != null ? ` · EPS Δ ${r.eps_delta >= 0 ? "+" : ""}${r.eps_delta}` : ""}
+                      {r.revenue_delta_pct != null
+                        ? ` · Rev ${r.revenue_delta_pct >= 0 ? "+" : ""}${r.revenue_delta_pct}%`
+                        : ""}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
           {(data?.recent_earnings_revisions?.length ?? 0) > 0 && (
             <section className="meridian-earnings-revisions" aria-label="Recent calendar revisions">
               <h3 className="meridian-earnings-week-title">Calendar updates (36h)</h3>
@@ -270,6 +321,19 @@ export function MeridianDesk() {
                     >
                       {r.headline}
                     </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+          {(data?.after_hours_movers?.length ?? 0) > 0 && (
+            <section className="meridian-earnings-revisions" aria-label="After-hours movers">
+              <h3 className="meridian-earnings-week-title">After-hours movers</h3>
+              <ul className="meridian-card-list meridian-revisions-list">
+                {data!.after_hours_movers.slice(0, 8).map((m) => (
+                  <li key={`${m.title}-${m.published ?? ""}`}>
+                    {m.title}
+                    {m.channel ? ` · ${m.channel}` : ""}
                   </li>
                 ))}
               </ul>

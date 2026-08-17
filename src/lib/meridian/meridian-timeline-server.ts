@@ -75,7 +75,12 @@ export async function loadMeridianFdaTimeline(
 export type MeridianEarningsTimelineResult = {
   rows: EarningsTimelineInput[];
   earnings_week: Awaited<ReturnType<typeof loadBenzingaEarningsBundle>>["earnings_week"];
+  earnings_week_analytics: Awaited<ReturnType<typeof loadBenzingaEarningsBundle>>["earnings_week_analytics"];
   recent_revisions: Awaited<ReturnType<typeof loadBenzingaEarningsBundle>>["recent_revisions"];
+  estimate_revision_timeline: Awaited<
+    ReturnType<typeof loadBenzingaEarningsBundle>
+  >["estimate_revision_timeline"];
+  after_hours_movers: Awaited<ReturnType<typeof loadBenzingaEarningsBundle>>["after_hours_movers"];
   calendar_entitled: boolean;
 };
 
@@ -104,7 +109,10 @@ export async function loadMeridianEarningsTimeline(
   return {
     rows,
     earnings_week: bundle.earnings_week,
+    earnings_week_analytics: bundle.earnings_week_analytics,
     recent_revisions: bundle.recent_revisions,
+    estimate_revision_timeline: bundle.estimate_revision_timeline,
+    after_hours_movers: bundle.after_hours_movers,
     calendar_entitled: bundle.entitled && boardRes.entitled,
   };
 }

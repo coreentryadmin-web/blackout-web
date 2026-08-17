@@ -352,7 +352,7 @@ export function buildRecentEarningsRevisions(
     }));
 }
 
-function revisionHeadline(row: BenzingaStructuredEarnings): string {
+export function revisionHeadline(row: BenzingaStructuredEarnings): string {
   if (row.actual_eps != null) {
     const surp = benzingaSurpriseToDisplayPct(row.eps_surprise_pct);
     return surp != null

@@ -67,6 +67,8 @@ export type MeridianMacroBrief = {
   correlation_rail: MeridianCorrelationRail;
   surprise: MeridianMacroSurprise | null;
   related_headlines: MeridianCatalystHeadline[];
+  /** Lead economics narrative from Benzinga (prose — not a substitute for indicator actuals). */
+  economics_narrative: string | null;
   spx_positioning: MeridianSpxPositioning;
   flow: MeridianFlowSkew;
   report: MeridianMacroReport;
@@ -233,6 +235,61 @@ export type MeridianEarningsRevision = {
   headline: string;
 };
 
+/** Estimate revision with EPS/revenue deltas (Redis snapshot diff). */
+export type MeridianEstimateRevisionEntry = {
+  ticker: string;
+  company_name: string | null;
+  date: string;
+  last_updated: string;
+  change_kind: "eps" | "revenue" | "date_status" | "print" | "calendar";
+  eps_delta: number | null;
+  revenue_delta_pct: number | null;
+  estimated_eps: number | null;
+  estimated_revenue: number | null;
+  headline: string;
+};
+
+export type MeridianEarningsWeekAnalytics = {
+  names_count: number;
+  printed_this_week: number;
+  eps_beat_rate: number | null;
+  revenue_beat_rate: number | null;
+  avg_surprise_pct: number | null;
+  median_surprise_pct: number | null;
+  headline: string;
+};
+
+export type MeridianStreetSkew = {
+  skew: "bullish" | "bearish" | "neutral";
+  raised_count: number;
+  lowered_count: number;
+  initiated_count: number;
+  sample_size: number;
+  headline: string;
+  latest_target: number | null;
+  latest_firm: string | null;
+};
+
+export type MeridianPriceTargetRow = {
+  price_target: number;
+  firm: string | null;
+  action: string | null;
+  summary: string;
+  published: string | null;
+};
+
+export type MeridianAfterHoursMover = {
+  title: string;
+  channel: string | null;
+  published: string | null;
+};
+
+export type MeridianCatalystBrief = {
+  type: string;
+  title: string;
+  published: string | null;
+};
+
 export type MeridianEarningsWeekRow = {
   ticker: string;
   company_name: string | null;
@@ -264,6 +321,10 @@ export type MeridianEarningsEnrichment = {
     combined_beat_rate: number | null;
   } | null;
   analyst_revisions: MeridianAnalystRevision[];
+  price_targets: MeridianPriceTargetRow[];
+  street_skew: MeridianStreetSkew | null;
+  estimate_revisions: MeridianEstimateRevisionEntry[];
+  catalyst_briefs: MeridianCatalystBrief[];
   insider_activity: MeridianInsiderActivity[];
   congress_trades: MeridianCongressActivity[];
   expected_vs_realized: MeridianExpectedVsRealized | null;
@@ -535,6 +596,7 @@ export type MeridianFdaDetail = {
   drug: string | null;
   indication: string | null;
   catalysts: MeridianCatalystHeadline[];
+  catalyst_briefs: MeridianCatalystBrief[];
   insider_activity: MeridianInsiderActivity[];
   congress_trades: MeridianCongressActivity[];
   prior_decisions: MeridianFdaPriorDecision[];
@@ -595,6 +657,9 @@ export type MeridianTimelinePayload = {
   stats: MeridianTimelineStats;
   board_tickers: string[];
   earnings_week: MeridianEarningsWeekRow[];
+  earnings_week_analytics: MeridianEarningsWeekAnalytics | null;
   recent_earnings_revisions: MeridianEarningsRevision[];
+  estimate_revision_timeline: MeridianEstimateRevisionEntry[];
+  after_hours_movers: MeridianAfterHoursMover[];
   earnings_calendar_entitled: boolean;
 };

@@ -16,6 +16,7 @@ import {
 import {
   loadBenzingaTickerEarnings,
   loadBenzingaTickerGuidance,
+  loadTickerEstimateRevisions,
 } from "@/lib/meridian/meridian-benzinga-earnings";
 import type { MeridianEarningsEnrichment } from "@/features/meridian/lib/meridian-types";
 
@@ -64,6 +65,7 @@ export async function loadMeridianEarningsEnrichment(
   );
 
   const guidanceRow = guidanceRes.rows[0] ? guidanceToMeridianRow(guidanceRes.rows[0]) : null;
+  const estimate_revisions = await loadTickerEstimateRevisions(sym, benzingaRows);
 
   return roundFloats({
     catalysts: shapeHeadlines(
@@ -91,6 +93,10 @@ export async function loadMeridianEarningsEnrichment(
     print_history_summary: history.print_history_summary,
     beat_rates,
     analyst_revisions: catalystBundle.analyst_revisions,
+    price_targets: catalystBundle.price_targets,
+    street_skew: catalystBundle.street_skew,
+    estimate_revisions,
+    catalyst_briefs: catalystBundle.catalyst_briefs,
     insider_activity: catalystBundle.insider_activity,
     congress_trades: catalystBundle.congress_trades,
     expected_vs_realized,

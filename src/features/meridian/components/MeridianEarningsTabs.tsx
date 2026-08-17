@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { MeridianEarningsDetail } from "@/features/meridian/lib/meridian-types";
 import { LargoPreEarningsPackCard } from "@/features/largo/components/LargoPreEarningsPackCard";
 import { fmtPct } from "./MeridianDesk";
@@ -70,6 +70,19 @@ export function MeridianEarningsTabs({ detail }: Props) {
   const cal = enrichment.earnings_calendar;
   const defaultTab: EarningsTab = enrichment.post_print?.headline ? "estimates" : "report";
   const [tab, setTab] = useState<EarningsTab>(defaultTab);
+  const hadActualRef = useRef(Boolean(cal?.actual_eps != null));
+
+  useEffect(() => {
+    const hasActual = cal?.actual_eps != null;
+    if (hasActual && !hadActualRef.current) {
+      setTab("estimates");
+    }
+    hadActualRef.current = hasActual;
+  }, [cal?.actual_eps]);
+
+  useEffect(() => {
+    if (enrichment.post_print?.headline) setTab("estimates");
+  }, [enrichment.post_print?.headline]);
 
   return (
     <div className="meridian-earnings-tabs">
@@ -131,12 +144,36 @@ export function MeridianEarningsTabs({ detail }: Props) {
                 icon="✦"
               />
             )}
+            {enrichment.catalyst_briefs.length > 0 && (
+              <MeridianDataCard label="Catalyst briefs" wide tone="earnings" delay={320}>
+                <ul className="meridian-card-list">
+                  {enrichment.catalyst_briefs.map((c) => (
+                    <li key={`${c.type}-${c.title}`}>
+                      {c.type.toUpperCase()} · {c.title}
+                    </li>
+                  ))}
+                </ul>
+              </MeridianDataCard>
+            )}
           </div>
         </div>
       )}
 
       {tab === "estimates" && (
         <div role="tabpanel" className="meridian-earnings-tabpanel">
+          {enrichment.street_skew && (
+            <MeridianAnalyticsBanner
+              label="Street skew (news-derived)"
+              headline={enrichment.street_skew.headline}
+              sub={
+                enrichment.street_skew.latest_target != null
+                  ? `${enrichment.street_skew.skew} · latest PT $${enrichment.street_skew.latest_target}${enrichment.street_skew.latest_firm ? ` · ${enrichment.street_skew.latest_firm}` : ""}`
+                  : enrichment.street_skew.skew
+              }
+              tone="earnings"
+              icon={enrichment.street_skew.skew === "bullish" ? "▲" : enrichment.street_skew.skew === "bearish" ? "▼" : "◆"}
+            />
+          )}
           {cal && (
             <MeridianAnalyticsBanner
               label="Earnings calendar"
@@ -249,6 +286,35 @@ export function MeridianEarningsTabs({ detail }: Props) {
                         ? ` · Rev est ${fmtRev(row.revenue_estimate)}`
                         : ""}
                       {row.source === "earnings_calendar" ? " · calendar" : ""}
+                    </li>
+                  ))}
+                </ul>
+              </MeridianDataCard>
+            )}
+            {enrichment.price_targets.length > 0 && (
+              <MeridianDataCard label="Price targets" wide tone="earnings" delay={100}>
+                <ul className="meridian-card-list">
+                  {enrichment.price_targets.map((pt) => (
+                    <li key={`${pt.firm}-${pt.published}-${pt.price_target}`}>
+                      ${pt.price_target}
+                      {pt.firm ? ` · ${pt.firm}` : ""}
+                      {pt.action ? ` · ${pt.action}` : ""}
+                      {pt.summary ? ` — ${pt.summary.slice(0, 80)}` : ""}
+                    </li>
+                  ))}
+                </ul>
+              </MeridianDataCard>
+            )}
+            {enrichment.estimate_revisions.length > 0 && (
+              <MeridianDataCard label="Estimate revision timeline" wide tone="earnings" delay={140}>
+                <ul className="meridian-card-list">
+                  {enrichment.estimate_revisions.map((r) => (
+                    <li key={`${r.last_updated}-${r.change_kind}`}>
+                      {r.headline}
+                      {r.eps_delta != null ? ` · EPS Δ ${r.eps_delta >= 0 ? "+" : ""}${r.eps_delta}` : ""}
+                      {r.revenue_delta_pct != null
+                        ? ` · Rev ${r.revenue_delta_pct >= 0 ? "+" : ""}${r.revenue_delta_pct}%`
+                        : ""}
                     </li>
                   ))}
                 </ul>

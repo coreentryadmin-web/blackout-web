@@ -1,11 +1,18 @@
 import "server-only";
 
 import {
+  fetchBenzingaAfterHoursMovers,
   fetchBenzingaCorporateGuidance,
+  fetchBenzingaNews,
   fetchBenzingaStructuredEarnings,
+  parsePriceTargetFromText,
   type BenzingaStructuredEarnings,
 } from "@/lib/providers/polygon";
 import { serverCache } from "@/lib/server-cache";
+import {
+  buildEarningsWeekAnalytics,
+  diffEstimateRevisionTimeline,
+} from "@/lib/meridian/meridian-benzinga-analytics";
 import {
   buildEarningsWeekRows,
   buildRecentEarningsRevisions,
@@ -13,6 +20,11 @@ import {
 } from "@/lib/meridian/meridian-benzinga-earnings-core";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import type { NextEarnings } from "@/lib/providers/uw-earnings";
+import type {
+  MeridianAfterHoursMover,
+  MeridianEarningsWeekAnalytics,
+  MeridianEstimateRevisionEntry,
+} from "@/features/meridian/lib/meridian-types";
 
 const BENZINGA_TIMELINE_TTL_MS = 20 * 60 * 1000;
 const BENZINGA_TICKER_TTL_MS = 10 * 60 * 1000;
@@ -33,7 +45,10 @@ export type BenzingaEarningsBundle = {
   entitled: boolean;
   error: string | null;
   earnings_week: ReturnType<typeof buildEarningsWeekRows>;
+  earnings_week_analytics: MeridianEarningsWeekAnalytics | null;
   recent_revisions: ReturnType<typeof buildRecentEarningsRevisions>;
+  estimate_revision_timeline: MeridianEstimateRevisionEntry[];
+  after_hours_movers: MeridianAfterHoursMover[];
 };
 
 /** Market-wide Benzinga earnings rows for the Meridian timeline window (paginated). */
@@ -42,10 +57,10 @@ export async function loadBenzingaEarningsBundle(
   daysAhead: number
 ): Promise<BenzingaEarningsBundle> {
   const dateLte = addDaysYmd(todayYmd, Math.max(1, daysAhead));
-  const cacheKey = `meridian:benzinga:bundle:${todayYmd}:${daysAhead}`;
+  const cacheKey = `meridian:benzinga:bundle:v2:${todayYmd}:${daysAhead}`;
   return serverCache(cacheKey, BENZINGA_TIMELINE_TTL_MS, async () => {
     const since = revisionSinceIso();
-    const [windowRes, revisionRes] = await Promise.all([
+    const [windowRes, revisionRes, ahMovers] = await Promise.all([
       fetchBenzingaStructuredEarnings({
         dateGte: todayYmd,
         dateLte,
@@ -59,22 +74,50 @@ export async function loadBenzingaEarningsBundle(
         limit: 40,
         sort: "last_updated.desc",
       }),
+      fetchBenzingaAfterHoursMovers(14).catch(() => []),
     ]);
 
     const window_rows = windowRes.rows;
+    const earnings_week = buildEarningsWeekRows(window_rows, todayYmd, daysAhead);
+    const weekTickers = [...new Set(earnings_week.map((r) => r.ticker))].slice(0, 24);
+
+    let historicalRows: BenzingaStructuredEarnings[] = [];
+    if (weekTickers.length) {
+      const hist = await fetchBenzingaStructuredEarnings({
+        tickers: weekTickers,
+        dateLte: todayYmd,
+        limit: 100,
+        sort: "date.desc",
+      }).catch(() => ({ rows: [] as BenzingaStructuredEarnings[] }));
+      historicalRows = hist.rows;
+    }
+
+    const revisionUnion = [...window_rows, ...revisionRes.rows];
+    const estimate_revision_timeline = await diffEstimateRevisionTimeline(revisionUnion, since);
+
     return {
       window_rows,
       entitled: windowRes.entitled,
       error: windowRes.error,
-      earnings_week: buildEarningsWeekRows(window_rows, todayYmd, daysAhead),
+      earnings_week,
+      earnings_week_analytics: buildEarningsWeekAnalytics(earnings_week, historicalRows),
       recent_revisions: buildRecentEarningsRevisions(revisionRes.rows, since),
+      estimate_revision_timeline,
+      after_hours_movers: ahMovers.map((m) => ({
+        title: m.title,
+        channel: m.channel || null,
+        published: m.published || null,
+      })),
     };
   }).catch(() => ({
     window_rows: [],
     entitled: true,
     error: "cache_error",
     earnings_week: [],
+    earnings_week_analytics: null,
     recent_revisions: [],
+    estimate_revision_timeline: [],
+    after_hours_movers: [],
   }));
 }
 
@@ -123,4 +166,13 @@ export async function loadNextEarningsFromBenzinga(ticker: string): Promise<Next
   const today = todayEtYmd();
   const res = await loadBenzingaTickerEarnings(sym, null);
   return parseNextEarningsFromBenzinga(sym, res.rows, today);
+}
+
+/** Per-ticker estimate revision timeline (cached snapshot diff). */
+export async function loadTickerEstimateRevisions(
+  ticker: string,
+  rows: BenzingaStructuredEarnings[]
+): Promise<MeridianEstimateRevisionEntry[]> {
+  const since = revisionSinceIso();
+  return diffEstimateRevisionTimeline(rows, since);
 }

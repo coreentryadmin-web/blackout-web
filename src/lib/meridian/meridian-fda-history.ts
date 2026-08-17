@@ -1,6 +1,6 @@
 import "server-only";
 
-import { fetchBenzingaCatalysts } from "@/lib/providers/polygon";
+import { fetchBenzingaCatalysts, fetchBenzingaNews } from "@/lib/providers/polygon";
 import { stockReactionsForDates } from "@/lib/meridian/meridian-reaction";
 import { roundFloats } from "@/lib/round-floats";
 import type { MeridianFdaPriorDecision } from "@/features/meridian/lib/meridian-types";
@@ -42,9 +42,10 @@ export async function loadMeridianFdaHistory(input: {
     .slice(0, 6);
 
   const dates = priorRows.map((r) => r.date);
-  const [reactions, catalysts] = await Promise.all([
+  const [reactions, catalysts, fdaNews] = await Promise.all([
     stockReactionsForDates(sym, dates),
     fetchBenzingaCatalysts(sym, 12).catch(() => []),
+    fetchBenzingaNews(10, { ticker: sym, channels: "fda" }).catch(() => []),
   ]);
 
   const prior_decisions: MeridianFdaPriorDecision[] = priorRows.map((r) => {
@@ -58,12 +59,30 @@ export async function loadMeridianFdaHistory(input: {
     };
   });
 
+  const headlineMap = new Map<string, { title: string; channel: string | null; published: string | null }>();
+  for (const n of fdaNews) {
+    const key = n.title.slice(0, 100);
+    if (!headlineMap.has(key)) {
+      headlineMap.set(key, {
+        title: n.title,
+        channel: "fda",
+        published: n.published || null,
+      });
+    }
+  }
+  for (const c of catalysts) {
+    const key = c.title.slice(0, 100);
+    if (!headlineMap.has(key)) {
+      headlineMap.set(key, {
+        title: c.title,
+        channel: c.channel ?? c.type ?? null,
+        published: c.published ?? null,
+      });
+    }
+  }
+
   return roundFloats({
     prior_decisions,
-    catalysts: catalysts.slice(0, 10).map((c) => ({
-      title: c.title,
-      channel: c.channel ?? c.type ?? null,
-      published: c.published ?? null,
-    })),
+    catalysts: [...headlineMap.values()].slice(0, 10),
   });
 }
