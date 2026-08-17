@@ -107,6 +107,10 @@ asserted by `decayModulation(2, 20)` deep-equalling `decayModulation(0.3, 3)`. 5
 
 
 ## 2026-08-17 — [FINDING, P1 member-visible] Vector compare mode was a one-way door: Exit compare (and every same-route nav out of it) was a no-op — FIXED
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
 | **Severity** | P1 (member-visible — a member who entered compare could not leave it without a hard reload) |
 | **Scope** | `src/features/vector/components/VectorPageClient.tsx` (the only consumer of `initialCompareRaw`) |
 | **Status** | FIXED — compare state now reads the live URL only; `resolveCompareRaw` + regression test |
