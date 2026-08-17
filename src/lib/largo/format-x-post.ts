@@ -1,5 +1,11 @@
 import type { BieLevel } from "@/lib/bie/answer-envelope";
 import { sanitizeLargoMemberText } from "@/lib/largo/sanitize-member-text";
+import type { SocialContentArchetype } from "@/lib/largo/social-content-core";
+import {
+  buildXPostMediaPlan,
+  formatMediaPlanForClipboard,
+  type XPostMediaAttachment,
+} from "@/lib/largo/x-post-media-plan";
 import { SITE } from "@/lib/site";
 import { truncateText } from "@/lib/truncate-text";
 
@@ -12,6 +18,8 @@ export type LargoXPostInput = {
   ticker?: string | null;
   bias?: string | null;
   levels?: BieLevel[];
+  question?: string | null;
+  archetype?: SocialContentArchetype | null;
 };
 
 export type LargoXPostDraft = {
@@ -19,6 +27,11 @@ export type LargoXPostDraft = {
   charCount: number;
   intentUrl: string;
   truncated: boolean;
+  attachments: XPostMediaAttachment[];
+  /** Tweet copy + numbered attachment checklist (for clipboard). */
+  clipboardText: string;
+  archetype: SocialContentArchetype;
+  altHooks: string[];
 };
 
 /** Strip markdown structures unsuitable for a tweet. */
@@ -67,19 +80,53 @@ function formatLevelSnippet(levels?: BieLevel[]): string {
   return parts.join(" · ");
 }
 
+function extractPostSection(answer: string): string | null {
+  const m = answer.match(/(?:^|\n)#+\s*Post\s*\n([\s\S]*?)(?=\n#+\s+[A-Za-z]|\n\*\*Verdict\*\*|$)/i);
+  return m?.[1]?.trim() ?? null;
+}
+
+/** Prefer Largo-authored **Copy** from the Post section when present. */
+export function extractPostCopyFromAnswer(answer: string): string | null {
+  const section = extractPostSection(answer);
+  if (!section) return null;
+  const copyMatch = section.match(
+    /\*\*Copy\*\*\s*[:\-]?\s*\n?([\s\S]*?)(?=\n\*\*Alt hooks?\*\*|\n\*\*Attach\*\*|$)/i,
+  );
+  const raw = copyMatch?.[1]?.trim();
+  if (!raw) return null;
+  const line = stripMarkdownForTweet(raw.split("\n").find((l) => l.trim()) ?? raw);
+  return line.length >= 20 ? line : null;
+}
+
+export function extractAltHooksFromAnswer(answer: string): string[] {
+  const section = extractPostSection(answer);
+  if (!section) return [];
+  const block = section.match(
+    /\*\*Alt hooks?\*\*\s*[:\-]?\s*\n?([\s\S]*?)(?=\n\*\*Attach\*\*|$)/i,
+  )?.[1];
+  if (!block) return [];
+  return block
+    .split("\n")
+    .map((l) => stripMarkdownForTweet(l.replace(/^[-*]\s*/, "")))
+    .filter((l) => l.length >= 15)
+    .slice(0, 3);
+}
+
 /** Turn a grounded Largo answer into tweet-length copy (copy-only — no auto-post). */
 export function formatLargoXPost(input: LargoXPostInput): LargoXPostDraft {
   const sanitized = sanitizeLargoMemberText(input.answer);
   const headline = input.headline?.trim();
   const ticker = input.ticker?.trim().toUpperCase();
+  const authoredCopy = extractPostCopyFromAnswer(sanitized);
   const verdict = extractVerdictLine(sanitized);
   const levelSnippet = formatLevelSnippet(input.levels);
+  const altHooks = extractAltHooksFromAnswer(sanitized);
 
-  let body = headline || verdict;
+  let body = authoredCopy || headline || verdict;
   if (headline && verdict && headline !== verdict) {
     body = `${headline} — ${verdict}`;
   }
-  if (levelSnippet) {
+  if (levelSnippet && !authoredCopy) {
     body = `${body} (${levelSnippet})`;
   }
   if (ticker && !body.toUpperCase().includes(ticker)) {
@@ -99,11 +146,26 @@ export function formatLargoXPost(input: LargoXPostInput): LargoXPostDraft {
 
   const text = `${body}${footer}`;
   const intentUrl = `https://x.com/intent/tweet?text=${encodeURIComponent(text)}`;
+  const attachments = buildXPostMediaPlan({
+    ticker,
+    answer: sanitized,
+    question: input.question,
+    archetype: input.archetype ?? undefined,
+  });
+  const altBlock =
+    altHooks.length > 0
+      ? `\n\nAlt hooks:\n${altHooks.map((h, i) => `${i + 1}. ${h}`).join("\n")}`
+      : "";
+  const clipboardText = `${text}${altBlock}${formatMediaPlanForClipboard(attachments)}`;
 
   return {
     text,
     charCount: text.length,
     intentUrl,
     truncated,
+    attachments,
+    clipboardText,
+    archetype: input.archetype ?? "live_desk",
+    altHooks,
   };
 }

@@ -102,6 +102,7 @@ export function LargoAnswerMessage({
                 ticker={ticker ?? null}
                 bias={envelope.bias ?? null}
                 levels={envelope.levels}
+                question={question}
               />
             )}
           </>
@@ -121,6 +122,7 @@ export function LargoAnswerMessage({
               ticker={ticker ?? null}
               bias={envelope.bias ?? null}
               levels={envelope.levels}
+              question={question}
             />
           )}
         </>
@@ -158,6 +160,7 @@ export function LargoAnswerMessage({
               ticker={ticker ?? null}
               bias={built.envelope.bias ?? null}
               levels={built.envelope.levels}
+              question={question}
             />
           )}
         </>

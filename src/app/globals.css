@@ -21718,6 +21718,59 @@ html.product-shell .nav-mega {
   .largo-share-row .largo-share-discord-btn {
     margin-top: 0;
   }
+  .largo-share-block {
+    margin-top: 0.5rem;
+  }
+  .largo-x-attachments {
+    margin-top: 0.65rem;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid rgb(34 211 238 / 0.22);
+    border-radius: 0.5rem;
+    background: rgb(4 4 7 / 0.6);
+  }
+  .largo-x-attachments-title {
+    margin: 0 0 0.4rem;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #22d3ee;
+  }
+  .largo-x-attachments-list {
+    margin: 0;
+    padding-left: 1.1rem;
+    display: grid;
+    gap: 0.55rem;
+  }
+  .largo-x-attachments-list li {
+    font-size: 12px;
+    color: #fff;
+    line-height: 1.45;
+  }
+  .largo-x-attachments-label {
+    display: block;
+    color: #7dd3fc;
+    font-size: 11px;
+  }
+  .largo-x-attachments-path {
+    display: inline-block;
+    margin-top: 0.15rem;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 10px;
+    color: #22d3ee;
+    text-decoration: underline;
+  }
+  .largo-x-attachments-hint {
+    display: block;
+    margin-top: 0.2rem;
+    font-size: 11px;
+    color: #fff;
+  }
+  .largo-x-alt-hooks {
+    margin-top: 0.55rem;
+    padding-top: 0.55rem;
+    border-top: 1px solid rgb(34 211 238 / 0.15);
+  }
   .largo-chart-guide {
     font-size: 12px;
     color: #22d3ee;

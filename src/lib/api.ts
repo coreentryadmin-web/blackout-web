@@ -748,6 +748,17 @@ export type LargoXPostDraft = {
   charCount: number;
   intentUrl: string;
   truncated: boolean;
+  attachments: Array<{
+    tool: string;
+    label: string;
+    deskPath: string;
+    captureHint: string;
+    order: number;
+    primary?: boolean;
+  }>;
+  clipboardText: string;
+  archetype: string;
+  altHooks: string[];
 };
 
 export async function draftLargoXPost(input: {
@@ -755,6 +766,7 @@ export async function draftLargoXPost(input: {
   headline?: string | null;
   ticker?: string | null;
   bias?: string | null;
+  question?: string | null;
   levels?: Array<{ label: string; price: number; note?: string }>;
 }): Promise<LargoXPostDraft> {
   const res = await fetch(`${MARKET_BASE}/largo/draft-x-post`, {

@@ -96,6 +96,7 @@ import {
   questionWantsCompareCard,
   questionWantsPeerCompare,
   extractPeerCompareTickers,
+  questionWantsSocialContentPack,
   questionWantsPlaySimilarity,
   questionWantsPreEarningsPack,
   extractStructuredTicker,
@@ -108,6 +109,8 @@ import {
 } from "@/lib/largo/helix-thermal-compare";
 import { playSimilarityForLargo, type PlaySimilarityCard } from "@/lib/largo/play-similarity";
 import { preEarningsPackForLargo, type PreEarningsPackCard } from "@/lib/largo/pre-earnings-pack";
+import { buildSocialContentPack } from "@/lib/largo/social-content-pack";
+import { LARGO_SOCIAL_CONTENT_VOICE } from "@/lib/largo/social-content-voice";
 import { formatDepthBlock, largoDepthConfig, parseLargoDepth, type LargoDepth } from "@/lib/largo/largo-depth";
 import { largoToolLoopBudgetMs } from "@/lib/providers/config";
 import { buildLargoActions, type LargoAction } from "@/lib/largo/largo-actions";
@@ -543,6 +546,18 @@ async function prepareLargoTurn(
     if (preEarningsPack) toolsUsed.push("get_pre_earnings_pack");
   }
 
+  let socialContentBlock = "";
+  if (questionWantsSocialContentPack(question)) {
+    const socialPack = await buildSocialContentPack(question, intentTicker).catch(() => null);
+    if (socialPack?.available) {
+      toolsUsed.push("social_content_pack_prefetch");
+      socialContentBlock =
+        `\n\n${LARGO_SOCIAL_CONTENT_VOICE}\n\n## Social content pack (prefetched — cite these numbers)\n${JSON.stringify(socialPack, null, 0).slice(0, 6000)}\n`;
+    } else {
+      socialContentBlock = `\n\n${LARGO_SOCIAL_CONTENT_VOICE}\n`;
+    }
+  }
+
   const now = new Date();
   const et = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
@@ -579,7 +594,8 @@ async function prepareLargoTurn(
       : "") +
     (preEarningsPack
       ? `\n\n## Pre-earnings desk pack (prefetched — cite these numbers)\n${JSON.stringify(preEarningsPack, null, 0).slice(0, 5000)}\n`
-      : "");
+      : "") +
+    socialContentBlock;
 
   const system = buildDynamicSystem(
     question,

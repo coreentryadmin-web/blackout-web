@@ -27,6 +27,9 @@ describe("formatLargoXPost", () => {
     assert.match(draft.text, /SPX/);
     assert.match(draft.text, /flip \$5800/);
     assert.ok(draft.intentUrl.startsWith("https://x.com/intent/tweet?text="));
+    assert.ok(Array.isArray(draft.attachments));
+    assert.ok(draft.attachments.length >= 1);
+    assert.match(draft.clipboardText, /Attach/);
   });
 
   it("strips vendor names from the body", () => {
@@ -43,5 +46,15 @@ describe("formatLargoXPost", () => {
     const draft = formatLargoXPost({ answer: `## Verdict\n${long}` });
     assert.ok(draft.charCount <= 280);
     assert.equal(draft.truncated, true);
+    assert.equal(draft.archetype, "live_desk");
+  });
+
+  it("prefers Post Copy section when Largo authored it", () => {
+    const draft = formatLargoXPost({
+      answer: `## Verdict\nBearish below flip.\n\n## Post\n**Copy**\nNVDA puts paid — desk caught the flush at the wall. What's your exit rule?\n\n**Alt hooks**\n- Flow turned before price\n- Dealers short gamma into the print\n\n**Attach**\n1. Helix — /flows`,
+      ticker: "NVDA",
+    });
+    assert.match(draft.text, /NVDA puts paid/);
+    assert.ok(draft.altHooks.length >= 1);
   });
 });

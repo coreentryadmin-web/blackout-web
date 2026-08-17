@@ -15,6 +15,8 @@ export type LargoDeskPrompt = {
   peerCompare?: boolean;
   playSimilarity?: boolean;
   preEarningsPack?: boolean;
+  /** When true, server prefetches social content pack (winners, SPX, record). */
+  socialPack?: boolean;
 };
 
 /** Compact chips in the composer and native terminal. */
@@ -58,6 +60,38 @@ export const LARGO_DESK_PROMPTS: LargoDeskPrompt[] = [
     hint: "Positioning, flow, history, and board exposure in one pack",
     question: "Pre-earnings desk pack for NVDA — positioning, flow into the print, historical moves, and any 0DTE exposure.",
     preEarningsPack: true,
+  },
+  {
+    id: "x-winners",
+    label: "X · today's winners",
+    hint: "Banger post from live 0DTE board P&L + screenshot list",
+    question:
+      "Draft an X post about today's winning 0DTE plays — hook, tweet copy, alt hooks, and exactly which desk screenshots to attach. Use only live board numbers.",
+    socialPack: true,
+  },
+  {
+    id: "x-platform",
+    label: "X · platform showcase",
+    hint: "Full-desk story for @BlackOutTrade",
+    question:
+      "Draft an X post showcasing the BlackOut desk — what makes it different, one provocative hook, tweet copy, and which tool screenshots to attach.",
+    socialPack: true,
+  },
+  {
+    id: "x-spx-desk",
+    label: "X · SPX live read",
+    hint: "Live SPX levels + flow vs gamma post",
+    question:
+      "Draft an X post for the current SPX setup — flip, walls, flow vs gamma, tweet copy, and screenshot list.",
+    socialPack: true,
+  },
+  {
+    id: "x-win-recap",
+    label: "X · win recap",
+    hint: "Single play evolution — Night Hawk → Helix → Thermal",
+    question:
+      "Draft an X win-recap post for the best green play on today's 0DTE board — timeline story, copy, and panels to screenshot.",
+    socialPack: true,
   },
 ];
 
@@ -217,6 +251,16 @@ export function questionWantsPreEarningsPack(question: string): boolean {
     /\bbefore earnings\b/i.test(q) ||
     /\bearnings desk pack\b/i.test(q) ||
     /\bearnings pack\b/i.test(q)
+  );
+}
+
+/** True when the member wants X/Twitter/social post copy (prefetch winners + record). */
+export function questionWantsSocialContentPack(question: string): boolean {
+  const q = String(question ?? "").trim();
+  if (!q) return false;
+  return (
+    /\b(x post|twitter post|tweet|social post|content for x|banger post|marketing post|post for x|draft.*post|create.*post|what should we post)\b/i.test(q) ||
+    /\b(win recap|showcase post|platform post|winning plays post|attach.*screenshot|screenshot.*attach)\b/i.test(q)
   );
 }
 

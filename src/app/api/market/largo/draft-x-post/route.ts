@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import type { BieLevel } from "@/lib/bie/answer-envelope";
 import { formatLargoXPost } from "@/lib/largo/format-x-post";
+import { detectSocialArchetype } from "@/lib/largo/social-content-core";
 import { requireTierApi } from "@/lib/market-api-auth";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
 import { requireToolApi } from "@/lib/tool-access-server";
@@ -21,6 +22,7 @@ export async function POST(req: NextRequest) {
     ticker?: string | null;
     bias?: string | null;
     levels?: BieLevel[];
+    question?: string | null;
   };
   try {
     body = await req.json();
@@ -42,6 +44,10 @@ export async function POST(req: NextRequest) {
     ticker: body.ticker ?? null,
     bias: body.bias ?? null,
     levels: Array.isArray(body.levels) ? body.levels : undefined,
+    question: body.question ?? null,
+    archetype: body.question
+      ? detectSocialArchetype(String(body.question))
+      : detectSocialArchetype(answer),
   });
 
   return NextResponse.json(draft, { headers: NO_STORE_HEADERS });
