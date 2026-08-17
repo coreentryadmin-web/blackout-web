@@ -4,8 +4,32 @@ import { useState } from "react";
 import type { BieLevel } from "@/lib/bie/answer-envelope";
 import type { LargoXPostDraft } from "@/lib/api";
 import { draftLargoXPost, shareLargoToDiscord } from "@/lib/api";
+import { detectSocialArchetype } from "@/lib/largo/social-content-core";
+import { formatLargoXPost } from "@/lib/largo/format-x-post";
 
 type ShareState = "idle" | "sending" | "done" | "err";
+
+function localXDraft(input: {
+  answer: string;
+  headline?: string | null;
+  ticker?: string | null;
+  bias?: string | null;
+  levels?: BieLevel[];
+  question?: string | null;
+}): LargoXPostDraft {
+  const archetype = input.question ? detectSocialArchetype(input.question) : undefined;
+  return formatLargoXPost({ ...input, archetype });
+}
+
+async function applyXDraft(draft: LargoXPostDraft, setXDraft: (d: LargoXPostDraft) => void) {
+  setXDraft(draft);
+  try {
+    await navigator.clipboard.writeText(draft.clipboardText);
+  } catch {
+    /* clipboard blocked */
+  }
+  window.open(draft.intentUrl, "_blank", "noopener,noreferrer");
+}
 
 export function LargoShareRow({
   answer,
@@ -52,18 +76,17 @@ export function LargoShareRow({
           disabled={xState === "sending"}
           onClick={() => {
             setXState("sending");
-            void draftLargoXPost({ answer, headline, ticker, bias, levels, question })
+            const payload = { answer, headline, ticker, bias, levels, question };
+            void draftLargoXPost(payload)
               .then(async (draft) => {
-                setXDraft(draft);
-                try {
-                  await navigator.clipboard.writeText(draft.clipboardText);
-                } catch {
-                  /* clipboard blocked */
-                }
-                window.open(draft.intentUrl, "_blank", "noopener,noreferrer");
+                await applyXDraft(draft, setXDraft);
                 setXState("done");
               })
-              .catch(() => setXState("err"));
+              .catch(async () => {
+                // API may 404 during deploy — local formatter keeps workflow + clipboard working.
+                await applyXDraft(localXDraft(payload), setXDraft);
+                setXState("done");
+              });
           }}
         >
           {xState === "done"
