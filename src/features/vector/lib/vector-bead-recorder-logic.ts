@@ -28,6 +28,50 @@ export function vectorBeadRecordConcurrency(): number {
 }
 
 /**
+ * Parallel heatmap reads for the ACTIVE non-universe lane (viewer-driven, 15s).
+ *
+ * Deliberately far smaller than {@link vectorBeadRecordConcurrency}, and deliberately a SEPARATE
+ * number rather than a share of it. This lane's size is decided by whoever happens to be viewing
+ * an off-universe symbol, so it is the one input to the recorder that a member can move at will —
+ * and it had no ceiling at all (a bare `Promise.allSettled` over every active viewer). The two
+ * lanes draw from one global in-flight budget, so an unbounded viewer lane does not merely add
+ * load, it takes slots away from the 5s universe sweep that every member depends on.
+ *
+ * 8 covers the realistic viewer set with room to spare; anything beyond it is deferred and counted
+ * rather than started, so a burst shows up as a number instead of as pressure on the other lane.
+ */
+export function vectorActiveBeadRecordConcurrency(): number {
+  const raw = process.env.VECTOR_BEAD_ACTIVE_RECORD_CONCURRENCY?.trim();
+  const n = raw ? Number(raw) : 8;
+  const parsed = Number.isFinite(n) && n >= 1 ? Math.min(32, Math.floor(n)) : 8;
+  // Never wider than the global ceiling — the lane cap is a sub-budget of it, not an escape from it.
+  return Math.min(parsed, vectorBeadRecordConcurrency());
+}
+
+/**
+ * The `limit` to hand `selectTickersToRecord` for the ACTIVE lane.
+ *
+ * Both lanes share ONE in-flight set, and `selectTickersToRecord` subtracts that set's size from
+ * whatever `limit` it is given. So the active lane cannot simply pass its own cap — that would
+ * charge it twice for records the universe sweep is already running, and on a busy sweep it would
+ * start nothing at all. Passing `laneCap + inFlightSize` (bounded by the global ceiling) yields
+ * exactly `free = min(globalLimit - inFlightSize, laneCap)`: one global bound on concurrent
+ * upstream reads, and within it a sub-budget that viewer-driven work cannot exceed.
+ *
+ * Pure and exported so that arithmetic is checkable rather than an inline expression nobody reads.
+ */
+export function activeLaneSelectionLimit(
+  laneCap: number,
+  globalLimit: number,
+  inFlightSize: number
+): number {
+  const cap = Number.isFinite(laneCap) && laneCap >= 1 ? Math.floor(laneCap) : 1;
+  const global = Number.isFinite(globalLimit) && globalLimit >= 1 ? Math.floor(globalLimit) : 1;
+  const held = Number.isFinite(inFlightSize) && inFlightSize > 0 ? Math.floor(inFlightSize) : 0;
+  return Math.min(global, cap + held);
+}
+
+/**
  * Run `fn` over `items` with at most `limit` in flight AT ANY INSTANT — a rolling pool, not
  * fixed-size batches.
  *
