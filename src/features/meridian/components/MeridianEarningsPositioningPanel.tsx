@@ -55,6 +55,21 @@ export function MeridianEarningsPositioningPanel({
           <>
             <div className="mr-panel">
               <span className="mr-panel-title">Dealer structure</span>
+              {/* WHICH CHAIN these levels describe. An event-scoped wall and a whole-book
+                  aggregate render identically, and only one of them answers "what is positioned
+                  around this print" — so the scope is stated rather than assumed. */}
+              {thermal.expiry_label && (
+                <span
+                  className={`mr-scope mr-scope-${thermal.expiry_scope ?? "aggregate"}`}
+                  title={
+                    thermal.expiry_scope === "event_expiry"
+                      ? "Levels re-summed from the expiry that covers this print"
+                      : `Whole-book aggregate across ${thermal.aggregate_expiry_count ?? "several"} near-term expiries — not scoped to this print`
+                  }
+                >
+                  {thermal.expiry_label}
+                </span>
+              )}
               <MeridianStructureLadder thermal={thermal} onLevelHover={setHoverPrice} />
               {thermal.net_gex_label && (
                 <p className="mv-note">

@@ -11155,3 +11155,49 @@ target, since it is already breached and would return a near-certain probability
 no room; the median, not the mean, is "typical", because one gap dominates a four-print mean; and
 an `inputs` strip shows which feeds actually contributed, so an absent feed never reads as a
 neutral one.
+
+## 2026-08-18 — Meridian showed dealer structure from the WRONG EXPIRY for dated events — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | **P1** — every earnings event more than a few days out |
+| **Found by** | user question: "a stock 10 days away — does it show the GEX/gamma/nodes for THAT day?" |
+| **Status** | FIXED — event-expiry scoping + a visible scope badge, 15 unit tests |
+
+`meridian-earnings-intel.ts` called `gexHeatmapForLargo(sym, { lens: "gex", top_strikes: 8 })`
+with **no expiry argument at all**, then read `call_wall` / `put_wall` / `flip` / `max_pain` off
+the result. By the matrix's own documented definitions those are:
+
+| field | actual scope |
+|---|---|
+| walls, flip, net GEX | summed over the **~8 nearest expiries** |
+| `max_pain` | scoped to the **FRONT expiry** alone |
+
+For a print ten days out that is wrong twice over. The front expiry can die a week before the
+company reports, so its max pain describes a chain that will never see the news; and the
+near-term sum is dominated by whichever weekly carries the most open interest, which is usually
+not the one spanning the event.
+
+`polygon-options-gex.ts` says so itself, in the comment on `max_pain_by_expiry`: the field exists
+"so the Key Levels panel can scope EVERY tile to one expiry instead of showing an aggregate flip
+beside a single-expiry max pain". **The earnings desk was doing precisely the thing that comment
+warns against.**
+
+**Fix.** `meridian-event-expiry-core.ts` re-derives the levels from the per-(strike, expiry)
+`cells` for the first expiry **on or after** the report date — the contract a member would
+actually trade the event in. A same-day expiry qualifies (it settles after an AMC release). The
+expiry list is sorted defensively rather than trusted: the axis is documented ascending, but
+far-dated monthlies are MERGED IN after the near-term block, so a caller taking the first array
+match would pick a monthly over a nearer weekly.
+
+**It says which chain it used.** `expiry_scope` / `expiry_label` ship on the payload and render as
+a badge — green for event-scoped, amber for the aggregate fallback. An event-scoped wall and a
+whole-book one are pixel-identical, which is exactly how this went unnoticed.
+
+**Related fixes in the same pass.** An empty scoped column returns `null` net GEX rather than a
+confident `0`, which would render as "perfectly balanced dealer gamma" for a chain we have no data
+on. A chain with no expiry reaching the print reports `noCoveringExpiry` rather than silently
+falling back. And the expected-move rail now prints the NUMBER beside each marker — it showed
+"max pain" and "put wall" as bare labels, forcing the reader to eyeball a pixel against an axis.

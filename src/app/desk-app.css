@@ -2622,3 +2622,17 @@ html.nav-locked body { overflow: hidden; }
 .msum-level-wall .msum-level-label { color: rgba(251, 191, 36, 0.9); }
 
 .msum-note { margin: 0; font-family: var(--mv-prose); font-size: 0.78rem; line-height: 1.45; color: #a9cfe6; }
+
+/* Expiry scope badge. An event-scoped level and a whole-book aggregate look identical, so the
+   difference is spelled out — and the aggregate is the one that gets the warning colour,
+   because it is the one that may be describing a chain that dies before the print. */
+.mr-scope {
+  display: inline-block; margin-left: 0.5rem; padding: 0.1rem 0.4rem; border-radius: 0.25rem;
+  font-family: var(--mv-label); font-size: 0.62rem; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: none;
+}
+.mr-scope-event_expiry { color: #7ef0c0; background: rgba(52, 211, 153, 0.12); border: 1px solid rgba(52, 211, 153, 0.35); }
+.mr-scope-aggregate { color: #fcd9a0; background: rgba(251, 191, 36, 0.1); border: 1px solid rgba(251, 191, 36, 0.35); }
+
+/* The number rides with the label on rail markers. */
+.mv-rail-marker-num { font-family: var(--mv-value); font-weight: 800; font-variant-numeric: tabular-nums; color: #f2fbff; }

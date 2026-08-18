@@ -2,6 +2,11 @@ import "server-only";
 
 import { fetchTickerFundamentalsBundle } from "@/lib/bie/ticker-fundamentals";
 import { gexHeatmapForLargo } from "@/lib/largo/gex-heatmap-for-largo";
+import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
+import {
+  scopeStructureToExpiry,
+  describeEventExpiry,
+} from "@/lib/meridian/meridian-event-expiry-core";
 import { getVectorExpectedMove } from "@/features/vector/lib/vector-expected-move-server";
 import { loadEarningsExpectedMovePct } from "@/lib/meridian/meridian-earnings-expected-move";
 import { marketPlatform } from "@/lib/platform";
@@ -39,7 +44,7 @@ export async function loadMeridianEarningsIntel(input: {
   const sym = input.ticker.trim().toUpperCase();
   const windowHours = flowWindowHours(input.pack.days_until);
 
-  const [fundamentals, thermal, earningsEm, vectorEm, flowSummary, darkPoolRaw] = await Promise.all([
+  const [fundamentals, thermal, earningsEm, vectorEm, flowSummary, darkPoolRaw, rawHeatmap] = await Promise.all([
     fetchTickerFundamentalsBundle(sym).catch(() => null),
     gexHeatmapForLargo(sym, { lens: "gex", top_strikes: 8 }).catch(() => null),
     loadEarningsExpectedMovePct(sym, input.pack.earnings_date).catch(() => null),
@@ -48,7 +53,33 @@ export async function loadMeridianEarningsIntel(input: {
       .getFlowTapeSummary({ ticker: sym, limit: 30, since_hours: windowHours })
       .catch(() => null),
     fetchUwDarkPool(sym, { limit: 20 }).catch(() => null),
+    // The RAW matrix, for expiry scoping. The Largo wrapper only surfaces whole-book
+    // aggregates, and those are the wrong answer for a dated event — see below.
+    fetchGexHeatmap(sym).catch(() => null),
   ]);
+
+  /**
+   * Dealer structure scoped to the expiry that COVERS THE PRINT.
+   *
+   * The aggregate the matrix publishes sums walls and flip over the ~8 nearest expiries and
+   * scopes max pain to the FRONT one. For a report ten days out that is wrong twice: the front
+   * expiry can die before the company speaks, and the near-term sum is dominated by whichever
+   * weekly carries the most open interest rather than the one spanning the event. The matrix's
+   * own comment tells panels to re-scope from `cells` instead of "showing an aggregate flip
+   * beside a single-expiry max pain" — which is exactly what this desk was doing.
+   *
+   * Falls back to the aggregate when the scoped column carries no data, and records WHICH it
+   * used, because the two look identical on screen and only one answers "what is positioned
+   * around this print".
+   */
+  const scoped = scopeStructureToExpiry({
+    cells: rawHeatmap?.gex?.cells ?? null,
+    expiries: rawHeatmap?.expiries ?? null,
+    maxPainByExpiry: rawHeatmap?.max_pain_by_expiry ?? null,
+    eventYmd: input.pack.earnings_date ?? null,
+    aggregateExpiries: rawHeatmap?.near_term_expiries ?? rawHeatmap?.expiries ?? null,
+  });
+  const scopeUsable = scoped.expiryUsed != null && Object.keys(scoped.strikeTotals).length > 0;
 
   const dark_pool = shapeMeridianDarkPool(darkPoolRaw);
 
@@ -161,10 +192,21 @@ export async function loadMeridianEarningsIntel(input: {
           available: true,
           spot: thermal.spot,
           gex_king_strike: thermal.gex_king_strike,
-          call_wall: thermal.call_wall,
-          put_wall: thermal.put_wall,
+          call_wall: scopeUsable ? (scoped.callWall ?? thermal.call_wall) : thermal.call_wall,
+          put_wall: scopeUsable ? (scoped.putWall ?? thermal.put_wall) : thermal.put_wall,
           flip: thermal.flip,
-          max_pain: thermal.max_pain,
+          max_pain: scopeUsable ? (scoped.maxPain ?? thermal.max_pain) : thermal.max_pain,
+          // Which chain these levels describe. Named so a reader can tell an event-scoped wall
+          // from a whole-book one — they render identically otherwise.
+          expiry_scope: scopeUsable ? "event_expiry" : "aggregate",
+          expiry_used: scoped.expiryUsed,
+          expiry_days_from_event: scoped.daysFromEvent,
+          expiry_label: scopeUsable
+            ? describeEventExpiry(scoped)
+            : scoped.noCoveringExpiry
+              ? "no listed expiry covers this print"
+              : `aggregate of ${scoped.aggregateExpiryCount} near-term expiries`,
+          aggregate_expiry_count: scoped.aggregateExpiryCount,
           net_gex_label:
             thermal.net_gex != null ? fmtPrem(thermal.net_gex) : null,
           gamma_regime: thermal.gamma_regime_read,

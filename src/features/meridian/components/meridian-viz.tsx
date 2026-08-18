@@ -364,14 +364,17 @@ export function MeridianMoveRail({
                   ["--tier" as string]: slot.tier,
                 }}
               >
-                {m.label}
+                {/* The NUMBER ships with the label. A rail that says "max pain" without saying
+                    where max pain IS forces the reader to eyeball a pixel position against an
+                    axis — which is the one thing a chart exists to spare them. */}
+                {m.label} <b className="mv-rail-marker-num">{fmtPrice(num(m.value))}</b>
               </span>
             </div>
           );
         })}
         <div className="mv-rail-spot" style={{ left: `${spotPct * 100}%` }}>
           <span className="mv-rail-spot-dot" />
-          <span className="mv-rail-spot-label">{fmtPrice(mb.spot)}</span>
+          <span className="mv-rail-spot-label">spot {fmtPrice(mb.spot)}</span>
         </div>
       </div>
       <div className="mv-rail-bounds">
