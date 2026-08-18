@@ -85,6 +85,12 @@ export async function loadMeridianTimelineResponse(daysAhead: number): Promise<M
     // from a quietly broken feed, and the two need different reactions from the reader.
     non_optionable_hidden: earningsBundle.non_optionable_hidden,
     optionable_filter_applied: earningsBundle.optionable_filter_applied,
+    // Sector coverage, forwarded so it is actually reachable. These counters existed on the lane
+    // result but were never put on the payload, so the "coverage is a number, not an assumption"
+    // guarantee was not true end-to-end — a consumer saw `undefined` and could not tell a fully
+    // classified lane from one where every lookup had failed.
+    sectors_classified: earningsBundle.sectors_classified,
+    sectors_unclassified: earningsBundle.sectors_unclassified,
   });
 }
 

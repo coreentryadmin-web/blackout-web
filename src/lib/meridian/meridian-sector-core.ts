@@ -295,3 +295,34 @@ export function describeCohortPosition(
     d.percentile >= 0.75 ? "rich to" : d.percentile <= 0.25 ? "cheap to" : "in line with";
   return `${noun} is ${stance} its ${cohort.label} cohort — ${pct}th percentile of ${d.peers} peers, median ${median}`;
 }
+
+/**
+ * Order names for sector classification so a limited lookup budget buys usable cohorts.
+ *
+ * The lane is routinely bigger than the budget — measured live 2026-08-18, 199 earnings rows
+ * against a 120-lookup cap — so something is always skipped. What matters is WHICH.
+ *
+ * A cohort cannot rank anything until it has `MIN_COHORT_PEERS` peers carrying a comparable
+ * number, and on that same measurement only 22 of the 199 rows had a numeric implied move.
+ * Classifying in calendar order therefore spent lookups on rows that could never contribute to a
+ * distribution while skipping rows that could. Sorting the ones WITH a value to the front costs
+ * nothing extra and is the difference between a panel that ranks and a panel that says "too few
+ * peers".
+ *
+ * Deliberately a STABLE partition, not a full re-sort: within each half the caller's order is
+ * preserved, so the calendar's own ordering still decides ties and the output is deterministic.
+ */
+export function orderTickersForClassification<T>(
+  rows: readonly T[] | null | undefined,
+  hasValue: (row: T) => boolean,
+  tickerOf: (row: T) => string
+): string[] {
+  const withValue: string[] = [];
+  const without: string[] = [];
+  for (const row of rows ?? []) {
+    const ticker = String(tickerOf(row) ?? "").trim();
+    if (!ticker) continue;
+    (hasValue(row) ? withValue : without).push(ticker);
+  }
+  return [...withValue, ...without];
+}

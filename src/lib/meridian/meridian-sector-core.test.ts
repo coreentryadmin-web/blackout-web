@@ -6,6 +6,7 @@ import {
   buildSectorCohort,
   classifySic,
   describeCohortPosition,
+  orderTickersForClassification,
 } from "./meridian-sector-core";
 
 test("classifySic reads the 2-digit major group and names it", () => {
@@ -187,4 +188,53 @@ test("describeCohortPosition surfaces the too-few-peers reason rather than a bar
     peers: [{ ticker: "A", value: 1 }],
   });
   assert.match(describeCohortPosition(thin)!, /too few to rank against/);
+});
+
+test("orderTickersForClassification puts names WITH a comparable value first", () => {
+  // The lane is bigger than the lookup budget, so this ordering decides which names get
+  // classified at all. Measured live: 199 rows, 120-lookup cap, only 22 with a numeric move.
+  const rows = [
+    { ticker: "A", em: null },
+    { ticker: "B", em: 5 },
+    { ticker: "C", em: null },
+    { ticker: "D", em: 7 },
+  ];
+  assert.deepEqual(
+    orderTickersForClassification(rows, (r) => r.em != null, (r) => r.ticker),
+    ["B", "D", "A", "C"]
+  );
+});
+
+test("orderTickersForClassification is a STABLE partition, not a re-sort", () => {
+  // Within each half the caller's order survives, so the calendar still breaks ties and the
+  // output is deterministic for a given input.
+  const rows = [
+    { ticker: "Z", em: 1 },
+    { ticker: "Y", em: 2 },
+    { ticker: "X", em: null },
+    { ticker: "W", em: null },
+  ];
+  assert.deepEqual(
+    orderTickersForClassification(rows, (r) => r.em != null, (r) => r.ticker),
+    ["Z", "Y", "X", "W"]
+  );
+});
+
+test("orderTickersForClassification drops unusable tickers and tolerates nullish input", () => {
+  const rows = [
+    { ticker: "  ", em: 1 },
+    { ticker: "A", em: 1 },
+    { ticker: "", em: null },
+  ];
+  assert.deepEqual(orderTickersForClassification(rows, (r) => r.em != null, (r) => r.ticker), ["A"]);
+  assert.deepEqual(orderTickersForClassification(null, () => true, () => "X"), []);
+  assert.deepEqual(orderTickersForClassification(undefined, () => true, () => "X"), []);
+});
+
+test("orderTickersForClassification never loses a usable name", () => {
+  // The budget may cut the tail, but this function must not: reordering is not filtering.
+  const rows = Array.from({ length: 50 }, (_, i) => ({ ticker: `T${i}`, em: i % 3 === 0 ? i : null }));
+  const out = orderTickersForClassification(rows, (r) => r.em != null, (r) => r.ticker);
+  assert.equal(out.length, 50);
+  assert.equal(new Set(out).size, 50);
 });
