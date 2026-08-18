@@ -11201,3 +11201,51 @@ confident `0`, which would render as "perfectly balanced dealer gamma" for a cha
 on. A chain with no expiry reaching the print reports `noCoveringExpiry` rather than silently
 falling back. And the expected-move rail now prints the NUMBER beside each marker — it showed
 "max pain" and "put wall" as bare labels, forcing the reader to eyeball a pixel against an axis.
+
+## 2026-08-18 — Meridian earnings panels blank intermittently: a zero-row Benzinga answer was cached like a good one — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P1 — every Benzinga-fed earnings panel renders empty, and empty reads as "this company has no earnings history" |
+| **Where** | `src/lib/meridian/meridian-benzinga-earnings.ts` `loadBenzingaTickerEarnings` |
+| **Status** | FIXED — three-way outcome caching (`ok` / `empty` / `error`), with the empty case held 60s instead of 10min |
+
+**Symptom.** On 2026-08-18 at 08:33 UTC the Meridian data validator reported, on NVDA / WMT / TGT,
+that `enrichment.print_history`, `street_estimates`, `earnings_calendar` and every `beat_rates`
+field were empty — while `pack.history` **on the same payload** carried four prints and summarised
+them ("4/4 EPS beats over last 4 prints"). One panel of the page contradicted another.
+
+**What made this hard.** Four minutes later, at 08:37, the same three events served four prints and
+a calendar row each. Nothing deployed in between. The condition is INTERMITTENT, which is why an
+earlier pass concluded the mechanism was a six-way `Promise.all` tripping a limit — a hypothesis,
+correctly logged as one, that this measurement replaces.
+
+**Root cause.** `loadBenzingaTickerEarnings` cached its result for ten minutes with a single TTL.
+The previous fix (#2292) made a FAILED fetch throw so nothing was stored, and explicitly treated
+"entitled, no error, zero rows" as a real answer worth caching. `calendar_error` being **null** in
+the captured payload is the tell that this was that second path: the call returned HTTP 200 with an
+empty `results` array. But this loader only ever runs for a ticker that already has a print on the
+calendar, and for such a name zero rows over a 420-day window is not a fact about the company — it
+is the upstream declining to answer. Ten minutes of one bad answer, served to every reader.
+
+**Evidence.**
+- Live: the app's exact query (`ticker=NVDA, date.gte=2025-07-02, limit=16, sort=date.desc`) run
+  through the real `fetchBenzingaStructuredEarnings` returns `entitled=true error=null rows=8`,
+  and the real mappers turn those 8 rows into a calendar row, 4 street estimates and 4 prints.
+  So neither the query, the shaper nor the mappers are at fault — all three were ruled out by
+  running them, not by reading them.
+- Both Polygon bases (`api.massive.com`, `api.polygon.io`) return the Benzinga rows, so a base
+  misconfiguration is ruled out too.
+
+**Fix.** Three outcomes now get three lifetimes: `ok` → 10min, `empty` → 60s, `error` → not cached
+and carried out for the UI to surface. The decision logic is extracted into
+`meridian-benzinga-earnings-core.ts` (`classifyCalendarResult`, `loadWithEmptyAwareCache`) so it is
+unit-testable — the original bug was invisible to every test precisely because it lived inside a
+`server-only` module nothing could run. The regression test is verified to FAIL when the two TTLs
+are set equal, i.e. against the exact pre-fix behaviour.
+
+**Deliberately not done.** Empties are not left uncached. That would re-fetch on every page view
+for a name with genuinely no calendar coverage; 60s keeps a floor under request volume while
+capping the blast radius of a bad answer at one minute.

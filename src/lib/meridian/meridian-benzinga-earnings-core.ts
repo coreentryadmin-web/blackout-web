@@ -457,3 +457,59 @@ function addDaysYmd(ymd: string, days: number): string {
   const dt = new Date(Date.UTC(y, m - 1, d + days));
   return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`;
 }
+
+/* ── Empty-aware caching for a per-ticker calendar fetch ──────────────────────────────
+ *
+ * Extracted here, away from `server-only`, so the CACHING DECISION is unit-testable. The bug it
+ * exists to prevent was invisible to every existing test precisely because it lived inside an
+ * un-runnable server module: a zero-row upstream answer was stored for the full ten-minute TTL
+ * and every Benzinga-fed panel rendered blank until it expired.
+ */
+
+export type CachedFetchOutcome = "ok" | "empty" | "error";
+
+/** Which of the three lifetimes a result has earned. Stated once, in one place. */
+export function classifyCalendarResult(res: {
+  rows?: readonly unknown[] | null;
+  error?: string | null;
+}): CachedFetchOutcome {
+  if (res?.error) return "error";
+  return (res?.rows?.length ?? 0) > 0 ? "ok" : "empty";
+}
+
+export type CacheFn = <T>(key: string, ttlMs: number, load: () => Promise<T>) => Promise<T>;
+
+/**
+ * Run `fetchOnce` behind two cache layers so that `ok`, `empty` and `error` get different
+ * lifetimes. `cache` must be a store that does NOT persist a rejected loader — that property is
+ * what keeps an empty or failed answer out of the long-lived layer.
+ */
+export async function loadWithEmptyAwareCache<T extends { rows?: readonly unknown[] | null; error?: string | null }>(opts: {
+  cache: CacheFn;
+  baseKey: string;
+  okTtlMs: number;
+  emptyTtlMs: number;
+  fetchOnce: () => Promise<T>;
+  /** Built when the fetch itself failed; the error is carried out, never swallowed. */
+  onError: (message: string) => T;
+}): Promise<T> {
+  class Empty extends Error {
+    constructor(readonly result: T) {
+      super("empty");
+    }
+  }
+  try {
+    return await opts.cache<T>(`${opts.baseKey}:ok`, opts.okTtlMs, async () => {
+      const res = await opts.cache<T>(`${opts.baseKey}:probe`, opts.emptyTtlMs, opts.fetchOnce);
+      const outcome = classifyCalendarResult(res);
+      if (outcome === "error") throw new Error(String(res.error));
+      if (outcome === "empty") throw new Empty(res);
+      return res;
+    });
+  } catch (e) {
+    // An empty answer is still an answer: hand it back clean, so a company with genuinely no
+    // calendar coverage does not render an outage banner.
+    if (e instanceof Empty) return e.result;
+    return opts.onError(String(e instanceof Error ? e.message : e).slice(0, 200));
+  }
+}

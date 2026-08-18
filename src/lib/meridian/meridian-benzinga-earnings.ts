@@ -17,6 +17,7 @@ import {
   buildEarningsWeekRows,
   buildEarningsAnalyticsRows,
   buildRecentEarningsRevisions,
+  loadWithEmptyAwareCache,
   parseNextEarningsFromBenzinga,
 } from "@/lib/meridian/meridian-benzinga-earnings-core";
 import { todayEtYmd } from "@/lib/providers/spx-session";
@@ -29,6 +30,15 @@ import type {
 
 const BENZINGA_TIMELINE_TTL_MS = 20 * 60 * 1000;
 const BENZINGA_TICKER_TTL_MS = 10 * 60 * 1000;
+/**
+ * How long a ZERO-ROW ticker result is allowed to stick.
+ *
+ * Short, not zero. Not caching empties at all would re-fetch on every page view for the rare
+ * name that genuinely has no calendar coverage; caching them for the full ten minutes is what
+ * turned a momentary upstream blip into ten minutes of blank earnings panels. A minute keeps a
+ * floor under request volume while capping the blast radius of a bad answer at one minute.
+ */
+const BENZINGA_TICKER_EMPTY_TTL_MS = 60 * 1000;
 const REVISION_LOOKBACK_HOURS = 36;
 
 function addDaysYmd(ymd: string, days: number): string {
@@ -126,35 +136,39 @@ export async function loadBenzingaEarningsBundle(
   }));
 }
 
+type BenzingaTickerResult = Awaited<ReturnType<typeof fetchBenzingaStructuredEarnings>>;
+
 /** Ticker-scoped Benzinga earnings — upcoming + historical prints for enrichment. */
 export async function loadBenzingaTickerEarnings(ticker: string, eventDate: string | null) {
   const sym = ticker.trim().toUpperCase();
   const dateGte = eventDate ? addDaysYmd(eventDate, -420) : addDaysYmd(new Date().toISOString().slice(0, 10), -420);
-  return serverCache(`meridian:benzinga:ticker:${sym}:${eventDate ?? "next"}`, BENZINGA_TICKER_TTL_MS, async () => {
-    const res = await fetchBenzingaStructuredEarnings({
-      ticker: sym,
-      dateGte,
-      limit: 16,
-      sort: "date.desc",
-    });
-    // THROW on a failed fetch so the cache stores NOTHING.
-    //
-    // Measured 2026-08-18: every Benzinga-derived enrichment field was empty on 8/8 mega-caps
-    // — print_history, street_estimates, earnings_calendar, beat_rates — while the same
-    // payload's pack.history carried 4 prints. A failure returned `{rows: []}` and got cached
-    // for ten minutes, so ONE bad request became ten minutes of "this company has no earnings
-    // history" on every panel fed from here.
-    //
-    // An entitled-but-genuinely-empty result (no error, no rows) is a real answer and still
-    // caches — the distinction is exactly the one the old code collapsed.
-    if (res.error) throw new Error(`benzinga_ticker_earnings:${res.error}`);
-    return res;
-  }).catch((e: unknown) => ({
-    rows: [] as Awaited<ReturnType<typeof fetchBenzingaStructuredEarnings>>["rows"],
-    entitled: true,
+
+  /**
+   * THREE outcomes, three lifetimes — see `loadWithEmptyAwareCache` for the mechanism.
+   *
+   * Measured on 2026-08-18, twice, four minutes apart on the SAME deployed build: at 08:33 every
+   * Benzinga-derived field on NVDA / WMT / TGT was empty — print_history, street_estimates,
+   * earnings_calendar, beat_rates all blank, `calendar_error` NULL — and at 08:37 all three
+   * names served four prints and a calendar row. Nothing deployed in between.
+   *
+   * `calendar_error` being NULL is the tell: this is not the failed-fetch path the previous fix
+   * addressed. The call returned 200 with an empty `results` array, which that fix deliberately
+   * classifies as a real answer and caches for the full ten minutes. But this loader only runs
+   * for a ticker with a print on the calendar, and for such a name zero rows over a 420-day
+   * window is not a fact about the company — it is the upstream declining to answer. Held for
+   * one minute instead of ten, then retried.
+   */
+  return loadWithEmptyAwareCache<BenzingaTickerResult>({
+    cache: serverCache,
+    baseKey: `meridian:benzinga:ticker:${sym}:${eventDate ?? "next"}`,
+    okTtlMs: BENZINGA_TICKER_TTL_MS,
+    emptyTtlMs: BENZINGA_TICKER_EMPTY_TTL_MS,
+    fetchOnce: () =>
+      fetchBenzingaStructuredEarnings({ ticker: sym, dateGte, limit: 16, sort: "date.desc" }),
     // Carried, not swallowed: callers surface this so an outage cannot render as "no data".
-    error: String(e instanceof Error ? e.message : e).slice(0, 200),
-  }));
+    onError: (message) =>
+      ({ rows: [], entitled: true, error: message, nextUrl: null }) as BenzingaTickerResult,
+  });
 }
 
 /** Board tickers batch — fills gaps the market-wide window may miss. */

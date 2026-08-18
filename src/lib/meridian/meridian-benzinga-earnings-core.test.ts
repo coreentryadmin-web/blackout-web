@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import type { BenzingaStructuredEarnings } from "@/lib/providers/polygon";
 import {
   benzingaSurpriseToDisplayPct,
+  classifyCalendarResult,
+  loadWithEmptyAwareCache,
   buildRecentEarningsRevisions,
   computeEarningsYoY,
   dualBeatRateFromPrints,
@@ -193,4 +195,112 @@ test("buildRecentEarningsRevisions filters by last_updated window", () => {
   );
   assert.equal(rows.length, 1);
   assert.equal(rows[0]?.ticker, "META");
+});
+
+/* ── Empty-aware caching ──────────────────────────────────────────────────────────────
+ *
+ * These exist because the bug they describe was invisible to every other test: it lived inside a
+ * `server-only` module, so nothing could run it, and the symptom (blank earnings panels) looked
+ * from the outside exactly like a company with no history.
+ */
+
+/** A cache with the one property the real one has and the logic depends on: throws are NOT stored. */
+function fakeCache() {
+  const store = new Map<string, { value: unknown; expiresAt: number }>();
+  let now = 0;
+  const cache = async <T,>(key: string, ttlMs: number, load: () => Promise<T>): Promise<T> => {
+    const hit = store.get(key);
+    if (hit && hit.expiresAt > now) return hit.value as T;
+    const value = await load(); // a rejection propagates and stores nothing — as in server-cache
+    store.set(key, { value, expiresAt: now + ttlMs });
+    return value;
+  };
+  return { cache, advance: (ms: number) => { now += ms; }, size: () => store.size };
+}
+
+const OK_TTL = 600_000;
+const EMPTY_TTL = 60_000;
+
+function runner(results: Array<{ rows: unknown[]; error: string | null }>) {
+  let calls = 0;
+  const c = fakeCache();
+  const run = () =>
+    loadWithEmptyAwareCache({
+      cache: c.cache,
+      baseKey: "k",
+      okTtlMs: OK_TTL,
+      emptyTtlMs: EMPTY_TTL,
+      fetchOnce: async () => {
+        const r = results[Math.min(calls, results.length - 1)]!;
+        calls += 1;
+        return r;
+      },
+      onError: (message) => ({ rows: [], error: message }),
+    });
+  return { run, advance: c.advance, calls: () => calls };
+}
+
+test("classifyCalendarResult separates error from empty from ok", () => {
+  assert.equal(classifyCalendarResult({ rows: [1], error: null }), "ok");
+  assert.equal(classifyCalendarResult({ rows: [], error: null }), "empty");
+  // An error WITH rows is still an error — a partial answer from a broken call is not an answer.
+  assert.equal(classifyCalendarResult({ rows: [1], error: "boom" }), "error");
+  assert.equal(classifyCalendarResult({}), "empty");
+});
+
+test("a good answer is served from cache and fetched only once", async () => {
+  const r = runner([{ rows: [1, 2], error: null }]);
+  assert.equal((await r.run()).rows.length, 2);
+  assert.equal((await r.run()).rows.length, 2);
+  // Two minutes: past the SHORT ttl, nowhere near the long one. Advancing by a multiple of
+  // EMPTY_TTL would also clear the long layer if the two were ever set equal, and the test would
+  // then pass under exactly the collapsed-lifetime behaviour it exists to rule out.
+  r.advance(120_000);
+  assert.equal((await r.run()).rows.length, 2);
+  assert.equal(r.calls(), 1);
+});
+
+test("an EMPTY answer is held only for the short ttl, then retried", async () => {
+  // This is the regression under test. Under the old single-TTL code the empty was cached for
+  // the full ten minutes and every Benzinga-fed panel stayed blank until it expired.
+  const r = runner([
+    { rows: [], error: null },
+    { rows: [1, 2, 3], error: null },
+  ]);
+  assert.equal((await r.run()).rows.length, 0);
+  await r.run();
+  assert.equal(r.calls(), 1, "within the short ttl the upstream is not hammered");
+
+  // Same reasoning: a literal just past the short ttl, so this fails if the empty were being
+  // held at the long lifetime.
+  r.advance(61_000);
+  const recovered = await r.run();
+  assert.equal(recovered.rows.length, 3, "after the short ttl the empty is retried, not re-served");
+  assert.equal(recovered.error, null);
+});
+
+test("an empty answer carries NO error — a name with no coverage is not an outage", async () => {
+  const r = runner([{ rows: [], error: null }]);
+  const res = await r.run();
+  assert.equal(res.error, null);
+  assert.deepEqual(res.rows, []);
+});
+
+test("a failed fetch carries its message out and is never cached as an answer", async () => {
+  const r = runner([
+    { rows: [], error: "upstream 500" },
+    { rows: [9], error: null },
+  ]);
+  const bad = await r.run();
+  assert.match(String(bad.error), /upstream 500/);
+
+  // The failure must not have poisoned either layer once the short ttl lapses.
+  r.advance(61_000);
+  assert.equal((await r.run()).rows.length, 1);
+});
+
+test("the empty ttl is genuinely shorter than the ok ttl", () => {
+  // Guards the constant relationship the whole design rests on: if these were ever set equal the
+  // two layers would collapse back into the single-lifetime behaviour that caused the bug.
+  assert.ok(EMPTY_TTL < OK_TTL);
 });
