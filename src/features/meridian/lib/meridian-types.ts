@@ -23,6 +23,18 @@ export type MeridianTimelineItem = {
   importance?: number | null;
   /** Earnings-only: true when actual EPS/revenue landed. */
   is_printed?: boolean;
+  /**
+   * Earnings-only: the implied move, as a NUMBER.
+   *
+   * It was already in the subtitle string, but a sentence is not a datum — anything that wants
+   * to rank, compare or chart it had to parse prose back into a float. Carried explicitly so the
+   * sector cohort can be computed from the lane the reader is already looking at.
+   */
+  expected_move_pct?: number | null;
+  /** Earnings-only: 2-digit SIC major group — the sector-cohort key. */
+  sic_major_group?: string | null;
+  /** Earnings-only: display name of that cohort, e.g. "Semis & Electronics". */
+  sector_label?: string | null;
 };
 
 export type MeridianSpxPositioning = {

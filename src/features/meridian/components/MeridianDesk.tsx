@@ -640,6 +640,7 @@ export function MeridianDesk() {
               loading={detailLoading}
               error={detailError ? String(detailError.message) : null}
               boardTickers={data?.board_tickers ?? []}
+              allItems={allItems}
             />
           ) : (
             <MeridianEmpty message="Select a catalyst to open the structure brief." />

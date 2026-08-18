@@ -34,6 +34,8 @@ type Props = {
   loading: boolean;
   error: string | null;
   boardTickers?: string[];
+  /** The full lane, for panels that compare this event against the others on screen. */
+  allItems?: readonly MeridianTimelineItem[];
 };
 
 function HeadlineList({
@@ -62,6 +64,7 @@ export function MeridianEventDetailPanel({
   loading,
   error,
   boardTickers = [],
+  allItems = [],
 }: Props) {
   const theme = kindTheme(item.kind);
 
@@ -346,7 +349,7 @@ export function MeridianEventDetailPanel({
       )}
 
       {!loading && !error && detail?.kind === "earnings" && (
-        <MeridianEarningsTabs detail={detail} tab={earningsTab} />
+        <MeridianEarningsTabs detail={detail} tab={earningsTab} item={item} allItems={allItems} />
       )}
 
       <MeridianActionDock item={item} boardTickers={boardTickers} />
