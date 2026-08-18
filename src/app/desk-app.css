@@ -2250,6 +2250,7 @@ html.nav-locked body { overflow: hidden; }
 .mv-strike-pct { text-align: right; font-weight: 700; }
 
 /* Implied vs realized */
+.mv-ivr { max-width: 56rem; }
 .mv-ivr-track {
   position: relative; height: 30px; margin-top: 0.2rem;
   border-radius: 999px; background: var(--mv-track); border: 1px solid var(--mv-hairline);
@@ -2268,7 +2269,10 @@ html.nav-locked body { overflow: hidden; }
   box-shadow: 0 0 10px currentColor;
 }
 .mv-ivr-legend {
-  display: flex; justify-content: space-between; gap: 0.6rem; margin-top: 0.45rem; flex-wrap: wrap;
+  /* Gap-packed, not space-between. On a full-width panel space-between throws the three
+     readings to opposite ends of ~1400px, so the eye has to travel to relate "implied 6%" to
+     "median 1.82%" — the exact comparison the panel exists to make. */
+  display: flex; gap: 1.4rem; margin-top: 0.45rem; flex-wrap: wrap;
   font-family: var(--font-mono, monospace); font-size: 0.53rem;
   color: rgba(186, 230, 253, 0.8);
 }
