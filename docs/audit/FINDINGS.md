@@ -11774,3 +11774,49 @@ and 0 at 14:57**. Nothing is wrong with either number — but a member who opens
 the window in which a revision was detected sees an empty panel, and the word "timeline" promises
 a series. The emitted entries need persisting (the `meridian_report_snapshots` pattern) so the
 event page can show the full run-up to a print rather than a momentary sample.
+
+## 2026-08-18 — Vector bead FLOOR collapsed to sub-pixel on dense single names — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P1 — the member-visible "beads are too small", on every single name |
+| **Where** | `src/features/vector/lib/vector-wall-rail-core.ts` — `clampTuningToSpacing` |
+| **Status** | FIXED — floor now clamps to `BEAD_VISIBLE_MIN_HALF_PX = 2.0`; 3 tests added |
+
+**How it was found.** Not by reasoning about the model — by measuring pixels. Every check we had
+was model-side (unit tests over `beadRadiusForPctShare` / `fillAlpha`), and those prove the
+functions return a spread of values for a spread of inputs. They cannot prove the member SEES a
+spread, because between the function and the eye sit the radius budget, the alpha floor and the
+canvas. `scripts/audit/vector-bead-pixel-audit.cjs` (new, this PR) closes that gap: it loads the
+real desk through the CONNECT tunnel at 1920x1080, clusters the drawn bead pixels, and reports the
+radius and luminance distributions.
+
+**Measured, live prod, 2026-08-18:**
+
+| ticker | beads | radius p10/p50/p90 | ratio | lum spread | verdict |
+|---|---|---|---|---|---|
+| SPX | 160 (79 call / 81 put) | 1.3 / 2.0 / 3.8 px | 3.0x | 56 | GREEN |
+| NVDA | 18 (4 call / 14 put) | 1.0 / **1.1** / 2.3 px | 2.3x | 69 | **RED** |
+
+**Root cause.** The ceiling rule was working; the FLOOR was not. On a single name the drawn strike
+rows are ~4-12px apart, so `halfMax` clamps to the readable 3.2. The "preserve the dynamic range"
+line then derived `halfMin = halfMax / ratio` = 3.2 / 3.4 ~ 0.94, lifted only to `minRadiusPx`
+(1.6). Most walls sit in the weak end of the share distribution, so MOST beads drew at that floor.
+The size channel was preserved in arithmetic and destroyed on screen. SPX escaped it because its
+25-point strikes leave a wide row gap, which is exactly why validating on an index alone missed it
+— the same single-ticker mistake that shipped #2310.
+
+**Fix.** On a crowded axis the range now COMPRESSES rather than sinking: the floor never drops
+below 2.0px (4px across, legible at 1x) and never eats more than 70% of the ceiling, so ~1.6x of
+size range survives. A bead too small to see carries no information; a bead whose size differs less
+still carries strength through the ALPHA channel, which #2312 split out as an independent
+sub-linear curve for exactly this reason. Where a member wants the full size range back on a dense
+name, the honest lever is fewer rows (the new NODES control), not smaller beads.
+
+**Also fixed in the measurement itself.** The audit's first luminance metric measured spread across
+ALL beads. The call palette (cyan) is far brighter than the put palette (red) at identical alpha, so
+a rail of fully-opaque beads reported a large "contrast spread" purely from hue — it would have
+passed this audit on exactly the flat rail the member photographed. Spread is now measured WITHIN
+each side, with a test pinning it.
