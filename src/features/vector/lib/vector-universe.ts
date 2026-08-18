@@ -9,6 +9,7 @@ import {
 import { listSharedUniverseTickers, touchDynamicUniverse } from "./vector-dynamic-universe";
 import { isVectorTickerAllowed, normalizeVectorTicker } from "./vector-ticker";
 import { roundFloats } from "@/lib/round-floats";
+import { isCompleteBuild, mergeUniverseSnapshot } from "./vector-universe-merge";
 import { bucketWallSampleTime, buildWallHistorySample } from "./vector-wall-sample";
 import { wallTrailSampleSecForTicker } from "./vector-wall-sample-server";
 import { writeWallHistorySample, type WallWriteSource } from "./vector-wall-write";
@@ -43,6 +44,13 @@ export type VectorUniverseRow = {
 };
 
 export type VectorUniverseSnapshot = {
+  /**
+   * Fan-out completeness for the build that produced this snapshot. Optional because snapshots
+   * persisted before this field existed are still readable; absent is treated as "unknown", which
+   * routes through the safe (merging) path rather than the replacing one.
+   */
+  attempted?: number;
+  produced?: number;
   updatedAt: number;
   rows: VectorUniverseRow[];
 };
@@ -234,7 +242,14 @@ export async function buildVectorUniverseSnapshot(
   }
 
   rows.sort((a, b) => a.ticker.localeCompare(b.ticker));
-  return roundFloats({ updatedAt: Date.now(), rows });
+  // Carry the COMPLETENESS of the fan-out, not just its survivors. Without this the caller cannot
+  // tell "the universe is 4 tickers" from "17 of 21 lookups failed" — and it used to persist the
+  // second as though it were the first. See vector-universe-merge.ts for the measured incident.
+  return {
+    ...roundFloats({ updatedAt: Date.now(), rows }),
+    attempted: tickers.length,
+    produced: rows.length,
+  };
 }
 
 const appendInFlight = new Map<string, Promise<void>>();
@@ -256,9 +271,13 @@ export async function ensureTickerInUniverseSnapshot(rawTicker: string): Promise
     const built = await buildVectorUniverseRow(ticker);
     if (!built) return;
 
-    const mergedRows = [...(snap?.rows ?? []).filter((r) => r.ticker !== ticker), built.row];
-    mergedRows.sort((a, b) => a.ticker.localeCompare(b.ticker));
-    await persistVectorUniverseSnapshot(roundFloats({ updatedAt: Date.now(), rows: mergedRows }));
+    // Re-read immediately before writing, and merge through the same rule. `appendInFlight` only
+    // dedups within ONE process; with several ECS tasks appending concurrently the old
+    // load -> append -> store lost whichever write landed first. Re-reading narrows the window, and
+    // merging means the loser contributes its row instead of erasing everyone else's.
+    const latest = (await loadVectorUniverseSnapshot()) ?? snap;
+    const merged = mergeUniverseSnapshot(latest, [built.row], Date.now());
+    await persistVectorUniverseSnapshot(roundFloats({ updatedAt: Date.now(), rows: merged.rows }));
   })().finally(() => {
     appendInFlight.delete(ticker);
   });
@@ -353,8 +372,26 @@ export async function refreshVectorUniverseSnapshot(
   if (existing) return existing;
   const p = (async () => {
     const snap = await buildVectorUniverseSnapshot(opts);
-    await persistVectorUniverseSnapshot(snap);
-    return snap;
+
+    // A COMPLETE build is the roster and replaces outright. An INCOMPLETE one is a set of
+    // OBSERVATIONS: merge it over what is stored, so a bad fan-out refreshes fewer rows instead of
+    // deleting the universe. Measured on prod 2026-08-18 — an incomplete build persisted a
+    // FOUR-ticker roster over a healthy 64-ticker one and it was served, ageing, for minutes.
+    if (isCompleteBuild(snap.attempted ?? 0, snap.produced ?? snap.rows.length)) {
+      await persistVectorUniverseSnapshot(snap);
+      return snap;
+    }
+
+    const previous = await loadVectorUniverseSnapshot();
+    const merged = mergeUniverseSnapshot(previous, snap.rows, Date.now());
+    const out = { ...snap, updatedAt: Date.now(), rows: merged.rows };
+    console.warn(
+      `[vector-universe] incomplete build ${snap.produced ?? snap.rows.length}/${snap.attempted ?? 0} — ` +
+        `merged (refreshed ${merged.refreshed}, carried ${merged.carried}, expired ${merged.expired}) ` +
+        `-> ${merged.rows.length} rows`
+    );
+    await persistVectorUniverseSnapshot(out);
+    return out;
   })().finally(() => {
     refreshInFlight.delete(key);
   });
