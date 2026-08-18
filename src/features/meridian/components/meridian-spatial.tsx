@@ -27,6 +27,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ORBIT_GUIDES,
   orbitalGeometry,
   orbitalLabelOffset,
   orbitalLayout,
@@ -217,7 +218,7 @@ export function MeridianHalo3D({
 export function MeridianOrbital({
   signals,
   verdict,
-  size = 300,
+  size = 340,
   onPillarClick,
 }: {
   signals: Parameters<typeof orbitalLayout>[0];
@@ -239,10 +240,12 @@ export function MeridianOrbital({
   );
 
   if (nodes.length === 0) return null;
-  const half = size / 2;
   // Geometry lives in the core module so the component and its collision test read the SAME
   // numbers. A test that recomputes placement its own way proves nothing about what renders.
+  // The box comes from the geometry, not the prop: below MIN_ORBITAL_SIZE the diagram cannot be
+  // drawn without the innermost orb covering the core, so it takes the room it needs.
   const geo = orbitalGeometry(size);
+  const half = geo.size / 2;
   const R = geo.R;
 
   // Painter's algorithm: far nodes first, so near orbs overlap far ones and depth reads correctly.
@@ -252,7 +255,9 @@ export function MeridianOrbital({
     <div
       ref={ref}
       className={`ms-orbital${enabled ? " is-spatial" : ""}`}
-      style={{ width: size, height: size }}
+      // The label cap is DERIVED from the geometry and handed to CSS, so a label can never be
+      // wider than the room the box actually leaves for it at this size.
+      style={{ width: geo.size, height: geo.size, ["--orb-label-max" as string]: `${geo.labelMaxW}px` }}
       onPointerMove={onMove}
       onPointerLeave={() => {
         onLeave();
@@ -260,8 +265,8 @@ export function MeridianOrbital({
       }}
     >
       {/* Orbit guides sit on the tilted plane so the disc reads as a plane, not scattered dots. */}
-      <svg className="ms-orbital-guides" width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
-        {[0.34, 0.67, 1].map((r) => (
+      <svg className="ms-orbital-guides" width={geo.size} height={geo.size} viewBox={`0 0 ${geo.size} ${geo.size}`} aria-hidden="true">
+        {ORBIT_GUIDES.map((r) => (
           <ellipse
             key={r}
             cx={half}
@@ -274,9 +279,12 @@ export function MeridianOrbital({
         ))}
       </svg>
 
+      {/* Just the mark — the word "MERIDIAN" used to sit here and the innermost orb painted over
+          it. It was redundant anyway (the panel is titled, and the halo above already carries the
+          verdict), and removing it is what lets the inner orbit stay close enough to keep radius
+          readable as influence. */}
       <div className="ms-orbital-core">
         <span className={`ms-core-dot ${leanCls(verdict)}`} />
-        <span className="ms-core-label">MERIDIAN</span>
       </div>
 
       {ordered.map(({ n, p }) => {

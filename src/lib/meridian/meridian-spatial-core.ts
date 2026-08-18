@@ -78,8 +78,15 @@ export type OrbitalNode = {
   detail: string;
 };
 
-const ORBIT_INNER = 0.34;
+// The innermost orbit has to CLEAR the core mark, not merely be smaller than the disc: a heavy
+// pillar lands here, and at 0.34 its orb painted straight over the centre (observed live on
+// AXIL). Set from the geometry — core mark radius + the largest orb radius + a hair.
+export const ORBIT_INNER = 0.42;
 const ORBIT_OUTER = 1;
+
+/** The orbit guide radii, as fractions of R. Exported so the rings the component draws are the
+ *  same band the layout places nodes in — two hard-coded copies drift the moment one changes. */
+export const ORBIT_GUIDES = [ORBIT_INNER, (ORBIT_INNER + ORBIT_OUTER) / 2, ORBIT_OUTER] as const;
 
 /**
  * Lay pillars out as an orbital system around the verdict.
@@ -235,10 +242,14 @@ export function ringStack(
 // ── Orbital label placement ──────────────────────────────────────────────────────────
 
 export type OrbitalGeometry = {
+  /** The box size actually used — may exceed the requested one, see MIN_ORBITAL_SIZE. */
+  size: number;
   /** Radius of the outermost orbit, px. */
   R: number;
   /** Radius of the ring every LABEL is projected onto, px. */
   rimR: number;
+  /** Room a rim label actually has before it leaves the box, px. */
+  labelMaxW: number;
 };
 
 /**
@@ -250,12 +261,32 @@ export type OrbitalGeometry = {
  * top of each other in the live NKLR render.
  */
 export function orbitalGeometry(size: number): OrbitalGeometry {
-  const R = size / 2 - 76;
-  return { R, rimR: R + 10 };
+  // The margin is what the LABELS get: room = half - rimR = margin - 10. Growing the box grows
+  // the disc; only this margin widens the labels. 68px of room forced "Street / analysts",
+  // "News & catalysts" and "Insider activity" to ellipsis on the live render, so it is now 96.
+  //
+  // Capped as a FRACTION of the box as well, because on a small box a fixed 96 leaves almost no
+  // disc — and `labelMaxW` is DERIVED rather than a second constant, so a label can never be
+  // allowed to be wider than the room it has. A constant that has to agree with a geometry is a
+  // constant that eventually disagrees with it.
+  const box = Math.max(size, MIN_ORBITAL_SIZE);
+  const margin = Math.min(LABEL_MARGIN, box * 0.3);
+  const R = box / 2 - margin;
+  const rimR = R + 10;
+  return { size: box, R, rimR, labelMaxW: round(box / 2 - rimR, 3) };
 }
 
-/** Max label width in px — mirrors `.ms-orb-label { max-width }`. */
-export const ORBIT_LABEL_MAX_W = 68;
+const LABEL_MARGIN = 96;
+
+/**
+ * Below this the diagram cannot be drawn honestly: the innermost orbit stops clearing the core
+ * mark, so the heaviest pillar — the one the reader most needs — paints over the centre. Rather
+ * than render a broken disc at whatever size it was handed, the geometry takes the floor and the
+ * component sizes its box from `geo.size`. Refusing to shrink past a legibility limit is the
+ * same principle as "no data, no mark": better a diagram that takes the room it needs than one
+ * that lies at the size it was given.
+ */
+export const MIN_ORBITAL_SIZE = 300;
 
 /**
  * Where a node's label sits, expressed as an offset from the ORB (which is where the label is

@@ -1755,6 +1755,8 @@ html.nav-locked body { overflow: hidden; }
   font-family: var(--font-mono, monospace); font-size: 0.56rem;
   transition: background-color 0.16s ease;
 }
+/* Clickable row — 19px measured live, under the 24px minimum target. */
+.mv-beat-row { min-height: 24px; }
 .mv-beat-row:disabled { cursor: default; }
 .mv-beat-row:hover:not(:disabled) { background: rgba(125, 211, 252, 0.07); }
 .mv-beat-date { color: rgba(125, 211, 252, 0.66); }
@@ -1984,6 +1986,7 @@ html.nav-locked body { overflow: hidden; }
   font-family: var(--font-mono, monospace); font-size: 0.55rem;
   letter-spacing: 0.12em; text-transform: uppercase;
 }
+.mr-evidence-toggle { min-height: 24px; } /* 13px measured live */
 .mr-evidence-toggle:hover { color: #fff; }
 .mr-evidence-caret { font-size: 0.7em; }
 .mr-evidence-count {
@@ -2130,7 +2133,7 @@ html.nav-locked body { overflow: hidden; }
   pointer-events: none;
   /* Capped so a long pillar name cannot push into its neighbour's slot; the full text is
      already on the button's title + aria-label, and hover below restores it in place. */
-  max-width: 68px; overflow: hidden; text-overflow: ellipsis;
+  max-width: var(--orb-label-max, 84px); overflow: hidden; text-overflow: ellipsis;
   /* A faint plate keeps a label legible where it still crosses an orbit guide or a neighbour. */
   padding: 0 2px; border-radius: 2px; background: rgba(5, 5, 8, 0.62);
 }
@@ -2165,6 +2168,12 @@ html.nav-locked body { overflow: hidden; }
      pointer that does not exist, and the labels need the room. */
   .ms-orbital-key { position: static; margin-top: 0.4rem; }
 }
+
+/* A panel whose every child rendered null still painted its border and padding, leaving an
+   empty bordered box on the grid (observed live: the revision/target panel on a name with
+   neither). The primitives are right to return null — "no data, no mark" — so the SHELL has to
+   disappear too. :empty is exact here: a component that renders null contributes no node. */
+.mr-panel:empty { display: none; }
 
 .mr-panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
 .mr-panel-head .mr-panel-title { margin-bottom: 0; }
