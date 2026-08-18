@@ -133,7 +133,6 @@ the first.
 batch resolves to all-nulls rather than rejecting; and a thrower does not stall the concurrency
 window.
 
-
 ## 2026-08-17 — [FINDING, P1 security] Provider API key written into thrown errors (and CI logs) by the disallowed-host guard — FIXED
 > **kind:** `FINDING`
 
@@ -179,7 +178,6 @@ contain the key or a `token=` value. It fails on the pre-fix code by constructio
 
 **Operational follow-up (NOT closed by this fix):** the exposed Polygon key should still be rotated
 — it has been emitted to logs repeatedly before this fix landed.
-
 
 ## 2026-08-17 — [FINDING, P1 member-visible] Bead rail never showed a wall decaying: the fade channel is blind to gradual decline — FIXED
 > **kind:** `FINDING`
@@ -11098,9 +11096,13 @@ not cache a failed result.
 **A separate FAIL from the same run:** TGT `call_wall 150` is **below** `put_wall 152.5`, which is
 geometrically impossible for a wall pair.
 
-## 2026-08-18 — Meridian data validator — TOOL
+## 2026-08-18 — Meridian data validator — SHIPPED
 
 > **kind:** `OPS-NOTE`
+
+| | |
+|---|---|
+| **Status** | SHIPPED — committed and run; first run's findings logged in the entry above |
 
 `scripts/audit/meridian-data-validator.mjs` checks the numbers a member SEES against their
 upstreams and against each other. Two check kinds, and the split is the point: GROUND TRUTH
