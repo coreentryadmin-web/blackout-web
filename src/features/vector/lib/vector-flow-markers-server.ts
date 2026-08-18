@@ -48,8 +48,16 @@ export type VectorFlowMarkers = {
     largeFound: number;
     /** How many large prints were dropped by the top-N display cap (annotated, never silent). */
     truncated: number;
-    /** True when an upstream contract pull failed (partial result). */
+    /** True when an upstream contract pull failed OR the scan stopped on its time budget. */
     partial: boolean;
+    /**
+     * True when the per-contract fan-out stopped on its own wall-clock budget rather than
+     * finishing the chain. Distinct from `partial` (which also covers upstream failures) so the
+     * client can say "the busiest strikes, scanned as far as time allowed" instead of implying an
+     * error — contracts are scanned closest-to-spot first, so what a truncated scan drops is the
+     * quiet wings.
+     */
+    deadlineHit: boolean;
   };
 };
 
@@ -63,7 +71,7 @@ function emptyMarkers(reason: string): VectorFlowMarkers {
     expiry: null,
     spot: null,
     prints: [],
-    meta: { minPremium: 0, largeFound: 0, truncated: 0, partial: false },
+    meta: { minPremium: 0, largeFound: 0, truncated: 0, partial: false, deadlineHit: false },
   };
 }
 
@@ -107,16 +115,27 @@ export async function getVectorFlowMarkers(
     timer = setTimeout(() => resolve(emptyMarkers(`timed out after ${deadlineMs}ms`)), deadlineMs);
   });
   try {
-    return await Promise.race([buildVectorFlowMarkers(ticker, horizon, maxMarkers), timeout]);
+    return await Promise.race([
+      buildVectorFlowMarkers(ticker, horizon, maxMarkers, Date.now() + deadlineMs),
+      timeout,
+    ]);
   } finally {
     if (timer) clearTimeout(timer);
   }
 }
 
+/**
+ * Margin left for mapping/filtering/serialising after the trades pull returns. Small — the work
+ * after the fan-out is in-memory over at most a few hundred prints — but non-zero, so the inner
+ * budget expires with time to spare and the race above never wins.
+ */
+const FLOW_POST_FETCH_MARGIN_MS = 750;
+
 async function buildVectorFlowMarkers(
   ticker: string,
   horizon: VectorDteHorizon,
-  maxMarkers: number
+  maxMarkers: number,
+  deadlineAtMs: number
 ): Promise<VectorFlowMarkers> {
   const t = normalizeVectorTicker(ticker);
   try {
@@ -127,7 +146,18 @@ async function buildVectorFlowMarkers(
     const expiry = await frontExpiryForHorizon(t, spot, horizon);
     if (!expiry) return emptyMarkers("no live expiry in chain");
 
-    const res = await fetchLargeOptionPrints(t, { expiry });
+    // Hand the fan-out whatever time is LEFT, not a fixed number. Spot resolution and chain
+    // discovery above have already spent some of the deadline, and the fan-out is the only part
+    // that can run long — so the budget it gets has to be measured from here, or the outer race
+    // wins and the member gets an empty payload instead of the contracts already scanned.
+    const remainingMs = deadlineAtMs - Date.now() - FLOW_POST_FETCH_MARGIN_MS;
+    const res = await fetchLargeOptionPrints(t, {
+      expiry,
+      // Floor at 1ms rather than 0: a non-positive budget would fall back to the module default,
+      // which is the opposite of what an almost-expired deadline is asking for. The fan-out always
+      // scans its first contract regardless, so this degrades to "one contract" and not "nothing".
+      maxBlockMs: Math.max(1, remainingMs),
+    });
     if (!res) return emptyMarkers("options-trades provider not configured");
 
     // Map provider prints → the client FlowPrint shape, then run the SAME pure filter + cap the
@@ -158,6 +188,7 @@ async function buildVectorFlowMarkers(
         // Combine the provider's own top-N drop with this display cap so the annotation is complete.
         truncated: (res.meta.truncated ? res.meta.largeFound - res.prints.length : 0) + truncated,
         partial: res.meta.partial,
+        deadlineHit: res.meta.deadlineHit,
       },
     };
   } catch {

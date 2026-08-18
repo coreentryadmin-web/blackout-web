@@ -38,6 +38,58 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-08-18 — [FINDING, P1 member-visible] Vector flow overlay timed out on every ticker with a live 0DTE expiry — the fan-out was bounded by COUNT, not by TIME — FIXED
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Severity** | P1 (member-visible — the overlay returned nothing at all on the chains with the most flow to show) |
+| **Scope** | `option-trades.ts` (`fetchLargeOptionPrints`), new `option-trades-scan-budget.ts`, `vector-flow-markers-server.ts` |
+| **Status** | FIXED — wall-clock budget inside the fan-out + honest `contractsScanned`/`deadlineHit`; 6 unit tests |
+
+**Root cause.** The per-OCC scan is SEQUENTIAL by design — each call awaits a rate-limiter slot, so
+it is naturally paced and never bursts the shared Massive funnel. That makes its cost
+`MAX_CONTRACTS x MAX_PAGES_PER_CONTRACT` = up to **80 serialized round trips**, and the full cost is
+paid precisely when the chain is BUSY, because a busy contract fills both pages. The only guard was
+the CALLER's 25s race, which is all-or-nothing: it returns an empty payload and discards every
+contract already scanned.
+
+**Evidence (live, RTH, 2026-08-18).** Through the served endpoint, per ticker/horizon:
+
+| | result |
+|---|---|
+| SPY / QQQ / NVDA / META / AMD, `0dte` | `timed out after 25000ms`, 25.6-31.7s |
+| AMD, `all` | `timed out after 25000ms` |
+| TSLA, `0dte` | **2,412ms**, answered fine |
+
+TSLA is the control: it has no 0DTE expiry, falls back to a quiet one, and returns in 2.4s. **The
+overlay failed on exactly the chains with the most flow** — the inversion is what identifies the
+fan-out rather than any single upstream.
+
+**Fix.** A wall-clock budget INSIDE the loop (`OPTION_TRADES_LARGE_MAX_BLOCK_MS`, default 15s),
+checked before each contract and never mid-contract, so a contract is either fully scanned or not
+scanned at all and no print set is half-counted. Contracts are already ordered closest-to-spot
+first, so a truncated scan keeps the most-traded ATM band and drops the quiet wings — the right half
+to lose. The caller passes the time actually REMAINING (deadline minus elapsed minus a small
+post-fetch margin) rather than a fixed number, so the inner budget always expires before the outer
+race and the member gets the prints already collected instead of an empty payload.
+
+Truncation is reported, never implied: `contractsScanned` (distinct from `contractsRequested`),
+`deadlineHit`, and `partial` — the last folded so a caller that reads only `partial` cannot be told
+a 12-of-40 scan was complete. The budget is part of the cache key, since a result truncated under a
+5s budget is not the same answer as one scanned under 15s.
+
+**Fix rationale — what was deliberately NOT done.** Parallelising the fan-out would cut latency
+faster, and was rejected: the sequential shape is what keeps this path inside the shared Massive
+rate limiter that every other provider also draws on, and turning a latency fix into a load problem
+is the failure this repo has already had once (see the bead-recorder concurrency notes). A budget
+changes only how much work one request is willing to wait for.
+
+**Blast radius.** `fetchLargeOptionPrints` has exactly one consumer (the Vector flow overlay).
+`fetchOptionTrades` — the aggregate reconstruction sharing the same fan-out helpers — is
+**unchanged**: it feeds the intraday-adjusted GEX model, where a truncated contract set would bias
+a number rather than shorten a list, so it keeps paying full cost.
+
 ## 2026-08-18 — [FINDING, P1 member-visible] Vector flow-marker overlay was empty by construction — the "large print" floor was 7x above the largest print that exists — FIXED
 > **kind:** `FINDING`
 
