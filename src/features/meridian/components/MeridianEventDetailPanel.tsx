@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
+
 import type { MeridianEventDetail, MeridianTimelineItem } from "@/features/meridian/lib/meridian-types";
 import { FreshnessChip } from "@/components/ui";
 import { fmtPct } from "./MeridianDesk";
@@ -11,7 +13,11 @@ import {
   MeridianShimmer,
   kindTheme,
 } from "./meridian-ui";
-import { MeridianEarningsTabs } from "./MeridianEarningsTabs";
+import {
+  MeridianEarningsTabs,
+  MeridianEarningsTablist,
+  type EarningsTab,
+} from "./MeridianEarningsTabs";
 import { MeridianMacroReportPanel } from "./MeridianMacroReportPanel";
 import { MeridianOpexCrossMarketPanel } from "./MeridianOpexCrossMarketPanel";
 
@@ -59,6 +65,33 @@ export function MeridianEventDetailPanel({
 }: Props) {
   const theme = kindTheme(item.kind);
 
+  /**
+   * Which earnings section is showing. Lifted out of MeridianEarningsTabs so the tab strip can
+   * live in the HEADER BAR while the panels it switches stay below — the control belongs with
+   * the chrome, not stacked on top of the content a second time.
+   *
+   * The two auto-switch rules moved up with it: when a print lands mid-session the reader wants
+   * the numbers, not the pre-print read, so the view follows the event rather than making them
+   * notice and click.
+   */
+  const earnings = detail?.kind === "earnings" ? detail : null;
+  const hasPostPrint = Boolean(earnings?.enrichment.post_print?.headline);
+  const hasActual = earnings?.enrichment.earnings_calendar?.actual_eps != null;
+  const [earningsTab, setEarningsTab] = useState<EarningsTab>("summary");
+  const hadActualRef = useRef(hasActual);
+  useEffect(() => {
+    if (hasActual && !hadActualRef.current) setEarningsTab("estimates");
+    hadActualRef.current = hasActual;
+  }, [hasActual]);
+  useEffect(() => {
+    if (hasPostPrint) setEarningsTab("estimates");
+  }, [hasPostPrint]);
+  // A different event starts on REPORT again — carrying the previous name's tab across is a
+  // state leak the reader reads as the page opening on the wrong section.
+  useEffect(() => {
+    setEarningsTab("summary");
+  }, [item.id]);
+
   return (
     <article
       className={`meridian-detail meridian-detail-v2 ${theme.accent}`}
@@ -66,18 +99,28 @@ export function MeridianEventDetailPanel({
       aria-label="Event structure brief"
     >
       <header className="meridian-detail-head-v2">
+        {/* One line, not three. The reader picked this event from the lane a second ago — the
+            header's job is to confirm which one, not to re-announce it. Kind, title and timing
+            sit inline so the vertical space goes to the analysis instead. */}
         <div className="meridian-detail-head-main">
-          <p className="meridian-detail-kicker">
-            {theme.label} · {item.impact === "high" ? "High impact" : item.impact === "medium" ? "Medium" : "Scheduled"}
-          </p>
-          <h2 className="meridian-detail-title-v2">{item.title}</h2>
-          <p className="meridian-detail-meta">
-            {item.date}
-            {item.time ? ` · ${item.time} ET` : ""}
-            {item.days_until === 0 ? " · today" : item.days_until === 1 ? " · tomorrow" : ` · ${item.days_until}d`}
-          </p>
+          <h2 className="meridian-detail-title-v2">
+            <span className="meridian-detail-kicker">
+              {theme.label} · {item.impact === "high" ? "High impact" : item.impact === "medium" ? "Medium" : "Scheduled"}
+            </span>
+            {item.title}
+            <span className="meridian-detail-meta">
+              {item.date}
+              {item.time ? ` · ${item.time} ET` : ""}
+              {item.days_until === 0 ? " · today" : item.days_until === 1 ? " · tomorrow" : ` · ${item.days_until}d`}
+            </span>
+          </h2>
         </div>
-        <FreshnessChip status={loading ? "stale" : "live"} label={loading ? "Loading" : "Structure"} />
+        {/* The section switcher lives HERE, in the chrome, rather than as a second bar above
+            the content. The old "Structure" freshness chip that sat in this slot said nothing
+            the header did not already say. */}
+        {detail?.kind === "earnings" && !loading && !error && (
+          <MeridianEarningsTablist tab={earningsTab} onTabChange={setEarningsTab} />
+        )}
       </header>
 
       {loading && (
@@ -303,7 +346,7 @@ export function MeridianEventDetailPanel({
       )}
 
       {!loading && !error && detail?.kind === "earnings" && (
-        <MeridianEarningsTabs detail={detail} />
+        <MeridianEarningsTabs detail={detail} tab={earningsTab} />
       )}
 
       <MeridianActionDock item={item} boardTickers={boardTickers} />

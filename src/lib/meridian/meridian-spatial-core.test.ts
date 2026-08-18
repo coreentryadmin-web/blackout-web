@@ -173,12 +173,14 @@ const WEIGHT_REGIMES: ReadonlyArray<readonly [string, (i: number) => number]> = 
   ["spread", (i) => 0.2 + i * 0.55],
 ];
 
-const CHAR_PX = 4.6; // 0.42rem mono advance
-const LINE_PX = 9;
+const CHAR_PX = 5.7; // 0.52rem mono advance — must track .ms-orb-label's font-size
+const LINE_PX = 11;
 
 function labelBoxes(size: number, weight: (i: number) => number) {
   const geo = orbitalGeometry(size);
-  const half = size / 2;
+  // The EFFECTIVE box, not the requested one — below MIN_ORBITAL_SIZE the geometry clamps, and
+  // measuring against the request would report a clip the component never renders.
+  const half = geo.size / 2;
   const signals = ORBIT_PILLARS.map(([pillar, label], i) => ({
     pillar, label, lean: i % 3 === 0 ? "bullish" : i % 3 === 1 ? "bearish" : "neutral",
     weight: weight(i), score: 0.4 + (i % 4) * 0.1, detail: "",
@@ -209,9 +211,10 @@ for (const [regime, weight] of WEIGHT_REGIMES) {
           assert.ok(ox <= 1 || oy <= 1, `"${a.label}" overlaps "${b.label}" by ${ox.toFixed(1)}x${oy.toFixed(1)}px`);
         }
       }
+      const box = orbitalGeometry(size).size;
       for (const b of boxes) {
-        assert.ok(b.x0 >= -2 && b.x1 <= size + 2, `"${b.label}" is clipped horizontally (${b.x0.toFixed(1)}..${b.x1.toFixed(1)} in ${size})`);
-        assert.ok(b.y0 >= -2 && b.y1 <= size + 2, `"${b.label}" is clipped vertically`);
+        assert.ok(b.x0 >= -2 && b.x1 <= box + 2, `"${b.label}" is clipped horizontally (${b.x0.toFixed(1)}..${b.x1.toFixed(1)} in ${box})`);
+        assert.ok(b.y0 >= -2 && b.y1 <= box + 2, `"${b.label}" is clipped vertically`);
       }
     });
   }

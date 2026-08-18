@@ -176,7 +176,7 @@ html.nav-locked body { overflow: hidden; }
   align-items: center;
   gap: 0.4rem;
   font-family: var(--font-mono, monospace);
-  font-size: 0.56rem;
+  font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -216,7 +216,7 @@ html.nav-locked body { overflow: hidden; }
 }
 .meridian-hero-title-sub {
   font-family: var(--font-mono, monospace);
-  font-size: 0.6rem;
+  font-size: 0.76rem;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--mer-violet, #c4b5fd);
@@ -259,7 +259,7 @@ html.nav-locked body { overflow: hidden; }
    see MeridianHero.tsx. The stats strip below owns those numbers. */
 .meridian-hero-asof {
   font-family: var(--font-mono, monospace);
-  font-size: 0.58rem;
+  font-size: 0.74rem;
   color: #7dd3fc;
   margin: 0;
 }
@@ -301,14 +301,14 @@ html.nav-locked body { overflow: hidden; }
   pointer-events: none;
 }
 .meridian-stat-card:hover .meridian-stat-card-glow { opacity: 1; }
-.meridian-stat-tone-cyan { border-color: rgba(34, 211, 238, 0.25); }
+.meridian-stat-tone-cyan { border-color: rgba(34,211,238,0.47); }
 .meridian-stat-tone-cyan .meridian-stat-card-value { color: #22d3ee; }
 .meridian-stat-tone-cyan .meridian-stat-card-glow { box-shadow: inset 0 0 24px rgba(34, 211, 238, 0.08); }
-.meridian-stat-tone-amber { border-color: rgba(251, 191, 36, 0.25); }
+.meridian-stat-tone-amber { border-color: rgba(251,191,36,0.47); }
 .meridian-stat-tone-amber .meridian-stat-card-value { color: #fbbf24; }
-.meridian-stat-tone-violet { border-color: rgba(167, 139, 250, 0.25); }
+.meridian-stat-tone-violet { border-color: rgba(167,139,250,0.47); }
 .meridian-stat-tone-violet .meridian-stat-card-value { color: #c4b5fd; }
-.meridian-stat-tone-emerald { border-color: rgba(52, 211, 153, 0.25); }
+.meridian-stat-tone-emerald { border-color: rgba(52,211,153,0.47); }
 .meridian-stat-tone-emerald .meridian-stat-card-value { color: #34d399; }
 .meridian-stat-card-value {
   display: block;
@@ -324,7 +324,7 @@ html.nav-locked body { overflow: hidden; }
   font-family: var(--font-mono, monospace);
   /* Five columns give each label less room than four did; "Mega-cap ER" is the longest and must
      not wrap to a second line, which would make one tile taller than its neighbours. */
-  font-size: 0.52rem;
+  font-size: 0.68rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -346,7 +346,7 @@ html.nav-locked body { overflow: hidden; }
 }
 .meridian-view-tab {
   font-family: var(--font-mono, monospace);
-  font-size: 0.62rem;
+  font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -365,7 +365,7 @@ html.nav-locked body { overflow: hidden; }
 .meridian-refresh-btn {
   margin-left: auto;
   font-family: var(--font-mono, monospace);
-  font-size: 0.58rem;
+  font-size: 0.74rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: #22d3ee;
@@ -377,7 +377,7 @@ html.nav-locked body { overflow: hidden; }
 }
 .meridian-refresh-btn:hover {
   background: rgba(34, 211, 238, 0.14);
-  border-color: rgba(34, 211, 238, 0.5);
+  border-color: rgba(34,211,238,0.72);
 }
 
 /* Analytics grid view */
@@ -404,7 +404,7 @@ html.nav-locked body { overflow: hidden; }
 .meridian-analytics-card-kind {
   display: block;
   font-family: var(--font-mono, monospace);
-  font-size: 0.55rem;
+  font-size: 0.7rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   margin-bottom: 0.35rem;
@@ -417,16 +417,16 @@ html.nav-locked body { overflow: hidden; }
   margin-bottom: 0.25rem;
 }
 .meridian-analytics-card-meta {
-  font-size: 0.68rem;
+  font-size: 0.82rem;
   color: #7dd3fc;
 }
-.meridian-theme-macro { border-color: rgba(34, 211, 238, 0.22); }
+.meridian-theme-macro { border-color: rgba(34,211,238,0.44); }
 .meridian-theme-macro .meridian-analytics-card-kind { color: #22d3ee; }
-.meridian-theme-earnings { border-color: rgba(56, 189, 248, 0.22); }
+.meridian-theme-earnings { border-color: rgba(56,189,248,0.44); }
 .meridian-theme-earnings .meridian-analytics-card-kind { color: #38bdf8; }
-.meridian-theme-fda { border-color: rgba(167, 139, 250, 0.22); }
+.meridian-theme-fda { border-color: rgba(167,139,250,0.44); }
 .meridian-theme-fda .meridian-analytics-card-kind { color: #c4b5fd; }
-.meridian-theme-opex { border-color: rgba(52, 211, 153, 0.22); }
+.meridian-theme-opex { border-color: rgba(52,211,153,0.44); }
 .meridian-theme-opex .meridian-analytics-card-kind { color: #34d399; }
 
 /* Desk layout */
@@ -511,7 +511,7 @@ html.nav-locked body { overflow: hidden; }
 }
 .meridian-search-input::placeholder { color: #67e8f9; opacity: 0.55; }
 .meridian-search-input:focus {
-  border-color: rgba(34, 211, 238, 0.55);
+  border-color: rgba(34,211,238,0.77);
   box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.15);
 }
 .meridian-search-clear {
@@ -528,7 +528,7 @@ html.nav-locked body { overflow: hidden; }
 .meridian-search-meta {
   margin: 0;
   font-family: var(--font-mono, monospace);
-  font-size: 0.58rem;
+  font-size: 0.74rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: #67e8f9;
@@ -547,12 +547,12 @@ html.nav-locked body { overflow: hidden; }
   transition: border-color 120ms ease, background 120ms ease;
 }
 .meridian-lookup-card:hover {
-  border-color: rgba(56, 189, 248, 0.55);
+  border-color: rgba(56,189,248,0.77);
   background: rgba(56, 189, 248, 0.12);
 }
 .meridian-lookup-kicker {
   font-family: var(--font-mono, monospace);
-  font-size: 0.55rem;
+  font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -565,12 +565,12 @@ html.nav-locked body { overflow: hidden; }
 }
 .meridian-lookup-meta {
   font-family: var(--font-mono, monospace);
-  font-size: 0.65rem;
+  font-size: 0.8rem;
   color: #bae6fd;
 }
 .meridian-lookup-action {
   margin-top: 0.15rem;
-  font-size: 0.68rem;
+  font-size: 0.82rem;
   color: #67e8f9;
 }
 .meridian-lookup-miss {
@@ -592,7 +592,7 @@ html.nav-locked body { overflow: hidden; }
   align-items: center;
   gap: 0.35rem;
   font-family: var(--font-mono, monospace);
-  font-size: 0.56rem;
+  font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -603,7 +603,7 @@ html.nav-locked body { overflow: hidden; }
   background: rgba(255, 255, 255, 0.02);
   transition: all 0.22s ease;
 }
-.meridian-filter-pill:hover { border-color: rgba(34, 211, 238, 0.35); color: #22d3ee; }
+.meridian-filter-pill:hover { border-color: rgba(34,211,238,0.57); color: #22d3ee; }
 .meridian-filter-pill.is-active {
   color: #040407;
   background: #22d3ee;
@@ -615,14 +615,14 @@ html.nav-locked body { overflow: hidden; }
 .meridian-filter-pill.is-active.meridian-theme-fda { background: #a78bfa; border-color: #a78bfa; }
 .meridian-filter-pill.is-active.meridian-theme-opex { background: #34d399; border-color: #34d399; color: #040407; }
 .meridian-filter-pill-count {
-  font-size: 0.52rem;
+  font-size: 0.68rem;
   opacity: 0.85;
 }
 
 /* Timeline rows */
 .meridian-month-label {
   font-family: var(--font-mono, monospace);
-  font-size: 0.62rem;
+  font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -645,7 +645,7 @@ html.nav-locked body { overflow: hidden; }
 }
 .meridian-timeline-row:hover { transform: translateX(3px); }
 .meridian-timeline-row.is-active {
-  border-color: rgba(34, 211, 238, 0.45);
+  border-color: rgba(34,211,238,0.67);
   background: rgba(34, 211, 238, 0.08);
 }
 .meridian-timeline-row-beam {
@@ -668,7 +668,7 @@ html.nav-locked body { overflow: hidden; }
 }
 .meridian-timeline-kind {
   font-family: var(--font-mono, monospace);
-  font-size: 0.55rem;
+  font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -679,7 +679,7 @@ html.nav-locked body { overflow: hidden; }
 .meridian-theme-opex .meridian-timeline-kind { color: #34d399; }
 .meridian-timeline-impact {
   font-family: var(--font-mono, monospace);
-  font-size: 0.52rem;
+  font-size: 0.68rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: #7dd3fc;
@@ -688,7 +688,7 @@ html.nav-locked body { overflow: hidden; }
 .meridian-timeline-days {
   margin-left: auto;
   font-family: var(--font-mono, monospace);
-  font-size: 0.62rem;
+  font-size: 0.78rem;
   font-weight: 700;
   color: #22d3ee;
 }
@@ -700,7 +700,7 @@ html.nav-locked body { overflow: hidden; }
 }
 .meridian-timeline-meta {
   display: block;
-  font-size: 0.7rem;
+  font-size: 0.84rem;
   color: #7dd3fc;
   margin-top: 0.15rem;
 }
@@ -716,7 +716,7 @@ html.nav-locked body { overflow: hidden; }
 }
 .meridian-detail-kicker {
   font-family: var(--font-mono, monospace);
-  font-size: 0.62rem;
+  font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -769,16 +769,16 @@ html.nav-locked body { overflow: hidden; }
   line-height: 1;
   flex-shrink: 0;
 }
-.meridian-theme-macro.meridian-analytics-banner { border-color: rgba(34, 211, 238, 0.28); }
-.meridian-theme-earnings.meridian-analytics-banner { border-color: rgba(56, 189, 248, 0.28); background: linear-gradient(135deg, rgba(56, 189, 248, 0.08), rgba(8, 10, 16, 0.92)); }
+.meridian-theme-macro.meridian-analytics-banner { border-color: rgba(34,211,238,0.5); }
+.meridian-theme-earnings.meridian-analytics-banner { border-color: rgba(56,189,248,0.5); background: linear-gradient(135deg, rgba(56, 189, 248, 0.08), rgba(8, 10, 16, 0.92)); }
 .meridian-theme-earnings .meridian-analytics-banner-icon { color: #38bdf8; }
-.meridian-theme-fda.meridian-analytics-banner { border-color: rgba(167, 139, 250, 0.28); background: linear-gradient(135deg, rgba(167, 139, 250, 0.08), rgba(8, 10, 16, 0.92)); }
+.meridian-theme-fda.meridian-analytics-banner { border-color: rgba(167,139,250,0.5); background: linear-gradient(135deg, rgba(167, 139, 250, 0.08), rgba(8, 10, 16, 0.92)); }
 .meridian-theme-fda .meridian-analytics-banner-icon { color: #c4b5fd; }
-.meridian-theme-opex.meridian-analytics-banner { border-color: rgba(52, 211, 153, 0.28); background: linear-gradient(135deg, rgba(52, 211, 153, 0.08), rgba(8, 10, 16, 0.92)); }
+.meridian-theme-opex.meridian-analytics-banner { border-color: rgba(52,211,153,0.5); background: linear-gradient(135deg, rgba(52, 211, 153, 0.08), rgba(8, 10, 16, 0.92)); }
 .meridian-theme-opex .meridian-analytics-banner-icon { color: #34d399; }
 .meridian-analytics-banner-label {
   font-family: var(--font-mono, monospace);
-  font-size: 0.55rem;
+  font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -816,7 +816,7 @@ html.nav-locked body { overflow: hidden; }
   transition: border-color 0.25s, box-shadow 0.25s;
 }
 .meridian-data-card:hover {
-  border-color: rgba(125, 211, 252, 0.22);
+  border-color: rgba(125,211,252,0.44);
   box-shadow: 0 8px 28px -18px rgba(34, 211, 238, 0.35);
 }
 .meridian-data-card-wide { grid-column: 1 / -1; }
@@ -838,7 +838,7 @@ html.nav-locked body { overflow: hidden; }
 .meridian-theme-opex .meridian-data-card-dot { background: #34d399; box-shadow: 0 0 8px #34d399; }
 .meridian-data-card-label {
   font-family: var(--font-mono, monospace);
-  font-size: 0.58rem;
+  font-size: 0.74rem;
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -876,7 +876,7 @@ html.nav-locked body { overflow: hidden; }
 }
 .meridian-action-dock-label {
   font-family: var(--font-mono, monospace);
-  font-size: 0.55rem;
+  font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -890,7 +890,7 @@ html.nav-locked body { overflow: hidden; }
 }
 .meridian-dock-btn {
   font-family: var(--font-mono, monospace);
-  font-size: 0.6rem;
+  font-size: 0.76rem;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -904,17 +904,17 @@ html.nav-locked body { overflow: hidden; }
 }
 .meridian-dock-btn:hover {
   background: rgba(34, 211, 238, 0.12);
-  border-color: rgba(34, 211, 238, 0.5);
+  border-color: rgba(34,211,238,0.72);
   transform: translateY(-1px);
   box-shadow: 0 6px 16px -8px rgba(34, 211, 238, 0.45);
 }
 .meridian-dock-btn-primary {
   background: rgba(34, 211, 238, 0.14);
-  border-color: rgba(34, 211, 238, 0.45);
+  border-color: rgba(34,211,238,0.67);
   color: #fff;
 }
 .meridian-dock-btn-accent {
-  border-color: rgba(167, 139, 250, 0.45);
+  border-color: rgba(167,139,250,0.67);
   color: #c4b5fd;
   background: rgba(167, 139, 250, 0.08);
 }
@@ -960,7 +960,7 @@ html.nav-locked body { overflow: hidden; }
 }
 .meridian-earnings-tab {
   font-family: var(--font-mono, monospace);
-  font-size: 0.6rem;
+  font-size: 0.76rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -980,7 +980,7 @@ html.nav-locked body { overflow: hidden; }
 .meridian-earnings-week { margin: 0.75rem 0 1rem; }
 .meridian-earnings-week-title {
   font-family: var(--font-mono, monospace);
-  font-size: 0.62rem;
+  font-size: 0.78rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: #38bdf8;
@@ -1041,7 +1041,7 @@ html.nav-locked body { overflow: hidden; }
 .meridian-report-play { position: relative; z-index: 1; }
 .meridian-report-kicker {
   font-family: var(--font-mono, monospace);
-  font-size: 0.55rem;
+  font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -1068,7 +1068,7 @@ html.nav-locked body { overflow: hidden; }
 .meridian-report-confidence,
 .meridian-report-score {
   font-family: var(--font-mono, monospace);
-  font-size: 0.58rem;
+  font-size: 0.74rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--mer-muted, #bae6fd);
@@ -1104,7 +1104,7 @@ html.nav-locked body { overflow: hidden; }
 }
 .meridian-report-play-label {
   font-family: var(--font-mono, monospace);
-  font-size: 0.55rem;
+  font-size: 0.7rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--mer-coral, #fb923c);
@@ -1136,9 +1136,9 @@ html.nav-locked body { overflow: hidden; }
   background: rgba(255, 255, 255, 0.02);
   position: relative;
 }
-.meridian-report-signal.meridian-signal-bull { border-color: rgba(52, 211, 153, 0.28); background: rgba(52, 211, 153, 0.06); }
-.meridian-report-signal.meridian-signal-bear { border-color: rgba(251, 113, 133, 0.28); background: rgba(251, 113, 133, 0.06); }
-.meridian-report-signal.meridian-signal-neutral { border-color: rgba(251, 191, 36, 0.18); }
+.meridian-report-signal.meridian-signal-bull { border-color: rgba(52,211,153,0.5); background: rgba(52, 211, 153, 0.06); }
+.meridian-report-signal.meridian-signal-bear { border-color: rgba(251,113,133,0.5); background: rgba(251, 113, 133, 0.06); }
+.meridian-report-signal.meridian-signal-neutral { border-color: rgba(251,191,36,0.4); }
 .meridian-report-signal-head {
   display: flex;
   justify-content: space-between;
@@ -1148,7 +1148,7 @@ html.nav-locked body { overflow: hidden; }
 }
 .meridian-report-signal-label {
   font-family: var(--font-mono, monospace);
-  font-size: 0.52rem;
+  font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1156,7 +1156,7 @@ html.nav-locked body { overflow: hidden; }
 }
 .meridian-report-signal-lean {
   font-family: var(--font-mono, monospace);
-  font-size: 0.5rem;
+  font-size: 0.66rem;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1165,7 +1165,7 @@ html.nav-locked body { overflow: hidden; }
 .meridian-report-signal-lean.meridian-signal-bear { color: var(--mer-bear, #fb7185); }
 .meridian-report-signal-lean.meridian-signal-neutral { color: var(--mer-neutral, #fbbf24); }
 .meridian-report-signal-detail {
-  font-size: 0.68rem;
+  font-size: 0.82rem;
   color: var(--mer-muted, #bae6fd);
   margin: 0;
   line-height: 1.35;
@@ -1175,7 +1175,7 @@ html.nav-locked body { overflow: hidden; }
   top: 0.4rem;
   right: 0.45rem;
   font-family: var(--font-mono, monospace);
-  font-size: 0.55rem;
+  font-size: 0.7rem;
   font-weight: 700;
   color: #fff;
   opacity: 0.65;
@@ -1183,7 +1183,7 @@ html.nav-locked body { overflow: hidden; }
 .meridian-report-grid { margin-bottom: 0.5rem; }
 .meridian-report-disclaimer {
   font-family: var(--font-mono, monospace);
-  font-size: 0.58rem;
+  font-size: 0.74rem;
   color: var(--mer-label, #7dd3fc);
   margin: 0.35rem 0 0;
   opacity: 0.85;
@@ -1199,7 +1199,7 @@ html.nav-locked body { overflow: hidden; }
 }
 .meridian-macro-warnings-label {
   font-family: var(--font-mono, monospace);
-  font-size: 0.55rem;
+  font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -1215,7 +1215,7 @@ html.nav-locked body { overflow: hidden; }
 .meridian-macro-warnings-list li { margin-bottom: 0.25rem; }
 .meridian-macro-impact-high {
   color: var(--mer-coral, #fb923c) !important;
-  border-color: rgba(251, 146, 60, 0.35) !important;
+  border-color: rgba(251,146,60,0.57) !important;
 }
 .meridian-watch-list li { font-size: 0.78rem; color: var(--mer-muted, #bae6fd); }
 
@@ -1228,7 +1228,7 @@ html.nav-locked body { overflow: hidden; }
   width: 100%;
   border-collapse: collapse;
   font-family: var(--font-mono, monospace);
-  font-size: 0.68rem;
+  font-size: 0.82rem;
 }
 .meridian-opex-table th {
   text-align: left;
@@ -1247,7 +1247,7 @@ html.nav-locked body { overflow: hidden; }
   white-space: nowrap;
 }
 .meridian-opex-date { color: var(--mer-muted, #bae6fd); }
-.meridian-opex-sub { color: var(--mer-muted, #bae6fd); font-size: 0.62rem; }
+.meridian-opex-sub { color: var(--mer-muted, #bae6fd); font-size: 0.78rem; }
 .meridian-opex-move { font-weight: 600; }
 .meridian-pct-up { color: var(--mer-bull, #34d399); }
 .meridian-pct-down { color: var(--mer-bear, #fb7185); }
@@ -1260,7 +1260,7 @@ html.nav-locked body { overflow: hidden; }
 .meridian-mag7-ticker { font-weight: 600; color: #fff; }
 .meridian-mag7-pct { font-family: var(--font-mono, monospace); font-size: 0.72rem; }
 
-.meridian-stat-tone-rose { border-color: rgba(251, 113, 133, 0.25); }
+.meridian-stat-tone-rose { border-color: rgba(251,113,133,0.47); }
 .meridian-stat-tone-rose .meridian-stat-card-value { color: #fb7185; }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1545,9 +1545,9 @@ html.nav-locked body { overflow: hidden; }
 .mv-note {
   margin: 0.3rem 0 0;
   font-family: var(--font-mono, monospace);
-  font-size: 0.54rem;
+  font-size: 0.7rem;
   letter-spacing: 0.04em;
-  color: rgba(125, 211, 252, 0.55);
+  color: rgba(125,211,252,0.77);
 }
 
 /* ── Halo ── */
@@ -1582,7 +1582,7 @@ html.nav-locked body { overflow: hidden; }
 }
 .mv-halo-verdict {
   font-family: var(--font-mono, monospace);
-  font-size: 0.55rem; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase;
+  font-size: 0.7rem; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase;
 }
 .mv-halo-score {
   font-family: var(--font-syne, sans-serif);
@@ -1590,7 +1590,7 @@ html.nav-locked body { overflow: hidden; }
 }
 .mv-halo-agreement {
   font-family: var(--font-mono, monospace);
-  font-size: 0.5rem; letter-spacing: 0.07em; color: rgba(125, 211, 252, 0.72);
+  font-size: 0.66rem; letter-spacing: 0.07em; color: rgba(125,211,252,0.9);
 }
 
 /* ── Rings ── */
@@ -1604,11 +1604,11 @@ html.nav-locked body { overflow: hidden; }
 .mv-ring-body { display: flex; flex-direction: column; min-width: 0; }
 .mv-ring-label {
   font-family: var(--font-mono, monospace);
-  font-size: 0.5rem; letter-spacing: 0.12em; text-transform: uppercase;
-  color: rgba(125, 211, 252, 0.7);
+  font-size: 0.66rem; letter-spacing: 0.12em; text-transform: uppercase;
+  color: rgba(125,211,252,0.9);
 }
 .mv-ring-value { font-family: var(--font-syne, sans-serif); font-size: 0.98rem; font-weight: 700; }
-.mv-ring-sig { margin-left: 0.22rem; font-size: 0.7rem; opacity: 0.85; }
+.mv-ring-sig { margin-left: 0.22rem; font-size: 0.84rem; opacity: 0.85; }
 
 /* ── Rails (expected move + targets) ── */
 .mv-rail, .mv-targets { display: block; }
@@ -1618,11 +1618,11 @@ html.nav-locked body { overflow: hidden; }
 }
 .mv-rail-title {
   font-family: var(--font-mono, monospace);
-  font-size: 0.54rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+  font-size: 0.7rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
   color: var(--mv-chrome);
 }
 .mv-rail-pct, .mv-tape-total {
-  font-family: var(--font-mono, monospace); font-size: 0.58rem; color: rgba(125, 211, 252, 0.8);
+  font-family: var(--font-mono, monospace); font-size: 0.74rem; color: rgba(125, 211, 252, 0.8);
 }
 .mv-rail-track {
   /* Labels are absolutely positioned ABOVE the track, so the track has to reserve their rows —
@@ -1654,8 +1654,8 @@ html.nav-locked body { overflow: hidden; }
   position: absolute; left: 0;
   top: calc(-0.55rem - var(--tier, 0) * 0.62rem);
   transform: translateX(-50%) translateX(var(--dx, 0px));
-  font-family: var(--font-mono, monospace); font-size: 0.46rem; letter-spacing: 0.06em;
-  color: rgba(125, 211, 252, 0.75); white-space: nowrap;
+  font-family: var(--font-mono, monospace); font-size: 0.64rem; letter-spacing: 0.06em;
+  color: rgba(125,211,252,0.9); white-space: nowrap;
 }
 .mv-rail-spot {
   position: absolute; top: 0; height: 100%;
@@ -1669,7 +1669,7 @@ html.nav-locked body { overflow: hidden; }
 }
 .mv-rail-spot-label {
   position: absolute; bottom: -1.1rem; left: 0; transform: translateX(-50%);
-  font-family: var(--font-mono, monospace); font-size: 0.55rem; font-weight: 700; color: #fff;
+  font-family: var(--font-mono, monospace); font-size: 0.7rem; font-weight: 700; color: #fff;
   white-space: nowrap;
 }
 .mv-rail-bounds {
@@ -1681,7 +1681,7 @@ html.nav-locked body { overflow: hidden; }
   /* Clears the absolutely-positioned spot/consensus labels hanging below the track. Measured:
      at 1.25rem the bound labels collided with the panel edge on the target rail. */
   margin-top: 1.6rem;
-  font-family: var(--font-mono, monospace); font-size: 0.58rem;
+  font-family: var(--font-mono, monospace); font-size: 0.74rem;
 }
 
 /* ── Target rail extras ── */
@@ -1703,7 +1703,7 @@ html.nav-locked body { overflow: hidden; }
 }
 .mv-target-consensus-label {
   position: absolute; top: -0.6rem; left: 0; transform: translateX(-50%);
-  font-family: var(--font-mono, monospace); font-size: 0.5rem; color: var(--mv-neutral);
+  font-family: var(--font-mono, monospace); font-size: 0.66rem; color: var(--mv-neutral);
   white-space: nowrap;
 }
 
@@ -1719,13 +1719,13 @@ html.nav-locked body { overflow: hidden; }
   cursor: pointer;
   transform: translateY(-50%);
   transition: top 0.4s var(--mv-ease), background-color 0.16s ease;
-  font-family: var(--font-mono, monospace); font-size: 0.56rem;
+  font-family: var(--font-mono, monospace); font-size: 0.72rem;
 }
 .mv-ladder-row:disabled { cursor: default; }
 .mv-ladder-row:hover:not(:disabled),
 .mv-ladder-row:focus-visible { background: rgba(125, 211, 252, 0.08); }
 .mv-ladder-row:focus-visible { outline: 1px solid rgba(34, 211, 238, 0.65); outline-offset: 1px; }
-.mv-ladder-label { letter-spacing: 0.1em; text-transform: uppercase; color: rgba(125,211,252,0.72); }
+.mv-ladder-label { letter-spacing: 0.1em; text-transform: uppercase; color: rgba(125,211,252,0.9); }
 .mv-ladder-bar { height: 1px; background: var(--mv-hairline); }
 .mv-ladder-value { font-weight: 700; color: #e2f4ff; }
 .mv-ladder-dist { text-align: right; }
@@ -1742,24 +1742,24 @@ html.nav-locked body { overflow: hidden; }
 }
 .mv-beats-title, .mv-rev-title {
   font-family: var(--font-mono, monospace);
-  font-size: 0.54rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+  font-size: 0.7rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
   color: var(--mv-chrome);
 }
-.mv-beats-tally { font-family: var(--font-mono, monospace); font-size: 0.58rem; color: #e2f4ff; }
+.mv-beats-tally { font-family: var(--font-mono, monospace); font-size: 0.74rem; color: #e2f4ff; }
 .mv-beats-rows { display: flex; flex-direction: column; gap: 0.22rem; }
 .mv-beat-row {
   display: grid; grid-template-columns: 3.2rem 1fr 3.4rem 3.6rem;
   align-items: center; gap: 0.5rem;
   padding: 0.18rem 0.3rem; border: 0; border-radius: 0.35rem;
   background: transparent; color: inherit; text-align: left; cursor: pointer;
-  font-family: var(--font-mono, monospace); font-size: 0.56rem;
+  font-family: var(--font-mono, monospace); font-size: 0.72rem;
   transition: background-color 0.16s ease;
 }
 /* Clickable row — 19px measured live, under the 24px minimum target. */
 .mv-beat-row { min-height: 24px; }
 .mv-beat-row:disabled { cursor: default; }
 .mv-beat-row:hover:not(:disabled) { background: rgba(125, 211, 252, 0.07); }
-.mv-beat-date { color: rgba(125, 211, 252, 0.66); }
+.mv-beat-date { color: rgba(125,211,252,0.88); }
 .mv-beat-track { position: relative; height: 8px; border-radius: 999px; background: var(--mv-track); overflow: hidden; }
 .mv-beat-bar {
   position: absolute; inset: 0; border-radius: 999px;
@@ -1774,7 +1774,7 @@ html.nav-locked body { overflow: hidden; }
 
 /* ── Revision momentum ── */
 .mv-rev-skew {
-  font-family: var(--font-mono, monospace); font-size: 0.54rem; font-weight: 700;
+  font-family: var(--font-mono, monospace); font-size: 0.7rem; font-weight: 700;
   letter-spacing: 0.12em; text-transform: uppercase;
 }
 .mv-rev-bar {
@@ -1787,13 +1787,13 @@ html.nav-locked body { overflow: hidden; }
 .mv-rev-seg.mv-neutral { background: rgba(167, 139, 250, 0.55); }
 .mv-rev-legend {
   display: flex; align-items: center; gap: 0.7rem; margin-top: 0.35rem;
-  font-family: var(--font-mono, monospace); font-size: 0.55rem;
+  font-family: var(--font-mono, monospace); font-size: 0.7rem;
 }
 .mv-rev-more {
   margin-left: auto; padding: 0.1rem 0.4rem;
   border: 1px solid var(--mv-hairline); border-radius: 0.3rem;
   background: transparent; color: var(--mv-chrome); cursor: pointer;
-  font-family: inherit; font-size: 0.5rem; letter-spacing: 0.08em; text-transform: uppercase;
+  font-family: inherit; font-size: 0.66rem; letter-spacing: 0.08em; text-transform: uppercase;
   transition: background-color 0.16s ease;
 }
 .mv-rev-more:hover { background: rgba(34, 211, 238, 0.12); }
@@ -1823,7 +1823,7 @@ html.nav-locked body { overflow: hidden; }
   border: 1px solid var(--mv-hairline); background: var(--mv-surface);
 }
 .mv-countdown-label {
-  font-family: var(--font-mono, monospace); font-size: 0.5rem;
+  font-family: var(--font-mono, monospace); font-size: 0.66rem;
   letter-spacing: 0.16em; text-transform: uppercase; color: var(--mv-chrome);
 }
 .mv-countdown-clock {
@@ -1831,7 +1831,7 @@ html.nav-locked body { overflow: hidden; }
   font-variant-numeric: tabular-nums;
 }
 .mv-countdown-clock i { font-style: normal; font-size: 0.62em; opacity: 0.6; margin: 0 0.1rem 0 0.02rem; }
-.mv-countdown-imminent { border-color: rgba(251, 191, 36, 0.5); }
+.mv-countdown-imminent { border-color: rgba(251,191,36,0.72); }
 .mv-countdown-imminent .mv-countdown-label { color: var(--mv-attention); }
 /* Pulses only inside 24h — the animation IS the signal, so it must not run constantly. */
 .mv-countdown-imminent .mv-countdown-clock { animation: mv-breathe 2.4s ease-in-out infinite; }
@@ -1844,21 +1844,21 @@ html.nav-locked body { overflow: hidden; }
   display: inline-flex; align-items: center; gap: 0.22rem;
   padding: 0.08rem 0.38rem; border-radius: 999px;
   border: 1px solid var(--mv-hairline); background: var(--mv-surface);
-  font-family: var(--font-mono, monospace); font-size: 0.48rem;
+  font-family: var(--font-mono, monospace); font-size: 0.64rem;
   letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap;
   color: rgba(226, 244, 255, 0.85);
 }
 .mv-chip-glyph { font-size: 0.72em; }
 .mv-chip-accelerating, .mv-chip-rank_improving, .mv-chip-top_performer {
-  color: var(--mv-bull); border-color: rgba(52, 211, 153, 0.35);
+  color: var(--mv-bull); border-color: rgba(52,211,153,0.57);
 }
 .mv-chip-deteriorating, .mv-chip-rank_falling {
-  color: var(--mv-bear); border-color: rgba(251, 113, 133, 0.35);
+  color: var(--mv-bear); border-color: rgba(251,113,133,0.57);
 }
 .mv-chip-anomaly, .mv-chip-approaching_threshold {
-  color: var(--mv-attention); border-color: rgba(251, 191, 36, 0.4);
+  color: var(--mv-attention); border-color: rgba(251,191,36,0.62);
 }
-.mv-chip-newly_changed { color: var(--mv-neutral); border-color: rgba(167, 139, 250, 0.4); }
+.mv-chip-newly_changed { color: var(--mv-neutral); border-color: rgba(167,139,250,0.62); }
 /* An anomaly is by definition rare, so a persistent pulse here stays informative. */
 .mv-chip-anomaly .mv-chip-glyph { animation: mv-breathe 1.6s ease-in-out infinite; }
 
@@ -1910,11 +1910,11 @@ html.nav-locked body { overflow: hidden; }
   background: rgba(8, 10, 16, 0.5); color: inherit; cursor: pointer;
   transition: border-color 0.18s ease, background-color 0.18s ease;
 }
-.mr-dim:hover, .mr-dim:focus-visible { border-color: rgba(34, 211, 238, 0.45); background: rgba(34, 211, 238, 0.07); }
-.mr-dim.is-open { border-color: rgba(34, 211, 238, 0.7); background: rgba(34, 211, 238, 0.1); }
+.mr-dim:hover, .mr-dim:focus-visible { border-color: rgba(34,211,238,0.67); background: rgba(34, 211, 238, 0.07); }
+.mr-dim.is-open { border-color: rgba(34,211,238,0.9); background: rgba(34, 211, 238, 0.1); }
 .mr-dim-meta {
-  font-family: var(--font-mono, monospace); font-size: 0.46rem;
-  letter-spacing: 0.08em; color: rgba(125, 211, 252, 0.6); white-space: nowrap;
+  font-family: var(--font-mono, monospace); font-size: 0.64rem;
+  letter-spacing: 0.08em; color: rgba(125,211,252,0.82); white-space: nowrap;
 }
 
 /* ── L2 drawer (in-context drilldown, never a separate page) ── */
@@ -1927,12 +1927,12 @@ html.nav-locked body { overflow: hidden; }
 @keyframes mr-drawer-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 .mr-drawer-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 0.4rem; }
 .mr-drawer-title {
-  font-family: var(--font-mono, monospace); font-size: 0.54rem; font-weight: 700;
+  font-family: var(--font-mono, monospace); font-size: 0.7rem; font-weight: 700;
   letter-spacing: 0.14em; text-transform: uppercase; color: var(--mv-chrome);
 }
 .mr-drawer-close {
-  border: 0; background: transparent; color: rgba(125, 211, 252, 0.7); cursor: pointer;
-  font-family: var(--font-mono, monospace); font-size: 0.5rem;
+  border: 0; background: transparent; color: rgba(125,211,252,0.9); cursor: pointer;
+  font-family: var(--font-mono, monospace); font-size: 0.66rem;
   letter-spacing: 0.1em; text-transform: uppercase;
 }
 .mr-drawer-close:hover { color: #fff; }
@@ -1940,16 +1940,16 @@ html.nav-locked body { overflow: hidden; }
 .mr-drawer-row {
   display: grid; grid-template-columns: 4px 7.5rem 1fr 2.6rem;
   align-items: baseline; gap: 0.5rem;
-  font-size: 0.68rem;
+  font-size: 0.82rem;
 }
 .mr-drawer-lean { align-self: stretch; border-radius: 2px; background: currentColor; }
 .mr-drawer-label {
-  font-family: var(--font-mono, monospace); font-size: 0.55rem;
+  font-family: var(--font-mono, monospace); font-size: 0.7rem;
   letter-spacing: 0.06em; color: #e2f4ff;
 }
 .mr-drawer-detail { color: rgba(186, 230, 253, 0.85); line-height: 1.35; }
 .mr-drawer-score {
-  font-family: var(--font-mono, monospace); font-size: 0.6rem; font-weight: 700; text-align: right;
+  font-family: var(--font-mono, monospace); font-size: 0.76rem; font-weight: 700; text-align: right;
 }
 
 /* ── L3 analytics grid ── */
@@ -1968,14 +1968,14 @@ html.nav-locked body { overflow: hidden; }
 .mr-panel-wide { grid-column: 1 / -1; }
 .mr-panel-title {
   display: block; margin-bottom: 0.5rem;
-  font-family: var(--font-mono, monospace); font-size: 0.54rem; font-weight: 700;
+  font-family: var(--font-mono, monospace); font-size: 0.7rem; font-weight: 700;
   letter-spacing: 0.14em; text-transform: uppercase; color: var(--mv-chrome);
 }
 .mr-panel > * + * { margin-top: 0.85rem; }
 .mr-play-headline { margin: 0; font-size: 0.86rem; font-weight: 700; line-height: 1.3; }
 .mr-play-structure { margin: 0.3rem 0 0; font-size: 0.72rem; color: #bae6fd; line-height: 1.4; }
 .mr-play-risk {
-  margin: 0.3rem 0 0; font-size: 0.66rem; color: rgba(251, 191, 36, 0.85); line-height: 1.4;
+  margin: 0.3rem 0 0; font-size: 0.8rem; color: rgba(251, 191, 36, 0.85); line-height: 1.4;
 }
 
 /* ── L4 evidence (collapsed by default) ── */
@@ -1983,7 +1983,7 @@ html.nav-locked body { overflow: hidden; }
 .mr-evidence-toggle {
   display: inline-flex; align-items: center; gap: 0.4rem;
   border: 0; background: transparent; color: rgba(125, 211, 252, 0.85); cursor: pointer;
-  font-family: var(--font-mono, monospace); font-size: 0.55rem;
+  font-family: var(--font-mono, monospace); font-size: 0.7rem;
   letter-spacing: 0.12em; text-transform: uppercase;
 }
 .mr-evidence-toggle { min-height: 24px; } /* 13px measured live */
@@ -1999,15 +1999,15 @@ html.nav-locked body { overflow: hidden; }
 }
 .mr-evidence-label {
   display: block; margin-bottom: 0.25rem;
-  font-family: var(--font-mono, monospace); font-size: 0.5rem;
+  font-family: var(--font-mono, monospace); font-size: 0.66rem;
   letter-spacing: 0.12em; text-transform: uppercase; color: var(--mv-chrome);
 }
 .mr-evidence-col ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.22rem; }
-.mr-evidence-col li { font-size: 0.68rem; line-height: 1.35; color: rgba(186, 230, 253, 0.82); }
-.mr-evidence-chan { color: rgba(125, 211, 252, 0.55); }
+.mr-evidence-col li { font-size: 0.82rem; line-height: 1.35; color: rgba(186, 230, 253, 0.82); }
+.mr-evidence-chan { color: rgba(125,211,252,0.77); }
 .mr-disclaimer {
-  margin: 0; font-family: var(--font-mono, monospace); font-size: 0.52rem;
-  color: rgba(125, 211, 252, 0.5); line-height: 1.4;
+  margin: 0; font-family: var(--font-mono, monospace); font-size: 0.68rem;
+  color: rgba(125,211,252,0.72); line-height: 1.4;
 }
 
 /* Mobile: the decision block stacks and the halo centres — a focused intelligence feed
@@ -2070,14 +2070,14 @@ html.nav-locked body { overflow: hidden; }
 }
 .ms-halo-center .ms-sub { line-height: 1.15; }
 .ms-verdict {
-  font-family: var(--font-mono, monospace); font-size: 0.52rem; font-weight: 700;
+  font-family: var(--font-mono, monospace); font-size: 0.68rem; font-weight: 700;
   letter-spacing: 0.18em; text-transform: uppercase;
 }
 .ms-score {
   font-family: var(--font-syne, sans-serif); font-size: 2rem; font-weight: 800;
   line-height: 1; color: #fff; font-variant-numeric: tabular-nums;
 }
-.ms-sub { font-family: var(--font-mono, monospace); font-size: 0.48rem; color: rgba(125,211,252,0.72); }
+.ms-sub { font-family: var(--font-mono, monospace); font-size: 0.64rem; color: rgba(125,211,252,0.72); }
 .ms-legend {
   /* Hangs BELOW the halo's square box on purpose (the box is sized to the rings), so the halo
      reserves flow space for it via margin-bottom — see .ms-halo. Without that reservation the
@@ -2088,8 +2088,8 @@ html.nav-locked body { overflow: hidden; }
   display: flex; gap: 0.55rem; white-space: nowrap;
 }
 .ms-legend-item {
-  font-family: var(--font-mono, monospace); font-size: 0.44rem;
-  letter-spacing: 0.1em; text-transform: uppercase; color: rgba(125,211,252,0.55);
+  font-family: var(--font-mono, monospace); font-size: 0.58rem;
+  letter-spacing: 0.1em; text-transform: uppercase; color: rgba(148, 220, 255, 0.8);
 }
 /* Ring roles are distinguishable WITHOUT the tilt — depth reinforces, it does not carry alone.
    Outer solid = evidence, mid solid-thin = agreement, inner dashed = confidence. */
@@ -2128,8 +2128,8 @@ html.nav-locked body { overflow: hidden; }
      diagram and over the core. */
   position: absolute; left: 50%; top: 50%;
   transform: translate(var(--lanchor, -50%), -50%) translate(var(--lx, 0), var(--ly, 14px));
-  font-family: var(--font-mono, monospace); font-size: 0.42rem;
-  letter-spacing: 0.04em; white-space: nowrap; color: rgba(226, 244, 255, 0.92);
+  font-family: var(--font-mono, monospace); font-size: 0.52rem;
+  letter-spacing: 0.04em; white-space: nowrap; color: rgba(232, 248, 255, 0.96);
   pointer-events: none;
   /* Capped so a long pillar name cannot push into its neighbour's slot; the full text is
      already on the button's title + aria-label, and hover below restores it in place. */
@@ -2154,7 +2154,7 @@ html.nav-locked body { overflow: hidden; }
 }
 .ms-orbital-key {
   position: absolute; left: 0; right: 0; bottom: -0.2rem; margin: 0; text-align: center;
-  font-family: var(--font-mono, monospace); font-size: 0.44rem;
+  font-family: var(--font-mono, monospace); font-size: 0.58rem;
   letter-spacing: 0.05em; color: rgba(125, 211, 252, 0.5);
 }
 
@@ -2182,7 +2182,7 @@ html.nav-locked body { overflow: hidden; }
   padding: 0.08rem 0.4rem; background: transparent; color: var(--mv-chrome); cursor: pointer;
   /* Measured 46x16 live — the type is small by design, the target must not be. */
   min-height: 24px;
-  font-family: var(--font-mono, monospace); font-size: 0.46rem;
+  font-family: var(--font-mono, monospace); font-size: 0.64rem;
   letter-spacing: 0.1em; text-transform: uppercase;
   transition: background-color 0.16s ease;
 }
@@ -2201,12 +2201,12 @@ html.nav-locked body { overflow: hidden; }
      height even though the type is small — measured at 19px live. */
   min-height: 24px;
   background: transparent; color: inherit; text-align: left; cursor: pointer;
-  font-family: var(--font-mono, monospace); font-size: 0.56rem;
+  font-family: var(--font-mono, monospace); font-size: 0.72rem;
   transition: background-color 0.16s ease;
 }
 .mv-traj-row:disabled { cursor: default; }
 .mv-traj-row:hover:not(:disabled) { background: rgba(125, 211, 252, 0.07); }
-.mv-traj-period { color: rgba(125, 211, 252, 0.7); }
+.mv-traj-period { color: rgba(125,211,252,0.9); }
 .mv-traj-bars { position: relative; height: 12px; }
 /* The estimate is an outline the actual fills — one shared baseline, so the comparison is a
    direct length read rather than two bars the eye has to align. */
@@ -2226,7 +2226,7 @@ html.nav-locked body { overflow: hidden; }
 .mv-traj-row.is-forward .mv-traj-est { border-style: dashed; opacity: 0.75; }
 .mv-traj-val { text-align: right; color: #e2f4ff; font-weight: 700; }
 .mv-traj-surprise { text-align: right; font-weight: 700; }
-.mv-traj-row.is-forward .mv-traj-surprise { color: rgba(125, 211, 252, 0.55); font-weight: 400; }
+.mv-traj-row.is-forward .mv-traj-surprise { color: rgba(125,211,252,0.77); font-weight: 400; }
 
 /* Dispersion */
 .mv-disp-track {
@@ -2251,9 +2251,9 @@ html.nav-locked body { overflow: hidden; }
 .me-yoy-rows { display: flex; flex-direction: column; gap: 0.4rem; margin-top: 0.5rem; }
 .me-yoy-row {
   display: grid; grid-template-columns: 4.2rem 1fr 4rem; align-items: center; gap: 0.5rem;
-  font-family: var(--font-mono, monospace); font-size: 0.56rem;
+  font-family: var(--font-mono, monospace); font-size: 0.72rem;
 }
-.me-yoy-label { color: rgba(125, 211, 252, 0.7); letter-spacing: 0.08em; text-transform: uppercase; }
+.me-yoy-label { color: rgba(125,211,252,0.9); letter-spacing: 0.08em; text-transform: uppercase; }
 .me-yoy-track {
   position: relative; height: 10px; border-radius: 999px;
   background: var(--mv-track); overflow: hidden;
@@ -2273,10 +2273,10 @@ html.nav-locked body { overflow: hidden; }
 .me-yoy-cap { opacity: 0.6; }
 
 .me-guidance { list-style: none; margin: 0.4rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.25rem; }
-.me-guidance li { font-family: var(--font-mono, monospace); font-size: 0.6rem; color: #e2f4ff; }
+.me-guidance li { font-family: var(--font-mono, monospace); font-size: 0.76rem; color: #e2f4ff; }
 .me-gated {
-  margin: 0.4rem 0 0; font-family: var(--font-mono, monospace); font-size: 0.55rem;
-  color: rgba(251, 191, 36, 0.75); line-height: 1.4;
+  margin: 0.4rem 0 0; font-family: var(--font-mono, monospace); font-size: 0.7rem;
+  color: rgba(251,191,36,0.9); line-height: 1.4;
 }
 
 /* ═══ MERIDIAN POSITIONING + HISTORY ═════════════════════════════════════════════════ */
@@ -2285,7 +2285,7 @@ html.nav-locked body { overflow: hidden; }
   display: grid; grid-template-columns: 3.4rem 1fr 3.2rem; align-items: center; gap: 0.4rem;
   padding: 0.1rem 0.24rem; border: 0; border-radius: 0.28rem;
   background: transparent; color: rgba(226,244,255,0.9); text-align: left; cursor: pointer;
-  font-family: var(--font-mono, monospace); font-size: 0.53rem;
+  font-family: var(--font-mono, monospace); font-size: 0.68rem;
   transition: background-color 0.16s ease;
 }
 .mv-strike-row:disabled { cursor: default; }
@@ -2325,29 +2325,29 @@ html.nav-locked body { overflow: hidden; }
      readings to opposite ends of ~1400px, so the eye has to travel to relate "implied 6%" to
      "median 1.82%" — the exact comparison the panel exists to make. */
   display: flex; gap: 1.4rem; margin-top: 0.45rem; flex-wrap: wrap;
-  font-family: var(--font-mono, monospace); font-size: 0.53rem;
+  font-family: var(--font-mono, monospace); font-size: 0.68rem;
   color: rgba(186, 230, 253, 0.8);
 }
 .mv-ivr-legend b { font-weight: 700; }
 
 /* Flow strip */
 .mp-flow-net {
-  margin: 0.4rem 0 0.3rem; font-family: var(--font-mono, monospace); font-size: 0.56rem; color: #e2f4ff;
+  margin: 0.4rem 0 0.3rem; font-family: var(--font-mono, monospace); font-size: 0.72rem; color: #e2f4ff;
 }
 .mp-flow-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.16rem; }
 .mp-flow-list li {
   display: grid; grid-template-columns: 2.4rem 3.2rem 1fr 2.4rem; gap: 0.4rem;
-  font-family: var(--font-mono, monospace); font-size: 0.53rem; color: rgba(226,244,255,0.88);
+  font-family: var(--font-mono, monospace); font-size: 0.68rem; color: rgba(226,244,255,0.88);
 }
-.mp-flow-dte { text-align: right; color: rgba(125,211,252,0.6); }
+.mp-flow-dte { text-align: right; color: rgba(125,211,252,0.82); }
 
 /* Beat rates */
 .mh-rates { display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.5rem; }
 .mh-rate {
   display: grid; grid-template-columns: 4.4rem 1fr 2.6rem; align-items: center; gap: 0.5rem;
-  font-family: var(--font-mono, monospace); font-size: 0.55rem;
+  font-family: var(--font-mono, monospace); font-size: 0.7rem;
 }
-.mh-rate-label { color: rgba(125,211,252,0.7); letter-spacing: 0.08em; text-transform: uppercase; }
+.mh-rate-label { color: rgba(125,211,252,0.9); letter-spacing: 0.08em; text-transform: uppercase; }
 .mh-rate-track { position: relative; height: 9px; border-radius: 999px; background: var(--mv-track); overflow: hidden; }
 .mh-rate-fill {
   position: absolute; inset: 0; border-radius: 999px;
@@ -2365,6 +2365,274 @@ html.nav-locked body { overflow: hidden; }
   margin: 0.35rem 0 0; padding: 0.3rem 0.5rem;
   border-left: 2px solid rgba(125, 211, 252, 0.35); border-radius: 0 0.25rem 0.25rem 0;
   background: rgba(125, 211, 252, 0.06);
-  font-family: var(--font-mono, monospace); font-size: 0.62rem; line-height: 1.35;
+  font-family: var(--font-mono, monospace); font-size: 0.78rem; line-height: 1.35;
   color: rgba(186, 230, 253, 0.85);
 }
+
+/* ═══ PER-TAB IDENTITY ═══════════════════════════════════════════════════════════════
+   Every tab used the same cyan chrome, so REPORT and HISTORY were indistinguishable at a
+   glance and a reader who looked away lost their place. Each section now owns a hue, and the
+   hue is not decorative — it is the same one the tab button carries, so the strip in the header
+   and the panel titles below always agree on where you are.
+
+   The hues are assigned by what the section IS, not picked for variety:
+     REPORT      cyan    — the verdict, the desk's primary voice
+     ESTIMATES   violet  — the street's numbers, not ours
+     POSITIONING amber   — dealer structure and risk; the colour the desk already uses for
+                           attention elsewhere
+     HISTORY     emerald — settled facts, already graded
+   Semantic bull/bear colours are untouched: a green number still means a green number. */
+.meridian-earnings-tabs[data-tab="report"]      { --tab-hue: 34, 211, 238; }
+.meridian-earnings-tabs[data-tab="estimates"]   { --tab-hue: 167, 139, 250; }
+.meridian-earnings-tabs[data-tab="positioning"] { --tab-hue: 251, 191, 36; }
+.meridian-earnings-tabs[data-tab="history"]     { --tab-hue: 52, 211, 153; }
+
+/* Panel titles and section kickers take the active section's hue. */
+.meridian-earnings-tabs .mr-panel-title,
+.meridian-earnings-tabs .mv-rail-title,
+.meridian-earnings-tabs .mv-panel-title {
+  color: rgb(var(--tab-hue, 34, 211, 238));
+}
+/* A hairline of the same hue on each panel's top edge — enough to group the grid as one
+   section without repainting every border. */
+.meridian-earnings-tabs .mr-panel {
+  border-top: 1px solid rgba(var(--tab-hue, 34, 211, 238), 0.28);
+}
+
+/* The tab buttons carry their own hue even when inactive, so the strip reads as four
+   destinations rather than one control with a moving highlight. */
+.meridian-earnings-tab-report      { --tab-hue: 34, 211, 238; }
+.meridian-earnings-tab-estimates   { --tab-hue: 167, 139, 250; }
+.meridian-earnings-tab-positioning { --tab-hue: 251, 191, 36; }
+.meridian-earnings-tab-history     { --tab-hue: 52, 211, 153; }
+.meridian-earnings-tab {
+  color: rgba(var(--tab-hue), 0.72);
+  border: 1px solid rgba(var(--tab-hue), 0.22);
+}
+.meridian-earnings-tab:hover { color: rgba(var(--tab-hue), 0.95); border-color: rgba(var(--tab-hue), 0.45); }
+.meridian-earnings-tab.is-active {
+  color: #06121a;
+  background: rgb(var(--tab-hue));
+  border-color: rgb(var(--tab-hue));
+  font-weight: 700;
+}
+
+/* ── Compact detail header ──────────────────────────────────────────────────────────
+   Kind, name and timing on ONE line. The reader chose this event from the lane a second
+   ago; the header confirms which one, it does not re-announce it. */
+.meridian-detail-head-v2 { align-items: center; gap: 1rem; margin-bottom: 0.6rem; padding-bottom: 0.55rem; }
+.meridian-detail-head-main { min-width: 0; }
+.meridian-detail-title-v2 {
+  display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.55rem;
+  font-size: clamp(1.1rem, 1.9vw, 1.4rem); margin: 0;
+}
+.meridian-detail-title-v2 .meridian-detail-kicker,
+.meridian-detail-title-v2 .meridian-detail-meta {
+  font-weight: 600; letter-spacing: 0.1em;
+}
+.meridian-detail-title-v2 .meridian-detail-meta {
+  font-family: var(--font-mono, monospace); font-size: 0.72rem;
+  letter-spacing: 0.04em; color: #9fd8f7;
+}
+.meridian-earnings-tablist { margin-bottom: 0; flex-wrap: nowrap; }
+
+/* Refresh has to LOOK like it did something — a refetch that returns identical cached data is
+   otherwise indistinguishable from a dead button. */
+.meridian-refresh-btn.is-busy { opacity: 0.65; cursor: progress; }
+
+/* Numbers are the product. Tabular figures so columns line up, and a real weight so a value
+   never reads lighter than the word labelling it. */
+.mv-traj-val, .mv-beat-val, .me-yoy-val, .mr-metric-val, .mv-rail-pct, .mv-tape-total,
+.mv-target-val, .mv-ladder-val, .mv-dispersion-val, .ms-score {
+  font-variant-numeric: tabular-nums; font-weight: 700;
+}
+
+/* ═══ TYPE SYSTEM ════════════════════════════════════════════════════════════════════
+   --font-mono was NEVER DEFINED. This stylesheet asks for it 78 times; the real variable
+   next/font injects is --font-jetbrains. Every "mono" label, ticker and number on this desk
+   has therefore been falling through to the browser's default monospace — Courier-ish on most
+   machines — which is most of why the type read as cheap and inconsistent next to the rest of
+   the app. Aliasing it here fixes all 78 at once, and keeps the shorter name the rules already
+   use rather than churning every one of them.
+
+   THREE TYPOGRAPHIC ROLES, so a header can never be mistaken for the number under it:
+     LABEL  mono, small, uppercase, letterspaced, section hue    — what this is
+     VALUE  Syne, large, near-white, tabular figures             — the number itself
+     PROSE  Inter, comfortable, muted                            — the sentence about it
+   Before this, all three were the same family at nearly the same size and colour, which is
+   exactly the "everything looks the same" the desk was reported with. */
+:root {
+  --font-mono: var(--font-jetbrains, ui-monospace, "SFMono-Regular", Menlo, monospace);
+  --mv-label: var(--font-mono);
+  --mv-value: var(--font-syne, var(--font-body));
+  --mv-prose: var(--font-body);
+}
+
+/* LABEL role */
+.mr-panel-title, .mv-rail-title, .meridian-card-label, .meridian-analytics-banner-label,
+.mv-panel-title, .meridian-kv-label {
+  font-family: var(--mv-label);
+  font-size: 0.7rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+}
+
+/* VALUE role — the number is the product, so it gets the display face and the contrast. */
+.meridian-kv-value, .meridian-analytics-banner-sub, .mv-traj-val, .mv-beat-val, .me-yoy-val {
+  font-family: var(--mv-value);
+  font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.01em;
+  color: #f2fbff;
+}
+
+/* PROSE role */
+.mr-summary, .meridian-card-muted, .mv-note, .mr-play-structure, .mr-play-risk {
+  font-family: var(--mv-prose); line-height: 1.5;
+}
+
+/* ── Label → value rows ─────────────────────────────────────────────────────────────
+   The card lists were single strings, so the number sat mid-sentence in the left third of a
+   wide card and the rest of the row was blank. Splitting the pair puts every value in one
+   right-hand COLUMN — scannable down the card, comparable between rows — and the leader keeps
+   a label tied to its value across the gap. */
+.meridian-kv {
+  display: grid; grid-template-columns: auto 1fr auto; align-items: baseline;
+  gap: 0.5rem; padding: 0.22rem 0; min-height: 24px;
+  border-bottom: 1px solid rgba(125, 211, 252, 0.07);
+}
+.meridian-kv:last-child { border-bottom: 0; }
+.meridian-kv-label { color: rgba(var(--tab-hue, 125, 211, 252), 0.85); }
+.meridian-kv-note {
+  font-family: var(--mv-label); font-size: 0.62rem; font-weight: 600;
+  letter-spacing: 0.08em; color: rgba(148, 200, 230, 0.6); text-transform: none;
+}
+.meridian-kv-leader {
+  border-bottom: 1px dotted rgba(125, 211, 252, 0.22);
+  transform: translateY(-0.18em);
+}
+.meridian-kv-value { font-size: 0.96rem; white-space: nowrap; }
+.meridian-kv-value.mv-bull { color: var(--mv-bull, #34d399); }
+.meridian-kv-value.mv-bear { color: var(--mv-bear, #fb7185); }
+
+/* Banner value pulled to the right edge — these ran a short line down the left and left two
+   thirds of the row empty. */
+.meridian-analytics-banner { align-items: center; }
+.meridian-analytics-banner-body { flex: 1 1 auto; min-width: 0; }
+.meridian-analytics-banner-sub {
+  margin: 0; flex: none; text-align: right; font-size: 1.02rem; white-space: nowrap;
+}
+@media (max-width: 640px) {
+  /* On a phone the value wraps under rather than squeezing the headline to nothing. */
+  .meridian-analytics-banner { flex-wrap: wrap; }
+  .meridian-analytics-banner-sub { text-align: left; font-size: 0.92rem; }
+}
+
+/* A feed that failed says so. An empty panel is a CLAIM about the company; this is a statement
+   about us, and the two must never look alike. */
+.meridian-feed-error {
+  margin: 0 0 0.6rem; padding: 0.5rem 0.7rem;
+  border: 1px solid rgba(251, 191, 36, 0.35); border-left-width: 3px; border-radius: 0.4rem;
+  background: rgba(251, 191, 36, 0.07);
+  font-family: var(--mv-prose); font-size: 0.78rem; line-height: 1.45; color: #fde3a7;
+}
+
+/* ═══ SUMMARY TAB ════════════════════════════════════════════════════════════════════
+   Two ideas, always both. On a split book neither is promoted; on a one-sided book the losing
+   side recedes but stays visible, because "weak" and "absent" are different statements. */
+.meridian-earnings-tabs[data-tab="summary"] { --tab-hue: 244, 114, 182; }
+.meridian-earnings-tab-summary { --tab-hue: 244, 114, 182; }
+
+.msum { display: flex; flex-direction: column; gap: 0.85rem; }
+.msum-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.msum-headline {
+  margin: 0.25rem 0 0; font-family: var(--mv-value);
+  font-size: 1.05rem; font-weight: 800; line-height: 1.3; text-wrap: balance;
+}
+
+.msum-inputs { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0; padding: 0; list-style: none; }
+.msum-input {
+  font-family: var(--mv-label); font-size: 0.64rem; letter-spacing: 0.08em; text-transform: uppercase;
+  color: rgba(148, 180, 200, 0.5);
+}
+.msum-input.is-on { color: rgba(125, 211, 252, 0.95); }
+
+.msum-contested {
+  margin: 0; padding: 0.55rem 0.75rem;
+  border: 1px solid rgba(244, 114, 182, 0.4); border-left-width: 3px; border-radius: 0.4rem;
+  background: rgba(244, 114, 182, 0.08);
+  font-family: var(--mv-prose); font-size: 0.8rem; line-height: 1.45; color: #ffd9ef;
+}
+
+.msum-ideas { display: grid; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr)); gap: 0.75rem; }
+.msum-idea {
+  display: flex; flex-direction: column; gap: 0.6rem;
+  padding: 0.85rem 0.95rem; border-radius: 0.7rem;
+  border: 1px solid var(--mv-hairline); background: var(--mv-surface);
+  transition: opacity 0.25s var(--mv-ease);
+}
+/* Receding, not hiding: the reader can still see the other side and why it lost. */
+.msum-idea.is-muted { opacity: 0.55; }
+.msum-idea.is-muted:hover, .msum-idea.is-muted:focus-within { opacity: 1; }
+.msum-idea-call { border-top: 2px solid rgba(52, 211, 153, 0.5); }
+.msum-idea-put { border-top: 2px solid rgba(251, 113, 133, 0.5); }
+.msum-idea-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.6rem; flex-wrap: wrap; }
+.msum-idea-side { font-family: var(--mv-label); font-size: 0.9rem; font-weight: 800; letter-spacing: 0.16em; }
+.msum-idea-level { font-family: var(--mv-label); font-size: 0.76rem; color: #cfe9f8; }
+.msum-idea-level b { font-family: var(--mv-value); font-size: 0.95rem; font-variant-numeric: tabular-nums; }
+.msum-idea-src { color: rgba(148, 200, 230, 0.65); }
+
+.msum-prob { display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
+.msum-prob-val {
+  font-family: var(--mv-value); font-size: 2.1rem; font-weight: 800; line-height: 1;
+  font-variant-numeric: tabular-nums; color: #fff;
+}
+/* The label carries the honesty: a distribution statement, never "chance of profit". */
+.msum-prob-label {
+  font-family: var(--mv-label); font-size: 0.66rem; letter-spacing: 0.06em;
+  color: rgba(160, 205, 232, 0.85); max-width: 15rem; line-height: 1.35;
+}
+
+.msum-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin: 0; }
+.msum-metrics dt {
+  font-family: var(--mv-label); font-size: 0.6rem; letter-spacing: 0.09em; text-transform: uppercase;
+  color: rgba(148, 200, 230, 0.72);
+}
+.msum-metrics dd {
+  margin: 0.15rem 0 0; font-family: var(--mv-value); font-size: 0.9rem; font-weight: 700;
+  font-variant-numeric: tabular-nums; color: #eaf7ff;
+}
+.msum-thin { font-family: var(--mv-label); font-size: 0.62rem; color: rgba(148, 200, 230, 0.6); font-weight: 500; }
+
+.msum-conf { display: flex; align-items: center; gap: 0.5rem; }
+.msum-conf-bar { flex: 1; height: 6px; border-radius: 999px; background: var(--mv-track); overflow: hidden; }
+.msum-conf-fill { display: block; height: 100%; background: currentColor; transition: width 0.45s var(--mv-ease); }
+.msum-conf-val { font-family: var(--mv-value); font-size: 0.82rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+.msum-why { margin: 0; padding-left: 1rem; display: flex; flex-direction: column; gap: 0.22rem; }
+.msum-why li { font-family: var(--mv-prose); font-size: 0.76rem; line-height: 1.4; color: #b9dcf0; }
+.msum-idea-foot { margin: 0; }
+
+.msum-levels { display: flex; flex-direction: column; gap: 0.3rem; }
+.msum-level-rows { list-style: none; margin: 0; padding: 0; }
+.msum-level {
+  display: grid; grid-template-columns: auto 1fr auto; align-items: baseline; gap: 0.5rem;
+  padding: 0.22rem 0; min-height: 24px;
+}
+.msum-level-label { font-family: var(--mv-label); font-size: 0.68rem; letter-spacing: 0.09em; text-transform: uppercase; color: rgba(148, 200, 230, 0.8); }
+.msum-level-leader { border-bottom: 1px dotted rgba(125, 211, 252, 0.2); transform: translateY(-0.18em); }
+.msum-level-val { font-family: var(--mv-value); font-size: 0.92rem; font-weight: 800; font-variant-numeric: tabular-nums; color: #f2fbff; }
+.msum-level-spot .msum-level-val { color: #22d3ee; }
+.msum-level-wall .msum-level-label { color: rgba(251, 191, 36, 0.9); }
+
+.msum-note { margin: 0; font-family: var(--mv-prose); font-size: 0.78rem; line-height: 1.45; color: #a9cfe6; }
+
+/* Expiry scope badge. An event-scoped level and a whole-book aggregate look identical, so the
+   difference is spelled out — and the aggregate is the one that gets the warning colour,
+   because it is the one that may be describing a chain that dies before the print. */
+.mr-scope {
+  display: inline-block; margin-left: 0.5rem; padding: 0.1rem 0.4rem; border-radius: 0.25rem;
+  font-family: var(--mv-label); font-size: 0.62rem; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: none;
+}
+.mr-scope-event_expiry { color: #7ef0c0; background: rgba(52, 211, 153, 0.12); border: 1px solid rgba(52, 211, 153, 0.35); }
+.mr-scope-aggregate { color: #fcd9a0; background: rgba(251, 191, 36, 0.1); border: 1px solid rgba(251, 191, 36, 0.35); }
+
+/* The number rides with the label on rail markers. */
+.mv-rail-marker-num { font-family: var(--mv-value); font-weight: 800; font-variant-numeric: tabular-nums; color: #f2fbff; }

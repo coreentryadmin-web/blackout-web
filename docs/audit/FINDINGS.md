@@ -133,7 +133,6 @@ the first.
 batch resolves to all-nulls rather than rejecting; and a thrower does not stall the concurrency
 window.
 
-
 ## 2026-08-17 — [FINDING, P1 security] Provider API key written into thrown errors (and CI logs) by the disallowed-host guard — FIXED
 > **kind:** `FINDING`
 
@@ -179,7 +178,6 @@ contain the key or a `token=` value. It fails on the pre-fix code by constructio
 
 **Operational follow-up (NOT closed by this fix):** the exposed Polygon key should still be rotated
 — it has been emitted to logs repeatedly before this fix landed.
-
 
 ## 2026-08-17 — [FINDING, P1 member-visible] Bead rail never showed a wall decaying: the fade channel is blind to gradual decline — FIXED
 > **kind:** `FINDING`
@@ -10973,3 +10971,233 @@ feed is not enabled on this plan" panel, and the evidence grid rendered a second
 guidance — feed not enabled on this plan" card, on EVERY name. A card whose only content is a
 statement about our subscription is not analysis; it occupied prime grid space to tell the reader
 something they can do nothing with. Both removed.
+
+## 2026-08-18 — `--font-mono` was never defined; Meridian rendered in browser-default monospace — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P2 — the whole desk's typography, on every panel |
+| **Found by** | chasing a user report that "the coloring and fonting is really bad" back to a cause instead of restyling on top of it |
+| **Status** | FIXED |
+
+`src/app/desk-app.css` requests `var(--font-mono, monospace)` **78 times**. Grepping the entire
+repo, **`--font-mono` is never defined** — the variable next/font injects is `--font-jetbrains`
+(`layout.tsx`, `variable: "--font-jetbrains"`; `globals.css` uses it correctly in `.font-mono`).
+
+So every label, ticker, kicker and number on this desk fell through to the generic `monospace`
+keyword — Courier-ish on most machines — rather than JetBrains Mono. That is most of why the type
+read as cheap and inconsistent beside the rest of the app, and no amount of size or colour tuning
+would have fixed it. Aliased in one place, which repairs all 78 call sites without churning them.
+
+**Three typographic roles** were introduced at the same time, because the deeper complaint —
+"headers and data have the same coloring, hard to differentiate" — was accurate: label, value and
+prose were all the same family at nearly the same size and colour.
+
+| role | face | used for |
+|---|---|---|
+| LABEL | JetBrains Mono, small, uppercase, letterspaced, section hue | what this is |
+| VALUE | Syne, large, near-white, tabular figures | the number itself |
+| PROSE | Inter, comfortable line-height, muted | the sentence about it |
+
+**Label→value rows.** Card lists were single strings ("EPS est 1.85"), which put the number
+mid-sentence in the left third of a wide card and left the rest of the row blank — the user's
+"lot of blank spaces on the right sides of all panels". `MeridianKV` splits the pair: label left,
+value hard right with a dotted leader. The values now form a COLUMN, so they can be scanned down
+and compared, and each carries semantic tone where the number has a direction (surprise, YoY,
+beat rate, raised/lowered targets).
+
+## 2026-08-18 — The whole product rendered in Times: `font-family: var(--undefined), fallback` — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | **P1** — site-wide body typography, every page, since the variable was introduced |
+| **Found by** | a user screenshot ("everything looks like a book") traced to a cause instead of restyled over |
+| **Status** | FIXED, with a guard test that fails on the pre-fix tree |
+
+`globals.css` set `body { font-family: var(--font-inter), system-ui, sans-serif; }`. `layout.tsx`
+injects **anton, syne and jetbrainsMono only** — `--font-inter` is defined nowhere in the repo.
+
+The trap is that the declaration *looks* like it has fallbacks. It does not. An unresolved
+`var()` makes the **whole declaration invalid at computed-value time**, and the comma-list sitting
+OUTSIDE the `var()` never gets a chance to apply. `font-family` then falls back to its initial
+value — **the browser's default serif**. So the entire product has been rendering body text in
+Times, which is precisely the "looks like a book, not some crazy analysis" report.
+
+95 declarations across `src/app/*.css` had the fallbacks outside the `var()`. All moved inside.
+
+The body role was also **renamed honestly**: `--font-body`, a real system-UI stack, because
+`--font-inter` named a face this app does not ship. Swapping in a real webfont later is now one
+declaration instead of a rename.
+
+Related and separate: `--font-mono` was likewise never defined while `desk-app.css` referenced it
+78 times — that one had its fallback INSIDE the `var()`, so it degraded to generic `monospace`
+rather than serif. Aliased to `--font-jetbrains`.
+
+**Guard.** `src/app/css-font-fallback.test.ts` asserts (1) no `font-family` puts its fallbacks
+outside `var()`, and (2) every `--font-*` referenced by CSS is either injected by `layout.tsx` or
+declared in a stylesheet. Both assertions fail on the pre-fix tree. CSS comments are stripped
+before scanning — otherwise the comment describing the bug reports the bug as still present.
+
+## 2026-08-18 — Meridian ESTIMATES/HISTORY are empty on EVERY mega-cap while the same payload claims history — OPEN
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | **P1** — the two tabs a member opens for earnings analysis render nothing, on every name checked |
+| **Found by** | `scripts/audit/meridian-data-validator.mjs`, first run |
+| **Status** | CONFIRMED + REPRODUCIBLE; validator shipped. Root cause NOT yet proven — see "what is not established" |
+
+**Measured, 8/8 mega-caps (KEYS, HD, BHP, TJX, TGT, LOW, ADI, BABA), importance 5:**
+
+| field | served | truth |
+|---|---|---|
+| `enrichment.print_history` | **0 rows** on all 8 | Benzinga has 10–12 prints with actuals |
+| `enrichment.print_history_summary` | null | — |
+| `enrichment.street_estimates` | 0 | — |
+| `enrichment.earnings_calendar` | null | — |
+| `enrichment.beat_rates.*` | null | — |
+| `pack.history` (**same response**) | **4 rows** | e.g. TGT "4/4 EPS beats over last 4 prints · 50% rev beats · avg session move +2.5%" |
+
+So one panel of the page states a beat record while the ESTIMATES and HISTORY tabs, fed from the
+same event payload, render nothing. That self-contradiction is the finding: no ground-truth check
+would flag it, because each half is individually plausible.
+
+**Verified NOT the cause** (each checked live, not assumed):
+- The upstream is fine. `/benzinga/v1/earnings?ticker=TGT&limit=16&sort=date.desc&date.gte=…`
+  returns 9 rows, 4 carrying `actual_eps` — the exact query shape `loadBenzingaTickerEarnings`
+  issues.
+- The row shaper is fine: `shapeBenzingaStructuredEarnings` maps `actual_eps`/`estimated_eps`
+  through correctly.
+- The mapper is fine: `benzingaRowsToPrintHistory` filters on `actual_eps != null`, which those
+  rows satisfy.
+- Not intermittent: identical across two passes minutes apart, and across all 8 tickers.
+
+**What IS established:** every Benzinga-derived field inside `loadMeridianEarningsEnrichment` is
+empty together, while the same underlying loaders succeed for `pre-earnings-pack`. The failure is
+therefore inside the enrichment path, not in the provider, the query, or the mapping.
+
+**What is NOT established:** the mechanism. The leading hypothesis is that the six-way
+`Promise.all` in `loadMeridianEarningsEnrichment` trips a rate limit or timeout, each
+`.catch(() => ({ rows: [], entitled: true, error: "cache_error" }))` silently yields an empty
+result, and `serverCache` then stores that empty result for 10 minutes. That would explain the
+signature exactly — but it is a hypothesis, and it is recorded as one.
+
+**Design defect regardless of mechanism.** `.catch(() => ({ rows: [] }))` makes a FAILURE
+indistinguishable from NO DATA, both in the payload and on screen. The member sees an empty tab
+and concludes the company has no earnings history. The fix has to surface the failure — an
+`error`/`entitled` flag on the event payload and a UI state that says "couldn't load" — and must
+not cache a failed result.
+
+**A separate FAIL from the same run:** TGT `call_wall 150` is **below** `put_wall 152.5`, which is
+geometrically impossible for a wall pair.
+
+## 2026-08-18 — Meridian data validator — SHIPPED
+
+> **kind:** `OPS-NOTE`
+
+| | |
+|---|---|
+| **Status** | SHIPPED — committed and run; first run's findings logged in the entry above |
+
+`scripts/audit/meridian-data-validator.mjs` checks the numbers a member SEES against their
+upstreams and against each other. Two check kinds, and the split is the point: GROUND TRUTH
+refetches the fact independently (Benzinga prints, Polygon daily bars) and catches a wrong number;
+COHERENCE compares two things the app derives from the same facts and catches an internally
+inconsistent one — the failure mode that survives every unit test, because each half is
+individually plausible. The first run found only coherence failures.
+
+One trap it encodes: the Benzinga historical query REQUIRES `date.lt`. An unbounded
+`sort=date.desc` returns PROJECTED FUTURE rows first, and those carry no EPS fields at all —
+verified live. A validator using the same unbounded query would compare empty against empty and
+report PASS.
+
+Flags: `--tickers --max --json --base`. Read-only; one temp Clerk user, released in a finally.
+
+## 2026-08-18 — Meridian SUMMARY tab: two ideas, honest probabilities — SHIPPED
+
+> **kind:** `OPS-NOTE`
+
+| | |
+|---|---|
+| **Status** | SHIPPED — `meridian-summary-core.ts` + `MeridianEarningsSummaryPanel`, 28 unit tests |
+
+A tab that answers "so what do I do?" without claiming more than the data supports.
+
+**What a percentage is allowed to mean here.** The obvious move is to print "72% chance this play
+works". That number would be invented: nothing in the payload carries a contract price, so
+profit-at-expiry is not computable. What IS computable, and what the panel shows:
+
+| component | what it is | why it is defensible |
+|---|---|---|
+| IMPLIED | P(close beyond a level) under the options-implied expected move | real math on the market's own 1σ, lognormal, zero drift |
+| HISTORICAL | how this name reacted to its own past prints | a base rate — **always shipped with its sample size**, and suppressed below 3 prints |
+| EVIDENCE | weighted tally of the pillars that took a side | the desk's own read, shown as a lean rather than a verdict |
+
+They are reported **separately** and then combined, with every component visible. A single blended
+number with its inputs hidden is the thing a reader cannot check, and this desk's whole argument
+is that an uncheckable number is worse than none. The big figure is labelled "implied chance of
+closing above X" — a distribution statement, never a profit claim.
+
+**Contradiction is the product.** Both a call and a put idea are always shown. On a split book
+neither is promoted, and the panel says why: a verdict manufactured from a 3-2 split overstates
+what the desk knows. On a one-sided book the losing side dims but stays on screen, because "weak"
+and "absent" are different statements.
+
+**Details that carry meaning rather than decoration:** the lognormal median adjustment (without it
+every name gets half a variance of free upside — the test for this asserts P(above spot) is just
+*under* 50%, and fails if the term is removed); a wall on the wrong side of spot is refused as a
+target, since it is already breached and would return a near-certain probability for a play with
+no room; the median, not the mean, is "typical", because one gap dominates a four-print mean; and
+an `inputs` strip shows which feeds actually contributed, so an absent feed never reads as a
+neutral one.
+
+## 2026-08-18 — Meridian showed dealer structure from the WRONG EXPIRY for dated events — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | **P1** — every earnings event more than a few days out |
+| **Found by** | user question: "a stock 10 days away — does it show the GEX/gamma/nodes for THAT day?" |
+| **Status** | FIXED — event-expiry scoping + a visible scope badge, 15 unit tests |
+
+`meridian-earnings-intel.ts` called `gexHeatmapForLargo(sym, { lens: "gex", top_strikes: 8 })`
+with **no expiry argument at all**, then read `call_wall` / `put_wall` / `flip` / `max_pain` off
+the result. By the matrix's own documented definitions those are:
+
+| field | actual scope |
+|---|---|
+| walls, flip, net GEX | summed over the **~8 nearest expiries** |
+| `max_pain` | scoped to the **FRONT expiry** alone |
+
+For a print ten days out that is wrong twice over. The front expiry can die a week before the
+company reports, so its max pain describes a chain that will never see the news; and the
+near-term sum is dominated by whichever weekly carries the most open interest, which is usually
+not the one spanning the event.
+
+`polygon-options-gex.ts` says so itself, in the comment on `max_pain_by_expiry`: the field exists
+"so the Key Levels panel can scope EVERY tile to one expiry instead of showing an aggregate flip
+beside a single-expiry max pain". **The earnings desk was doing precisely the thing that comment
+warns against.**
+
+**Fix.** `meridian-event-expiry-core.ts` re-derives the levels from the per-(strike, expiry)
+`cells` for the first expiry **on or after** the report date — the contract a member would
+actually trade the event in. A same-day expiry qualifies (it settles after an AMC release). The
+expiry list is sorted defensively rather than trusted: the axis is documented ascending, but
+far-dated monthlies are MERGED IN after the near-term block, so a caller taking the first array
+match would pick a monthly over a nearer weekly.
+
+**It says which chain it used.** `expiry_scope` / `expiry_label` ship on the payload and render as
+a badge — green for event-scoped, amber for the aggregate fallback. An event-scoped wall and a
+whole-book one are pixel-identical, which is exactly how this went unnoticed.
+
+**Related fixes in the same pass.** An empty scoped column returns `null` net GEX rather than a
+confident `0`, which would render as "perfectly balanced dealer gamma" for a chain we have no data
+on. A chain with no expiry reaching the print reports `noCoveringExpiry` rather than silently
+falling back. And the expected-move rail now prints the NUMBER beside each marker — it showed
+"max pain" and "put wall" as bare labels, forcing the reader to eyeball a pixel against an axis.

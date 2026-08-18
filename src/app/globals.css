@@ -185,10 +185,19 @@ html { scroll-behavior: smooth; }
   outline-offset: 2px;
 }
 
+/* The body face. Named for its ROLE, not for a font this app does not ship — layout.tsx loads
+   Anton, Syne and JetBrains Mono only. The previous `var(--font-inter), system-ui, sans-serif`
+   named a variable nothing defined, and because the fallbacks sat OUTSIDE the var() the whole
+   declaration was invalid at computed-value time: the entire product rendered in the browser's
+   default SERIF. Swapping in a real webfont later is one declaration. */
+:root {
+  --font-body: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
 body {
   background: #040407;
   color: #f0f0f8;
-  font-family: var(--font-inter), system-ui, sans-serif;
+  font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
 }
@@ -207,10 +216,10 @@ body {
 
 ::selection { background: rgba(0, 230, 118, 0.35); color: #fff; }
 
-.font-display { font-family: var(--font-anton), sans-serif; }
-.font-anton { font-family: var(--font-anton), sans-serif; }
-.font-syne { font-family: var(--font-syne), sans-serif; }
-.font-mono { font-family: var(--font-jetbrains), monospace; }
+.font-display { font-family: var(--font-anton, sans-serif); }
+.font-anton { font-family: var(--font-anton, sans-serif); }
+.font-syne { font-family: var(--font-syne, sans-serif); }
+.font-mono { font-family: var(--font-jetbrains, monospace); }
 
 /* ──────────────────────────────────────────────────────────────────────────
    DESIGN SYSTEM — foundational tokens & type scale (opt-in; additive).
@@ -229,32 +238,32 @@ body {
 @layer components {
   /* ── Type scale ──────────────────────────────────────────────────────── */
   .t-display {
-    font-family: var(--font-anton), sans-serif;
+    font-family: var(--font-anton, sans-serif);
     font-size: clamp(2.5rem, 5vw, 5rem);
     line-height: 0.9;
   }
   .t-h1 {
-    font-family: var(--font-anton), sans-serif;
+    font-family: var(--font-anton, sans-serif);
     @apply text-5xl md:text-6xl leading-[0.92];
   }
   .t-h2 {
-    font-family: var(--font-anton), sans-serif;
+    font-family: var(--font-anton, sans-serif);
     @apply text-4xl md:text-5xl leading-[0.95];
   }
   .t-label {
-    font-family: var(--font-syne), sans-serif;
+    font-family: var(--font-syne, sans-serif);
     @apply font-extrabold tracking-[0.12em];
   }
   .t-kicker {
-    font-family: var(--font-jetbrains), monospace;
+    font-family: var(--font-jetbrains, monospace);
     font-size: 10px; /* hard floor — never smaller */
     @apply uppercase tracking-[0.35em] text-bull;
   }
   .t-body {
-    font-family: var(--font-inter), system-ui, sans-serif;
+    font-family: var(--font-body);
   }
   .t-num {
-    font-family: var(--font-jetbrains), monospace;
+    font-family: var(--font-jetbrains, monospace);
     font-variant-numeric: tabular-nums;
   }
 
@@ -1288,7 +1297,7 @@ html.product-shell .nav-mega {
 }
 
 .faq-question {
-  font-family: var(--font-syne), sans-serif;
+  font-family: var(--font-syne, sans-serif);
   font-size: 0.95rem;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -1308,7 +1317,7 @@ html.product-shell .nav-mega {
 
 .faq-question::after {
   content: "+";
-  font-family: var(--font-jetbrains), monospace;
+  font-family: var(--font-jetbrains, monospace);
   font-size: 1.1rem;
   color: #a3e635;
   flex-shrink: 0;
@@ -1362,7 +1371,7 @@ html.product-shell .nav-mega {
   gap: 0.5rem;
 }
 .onboarding-tab {
-  font-family: var(--font-jetbrains), monospace;
+  font-family: var(--font-jetbrains, monospace);
   font-size: 0.7rem;
   letter-spacing: 0.15em;
   text-transform: uppercase;
@@ -1387,7 +1396,7 @@ html.product-shell .nav-mega {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: var(--font-jetbrains), monospace;
+  font-family: var(--font-jetbrains, monospace);
   color: #7dd3fc; /* sky-300 */
   border: 1px solid rgba(0, 230, 118, 0.2);
   border-radius: 3px;
@@ -1403,7 +1412,7 @@ html.product-shell .nav-mega {
   padding: 1.4rem 1.4rem 1.6rem;
 }
 .onboarding-kicker {
-  font-family: var(--font-jetbrains), monospace;
+  font-family: var(--font-jetbrains, monospace);
   font-size: 0.625rem;
   letter-spacing: 0.35em;
   text-transform: uppercase;
@@ -1411,7 +1420,7 @@ html.product-shell .nav-mega {
   margin: 0 0 0.5rem;
 }
 .onboarding-title {
-  font-family: var(--font-anton), sans-serif;
+  font-family: var(--font-anton, sans-serif);
   font-size: 1.9rem;
   line-height: 1.05;
   letter-spacing: 0.02em;
@@ -1420,7 +1429,7 @@ html.product-shell .nav-mega {
   margin: 0 0 0.8rem;
 }
 .onboarding-text {
-  font-family: var(--font-syne), sans-serif;
+  font-family: var(--font-syne, sans-serif);
   font-size: 0.92rem;
   line-height: 1.6;
   color: #e5f3ff;
@@ -1429,7 +1438,7 @@ html.product-shell .nav-mega {
 .onboarding-deeplink {
   display: inline-block;
   margin-top: 1rem;
-  font-family: var(--font-jetbrains), monospace;
+  font-family: var(--font-jetbrains, monospace);
   font-size: 0.72rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -1464,7 +1473,7 @@ html.product-shell .nav-mega {
   margin-top: 1.2rem;
 }
 .onboarding-btn-ghost {
-  font-family: var(--font-jetbrains), monospace;
+  font-family: var(--font-jetbrains, monospace);
   font-size: 0.72rem;
   letter-spacing: 0.15em;
   text-transform: uppercase;
@@ -1481,7 +1490,7 @@ html.product-shell .nav-mega {
   border-color: rgba(125, 211, 252, 0.6);
 }
 .onboarding-btn-primary {
-  font-family: var(--font-jetbrains), monospace;
+  font-family: var(--font-jetbrains, monospace);
   font-size: 0.72rem;
   letter-spacing: 0.15em;
   text-transform: uppercase;
@@ -1508,21 +1517,21 @@ html.product-shell .nav-mega {
   padding-left: 0.8rem;
 }
 .onboarding-glossary-term {
-  font-family: var(--font-syne), sans-serif;
+  font-family: var(--font-syne, sans-serif);
   font-weight: 700;
   font-size: 0.85rem;
   color: #22d3ee; /* cyan-400 */
   margin: 0 0 0.2rem;
 }
 .onboarding-glossary-def {
-  font-family: var(--font-syne), sans-serif;
+  font-family: var(--font-syne, sans-serif);
   font-size: 0.82rem;
   line-height: 1.55;
   color: #e5f3ff;
   margin: 0;
 }
 .onboarding-disclaimer {
-  font-family: var(--font-jetbrains), monospace;
+  font-family: var(--font-jetbrains, monospace);
   font-size: 0.66rem;
   letter-spacing: 0.04em;
   color: #7dd3fc; /* sky-300 */
@@ -1625,7 +1634,7 @@ html.product-shell .nav-mega {
   .nav-pill-li { @apply relative list-none; }
   .nav-pill-item {
     @apply inline-flex items-center gap-1.5 rounded-full px-4 py-2 no-underline cursor-pointer;
-    font-family: var(--font-syne), sans-serif;
+    font-family: var(--font-syne, sans-serif);
     font-weight: 600;
     font-size: 13.5px;
     letter-spacing: -0.01em;
@@ -1712,7 +1721,7 @@ html.product-shell .nav-mega {
     box-shadow: 0 0 26px -8px var(--accent);
   }
   .nav-card-label {
-    font-family: var(--font-syne), sans-serif;
+    font-family: var(--font-syne, sans-serif);
     font-weight: 800;
     font-size: 16.5px;
     color: #fff;
@@ -2438,7 +2447,7 @@ html.product-shell .nav-mega {
   }
 
   .nav-link-landing-bold {
-    font-family: var(--font-syne), sans-serif;
+    font-family: var(--font-syne, sans-serif);
     font-size: 11px;
     font-weight: 800;
     letter-spacing: 0.28em;
@@ -2457,7 +2466,7 @@ html.product-shell .nav-mega {
   }
 
   .nav-link-landing-bold .nav-link-stacked span:first-child {
-    font-family: var(--font-anton), sans-serif;
+    font-family: var(--font-anton, sans-serif);
     /* Intentional exception to the Anton>=24px display floor: this is a horizontal
        nav micro-label (stacked over a 10px Syne sublabel), not a display headline.
        24px here breaks nav height. */
@@ -2467,7 +2476,7 @@ html.product-shell .nav-mega {
   }
 
   .nav-link-landing-bold .nav-link-stacked span:last-child {
-    font-family: var(--font-syne), sans-serif;
+    font-family: var(--font-syne, sans-serif);
     font-size: 10px;
     font-weight: 800;
     letter-spacing: 0.32em;
@@ -2548,7 +2557,7 @@ html.product-shell .nav-mega {
   }
 
   .nav-features-menu-label {
-    font-family: var(--font-syne), sans-serif;
+    font-family: var(--font-syne, sans-serif);
     font-size: 11px;
     font-weight: 800;
     letter-spacing: 0.18em;
@@ -2557,7 +2566,7 @@ html.product-shell .nav-mega {
   }
 
   .nav-features-menu-sub {
-    font-family: var(--font-jetbrains), monospace;
+    font-family: var(--font-jetbrains, monospace);
     font-size: 10px;
     letter-spacing: 0.15em;
     text-transform: uppercase;
@@ -2591,7 +2600,7 @@ html.product-shell .nav-mega {
   }
 
   .nav-mobile-drawer-label {
-    font-family: var(--font-jetbrains), monospace;
+    font-family: var(--font-jetbrains, monospace);
     font-size: 10px;
     letter-spacing: 0.35em;
     text-transform: uppercase;
@@ -2607,7 +2616,7 @@ html.product-shell .nav-mega {
 
   .nav-mobile-top-link {
     display: block;
-    font-family: var(--font-syne), sans-serif;
+    font-family: var(--font-syne, sans-serif);
     font-size: 13px;
     font-weight: 800;
     letter-spacing: 0.25em;
@@ -3901,7 +3910,7 @@ html.product-shell .nav-mega {
     align-items: center;
     gap: 0.4rem;
     padding: 0.35rem 0.65rem;
-    font-family: var(--font-jetbrains), monospace;
+    font-family: var(--font-jetbrains, monospace);
     font-size: 0.625rem;
     font-weight: 700;
     letter-spacing: 0.2em;
@@ -3949,7 +3958,7 @@ html.product-shell .nav-mega {
   }
 
   .largo-msg-label {
-    font-family: var(--font-jetbrains), monospace;
+    font-family: var(--font-jetbrains, monospace);
     font-size: 10px;
     letter-spacing: 0.35em;
     text-transform: uppercase;
@@ -3977,7 +3986,7 @@ html.product-shell .nav-mega {
 
   .largo-msg-assistant .largo-msg-text {
     color: #a3e635;
-    font-family: var(--font-jetbrains), monospace;
+    font-family: var(--font-jetbrains, monospace);
     text-shadow:
       0 0 6px rgba(0, 230, 118, 0.45),
       0 0 1px rgba(0, 230, 118, 0.8);
@@ -4001,7 +4010,7 @@ html.product-shell .nav-mega {
   }
 
   .largo-tool-chip {
-    font-family: var(--font-jetbrains), monospace;
+    font-family: var(--font-jetbrains, monospace);
     font-size: 10px;
     letter-spacing: 0.12em;
     text-transform: uppercase;
@@ -4138,7 +4147,7 @@ html.product-shell .nav-mega {
   }
 
   .largo-thinking-kicker {
-    font-family: var(--font-jetbrains), monospace;
+    font-family: var(--font-jetbrains, monospace);
     font-size: 10px;
     letter-spacing: 0.35em;
     color: #7dd3fc;
@@ -4146,7 +4155,7 @@ html.product-shell .nav-mega {
   }
 
   .largo-status-phrase {
-    font-family: var(--font-syne), sans-serif;
+    font-family: var(--font-syne, sans-serif);
     font-size: 0.95rem;
     font-weight: 700;
     line-height: 1.35;
@@ -4180,7 +4189,7 @@ html.product-shell .nav-mega {
     display: inline-flex;
     align-items: center;
     gap: 0.3rem;
-    font-family: var(--font-jetbrains), monospace;
+    font-family: var(--font-jetbrains, monospace);
     font-size: 10px;
     letter-spacing: 0.15em;
     color: #a8a8b8; /* readable floor — no-grey rule: was var(--grey-600) #22222c (idle/pending state) */
@@ -4391,7 +4400,7 @@ html.product-shell .nav-mega {
   }
 
   .largo-page-kicker {
-    font-family: var(--font-jetbrains), monospace;
+    font-family: var(--font-jetbrains, monospace);
     font-size: 10px;
     letter-spacing: 0.45em;
     text-transform: uppercase;
@@ -4400,7 +4409,7 @@ html.product-shell .nav-mega {
   }
 
   .largo-page-title {
-    font-family: var(--font-anton), sans-serif;
+    font-family: var(--font-anton, sans-serif);
     font-size: clamp(2rem, 5vw, 3.25rem);
     line-height: 0.95;
     letter-spacing: 0.04em;
@@ -4410,7 +4419,7 @@ html.product-shell .nav-mega {
   }
 
   .largo-page-subtitle {
-    font-family: var(--font-jetbrains), monospace;
+    font-family: var(--font-jetbrains, monospace);
     font-size: 11px;
     letter-spacing: 0.2em;
     text-transform: uppercase;
@@ -4510,7 +4519,7 @@ html.product-shell .nav-mega {
      the body itself carries no bias. Was #a3e635 with a green glow. */
   .largo-message-body {
     color: #f0f0f8;
-    font-family: var(--font-jetbrains), monospace;
+    font-family: var(--font-jetbrains, monospace);
     line-height: 1.65;
   }
 
@@ -4560,7 +4569,7 @@ html.product-shell .nav-mega {
   }
 
   .largo-fmt-code {
-    font-family: var(--font-jetbrains), monospace;
+    font-family: var(--font-jetbrains, monospace);
     font-size: 0.88em;
     padding: 0.1em 0.35em;
     border: 1px solid rgba(34, 211, 238, 0.28);
@@ -4569,7 +4578,7 @@ html.product-shell .nav-mega {
   }
 
   .largo-fmt-num {
-    font-family: var(--font-jetbrains), monospace;
+    font-family: var(--font-jetbrains, monospace);
     font-weight: 700;
     text-decoration: underline;
     text-decoration-thickness: 1.5px;
@@ -4620,7 +4629,7 @@ html.product-shell .nav-mega {
      as one wall of text. */
   .largo-fmt-bottomline-title {
     margin: 0 0 0.55rem;
-    font-family: var(--font-jetbrains), monospace;
+    font-family: var(--font-jetbrains, monospace);
     font-size: 0.68rem;
     font-weight: 700;
     letter-spacing: 0.32em;
@@ -4668,7 +4677,7 @@ html.product-shell .nav-mega {
 
   .largo-fmt-section-title {
     margin: 0 0 0.4rem;
-    font-family: var(--font-jetbrains), monospace;
+    font-family: var(--font-jetbrains, monospace);
     font-size: 0.72rem;
     font-weight: 700;
     letter-spacing: 0.12em;
@@ -4679,7 +4688,7 @@ html.product-shell .nav-mega {
 
   .largo-fmt-heading {
     margin: 0.85rem 0 0.45rem;
-    font-family: var(--font-jetbrains), monospace;
+    font-family: var(--font-jetbrains, monospace);
     font-size: 0.92em;
     font-weight: 700;
     letter-spacing: 0.04em;
@@ -4779,7 +4788,7 @@ html.product-shell .nav-mega {
     padding: 0.5rem 0.75rem;
     border: 1px solid rgba(0, 255, 136, 0.15);
     background: rgba(0, 255, 136, 0.04);
-    font-family: var(--font-jetbrains), monospace;
+    font-family: var(--font-jetbrains, monospace);
     font-size: 0.65rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -5230,7 +5239,7 @@ html.product-shell .nav-mega {
     gap: 0.75rem;
   }
   .largo-empty-title {
-    font-family: var(--font-anton), sans-serif;
+    font-family: var(--font-anton, sans-serif);
     font-size: clamp(1.75rem, 4vw, 2.75rem);
     line-height: 1;
     letter-spacing: 0.02em;
@@ -5337,7 +5346,7 @@ html.product-shell .nav-mega {
     gap: 1rem;
     width: 100%;
     color: #f0f0f8;
-    font-family: var(--font-jetbrains), monospace;
+    font-family: var(--font-jetbrains, monospace);
   }
   .bie-answer-head {
     display: flex;
@@ -5846,7 +5855,7 @@ html.product-shell .nav-mega {
     top: 50%;
     left: 1rem;
     display: inline-block;
-    font-family: var(--font-jetbrains), monospace;
+    font-family: var(--font-jetbrains, monospace);
     font-size: 0.875rem;
     font-weight: 600;
     letter-spacing: 0.14em;
@@ -5888,7 +5897,7 @@ html.product-shell .nav-mega {
     top: 50%;
     transform: translateY(-50%);
     color: #bf5fff;
-    font-family: var(--font-jetbrains), monospace;
+    font-family: var(--font-jetbrains, monospace);
     font-size: 0.875rem;
     animation: blink 1s step-end infinite;
     pointer-events: none;
@@ -5920,7 +5929,7 @@ html.product-shell .nav-mega {
   }
 
   .largo-widget-label {
-    font-family: var(--font-jetbrains), monospace;
+    font-family: var(--font-jetbrains, monospace);
     font-size: 10px;
     letter-spacing: 0.3em;
     text-transform: uppercase;
@@ -11930,7 +11939,7 @@ html.product-shell .nav-mega {
   }
 
   .spx-desk-closed-headline {
-    font-family: var(--font-anton), sans-serif;
+    font-family: var(--font-anton, sans-serif);
     @apply uppercase leading-none tracking-wide text-white;
     font-size: clamp(2rem, 5.5vw, 3.25rem);
     text-shadow:

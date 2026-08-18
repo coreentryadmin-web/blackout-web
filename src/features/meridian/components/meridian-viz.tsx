@@ -364,14 +364,17 @@ export function MeridianMoveRail({
                   ["--tier" as string]: slot.tier,
                 }}
               >
-                {m.label}
+                {/* The NUMBER ships with the label. A rail that says "max pain" without saying
+                    where max pain IS forces the reader to eyeball a pixel position against an
+                    axis — which is the one thing a chart exists to spare them. */}
+                {m.label} <b className="mv-rail-marker-num">{fmtPrice(num(m.value))}</b>
               </span>
             </div>
           );
         })}
         <div className="mv-rail-spot" style={{ left: `${spotPct * 100}%` }}>
           <span className="mv-rail-spot-dot" />
-          <span className="mv-rail-spot-label">{fmtPrice(mb.spot)}</span>
+          <span className="mv-rail-spot-label">spot {fmtPrice(mb.spot)}</span>
         </div>
       </div>
       <div className="mv-rail-bounds">
@@ -651,19 +654,33 @@ export function MeridianDarkPoolTape({
  */
 export function MeridianCountdown({ targetIso, label }: { targetIso: string | null | undefined; label?: string }) {
   const [now, setNow] = useState(() => Date.now());
+  const c0 = countdownTo(targetIso, now);
+  // Inside an hour the clock shows SECONDS and ticks every second; outside it, once a minute is
+  // enough. A minutes-only readout that changes at most once a minute is indistinguishable from
+  // a frozen one — the countdown has to LOOK live on an event clock, which is most of what it
+  // is for. Reported live as "the earnings timer does not update".
+  const showSeconds = Boolean(c0 && !c0.past && c0.totalMs < 3_600_000);
   useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 60_000);
+    const id = setInterval(() => setNow(Date.now()), showSeconds ? 1_000 : 15_000);
     return () => clearInterval(id);
-  }, []);
-  const c = countdownTo(targetIso, now);
+  }, [showSeconds]);
+  const c = c0;
   if (!c) return null;
   const imminent = !c.past && c.totalMs < 24 * 3_600_000;
+  const seconds = Math.floor((c.totalMs % 60_000) / 1000);
   return (
     <div className={`mv-countdown${imminent ? " mv-countdown-imminent" : ""}${c.past ? " mv-countdown-past" : ""}`}>
       <span className="mv-countdown-label">{c.past ? "reported" : label ?? "Earnings"}</span>
       <span className="mv-countdown-clock">
         {String(c.days).padStart(2, "0")}<i>d</i> {String(c.hours).padStart(2, "0")}<i>h</i>{" "}
         {String(c.minutes).padStart(2, "0")}<i>m</i>
+        {showSeconds && (
+          <>
+            {" "}
+            {String(seconds).padStart(2, "0")}
+            <i>s</i>
+          </>
+        )}
         {c.past && <span className="mv-countdown-ago"> ago</span>}
       </span>
     </div>

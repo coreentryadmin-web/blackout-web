@@ -91,6 +91,10 @@ export async function loadMeridianEarningsEnrichment(
     post_print: post_print.headline ? post_print : null,
     print_history: history.print_history,
     print_history_summary: history.print_history_summary,
+    // An outage must be distinguishable from an empty company. Without this, every panel fed
+    // from the Benzinga calendar renders blank and the reader concludes the data does not
+    // exist — measured on 8/8 mega-caps on 2026-08-18.
+    calendar_error: history.history_error ?? (benzingaRes as { error?: string | null }).error ?? null,
     beat_rates,
     analyst_revisions: catalystBundle.analyst_revisions,
     price_targets: catalystBundle.price_targets,

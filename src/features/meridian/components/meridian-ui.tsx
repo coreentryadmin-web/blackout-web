@@ -84,8 +84,11 @@ export function MeridianAnalyticsBanner({
       <div className="meridian-analytics-banner-body">
         <p className="meridian-analytics-banner-label">{label}</p>
         <p className="meridian-analytics-banner-headline">{headline}</p>
-        {sub && <p className="meridian-analytics-banner-sub">{sub}</p>}
       </div>
+      {/* The value moves to the RIGHT EDGE instead of stacking under the headline. These banners
+          ran a short line of text down the left and left two thirds of the row blank; the
+          readout is the thing a reader is looking for, so it gets the space and the weight. */}
+      {sub && <p className="meridian-analytics-banner-sub">{sub}</p>}
     </div>
   );
 }
@@ -246,5 +249,32 @@ export function MeridianEmpty({ message }: { message: string }) {
       </span>
       <p>{message}</p>
     </div>
+  );
+}
+
+/**
+ * One label→value row, label left and value hard right with a leader between them.
+ *
+ * The card lists were single strings ("EPS est 1.85"), which put the number mid-sentence in the
+ * left third of a wide card and left the rest of the row empty. Splitting the pair lets the
+ * values form a COLUMN — so they can be scanned down, compared, and set in tabular figures —
+ * and gives the number the weight and colour it earns on a numbers desk.
+ */
+export function MeridianKV({
+  label,
+  value,
+  tone,
+}: {
+  label: React.ReactNode;
+  value: React.ReactNode;
+  /** Semantic direction, when the value has one. Never used for decoration. */
+  tone?: "bull" | "bear" | "neutral";
+}) {
+  return (
+    <li className="meridian-kv">
+      <span className="meridian-kv-label">{label}</span>
+      <span className="meridian-kv-leader" aria-hidden="true" />
+      <span className={`meridian-kv-value${tone ? ` mv-${tone}` : ""}`}>{value}</span>
+    </li>
   );
 }

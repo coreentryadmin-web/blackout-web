@@ -344,6 +344,8 @@ export type MeridianEarningsEnrichment = {
   } | null;
   print_history: MeridianEarningsPrint[];
   print_history_summary: string | null;
+  /** Non-null when the earnings-calendar fetch failed — empty panels must say WHY. */
+  calendar_error?: string | null;
   beat_rates: {
     eps_beat_rate: number | null;
     revenue_beat_rate: number | null;
@@ -445,6 +447,17 @@ export type MeridianEarningsThermalRead = {
   gamma_regime: string | null;
   top_strikes: Array<{ strike: number; net_label: string; pct_of_total: number }>;
   nearest_wall: { strike: number; kind: "resistance" | "support"; distance_pts: number } | null;
+  /**
+   * Which chain the levels above describe. "event_expiry" = the first expiry on or after the
+   * print, i.e. the contract that actually prices it. "aggregate" = the whole-book near-term
+   * sum, which mixes expiries that may die before the company reports. They render identically,
+   * so the scope has to be stated.
+   */
+  expiry_scope?: "event_expiry" | "aggregate";
+  expiry_used?: string | null;
+  expiry_days_from_event?: number | null;
+  expiry_label?: string | null;
+  aggregate_expiry_count?: number;
 };
 
 export type MeridianEarningsDarkPoolPrint = {

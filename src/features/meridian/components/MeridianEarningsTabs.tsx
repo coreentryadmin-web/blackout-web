@@ -1,23 +1,28 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useMemo } from "react";
 import type { MeridianEarningsDetail } from "@/features/meridian/lib/meridian-types";
 import { LargoPreEarningsPackCard } from "@/features/largo/components/LargoPreEarningsPackCard";
 import { fmtPct } from "./MeridianDesk";
 import {
   MeridianAnalyticsBanner,
   MeridianDataCard,
+  MeridianKV,
 } from "./meridian-ui";
 import { MeridianEarningsIntelPanel } from "./MeridianEarningsIntelPanel";
 import { etWallClockToIso } from "@/lib/meridian/meridian-viz-core";
+import { MeridianEarningsSummaryPanel } from "./MeridianEarningsSummaryPanel";
 import { MeridianEarningsReportPanel } from "./MeridianEarningsReportPanel";
 import { MeridianEarningsEstimatesPanel } from "./MeridianEarningsEstimatesPanel";
 import { MeridianEarningsPositioningPanel } from "./MeridianEarningsPositioningPanel";
 import { MeridianEarningsHistoryPanel } from "./MeridianEarningsHistoryPanel";
 
-type EarningsTab = "report" | "estimates" | "positioning" | "history";
+export type EarningsTab = "summary" | "report" | "estimates" | "positioning" | "history";
 
-const TABS: Array<{ id: EarningsTab; label: string }> = [
+export const EARNINGS_TABS: Array<{ id: EarningsTab; label: string }> = [
+  // Summary leads: it is the only tab that answers "so what do I do?", and a reader who opens
+  // an event wants that before the evidence behind it.
+  { id: "summary", label: "Summary" },
   { id: "report", label: "Report" },
   { id: "estimates", label: "Estimates" },
   { id: "positioning", label: "Positioning" },
@@ -65,49 +70,66 @@ function HeadlineList({
   );
 }
 
+/**
+ * The tab strip, on its own so the detail panel can mount it in the HEADER BAR rather than
+ * above the panel body. Presentational: the selection lives with whoever owns the panel, which
+ * is what lets one control sit in the chrome while the content it switches sits below.
+ */
+export function MeridianEarningsTablist({
+  tab,
+  onTabChange,
+}: {
+  tab: EarningsTab;
+  onTabChange: (t: EarningsTab) => void;
+}) {
+  return (
+    <div className="meridian-earnings-tablist" role="tablist" aria-label="Earnings brief sections">
+      {EARNINGS_TABS.map((t) => (
+        <button
+          key={t.id}
+          type="button"
+          role="tab"
+          aria-selected={tab === t.id}
+          className={`meridian-earnings-tab meridian-earnings-tab-${t.id}${tab === t.id ? " is-active" : ""}`}
+          onClick={() => onTabChange(t.id)}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 type Props = {
   detail: MeridianEarningsDetail;
+  /** Controlled by the detail panel, which renders the tablist up in the header. */
+  tab: EarningsTab;
 };
 
-export function MeridianEarningsTabs({ detail }: Props) {
+export function MeridianEarningsTabs({ detail, tab }: Props) {
   const { enrichment, intel, pack } = detail;
   const cal = enrichment.earnings_calendar;
   // The print instant for the countdown. The feed reports an ET WALL CLOCK date + time, so it
   // has to be composed through the DST-aware converter — a hardcoded offset is wrong for
   // roughly half the calendar and reads as a real scheduling error on an event clock.
   const eventAt = etWallClockToIso(cal?.date ?? null, cal?.report_time_et ?? cal?.time ?? null);
-  const defaultTab: EarningsTab = enrichment.post_print?.headline ? "estimates" : "report";
-  const [tab, setTab] = useState<EarningsTab>(defaultTab);
-  const hadActualRef = useRef(Boolean(cal?.actual_eps != null));
-
-  useEffect(() => {
-    const hasActual = cal?.actual_eps != null;
-    if (hasActual && !hadActualRef.current) {
-      setTab("estimates");
-    }
-    hadActualRef.current = hasActual;
-  }, [cal?.actual_eps]);
-
-  useEffect(() => {
-    if (enrichment.post_print?.headline) setTab("estimates");
-  }, [enrichment.post_print?.headline]);
-
   return (
-    <div className="meridian-earnings-tabs">
-      <div className="meridian-earnings-tablist" role="tablist" aria-label="Earnings brief sections">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            role="tab"
-            aria-selected={tab === t.id}
-            className={`meridian-earnings-tab${tab === t.id ? " is-active" : ""}`}
-            onClick={() => setTab(t.id)}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+    <div className="meridian-earnings-tabs" data-tab={tab}>
+      {/* An outage renders as an explanation, never as an empty panel. Measured 2026-08-18:
+          every Benzinga-derived field was empty on 8/8 mega-caps while the same payload's pack
+          carried four prints — a reader saw blank tabs and concluded the company had no
+          earnings history. Blank is a claim; this is the truth. */}
+      {enrichment.calendar_error && (
+        <p className="meridian-feed-error" role="status">
+          Earnings calendar feed did not respond — estimates and print history are unavailable
+          for this refresh. Everything else on this page is live.
+        </p>
+      )}
+      {tab === "summary" && (
+        <div role="tabpanel" className="meridian-earnings-tabpanel">
+          <MeridianEarningsSummaryPanel detail={detail} />
+        </div>
+      )}
 
       {tab === "report" && (
         <div role="tabpanel" className="meridian-earnings-tabpanel">
@@ -216,13 +238,21 @@ export function MeridianEarningsTabs({ detail }: Props) {
             {cal && (
               <MeridianDataCard label="Calendar print" wide tone="earnings" delay={0}>
                 <ul className="meridian-card-list meridian-fin-grid">
-                  {cal.estimated_eps != null && <li>EPS est {cal.estimated_eps.toFixed(2)}</li>}
-                  {cal.actual_eps != null && <li>EPS actual {cal.actual_eps.toFixed(2)}</li>}
+                  {cal.estimated_eps != null && <MeridianKV label="EPS est" value={cal.estimated_eps.toFixed(2)} />}
+                  {cal.actual_eps != null && <MeridianKV label="EPS actual" value={cal.actual_eps.toFixed(2)} />}
                   {cal.eps_surprise_pct != null && (
-                    <li>EPS surprise {fmtSurprisePct(cal.eps_surprise_pct)}</li>
+                    <MeridianKV
+                      label="EPS surprise"
+                      value={fmtSurprisePct(cal.eps_surprise_pct)}
+                      tone={cal.eps_surprise_pct >= 0 ? "bull" : "bear"}
+                    />
                   )}
                   {cal.revenue_surprise_pct != null && (
-                    <li>Rev surprise {fmtSurprisePct(cal.revenue_surprise_pct)}</li>
+                    <MeridianKV
+                      label="Rev surprise"
+                      value={fmtSurprisePct(cal.revenue_surprise_pct)}
+                      tone={cal.revenue_surprise_pct >= 0 ? "bull" : "bear"}
+                    />
                   )}
                   {(cal.eps_method || cal.revenue_method) && (
                     <li>
@@ -232,10 +262,14 @@ export function MeridianEarningsTabs({ detail }: Props) {
                     </li>
                   )}
                   {cal.estimated_revenue != null && (
-                    <li>Revenue est {fmtRev(cal.estimated_revenue)}</li>
+                    <MeridianKV label="Revenue est" value={fmtRev(cal.estimated_revenue)} />
                   )}
-                  {cal.actual_revenue != null && <li>Revenue actual {fmtRev(cal.actual_revenue)}</li>}
-                  {cal.previous_eps != null && <li>Prior EPS {cal.previous_eps.toFixed(2)}</li>}
+                  {cal.actual_revenue != null && (
+                    <MeridianKV label="Revenue actual" value={fmtRev(cal.actual_revenue)} />
+                  )}
+                  {cal.previous_eps != null && (
+                    <MeridianKV label="Prior EPS" value={cal.previous_eps.toFixed(2)} />
+                  )}
                 </ul>
               </MeridianDataCard>
             )}
@@ -243,10 +277,18 @@ export function MeridianEarningsTabs({ detail }: Props) {
               <MeridianDataCard label="YoY estimate trajectory" tone="earnings" delay={40}>
                 <ul className="meridian-card-list meridian-fin-grid">
                   {enrichment.earnings_yoy.eps_yoy_pct != null && (
-                    <li>EPS est {fmtPct(enrichment.earnings_yoy.eps_yoy_pct)} YoY</li>
+                    <MeridianKV
+                      label="EPS est YoY"
+                      value={fmtPct(enrichment.earnings_yoy.eps_yoy_pct)}
+                      tone={enrichment.earnings_yoy.eps_yoy_pct >= 0 ? "bull" : "bear"}
+                    />
                   )}
                   {enrichment.earnings_yoy.revenue_yoy_pct != null && (
-                    <li>Revenue est {fmtPct(enrichment.earnings_yoy.revenue_yoy_pct)} YoY</li>
+                    <MeridianKV
+                      label="Revenue est YoY"
+                      value={fmtPct(enrichment.earnings_yoy.revenue_yoy_pct)}
+                      tone={enrichment.earnings_yoy.revenue_yoy_pct >= 0 ? "bull" : "bear"}
+                    />
                   )}
                 </ul>
               </MeridianDataCard>
@@ -277,10 +319,18 @@ export function MeridianEarningsTabs({ detail }: Props) {
               <MeridianDataCard label="Historical beat rates" tone="earnings" delay={160}>
                 <ul className="meridian-card-list meridian-fin-grid">
                   {enrichment.beat_rates.eps_beat_rate != null && (
-                    <li>EPS beats {Math.round(enrichment.beat_rates.eps_beat_rate * 100)}%</li>
+                    <MeridianKV
+                      label="EPS beats"
+                      value={`${Math.round(enrichment.beat_rates.eps_beat_rate * 100)}%`}
+                      tone={enrichment.beat_rates.eps_beat_rate >= 0.5 ? "bull" : "bear"}
+                    />
                   )}
                   {enrichment.beat_rates.revenue_beat_rate != null && (
-                    <li>Revenue beats {Math.round(enrichment.beat_rates.revenue_beat_rate * 100)}%</li>
+                    <MeridianKV
+                      label="Revenue beats"
+                      value={`${Math.round(enrichment.beat_rates.revenue_beat_rate * 100)}%`}
+                      tone={enrichment.beat_rates.revenue_beat_rate >= 0.5 ? "bull" : "bear"}
+                    />
                   )}
                 </ul>
               </MeridianDataCard>
@@ -289,14 +339,24 @@ export function MeridianEarningsTabs({ detail }: Props) {
               <MeridianDataCard label="Street estimates" wide tone="earnings" delay={80}>
                 <ul className="meridian-card-list">
                   {enrichment.street_estimates.map((row) => (
-                    <li key={row.period ?? "unknown"}>
-                      {row.period ?? "Next"}
-                      {row.eps_estimate != null ? ` · EPS est ${row.eps_estimate}` : ""}
-                      {row.revenue_estimate != null
-                        ? ` · Rev est ${fmtRev(row.revenue_estimate)}`
-                        : ""}
-                      {row.source === "earnings_calendar" ? " · calendar" : ""}
-                    </li>
+                    <MeridianKV
+                      key={row.period ?? "unknown"}
+                      label={
+                        <>
+                          {row.period ?? "Next"}
+                          {row.source === "earnings_calendar" ? (
+                            <span className="meridian-kv-note"> calendar</span>
+                          ) : null}
+                        </>
+                      }
+                      value={
+                        <>
+                          {row.eps_estimate != null ? `EPS ${row.eps_estimate}` : ""}
+                          {row.eps_estimate != null && row.revenue_estimate != null ? " · " : ""}
+                          {row.revenue_estimate != null ? fmtRev(row.revenue_estimate) : ""}
+                        </>
+                      }
+                    />
                   ))}
                 </ul>
               </MeridianDataCard>
@@ -305,12 +365,17 @@ export function MeridianEarningsTabs({ detail }: Props) {
               <MeridianDataCard label="Price targets" wide tone="earnings" delay={100}>
                 <ul className="meridian-card-list">
                   {enrichment.price_targets.map((pt) => (
-                    <li key={`${pt.firm}-${pt.published}-${pt.price_target}`}>
-                      ${pt.price_target}
-                      {pt.firm ? ` · ${pt.firm}` : ""}
-                      {pt.action ? ` · ${pt.action}` : ""}
-                      {pt.summary ? ` — ${pt.summary.slice(0, 80)}` : ""}
-                    </li>
+                    <MeridianKV
+                      key={`${pt.firm}-${pt.published}-${pt.price_target}`}
+                      label={
+                        <>
+                          {pt.firm ?? "Analyst"}
+                          {pt.action ? <span className="meridian-kv-note"> {pt.action}</span> : null}
+                        </>
+                      }
+                      value={`$${pt.price_target}`}
+                      tone={pt.action === "raised" ? "bull" : pt.action === "lowered" ? "bear" : undefined}
+                    />
                   ))}
                 </ul>
               </MeridianDataCard>

@@ -19,6 +19,7 @@ import {
   MeridianStructureLadder,
   type RailMarker,
 } from "./meridian-viz";
+import { splitFlowByEventExpiry } from "@/lib/meridian/meridian-event-expiry-core";
 
 export function MeridianEarningsPositioningPanel({
   ticker,
@@ -55,6 +56,21 @@ export function MeridianEarningsPositioningPanel({
           <>
             <div className="mr-panel">
               <span className="mr-panel-title">Dealer structure</span>
+              {/* WHICH CHAIN these levels describe. An event-scoped wall and a whole-book
+                  aggregate render identically, and only one of them answers "what is positioned
+                  around this print" — so the scope is stated rather than assumed. */}
+              {thermal.expiry_label && (
+                <span
+                  className={`mr-scope mr-scope-${thermal.expiry_scope ?? "aggregate"}`}
+                  title={
+                    thermal.expiry_scope === "event_expiry"
+                      ? "Levels re-summed from the expiry that covers this print"
+                      : `Whole-book aggregate across ${thermal.aggregate_expiry_count ?? "several"} near-term expiries — not scoped to this print`
+                  }
+                >
+                  {thermal.expiry_label}
+                </span>
+              )}
               <MeridianStructureLadder thermal={thermal} onLevelHover={setHoverPrice} />
               {thermal.net_gex_label && (
                 <p className="mv-note">
@@ -93,6 +109,11 @@ export function MeridianEarningsPositioningPanel({
                   net {flow.net_premium_label} · {flow.bias} · {flow.window_hours}h window
                 </p>
               )}
+              {/* HOW MUCH OF THIS FLOW CAN SEE THE NEWS. A sweep in a weekly that expires before
+                  the company reports is not an earnings bet however large — it is a different
+                  trade on the same ticker, and summing it into an "earnings flow" number
+                  overstates conviction. */}
+              <FlowSurvival prints={flow.top_prints} eventYmd={thermal?.expiry_used ?? null} />
               <ul className="mp-flow-list">
                 {flow.top_prints.map((p, i) => (
                   <li key={`${p.strike}-${p.expiry}-${i}`}>
@@ -115,5 +136,37 @@ export function MeridianEarningsPositioningPanel({
         </div>
       </div>
     </section>
+  );
+}
+
+/**
+ * The share of flow positioned in contracts that outlive the print.
+ *
+ * Rendered only when something could actually be classified — an absent split must not read as
+ * "no one is positioned for the event", which is a claim, when the truth is "we could not tell".
+ */
+function FlowSurvival({
+  prints,
+  eventYmd,
+}: {
+  prints: Array<{ premium?: number | null; option_type?: string | null; expiry?: string | null }> | null | undefined;
+  eventYmd: string | null;
+}) {
+  const split = splitFlowByEventExpiry(prints, eventYmd);
+  if (split.survivingShare == null) return null;
+  const surviving = Math.round(split.survivingShare * 100);
+  const bull = (split.survivingNetCallPremium ?? 0) > 0;
+  return (
+    <p className="mv-note mv-flow-survival">
+      <b className={surviving >= 50 ? "mv-bull" : "mv-bear"}>{surviving}%</b> of classified flow sits
+      in contracts that outlive the print
+      {split.survivingNetCallPremium != null && split.survivingNetCallPremium !== 0 && (
+        <>
+          {" "}· net <span className={bull ? "mv-bull" : "mv-bear"}>{bull ? "call" : "put"}</span> premium
+          among them
+        </>
+      )}
+      {split.unclassifiedPremium > 0 && <span className="msum-thin"> · some prints had no expiry</span>}
+    </p>
   );
 }
