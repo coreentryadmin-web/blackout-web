@@ -2171,6 +2171,8 @@ html.nav-locked body { overflow: hidden; }
 .mr-panel-toggle {
   border: 1px solid var(--mv-hairline); border-radius: 0.3rem;
   padding: 0.08rem 0.4rem; background: transparent; color: var(--mv-chrome); cursor: pointer;
+  /* Measured 46x16 live — the type is small by design, the target must not be. */
+  min-height: 24px;
   font-family: var(--font-mono, monospace); font-size: 0.46rem;
   letter-spacing: 0.1em; text-transform: uppercase;
   transition: background-color 0.16s ease;
