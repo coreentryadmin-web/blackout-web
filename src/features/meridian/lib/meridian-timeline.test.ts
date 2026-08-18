@@ -85,3 +85,32 @@ test("priorOpexDates: walks back monthly third Fridays", () => {
   assert.equal(dates.length, 3);
   assert.equal(dates[0], thirdFridayYmd(2026, 7));
 });
+
+test("parseMeridianEventId REJECTS an id whose date is not a date", () => {
+  // The exact shape that produced a HTTP 200 with a half-populated brief on production
+  // (2026-08-18): trailing garbage on the date. `pack.history` survived because the pack path
+  // slices to 10 chars; the enrichment path fed the raw string into date arithmetic and served
+  // an empty print history, which reads as "this company has no earnings history".
+  assert.equal(parseMeridianEventId("earnings:TGT:2026-08-19undefined"), null);
+
+  for (const bad of [
+    "earnings:TGT:notadate",
+    "earnings:TGT:2026-8-19", // unpadded — not the format every downstream comparison assumes
+    "earnings:TGT:",
+    "macro:2026-08-19undefined:CPI",
+    "opex:2026-08-21x",
+    "fda:MRNA:20260815",
+  ]) {
+    assert.equal(parseMeridianEventId(bad), null, `expected null for ${bad}`);
+  }
+});
+
+test("parseMeridianEventId still accepts every well-formed id", () => {
+  // The guard must reject garbage WITHOUT narrowing the real surface — a ticker with a dot or a
+  // digit, and a macro slug that itself contains colons, all remain valid.
+  assert.equal(parseMeridianEventId("earnings:BRK.B:2026-08-19")?.ticker, "BRK.B");
+  assert.equal(parseMeridianEventId("earnings:tgt:2026-08-19")?.ticker, "TGT");
+  assert.equal(parseMeridianEventId("macro:2026-08-12:CPI:CORE")?.slug, "CPI:CORE");
+  assert.equal(parseMeridianEventId("opex:2026-08-21")?.date, "2026-08-21");
+  assert.equal(parseMeridianEventId("fda:MRNA:2026-08-15")?.date, "2026-08-15");
+});

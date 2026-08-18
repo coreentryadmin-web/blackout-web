@@ -70,6 +70,22 @@ const near = (a, b, tolPct) => {
   return Math.abs(a - b) / Math.max(Math.abs(a), Math.abs(b), 1e-9) <= tolPct;
 };
 
+/**
+ * Relative tolerance ALONE is wrong for a value the app has already rounded for display.
+ *
+ * A served YoY of `1.1%` against an exact 1.0684% is off by 2.96% relative — outside a 2%
+ * relative tolerance — purely because one decimal place cannot express 1.0684. The comparison
+ * was flagging the ROUNDING as a data defect, on names where the number was in fact correct
+ * (HD and LOW, 2026-08-18). Allow half of the last displayed digit as an absolute floor: below
+ * that, no disagreement is even representable.
+ */
+const nearRounded = (a, b, tolPct, decimals = 1) => {
+  if (a == null || b == null) return null;
+  const halfUlp = 0.5 * Math.pow(10, -decimals);
+  if (Math.abs(a - b) <= halfUlp) return true;
+  return near(a, b, tolPct);
+};
+
 /* ── ground truth ─────────────────────────────────────────────────────────────────── */
 
 /**
@@ -114,7 +130,12 @@ async function truthSessionMove(ticker, ymd) {
 
 async function validateEvent(fetchJson, item) {
   const ticker = item.ticker;
-  const ev = await fetchJson(`${BASE}/api/market/meridian/event?id=${encodeURIComponent(item.id)}`);
+  // fetchAuditJson takes (base, path) and concatenates them. Passing ONE argument silently
+  // appended the string "undefined" to every event id — which the route accepted, because the
+  // id parser did not validate its date component. The result was a HTTP 200 carrying a
+  // half-populated brief, and this validator reported it as a product P1 on every ticker on
+  // every run for a day. Harness bugs that manufacture findings are worse than no harness.
+  const ev = await fetchJson(BASE, `/api/market/meridian/event?id=${encodeURIComponent(item.id)}`);
   if (!ev.ok || !ev.json) {
     note("FAIL", ticker, "event:fetch", `HTTP ${ev.status}`);
     return;
@@ -151,7 +172,14 @@ async function validateEvent(fetchJson, item) {
       `Benzinga has ${truth.length} prints with actuals (latest ${truth[0].date} EPS ${truth[0].eps_actual}) but the app serves ZERO`
     );
   } else {
+    // Only prints the app actually CLAIMS to cover. `loadBenzingaTickerEarnings` queries a
+    // 420-day window ending at the event, so a 2024 print is outside the app's stated scope and
+    // its absence is the window working, not data loss. Comparing against an unbounded ground
+    // truth reported BHP's 2025-02-17 and 2024-08-26 prints as missing when neither was ever in
+    // range — a harness assumption masquerading as a product defect.
+    const oldestServed = enHist.map((p) => p.report_date).filter(Boolean).sort()[0] ?? null;
     for (const t of truth.slice(0, 4)) {
+      if (oldestServed && t.date < oldestServed) continue;
       const got = enHist.find((p) => p.report_date === t.date);
       if (!got) {
         note("FAIL", ticker, "truth:print_missing", `Benzinga print ${t.date} absent from the app`);
@@ -275,7 +303,7 @@ async function validateEvent(fetchJson, item) {
   const cal = en?.earnings_calendar;
   if (yoy?.eps_yoy_pct != null && cal?.estimated_eps != null && cal?.previous_eps != null && num(cal.previous_eps) !== 0) {
     const expect = ((num(cal.estimated_eps) - num(cal.previous_eps)) / Math.abs(num(cal.previous_eps))) * 100;
-    if (!near(num(yoy.eps_yoy_pct), expect, 0.02)) {
+    if (!nearRounded(num(yoy.eps_yoy_pct), expect, 0.02)) {
       note("FAIL", ticker, "coherence:eps_yoy", `served ${yoy.eps_yoy_pct}% vs est ${cal.estimated_eps} over prior ${cal.previous_eps} = ${expect.toFixed(1)}%`);
     }
   }
@@ -357,9 +385,9 @@ async function validateEvent(fetchJson, item) {
 /* ── main ─────────────────────────────────────────────────────────────────────────── */
 
 async function main() {
-  const { fetchAuditJson, releaseAuditAuth } = await import("./lib/audit-auth-fetch.mjs");
+  const { fetchAuditJson, releaseAuditClerkSession } = await import("./lib/audit-auth-fetch.mjs");
   try {
-    const tl = await fetchAuditJson(`${BASE}/api/market/meridian/timeline?days=21`);
+    const tl = await fetchAuditJson(BASE, "/api/market/meridian/timeline?days=21");
     if (!tl.ok) {
       console.error(`HARNESS: timeline HTTP ${tl.status}`);
       process.exitCode = 1;
@@ -382,7 +410,7 @@ async function main() {
       }
     }
   } finally {
-    await releaseAuditAuth?.();
+    await releaseAuditClerkSession();
   }
 
   const fails = findings.filter((f) => f.severity === "FAIL");
