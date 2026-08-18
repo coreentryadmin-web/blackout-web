@@ -27,8 +27,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  orbitalGeometry,
+  orbitalLabelOffset,
   orbitalLayout,
   orbitalPoint,
+  type OrbitalGeometry,
   ringStack,
   tiltFromPointer,
   type OrbitalNode,
@@ -237,7 +240,10 @@ export function MeridianOrbital({
 
   if (nodes.length === 0) return null;
   const half = size / 2;
-  const R = half - 34; // leave room for the outermost orb + its label
+  // Geometry lives in the core module so the component and its collision test read the SAME
+  // numbers. A test that recomputes placement its own way proves nothing about what renders.
+  const geo = orbitalGeometry(size);
+  const R = geo.R;
 
   // Painter's algorithm: far nodes first, so near orbs overlap far ones and depth reads correctly.
   const ordered = [...placed].sort((a, b) => a.p.depth - b.p.depth);
@@ -297,7 +303,11 @@ export function MeridianOrbital({
             title={`${n.label} · ${n.lean} · weight ${n.weight} · score ${n.score > 0 ? "+" : ""}${n.score}${n.detail ? ` — ${n.detail}` : ""}`}
             aria-label={`${n.label}, ${n.lean}, ${n.dimension}`}
           >
-            <span className="ms-orb-label">{n.label}</span>
+            {/* Labels are projected onto a COMMON RIM RING (orbitalLabelOffset), not anchored
+                under their orb — see that function for why. Observed live on NKLR: "Latest
+                print", "Fundamentals" and "Helix flow" printed on top of each other over the
+                core because each label hung directly below its own orb. */}
+            <OrbLabel node={n} geo={geo} />
           </button>
         );
       })}
@@ -306,5 +316,22 @@ export function MeridianOrbital({
         closer = heavier influence · size = contribution · sector = dimension
       </p>
     </div>
+  );
+}
+
+/** Rim-projected pillar label. Placement math is shared with the collision test. */
+function OrbLabel({ node, geo }: { node: OrbitalNode; geo: OrbitalGeometry }) {
+  const { lx, ly, anchor } = orbitalLabelOffset(node, geo);
+  return (
+    <span
+      className="ms-orb-label"
+      style={{
+        ["--lx" as string]: `${lx}px`,
+        ["--ly" as string]: `${ly}px`,
+        ["--lanchor" as string]: anchor,
+      }}
+    >
+      {node.label}
+    </span>
   );
 }

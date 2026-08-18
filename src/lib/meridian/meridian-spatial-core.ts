@@ -231,3 +231,57 @@ export function ringStack(
   }
   return layers;
 }
+
+// ── Orbital label placement ──────────────────────────────────────────────────────────
+
+export type OrbitalGeometry = {
+  /** Radius of the outermost orbit, px. */
+  R: number;
+  /** Radius of the ring every LABEL is projected onto, px. */
+  rimR: number;
+};
+
+/**
+ * Disc geometry for a given box size.
+ *
+ * The orbit radius is set by what the LABELS need, not by what looks generous for the orbs:
+ * the box has to hold `rimR + label width`, so the disc is deliberately small relative to its
+ * container. Sizing the disc first and hoping the text fits is exactly what put four labels on
+ * top of each other in the live NKLR render.
+ */
+export function orbitalGeometry(size: number): OrbitalGeometry {
+  const R = size / 2 - 76;
+  return { R, rimR: R + 10 };
+}
+
+/** Max label width in px — mirrors `.ms-orb-label { max-width }`. */
+export const ORBIT_LABEL_MAX_W = 68;
+
+/**
+ * Where a node's label sits, expressed as an offset from the ORB (which is where the label is
+ * mounted in the DOM) plus a horizontal anchor.
+ *
+ * Every label lands on ONE shared rim ring, so the gap between two labels is their ANGULAR
+ * separation — which the layout already guarantees, since each pillar gets its own slot inside
+ * its dimension's sector. Anchoring a label under its own orb instead (the obvious choice)
+ * collides as soon as pillars sit at similar radii, and a constant radial nudge does not help
+ * because inner orbs stay inner.
+ *
+ * The anchor makes the text read OUTWARD from the disc — right-side nodes start at the rim,
+ * left-side nodes end at it. Without it the text runs back across the diagram and over the core.
+ */
+export function orbitalLabelOffset(
+  node: Pick<OrbitalNode, "angle" | "radius">,
+  geo: OrbitalGeometry
+): { lx: number; ly: number; anchor: "0%" | "-50%" | "-100%" } {
+  const a = (node.angle * Math.PI) / 180;
+  const d = geo.rimR - node.radius * geo.R;
+  const cos = Math.cos(a);
+  return {
+    lx: round(cos * d, 3),
+    ly: round(Math.sin(a) * d, 3),
+    // The dead band around vertical keeps a near-top/bottom label centred rather than flipping
+    // side on a fractional angle change.
+    anchor: cos > 0.25 ? "0%" : cos < -0.25 ? "-100%" : "-50%",
+  };
+}

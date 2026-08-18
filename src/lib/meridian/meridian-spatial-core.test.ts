@@ -1,6 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { project, orbitalLayout, orbitalPoint, tiltFromPointer, ringStack } from "./meridian-spatial-core";
+import {
+  project,
+  orbitalLayout,
+  orbitalPoint,
+  orbitalGeometry,
+  orbitalLabelOffset,
+  ORBIT_LABEL_MAX_W,
+  tiltFromPointer,
+  ringStack,
+} from "./meridian-spatial-core";
 
 const SIGNALS = [
   { pillar: "flow", label: "Flow", lean: "bullish", weight: 4, score: 12 },
@@ -138,3 +147,71 @@ test("ringStack: confidence maps to distinct, ordered fills", () => {
   const high = ringStack(1, "high")!.find((l) => l.key === "confidence")!.value;
   assert.ok(low < med && med < high);
 });
+
+/* ── Label collision ────────────────────────────────────────────────────────────────
+ * Regression guard for a defect found by LOOKING at the live render, not by any test:
+ * on NKLR, "Latest print", "Fundamentals" and "Helix flow" printed on top of each other
+ * over the core because every label hung directly below its own orb.
+ *
+ * This walks the SAME functions the component calls (orbitalGeometry / orbitalLabelOffset),
+ * so it cannot pass while the rendered layout fails — a check that recomputes placement its
+ * own way proves nothing about what ships.
+ */
+const ORBIT_PILLARS: ReadonlyArray<readonly [string, string]> = [
+  ["flow", "Helix flow"], ["dark_pool", "Dark pool"], ["thermal", "Thermal"],
+  ["vector", "Vector"], ["analyst", "Analyst"], ["news", "News"],
+  ["insider", "Insider"], ["history", "Latest print"], ["surprise", "Surprise"],
+  ["yoy", "Year on year"], ["fundamentals", "Fundamentals"],
+];
+
+// Two weight regimes, because they fail differently and production produces both: FLAT
+// collapses every node onto one orbit, SPREAD pulls heavy pillars into the core (the NKLR
+// shape, where a constant label offset stacked labels over the centre).
+const WEIGHT_REGIMES: ReadonlyArray<readonly [string, (i: number) => number]> = [
+  ["flat", (i) => 1 + (i % 2) * 0.02],
+  ["spread", (i) => 0.2 + i * 0.55],
+];
+
+const CHAR_PX = 4.6; // 0.42rem mono advance
+const LINE_PX = 9;
+
+function labelBoxes(size: number, weight: (i: number) => number) {
+  const geo = orbitalGeometry(size);
+  const half = size / 2;
+  const signals = ORBIT_PILLARS.map(([pillar, label], i) => ({
+    pillar, label, lean: i % 3 === 0 ? "bullish" : i % 3 === 1 ? "bearish" : "neutral",
+    weight: weight(i), score: 0.4 + (i % 4) * 0.1, detail: "",
+  }));
+  return orbitalLayout(signals).map((n) => {
+    const a = (n.angle * Math.PI) / 180;
+    const { lx, ly, anchor } = orbitalLabelOffset(n, geo);
+    const cx = half + Math.cos(a) * n.radius * geo.R + lx;
+    const cy = half + Math.sin(a) * n.radius * geo.R + ly;
+    const w = Math.min(ORBIT_LABEL_MAX_W, n.label.length * CHAR_PX + 4);
+    const shift = anchor === "0%" ? 0 : anchor === "-100%" ? -1 : -0.5;
+    const x0 = cx + shift * w;
+    return { label: n.label, x0, x1: x0 + w, y0: cy - LINE_PX / 2, y1: cy + LINE_PX / 2 };
+  });
+}
+
+for (const [regime, weight] of WEIGHT_REGIMES) {
+  for (const size of [260, 300, 340]) {
+    test(`orbital labels: no overlap and none clipped — ${regime} weights @ ${size}px`, () => {
+      const boxes = labelBoxes(size, weight);
+      assert.ok(boxes.length >= 10, "fixture should exercise a full pillar book");
+      for (let i = 0; i < boxes.length; i++) {
+        for (let j = i + 1; j < boxes.length; j++) {
+          const a = boxes[i], b = boxes[j];
+          const ox = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);
+          const oy = Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0);
+          // 1px of tolerance: sub-pixel touching is invisible, a real collision is not.
+          assert.ok(ox <= 1 || oy <= 1, `"${a.label}" overlaps "${b.label}" by ${ox.toFixed(1)}x${oy.toFixed(1)}px`);
+        }
+      }
+      for (const b of boxes) {
+        assert.ok(b.x0 >= -2 && b.x1 <= size + 2, `"${b.label}" is clipped horizontally (${b.x0.toFixed(1)}..${b.x1.toFixed(1)} in ${size})`);
+        assert.ok(b.y0 >= -2 && b.y1 <= size + 2, `"${b.label}" is clipped vertically`);
+      }
+    });
+  }
+}

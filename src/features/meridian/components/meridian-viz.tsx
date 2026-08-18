@@ -32,6 +32,7 @@ import {
   estimateTrajectory,
   haloFromSignals,
   impliedVsRealized,
+  layoutRailLabels,
   strikeProfile,
   normalizeMoveBand,
   num,
@@ -255,6 +256,36 @@ export function MeridianRing({
  */
 export type RailMarker = { value: number | null; label: string; kind?: "wall" | "target" | "level" };
 
+/**
+ * Live width of an element, for layout that depends on how much room the text actually has.
+ *
+ * Rail labels have to be placed against a REAL pixel width — the same rail is ~640px on desktop
+ * and ~330px on a phone, and a label set that fits comfortably at one is a garbled overlap at
+ * the other. Starts at 0 (SSR has no layout) and every consumer treats 0 as "not measured yet"
+ * rather than "infinitely tight".
+ */
+function useElementWidth<T extends HTMLElement>() {
+  const ref = useRef<T | null>(null);
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width ?? 0;
+      // Only re-render on a change big enough to move a label; sub-pixel jitter during a
+      // transition would otherwise re-run the placement every frame.
+      setWidth((prev) => (Math.abs(prev - w) > 1 ? w : prev));
+    });
+    ro.observe(el);
+    setWidth(el.getBoundingClientRect().width);
+    return () => ro.disconnect();
+  }, []);
+  return { ref, width };
+}
+
+/** Approximate advance of the 0.46rem mono face the rail labels are set in. */
+const RAIL_LABEL_CHAR_PX = 4.9;
+
 export function MeridianMoveRail({
   band,
   movePct,
@@ -266,31 +297,55 @@ export function MeridianMoveRail({
   markers?: RailMarker[];
   source?: string | null;
 }) {
+  const { ref: trackRef, width: trackW } = useElementWidth<HTMLDivElement>();
   const mb = useMemo(() => normalizeMoveBand(band, movePct), [band, movePct]);
   const usable = useMemo(() => markers.filter((m) => num(m.value) !== null), [markers]);
   const domain: Domain | null = useMemo(
     () => (mb ? priceDomain([mb.down, mb.up, mb.spot, ...usable.map((m) => m.value)]) : null),
     [mb, usable]
   );
+  // Label placement needs the track's real width, so it is computed in the body (after the
+  // early return would have fired) — hooks must run unconditionally, hence the hook above.
+  const ticks = useMemo(
+    () => (domain ? usable.map((m) => pctAlong(m.value, domain) ?? 0) : []),
+    [usable, domain]
+  );
+  const slots = useMemo(() => {
+    // Before the first measurement there is no honest width to lay out against; centring every
+    // label on its tick is the same thing the component did before, and it is corrected on the
+    // very next frame. Guessing a width would move labels twice on load.
+    if (!trackW) return usable.map((_, i) => ({ pos: ticks[i] ?? 0, tier: 0 }));
+    return layoutRailLabels(
+      usable.map((m, i) => ({
+        pos: ticks[i] ?? 0,
+        widthFrac: (String(m.label).length * RAIL_LABEL_CHAR_PX + 6) / trackW,
+      }))
+    );
+  }, [usable, ticks, trackW]);
+
   if (!mb || !domain) return null;
 
   const left = pctAlong(mb.down, domain)!;
   const right = pctAlong(mb.up, domain)!;
   const spotPct = pctAlong(mb.spot, domain)!;
+  // One extra row of headroom per occupied tier, so a staggered label never lands on the panel
+  // title above the rail.
+  const tiers = slots.reduce((mx, s) => Math.max(mx, s.tier), 0) + 1;
 
   return (
-    <div className="mv-rail">
+    <div className="mv-rail" style={{ ["--rail-tiers" as string]: tiers }}>
       <div className="mv-rail-head">
         <span className="mv-rail-title">Expected move</span>
         <span className="mv-rail-pct">±{mb.pct?.toFixed(1) ?? "—"}%{source ? ` · ${source}` : ""}</span>
       </div>
-      <div className="mv-rail-track">
+      <div className="mv-rail-track" ref={trackRef}>
         <div
           className="mv-rail-band"
           style={{ left: `${left * 100}%`, width: `${(right - left) * 100}%` }}
         />
         {usable.map((m, i) => {
-          const p = pctAlong(m.value, domain)!;
+          const p = ticks[i]!;
+          const slot = slots[i]!;
           return (
             <div
               key={`${m.label}-${i}`}
@@ -299,7 +354,18 @@ export function MeridianMoveRail({
               title={`${m.label} ${fmtPrice(num(m.value))}`}
             >
               <span className="mv-rail-marker-tick" />
-              <span className="mv-rail-marker-label">{m.label}</span>
+              {/* The TICK stays on the true price; only the LABEL is moved and tiered, so the
+                  rail never lies about where a level is. --dx is the label's own offset from
+                  its tick, in track-fractions converted to px by the track width. */}
+              <span
+                className="mv-rail-marker-label"
+                style={{
+                  ["--dx" as string]: `${(slot.pos - p) * (trackW || 0)}px`,
+                  ["--tier" as string]: slot.tier,
+                }}
+              >
+                {m.label}
+              </span>
             </div>
           );
         })}
