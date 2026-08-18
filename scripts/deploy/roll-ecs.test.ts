@@ -513,3 +513,60 @@ test("servicesFor: allowlisted targets, web ALWAYS before worker", () => {
     "blackout-production-market-worker",
   ]);
 });
+
+// ── THE DEPLOY PURGE MUST NEVER EVICT HASHED BUILD ASSETS (2026-08-18) ───────────────────────
+// `purge_everything` after each rollout was manufacturing a member-visible outage it could not
+// recover from: hashed chunks got evicted, every client re-fetched them from an origin that was a
+// MIX of old and new ECS tasks mid-rollout, the mismatched request 404'd, Next served that 404 as
+// `text/plain`, the browser refused to execute it, and HYDRATION NEVER COMPLETED — leaving every
+// client component frozen in its loading state with no error and no retry.
+//
+// Observed on prod: "Loading chart…" / "Loading 0dte matrix…" / "Connecting Live Helix…" all stuck
+// at once with 84/84 network requests SUCCEEDING, console carrying `Refused to execute script …
+// because its MIME type ('text/plain') is not executable`. The same URL returned 200 / HIT ~8
+// minutes later once the edge re-cached it, which is why it read as intermittent.
+//
+// Source-level because the purge is a network call inside a deploy script — the property worth
+// protecting is "this code cannot ask Cloudflare to drop immutable assets", and that IS visible in
+// the source.
+
+const ROLL_ECS_SRC = readFileSync("scripts/deploy/roll-ecs.mjs", "utf8");
+const PROD_WORKFLOW_SRC = readFileSync(".github/workflows/ecr-push-production.yml", "utf8");
+
+test("the deploy never issues purge_everything", () => {
+  for (const [name, src] of [
+    ["roll-ecs.mjs", ROLL_ECS_SRC],
+    ["ecr-push-production.yml", PROD_WORKFLOW_SRC],
+  ] as const) {
+    // Allow the string inside explanatory comments; forbid it as an actual request body.
+    const asPayload = /purge_everything["']?\s*[:=]\s*true/.test(src);
+    assert.equal(asPayload, false, `${name} must not send purge_everything`);
+  }
+});
+
+test("the purge targets HTML routes only — never /_next/static", () => {
+  assert.match(ROLL_ECS_SRC, /PURGE_HTML_URLS/, "purge must go through the explicit URL list");
+  assert.doesNotMatch(
+    ROLL_ECS_SRC,
+    /purge_cache[\s\S]{0,400}_next\/static/,
+    "hashed build assets must never appear in a purge payload"
+  );
+  assert.doesNotMatch(
+    PROD_WORKFLOW_SRC,
+    /--data '\{"files":\[[^\]]*_next\/static/,
+    "hashed build assets must never appear in a purge payload"
+  );
+});
+
+test("the purge list is non-empty and every entry is an absolute prod URL", () => {
+  // A purge of nothing would leave edge-cached HTML pointing at the previous build — the opposite
+  // failure, and just as member-visible.
+  const list = ROLL_ECS_SRC.match(/const PURGE_HTML_URLS = \[([\s\S]*?)\];/);
+  assert.ok(list, "PURGE_HTML_URLS must be declared");
+  const urls = [...list[1]!.matchAll(/"([^"]+)"/g)].map((m) => m[1]!);
+  assert.ok(urls.length > 0, "purge list must not be empty");
+  for (const u of urls) {
+    assert.match(u, /^https:\/\/blackouttrades\.com\//, `${u} must be an absolute prod URL`);
+    assert.doesNotMatch(u, /_next/, `${u} must not be a build asset`);
+  }
+});

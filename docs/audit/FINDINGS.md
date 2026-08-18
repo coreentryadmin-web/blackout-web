@@ -38,6 +38,58 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-08-18 — [FINDING, P0 member-visible] Every deploy purged the hashed build assets, killing hydration and freezing the whole desk — FIXED
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Severity** | P0 (member-visible — a frozen desk with no error, on every deploy, self-healing so it never got diagnosed) |
+| **Scope** | `.github/workflows/ecr-push-production.yml`, `scripts/deploy/roll-ecs.mjs` |
+| **Status** | FIXED — purge is now an explicit HTML URL list; 3 guard tests |
+
+**This is the "does not even load .. wtf" report.**
+
+**Root cause.** Both deploy paths ended with Cloudflare `purge_everything`. Next.js build assets are
+CONTENT-HASHED and served `cache-control: public, max-age=31536000, immutable` — a given URL's bytes
+can never change, so they never need purging. Purging them forces every client to re-fetch chunks
+from an origin which, mid-rollout, is a **mix of old and new ECS tasks**: HTML from a new task
+references `webpack-<newhash>.js`, that request lands on a task carrying only the old build, and
+returns **404**. Next serves the 404 as `text/plain`, the browser refuses to execute it, **hydration
+never completes**, and every client component sits frozen in its loading state with no error and no
+retry.
+
+**Evidence (captured live 2026-08-18).**
+- A session showed `Loading chart…`, `Loading 0dte matrix…` and `Connecting Live Helix…` stuck
+  simultaneously — three independent client components — with **84 of 84 network requests
+  succeeding**. Nothing failed; nothing had booted.
+- Console: `Refused to execute script from '.../\_next/static/chunks/webpack-bbf5e95de4d12e67.js'
+  because its MIME type ('text/plain') is not executable`.
+- **That same URL returned `200`, `cf-cache-status: HIT`, `age: 2088` about eight minutes later**,
+  once the edge had re-cached a good copy. It self-heals, which is exactly why it reads as
+  intermittent and unreproducible and why it survived this long.
+
+**Why the existing mitigation could not save it.** `layout.tsx` already carries a chunk-reload guard
+matching `ChunkLoadError` / `Refused to execute script`. It reloads at most **3 times, 8s apart** —
+and while the fleet is mixed a reload can land on a bad task again, so it exhausts its budget and
+leaves the member on a dead page. The guard is correct for a transient race and powerless against a
+window the deploy itself opens.
+
+**Fix.** Purge an explicit list of the HTML routes that are actually edge-cached
+(`/`, `/upgrade`, `/learn`, `/pricing`, `/faq` — every desk page is already DYNAMIC/uncached) and
+never touch `/_next/static/*`. Retaining hashed assets is what lets the OLD and NEW builds coexist
+during a rollout: a client holding old HTML keeps getting its old chunks from the edge while new
+clients get the new ones. That is the entire purpose of immutable content-hashed URLs.
+
+**Blast radius.** Deploy pipeline only, both paths (workflow + `roll-ecs.mjs`) changed together —
+fixing one and leaving the other would have left the bug live on whichever path ran. The
+post-purge static-asset validation gate is unchanged and still runs.
+
+**Guard tests.** Source-level, because the purge is a network call inside a deploy script and the
+property worth protecting — "this code cannot ask Cloudflare to drop immutable assets" — is visible
+in the source: no `purge_everything` payload in either file; no `_next/static` inside a purge body;
+and the URL list must be non-empty and absolute (an empty purge would leave edge-cached HTML
+pointing at the previous build, the opposite failure and just as member-visible).
+
 ## 2026-08-18 — [FINDING, P1 member-visible] Bead contrast was scaled against the SESSION king, so no bead showed what it dominated at the time — FIXED
 > **kind:** `FINDING`
 

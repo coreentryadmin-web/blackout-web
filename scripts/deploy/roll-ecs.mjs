@@ -440,6 +440,38 @@ async function waitForStable(svcSpec, { dryRun }) {
  * window, the run exits non-zero BEFORE the purge ever happens — so the stale/404 edge cache is
  * never cleared and the deploy is marked failed even though ECS rolled out fine.
  */
+/**
+ * HTML routes that are edge-cached and therefore need purging after a deploy.
+ *
+ * DELIBERATELY NOT `purge_everything`. Next.js build assets are content-hashed and served
+ * `cache-control: public, max-age=31536000, immutable` — a given URL's bytes can never change, so
+ * they never need purging. Purging them forces every client to re-fetch from an origin that is a
+ * MIX of old and new ECS tasks mid-rollout: HTML from a new task references `webpack-<newhash>.js`,
+ * that request lands on a task carrying only the old build, and returns 404. Next serves the 404 as
+ * `text/plain`, the browser refuses to execute it, HYDRATION NEVER COMPLETES, and every client
+ * component freezes in its loading state with no error and no retry.
+ *
+ * Observed on prod 2026-08-18: "Loading chart…", "Loading 0dte matrix…" and "Connecting Live Helix…"
+ * all stuck at once with 84/84 network requests SUCCEEDING, console carrying `Refused to execute
+ * script from '.../webpack-bbf5e95de4d12e67.js' because its MIME type ('text/plain') is not
+ * executable`. That same URL returned 200 / cf-cache-status HIT ~8 minutes later once the edge had
+ * re-cached a good copy — which is why the failure looks intermittent and unreproducible.
+ *
+ * Retaining hashed assets is what lets the old and new builds COEXIST during a rollout: a client
+ * holding old HTML keeps getting its old chunks from the edge while new clients get the new ones.
+ * That is the entire purpose of immutable content-hashed URLs.
+ *
+ * Only the routes a cache rule actually stores need listing here — every desk page is DYNAMIC
+ * (uncached) already; see the Cloudflare cache-rule notes in CLAUDE.md.
+ */
+const PURGE_HTML_URLS = [
+  "https://blackouttrades.com/",
+  "https://blackouttrades.com/upgrade",
+  "https://blackouttrades.com/learn",
+  "https://blackouttrades.com/pricing",
+  "https://blackouttrades.com/faq",
+];
+
 async function runPurge({ dryRun }) {
   const zone = process.env.CF_ZONE_ID;
   const token = process.env.CF_API_TOKEN;
@@ -449,16 +481,16 @@ async function runPurge({ dryRun }) {
     return;
   }
   if (dryRun) {
-    log(`  DRY-RUN would POST https://api.cloudflare.com/client/v4/zones/<CF_ZONE_ID>/purge_cache {"purge_everything":true}`);
+    log(`  DRY-RUN would POST .../purge_cache ${JSON.stringify({ files: PURGE_HTML_URLS })}`);
     return;
   }
   const res = await fetch(`https://api.cloudflare.com/client/v4/zones/${zone}/purge_cache`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ purge_everything: true }),
+    body: JSON.stringify({ files: PURGE_HTML_URLS }),
   });
   if (!res.ok) fail(`Cloudflare purge failed: HTTP ${res.status}`);
-  log("  Cloudflare cache purged after ECS rollout.");
+  log("  Cloudflare HTML purged after ECS rollout (hashed build assets deliberately retained).");
   // Let the edge drop entries before we validate through it.
   await sleep(10_000);
 }
