@@ -1,7 +1,8 @@
 import "server-only";
 
 import { roundFloats } from "@/lib/round-floats";
-import { stockReactionsForDates } from "@/lib/meridian/meridian-reaction";
+import { stockReactionsForPrints } from "@/lib/meridian/meridian-reaction";
+import { classifyPrintTiming } from "@/lib/meridian/meridian-reaction-core";
 import {
   benzingaRowsToPrintHistory,
   dualBeatRateFromPrints,
@@ -39,8 +40,11 @@ export async function loadMeridianEarningsPrintHistory(
 
   const print_history = benzingaRowsToPrintHistory(benzingaRes.rows, limit);
 
-  const dates = print_history.map((p) => p.report_date!).filter(Boolean);
-  const reactions = await stockReactionsForDates(sym, dates);
+  // Timing-aware: an AMC print's reaction is the NEXT session, not the report date's own.
+  const printKeys = print_history
+    .filter((p) => p.report_date)
+    .map((p) => ({ ymd: p.report_date!, timing: classifyPrintTiming(p.report_time_et) }));
+  const reactions = await stockReactionsForPrints(sym, printKeys);
 
   const enriched = print_history.map((p) => {
     const rx = p.report_date ? reactions.get(p.report_date) : undefined;
@@ -48,6 +52,7 @@ export async function loadMeridianEarningsPrintHistory(
       ...p,
       session_change_pct: rx?.session_change_pct ?? null,
       next_day_change_pct: rx?.next_day_change_pct ?? null,
+      reaction_basis: rx?.reaction_basis ?? null,
     };
   });
 

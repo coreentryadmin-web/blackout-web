@@ -1515,3 +1515,794 @@ html.nav-locked body { overflow: hidden; }
    graded), so they belong side by side on a desk and stacked on anything narrower. */
 .meridian-mea-split { display: grid; grid-template-columns: 1fr; gap: 14px; }
 @media (min-width: 980px) { .meridian-mea-split { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+
+/* ═══ MERIDIAN VISUALIZATION LANGUAGE ═══════════════════════════════════════════════
+   Shared primitives (src/features/meridian/components/meridian-viz.tsx).
+
+   Colour is SEMANTIC here, never decorative: green = bullish/beat/raised, red =
+   bearish/miss/lowered, violet = neutral/initiated, cyan = structure & chrome, amber =
+   attention. Nothing gets an accent for looking nice — if a mark is coloured, the colour is
+   the encoding.
+
+   Every transition below animates `transform` or `opacity` only. Both are compositor-driven,
+   so a rail carrying 40 markers still moves at 60fps; animating `left`/`width` would relayout
+   on every frame. Positions are set as static `left` percentages and MOVED with transform. */
+:root {
+  --mv-bull: #34d399;
+  --mv-bear: #fb7185;
+  --mv-neutral: #a78bfa;
+  --mv-chrome: #22d3ee;
+  --mv-attention: #fbbf24;
+  --mv-track: rgba(125, 211, 252, 0.13);
+  --mv-surface: rgba(8, 10, 16, 0.72);
+  --mv-hairline: rgba(125, 211, 252, 0.16);
+  --mv-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+.mv-bull { color: var(--mv-bull); }
+.mv-bear { color: var(--mv-bear); }
+.mv-neutral { color: var(--mv-neutral); }
+
+.mv-note {
+  margin: 0.3rem 0 0;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.54rem;
+  letter-spacing: 0.04em;
+  color: rgba(125, 211, 252, 0.55);
+}
+
+/* ── Halo ── */
+.mv-halo { position: relative; flex: none; }
+.mv-halo svg { display: block; overflow: visible; }
+.mv-halo-track { fill: none; stroke: var(--mv-track); stroke-width: 9; }
+.mv-halo-track-inner { stroke-width: 3; }
+.mv-halo-seg {
+  fill: none;
+  stroke-width: 9;
+  stroke-linecap: round;
+  /* Segments sweep in on mount via stroke-dashoffset — the one place a non-transform property
+     animates, because it is a one-shot reveal on a handful of paths, not a per-frame layout. */
+  stroke-dasharray: 1000;
+  stroke-dashoffset: 1000;
+  animation: mv-halo-draw 0.62s var(--mv-ease) forwards;
+}
+.mv-halo-seg.mv-bull { stroke: var(--mv-bull); }
+.mv-halo-seg.mv-bear { stroke: var(--mv-bear); }
+.mv-halo-seg.mv-neutral { stroke: var(--mv-neutral); }
+.mv-halo-seg-click { cursor: pointer; transition: opacity 0.18s ease; }
+.mv-halo-seg-click:hover { opacity: 0.72; }
+@keyframes mv-halo-draw { to { stroke-dashoffset: 0; } }
+.mv-halo-agree { fill: none; stroke-width: 3; stroke-linecap: round; opacity: 0.85; }
+.mv-halo-agree.mv-bull { stroke: var(--mv-bull); }
+.mv-halo-agree.mv-bear { stroke: var(--mv-bear); }
+.mv-halo-agree.mv-neutral { stroke: var(--mv-neutral); }
+.mv-halo-center {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 0.05rem; pointer-events: none; text-align: center;
+}
+.mv-halo-verdict {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.55rem; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase;
+}
+.mv-halo-score {
+  font-family: var(--font-syne, sans-serif);
+  font-size: 1.9rem; font-weight: 800; line-height: 1; color: #fff;
+}
+.mv-halo-agreement {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.5rem; letter-spacing: 0.07em; color: rgba(125, 211, 252, 0.72);
+}
+
+/* ── Rings ── */
+.mv-ring { display: flex; align-items: center; gap: 0.5rem; }
+.mv-ring svg { display: block; }
+.mv-ring-track { fill: none; stroke: var(--mv-track); stroke-width: 4; }
+.mv-ring-arc { fill: none; stroke-width: 4; stroke-linecap: round; }
+.mv-ring-arc.mv-bull { stroke: var(--mv-bull); }
+.mv-ring-arc.mv-bear { stroke: var(--mv-bear); }
+.mv-ring-arc.mv-neutral { stroke: var(--mv-neutral); }
+.mv-ring-body { display: flex; flex-direction: column; min-width: 0; }
+.mv-ring-label {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.5rem; letter-spacing: 0.12em; text-transform: uppercase;
+  color: rgba(125, 211, 252, 0.7);
+}
+.mv-ring-value { font-family: var(--font-syne, sans-serif); font-size: 0.98rem; font-weight: 700; }
+.mv-ring-sig { margin-left: 0.22rem; font-size: 0.7rem; opacity: 0.85; }
+
+/* ── Rails (expected move + targets) ── */
+.mv-rail, .mv-targets { display: block; }
+.mv-rail-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.mv-rail-title {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.54rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--mv-chrome);
+}
+.mv-rail-pct, .mv-tape-total {
+  font-family: var(--font-mono, monospace); font-size: 0.58rem; color: rgba(125, 211, 252, 0.8);
+}
+.mv-rail-track {
+  position: relative; height: 34px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(251,113,133,0.07), rgba(125,211,252,0.05), rgba(52,211,153,0.07));
+  border: 1px solid var(--mv-hairline);
+}
+.mv-rail-band {
+  position: absolute; top: 50%; height: 7px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(251,113,133,0.5), rgba(34,211,238,0.35), rgba(52,211,153,0.5));
+  transform: translateY(-50%);
+  transition: left 0.42s var(--mv-ease), width 0.42s var(--mv-ease);
+}
+.mv-rail-marker { position: absolute; top: 0; height: 100%; transform: translateX(-50%); }
+.mv-rail-marker-tick {
+  position: absolute; top: 4px; bottom: 4px; left: 0; width: 1px;
+  background: rgba(125, 211, 252, 0.5);
+}
+.mv-rail-marker-wall .mv-rail-marker-tick { background: var(--mv-attention); }
+.mv-rail-marker-target .mv-rail-marker-tick { background: var(--mv-neutral); }
+.mv-rail-marker-label {
+  position: absolute; top: -0.55rem; left: 0; transform: translateX(-50%);
+  font-family: var(--font-mono, monospace); font-size: 0.46rem; letter-spacing: 0.06em;
+  color: rgba(125, 211, 252, 0.75); white-space: nowrap;
+}
+.mv-rail-spot {
+  position: absolute; top: 0; height: 100%;
+  transform: translateX(-50%);
+  transition: transform 0.42s var(--mv-ease);
+}
+.mv-rail-spot-dot {
+  position: absolute; top: 50%; left: 0; width: 11px; height: 11px;
+  margin: -5.5px 0 0 -5.5px; border-radius: 50%;
+  background: #fff; box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.28);
+}
+.mv-rail-spot-label {
+  position: absolute; bottom: -1.1rem; left: 0; transform: translateX(-50%);
+  font-family: var(--font-mono, monospace); font-size: 0.55rem; font-weight: 700; color: #fff;
+  white-space: nowrap;
+}
+.mv-rail-bounds {
+  display: flex; justify-content: space-between;
+  /* Explicit colour, not inherited. A primitive that relies on an ambient `color` renders
+     invisible the moment it is placed in a container that does not set one — which is exactly
+     what happened in the offline render. Components own their own legibility. */
+  color: rgba(186, 230, 253, 0.85);
+  /* Clears the absolutely-positioned spot/consensus labels hanging below the track. Measured:
+     at 1.25rem the bound labels collided with the panel edge on the target rail. */
+  margin-top: 1.6rem;
+  font-family: var(--font-mono, monospace); font-size: 0.58rem;
+}
+
+/* ── Target rail extras ── */
+.mv-targets-span {
+  position: absolute; top: 50%; height: 4px; border-radius: 999px;
+  background: rgba(167, 139, 250, 0.3); transform: translateY(-50%);
+}
+.mv-target-dot {
+  position: absolute; top: 50%; width: 8px; height: 8px; padding: 0;
+  margin: -4px 0 0 -4px; border-radius: 50%;
+  border: 1px solid rgba(167, 139, 250, 0.8); background: rgba(167, 139, 250, 0.45);
+  cursor: pointer; transition: transform 0.16s var(--mv-ease);
+}
+.mv-target-dot:hover:not(:disabled) { transform: scale(1.55); }
+.mv-target-dot:disabled { cursor: default; }
+.mv-target-consensus { position: absolute; top: 0; height: 100%; transform: translateX(-50%); }
+.mv-target-consensus-tick {
+  position: absolute; top: 2px; bottom: 2px; left: 0; width: 2px; background: var(--mv-neutral);
+}
+.mv-target-consensus-label {
+  position: absolute; top: -0.6rem; left: 0; transform: translateX(-50%);
+  font-family: var(--font-mono, monospace); font-size: 0.5rem; color: var(--mv-neutral);
+  white-space: nowrap;
+}
+
+/* ── Structure ladder ── */
+.mv-ladder { position: relative; min-height: 132px; }
+/* Rows are absolutely placed; the container needs the height the resolver assumes (132px). */
+.mv-ladder-row {
+  position: absolute; left: 0; right: 0; top: var(--mv-pos);
+  display: grid; grid-template-columns: 4.6rem 1fr auto 3.1rem;
+  align-items: center; gap: 0.45rem;
+  padding: 0.1rem 0.2rem;
+  border: 0; border-radius: 0.3rem; background: transparent; color: inherit; text-align: left;
+  cursor: pointer;
+  transform: translateY(-50%);
+  transition: top 0.4s var(--mv-ease), background-color 0.16s ease;
+  font-family: var(--font-mono, monospace); font-size: 0.56rem;
+}
+.mv-ladder-row:disabled { cursor: default; }
+.mv-ladder-row:hover:not(:disabled),
+.mv-ladder-row:focus-visible { background: rgba(125, 211, 252, 0.08); }
+.mv-ladder-row:focus-visible { outline: 1px solid rgba(34, 211, 238, 0.65); outline-offset: 1px; }
+.mv-ladder-label { letter-spacing: 0.1em; text-transform: uppercase; color: rgba(125,211,252,0.72); }
+.mv-ladder-bar { height: 1px; background: var(--mv-hairline); }
+.mv-ladder-value { font-weight: 700; color: #e2f4ff; }
+.mv-ladder-dist { text-align: right; }
+.mv-ladder-spot .mv-ladder-label { color: #fff; }
+.mv-ladder-spot .mv-ladder-bar { background: rgba(34, 211, 238, 0.55); height: 2px; }
+.mv-ladder-spot .mv-ladder-value { color: #fff; }
+.mv-ladder-call_wall .mv-ladder-bar,
+.mv-ladder-put_wall .mv-ladder-bar { background: rgba(251, 191, 36, 0.4); }
+
+/* ── Beat history ── */
+.mv-beats-head, .mv-rev-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem;
+  margin-bottom: 0.45rem;
+}
+.mv-beats-title, .mv-rev-title {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.54rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--mv-chrome);
+}
+.mv-beats-tally { font-family: var(--font-mono, monospace); font-size: 0.58rem; color: #e2f4ff; }
+.mv-beats-rows { display: flex; flex-direction: column; gap: 0.22rem; }
+.mv-beat-row {
+  display: grid; grid-template-columns: 3.2rem 1fr 3.4rem 3.6rem;
+  align-items: center; gap: 0.5rem;
+  padding: 0.18rem 0.3rem; border: 0; border-radius: 0.35rem;
+  background: transparent; color: inherit; text-align: left; cursor: pointer;
+  font-family: var(--font-mono, monospace); font-size: 0.56rem;
+  transition: background-color 0.16s ease;
+}
+.mv-beat-row:disabled { cursor: default; }
+.mv-beat-row:hover:not(:disabled) { background: rgba(125, 211, 252, 0.07); }
+.mv-beat-date { color: rgba(125, 211, 252, 0.66); }
+.mv-beat-track { position: relative; height: 8px; border-radius: 999px; background: var(--mv-track); overflow: hidden; }
+.mv-beat-bar {
+  position: absolute; inset: 0; border-radius: 999px;
+  transform-origin: left center;
+  transition: transform 0.5s var(--mv-ease);
+}
+.mv-beat-bar.mv-bull { background: var(--mv-bull); }
+.mv-beat-bar.mv-bear { background: var(--mv-bear); }
+.mv-beat-bar.mv-neutral { background: rgba(167, 139, 250, 0.35); }
+.mv-beat-surprise, .mv-beat-reaction { text-align: right; font-weight: 700; }
+.mv-beat-assumed { margin-left: 0.12rem; opacity: 0.65; }
+
+/* ── Revision momentum ── */
+.mv-rev-skew {
+  font-family: var(--font-mono, monospace); font-size: 0.54rem; font-weight: 700;
+  letter-spacing: 0.12em; text-transform: uppercase;
+}
+.mv-rev-bar {
+  display: flex; height: 9px; border-radius: 999px; overflow: hidden;
+  background: var(--mv-track);
+}
+.mv-rev-seg { display: block; transition: width 0.45s var(--mv-ease); }
+.mv-rev-seg.mv-bull { background: var(--mv-bull); }
+.mv-rev-seg.mv-bear { background: var(--mv-bear); }
+.mv-rev-seg.mv-neutral { background: rgba(167, 139, 250, 0.55); }
+.mv-rev-legend {
+  display: flex; align-items: center; gap: 0.7rem; margin-top: 0.35rem;
+  font-family: var(--font-mono, monospace); font-size: 0.55rem;
+}
+.mv-rev-more {
+  margin-left: auto; padding: 0.1rem 0.4rem;
+  border: 1px solid var(--mv-hairline); border-radius: 0.3rem;
+  background: transparent; color: var(--mv-chrome); cursor: pointer;
+  font-family: inherit; font-size: 0.5rem; letter-spacing: 0.08em; text-transform: uppercase;
+  transition: background-color 0.16s ease;
+}
+.mv-rev-more:hover { background: rgba(34, 211, 238, 0.12); }
+
+/* ── Dark pool tape ── */
+.mv-tape-strip {
+  display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap;
+  min-height: 38px;
+}
+.mv-tape-print {
+  flex: none; padding: 0; border-radius: 50%;
+  border: 1px solid rgba(167, 139, 250, 0.55);
+  background: radial-gradient(circle at 35% 30%, rgba(167,139,250,0.55), rgba(167,139,250,0.16));
+  cursor: pointer;
+  opacity: 0;
+  animation: mv-pop 0.34s var(--mv-ease) forwards;
+  transition: transform 0.16s var(--mv-ease);
+}
+.mv-tape-print:hover:not(:disabled) { transform: scale(1.16); }
+.mv-tape-print:disabled { cursor: default; }
+@keyframes mv-pop { to { opacity: 1; } }
+
+/* ── Countdown ── */
+.mv-countdown {
+  display: inline-flex; align-items: baseline; gap: 0.5rem;
+  padding: 0.28rem 0.6rem; border-radius: 0.45rem;
+  border: 1px solid var(--mv-hairline); background: var(--mv-surface);
+}
+.mv-countdown-label {
+  font-family: var(--font-mono, monospace); font-size: 0.5rem;
+  letter-spacing: 0.16em; text-transform: uppercase; color: var(--mv-chrome);
+}
+.mv-countdown-clock {
+  font-family: var(--font-syne, sans-serif); font-size: 1rem; font-weight: 800; color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+.mv-countdown-clock i { font-style: normal; font-size: 0.62em; opacity: 0.6; margin: 0 0.1rem 0 0.02rem; }
+.mv-countdown-imminent { border-color: rgba(251, 191, 36, 0.5); }
+.mv-countdown-imminent .mv-countdown-label { color: var(--mv-attention); }
+/* Pulses only inside 24h — the animation IS the signal, so it must not run constantly. */
+.mv-countdown-imminent .mv-countdown-clock { animation: mv-breathe 2.4s ease-in-out infinite; }
+.mv-countdown-past { opacity: 0.62; }
+.mv-countdown-ago { font-size: 0.6em; opacity: 0.7; margin-left: 0.15rem; }
+@keyframes mv-breathe { 0%, 100% { opacity: 1; } 50% { opacity: 0.62; } }
+
+/* ── Signal chips ── */
+.mv-chip {
+  display: inline-flex; align-items: center; gap: 0.22rem;
+  padding: 0.08rem 0.38rem; border-radius: 999px;
+  border: 1px solid var(--mv-hairline); background: var(--mv-surface);
+  font-family: var(--font-mono, monospace); font-size: 0.48rem;
+  letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap;
+  color: rgba(226, 244, 255, 0.85);
+}
+.mv-chip-glyph { font-size: 0.72em; }
+.mv-chip-accelerating, .mv-chip-rank_improving, .mv-chip-top_performer {
+  color: var(--mv-bull); border-color: rgba(52, 211, 153, 0.35);
+}
+.mv-chip-deteriorating, .mv-chip-rank_falling {
+  color: var(--mv-bear); border-color: rgba(251, 113, 133, 0.35);
+}
+.mv-chip-anomaly, .mv-chip-approaching_threshold {
+  color: var(--mv-attention); border-color: rgba(251, 191, 36, 0.4);
+}
+.mv-chip-newly_changed { color: var(--mv-neutral); border-color: rgba(167, 139, 250, 0.4); }
+/* An anomaly is by definition rare, so a persistent pulse here stays informative. */
+.mv-chip-anomaly .mv-chip-glyph { animation: mv-breathe 1.6s ease-in-out infinite; }
+
+/* ── Sparkline ── */
+.mv-spark polyline { fill: none; stroke-width: 1.4; stroke-linejoin: round; stroke-linecap: round; }
+.mv-spark.mv-bull polyline { stroke: var(--mv-bull); }
+.mv-spark.mv-bear polyline { stroke: var(--mv-bear); }
+.mv-spark.mv-neutral polyline { stroke: var(--mv-neutral); }
+
+/* Motion is a communication channel, not decoration — when the user opts out, everything
+   still renders in its final state rather than being stuck mid-reveal. */
+@media (prefers-reduced-motion: reduce) {
+  .mv-halo-seg { animation: none; stroke-dashoffset: 0; }
+  .mv-tape-print { animation: none; opacity: 1; }
+  .mv-countdown-imminent .mv-countdown-clock,
+  .mv-chip-anomaly .mv-chip-glyph { animation: none; }
+  .mv-rail-band, .mv-rail-spot, .mv-beat-bar, .mv-rev-seg, .mv-ladder-row,
+  .mv-target-dot, .mv-tape-print { transition: none; }
+}
+
+/* ═══ MERIDIAN REPORT — the 10-second decision surface ═══════════════════════════════
+   Density ladder: L1 decision (halo + countdown + move rail) → L2 dimension rings →
+   L3 analytics grid → L4 collapsed evidence. The previous version inverted this, putting
+   raw headlines on the primary surface and the verdict in a box. */
+.mr { display: flex; flex-direction: column; gap: 0.7rem; }
+
+/* ── L1 decision ── */
+.mr-decision {
+  display: flex; align-items: center; gap: 1.1rem; flex-wrap: wrap;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--mv-hairline); border-radius: 0.9rem;
+  background:
+    radial-gradient(120% 140% at 8% 0%, rgba(34, 211, 238, 0.07), transparent 62%),
+    var(--mv-surface);
+}
+.mr-decision-body { flex: 1 1 22rem; min-width: 0; display: flex; flex-direction: column; gap: 0.45rem; }
+.mr-decision-top { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
+.mr-headline {
+  margin: 0; font-family: var(--font-syne, sans-serif);
+  font-size: 1.05rem; font-weight: 700; line-height: 1.25; text-wrap: balance;
+}
+.mr-summary { margin: 0; font-size: 0.78rem; line-height: 1.45; color: #bae6fd; max-width: 46rem; }
+
+.mr-dims { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.15rem; }
+.mr-dim {
+  display: flex; align-items: center; gap: 0.35rem;
+  padding: 0.3rem 0.5rem 0.3rem 0.3rem;
+  border: 1px solid var(--mv-hairline); border-radius: 0.6rem;
+  background: rgba(8, 10, 16, 0.5); color: inherit; cursor: pointer;
+  transition: border-color 0.18s ease, background-color 0.18s ease;
+}
+.mr-dim:hover, .mr-dim:focus-visible { border-color: rgba(34, 211, 238, 0.45); background: rgba(34, 211, 238, 0.07); }
+.mr-dim.is-open { border-color: rgba(34, 211, 238, 0.7); background: rgba(34, 211, 238, 0.1); }
+.mr-dim-meta {
+  font-family: var(--font-mono, monospace); font-size: 0.46rem;
+  letter-spacing: 0.08em; color: rgba(125, 211, 252, 0.6); white-space: nowrap;
+}
+
+/* ── L2 drawer (in-context drilldown, never a separate page) ── */
+.mr-drawer {
+  border: 1px solid rgba(34, 211, 238, 0.32); border-radius: 0.7rem;
+  background: rgba(6, 12, 20, 0.9);
+  padding: 0.6rem 0.75rem;
+  animation: mr-drawer-in 0.24s var(--mv-ease);
+}
+@keyframes mr-drawer-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.mr-drawer-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 0.4rem; }
+.mr-drawer-title {
+  font-family: var(--font-mono, monospace); font-size: 0.54rem; font-weight: 700;
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--mv-chrome);
+}
+.mr-drawer-close {
+  border: 0; background: transparent; color: rgba(125, 211, 252, 0.7); cursor: pointer;
+  font-family: var(--font-mono, monospace); font-size: 0.5rem;
+  letter-spacing: 0.1em; text-transform: uppercase;
+}
+.mr-drawer-close:hover { color: #fff; }
+.mr-drawer-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.28rem; }
+.mr-drawer-row {
+  display: grid; grid-template-columns: 4px 7.5rem 1fr 2.6rem;
+  align-items: baseline; gap: 0.5rem;
+  font-size: 0.68rem;
+}
+.mr-drawer-lean { align-self: stretch; border-radius: 2px; background: currentColor; }
+.mr-drawer-label {
+  font-family: var(--font-mono, monospace); font-size: 0.55rem;
+  letter-spacing: 0.06em; color: #e2f4ff;
+}
+.mr-drawer-detail { color: rgba(186, 230, 253, 0.85); line-height: 1.35; }
+.mr-drawer-score {
+  font-family: var(--font-mono, monospace); font-size: 0.6rem; font-weight: 700; text-align: right;
+}
+
+/* ── L3 analytics grid ── */
+.mr-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+  gap: 0.6rem;
+}
+.mr-panel {
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--mv-hairline); border-radius: 0.75rem;
+  background: var(--mv-surface);
+  min-width: 0; /* grid children default to min-content — without this a wide rail forces
+                   the whole page to scroll sideways instead of the panel shrinking. */
+}
+.mr-panel-wide { grid-column: 1 / -1; }
+.mr-panel-title {
+  display: block; margin-bottom: 0.5rem;
+  font-family: var(--font-mono, monospace); font-size: 0.54rem; font-weight: 700;
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--mv-chrome);
+}
+.mr-panel > * + * { margin-top: 0.85rem; }
+.mr-play-headline { margin: 0; font-size: 0.86rem; font-weight: 700; line-height: 1.3; }
+.mr-play-structure { margin: 0.3rem 0 0; font-size: 0.72rem; color: #bae6fd; line-height: 1.4; }
+.mr-play-risk {
+  margin: 0.3rem 0 0; font-size: 0.66rem; color: rgba(251, 191, 36, 0.85); line-height: 1.4;
+}
+
+/* ── L4 evidence (collapsed by default) ── */
+.mr-evidence { border-top: 1px solid var(--mv-hairline); padding-top: 0.5rem; }
+.mr-evidence-toggle {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  border: 0; background: transparent; color: rgba(125, 211, 252, 0.85); cursor: pointer;
+  font-family: var(--font-mono, monospace); font-size: 0.55rem;
+  letter-spacing: 0.12em; text-transform: uppercase;
+}
+.mr-evidence-toggle:hover { color: #fff; }
+.mr-evidence-caret { font-size: 0.7em; }
+.mr-evidence-count {
+  padding: 0 0.3rem; border-radius: 999px;
+  background: rgba(125, 211, 252, 0.15); font-size: 0.9em;
+}
+.mr-evidence-body {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  gap: 0.7rem; margin-top: 0.5rem;
+}
+.mr-evidence-label {
+  display: block; margin-bottom: 0.25rem;
+  font-family: var(--font-mono, monospace); font-size: 0.5rem;
+  letter-spacing: 0.12em; text-transform: uppercase; color: var(--mv-chrome);
+}
+.mr-evidence-col ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.22rem; }
+.mr-evidence-col li { font-size: 0.68rem; line-height: 1.35; color: rgba(186, 230, 253, 0.82); }
+.mr-evidence-chan { color: rgba(125, 211, 252, 0.55); }
+.mr-disclaimer {
+  margin: 0; font-family: var(--font-mono, monospace); font-size: 0.52rem;
+  color: rgba(125, 211, 252, 0.5); line-height: 1.4;
+}
+
+/* Mobile: the decision block stacks and the halo centres — a focused intelligence feed
+   rather than a squeezed command center. */
+@media (max-width: 640px) {
+  .mr-decision { flex-direction: column; align-items: stretch; gap: 0.75rem; }
+  .mr-halo { align-self: center; }
+  .mr-drawer-row { grid-template-columns: 4px 1fr 2.6rem; }
+  .mr-drawer-detail { grid-column: 2 / -1; }
+}
+
+/* ═══ MERIDIAN SPATIAL LAYER ═════════════════════════════════════════════════════════
+   Depth only where it encodes something. Two views: a ring stack whose layers are three
+   different QUESTIONS separated by Z, and a tilted orbital disc where radius = influence.
+
+   All 3D is CSS transforms on `preserve-3d` parents — compositor-only, zero dependencies,
+   nothing to lazy-load. `.is-spatial` is applied ONLY when the device has a fine pointer and
+   motion is allowed; without it every rule below degrades to the flat diagram, which is the
+   same information at tilt 0 rather than a fallback stub. */
+
+/* ── 3D halo ── */
+.ms-halo { position: relative; flex: none; }
+.ms-halo-stage { position: absolute; inset: 0; }
+.ms-halo.is-spatial .ms-halo-stage {
+  transform-style: preserve-3d;
+  perspective: 620px;
+  /* --mtx/--mty are written by rAF, never by React state — one property write per frame. */
+  transform: rotateX(var(--mtx, 0deg)) rotateY(var(--mty, 0deg));
+  transition: transform 0.5s var(--mv-ease);
+}
+.ms-halo.is-spatial:hover .ms-halo-stage { transition: none; } /* follow the cursor 1:1 */
+.ms-plane { position: absolute; inset: 0; }
+.ms-halo.is-spatial .ms-plane { transform: translateZ(var(--mz, 0px)); transform-style: preserve-3d; }
+.ms-plane svg { display: block; overflow: visible; }
+.ms-plane-hit {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  border: 0; border-radius: 50%; background: transparent; cursor: pointer; padding: 0;
+}
+.ms-plane-hit:focus-visible { outline: 1px solid rgba(34, 211, 238, 0.7); }
+.ms-track { fill: none; stroke: var(--mv-track); stroke-width: 7; }
+.ms-seg { fill: none; stroke-width: 7; stroke-linecap: round; }
+.ms-seg.mv-bull { stroke: var(--mv-bull); }
+.ms-seg.mv-bear { stroke: var(--mv-bear); }
+.ms-seg.mv-neutral { stroke: var(--mv-neutral); }
+.ms-arc { fill: none; stroke-width: 5; stroke-linecap: round; }
+.ms-arc-agreement { opacity: 0.9; }
+.ms-arc-confidence { stroke-width: 4; opacity: 0.72; stroke-dasharray: 3 4; }
+.ms-arc.mv-bull { stroke: var(--mv-bull); }
+.ms-arc.mv-bear { stroke: var(--mv-bear); }
+.ms-arc.mv-neutral { stroke: var(--mv-neutral); }
+.ms-halo-center {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 0.05rem; pointer-events: none;
+  /* Bounded to the clear area inside the innermost ring (radius 0.62). Without this the
+     agreement line grows past the ring and the two overlap — measured on the render. */
+  padding: 0 22%;
+  text-align: center;
+}
+.ms-halo-center .ms-sub { line-height: 1.15; }
+.ms-verdict {
+  font-family: var(--font-mono, monospace); font-size: 0.52rem; font-weight: 700;
+  letter-spacing: 0.18em; text-transform: uppercase;
+}
+.ms-score {
+  font-family: var(--font-syne, sans-serif); font-size: 2rem; font-weight: 800;
+  line-height: 1; color: #fff; font-variant-numeric: tabular-nums;
+}
+.ms-sub { font-family: var(--font-mono, monospace); font-size: 0.48rem; color: rgba(125,211,252,0.72); }
+.ms-legend {
+  position: absolute; left: 50%; bottom: -1.15rem; transform: translateX(-50%);
+  display: flex; gap: 0.55rem; white-space: nowrap;
+}
+.ms-legend-item {
+  font-family: var(--font-mono, monospace); font-size: 0.44rem;
+  letter-spacing: 0.1em; text-transform: uppercase; color: rgba(125,211,252,0.55);
+}
+/* Ring roles are distinguishable WITHOUT the tilt — depth reinforces, it does not carry alone.
+   Outer solid = evidence, mid solid-thin = agreement, inner dashed = confidence. */
+
+/* ── Orbital system ── */
+.ms-orbital { position: relative; flex: none; margin: 0 auto; }
+.ms-orbital-guides { position: absolute; inset: 0; }
+.ms-orbit-guide { fill: none; stroke: rgba(125, 211, 252, 0.1); stroke-width: 1; }
+.ms-orbital-core {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  display: flex; flex-direction: column; align-items: center; gap: 0.2rem; pointer-events: none;
+}
+.ms-core-dot {
+  width: 12px; height: 12px; border-radius: 50%; background: currentColor;
+  box-shadow: 0 0 14px currentColor;
+}
+.ms-core-label {
+  font-family: var(--font-mono, monospace); font-size: 0.42rem;
+  letter-spacing: 0.2em; color: rgba(125, 211, 252, 0.6);
+}
+.ms-orb {
+  position: absolute; transform: translate(-50%, -50%);
+  border-radius: 50%; border: 1px solid currentColor; padding: 0;
+  background: radial-gradient(circle at 34% 30%, currentColor, transparent 78%);
+  cursor: pointer;
+  /* transform/opacity only — position is written inline per frame but both are composited. */
+  transition: opacity 0.2s ease, box-shadow 0.2s ease;
+}
+.ms-orb.is-hot { box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.25), 0 0 18px currentColor; }
+.ms-orb.is-dim { filter: saturate(0.45); }
+.ms-orb:focus-visible { outline: 1px solid rgba(34, 211, 238, 0.8); outline-offset: 2px; }
+.ms-orb-label {
+  position: absolute; left: 50%; top: calc(100% + 3px); transform: translateX(-50%);
+  font-family: var(--font-mono, monospace); font-size: 0.44rem;
+  letter-spacing: 0.06em; white-space: nowrap; color: rgba(226, 244, 255, 0.9);
+  pointer-events: none;
+}
+.ms-orb.is-dim .ms-orb-label { opacity: 0.35; }
+.ms-orbital-key {
+  position: absolute; left: 0; right: 0; bottom: -0.2rem; margin: 0; text-align: center;
+  font-family: var(--font-mono, monospace); font-size: 0.44rem;
+  letter-spacing: 0.05em; color: rgba(125, 211, 252, 0.5);
+}
+
+/* Reduced motion / coarse pointer: `.is-spatial` is never applied, so no transform runs and
+   the diagram renders flat and complete. This block is belt-and-braces for the transition. */
+@media (prefers-reduced-motion: reduce) {
+  .ms-halo-stage, .ms-orb { transition: none; }
+}
+@media (max-width: 640px) {
+  /* Mobile keeps the orbital as a readable flat diagram — the tilt would be driven by a
+     pointer that does not exist, and the labels need the room. */
+  .ms-orbital-key { position: static; margin-top: 0.4rem; }
+}
+
+.mr-panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
+.mr-panel-head .mr-panel-title { margin-bottom: 0; }
+.mr-panel-toggle {
+  border: 1px solid var(--mv-hairline); border-radius: 0.3rem;
+  padding: 0.08rem 0.4rem; background: transparent; color: var(--mv-chrome); cursor: pointer;
+  font-family: var(--font-mono, monospace); font-size: 0.46rem;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  transition: background-color 0.16s ease;
+}
+.mr-panel-toggle:hover { background: rgba(34, 211, 238, 0.12); }
+/* The orbital needs breathing room for its labels; it also carries its own bottom key line. */
+.mr-panel-orbital { display: flex; flex-direction: column; gap: 0.6rem; padding-bottom: 1.4rem; }
+.mr-panel-orbital > * + * { margin-top: 0; }
+
+/* ═══ MERIDIAN ESTIMATES ═════════════════════════════════════════════════════════════ */
+.mv-traj-rows { display: flex; flex-direction: column; gap: 0.2rem; margin-top: 0.5rem; }
+.mv-traj-row {
+  display: grid; grid-template-columns: 3.6rem 1fr 3.6rem 3.4rem;
+  align-items: center; gap: 0.45rem;
+  padding: 0.16rem 0.28rem; border: 0; border-radius: 0.32rem;
+  background: transparent; color: inherit; text-align: left; cursor: pointer;
+  font-family: var(--font-mono, monospace); font-size: 0.56rem;
+  transition: background-color 0.16s ease;
+}
+.mv-traj-row:disabled { cursor: default; }
+.mv-traj-row:hover:not(:disabled) { background: rgba(125, 211, 252, 0.07); }
+.mv-traj-period { color: rgba(125, 211, 252, 0.7); }
+.mv-traj-bars { position: relative; height: 12px; }
+/* The estimate is an outline the actual fills — one shared baseline, so the comparison is a
+   direct length read rather than two bars the eye has to align. */
+.mv-traj-est {
+  position: absolute; inset: 0; border-radius: 3px;
+  border: 1px solid rgba(125, 211, 252, 0.4); background: rgba(125, 211, 252, 0.07);
+  transform-origin: left center; transition: transform 0.45s var(--mv-ease);
+}
+.mv-traj-act {
+  position: absolute; top: 3px; bottom: 3px; left: 0; right: 0; border-radius: 2px;
+  transform-origin: left center; transition: transform 0.45s var(--mv-ease);
+}
+.mv-traj-act.mv-bull { background: var(--mv-bull); }
+.mv-traj-act.mv-bear { background: var(--mv-bear); }
+.mv-traj-act.mv-neutral { background: rgba(167, 139, 250, 0.6); }
+/* A forward period is dashed and dimmed — "not reported" must never read as "came in at 0". */
+.mv-traj-row.is-forward .mv-traj-est { border-style: dashed; opacity: 0.75; }
+.mv-traj-val { text-align: right; color: #e2f4ff; font-weight: 700; }
+.mv-traj-surprise { text-align: right; font-weight: 700; }
+.mv-traj-row.is-forward .mv-traj-surprise { color: rgba(125, 211, 252, 0.55); font-weight: 400; }
+
+/* Dispersion */
+.mv-disp-track {
+  position: relative; height: 22px; border-radius: 999px;
+  background: var(--mv-track); border: 1px solid var(--mv-hairline);
+}
+.mv-disp-span {
+  position: absolute; top: 50%; height: 6px; border-radius: 999px;
+  background: rgba(167, 139, 250, 0.4); transform: translateY(-50%);
+}
+.mv-disp-median {
+  position: absolute; top: 3px; bottom: 3px; width: 2px;
+  background: var(--mv-neutral); transform: translateX(-50%);
+}
+.mv-disp .mv-rail-bounds { margin-top: 0.4rem; }
+/* The dispersion rail has no absolutely-positioned labels hanging below it, so it needs only
+   its own bottom clearance — but the panel's last child otherwise sits flush against the
+   border and the bound labels clipped. Measured on the render. */
+.mv-disp { padding-bottom: 0.15rem; }
+
+/* YoY */
+.me-yoy-rows { display: flex; flex-direction: column; gap: 0.4rem; margin-top: 0.5rem; }
+.me-yoy-row {
+  display: grid; grid-template-columns: 4.2rem 1fr 4rem; align-items: center; gap: 0.5rem;
+  font-family: var(--font-mono, monospace); font-size: 0.56rem;
+}
+.me-yoy-label { color: rgba(125, 211, 252, 0.7); letter-spacing: 0.08em; text-transform: uppercase; }
+.me-yoy-track {
+  position: relative; height: 10px; border-radius: 999px;
+  background: var(--mv-track); overflow: hidden;
+}
+/* Zero anchored at the CENTRE so growth and contraction extend opposite ways. */
+.me-yoy-zero {
+  position: absolute; top: 0; bottom: 0; left: 50%; width: 1px;
+  background: rgba(125, 211, 252, 0.35);
+}
+.me-yoy-bar {
+  position: absolute; top: 2px; bottom: 2px; border-radius: 999px;
+  transition: width 0.45s var(--mv-ease);
+}
+.me-yoy-bar.mv-bull { background: var(--mv-bull); }
+.me-yoy-bar.mv-bear { background: var(--mv-bear); }
+.me-yoy-val { text-align: right; font-weight: 700; }
+.me-yoy-cap { opacity: 0.6; }
+
+.me-guidance { list-style: none; margin: 0.4rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.25rem; }
+.me-guidance li { font-family: var(--font-mono, monospace); font-size: 0.6rem; color: #e2f4ff; }
+.me-gated {
+  margin: 0.4rem 0 0; font-family: var(--font-mono, monospace); font-size: 0.55rem;
+  color: rgba(251, 191, 36, 0.75); line-height: 1.4;
+}
+
+/* ═══ MERIDIAN POSITIONING + HISTORY ═════════════════════════════════════════════════ */
+.mv-strikes-rows { display: flex; flex-direction: column; gap: 0.14rem; margin-top: 0.5rem; }
+.mv-strike-row {
+  display: grid; grid-template-columns: 3.4rem 1fr 3.2rem; align-items: center; gap: 0.4rem;
+  padding: 0.1rem 0.24rem; border: 0; border-radius: 0.28rem;
+  background: transparent; color: rgba(226,244,255,0.9); text-align: left; cursor: pointer;
+  font-family: var(--font-mono, monospace); font-size: 0.53rem;
+  transition: background-color 0.16s ease;
+}
+.mv-strike-row:disabled { cursor: default; }
+.mv-strike-row:hover:not(:disabled), .mv-strike-row:focus-visible { background: rgba(125,211,252,0.08); }
+.mv-strike-row.is-spot { background: rgba(34, 211, 238, 0.1); }
+.mv-strike-row.is-spot .mv-strike-k { color: #fff; font-weight: 700; }
+.mv-strike-k { color: rgba(125,211,252,0.8); }
+.mv-strike-track { position: relative; height: 9px; border-radius: 3px; background: var(--mv-track); }
+.mv-strike-zero { position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; background: rgba(125,211,252,0.35); }
+.mv-strike-bar { position: absolute; top: 1px; bottom: 1px; border-radius: 2px; transition: width 0.4s var(--mv-ease); }
+.mv-strike-bar.mv-bull { background: var(--mv-bull); }
+.mv-strike-bar.mv-bear { background: var(--mv-bear); }
+.mv-strike-bar.mv-neutral { background: rgba(167,139,250,0.5); }
+.mv-strike-pct { text-align: right; font-weight: 700; }
+
+/* Implied vs realized */
+.mv-ivr { max-width: 56rem; }
+.mv-ivr-track {
+  position: relative; height: 30px; margin-top: 0.2rem;
+  border-radius: 999px; background: var(--mv-track); border: 1px solid var(--mv-hairline);
+}
+.mv-ivr-tick {
+  position: absolute; top: 8px; bottom: 8px; width: 2px; border-radius: 1px;
+  background: rgba(125, 211, 252, 0.65); transform: translateX(-50%);
+}
+.mv-ivr-median {
+  position: absolute; top: 3px; bottom: 3px; width: 2px;
+  background: var(--mv-neutral); transform: translateX(-50%);
+}
+.mv-ivr-implied {
+  position: absolute; top: -3px; bottom: -3px; width: 3px; border-radius: 2px;
+  background: currentColor; transform: translateX(-50%);
+  box-shadow: 0 0 10px currentColor;
+}
+.mv-ivr-legend {
+  /* Gap-packed, not space-between. On a full-width panel space-between throws the three
+     readings to opposite ends of ~1400px, so the eye has to travel to relate "implied 6%" to
+     "median 1.82%" — the exact comparison the panel exists to make. */
+  display: flex; gap: 1.4rem; margin-top: 0.45rem; flex-wrap: wrap;
+  font-family: var(--font-mono, monospace); font-size: 0.53rem;
+  color: rgba(186, 230, 253, 0.8);
+}
+.mv-ivr-legend b { font-weight: 700; }
+
+/* Flow strip */
+.mp-flow-net {
+  margin: 0.4rem 0 0.3rem; font-family: var(--font-mono, monospace); font-size: 0.56rem; color: #e2f4ff;
+}
+.mp-flow-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.16rem; }
+.mp-flow-list li {
+  display: grid; grid-template-columns: 2.4rem 3.2rem 1fr 2.4rem; gap: 0.4rem;
+  font-family: var(--font-mono, monospace); font-size: 0.53rem; color: rgba(226,244,255,0.88);
+}
+.mp-flow-dte { text-align: right; color: rgba(125,211,252,0.6); }
+
+/* Beat rates */
+.mh-rates { display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.5rem; }
+.mh-rate {
+  display: grid; grid-template-columns: 4.4rem 1fr 2.6rem; align-items: center; gap: 0.5rem;
+  font-family: var(--font-mono, monospace); font-size: 0.55rem;
+}
+.mh-rate-label { color: rgba(125,211,252,0.7); letter-spacing: 0.08em; text-transform: uppercase; }
+.mh-rate-track { position: relative; height: 9px; border-radius: 999px; background: var(--mv-track); overflow: hidden; }
+.mh-rate-fill {
+  position: absolute; inset: 0; border-radius: 999px;
+  transform-origin: left center; transition: transform 0.45s var(--mv-ease);
+}
+.mh-rate-fill.mv-bull { background: var(--mv-bull); }
+.mh-rate-fill.mv-bear { background: var(--mv-bear); }
+.mh-rate-fill.mv-neutral { background: rgba(167,139,250,0.6); }
+.mh-rate-val { text-align: right; font-weight: 700; }
+.mh-summary { margin: 0.4rem 0 0; font-size: 0.72rem; line-height: 1.45; color: #bae6fd; }

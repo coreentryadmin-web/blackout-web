@@ -273,6 +273,10 @@ export function benzingaRowsToPrintHistory(
       else if (surprise_pct != null) beat = surprise_pct >= 0;
       return {
         report_date: r.date,
+        // Carried so the reaction can be anchored to the session that could trade the news:
+        // an AMC print's reaction is the NEXT session, not the report date's. Without this
+        // the history chart attributes pre-print drift to the print itself.
+        report_time_et: r.time,
         eps_estimate: r.estimated_eps,
         eps_actual: r.actual_eps,
         revenue_estimate: r.estimated_revenue,

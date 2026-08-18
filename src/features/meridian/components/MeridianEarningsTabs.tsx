@@ -9,7 +9,11 @@ import {
   MeridianDataCard,
 } from "./meridian-ui";
 import { MeridianEarningsIntelPanel } from "./MeridianEarningsIntelPanel";
+import { etWallClockToIso } from "@/lib/meridian/meridian-viz-core";
 import { MeridianEarningsReportPanel } from "./MeridianEarningsReportPanel";
+import { MeridianEarningsEstimatesPanel } from "./MeridianEarningsEstimatesPanel";
+import { MeridianEarningsPositioningPanel } from "./MeridianEarningsPositioningPanel";
+import { MeridianEarningsHistoryPanel } from "./MeridianEarningsHistoryPanel";
 
 type EarningsTab = "report" | "estimates" | "positioning" | "history";
 
@@ -68,6 +72,10 @@ type Props = {
 export function MeridianEarningsTabs({ detail }: Props) {
   const { enrichment, intel, pack } = detail;
   const cal = enrichment.earnings_calendar;
+  // The print instant for the countdown. The feed reports an ET WALL CLOCK date + time, so it
+  // has to be composed through the DST-aware converter — a hardcoded offset is wrong for
+  // roughly half the calendar and reads as a real scheduling error on an event clock.
+  const eventAt = etWallClockToIso(cal?.date ?? null, cal?.report_time_et ?? cal?.time ?? null);
   const defaultTab: EarningsTab = enrichment.post_print?.headline ? "estimates" : "report";
   const [tab, setTab] = useState<EarningsTab>(defaultTab);
   const hadActualRef = useRef(Boolean(cal?.actual_eps != null));
@@ -111,7 +119,11 @@ export function MeridianEarningsTabs({ detail }: Props) {
               catalysts: enrichment.catalysts,
               analyst_revisions: enrichment.analyst_revisions,
               insider_activity: enrichment.insider_activity,
+              print_history: enrichment.print_history,
+              price_targets: enrichment.price_targets,
+              street_skew: enrichment.street_skew,
             }}
+            eventAt={eventAt}
           />
           <div className="meridian-banner-stack">
             {enrichment.post_print?.headline && (
@@ -161,6 +173,11 @@ export function MeridianEarningsTabs({ detail }: Props) {
 
       {tab === "estimates" && (
         <div role="tabpanel" className="meridian-earnings-tabpanel">
+          <MeridianEarningsEstimatesPanel
+            ticker={pack.ticker}
+            enrichment={enrichment}
+            spot={intel.thermal?.spot ?? null}
+          />
           {enrichment.street_skew && (
             <MeridianAnalyticsBanner
               label="Street skew (news-derived)"
@@ -329,6 +346,7 @@ export function MeridianEarningsTabs({ detail }: Props) {
 
       {tab === "positioning" && (
         <div role="tabpanel" className="meridian-earnings-tabpanel">
+          <MeridianEarningsPositioningPanel ticker={pack.ticker} intel={intel} />
           <MeridianEarningsIntelPanel
             intel={intel}
             printHistory={[]}
@@ -339,6 +357,7 @@ export function MeridianEarningsTabs({ detail }: Props) {
 
       {tab === "history" && (
         <div role="tabpanel" className="meridian-earnings-tabpanel">
+          <MeridianEarningsHistoryPanel ticker={pack.ticker} enrichment={enrichment} intel={intel} />
           {enrichment.print_history_summary && (
             <MeridianAnalyticsBanner
               label="Track record"

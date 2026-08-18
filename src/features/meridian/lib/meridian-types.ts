@@ -361,6 +361,17 @@ export type MeridianEarningsEnrichment = {
 
 export type MeridianEarningsPrint = {
   report_date: string | null;
+  /** Benzinga report time (ET). Drives BMO/AMC reaction anchoring — see meridian-reaction-core. */
+  report_time_et?: string | null;
+  /**
+   * Which session `session_change_pct` was measured on:
+   *   bmo_session            — pre-open print, report date's own session
+   *   amc_next_session       — post-close print, the FOLLOWING session
+   *   assumed_report_session — timing unknown; report date assumed. Mark these in the UI:
+   *                            for an AMC reporter this value is pre-print drift, not a reaction.
+   * Null when no move could be measured at all.
+   */
+  reaction_basis?: "bmo_session" | "amc_next_session" | "assumed_report_session" | null;
   eps_estimate: number | null;
   eps_actual: number | null;
   revenue_estimate?: number | null;
