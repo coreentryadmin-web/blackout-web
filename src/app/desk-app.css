@@ -2532,3 +2532,93 @@ html.nav-locked body { overflow: hidden; }
   background: rgba(251, 191, 36, 0.07);
   font-family: var(--mv-prose); font-size: 0.78rem; line-height: 1.45; color: #fde3a7;
 }
+
+/* ═══ SUMMARY TAB ════════════════════════════════════════════════════════════════════
+   Two ideas, always both. On a split book neither is promoted; on a one-sided book the losing
+   side recedes but stays visible, because "weak" and "absent" are different statements. */
+.meridian-earnings-tabs[data-tab="summary"] { --tab-hue: 244, 114, 182; }
+.meridian-earnings-tab-summary { --tab-hue: 244, 114, 182; }
+
+.msum { display: flex; flex-direction: column; gap: 0.85rem; }
+.msum-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.msum-headline {
+  margin: 0.25rem 0 0; font-family: var(--mv-value);
+  font-size: 1.05rem; font-weight: 800; line-height: 1.3; text-wrap: balance;
+}
+
+.msum-inputs { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0; padding: 0; list-style: none; }
+.msum-input {
+  font-family: var(--mv-label); font-size: 0.64rem; letter-spacing: 0.08em; text-transform: uppercase;
+  color: rgba(148, 180, 200, 0.5);
+}
+.msum-input.is-on { color: rgba(125, 211, 252, 0.95); }
+
+.msum-contested {
+  margin: 0; padding: 0.55rem 0.75rem;
+  border: 1px solid rgba(244, 114, 182, 0.4); border-left-width: 3px; border-radius: 0.4rem;
+  background: rgba(244, 114, 182, 0.08);
+  font-family: var(--mv-prose); font-size: 0.8rem; line-height: 1.45; color: #ffd9ef;
+}
+
+.msum-ideas { display: grid; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr)); gap: 0.75rem; }
+.msum-idea {
+  display: flex; flex-direction: column; gap: 0.6rem;
+  padding: 0.85rem 0.95rem; border-radius: 0.7rem;
+  border: 1px solid var(--mv-hairline); background: var(--mv-surface);
+  transition: opacity 0.25s var(--mv-ease);
+}
+/* Receding, not hiding: the reader can still see the other side and why it lost. */
+.msum-idea.is-muted { opacity: 0.55; }
+.msum-idea.is-muted:hover, .msum-idea.is-muted:focus-within { opacity: 1; }
+.msum-idea-call { border-top: 2px solid rgba(52, 211, 153, 0.5); }
+.msum-idea-put { border-top: 2px solid rgba(251, 113, 133, 0.5); }
+.msum-idea-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.6rem; flex-wrap: wrap; }
+.msum-idea-side { font-family: var(--mv-label); font-size: 0.9rem; font-weight: 800; letter-spacing: 0.16em; }
+.msum-idea-level { font-family: var(--mv-label); font-size: 0.76rem; color: #cfe9f8; }
+.msum-idea-level b { font-family: var(--mv-value); font-size: 0.95rem; font-variant-numeric: tabular-nums; }
+.msum-idea-src { color: rgba(148, 200, 230, 0.65); }
+
+.msum-prob { display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
+.msum-prob-val {
+  font-family: var(--mv-value); font-size: 2.1rem; font-weight: 800; line-height: 1;
+  font-variant-numeric: tabular-nums; color: #fff;
+}
+/* The label carries the honesty: a distribution statement, never "chance of profit". */
+.msum-prob-label {
+  font-family: var(--mv-label); font-size: 0.66rem; letter-spacing: 0.06em;
+  color: rgba(160, 205, 232, 0.85); max-width: 15rem; line-height: 1.35;
+}
+
+.msum-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin: 0; }
+.msum-metrics dt {
+  font-family: var(--mv-label); font-size: 0.6rem; letter-spacing: 0.09em; text-transform: uppercase;
+  color: rgba(148, 200, 230, 0.72);
+}
+.msum-metrics dd {
+  margin: 0.15rem 0 0; font-family: var(--mv-value); font-size: 0.9rem; font-weight: 700;
+  font-variant-numeric: tabular-nums; color: #eaf7ff;
+}
+.msum-thin { font-family: var(--mv-label); font-size: 0.62rem; color: rgba(148, 200, 230, 0.6); font-weight: 500; }
+
+.msum-conf { display: flex; align-items: center; gap: 0.5rem; }
+.msum-conf-bar { flex: 1; height: 6px; border-radius: 999px; background: var(--mv-track); overflow: hidden; }
+.msum-conf-fill { display: block; height: 100%; background: currentColor; transition: width 0.45s var(--mv-ease); }
+.msum-conf-val { font-family: var(--mv-value); font-size: 0.82rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+.msum-why { margin: 0; padding-left: 1rem; display: flex; flex-direction: column; gap: 0.22rem; }
+.msum-why li { font-family: var(--mv-prose); font-size: 0.76rem; line-height: 1.4; color: #b9dcf0; }
+.msum-idea-foot { margin: 0; }
+
+.msum-levels { display: flex; flex-direction: column; gap: 0.3rem; }
+.msum-level-rows { list-style: none; margin: 0; padding: 0; }
+.msum-level {
+  display: grid; grid-template-columns: auto 1fr auto; align-items: baseline; gap: 0.5rem;
+  padding: 0.22rem 0; min-height: 24px;
+}
+.msum-level-label { font-family: var(--mv-label); font-size: 0.68rem; letter-spacing: 0.09em; text-transform: uppercase; color: rgba(148, 200, 230, 0.8); }
+.msum-level-leader { border-bottom: 1px dotted rgba(125, 211, 252, 0.2); transform: translateY(-0.18em); }
+.msum-level-val { font-family: var(--mv-value); font-size: 0.92rem; font-weight: 800; font-variant-numeric: tabular-nums; color: #f2fbff; }
+.msum-level-spot .msum-level-val { color: #22d3ee; }
+.msum-level-wall .msum-level-label { color: rgba(251, 191, 36, 0.9); }
+
+.msum-note { margin: 0; font-family: var(--mv-prose); font-size: 0.78rem; line-height: 1.45; color: #a9cfe6; }

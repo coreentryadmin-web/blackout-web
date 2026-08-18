@@ -11,14 +11,18 @@ import {
 } from "./meridian-ui";
 import { MeridianEarningsIntelPanel } from "./MeridianEarningsIntelPanel";
 import { etWallClockToIso } from "@/lib/meridian/meridian-viz-core";
+import { MeridianEarningsSummaryPanel } from "./MeridianEarningsSummaryPanel";
 import { MeridianEarningsReportPanel } from "./MeridianEarningsReportPanel";
 import { MeridianEarningsEstimatesPanel } from "./MeridianEarningsEstimatesPanel";
 import { MeridianEarningsPositioningPanel } from "./MeridianEarningsPositioningPanel";
 import { MeridianEarningsHistoryPanel } from "./MeridianEarningsHistoryPanel";
 
-export type EarningsTab = "report" | "estimates" | "positioning" | "history";
+export type EarningsTab = "summary" | "report" | "estimates" | "positioning" | "history";
 
 export const EARNINGS_TABS: Array<{ id: EarningsTab; label: string }> = [
+  // Summary leads: it is the only tab that answers "so what do I do?", and a reader who opens
+  // an event wants that before the evidence behind it.
+  { id: "summary", label: "Summary" },
   { id: "report", label: "Report" },
   { id: "estimates", label: "Estimates" },
   { id: "positioning", label: "Positioning" },
@@ -121,6 +125,12 @@ export function MeridianEarningsTabs({ detail, tab }: Props) {
           for this refresh. Everything else on this page is live.
         </p>
       )}
+      {tab === "summary" && (
+        <div role="tabpanel" className="meridian-earnings-tabpanel">
+          <MeridianEarningsSummaryPanel detail={detail} />
+        </div>
+      )}
+
       {tab === "report" && (
         <div role="tabpanel" className="meridian-earnings-tabpanel">
           <MeridianEarningsReportPanel

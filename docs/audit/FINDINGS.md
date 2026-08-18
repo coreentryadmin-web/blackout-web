@@ -11117,3 +11117,41 @@ verified live. A validator using the same unbounded query would compare empty ag
 report PASS.
 
 Flags: `--tickers --max --json --base`. Read-only; one temp Clerk user, released in a finally.
+
+## 2026-08-18 — Meridian SUMMARY tab: two ideas, honest probabilities — SHIPPED
+
+> **kind:** `OPS-NOTE`
+
+| | |
+|---|---|
+| **Status** | SHIPPED — `meridian-summary-core.ts` + `MeridianEarningsSummaryPanel`, 28 unit tests |
+
+A tab that answers "so what do I do?" without claiming more than the data supports.
+
+**What a percentage is allowed to mean here.** The obvious move is to print "72% chance this play
+works". That number would be invented: nothing in the payload carries a contract price, so
+profit-at-expiry is not computable. What IS computable, and what the panel shows:
+
+| component | what it is | why it is defensible |
+|---|---|---|
+| IMPLIED | P(close beyond a level) under the options-implied expected move | real math on the market's own 1σ, lognormal, zero drift |
+| HISTORICAL | how this name reacted to its own past prints | a base rate — **always shipped with its sample size**, and suppressed below 3 prints |
+| EVIDENCE | weighted tally of the pillars that took a side | the desk's own read, shown as a lean rather than a verdict |
+
+They are reported **separately** and then combined, with every component visible. A single blended
+number with its inputs hidden is the thing a reader cannot check, and this desk's whole argument
+is that an uncheckable number is worse than none. The big figure is labelled "implied chance of
+closing above X" — a distribution statement, never a profit claim.
+
+**Contradiction is the product.** Both a call and a put idea are always shown. On a split book
+neither is promoted, and the panel says why: a verdict manufactured from a 3-2 split overstates
+what the desk knows. On a one-sided book the losing side dims but stays on screen, because "weak"
+and "absent" are different statements.
+
+**Details that carry meaning rather than decoration:** the lognormal median adjustment (without it
+every name gets half a variance of free upside — the test for this asserts P(above spot) is just
+*under* 50%, and fails if the term is removed); a wall on the wrong side of spot is refused as a
+target, since it is already breached and would return a near-certain probability for a play with
+no room; the median, not the mean, is "typical", because one gap dominates a four-print mean; and
+an `inputs` strip shows which feeds actually contributed, so an absent feed never reads as a
+neutral one.

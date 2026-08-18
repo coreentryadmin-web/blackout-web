@@ -77,7 +77,7 @@ export function MeridianEventDetailPanel({
   const earnings = detail?.kind === "earnings" ? detail : null;
   const hasPostPrint = Boolean(earnings?.enrichment.post_print?.headline);
   const hasActual = earnings?.enrichment.earnings_calendar?.actual_eps != null;
-  const [earningsTab, setEarningsTab] = useState<EarningsTab>("report");
+  const [earningsTab, setEarningsTab] = useState<EarningsTab>("summary");
   const hadActualRef = useRef(hasActual);
   useEffect(() => {
     if (hasActual && !hadActualRef.current) setEarningsTab("estimates");
@@ -89,7 +89,7 @@ export function MeridianEventDetailPanel({
   // A different event starts on REPORT again — carrying the previous name's tab across is a
   // state leak the reader reads as the page opening on the wrong section.
   useEffect(() => {
-    setEarningsTab("report");
+    setEarningsTab("summary");
   }, [item.id]);
 
   return (

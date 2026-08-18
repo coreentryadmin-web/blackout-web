@@ -49,10 +49,10 @@ const VIEWPORTS = [
   { name: "mobile", viewport: "430x932", desktop: false },
 ].filter((v) => !ONLY || v.name === ONLY);
 
-const TABS = ["Report", "Estimates", "Positioning", "History"];
+const TABS = ["Summary", "Report", "Estimates", "Positioning", "History"];
 
 /** Panels whose interiors are checked for overlap/clip. Scoped so one bad panel is nameable. */
-const PANEL_ROOTS = [".mr", ".me", ".mp", ".mh"];
+const PANEL_ROOTS = [".msum", ".mr", ".me", ".mp", ".mh"];
 
 const findings = [];
 const record = (f) => {
