@@ -2695,3 +2695,42 @@ html.nav-locked body { overflow: hidden; }
   font-family: var(--mv-value); font-size: 0.95rem; font-weight: 800;
   font-variant-numeric: tabular-nums; color: #f2fbff;
 }
+
+/* What changed — the drift panel. Rendered only when a second day exists, because a one-point
+   series is not a trend and a panel that implied otherwise would be worse than absent. */
+.msum-drift {
+  display: flex; flex-direction: column; gap: 0.4rem;
+  padding: 0.6rem 0.75rem; border-radius: 0.5rem;
+  border: 1px solid var(--mv-hairline); background: rgba(125, 211, 252, 0.04);
+}
+.msum-drift-head { display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
+.msum-drift-dir { font-family: var(--mv-value); font-size: 0.88rem; font-weight: 700; }
+.msum-drift-firming { color: var(--mv-bull, #34d399); }
+.msum-drift-fading { color: var(--mv-bear, #fb7185); }
+.msum-drift-flat, .msum-drift-unknown { color: #a9cfe6; }
+.msum-drift-turns { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.msum-drift-turns li {
+  font-family: var(--mv-label); font-size: 0.68rem; letter-spacing: 0.04em;
+  padding: 0.12rem 0.4rem; border-radius: 0.25rem; background: rgba(125, 211, 252, 0.08);
+  color: #cfe9f8;
+}
+
+/* Freshness. Reports the age of the DATA, not of the render — a component that merely animated
+   would keep ticking happily while the feed was dead, which is the failure this exists to
+   expose. Goes amber past the stale threshold rather than quietly continuing to count. */
+.msum-head-right { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.mv-fresh {
+  display: inline-flex; align-items: center; gap: 0.32rem;
+  font-family: var(--mv-label); font-size: 0.64rem; letter-spacing: 0.06em;
+  color: rgba(148, 200, 230, 0.8);
+}
+.mv-fresh-dot {
+  width: 6px; height: 6px; border-radius: 50%; background: #34d399;
+  box-shadow: 0 0 6px rgba(52, 211, 153, 0.8);
+}
+.mv-fresh.is-stale { color: #fcd9a0; }
+.mv-fresh.is-stale .mv-fresh-dot { background: #fbbf24; box-shadow: 0 0 6px rgba(251, 191, 36, 0.8); }
+@media (prefers-reduced-motion: no-preference) {
+  .mv-fresh-dot { animation: mv-fresh-pulse 2.4s ease-in-out infinite; }
+  @keyframes mv-fresh-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+}

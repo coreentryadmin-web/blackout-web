@@ -22,7 +22,8 @@ import {
   type PlayIdea,
 } from "@/lib/meridian/meridian-summary-core";
 import type { MeridianEarningsDetail } from "@/features/meridian/lib/meridian-types";
-import { MeridianCountdown } from "./meridian-viz";
+import { MeridianCountdown, MeridianFreshness, MeridianSparkline } from "./meridian-viz";
+import { computeMeridianDrift, driftSeries } from "@/lib/meridian/meridian-drift-core";
 import { etWallClockToIso } from "@/lib/meridian/meridian-viz-core";
 
 const pct = (v: number | null | undefined, digits = 0) =>
@@ -47,6 +48,14 @@ export function MeridianEarningsSummaryPanel({ detail }: { detail: MeridianEarni
     [intel, enrichment, pack]
   );
 
+  /**
+   * How this read has MOVED as the print approached. Often the more useful signal: a verdict
+   * decaying toward neutral means something different from one that arrived neutral and stayed.
+   * Renders nothing until a second day exists — a one-point series is not a trend.
+   */
+  const drift = useMemo(() => computeMeridianDrift(detail.drift_snapshots, 7), [detail.drift_snapshots]);
+  const series = useMemo(() => driftSeries(detail.drift_snapshots), [detail.drift_snapshots]);
+
   const cal = enrichment?.earnings_calendar;
   const eventAt = etWallClockToIso(cal?.date ?? null, cal?.report_time_et ?? cal?.time ?? null);
 
@@ -59,7 +68,10 @@ export function MeridianEarningsSummaryPanel({ detail }: { detail: MeridianEarni
             {summary.headline}
           </p>
         </div>
-        {eventAt && <MeridianCountdown targetIso={eventAt} />}
+        <div className="msum-head-right">
+          <MeridianFreshness asOf={pack?.as_of ?? null} />
+          {eventAt && <MeridianCountdown targetIso={eventAt} />}
+        </div>
       </header>
 
       {/* Which feeds actually contributed. An absent input must never be mistaken for a neutral
@@ -79,6 +91,38 @@ export function MeridianEarningsSummaryPanel({ detail }: { detail: MeridianEarni
           </li>
         ))}
       </ul>
+
+      {drift && (
+        <div className="msum-drift">
+          <div className="msum-drift-head">
+            <span className="mr-panel-title">What changed</span>
+            <span className={`msum-drift-dir msum-drift-${drift.direction}`}>{drift.headline}</span>
+          </div>
+          {series.filter((v) => v != null).length >= 2 && (
+            <MeridianSparkline
+              values={series}
+              lean={drift.direction === "firming" ? "bullish" : drift.direction === "fading" ? "bearish" : "neutral"}
+              width={120}
+              height={24}
+            />
+          )}
+          {drift.turns.length > 0 && (
+            <ul className="msum-drift-turns">
+              {drift.turns.map((t) => (
+                <li key={t.pillar}>
+                  <b>{t.pillar}</b> {t.from} → <span className={t.to === "bullish" ? "mv-bull" : t.to === "bearish" ? "mv-bear" : ""}>{t.to}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {/* Sample size, always. Two days is a comparison; it is not a trend, and the panel
+              must not let a reader mistake one for the other. */}
+          <span className="msum-thin">
+            {drift.sampleDays} day{drift.sampleDays === 1 ? "" : "s"} tracked
+            {drift.sampleDays === 2 ? " — a comparison, not yet a trend" : ""}
+          </span>
+        </div>
+      )}
 
       {summary.contested && (
         <p className="msum-contested" role="status">

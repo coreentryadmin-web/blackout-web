@@ -560,6 +560,14 @@ export type MeridianEarningsIntel = {
 
 export type MeridianEarningsDetail = {
   kind: "earnings";
+  /** Day series of past reads for this event, oldest first. Empty until a second day exists. */
+  drift_snapshots?: Array<{
+    day: string;
+    score: number | null;
+    verdict: "bullish" | "bearish" | "neutral" | null;
+    confidence: string | null;
+    pillars: Record<string, string> | null;
+  }>;
   pack: PreEarningsPackCard;
   enrichment: MeridianEarningsEnrichment;
   intel: MeridianEarningsIntel;
