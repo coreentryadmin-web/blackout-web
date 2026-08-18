@@ -1,4 +1,4 @@
-import { relStrengthT, beadRadiusForPctShare } from "./vector-wall-visual";
+import { relAlphaT, relStrengthT, beadRadiusForPctShare } from "./vector-wall-visual";
 
 /**
  * Pure colour / size / identity helpers for the Vector bead rail.
@@ -27,8 +27,19 @@ import { relStrengthT, beadRadiusForPctShare } from "./vector-wall-visual";
 export const HALF_PX_MIN = 2.2;
 export const HALF_PX_MAX = 7.5;
 
-/** Bead fill opacity bounds — full strength for regular beads; king glow is tamed in the draw pass only. */
-export const FILL_ALPHA_MIN = 0.6;
+/**
+ * Bead fill opacity bounds.
+ *
+ * FLOOR LOWERED 0.6 -> 0.25 (2026-08-18, member screenshot). At 0.6 the ENTIRE contrast budget was
+ * 0.6 -> 0.98: the weakest bead on the chart rendered at 60% opacity and the strongest at 98%, a
+ * 38-point spread that is not readable as a difference. Every bead in a row therefore looked
+ * equally bold whether that wall was heavy or thin at the time, so a row showed only THAT A WALL
+ * EXISTED and never WHEN IT MATTERED — which is the whole point of drawing it as a time series.
+ *
+ * 0.25 leaves a faint-but-present weak bead (the rail still shows structure that is there) while
+ * giving the strong end somewhere to stand out from.
+ */
+export const FILL_ALPHA_MIN = 0.25;
 export const FILL_ALPHA_MAX = 0.98;
 
 /** Render profile — Compare panes are ~¼ height; default bead sizing paints over candles. */
@@ -210,9 +221,14 @@ export function fillAlpha(
   maxPct: number,
   tuning: BeadRenderTuning = BEAD_TUNING_DEFAULT
 ): number {
-  const exp = tuning.contrastExp ?? 1.6;
+  // SUB-linear by default, unlike the SIZE curve — see REL_ALPHA_EXP. `maxPct` is the session-wide
+  // king, so a super-linear alpha curve pins every non-king row near the floor for the whole
+  // session and its beads all render alike. A profile may still override via `contrastExp`.
   if (!Number.isFinite(pct) || pct <= 0 || !(maxPct > 0)) return tuning.fillMin;
-  const t = Math.pow(Math.min(1, pct / maxPct), exp);
+  const t =
+    tuning.contrastExp != null
+      ? Math.pow(Math.min(1, pct / maxPct), tuning.contrastExp)
+      : relAlphaT(pct, maxPct);
   return tuning.fillMin + t * (tuning.fillMax - tuning.fillMin);
 }
 
@@ -292,14 +308,36 @@ export function kingStrikeByTime(
 // ticker (5-point SPX strikes vs 0.5-point single-name) and with zoom. The ceiling has to be
 // derived from the room actually available, not tuned for one screenshot.
 
-/** Fraction of BAR SPACING a bead's diameter may occupy. Just under 1 so consecutive beads in a row
- *  read as beads with air between them rather than a continuous ribbon. */
-const BEAD_BAR_FILL = 0.85;
+/**
+ * Fraction of BAR SPACING a bead's diameter may occupy.
+ *
+ * RAISED 0.85 -> 2.4 (2026-08-18). 0.85 forbade any horizontal overlap, on the assumption that
+ * touching beads were the defect. They are not: in the reference product a row IS a near-continuous
+ * ribbon of touching dots, and forbidding that shrank beads to ~3px radius at ordinary 3m zoom
+ * (~5-7px of room per bar) — trading painted slabs for dots too small and too uniform to read. The
+ * member screenshot after that change is the evidence.
+ *
+ * Kept as a constraint rather than deleted because it still catches the pathological case (a zoom
+ * so dense that a bead would span many bars), but it is now deliberately permissive: horizontal
+ * overlap is TEXTURE, vertical thickness is the thing that buries candles.
+ */
+const BEAD_BAR_FILL = 2.4;
 
 /** Fraction of the ROW GAP (price-axis distance to the nearest neighbouring row) a bead's diameter
  *  may occupy. Deliberately about half: this is what keeps rows visibly SEPARATE — the property the
  *  reference product has and the slab render did not — and what stops beads burying the candles. */
 const BEAD_ROW_FILL = 0.55;
+
+/**
+ * The clamped ceiling may never fall below this.
+ *
+ * `minRadiusPx` (1.6) is the "still technically drawn" floor, not a readable one. Letting the
+ * CEILING collapse toward it destroys the floor-to-ceiling range, and a collapsed range renders
+ * every magnitude at one size — which is exactly how the first version of this budget produced a
+ * rail of identical faint dots. A bead you cannot see, and a row whose beads cannot differ from
+ * each other, both convey nothing; legibility wins over separation.
+ */
+const BEAD_READABLE_MIN_HALF_PX = 3.2;
 
 export type BeadSpacingBudget = {
   /** px between adjacent bars on the time axis. */
@@ -338,7 +376,10 @@ export function clampTuningToSpacing(
   }
 
   const floor = tuning.minRadiusPx > 0 ? tuning.minRadiusPx : 0.5;
-  const halfMax = Math.max(floor, Math.min(...limits));
+  // Never clamp BELOW readability, and never above the profile's own ceiling — a Compare pane whose
+  // tuned ceiling is 4.5 must not be inflated to 3.2-or-more logic it never asked for.
+  const readable = Math.min(tuning.halfMax, Math.max(floor, BEAD_READABLE_MIN_HALF_PX));
+  const halfMax = Math.max(readable, Math.min(...limits));
   if (halfMax >= tuning.halfMax) return tuning; // nothing binds — keep the profile exactly
 
   // Preserve the profile's dynamic range where the new ceiling allows it.

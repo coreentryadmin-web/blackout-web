@@ -128,6 +128,32 @@ const REL_CONTRAST_EXP = 1.6;
 
 /** Frame-normalized strength in [0,1]: `pct` relative to the strongest wall in view (`maxPct`),
  *  raised to REL_CONTRAST_EXP for separation. 0 for non-positive/non-finite input or maxPct ≤ 0. */
+/**
+ * ALPHA contrast exponent — deliberately DIFFERENT from the size exponent.
+ *
+ * Size and opacity want opposite curve shapes and shared one for years, which is why the rail has
+ * never had both channels alive at once:
+ *   - SIZE wants SUPER-linear (REL_CONTRAST_EXP = 1.6). A wall fading to a third of its peak must
+ *     visibly shrink — the suite pins that at >= 4x, and flattening the curve breaks it.
+ *   - ALPHA wants SUB-linear. `maxPct` is the SESSION-WIDE king across every strike, so with a
+ *     super-linear curve a row peaking at 8% share on a 30%-king day computes (0.27)**1.6 = 0.13
+ *     and sits pinned near the floor from open to close, however much it actually moved. Every bead
+ *     in that row renders alike — the rail shows THAT a wall existed and never WHEN it mattered.
+ *
+ * Sub-linear is right for alpha because per-strike gamma is heavy-tailed: most rows live far below
+ * the day's king, so the curve must LIFT and SPREAD the low-and-middle range instead of compressing
+ * it. Against the 0.25 floor: a 3%-of-king wall renders ~0.29, a 30% one ~0.53, an 80% one ~0.86 —
+ * a spread a viewer can read, where the shared super-linear curve put those same three at
+ * 0.60 / 0.66 / 0.87.
+ */
+const REL_ALPHA_EXP = 0.8;
+
+/** Sub-linear strength for the OPACITY channel. See REL_ALPHA_EXP for why this is not relStrengthT. */
+export function relAlphaT(pct: number, maxPct: number): number {
+  if (!Number.isFinite(pct) || pct <= 0 || !(maxPct > 0)) return 0;
+  return Math.pow(Math.min(1, pct / maxPct), REL_ALPHA_EXP);
+}
+
 export function relStrengthT(pct: number, maxPct: number): number {
   if (!Number.isFinite(pct) || pct <= 0 || !(maxPct > 0)) return 0;
   return Math.pow(Math.min(1, pct / maxPct), REL_CONTRAST_EXP);
