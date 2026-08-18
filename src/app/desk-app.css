@@ -2026,7 +2026,8 @@ html.nav-locked body { overflow: hidden; }
    same information at tilt 0 rather than a fallback stub. */
 
 /* ── 3D halo ── */
-.ms-halo { position: relative; flex: none; }
+/* margin-bottom reserves flow space for .ms-legend, which is positioned outside the box. */
+.ms-halo { position: relative; flex: none; margin-bottom: 1.35rem; }
 .ms-halo-stage { position: absolute; inset: 0; }
 .ms-halo.is-spatial .ms-halo-stage {
   transform-style: preserve-3d;
@@ -2075,6 +2076,11 @@ html.nav-locked body { overflow: hidden; }
 }
 .ms-sub { font-family: var(--font-mono, monospace); font-size: 0.48rem; color: rgba(125,211,252,0.72); }
 .ms-legend {
+  /* Hangs BELOW the halo's square box on purpose (the box is sized to the rings), so the halo
+     reserves flow space for it via margin-bottom — see .ms-halo. Without that reservation the
+     legend printed straight through the next element the moment .mr-decision stacked into a
+     column at narrow widths: measured live at 430px, "Evidence"/"Agreement"/"Confidence" over
+     the verdict headline. */
   position: absolute; left: 50%; bottom: -1.15rem; transform: translateX(-50%);
   display: flex; gap: 0.55rem; white-space: nowrap;
 }
@@ -2136,6 +2142,13 @@ html.nav-locked body { overflow: hidden; }
   max-width: none; overflow: visible;
 }
 .ms-orb.is-dim .ms-orb-label { opacity: 0.35; }
+/* An orb's drawn size ENCODES its contribution, so it must not be inflated to meet the 24px
+   minimum touch target. Instead an invisible pad extends the hit area around it — the mark
+   keeps telling the truth and the control is still reachable with a thumb. */
+.ms-orb::after {
+  content: ""; position: absolute; top: 50%; left: 50%;
+  width: 26px; height: 26px; transform: translate(-50%, -50%);
+}
 .ms-orbital-key {
   position: absolute; left: 0; right: 0; bottom: -0.2rem; margin: 0; text-align: center;
   font-family: var(--font-mono, monospace); font-size: 0.44rem;
@@ -2173,6 +2186,9 @@ html.nav-locked body { overflow: hidden; }
   display: grid; grid-template-columns: 3.6rem 1fr 3.6rem 3.4rem;
   align-items: center; gap: 0.45rem;
   padding: 0.16rem 0.28rem; border: 0; border-radius: 0.32rem;
+  /* These rows are clickable (they open the print), so they carry the 24px minimum target
+     height even though the type is small — measured at 19px live. */
+  min-height: 24px;
   background: transparent; color: inherit; text-align: left; cursor: pointer;
   font-family: var(--font-mono, monospace); font-size: 0.56rem;
   transition: background-color 0.16s ease;
