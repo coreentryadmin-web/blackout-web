@@ -34,7 +34,13 @@ export async function loadMeridianEarningsPrintHistory(
   ticker: string,
   limit = 8,
   eventDate?: string | null
-): Promise<{ print_history: MeridianEarningsPrint[]; print_history_summary: string | null }> {
+): Promise<{
+  print_history: MeridianEarningsPrint[];
+  print_history_summary: string | null;
+  /** Non-null when the calendar fetch FAILED. Empty history + a null error means the company
+   *  genuinely has no prints on file; empty history + an error means we could not look. */
+  history_error: string | null;
+}> {
   const sym = ticker.trim().toUpperCase();
   const benzingaRes = await loadBenzingaTickerEarnings(sym, eventDate ?? null);
 
@@ -59,5 +65,6 @@ export async function loadMeridianEarningsPrintHistory(
   return roundFloats({
     print_history: enriched,
     print_history_summary: printHistorySummary(enriched),
+    history_error: (benzingaRes as { error?: string | null }).error ?? null,
   });
 }

@@ -137,8 +137,24 @@ export async function loadBenzingaTickerEarnings(ticker: string, eventDate: stri
       limit: 16,
       sort: "date.desc",
     });
+    // THROW on a failed fetch so the cache stores NOTHING.
+    //
+    // Measured 2026-08-18: every Benzinga-derived enrichment field was empty on 8/8 mega-caps
+    // — print_history, street_estimates, earnings_calendar, beat_rates — while the same
+    // payload's pack.history carried 4 prints. A failure returned `{rows: []}` and got cached
+    // for ten minutes, so ONE bad request became ten minutes of "this company has no earnings
+    // history" on every panel fed from here.
+    //
+    // An entitled-but-genuinely-empty result (no error, no rows) is a real answer and still
+    // caches — the distinction is exactly the one the old code collapsed.
+    if (res.error) throw new Error(`benzinga_ticker_earnings:${res.error}`);
     return res;
-  }).catch(() => ({ rows: [], entitled: true, error: "cache_error" }));
+  }).catch((e: unknown) => ({
+    rows: [] as Awaited<ReturnType<typeof fetchBenzingaStructuredEarnings>>["rows"],
+    entitled: true,
+    // Carried, not swallowed: callers surface this so an outage cannot render as "no data".
+    error: String(e instanceof Error ? e.message : e).slice(0, 200),
+  }));
 }
 
 /** Board tickers batch — fills gaps the market-wide window may miss. */

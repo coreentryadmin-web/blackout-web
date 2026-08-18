@@ -111,6 +111,16 @@ export function MeridianEarningsTabs({ detail, tab }: Props) {
   const eventAt = etWallClockToIso(cal?.date ?? null, cal?.report_time_et ?? cal?.time ?? null);
   return (
     <div className="meridian-earnings-tabs" data-tab={tab}>
+      {/* An outage renders as an explanation, never as an empty panel. Measured 2026-08-18:
+          every Benzinga-derived field was empty on 8/8 mega-caps while the same payload's pack
+          carried four prints — a reader saw blank tabs and concluded the company had no
+          earnings history. Blank is a claim; this is the truth. */}
+      {enrichment.calendar_error && (
+        <p className="meridian-feed-error" role="status">
+          Earnings calendar feed did not respond — estimates and print history are unavailable
+          for this refresh. Everything else on this page is live.
+        </p>
+      )}
       {tab === "report" && (
         <div role="tabpanel" className="meridian-earnings-tabpanel">
           <MeridianEarningsReportPanel

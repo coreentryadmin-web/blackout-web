@@ -344,6 +344,8 @@ export type MeridianEarningsEnrichment = {
   } | null;
   print_history: MeridianEarningsPrint[];
   print_history_summary: string | null;
+  /** Non-null when the earnings-calendar fetch failed — empty panels must say WHY. */
+  calendar_error?: string | null;
   beat_rates: {
     eps_beat_rate: number | null;
     revenue_beat_rate: number | null;
