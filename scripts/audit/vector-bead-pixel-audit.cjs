@@ -127,7 +127,6 @@ async function analyze(shotPath) {
 }
 
 async function run(session) {
-  const [w, h] = VIEWPORT.split("x").map(Number);
   const { browser, ctx, counts } = await createTunneledContext({
     url: `${BASE}/vector`,
     cookie: session.cookieHeader,
