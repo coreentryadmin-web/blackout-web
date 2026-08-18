@@ -335,11 +335,40 @@ jobs:
             echo "Cloudflare secrets not set — skipping edge purge."
             exit 0
           fi
+          # PURGE HTML ONLY — NEVER /_next/static/*.
+          #
+          # This was `purge_everything`, and it was manufacturing the outage it could not recover
+          # from. Next.js build assets are CONTENT-HASHED and served
+          # `cache-control: public, max-age=31536000, immutable` — a given URL's bytes can never
+          # change, so they never need purging. Purging them forces every client to re-fetch from an
+          # origin that, mid-rollout, is a MIX of old and new ECS tasks: HTML from a new task
+          # referencing `webpack-<newhash>.js`, whose request lands on a task that only has the old
+          # build, returns 404. Next serves that 404 as `text/plain`, the browser refuses to execute
+          # it, HYDRATION NEVER COMPLETES, and every client component sits frozen in its loading
+          # state with no error and no retry.
+          #
+          # Observed on prod 2026-08-18: a captured session showed "Loading chart…", "Loading 0dte
+          # matrix…" and "Connecting Live Helix…" all stuck simultaneously with 84/84 network
+          # requests succeeding, and the console carrying
+          # `Refused to execute script from '.../webpack-bbf5e95de4d12e67.js' because its MIME type
+          # ('text/plain') is not executable`. That exact URL returned 200 / cf-cache-status HIT
+          # ~8 minutes later, once the edge had re-cached a good copy — i.e. it self-heals, which is
+          # why the failure reads as intermittent and unreproducible.
+          #
+          # The layout.tsx chunk-reload guard cannot save this: it reloads at most 3 times, 8s apart,
+          # and while the fleet is mixed a reload can land on a bad task again, so it exhausts and
+          # leaves the member on a dead page.
+          #
+          # Leaving hashed assets cached is what lets the OLD and NEW builds coexist during a
+          # rollout — a client holding old HTML keeps getting its old chunks from the edge while new
+          # clients get the new ones. That is the entire point of immutable content-hashed URLs.
+          # Only HTML must be purged, and only the routes that are edge-cached at all (see the
+          # cache rule in CLAUDE.md: `/`, `/upgrade`, `/learn*`; every desk page is already DYNAMIC).
           curl -fsS -X POST "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/purge_cache" \
             -H "Authorization: Bearer ${CF_API_TOKEN}" \
             -H "Content-Type: application/json" \
-            --data '{"purge_everything":true}'
-          echo "Cloudflare cache purged after ECS rollout."
+            --data '{"files":["https://blackouttrades.com/","https://blackouttrades.com/upgrade","https://blackouttrades.com/learn","https://blackouttrades.com/pricing","https://blackouttrades.com/faq"]}'
+          echo "Cloudflare HTML purged after ECS rollout (hashed build assets deliberately retained)."
           # Let the edge drop entries before we validate through it.
           sleep 10
 
