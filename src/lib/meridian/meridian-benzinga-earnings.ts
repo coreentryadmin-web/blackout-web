@@ -17,6 +17,7 @@ import {
   buildEarningsWeekRows,
   buildEarningsAnalyticsRows,
   buildRecentEarningsRevisions,
+  dedupeEarningsRowsByEvent,
   parseNextEarningsFromBenzinga,
 } from "@/lib/meridian/meridian-benzinga-earnings-core";
 import { todayEtYmd } from "@/lib/providers/spx-session";
@@ -95,8 +96,22 @@ export async function loadBenzingaEarningsBundle(
       historicalRows = hist.rows;
     }
 
-    const revisionUnion = [...window_rows, ...revisionRes.rows];
-    const estimate_revision_timeline = await diffEstimateRevisionTimeline(revisionUnion, since);
+    // DEDUPE before diffing. The two upstream queries overlap — measured live 2026-08-18, 12 of
+    // the 40 revision rows were also in the 360 window rows — and the diff keys its Redis
+    // snapshot on (ticker, date). A duplicate therefore re-reads the snapshot the FIRST copy
+    // just wrote, so whenever the two copies disagree the second one emits a phantom reversal.
+    //
+    // That is not hypothetical: production served GRRR `EPS est 0.27 → 0.2` AND
+    // `EPS est 0.2 → 0.27` in the SAME payload, with matching revenue entries of −4.3% and
+    // +4.5%. A member reads that as the street revising twice in opposite directions within
+    // minutes. The two queries are separate HTTP requests, so Benzinga can and does update a row
+    // between them; pagination can also repeat a key across pages.
+    //
+    // Newest `last_updated` wins — the freshest observation is the one worth diffing against.
+    const estimate_revision_timeline = await diffEstimateRevisionTimeline(
+      dedupeEarningsRowsByEvent([...window_rows, ...revisionRes.rows]),
+      since
+    );
 
     return {
       window_rows,
