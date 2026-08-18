@@ -10672,3 +10672,73 @@ Node v20.20.2), which is the evidence the two were in fact identical.
 its flip with the PER-STRIKE `zeroGammaFlip`, not the cumulative one — a pre-existing definitional
 inconsistency, but correcting it changes served numbers on a fallback path and belongs in its own
 PR with its own before/after. Logged here rather than folded in silently.
+
+## 2026-08-17 — [P1, 0DTE board] Shared snapshot `as_of` regressed 8m16s; board served two snapshots (setups 7↔147) — FIXED (fix/zerodte-board-snapshot-regression)
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED — publish is now monotonic on `as_of`; the per-replica fallback is age-bounded |
+| **Where** | `src/lib/platform/zerodte-service.ts` — `buildAndPublishBoard`, `lastGoodBoardLocal` |
+
+**Symptom.** During the 2026-08-17 RTH monitoring day, consecutive polls of
+`GET /api/market/zerodte/board` returned an `as_of` that walked **backward by 8m16s**, and the
+setup count flipped between **7 and 147**. Both are the same fact: the board was alternating
+between two snapshots built at different points in the discovery cycle. (I initially read the
+7-vs-147 split as two different fields; a later capture proved it is one field returning two
+snapshots — the correction is what pointed at the publish path.)
+
+**Root cause — two independent defects.**
+
+*(1) The publish was unconditional.* `buildAndPublishBoard` did a bare
+`sharedCacheSet(BOARD_SNAPSHOT_KEY, built, …)`, which is only safe if builds finish in the order
+they start. They do not: a board build runs seconds to tens of seconds (already documented in
+this file — 20–43s member polls, cold builds past the CF origin timeout), and **three
+unsynchronised publishers race**:
+
+| publisher | holds `BOARD_BUILD_LOCK_KEY`? |
+|---|---|
+| `refreshSharedBoardInBackground` (SWR) | yes |
+| `runColdBoardBuild` (cold miss / soft-stale kick) | **no** |
+| `refreshZeroDteBoardSnapshot` (1–5min cron warmer) | **no** |
+
+The lock buys nothing while two of the three publish around it. A build that STARTED at T and
+finished slowly at T+45s overwrote a snapshot published at T+40s, and the shared `as_of` moved
+backward by the build's duration. Overlap a stalled cold build with a cron-warmer cycle and the
+regression widens to minutes.
+
+*(2) `lastGoodBoardLocal` had no age bound at all.* On the never-block timeout path, a replica
+whose Redis read failed served whatever board it last built — minutes or hours earlier, with a
+different setup roster. A second, independent way for a member's next poll to walk backwards.
+
+**Evidence.** A regression test reproduces (1) deterministically: start a slow build, have a peer
+publish a fresher snapshot mid-build, let the slow build finish. Against the **pre-fix** code the
+stored `as_of` came back **29.6s older** than the snapshot it clobbered —
+
+```
+not ok 9 - no clobber: a slow build finishing AFTER a fresher peer publish leaves the fresh snapshot intact
+  expected: '2026-08-17T22:19:58.848Z'
+  actual:   '2026-08-17T22:19:29.243Z'
+```
+
+— and passes with the fix. The failure was produced by reverting the fix in the working tree, not
+by reasoning about it.
+
+**Fix.** `publishBoardSnapshot` compares the built board's `as_of` against the incumbent's and
+publishes only when strictly newer (ties refused — an equal stamp carries no new information).
+A build that lost the race publishes nothing and its caller is handed the *fresher* incumbent, so
+a slow builder never serves the stale board it just finished computing. The predicate
+(`boardSnapshotIsNewer`) is pure and exported, as is `localBoardIsServable` for defect (2).
+
+**Why monotonic publish and not a wider lock.** A lock makes publishes mutually exclusive, but
+exclusion is not ordering — the lock winner can still be the stale builder, and the bug would
+survive. Monotonicity is the property actually wanted and it holds regardless of how many
+publishers exist or which take a lock.
+
+**Residual race, stated honestly.** This is a read-then-write, not an atomic CAS: the shared-cache
+layer exposes GET/SET/SETNX/DEL with no Lua `eval`, and adding one for this would widen the blast
+radius past the bug. Two publishers can still both read the same incumbent and both write. The
+cost is bounded: the window shrinks from the BUILD DURATION (5–45s, multi-minute with an
+overlapping warmer) to a single Redis round-trip, and two writers inside that window carry `as_of`
+values ~1ms apart. Worst surviving regression: milliseconds, not minutes.

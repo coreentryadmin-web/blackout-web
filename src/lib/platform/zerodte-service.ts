@@ -728,8 +728,39 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
 /** A shared snapshot read + its age (ms since the payload's own `as_of`). */
 type SharedBoardRead = { value: ZeroDteBoardPayload; ageMs: number };
 
-/** Per-replica last good board — served on never-block timeout when Redis is cold. */
+/**
+ * Per-replica last good board — served on never-block timeout when Redis is cold.
+ *
+ * Bounded by age on READ (see readLastGoodBoardLocal). It carried no age check at all, which
+ * made it a second, independent source of the `as_of` regression above: a replica whose Redis
+ * read failed served whatever board it happened to build last — minutes or hours earlier, with
+ * a completely different setup roster — and the member's next poll walked backwards in time.
+ * A stale board is a reasonable last resort; an UNBOUNDEDLY stale one presented as current is
+ * not, which is exactly the distinction every other lane in this file already draws.
+ */
 let lastGoodBoardLocal: ZeroDteBoardPayload | null = null;
+
+/** Read the per-replica fallback, but only while it is inside the same staleness ceiling the
+ *  shared-snapshot path uses. Past that, return null so the caller falls through to the
+ *  structurally-valid empty board (`upstream_ok: false`), which tells the truth — "no current
+ *  board" — instead of quietly serving an old session's plays as live. */
+function readLastGoodBoardLocal(): ZeroDteBoardPayload | null {
+  if (!lastGoodBoardLocal) return null;
+  return localBoardIsServable(lastGoodBoardLocal.as_of, Date.now()) ? lastGoodBoardLocal : null;
+}
+
+/** Is a per-replica fallback board still inside the staleness ceiling? Pure + exported so the
+ *  bound is testable directly — the module-level `lastGoodBoardLocal` has no setter, and a guard
+ *  that only fires on an unreachable code path is a guard nobody can prove works. */
+export function localBoardIsServable(
+  asOf: string | null | undefined,
+  nowMs: number,
+  maxAgeMs: number = BOARD_STALE_SERVE_MAX_AGE_MS
+): boolean {
+  const asOfMs = Date.parse(String(asOf ?? ""));
+  if (!Number.isFinite(asOfMs)) return false; // undateable board → cannot be shown to be current
+  return nowMs - asOfMs <= maxAgeMs;
+}
 
 /** Read the shared board snapshot from Redis (in-memory fallback when Redis is
  *  unavailable), returning it with its age. Fail-soft: any store error → null, so the
@@ -761,14 +792,80 @@ let coldBuildInflight: Promise<ZeroDteBoardPayload> | null = null;
 // Intra-replica guard so a replica fires at most ONE background SWR refresh at a time.
 let backgroundRefreshInflight = false;
 
-/** Build ONE board and publish it as the shared snapshot every replica reads. Used by
- *  the cold/blocking path and by the cron warmer (proactive publish). Best-effort
- *  publish: a failed Redis write still returns the freshly built board — the fix
- *  degrades to the pre-fix per-replica behaviour, never to a blank board. */
-async function buildAndPublishBoard(): Promise<ZeroDteBoardPayload> {
-  const built = await buildZeroDteBoardPayload();
+/**
+ * Is a freshly built board actually NEWER than what is already published?
+ *
+ * The publish used to be an unconditional `sharedCacheSet`, which is only safe if builds
+ * finish in the order they start. They do not. A board build takes seconds to tens of
+ * seconds (documented live: 20–43s member polls, cold builds past the CF origin timeout),
+ * and THREE unsynchronised publishers race:
+ *   1. `refreshSharedBoardInBackground` — holds BOARD_BUILD_LOCK_KEY
+ *   2. `runColdBoardBuild` (cold miss / soft-stale kick) — takes NO lock
+ *   3. `refreshZeroDteBoardSnapshot` (the 1–5min cron warmer) — takes NO lock
+ * The lock on (1) buys nothing while (2) and (3) publish around it. So a build that STARTED
+ * at T and finished slowly at T+45s would overwrite a snapshot published at T+40s, and the
+ * shared `as_of` walked BACKWARD by the build's duration. Observed live 2026-08-17: `as_of`
+ * regressed 8m16s and the setup count flipped between 7 and 147 across consecutive polls —
+ * two builds from different discovery phases, the older one landing last.
+ *
+ * Comparing `as_of` (each build stamps its own) makes publish order irrelevant: a slow build
+ * that lost the race simply doesn't publish. Ties are refused too — an equal `as_of` carries
+ * no new information and rewriting it only re-opens the window.
+ *
+ * Guarding at the payload level rather than by extending the lock is deliberate: a lock makes
+ * publishes mutually exclusive, but exclusion is not ordering — the lock winner can still be
+ * the stale builder. Monotonicity is the property actually wanted, and it holds no matter how
+ * many publishers exist or which of them takes a lock.
+ */
+export function boardSnapshotIsNewer(
+  builtAsOf: string | null | undefined,
+  existingAsOf: string | null | undefined
+): boolean {
+  const built = Date.parse(String(builtAsOf ?? ""));
+  if (!Number.isFinite(built)) return false; // an unstamped build can never displace a stamped one
+  const existing = Date.parse(String(existingAsOf ?? ""));
+  if (!Number.isFinite(existing)) return true; // nothing valid published yet → publish
+  return built > existing;
+}
+
+/**
+ * Publish a built board as the shared snapshot, but only if it is newer than what is there
+ * (see boardSnapshotIsNewer). Returns the board that should be SERVED — the newly published
+ * one, or the fresher incumbent when this build lost the race, so a slow builder's own caller
+ * still gets the best available board rather than the stale one it just finished computing.
+ *
+ * Residual race, stated honestly: this is a read-then-write, not an atomic compare-and-set
+ * (the shared-cache layer exposes GET / SET / SETNX / DEL — no Lua eval — and adding one for
+ * this would widen the blast radius well past the bug). Two publishers can still both read the
+ * same incumbent and both write. What that costs is bounded: the window shrinks from the
+ * BUILD DURATION (5–45s, and multi-minute once the cron warmer overlaps a stalled cold build)
+ * to a single Redis round-trip, and two writers inside that window carry `as_of` values ~1ms
+ * apart — so the worst surviving regression is milliseconds, not minutes. That is the
+ * difference between an operator seeing the board jump backwards and nobody being able to
+ * perceive it.
+ */
+async function publishBoardSnapshot(built: ZeroDteBoardPayload): Promise<ZeroDteBoardPayload> {
+  try {
+    const existing = await sharedCacheGet<ZeroDteBoardPayload>(BOARD_SNAPSHOT_KEY);
+    if (existing && !boardSnapshotIsNewer(built.as_of, existing.as_of)) {
+      // A fresher snapshot already exists — this build finished late. Serve theirs, publish nothing.
+      return existing;
+    }
+  } catch {
+    // Read failed → fall through and publish. A publish that might race is strictly better than
+    // a snapshot lane that stops advancing whenever the read path is flaky.
+  }
   await sharedCacheSet(BOARD_SNAPSHOT_KEY, built, BOARD_SNAPSHOT_TTL_SEC).catch(() => {});
   return built;
+}
+
+/** Build ONE board and publish it as the shared snapshot every replica reads. Used by
+ *  the cold/blocking path and by the cron warmer (proactive publish). Best-effort
+ *  publish: a failed Redis write still returns a valid board — the fix degrades to the
+ *  pre-fix per-replica behaviour, never to a blank board. */
+async function buildAndPublishBoard(): Promise<ZeroDteBoardPayload> {
+  const built = await buildZeroDteBoardPayload();
+  return publishBoardSnapshot(built);
 }
 
 /** Single-writer background refresh: only the NX-lock winner rebuilds+publishes this
@@ -844,8 +941,9 @@ export async function getZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
             resolve(rememberGoodBoard(snap.value));
             return;
           }
-          if (lastGoodBoardLocal) {
-            resolve(lastGoodBoardLocal);
+          const local = readLastGoodBoardLocal();
+          if (local) {
+            resolve(local);
             return;
           }
           // Never await the cold build here — that defeats maxBlockMs under load (live: 20–43s
