@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useMemo } from "react";
 import type { MeridianEarningsDetail } from "@/features/meridian/lib/meridian-types";
 import { LargoPreEarningsPackCard } from "@/features/largo/components/LargoPreEarningsPackCard";
 import { fmtPct } from "./MeridianDesk";
@@ -15,9 +15,9 @@ import { MeridianEarningsEstimatesPanel } from "./MeridianEarningsEstimatesPanel
 import { MeridianEarningsPositioningPanel } from "./MeridianEarningsPositioningPanel";
 import { MeridianEarningsHistoryPanel } from "./MeridianEarningsHistoryPanel";
 
-type EarningsTab = "report" | "estimates" | "positioning" | "history";
+export type EarningsTab = "report" | "estimates" | "positioning" | "history";
 
-const TABS: Array<{ id: EarningsTab; label: string }> = [
+export const EARNINGS_TABS: Array<{ id: EarningsTab; label: string }> = [
   { id: "report", label: "Report" },
   { id: "estimates", label: "Estimates" },
   { id: "positioning", label: "Positioning" },
@@ -65,50 +65,51 @@ function HeadlineList({
   );
 }
 
+/**
+ * The tab strip, on its own so the detail panel can mount it in the HEADER BAR rather than
+ * above the panel body. Presentational: the selection lives with whoever owns the panel, which
+ * is what lets one control sit in the chrome while the content it switches sits below.
+ */
+export function MeridianEarningsTablist({
+  tab,
+  onTabChange,
+}: {
+  tab: EarningsTab;
+  onTabChange: (t: EarningsTab) => void;
+}) {
+  return (
+    <div className="meridian-earnings-tablist" role="tablist" aria-label="Earnings brief sections">
+      {EARNINGS_TABS.map((t) => (
+        <button
+          key={t.id}
+          type="button"
+          role="tab"
+          aria-selected={tab === t.id}
+          className={`meridian-earnings-tab meridian-earnings-tab-${t.id}${tab === t.id ? " is-active" : ""}`}
+          onClick={() => onTabChange(t.id)}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 type Props = {
   detail: MeridianEarningsDetail;
+  /** Controlled by the detail panel, which renders the tablist up in the header. */
+  tab: EarningsTab;
 };
 
-export function MeridianEarningsTabs({ detail }: Props) {
+export function MeridianEarningsTabs({ detail, tab }: Props) {
   const { enrichment, intel, pack } = detail;
   const cal = enrichment.earnings_calendar;
   // The print instant for the countdown. The feed reports an ET WALL CLOCK date + time, so it
   // has to be composed through the DST-aware converter — a hardcoded offset is wrong for
   // roughly half the calendar and reads as a real scheduling error on an event clock.
   const eventAt = etWallClockToIso(cal?.date ?? null, cal?.report_time_et ?? cal?.time ?? null);
-  const defaultTab: EarningsTab = enrichment.post_print?.headline ? "estimates" : "report";
-  const [tab, setTab] = useState<EarningsTab>(defaultTab);
-  const hadActualRef = useRef(Boolean(cal?.actual_eps != null));
-
-  useEffect(() => {
-    const hasActual = cal?.actual_eps != null;
-    if (hasActual && !hadActualRef.current) {
-      setTab("estimates");
-    }
-    hadActualRef.current = hasActual;
-  }, [cal?.actual_eps]);
-
-  useEffect(() => {
-    if (enrichment.post_print?.headline) setTab("estimates");
-  }, [enrichment.post_print?.headline]);
-
   return (
-    <div className="meridian-earnings-tabs">
-      <div className="meridian-earnings-tablist" role="tablist" aria-label="Earnings brief sections">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            role="tab"
-            aria-selected={tab === t.id}
-            className={`meridian-earnings-tab${tab === t.id ? " is-active" : ""}`}
-            onClick={() => setTab(t.id)}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-
+    <div className="meridian-earnings-tabs" data-tab={tab}>
       {tab === "report" && (
         <div role="tabpanel" className="meridian-earnings-tabpanel">
           <MeridianEarningsReportPanel

@@ -217,7 +217,27 @@ export function MeridianDesk() {
     data: detail,
     error: detailError,
     isLoading: detailLoading,
+    mutate: mutateDetail,
   } = useSWR<MeridianEventDetail>(detailKey, fetcher, { refreshInterval: detailRefreshMs });
+
+  /**
+   * Refresh refetches the DETAIL as well as the timeline, and says so while it runs.
+   *
+   * It previously called `mutate()` alone, which revalidates only the left lane — so a reader
+   * watching an event panel pressed Refresh and nothing they were looking at changed. With no
+   * pending state either, a successful refetch that returned identical cached data was
+   * indistinguishable from a dead button. Reported live as "Refresh button is not working".
+   */
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshAll = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await Promise.all([mutate(), detailKey ? mutateDetail() : Promise.resolve(undefined)]);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const grouped = useMemo(() => {
     const map = new Map<string, typeof filteredItems>();
@@ -287,8 +307,14 @@ export function MeridianDesk() {
         >
           Analytics grid
         </button>
-        <button type="button" className="meridian-refresh-btn" onClick={() => mutate()}>
-          Refresh
+        <button
+          type="button"
+          className={`meridian-refresh-btn${refreshing ? " is-busy" : ""}`}
+          onClick={refreshAll}
+          disabled={refreshing}
+          aria-busy={refreshing}
+        >
+          {refreshing ? "Refreshing…" : "Refresh"}
         </button>
       </div>
 
