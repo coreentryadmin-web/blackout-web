@@ -78,7 +78,24 @@ async function main() {
           if (m.type() === "error") errors.push(m.text().slice(0, 200));
         });
 
-        await page.goto(`${BASE}/meridian`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+        // ERR_CONNECTION_RESET here is a DRAINING ECS REPLICA during an in-flight rollout, not
+        // the sandbox egress block — the tunnel is proven working by this point. Retried once
+        // after a pause, because a deploy is exactly the moment one connection dies and the next
+        // succeeds. Without this the whole run aborts and reads as "the page is broken".
+        const goto = () => page.goto(`${BASE}/meridian`, { waitUntil: "domcontentloaded", timeout: 90_000 });
+        let navOk = true;
+        try {
+          await goto();
+        } catch {
+          await page.waitForTimeout(12_000);
+          try {
+            await goto();
+          } catch (e) {
+            results.push({ viewport: vp.name, verdict: "HARNESS", reason: `navigation failed twice — ${String(e).slice(0, 110)}` });
+            navOk = false;
+          }
+        }
+        if (!navOk) continue;
         // The desk shell is the PAGE-LOADED gate. Without it every tab assertion below would be
         // reporting on a page that isn't there.
         const shell = await page.waitForSelector(".meridian-desk", { timeout: 45_000 }).catch(() => null);
@@ -87,11 +104,18 @@ async function main() {
           continue;
         }
 
-        // Open the first earnings event so the tabs exist at all.
+        // Open an EARNINGS event specifically. The timeline mixes macro / FDA / OpEx rows, and
+        // clicking the first row lands on whichever kind happens to be next by date — a macro
+        // print has no earnings tabs at all, so the run reported "tab bar absent" while the page
+        // was perfectly healthy. The theme class is how a row declares its kind.
         const row = await page
-          .waitForSelector(".meridian-timeline-row, [class*='timeline-row']", { timeout: 30_000 })
+          .waitForSelector(".meridian-timeline-row.meridian-theme-earnings", { timeout: 30_000 })
           .catch(() => null);
-        if (row) await row.click().catch(() => {});
+        if (!row) {
+          results.push({ viewport: vp.name, verdict: "HARNESS", reason: "no earnings row on the visible timeline" });
+          continue;
+        }
+        await row.click().catch(() => {});
         const tabBar = await page.waitForSelector(".meridian-earnings-tab", { timeout: 30_000 }).catch(() => null);
         if (!tabBar) {
           results.push({ viewport: vp.name, verdict: "HARNESS", reason: "earnings tab bar absent — no earnings event selected" });
@@ -124,6 +148,9 @@ async function main() {
           });
         }
         results.push({ viewport: vp.name, consoleErrors: errors.length, sample: errors.slice(0, 3), routed: counts });
+      } catch (e) {
+        // Per-viewport isolation: a thrown pass must not discard the verdicts already collected.
+        results.push({ viewport: vp.name, verdict: "HARNESS", reason: String(e?.message ?? e).slice(0, 140) });
       } finally {
         await browser.close().catch(() => {});
       }
