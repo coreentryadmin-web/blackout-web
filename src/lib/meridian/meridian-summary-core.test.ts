@@ -271,3 +271,63 @@ test("summary: levels are sorted high to low so they read as a price ladder", ()
   const vals = s.levels.map((l) => l.value);
   assert.deepEqual(vals, [...vals].sort((a, b) => b - a));
 });
+
+/* ── regressions found by running the real payloads, not the fixtures ────────────────
+ * Both of these passed every fixture test and failed on live data. They are kept in the
+ * shape they arrived in, spot values and all.
+ */
+
+test("summary: a wall sitting ON spot is not a target — BHP, wall 90.00 vs spot 89.99", () => {
+  const s = buildMeridianSummary({
+    spot: 89.99,
+    movePct: 5,
+    band: { up: 94.49, down: 85.49 },
+    thermal: { call_wall: 90, put_wall: 77.5 },
+    prints: [],
+    signals: [{ label: "Flow", lean: "bullish", weight: 2 }],
+  });
+  assert.notEqual(s.call!.levelFrom, "call wall", '"get above 90" from 89.99 is not an idea');
+  assert.equal(s.call!.level, 94.49, "falls through to the implied-move edge");
+});
+
+test("summary: a wall beyond reach on this event is not a target either — BHP put wall at 2.8σ", () => {
+  const s = buildMeridianSummary({
+    spot: 89.99,
+    movePct: 5,
+    band: { up: 94.49, down: 85.49 },
+    thermal: { call_wall: 110, put_wall: 77.5 },
+    prints: [],
+    signals: [{ label: "Flow", lean: "bearish", weight: 2 }],
+  });
+  assert.notEqual(s.put!.levelFrom, "put wall", "a level the event cannot reach prices at 0%");
+  assert.equal(s.put!.level, 85.49);
+  assert.ok(s.put!.impliedProb! > 0.05, "and the resulting probability is meaningful again");
+});
+
+test("summary: inverted walls cannot put a stop on the wrong side of spot — TGT, call 150 < put 152.5", () => {
+  // Served live: call_wall BELOW put_wall on a 151.01 spot. A PUT invalidated at 150 would sit
+  // UNDER the price it needs to fall from.
+  const s = buildMeridianSummary({
+    spot: 151.01,
+    movePct: 8.5,
+    band: { up: 163.85, down: 138.17 },
+    thermal: { call_wall: 150, put_wall: 152.5 },
+    prints: [],
+    signals: [{ label: "Flow", lean: "bullish", weight: 4 }],
+  });
+  assert.ok(s.put!.invalidation! > 151.01, `put stop must sit above spot, got ${s.put!.invalidation}`);
+  assert.ok(s.call!.invalidation! < 151.01, `call stop must sit below spot, got ${s.call!.invalidation}`);
+});
+
+test("summary: with no walls at all, both stops still land on the right side of spot", () => {
+  const s = buildMeridianSummary({
+    spot: 100,
+    movePct: 6,
+    band: { up: 106, down: 94 },
+    thermal: null,
+    prints: [],
+    signals: [{ label: "Flow", lean: "bullish", weight: 1 }],
+  });
+  assert.equal(s.call!.invalidation, 94);
+  assert.equal(s.put!.invalidation, 106);
+});

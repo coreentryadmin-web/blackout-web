@@ -244,10 +244,23 @@ function pickLevel(
 ): { level: number; from: string } | null {
   const spot = num(input.spot);
   const wall = side === "call" ? num(input.thermal?.call_wall) : num(input.thermal?.put_wall);
-  // A wall on the wrong side of spot is not a target for that side — it is already breached,
-  // and quoting it would give a near-certain probability for a play that has no room.
-  if (wall != null && spot != null && (side === "call" ? wall > spot : wall < spot)) {
-    return { level: wall, from: side === "call" ? "call wall" : "put wall" };
+  const movePctForDist = num(input.movePct);
+  // A wall qualifies as a TARGET only if it is on the right side of spot AND a usable distance
+  // away. Both bounds came from real payloads, not from taste:
+  //   too near — BHP served a call wall of 90.00 against a spot of 89.99. Technically above,
+  //              but "get above 90" from 89.99 is not an idea, and it prices at a meaningless
+  //              49%.
+  //   too far  — BHP's put wall sat 13.9% away on a 5% implied move, which prices the idea at
+  //              0%. A level the event cannot reach is not an idea either.
+  // Outside that window the implied-move edge is the better level, so we fall through to it.
+  if (wall != null && spot != null && spot > 0 && (side === "call" ? wall > spot : wall < spot)) {
+    const distSigma =
+      movePctForDist != null && movePctForDist > 0
+        ? ((Math.abs(wall - spot) / spot) * 100) / movePctForDist
+        : null;
+    if (distSigma == null || (distSigma >= 0.2 && distSigma <= 1.5)) {
+      return { level: wall, from: side === "call" ? "call wall" : "put wall" };
+    }
   }
   const edge = side === "call" ? num(input.band?.up) : num(input.band?.down);
   if (edge != null) return { level: edge, from: "implied move edge" };
@@ -277,6 +290,20 @@ function combineConfidence(implied: number | null, historical: number | null, ev
   const wSum = parts.reduce((a, [, w]) => a + w, 0);
   const v = parts.reduce((a, [p, w]) => a + p * w, 0) / (wSum || 1);
   return Math.round(clamp(v, 0, 1) * 100);
+}
+
+/**
+ * Where the idea dies. Must sit on the OPPOSITE side of spot from the target — a stop the price
+ * has already passed is not a stop.
+ */
+function pickInvalidation(side: "call" | "put", spot: number | null, input: SummaryInput): number | null {
+  const wantsBelow = side === "call";
+  const ok = (v: number | null) =>
+    v != null && (spot == null || (wantsBelow ? v < spot : v > spot)) ? v : null;
+  return (
+    ok(side === "call" ? num(input.thermal?.put_wall) : num(input.thermal?.call_wall)) ??
+    ok(side === "call" ? num(input.band?.down) : num(input.band?.up))
+  );
 }
 
 export function buildMeridianSummary(input: SummaryInput): MeridianSummary {
@@ -343,10 +370,11 @@ export function buildMeridianSummary(input: SummaryInput): MeridianSummary {
       confidence: combineConfidence(implied, historical, evNet),
       why,
       // The idea dies where the opposite structure sits — a real level, not a round number.
-      invalidation:
-        side === "call"
-          ? (num(input.thermal?.put_wall) ?? num(input.band?.down))
-          : (num(input.thermal?.call_wall) ?? num(input.band?.up)),
+      // Validated against spot, because the walls themselves can arrive inverted: TGT served
+      // call_wall 150 BELOW put_wall 152.5 on a 151.01 spot, which would have put a PUT's
+      // invalidation underneath the price it needs to fall from. A level on the wrong side is
+      // not a stop, it is a nonsense, so it falls through to the implied-move edge.
+      invalidation: pickInvalidation(side, spot, input),
     };
   };
 
