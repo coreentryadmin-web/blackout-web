@@ -3,7 +3,9 @@ import { refreshSharedUniverseCacheIfStale } from "./vector-shared-universe-cach
 import { listSharedUniverseTickers } from "./vector-dynamic-universe";
 import { recordVectorUniverseWallSample } from "./vector-universe";
 import {
+  activeLaneSelectionLimit,
   mapInPool,
+  vectorActiveBeadRecordConcurrency,
   vectorBeadRecordConcurrency,
 } from "./vector-bead-recorder-logic";
 import { partitionUniverseForReplica } from "./vector-bead-shard";
@@ -186,9 +188,23 @@ export async function recordSharedUniverseWallSamples(opts?: {
  * Record 15s wall-history buckets for tickers with active Vector SSE viewers that are
  * NOT in the shared universe yet (on-demand symbols — PLTR, ASTS first view, etc.).
  * Replaces the old "only when universe cron hits every 5 min" gap for non-universe names.
+ *
+ * ── WHY THIS MIRRORS THE UNIVERSE LANE ───────────────────────────────────────────────
+ * Everything #2303 fixed on the 5s sweep was true here too and was left untouched:
+ *   - the lane was guarded WHOLESALE by `activeRecordInFlight` in the leader, so one slow viewer
+ *     ticker cost EVERY other viewer their 15s sample — the same drop-the-tick shape, on a lane
+ *     where a dropped tick is 15s of missing beads rather than 5s;
+ *   - it fanned out with a bare `Promise.allSettled` over every active viewer, i.e. NO concurrency
+ *     ceiling on the one input a member can move at will; and
+ *   - it shared no in-flight accounting with the universe sweep, so the same ticker could be
+ *     recorded twice concurrently the moment it was promoted into the universe mid-sweep.
+ *
+ * It now uses the same per-ticker guard, the same shared in-flight set, and the same one-shot
+ * retry. The retry matters MORE here: a transient miss costs a viewer 15s of rail, not 5s.
  */
 export async function recordActiveNonUniverseWallSamples(opts?: {
   sessionYmd?: string;
+  concurrency?: number;
 }): Promise<VectorBeadRecordResult> {
   const sessionYmd = opts?.sessionYmd ?? todayEtYmd();
   const started = Date.now();
@@ -204,31 +220,73 @@ export async function recordActiveNonUniverseWallSamples(opts?: {
   }
 
   const nowSec = Math.floor(Date.now() / 1000);
-  const results = await Promise.allSettled(
-    tickers.map((ticker) =>
-      recordVectorUniverseWallSample(ticker, {
-        sessionYmd,
-        nowSec,
-        bucketScope: "live",
-        wallWriteSource: "bead-recorder-active",
-      })
-    )
+  const laneCap = opts?.concurrency ?? vectorActiveBeadRecordConcurrency();
+  // Both lanes share ONE in-flight set, so the active lane's ceiling has to be expressed through
+  // the global one — see activeLaneSelectionLimit for why the arithmetic is what it is.
+  const decision = selectTickersToRecord({
+    tickers,
+    inFlight: recordInFlightTickers,
+    limit: activeLaneSelectionLimit(
+      laneCap,
+      vectorBeadRecordConcurrency(),
+      recordInFlightTickers.size
+    ),
+  });
+  const startable = decision.start;
+  for (const t of startable) recordInFlightTickers.add(t);
+
+  const results = await mapInPool(startable, laneCap, (ticker) =>
+    recordVectorUniverseWallSample(ticker, {
+      sessionYmd,
+      nowSec,
+      bucketScope: "live",
+      wallWriteSource: "bead-recorder-active",
+    })
   );
 
   let recorded = 0;
   let failed = 0;
   const failedTickers: string[] = [];
-  // mapInPool guarantees results stay INDEX-ALIGNED with `tickers` despite out-of-order
+  // mapInPool guarantees results stay INDEX-ALIGNED with `startable` despite out-of-order
   // completion, which is what makes this attribution correct rather than arbitrary.
   for (let i = 0; i < results.length; i++) {
     const r = results[i]!;
     if (r.status === "fulfilled" && r.value) recorded += 1;
     else {
       failed += 1;
-      const t = tickers[i];
+      const t = startable[i];
       if (t) failedTickers.push(t);
     }
   }
+
+  // One immediate retry, same as the universe lane. A transient heatmap miss returns
+  // historyRecorded=false without throwing; on a 15s lane that leaves the ONE ticker somebody is
+  // actually watching dark until the next tick, which may itself skip the name as busy.
+  if (failedTickers.length > 0) {
+    const retryTargets = [...failedTickers];
+    const retryResults = await mapInPool(retryTargets, laneCap, (ticker) =>
+      recordVectorUniverseWallSample(ticker, {
+        sessionYmd,
+        nowSec,
+        bucketScope: "live",
+        wallWriteSource: "bead-recorder-active",
+      })
+    );
+    for (let i = 0; i < retryResults.length; i++) {
+      const r = retryResults[i]!;
+      const t = retryTargets[i]!;
+      if (r.status === "fulfilled" && r.value) {
+        recorded += 1;
+        failed -= 1;
+        const idx = failedTickers.indexOf(t);
+        if (idx >= 0) failedTickers.splice(idx, 1);
+      }
+    }
+  }
+
+  // Release only AFTER the retry, so a ticker mid-retry is still seen as busy by an overlapping
+  // tick rather than being started a second time concurrently.
+  for (const t of startable) recordInFlightTickers.delete(t);
 
   return {
     sessionYmd,
@@ -236,7 +294,11 @@ export async function recordActiveNonUniverseWallSamples(opts?: {
     recorded,
     failed,
     failedTickers,
-    attempted: tickers,
+    // Only what this tick actually STARTED — a busy ticker was not attempted-and-failed, and
+    // counting it so would fire a false DARK alarm on a name that is simply mid-record.
+    attempted: startable,
+    busy: decision.busy,
+    deferred: decision.deferred,
     elapsedMs: Date.now() - started,
   };
 }

@@ -137,3 +137,93 @@ test("concurrency env override is honoured and bounded", async () => {
     else process.env.VECTOR_BEAD_RECORD_CONCURRENCY = prev;
   }
 });
+
+// ── ACTIVE (VIEWER-DRIVEN, 15s) LANE ─────────────────────────────────────────────────────────
+// Everything #2303 fixed on the 5s universe sweep was true of this lane too and was left in place:
+// a whole-lane drop guard in the leader, and a bare Promise.allSettled with NO concurrency ceiling
+// over a ticker list a member moves simply by opening a chart. These pin the corrected shape.
+
+test("active lane concurrency: small by default, env-overridable, never wider than the global cap", async () => {
+  const { vectorActiveBeadRecordConcurrency } = await import("./vector-bead-recorder-logic");
+  const prevLane = process.env.VECTOR_BEAD_ACTIVE_RECORD_CONCURRENCY;
+  const prevGlobal = process.env.VECTOR_BEAD_RECORD_CONCURRENCY;
+  try {
+    delete process.env.VECTOR_BEAD_ACTIVE_RECORD_CONCURRENCY;
+    delete process.env.VECTOR_BEAD_RECORD_CONCURRENCY;
+    assert.equal(vectorActiveBeadRecordConcurrency(), 8);
+
+    process.env.VECTOR_BEAD_ACTIVE_RECORD_CONCURRENCY = "16";
+    assert.equal(vectorActiveBeadRecordConcurrency(), 16);
+
+    process.env.VECTOR_BEAD_ACTIVE_RECORD_CONCURRENCY = "9999";
+    assert.equal(vectorActiveBeadRecordConcurrency(), 32, "lane has its own hard ceiling");
+
+    // The lane cap is a SUB-budget of the global one, not an escape hatch from it.
+    process.env.VECTOR_BEAD_RECORD_CONCURRENCY = "4";
+    assert.equal(vectorActiveBeadRecordConcurrency(), 4);
+
+    process.env.VECTOR_BEAD_ACTIVE_RECORD_CONCURRENCY = "garbage";
+    delete process.env.VECTOR_BEAD_RECORD_CONCURRENCY;
+    assert.equal(vectorActiveBeadRecordConcurrency(), 8, "unparseable falls back to the default");
+  } finally {
+    if (prevLane == null) delete process.env.VECTOR_BEAD_ACTIVE_RECORD_CONCURRENCY;
+    else process.env.VECTOR_BEAD_ACTIVE_RECORD_CONCURRENCY = prevLane;
+    if (prevGlobal == null) delete process.env.VECTOR_BEAD_RECORD_CONCURRENCY;
+    else process.env.VECTOR_BEAD_RECORD_CONCURRENCY = prevGlobal;
+  }
+});
+
+test("activeLaneSelectionLimit: the lane gets its own budget, taken out of the global one", async () => {
+  const { activeLaneSelectionLimit } = await import("./vector-bead-recorder-logic");
+  const { selectTickersToRecord } = await import("./vector-bead-schedule-core");
+  const viewers = ["PLTR", "ASTS", "RKLB", "SOFI", "HOOD", "IONQ", "RIVN", "LCID", "PATH", "AI"];
+
+  // Nothing else running: the lane starts exactly its cap and DEFERS the rest — a viewer burst is
+  // counted, not silently converted into 10 concurrent upstream reads.
+  const idle = selectTickersToRecord({
+    tickers: viewers,
+    inFlight: new Set(),
+    limit: activeLaneSelectionLimit(4, 64, 0),
+  });
+  assert.equal(idle.start.length, 4);
+  assert.equal(idle.deferred.length, 6);
+
+  // A busy universe sweep leaves the lane its full sub-budget — it must not be charged for records
+  // it did not start, or a mid-sweep viewer tick would record nobody.
+  const busy = selectTickersToRecord({
+    tickers: viewers,
+    inFlight: new Set(Array.from({ length: 50 }, (_, i) => `U${i}`)),
+    limit: activeLaneSelectionLimit(4, 64, 50),
+  });
+  assert.equal(busy.start.length, 4, "lane keeps its sub-budget under a busy sweep");
+
+  // ...but the GLOBAL ceiling still binds when the sweep has genuinely saturated it.
+  const saturated = selectTickersToRecord({
+    tickers: viewers,
+    inFlight: new Set(Array.from({ length: 64 }, (_, i) => `U${i}`)),
+    limit: activeLaneSelectionLimit(4, 64, 64),
+  });
+  assert.equal(saturated.start.length, 0, "global ceiling is not escapable by the lane cap");
+  assert.equal(saturated.deferred.length, viewers.length, "and the skips are counted");
+});
+
+test("activeLaneSelectionLimit: nonsense inputs still start at least one ticker", async () => {
+  const { activeLaneSelectionLimit } = await import("./vector-bead-recorder-logic");
+  for (const args of [[0, 64, 0], [Number.NaN, 64, 0], [-3, 64, 0]] as const) {
+    assert.ok(
+      activeLaneSelectionLimit(args[0], args[1], args[2]) >= 1,
+      `lane must not stall on ${String(args[0])}`
+    );
+  }
+  assert.equal(activeLaneSelectionLimit(8, Number.NaN, 0), 1, "an unusable global cap fails narrow");
+});
+
+test("active lane budget is sized against 15s, not the universe lane's 5s", async () => {
+  // The lane's whole point is a different cadence; a drop here costs 15s of beads, not 5s, which
+  // is why it needed the per-ticker guard at least as much as the universe sweep did.
+  const { VECTOR_BEAD_RECORD_ACTIVE_TICK_MS, VECTOR_BEAD_RECORD_TICK_MS } = await import(
+    "./vector-bead-recorder-logic"
+  );
+  assert.equal(VECTOR_BEAD_RECORD_ACTIVE_TICK_MS, 15_000);
+  assert.ok(VECTOR_BEAD_RECORD_ACTIVE_TICK_MS > VECTOR_BEAD_RECORD_TICK_MS);
+});

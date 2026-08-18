@@ -38,6 +38,47 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-08-18 — [FINDING, P2 member-visible] Vector viewer (non-universe) bead lane still dropped whole ticks and fanned out unbounded — FIXED
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Severity** | P2 (member-visible — off-universe names lose 15s of bead rail per dropped tick, and nothing else records them) |
+| **Scope** | `vector-bead-recorder-core.ts` (`recordActiveNonUniverseWallSamples`), `vector-bead-recorder-logic.ts`, `vector-bead-recorder-leader.ts` (`activeTick`) |
+| **Status** | FIXED — per-ticker guard + shared in-flight set + lane concurrency sub-budget + one-shot retry + overrun/dark logging; 4 unit tests |
+
+**Root cause.** #2303 replaced the sweep-level `if (recordInFlight) return` on the 5s universe lane
+with a per-ticker guard, and #2304 put the narrowed rails on that sweep. Neither touched the
+**second** lane. `activeTick` still read `if (activeRecordInFlight || !isLeader) return`, i.e. the
+exact drop-the-whole-tick shape that was just removed next door — so one slow viewer ticker cost
+every other viewer their sample, at 15s per drop rather than 5s, on names no other lane records.
+Underneath it, `recordActiveNonUniverseWallSamples` fanned out with a bare `Promise.allSettled`
+over `getActiveVectorTickers()`: **no concurrency ceiling at all** on the one input to the recorder
+a member can move at will (open a chart on an off-universe symbol), and no shared accounting with
+the universe sweep, so a ticker promoted into the universe mid-sweep could be recorded twice
+concurrently against the same rail.
+
+**Why it wasn't caught earlier.** The lane's failures are invisible by construction: the leader
+warned only when `recorded === 0` (a whole-pass failure), so a single dark viewer ticker logged
+nothing, and unlike the universe lane there is no peer ticker whose identical sample count reveals
+a shared-sweep drop. Its budget was also never evaluated — `evaluateSweepBudget` was wired to the
+universe sweep only, so an overrunning viewer lane produced no line anywhere.
+
+**Fix.** The lane now uses the same `selectTickersToRecord` per-ticker guard against the **same**
+module-level in-flight set as the universe sweep (which is what makes the double-record impossible
+and keeps ONE global bound on concurrent upstream reads), with its own smaller sub-budget
+(`vectorActiveBeadRecordConcurrency`, default 8, env `VECTOR_BEAD_ACTIVE_RECORD_CONCURRENCY`) so
+viewer-driven work can never starve the 5s sweep. The `laneCap + inFlightSize` arithmetic that
+expresses a sub-budget through a shared ceiling is extracted as `activeLaneSelectionLimit` and
+unit-tested rather than left inline. The universe lane's one-shot retry is mirrored here — it
+matters more at 15s — and the leader gained the active lane's own overrun alarm and per-ticker
+DARK/RECOVERED tracking (separate streak map, so the log reports 15s and not 5s).
+
+**Blast radius.** Both bead lanes now share one in-flight set and one global ceiling; the universe
+sweep's free-slot count is correspondingly reduced by any active-lane record in flight, which is
+the intended global bound rather than a regression. No change to cadence, rail shape, or any
+read path.
+
 ## 2026-08-17 — [FINDING, P2 member-visible] Bead rail had no recency cue — a 5-hour-old bead painted exactly like the live edge — FIXED
 > **kind:** `FINDING`
 
