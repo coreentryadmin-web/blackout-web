@@ -1515,3 +1515,348 @@ html.nav-locked body { overflow: hidden; }
    graded), so they belong side by side on a desk and stacked on anything narrower. */
 .meridian-mea-split { display: grid; grid-template-columns: 1fr; gap: 14px; }
 @media (min-width: 980px) { .meridian-mea-split { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+
+/* ═══ MERIDIAN VISUALIZATION LANGUAGE ═══════════════════════════════════════════════
+   Shared primitives (src/features/meridian/components/meridian-viz.tsx).
+
+   Colour is SEMANTIC here, never decorative: green = bullish/beat/raised, red =
+   bearish/miss/lowered, violet = neutral/initiated, cyan = structure & chrome, amber =
+   attention. Nothing gets an accent for looking nice — if a mark is coloured, the colour is
+   the encoding.
+
+   Every transition below animates `transform` or `opacity` only. Both are compositor-driven,
+   so a rail carrying 40 markers still moves at 60fps; animating `left`/`width` would relayout
+   on every frame. Positions are set as static `left` percentages and MOVED with transform. */
+:root {
+  --mv-bull: #34d399;
+  --mv-bear: #fb7185;
+  --mv-neutral: #a78bfa;
+  --mv-chrome: #22d3ee;
+  --mv-attention: #fbbf24;
+  --mv-track: rgba(125, 211, 252, 0.13);
+  --mv-surface: rgba(8, 10, 16, 0.72);
+  --mv-hairline: rgba(125, 211, 252, 0.16);
+  --mv-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+.mv-bull { color: var(--mv-bull); }
+.mv-bear { color: var(--mv-bear); }
+.mv-neutral { color: var(--mv-neutral); }
+
+.mv-note {
+  margin: 0.3rem 0 0;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.54rem;
+  letter-spacing: 0.04em;
+  color: rgba(125, 211, 252, 0.55);
+}
+
+/* ── Halo ── */
+.mv-halo { position: relative; flex: none; }
+.mv-halo svg { display: block; overflow: visible; }
+.mv-halo-track { fill: none; stroke: var(--mv-track); stroke-width: 9; }
+.mv-halo-track-inner { stroke-width: 3; }
+.mv-halo-seg {
+  fill: none;
+  stroke-width: 9;
+  stroke-linecap: round;
+  /* Segments sweep in on mount via stroke-dashoffset — the one place a non-transform property
+     animates, because it is a one-shot reveal on a handful of paths, not a per-frame layout. */
+  stroke-dasharray: 1000;
+  stroke-dashoffset: 1000;
+  animation: mv-halo-draw 0.62s var(--mv-ease) forwards;
+}
+.mv-halo-seg.mv-bull { stroke: var(--mv-bull); }
+.mv-halo-seg.mv-bear { stroke: var(--mv-bear); }
+.mv-halo-seg.mv-neutral { stroke: var(--mv-neutral); }
+.mv-halo-seg-click { cursor: pointer; transition: opacity 0.18s ease; }
+.mv-halo-seg-click:hover { opacity: 0.72; }
+@keyframes mv-halo-draw { to { stroke-dashoffset: 0; } }
+.mv-halo-agree { fill: none; stroke-width: 3; stroke-linecap: round; opacity: 0.85; }
+.mv-halo-agree.mv-bull { stroke: var(--mv-bull); }
+.mv-halo-agree.mv-bear { stroke: var(--mv-bear); }
+.mv-halo-agree.mv-neutral { stroke: var(--mv-neutral); }
+.mv-halo-center {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 0.05rem; pointer-events: none; text-align: center;
+}
+.mv-halo-verdict {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.55rem; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase;
+}
+.mv-halo-score {
+  font-family: var(--font-syne, sans-serif);
+  font-size: 1.9rem; font-weight: 800; line-height: 1; color: #fff;
+}
+.mv-halo-agreement {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.5rem; letter-spacing: 0.07em; color: rgba(125, 211, 252, 0.72);
+}
+
+/* ── Rings ── */
+.mv-ring { display: flex; align-items: center; gap: 0.5rem; }
+.mv-ring svg { display: block; }
+.mv-ring-track { fill: none; stroke: var(--mv-track); stroke-width: 4; }
+.mv-ring-arc { fill: none; stroke-width: 4; stroke-linecap: round; }
+.mv-ring-arc.mv-bull { stroke: var(--mv-bull); }
+.mv-ring-arc.mv-bear { stroke: var(--mv-bear); }
+.mv-ring-arc.mv-neutral { stroke: var(--mv-neutral); }
+.mv-ring-body { display: flex; flex-direction: column; min-width: 0; }
+.mv-ring-label {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.5rem; letter-spacing: 0.12em; text-transform: uppercase;
+  color: rgba(125, 211, 252, 0.7);
+}
+.mv-ring-value { font-family: var(--font-syne, sans-serif); font-size: 0.98rem; font-weight: 700; }
+.mv-ring-sig { margin-left: 0.22rem; font-size: 0.7rem; opacity: 0.85; }
+
+/* ── Rails (expected move + targets) ── */
+.mv-rail, .mv-targets { display: block; }
+.mv-rail-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.mv-rail-title {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.54rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--mv-chrome);
+}
+.mv-rail-pct, .mv-tape-total {
+  font-family: var(--font-mono, monospace); font-size: 0.58rem; color: rgba(125, 211, 252, 0.8);
+}
+.mv-rail-track {
+  position: relative; height: 34px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(251,113,133,0.07), rgba(125,211,252,0.05), rgba(52,211,153,0.07));
+  border: 1px solid var(--mv-hairline);
+}
+.mv-rail-band {
+  position: absolute; top: 50%; height: 7px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(251,113,133,0.5), rgba(34,211,238,0.35), rgba(52,211,153,0.5));
+  transform: translateY(-50%);
+  transition: left 0.42s var(--mv-ease), width 0.42s var(--mv-ease);
+}
+.mv-rail-marker { position: absolute; top: 0; height: 100%; transform: translateX(-50%); }
+.mv-rail-marker-tick {
+  position: absolute; top: 4px; bottom: 4px; left: 0; width: 1px;
+  background: rgba(125, 211, 252, 0.5);
+}
+.mv-rail-marker-wall .mv-rail-marker-tick { background: var(--mv-attention); }
+.mv-rail-marker-target .mv-rail-marker-tick { background: var(--mv-neutral); }
+.mv-rail-marker-label {
+  position: absolute; top: -0.55rem; left: 0; transform: translateX(-50%);
+  font-family: var(--font-mono, monospace); font-size: 0.46rem; letter-spacing: 0.06em;
+  color: rgba(125, 211, 252, 0.75); white-space: nowrap;
+}
+.mv-rail-spot {
+  position: absolute; top: 0; height: 100%;
+  transform: translateX(-50%);
+  transition: transform 0.42s var(--mv-ease);
+}
+.mv-rail-spot-dot {
+  position: absolute; top: 50%; left: 0; width: 11px; height: 11px;
+  margin: -5.5px 0 0 -5.5px; border-radius: 50%;
+  background: #fff; box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.28);
+}
+.mv-rail-spot-label {
+  position: absolute; bottom: -1.1rem; left: 0; transform: translateX(-50%);
+  font-family: var(--font-mono, monospace); font-size: 0.55rem; font-weight: 700; color: #fff;
+  white-space: nowrap;
+}
+.mv-rail-bounds {
+  display: flex; justify-content: space-between; margin-top: 1.25rem;
+  font-family: var(--font-mono, monospace); font-size: 0.58rem;
+}
+
+/* ── Target rail extras ── */
+.mv-targets-span {
+  position: absolute; top: 50%; height: 4px; border-radius: 999px;
+  background: rgba(167, 139, 250, 0.3); transform: translateY(-50%);
+}
+.mv-target-dot {
+  position: absolute; top: 50%; width: 8px; height: 8px; padding: 0;
+  margin: -4px 0 0 -4px; border-radius: 50%;
+  border: 1px solid rgba(167, 139, 250, 0.8); background: rgba(167, 139, 250, 0.45);
+  cursor: pointer; transition: transform 0.16s var(--mv-ease);
+}
+.mv-target-dot:hover:not(:disabled) { transform: scale(1.55); }
+.mv-target-dot:disabled { cursor: default; }
+.mv-target-consensus { position: absolute; top: 0; height: 100%; transform: translateX(-50%); }
+.mv-target-consensus-tick {
+  position: absolute; top: 2px; bottom: 2px; left: 0; width: 2px; background: var(--mv-neutral);
+}
+.mv-target-consensus-label {
+  position: absolute; top: -0.6rem; left: 0; transform: translateX(-50%);
+  font-family: var(--font-mono, monospace); font-size: 0.5rem; color: var(--mv-neutral);
+  white-space: nowrap;
+}
+
+/* ── Structure ladder ── */
+.mv-ladder { position: relative; min-height: 132px; }
+.mv-ladder-row {
+  position: absolute; left: 0; right: 0; top: var(--mv-pos);
+  display: grid; grid-template-columns: 4.6rem 1fr auto 3.1rem;
+  align-items: center; gap: 0.45rem;
+  padding: 0.1rem 0.2rem;
+  border: 0; border-radius: 0.3rem; background: transparent; color: inherit; text-align: left;
+  cursor: pointer;
+  transform: translateY(-50%);
+  transition: top 0.4s var(--mv-ease), background-color 0.16s ease;
+  font-family: var(--font-mono, monospace); font-size: 0.56rem;
+}
+.mv-ladder-row:disabled { cursor: default; }
+.mv-ladder-row:hover:not(:disabled),
+.mv-ladder-row:focus-visible { background: rgba(125, 211, 252, 0.08); }
+.mv-ladder-row:focus-visible { outline: 1px solid rgba(34, 211, 238, 0.65); outline-offset: 1px; }
+.mv-ladder-label { letter-spacing: 0.1em; text-transform: uppercase; color: rgba(125,211,252,0.72); }
+.mv-ladder-bar { height: 1px; background: var(--mv-hairline); }
+.mv-ladder-value { font-weight: 700; color: #e2f4ff; }
+.mv-ladder-dist { text-align: right; }
+.mv-ladder-spot .mv-ladder-label { color: #fff; }
+.mv-ladder-spot .mv-ladder-bar { background: rgba(34, 211, 238, 0.55); height: 2px; }
+.mv-ladder-spot .mv-ladder-value { color: #fff; }
+.mv-ladder-call_wall .mv-ladder-bar,
+.mv-ladder-put_wall .mv-ladder-bar { background: rgba(251, 191, 36, 0.4); }
+
+/* ── Beat history ── */
+.mv-beats-head, .mv-rev-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem;
+  margin-bottom: 0.45rem;
+}
+.mv-beats-title, .mv-rev-title {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.54rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--mv-chrome);
+}
+.mv-beats-tally { font-family: var(--font-mono, monospace); font-size: 0.58rem; color: #e2f4ff; }
+.mv-beats-rows { display: flex; flex-direction: column; gap: 0.22rem; }
+.mv-beat-row {
+  display: grid; grid-template-columns: 3.2rem 1fr 3.4rem 3.6rem;
+  align-items: center; gap: 0.5rem;
+  padding: 0.18rem 0.3rem; border: 0; border-radius: 0.35rem;
+  background: transparent; color: inherit; text-align: left; cursor: pointer;
+  font-family: var(--font-mono, monospace); font-size: 0.56rem;
+  transition: background-color 0.16s ease;
+}
+.mv-beat-row:disabled { cursor: default; }
+.mv-beat-row:hover:not(:disabled) { background: rgba(125, 211, 252, 0.07); }
+.mv-beat-date { color: rgba(125, 211, 252, 0.66); }
+.mv-beat-track { position: relative; height: 8px; border-radius: 999px; background: var(--mv-track); overflow: hidden; }
+.mv-beat-bar {
+  position: absolute; inset: 0; border-radius: 999px;
+  transform-origin: left center;
+  transition: transform 0.5s var(--mv-ease);
+}
+.mv-beat-bar.mv-bull { background: var(--mv-bull); }
+.mv-beat-bar.mv-bear { background: var(--mv-bear); }
+.mv-beat-bar.mv-neutral { background: rgba(167, 139, 250, 0.35); }
+.mv-beat-surprise, .mv-beat-reaction { text-align: right; font-weight: 700; }
+.mv-beat-assumed { margin-left: 0.12rem; opacity: 0.65; }
+
+/* ── Revision momentum ── */
+.mv-rev-skew {
+  font-family: var(--font-mono, monospace); font-size: 0.54rem; font-weight: 700;
+  letter-spacing: 0.12em; text-transform: uppercase;
+}
+.mv-rev-bar {
+  display: flex; height: 9px; border-radius: 999px; overflow: hidden;
+  background: var(--mv-track);
+}
+.mv-rev-seg { display: block; transition: width 0.45s var(--mv-ease); }
+.mv-rev-seg.mv-bull { background: var(--mv-bull); }
+.mv-rev-seg.mv-bear { background: var(--mv-bear); }
+.mv-rev-seg.mv-neutral { background: rgba(167, 139, 250, 0.55); }
+.mv-rev-legend {
+  display: flex; align-items: center; gap: 0.7rem; margin-top: 0.35rem;
+  font-family: var(--font-mono, monospace); font-size: 0.55rem;
+}
+.mv-rev-more {
+  margin-left: auto; padding: 0.1rem 0.4rem;
+  border: 1px solid var(--mv-hairline); border-radius: 0.3rem;
+  background: transparent; color: var(--mv-chrome); cursor: pointer;
+  font-family: inherit; font-size: 0.5rem; letter-spacing: 0.08em; text-transform: uppercase;
+  transition: background-color 0.16s ease;
+}
+.mv-rev-more:hover { background: rgba(34, 211, 238, 0.12); }
+
+/* ── Dark pool tape ── */
+.mv-tape-strip {
+  display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap;
+  min-height: 38px;
+}
+.mv-tape-print {
+  flex: none; padding: 0; border-radius: 50%;
+  border: 1px solid rgba(167, 139, 250, 0.55);
+  background: radial-gradient(circle at 35% 30%, rgba(167,139,250,0.55), rgba(167,139,250,0.16));
+  cursor: pointer;
+  opacity: 0;
+  animation: mv-pop 0.34s var(--mv-ease) forwards;
+  transition: transform 0.16s var(--mv-ease);
+}
+.mv-tape-print:hover:not(:disabled) { transform: scale(1.16); }
+.mv-tape-print:disabled { cursor: default; }
+@keyframes mv-pop { to { opacity: 1; } }
+
+/* ── Countdown ── */
+.mv-countdown {
+  display: inline-flex; align-items: baseline; gap: 0.5rem;
+  padding: 0.28rem 0.6rem; border-radius: 0.45rem;
+  border: 1px solid var(--mv-hairline); background: var(--mv-surface);
+}
+.mv-countdown-label {
+  font-family: var(--font-mono, monospace); font-size: 0.5rem;
+  letter-spacing: 0.16em; text-transform: uppercase; color: var(--mv-chrome);
+}
+.mv-countdown-clock {
+  font-family: var(--font-syne, sans-serif); font-size: 1rem; font-weight: 800; color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+.mv-countdown-clock i { font-style: normal; font-size: 0.62em; opacity: 0.6; margin: 0 0.1rem 0 0.02rem; }
+.mv-countdown-imminent { border-color: rgba(251, 191, 36, 0.5); }
+.mv-countdown-imminent .mv-countdown-label { color: var(--mv-attention); }
+/* Pulses only inside 24h — the animation IS the signal, so it must not run constantly. */
+.mv-countdown-imminent .mv-countdown-clock { animation: mv-breathe 2.4s ease-in-out infinite; }
+.mv-countdown-past { opacity: 0.62; }
+.mv-countdown-ago { font-size: 0.6em; opacity: 0.7; margin-left: 0.15rem; }
+@keyframes mv-breathe { 0%, 100% { opacity: 1; } 50% { opacity: 0.62; } }
+
+/* ── Signal chips ── */
+.mv-chip {
+  display: inline-flex; align-items: center; gap: 0.22rem;
+  padding: 0.08rem 0.38rem; border-radius: 999px;
+  border: 1px solid var(--mv-hairline); background: var(--mv-surface);
+  font-family: var(--font-mono, monospace); font-size: 0.48rem;
+  letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap;
+  color: rgba(226, 244, 255, 0.85);
+}
+.mv-chip-glyph { font-size: 0.72em; }
+.mv-chip-accelerating, .mv-chip-rank_improving, .mv-chip-top_performer {
+  color: var(--mv-bull); border-color: rgba(52, 211, 153, 0.35);
+}
+.mv-chip-deteriorating, .mv-chip-rank_falling {
+  color: var(--mv-bear); border-color: rgba(251, 113, 133, 0.35);
+}
+.mv-chip-anomaly, .mv-chip-approaching_threshold {
+  color: var(--mv-attention); border-color: rgba(251, 191, 36, 0.4);
+}
+.mv-chip-newly_changed { color: var(--mv-neutral); border-color: rgba(167, 139, 250, 0.4); }
+/* An anomaly is by definition rare, so a persistent pulse here stays informative. */
+.mv-chip-anomaly .mv-chip-glyph { animation: mv-breathe 1.6s ease-in-out infinite; }
+
+/* ── Sparkline ── */
+.mv-spark polyline { fill: none; stroke-width: 1.4; stroke-linejoin: round; stroke-linecap: round; }
+.mv-spark.mv-bull polyline { stroke: var(--mv-bull); }
+.mv-spark.mv-bear polyline { stroke: var(--mv-bear); }
+.mv-spark.mv-neutral polyline { stroke: var(--mv-neutral); }
+
+/* Motion is a communication channel, not decoration — when the user opts out, everything
+   still renders in its final state rather than being stuck mid-reveal. */
+@media (prefers-reduced-motion: reduce) {
+  .mv-halo-seg { animation: none; stroke-dashoffset: 0; }
+  .mv-tape-print { animation: none; opacity: 1; }
+  .mv-countdown-imminent .mv-countdown-clock,
+  .mv-chip-anomaly .mv-chip-glyph { animation: none; }
+  .mv-rail-band, .mv-rail-spot, .mv-beat-bar, .mv-rev-seg, .mv-ladder-row,
+  .mv-target-dot, .mv-tape-print { transition: none; }
+}
