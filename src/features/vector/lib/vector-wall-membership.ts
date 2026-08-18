@@ -49,14 +49,34 @@ export type WallMembershipConfig = {
 /**
  * Enter at the same rank the old per-bucket cap used, so a row is born on exactly the evidence that
  * used to earn a bead — the change is about what happens AFTER birth, not about admitting noise.
- * Hold at 12 of the 20 recorded levels, so an established wall survives ordinary jostling but a
- * strike that has genuinely faded to the bottom of the ladder still dies. Three buckets of grace is
- * 15s at the oracle cadence: long enough to ride out one bad scan, short enough that a real death
- * lands within a candle.
+ * Three buckets of grace is 15s at the oracle cadence: long enough to ride out one bad scan, short
+ * enough that a real death lands within a candle.
+ *
+ * ── holdRank IS SET FROM A SWEEP, NOT A GUESS ────────────────────────────────────────
+ * The cost of hysteresis is a more STATIC rail — the failure mode that got a previous widening
+ * rolled back ("TSLA looks static"). So the knee was measured, not assumed. Replaying eight
+ * tickers' live 2026-08-18 rails (152 rows, both sides) through this exact selection:
+ *
+ *   holdRank   full-width rows   births   mean fill
+ *      5           45%             66       0.77
+ *      6           52%             66       0.83
+ *      8           62%             66       0.89     <- shipped
+ *     10           65%             66       0.92
+ *     12           66%             66       0.94
+ *
+ * Two things that sweep settles. **Births are identical at every value** — 66 throughout — because
+ * birth is governed by `enterRank` alone, so hysteresis costs nothing in wall-formation cues, which
+ * was the whole worry. And the returns bend hard: 5 -> 8 buys +0.12 fill for +17pp static, while
+ * 8 -> 12 buys only +0.05 more for a further +4pp. 8 is the knee.
+ *
+ * For reference the old per-bucket selection sat at ~46% full-width with ~0.68 fill on the same
+ * data, so this trades ~16pp of staticness for a third fewer holes — and a row that stopped being
+ * dotted is *counted* as more static, which is the mechanical consequence of the fix rather than a
+ * separate regression.
  */
 export const DEFAULT_WALL_MEMBERSHIP: WallMembershipConfig = {
   enterRank: 5,
-  holdRank: 12,
+  holdRank: 8,
   graceBuckets: 3,
 };
 
