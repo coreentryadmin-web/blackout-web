@@ -16,6 +16,7 @@ import {
   buildOptionableIndex,
   partitionOptionable,
 } from "@/lib/meridian/meridian-optionable-core";
+import { classifyTickerSectors } from "@/lib/meridian/meridian-sector-classify";
 import { fetchUwOptionableTickers } from "@/lib/providers/unusual-whales";
 import type { BenzingaStructuredEarnings } from "@/lib/providers/polygon";
 
@@ -92,6 +93,9 @@ export type MeridianEarningsTimelineResult = {
   non_optionable_hidden: number;
   /** False when the optionable universe was unavailable, so NOTHING was filtered. */
   optionable_filter_applied: boolean;
+  /** How many lane rows carry a sector cohort key, and how many do not. Coverage, stated. */
+  sectors_classified: number;
+  sectors_unclassified: number;
 };
 
 /** Earnings rows — Benzinga calendar + Polygon chain-IV expected move (no UW earnings REST). */
@@ -129,8 +133,26 @@ export async function loadMeridianEarningsTimeline(
   );
   rows = overlayTimelineExpectedMoves(rows, emByTicker);
 
+  // Sector cohort key, so the lane can group and the detail panel can rank a name against the
+  // peers reporting alongside it. Attached AFTER the optionable filter on purpose — classifying
+  // names we are about to hide would spend a Polygon call per row for nothing.
+  //
+  // Never fatal: `classifyTickerSectors` returns unclassified names rather than throwing, and a
+  // row with no sector simply joins no cohort. A sector lookup outage must not empty the lane.
+  const sectors = await classifyTickerSectors(rows.map((r) => r.ticker)).catch(() => null);
+  if (sectors) {
+    rows = rows.map((r) => {
+      const cls = sectors.byTicker[r.ticker.toUpperCase()];
+      return cls?.majorGroup
+        ? { ...r, sic_major_group: cls.majorGroup, sector_label: cls.label }
+        : r;
+    });
+  }
+
   return {
     rows,
+    sectors_classified: rows.filter((r) => r.sic_major_group).length,
+    sectors_unclassified: rows.filter((r) => !r.sic_major_group).length,
     earnings_week: bundle.earnings_week,
     earnings_analytics_rows: bundle.earnings_analytics_rows,
     earnings_week_analytics: bundle.earnings_week_analytics,

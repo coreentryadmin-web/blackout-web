@@ -17,6 +17,10 @@ export type EarningsTimelineInput = {
   revenue_method?: string | null;
   estimated_eps?: number | null;
   source?: "earnings_calendar" | "chain_iv" | null;
+  /** 2-digit SIC major group — the sector-cohort key. Absent when the name is unclassified. */
+  sic_major_group?: string | null;
+  /** Display name for that cohort, e.g. "Semis & Electronics". */
+  sector_label?: string | null;
 };
 export type FdaTimelineInput = {
   ticker: string;
@@ -183,6 +187,12 @@ export function buildMeridianTimeline(input: {
       date_status: row.date_status ?? null,
       importance: row.importance ?? null,
       is_printed: row.is_printed ?? false,
+      expected_move_pct:
+        row.expected_move_pct != null && Number.isFinite(row.expected_move_pct)
+          ? row.expected_move_pct
+          : null,
+      sic_major_group: row.sic_major_group ?? null,
+      sector_label: row.sector_label ?? null,
     });
   }
 

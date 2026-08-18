@@ -1,7 +1,10 @@
 "use client";
 
 import { useMemo } from "react";
-import type { MeridianEarningsDetail } from "@/features/meridian/lib/meridian-types";
+import type {
+  MeridianEarningsDetail,
+  MeridianTimelineItem,
+} from "@/features/meridian/lib/meridian-types";
 import { LargoPreEarningsPackCard } from "@/features/largo/components/LargoPreEarningsPackCard";
 import { fmtPct } from "./MeridianDesk";
 import {
@@ -16,6 +19,7 @@ import { MeridianEarningsReportPanel } from "./MeridianEarningsReportPanel";
 import { MeridianEarningsEstimatesPanel } from "./MeridianEarningsEstimatesPanel";
 import { MeridianEarningsPositioningPanel } from "./MeridianEarningsPositioningPanel";
 import { MeridianEarningsHistoryPanel } from "./MeridianEarningsHistoryPanel";
+import { MeridianPeerCohortPanel } from "./MeridianPeerCohortPanel";
 
 export type EarningsTab = "summary" | "report" | "estimates" | "positioning" | "history";
 
@@ -104,9 +108,13 @@ type Props = {
   detail: MeridianEarningsDetail;
   /** Controlled by the detail panel, which renders the tablist up in the header. */
   tab: EarningsTab;
+  /** The lane row for this event, and the whole lane — the cohort is built from what the
+   *  reader is already looking at rather than from a second server round-trip. */
+  item?: MeridianTimelineItem | null;
+  allItems?: readonly MeridianTimelineItem[];
 };
 
-export function MeridianEarningsTabs({ detail, tab }: Props) {
+export function MeridianEarningsTabs({ detail, tab, item = null, allItems = [] }: Props) {
   const { enrichment, intel, pack } = detail;
   const cal = enrichment.earnings_calendar;
   // The print instant for the countdown. The feed reports an ET WALL CLOCK date + time, so it
@@ -405,6 +413,9 @@ export function MeridianEarningsTabs({ detail, tab }: Props) {
       {tab === "positioning" && (
         <div role="tabpanel" className="meridian-earnings-tabpanel">
           <MeridianEarningsPositioningPanel ticker={pack.ticker} intel={intel} />
+          {/* Where this name's implied move sits among the peers printing alongside it. Renders
+              nothing when the name is unclassified or the cohort is too thin to rank. */}
+          {item && <MeridianPeerCohortPanel item={item} allItems={allItems} />}
           <MeridianEarningsIntelPanel
             intel={intel}
             printHistory={[]}
