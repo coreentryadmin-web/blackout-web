@@ -740,4 +740,7 @@ export type MeridianTimelinePayload = {
   non_optionable_hidden?: number;
   /** False when the optionable universe was unavailable, so NOTHING was filtered. */
   optionable_filter_applied?: boolean;
+  /** How many lane rows carry a sector cohort key, and how many do not. Coverage, stated. */
+  sectors_classified?: number;
+  sectors_unclassified?: number;
 };

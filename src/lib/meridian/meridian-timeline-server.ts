@@ -17,6 +17,7 @@ import {
   partitionOptionable,
 } from "@/lib/meridian/meridian-optionable-core";
 import { classifyTickerSectors } from "@/lib/meridian/meridian-sector-classify";
+import { orderTickersForClassification } from "@/lib/meridian/meridian-sector-core";
 import { fetchUwOptionableTickers } from "@/lib/providers/unusual-whales";
 import type { BenzingaStructuredEarnings } from "@/lib/providers/polygon";
 
@@ -139,7 +140,21 @@ export async function loadMeridianEarningsTimeline(
   //
   // Never fatal: `classifyTickerSectors` returns unclassified names rather than throwing, and a
   // row with no sector simply joins no cohort. A sector lookup outage must not empty the lane.
-  const sectors = await classifyTickerSectors(rows.map((r) => r.ticker)).catch(() => null);
+  //
+  // ORDER MATTERS, and the lane is bigger than the lookup budget. Measured live 2026-08-18:
+  // 199 earnings rows against a 120-lookup cap, so 79 names were skipped in arbitrary calendar
+  // order. Worse, only 22 rows carried a NUMERIC implied move — and a cohort needs at least
+  // MIN_COHORT_PEERS peers WITH VALUES before it can rank anything. Spending the budget in
+  // calendar order therefore classified many rows that could never contribute to a distribution
+  // while skipping ones that could.
+  //
+  // So: names that carry an implied move go first. Same cost, far more usable cohorts.
+  const classifyOrder = orderTickersForClassification(
+    rows,
+    (r) => r.expected_move_pct != null,
+    (r) => r.ticker
+  );
+  const sectors = await classifyTickerSectors(classifyOrder).catch(() => null);
   if (sectors) {
     rows = rows.map((r) => {
       const cls = sectors.byTicker[r.ticker.toUpperCase()];
