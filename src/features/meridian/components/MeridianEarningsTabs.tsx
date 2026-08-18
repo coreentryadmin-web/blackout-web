@@ -11,6 +11,7 @@ import {
 import { MeridianEarningsIntelPanel } from "./MeridianEarningsIntelPanel";
 import { etWallClockToIso } from "@/lib/meridian/meridian-viz-core";
 import { MeridianEarningsReportPanel } from "./MeridianEarningsReportPanel";
+import { MeridianEarningsEstimatesPanel } from "./MeridianEarningsEstimatesPanel";
 
 type EarningsTab = "report" | "estimates" | "positioning" | "history";
 
@@ -170,6 +171,11 @@ export function MeridianEarningsTabs({ detail }: Props) {
 
       {tab === "estimates" && (
         <div role="tabpanel" className="meridian-earnings-tabpanel">
+          <MeridianEarningsEstimatesPanel
+            ticker={pack.ticker}
+            enrichment={enrichment}
+            spot={intel.thermal?.spot ?? null}
+          />
           {enrichment.street_skew && (
             <MeridianAnalyticsBanner
               label="Street skew (news-derived)"

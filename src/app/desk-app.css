@@ -1666,6 +1666,10 @@ html.nav-locked body { overflow: hidden; }
 }
 .mv-rail-bounds {
   display: flex; justify-content: space-between;
+  /* Explicit colour, not inherited. A primitive that relies on an ambient `color` renders
+     invisible the moment it is placed in a container that does not set one — which is exactly
+     what happened in the offline render. Components own their own legibility. */
+  color: rgba(186, 230, 253, 0.85);
   /* Clears the absolutely-positioned spot/consensus labels hanging below the track. Measured:
      at 1.25rem the bound labels collided with the panel edge on the target rail. */
   margin-top: 1.6rem;
@@ -2137,3 +2141,88 @@ html.nav-locked body { overflow: hidden; }
 /* The orbital needs breathing room for its labels; it also carries its own bottom key line. */
 .mr-panel-orbital { display: flex; flex-direction: column; gap: 0.6rem; padding-bottom: 1.4rem; }
 .mr-panel-orbital > * + * { margin-top: 0; }
+
+/* ═══ MERIDIAN ESTIMATES ═════════════════════════════════════════════════════════════ */
+.mv-traj-rows { display: flex; flex-direction: column; gap: 0.2rem; margin-top: 0.5rem; }
+.mv-traj-row {
+  display: grid; grid-template-columns: 3.6rem 1fr 3.6rem 3.4rem;
+  align-items: center; gap: 0.45rem;
+  padding: 0.16rem 0.28rem; border: 0; border-radius: 0.32rem;
+  background: transparent; color: inherit; text-align: left; cursor: pointer;
+  font-family: var(--font-mono, monospace); font-size: 0.56rem;
+  transition: background-color 0.16s ease;
+}
+.mv-traj-row:disabled { cursor: default; }
+.mv-traj-row:hover:not(:disabled) { background: rgba(125, 211, 252, 0.07); }
+.mv-traj-period { color: rgba(125, 211, 252, 0.7); }
+.mv-traj-bars { position: relative; height: 12px; }
+/* The estimate is an outline the actual fills — one shared baseline, so the comparison is a
+   direct length read rather than two bars the eye has to align. */
+.mv-traj-est {
+  position: absolute; inset: 0; border-radius: 3px;
+  border: 1px solid rgba(125, 211, 252, 0.4); background: rgba(125, 211, 252, 0.07);
+  transform-origin: left center; transition: transform 0.45s var(--mv-ease);
+}
+.mv-traj-act {
+  position: absolute; top: 3px; bottom: 3px; left: 0; right: 0; border-radius: 2px;
+  transform-origin: left center; transition: transform 0.45s var(--mv-ease);
+}
+.mv-traj-act.mv-bull { background: var(--mv-bull); }
+.mv-traj-act.mv-bear { background: var(--mv-bear); }
+.mv-traj-act.mv-neutral { background: rgba(167, 139, 250, 0.6); }
+/* A forward period is dashed and dimmed — "not reported" must never read as "came in at 0". */
+.mv-traj-row.is-forward .mv-traj-est { border-style: dashed; opacity: 0.75; }
+.mv-traj-val { text-align: right; color: #e2f4ff; font-weight: 700; }
+.mv-traj-surprise { text-align: right; font-weight: 700; }
+.mv-traj-row.is-forward .mv-traj-surprise { color: rgba(125, 211, 252, 0.55); font-weight: 400; }
+
+/* Dispersion */
+.mv-disp-track {
+  position: relative; height: 22px; border-radius: 999px;
+  background: var(--mv-track); border: 1px solid var(--mv-hairline);
+}
+.mv-disp-span {
+  position: absolute; top: 50%; height: 6px; border-radius: 999px;
+  background: rgba(167, 139, 250, 0.4); transform: translateY(-50%);
+}
+.mv-disp-median {
+  position: absolute; top: 3px; bottom: 3px; width: 2px;
+  background: var(--mv-neutral); transform: translateX(-50%);
+}
+.mv-disp .mv-rail-bounds { margin-top: 0.4rem; }
+/* The dispersion rail has no absolutely-positioned labels hanging below it, so it needs only
+   its own bottom clearance — but the panel's last child otherwise sits flush against the
+   border and the bound labels clipped. Measured on the render. */
+.mv-disp { padding-bottom: 0.15rem; }
+
+/* YoY */
+.me-yoy-rows { display: flex; flex-direction: column; gap: 0.4rem; margin-top: 0.5rem; }
+.me-yoy-row {
+  display: grid; grid-template-columns: 4.2rem 1fr 4rem; align-items: center; gap: 0.5rem;
+  font-family: var(--font-mono, monospace); font-size: 0.56rem;
+}
+.me-yoy-label { color: rgba(125, 211, 252, 0.7); letter-spacing: 0.08em; text-transform: uppercase; }
+.me-yoy-track {
+  position: relative; height: 10px; border-radius: 999px;
+  background: var(--mv-track); overflow: hidden;
+}
+/* Zero anchored at the CENTRE so growth and contraction extend opposite ways. */
+.me-yoy-zero {
+  position: absolute; top: 0; bottom: 0; left: 50%; width: 1px;
+  background: rgba(125, 211, 252, 0.35);
+}
+.me-yoy-bar {
+  position: absolute; top: 2px; bottom: 2px; border-radius: 999px;
+  transition: width 0.45s var(--mv-ease);
+}
+.me-yoy-bar.mv-bull { background: var(--mv-bull); }
+.me-yoy-bar.mv-bear { background: var(--mv-bear); }
+.me-yoy-val { text-align: right; font-weight: 700; }
+.me-yoy-cap { opacity: 0.6; }
+
+.me-guidance { list-style: none; margin: 0.4rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.25rem; }
+.me-guidance li { font-family: var(--font-mono, monospace); font-size: 0.6rem; color: #e2f4ff; }
+.me-gated {
+  margin: 0.4rem 0 0; font-family: var(--font-mono, monospace); font-size: 0.55rem;
+  color: rgba(251, 191, 36, 0.75); line-height: 1.4;
+}

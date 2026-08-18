@@ -28,6 +28,8 @@ import {
   clamp,
   countdownTo,
   darkPoolTape,
+  estimateDispersion,
+  estimateTrajectory,
   haloFromSignals,
   normalizeMoveBand,
   num,
@@ -618,5 +620,108 @@ export function MeridianSparkline({
     <svg className={`mv-spark ${LEAN_CLASS[lean]}`} width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden="true">
       <polyline points={pts} />
     </svg>
+  );
+}
+
+/* ── Estimate trajectory ──────────────────────────────────────────────────────────────
+ * Paired estimate/actual bars per period on ONE shared scale (see `estimateTrajectory` —
+ * per-series scaling would make a miss look like a beat). Forward periods render the estimate
+ * alone with a distinct treatment, so "not reported yet" never reads as "came in at zero".
+ */
+export function MeridianTrajectory({
+  rows,
+  title,
+  format = (v) => v.toFixed(2),
+  onSelect,
+}: {
+  rows: Parameters<typeof estimateTrajectory>[0];
+  title: string;
+  format?: (v: number) => string;
+  onSelect?: (period: string) => void;
+}) {
+  const pts = useMemo(() => estimateTrajectory(rows), [rows]);
+  if (pts.length === 0) return null;
+  return (
+    <div className="mv-traj">
+      <span className="mv-rail-title">{title}</span>
+      <div className="mv-traj-rows">
+        {pts.map((p) => (
+          <button
+            type="button"
+            key={p.period}
+            className={`mv-traj-row${p.forward ? " is-forward" : ""}`}
+            onClick={onSelect ? () => onSelect(p.period) : undefined}
+            disabled={!onSelect}
+            title={
+              p.forward
+                ? `${p.period} · estimate ${p.estimate === null ? "—" : format(p.estimate)} · not reported`
+                : `${p.period} · est ${p.estimate === null ? "—" : format(p.estimate)} → act ${p.actual === null ? "—" : format(p.actual)}`
+            }
+          >
+            <span className="mv-traj-period">{p.period}</span>
+            <span className="mv-traj-bars">
+              {p.estHeight !== null && (
+                <span className="mv-traj-est" style={{ transform: `scaleX(${p.estHeight})` }} />
+              )}
+              {p.actHeight !== null && (
+                <span
+                  className={`mv-traj-act ${p.surprisePct === null ? "mv-neutral" : p.surprisePct >= 0 ? "mv-bull" : "mv-bear"}`}
+                  style={{ transform: `scaleX(${p.actHeight})` }}
+                />
+              )}
+            </span>
+            <span className="mv-traj-val">{p.actual !== null ? format(p.actual) : p.estimate !== null ? format(p.estimate) : "—"}</span>
+            <span
+              className={`mv-traj-surprise ${p.surprisePct === null ? "" : p.surprisePct >= 0 ? "mv-bull" : "mv-bear"}`}
+            >
+              {p.forward ? "est" : p.surprisePct === null ? "—" : `${p.surprisePct >= 0 ? "+" : ""}${p.surprisePct.toFixed(1)}%`}
+            </span>
+          </button>
+        ))}
+      </div>
+      <p className="mv-note">bar = estimate · fill = actual · shared scale</p>
+    </div>
+  );
+}
+
+/* ── Estimate dispersion rail ─────────────────────────────────────────────────────── */
+export function MeridianDispersion({
+  values,
+  label,
+  format = (v) => v.toFixed(2),
+}: {
+  values: Array<number | null | undefined>;
+  label: string;
+  format?: (v: number) => string;
+}) {
+  const d = useMemo(() => estimateDispersion(values), [values]);
+  const domain = useMemo(() => (d ? priceDomain([d.low, d.high]) : null), [d]);
+  // One estimate is a number, not a distribution — drawing a rail for it would imply a
+  // consensus that does not exist.
+  if (!d || !domain || d.n < 2) return null;
+  return (
+    <div className="mv-disp">
+      <div className="mv-rail-head">
+        <span className="mv-rail-title">{label}</span>
+        <span className="mv-rail-pct">
+          {d.n} estimates{d.spreadPct !== null ? ` · ${d.spreadPct.toFixed(0)}% spread` : ""}
+        </span>
+      </div>
+      <div className="mv-disp-track">
+        <span
+          className="mv-disp-span"
+          style={{
+            left: `${pctAlong(d.low, domain)! * 100}%`,
+            width: `${(pctAlong(d.high, domain)! - pctAlong(d.low, domain)!) * 100}%`,
+          }}
+        />
+        <span className="mv-disp-median" style={{ left: `${pctAlong(d.median, domain)! * 100}%` }} />
+      </div>
+      <div className="mv-rail-bounds">
+        <span>{format(d.low)}</span>
+        <span className="mv-neutral">{format(d.median)}</span>
+        <span>{format(d.high)}</span>
+      </div>
+    </div>
   );
 }

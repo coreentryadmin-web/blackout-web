@@ -734,3 +734,96 @@ export function resolveCollisions(positions: number[], minGap: number): number[]
   for (const item of asc) out[item.i] = clamp(item.p, 0, 1);
   return out;
 }
+
+// ── Estimate trajectory ──────────────────────────────────────────────────────────────
+
+export type TrajectoryPoint = {
+  period: string;
+  estimate: number | null;
+  actual: number | null;
+  /** Signed surprise %, or null when either side is missing. */
+  surprisePct: number | null;
+  /** 0..1 bar heights against the series' own extent. Null when the value is missing. */
+  estHeight: number | null;
+  actHeight: number | null;
+  /** True for a period with an estimate but no actual — the upcoming print. */
+  forward: boolean;
+};
+
+/**
+ * Estimate-vs-actual trajectory, oldest → newest, with forward periods on the end.
+ *
+ * Heights share ONE scale across estimates and actuals. Scaling each series to its own max
+ * would make a miss look like a beat: the two bars would reach the same height whenever the
+ * actual is the series' own maximum, destroying the comparison the chart exists to make.
+ *
+ * The scale runs from 0 (or the series minimum when negative — loss-making names are common in
+ * this feed) so bar LENGTH stays proportional to magnitude rather than to distance above an
+ * arbitrary floor.
+ */
+export function estimateTrajectory(
+  rows: ReadonlyArray<{ period?: string | null; estimate?: number | null; actual?: number | null }> | null | undefined
+): TrajectoryPoint[] {
+  const pts = (rows ?? []).map((r) => ({
+    period: String(r.period ?? "—"),
+    estimate: num(r.estimate),
+    actual: num(r.actual),
+  }));
+  if (pts.length === 0) return [];
+
+  const all = pts.flatMap((p) => [p.estimate, p.actual]).filter((v): v is number => v !== null);
+  if (all.length === 0) {
+    return pts.map((p) => ({ ...p, surprisePct: null, estHeight: null, actHeight: null, forward: p.actual === null }));
+  }
+  // Anchor to zero ONLY when the series crosses it, so the sign change stays visible. For a
+  // series entirely on one side of zero — routine here, since loss-making names report negative
+  // EPS every quarter — a 0-anchored scale crushes every bar into the first few percent of the
+  // track: measured on a real pair (-0.17 est, -0.13 act) the estimate outline came out 6% wide
+  // and was invisible. Range-relative scaling keeps the est-vs-act comparison, which is the
+  // question the panel exists to answer, legible.
+  const rawLo = Math.min(...all);
+  const rawHi = Math.max(...all);
+  const crossesZero = rawLo < 0 && rawHi > 0;
+  const lo = crossesZero ? Math.min(0, rawLo) : rawLo;
+  const hi = crossesZero ? Math.max(0, rawHi) : rawHi;
+  const span = hi - lo;
+  const height = (v: number | null): number | null =>
+    v === null ? null : span > 0 ? round(clamp((v - lo) / span, 0, 1), 4) : 0;
+
+  return pts.map((p) => ({
+    ...p,
+    // Surprise is undefined against a zero estimate — a "percent above nothing" is not a number.
+    surprisePct:
+      p.estimate !== null && p.actual !== null && p.estimate !== 0
+        ? round(((p.actual - p.estimate) / Math.abs(p.estimate)) * 100, 2)
+        : null,
+    estHeight: height(p.estimate),
+    actHeight: height(p.actual),
+    forward: p.actual === null && p.estimate !== null,
+  }));
+}
+
+/** Dispersion of street estimates for one period — the disagreement the consensus hides. */
+export function estimateDispersion(values: Array<number | null | undefined>): {
+  low: number;
+  high: number;
+  median: number;
+  spreadPct: number | null;
+  n: number;
+} | null {
+  const v = values.map(num).filter((x): x is number => x !== null).sort((a, b) => a - b);
+  if (v.length === 0) return null;
+  const mid = Math.floor(v.length / 2);
+  const median = v.length % 2 === 1 ? v[mid]! : (v[mid - 1]! + v[mid]!) / 2;
+  const low = v[0]!;
+  const high = v[v.length - 1]!;
+  return {
+    low,
+    high,
+    median,
+    // Spread relative to |median| — an absolute spread is meaningless across names whose EPS
+    // differ by orders of magnitude. Undefined at a zero median rather than Infinity.
+    spreadPct: median !== 0 ? round(((high - low) / Math.abs(median)) * 100, 1) : null,
+    n: v.length,
+  };
+}

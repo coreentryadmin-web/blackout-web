@@ -20,6 +20,8 @@ import {
   dimensionRollup,
   etWallClockToIso,
   resolveCollisions,
+  estimateTrajectory,
+  estimateDispersion,
 } from "./meridian-viz-core";
 
 // ── null propagation. The repo's recurring defect is Number(null) === 0; on a price rail a
@@ -398,4 +400,80 @@ test("resolveCollisions: already-separated positions are left alone", () => {
 test("resolveCollisions: degenerate inputs", () => {
   assert.deepEqual(resolveCollisions([], 0.1), []);
   assert.deepEqual(resolveCollisions([0.4], 0.1), [0.4]);
+});
+
+// ── estimate trajectory
+test("estimateTrajectory: estimate and actual share ONE scale — otherwise a miss looks like a beat", () => {
+  const t = estimateTrajectory([
+    { period: "Q1", estimate: 1, actual: 0.5 },   // a big miss
+    { period: "Q2", estimate: 2, actual: 2.2 },
+  ]);
+  // Q1's actual must be visibly SHORTER than its estimate. Per-series scaling would have made
+  // Q2's actual the max of the actual series and Q1's the max of the estimate series, so the
+  // two bars in Q1 would have looked comparable.
+  assert.ok(t[0]!.actHeight! < t[0]!.estHeight!, "the miss must read as shorter");
+  assert.ok(t[1]!.actHeight! > t[1]!.estHeight!, "and the beat as taller");
+});
+
+test("estimateTrajectory: an all-negative series uses the full track, not the first 6% of it", () => {
+  // Measured defect: 0-anchoring a loss-making name crushed the estimate outline to ~6% width.
+  const t = estimateTrajectory([
+    { period: "Q1", estimate: -0.17, actual: -0.13 },
+    { period: "Q2", estimate: -0.18, actual: null },
+  ]);
+  assert.ok(t[0]!.actHeight! > t[0]!.estHeight!, "-0.13 beats -0.17 and must be the longer bar");
+  assert.ok(t[0]!.actHeight! > 0.5, `the comparison must use the track, got ${t[0]!.actHeight}`);
+  assert.ok(t[0]!.estHeight! >= 0, "no negative bar lengths");
+});
+
+test("estimateTrajectory: a series that CROSSES zero keeps zero anchored so the sign shows", () => {
+  const t = estimateTrajectory([
+    { period: "Q1", estimate: -1, actual: -0.5 },
+    { period: "Q2", estimate: 0.5, actual: 1 },
+  ]);
+  // With zero inside the domain, a loss sits in the lower half and a profit in the upper.
+  assert.ok(t[0]!.actHeight! < 0.5, "the negative quarter stays below the midpoint");
+  assert.ok(t[1]!.actHeight! > 0.5, "and the positive quarter above it");
+});
+
+test("estimateTrajectory: a forward period is flagged, not treated as a zero actual", () => {
+  const t = estimateTrajectory([{ period: "Q3", estimate: 1.2, actual: null }]);
+  assert.equal(t[0]!.forward, true);
+  assert.equal(t[0]!.actHeight, null, "no bar for an actual that does not exist yet");
+  assert.equal(t[0]!.surprisePct, null);
+});
+
+test("estimateTrajectory: surprise against a zero estimate is undefined, not Infinity", () => {
+  const t = estimateTrajectory([{ period: "Q1", estimate: 0, actual: 0.5 }]);
+  assert.equal(t[0]!.surprisePct, null);
+});
+
+test("estimateTrajectory: empty in, empty out", () => {
+  assert.deepEqual(estimateTrajectory([]), []);
+  assert.deepEqual(estimateTrajectory(null), []);
+});
+
+// ── dispersion
+test("estimateDispersion: reports the spread the consensus hides", () => {
+  const d = estimateDispersion([1.0, 1.2, 1.1, 2.0])!;
+  assert.equal(d.low, 1.0);
+  assert.equal(d.high, 2.0);
+  assert.equal(d.median, 1.15);
+  assert.ok(d.spreadPct! > 80, "a 1.0-2.0 range around a 1.15 median is a wide disagreement");
+  assert.equal(d.n, 4);
+});
+
+test("estimateDispersion: spread is relative — an absolute one is meaningless across names", () => {
+  const small = estimateDispersion([1, 2])!;
+  const large = estimateDispersion([100, 200])!;
+  assert.equal(small.spreadPct, large.spreadPct, "same proportional disagreement, same number");
+});
+
+test("estimateDispersion: a zero median yields null spread rather than Infinity", () => {
+  assert.equal(estimateDispersion([-1, 1])!.spreadPct, null);
+});
+
+test("estimateDispersion: nulls dropped; nothing usable → null", () => {
+  assert.equal(estimateDispersion([null, undefined])!, null);
+  assert.equal(estimateDispersion([])!, null);
 });
