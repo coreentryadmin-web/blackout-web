@@ -171,6 +171,13 @@ import {
   VECTOR_WALL_NODES_PER_SIDE,
   type VectorTimeframeMinutes,
 } from "@/features/vector/lib/vector-bar-timeframes";
+import {
+  resolveNodeCount,
+  loadNodeDensity,
+  saveNodeDensity,
+  VECTOR_DEFAULT_NODE_DENSITY,
+  type VectorNodeDensity,
+} from "@/features/vector/lib/vector-node-density";
 import { mergeSpyVolumeRows } from "@/features/vector/lib/vector-spy-volume-merge";
 import {
   createRenderThrottle,
@@ -1717,6 +1724,13 @@ export function VectorChart({
   // 1m is the seed resolution; host desks may open on a coarser preset (defaultTimeframe — 3m default).
   // Aggregation is client-side from the same 1m bars.
   const [timeframe, setTimeframeState] = useState<VectorTimeframeMinutes>(initialTimeframe);
+  // NODES — member override for wall/bead rows per side. Default "auto" reproduces the timeframe
+  // heuristic exactly, so a member who never touches this control sees the chart unchanged. The ref
+  // mirror is what the imperative repaint paths (refreshTrails/refreshOverlays/replay applyFrame)
+  // read: they are useCallbacks with pinned deps, so reading state there would capture a stale
+  // value the same way timeframeRef exists to avoid.
+  const [nodeDensity, setNodeDensityState] = useState<VectorNodeDensity>(VECTOR_DEFAULT_NODE_DENSITY);
+  const nodeDensityRef = useRef<VectorNodeDensity>(VECTOR_DEFAULT_NODE_DENSITY);
   const timeframeUserLockedRef = useRef(false);
   const autoCoarsenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const overlayDimRef = useRef(1);
@@ -2220,7 +2234,10 @@ export function VectorChart({
     // before (member finding "select 0DTE, still shows All's walls" is still fixed either way).
     const lastBarTime = minuteBarsRef.current[minuteBarsRef.current.length - 1]?.time ?? 0;
     const horizon = dteHorizonRef.current;
-    const beadRowCap = wallCountForHorizon(timeframeRef.current, horizon);
+    const beadRowCap = resolveNodeCount(
+      nodeDensityRef.current,
+      wallCountForHorizon(timeframeRef.current, horizon)
+    );
     const currentColumn = narrowedHorizonTrail(
       horizon,
       activeLens,
@@ -2329,7 +2346,10 @@ export function VectorChart({
       // How many wall guides/beads THIS timeframe shows (1m→6 … 15m→12). Higher timeframe →
       // more, further-out walls drawn → wider axis (extendRangeForWalls keys off these SHOWN
       // strikes below, so 1m stays tight while 15m widens).
-      const maxGuides = wallCountForHorizon(timeframeRef.current, dteHorizonRef.current);
+      const maxGuides = resolveNodeCount(
+        nodeDensityRef.current,
+        wallCountForHorizon(timeframeRef.current, dteHorizonRef.current)
+      );
       // Walls are shown ONLY as strength-scaled beads now (the Skylit-clean look) — clear any
       // wall guide price-lines rather than drawing them, so the price axis is not stacked with
       // "Call/Put wall — %" labels. The gamma-flip line stays (member kept it); dark-pool level
@@ -2884,7 +2904,7 @@ export function VectorChart({
         timeframeRef.current,
         cursorTime,
         true,
-        wallCountForTimeframe(timeframeRef.current),
+        resolveNodeCount(nodeDensityRef.current, wallCountForTimeframe(timeframeRef.current)),
         true,
         trailBucketSec,
         spotRef.current,
@@ -2900,7 +2920,7 @@ export function VectorChart({
         timeframeRef.current,
         cursorTime,
         true,
-        wallCountForTimeframe(timeframeRef.current),
+        resolveNodeCount(nodeDensityRef.current, wallCountForTimeframe(timeframeRef.current)),
         true,
         trailBucketSec,
         spotRef.current,
@@ -4710,6 +4730,40 @@ export function VectorChart({
     ]
   );
 
+  // Hydrate the member's saved NODES pick after mount (localStorage is client-only). Setting state
+  // here runs the repaint effect below exactly once, so the first paint is AUTO and then converges
+  // to the member's preference — rather than SSR-mismatching on a value the server cannot know.
+  useEffect(() => {
+    const saved = loadNodeDensity();
+    if (saved === VECTOR_DEFAULT_NODE_DENSITY) return;
+    nodeDensityRef.current = saved;
+    setNodeDensityState(saved);
+  }, []);
+
+  const handleNodeDensity = useCallback(
+    (next: VectorNodeDensity) => {
+      nodeDensityRef.current = next;
+      setNodeDensityState(next);
+      saveNodeDensity(next);
+    },
+    []
+  );
+
+  // Repaint on a density change. Beads AND guides both key off the resolved row count, and the
+  // price axis widens off the drawn strikes (rangeWallsRef/beadStrikesRef), so repainting only the
+  // beads would leave the axis sized for the old count and clip the new outer rows.
+  useEffect(() => {
+    refreshTrails(lensRef.current);
+    refreshOverlays(
+      lensRef.current,
+      liveGexWalls(),
+      vexWallsRef.current,
+      liveGammaFlip(),
+      vexFlipRef.current,
+      darkPoolRef.current
+    );
+  }, [nodeDensity, refreshTrails, refreshOverlays, liveGexWalls, liveGammaFlip]);
+
   const toolbar = (
     <VectorToolbar
       interval={timeframe}
@@ -4753,6 +4807,9 @@ export function VectorChart({
       comparePane={toolbarHideLinkedControls}
       hideReplayControls={hideReplayControls}
       drawTools={drawToolsProps}
+      nodeDensity={nodeDensity}
+      onNodeDensity={handleNodeDensity}
+      nodeAutoCount={wallCountForHorizon(timeframe, dteHorizon)}
     />
   );
 
