@@ -17,6 +17,7 @@ import {
 } from "@/lib/meridian/meridian-event-brief";
 import { loadMeridianEarningsIntel } from "@/lib/meridian/meridian-earnings-intel";
 import { readMeridianBoardTickers } from "@/lib/meridian/meridian-board-tickers";
+import { recordMeridianReportSnapshot, readMeridianReportSnapshots } from "@/lib/db";
 import type {
   MeridianEventDetail,
   MeridianTimelinePayload,
@@ -104,7 +105,39 @@ export async function loadMeridianEventResponse(id: string): Promise<MeridianEve
       print_history: enrichment.print_history,
       enrichment,
     });
-    return roundFloats({ kind: "earnings", pack, enrichment, intel });
+    const detail = roundFloats({ kind: "earnings" as const, pack, enrichment, intel });
+
+    /**
+     * Record today's read, so the desk can later say "bullish five days ago, neutral now".
+     *
+     * Written on the READ path rather than the warm cron on purpose. The warm cron is
+     * weekdays + market-hours gated, so a cron-driven series would have holes exactly where an
+     * earnings calendar is busiest — evenings and the run-up to a morning print. This costs
+     * nothing extra (the report is already built) and naturally covers the names members
+     * actually open.
+     *
+     * Fire-and-forget: a snapshot is an observation for a panel, not part of serving the page.
+     * `void` + a caught rejection so a DB hiccup can never take the event detail down with it.
+     */
+    void recordMeridianReportSnapshot({
+      ticker,
+      eventDate: parsed.date,
+      snapshotDay: todayEtYmd(),
+      score: intel?.report?.score ?? null,
+      verdict: intel?.report?.verdict ?? null,
+      confidence: intel?.report?.confidence ?? null,
+      pillars: Object.fromEntries(
+        (intel?.report?.signals ?? [])
+          .filter((sig) => sig?.pillar && sig?.lean)
+          .map((sig) => [String(sig.pillar), String(sig.lean)])
+      ),
+    }).catch(() => {});
+
+    // The day series this event has accumulated. Read AFTER the write above so today's own
+    // observation is included — a drift panel that omitted the current read would compare the
+    // reader against a past they can no longer see.
+    const drift_snapshots = await readMeridianReportSnapshots(ticker, parsed.date, 30);
+    return { ...detail, drift_snapshots };
   }
 
   if (parsed.kind === "fda") {
