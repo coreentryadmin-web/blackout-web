@@ -64,6 +64,10 @@ const note = (severity, ticker, check, detail) => {
 };
 
 const num = (v) => (v === null || v === undefined || v === "" ? null : Number.isFinite(Number(v)) ? Number(v) : null);
+/** Today's ET calendar date. A session dated today has not closed and cannot be graded. */
+const todayEtYmdLocal = () =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date());
+
 const near = (a, b, tolPct) => {
   if (a == null || b == null) return null;
   if (a === 0 && b === 0) return true;
@@ -224,9 +228,17 @@ async function validateEvent(fetchJson, item) {
     // Only the BMO case can be checked against the report date's own session; an AMC print
     // reacts the NEXT session, and asserting on the wrong one would manufacture a failure.
     if (p.reaction_basis && p.reaction_basis !== "bmo_session") continue;
+    // TODAY's session is still OPEN. The app reports a live session change while Polygon's daily
+    // bar for the same date is a partial bar that keeps moving, so the two are sampled at
+    // different instants by construction and any disagreement says nothing about correctness.
+    // Measured 2026-08-18 mid-RTH: HD app 1.43% vs bar 1.60%, BHP app 0.21% vs bar 0.21% — the
+    // second pair is IDENTICAL to displayed precision and still failed a relative-only tolerance.
+    if (p.report_date >= todayEtYmdLocal()) continue;
     const truthMove = await truthSessionMove(ticker, p.report_date);
     if (truthMove == null) continue;
-    if (!near(got, truthMove, 0.02)) {
+    // Rounding floor as well as a relative tolerance: session_change_pct is served to 2dp, and
+    // below half of the last displayed digit no disagreement is even representable.
+    if (!nearRounded(got, truthMove, 0.02, 2)) {
       note(
         "FAIL",
         ticker,
