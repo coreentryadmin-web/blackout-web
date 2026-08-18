@@ -38,6 +38,61 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-08-18 — [FINDING, P1 member-visible] Bead rows were dotted because membership was re-ranked from scratch every bucket — mean row fill 0.35 on SPX — FIXED
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Severity** | P1 (member-visible — this is the "beads look broken / gaps in the columns" report) |
+| **Scope** | new `vector-wall-membership.ts`, `vector-wall-history.ts` (`trailsByStrike`) |
+| **Status** | FIXED — hysteresis lifecycle replaces the per-bucket top-N; 9 unit tests; measured on live session data |
+
+**Root cause.** `trailsByStrike` selected each bucket's strongest `DOMINANT_WALLS_PER_BUCKET` (5)
+strikes INDEPENDENTLY, per bucket. A strike hovering near the cut left and re-entered on nearly
+every tick, so its row drew as a dotted line. Nothing was missing from the payload — the recorder
+stores 20 levels per side in every bucket — the renderer discarded 15 of them and then discarded a
+different 15 on the next tick.
+
+**Evidence (live session rail, 2026-08-18, real `trailsByStrike`).** Mean row fill = the fraction of
+the buckets a row spans in which it actually has a bead:
+
+| ticker | dominant=5 (shipped) | dominant=20 (everything recorded) | **after hysteresis** |
+|---|---|---|---|
+| SPX | 0.35 (5 unbroken / 19 holey) | 0.47 | **0.76** (15 unbroken / 11 holey) |
+| NVDA | 0.82 (11 / 3) | 0.88 | **0.93** (14 / 2) |
+| TSLA | 0.71 (9 / 6) | 0.85 | **1.00** (18 / 0, zero holes) |
+| META | — | — | **0.98** |
+| SPY | — | — | **0.99** |
+
+On SPX two-thirds of every row was holes.
+
+**Why not simply raise the cap.** The repo already paid for that: `DOMINANT_WALLS_PER_BUCKET` went
+3 -> 5 and the recorded result was a MORE STATIC rail — full-width rows grew ~6x faster than births
+and TSLA regressed on both sides (see the constant's own docblock). A bigger top-N means more
+strikes that never leave, i.e. a frozen grid. The 0.47 column above confirms it: even at
+dominant=20 the fill only reaches 0.47, because the churn is in the RE-RANKING, not the cap size.
+
+**Fix.** Membership is now a lifecycle with hysteresis (`resolveWallMembership`): a strike must rank
+inside `enterRank` (5 — the same evidence that used to earn a bead) to be BORN, but only inside
+`holdRank` (12 of the 20 recorded levels) to STAY, and it dies only after `graceBuckets` (3 ≈ 15s)
+consecutive buckets of failing that weaker test. Strong persistent walls get continuous rows; weak
+ones still die. Births and deaths become events in the book instead of artefacts of a ranking
+recomputed from scratch. Row counts stayed in the 16-28 range, so this does not become the static
+grid the cap-raise produced.
+
+**Deliberately not done: a row is never fabricated.** A strike that is alive but ABSENT from a
+bucket's recorded ladder emits nothing for that bucket — it keeps its row identity across the gap
+without a fabricated bead. A rail that fills its own holes is worse than one that shows them.
+
+**Correction to two earlier analyses in this session.** Both claimed the bead SIZE channel was
+broken ("62-83% of beads at the floor radius", "the $8B nominal book"). Both measured a DEAD code
+path: they computed radii via `pctToNotionalProxy` x `NOMINAL_TICKER_GAMMA_USD`, which has no caller
+on the live path. The shipped mapping is `beadRadiusForPctShare(pct)`, and measured through the real
+function over the same session it is healthy — 46-54 distinct radii per ticker, p10-p90 spanning
+~2.2-6.3px of a 2.2-7.5px range, floor share 0.6-34%, ceiling 0-5%. Real `notional` is also already
+recorded on 100% of levels. **Sizing needed no change.** The cause of the stale reads in both cases
+was analysing `/home/user/blackout-web` instead of a fresh `origin/main` worktree.
+
 ## 2026-08-18 — [FINDING, P2 systemic] Bead rail memo stopped working 60s into every session — `at: memo?.at ?? Date.now()` refreshed the resync clock exactly once — FIXED
 > **kind:** `FINDING`
 
