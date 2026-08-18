@@ -128,7 +128,7 @@ export const VECTOR_FULL_STATE_FIXTURE: VectorFullState = {
       { strike: 7600, side: "call", premium: 1_250_000, size: 400, tsMs: 1_752_417_600_000, aggressor: "buy" },
       { strike: 7500, side: "put", premium: 820_000, size: 260, tsMs: 1_752_417_500_000, aggressor: "sell" },
     ],
-    meta: { minPremium: 250_000, largeFound: 5, truncated: 3, partial: false },
+    meta: { minPremium: 5_000, largeFound: 5, truncated: 3, partial: false, deadlineHit: false },
   },
   // The rail — the "beads" over the session. The call wall at 7,600 stacks 8% → 11% between the two
   // samples, so the derived wallEvents below narrate a "building" (fadeness) event.
