@@ -64,7 +64,16 @@ const STEPS = [
   { id: "06-dte-weekly", label: "DTE weekly", sel: "[data-testid=vector-dte-weekly]", settle: 8000, horizon: "weekly", effect: { kind: "active", sel: "[data-testid=vector-dte-weekly]" } },
   { id: "07-lens-vex", label: "lens VEX", sel: "[data-testid=vector-lens-vex]", settle: 6000, effect: { kind: "active", sel: "[data-testid=vector-lens-vex]" } },
   { id: "08-lens-gex", label: "lens GEX", sel: "[data-testid=vector-lens-gex]", settle: 6000, effect: { kind: "active", sel: "[data-testid=vector-lens-gex]" } },
-  { id: "09-ladder-reset", label: "ladder reset-to-spot", sel: "[data-testid=vector-gex-ladder-reset]", settle: 2500, effect: { kind: "spotInLadderView" } },
+  // FOCUS MODE (#2315). The assertion that matters is INVERTED: the feature's whole job is that the
+  // side rails stop existing, so `focus: true` requires them ABSENT. Asserting presence here would
+  // fail a working fullscreen, and asserting nothing would let a no-op toggle pass as healthy.
+  { id: "08a-focus-on", label: "full screen on", sel: "[data-testid=vector-focus-toggle]", settle: 4000, focus: true, effect: { kind: "active", sel: "[data-testid=vector-focus-toggle]" } },
+  { id: "08b-focus-off", label: "full screen off", sel: "[data-testid=vector-focus-toggle]", settle: 4000, effect: { kind: "panelsBack" } },
+  // NODES (#2316). Both directions: 20 must widen the rail and 6 must narrow it, because a control
+  // wired to only one of its own steps still reads as working from a single screenshot.
+  { id: "08c-nodes-20", label: "nodes 20", sel: "[data-testid=vector-nodes-20]", settle: 5000, effect: { kind: "active", sel: "[data-testid=vector-nodes-20]" } },
+  { id: "08d-nodes-auto", label: "nodes AUTO", sel: "[data-testid=vector-nodes-auto]", settle: 5000, effect: { kind: "active", sel: "[data-testid=vector-nodes-auto]" } },
+  { id: "09-ladder-reset", label: "ladder reset-to-spot", sel: "[data-testid=vector-odte-matrix-reset], [data-testid=vector-gex-ladder-reset]", settle: 2500, effect: { kind: "spotInLadderView" } },
   { id: "10-indicators", label: "indicator menu", sel: "[data-testid=vector-indicator-trigger]", settle: 2500, effect: { kind: "expanded", sel: "[data-testid=vector-indicator-trigger]" } },
   { id: "11-replay", label: "replay toggle", sel: "[data-testid=vector-replay-toggle]", settle: 4000, effect: { kind: "exists", sel: "[data-testid=vector-replay-play]" } },
 ];
@@ -83,6 +92,28 @@ const DAILY_STEPS = [
 ];
 
 const BROKEN_TEXT = /something went wrong|we couldn['’]t load|failed to load|unhandled runtime error|application error/i;
+
+/**
+ * SELECTORS FOR THE RAILS AS THEY SHIP TODAY — and the reason they are constants.
+ *
+ * This harness spent its recent life reporting four failures on a perfectly healthy desk. It looked
+ * for `.vector-gex-ladder` and `.vector-pulse`; the shipped desk renders `VectorOdteMatrixRail`
+ * (`.vector-odte-matrix-rail`) and `VectorHelixRail` (`.vector-helix-rail`). The components were
+ * replaced, the selectors were not, so every run printed "side panel missing: ladder / pulse" and
+ * "GEX ladder has no rows" — a permanently-red harness, which is worse than no harness, because it
+ * trains its reader to skip the output that would have carried a real regression.
+ *
+ * Each entry keeps the OLD selector alongside the new one. The desk still carries some legacy
+ * classes (the reset button is `vector-gex-ladder-reset vector-odte-matrix-reset`), and a harness
+ * that only understands today's DOM breaks again on the next rename in the other direction.
+ */
+const SEL = {
+  ladder: ".vector-odte-matrix-rail, .vector-gex-ladder",
+  ladderRows: ".vector-odte-matrix-row, .vector-gex-ladder-rows > *",
+  ladderSpotRow: ".vector-odte-matrix-spot-row, .vector-gex-ladder-spot",
+  ladderHead: ".vector-odte-matrix-spot, .vector-gex-ladder-sub",
+  pulse: ".vector-helix-rail, .vector-pulse",
+};
 
 /**
  * The desk renders each toolbar control TWICE — a 0x0 hidden instance and the real one.
@@ -144,10 +175,17 @@ async function verifyEffect(page, effect) {
       }
       case "exists":
         return q(e.sel) ? null : `${e.sel} never appeared`;
+      case "panelsBack": {
+        // Leaving focus mode must REMOUNT the rails. Without this, a focus toggle that unmounted the
+        // desk and never brought it back would pass every other check in this file — the chart is
+        // still there, and the chart is what the rest of the assertions look at.
+        const missing = [e.rails.ladder, e.rails.pulse].filter((one) => !q(one));
+        return missing.length ? `side rails did not remount after leaving focus mode: ${missing.join(", ")}` : null;
+      }
       case "spotInLadderView": {
         // The reset button's whole job: put the spot marker back inside the visible rail.
-        const list = q(".vector-gex-ladder-rows");
-        const spot = q(".vector-gex-ladder-spot");
+        const list = q(e.rails.ladder);
+        const spot = q(e.rails.ladderSpotRow);
         if (!list || !spot) return "ladder list or spot marker missing";
         const l = list.getBoundingClientRect();
         const s = spot.getBoundingClientRect();
@@ -158,7 +196,7 @@ async function verifyEffect(page, effect) {
       default:
         return `unknown effect kind "${e.kind}"`;
     }
-  }, effect);
+  }, { ...effect, rails: SEL });
 }
 
 /**
@@ -224,30 +262,30 @@ function crossCheckAgainstBaseline(shown, base, { liveSession }) {
 }
 
 async function readRenderedLadder(page) {
-  return page.evaluate(() => {
+  return page.evaluate((sel) => {
     const pick = (sel) => {
       const all = [...document.querySelectorAll(sel)];
       return all.find((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; }) ?? null;
     };
-    const head = pick(".vector-gex-ladder-sub");
+    const head = pick(sel.ladderHead);
     const spotTxt = head ? (head.textContent || "").match(/[\d,]+\.?\d*/) : null;
-    const strikes = [...document.querySelectorAll(".vector-gex-ladder-rows > *")]
+    const strikes = [...document.querySelectorAll(sel.ladderRows)]
       .map((el) => Number(String(el.textContent || "").trim().split(/\s+/)[0].replace(/,/g, "")))
       .filter((n) => Number.isFinite(n));
     return { spot: spotTxt ? Number(spotTxt[0].replace(/,/g, "")) : null, strikes };
-  });
+  }, SEL);
 }
 
 /** Assertions run inside the page. Kept as one evaluate so a state is measured at one instant. */
 async function inspect(page, { daily }) {
-  return page.evaluate((isDaily) => {
+  return page.evaluate(({ isDaily, sel }) => {
     const txt = (document.body.innerText || "").slice(0, 200000);
     const canvases = [...document.querySelectorAll("canvas")].map((c) => ({
       w: c.width,
       h: c.height,
     }));
     const chart = document.querySelector(isDaily ? "[data-testid=vector-daily-chart]" : ".vector-chart-terminal-chart");
-    const ladderRows = document.querySelectorAll(".vector-gex-ladder-rows > *").length;
+    const ladderRows = document.querySelectorAll(sel.ladderRows).length;
     const playCard = document.querySelector("[data-testid=vector-play-card]");
     const nav = document.querySelector(".nav-signin") ? "signed-out" : "signed-in";
     return {
@@ -260,10 +298,10 @@ async function inspect(page, { daily }) {
       panels: {
         play: Boolean(document.querySelector("[data-testid=vector-play-card]")),
         regime: Boolean(document.querySelector("[data-testid=vector-regime-banner]")),
-        ladder: Boolean(document.querySelector(".vector-gex-ladder")),
+        ladder: Boolean(document.querySelector(sel.ladder)),
         technicals: Boolean(document.querySelector(".vector-technicals-panel, .vector-technicals")),
         alerts: Boolean(document.querySelector(".vector-alerts-panel, .vector-alert-rules")),
-        pulse: Boolean(document.querySelector(".vector-pulse")),
+        pulse: Boolean(document.querySelector(sel.pulse)),
       },
       ladderRows,
       // The card's first line is the grade badge ("B"), which is present even when the engine
@@ -278,7 +316,7 @@ async function inspect(page, { daily }) {
         : null,
       nav,
     };
-  }, daily);
+  }, { isDaily: daily, sel: SEL });
 }
 
 /**
@@ -288,7 +326,7 @@ async function inspect(page, { daily }) {
  * when there's nothing to show"). The ladder thinning to a couple of rows in that state has the
  * same cause. Asserting panel presence there would flag replay honesty as a fault.
  */
-function assertState(snap, { daily, mobile, replay }) {
+function assertState(snap, { daily, mobile, replay, focus }) {
   const fails = [];
   const m = BROKEN_TEXT.exec(snap.bodyText);
   if (m) fails.push(`error text on page: "${m[0]}"`);
@@ -301,7 +339,14 @@ function assertState(snap, { daily, mobile, replay }) {
   if (snap.nav === "signed-out") fails.push("nav rendered signed-out on an authenticated desk page");
   // Desktop shows every rail simultaneously, so a missing one is a real regression. On the iOS
   // shell only the selected segment is mounted, so the same check there would fail by design.
-  if (!daily && !mobile && !replay) {
+  if (focus) {
+    // Focus mode INVERTS this check. The rails are supposed to be gone — and gone from the DOM, not
+    // merely invisible, since each one owns polling or a live subscription (see vector-focus-mode.ts).
+    for (const [name, present] of Object.entries(snap.panels ?? {})) {
+      if (name === "regime") continue; // lives inside the chart toolbar, and stays by design
+      if (present) fails.push(`side panel still mounted in focus mode: ${name}`);
+    }
+  } else if (!daily && !mobile && !replay) {
     for (const [name, present] of Object.entries(snap.panels ?? {})) {
       if (!present) fails.push(`side panel missing: ${name}`);
     }
@@ -422,7 +467,7 @@ async function run(session) {
       }
 
       const snap = await inspect(page, { daily: step.daily });
-      const fails = acted === "missing" ? [] : assertState(snap, { daily: step.daily, mobile: MOBILE, replay: step.id === "11-replay" });
+      const fails = acted === "missing" ? [] : assertState(snap, { daily: step.daily, mobile: MOBILE, replay: step.id === "11-replay", focus: step.focus });
       if (acted !== "missing" && step.effect) {
         const effectFail = await verifyEffect(page, step.effect);
         if (effectFail) fails.push(`no effect: ${effectFail}`);
