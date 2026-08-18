@@ -11201,3 +11201,65 @@ confident `0`, which would render as "perfectly balanced dealer gamma" for a cha
 on. A chain with no expiry reaching the print reports `noCoveringExpiry` rather than silently
 falling back. And the expected-move rail now prints the NUMBER beside each marker — it showed
 "max pain" and "put wall" as bare labels, forcing the reader to eyeball a pixel against an axis.
+
+## 2026-08-18 — A malformed event id served HTTP 200 with a half-populated earnings brief; the validator was generating them — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P2 product (a bad URL renders as "this company has no earnings history") + P1 tooling (the validator reported a false product P1 on every ticker, every run) |
+| **Where** | `src/features/meridian/lib/meridian-timeline.ts` `parseMeridianEventId`; `scripts/audit/meridian-data-validator.mjs` |
+| **Status** | FIXED — the id parser now validates its date component; the validator's fetch calls, tolerance and window assumptions are corrected |
+
+**What it looked like.** The validator reported, on 8/8 mega-caps, that `enrichment.print_history`,
+`street_estimates`, `earnings_calendar` and every `beat_rates` field were empty while `pack.history`
+on the same payload carried four prints. It read as a serious, universal data defect, and it had
+already survived one round of investigation and one shipped fix aimed at it.
+
+**Root cause — the harness.** `scripts/audit/meridian-data-validator.mjs` called
+`fetchAuditJson(`${BASE}/api/…`)` with ONE argument. The signature is `fetchAuditJson(base, path)`
+and the body is `base.replace(/\/$/, "") + path`, so `path === undefined` appended the literal
+string `undefined` to every event id: `id=earnings:TGT:2026-08-19undefined`.
+
+**Root cause — the product.** `parseMeridianEventId` returned `parts[2]` verbatim as the date with
+no validation, so the garbage id was ACCEPTED. The pack path survives it (`earningsDate?.slice(0,
+10)`); the enrichment path feeds the raw string into date arithmetic, producing a nonsense range
+and therefore no rows. Result: **HTTP 200 carrying a half-populated brief** — the worst possible
+answer, because an empty print history renders as the confident claim that the company has none.
+
+**Evidence.** Same ticker, back to back against production:
+
+```
+CORRECT    status 200 | pack.history 4 | enr.print_history 4 | cal row  | calendar_error null
+MALFORMED  status 200 | pack.history 4 | enr.print_history 0 | cal null | calendar_error undefined
+```
+
+14 consecutive correctly-formed requests for TGT returned `print_history=4`, `calendar_error`
+present, `expiry_scope=event_expiry` — 14/14. The product was healthy the whole time.
+
+**Two more harness bugs found in the same file**, each of which had been manufacturing findings:
+- `truth:print_missing` compared against an UNBOUNDED Benzinga history while the app queries a
+  420-day window, so BHP's 2025-02-17 and 2024-08-26 prints were reported "absent from the app"
+  when neither was ever in range.
+- `coherence:eps_yoy` used a purely RELATIVE tolerance against a value the app rounds to one
+  decimal. A served `1.1%` against an exact `1.0684%` is 2.96% off relative — outside a 2%
+  tolerance — purely because one decimal cannot express it. `nearRounded` now allows half of the
+  last displayed digit as an absolute floor.
+- The cleanup call was `releaseAuditAuth?.()`, a name the module does not export. The optional
+  call swallowed it silently, so **the temp Clerk user was never deleted** by this validator. Now
+  `releaseAuditClerkSession()`.
+
+**Result.** 25 FAIL → **0 FAIL** across 8 mega-cap earnings events. Two `scope:absent` WARNs remain
+(BHP, TJX carry no `expiry_scope`); tracked separately, not part of this fix.
+
+**Lesson, and it is the one already written at the top of this repo's playbook:** when a harness
+reports a universal product defect, suspect the harness first. A previous PR was opened, argued and
+closed on evidence this bug manufactured.
+
+> **kind:** `NEGATIVE-RESULT`
+
+**Ruled out** on the way, each by running it rather than reading it: the Benzinga query (`entitled=true
+error=null rows=8`), the row shaper, all three mappers (`pickEarningsCalendarRow` /
+`mergeStreetEstimates` / `benzingaRowsToPrintHistory` produce a calendar row, 4 estimates, 4
+prints from those rows), both Polygon bases, and the ten-minute cache TTL. None was at fault.

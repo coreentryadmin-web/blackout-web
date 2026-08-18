@@ -232,6 +232,30 @@ export function buildMeridianTimeline(input: {
   return items;
 }
 
+/**
+ * The date component of an event id must BE a date.
+ *
+ * ── WHY THIS GUARD EXISTS ────────────────────────────────────────────────────────────
+ * The parser used to hand back `parts[2]` verbatim, so any string at all became a "date" and
+ * travelled the whole way into the loaders. Measured live against production on 2026-08-18 with
+ * a single trailing-garbage id (`earnings:TGT:2026-08-19undefined`):
+ *
+ *   correct id    → HTTP 200, pack.history 4, enrichment.print_history 4, calendar row
+ *   malformed id  → HTTP 200, pack.history 4, enrichment.print_history 0, calendar NULL
+ *
+ * A 200 carrying a HALF-populated brief is the worst possible answer. The pack survives because
+ * `preEarningsPackForLargo` does `earningsDate?.slice(0, 10)`; the enrichment path feeds the raw
+ * string into date arithmetic, which produces a nonsense range and therefore no rows — and an
+ * empty print history renders as the confident claim "this company has no earnings history".
+ *
+ * Rejecting here rather than patching each loader is deliberate: there are several consumers of
+ * the parsed date and only one parser, so this is the single place where the invariant can be
+ * stated once and cannot be forgotten by the next caller.
+ */
+function ymd(value: string | undefined): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value ?? ""));
+}
+
 export function parseMeridianEventId(id: string): {
   kind: MeridianEventKind;
   date: string;
@@ -242,16 +266,16 @@ export function parseMeridianEventId(id: string): {
   if (parts.length < 2) return null;
   const kind = parts[0] as MeridianEventKind;
   if (kind === "macro" && parts.length >= 3) {
-    return { kind, date: parts[1]!, slug: parts.slice(2).join(":") };
+    return ymd(parts[1]) ? { kind, date: parts[1]!, slug: parts.slice(2).join(":") } : null;
   }
   if (kind === "earnings" && parts.length >= 3) {
-    return { kind, date: parts[2]!, ticker: parts[1]!.toUpperCase() };
+    return ymd(parts[2]) ? { kind, date: parts[2]!, ticker: parts[1]!.toUpperCase() } : null;
   }
   if (kind === "opex" && parts.length >= 2) {
-    return { kind, date: parts[1]! };
+    return ymd(parts[1]) ? { kind, date: parts[1]! } : null;
   }
   if (kind === "fda" && parts.length >= 3) {
-    return { kind, date: parts[2]!, ticker: parts[1]!.toUpperCase() };
+    return ymd(parts[2]) ? { kind, date: parts[2]!, ticker: parts[1]!.toUpperCase() } : null;
   }
   return null;
 }
