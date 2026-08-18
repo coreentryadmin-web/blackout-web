@@ -280,6 +280,67 @@ async function validateEvent(fetchJson, item) {
     }
   }
 
+  /* ── EXPIRY SCOPE: are the levels describing the chain that prices THIS print? ───
+     The defect this catches: walls/flip summed over the ~8 nearest expiries and a max pain
+     scoped to the FRONT expiry, served for an event ten days out. Both numbers are individually
+     valid and describe a chain that may die before the company reports. */
+  const th = intel?.thermal;
+  const eventYmd = item.date ?? pack?.earnings_date ?? null;
+  if (th?.available && eventYmd) {
+    if (!th.expiry_scope) {
+      note("WARN", ticker, "scope:absent", "thermal carries no expiry_scope — levels are unlabelled as to which chain they describe");
+    } else if (th.expiry_scope === "aggregate") {
+      note(
+        "WARN",
+        ticker,
+        "scope:aggregate",
+        `levels are a whole-book aggregate (${th.aggregate_expiry_count ?? "?"} expiries), not scoped to the ${eventYmd} print`
+      );
+    } else if (th.expiry_used && th.expiry_used < eventYmd) {
+      // A scoped expiry BEFORE the print is the original bug wearing a label.
+      note("FAIL", ticker, "scope:expiry_before_event", `scoped to ${th.expiry_used}, which expires before the ${eventYmd} print`);
+    }
+    // Max pain has to be a real strike on the ladder, not an interpolation or a stale value.
+    const strikes = (th.top_strikes ?? []).map((s) => num(s.strike)).filter((v) => v != null);
+    if (num(th.max_pain) != null && strikes.length >= 3) {
+      const lo = Math.min(...strikes);
+      const hi = Math.max(...strikes);
+      if (num(th.max_pain) < lo || num(th.max_pain) > hi) {
+        note("WARN", ticker, "scope:max_pain_range", `max pain ${th.max_pain} sits outside the served strike band ${lo}-${hi}`);
+      }
+    }
+  }
+
+  /* ── FLOW WINDOW: must widen with distance to the print ─────────────────────────
+     Flow measured over 24h means something different ten days out than it does on the
+     morning of, so the window is expected to scale — and to be STATED. */
+  const fw = num(intel?.flow_into_print?.window_hours);
+  const dUntil = num(pack?.days_until);
+  if (intel?.flow_into_print?.available && fw != null && dUntil != null) {
+    if (dUntil <= 0 && fw > 48) {
+      note("WARN", ticker, "flow:window_too_wide", `${fw}h window on a same-day print dilutes the signal`);
+    }
+    if (dUntil >= 7 && fw < 72) {
+      note("WARN", ticker, "flow:window_too_narrow", `${fw}h window ${dUntil}d before the print sees almost nothing`);
+    }
+  }
+
+  /* ── SUMMARY INPUTS: the tab computes from these, so they must cohere ───────────
+     The Summary panel renders client-side and the validator cannot see it. What it CAN do is
+     check that the inputs the panel derives from are internally consistent — which is where a
+     wrong percentage would come from. */
+  const emPctS = num(intel?.expected_move_pct);
+  const spotS = num(intel?.thermal?.spot) ?? num(intel?.expected_move_band?.spot);
+  if (emPctS != null && emPctS <= 0) {
+    note("FAIL", ticker, "summary:move_non_positive", `expected_move_pct ${emPctS} cannot define a distribution`);
+  }
+  if (emPctS != null && emPctS > 60) {
+    note("WARN", ticker, "summary:move_implausible", `expected_move_pct ${emPctS}% is implausibly large for an equity print`);
+  }
+  if (spotS != null && spotS <= 0) {
+    note("FAIL", ticker, "summary:spot_non_positive", `spot ${spotS}`);
+  }
+
   /* ── Unrounded floats — the desk's recurring systemic defect ───────────────────── */
   const scan = (obj, path = "") => {
     if (obj == null || typeof obj !== "object") return;
