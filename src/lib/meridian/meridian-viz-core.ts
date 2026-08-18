@@ -926,3 +926,59 @@ export function impliedVsRealized(
     n: realized.length,
   };
 }
+
+/* ── Horizontal rail label placement ────────────────────────────────────────────────── */
+
+export type RailLabelSlot = {
+  /** 0..1 position along the track where the label is CENTRED (may differ from the tick). */
+  pos: number;
+  /** 0 = nearest the track, higher = stacked further away. */
+  tier: number;
+};
+
+/**
+ * Place labels along a horizontal rail without overlapping them.
+ *
+ * Different problem from `resolveCollisions`, which nudges along ONE axis assuming uniform row
+ * heights. Rail labels are text of very different widths ("call wall" vs "king"), and observed
+ * live on the Meridian positioning rail they printed straight through each other at the right
+ * edge — "call wall" and "king" merged into one garbled string.
+ *
+ * Two mechanisms, in this order:
+ *   1. CLAMP so a label near either end stays inside the track. An edge marker centred on its
+ *      tick hangs half its width off the rail, which is the other half of what was observed.
+ *   2. TIER — a label that still cannot fit beside its neighbour moves to the next row out,
+ *      rather than being pushed along the axis. Pushing would decouple the label from its tick
+ *      by an arbitrary distance; a second row keeps every label near the level it names.
+ * Only when every tier is full does it fall back to nudging, which is the honest last resort:
+ * the levels really are that close.
+ *
+ * The TICK never moves — only the label. Spatial truth stays on the track.
+ */
+export function layoutRailLabels(
+  labels: ReadonlyArray<{ pos: number; widthFrac: number }>,
+  maxTiers = 2,
+  gapFrac = 0.012
+): RailLabelSlot[] {
+  const n = labels.length;
+  if (n === 0) return [];
+  const order = labels.map((l, i) => ({ i, ...l })).sort((a, b) => a.pos - b.pos);
+  // Right edge occupied so far, per tier.
+  const filled = new Array<number>(maxTiers).fill(-Infinity);
+  const out = new Array<RailLabelSlot>(n);
+
+  for (const item of order) {
+    const half = Math.min(item.widthFrac, 1) / 2;
+    const centred = clamp(item.pos, half, 1 - half);
+    let tier = filled.findIndex((right) => centred - half >= right + gapFrac);
+    let pos = centred;
+    if (tier === -1) {
+      // Every tier is occupied at this x — take the emptiest and nudge just clear of it.
+      tier = filled.indexOf(Math.min(...filled));
+      pos = clamp(filled[tier]! + gapFrac + half, half, 1 - half);
+    }
+    filled[tier] = pos + half;
+    out[item.i] = { pos: round(pos, 5), tier };
+  }
+  return out;
+}

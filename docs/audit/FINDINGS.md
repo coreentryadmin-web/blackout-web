@@ -10827,3 +10827,65 @@ the page and drops the SWR cache, so a URL update would have cost a refetch of t
 A URL that changes on hover is noise, and restoring a half-open drawer from a link is worse than
 not restoring it. Unknown values (`?view=hacked`) are dropped rather than passed through, so a
 pasted link cannot put the desk into a state with no branch behind it.
+
+## 2026-08-18 — Meridian earnings: two label-collision defects found by LOOKING at the live render — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P2 (both) — unreadable, not wrong |
+| **Found by** | manual live-UI QA on prod `/meridian`, NKLR earnings event. Neither was caught by any test, any type, or the GREEN UI audit — every selector the audit asserts on was present. |
+| **Status** | FIXED — both, with regression tests that reproduce the defect under the old geometry |
+
+**#1 — Signal orbit labels printed on top of each other.** On the REPORT tab, "Latest print",
+"Fundamentals", "Helix flow" and the core's own "MERIDIAN" label overlapped into unreadable text.
+
+*Root cause:* `MeridianOrbital` anchored each pillar label directly below its own orb
+(`top: calc(100% + 3px)`). The orbital layout puts RADIUS on inverse weight, so heavy pillars
+cluster near the centre — where the circumference is smallest and the core label already sits.
+Overlap is therefore the COMMON case for a book with spread weights, not an edge case. It never
+appeared offline because the fixture used weights spread evenly enough to separate the orbs.
+
+*Fix:* every label is projected onto one shared RIM RING (`orbitalLabelOffset`), so the gap
+between two labels equals their ANGULAR separation — which the layout already guarantees, since
+each pillar gets its own slot inside its dimension's sector. The label is then anchored by which
+side of the disc it is on so text reads outward instead of back across the diagram, and capped
+at 68px with the full text on the button's `title`/`aria-label` plus a hover expand. The orbit
+radius is now derived from what the labels need (`orbitalGeometry`), not chosen for the orbs.
+
+*Blast radius:* `MeridianOrbital` is the only consumer. A fixed radial nudge was tried first and
+rejected — it does not help, because inner orbs stay inner.
+
+**#2 — Expected-move rail marker labels overlapped at the right edge.** "call wall" and "king"
+merged into one garbled string on the POSITIONING rail.
+
+*Root cause:* `MeridianMoveRail` centred each label on its tick with `translateX(-50%)` and no
+width awareness at all. Two failures in one: adjacent levels a couple of percent apart print
+through each other, and a marker near either end hangs half its width off the track.
+
+*Fix:* `layoutRailLabels` (pure, in `meridian-viz-core`) clamps each label inside the track, then
+moves a label that still cannot fit to a second ROW rather than pushing it along the axis —
+pushing would decouple a label from the level it names by an arbitrary distance. The TICK never
+moves, so the rail still tells the truth about where a level is. Track width comes from a
+`ResizeObserver`, because the same rail is ~640px on desktop and ~330px on a phone and a label
+set that fits at one is a collision at the other; before the first measurement labels stay on
+their ticks (the previous behaviour) rather than being placed against a guessed width.
+
+**#3 — Ring legend printed through the verdict headline at 430px.** `.ms-legend` is positioned
+OUTSIDE the halo's box (`bottom: -1.15rem`) with nothing reserving that space. On desktop
+`.mr-decision` is a flex ROW so the overhang lands on empty canvas; at narrow widths it stacks
+into a COLUMN and the next element starts exactly where the legend is drawn. The desktop layout
+was hiding a defect that was always there. `.ms-halo` now reserves the overhang.
+
+**#4 — Sub-24px tap targets.** Orbital pillar buttons rendered 18x18, EPS/revenue trajectory rows
+19px tall, the evidence expand toggle 46x16. An orb's drawn size ENCODES its contribution, so it
+gets an invisible 26px hit pad rather than being inflated; the rows and the toggle take a real
+`min-height`.
+
+*Why none of these were caught:* they are pixel facts. The UI audit asserts SELECTORS are present
+and that the body does not scroll horizontally — an overlap satisfies both. The new tests close
+that gap by computing label boxes from the same placement functions the components call, and both
+fail against the old geometry (verified, not assumed). The new
+`scripts/audit/meridian-interaction-audit.mjs` measures the pixel/behaviour class directly and
+independently reproduced #1 as `"MERIDIAN" ∩ "Fundamentals" 24x10px` on all three viewports.

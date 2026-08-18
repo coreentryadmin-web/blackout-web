@@ -1625,6 +1625,9 @@ html.nav-locked body { overflow: hidden; }
   font-family: var(--font-mono, monospace); font-size: 0.58rem; color: rgba(125, 211, 252, 0.8);
 }
 .mv-rail-track {
+  /* Labels are absolutely positioned ABOVE the track, so the track has to reserve their rows —
+     otherwise a second tier renders on top of the panel title. One row per occupied tier. */
+  margin-top: calc(var(--rail-tiers, 1) * 0.62rem - 0.62rem);
   position: relative; height: 34px;
   border-radius: 999px;
   background: linear-gradient(90deg, rgba(251,113,133,0.07), rgba(125,211,252,0.05), rgba(52,211,153,0.07));
@@ -1645,7 +1648,12 @@ html.nav-locked body { overflow: hidden; }
 .mv-rail-marker-wall .mv-rail-marker-tick { background: var(--mv-attention); }
 .mv-rail-marker-target .mv-rail-marker-tick { background: var(--mv-neutral); }
 .mv-rail-marker-label {
-  position: absolute; top: -0.55rem; left: 0; transform: translateX(-50%);
+  /* --dx nudges the label off its tick (the tick itself never moves) and --tier stacks it into
+     a second row when two labels cannot sit side by side. Both come from layoutRailLabels;
+     without them "call wall" and "king" printed through each other at the right edge. */
+  position: absolute; left: 0;
+  top: calc(-0.55rem - var(--tier, 0) * 0.62rem);
+  transform: translateX(-50%) translateX(var(--dx, 0px));
   font-family: var(--font-mono, monospace); font-size: 0.46rem; letter-spacing: 0.06em;
   color: rgba(125, 211, 252, 0.75); white-space: nowrap;
 }
@@ -2018,7 +2026,8 @@ html.nav-locked body { overflow: hidden; }
    same information at tilt 0 rather than a fallback stub. */
 
 /* ── 3D halo ── */
-.ms-halo { position: relative; flex: none; }
+/* margin-bottom reserves flow space for .ms-legend, which is positioned outside the box. */
+.ms-halo { position: relative; flex: none; margin-bottom: 1.35rem; }
 .ms-halo-stage { position: absolute; inset: 0; }
 .ms-halo.is-spatial .ms-halo-stage {
   transform-style: preserve-3d;
@@ -2067,6 +2076,11 @@ html.nav-locked body { overflow: hidden; }
 }
 .ms-sub { font-family: var(--font-mono, monospace); font-size: 0.48rem; color: rgba(125,211,252,0.72); }
 .ms-legend {
+  /* Hangs BELOW the halo's square box on purpose (the box is sized to the rings), so the halo
+     reserves flow space for it via margin-bottom — see .ms-halo. Without that reservation the
+     legend printed straight through the next element the moment .mr-decision stacked into a
+     column at narrow widths: measured live at 430px, "Evidence"/"Agreement"/"Confidence" over
+     the verdict headline. */
   position: absolute; left: 50%; bottom: -1.15rem; transform: translateX(-50%);
   display: flex; gap: 0.55rem; white-space: nowrap;
 }
@@ -2105,12 +2119,36 @@ html.nav-locked body { overflow: hidden; }
 .ms-orb.is-dim { filter: saturate(0.45); }
 .ms-orb:focus-visible { outline: 1px solid rgba(34, 211, 238, 0.8); outline-offset: 2px; }
 .ms-orb-label {
-  position: absolute; left: 50%; top: calc(100% + 3px); transform: translateX(-50%);
-  font-family: var(--font-mono, monospace); font-size: 0.44rem;
-  letter-spacing: 0.06em; white-space: nowrap; color: rgba(226, 244, 255, 0.9);
+  /* Projected onto the shared rim ring by --lx/--ly, then anchored by --lanchor so the text
+     reads OUTWARD from the disc: nodes on the right start at the rim, nodes on the left end at
+     it, nodes near top/bottom centre on it. Anything else runs the text back across the
+     diagram and over the core. */
+  position: absolute; left: 50%; top: 50%;
+  transform: translate(var(--lanchor, -50%), -50%) translate(var(--lx, 0), var(--ly, 14px));
+  font-family: var(--font-mono, monospace); font-size: 0.42rem;
+  letter-spacing: 0.04em; white-space: nowrap; color: rgba(226, 244, 255, 0.92);
   pointer-events: none;
+  /* Capped so a long pillar name cannot push into its neighbour's slot; the full text is
+     already on the button's title + aria-label, and hover below restores it in place. */
+  max-width: 68px; overflow: hidden; text-overflow: ellipsis;
+  /* A faint plate keeps a label legible where it still crosses an orbit guide or a neighbour. */
+  padding: 0 2px; border-radius: 2px; background: rgba(5, 5, 8, 0.62);
+}
+/* Hovering one orb mutes every other label, so a crowded rim is always readable on demand
+   even when the static layout is dense. */
+.ms-orbital:hover .ms-orb:not(:hover) .ms-orb-label { opacity: 0.25; }
+.ms-orb:hover .ms-orb-label {
+  opacity: 1; z-index: 200; background: rgba(5, 5, 8, 0.92);
+  max-width: none; overflow: visible;
 }
 .ms-orb.is-dim .ms-orb-label { opacity: 0.35; }
+/* An orb's drawn size ENCODES its contribution, so it must not be inflated to meet the 24px
+   minimum touch target. Instead an invisible pad extends the hit area around it — the mark
+   keeps telling the truth and the control is still reachable with a thumb. */
+.ms-orb::after {
+  content: ""; position: absolute; top: 50%; left: 50%;
+  width: 26px; height: 26px; transform: translate(-50%, -50%);
+}
 .ms-orbital-key {
   position: absolute; left: 0; right: 0; bottom: -0.2rem; margin: 0; text-align: center;
   font-family: var(--font-mono, monospace); font-size: 0.44rem;
@@ -2133,6 +2171,8 @@ html.nav-locked body { overflow: hidden; }
 .mr-panel-toggle {
   border: 1px solid var(--mv-hairline); border-radius: 0.3rem;
   padding: 0.08rem 0.4rem; background: transparent; color: var(--mv-chrome); cursor: pointer;
+  /* Measured 46x16 live — the type is small by design, the target must not be. */
+  min-height: 24px;
   font-family: var(--font-mono, monospace); font-size: 0.46rem;
   letter-spacing: 0.1em; text-transform: uppercase;
   transition: background-color 0.16s ease;
@@ -2148,6 +2188,9 @@ html.nav-locked body { overflow: hidden; }
   display: grid; grid-template-columns: 3.6rem 1fr 3.6rem 3.4rem;
   align-items: center; gap: 0.45rem;
   padding: 0.16rem 0.28rem; border: 0; border-radius: 0.32rem;
+  /* These rows are clickable (they open the print), so they carry the 24px minimum target
+     height even though the type is small — measured at 19px live. */
+  min-height: 24px;
   background: transparent; color: inherit; text-align: left; cursor: pointer;
   font-family: var(--font-mono, monospace); font-size: 0.56rem;
   transition: background-color 0.16s ease;

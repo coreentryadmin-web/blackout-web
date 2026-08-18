@@ -20,6 +20,7 @@ import {
   dimensionRollup,
   etWallClockToIso,
   resolveCollisions,
+  layoutRailLabels,
   estimateTrajectory,
   estimateDispersion,
   strikeProfile,
@@ -550,4 +551,79 @@ test("impliedVsRealized: no implied or no history → null, never a fabricated c
   assert.equal(impliedVsRealized(6, []), null);
   assert.equal(impliedVsRealized(6, [null, undefined]), null);
   assert.equal(impliedVsRealized(0, [5]), null);
+});
+
+/* ── layoutRailLabels ───────────────────────────────────────────────────────────────── */
+
+/** Overlap in track-fractions between two placed labels. <= 0 means they are clear. */
+function railOverlap(
+  a: { pos: number; tier: number },
+  aw: number,
+  b: { pos: number; tier: number },
+  bw: number
+): number {
+  if (a.tier !== b.tier) return 0;
+  return Math.min(a.pos + aw / 2, b.pos + bw / 2) - Math.max(a.pos - aw / 2, b.pos - bw / 2);
+}
+
+test("layoutRailLabels: the live collision — 'call wall' and 'king' at the right edge", () => {
+  // Reproduces what was observed on the Meridian positioning rail: two wide labels a couple of
+  // percent apart, hard against the right end, printed as one garbled string.
+  const items = [
+    { pos: 0.93, widthFrac: 0.16 }, // "call wall"
+    { pos: 0.97, widthFrac: 0.08 }, // "king"
+  ];
+  const out = layoutRailLabels(items);
+  assert.equal(railOverlap(out[0]!, 0.16, out[1]!, 0.08) <= 0.001, true, "labels still overlap");
+  for (const [i, s] of out.entries()) {
+    const half = items[i]!.widthFrac / 2;
+    assert.ok(s.pos - half >= -1e-9 && s.pos + half <= 1 + 1e-9, "label hangs off the track");
+  }
+});
+
+test("layoutRailLabels: a lone label stays exactly on its tick", () => {
+  const out = layoutRailLabels([{ pos: 0.4, widthFrac: 0.1 }]);
+  assert.deepEqual(out, [{ pos: 0.4, tier: 0 }]);
+});
+
+test("layoutRailLabels: labels that already fit are not moved or tiered", () => {
+  const out = layoutRailLabels([
+    { pos: 0.1, widthFrac: 0.08 },
+    { pos: 0.5, widthFrac: 0.08 },
+    { pos: 0.9, widthFrac: 0.08 },
+  ]);
+  assert.deepEqual(out.map((s) => s.tier), [0, 0, 0]);
+  assert.deepEqual(out.map((s) => s.pos), [0.1, 0.5, 0.9]);
+});
+
+test("layoutRailLabels: an edge label is pulled fully inside the track", () => {
+  const [left, right] = layoutRailLabels([
+    { pos: 0, widthFrac: 0.2 },
+    { pos: 1, widthFrac: 0.2 },
+  ]);
+  assert.equal(left!.pos, 0.1);
+  assert.equal(right!.pos, 0.9);
+});
+
+test("layoutRailLabels: a crowded rail never overlaps within a tier", () => {
+  const items = Array.from({ length: 8 }, (_, i) => ({ pos: 0.3 + i * 0.02, widthFrac: 0.12 }));
+  const out = layoutRailLabels(items, 3);
+  for (let i = 0; i < out.length; i++)
+    for (let j = i + 1; j < out.length; j++)
+      assert.ok(
+        railOverlap(out[i]!, items[i]!.widthFrac, out[j]!, items[j]!.widthFrac) <= 0.001,
+        `labels ${i} and ${j} overlap on tier ${out[i]!.tier}`
+      );
+});
+
+test("layoutRailLabels: input order is preserved in the output", () => {
+  const out = layoutRailLabels([
+    { pos: 0.8, widthFrac: 0.05 },
+    { pos: 0.2, widthFrac: 0.05 },
+  ]);
+  assert.ok(out[0]!.pos > out[1]!.pos, "the result is indexed by input, not by sorted position");
+});
+
+test("layoutRailLabels: empty input is empty output, not a crash", () => {
+  assert.deepEqual(layoutRailLabels([]), []);
 });
