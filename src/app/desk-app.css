@@ -2003,3 +2003,137 @@ html.nav-locked body { overflow: hidden; }
   .mr-drawer-row { grid-template-columns: 4px 1fr 2.6rem; }
   .mr-drawer-detail { grid-column: 2 / -1; }
 }
+
+/* ═══ MERIDIAN SPATIAL LAYER ═════════════════════════════════════════════════════════
+   Depth only where it encodes something. Two views: a ring stack whose layers are three
+   different QUESTIONS separated by Z, and a tilted orbital disc where radius = influence.
+
+   All 3D is CSS transforms on `preserve-3d` parents — compositor-only, zero dependencies,
+   nothing to lazy-load. `.is-spatial` is applied ONLY when the device has a fine pointer and
+   motion is allowed; without it every rule below degrades to the flat diagram, which is the
+   same information at tilt 0 rather than a fallback stub. */
+
+/* ── 3D halo ── */
+.ms-halo { position: relative; flex: none; }
+.ms-halo-stage { position: absolute; inset: 0; }
+.ms-halo.is-spatial .ms-halo-stage {
+  transform-style: preserve-3d;
+  perspective: 620px;
+  /* --mtx/--mty are written by rAF, never by React state — one property write per frame. */
+  transform: rotateX(var(--mtx, 0deg)) rotateY(var(--mty, 0deg));
+  transition: transform 0.5s var(--mv-ease);
+}
+.ms-halo.is-spatial:hover .ms-halo-stage { transition: none; } /* follow the cursor 1:1 */
+.ms-plane { position: absolute; inset: 0; }
+.ms-halo.is-spatial .ms-plane { transform: translateZ(var(--mz, 0px)); transform-style: preserve-3d; }
+.ms-plane svg { display: block; overflow: visible; }
+.ms-plane-hit {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  border: 0; border-radius: 50%; background: transparent; cursor: pointer; padding: 0;
+}
+.ms-plane-hit:focus-visible { outline: 1px solid rgba(34, 211, 238, 0.7); }
+.ms-track { fill: none; stroke: var(--mv-track); stroke-width: 7; }
+.ms-seg { fill: none; stroke-width: 7; stroke-linecap: round; }
+.ms-seg.mv-bull { stroke: var(--mv-bull); }
+.ms-seg.mv-bear { stroke: var(--mv-bear); }
+.ms-seg.mv-neutral { stroke: var(--mv-neutral); }
+.ms-arc { fill: none; stroke-width: 5; stroke-linecap: round; }
+.ms-arc-agreement { opacity: 0.9; }
+.ms-arc-confidence { stroke-width: 4; opacity: 0.72; stroke-dasharray: 3 4; }
+.ms-arc.mv-bull { stroke: var(--mv-bull); }
+.ms-arc.mv-bear { stroke: var(--mv-bear); }
+.ms-arc.mv-neutral { stroke: var(--mv-neutral); }
+.ms-halo-center {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 0.05rem; pointer-events: none;
+  /* Bounded to the clear area inside the innermost ring (radius 0.62). Without this the
+     agreement line grows past the ring and the two overlap — measured on the render. */
+  padding: 0 22%;
+  text-align: center;
+}
+.ms-halo-center .ms-sub { line-height: 1.15; }
+.ms-verdict {
+  font-family: var(--font-mono, monospace); font-size: 0.52rem; font-weight: 700;
+  letter-spacing: 0.18em; text-transform: uppercase;
+}
+.ms-score {
+  font-family: var(--font-syne, sans-serif); font-size: 2rem; font-weight: 800;
+  line-height: 1; color: #fff; font-variant-numeric: tabular-nums;
+}
+.ms-sub { font-family: var(--font-mono, monospace); font-size: 0.48rem; color: rgba(125,211,252,0.72); }
+.ms-legend {
+  position: absolute; left: 50%; bottom: -1.15rem; transform: translateX(-50%);
+  display: flex; gap: 0.55rem; white-space: nowrap;
+}
+.ms-legend-item {
+  font-family: var(--font-mono, monospace); font-size: 0.44rem;
+  letter-spacing: 0.1em; text-transform: uppercase; color: rgba(125,211,252,0.55);
+}
+/* Ring roles are distinguishable WITHOUT the tilt — depth reinforces, it does not carry alone.
+   Outer solid = evidence, mid solid-thin = agreement, inner dashed = confidence. */
+
+/* ── Orbital system ── */
+.ms-orbital { position: relative; flex: none; margin: 0 auto; }
+.ms-orbital-guides { position: absolute; inset: 0; }
+.ms-orbit-guide { fill: none; stroke: rgba(125, 211, 252, 0.1); stroke-width: 1; }
+.ms-orbital-core {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  display: flex; flex-direction: column; align-items: center; gap: 0.2rem; pointer-events: none;
+}
+.ms-core-dot {
+  width: 12px; height: 12px; border-radius: 50%; background: currentColor;
+  box-shadow: 0 0 14px currentColor;
+}
+.ms-core-label {
+  font-family: var(--font-mono, monospace); font-size: 0.42rem;
+  letter-spacing: 0.2em; color: rgba(125, 211, 252, 0.6);
+}
+.ms-orb {
+  position: absolute; transform: translate(-50%, -50%);
+  border-radius: 50%; border: 1px solid currentColor; padding: 0;
+  background: radial-gradient(circle at 34% 30%, currentColor, transparent 78%);
+  cursor: pointer;
+  /* transform/opacity only — position is written inline per frame but both are composited. */
+  transition: opacity 0.2s ease, box-shadow 0.2s ease;
+}
+.ms-orb.is-hot { box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.25), 0 0 18px currentColor; }
+.ms-orb.is-dim { filter: saturate(0.45); }
+.ms-orb:focus-visible { outline: 1px solid rgba(34, 211, 238, 0.8); outline-offset: 2px; }
+.ms-orb-label {
+  position: absolute; left: 50%; top: calc(100% + 3px); transform: translateX(-50%);
+  font-family: var(--font-mono, monospace); font-size: 0.44rem;
+  letter-spacing: 0.06em; white-space: nowrap; color: rgba(226, 244, 255, 0.9);
+  pointer-events: none;
+}
+.ms-orb.is-dim .ms-orb-label { opacity: 0.35; }
+.ms-orbital-key {
+  position: absolute; left: 0; right: 0; bottom: -0.2rem; margin: 0; text-align: center;
+  font-family: var(--font-mono, monospace); font-size: 0.44rem;
+  letter-spacing: 0.05em; color: rgba(125, 211, 252, 0.5);
+}
+
+/* Reduced motion / coarse pointer: `.is-spatial` is never applied, so no transform runs and
+   the diagram renders flat and complete. This block is belt-and-braces for the transition. */
+@media (prefers-reduced-motion: reduce) {
+  .ms-halo-stage, .ms-orb { transition: none; }
+}
+@media (max-width: 640px) {
+  /* Mobile keeps the orbital as a readable flat diagram — the tilt would be driven by a
+     pointer that does not exist, and the labels need the room. */
+  .ms-orbital-key { position: static; margin-top: 0.4rem; }
+}
+
+.mr-panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
+.mr-panel-head .mr-panel-title { margin-bottom: 0; }
+.mr-panel-toggle {
+  border: 1px solid var(--mv-hairline); border-radius: 0.3rem;
+  padding: 0.08rem 0.4rem; background: transparent; color: var(--mv-chrome); cursor: pointer;
+  font-family: var(--font-mono, monospace); font-size: 0.46rem;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  transition: background-color 0.16s ease;
+}
+.mr-panel-toggle:hover { background: rgba(34, 211, 238, 0.12); }
+/* The orbital needs breathing room for its labels; it also carries its own bottom key line. */
+.mr-panel-orbital { display: flex; flex-direction: column; gap: 0.6rem; padding-bottom: 1.4rem; }
+.mr-panel-orbital > * + * { margin-top: 0; }

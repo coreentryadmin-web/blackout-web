@@ -28,11 +28,11 @@ import {
   PILLAR_DIMENSION,
   type MeridianDimension,
 } from "@/lib/meridian/meridian-viz-core";
+import { MeridianHalo3D, MeridianOrbital } from "./meridian-spatial";
 import {
   MeridianBeatHistory,
   MeridianCountdown,
   MeridianDarkPoolTape,
-  MeridianHalo,
   MeridianMoveRail,
   MeridianRevisionMomentum,
   MeridianRing,
@@ -67,6 +67,7 @@ export function MeridianEarningsReportPanel({ ticker, intel, enrichment, eventAt
   // Drawer state: which dimension (if any) is expanded into its underlying pillars.
   const [openDim, setOpenDim] = useState<MeridianDimension | null>(null);
   const [showEvidence, setShowEvidence] = useState(false);
+  const [showOrbital, setShowOrbital] = useState(false);
   // Hovering a dealer level highlights the same price on the expected-move rail above it —
   // the cross-filter that makes two panels read as one book rather than two lists.
   const [hoverLevel, setHoverLevel] = useState<number | null>(null);
@@ -100,14 +101,24 @@ export function MeridianEarningsReportPanel({ ticker, intel, enrichment, eventAt
     <section className="mr" aria-label={`${ticker} earnings report`}>
       {/* ── L1 · DECISION ─────────────────────────────────────────────────────────── */}
       <div className="mr-decision">
-        <MeridianHalo
+        <MeridianHalo3D
           signals={report.signals}
           score={report.score}
           verdict={report.verdict as Lean}
           confidence={report.confidence}
-          onSegmentClick={(i) => {
-            const pillar = report.signals[i]?.pillar;
-            if (pillar) setOpenDim(PILLAR_DIMENSION[pillar] ?? null);
+          // Clicking a ring drills into what that ring measures. "Evidence" opens the heaviest
+          // dimension because that is the one the ring is mostly made of; the other two layers
+          // are model-level reads with no single dimension behind them, so they open the
+          // orbital view instead of pretending to have a drilldown.
+          onLayerClick={(layer) => {
+            if (layer === "pillars") {
+              const heaviest = [...(report.signals ?? [])].sort(
+                (a, b) => Math.abs(b.weight ?? 0) - Math.abs(a.weight ?? 0)
+              )[0];
+              setOpenDim(heaviest ? PILLAR_DIMENSION[heaviest.pillar] ?? null : null);
+            } else {
+              setShowOrbital(true);
+            }
           }}
         />
 
@@ -194,6 +205,26 @@ export function MeridianEarningsReportPanel({ ticker, intel, enrichment, eventAt
             )}
           </div>
         )}
+
+        <div className="mr-panel mr-panel-orbital">
+          <div className="mr-panel-head">
+            <span className="mr-panel-title">Signal orbit</span>
+            <button
+              type="button"
+              className="mr-panel-toggle"
+              onClick={() => setShowOrbital((v) => !v)}
+              aria-expanded={showOrbital}
+            >
+              {showOrbital ? "collapse" : "expand"}
+            </button>
+          </div>
+          <MeridianOrbital
+            signals={report.signals}
+            verdict={report.verdict as Lean}
+            size={showOrbital ? 340 : 250}
+            onPillarClick={(pillar) => setOpenDim(PILLAR_DIMENSION[pillar] ?? null)}
+          />
+        </div>
 
         <div className="mr-panel">
           <MeridianBeatHistory prints={enrichment.print_history} />

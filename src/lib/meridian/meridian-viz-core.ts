@@ -31,7 +31,10 @@ export function num(v: unknown): number | null {
  *  class of artifact from reaching a rendered axis label or an equality check. */
 export function round(v: number, dp = 4): number {
   const f = 10 ** dp;
-  return Math.round(v * f) / f;
+  const r = Math.round(v * f) / f;
+  // `+ 0` collapses -0 to 0. Negative zero is not equal to zero under Object.is (so it fails
+  // strict assertions) and stringifies as "-0" into transform/path output.
+  return r + 0;
 }
 
 export function clamp(v: number, lo: number, hi: number): number {
