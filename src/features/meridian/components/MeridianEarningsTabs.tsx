@@ -12,6 +12,8 @@ import { MeridianEarningsIntelPanel } from "./MeridianEarningsIntelPanel";
 import { etWallClockToIso } from "@/lib/meridian/meridian-viz-core";
 import { MeridianEarningsReportPanel } from "./MeridianEarningsReportPanel";
 import { MeridianEarningsEstimatesPanel } from "./MeridianEarningsEstimatesPanel";
+import { MeridianEarningsPositioningPanel } from "./MeridianEarningsPositioningPanel";
+import { MeridianEarningsHistoryPanel } from "./MeridianEarningsHistoryPanel";
 
 type EarningsTab = "report" | "estimates" | "positioning" | "history";
 
@@ -344,6 +346,7 @@ export function MeridianEarningsTabs({ detail }: Props) {
 
       {tab === "positioning" && (
         <div role="tabpanel" className="meridian-earnings-tabpanel">
+          <MeridianEarningsPositioningPanel ticker={pack.ticker} intel={intel} />
           <MeridianEarningsIntelPanel
             intel={intel}
             printHistory={[]}
@@ -354,6 +357,7 @@ export function MeridianEarningsTabs({ detail }: Props) {
 
       {tab === "history" && (
         <div role="tabpanel" className="meridian-earnings-tabpanel">
+          <MeridianEarningsHistoryPanel ticker={pack.ticker} enrichment={enrichment} intel={intel} />
           {enrichment.print_history_summary && (
             <MeridianAnalyticsBanner
               label="Track record"

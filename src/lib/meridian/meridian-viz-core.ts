@@ -827,3 +827,102 @@ export function estimateDispersion(values: Array<number | null | undefined>): {
     n: v.length,
   };
 }
+
+// ── Strike exposure profile ──────────────────────────────────────────────────────────
+
+export type StrikeBar = {
+  strike: number;
+  pct: number;
+  /** 0..1 bar length against the largest |pct| in the set. */
+  magnitude: number;
+  side: "call" | "put" | "flat";
+  /** True for the strike nearest spot — the reader's anchor in the ladder. */
+  atSpot: boolean;
+};
+
+/**
+ * Per-strike dealer exposure, ordered HIGH strike → LOW so the profile reads like a price
+ * axis rather than a ranked list. `pct_of_total` is signed in the feed: positive = dealer
+ * long gamma (resistance), negative = short (support).
+ *
+ * Magnitude scales against the largest ABSOLUTE percentage, not the largest positive one —
+ * otherwise a book dominated by put-side exposure renders every bar as a stub.
+ */
+export function strikeProfile(
+  rows: ReadonlyArray<{ strike?: number | null; pct_of_total?: number | null }> | null | undefined,
+  spot?: number | null
+): StrikeBar[] {
+  const parsed = (rows ?? [])
+    .map((r) => ({ strike: num(r.strike), pct: num(r.pct_of_total) }))
+    .filter((r): r is { strike: number; pct: number } => r.strike !== null && r.pct !== null);
+  if (parsed.length === 0) return [];
+  const peak = Math.max(...parsed.map((r) => Math.abs(r.pct)));
+  const s = num(spot);
+  // Nearest strike to spot, computed once — comparing inside the map would be O(n^2) and,
+  // more importantly, could mark several strikes when two tie.
+  let nearest: number | null = null;
+  if (s !== null) {
+    nearest = parsed.reduce((best, r) => (Math.abs(r.strike - s) < Math.abs(best - s) ? r.strike : best), parsed[0]!.strike);
+  }
+  return parsed
+    .map((r) => ({
+      strike: r.strike,
+      pct: r.pct,
+      magnitude: peak > 0 ? round(clamp(Math.abs(r.pct) / peak, 0, 1), 4) : 0,
+      side: (r.pct > 0 ? "call" : r.pct < 0 ? "put" : "flat") as StrikeBar["side"],
+      atSpot: nearest !== null && r.strike === nearest,
+    }))
+    .sort((a, b) => b.strike - a.strike);
+}
+
+// ── Implied vs realized ──────────────────────────────────────────────────────────────
+
+export type ImpliedVsRealized = {
+  impliedPct: number;
+  realized: number[];
+  avgRealized: number;
+  medianRealized: number;
+  /** implied / median realized. >1 = options pricing MORE than this name historically delivers. */
+  ratio: number | null;
+  verdict: "rich" | "cheap" | "fair";
+  /** Fraction of past prints whose move exceeded the current implied move. */
+  exceedRate: number;
+  n: number;
+};
+
+/**
+ * Compare the market's implied move against what this name has ACTUALLY delivered.
+ *
+ * This is the sharpest question on the earnings desk — is the options market pricing a bigger
+ * move than this stock historically makes — and it was unanswerable until the reaction data was
+ * recovered. Uses ABSOLUTE moves: direction is a separate question, and mixing signs would
+ * average a +8% and a -8% quarter into "0% typical move", which is the opposite of the truth.
+ *
+ * Median leads the verdict (the mean is dragged by a single gap quarter), with a deliberately
+ * wide fair band — an 8-quarter sample cannot support a finer call than "clearly rich",
+ * "clearly cheap", or "too close to say".
+ */
+export function impliedVsRealized(
+  impliedPct: number | null | undefined,
+  moves: Array<number | null | undefined>,
+  fairBand = 0.25
+): ImpliedVsRealized | null {
+  const implied = num(impliedPct);
+  const realized = moves.map(num).filter((v): v is number => v !== null).map(Math.abs);
+  if (implied === null || implied <= 0 || realized.length === 0) return null;
+  const sorted = [...realized].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const median = sorted.length % 2 === 1 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
+  const avg = realized.reduce((a, b) => a + b, 0) / realized.length;
+  const ratio = median > 0 ? round(implied / median, 3) : null;
+  return {
+    impliedPct: implied,
+    realized,
+    avgRealized: round(avg, 2),
+    medianRealized: round(median, 2),
+    ratio,
+    verdict: ratio === null ? "fair" : ratio > 1 + fairBand ? "rich" : ratio < 1 - fairBand ? "cheap" : "fair",
+    exceedRate: round(realized.filter((m) => m > implied).length / realized.length, 3),
+    n: realized.length,
+  };
+}

@@ -2226,3 +2226,79 @@ html.nav-locked body { overflow: hidden; }
   margin: 0.4rem 0 0; font-family: var(--font-mono, monospace); font-size: 0.55rem;
   color: rgba(251, 191, 36, 0.75); line-height: 1.4;
 }
+
+/* ═══ MERIDIAN POSITIONING + HISTORY ═════════════════════════════════════════════════ */
+.mv-strikes-rows { display: flex; flex-direction: column; gap: 0.14rem; margin-top: 0.5rem; }
+.mv-strike-row {
+  display: grid; grid-template-columns: 3.4rem 1fr 3.2rem; align-items: center; gap: 0.4rem;
+  padding: 0.1rem 0.24rem; border: 0; border-radius: 0.28rem;
+  background: transparent; color: rgba(226,244,255,0.9); text-align: left; cursor: pointer;
+  font-family: var(--font-mono, monospace); font-size: 0.53rem;
+  transition: background-color 0.16s ease;
+}
+.mv-strike-row:disabled { cursor: default; }
+.mv-strike-row:hover:not(:disabled), .mv-strike-row:focus-visible { background: rgba(125,211,252,0.08); }
+.mv-strike-row.is-spot { background: rgba(34, 211, 238, 0.1); }
+.mv-strike-row.is-spot .mv-strike-k { color: #fff; font-weight: 700; }
+.mv-strike-k { color: rgba(125,211,252,0.8); }
+.mv-strike-track { position: relative; height: 9px; border-radius: 3px; background: var(--mv-track); }
+.mv-strike-zero { position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; background: rgba(125,211,252,0.35); }
+.mv-strike-bar { position: absolute; top: 1px; bottom: 1px; border-radius: 2px; transition: width 0.4s var(--mv-ease); }
+.mv-strike-bar.mv-bull { background: var(--mv-bull); }
+.mv-strike-bar.mv-bear { background: var(--mv-bear); }
+.mv-strike-bar.mv-neutral { background: rgba(167,139,250,0.5); }
+.mv-strike-pct { text-align: right; font-weight: 700; }
+
+/* Implied vs realized */
+.mv-ivr-track {
+  position: relative; height: 30px; margin-top: 0.2rem;
+  border-radius: 999px; background: var(--mv-track); border: 1px solid var(--mv-hairline);
+}
+.mv-ivr-tick {
+  position: absolute; top: 8px; bottom: 8px; width: 2px; border-radius: 1px;
+  background: rgba(125, 211, 252, 0.65); transform: translateX(-50%);
+}
+.mv-ivr-median {
+  position: absolute; top: 3px; bottom: 3px; width: 2px;
+  background: var(--mv-neutral); transform: translateX(-50%);
+}
+.mv-ivr-implied {
+  position: absolute; top: -3px; bottom: -3px; width: 3px; border-radius: 2px;
+  background: currentColor; transform: translateX(-50%);
+  box-shadow: 0 0 10px currentColor;
+}
+.mv-ivr-legend {
+  display: flex; justify-content: space-between; gap: 0.6rem; margin-top: 0.45rem; flex-wrap: wrap;
+  font-family: var(--font-mono, monospace); font-size: 0.53rem;
+  color: rgba(186, 230, 253, 0.8);
+}
+.mv-ivr-legend b { font-weight: 700; }
+
+/* Flow strip */
+.mp-flow-net {
+  margin: 0.4rem 0 0.3rem; font-family: var(--font-mono, monospace); font-size: 0.56rem; color: #e2f4ff;
+}
+.mp-flow-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.16rem; }
+.mp-flow-list li {
+  display: grid; grid-template-columns: 2.4rem 3.2rem 1fr 2.4rem; gap: 0.4rem;
+  font-family: var(--font-mono, monospace); font-size: 0.53rem; color: rgba(226,244,255,0.88);
+}
+.mp-flow-dte { text-align: right; color: rgba(125,211,252,0.6); }
+
+/* Beat rates */
+.mh-rates { display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.5rem; }
+.mh-rate {
+  display: grid; grid-template-columns: 4.4rem 1fr 2.6rem; align-items: center; gap: 0.5rem;
+  font-family: var(--font-mono, monospace); font-size: 0.55rem;
+}
+.mh-rate-label { color: rgba(125,211,252,0.7); letter-spacing: 0.08em; text-transform: uppercase; }
+.mh-rate-track { position: relative; height: 9px; border-radius: 999px; background: var(--mv-track); overflow: hidden; }
+.mh-rate-fill {
+  position: absolute; inset: 0; border-radius: 999px;
+  transform-origin: left center; transition: transform 0.45s var(--mv-ease);
+}
+.mh-rate-fill.mv-bull { background: var(--mv-bull); }
+.mh-rate-fill.mv-bear { background: var(--mv-bear); }
+.mh-rate-fill.mv-neutral { background: rgba(167,139,250,0.6); }
+.mh-rate-val { text-align: right; font-weight: 700; }
+.mh-summary { margin: 0.4rem 0 0; font-size: 0.72rem; line-height: 1.45; color: #bae6fd; }

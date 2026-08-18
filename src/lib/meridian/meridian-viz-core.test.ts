@@ -22,6 +22,8 @@ import {
   resolveCollisions,
   estimateTrajectory,
   estimateDispersion,
+  strikeProfile,
+  impliedVsRealized,
 } from "./meridian-viz-core";
 
 // ── null propagation. The repo's recurring defect is Number(null) === 0; on a price rail a
@@ -476,4 +478,76 @@ test("estimateDispersion: a zero median yields null spread rather than Infinity"
 test("estimateDispersion: nulls dropped; nothing usable → null", () => {
   assert.equal(estimateDispersion([null, undefined])!, null);
   assert.equal(estimateDispersion([])!, null);
+});
+
+// ── strike profile
+test("strikeProfile: ordered high→low so it reads as a price axis, not a ranking", () => {
+  const p = strikeProfile([{ strike: 750, pct_of_total: -5 }, { strike: 790, pct_of_total: 8 }, { strike: 770, pct_of_total: 3 }], 772);
+  assert.deepEqual(p.map((b) => b.strike), [790, 770, 750]);
+});
+
+test("strikeProfile: magnitude scales on ABSOLUTE pct — a put-dominated book must not be all stubs", () => {
+  const p = strikeProfile([{ strike: 750, pct_of_total: -40 }, { strike: 790, pct_of_total: 4 }]);
+  assert.equal(p.find((b) => b.strike === 750)!.magnitude, 1, "the biggest exposure is the peak, sign aside");
+  assert.equal(p.find((b) => b.strike === 750)!.side, "put");
+  assert.equal(p.find((b) => b.strike === 790)!.side, "call");
+});
+
+test("strikeProfile: exactly one strike is marked at spot, even on a tie", () => {
+  const p = strikeProfile([{ strike: 770, pct_of_total: 1 }, { strike: 774, pct_of_total: 1 }], 772);
+  assert.equal(p.filter((b) => b.atSpot).length, 1);
+});
+
+test("strikeProfile: no spot → nothing marked; empty → empty", () => {
+  assert.equal(strikeProfile([{ strike: 770, pct_of_total: 1 }], null).filter((b) => b.atSpot).length, 0);
+  assert.deepEqual(strikeProfile([], 100), []);
+  assert.deepEqual(strikeProfile(null), []);
+});
+
+// ── implied vs realized — the question the reaction-data fix unblocked
+test("impliedVsRealized: uses ABSOLUTE moves — signed ones would average to a false 'no move'", () => {
+  const r = impliedVsRealized(6, [8, -8, 7, -7])!;
+  assert.equal(r.medianRealized, 7.5, "a +8 and a -8 quarter are both 8-point moves");
+  // Signed averaging would have produced a median near 0 and called 6% wildly rich.
+  assert.ok(r.ratio! < 1, "implied sits below the typical delivered move");
+});
+
+test("impliedVsRealized: the fair band is wide on purpose — a 20% gap is 'too close to say'", () => {
+  // 6 / 7.5 = 0.80, inside the +/-25% band. On an 8-quarter sample that is not a callable edge,
+  // and a verdict that fires on it would be noise dressed as a signal.
+  assert.equal(impliedVsRealized(6, [8, -8, 7, -7])!.verdict, "fair");
+  // Clearly outside the band, though, must call it.
+  assert.equal(impliedVsRealized(4, [8, 8, 7, 7])!.verdict, "cheap");
+});
+
+test("impliedVsRealized: flags options pricing MORE than the name delivers", () => {
+  const r = impliedVsRealized(12, [3, 4, 3.5, 5])!;
+  assert.ok(r.ratio! > 2);
+  assert.equal(r.verdict, "rich");
+  assert.equal(r.exceedRate, 0, "no past print exceeded the implied move");
+});
+
+test("impliedVsRealized: a wide fair band — 8 quarters cannot support a finer call", () => {
+  assert.equal(impliedVsRealized(10, [9, 10, 11])!.verdict, "fair");
+  assert.equal(impliedVsRealized(10.5, [10, 10, 10])!.verdict, "fair");
+});
+
+test("impliedVsRealized: exceedRate counts how often the name outran the current pricing", () => {
+  const r = impliedVsRealized(5, [2, 6, 8, 3])!;
+  assert.equal(r.exceedRate, 0.5);
+  assert.equal(r.n, 4);
+});
+
+test("impliedVsRealized: median leads, so one gap quarter cannot set the verdict", () => {
+  // Mean here is 12.75 (dragged by the 40), median is 4 — the verdict must follow the median.
+  const r = impliedVsRealized(10, [3, 4, 4, 40])!;
+  assert.equal(r.medianRealized, 4);
+  assert.equal(r.verdict, "rich", "10% implied against a 4% typical move is rich");
+});
+
+test("impliedVsRealized: no implied or no history → null, never a fabricated comparison", () => {
+  assert.equal(impliedVsRealized(null, [5, 6]), null);
+  assert.equal(impliedVsRealized(6, []), null);
+  assert.equal(impliedVsRealized(6, [null, undefined]), null);
+  assert.equal(impliedVsRealized(0, [5]), null);
 });

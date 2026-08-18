@@ -31,6 +31,8 @@ import {
   estimateDispersion,
   estimateTrajectory,
   haloFromSignals,
+  impliedVsRealized,
+  strikeProfile,
   normalizeMoveBand,
   num,
   pctAlong,
@@ -722,6 +724,101 @@ export function MeridianDispersion({
         <span className="mv-neutral">{format(d.median)}</span>
         <span>{format(d.high)}</span>
       </div>
+    </div>
+  );
+}
+
+/* ── Strike exposure profile ──────────────────────────────────────────────────────── */
+export function MeridianStrikeProfile({
+  rows,
+  spot,
+  title = "Strike exposure",
+  onStrikeHover,
+}: {
+  rows: Parameters<typeof strikeProfile>[0];
+  spot?: number | null;
+  title?: string;
+  onStrikeHover?: (strike: number | null) => void;
+}) {
+  const bars = useMemo(() => strikeProfile(rows, spot), [rows, spot]);
+  if (bars.length === 0) return null;
+  return (
+    <div className="mv-strikes">
+      <span className="mv-rail-title">{title}</span>
+      <div className="mv-strikes-rows">
+        {bars.map((b) => (
+          <button
+            type="button"
+            key={b.strike}
+            className={`mv-strike-row${b.atSpot ? " is-spot" : ""}`}
+            onMouseEnter={() => onStrikeHover?.(b.strike)}
+            onMouseLeave={() => onStrikeHover?.(null)}
+            onFocus={() => onStrikeHover?.(b.strike)}
+            onBlur={() => onStrikeHover?.(null)}
+            disabled={!onStrikeHover}
+            title={`${b.strike} · ${b.pct > 0 ? "+" : ""}${b.pct.toFixed(1)}% of book`}
+          >
+            <span className="mv-strike-k">{b.strike}</span>
+            {/* Diverging from a centre line: calls right, puts left. A single-direction bar
+                would need colour alone to carry sign, which fails for colour-blind readers. */}
+            <span className="mv-strike-track">
+              <span className="mv-strike-zero" />
+              <span
+                className={`mv-strike-bar ${b.side === "call" ? "mv-bull" : b.side === "put" ? "mv-bear" : "mv-neutral"}`}
+                style={
+                  b.side === "put"
+                    ? { right: "50%", width: `${b.magnitude * 50}%` }
+                    : { left: "50%", width: `${b.magnitude * 50}%` }
+                }
+              />
+            </span>
+            <span className="mv-strike-pct">{b.pct > 0 ? "+" : ""}{b.pct.toFixed(1)}%</span>
+          </button>
+        ))}
+      </div>
+      <p className="mv-note">left = dealer short (support) · right = long (resistance)</p>
+    </div>
+  );
+}
+
+/* ── Implied vs realized ──────────────────────────────────────────────────────────────
+ * The sharpest question on the desk, and one that was unanswerable until the reaction data
+ * was recovered: is the options market pricing a bigger move than this name actually makes?
+ */
+export function MeridianImpliedVsRealized({
+  impliedPct,
+  moves,
+}: {
+  impliedPct: number | null | undefined;
+  moves: Array<number | null | undefined>;
+}) {
+  const r = useMemo(() => impliedVsRealized(impliedPct, moves), [impliedPct, moves]);
+  if (!r) return null;
+  const scaleMax = Math.max(r.impliedPct, ...r.realized) * 1.1;
+  const pos = (v: number) => (scaleMax > 0 ? clamp(v / scaleMax, 0, 1) * 100 : 0);
+  const verdictClass = r.verdict === "rich" ? "mv-bear" : r.verdict === "cheap" ? "mv-bull" : "mv-neutral";
+  return (
+    <div className="mv-ivr">
+      <div className="mv-rail-head">
+        <span className="mv-rail-title">Implied vs realized</span>
+        <span className={verdictClass}>
+          {r.verdict === "rich" ? "options rich" : r.verdict === "cheap" ? "options cheap" : "fairly priced"}
+        </span>
+      </div>
+      <div className="mv-ivr-track">
+        {/* Each past move as a tick — the distribution, not a summary of it. */}
+        {r.realized.map((m, i) => (
+          <span key={`${m}-${i}`} className="mv-ivr-tick" style={{ left: `${pos(m)}%` }} title={`realized ${m.toFixed(1)}%`} />
+        ))}
+        <span className="mv-ivr-median" style={{ left: `${pos(r.medianRealized)}%` }} title={`median ${r.medianRealized}%`} />
+        <span className={`mv-ivr-implied ${verdictClass}`} style={{ left: `${pos(r.impliedPct)}%` }} title={`implied ${r.impliedPct}%`} />
+      </div>
+      <div className="mv-ivr-legend">
+        <span>median realized <b className="mv-neutral">{r.medianRealized}%</b></span>
+        <span>implied <b className={verdictClass}>{r.impliedPct}%</b></span>
+        <span>{Math.round(r.exceedRate * 100)}% of prints exceeded it</span>
+      </div>
+      <p className="mv-note">n = {r.n} prints · absolute moves</p>
     </div>
   );
 }
