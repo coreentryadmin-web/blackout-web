@@ -93,6 +93,15 @@ function clusterBeadPixels(data, width, height, channels = 4) {
       if (y + 1 < height && kind[idx + width] === side && !seen[idx + width]) { seen[idx + width] = 1; stack.push(idx + width); }
     }
     // Single stray pixels are antialiasing on some other element, not a bead.
+    //
+    // CAVEAT, and it matters when reading a RED run: this cutoff interacts with the very defect the
+    // audit detects. A bead of radius ~1.1px covers ~3.8px of area BEFORE antialiasing softens its
+    // edge, so on a rail that has collapsed to sub-pixel beads an unknown share of them fall under
+    // this threshold and are never counted. The NVDA run of 2026-08-18 reported 18 beads against a
+    // recorded rail carrying 546 samples x 20 walls — the count was suppressed BY the smallness, not
+    // by missing data (the recorder was verified healthy separately with vector-bead-probe.mjs).
+    // So on a RED verdict, treat `count` as a LOWER BOUND and fix the radius before reading it as a
+    // data-supply problem; on a GREEN verdict the beads are large enough that the cutoff is inert.
     if (area < 3) continue;
     const w = maxX - minX + 1;
     const h = maxY - minY + 1;
