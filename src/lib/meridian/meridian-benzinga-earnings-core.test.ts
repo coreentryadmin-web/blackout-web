@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import type { BenzingaStructuredEarnings } from "@/lib/providers/polygon";
 import {
   benzingaSurpriseToDisplayPct,
+  dedupeEarningsRowsByEvent,
   buildRecentEarningsRevisions,
   computeEarningsYoY,
   dualBeatRateFromPrints,
@@ -193,4 +194,70 @@ test("buildRecentEarningsRevisions filters by last_updated window", () => {
   );
   assert.equal(rows.length, 1);
   assert.equal(rows[0]?.ticker, "META");
+});
+
+/* ── dedupeEarningsRowsByEvent ────────────────────────────────────────────────────────
+ * Guards the phantom-reversal defect: production served GRRR "EPS est 0.27 → 0.2" AND
+ * "EPS est 0.2 → 0.27" in ONE payload because the same (ticker, date) was diffed twice.
+ */
+
+test("dedupeEarningsRowsByEvent collapses a repeated (ticker, date) to the freshest row", () => {
+  const rows = [
+    { ticker: "GRRR", date: "2026-08-20", estimated_eps: 0.27, last_updated: "2026-08-18T10:00:00Z" },
+    { ticker: "GRRR", date: "2026-08-20", estimated_eps: 0.2, last_updated: "2026-08-18T13:00:00Z" },
+    { ticker: "HD", date: "2026-08-18", estimated_eps: 4.73, last_updated: "2026-08-18T10:00:39Z" },
+  ];
+  const out = dedupeEarningsRowsByEvent(rows);
+  assert.equal(out.length, 2);
+  const grrr = out.find((r) => r.ticker === "GRRR")!;
+  // The 13:00 row wins — feeding BOTH to the diff is what manufactured the mirrored pair.
+  assert.equal(grrr.estimated_eps, 0.2);
+});
+
+test("dedupeEarningsRowsByEvent keys case- and whitespace-insensitively on the ticker", () => {
+  const out = dedupeEarningsRowsByEvent([
+    { ticker: "grrr", date: "2026-08-20", last_updated: "2026-08-18T10:00:00Z" },
+    { ticker: " GRRR ", date: "2026-08-20", last_updated: "2026-08-18T11:00:00Z" },
+  ]);
+  assert.equal(out.length, 1);
+});
+
+test("dedupeEarningsRowsByEvent slices a datetime date down to the calendar day", () => {
+  const out = dedupeEarningsRowsByEvent([
+    { ticker: "X", date: "2026-08-20", last_updated: "2026-08-18T10:00:00Z" },
+    { ticker: "X", date: "2026-08-20T16:00:00Z", last_updated: "2026-08-18T11:00:00Z" },
+  ]);
+  assert.equal(out.length, 1);
+});
+
+test("dedupeEarningsRowsByEvent keeps the FIRST row when timestamps tie or are unusable", () => {
+  const tie = dedupeEarningsRowsByEvent([
+    { ticker: "X", date: "2026-08-20", estimated_eps: 1, last_updated: "2026-08-18T10:00:00Z" },
+    { ticker: "X", date: "2026-08-20", estimated_eps: 2, last_updated: "2026-08-18T10:00:00Z" },
+  ]);
+  assert.equal(tie[0]!.estimated_eps, 1);
+
+  // A row with no parseable timestamp must never displace one that has a real observation time.
+  const junk = dedupeEarningsRowsByEvent([
+    { ticker: "X", date: "2026-08-20", estimated_eps: 1, last_updated: "2026-08-18T10:00:00Z" },
+    { ticker: "X", date: "2026-08-20", estimated_eps: 2, last_updated: null },
+  ]);
+  assert.equal(junk[0]!.estimated_eps, 1);
+});
+
+test("dedupeEarningsRowsByEvent passes through rows it cannot key rather than dropping them", () => {
+  // Silently discarding these would quietly shrink the diff input, which is the same class of
+  // failure as the duplicate: the caller believes it fed the function everything it had.
+  const out = dedupeEarningsRowsByEvent([
+    { ticker: "", date: "2026-08-20", last_updated: "2026-08-18T10:00:00Z" },
+    { ticker: "X", date: "", last_updated: "2026-08-18T10:00:00Z" },
+    { ticker: "Y", date: "2026-08-20", last_updated: "2026-08-18T10:00:00Z" },
+  ]);
+  assert.equal(out.length, 3);
+});
+
+test("dedupeEarningsRowsByEvent tolerates empty and nullish input", () => {
+  assert.deepEqual(dedupeEarningsRowsByEvent([]), []);
+  assert.deepEqual(dedupeEarningsRowsByEvent(null), []);
+  assert.deepEqual(dedupeEarningsRowsByEvent(undefined), []);
 });

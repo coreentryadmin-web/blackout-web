@@ -11263,3 +11263,54 @@ closed on evidence this bug manufactured.
 error=null rows=8`), the row shaper, all three mappers (`pickEarningsCalendarRow` /
 `mergeStreetEstimates` / `benzingaRowsToPrintHistory` produce a calendar row, 4 estimates, 4
 prints from those rows), both Polygon bases, and the ten-minute cache TTL. None was at fault.
+
+## 2026-08-18 — Estimate-revision feed served a revision AND its mirror image in one payload — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P2 — a member-visible panel reported a revision that never happened |
+| **Where** | `src/lib/meridian/meridian-benzinga-earnings.ts` (the `revisionUnion` fed to `diffEstimateRevisionTimeline`) |
+| **Status** | FIXED — union deduped by `(ticker, date)`, newest `last_updated` wins (PR #2299) |
+
+**Symptom.** Live production payload, one build:
+
+```
+GRRR EPS est 0.27 → 0.2      GRRR Rev est revised -4.3%
+GRRR EPS est 0.2  → 0.27     GRRR Rev est revised +4.5%
+```
+
+Read plainly: the street revised twice, in opposite directions, within minutes. It did not.
+
+**Root cause.** `diffEstimateRevisionTimeline` keys its Redis snapshot on `(ticker, date)` and was
+fed `[...window_rows, ...revisionRes.rows]` — two SEPARATE upstream queries concatenated. They
+overlap: measured live, **12 of the 40 revision rows were also among the 360 window rows**. A
+duplicate re-reads the snapshot the first copy just wrote, so the moment two copies disagree the
+second emits the first one's mirror. They can disagree for two ordinary reasons — the queries are
+separate HTTP requests and Benzinga updates rows between them, and the window query paginates,
+which can repeat a key across pages.
+
+**Why it survived.** On a quiet minute the duplicate pairs are identical (all 12 sampled today
+were), so it emits nothing and looks healthy. It only fires when a duplicate disagrees.
+
+**Fix.** `dedupeEarningsRowsByEvent` collapses the union before diffing. Ties keep the first row
+so output does not depend on concatenation order; an unparseable timestamp never displaces a real
+one; keys are normalised so `2026-08-20T16:00:00Z` and `2026-08-20` collide; unkeyable rows pass
+through rather than being dropped. Mutation-checked.
+
+## 2026-08-18 — Estimate-revision timeline is momentary, not cumulative — OPEN
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P3 — feature gap, not incorrectness |
+| **Status** | OPEN — queued as the remaining half of the estimate-revision work |
+
+`diffEstimateRevisionTimeline` returns only what it detects in the CURRENT build, and the bundle
+is cached ~20 min. Measured today: `estimate_revision_timeline` served **4 entries at 14:52 UTC
+and 0 at 14:57**. Nothing is wrong with either number — but a member who opens the page outside
+the window in which a revision was detected sees an empty panel, and the word "timeline" promises
+a series. The emitted entries need persisting (the `meridian_report_snapshots` pattern) so the
+event page can show the full run-up to a print rather than a momentary sample.

@@ -457,3 +457,43 @@ function addDaysYmd(ymd: string, days: number): string {
   const dt = new Date(Date.UTC(y, m - 1, d + days));
   return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`;
 }
+
+/**
+ * Collapse earnings rows to one per (ticker, report date), keeping the freshest observation.
+ *
+ * The estimate-revision diff keys its stored snapshot on exactly this pair. Feeding it the same
+ * key twice in one pass makes the second copy diff against the snapshot the first copy just
+ * wrote — so two upstream copies that disagree produce a revision AND its mirror image, which
+ * reads as the street changing its mind twice in minutes.
+ *
+ * Ties on `last_updated` keep the row seen FIRST. Preferring either copy is arbitrary when their
+ * timestamps match, and "first wins" at least makes the output deterministic for a given input
+ * order rather than depending on which upstream query happened to be concatenated last.
+ */
+export function dedupeEarningsRowsByEvent<T extends { ticker?: string | null; date?: string | null; last_updated?: string | null }>(
+  rows: readonly T[] | null | undefined
+): T[] {
+  const best = new Map<string, T>();
+  for (const row of rows ?? []) {
+    const ticker = String(row?.ticker ?? "").trim().toUpperCase();
+    const date = String(row?.date ?? "").slice(0, 10);
+    // A row we cannot key is passed through untouched rather than dropped — it cannot collide
+    // with anything, and silently discarding a row here would quietly shrink the diff input.
+    if (!ticker || !date) continue;
+    const key = `${ticker}:${date}`;
+    const prev = best.get(key);
+    if (!prev) {
+      best.set(key, row);
+      continue;
+    }
+    const a = Date.parse(String(prev.last_updated ?? ""));
+    const b = Date.parse(String(row.last_updated ?? ""));
+    // Strictly-greater keeps the first row on a tie, and an unparseable timestamp never wins.
+    if (Number.isFinite(b) && (!Number.isFinite(a) || b > a)) best.set(key, row);
+  }
+  const keyed = [...best.values()];
+  const unkeyable = (rows ?? []).filter(
+    (r) => !String(r?.ticker ?? "").trim() || !String(r?.date ?? "").slice(0, 10)
+  );
+  return [...keyed, ...unkeyable];
+}
