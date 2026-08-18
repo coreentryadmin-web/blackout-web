@@ -38,6 +38,18 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-08-18 — [FINDING, P0 member-visible] Night Hawk 0DTE play quality — negative-EV origins + FLOW-only board — OPEN (audit)
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Status** | OPEN — audit only (`docs/audit/NIGHTHAWK-0DTE-DEEP-DIVE-2026-08-18.md` on `cursor/nighthawk-0dte-deep-dive-3d11`); no engine changes in audit PR |
+| **Severity** | P0 member-visible — desk “does not give good plays”; graded ledger shows **negative avg PnL** on FLOW (−16.3%, n=13) and BREAKOUT (−12.0%, n=70); score **85+** band worst at −20.3% avg (25% WR) |
+| **Live evidence (2026-08-18 RTH)** | `healthcheck:0dte` AMBER: 6 FLOW setups, **0 BREAKOUT/PIN**; `discovery_funnel` top gate **score_floor (192 blocks)**; 4/5 visible setups BLOCKED; today's commits NBIZ/SPXW/ANGX/SNDQ all CLOSED |
+| **UX amplifier** | Command Deck default filter + SKIP semantics hide gate-blocked candidates; `discovery_health` + funnel on payload but **not rendered** |
+| **Confirmed bugs (follow-up PRs)** | `lateCondorOnly` dead (`pin-discovery.ts` — both cutoffs 15:30); halt import catch fail-open (`scan.ts`); atomic commit governor bypass fallback |
+| **Next steps** | Desk UX lane health + gate reasons; calibration throttle BREAKOUT; fix condor late window; score 85+ guard; BREAKOUT intraday refresh A/B |
+
 ## 2026-08-17 — [FINDING, P2 member-visible] Bead rail had no recency cue — a 5-hour-old bead painted exactly like the live edge — FIXED
 > **kind:** `FINDING`
 
