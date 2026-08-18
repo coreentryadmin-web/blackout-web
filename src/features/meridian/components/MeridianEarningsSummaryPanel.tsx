@@ -22,7 +22,7 @@ import {
   type PlayIdea,
 } from "@/lib/meridian/meridian-summary-core";
 import type { MeridianEarningsDetail } from "@/features/meridian/lib/meridian-types";
-import { MeridianCountdown } from "./meridian-viz";
+import { MeridianCountdown, MeridianFreshness } from "./meridian-viz";
 import { etWallClockToIso } from "@/lib/meridian/meridian-viz-core";
 
 const pct = (v: number | null | undefined, digits = 0) =>
@@ -59,7 +59,10 @@ export function MeridianEarningsSummaryPanel({ detail }: { detail: MeridianEarni
             {summary.headline}
           </p>
         </div>
-        {eventAt && <MeridianCountdown targetIso={eventAt} />}
+        <div className="msum-head-right">
+          <MeridianFreshness asOf={pack?.as_of ?? null} />
+          {eventAt && <MeridianCountdown targetIso={eventAt} />}
+        </div>
       </header>
 
       {/* Which feeds actually contributed. An absent input must never be mistaken for a neutral
