@@ -38,6 +38,58 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-08-18 — [FINDING, P1 member-visible] A bead row showed THAT a wall existed but never WHEN it mattered — size and alpha shared one curve — FIXED
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Severity** | P1 (member-visible — the rail's core job is showing wall strength over time, and it showed none) |
+| **Scope** | `vector-wall-visual.ts` (`relAlphaT`, `REL_ALPHA_EXP`), `vector-wall-rail-core.ts` (`fillAlpha`, `FILL_ALPHA_MIN`, spacing budget) |
+| **Status** | FIXED — split size/alpha curves, alpha floor 0.6 -> 0.25, spacing budget corrected; 156 tests pass |
+
+**Reported from a side-by-side.** Against the reference product a single row visibly SWELLS and
+FADES along its length — fat and saturated where that wall was heavy, thin and dim where it was
+not. Ours rendered every bead in a row alike, so a row communicated only that a wall existed, never
+when it mattered.
+
+**Three independent causes, one of them mine.**
+
+1. **The alpha budget was 0.6 -> 0.98.** The weakest bead on the chart rendered at 60% opacity and
+   the strongest at 98% — a 38-point spread that is not perceivable as a difference. There was no
+   "faint when weak" available at all. Floor lowered to 0.25.
+
+2. **Size and alpha shared ONE curve, and they want opposite shapes.** `relStrengthT` is
+   `(pct/maxPct) ** 1.6`, and `maxPct` is the SESSION-WIDE king across every strike.
+   - SIZE needs SUPER-linear: a wall fading to a third of its peak must visibly shrink. The suite
+     already pinned this at >= 4x, and flattening the exponent broke those tests — which is how the
+     conflict was discovered.
+   - ALPHA needs SUB-linear: at 1.6 a row peaking at 8% share on a 30%-king day computes
+     (0.27)**1.6 = 0.13 and sits pinned near the floor from open to close, however much it moved.
+   Alpha now has its own `REL_ALPHA_EXP = 0.8`. Measured against the new floor: a 3%-of-king wall
+   renders ~0.29, a 30% one ~0.53, an 80% one ~0.86 — where the shared curve put those same three
+   at 0.60 / 0.66 / 0.87.
+
+3. **The spacing budget from the previous entry over-corrected.** `BEAD_BAR_FILL = 0.85` forbade any
+   horizontal overlap, on the assumption that touching beads were the defect. They are not — in the
+   reference a row IS a near-continuous ribbon of touching dots. Forbidding it shrank beads to ~3px
+   radius at ordinary 3m zoom and, worse, collapsed the floor-to-ceiling RANGE so every magnitude
+   rendered at one size. Bar fill raised to 2.4 (permissive; horizontal overlap is TEXTURE), the row
+   gap left as the binding constraint (vertical thickness is what buries candles), and a
+   `BEAD_READABLE_MIN_HALF_PX = 3.2` floor added so no geometry can squeeze the ceiling to
+   invisibility again.
+
+**Why the earlier fix looked right and was not.** It was validated on SPX alone. SPX has wide
+strikes and a different bar spacing than a single name, so the clamp bit far harder on NVDA — the
+same code producing visibly different rails per ticker, which is its own defect. Testing one ticker
+is what let it through.
+
+**Blast radius.** Render layer only. `relStrengthT` (size) is unchanged, so every existing size test
+holds. A profile that sets `contrastExp` explicitly still overrides the sub-linear alpha default, so
+the Compare pane keeps its own tuning.
+
+**Still unverified visually at time of writing.** The tests encode the intent; the picture has not
+been re-checked post-deploy. That is the first item of the next session.
+
 ## 2026-08-18 — [FINDING, P1 member-visible] Beads painted as solid slabs — a fixed px radius against ~5.4px of bar spacing — FIXED
 > **kind:** `FINDING`
 

@@ -197,7 +197,16 @@ test("default bead tuning: full strength spread for regular beads, king trimmed 
   assert.ok(tuning.kingHaloMul < 1, "king halo eased off full");
   assert.ok(tuning.kingHaloMul >= 0.8, `king halo must stay dominant — ${tuning.kingHaloMul} is a heavy trim`);
   assert.ok(fillAlpha(80, 100, tuning) >= 0.85, "strong regular wall stays bright");
-  assert.ok(fillAlpha(3, 100, tuning) >= 0.6, "weak wall stays legible");
+  // REVISED 2026-08-18. This used to assert `>= 0.6`, which pinned the floor of the entire contrast
+  // budget at 0.6 and so guaranteed the defect a member then reported from a screenshot: with the
+  // range only 0.6 -> 0.98, a heavy wall and a thin one render indistinguishably, and a row shows
+  // only that a wall existed, never when it mattered. A weak wall must stay VISIBLE, which is a
+  // much lower bar than "almost as bright as a king".
+  assert.ok(fillAlpha(3, 100, tuning) >= 0.2, "weak wall stays visible");
+  assert.ok(
+    fillAlpha(80, 100, tuning) - fillAlpha(3, 100, tuning) >= 0.4,
+    "strong vs weak must differ by a spread a viewer can actually SEE"
+  );
   assert.ok(
     targetHalfPx(5, undefined, 100, tuning) < targetHalfPx(80, undefined, 100, tuning),
     "size ladder still separates weak vs strong"
@@ -322,13 +331,25 @@ test("trailingRefs: handles empty, single-point and non-finite pct without throw
  *  5-point strikes ~22px apart on the price axis. */
 const MEASURED_3M = { barSpacingPx: 5.4, rowGapPx: 22 };
 
-test("THE DEFECT: at the measured 3m geometry a bead no longer spans its neighbours", () => {
+test("at the measured 3m geometry the bead is thinned, but stays READABLE", () => {
+  // REVISED 2026-08-18. The first version asserted `diameter <= barSpacing` — no horizontal overlap
+  // at all — on the assumption that touching beads were the defect. They are not: in the reference
+  // product a row is a near-continuous ribbon of touching dots. Enforcing no-overlap shrank beads to
+  // ~3px radius at ordinary zoom and produced a rail of identical faint dots, which a member
+  // screenshot caught immediately. Horizontal overlap is TEXTURE; vertical thickness is what buries
+  // candles, so the row gap is the constraint that must bind here.
   const t = clampTuningToSpacing(BEAD_TUNING_DEFAULT, MEASURED_3M);
-  assert.ok(t.halfMax * 2 <= MEASURED_3M.barSpacingPx, "diameter must fit inside one bar of room");
-  assert.ok(
-    t.halfMax < BEAD_TUNING_DEFAULT.halfMax,
-    "the profile ceiling must actually have been reduced"
-  );
+  assert.ok(t.halfMax < BEAD_TUNING_DEFAULT.halfMax, "the slab ceiling must still be reduced");
+  assert.ok(t.halfMax >= 3.2, `must stay readable — ${t.halfMax} is the invisible-dot failure`);
+  assert.ok(t.halfMax * 2 <= MEASURED_3M.rowGapPx, "rows must not touch vertically");
+});
+
+test("a collapsed SIZE RANGE is the failure mode, not just a small bead", () => {
+  // Every magnitude mapping to one radius is what makes a row look like a flat dotted line with no
+  // history. The range has to survive the clamp, or the size channel is gone even when beads are
+  // individually visible.
+  const t = clampTuningToSpacing(BEAD_TUNING_DEFAULT, MEASURED_3M);
+  assert.ok(t.halfMax - t.halfMin >= 1, `range ${t.halfMin}-${t.halfMax} is too flat to read`);
 });
 
 test("rows stay visibly separated — the property the slab render lost", () => {
@@ -394,4 +415,61 @@ test("the ceiling scales monotonically with available room", () => {
     assert.ok(t.halfMax >= prev, `halfMax shrank going from tighter to wider at ${spacing}`);
     prev = t.halfMax;
   }
+});
+
+// ── A ROW MUST READ AS A TIME SERIES OF STRENGTH (2026-08-18, member comparison) ──────────────
+// Against the reference product a single row visibly SWELLS and FADES along its length: fat and
+// saturated where that wall was heavy, thin and dim where it was not. Ours rendered every bead in
+// a row alike, so a row said only THAT a wall existed, never WHEN it mattered. Two separate causes,
+// both pinned below: an alpha budget of 0.6-0.98 (a spread nobody can see) and a super-linear alpha
+// curve that crushed every non-king row against the floor.
+
+test("THE DEFECT: a mid-strength wall is visibly dimmer than a king, not pinned near it", () => {
+  // maxPct is the SESSION-WIDE king, so most rows never approach it. Under the old shared
+  // super-linear curve a 30%-of-king wall rendered at 0.66 against a king's 0.87 — a 0.21 spread
+  // covering the entire middle of the distribution.
+  const king = fillAlpha(100, 100);
+  const mid = fillAlpha(30, 100);
+  const weak = fillAlpha(3, 100);
+  assert.ok(king - mid >= 0.3, `king ${king} vs mid ${mid} — the middle must be readable`);
+  assert.ok(mid - weak >= 0.15, `mid ${mid} vs weak ${weak} — weak must read as weak`);
+  assert.ok(weak >= 0.2, `weak ${weak} must stay visible, not vanish`);
+});
+
+test("the alpha budget is wide enough to be a channel at all", () => {
+  // 0.6 -> 0.98 was the whole range: a heavy wall and a thin one rendered indistinguishably.
+  assert.ok(
+    FILL_ALPHA_MAX - FILL_ALPHA_MIN >= 0.6,
+    `an opacity spread of ${FILL_ALPHA_MAX - FILL_ALPHA_MIN} cannot encode strength`
+  );
+});
+
+test("SIZE and ALPHA use DIFFERENT curves, and each keeps its own job", () => {
+  // They shared one exponent, which is why the rail could never have both channels alive: the
+  // super-linear shape size needs (a fading wall must visibly shrink) is the same shape that pins
+  // alpha to the floor for every row that is not the day's king.
+  // NOTE the two channels take DIFFERENT inputs, which is easy to get wrong: targetHalfPx sizes on
+  // the ABSOLUTE per-strike share (anchored 0.3%-12%), while fillAlpha is relative to the frame's
+  // king. Feeding 90 and 30 to the size ladder saturates both at the ceiling and measures nothing —
+  // real shares are single digits.
+  const sizeRatio = targetHalfPx(8, undefined, 100) / targetHalfPx(1.5, undefined, 100);
+  const alphaGap = fillAlpha(90, 100) - fillAlpha(30, 100);
+  assert.ok(sizeRatio > 1.2, `size must still swell with strength (${sizeRatio}x)`);
+  assert.ok(alphaGap >= 0.25, `alpha must still separate the same two walls (${alphaGap})`);
+});
+
+test("alpha is monotonic — a stronger wall is never dimmer", () => {
+  let prev = -1;
+  for (const pct of [0.5, 1, 3, 8, 15, 30, 50, 75, 100]) {
+    const a = fillAlpha(pct, 100);
+    assert.ok(a >= prev, `alpha dipped at ${pct}% (${a} < ${prev})`);
+    prev = a;
+  }
+});
+
+test("a profile may still override the alpha curve explicitly", () => {
+  // Compare panes tune their own contrast; the sub-linear default must not silently overrule an
+  // explicit contrastExp a profile set for a reason.
+  const custom = { ...BEAD_TUNING_DEFAULT, contrastExp: 3 };
+  assert.ok(fillAlpha(50, 100, custom) < fillAlpha(50, 100, BEAD_TUNING_DEFAULT));
 });
