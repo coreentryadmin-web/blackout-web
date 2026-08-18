@@ -18,6 +18,8 @@ import {
   kingStrikeByTime,
   trailingRefs,
   beadRenderTuning,
+  clampTuningToSpacing,
+  closestRowGapPx,
   type WallBeadRenderProfile,
   type BeadRenderTuning,
 } from "./vector-wall-rail-core";
@@ -446,10 +448,33 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
       eventCursorTime,
     } = this._data;
     if (!(maxPct > 0)) return null;
-    const tuning = beadRenderTuning(profile ?? "default");
+    const baseTuning = beadRenderTuning(profile ?? "default");
     const ts = this._chart.timeScale();
     const series = this._series;
     const bands: Band[] = [];
+
+    // Bead size is budgeted against the room ACTUALLY on screen — see clampTuningToSpacing. A fixed
+    // px ceiling turned the rail into painted slabs at ordinary zoom (a 15px bead against ~5.4px of
+    // room per 3m bar), which buried the candles AND flattened the size channel into a constant
+    // thickness. Both axes constrain: bar spacing stops beads smearing along a row, the closest row
+    // gap keeps rows visibly separate.
+    const barSpacingPx = (() => {
+      try {
+        const v = ts.options().barSpacing;
+        return typeof v === "number" && Number.isFinite(v) ? v : NaN;
+      } catch {
+        return NaN;
+      }
+    })();
+    const rowYs: number[] = [];
+    for (const t of [...callTrails, ...putTrails]) {
+      const y = series.priceToCoordinate(t.strike);
+      if (y != null) rowYs.push(y);
+    }
+    const tuning = clampTuningToSpacing(baseTuning, {
+      barSpacingPx,
+      rowGapPx: closestRowGapPx(rowYs),
+    });
 
     // Rebuild target sets from scratch each project so departed beads/strikes drop out of the loop.
     this._targetHalf.clear();

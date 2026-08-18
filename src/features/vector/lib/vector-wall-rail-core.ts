@@ -270,3 +270,94 @@ export function kingStrikeByTime(
   for (const [time, v] of best) out.set(time, v.strike);
   return out;
 }
+
+// ── SPACING BUDGET (2026-08-18) ───────────────────────────────────────────────────────────────
+//
+// THE DEFECT, seen rather than computed. A live screenshot of /vector at 3m showed the rail as
+// solid painted BANDS, not beads: yellow and magenta slabs thick enough to bury the candles they
+// annotate. The arithmetic behind it — ~130 three-minute bars across ~700px is **~5.4px of
+// horizontal room per bar**, against a bead up to `HALF_PX_MAX * 2 = 15px` wide. Every bead
+// overlapped its neighbours roughly threefold, so a row of beads rendered as one smear.
+//
+// That also DESTROYS the size channel at paint time. The recorded data genuinely carries 46-54
+// distinct radii per ticker (measured live across 8 tickers), but when adjacent beads overlap 3x a
+// viewer sees their union — a slab of constant thickness. "All the beads look the same size" was a
+// fair description of the picture and a wrong description of the data, and both halves of that are
+// explained here rather than in the magnitude ladder, which is sound and untouched.
+//
+// WHY A CONSTANT CANNOT WORK. `HALF_PX_MAX` was already trimmed 9 -> 7.5 for this exact member
+// complaint ("it literally paints the candles fully") and the screenshot above is AFTER that trim.
+// A fixed pixel radius cannot be right across timeframes: bar spacing moves by an order of
+// magnitude between 1m and 1W, and the price-axis gap between adjacent strike rows moves with the
+// ticker (5-point SPX strikes vs 0.5-point single-name) and with zoom. The ceiling has to be
+// derived from the room actually available, not tuned for one screenshot.
+
+/** Fraction of BAR SPACING a bead's diameter may occupy. Just under 1 so consecutive beads in a row
+ *  read as beads with air between them rather than a continuous ribbon. */
+const BEAD_BAR_FILL = 0.85;
+
+/** Fraction of the ROW GAP (price-axis distance to the nearest neighbouring row) a bead's diameter
+ *  may occupy. Deliberately about half: this is what keeps rows visibly SEPARATE — the property the
+ *  reference product has and the slab render did not — and what stops beads burying the candles. */
+const BEAD_ROW_FILL = 0.55;
+
+export type BeadSpacingBudget = {
+  /** px between adjacent bars on the time axis. */
+  barSpacingPx: number;
+  /** px between the closest pair of DRAWN strike rows. Infinity when fewer than two rows. */
+  rowGapPx: number;
+};
+
+/**
+ * Shrink a render tuning to the room actually on screen.
+ *
+ * ONLY EVER SHRINKS. At wide zoom the profile's own `halfMax` still caps the bead — this budget
+ * cannot inflate a bead past the size the profile was tuned for, so the Compare pane stays small
+ * and the default pane never grows beyond 7.5.
+ *
+ * The floor/ceiling RATIO is preserved where there is room for it, because that ratio IS the size
+ * channel — collapsing `halfMax` while pinning `halfMin` would leave every bead the same size,
+ * i.e. the exact perceptual failure this fix exists to remove. Where there is not room (a very
+ * dense zoom), the range compresses toward `minRadiusPx` and the size channel genuinely carries
+ * less: that is an honest consequence of a crowded axis, not something to paper over by letting
+ * beads overlap again.
+ *
+ * Unusable inputs (NaN, non-positive, a single row → infinite gap) contribute NO constraint, so a
+ * missing measurement degrades to the profile's own tuning rather than collapsing the rail.
+ */
+export function clampTuningToSpacing(
+  tuning: BeadRenderTuning,
+  budget: BeadSpacingBudget
+): BeadRenderTuning {
+  const limits: number[] = [tuning.halfMax];
+  if (Number.isFinite(budget.barSpacingPx) && budget.barSpacingPx > 0) {
+    limits.push((budget.barSpacingPx * BEAD_BAR_FILL) / 2);
+  }
+  if (Number.isFinite(budget.rowGapPx) && budget.rowGapPx > 0) {
+    limits.push((budget.rowGapPx * BEAD_ROW_FILL) / 2);
+  }
+
+  const floor = tuning.minRadiusPx > 0 ? tuning.minRadiusPx : 0.5;
+  const halfMax = Math.max(floor, Math.min(...limits));
+  if (halfMax >= tuning.halfMax) return tuning; // nothing binds — keep the profile exactly
+
+  // Preserve the profile's dynamic range where the new ceiling allows it.
+  const ratio = tuning.halfMin > 0 ? tuning.halfMax / tuning.halfMin : 1;
+  const halfMin = Math.min(halfMax, Math.max(floor, ratio > 1 ? halfMax / ratio : halfMax));
+
+  return { ...tuning, halfMax, halfMin };
+}
+
+/** Closest price-axis gap between drawn rows, from their y coordinates. Infinity for <2 rows —
+ *  a single row is unconstrained vertically and must not be shrunk to the floor by a bogus 0 gap. */
+export function closestRowGapPx(ys: readonly number[]): number {
+  const sorted = [...ys].filter((y) => Number.isFinite(y)).sort((a, b) => a - b);
+  let gap = Infinity;
+  for (let i = 1; i < sorted.length; i++) {
+    const d = sorted[i]! - sorted[i - 1]!;
+    // Two rows resolving to the SAME pixel is a zero gap, which would clamp every bead to the
+    // floor. Ignore coincident rows: they are already indistinguishable and constrain nothing.
+    if (d > 0.5 && d < gap) gap = d;
+  }
+  return gap;
+}
