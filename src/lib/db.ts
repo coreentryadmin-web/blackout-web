@@ -2148,6 +2148,31 @@ async function runMigrations(): Promise<void> {
   await p.query(`CREATE INDEX IF NOT EXISTS idx_email_events_recipient ON email_events(LOWER(recipient))`);
   await p.query(`CREATE INDEX IF NOT EXISTS idx_email_events_template_tag ON email_events(template_tag, occurred_at DESC)`);
 
+  // Meridian report snapshots — ONE ROW PER (ticker, event, calendar day), last write wins.
+  //
+  // The warm path runs every few minutes. An unkeyed insert would produce hundreds of
+  // near-identical rows per name per day, and the "drift" computed from them would mostly be
+  // measuring scan jitter. The day key collapses that to one real observation, and makes a
+  // missed run harmless: the next pass overwrites the same slot instead of leaving a hole.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS meridian_report_snapshots (
+      id BIGSERIAL PRIMARY KEY,
+      ticker TEXT NOT NULL,
+      event_date DATE NOT NULL,
+      snapshot_day DATE NOT NULL,
+      score NUMERIC,
+      verdict TEXT,
+      confidence TEXT,
+      pillars JSONB,
+      captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (ticker, event_date, snapshot_day)
+    );
+  `);
+  await p.query(
+    `CREATE INDEX IF NOT EXISTS idx_meridian_snap_lookup
+       ON meridian_report_snapshots(ticker, event_date, snapshot_day DESC)`
+  );
+
   } finally {
     // Release the advisory lock + return the dedicated connection to the pool.
     try { await lockClient.query(`SELECT pg_advisory_unlock($1)`, [MIGRATION_LOCK_ID]); } catch { /* ignore */ }
@@ -9306,4 +9331,89 @@ export async function fetchCronJobRunCount(): Promise<number> {
     `SELECT COUNT(*)::int AS count FROM cron_job_runs`
   );
   return Number(res.rows[0]?.count ?? 0);
+}
+
+/* ── Meridian report snapshots ──────────────────────────────────────────────────────── */
+
+export type MeridianSnapshotRow = {
+  day: string;
+  score: number | null;
+  verdict: "bullish" | "bearish" | "neutral" | null;
+  confidence: string | null;
+  pillars: Record<string, string> | null;
+};
+
+/**
+ * Record today's read for an event. Idempotent per day — the last write of the day wins.
+ *
+ * Never throws. A snapshot is an observation for a panel, not part of serving the page, so a
+ * write failure must not take the event detail down with it.
+ */
+export async function recordMeridianReportSnapshot(input: {
+  ticker: string;
+  eventDate: string;
+  snapshotDay: string;
+  score: number | null;
+  verdict: string | null;
+  confidence: string | null;
+  pillars: Record<string, string> | null;
+}): Promise<void> {
+  if (!dbConfigured()) return;
+  try {
+    const p = await getPool();
+    await p.query(
+      `INSERT INTO meridian_report_snapshots
+         (ticker, event_date, snapshot_day, score, verdict, confidence, pillars)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (ticker, event_date, snapshot_day) DO UPDATE SET
+         score = EXCLUDED.score,
+         verdict = EXCLUDED.verdict,
+         confidence = EXCLUDED.confidence,
+         pillars = EXCLUDED.pillars,
+         captured_at = NOW()`,
+      [
+        input.ticker.trim().toUpperCase(),
+        input.eventDate,
+        input.snapshotDay,
+        input.score,
+        input.verdict,
+        input.confidence,
+        input.pillars ? JSON.stringify(input.pillars) : null,
+      ]
+    );
+  } catch (err) {
+    console.warn(`[meridian-snapshot] write failed for ${input.ticker}:`, err instanceof Error ? err.message : err);
+  }
+}
+
+/** Day series for one event, oldest first. Empty on any failure — the panel simply hides. */
+export async function readMeridianReportSnapshots(
+  ticker: string,
+  eventDate: string,
+  limitDays = 30
+): Promise<MeridianSnapshotRow[]> {
+  if (!dbConfigured()) return [];
+  try {
+    const p = await getPool();
+    const res = await p.query(
+      `SELECT snapshot_day, score, verdict, confidence, pillars
+         FROM meridian_report_snapshots
+        WHERE ticker = $1 AND event_date = $2
+        ORDER BY snapshot_day DESC
+        LIMIT $3`,
+      [ticker.trim().toUpperCase(), eventDate, Math.min(120, Math.max(2, limitDays))]
+    );
+    return res.rows
+      .map((r: Record<string, unknown>) => ({
+        day: String(r.snapshot_day instanceof Date ? r.snapshot_day.toISOString().slice(0, 10) : r.snapshot_day).slice(0, 10),
+        score: r.score == null ? null : Number(r.score),
+        verdict: (r.verdict ?? null) as MeridianSnapshotRow["verdict"],
+        confidence: (r.confidence ?? null) as string | null,
+        pillars: (r.pillars ?? null) as Record<string, string> | null,
+      }))
+      .reverse();
+  } catch (err) {
+    console.warn(`[meridian-snapshot] read failed for ${ticker}:`, err instanceof Error ? err.message : err);
+    return [];
+  }
 }

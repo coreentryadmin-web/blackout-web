@@ -2636,3 +2636,22 @@ html.nav-locked body { overflow: hidden; }
 
 /* The number rides with the label on rail markers. */
 .mv-rail-marker-num { font-family: var(--mv-value); font-weight: 800; font-variant-numeric: tabular-nums; color: #f2fbff; }
+
+/* What changed — the drift panel. Rendered only when a second day exists, because a one-point
+   series is not a trend and a panel that implied otherwise would be worse than absent. */
+.msum-drift {
+  display: flex; flex-direction: column; gap: 0.4rem;
+  padding: 0.6rem 0.75rem; border-radius: 0.5rem;
+  border: 1px solid var(--mv-hairline); background: rgba(125, 211, 252, 0.04);
+}
+.msum-drift-head { display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
+.msum-drift-dir { font-family: var(--mv-value); font-size: 0.88rem; font-weight: 700; }
+.msum-drift-firming { color: var(--mv-bull, #34d399); }
+.msum-drift-fading { color: var(--mv-bear, #fb7185); }
+.msum-drift-flat, .msum-drift-unknown { color: #a9cfe6; }
+.msum-drift-turns { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.msum-drift-turns li {
+  font-family: var(--mv-label); font-size: 0.68rem; letter-spacing: 0.04em;
+  padding: 0.12rem 0.4rem; border-radius: 0.25rem; background: rgba(125, 211, 252, 0.08);
+  color: #cfe9f8;
+}
