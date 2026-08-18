@@ -2636,3 +2636,23 @@ html.nav-locked body { overflow: hidden; }
 
 /* The number rides with the label on rail markers. */
 .mv-rail-marker-num { font-family: var(--mv-value); font-weight: 800; font-variant-numeric: tabular-nums; color: #f2fbff; }
+
+/* Freshness. Reports the age of the DATA, not of the render — a component that merely animated
+   would keep ticking happily while the feed was dead, which is the failure this exists to
+   expose. Goes amber past the stale threshold rather than quietly continuing to count. */
+.msum-head-right { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.mv-fresh {
+  display: inline-flex; align-items: center; gap: 0.32rem;
+  font-family: var(--mv-label); font-size: 0.64rem; letter-spacing: 0.06em;
+  color: rgba(148, 200, 230, 0.8);
+}
+.mv-fresh-dot {
+  width: 6px; height: 6px; border-radius: 50%; background: #34d399;
+  box-shadow: 0 0 6px rgba(52, 211, 153, 0.8);
+}
+.mv-fresh.is-stale { color: #fcd9a0; }
+.mv-fresh.is-stale .mv-fresh-dot { background: #fbbf24; box-shadow: 0 0 6px rgba(251, 191, 36, 0.8); }
+@media (prefers-reduced-motion: no-preference) {
+  .mv-fresh-dot { animation: mv-fresh-pulse 2.4s ease-in-out infinite; }
+  @keyframes mv-fresh-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+}

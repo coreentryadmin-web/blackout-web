@@ -9,6 +9,7 @@ import type {
   MeridianTimelineItem,
   MeridianTimelinePayload,
 } from "@/features/meridian/lib/meridian-types";
+import { detailRefreshMsFor } from "@/lib/meridian/meridian-viz-core";
 import {
   deskUrlSearch,
   parseDeskUrlState,
@@ -205,12 +206,22 @@ export function MeridianDesk() {
     allItems.find((i) => i.id === activeId) ??
     (activeId && lookupTimelineItem?.id === activeId ? lookupTimelineItem : null);
 
+  /**
+   * Poll cadence scaled by how close the print is.
+   *
+   * The old rule was flat — 15s if this name had printed, 30s if ANY name that week had, 60s
+   * otherwise — so an event ten days out was polled almost as hard as one reporting in minutes,
+   * and one reporting in minutes no harder than one next week. Both halves are wrong, in
+   * opposite directions. Scaling by proximity spends the budget where it changes a decision,
+   * and spending LESS on distant names is what makes being aggressive on imminent ones
+   * affordable.
+   */
   const detailRefreshMs = useMemo(() => {
     if (activeItem?.kind !== "earnings") return 60_000;
-    if (activeItem.is_printed) return 15_000;
-    const weekPrinted = (data?.earnings_week ?? []).some((r) => r.is_printed);
-    return weekPrinted ? 30_000 : 60_000;
-  }, [activeItem, data?.earnings_week]);
+    const hours =
+      activeItem.days_until != null ? activeItem.days_until * 24 : null;
+    return detailRefreshMsFor(hours, Boolean(activeItem.is_printed));
+  }, [activeItem]);
 
   const detailKey = activeId ? `/api/market/meridian/event?id=${encodeURIComponent(activeId)}` : null;
   const {

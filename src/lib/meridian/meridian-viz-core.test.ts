@@ -21,6 +21,8 @@ import {
   etWallClockToIso,
   resolveCollisions,
   layoutRailLabels,
+  detailRefreshMsFor,
+  hoursUntilIso,
   estimateTrajectory,
   estimateDispersion,
   strikeProfile,
@@ -626,4 +628,44 @@ test("layoutRailLabels: input order is preserved in the output", () => {
 
 test("layoutRailLabels: empty input is empty output, not a crash", () => {
   assert.deepEqual(layoutRailLabels([]), []);
+});
+
+/* ── refresh cadence ──────────────────────────────────────────────────────────────── */
+
+test("detailRefreshMsFor: tightens as the print approaches", () => {
+  const at = (h: number) => detailRefreshMsFor(h);
+  assert.ok(at(0.5) < at(3), "minutes away must poll harder than hours away");
+  assert.ok(at(3) < at(12));
+  assert.ok(at(12) < at(48));
+  assert.ok(at(48) < at(240), "ten days out must poll least of all");
+});
+
+test("detailRefreshMsFor: a printed name keeps the fast lane — the reaction is the live thing", () => {
+  assert.equal(detailRefreshMsFor(240, true), 15_000);
+  assert.equal(detailRefreshMsFor(null, true), 15_000);
+});
+
+test("detailRefreshMsFor: an unknown horizon falls back to a middling interval, not the fastest", () => {
+  // Defaulting to the fast lane would let every undated event pay the imminent-print cost.
+  assert.equal(detailRefreshMsFor(null), 60_000);
+  assert.equal(detailRefreshMsFor(undefined), 60_000);
+});
+
+test("detailRefreshMsFor: a passed event still polls fast — the tape is what matters then", () => {
+  assert.ok(detailRefreshMsFor(-2) <= 10_000);
+});
+
+test("detailRefreshMsFor: every interval is a sane positive number", () => {
+  for (const h of [-100, -1, 0, 0.1, 1, 6, 24, 72, 500]) {
+    const ms = detailRefreshMsFor(h);
+    assert.ok(ms >= 5_000 && ms <= 600_000, `interval out of range at h=${h}: ${ms}`);
+  }
+});
+
+test("hoursUntilIso: positive before, negative after, null on junk", () => {
+  const now = Date.parse("2026-08-18T12:00:00Z");
+  assert.equal(hoursUntilIso("2026-08-18T15:00:00Z", now), 3);
+  assert.equal(hoursUntilIso("2026-08-18T09:00:00Z", now), -3);
+  assert.equal(hoursUntilIso("not-a-date", now), null);
+  assert.equal(hoursUntilIso(null, now), null);
 });

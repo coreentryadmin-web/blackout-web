@@ -905,3 +905,49 @@ export function MeridianImpliedVsRealized({
     </div>
   );
 }
+
+/* ── Freshness ────────────────────────────────────────────────────────────────────── */
+
+/**
+ * "updated 12s ago", ticking.
+ *
+ * The desk WAS refreshing — SWR on a 15–300s interval depending on proximity — but nothing on
+ * screen ever proved it, so a payload that legitimately did not change read as a frozen page.
+ * This is the cheapest honest fix: it states when the data last arrived, and it counts, so the
+ * page visibly disagrees with "nothing is happening".
+ *
+ * It reports the AGE OF THE DATA, not the age of the render. A component that merely animated
+ * would be theatre — it would keep ticking happily while the feed was dead, which is the exact
+ * failure a freshness indicator exists to expose.
+ */
+export function MeridianFreshness({
+  asOf,
+  staleAfterMs = 180_000,
+}: {
+  asOf: string | null | undefined;
+  staleAfterMs?: number;
+}) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const t = asOf ? Date.parse(asOf) : NaN;
+  if (!Number.isFinite(t)) return null;
+  const ageMs = Math.max(0, now - t);
+  const stale = ageMs > staleAfterMs;
+  const label =
+    ageMs < 60_000
+      ? `${Math.floor(ageMs / 1000)}s`
+      : ageMs < 3_600_000
+        ? `${Math.floor(ageMs / 60_000)}m`
+        : `${Math.floor(ageMs / 3_600_000)}h`;
+
+  return (
+    <span className={`mv-fresh${stale ? " is-stale" : ""}`} title={`data timestamp ${asOf}`}>
+      <span className="mv-fresh-dot" aria-hidden="true" />
+      updated {label} ago
+    </span>
+  );
+}

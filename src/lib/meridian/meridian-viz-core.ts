@@ -982,3 +982,43 @@ export function layoutRailLabels(
   }
   return out;
 }
+
+/* ── Refresh cadence ──────────────────────────────────────────────────────────────── */
+
+/**
+ * How often to refetch an event's detail, from how close its print is.
+ *
+ * The old cadence was flat: 15s if the name had already printed, 30s if any name that week had,
+ * 60s otherwise. So an event ten days out was polled almost as hard as one reporting in
+ * minutes, and one reporting in minutes was polled no harder than one next week. Both halves of
+ * that are wrong, and they are wrong in opposite directions.
+ *
+ * Scaling by proximity spends the request budget where it changes a decision. It also answers
+ * "can we call the APIs more aggressively?" honestly: yes — aggressively where it matters, and
+ * LESS aggressively where nothing moves, which is what makes the aggression affordable.
+ *
+ * A name that has already printed keeps the fast lane: the reaction is the live thing then.
+ */
+export function detailRefreshMsFor(
+  hoursUntilEvent: number | null | undefined,
+  hasPrinted = false
+): number {
+  if (hasPrinted) return 15_000;
+  const h = num(hoursUntilEvent);
+  if (h == null) return 60_000;
+  if (h <= 1) return 10_000; // minutes away — the tape into the print is the whole story
+  if (h <= 6) return 20_000;
+  if (h <= 24) return 45_000;
+  if (h <= 72) return 120_000;
+  // Beyond three days almost nothing moves between polls; a tighter interval spends budget
+  // that the imminent names need.
+  return 300_000;
+}
+
+/** Hours from now until an ISO instant. Negative once it has passed. */
+export function hoursUntilIso(iso: string | null | undefined, nowMs: number): number | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return null;
+  return round((t - nowMs) / 3_600_000, 4);
+}
