@@ -381,6 +381,33 @@ const BEAD_ROW_FILL = 0.55;
  */
 const BEAD_READABLE_MIN_HALF_PX = 3.2;
 
+/**
+ * The clamped FLOOR may never fall below this — the fix for a defect the ceiling rule above could
+ * not catch, found by measuring pixels rather than reasoning about the model.
+ *
+ * MEASURED 2026-08-18, live prod at 1920x1080 (`vector-bead-pixel-audit.cjs`): SPX rendered 160
+ * beads with a healthy 3x size ratio, but **NVDA rendered 18 beads at a 1.1px median radius** — sub-
+ * 2px specks, which is the member's screenshot exactly. The ceiling was doing its job (clamped to
+ * the readable 3.2); the FLOOR was not. On a dense name the row gap is ~4-12px, so the ceiling
+ * clamps, and the "preserve the ratio" rule then derives `halfMin = halfMax / ratio` — 3.2 / 3.4 ≈
+ * 0.94, raised only to `minRadiusPx` (1.6). Since most walls sit in the weak end of the share
+ * distribution, MOST beads drew at that floor. The size channel was preserved in arithmetic and
+ * destroyed on screen.
+ *
+ * So on a crowded axis the range now COMPRESSES rather than sinking: every bead stays at least 2px
+ * in radius (4px across, legible on a 1x display) and the size ratio narrows to ~1.6x. That trade is
+ * deliberate and it is the right way round — a bead too small to see carries NO information, while a
+ * bead whose size differs less still carries its strength through the ALPHA channel, which is the
+ * independent, sub-linear channel #2312 split out for exactly this reason. Where a member wants the
+ * full size range back on a dense name, the honest lever is fewer rows (the NODES control), not
+ * smaller beads.
+ */
+const BEAD_VISIBLE_MIN_HALF_PX = 2.0;
+
+/** The floor may never eat more than this share of the clamped ceiling — some size range must
+ *  survive, or the rail flattens into the uniform dots this whole budget exists to prevent. */
+const BEAD_FLOOR_MAX_SHARE_OF_CEIL = 0.7;
+
 export type BeadSpacingBudget = {
   /** px between adjacent bars on the time axis. */
   barSpacingPx: number;
@@ -424,9 +451,12 @@ export function clampTuningToSpacing(
   const halfMax = Math.max(readable, Math.min(...limits));
   if (halfMax >= tuning.halfMax) return tuning; // nothing binds — keep the profile exactly
 
-  // Preserve the profile's dynamic range where the new ceiling allows it.
+  // Preserve the profile's dynamic range where the new ceiling allows it — but never by sinking the
+  // floor below visibility (see BEAD_VISIBLE_MIN_HALF_PX: that is what drew NVDA as 1.1px specks).
   const ratio = tuning.halfMin > 0 ? tuning.halfMax / tuning.halfMin : 1;
-  const halfMin = Math.min(halfMax, Math.max(floor, ratio > 1 ? halfMax / ratio : halfMax));
+  const ranged = ratio > 1 ? halfMax / ratio : halfMax;
+  const visible = Math.min(halfMax * BEAD_FLOOR_MAX_SHARE_OF_CEIL, BEAD_VISIBLE_MIN_HALF_PX);
+  const halfMin = Math.min(halfMax, Math.max(floor, ranged, visible));
 
   return { ...tuning, halfMax, halfMin };
 }

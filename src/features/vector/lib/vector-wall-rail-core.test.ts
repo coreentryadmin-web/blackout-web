@@ -360,6 +360,46 @@ test("rows stay visibly separated — the property the slab render lost", () => 
   assert.ok(t.halfMax * 2 < 8, "a bead must not fill the gap to the next row");
 });
 
+test("the FLOOR stays visible on a dense axis — the measured NVDA defect", () => {
+  // MEASURED 2026-08-18 on live prod at 1920x1080 (vector-bead-pixel-audit.cjs): NVDA drew 18 beads
+  // at a 1.1px MEDIAN radius while SPX drew 160 with a healthy 3x size ratio. The ceiling rule above
+  // was working; the floor was not. On a single name the row gap is ~4-12px, so the ceiling clamps
+  // to 3.2, and "preserve the ratio" then derived halfMin = 3.2 / 3.4 ≈ 0.94 (raised only to
+  // minRadiusPx 1.6). Most walls sit in the weak end of the share distribution, so MOST beads drew
+  // at that floor — invisible. Every clamped tuning must now keep its floor at a size a member can
+  // actually see.
+  for (const rowGapPx of [4, 6, 8, 12, 20]) {
+    const t = clampTuningToSpacing(BEAD_TUNING_DEFAULT, { barSpacingPx: 8, rowGapPx });
+    assert.ok(
+      t.halfMin >= 2,
+      `rowGap=${rowGapPx}px collapsed the floor to ${t.halfMin}px — the 1.1px speck failure`
+    );
+    assert.ok(t.halfMin <= t.halfMax, `rowGap=${rowGapPx}px inverted the range`);
+  }
+});
+
+test("lifting the floor never flattens the range completely", () => {
+  // The floor must not eat the whole ceiling: a rail where every bead is the SAME visible size is
+  // the other half of the member's report ("all the beads are same"), and trading one for the other
+  // would be no fix at all.
+  for (const rowGapPx of [4, 8, 12, 20]) {
+    const t = clampTuningToSpacing(BEAD_TUNING_DEFAULT, { barSpacingPx: 8, rowGapPx });
+    assert.ok(
+      t.halfMax / t.halfMin >= 1.5,
+      `rowGap=${rowGapPx}px left only ${(t.halfMax / t.halfMin).toFixed(2)}x of size range`
+    );
+  }
+});
+
+test("the compare profile keeps a visible floor too, without being inflated", () => {
+  // Compare panes are deliberately ~55% size; the floor rule must not quietly promote them to the
+  // main chart's sizing, only stop them from vanishing.
+  const t = clampTuningToSpacing(BEAD_TUNING_COMPARE, { barSpacingPx: 6, rowGapPx: 6 });
+  assert.ok(t.halfMin >= 1.5, `compare floor ${t.halfMin}px is below its own profile floor`);
+  assert.ok(t.halfMax <= BEAD_TUNING_COMPARE.halfMax, "compare ceiling must never grow");
+  assert.ok(t.halfMin <= t.halfMax);
+});
+
 test("the budget only ever SHRINKS — a wide zoom keeps the profile's own ceiling", () => {
   // Otherwise this would inflate beads past the size each profile was tuned for, and the Compare
   // pane (deliberately ~55% size) would grow to match the main chart.
