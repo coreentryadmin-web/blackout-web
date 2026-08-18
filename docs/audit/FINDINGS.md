@@ -10742,3 +10742,54 @@ radius past the bug. Two publishers can still both read the same incumbent and b
 cost is bounded: the window shrinks from the BUILD DURATION (5–45s, multi-minute with an
 overlapping warmer) to a single Redis round-trip, and two writers inside that window carry `as_of`
 values ~1ms apart. Worst surviving regression: milliseconds, not minutes.
+
+## 2026-08-17 — [P1, Meridian earnings] Recent earnings reactions always null (fixed bar limit truncated the window); AMC prints anchored to the wrong session — FIXED (feat/meridian-earnings-viz)
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Status** | FIXED — bar limit derived from the window; reaction anchored to BMO/AMC print timing |
+| **Where** | `src/lib/meridian/meridian-reaction.ts`, `meridian-reaction-core.ts`, `meridian-earnings-history.ts`, `meridian-benzinga-earnings-core.ts` |
+
+**Symptom.** `print_history[].session_change_pct` / `next_day_change_pct` / `expected_vs_realized.*`
+were null on every liquid earnings name sampled — making "how does this stock react to earnings"
+and "is the market pricing a bigger move than this name delivers" unanswerable.
+
+**Defect 1 — the bar fetch was truncated.** `loadStockBars` passed a hardcoded `"120"` limit while
+`barWindowForDates` spans *14 days before the oldest print → today* — for 4-8 quarters of history
+that is 260-500 trading days. Polygon returns `sort=asc`, so a 120 cap returns the OLDEST 120
+sessions and every recent date falls off the end. The failure presents as "we don't have that
+data", which is why it survived; the index path beside it already used `"400"`.
+
+Live evidence — the pattern is exact, oldest two resolve, everything recent null:
+
+```
+HTHT  2026-08-17 null  2026-05-15 null  2026-03-18 null  2025-11-17 ✓7.41  2025-08-20 ✓3.41
+FN    2026-08-17 null  2026-05-04 null  2026-02-02 null  2025-11-03 ✓-0.87 2025-08-18 ✓-0.34
+BIDU  2026-05-18 null  2026-02-26 null                   2025-11-18 ✓7.07  2025-08-20 ✓0.64
+```
+
+Replayed against real Polygon bars on HTHT's production window:
+
+```
+OLD limit=120  bars=120  covers 2025-08-06..2026-01-27  -> 3/5 prints null
+NEW limit=274  bars=259  covers 2025-08-06..2026-08-17  -> 4/5 resolve
+```
+
+The one still null is yesterday's AMC print, whose reaction session is today — correctly null.
+`barLimitForWindow` now derives the limit from the span (0.7 x calendar days + 10, clamped
+[120, 5000]) and is applied to the index path too, which carried the same latent bug.
+
+**Defect 2 — AMC prints were anchored to the wrong session.** `session_change_pct` was the report
+date's own open→close. That is right for a BMO reporter, and WRONG for an AMC one: the print lands
+after that session closed, so the report date's move is the drift BEFORE anyone saw the numbers and
+the reaction is the NEXT session. This does not degrade the number, it inverts its meaning — on a
+stock that drifted up into an ugly print it reports a gain where the market delivered a loss.
+Measured on one real print, the two anchorings give **7.41% (report date) vs 3.01% (next session)**.
+`classifyPrintTiming` reads the Benzinga `time` against the bell; `reaction_basis`
+(`bmo_session` / `amc_next_session` / `assumed_report_session`) ships with every value so the UI can
+mark rows where timing was unknown rather than presenting an assumption as a measurement.
+
+**Deliberately NOT changed.** The FDA path keeps the plain report-date reading — an FDA decision has
+no bell-relative print semantics, so inheriting the earnings assumption there would be wrong.
