@@ -11043,3 +11043,75 @@ rather than serif. Aliased to `--font-jetbrains`.
 outside `var()`, and (2) every `--font-*` referenced by CSS is either injected by `layout.tsx` or
 declared in a stylesheet. Both assertions fail on the pre-fix tree. CSS comments are stripped
 before scanning — otherwise the comment describing the bug reports the bug as still present.
+
+## 2026-08-18 — Meridian ESTIMATES/HISTORY are empty on EVERY mega-cap while the same payload claims history — OPEN
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | **P1** — the two tabs a member opens for earnings analysis render nothing, on every name checked |
+| **Found by** | `scripts/audit/meridian-data-validator.mjs`, first run |
+| **Status** | CONFIRMED + REPRODUCIBLE; validator shipped. Root cause NOT yet proven — see "what is not established" |
+
+**Measured, 8/8 mega-caps (KEYS, HD, BHP, TJX, TGT, LOW, ADI, BABA), importance 5:**
+
+| field | served | truth |
+|---|---|---|
+| `enrichment.print_history` | **0 rows** on all 8 | Benzinga has 10–12 prints with actuals |
+| `enrichment.print_history_summary` | null | — |
+| `enrichment.street_estimates` | 0 | — |
+| `enrichment.earnings_calendar` | null | — |
+| `enrichment.beat_rates.*` | null | — |
+| `pack.history` (**same response**) | **4 rows** | e.g. TGT "4/4 EPS beats over last 4 prints · 50% rev beats · avg session move +2.5%" |
+
+So one panel of the page states a beat record while the ESTIMATES and HISTORY tabs, fed from the
+same event payload, render nothing. That self-contradiction is the finding: no ground-truth check
+would flag it, because each half is individually plausible.
+
+**Verified NOT the cause** (each checked live, not assumed):
+- The upstream is fine. `/benzinga/v1/earnings?ticker=TGT&limit=16&sort=date.desc&date.gte=…`
+  returns 9 rows, 4 carrying `actual_eps` — the exact query shape `loadBenzingaTickerEarnings`
+  issues.
+- The row shaper is fine: `shapeBenzingaStructuredEarnings` maps `actual_eps`/`estimated_eps`
+  through correctly.
+- The mapper is fine: `benzingaRowsToPrintHistory` filters on `actual_eps != null`, which those
+  rows satisfy.
+- Not intermittent: identical across two passes minutes apart, and across all 8 tickers.
+
+**What IS established:** every Benzinga-derived field inside `loadMeridianEarningsEnrichment` is
+empty together, while the same underlying loaders succeed for `pre-earnings-pack`. The failure is
+therefore inside the enrichment path, not in the provider, the query, or the mapping.
+
+**What is NOT established:** the mechanism. The leading hypothesis is that the six-way
+`Promise.all` in `loadMeridianEarningsEnrichment` trips a rate limit or timeout, each
+`.catch(() => ({ rows: [], entitled: true, error: "cache_error" }))` silently yields an empty
+result, and `serverCache` then stores that empty result for 10 minutes. That would explain the
+signature exactly — but it is a hypothesis, and it is recorded as one.
+
+**Design defect regardless of mechanism.** `.catch(() => ({ rows: [] }))` makes a FAILURE
+indistinguishable from NO DATA, both in the payload and on screen. The member sees an empty tab
+and concludes the company has no earnings history. The fix has to surface the failure — an
+`error`/`entitled` flag on the event payload and a UI state that says "couldn't load" — and must
+not cache a failed result.
+
+**A separate FAIL from the same run:** TGT `call_wall 150` is **below** `put_wall 152.5`, which is
+geometrically impossible for a wall pair.
+
+## 2026-08-18 — Meridian data validator — TOOL
+
+> **kind:** `OPS-NOTE`
+
+`scripts/audit/meridian-data-validator.mjs` checks the numbers a member SEES against their
+upstreams and against each other. Two check kinds, and the split is the point: GROUND TRUTH
+refetches the fact independently (Benzinga prints, Polygon daily bars) and catches a wrong number;
+COHERENCE compares two things the app derives from the same facts and catches an internally
+inconsistent one — the failure mode that survives every unit test, because each half is
+individually plausible. The first run found only coherence failures.
+
+One trap it encodes: the Benzinga historical query REQUIRES `date.lt`. An unbounded
+`sort=date.desc` returns PROJECTED FUTURE rows first, and those carry no EPS fields at all —
+verified live. A validator using the same unbounded query would compare empty against empty and
+report PASS.
+
+Flags: `--tickers --max --json --base`. Read-only; one temp Clerk user, released in a finally.
