@@ -68,6 +68,13 @@ let tickTimer: ReturnType<typeof setInterval> | null = null;
 let activeTickTimer: ReturnType<typeof setInterval> | null = null;
 let leaderRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let recordInFlight = false;
+/**
+ * Sweeps allowed to overlap. Two is enough to stop a single slow sweep stalling the next tick
+ * while still refusing to stack work without bound — if two are already running, the system is
+ * genuinely saturated and starting a third would make it worse, not faster.
+ */
+const MAX_CONCURRENT_SWEEPS = 2;
+let concurrentSweeps = 0;
 /** Per-ticker consecutive-failure streaks across sweeps. Bounded by the number of CURRENTLY
  *  failing tickers (successes are deleted), not by universe size. */
 const tickerFailureStreaks = new Map<string, number>();
@@ -200,7 +207,19 @@ async function maybeLogLeaderHeartbeat(): Promise<void> {
 
 async function tick(): Promise<void> {
   if (!isEtCashRth()) return;
-  if (recordInFlight) return;
+  // NO sweep-level in-flight guard any more.
+  //
+  // This used to be `if (recordInFlight) return`, which dropped the ENTIRE tick — all ~122 tickers
+  // — whenever the previous sweep was still running. The achieved cadence became
+  // `ceil(sweepMs / 5s) x 5s`, which is exactly what `evaluateSweepBudget` computes and logs: the
+  // system already knew it was degrading and had no way to stop. Measured live 2026-08-18: 60s
+  // median gaps on TSLA/META/AAPL/AMD against a 5s spec, with holes of 1080s and 1190s.
+  //
+  // The guard now lives PER TICKER inside the recorder, so a slow name throttles only itself.
+  // `recordInFlight` is kept solely to bound overlap: a sweep may overlap the previous one, but we
+  // do not stack them without limit, and the per-ticker set plus the shared concurrency ceiling
+  // cap the real work either way.
+  if (concurrentSweeps >= MAX_CONCURRENT_SWEEPS) return;
 
   if (!isLeader) {
     isLeader = await tryAcquireLead();
@@ -211,6 +230,7 @@ async function tick(): Promise<void> {
     );
   }
 
+  concurrentSweeps += 1;
   recordInFlight = true;
   try {
     // Sweep OUR shards only, so every replica contributes instead of one doing all 122 while its
@@ -240,7 +260,8 @@ async function tick(): Promise<void> {
         `[vector-bead-recorder] SWEEP OVER BUDGET — universe is recording every ` +
           `${budget.effectiveCadenceMs / 1000}s, not the designed ${budget.budgetMs / 1000}s ` +
           `(sweep ${budget.elapsedMs}ms for ${budget.recorded}/${budget.total} tickers). ` +
-          `Every tick landing inside a running sweep is dropped, so bead rails are this much thinner.`
+          `Ticks are no longer dropped wholesale (the guard is per-ticker), but a sweep this slow ` +
+          `still means individual tickers skip their turn — check the busy/deferred counts.`
       );
     }
     // PER-TICKER visibility. The whole-pass warning above only fires when EVERY ticker fails, so a
@@ -266,6 +287,7 @@ async function tick(): Promise<void> {
     );
   } finally {
     recordInFlight = false;
+    concurrentSweeps = Math.max(0, concurrentSweeps - 1);
   }
 }
 

@@ -7,6 +7,16 @@ import {
   vectorBeadRecordConcurrency,
 } from "./vector-bead-recorder-logic";
 import { partitionUniverseForReplica } from "./vector-bead-shard";
+import { selectTickersToRecord } from "./vector-bead-schedule-core";
+
+/**
+ * Tickers with a record still in flight, shared across OVERLAPPING sweeps.
+ *
+ * Module-level on purpose: once the leader stops dropping ticks two sweeps can be alive at once,
+ * and a per-call set would let each start the same ticker and hand each its own concurrency
+ * budget — turning a latency fix into a load problem.
+ */
+const recordInFlightTickers = new Set<string>();
 
 export { VECTOR_BEAD_RECORD_TICK_MS } from "./vector-bead-recorder-logic";
 
@@ -29,6 +39,10 @@ export type VectorBeadRecordResult = {
   /** Every ticker this pass tried. Needed to detect RECOVERY: a ticker that was failing and is now
    *  absent from `failedTickers` only counts as recovered if it was actually attempted. */
   attempted: string[];
+  /** Skipped because the previous record is still running. Expected self-throttling, not a fault. */
+  busy?: string[];
+  /** Skipped because the global concurrency ceiling was already full. Worth alarming if sustained. */
+  deferred?: string[];
   elapsedMs: number;
 };
 
@@ -70,7 +84,18 @@ export async function recordSharedUniverseWallSamples(opts?: {
   // overlaps a running sweep), and a per-chunk barrier made the cost the SUM of each chunk's
   // slowest ticker. See mapInPool + vectorBeadRecordConcurrency for the measured 10s-instead-of-5s
   // regression this fixes.
-  const results = await mapInPool(tickers, concurrency, (ticker) =>
+  // Guard the TICKER, not the sweep. The leader used to drop any tick landing while the previous
+  // sweep ran, so ONE slow name cost all ~122 tickers their sample — measured live 2026-08-18 as a
+  // 60s median gap against a 5s spec. A ticker still recording skips this tick and only this tick.
+  const decision = selectTickersToRecord({
+    tickers,
+    inFlight: recordInFlightTickers,
+    limit: concurrency,
+  });
+  const startable = decision.start;
+  for (const t of startable) recordInFlightTickers.add(t);
+
+  const results = await mapInPool(startable, concurrency, (ticker) =>
     recordVectorUniverseWallSample(ticker, {
       sessionYmd,
       nowSec,
@@ -89,7 +114,7 @@ export async function recordSharedUniverseWallSamples(opts?: {
     if (r.status === "fulfilled" && r.value) recorded += 1;
     else {
       failed += 1;
-      const t = tickers[i];
+      const t = startable[i];
       if (t) failedTickers.push(t);
     }
   }
@@ -126,13 +151,21 @@ export async function recordSharedUniverseWallSamples(opts?: {
     }
   }
 
+  // Release only AFTER the retry, so a ticker mid-retry is still seen as busy by an overlapping
+  // tick rather than being started a second time concurrently.
+  for (const t of startable) recordInFlightTickers.delete(t);
+
   return {
     sessionYmd,
     total: tickers.length,
     recorded,
     failed,
     failedTickers,
-    attempted: tickers,
+    // Only what this tick actually STARTED. A busy ticker was not attempted-and-failed, and
+    // counting it so would fire a false DARK alarm on a name that is simply mid-record.
+    attempted: startable,
+    busy: decision.busy,
+    deferred: decision.deferred,
     elapsedMs: Date.now() - started,
   };
 }
