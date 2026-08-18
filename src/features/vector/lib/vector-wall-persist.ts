@@ -215,6 +215,43 @@ const railMemo = new Map<string, { rail: WallHistorySample[]; at: number }>();
 /** How long a memoized rail may be trusted before we re-read Redis. */
 const RAIL_MEMO_RESYNC_MS = 60_000;
 
+/**
+ * Is this memoized rail past its trust window?
+ *
+ * Pure + exported so the resync CLOCK is testable without Redis, a 60-second wait, or a fake timer.
+ * It is worth that much ceremony because the previous inline version was wrong in a way that read
+ * as correct (see `nextRailMemoAt`) and cost the memo its entire purpose one minute into a session.
+ */
+export function railMemoNeedsResync(
+  memoAt: number | undefined,
+  nowMs: number,
+  windowMs: number = RAIL_MEMO_RESYNC_MS
+): boolean {
+  if (memoAt == null || !Number.isFinite(memoAt)) return true;
+  return nowMs - memoAt >= windowMs;
+}
+
+/**
+ * The `at` to store after an append.
+ *
+ * Advances ONLY when this append actually re-read Redis, so the window measures "how stale may my
+ * copy be" from the last authoritative READ — not from the last write, which on a rail written
+ * every 5s would keep pushing its own deadline out and never resync at all.
+ *
+ * The bug this replaces was `at: memo?.at ?? Date.now()`. Same stated intent, different behaviour:
+ * it refreshes only when there is NO memo, i.e. exactly once per rail. Every later resync re-read
+ * Redis and then wrote the ORIGINAL timestamp back, so from ~60s onward the memo was permanently
+ * expired and every append re-read and re-parsed the whole session rail.
+ */
+export function nextRailMemoAt(
+  prevAt: number | undefined,
+  resynced: boolean,
+  nowMs: number
+): number {
+  if (resynced || prevAt == null || !Number.isFinite(prevAt)) return nowMs;
+  return prevAt;
+}
+
 /** Test-only reset so a suite cannot leak one test's rail into the next. */
 export function _resetWallRailMemoForTest(): void {
   railMemo.clear();
@@ -231,10 +268,16 @@ export async function appendSessionWallSample(
   try {
     const memoKey = `${st}:${sessionYmd}`;
     const memo = railMemo.get(memoKey);
+    // Resynced on THIS append? Computed once and reused below, because the answer decides both
+    // where `existing` came from AND whether the resync clock may be reset. Deriving it twice is
+    // how the two fell out of step — see the `at` note below.
+    const resynced = railMemoNeedsResync(memo?.at, Date.now());
     const existing =
-      memo && Date.now() - memo.at < RAIL_MEMO_RESYNC_MS
-        ? memo.rail
-        : await loadSessionWallHistory(sessionYmd, ticker, horizon);
+      resynced || !memo ? await loadSessionWallHistory(sessionYmd, ticker, horizon) : memo.rail;
+    // Stamp the moment of the authoritative READ, not the moment the write finishes — the window
+    // this clock measures is "how stale may my copy be", and a slow write must not buy extra
+    // staleness.
+    const resyncedAt = nextRailMemoAt(memo?.at, resynced, Date.now());
     const next = mergeWallHistory(existing, [sample]);
     if (next === existing) return false; // no-op merge — nothing new to write
     await sharedCacheSet(redisKey(st, sessionYmd), next, TTL_SEC);
@@ -244,7 +287,19 @@ export async function appendSessionWallSample(
     // `at` is only refreshed on a real Redis resync (below), so the resync window is measured from
     // the last authoritative READ, not from the last write. Otherwise a busy rail written every 5s
     // would keep pushing its own deadline out and never resync at all.
-    railMemo.set(memoKey, { rail: next, at: memo?.at ?? Date.now() });
+    // `at` advances ONLY when this append actually re-read Redis, so the window is measured from
+    // the last authoritative read rather than from the last write — otherwise a rail written every
+    // 5s would keep pushing its own deadline out and never resync.
+    //
+    // THE BUG THIS FIXES: the expression was `at: memo?.at ?? Date.now()`, which reads as the same
+    // intent and is not. It refreshes `at` only when there was NO memo at all — i.e. exactly once,
+    // on the rail's first append. Every later resync re-read Redis and then wrote the ORIGINAL
+    // timestamp straight back, so from ~60s into a rail's life `Date.now() - memo.at` was always
+    // past the window and EVERY append re-read and re-parsed the entire session rail. The memo
+    // stopped working one minute into the session, silently, and the O(rail length) JSON cost it
+    // exists to remove came back — growing all session, which is the exact shape of the sweep
+    // degradation it was introduced to fix (5s early, 10-30s by midday).
+    railMemo.set(memoKey, { rail: next, at: resyncedAt });
     // Durable write-through: fan the SAME bucket out to Postgres so the rail survives Redis
     // restarts. Non-blocking and best-effort — Redis stays authoritative for the boolean
     // return, and a DB failure (or the server-only module failing to load in an unexpected
