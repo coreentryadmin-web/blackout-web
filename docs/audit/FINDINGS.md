@@ -10793,3 +10793,37 @@ mark rows where timing was unknown rather than presenting an assumption as a mea
 
 **Deliberately NOT changed.** The FDA path keeps the plain report-date reading — an FDA decision has
 no bell-relative print semantics, so inheriting the earnings assumption there would be wrong.
+
+## 2026-08-18 — Meridian desk state was not linkable: selecting an event never touched the URL — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P3 — nothing renders wrong; the view simply cannot be shared, bookmarked or restored |
+| **Found by** | `scripts/audit/meridian-interaction-audit.mjs`, first run, on desktop AND phone |
+| **Status** | FIXED |
+
+**Symptom.** Clicking any timeline event opened its detail panel while the address bar stayed at
+`/meridian`. Reloading dropped the reader onto whichever event happened to be first in the
+current filter; a link pasted to a colleague opened a different event than the sender was looking
+at; Back left the desk entirely rather than returning to the previously inspected event.
+
+**Root cause.** `MeridianDesk` held `selectedId` / `view` / `filter` in `useState` only. No URL
+read on mount, no write on change — the desk had no notion that its state was addressable.
+
+**Fix.** `meridian-deeplink-core.ts` (pure, unit-tested) parses and serializes the three pieces of
+state a reader would expect a link to carry. The desk reads it on mount (in an effect, not during
+render — this is a client component inside a server-rendered page, and touching `window` during
+render either breaks SSR or produces a hydration mismatch on exactly the links that carry state),
+and writes it back with `pushState` for an EVENT change (so Back returns to the previous event)
+and `replaceState` for view/filter (refinements of the same page, not destinations). A `popstate`
+listener makes Back/Forward actually move the desk.
+
+Written through `window.history` rather than the router on purpose: a router navigation re-runs
+the page and drops the SWR cache, so a URL update would have cost a refetch of the timeline.
+
+**Deliberately NOT in the URL.** Open drawers, hovered levels, and which dimension is expanded.
+A URL that changes on hover is noise, and restoring a half-open drawer from a link is worse than
+not restoring it. Unknown values (`?view=hacked`) are dropped rather than passed through, so a
+pasted link cannot put the desk into a state with no branch behind it.
