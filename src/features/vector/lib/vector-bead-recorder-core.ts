@@ -18,6 +18,12 @@ import { selectTickersToRecord } from "./vector-bead-schedule-core";
  */
 const recordInFlightTickers = new Set<string>();
 
+/**
+ * Monotonic sweep counter, used only to gate which narrowed horizons write on a given tick.
+ * Module-level so it advances across sweeps rather than resetting per call.
+ */
+let narrowedTickIndex = 0;
+
 export { VECTOR_BEAD_RECORD_TICK_MS } from "./vector-bead-recorder-logic";
 
 export type VectorBeadRecordResult = {
@@ -95,12 +101,18 @@ export async function recordSharedUniverseWallSamples(opts?: {
   const startable = decision.start;
   for (const t of startable) recordInFlightTickers.add(t);
 
+  // One index per SWEEP, not per ticker — every ticker in a tick must agree on which horizons
+  // are being written, or the slow rails would smear across tickers instead of landing together.
+  const tickIndex = narrowedTickIndex;
+  narrowedTickIndex = (narrowedTickIndex + 1) % Number.MAX_SAFE_INTEGER;
+
   const results = await mapInPool(startable, concurrency, (ticker) =>
     recordVectorUniverseWallSample(ticker, {
       sessionYmd,
       nowSec,
       bucketScope: "universe",
       wallWriteSource: "bead-recorder-universe",
+      narrowedTickIndex: tickIndex,
     })
   );
 

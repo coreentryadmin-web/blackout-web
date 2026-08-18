@@ -9,6 +9,8 @@ import {
 import { listSharedUniverseTickers, touchDynamicUniverse } from "./vector-dynamic-universe";
 import { isVectorTickerAllowed, normalizeVectorTicker } from "./vector-ticker";
 import { roundFloats } from "@/lib/round-floats";
+import { strikeTotalsForHorizonFromCells } from "./vector-narrowed-walls-from-cells";
+import { horizonsForTick } from "./vector-narrowed-write-cadence";
 import { isCompleteBuild, mergeUniverseSnapshot } from "./vector-universe-merge";
 import { bucketWallSampleTime, buildWallHistorySample } from "./vector-wall-sample";
 import { wallTrailSampleSecForTicker } from "./vector-wall-sample-server";
@@ -85,8 +87,14 @@ async function buildVectorUniverseRow(
     nowSec?: number;
     /** Universe recorder uses 5s buckets; live/active paths use 15s for non-oracle. */
     bucketScope?: import("./vector-wall-sample").WallTrailSampleScope;
-    /** 0DTE/weekly/monthly rails — expensive (3 extra scoped reads). Off on the 5s universe sweep. */
+    /** 0DTE/weekly/monthly rails. Now derived from the matrix in hand — no extra upstream reads. */
     recordNarrowedHorizons?: boolean;
+    /**
+     * Monotonic sweep counter, used ONLY to decide which narrowed horizons write this tick.
+     * Defaults to 0, which writes all three — a caller that does not track ticks gets the seed
+     * behaviour rather than silently dropping the slow rails forever.
+     */
+    narrowedTickIndex?: number;
     wallWriteSource?: WallWriteSource;
   } = {}
 ): Promise<{ row: VectorUniverseRow; historyRecorded: boolean } | null> {
@@ -96,6 +104,7 @@ async function buildVectorUniverseRow(
     nowSec = Math.floor(Date.now() / 1000),
     bucketScope = "universe",
     recordNarrowedHorizons = true,
+    narrowedTickIndex = 0,
     wallWriteSource = bucketScope === "live" ? "bead-recorder-active" : "bead-recorder-universe",
   } = opts;
   const ticker = normalizeVectorTicker(raw);
@@ -139,27 +148,49 @@ async function buildVectorUniverseRow(
       );
     }
 
-    if (recordNarrowedHorizons && spot && spot > 0) {
-      const narrowed = await buildNarrowedHorizonWallSamples(ticker, sampleTime, {
-        walls: gexWalls,
-        flip: hm?.gex?.flip ?? null,
-      });
-      for (const r of narrowed) {
-        if (r.sample) {
-          writes.push(
-            writeWallHistorySample({
-              source: wallWriteSource,
-              sessionYmd,
-              ticker,
-              sample: r.sample,
-              horizon: r.horizon,
-            })
-          );
-        } else if (r.source === "error") {
-          console.warn(
-            `[vector-universe] ${ticker} ${r.horizon} narrowed-wall recording threw: ${r.reason ?? "unknown"}`
-          );
-        }
+    // NARROWED RAILS — derived from the matrix already in hand, and cadence-gated.
+    //
+    // Two halves, and #2273/#2274 is the reason they are separated. Its READ half was right and is
+    // restored here: a narrowed horizon is a SUBSET OF EXPIRY COLUMNS of the matrix fetched above,
+    // so `strikeTotalsForHorizonFromCells` sums it in memory and runs it through the SAME
+    // computeGexWalls reduction as the blended rail — zero network, zero cache, zero provider. The
+    // old `buildNarrowedHorizonWallSamples` cost SIX scoped upstream reads per ticker, which is
+    // what kept these rails off the 5s sweep in the first place.
+    //
+    // Its WRITE half is what got reverted, and is not repeated. Writing all three every tick took
+    // each ticker from one rail write to four (~122 -> ~488 per 5s tick); a rail write is a
+    // read-modify-write of the WHOLE session rail plus a durable enqueue, on a payload that grows
+    // all session. The sweep overran and the blended rail everyone depends on regressed to 10-25s.
+    // Here 0DTE writes every tick (the rail the 5s requirement is about) while weekly/monthly write
+    // every Nth — see vector-narrowed-write-cadence for the budget and its stated trade-off.
+    if (recordNarrowedHorizons && hm?.gex?.cells && hm?.expiries?.length) {
+      const todayYmd = todayEtYmd();
+      for (const horizon of horizonsForTick(narrowedTickIndex)) {
+        const totals = strikeTotalsForHorizonFromCells(hm.gex.cells, hm.expiries, horizon, todayYmd);
+        // No expiry column in range is a real answer for this horizon on this chain — record
+        // nothing rather than a zeroed wall set, which would render as "no gamma anywhere".
+        if (!totals) continue;
+        const horizonWalls = computeGexWalls(totals, { maxPerSide: VECTOR_WALL_NODES_PER_SIDE });
+        const horizonSample = buildWallHistorySample({
+          time: sampleTime,
+          gexWalls: horizonWalls,
+          gammaFlip: hm?.gex?.flip ?? null,
+          vexWalls,
+          vexFlip: hm?.vex?.flip ?? null,
+        });
+        // buildWallHistorySample returns null when a sample carries nothing worth storing; a null
+        // here must be skipped, not written, or the rail gains an empty bucket that reads as a
+        // real observation of "no walls".
+        if (!horizonSample) continue;
+        writes.push(
+          writeWallHistorySample({
+            source: wallWriteSource,
+            sessionYmd,
+            ticker,
+            sample: horizonSample,
+            horizon,
+          })
+        );
       }
     }
     if (writes.length > 0) {
@@ -196,6 +227,8 @@ export async function recordVectorUniverseWallSample(
   opts: {
     sessionYmd: string;
     nowSec?: number;
+    /** Monotonic sweep counter — gates which narrowed horizons write on this tick. */
+    narrowedTickIndex?: number;
     bucketScope?: import("./vector-wall-sample").WallTrailSampleScope;
     wallWriteSource?: WallWriteSource;
   }
@@ -207,8 +240,16 @@ export async function recordVectorUniverseWallSample(
     nowSec: opts.nowSec ?? Math.floor(Date.now() / 1000),
     bucketScope,
     wallWriteSource: opts.wallWriteSource,
-    // 5s universe sweep: blended rail only — narrowed horizons stay on the 5-min cron + live viewers.
-    recordNarrowedHorizons: bucketScope === "live",
+    narrowedTickIndex: opts.narrowedTickIndex,
+    // Narrowed rails are ON for the 5s universe sweep now.
+    //
+    // This used to read `bucketScope === "live"`, which left 0dte/weekly/monthly to the 5-minute
+    // cron plus whoever happened to be viewing a ticker — measured 2026-08-18 as a 300s median gap
+    // on every un-viewed name's 0DTE rail (SPY 27 samples in 90 minutes) while SPX, being viewed,
+    // sat at 5s. The exclusion existed because deriving them cost six scoped upstream reads per
+    // ticker; they are now summed from the matrix this row already fetched, so the read is free and
+    // the write is cadence-gated.
+    recordNarrowedHorizons: true,
   });
   return built?.historyRecorded ?? false;
 }
