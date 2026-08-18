@@ -16,6 +16,7 @@ export const UW_CACHE_TTL = {
   sectorTide:        180,  // 3 min
   etfTide:           300,  // 5 min
   darkPoolTicker:    120,  // 2 min — dark pool prints intraday
+  optionableTickers: 43200, // 12h — the listed-options universe changes at most daily
   darkPoolRecent:    120,  // 2 min
   nope:              300,  // 5 min
   netPremTicks:       60,  // 1 min — most real-time irreplaceable signal
@@ -159,6 +160,7 @@ export const UW_KEYS = {
   // view into the unfiltered heatmap/route reads.
   darkPoolTicker:      (ticker: string, opts?: { limit?: number; min_premium?: number }) =>
     `dark_pool:${ticker}:l${opts?.limit ?? 20}:p${opts?.min_premium ?? 0}`,
+  optionableTickers:   ()                => 'optionable_tickers',
   darkPoolRecent:      ()                => 'dark_pool_recent',
   nope:                (ticker: string)  => `nope:${ticker}`,
   netPremTicks:        (ticker: string)  => `net_prem_ticks:${ticker}`,

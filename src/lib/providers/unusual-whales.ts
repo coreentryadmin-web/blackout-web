@@ -2419,3 +2419,37 @@ export async function fetchUwGlobalFlowAlerts(
     .map((raw) => parseUwFlowAlert(raw))
     .slice(0, limit);
 }
+
+/**
+ * The universe of tickers with LISTED OPTIONS (~6.3k names, probed live 2026-08-18).
+ *
+ * Cached for 12h because the listed-options universe changes at most daily, and because the
+ * consumer (Meridian's earnings lane) would otherwise pull it on every timeline build.
+ *
+ * Returns `null` — never `[]` — when the list cannot be fetched, so callers can distinguish
+ * "no options universe available" from "the universe is empty". Consumers of this list FAIL
+ * OPEN: filtering a lane against an empty set would blank it, which reads to a member as
+ * "there are no earnings", a lie an infrastructure error should never be allowed to tell.
+ */
+export async function fetchUwOptionableTickers(): Promise<string[] | null> {
+  if (!uwConfigured()) return null;
+  try {
+    const redis = await getUwCacheRedis();
+    const rows = await uwCacheGet(redis, UW_KEYS.optionableTickers(), UW_CACHE_TTL.optionableTickers, async () => {
+      const data = await uwGetSafe<unknown>("/api/option-trades/optionable-tickers", {});
+      // The live shape is a bare array of strings under `data`; tolerate object rows in case
+      // the provider enriches it, rather than silently returning nothing if it ever does.
+      const list = Array.isArray(data)
+        ? data
+        : Array.isArray((data as { data?: unknown })?.data)
+          ? ((data as { data: unknown[] }).data)
+          : [];
+      return list
+        .map((x) => (typeof x === "string" ? x : ((x as { ticker?: string; symbol?: string })?.ticker ?? (x as { symbol?: string })?.symbol)))
+        .filter((x): x is string => typeof x === "string" && x.length > 0);
+    });
+    return Array.isArray(rows) && rows.length > 0 ? (rows as string[]) : null;
+  } catch {
+    return null;
+  }
+}

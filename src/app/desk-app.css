@@ -2358,3 +2358,13 @@ html.nav-locked body { overflow: hidden; }
 .mh-rate-fill.mv-neutral { background: rgba(167,139,250,0.6); }
 .mh-rate-val { text-align: right; font-weight: 700; }
 .mh-summary { margin: 0.4rem 0 0; font-size: 0.72rem; line-height: 1.45; color: #bae6fd; }
+
+/* Lane note — says the timeline filtered itself, so a shorter list cannot be mistaken for a
+   broken feed. Quiet, but not invisible: it is an explanation, not a warning. */
+.meridian-lane-note {
+  margin: 0.35rem 0 0; padding: 0.3rem 0.5rem;
+  border-left: 2px solid rgba(125, 211, 252, 0.35); border-radius: 0 0.25rem 0.25rem 0;
+  background: rgba(125, 211, 252, 0.06);
+  font-family: var(--font-mono, monospace); font-size: 0.62rem; line-height: 1.35;
+  color: rgba(186, 230, 253, 0.85);
+}

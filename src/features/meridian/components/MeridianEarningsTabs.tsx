@@ -273,13 +273,6 @@ export function MeridianEarningsTabs({ detail }: Props) {
                 </ul>
               </MeridianDataCard>
             )}
-            {!enrichment.guidance_entitled && !enrichment.corporate_guidance && (
-              <MeridianDataCard label="Management guidance" tone="earnings" delay={120}>
-                <p className="meridian-card-muted">
-                  Corporate guidance feed not enabled on this plan — earnings calendar still live.
-                </p>
-              </MeridianDataCard>
-            )}
             {enrichment.beat_rates && (
               <MeridianDataCard label="Historical beat rates" tone="earnings" delay={160}>
                 <ul className="meridian-card-list meridian-fin-grid">

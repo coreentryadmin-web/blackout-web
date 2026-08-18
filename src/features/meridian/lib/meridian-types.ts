@@ -703,4 +703,8 @@ export type MeridianTimelinePayload = {
   estimate_revision_timeline: MeridianEstimateRevisionEntry[];
   after_hours_movers: MeridianAfterHoursMover[];
   earnings_calendar_entitled: boolean;
+  /** Prints hidden because the name has no listed options. */
+  non_optionable_hidden?: number;
+  /** False when the optionable universe was unavailable, so NOTHING was filtered. */
+  optionable_filter_applied?: boolean;
 };
