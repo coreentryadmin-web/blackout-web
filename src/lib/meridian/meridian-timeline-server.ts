@@ -12,6 +12,11 @@ import {
   loadBenzingaEarningsBundle,
 } from "@/lib/meridian/meridian-benzinga-earnings";
 import { batchLoadEarningsExpectedMovePct } from "@/lib/meridian/meridian-earnings-expected-move";
+import {
+  buildOptionableIndex,
+  partitionOptionable,
+} from "@/lib/meridian/meridian-optionable-core";
+import { fetchUwOptionableTickers } from "@/lib/providers/unusual-whales";
 import type { BenzingaStructuredEarnings } from "@/lib/providers/polygon";
 
 const FDA_CACHE_TTL = 30 * 60 * 1000;
@@ -83,6 +88,10 @@ export type MeridianEarningsTimelineResult = {
   >["estimate_revision_timeline"];
   after_hours_movers: Awaited<ReturnType<typeof loadBenzingaEarningsBundle>>["after_hours_movers"];
   calendar_entitled: boolean;
+  /** How many prints were hidden because the name has no listed options. */
+  non_optionable_hidden: number;
+  /** False when the optionable universe was unavailable, so NOTHING was filtered. */
+  optionable_filter_applied: boolean;
 };
 
 /** Earnings rows — Benzinga calendar + Polygon chain-IV expected move (no UW earnings REST). */
@@ -102,6 +111,19 @@ export async function loadMeridianEarningsTimeline(
   ]).filter((r) => r.date >= todayYmd && daysUntilEt(r.date, todayYmd) <= daysAhead);
 
   let rows = benzingaRowsToTimelineInputs(benzingaRows);
+
+  // Drop prints on names with no listed options. Everything this platform serves is an options
+  // product, so a print with no chain is a row a member cannot act on — and the calendar is
+  // dominated by them. Filtering HERE, before the expected-move batch, also stops us fetching
+  // Polygon chains for names that have none.
+  //
+  // Fails OPEN: if the universe is unavailable, nothing is filtered and the flag says so. An
+  // empty earnings lane would tell the reader "there are no earnings this week", which is a lie
+  // an infrastructure error must never be allowed to tell.
+  const optionableList = await fetchUwOptionableTickers();
+  const split = partitionOptionable(rows, buildOptionableIndex(optionableList), (r) => r.ticker);
+  rows = split.kept;
+
   const emByTicker = await batchLoadEarningsExpectedMovePct(
     rows.map((r) => ({ ticker: r.ticker, report_date: r.report_date }))
   );
@@ -116,5 +138,7 @@ export async function loadMeridianEarningsTimeline(
     estimate_revision_timeline: bundle.estimate_revision_timeline,
     after_hours_movers: bundle.after_hours_movers,
     calendar_entitled: bundle.entitled && boardRes.entitled,
+    non_optionable_hidden: split.hidden.length,
+    optionable_filter_applied: split.applied,
   };
 }

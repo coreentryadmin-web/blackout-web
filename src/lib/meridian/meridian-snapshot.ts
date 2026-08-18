@@ -80,6 +80,10 @@ export async function loadMeridianTimelineResponse(daysAhead: number): Promise<M
     estimate_revision_timeline: earningsBundle.estimate_revision_timeline,
     after_hours_movers: earningsBundle.after_hours_movers,
     earnings_calendar_entitled: earningsBundle.calendar_entitled,
+    // Surfaced so the lane can SAY it filtered. A quietly shorter list is indistinguishable
+    // from a quietly broken feed, and the two need different reactions from the reader.
+    non_optionable_hidden: earningsBundle.non_optionable_hidden,
+    optionable_filter_applied: earningsBundle.optionable_filter_applied,
   });
 }
 

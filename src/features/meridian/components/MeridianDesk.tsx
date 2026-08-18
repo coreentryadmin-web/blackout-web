@@ -528,6 +528,16 @@ export function MeridianDesk() {
             ))}
           </div>
 
+          {/* Say that the lane filtered. A quietly shorter list is indistinguishable from a
+              quietly broken feed, and the two need different reactions from the reader. Only
+              shown when the filter actually RAN — "0 hidden" and "did not run" are different
+              facts and must not render identically. */}
+          {data?.optionable_filter_applied && (data.non_optionable_hidden ?? 0) > 0 && (
+            <p className="meridian-lane-note">
+              {data.non_optionable_hidden} print{data.non_optionable_hidden === 1 ? "" : "s"} hidden — no listed options
+            </p>
+          )}
+
           {isLoading && <MeridianShimmer lines={5} />}
           {error && !isLoading && <MeridianEmpty message="Timeline unavailable — try refresh." />}
           {!isLoading && !error && filteredItems.length === 0 && (

@@ -10932,3 +10932,44 @@ contributes no node.
 **#5 — remaining sub-24px targets (P3).** Beat-history rows (19px) and the supporting-evidence
 toggle (13px) now carry a real `min-height`. The orbital orbs keep their drawn size, which ENCODES
 contribution, and take an invisible 26px hit pad instead.
+
+## 2026-08-18 — Meridian earnings lane showed prints members cannot trade; two panels advertised our billing — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P2 — signal-to-noise on the primary lane |
+| **Found by** | user report ("dont want to get spammed all shit") |
+| **Status** | FIXED |
+
+**Optionable-only.** The earnings lane carried ~360 prints over 21 days, most on names with no
+listed options. Everything this platform serves is an options product, so a print with no chain
+is a row a member cannot act on.
+
+Membership comes from UW `/api/option-trades/optionable-tickers` (probed live: 200, **6328
+tickers**, bare strings), cached 12h — the listed-options universe changes at most daily.
+
+*The trap, and why the naive version would have looked fine:* UW writes class shares WITHOUT the
+separator — the live list holds `BRKB`, `BFA`, `BFB` and contains **zero** entries with a `.` or
+`/` in all 6328 rows — while Benzinga's calendar writes `BRK.B`, `BF.B`. A plain
+`list.includes(ticker)` therefore silently drops every class-share name: a filter that LOOKS like
+it works while hiding real, tradeable earnings. Both sides are normalized before comparison and a
+test covers the dotted cohort specifically.
+
+*Fail-open, deliberately.* If the universe is unavailable, nothing is filtered and a flag says the
+filter did not run. Fail-closed would blank the lane, which reads to a member as "there are no
+earnings this week" — a lie an infrastructure error must never be allowed to tell. A suspiciously
+small index (a truncated response) is treated as unusable for the same reason, and a row whose
+ticker cannot be parsed is KEPT rather than dropped. The lane also SAYS when it filtered
+("N prints hidden — no listed options"), because a quietly shorter list is indistinguishable from
+a quietly broken feed.
+
+Filtering happens before the expected-move batch, so it also stops Polygon chain fetches for names
+that have no chain.
+
+**Two panels advertising our own billing.** ESTIMATES rendered a "Corporate guidance — Guidance
+feed is not enabled on this plan" panel, and the evidence grid rendered a second "Management
+guidance — feed not enabled on this plan" card, on EVERY name. A card whose only content is a
+statement about our subscription is not analysis; it occupied prime grid space to tell the reader
+something they can do nothing with. Both removed.

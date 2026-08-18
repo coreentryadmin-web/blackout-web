@@ -51,8 +51,6 @@ type Props = {
     | "price_targets"
     | "earnings_calendar"
     | "earnings_yoy"
-    | "corporate_guidance"
-    | "guidance_entitled"
     | "analyst_revisions"
   >;
   spot?: number | null;
@@ -89,7 +87,6 @@ export function MeridianEarningsEstimatesPanel({ ticker, enrichment, spot }: Pro
   );
 
   const yoy = enrichment.earnings_yoy;
-  const guidance = enrichment.corporate_guidance;
 
   return (
     <section className="me" aria-label={`${ticker} estimates`}>
@@ -120,34 +117,6 @@ export function MeridianEarningsEstimatesPanel({ ticker, enrichment, spot }: Pro
           <MeridianTargetRail targets={enrichment.price_targets} spot={spot} />
         </div>
 
-        <div className="mr-panel">
-          <span className="mr-panel-title">Corporate guidance</span>
-          {guidance ? (
-            <ul className="me-guidance">
-              {guidance.min_eps != null && (
-                <li>
-                  EPS {guidance.min_eps.toFixed(2)}
-                  {guidance.max_eps != null ? ` – ${guidance.max_eps.toFixed(2)}` : ""}
-                  {guidance.street_eps != null ? ` · street ${guidance.street_eps.toFixed(2)}` : ""}
-                </li>
-              )}
-              {guidance.min_revenue != null && (
-                <li>
-                  Revenue {fmtMoney(guidance.min_revenue)}
-                  {guidance.max_revenue != null ? ` – ${fmtMoney(guidance.max_revenue)}` : ""}
-                </li>
-              )}
-            </ul>
-          ) : (
-            // A plan gate and an empty dataset look identical to a member unless we say which.
-            // Measured 0% filled across every sampled name because the feed is not on this plan.
-            <p className="me-gated">
-              {enrichment.guidance_entitled
-                ? "No guidance issued for this period."
-                : "Guidance feed is not enabled on this plan."}
-            </p>
-          )}
-        </div>
       </div>
     </section>
   );
