@@ -38,6 +38,49 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-08-18 — [FINDING, P1 member-visible] Bead contrast was scaled against the SESSION king, so no bead showed what it dominated at the time — FIXED
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Severity** | P1 (member-visible — the rail's job is showing which level mattered when) |
+| **Scope** | `vector-wall-rail-core.ts` (`maxPctByTime`), `vector-wall-rail-primitive.ts` (`project`) |
+| **Status** | FIXED — contrast is now point-in-time relative; size stays absolute; 43 rail-core tests pass |
+
+**Root cause.** `kingStrikeByTime` already established WHICH strike dominated each bucket — and the
+rail used that knowledge for exactly one thing: drawing a crown. Strength itself went through
+`fillAlpha(pct, maxPct)` where `maxPct` is the **session-wide** maximum across every strike and
+every bucket. So a wall that was the second-strongest thing on the board at 10:15 and pure noise by
+14:00 rendered at nearly the same brightness in both, and a bucket in which everything was quiet
+rendered uniformly dim even though one level clearly owned that moment.
+
+Put plainly: the renderer knew what dominated each instant and refused to say so anywhere except
+the crown.
+
+**Fix — the two channels now answer DIFFERENT questions, deliberately.**
+- **SIZE stays ABSOLUTE** (`beadRadiusForPctShare` on the raw share): a genuinely huge wall looks
+  huge whenever it happened, even in a bucket where something outranked it. This is what makes
+  comparing two points in TIME honest.
+- **CONTRAST becomes POINT-IN-TIME RELATIVE** (`maxPctByTime`): how much this wall dominated the
+  board at that instant. This is what makes comparing two strikes at the SAME moment honest.
+
+Read together they carry strictly more than one channel can:
+
+| | bright | dim |
+|---|---|---|
+| **fat** | huge wall that also dominated the moment | huge wall something else outranked then |
+| **thin** | the best of a quiet moment | noise |
+
+**Notable.** The per-bucket maximum was already being computed inside `kingStrikeByTime` and
+discarded — the number needed to fix this had been one line from where it was needed since the
+crown shipped.
+
+**Blast radius.** Render layer only; one reference per bucket across BOTH sides, so a call and a put
+of equal share at the same moment read equally bright exactly as the frame-wide `maxPct` did. A
+bucket with no entry falls back to the frame max rather than throwing.
+
+**Not yet verified visually.** Tests encode the intent; the picture is the next check.
+
 ## 2026-08-18 — [FINDING, P1 member-visible] A bead row showed THAT a wall existed but never WHEN it mattered — size and alpha shared one curve — FIXED
 > **kind:** `FINDING`
 

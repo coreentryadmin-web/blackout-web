@@ -16,6 +16,7 @@ import {
   beadKey,
   kingKey,
   kingStrikeByTime,
+  maxPctByTime,
   trailingRefs,
   beadRenderTuning,
   clampTuningToSpacing,
@@ -491,6 +492,9 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
 
     // Kingship PER BUCKET, not one scalar per strike — the crown belongs to whichever strike held
     // the highest share at that moment, so a handover is visible where it happened.
+    // One reference per bucket across BOTH sides — a call and a put of equal share at the same
+    // moment must read equally bright, exactly as maxPct did frame-wide.
+    const maxPctAtTime = maxPctByTime([...callTrails, ...putTrails]);
     const callKingAt = kingStrikeByTime(callTrails);
     const putKingAt = kingStrikeByTime(putTrails);
 
@@ -597,7 +601,10 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
         const ageScale = ageTaperAlpha(liveTime - p.time);
         const a = Math.min(
           1,
-          fillAlpha(p.pct, maxPct, tuning) *
+          // POINT-IN-TIME contrast: measured against the strongest wall in THAT bucket, not the
+          // session-wide king — see maxPctByTime. Size stays absolute, so the two channels answer
+          // different questions (how big was this wall ever / how much did it dominate right then).
+          fillAlpha(p.pct, maxPctAtTime.get(p.time) ?? maxPct, tuning) *
             mod.alphaMul *
             (0.75 + 0.25 * Math.min(1.6, glow)) *
             tuning.drawAlphaMul *

@@ -287,6 +287,48 @@ export function kingStrikeByTime(
   return out;
 }
 
+/**
+ * The strongest wall AT EACH BUCKET — the reference a bead's CONTRAST is measured against.
+ *
+ * ── THE DEFECT THIS CLOSES ───────────────────────────────────────────────────────────
+ * `kingStrikeByTime` above already establishes what dominated at each moment, and the rail used
+ * that knowledge for ONE thing: drawing a crown. Strength itself was scaled against a SESSION-WIDE
+ * maximum — the single biggest reading of the whole day — so a wall that was the second-strongest
+ * thing on the board at 10:15 and noise by 14:00 rendered at nearly the same brightness in both
+ * buckets. A row therefore showed THAT a wall existed and never WHEN it mattered, which is the
+ * difference a member identified against the reference product.
+ *
+ * ── THE TWO CHANNELS NOW SAY DIFFERENT THINGS, DELIBERATELY ──────────────────────────
+ *   SIZE stays ABSOLUTE (`beadRadiusForPctShare` on the raw share): a genuinely huge wall looks
+ *   huge whenever it occurred, even in a bucket where something else outranked it. That is what
+ *   makes comparing two points in TIME honest.
+ *
+ *   CONTRAST becomes POINT-IN-TIME RELATIVE (this map): how much this wall dominated the board at
+ *   that instant. That is what makes comparing two strikes at the SAME moment honest.
+ *
+ * Read together they carry strictly more than one channel could:
+ *   fat + bright  = a huge wall that also dominated the moment
+ *   fat + dim     = a huge wall that something else outranked right then
+ *   thin + bright = the best of a quiet moment
+ *   thin + dim    = noise
+ *
+ * Falls back to the frame maximum for a bucket with no entry, so a partially-covered frame dims
+ * rather than throwing.
+ */
+export function maxPctByTime(
+  trails: ReadonlyArray<{ points: ReadonlyArray<{ time: number; pct: number }> }>
+): Map<number, number> {
+  const out = new Map<number, number>();
+  for (const trail of trails) {
+    for (const p of trail.points) {
+      if (!Number.isFinite(p.time) || !Number.isFinite(p.pct) || p.pct <= 0) continue;
+      const cur = out.get(p.time);
+      if (cur == null || p.pct > cur) out.set(p.time, p.pct);
+    }
+  }
+  return out;
+}
+
 // ── SPACING BUDGET (2026-08-18) ───────────────────────────────────────────────────────────────
 //
 // THE DEFECT, seen rather than computed. A live screenshot of /vector at 3m showed the rail as
