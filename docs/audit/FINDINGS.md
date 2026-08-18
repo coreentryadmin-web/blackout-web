@@ -10973,3 +10973,39 @@ feed is not enabled on this plan" panel, and the evidence grid rendered a second
 guidance — feed not enabled on this plan" card, on EVERY name. A card whose only content is a
 statement about our subscription is not analysis; it occupied prime grid space to tell the reader
 something they can do nothing with. Both removed.
+
+## 2026-08-18 — `--font-mono` was never defined; Meridian rendered in browser-default monospace — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P2 — the whole desk's typography, on every panel |
+| **Found by** | chasing a user report that "the coloring and fonting is really bad" back to a cause instead of restyling on top of it |
+| **Status** | FIXED |
+
+`src/app/desk-app.css` requests `var(--font-mono, monospace)` **78 times**. Grepping the entire
+repo, **`--font-mono` is never defined** — the variable next/font injects is `--font-jetbrains`
+(`layout.tsx`, `variable: "--font-jetbrains"`; `globals.css` uses it correctly in `.font-mono`).
+
+So every label, ticker, kicker and number on this desk fell through to the generic `monospace`
+keyword — Courier-ish on most machines — rather than JetBrains Mono. That is most of why the type
+read as cheap and inconsistent beside the rest of the app, and no amount of size or colour tuning
+would have fixed it. Aliased in one place, which repairs all 78 call sites without churning them.
+
+**Three typographic roles** were introduced at the same time, because the deeper complaint —
+"headers and data have the same coloring, hard to differentiate" — was accurate: label, value and
+prose were all the same family at nearly the same size and colour.
+
+| role | face | used for |
+|---|---|---|
+| LABEL | JetBrains Mono, small, uppercase, letterspaced, section hue | what this is |
+| VALUE | Syne, large, near-white, tabular figures | the number itself |
+| PROSE | Inter, comfortable line-height, muted | the sentence about it |
+
+**Label→value rows.** Card lists were single strings ("EPS est 1.85"), which put the number
+mid-sentence in the left third of a wide card and left the rest of the row blank — the user's
+"lot of blank spaces on the right sides of all panels". `MeridianKV` splits the pair: label left,
+value hard right with a dotted leader. The values now form a COLUMN, so they can be scanned down
+and compared, and each carries semantic tone where the number has a direction (surprise, YoY,
+beat rate, raised/lowered targets).

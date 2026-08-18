@@ -2446,3 +2446,80 @@ html.nav-locked body { overflow: hidden; }
 .mv-target-val, .mv-ladder-val, .mv-dispersion-val, .ms-score {
   font-variant-numeric: tabular-nums; font-weight: 700;
 }
+
+/* ═══ TYPE SYSTEM ════════════════════════════════════════════════════════════════════
+   --font-mono was NEVER DEFINED. This stylesheet asks for it 78 times; the real variable
+   next/font injects is --font-jetbrains. Every "mono" label, ticker and number on this desk
+   has therefore been falling through to the browser's default monospace — Courier-ish on most
+   machines — which is most of why the type read as cheap and inconsistent next to the rest of
+   the app. Aliasing it here fixes all 78 at once, and keeps the shorter name the rules already
+   use rather than churning every one of them.
+
+   THREE TYPOGRAPHIC ROLES, so a header can never be mistaken for the number under it:
+     LABEL  mono, small, uppercase, letterspaced, section hue    — what this is
+     VALUE  Syne, large, near-white, tabular figures             — the number itself
+     PROSE  Inter, comfortable, muted                            — the sentence about it
+   Before this, all three were the same family at nearly the same size and colour, which is
+   exactly the "everything looks the same" the desk was reported with. */
+:root {
+  --font-mono: var(--font-jetbrains, ui-monospace, "SFMono-Regular", Menlo, monospace);
+  --mv-label: var(--font-mono);
+  --mv-value: var(--font-syne, var(--font-inter), system-ui, sans-serif);
+  --mv-prose: var(--font-inter, system-ui, sans-serif);
+}
+
+/* LABEL role */
+.mr-panel-title, .mv-rail-title, .meridian-card-label, .meridian-analytics-banner-label,
+.mv-panel-title, .meridian-kv-label {
+  font-family: var(--mv-label);
+  font-size: 0.7rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+}
+
+/* VALUE role — the number is the product, so it gets the display face and the contrast. */
+.meridian-kv-value, .meridian-analytics-banner-sub, .mv-traj-val, .mv-beat-val, .me-yoy-val {
+  font-family: var(--mv-value);
+  font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.01em;
+  color: #f2fbff;
+}
+
+/* PROSE role */
+.mr-summary, .meridian-card-muted, .mv-note, .mr-play-structure, .mr-play-risk {
+  font-family: var(--mv-prose); line-height: 1.5;
+}
+
+/* ── Label → value rows ─────────────────────────────────────────────────────────────
+   The card lists were single strings, so the number sat mid-sentence in the left third of a
+   wide card and the rest of the row was blank. Splitting the pair puts every value in one
+   right-hand COLUMN — scannable down the card, comparable between rows — and the leader keeps
+   a label tied to its value across the gap. */
+.meridian-kv {
+  display: grid; grid-template-columns: auto 1fr auto; align-items: baseline;
+  gap: 0.5rem; padding: 0.22rem 0; min-height: 24px;
+  border-bottom: 1px solid rgba(125, 211, 252, 0.07);
+}
+.meridian-kv:last-child { border-bottom: 0; }
+.meridian-kv-label { color: rgba(var(--tab-hue, 125, 211, 252), 0.85); }
+.meridian-kv-note {
+  font-family: var(--mv-label); font-size: 0.62rem; font-weight: 600;
+  letter-spacing: 0.08em; color: rgba(148, 200, 230, 0.6); text-transform: none;
+}
+.meridian-kv-leader {
+  border-bottom: 1px dotted rgba(125, 211, 252, 0.22);
+  transform: translateY(-0.18em);
+}
+.meridian-kv-value { font-size: 0.96rem; white-space: nowrap; }
+.meridian-kv-value.mv-bull { color: var(--mv-bull, #34d399); }
+.meridian-kv-value.mv-bear { color: var(--mv-bear, #fb7185); }
+
+/* Banner value pulled to the right edge — these ran a short line down the left and left two
+   thirds of the row empty. */
+.meridian-analytics-banner { align-items: center; }
+.meridian-analytics-banner-body { flex: 1 1 auto; min-width: 0; }
+.meridian-analytics-banner-sub {
+  margin: 0; flex: none; text-align: right; font-size: 1.02rem; white-space: nowrap;
+}
+@media (max-width: 640px) {
+  /* On a phone the value wraps under rather than squeezing the headline to nothing. */
+  .meridian-analytics-banner { flex-wrap: wrap; }
+  .meridian-analytics-banner-sub { text-align: left; font-size: 0.92rem; }
+}
