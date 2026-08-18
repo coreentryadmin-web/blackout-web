@@ -1,4 +1,5 @@
 import type { GexWalls } from "@/lib/providers/gex-wall-levels";
+import { DEFAULT_WALL_MEMBERSHIP, resolveWallMembership } from "./vector-wall-membership";
 import type { VectorTimeframeMinutes } from "./vector-bar-timeframes";
 import type { VectorDteHorizon } from "./vector-dte-horizon";
 
@@ -264,17 +265,31 @@ export function trailsByStrike(
   dominantPerBucket: number = DOMINANT_WALLS_PER_BUCKET
 ): Map<number, StrikeTrailPoint[]> {
   const map = new Map<number, StrikeTrailPoint[]>();
-  for (const sample of history) {
-    const walls = wallsForLens(sample, lens);
+
+  // Row membership is a LIFECYCLE, not a per-bucket ranking — see vector-wall-membership.ts. The
+  // old code re-picked each bucket's top-N from scratch, so a strike sitting near the cut left and
+  // re-entered on nearly every tick and its row rendered as a dotted line (measured live: SPX mean
+  // row fill 0.35 — two-thirds of every row was holes, with nothing missing from the payload).
+  // A strike must rank strongly to be BORN and only stay ordinarily relevant to SURVIVE, so strong
+  // walls get continuous rows while weak ones still die.
+  //
+  // `dominantPerBucket` is now the ENTER rank. 0/negative keeps its old meaning — no selection at
+  // all, every recorded level draws — so existing callers that opt out are unaffected.
+  const wallsPerBucket = history.map((sample) => wallsForLens(sample, lens));
+  const membership =
+    dominantPerBucket > 0
+      ? resolveWallMembership(wallsPerBucket, side, {
+          ...DEFAULT_WALL_MEMBERSHIP,
+          enterRank: dominantPerBucket,
+        })
+      : null;
+
+  for (let i = 0; i < history.length; i++) {
+    const sample = history[i]!;
+    const walls = wallsPerBucket[i];
     if (!walls) continue;
-    // Only this bucket's DOMINANT walls earn a bead — see DOMINANT_WALLS_PER_BUCKET. Sorting by
-    // |pct| here (the recorded ladder is stored strike-ordered, not strength-ordered) and slicing
-    // to top-N is what gives each wall an HONEST birth: a strike enters its trail at the first
-    // bucket it ranks among the strongest, not at the open just because it sat in the wide ladder.
-    const dominant =
-      dominantPerBucket > 0 && walls[side].length > dominantPerBucket
-        ? [...walls[side]].sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct)).slice(0, dominantPerBucket)
-        : walls[side];
+    const members = membership?.[i];
+    const dominant = members ? walls[side].filter((l) => members.has(Math.round(l.strike))) : walls[side];
     for (const level of dominant) {
       const strike = Math.round(level.strike);
       if (!Number.isFinite(strike)) continue;
