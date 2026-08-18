@@ -9335,6 +9335,27 @@ export async function fetchCronJobRunCount(): Promise<number> {
 
 /* ── Meridian report snapshots ──────────────────────────────────────────────────────── */
 
+const MERIDIAN_TICKER_RE = /^[A-Z0-9.]{1,20}$/;
+
+/**
+ * Allowlist-and-REJECT guard for a ticker before it reaches a log line.
+ *
+ * `ticker` here is user-supplied: it arrives from the `id` query parameter on the event route
+ * (`earnings:<TICKER>:<DATE>`), so interpolating it into a log template is a format-string and
+ * log-injection sink — CodeQL flagged both on the first version of this code.
+ *
+ * Rejecting to a constant rather than stripping bad characters is deliberate, and mirrors
+ * `safeTicker` in unusual-whales.ts: CodeQL does not recognise `String.replace()` as clearing
+ * taint (it is a value transform, not a validating guard), so a strip-and-pass-through version
+ * still shows up as a live alert. A `RegExp.test()` guard with a hardcoded fallback on the
+ * failing branch is the shape its sanitizer recognition is built for — and it is strictly safer,
+ * since a malformed ticker now never reaches the log at all.
+ */
+function safeLogTicker(value: string): string {
+  const upper = String(value ?? "").trim().toUpperCase();
+  return MERIDIAN_TICKER_RE.test(upper) ? upper : "<invalid>";
+}
+
 export type MeridianSnapshotRow = {
   day: string;
   score: number | null;
@@ -9382,7 +9403,7 @@ export async function recordMeridianReportSnapshot(input: {
       ]
     );
   } catch (err) {
-    console.warn(`[meridian-snapshot] write failed for ${input.ticker}:`, err instanceof Error ? err.message : err);
+    console.warn(`[meridian-snapshot] write failed for ${safeLogTicker(input.ticker)}:`, err instanceof Error ? err.message : err);
   }
 }
 
@@ -9413,7 +9434,7 @@ export async function readMeridianReportSnapshots(
       }))
       .reverse();
   } catch (err) {
-    console.warn(`[meridian-snapshot] read failed for ${ticker}:`, err instanceof Error ? err.message : err);
+    console.warn(`[meridian-snapshot] read failed for ${safeLogTicker(ticker)}:`, err instanceof Error ? err.message : err);
     return [];
   }
 }
