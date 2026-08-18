@@ -151,3 +151,99 @@ export function describeEventExpiry(s: ExpiryScopedStructure): string | null {
   if (d === 0) return `${s.expiryUsed} expiry — settles the day of the print`;
   return `${s.expiryUsed} expiry — ${d}d after the print`;
 }
+
+/* ── Flow, split by whether it survives the print ─────────────────────────────────── */
+
+export type FlowPrint = {
+  premium?: number | null;
+  option_type?: string | null;
+  strike?: number | null;
+  expiry?: string | null;
+  dte?: number | null;
+};
+
+export type FlowEventSplit = {
+  /** Premium in contracts that EXPIRE BEFORE the print — cannot be a bet on the event. */
+  preEventPremium: number;
+  /** Premium in the expiry that covers the print. */
+  eventExpiryPremium: number;
+  /** Premium in expiries beyond it — a longer-horizon view that survives the print. */
+  postEventPremium: number;
+  /** Premium we could not place, because the print carried no usable expiry. */
+  unclassifiedPremium: number;
+  preEventCount: number;
+  eventExpiryCount: number;
+  postEventCount: number;
+  /** Share of CLASSIFIED premium positioned in contracts that outlive the print. 0..1, or null. */
+  survivingShare: number | null;
+  /** Call minus put premium among surviving contracts. Sign is the directional bet on the event. */
+  survivingNetCallPremium: number | null;
+};
+
+/**
+ * Split options flow by whether the contracts survive the earnings print.
+ *
+ * The question a reader actually has is not "how much premium traded" but "how much of it is a
+ * bet on THIS event". A sweep in a weekly that expires two days before the company reports is
+ * not an earnings bet however large it is — it is a different trade that happens to be on the
+ * same ticker, and summing it into an "earnings flow" number overstates conviction.
+ *
+ * `survivingShare` is deliberately computed over CLASSIFIED premium only. Dividing by the total
+ * would let prints with a missing expiry quietly drag the share toward zero, which reads as
+ * "nobody is positioned for the event" when it actually means "we could not tell".
+ */
+export function splitFlowByEventExpiry(
+  prints: readonly FlowPrint[] | null | undefined,
+  eventYmd: string | null | undefined
+): FlowEventSplit {
+  const out: FlowEventSplit = {
+    preEventPremium: 0,
+    eventExpiryPremium: 0,
+    postEventPremium: 0,
+    unclassifiedPremium: 0,
+    preEventCount: 0,
+    eventExpiryCount: 0,
+    postEventCount: 0,
+    survivingShare: null,
+    survivingNetCallPremium: null,
+  };
+  const hasEvent = Boolean(eventYmd && /^\d{4}-\d{2}-\d{2}$/.test(eventYmd));
+  let callPrem = 0;
+  let putPrem = 0;
+
+  for (const p of prints ?? []) {
+    const prem = num(p?.premium);
+    if (prem == null || prem <= 0) continue;
+    const exp = String(p?.expiry ?? "").slice(0, 10);
+    if (!hasEvent || !/^\d{4}-\d{2}-\d{2}$/.test(exp)) {
+      out.unclassifiedPremium += prem;
+      continue;
+    }
+    if (exp < eventYmd!) {
+      out.preEventPremium += prem;
+      out.preEventCount += 1;
+      continue;
+    }
+    // On or after the print — this contract is still alive when the news lands.
+    const type = String(p?.option_type ?? "").toUpperCase();
+    if (type === "CALL") callPrem += prem;
+    else if (type === "PUT") putPrem += prem;
+    if (exp === eventYmd) {
+      out.eventExpiryPremium += prem;
+      out.eventExpiryCount += 1;
+    } else {
+      out.postEventPremium += prem;
+      out.postEventCount += 1;
+    }
+  }
+
+  const surviving = out.eventExpiryPremium + out.postEventPremium;
+  const classified = surviving + out.preEventPremium;
+  out.preEventPremium = round(out.preEventPremium, 2);
+  out.eventExpiryPremium = round(out.eventExpiryPremium, 2);
+  out.postEventPremium = round(out.postEventPremium, 2);
+  out.unclassifiedPremium = round(out.unclassifiedPremium, 2);
+  out.survivingShare = classified > 0 ? round(surviving / classified, 4) : null;
+  out.survivingNetCallPremium = surviving > 0 ? round(callPrem - putPrem, 2) : null;
+  return out;
+}

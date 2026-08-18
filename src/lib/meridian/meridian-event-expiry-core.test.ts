@@ -5,6 +5,7 @@ import {
   pickEventExpiry,
   scopeStructureToExpiry,
   describeEventExpiry,
+  splitFlowByEventExpiry,
 } from "./meridian-event-expiry-core";
 
 test("daysBetweenYmd: plain differences, including across a month boundary", () => {
@@ -112,4 +113,76 @@ test("describeEventExpiry: says whether the chain settles on the print or after 
   assert.match(describeEventExpiry(same)!, /day of the print/);
   const after = scopeStructureToExpiry({ cells, expiries, eventYmd: "2026-08-18" });
   assert.match(describeEventExpiry(after)!, /3d after the print/);
+});
+
+/* ── splitFlowByEventExpiry ───────────────────────────────────────────────────────── */
+
+test("flow split: a sweep that expires BEFORE the print is not an earnings bet", () => {
+  const s = splitFlowByEventExpiry(
+    [
+      { premium: 900_000, option_type: "CALL", expiry: "2026-08-14" },
+      { premium: 100_000, option_type: "CALL", expiry: "2026-08-21" },
+    ],
+    "2026-08-18"
+  );
+  assert.equal(s.preEventPremium, 900_000);
+  assert.equal(s.postEventPremium, 100_000);
+  assert.equal(s.survivingShare, 0.1, "90% of the premium cannot see the news");
+});
+
+test("flow split: same-day expiry counts as surviving — it settles after an AMC release", () => {
+  const s = splitFlowByEventExpiry([{ premium: 50_000, option_type: "PUT", expiry: "2026-08-18" }], "2026-08-18");
+  assert.equal(s.eventExpiryPremium, 50_000);
+  assert.equal(s.preEventPremium, 0);
+  assert.equal(s.survivingShare, 1);
+});
+
+test("flow split: surviving direction nets calls against puts", () => {
+  const s = splitFlowByEventExpiry(
+    [
+      { premium: 300_000, option_type: "CALL", expiry: "2026-08-21" },
+      { premium: 100_000, option_type: "PUT", expiry: "2026-08-21" },
+      { premium: 999_999, option_type: "PUT", expiry: "2026-08-14" },
+    ],
+    "2026-08-18"
+  );
+  assert.equal(s.survivingNetCallPremium, 200_000, "the pre-event put must not colour the event read");
+});
+
+test("flow split: unplaceable prints do not drag the share toward zero", () => {
+  // Dividing by TOTAL premium would read as "nobody is positioned for the event" when the
+  // truth is "we could not tell where this sat".
+  const s = splitFlowByEventExpiry(
+    [
+      { premium: 100_000, option_type: "CALL", expiry: "2026-08-21" },
+      { premium: 900_000, option_type: "CALL", expiry: null },
+    ],
+    "2026-08-18"
+  );
+  assert.equal(s.unclassifiedPremium, 900_000);
+  assert.equal(s.survivingShare, 1, "computed over classified premium only");
+});
+
+test("flow split: no event date means nothing can be classified", () => {
+  const s = splitFlowByEventExpiry([{ premium: 5, option_type: "CALL", expiry: "2026-08-21" }], null);
+  assert.equal(s.unclassifiedPremium, 5);
+  assert.equal(s.survivingShare, null);
+});
+
+test("flow split: zero and negative premiums are ignored, not summed", () => {
+  const s = splitFlowByEventExpiry(
+    [
+      { premium: 0, option_type: "CALL", expiry: "2026-08-21" },
+      { premium: -5, option_type: "PUT", expiry: "2026-08-21" },
+    ],
+    "2026-08-18"
+  );
+  assert.equal(s.survivingShare, null);
+  assert.equal(s.eventExpiryPremium, 0);
+});
+
+test("flow split: empty input yields nulls, not confident zeros", () => {
+  const s = splitFlowByEventExpiry([], "2026-08-18");
+  assert.equal(s.survivingShare, null);
+  assert.equal(s.survivingNetCallPremium, null);
 });
