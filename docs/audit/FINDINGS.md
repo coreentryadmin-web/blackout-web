@@ -38,6 +38,66 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-08-18 — [FINDING, P2 systemic] Bead rail memo stopped working 60s into every session — `at: memo?.at ?? Date.now()` refreshed the resync clock exactly once — FIXED
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Severity** | P2 (systemic performance — restores the optimisation behind the sweep-cadence work, not a correctness bug) |
+| **Scope** | `vector-wall-persist.ts` (`appendSessionWallSample` rail memo) |
+| **Status** | FIXED — resync decision + clock extracted as pure helpers; 4 unit tests, one of which reproduces the old formula and counts the difference |
+
+**Root cause.** The rail memo exists to remove ~488 whole-rail Redis `GET` + `JSON.parse`
+round-trips per 5s sweep — its own comment names that JSON work as the measured compute bottleneck
+behind the sweep degrading from 5s near the open to ~30s by midday, with one worker pinned at 100%
+CPU. It stores `{ rail, at }` and re-reads Redis when `Date.now() - at >= RAIL_MEMO_RESYNC_MS`.
+
+The store line was:
+
+```ts
+railMemo.set(memoKey, { rail: next, at: memo?.at ?? Date.now() });
+```
+
+The accompanying comment states the intent exactly: *"`at` is only refreshed on a real Redis resync,
+so the resync window is measured from the last authoritative READ, not from the last write."* The
+code does something else. `memo?.at ?? Date.now()` refreshes only when there is **no memo at all** —
+i.e. exactly once, on a rail's first append. Every later resync re-read Redis and then wrote the
+**original** timestamp straight back, so from ~60s into a rail's life `Date.now() - memo.at` was
+permanently past the window and **every** append re-read and re-parsed the entire session rail.
+
+**Why it wasn't caught earlier.** It is invisible from outside: the rail contents are correct, the
+cadence work masked it, and the cost is a slow drift that grows with rail length — the same shape
+as the problem the memo was introduced to fix, so the symptom looked like "still needs tuning"
+rather than "the fix is not running". Nothing measured the resync rate.
+
+**Evidence.** The old formula, replayed over a realistic session in a unit test — 5s appends across
+30 minutes, 60s window, 360 appends:
+
+| | Redis re-reads |
+|---|---|
+| intended (and now actual) | **30** |
+| as shipped | **349** |
+
+i.e. one per append from the moment the first window elapsed. The memo bought exactly one minute of
+benefit per rail per process.
+
+**Fix.** The resync decision and the clock are now `railMemoNeedsResync(memoAt, now, window)` and
+`nextRailMemoAt(prevAt, resynced, now)` — pure, exported, unit-tested, and computed ONCE per append
+so the "did we resync" answer that selects `existing` is the same one that decides whether the clock
+may advance. Deriving it twice is how the two fell out of step. The stamp records the moment of the
+authoritative READ, not the moment the write finishes, so a slow write cannot buy extra staleness.
+
+**Blast radius.** Behaviour-preserving for rail CONTENTS — the merge is still by bucket time and
+still monotonic, so the safety argument for the memo (a stale copy can only miss someone else's
+bucket, never delete it) is unchanged. What changes is how often Redis is read. A test also pins the
+opposite failure — the memo must never stop resyncing altogether, which would let one process write
+from a divergent rail for a whole session.
+
+**Not the same defect as the shrinking-rail reads.** Consecutive reads of the same rail returning
+different lengths (SPX weekly 3590 -> 3484 -> 3496 within four minutes, 2026-08-18) is still an OPEN
+question and is NOT explained by this. The known-adjacent mechanism is the Postgres re-warm path,
+already made monotonic by union on 2026-08-07. Needs its own measurement before any change.
+
 ## 2026-08-18 — [FINDING, P1 member-visible] Vector flow overlay timed out on every ticker with a live 0DTE expiry — the fan-out was bounded by COUNT, not by TIME — FIXED
 > **kind:** `FINDING`
 
