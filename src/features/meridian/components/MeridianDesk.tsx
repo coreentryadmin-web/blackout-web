@@ -1,7 +1,7 @@
 "use client";
 
 import useSWR from "swr";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   MeridianEventDetail,
   MeridianEventKind,
@@ -9,6 +9,12 @@ import type {
   MeridianTimelineItem,
   MeridianTimelinePayload,
 } from "@/features/meridian/lib/meridian-types";
+import {
+  deskUrlSearch,
+  parseDeskUrlState,
+  sameDeskUrlState,
+  type DeskUrlState,
+} from "@/features/meridian/lib/meridian-deeplink-core";
 import {
   filterMeridianTimelineItems,
   isTickerLikeQuery,
@@ -65,6 +71,51 @@ export function MeridianDesk() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterKind>("all");
   const [view, setView] = useState<DeskView>("timeline");
+
+  /**
+   * URL ⇄ desk state.
+   *
+   * Read on MOUNT rather than during render: this is a client component inside a server-rendered
+   * page, and touching window during render would either break SSR or produce a hydration
+   * mismatch on any link that carries state. One frame of default state is the correct trade.
+   *
+   * The history entry is written with pushState for a change of EVENT (so Back returns to the
+   * previous event, which is what a reader who clicked through three names expects) and
+   * replaceState for view/filter (which are refinements of the same page, not destinations).
+   * Written directly rather than through the router because a router navigation would re-run the
+   * page and drop the SWR cache — a URL update must not cost a refetch.
+   */
+  const urlHydrated = useRef(false);
+  const lastUrlState = useRef<DeskUrlState>({ event: null, view: null, filter: null });
+
+  useEffect(() => {
+    const apply = (search: string) => {
+      const st = parseDeskUrlState(search);
+      lastUrlState.current = st;
+      setSelectedId(st.event);
+      setView((st.view ?? "timeline") as DeskView);
+      setFilter((st.filter ?? "all") as FilterKind);
+    };
+    apply(window.location.search);
+    urlHydrated.current = true;
+    // Back/forward must move the desk, not just the address bar.
+    const onPop = () => apply(window.location.search);
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  useEffect(() => {
+    // Never write a URL before the first read, or the mount would immediately overwrite the
+    // state a pasted link just delivered.
+    if (!urlHydrated.current) return;
+    const next: DeskUrlState = { event: selectedId, view, filter };
+    if (sameDeskUrlState(next, lastUrlState.current)) return;
+    const eventChanged = next.event !== lastUrlState.current.event;
+    lastUrlState.current = next;
+    const url = `${window.location.pathname}${deskUrlSearch(next)}`;
+    if (eventChanged) window.history.pushState(null, "", url);
+    else window.history.replaceState(null, "", url);
+  }, [selectedId, view, filter]);
   const [searchQuery, setSearchQuery] = useState("");
   /** Calendar day drill-down — clicking a day filters the print ledger; clicking it again clears. */
   const [earningsDate, setEarningsDate] = useState<string | null>(null);
