@@ -2464,8 +2464,8 @@ html.nav-locked body { overflow: hidden; }
 :root {
   --font-mono: var(--font-jetbrains, ui-monospace, "SFMono-Regular", Menlo, monospace);
   --mv-label: var(--font-mono);
-  --mv-value: var(--font-syne, var(--font-inter), system-ui, sans-serif);
-  --mv-prose: var(--font-inter, system-ui, sans-serif);
+  --mv-value: var(--font-syne, var(--font-body));
+  --mv-prose: var(--font-body);
 }
 
 /* LABEL role */

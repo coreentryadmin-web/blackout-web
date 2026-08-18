@@ -11009,3 +11009,37 @@ mid-sentence in the left third of a wide card and left the rest of the row blank
 value hard right with a dotted leader. The values now form a COLUMN, so they can be scanned down
 and compared, and each carries semantic tone where the number has a direction (surprise, YoY,
 beat rate, raised/lowered targets).
+
+## 2026-08-18 — The whole product rendered in Times: `font-family: var(--undefined), fallback` — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | **P1** — site-wide body typography, every page, since the variable was introduced |
+| **Found by** | a user screenshot ("everything looks like a book") traced to a cause instead of restyled over |
+| **Status** | FIXED, with a guard test that fails on the pre-fix tree |
+
+`globals.css` set `body { font-family: var(--font-inter), system-ui, sans-serif; }`. `layout.tsx`
+injects **anton, syne and jetbrainsMono only** — `--font-inter` is defined nowhere in the repo.
+
+The trap is that the declaration *looks* like it has fallbacks. It does not. An unresolved
+`var()` makes the **whole declaration invalid at computed-value time**, and the comma-list sitting
+OUTSIDE the `var()` never gets a chance to apply. `font-family` then falls back to its initial
+value — **the browser's default serif**. So the entire product has been rendering body text in
+Times, which is precisely the "looks like a book, not some crazy analysis" report.
+
+95 declarations across `src/app/*.css` had the fallbacks outside the `var()`. All moved inside.
+
+The body role was also **renamed honestly**: `--font-body`, a real system-UI stack, because
+`--font-inter` named a face this app does not ship. Swapping in a real webfont later is now one
+declaration instead of a rename.
+
+Related and separate: `--font-mono` was likewise never defined while `desk-app.css` referenced it
+78 times — that one had its fallback INSIDE the `var()`, so it degraded to generic `monospace`
+rather than serif. Aliased to `--font-jetbrains`.
+
+**Guard.** `src/app/css-font-fallback.test.ts` asserts (1) no `font-family` puts its fallbacks
+outside `var()`, and (2) every `--font-*` referenced by CSS is either injected by `layout.tsx` or
+declared in a stylesheet. Both assertions fail on the pre-fix tree. CSS comments are stripped
+before scanning — otherwise the comment describing the bug reports the bug as still present.

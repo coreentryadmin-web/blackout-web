@@ -156,7 +156,7 @@ html { scroll-behavior: smooth; }
 body {
   background: #040407;
   color: #f0f0f8;
-  font-family: var(--font-syne), system-ui, sans-serif;
+  font-family: var(--font-syne, system-ui, sans-serif);
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
 }
@@ -175,7 +175,7 @@ body {
 
 ::selection { background: rgba(0, 230, 118, 0.35); color: #fff; }
 
-.font-display { font-family: var(--font-anton), sans-serif; }
-.font-anton { font-family: var(--font-anton), sans-serif; }
-.font-syne { font-family: var(--font-syne), sans-serif; }
-.font-mono { font-family: var(--font-jetbrains), monospace; }
+.font-display { font-family: var(--font-anton, sans-serif); }
+.font-anton { font-family: var(--font-anton, sans-serif); }
+.font-syne { font-family: var(--font-syne, sans-serif); }
+.font-mono { font-family: var(--font-jetbrains, monospace); }
