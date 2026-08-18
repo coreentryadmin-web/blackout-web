@@ -272,15 +272,39 @@ async function auditViewport(vp, cookie) {
     // ── DEEP LINK: reload on the current URL and check the earnings view survives.
     const url = page.url();
     if (/[?#]/.test(url)) {
-      await page.reload({ waitUntil: "domcontentloaded", timeout: 60_000 }).catch(() => {});
-      const survived = await page.waitForSelector(".meridian-earnings-tab", { timeout: 25_000 }).catch(() => null);
-      if (!survived) {
-        record({
-          severity: "P2",
-          viewport: vp.name,
-          where: "deeplink",
-          issue: `reloading ${url.slice(0, 80)} does not restore the selected earnings event`,
-        });
+      // A SWALLOWED reload is not evidence of anything. The first version caught the reload
+      // error and then timed out waiting for the tab bar on a page that had never navigated,
+      // and reported that as a product defect — a mobile "deep link does not restore" verdict
+      // that a direct probe disproved in one run (tab bar present, correct row active, detail
+      // rendered). Report a failed navigation as HARNESS, and retry once, because a dead
+      // connection here is a draining ECS replica.
+      let reloaded = true;
+      try {
+        await page.reload({ waitUntil: "domcontentloaded", timeout: 60_000 });
+      } catch {
+        await page.waitForTimeout(10_000);
+        try {
+          await page.reload({ waitUntil: "domcontentloaded", timeout: 60_000 });
+        } catch (e) {
+          reloaded = false;
+          record({
+            severity: "HARNESS",
+            viewport: vp.name,
+            where: "deeplink",
+            issue: `reload failed twice, deep link NOT tested — ${String(e?.message ?? e).slice(0, 90)}`,
+          });
+        }
+      }
+      if (reloaded) {
+        const survived = await page.waitForSelector(".meridian-earnings-tab", { timeout: 40_000 }).catch(() => null);
+        if (!survived) {
+          record({
+            severity: "P2",
+            viewport: vp.name,
+            where: "deeplink",
+            issue: `reloading ${url.slice(0, 80)} does not restore the selected earnings event`,
+          });
+        }
       }
     } else {
       record({

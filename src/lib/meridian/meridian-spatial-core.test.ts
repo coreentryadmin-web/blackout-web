@@ -6,7 +6,8 @@ import {
   orbitalPoint,
   orbitalGeometry,
   orbitalLabelOffset,
-  ORBIT_LABEL_MAX_W,
+  ORBIT_INNER,
+  MIN_ORBITAL_SIZE,
   tiltFromPointer,
   ringStack,
 } from "./meridian-spatial-core";
@@ -50,7 +51,7 @@ test("orbitalLayout: heavier pillars sit CLOSER to the centre", () => {
   const flow = nodes.find((n) => n.pillar === "flow")!; // weight 4, the heaviest
   const dark = nodes.find((n) => n.pillar === "dark_pool")!; // weight 1, the lightest
   assert.ok(flow.radius < dark.radius, "influence must read as proximity to the answer");
-  assert.equal(flow.radius, 0.34, "the heaviest pillar sits on the inner orbit");
+  assert.equal(flow.radius, ORBIT_INNER, "the heaviest pillar sits on the inner orbit");
   assert.equal(dark.radius, 1, "the lightest reaches the rim — the full range is used");
 });
 
@@ -187,7 +188,7 @@ function labelBoxes(size: number, weight: (i: number) => number) {
     const { lx, ly, anchor } = orbitalLabelOffset(n, geo);
     const cx = half + Math.cos(a) * n.radius * geo.R + lx;
     const cy = half + Math.sin(a) * n.radius * geo.R + ly;
-    const w = Math.min(ORBIT_LABEL_MAX_W, n.label.length * CHAR_PX + 4);
+    const w = Math.min(geo.labelMaxW, n.label.length * CHAR_PX + 4);
     const shift = anchor === "0%" ? 0 : anchor === "-100%" ? -1 : -0.5;
     const x0 = cx + shift * w;
     return { label: n.label, x0, x1: x0 + w, y0: cy - LINE_PX / 2, y1: cy + LINE_PX / 2 };
@@ -215,3 +216,33 @@ for (const [regime, weight] of WEIGHT_REGIMES) {
     });
   }
 }
+
+/**
+ * The innermost orbit must CLEAR the core mark.
+ *
+ * Regression guard for a live defect on AXIL: radius encodes INVERSE weight, so the heaviest
+ * pillar sits innermost — and at ORBIT_INNER = 0.34 its orb painted straight over the centre.
+ * The numbers below mirror the component and the stylesheet: orb diameter is `14 + size * 22`
+ * (size ≤ 1), and `.ms-core-dot` is 12px.
+ */
+test("orbital: the innermost orb clears the core mark at every rendered size", () => {
+  const MAX_ORB_R = (14 + 22) / 2;
+  const CORE_R = 6;
+  // 310 and 400 are the collapsed and expanded sizes the report panel actually renders.
+  for (const size of [200, 260, 310, 340, 400]) {
+    const geo = orbitalGeometry(size);
+    const gap = ORBIT_INNER * geo.R - MAX_ORB_R - CORE_R;
+    assert.ok(gap >= 0, `at ${size}px the innermost orb overlaps the core by ${(-gap).toFixed(1)}px`);
+  }
+});
+
+test("orbitalGeometry: a label is never allowed to be wider than the room it has", () => {
+  for (const size of [220, 260, 310, 340, 400, 520]) {
+    const geo = orbitalGeometry(size);
+    // Derived from the EFFECTIVE box, not the requested one — below the floor they differ.
+    assert.equal(geo.labelMaxW, geo.size / 2 - geo.rimR, "labelMaxW must be derived, not assumed");
+    assert.ok(geo.labelMaxW > 0, `no label room at ${size}px`);
+    assert.ok(geo.R > 0, `no disc at ${size}px`);
+    assert.ok(geo.size >= MIN_ORBITAL_SIZE, "the box never goes below the legibility floor");
+  }
+});

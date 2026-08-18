@@ -10889,3 +10889,46 @@ that gap by computing label boxes from the same placement functions the componen
 fail against the old geometry (verified, not assumed). The new
 `scripts/audit/meridian-interaction-audit.mjs` measures the pixel/behaviour class directly and
 independently reproduced #1 as `"MERIDIAN" ∩ "Fundamentals" 24x10px` on all three viewports.
+
+## 2026-08-18 — Meridian REPORT: orb over the core, ellipsised labels, and empty panel shells — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P2 (orb over core), P3 (ellipsis, empty shells, tap targets) |
+| **Found by** | reading the post-deploy live screenshot of prod `/meridian` (AXIL), plus the clipped-text check in `meridian-interaction-audit.mjs` |
+| **Status** | FIXED |
+
+The previous fix stopped the orbital labels colliding with each other. Looking at the result on
+prod surfaced three more things the overlap check could not see.
+
+**#1 — the innermost orb painted over the core mark (P2).** Radius encodes INVERSE weight, so the
+HEAVIEST pillar — the one a reader most needs — sits innermost, and at `ORBIT_INNER = 0.34` its orb
+covered the centre. Fixed by raising the inner orbit to 0.42, and by deleting the core's
+"MERIDIAN" caption: it was redundant (the panel is titled, and the halo above already carries the
+verdict) and it was the thing making the centre wide enough to be hit. A test now asserts the
+clearance directly — `ORBIT_INNER × R − maxOrbRadius − coreRadius >= 0` at every size the report
+panel actually renders — instead of trusting a hand-picked constant.
+
+**#2 — three labels ellipsised (P3).** "Street / analysts", "News & catalysts" and "Insider
+activity" all hit the 68px cap. The cap was a CONSTANT that had to agree with a geometry, which is
+a constant that eventually disagrees with it. `labelMaxW` is now DERIVED (`box/2 − rimR`) and
+handed to CSS as a custom property, so a label can never be allowed to be wider than the room it
+has; the margin that sets that room went 76 → 96 and the panel's disc grew to match (310/400).
+
+**#3 — a legibility floor (P3).** Below ~300px the disc cannot be drawn honestly: the innermost
+orb stops clearing the core whatever the label cap is. Rather than render a broken diagram at
+whatever size it was handed, `orbitalGeometry` clamps to `MIN_ORBITAL_SIZE` and the component
+sizes its box from `geo.size`. Refusing to shrink past a legibility limit is the same principle
+as "no data, no mark".
+
+**#4 — empty panel shells (P3).** A `.mr-panel` whose every child rendered null still painted its
+border and padding, leaving a bordered empty box on the grid (live: the revision/target panel on a
+name carrying neither). The primitives are right to return null; the SHELL had to disappear too —
+`.mr-panel:empty { display: none }`, which is exact, because a component that renders null
+contributes no node.
+
+**#5 — remaining sub-24px targets (P3).** Beat-history rows (19px) and the supporting-evidence
+toggle (13px) now carry a real `min-height`. The orbital orbs keep their drawn size, which ENCODES
+contribution, and take an invisible 26px hit pad instead.

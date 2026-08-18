@@ -221,7 +221,7 @@ export function MeridianEarningsReportPanel({ ticker, intel, enrichment, eventAt
           <MeridianOrbital
             signals={report.signals}
             verdict={report.verdict as Lean}
-            size={showOrbital ? 340 : 250}
+            size={showOrbital ? 400 : 310}
             onPillarClick={(pillar) => setOpenDim(PILLAR_DIMENSION[pillar] ?? null)}
           />
         </div>
