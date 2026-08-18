@@ -38,6 +38,57 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-08-18 — [FINDING, P1 member-visible] Beads painted as solid slabs — a fixed px radius against ~5.4px of bar spacing — FIXED
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Severity** | P1 (member-visible — the rail buried the candles it annotates, and flattened the size channel) |
+| **Scope** | `vector-wall-rail-core.ts` (`clampTuningToSpacing`, `closestRowGapPx`), `vector-wall-rail-primitive.ts` (`project`) |
+| **Status** | FIXED — bead ceiling derived from bar spacing + row gap; 8 unit tests pinned to the measured geometry |
+
+**Root cause.** Bead radius was a fixed pixel constant (`HALF_PX_MAX = 7.5`, i.e. up to 15px across)
+with no relation to the room on screen. Measured off a live screenshot of `/vector` at the 3-minute
+timeframe: **~130 bars across ~700px = ~5.4px of horizontal room per bar**. Every bead overlapped
+its neighbours roughly **threefold**, so a row of beads rendered as one continuous painted band.
+Vertically it was nearly as tight — SPX's 5-point strikes are ~22px apart at that zoom, against a
+15px bead — so rows nearly touched and the candles underneath were almost entirely obscured.
+
+**This also explains a member report I had twice dismissed as a data question.** "All the beads look
+the same size" is a correct description of the PICTURE and a wrong description of the DATA: the rail
+genuinely carries 46-54 distinct radii per ticker (measured live across 8 tickers through the real
+`beadRadiusForPctShare`), but when adjacent beads overlap 3x a viewer sees their union — a slab of
+constant thickness. The size channel was intact in the data and destroyed at paint time.
+
+**Why it survived a previous fix.** `HALF_PX_MAX` was already trimmed 9 -> 7.5 for this exact
+complaint ("it literally paints the candles fully"), and the screenshot above is from AFTER that
+trim. A fixed pixel radius cannot be correct across timeframes: bar spacing moves by an order of
+magnitude between 1m and 1W, and the price-axis gap between adjacent rows moves with both the
+ticker's strike increment and the zoom. Lowering the constant treats the symptom at one zoom level.
+
+**Fix.** `clampTuningToSpacing` budgets the bead against the room actually available on BOTH axes:
+diameter <= 85% of bar spacing (beads stay discrete along a row) and <= 55% of the closest row gap
+(rows stay visibly separate, and stop burying candles). Properties held deliberately:
+- **It only ever SHRINKS.** At wide zoom the profile's own ceiling still applies, so this cannot
+  inflate a bead past its tuned size and the Compare pane stays ~55%-size.
+- **The floor/ceiling RATIO is preserved where there is room**, because that ratio IS the size
+  channel — collapsing the ceiling while pinning the floor would make every bead one size, i.e. the
+  very failure being fixed. Where a dense axis leaves no room, the range compresses toward
+  `minRadiusPx` and the size channel honestly carries less.
+- **Unusable measurements constrain nothing** (missing bar spacing, a single drawn row) so a failed
+  measurement degrades to the profile's tuning rather than collapsing the rail to the floor.
+- Coincident rows (two strikes on the same pixel) are ignored rather than reported as a 0 gap, which
+  would clamp every bead to the floor on a rounding coincidence.
+
+**Blast radius.** Render layer only — no change to the magnitude ladder, the recorded payload, colour
+or opacity. Both render profiles (`default`, `compare`) pass through the same budget.
+
+**How this was found, and the process lesson.** By taking a screenshot and looking at it. Two prior
+analyses in the same session diagnosed the size channel from percentile tables and got it wrong in
+both directions — first blaming a dead code path, then declaring sizing healthy because the numbers
+were healthy. The numbers WERE healthy. The picture was not. A visual defect needs a visual
+measurement.
+
 ## 2026-08-18 — [FINDING, P1 member-visible] Bead rows were dotted because membership was re-ranked from scratch every bucket — mean row fill 0.35 on SPX — FIXED
 > **kind:** `FINDING`
 

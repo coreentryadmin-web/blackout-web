@@ -6,6 +6,9 @@ import {
   HALF_PX_MAX,
   HALF_PX_MIN,
   BEAD_TUNING_DEFAULT,
+  BEAD_TUNING_COMPARE,
+  clampTuningToSpacing,
+  closestRowGapPx,
   beadKey,
   beadRenderTuning,
   fillAlpha,
@@ -308,4 +311,87 @@ test("trailingRefs: handles empty, single-point and non-finite pct without throw
   const withNaN = trailingRefs([{ time: 0, pct: NaN }, { time: 10, pct: 4 }], 900);
   assert.equal(withNaN[0], null);
   assert.equal(withNaN[1], null, "a NaN point is never adopted as a baseline");
+});
+
+// ── SPACING BUDGET (2026-08-18) ──────────────────────────────────────────────────────────────
+// A live screenshot of /vector at 3m showed the rail as painted slabs, not beads: ~5.4px of
+// horizontal room per bar against a bead up to 15px wide, so every bead overlapped its neighbours
+// ~3x and the rows buried the candles. These pin the budget that stops it.
+
+/** The geometry actually measured off that screenshot: 130 three-minute bars across ~700px, SPX
+ *  5-point strikes ~22px apart on the price axis. */
+const MEASURED_3M = { barSpacingPx: 5.4, rowGapPx: 22 };
+
+test("THE DEFECT: at the measured 3m geometry a bead no longer spans its neighbours", () => {
+  const t = clampTuningToSpacing(BEAD_TUNING_DEFAULT, MEASURED_3M);
+  assert.ok(t.halfMax * 2 <= MEASURED_3M.barSpacingPx, "diameter must fit inside one bar of room");
+  assert.ok(
+    t.halfMax < BEAD_TUNING_DEFAULT.halfMax,
+    "the profile ceiling must actually have been reduced"
+  );
+});
+
+test("rows stay visibly separated — the property the slab render lost", () => {
+  // A tight price axis (single-name strikes close together) must shrink beads even when there is
+  // plenty of horizontal room, or rows merge vertically instead of horizontally.
+  const t = clampTuningToSpacing(BEAD_TUNING_DEFAULT, { barSpacingPx: 60, rowGapPx: 8 });
+  assert.ok(t.halfMax * 2 < 8, "a bead must not fill the gap to the next row");
+});
+
+test("the budget only ever SHRINKS — a wide zoom keeps the profile's own ceiling", () => {
+  // Otherwise this would inflate beads past the size each profile was tuned for, and the Compare
+  // pane (deliberately ~55% size) would grow to match the main chart.
+  const wide = { barSpacingPx: 400, rowGapPx: 400 };
+  assert.equal(clampTuningToSpacing(BEAD_TUNING_DEFAULT, wide), BEAD_TUNING_DEFAULT);
+  assert.equal(clampTuningToSpacing(BEAD_TUNING_COMPARE, wide), BEAD_TUNING_COMPARE);
+});
+
+test("the size channel survives compression as far as the floor allows", () => {
+  // Collapsing halfMax while pinning halfMin would make every bead one size — the exact perceptual
+  // failure this fix exists to remove.
+  const t = clampTuningToSpacing(BEAD_TUNING_DEFAULT, MEASURED_3M);
+  assert.ok(t.halfMin < t.halfMax, "a usable range must remain");
+  assert.ok(t.halfMin >= BEAD_TUNING_DEFAULT.minRadiusPx, "beads must stay visible");
+});
+
+test("a bead never shrinks below the profile's minimum radius", () => {
+  // An absurdly dense axis must not render an invisible rail — better a slightly crowded bead than
+  // no bead, since the rail's whole job is showing where the walls are.
+  const t = clampTuningToSpacing(BEAD_TUNING_DEFAULT, { barSpacingPx: 0.2, rowGapPx: 0.2 });
+  assert.ok(t.halfMax >= BEAD_TUNING_DEFAULT.minRadiusPx);
+  assert.ok(t.halfMin >= BEAD_TUNING_DEFAULT.minRadiusPx);
+});
+
+test("unusable measurements contribute NO constraint", () => {
+  // A missing bar spacing or a single drawn row must degrade to the profile's tuning, not collapse
+  // the rail to the floor.
+  for (const b of [
+    { barSpacingPx: NaN, rowGapPx: Infinity },
+    { barSpacingPx: 0, rowGapPx: Infinity },
+    { barSpacingPx: -5, rowGapPx: -5 },
+  ]) {
+    assert.equal(clampTuningToSpacing(BEAD_TUNING_DEFAULT, b), BEAD_TUNING_DEFAULT, JSON.stringify(b));
+  }
+});
+
+test("closestRowGapPx returns the TIGHTEST pair, and ignores coincident rows", () => {
+  assert.equal(closestRowGapPx([100, 140, 152, 300]), 12);
+  // Two rows on the same pixel are already indistinguishable; a 0 gap would clamp every bead to the
+  // floor on the strength of a rounding coincidence.
+  // 100 -> 100.2 is ignored as coincident; the surviving gap is 160 - 100.2.
+  assert.equal(closestRowGapPx([100, 100.2, 160]), 59.8);
+  assert.equal(closestRowGapPx([100]), Infinity, "one row is unconstrained vertically");
+  assert.equal(closestRowGapPx([]), Infinity);
+  assert.equal(closestRowGapPx([NaN, 100, 130]), 30);
+});
+
+test("the ceiling scales monotonically with available room", () => {
+  // Zooming in must never make a bead bigger, and zooming out never smaller — a non-monotonic
+  // ceiling would make beads pulse as the user pans.
+  let prev = 0;
+  for (const spacing of [1, 2, 4, 8, 16, 32, 64]) {
+    const t = clampTuningToSpacing(BEAD_TUNING_DEFAULT, { barSpacingPx: spacing, rowGapPx: 400 });
+    assert.ok(t.halfMax >= prev, `halfMax shrank going from tighter to wider at ${spacing}`);
+    prev = t.halfMax;
+  }
 });
