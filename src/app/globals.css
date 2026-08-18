@@ -7905,6 +7905,27 @@ html.product-shell .nav-mega {
     box-shadow: inset 0 0 0 1px rgba(168, 85, 247, 0.4);
   }
 
+  /* NODES segment — teal, matching the focus-mode control rather than the cyan lens/DTE family, so
+     the two "how much chart do I want" controls read as one group. */
+  .vector-desk-seg-btn.is-active.is-nodes {
+    background: rgba(45, 212, 191, 0.2);
+    color: rgb(240, 253, 250);
+    box-shadow: inset 0 0 0 1px rgba(45, 212, 191, 0.34);
+  }
+
+  /* Inline group label ("Nodes"). The other segments are self-describing from their own chips; a
+     bare 6/8/12/16/20 ladder is not, so this one is named. */
+  .vector-desk-seg-label {
+    padding: 0 0.375rem 0 0.5rem;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(153, 246, 228, 0.62);
+    white-space: nowrap;
+  }
+
   .vector-desk-seg-btn.is-active.is-dte {
     background: rgba(34, 211, 238, 0.18);
     color: rgb(224, 251, 255);

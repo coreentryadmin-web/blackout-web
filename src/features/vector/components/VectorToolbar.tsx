@@ -4,6 +4,7 @@ import { VectorDteToggle } from "@/features/vector/components/VectorDteToggle";
 
 import { VectorLensToggle } from "@/features/vector/components/VectorLensToggle";
 import { VectorBeadRailToggle } from "@/features/vector/components/VectorBeadRailToggle";
+import { VectorNodesToggle } from "@/features/vector/components/VectorNodesToggle";
 import { VectorReplayControls } from "@/features/vector/components/VectorReplayControls";
 import { VectorTimeframeSelect } from "@/features/vector/components/VectorTimeframeSelect";
 import { VectorIndicatorMenu } from "@/features/vector/components/VectorIndicatorMenu";
@@ -15,6 +16,7 @@ import type { VectorWallLens } from "@/features/vector/lib/vector-wall-history";
 import type { VectorTimeframeMinutes } from "@/features/vector/lib/vector-bar-timeframes";
 import type { VectorDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
 import type { VectorIndicatorId, VectorOpeningRangeMinutes } from "@/features/vector/lib/vector-indicators-config";
+import type { VectorNodeDensity } from "@/features/vector/lib/vector-node-density";
 
 type Props = {
   interval: VectorTimeframeMinutes;
@@ -69,6 +71,11 @@ type Props = {
   hideReplayControls?: boolean;
   /** Member drawing tools — consolidated under one Tools dropdown. */
   drawTools?: VectorDrawToolsProps;
+  /** NODES control — wall/bead rows per side. "auto" follows the timeframe (today's behaviour). */
+  nodeDensity: VectorNodeDensity;
+  onNodeDensity: (density: VectorNodeDensity) => void;
+  /** What "auto" resolves to right now, so the AUTO chip can show a real count. */
+  nodeAutoCount: number;
 };
 
 /** Single compact toolbar — timeframe left, replay + lens right. */
@@ -115,6 +122,9 @@ export function VectorToolbar(props: Props) {
     comparePane = false,
     hideReplayControls = false,
     drawTools,
+    nodeDensity,
+    onNodeDensity,
+    nodeAutoCount,
   } = props;
 
   const drawMenu = drawTools ? <VectorDrawToolsMenu {...drawTools} /> : null;
@@ -232,6 +242,12 @@ export function VectorToolbar(props: Props) {
           lens={lens}
           exposeTestIds={false}
         />
+        <VectorNodesToggle
+          value={nodeDensity}
+          onChange={onNodeDensity}
+          autoCount={nodeAutoCount}
+          exposeTestIds={false}
+        />
         {trailSlot}
       </div>
 
@@ -293,6 +309,7 @@ export function VectorToolbar(props: Props) {
             />
           ) : null}
           <VectorBeadRailToggle enabled={indicators} onToggle={onToggleIndicator} lens={lens} />
+          <VectorNodesToggle value={nodeDensity} onChange={onNodeDensity} autoCount={nodeAutoCount} />
           {trailSlot}
         </div>
       </div>
