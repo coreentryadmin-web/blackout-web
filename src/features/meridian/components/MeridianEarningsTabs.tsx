@@ -9,6 +9,7 @@ import {
   MeridianDataCard,
 } from "./meridian-ui";
 import { MeridianEarningsIntelPanel } from "./MeridianEarningsIntelPanel";
+import { etWallClockToIso } from "@/lib/meridian/meridian-viz-core";
 import { MeridianEarningsReportPanel } from "./MeridianEarningsReportPanel";
 
 type EarningsTab = "report" | "estimates" | "positioning" | "history";
@@ -68,6 +69,10 @@ type Props = {
 export function MeridianEarningsTabs({ detail }: Props) {
   const { enrichment, intel, pack } = detail;
   const cal = enrichment.earnings_calendar;
+  // The print instant for the countdown. The feed reports an ET WALL CLOCK date + time, so it
+  // has to be composed through the DST-aware converter — a hardcoded offset is wrong for
+  // roughly half the calendar and reads as a real scheduling error on an event clock.
+  const eventAt = etWallClockToIso(cal?.date ?? null, cal?.report_time_et ?? cal?.time ?? null);
   const defaultTab: EarningsTab = enrichment.post_print?.headline ? "estimates" : "report";
   const [tab, setTab] = useState<EarningsTab>(defaultTab);
   const hadActualRef = useRef(Boolean(cal?.actual_eps != null));
@@ -111,7 +116,11 @@ export function MeridianEarningsTabs({ detail }: Props) {
               catalysts: enrichment.catalysts,
               analyst_revisions: enrichment.analyst_revisions,
               insider_activity: enrichment.insider_activity,
+              print_history: enrichment.print_history,
+              price_targets: enrichment.price_targets,
+              street_skew: enrichment.street_skew,
             }}
+            eventAt={eventAt}
           />
           <div className="meridian-banner-stack">
             {enrichment.post_print?.headline && (

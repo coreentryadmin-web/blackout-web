@@ -17,6 +17,9 @@ import {
   sparklinePoints,
   momentumSignal,
   anomalySignal,
+  dimensionRollup,
+  etWallClockToIso,
+  resolveCollisions,
 } from "./meridian-viz-core";
 
 // ── null propagation. The repo's recurring defect is Number(null) === 0; on a price rail a
@@ -285,4 +288,114 @@ test("anomalySignal: demands a real sample before calling anything anomalous", (
   assert.equal(anomalySignal(100, [1, 2, 3, 2, 1], 2), "anomaly");
   assert.equal(anomalySignal(2, [1, 2, 3, 2, 1], 2), null);
   assert.equal(anomalySignal(5, [2, 2, 2, 2], 2), null, "zero variance → no anomaly, no divide-by-zero");
+});
+
+// ── dimension rollup
+const SIGS = [
+  { pillar: "flow", lean: "bullish", weight: 3 },
+  { pillar: "dark_pool", lean: "bullish", weight: 2 },
+  { pillar: "thermal", lean: "bearish", weight: 2 },
+  { pillar: "vector", lean: "bullish", weight: 2 },
+  { pillar: "analyst", lean: "bearish", weight: 4 },
+  { pillar: "history", lean: "bullish", weight: 1 },
+  { pillar: "surprise", lean: "bullish", weight: 1 },
+];
+
+test("dimensionRollup: 11 pillars collapse to the five dimensions a trader reasons in", () => {
+  const d = dimensionRollup(SIGS);
+  assert.deepEqual(d.map((x) => x.dimension), ["FLOW", "STRUCTURE", "SENTIMENT", "HISTORY"]);
+  assert.equal(d.find((x) => x.dimension === "FLOW")!.contributing, 2, "flow + dark_pool");
+});
+
+test("dimensionRollup: internal disagreement lowers intensity — it must not cancel to a confident zero", () => {
+  const d = dimensionRollup(SIGS);
+  const structure = d.find((x) => x.dimension === "STRUCTURE")!;
+  // thermal bearish 2 vs vector bullish 2 -> net 0 of total 4.
+  assert.equal(structure.net, 0);
+  assert.equal(structure.intensity, 0);
+  assert.equal(structure.lean, "neutral", "a fighting dimension reads neutral, not falsely certain");
+  // And a UNANIMOUS dimension of the same total weight reads maximal — the contrast is the point.
+  const flow = d.find((x) => x.dimension === "FLOW")!;
+  assert.equal(flow.intensity, 100);
+});
+
+test("dimensionRollup: dimensions with no pillars are omitted, never drawn empty", () => {
+  const d = dimensionRollup([{ pillar: "flow", lean: "bullish", weight: 1 }]);
+  assert.deepEqual(d.map((x) => x.dimension), ["FLOW"]);
+});
+
+test("dimensionRollup: unknown pillars are ignored rather than silently bucketed", () => {
+  const d = dimensionRollup([{ pillar: "made_up", lean: "bullish", weight: 9 }]);
+  assert.deepEqual(d, []);
+});
+
+test("dimensionRollup: neutral pillars add weight without direction", () => {
+  const d = dimensionRollup([
+    { pillar: "flow", lean: "bullish", weight: 1 },
+    { pillar: "dark_pool", lean: "neutral", weight: 3 },
+  ]);
+  const flow = d[0]!;
+  assert.equal(flow.net, 1);
+  assert.equal(flow.intensity, 25, "1 of 4 total weight — neutral dilutes conviction");
+});
+
+// ── ET wall clock → UTC. A hardcoded offset is wrong for half the year.
+test("etWallClockToIso: EDT (summer) resolves at UTC-4", () => {
+  assert.equal(etWallClockToIso("2026-08-19", "16:15:00"), "2026-08-19T20:15:00.000Z");
+});
+
+test("etWallClockToIso: EST (winter) resolves at UTC-5 — the same code, a different offset", () => {
+  assert.equal(etWallClockToIso("2026-01-14", "16:15:00"), "2026-01-14T21:15:00.000Z");
+});
+
+test("etWallClockToIso: a pre-open time resolves on the same ET date", () => {
+  assert.equal(etWallClockToIso("2026-08-19", "06:30:00"), "2026-08-19T10:30:00.000Z");
+});
+
+test("etWallClockToIso: missing time defaults to ET midnight, not UTC midnight", () => {
+  assert.equal(etWallClockToIso("2026-08-19", null), "2026-08-19T04:00:00.000Z");
+});
+
+test("etWallClockToIso: malformed input → null rather than a plausible wrong instant", () => {
+  assert.equal(etWallClockToIso("19-08-2026", "16:15"), null);
+  assert.equal(etWallClockToIso(null, "16:15"), null);
+  assert.equal(etWallClockToIso("2026-08-19", "99:99"), null);
+});
+
+// ── collision resolution. Measured defect: king node 780 and max pain 775 rendered 7px apart
+// in a 132px ladder with ~14px rows, so the two labels printed on top of each other.
+test("resolveCollisions: separates crowded labels to at least the minimum gap", () => {
+  const out = resolveCollisions([0.5, 0.52], 0.1);
+  assert.ok(out[1]! - out[0]! >= 0.0999, `expected >=0.1 gap, got ${out[1]! - out[0]!}`);
+});
+
+test("resolveCollisions: ORDER is preserved — a resolver that re-sorts destroys spatial truth", () => {
+  const input = [0.9, 0.1, 0.5, 0.52];
+  const out = resolveCollisions(input, 0.12);
+  // Ranks by value must match ranks by resolved position.
+  const rankIn = input.map((v) => input.filter((x) => x < v).length);
+  const rankOut = out.map((v) => out.filter((x) => x < v).length);
+  assert.deepEqual(rankOut, rankIn);
+});
+
+test("resolveCollisions: a stack pushed past the top is pulled back inside bounds", () => {
+  const out = resolveCollisions([0.95, 0.96, 0.97], 0.1);
+  assert.ok(Math.max(...out) <= 1, "nothing escapes the track");
+  assert.ok(Math.min(...out) >= 0);
+  assert.ok(out[1]! - out[0]! >= 0.0999 && out[2]! - out[1]! >= 0.0999, "gaps survive the pull-back");
+});
+
+test("resolveCollisions: when they cannot all fit, they spread evenly rather than pile up", () => {
+  const out = resolveCollisions([0.5, 0.5, 0.5, 0.5, 0.5], 0.4); // 4*0.4 > 1
+  assert.deepEqual(out.map((v) => Math.round(v * 100) / 100), [0, 0.25, 0.5, 0.75, 1]);
+});
+
+test("resolveCollisions: already-separated positions are left alone", () => {
+  const input = [0.1, 0.5, 0.9];
+  assert.deepEqual(resolveCollisions(input, 0.05), input);
+});
+
+test("resolveCollisions: degenerate inputs", () => {
+  assert.deepEqual(resolveCollisions([], 0.1), []);
+  assert.deepEqual(resolveCollisions([0.4], 0.1), [0.4]);
 });

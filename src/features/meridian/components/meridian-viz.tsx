@@ -33,6 +33,7 @@ import {
   num,
   pctAlong,
   priceDomain,
+  resolveCollisions,
   revisionMomentum,
   sparklinePoints,
   structureLadder,
@@ -321,12 +322,24 @@ export function MeridianStructureLadder({
 }) {
   const levels = useMemo(() => structureLadder(thermal), [thermal]);
   const domain = useMemo(() => priceDomain(levels.map((l) => l.value)), [levels]);
+  // Rows carry their true price, but two levels a few cents apart land on the same pixel and
+  // print on top of each other — measured live: king node 780 and max pain 775 resolved 7px
+  // apart in a 132px ladder with ~14px rows. The resolver nudges them apart while PRESERVING
+  // ORDER, so spatial truth survives; only the drawn position moves, never the value.
+  // MIN_GAP is one row height as a fraction of the ladder (16/132).
+  const placed = useMemo(() => {
+    if (!domain) return [];
+    return resolveCollisions(
+      levels.map((l) => 1 - (pctAlong(l.value, domain) ?? 0)),
+      16 / 132
+    );
+  }, [levels, domain]);
   if (levels.length < 2 || !domain) return null;
 
   return (
     <div className="mv-ladder">
-      {levels.map((l) => {
-        const p = pctAlong(l.value, domain)!;
+      {levels.map((l, idx) => {
+        const p = placed[idx] ?? 0;
         // Buttons, not divs with hover handlers. Cross-highlighting a level across the other
         // panels is a real interaction, so it has to reach a keyboard too — `onFocus` mirrors
         // `onMouseEnter` and Tab order comes free. A div with onMouseEnter would put this
@@ -337,7 +350,7 @@ export function MeridianStructureLadder({
             type="button"
             key={l.key}
             className={`mv-ladder-row mv-ladder-${l.key}`}
-            style={{ ["--mv-pos" as string]: `${(1 - p) * 100}%` }}
+            style={{ ["--mv-pos" as string]: `${p * 100}%` }}
             onMouseEnter={() => onLevelHover?.(l.value)}
             onMouseLeave={() => onLevelHover?.(null)}
             onFocus={() => onLevelHover?.(l.value)}

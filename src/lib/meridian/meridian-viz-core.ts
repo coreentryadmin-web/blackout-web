@@ -551,3 +551,183 @@ export function anomalySignal(
   if (!(sd > 0)) return null;
   return Math.abs(v - mean) >= sigma * sd ? "anomaly" : null;
 }
+
+// ── Signal dimension rollup ──────────────────────────────────────────────────────────
+
+/**
+ * The report serves up to 11 PILLARS. Eleven rings is not a decision surface — it is the same
+ * wall of detail the redesign exists to remove, drawn as circles. They roll up into five
+ * DIMENSIONS a trader actually reasons in, each of which stays clickable down to the pillars
+ * that produced it.
+ *
+ * `fundamentals` deliberately joins HISTORY rather than earning a sixth ring: it answers "what
+ * does this company look like coming in", which is the same question as the track record, and a
+ * lone ring backed by one pillar reads as more independent evidence than it is.
+ */
+export const PILLAR_DIMENSION: Record<string, MeridianDimension> = {
+  flow: "FLOW",
+  dark_pool: "FLOW",
+  thermal: "STRUCTURE",
+  vector: "STRUCTURE",
+  analyst: "SENTIMENT",
+  news: "CATALYST",
+  insider: "CATALYST",
+  history: "HISTORY",
+  surprise: "HISTORY",
+  yoy: "HISTORY",
+  fundamentals: "HISTORY",
+};
+
+export type MeridianDimension = "FLOW" | "STRUCTURE" | "SENTIMENT" | "CATALYST" | "HISTORY";
+
+export const DIMENSION_ORDER: MeridianDimension[] = ["FLOW", "STRUCTURE", "SENTIMENT", "CATALYST", "HISTORY"];
+
+export type DimensionRead = {
+  dimension: MeridianDimension;
+  lean: "bullish" | "bearish" | "neutral";
+  /** 0..100 — weighted conviction. Not a score out of the whole book; a per-dimension read. */
+  intensity: number;
+  /** Signed weighted score, sign carries direction. */
+  net: number;
+  pillars: string[];
+  contributing: number;
+};
+
+/**
+ * Roll pillar signals into dimension reads.
+ *
+ * Intensity is |net| over TOTAL weight in that dimension, so two pillars that disagree produce
+ * a LOW intensity rather than cancelling into a confident-looking zero — "flow says nothing"
+ * and "flow is fighting itself" must not render identically. A dimension with no contributing
+ * pillars is omitted entirely rather than drawn as an empty ring.
+ */
+export function dimensionRollup(
+  signals: ReadonlyArray<{ pillar?: string | null; lean?: string | null; weight?: number | null; score?: number | null }> | null | undefined
+): DimensionRead[] {
+  const buckets = new Map<MeridianDimension, { net: number; total: number; pillars: string[] }>();
+  for (const s of signals ?? []) {
+    const dim = PILLAR_DIMENSION[String(s.pillar ?? "")];
+    if (!dim) continue;
+    const weight = Math.abs(num(s.weight) ?? 1) || 1;
+    const dir = s.lean === "bullish" ? 1 : s.lean === "bearish" ? -1 : 0;
+    const b = buckets.get(dim) ?? { net: 0, total: 0, pillars: [] };
+    b.net += dir * weight;
+    b.total += weight;
+    if (s.pillar) b.pillars.push(String(s.pillar));
+    buckets.set(dim, b);
+  }
+  return DIMENSION_ORDER.filter((d) => buckets.has(d)).map((dimension) => {
+    const b = buckets.get(dimension)!;
+    const intensity = b.total > 0 ? Math.round((Math.abs(b.net) / b.total) * 100) : 0;
+    return {
+      dimension,
+      lean: b.net > 0 ? "bullish" : b.net < 0 ? "bearish" : "neutral",
+      intensity,
+      net: round(b.net, 3),
+      pillars: b.pillars,
+      contributing: b.pillars.length,
+    };
+  });
+}
+
+// ── ET wall-clock → UTC instant ──────────────────────────────────────────────────────
+
+/**
+ * Compose an ET calendar date + wall-clock time into a UTC ISO instant.
+ *
+ * Needed because the earnings feed reports "2026-08-19" + "16:15:00" as ET WALL CLOCK, while a
+ * countdown needs an absolute instant. A hardcoded `-05:00` is wrong for ~8 months of the year
+ * and a hardcoded `-04:00` for the other ~4 — either way the countdown is an hour off across
+ * half the calendar, which on an event clock reads as a real scheduling error.
+ *
+ * Method: guess the instant as if the wall clock were UTC, ask Intl what ET time that instant
+ * actually is, and correct by the difference. Repeated twice so an instant that lands inside a
+ * DST transition (where the first correction crosses the boundary) still converges.
+ */
+export function etWallClockToIso(ymd: string | null | undefined, hhmmss?: string | null): string | null {
+  if (!ymd || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return null;
+  const tm = /^(\d{1,2}):(\d{2})/.exec(String(hhmmss ?? "").trim());
+  const hh = tm ? Number(tm[1]) : 0;
+  const mm = tm ? Number(tm[2]) : 0;
+  if (!Number.isFinite(hh) || !Number.isFinite(mm) || hh > 23 || mm > 59) return null;
+
+  const [y, mo, d] = ymd.split("-").map(Number) as [number, number, number];
+  // The TARGET wall clock, held fixed. Drift must be measured against this, not against the
+  // moving `guess`: comparing to `guess` makes the second iteration re-apply a correction the
+  // first one already made, landing 8h off in EDT. (Caught by the DST tests, not by reading.)
+  const targetAsUtc = Date.UTC(y, mo - 1, d, hh, mm, 0);
+  let guess = targetAsUtc;
+
+  for (let i = 0; i < 2; i += 1) {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/New_York",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    }).formatToParts(new Date(guess));
+    const g = (t: string) => Number(parts.find((p) => p.type === t)?.value);
+    // `hour: "2-digit"` with hour12:false yields 24 for midnight in some ICU versions.
+    const asUtcOfEtReading = Date.UTC(g("year"), g("month") - 1, g("day"), g("hour") % 24, g("minute"), g("second"));
+    const drift = asUtcOfEtReading - targetAsUtc;
+    if (drift === 0) break;
+    guess -= drift;
+  }
+  return new Date(guess).toISOString();
+}
+
+// ── Label collision resolution ───────────────────────────────────────────────────────
+
+/**
+ * Nudge positions apart so spatially-placed labels stay readable, preserving ORDER.
+ *
+ * A ladder places rows at their true price, which is the entire point — but two levels a few
+ * cents apart land on the same pixel and print on top of each other. Measured on a real WMT-
+ * shaped book: king node 780 and max pain 775 resolved 7px apart in a 132px ladder, with rows
+ * ~14px tall, so the two labels were unreadable.
+ *
+ * The fix must NOT re-sort: a resolver that reorders would destroy the spatial truth the
+ * component exists to show. This does a forward sweep (push each item at least `minGap` past
+ * its predecessor), then a backward sweep to pull the stack back inside [0,1] if it overflowed.
+ * The VALUE text stays exact — only the drawn position moves, and only as far as it must.
+ *
+ * When the items cannot all fit at `minGap`, they distribute evenly across the full span:
+ * squashing is honest (they really are that close), silent overlap is not.
+ */
+export function resolveCollisions(positions: number[], minGap: number): number[] {
+  const n = positions.length;
+  if (n === 0) return [];
+  if (n === 1) return [clamp(positions[0]!, 0, 1)];
+
+  // Not enough room for everyone — spread evenly rather than pile up at an edge.
+  if (minGap * (n - 1) >= 1) {
+    const step = 1 / (n - 1);
+    const asc = positions.map((p, i) => ({ p, i })).sort((a, b) => a.p - b.p);
+    const out = new Array<number>(n);
+    asc.forEach((item, rank) => {
+      out[item.i] = rank * step;
+    });
+    return out;
+  }
+
+  const asc = positions.map((p, i) => ({ p: clamp(p, 0, 1), i })).sort((a, b) => a.p - b.p);
+  // Forward: enforce the gap going up.
+  for (let k = 1; k < n; k += 1) {
+    const prev = asc[k - 1]!.p;
+    if (asc[k]!.p - prev < minGap) asc[k]!.p = prev + minGap;
+  }
+  // Backward: if the stack pushed past 1, pull it down without breaking the gap.
+  if (asc[n - 1]!.p > 1) {
+    asc[n - 1]!.p = 1;
+    for (let k = n - 2; k >= 0; k -= 1) {
+      const next = asc[k + 1]!.p;
+      if (next - asc[k]!.p < minGap) asc[k]!.p = next - minGap;
+    }
+  }
+  const out = new Array<number>(n);
+  for (const item of asc) out[item.i] = clamp(item.p, 0, 1);
+  return out;
+}
