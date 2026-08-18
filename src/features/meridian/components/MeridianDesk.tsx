@@ -195,11 +195,7 @@ export function MeridianDesk() {
 
   return (
     <div className="meridian-desk meridian-desk-v2">
-      <MeridianHero
-        catalystCount={stats?.total}
-        next24h={stats?.next_24h}
-        asOf={data?.as_of}
-      />
+      <MeridianHero asOf={data?.as_of} />
 
       {stats && (
         <div className="meridian-stats-strip" aria-label="Timeline summary">
