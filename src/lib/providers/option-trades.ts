@@ -460,8 +460,35 @@ export async function fetchOptionTrades(
 // the two never collide. Never throws; returns null only when not configured / no spot.
 // ---------------------------------------------------------------------------
 
-/** Default premium floor for a print to count as "large" (env: OPTION_TRADES_LARGE_MIN_PREMIUM). */
-const LARGE_MIN_PREMIUM = envInt("OPTION_TRADES_LARGE_MIN_PREMIUM", 250_000);
+/**
+ * NOISE FLOOR for a single print — not the selection rule (env: OPTION_TRADES_LARGE_MIN_PREMIUM).
+ *
+ * ── WHY 250k WAS WRONG ───────────────────────────────────────────────────────────────
+ * This defaulted to $250,000, which is a sensible "large" cutoff for AGGREGATE flow (a whole
+ * sweep, a day's premium at a strike) and is off by more than an order of magnitude for a SINGLE
+ * print, which is what this function returns. Measured live 2026-08-18 during RTH, SPY 0DTE, 8
+ * near-ATM contracts, 60-minute window, straight off Polygon:
+ *
+ *   n=1210 prints · p50 $348 · p90 $2,380 · p99 $10,452 · max $37,410
+ *   prints >= $250,000: ZERO. prints >= $50,000: ZERO. prints >= $25,000: 3.
+ *
+ * The largest print in the whole hour was ~7x BELOW the floor, so the Vector flow overlay returned
+ * `largeFound: 0` on every single successful call — an empty overlay by construction, on the
+ * busiest option chain in the market. Confirmed end-to-end the same day: SPY/QQQ/NVDA/TSLA/META
+ * all answered 200 with `available:true, largeFound:0`.
+ *
+ * ── WHY A FLOOR AND NOT A THRESHOLD ──────────────────────────────────────────────────
+ * Selection is already `sort by premium desc → slice(0, maxPrints)` a few lines below, which is
+ * self-calibrating: on a busy 0DTE chain the effective cut is whatever the 50th-largest print is,
+ * and on a quiet single-name monthly it drops to whatever actually traded. That is the honest
+ * reading of "show the notable trades". This constant only has to keep sub-$5k noise out of the
+ * candidate set, so it is set just above the measured p90 rather than at a guessed "big number".
+ *
+ * It also feeds `flowMarkerSize`, which scales marker radius across [floor, 50x floor] = $5k-$250k
+ * here — a range the measured distribution actually spans, so markers differ in size instead of
+ * all pinning to one end.
+ */
+const LARGE_MIN_PREMIUM = envInt("OPTION_TRADES_LARGE_MIN_PREMIUM", 5_000);
 /** Default hard cap on prints returned (top-N by premium). Keeps payload + chart readable. */
 const LARGE_MAX_PRINTS = envInt("OPTION_TRADES_LARGE_MAX_PRINTS", 50);
 

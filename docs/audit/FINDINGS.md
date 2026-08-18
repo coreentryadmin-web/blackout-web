@@ -38,6 +38,60 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-08-18 — [FINDING, P1 member-visible] Vector flow-marker overlay was empty by construction — the "large print" floor was 7x above the largest print that exists — FIXED
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Severity** | P1 (member-visible — the options-flow overlay drew nothing, always, on every ticker) |
+| **Scope** | `option-trades.ts` (`LARGE_MIN_PREMIUM`), `vector-flow-markers.ts` (`DEFAULT_FLOW_MIN_PREMIUM`) |
+| **Status** | FIXED — floor re-derived from a live measured distribution; 3 unit tests pin it to that measurement |
+
+**Root cause.** `LARGE_MIN_PREMIUM` (and its client twin `DEFAULT_FLOW_MIN_PREMIUM`) defaulted to
+**$250,000 per SINGLE print**. That is a sensible cutoff for AGGREGATE flow — a whole sweep, a day's
+premium at a strike, which is what the Helix tape shows — and it is wrong by more than an order of
+magnitude for one print, which is what this path returns. Selection then never ran: the top-N sort
+a few lines below had an empty candidate set every time.
+
+**Evidence (live, RTH, 2026-08-18).** SPY 0DTE, 8 near-ATM contracts, 60-minute window, straight
+off Polygon:
+
+```
+n=1210 prints · p50 $348 · p90 $2,380 · p99 $10,452 · max $37,410
+prints >= $250,000: ZERO      >= $50,000: ZERO      >= $25,000: 3
+```
+
+The single largest print in the hour was ~7x BELOW the floor. Confirmed end-to-end through the
+served endpoint the same day — every ticker that completed returned `available:true` with
+`largeFound: 0`:
+
+| ticker/horizon | ms | result |
+|---|---|---|
+| SPY all | 11,612 | `largeFound:0` |
+| QQQ all | 19,204 | `largeFound:0` |
+| NVDA all | 5,144 | `largeFound:0` |
+| TSLA all/0dte | 3,027 / 2,412 | `largeFound:0` |
+| META all | 3,635 | `largeFound:0` |
+
+**Fix.** The constant is re-cast as what it actually is — a NOISE FLOOR on the candidate set, not
+the selection rule — and set to **$5,000**, just above the measured p90. Selection remains
+`sort by premium desc -> slice(0, maxPrints)`, which is self-calibrating: on a busy 0DTE chain the
+effective cut is whatever the 50th-largest print is; on a quiet single-name monthly it falls to
+whatever traded. The original "retail lots would flood the chart" concern is handled by that cap,
+not by a guessed dollar number. The floor is also the base of `flowMarkerSize`'s [floor, 50x floor]
+radius ramp — at $5K that spans $5K-$250K, a range the measured distribution covers, so markers
+differ in size instead of all pinning to one end.
+
+**Blast radius.** `fetchLargeOptionPrints` has exactly one consumer (the Vector flow overlay), so
+the change is contained. `VECTOR_HELIX_MIN_PREMIUM` ($200K) is deliberately NOT touched: it filters
+the UW flow-ALERTS feed, which is aggregated sweeps/blocks, where $200K is a legitimate cutoff.
+
+**Open, separate defect (not fixed here).** The same probe showed the 0DTE horizon breaching the
+25s deadline on every ticker that HAS a real 0DTE expiry (SPY/QQQ/NVDA/META/AMD all
+`timed out after 25000ms`), while TSLA — which has no 0DTE expiry and falls back to a quiet one —
+returned in 2.4s. That points at the sequential 40-contract x 2-page fan-out, not at this floor,
+and is a separate change.
+
 ## 2026-08-18 — [FINDING, P2 member-visible] Vector viewer (non-universe) bead lane still dropped whole ticks and fanned out unbounded — FIXED
 > **kind:** `FINDING`
 
