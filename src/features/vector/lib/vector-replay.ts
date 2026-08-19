@@ -2,6 +2,7 @@ import type { GexWalls } from "@/lib/providers/gex-wall-levels";
 import type { VectorWallLens, WallHistorySample } from "./vector-wall-history";
 import { flipForLens, wallsForLens } from "./vector-wall-history";
 import { etClock, etMinutes } from "@/features/spx/lib/spx-play-session-time";
+import { lastSessionBars } from "./vector-key-levels";
 
 export type VectorReplayBar = {
   time: number;
@@ -11,14 +12,39 @@ export type VectorReplayBar = {
   close: number;
 };
 
-/** Sorted union of wall-sample times and candle bar times — replay scrubber steps. */
+/**
+ * Sorted union of wall-sample times and candle bar times — replay scrubber steps.
+ *
+ * BARS ARE SCOPED TO THE LAST SESSION; the wall rail is not scoped here because it already is.
+ *
+ * The two inputs cover different spans by construction. `loadVectorSeedProps` seeds roughly THREE
+ * sessions of bars — its own comment says so ("the seed carries ~3 sessions, so bars[0] is the
+ * OLDEST session's open") — while the rail beside it is single-session: `loadSessionWallHistory`
+ * and `reconstructSessionRail` are both keyed on one `sessionYmd`.
+ *
+ * Unioning them raw made the scrubber span ~3 days of candles over 1 day of beads, so the first
+ * two thirds of the timeline scrubbed through days that have no rail at all. `sliceHistoryToTime`
+ * correctly returns [] for those cursors, and the chart honestly draws nothing — which reads as
+ * "replay is broken, only candles show", because the member has to drag most of the way across the
+ * scrubber before reaching the session the beads actually describe. Reported live 2026-08-19 on
+ * SPX: step 75/1521 sat at 10:44 AM on the OLDEST seeded session, hours of scrubbing away from any
+ * bead.
+ *
+ * Scoping the bar axis to the newest ET day makes both axes describe the SAME session, which is
+ * what every other part of this surface already assumes (`defaultChartViewport="session"`, the
+ * Open/Close/Loop controls, the seed's own coverage check at vector-seed-props.ts:107).
+ *
+ * History is deliberately NOT filtered to that window: a rail sample a few minutes ahead of the
+ * first bar (pre-market recorder start) is real recorded structure, and dropping it to enforce
+ * symmetry would delete data to fix a display bug.
+ */
 export function buildReplayTimeline(
   history: WallHistorySample[],
   bars: VectorReplayBar[]
 ): number[] {
   const times = new Set<number>();
   for (const sample of history) times.add(sample.time);
-  for (const bar of bars) times.add(bar.time);
+  for (const bar of lastSessionBars(bars)) times.add(bar.time);
   return [...times].sort((a, b) => a - b);
 }
 
