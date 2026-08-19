@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import type {
+  MeridianEarningsAnalyticsRow,
   MeridianEarningsDetail,
   MeridianTimelineItem,
 } from "@/features/meridian/lib/meridian-types";
@@ -108,13 +109,24 @@ type Props = {
   detail: MeridianEarningsDetail;
   /** Controlled by the detail panel, which renders the tablist up in the header. */
   tab: EarningsTab;
+  onTabChange?: (tab: EarningsTab) => void;
   /** The lane row for this event, and the whole lane — the cohort is built from what the
    *  reader is already looking at rather than from a second server round-trip. */
   item?: MeridianTimelineItem | null;
   allItems?: readonly MeridianTimelineItem[];
+  analyticsRows?: readonly MeridianEarningsAnalyticsRow[];
+  onSelectTicker?: (ticker: string) => void;
 };
 
-export function MeridianEarningsTabs({ detail, tab, item = null, allItems = [] }: Props) {
+export function MeridianEarningsTabs({
+  detail,
+  tab,
+  onTabChange,
+  item = null,
+  allItems = [],
+  analyticsRows = [],
+  onSelectTicker,
+}: Props) {
   const { enrichment, intel, pack } = detail;
   const cal = enrichment.earnings_calendar;
   // The print instant for the countdown. The feed reports an ET WALL CLOCK date + time, so it
@@ -154,6 +166,7 @@ export function MeridianEarningsTabs({ detail, tab, item = null, allItems = [] }
               street_skew: enrichment.street_skew,
             }}
             eventAt={eventAt}
+            onNavigateTab={onTabChange}
           />
           <div className="meridian-banner-stack">
             {enrichment.post_print?.headline && (
@@ -415,7 +428,13 @@ export function MeridianEarningsTabs({ detail, tab, item = null, allItems = [] }
           <MeridianEarningsPositioningPanel ticker={pack.ticker} intel={intel} />
           {/* Where this name's implied move sits among the peers printing alongside it. Renders
               nothing when the name is unclassified or the cohort is too thin to rank. */}
-          {item && <MeridianPeerCohortPanel item={item} allItems={allItems} />}
+          {item && (
+            <MeridianPeerCohortPanel
+              item={item}
+              allItems={allItems}
+              onSelectTicker={onSelectTicker}
+            />
+          )}
           <MeridianEarningsIntelPanel
             intel={intel}
             printHistory={[]}
@@ -426,7 +445,12 @@ export function MeridianEarningsTabs({ detail, tab, item = null, allItems = [] }
 
       {tab === "history" && (
         <div role="tabpanel" className="meridian-earnings-tabpanel">
-          <MeridianEarningsHistoryPanel ticker={pack.ticker} enrichment={enrichment} intel={intel} />
+          <MeridianEarningsHistoryPanel
+            ticker={pack.ticker}
+            enrichment={enrichment}
+            intel={intel}
+            analyticsRows={analyticsRows}
+          />
           {enrichment.print_history_summary && (
             <MeridianAnalyticsBanner
               label="Track record"
