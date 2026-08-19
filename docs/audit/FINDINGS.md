@@ -11883,3 +11883,47 @@ every ticker reaches the front within `ceil(roster/limit)` ticks, plus cursor no
 separate capacity question — rotation makes the cadence fair and bounded, it does not make it 5s
 for every ticker. With these numbers each ticker is served every other tick (~10s), which is the
 honest consequence of the ceiling and should be re-measured live before anyone raises it.
+
+## 2026-08-19 — bead rail bucketed by clock, not pixels, so a zoomed-in row still painted a bar — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P1 — the member-visible "why does ours look broken", on every ticker including SPX |
+| **Where** | `src/features/vector/lib/vector-wall-history.ts` — `bucketWallHistoryForInterval` |
+| **Status** | FIXED — `displayBucketSec` buckets to available px; 5 tests added (75 pass in that file) |
+
+**Root cause.** The display bucket was a CONSTANT:
+
+```ts
+const bucketSec = opts?.liveBeads && opts.minBucketSec > 0
+  ? Math.min(candleSec, opts.minBucketSec)   // -> 5s during any live session
+  : candleSec;
+```
+
+5 seconds is the recorder's cadence and is correct as a FLOOR. As the display bucket it ignores the
+one thing that decides whether beads are distinguishable: how many pixels a bar actually has. A
+3-minute candle occupies ~5.4px at ordinary zoom, so 5s buckets ask for **36 beads inside 5.4px**.
+They can only fuse. Shrinking the bead does not fix it — that is exactly what #2310 tried, and the
+member rejected the resulting invisible dots on sight.
+
+**Why it survived so long.** At session width a fused row is CORRECT and looks it — the member said
+so directly: a bead every 5s is right, and "at the end of the day it looks like a bar". The defect
+only shows zoomed IN, which is also the only place anyone would look for per-moment strength. An
+audit that judged the rail at session width (as mine did, twice) reads the ribbon as either healthy
+or as a rendering bug, and both readings are wrong.
+
+**Fix.** `displayBucketSec` derives the bucket from `barSpacingPx`: one bead per `BEAD_STRIDE_PX`
+(11px) of chart, floored at the recorded cadence and snapped UP to a whole multiple of it so bucket
+edges land on sample boundaries (an unaligned edge makes beads jitter along the row on every
+re-render). The bucket now shrinks toward 5s as the member zooms in and grows as they zoom out —
+discrete at every zoom instead of fused at most of them.
+
+`barSpacingPx` unusable (no chart, NaN, disposed) falls back to the previous constant behaviour;
+the rail must still paint on a surface that cannot report its geometry.
+
+**Not changed here.** The bead RADIUS clamp still budgets against `barSpacingPx`. Now that beads are
+spaced ~11px apart rather than ~5.4px, that clamp is more conservative than it needs to be and beads
+could grow — but that is a second behaviour change and it wants its own before/after measurement at
+the zooms this PR makes meaningful, not a same-PR guess.

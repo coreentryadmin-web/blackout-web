@@ -1120,6 +1120,22 @@ function buildWallBeadMarkers(
   return markers;
 }
 
+/**
+ * Horizontal px per bar, straight from the chart's time scale.
+ *
+ * Feeds the bead bucketer so a row is resampled to the room actually on screen. Wrapped because
+ * lightweight-charts throws once the chart is disposed, and a rail that cannot read the zoom must
+ * degrade to the constant bucket rather than take the repaint down with it.
+ */
+function readBarSpacingPx(chart: IChartApi | null): number {
+  try {
+    const v = chart?.timeScale().options().barSpacing;
+    return typeof v === "number" && Number.isFinite(v) ? v : Number.NaN;
+  } catch {
+    return Number.NaN;
+  }
+}
+
 function applyWallBeadMarkers(
   beadsPlugin: ISeriesMarkersPluginApi<Time> | null,
   history: WallHistorySample[],
@@ -1140,12 +1156,17 @@ function applyWallBeadMarkers(
   /** Compare panes: dimmer, smaller zoom-anchor ghosts. */
   compactBeads = false,
   /** Replay: snap bucket times to visible bar timestamps so the canvas rail can project x. */
-  alignBarTimes?: readonly number[]
+  alignBarTimes?: readonly number[],
+  /** Horizontal px per bar from the chart's time scale — beads are bucketed to the room actually
+   *  on screen, so a row reads as beads at every zoom instead of fusing into a bar. NaN when the
+   *  chart cannot report it, which falls back to the old constant bucket. */
+  barSpacingPx: number = Number.NaN
 ): { strikes: number[]; rendered: StrikeTrail[] } {
   if (!beadsPlugin) return { strikes: [], rendered: [] };
   let bucketed = bucketWallHistoryForInterval(history, intervalMinutes, {
     minBucketSec: trailBucketSec,
     liveBeads,
+    barSpacingPx,
   });
   if (alignBarTimes?.length) {
     bucketed = alignWallHistoryToBarTimes(bucketed, alignBarTimes);
@@ -2280,7 +2301,9 @@ export function VectorChart({
       pinLiveAnchorBeads,
       trailBucketSec,
       spotRef.current,
-      compareCompactBeadsRef.current
+      compareCompactBeadsRef.current,
+      undefined,
+      readBarSpacingPx(chartRef.current)
     );
     const put = applyWallBeadMarkers(
       putBeadsRef.current,
@@ -2295,7 +2318,9 @@ export function VectorChart({
       pinLiveAnchorBeads,
       trailBucketSec,
       spotRef.current,
-      compareCompactBeadsRef.current
+      compareCompactBeadsRef.current,
+      undefined,
+      readBarSpacingPx(chartRef.current)
     );
     // Feed the ribbon rail the SAME composed call+put trails (both sides share one frame reference).
     const enabled = indicatorsRef.current;
@@ -2909,7 +2934,8 @@ export function VectorChart({
         trailBucketSec,
         spotRef.current,
         compareCompactBeadsRef.current,
-        barTimes
+        barTimes,
+        readBarSpacingPx(chartRef.current)
       );
       const put = applyWallBeadMarkers(
         putBeadsRef.current,
@@ -2925,7 +2951,8 @@ export function VectorChart({
         trailBucketSec,
         spotRef.current,
         compareCompactBeadsRef.current,
-        barTimes
+        barTimes,
+        readBarSpacingPx(chartRef.current)
       );
       // Feed the ribbon rail the point-in-time trails so replay scrubs the bands too, not just dots.
       const enabled = indicatorsRef.current;
