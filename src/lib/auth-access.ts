@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { tierAtLeast, type Tier } from "@/lib/tiers";
 import { resolveUserTier, TierUnavailableError } from "@/lib/tier-cache";
 import { getSession } from "@/lib/auth-server";
+import { adminFromJwtRole } from "@/lib/admin-from-jwt";
+import { roleFromSessionClaims, tierFromSessionClaims } from "@/lib/clerk-session-claims";
 
 export async function requireAuth(): Promise<string> {
   const { userId } = await getSession();
@@ -27,8 +29,22 @@ export async function getUserTier(
 }
 
 export async function requireTier(minTier: Tier) {
-  const userId = await requireAuth();
-  const { sessionClaims } = await getSession();
+  const { userId, sessionClaims } = await getSession();
+  if (!userId) redirect("/sign-in");
+
+  // JWT fast path — most signed-in members carry tier/role in session claims. Skip Clerk
+  // Backend getUser on every page navigation when the token already proves access.
+  const jwtAdmin = adminFromJwtRole(roleFromSessionClaims(sessionClaims));
+  if (jwtAdmin === true) {
+    return { userId, tier: "premium" as Tier };
+  }
+
+  const jwtTier = tierFromSessionClaims(sessionClaims);
+  if (jwtTier === "premium" || jwtTier === "community") {
+    if (tierAtLeast(jwtTier, minTier)) return { userId, tier: jwtTier };
+    redirect("/upgrade");
+  }
+
   const { isAdminUser } = await import("@/lib/admin-access");
   if (await isAdminUser(userId, sessionClaims)) {
     return { userId, tier: "premium" as Tier };
