@@ -40,9 +40,12 @@ export async function composeTechnicalsRead(ticker: string, question?: string): 
   if (question && /\b(relative|rs|vs|outperform|lag)\b/i.test(question) && sym.length <= 5 && sym !== "SPX") {
     try {
       const rs = await buildPeerRelativeStrength(sym);
+      // `leading` is null when either 10d return is missing. Print the honest gap rather than
+      // "**null**" — and never fall back to a default verdict, which is the bug being fixed.
+      const verdict = rs.leading ?? "not enough history to compare";
       lines.push(
         "",
-        `**Relative strength vs ${rs.peer_etf}:** stock ${fmt(rs.stock.d10, 2)}% vs peer ${fmt(rs.peer.d10, 2)}% (10d) — **${rs.leading}**`
+        `**Relative strength vs ${rs.peer_etf}:** stock ${fmt(rs.stock.d10, 2)}% vs peer ${fmt(rs.peer.d10, 2)}% (10d) — **${verdict}**`
       );
     } catch {
       /* optional RS block */
