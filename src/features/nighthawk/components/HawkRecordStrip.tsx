@@ -15,9 +15,27 @@ type HawkRecordStripProps = {
   loading?: boolean;
 };
 
-/** Signed percent, so a negative return never renders as a bare number that reads as a gain. */
-function fmtSignedPct(v: number): string {
+/** The character a metric shows when the value is UNKNOWN, as distinct from zero. */
+const EM_DASH = "—";
+
+/** Signed percent, so a negative return never renders as a bare number that reads as a gain.
+ *  Null-tolerant for the same reason fmtPct is: this is wire data, and `null >= 0` is `true`,
+ *  so an unguarded null would render the actively wrong "+null%" rather than an obvious blank. */
+function fmtSignedPct(v: number | null | undefined): string {
+  if (v == null || !Number.isFinite(v)) return EM_DASH;
   return `${v >= 0 ? "+" : ""}${v}%`;
+}
+
+/** Percent, or an em-dash when the value is genuinely unknown.
+ *
+ *  `win_rate_pct` is `number | null` and its own type comment says so out loud — *"null when the
+ *  window produced no DECIDED outcome — clients must render '—', never 0%"*. Template-literal
+ *  interpolation happily stringifies `null`, and TypeScript permits it, so the strip printed the
+ *  literal text `null%` in exactly the case the API took care to distinguish. Route it through
+ *  here so the null the API deliberately serves cannot be re-flattened at the last inch. */
+function fmtPct(v: number | null | undefined): string {
+  if (v == null || !Number.isFinite(v)) return EM_DASH;
+  return `${v}%`;
 }
 
 function MetricPill({ label, value }: { label: string; value: string }) {
@@ -130,7 +148,7 @@ export function HawkRecordStrip({ record, loading }: HawkRecordStripProps) {
         {cur && (
           <MetricPill
             label={TARGET_HIT_RATE_LABEL}
-            value={`${record.win_rate_pct}% · ${targetHitCompositionLabel(cur)}`}
+            value={`${fmtPct(record.win_rate_pct)} · ${targetHitCompositionLabel(cur)}`}
           />
         )}
         {/* FILL-EDGE basis as primary — members fill at the band edge, not its midpoint,
@@ -141,8 +159,8 @@ export function HawkRecordStrip({ record, loading }: HawkRecordStripProps) {
           label="Profitable"
           value={
             record.profitable_rate_edge_pct != null
-              ? `${record.profitable_rate_edge_pct}% (mid ${record.profitable_rate_pct}%)`
-              : `${record.profitable_rate_pct}%`
+              ? `${fmtPct(record.profitable_rate_edge_pct)} (mid ${fmtPct(record.profitable_rate_pct)})`
+              : fmtPct(record.profitable_rate_pct)
           }
         />
         <MetricPill
