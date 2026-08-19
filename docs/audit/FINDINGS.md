@@ -38,6 +38,29 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-08-19 — [FINDING, P0 member-visible] The bead rail could never draw more than ONE bead per candle — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Report** | Member: "beads dont render every 5 seconds at all", with a competitor screenshot showing dense touching ribbons against ours at ~1 bead per 15 candles |
+| **Root cause** | `vector-wall-rail-primitive.ts` positioned every bucket with `ts.timeToCoordinate(p.time)`, which resolves a time to a pixel ONLY when that time is in the SERIES data. Bars are 3m, buckets are 5s → 35 of every 36 buckets returned `null` and were dropped by a `continue` commented as an off-screen skip. The rail was hard-capped at one bead per candle, on every ticker, at every zoom. |
+| **Fix** | #2328 — `projectBucketX()` finds the bar CONTAINING a bucket and interpolates between that bar's pixel and the next one's, so a 5s bucket lands 1/36th of a bar-width into its candle. |
+| **Status** | FIXED — merged #2328. Tests state it as a contrast: the same 36 buckets yield 1 placeable x through the old lookup, 36 through the new. |
+
+**Why five earlier fixes missed it.** #2320/#2322/#2324 (recorder rotation, append-only rails, whole-roster
+coverage) and #2321/#2326 (paint bucketing) were each real, and none moved the picture, because every
+layer they touched sits UPSTREAM of the canvas. The recorder wrote 5s samples (SPX 3964, median gap 5s),
+the SSE contract said 5, the REST endpoint served them, the bucketer kept all 720 of an hour. A green
+result at every layer above the failing one is the SHAPE of a last-hop bug, not evidence of health.
+
+**Standing rule:** a cadence claim is closed by counting RENDERED beads (`vector-bead-pixel-audit.cjs`),
+never by counting samples. See `docs/audit/VECTOR-BEAD-CADENCE-INVESTIGATION-2026-08-19.md` for the full
+layer map and the false-negative record.
+
+**Competitor swell/fade (2026-08-19 screenshot).** Same class of bug as FINDINGS #2312/#2313 ("row shows wall existed, never WHEN it mattered") — fixes landed 2026-08-18 but visual sign-off still open; spacing budget can collapse size range to ~1px at 3m. See investigation doc § Competitor comparison.
+
 ## 2026-08-18 — [FINDING, P0 member-visible] Every deploy purged the hashed build assets, killing hydration and freezing the whole desk — FIXED
 > **kind:** `FINDING`
 
