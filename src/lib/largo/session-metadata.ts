@@ -3,6 +3,8 @@
  * Stored on largo_sessions.metadata (JSONB), scoped per user+session.
  */
 
+import type { TurnSnapshot, DeskSlashArgs } from "@/lib/largo/desk-scope";
+
 export type LargoPlayContext = {
   source: "spx" | "nighthawk" | "zerodte";
   ticker: string;
@@ -20,6 +22,11 @@ export type LargoSessionMetadata = {
   play_context?: LargoPlayContext | null;
   /** Last depth mode the member used in this session. */
   depth?: "quick" | "deep";
+  /** Active desk from slash command — persists through follow-ups in this thread. */
+  desk_scope?: string | null;
+  desk_scope_args?: DeskSlashArgs | null;
+  /** Prior turn snapshot for /diff. */
+  last_turn_snapshot?: TurnSnapshot | null;
 };
 
 const MAX_WATCHLIST = 12;
@@ -63,6 +70,9 @@ export function mergeSessionMetadata(
   if (patch.morning_brief != null) base.morning_brief = Boolean(patch.morning_brief);
   if (patch.play_context !== undefined) base.play_context = patch.play_context;
   if (patch.depth === "quick" || patch.depth === "deep") base.depth = patch.depth;
+  if (patch.desk_scope !== undefined) base.desk_scope = patch.desk_scope;
+  if (patch.desk_scope_args !== undefined) base.desk_scope_args = patch.desk_scope_args;
+  if (patch.last_turn_snapshot !== undefined) base.last_turn_snapshot = patch.last_turn_snapshot;
   return base;
 }
 

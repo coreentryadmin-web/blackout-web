@@ -25,6 +25,11 @@ import { LargoStatusStrip } from "./LargoStatusStrip";
 import { LargoContextRail } from "./LargoContextRail";
 import { LargoSlashMenu } from "./LargoSlashMenu";
 import { LargoSlashPromptsMenu } from "./LargoSlashPromptsMenu";
+import { LargoDeskScopeBanner } from "./LargoDeskScopeBanner";
+import { LargoProactiveComposer } from "./LargoProactiveComposer";
+import { parseDeskSlashArgs } from "@/lib/largo/desk-scope";
+import { slashArgsFromInput } from "@/lib/largo/slash-prompts";
+import type { LargoSlashCommand } from "@/lib/largo/slash-commands";
 
 const INPUT_PLACEHOLDER = "Type / for desk commands — SPX, flow, thermal, vector…";
 const INPUT_PLACEHOLDER_BUSY = "Pulling live data…";
@@ -75,10 +80,14 @@ export function LargoTerminal({
     toggleHistoricalMode,
     chartGuide,
     setChartGuide,
+    activeDeskScope,
+    setActiveDeskScope,
   } = useLargoChat();
 
   const router = useRouter();
-  const slash = useLargoSlashCommands(input, setInput, (q) => void runQuery(q));
+  const slash = useLargoSlashCommands(input, setInput, (q, scope) =>
+    void runQuery(q, { deskScope: scope?.deskScope, deskScopeArgs: scope?.deskScopeArgs })
+  );
   const inputRef = useRef<HTMLInputElement>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -95,8 +104,13 @@ export function LargoTerminal({
 
   useIosKeyboardInset(nativeShell);
 
-  function askFromSlash(question: string) {
-    void runQuery(question);
+  function askFromSlash(question: string, cmd?: LargoSlashCommand | null) {
+    const desk = cmd ?? slash.activeDesk;
+    const args = desk ? slashArgsFromInput(input, desk.command) : "";
+    void runQuery(question, {
+      deskScope: desk?.command ?? null,
+      deskScopeArgs: parseDeskSlashArgs(args),
+    });
     setInput("");
     slash.clearDesk();
   }
@@ -104,7 +118,12 @@ export function LargoTerminal({
   function submitSlashOrQuery(text: string) {
     const resolved = resolveLargoSlashSubmit(text, slash.promptMatches);
     if (resolved.type === "query") {
-      askFromSlash(resolved.question);
+      void runQuery(resolved.question, {
+        deskScope: resolved.deskScope ?? null,
+        deskScopeArgs: resolved.deskScopeArgs,
+      });
+      setInput("");
+      slash.clearDesk();
       return;
     }
     void runQuery(resolved.text);
@@ -235,8 +254,11 @@ export function LargoTerminal({
                         loading && idx === messages.length - 1 && msg.role === "assistant"
                       }
                       className={fullPage ? "text-sm md:text-[15px] lg:text-base" : "text-sm"}
-                      onFollowup={(q) => void runQuery(q)}
+                      onFollowup={(q) => void runQuery(q, { deskScope: activeDeskScope })}
                       followups={msg.followups}
+                      deskScope={msg.deskScope}
+                      miniPanel={msg.miniPanel}
+                      ticker={activeTicker}
                     />
                   )
                 ) : (
@@ -333,6 +355,17 @@ export function LargoTerminal({
           </p>
         )}
 
+        <LargoProactiveComposer
+          disabled={loading || !hydrated}
+          onAsk={(q) => void runQuery(q)}
+        />
+
+        <LargoDeskScopeBanner
+          deskScope={activeDeskScope}
+          ticker={activeTicker}
+          onClear={() => setActiveDeskScope(null)}
+        />
+
         {(attachments.length > 0 || attachError) && (
           <div className="largo-attach-tray">
             {attachments.map((a, i) => (
@@ -418,7 +451,7 @@ export function LargoTerminal({
               loading={slash.promptsLoading}
               prompts={slash.promptMatches}
               activeIndex={slash.promptIndex}
-              onPick={(p) => askFromSlash(p.question)}
+              onPick={(p) => askFromSlash(p.question, slash.activeDesk)}
               onHover={slash.setPromptIndex}
               onClose={() => {
                 slash.clearDesk();

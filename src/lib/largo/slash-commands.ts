@@ -5,6 +5,7 @@
 
 import { TOOLS, type ToolKey } from "@/lib/tool-access";
 import { LARGO_DESK_PROMPTS } from "@/lib/largo/desk-prompts";
+import { parseDeskSlashArgs, type DeskSlashArgs } from "@/lib/largo/desk-scope";
 
 export type LargoSlashCommandKind = "navigate" | "prompt";
 
@@ -88,9 +89,54 @@ const EXTRA_NAV: LargoSlashCommand = {
   rank: 80,
 };
 
+/** Phase C — terminal-native commands (stay in Largo, set session scope). */
+const TERMINAL_COMMANDS: readonly LargoSlashCommand[] = [
+  {
+    id: "term-watch",
+    command: "watch",
+    label: "Watchlist",
+    description: "Add tickers to this thread's watchlist and summarize them",
+    kind: "prompt",
+    question: "Summarize what matters on my watchlist right now.",
+    aliases: ["wl", "follow"],
+    rank: 85,
+  },
+  {
+    id: "term-diff",
+    command: "diff",
+    label: "Session diff",
+    description: "What changed since your last turn — spot, flip, walls, flow",
+    kind: "prompt",
+    question: "What changed since my last turn — spot, gamma flip, walls, and net flow?",
+    aliases: ["delta", "since"],
+    rank: 86,
+  },
+  {
+    id: "term-board",
+    command: "board",
+    label: "0DTE board",
+    description: "Night Hawk board — open plays, marks, P&L",
+    kind: "prompt",
+    question: "What's the 0DTE board P&L — open plays, marks, and any stopped positions?",
+    aliases: ["0dte", "plays"],
+    rank: 87,
+  },
+  {
+    id: "term-trinity",
+    command: "trinity",
+    label: "Trinity read",
+    description: "SPX · SPY · QQQ structure and flow side by side",
+    kind: "prompt",
+    question: "Compare SPX, SPY, and QQQ — structure, flow skew, and dealer positioning side by side.",
+    aliases: ["spx spy qqq", "indices"],
+    rank: 88,
+  },
+];
+
 export const LARGO_SLASH_COMMANDS: readonly LargoSlashCommand[] = [
   ...buildNavigateCommands(),
   EXTRA_NAV,
+  ...TERMINAL_COMMANDS,
   ...buildPromptCommands(),
 ];
 
@@ -179,7 +225,12 @@ export function resolveSlashNavigateHref(cmd: LargoSlashCommand, args: string): 
 
 export type LargoSlashSubmit =
   | { type: "plain"; text: string }
-  | { type: "query"; question: string };
+  | {
+      type: "query";
+      question: string;
+      deskScope?: string | null;
+      deskScopeArgs?: DeskSlashArgs;
+    };
 
 const SINGLE_TICKER = /^\$?([A-Z][A-Z0-9]{0,4})$/i;
 
@@ -192,6 +243,48 @@ function slashDefaultQuestion(cmd: LargoSlashCommand, prompts: SlashPromptLite[]
   return `What should I know about ${cmd.label} right now?`;
 }
 
+function deskScopeForCommand(cmd: LargoSlashCommand, rawArgs: string, parsed: DeskSlashArgs): {
+  deskScope: string | null;
+  deskScopeArgs: DeskSlashArgs;
+} {
+  if (cmd.id === "term-watch") {
+    const tickers = rawArgs
+      .split(/[\s,]+/)
+      .map((t) => t.replace(/^\$/, "").toUpperCase())
+      .filter((t) => /^[A-Z][A-Z0-9]{0,4}$/.test(t));
+    return {
+      deskScope: "largo",
+      deskScopeArgs: { mode: "watch", watchTickers: tickers },
+    };
+  }
+  if (cmd.id === "term-diff") {
+    return { deskScope: "largo", deskScopeArgs: { mode: "diff" } };
+  }
+  if (cmd.id === "term-board") {
+    return { deskScope: "nighthawk", deskScopeArgs: { mode: "board" } };
+  }
+  if (cmd.id === "term-trinity") {
+    return { deskScope: "largo", deskScopeArgs: { mode: "trinity", ticker: "SPX" } };
+  }
+  if (cmd.kind === "navigate") {
+    return {
+      deskScope: cmd.command,
+      deskScopeArgs: parsed,
+    };
+  }
+  return { deskScope: null, deskScopeArgs: parsed };
+}
+
+function questionForSlash(cmd: LargoSlashCommand, args: string, parsed: DeskSlashArgs, prompts: SlashPromptLite[]): string {
+  if (cmd.id === "term-watch" && parsed.watchTickers?.length) {
+    return `Summarize what matters on my watchlist: ${parsed.watchTickers.join(", ")}.`;
+  }
+  if (cmd.kind === "prompt" && cmd.question) return cmd.question;
+  if (!args) return slashDefaultQuestion(cmd, prompts);
+  if (SINGLE_TICKER.test(args.trim())) return slashNavigateQuestion(cmd, args.trim());
+  return args.length > 12 ? args : slashNavigateQuestion(cmd, args);
+}
+
 /** Turn composer submit text into a Largo query. Desk slash commands stay in-terminal. */
 export function resolveLargoSlashSubmit(raw: string, prompts: SlashPromptLite[] = []): LargoSlashSubmit {
   const trimmed = raw.trim();
@@ -200,17 +293,11 @@ export function resolveLargoSlashSubmit(raw: string, prompts: SlashPromptLite[] 
   const { command, args } = parseLargoSlashInput(trimmed);
   if (!command) return { type: "plain", text: trimmed };
 
-  if (command.kind === "prompt") {
-    return { type: "query", question: command.question ?? trimmed };
-  }
+  const parsedArgs = parseDeskSlashArgs(args);
+  const { deskScope, deskScopeArgs } = deskScopeForCommand(command, args, parsedArgs);
+  const question = questionForSlash(command, args, parsedArgs, prompts);
 
-  if (!args) {
-    return { type: "query", question: slashDefaultQuestion(command, prompts) };
-  }
-  if (SINGLE_TICKER.test(args.trim())) {
-    return { type: "query", question: slashNavigateQuestion(command, args.trim()) };
-  }
-  return { type: "query", question: args.length > 12 ? args : slashNavigateQuestion(command, args) };
+  return { type: "query", question, deskScope, deskScopeArgs };
 }
 
 /** Expand a navigate slash + args into a Largo question when member stays in-terminal. */

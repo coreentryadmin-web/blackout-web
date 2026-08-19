@@ -11,6 +11,7 @@ import { LargoStructuredCards } from "@/features/largo/components/LargoStructure
 import { LargoActionsBar } from "@/features/largo/components/LargoActionsBar";
 import { LargoShareRow } from "@/features/largo/components/LargoShareRow";
 import { LargoFollowupChips } from "@/features/largo/components/LargoFollowupChips";
+import { LargoDeskMiniPanel } from "@/features/largo/components/LargoDeskMiniPanel";
 import { BieAnswer } from "@/features/largo/answer/BieAnswer";
 import { LargoDeskRead } from "@/features/largo/answer/LargoDeskRead";
 import { LargoAnswerCaveats } from "@/features/largo/answer/LargoAnswerCaveats";
@@ -63,6 +64,8 @@ export function LargoAnswerMessage({
   ticker,
   followups,
   nativeFollowups = false,
+  deskScope,
+  miniPanel,
 }: {
   content: string;
   source?: string | null;
@@ -82,6 +85,8 @@ export function LargoAnswerMessage({
   /** Strike-specific next questions — competitor-style pills under the answer. */
   followups?: string[];
   nativeFollowups?: boolean;
+  deskScope?: string | null;
+  miniPanel?: string | null;
 }) {
   const fallback = <LargoMessageBody content={content} className={className} />;
 
@@ -202,7 +207,12 @@ export function LargoAnswerMessage({
   if (!rich) {
     return (
       <>
-        {fallback}
+        <div className="largo-answer-with-panel">
+          <div className="largo-answer-main">{fallback}</div>
+          {!streaming && deskScope && miniPanel && miniPanel !== "generic" && (
+            <LargoDeskMiniPanel desk={deskScope} ticker={ticker} />
+          )}
+        </div>
         {shareRow}
         {!streaming && followups && followups.length > 0 && onFollowup && (
           <LargoFollowupChips followups={followups} onPick={onFollowup} native={nativeFollowups} />
@@ -213,7 +223,14 @@ export function LargoAnswerMessage({
 
   return (
     <>
-      <BieAnswerBoundary fallback={<>{fallback}{shareRow}</>}>{rich}</BieAnswerBoundary>
+      <div className="largo-answer-with-panel">
+        <div className="largo-answer-main">
+          <BieAnswerBoundary fallback={<>{fallback}{shareRow}</>}>{rich}</BieAnswerBoundary>
+        </div>
+        {!streaming && deskScope && miniPanel && miniPanel !== "generic" && (
+          <LargoDeskMiniPanel desk={deskScope} ticker={ticker} />
+        )}
+      </div>
       {!streaming && followups && followups.length > 0 && onFollowup && (
         <LargoFollowupChips followups={followups} onPick={onFollowup} native={nativeFollowups} />
       )}

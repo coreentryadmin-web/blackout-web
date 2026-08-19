@@ -96,4 +96,29 @@ describe("resolveLargoSlashSubmit", () => {
       text: "What is SPX doing?",
     });
   });
+
+  it("sets desk scope for navigate slash", () => {
+    const out = resolveLargoSlashSubmit("/helix");
+    assert.equal(out.type, "query");
+    if (out.type === "query") {
+      assert.equal(out.deskScope, "helix");
+    }
+  });
+
+  it("parses /diff terminal command", () => {
+    const out = resolveLargoSlashSubmit("/diff");
+    assert.equal(out.type, "query");
+    if (out.type === "query") {
+      assert.equal(out.deskScopeArgs?.mode, "diff");
+    }
+  });
+
+  it("parses /watch tickers", () => {
+    const out = resolveLargoSlashSubmit("/watch NVDA SPY");
+    assert.equal(out.type, "query");
+    if (out.type === "query") {
+      assert.equal(out.deskScopeArgs?.mode, "watch");
+      assert.deepEqual(out.deskScopeArgs?.watchTickers, ["NVDA", "SPY"]);
+    }
+  });
 });

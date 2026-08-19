@@ -292,6 +292,8 @@ export async function POST(req: NextRequest) {
     depth?: string;
     historical?: boolean;
     play_context?: unknown;
+    desk_scope?: string;
+    desk_scope_args?: unknown;
   };
   try {
     body = await req.json();
@@ -340,6 +342,11 @@ export async function POST(req: NextRequest) {
     playContext:
       body.play_context && typeof body.play_context === "object"
         ? (body.play_context as LargoPlayContext)
+        : null,
+    deskScope: typeof body.desk_scope === "string" ? body.desk_scope : null,
+    deskScopeArgs:
+      body.desk_scope_args && typeof body.desk_scope_args === "object"
+        ? (body.desk_scope_args as LargoTurnOptions["deskScopeArgs"])
         : null,
   };
 

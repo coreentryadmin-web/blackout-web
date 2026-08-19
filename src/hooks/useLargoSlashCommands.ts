@@ -16,13 +16,17 @@ import {
   type SlashPrompt,
   type SlashPromptsPayload,
 } from "@/lib/largo/slash-prompts";
+import { parseDeskSlashArgs } from "@/lib/largo/desk-scope";
 
 const fetcher = (url: string) => fetch(url, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null));
 
 export function useLargoSlashCommands(
   input: string,
   setInput: (v: string) => void,
-  onAutoAsk?: (question: string) => void
+  onAutoAsk?: (
+    question: string,
+    scope?: { deskScope: string; deskScopeArgs?: ReturnType<typeof parseDeskSlashArgs> }
+  ) => void
 ) {
   const [activeDesk, setActiveDesk] = useState<LargoSlashCommand | null>(null);
   const [promptIndex, setPromptIndex] = useState(0);
@@ -82,10 +86,13 @@ export function useLargoSlashCommands(
     const top = promptMatches[0];
     if (!top) return;
     autoAskArmedRef.current = false;
-    onAutoAsk(top.question);
+    onAutoAsk(top.question, {
+      deskScope: activeDesk.command,
+      deskScopeArgs: parseDeskSlashArgs(promptArgs),
+    });
     setActiveDesk(null);
     setInput("");
-  }, [activeDesk, promptsLoading, promptMatches, onAutoAsk, setInput]);
+  }, [activeDesk, promptsLoading, promptMatches, onAutoAsk, setInput, promptArgs]);
 
   const onInputChange = useCallback(
     (next: string) => {

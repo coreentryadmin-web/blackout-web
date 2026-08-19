@@ -6135,6 +6135,157 @@ html.product-shell .nav-mega {
     border-color: rgba(34, 211, 238, 0.4);
   }
 
+  .largo-answer-with-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  @media (min-width: 900px) {
+    .largo-answer-with-panel {
+      flex-direction: row;
+      align-items: flex-start;
+    }
+    .largo-answer-main {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+  }
+
+  .largo-mini-panel {
+    flex: 0 0 auto;
+    width: 100%;
+    max-width: 280px;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid rgba(34, 211, 238, 0.22);
+    border-radius: 0.5rem;
+    background: rgba(4, 4, 7, 0.85);
+  }
+
+  .largo-mini-panel-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .largo-mini-panel-kicker {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #22d3ee;
+  }
+
+  .largo-mini-panel-ticker {
+    font-size: 12px;
+    font-weight: 600;
+    color: #fff;
+  }
+
+  .largo-mini-panel-actions {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .largo-mini-panel-refresh,
+  .largo-mini-panel-open {
+    font-size: 11px;
+    color: #7dd3fc;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    text-decoration: none;
+  }
+
+  .largo-mini-panel-rows {
+    display: grid;
+    gap: 0.35rem;
+    margin: 0;
+  }
+
+  .largo-mini-panel-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    font-size: 12px;
+  }
+
+  .largo-mini-panel-row dt {
+    color: #7dd3fc;
+    margin: 0;
+  }
+
+  .largo-mini-panel-row dd {
+    margin: 0;
+    font-weight: 600;
+    color: #fff;
+    text-align: right;
+  }
+
+  .largo-mini-tone-bull { color: #4ade80; }
+  .largo-mini-tone-bear { color: #f87171; }
+  .largo-mini-tone-warn { color: #fbbf24; }
+  .largo-mini-tone-neutral { color: #e0f2fe; }
+
+  .largo-desk-scope-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.5rem;
+    margin-bottom: 0.35rem;
+  }
+
+  .largo-desk-scope-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
+    border: 1px solid rgba(34, 211, 238, 0.35);
+    background: rgba(34, 211, 238, 0.08);
+    font-size: 11px;
+    font-weight: 600;
+    color: #e0f2fe;
+  }
+
+  .largo-desk-scope-clear {
+    font-size: 11px;
+    color: #7dd3fc;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+  }
+
+  .largo-proactive-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    padding: 0.25rem 0.35rem 0.5rem;
+  }
+
+  .largo-proactive-chip {
+    padding: 0.3rem 0.55rem;
+    border-radius: 999px;
+    border: 1px solid rgba(34, 211, 238, 0.25);
+    background: rgba(34, 211, 238, 0.05);
+    color: #e0f2fe;
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  .largo-proactive-chip-conflict {
+    border-color: rgba(251, 191, 36, 0.45);
+    color: #fde68a;
+  }
+
+  .largo-proactive-chip-brief {
+    border-color: rgba(125, 211, 252, 0.4);
+  }
+
   .largo-input-placeholder {
     position: absolute;
     inset: 0;
