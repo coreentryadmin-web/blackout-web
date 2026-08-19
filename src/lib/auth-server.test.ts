@@ -13,6 +13,7 @@ test("requireTier uses one getSession and JWT tier fast path before Clerk getUse
   const src = readFileSync(join(process.cwd(), "src/lib/auth-access.ts"), "utf8");
   assert.match(src, /tierFromSessionClaims/);
   assert.doesNotMatch(src, /await requireAuth\(\)/);
+  assert.match(src, /requireDeskTool/);
   const getSessionCalls = src.match(/getSession\(\)/g) ?? [];
   assert.ok(getSessionCalls.length <= 2, `expected ≤2 getSession calls, got ${getSessionCalls.length}`);
 });

@@ -4,6 +4,10 @@ import { cache } from "react";
 import { auth } from "@/lib/auth-server";
 import { isAdminUser, resolveAdminApi } from "@/lib/admin-access";
 import { getClerkUserCached } from "@/lib/clerk-user-cache";
+import {
+  sessionClaimsHaveAuthFields,
+  toolAccessModeFromSessionClaims,
+} from "@/lib/clerk-session-claims";
 import { isToolLaunched, type ToolKey } from "@/lib/tool-access";
 import {
   parseToolAccessMap,
@@ -28,6 +32,18 @@ export async function userCanAccessTool(
   // When omitted, isAdminUser resolves auth() once (still no duplicate Clerk storms).
   if (await isAdminUser(userId, sessionClaims)) return true;
   const global = isToolLaunched(key);
+
+  const jwtMode = toolAccessModeFromSessionClaims(sessionClaims, key);
+  if (jwtMode !== null) {
+    return resolveToolAccessForUser(key, global, { [key]: jwtMode });
+  }
+
+  // JWT tier/role configured but no tool_access claim → inherit (no per-user overrides in token).
+  // Per-user block/grant overrides require tool_access in the session JWT or fall through to getUser.
+  if (global && sessionClaimsHaveAuthFields(sessionClaims)) {
+    return true;
+  }
+
   const overrides = await loadUserToolAccess(userId);
   return resolveToolAccessForUser(key, global, overrides);
 }
