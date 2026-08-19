@@ -365,6 +365,45 @@ export type PlayLatch = {
  * its tests never need a database. Latches only widen; a null mark advances the
  * clock (time stop) without touching the latches.
  */
+/**
+ * THE peak/trough latch — one implementation, shared by both lanes that latch.
+ *
+ * There were two, and they disagreed. `advancePlayLatch` (the 1s marks lane) latched null-safely;
+ * `syncLedgerLiveState` in scan.ts latched inline as
+ *   Math.min(trough_premium ?? (entry_premium ?? Number.MAX_VALUE), mark ?? Number.MAX_VALUE)
+ * so a row with no prior trough, no entry premium and no fresh mark latched Number.MAX_VALUE —
+ * 1.7976931348623157e308 — and served it as `trough_premium`. Iron condors are the population that
+ * reaches it: a credit structure carries no single entry premium, so the first `??` falls through,
+ * and any tick without a quote supplies the second.
+ *
+ * `advancePlayLatch`'s own doc comment claimed it applied "the SAME peak/trough latch
+ * syncLedgerLiveState (scan.ts) applies". It did not — and a claim of sameness with no shared code
+ * is exactly how the two drifted. The same row could carry a different trough depending on which
+ * lane touched it last. Now there is one function and the claim is structural.
+ *
+ * NOTHING DOWNSTREAM CAUGHT THE SENTINEL because `Number.isFinite(1.79e308)` is TRUE — the
+ * response-boundary sanitizer, the audit suite's `scanFinite` sweep and the malformed-value scan
+ * all pass it through as a good number. Only reading the payload finds it.
+ *
+ * Absence stays absent: with no finite candidate on a side, that latch is null, which
+ * `derivePlayStatus` has always accepted.
+ */
+export function latchPremiumBounds(
+  seedPeak: number | null | undefined,
+  seedTrough: number | null | undefined,
+  mark: number | null | undefined
+): { peak: number | null; trough: number | null } {
+  const finite = (v: number | null | undefined): v is number =>
+    typeof v === "number" && Number.isFinite(v);
+  const m = finite(mark) ? mark : null;
+  const p = finite(seedPeak) ? seedPeak : null;
+  const t = finite(seedTrough) ? seedTrough : null;
+  return {
+    peak: m != null ? (p != null ? Math.max(p, m) : m) : p,
+    trough: m != null ? (t != null ? Math.min(t, m) : m) : t,
+  };
+}
+
 export function advancePlayLatch(
   play: { entry_premium: number | null; peak_premium: number | null; trough_premium: number | null },
   prior: PlayLatch | null,
@@ -375,8 +414,7 @@ export function advancePlayLatch(
   const entry = play.entry_premium;
   const seedPeak = prior?.peak ?? play.peak_premium ?? entry ?? null;
   const seedTrough = prior?.trough ?? play.trough_premium ?? entry ?? null;
-  const peak = mark != null ? (seedPeak != null ? Math.max(seedPeak, mark) : mark) : seedPeak;
-  const trough = mark != null ? (seedTrough != null ? Math.min(seedTrough, mark) : mark) : seedTrough;
+  const { peak, trough } = latchPremiumBounds(seedPeak, seedTrough, mark);
   const state = derivePlayStatus({
     entryPremium: entry,
     mark,

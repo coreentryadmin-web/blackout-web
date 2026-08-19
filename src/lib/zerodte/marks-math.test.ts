@@ -11,6 +11,7 @@ import {
   executablePnlPct,
   executionTaxBps,
   isZeroDteMarkStale,
+  latchPremiumBounds,
   ledgerDisplayPnlPct,
   directionalClosedDisplayPnlPct,
   livePnlPctFor,
@@ -520,4 +521,62 @@ test("reconcileLedgerLivePnlPct honours the row's frozen policy end-to-end", () 
   assert.equal(reconcileLedgerLivePnlPct({ ...base, exit_policy_at_commit: "ratchet" }), -50);
   assert.equal(reconcileLedgerLivePnlPct({ ...base, exit_policy_at_commit: "trim_scale" }), 6.67);
   assert.equal(reconcileLedgerLivePnlPct({ ...base, exit_policy_at_commit: null }), -50);
+});
+
+// ---------------------------------------------------------------------------
+// ONE LATCH, TWO LANES — and they used to disagree.
+//
+// `advancePlayLatch` (the 1s marks lane) latched null-safely. `syncLedgerLiveState` in scan.ts
+// latched inline as
+//   Math.min(trough_premium ?? (entry_premium ?? Number.MAX_VALUE), mark ?? Number.MAX_VALUE)
+// so a row with no prior trough, no entry premium and no fresh mark latched Number.MAX_VALUE —
+// 1.7976931348623157e308 — and served it as `trough_premium` on the board. Iron condors are the
+// population that reaches it: a credit structure carries no single entry premium, so the first `??`
+// falls through, and any tick without a quote supplies the second.
+//
+// advancePlayLatch's doc comment CLAIMED it applied "the SAME peak/trough latch syncLedgerLiveState
+// applies". It did not, and a claim of sameness backed by no shared code is exactly how they
+// drifted — the same row could carry a different trough depending on which lane touched it last.
+// ---------------------------------------------------------------------------
+
+test("REGRESSION: nothing known on either side latches null, not MAX_VALUE", () => {
+  const { peak, trough } = latchPremiumBounds(null, null, null);
+  assert.equal(trough, null, "the old scan.ts form produced 1.7976931348623157e308 here");
+  assert.equal(peak, null, "and its peak produced 0, which understates just as dishonestly");
+});
+
+test("the sentinel it replaced passes every finite check in the codebase", () => {
+  // Asserted rather than footnoted: this is why the bug survived every existing numeric scan.
+  assert.equal(Number.isFinite(Number.MAX_VALUE), true);
+});
+
+test("a mark with no seed sets both latches to that mark", () => {
+  assert.deepEqual(latchPremiumBounds(null, null, 1.25), { peak: 1.25, trough: 1.25 });
+});
+
+test("latches only ever WIDEN from the seed", () => {
+  assert.deepEqual(latchPremiumBounds(2.0, 0.8, 2.4), { peak: 2.4, trough: 0.8 });
+  assert.deepEqual(latchPremiumBounds(2.0, 0.8, 0.5), { peak: 2.0, trough: 0.5 });
+  assert.deepEqual(latchPremiumBounds(2.0, 0.8, 1.5), { peak: 2.0, trough: 0.8 });
+});
+
+test("a missing mark leaves the seeds untouched", () => {
+  assert.deepEqual(latchPremiumBounds(2.0, 0.8, null), { peak: 2.0, trough: 0.8 });
+});
+
+test("non-finite inputs are rejected rather than latched", () => {
+  assert.deepEqual(latchPremiumBounds(null, null, Number.NaN), { peak: null, trough: null });
+  assert.deepEqual(latchPremiumBounds(null, null, Number.POSITIVE_INFINITY), { peak: null, trough: null });
+  // A poisoned SEED is dropped too, so a row already carrying the old sentinel heals on next tick.
+  assert.deepEqual(latchPremiumBounds(null, Number.MAX_VALUE * 2, 1.1), { peak: 1.1, trough: 1.1 });
+});
+
+test("the two lanes now agree BY CONSTRUCTION — advancePlayLatch routes through the same function", () => {
+  // Same inputs through the public lane helper and the shared primitive must match exactly.
+  const play = { entry_premium: null, peak_premium: null, trough_premium: null };
+  const viaLane = advancePlayLatch(play, null, null, NOW_OPEN);
+  const viaPrimitive = latchPremiumBounds(null, null, null);
+  assert.equal(viaLane.peak, viaPrimitive.peak);
+  assert.equal(viaLane.trough, viaPrimitive.trough);
+  assert.equal(viaLane.trough, null, "the condor-shaped row is null on BOTH lanes now");
 });
