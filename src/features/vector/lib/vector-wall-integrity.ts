@@ -43,7 +43,15 @@ const W_ISOLATION = 0.2;
 
 /** Strikes within this distance are treated as the same level across rail samples. */
 const STRIKE_MATCH_TOL = 1.0;
-/** How many trailing rail samples define "recent" for persistence. */
+/**
+ * How many trailing rail samples define "recent" for persistence.
+ *
+ * A COUNT, so the wall-clock span it covers depends on the recorder lane: oracle tickers record
+ * every 5s (60 samples = ~5 minutes), non-oracle every 15s (~15 minutes), and an over-budget rail
+ * compacted to 15s buckets is different again. That is the same trap `MAX_HISTORY` documents one
+ * file over — "the same number means 'a full day' on one lane and '8 hours' on the other" — which
+ * is why the note below reports the span it MEASURED rather than naming a fixed duration.
+ */
 const PERSISTENCE_WINDOW = 60;
 /**
  * Fewer rail samples than this = no meaningful time series yet, so persistence is
@@ -121,7 +129,7 @@ export function scoreWallIntegrity(
       persistence: round2(persistence),
       isolation: round2(isolation),
     },
-    note: buildNote(side, wall.strike, tier, persistence, isolation, history.length),
+    note: buildNote(side, wall.strike, tier, persistence, isolation, history),
   };
 }
 
@@ -207,20 +215,59 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+/**
+ * Wall-clock span the persistence window actually covered, as a short human label ("5m", "1h20m").
+ *
+ * Derived from the sample TIMESTAMPS rather than named as a constant, because 60 samples is a
+ * different duration on every lane: ~5 minutes at the oracle recorder's 5s cadence, ~15 minutes at
+ * the non-oracle 15s cadence, and longer again on a rail whose old end has been compacted to 15s
+ * buckets. `time` is epoch-SECONDS (see WallHistorySample).
+ */
+function windowSpanLabel(history: readonly WallHistorySample[]): string | null {
+  const recent = history.slice(-PERSISTENCE_WINDOW);
+  const first = recent[0]?.time;
+  const last = recent[recent.length - 1]?.time;
+  if (!Number.isFinite(first) || !Number.isFinite(last)) return null;
+  const sec = Math.round(last! - first!);
+  if (!(sec > 0)) return null;
+  if (sec < 90) return `${sec}s`;
+  const mins = Math.round(sec / 60);
+  if (mins < 60) return `${mins}m`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m === 0 ? `${h}h` : `${h}h${m}m`;
+}
+
+/**
+ * The note a member reads under a wall, e.g. "7500C firm — held 100% of last 5m, dominant".
+ *
+ * It used to end "held N% of session", and that was an overclaim of exactly the kind this file
+ * already knew to avoid — see MIN_RAIL_SAMPLES, which exists because a ONE-sample rail reading
+ * "held 100% of session" claimed an observation nobody had made. The 60-sample case said the same
+ * wrong thing: persistence is measured over PERSISTENCE_WINDOW trailing samples, which on an oracle
+ * ticker is about five minutes out of a 390-minute session. A wall that first appeared four minutes
+ * ago read "held 100% of session".
+ *
+ * So the note now states the window it measured. That keeps the claim exactly as strong as the
+ * evidence behind it, on every recorder lane, without changing the score — the SCORING window is a
+ * separate question (35% of the integrity score rides on this factor) and is deliberately left
+ * alone here rather than quietly retuned inside a labelling fix.
+ */
 function buildNote(
   side: "call" | "put",
   strike: number,
   tier: WallIntegrityTier,
   persistence: number,
   isolation: number,
-  historyLen: number
+  history: readonly WallHistorySample[]
 ): string {
+  const span = windowSpanLabel(history);
   const held =
-    historyLen === 0
+    history.length === 0
       ? "no rail yet"
-      : historyLen < MIN_RAIL_SAMPLES
-        ? "as-of-close" // seed/near-empty rail — no session-long observation to claim
-        : `held ${Math.round(persistence * 100)}% of session`;
+      : history.length < MIN_RAIL_SAMPLES
+        ? "as-of-close" // seed/near-empty rail — no observation over time to claim at all
+        : `held ${Math.round(persistence * 100)}%${span ? ` of last ${span}` : " of observed rail"}`;
   const shape = isolation >= 0.5 ? "dominant" : "clustered";
   return `${Math.round(strike)}${side === "call" ? "C" : "P"} ${tier} — ${held}, ${shape}`;
 }
