@@ -5322,6 +5322,60 @@ html.product-shell .nav-mega {
     line-height: 1.4;
     color: #9fb3c8;
   }
+  .largo-empty-card-meta {
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #7dd3fc;
+    margin-top: 0.15rem;
+  }
+  .largo-empty-card-desk.largo-empty-card-desk-only {
+    border-color: rgba(34, 211, 238, 0.28);
+  }
+
+  .largo-desk-module-picker-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.75rem;
+    margin-bottom: 0.5rem;
+  }
+  .largo-desk-module-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    padding: 0.2rem 0.45rem;
+    font-family: var(--font-jetbrains, monospace);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #7dd3fc;
+    background: transparent;
+    border: 1px solid rgba(34, 211, 238, 0.2);
+    border-radius: 0.35rem;
+    cursor: pointer;
+  }
+  .largo-desk-module-picker-title {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: #fff;
+  }
+  .largo-desk-module-picker-sub {
+    margin: 0;
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #22d3ee;
+  }
+  .largo-desk-module-chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+  .largo-suggestion-chip-desk {
+    border-color: rgba(34, 211, 238, 0.35);
+  }
 
   /* ── Native (iOS) top bar: New chat + Stop ── */
   .largo-native-topbar {

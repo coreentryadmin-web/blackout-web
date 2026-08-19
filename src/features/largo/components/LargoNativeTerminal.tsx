@@ -7,7 +7,8 @@ import { LargoMessageBody } from "@/features/largo/components/LargoMessageBody";
 import { LargoAnswerMessage } from "@/features/largo/components/LargoAnswerMessage";
 import { LargoThinkingState } from "@/features/largo/components/LargoThinkingState";
 import { resetIosViewport } from "@/hooks/useIosKeyboardInset";
-import { largoModuleComposerChips } from "@/lib/largo/largo-module-starter-cards";
+import { LargoDeskModulePicker } from "@/features/largo/components/LargoDeskModulePicker";
+import { largoModuleComposerDesks } from "@/lib/largo/largo-module-starter-cards";
 import { largoToolLabel, useLargoChat } from "@/hooks/useLargoChat";
 import { useLargoSlashCommands } from "@/hooks/useLargoSlashCommands";
 import { resolveLargoSlashSubmit } from "@/lib/largo/slash-commands";
@@ -160,24 +161,17 @@ export function LargoNativeTerminal() {
         ))}
 
         {isFresh && !loading && hydrated && (
-          <div className="largo-native-suggestions">
-            <p className="largo-native-suggestions-label">Desk modules</p>
-            {largoModuleComposerChips().map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                className="largo-native-suggestion largo-native-suggestion-module"
-                onClick={() =>
-                  void runQuery(p.question, {
-                    deskScope: p.desk,
-                    deskScopeArgs: { submodule: p.submodule },
-                  })
-                }
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
+          <LargoDeskModulePicker
+            variant="native"
+            desks={largoModuleComposerDesks()}
+            className="largo-native-suggestions"
+            onPick={(pick) =>
+              void runQuery(pick.question, {
+                deskScope: pick.deskScope,
+                deskScopeArgs: pick.deskScopeArgs,
+              })
+            }
+          />
         )}
 
         {loading && (awaitingFirstToken || !streaming) && (

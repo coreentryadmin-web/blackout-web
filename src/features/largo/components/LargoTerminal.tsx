@@ -20,7 +20,8 @@ import { LargoMessageBody } from "./LargoMessageBody";
 import { LargoAnswerMessage } from "./LargoAnswerMessage";
 import { LargoTerminalToolbar } from "./LargoTerminalToolbar";
 import { LargoEmptyState } from "./LargoEmptyState";
-import { largoModuleComposerChips } from "@/lib/largo/largo-module-starter-cards";
+import { LargoDeskModulePicker } from "./LargoDeskModulePicker";
+import { largoModuleComposerDesks } from "@/lib/largo/largo-module-starter-cards";
 import { LargoStatusStrip } from "./LargoStatusStrip";
 import { LargoContextRail } from "./LargoContextRail";
 import { LargoSlashMenu } from "./LargoSlashMenu";
@@ -330,26 +331,16 @@ export function LargoTerminal({
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
             >
-              <p className="largo-suggestions-label">Desk modules</p>
-              <div className="largo-suggestions-grid">
-                {largoModuleComposerChips().map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    className="largo-suggestion-chip largo-suggestion-chip-module"
-                    onClick={() =>
-                      void runQuery(p.question, {
-                        deskScope: p.desk,
-                        deskScopeArgs: { submodule: p.submodule },
-                      })
-                    }
-                    title={p.hint}
-                  >
-                    <span aria-hidden className="largo-suggestion-arrow">▸</span>
-                    {p.label}
-                  </button>
-                ))}
-              </div>
+              <LargoDeskModulePicker
+                variant="compact"
+                desks={largoModuleComposerDesks()}
+                onPick={(pick) =>
+                  void runQuery(pick.question, {
+                    deskScope: pick.deskScope,
+                    deskScopeArgs: pick.deskScopeArgs,
+                  })
+                }
+              />
             </motion.div>
           )}
 
