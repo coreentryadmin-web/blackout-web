@@ -4,6 +4,7 @@ import { resolveUserTier, TierUnavailableError } from "@/lib/tier-cache";
 import { getSession } from "@/lib/auth-server";
 import { adminFromJwtRole } from "@/lib/admin-from-jwt";
 import { roleFromSessionClaims, tierFromSessionClaims } from "@/lib/clerk-session-claims";
+import type { ToolKey } from "@/lib/tool-access";
 
 export async function requireAuth(): Promise<string> {
   const { userId } = await getSession();
@@ -36,18 +37,18 @@ export async function requireTier(minTier: Tier) {
   // Backend getUser on every page navigation when the token already proves access.
   const jwtAdmin = adminFromJwtRole(roleFromSessionClaims(sessionClaims));
   if (jwtAdmin === true) {
-    return { userId, tier: "premium" as Tier };
+    return { userId, tier: "premium" as Tier, sessionClaims };
   }
 
   const jwtTier = tierFromSessionClaims(sessionClaims);
   if (jwtTier === "premium" || jwtTier === "community") {
-    if (tierAtLeast(jwtTier, minTier)) return { userId, tier: jwtTier };
+    if (tierAtLeast(jwtTier, minTier)) return { userId, tier: jwtTier, sessionClaims };
     redirect("/upgrade");
   }
 
   const { isAdminUser } = await import("@/lib/admin-access");
   if (await isAdminUser(userId, sessionClaims)) {
-    return { userId, tier: "premium" as Tier };
+    return { userId, tier: "premium" as Tier, sessionClaims };
   }
   const tier = await getUserTier(userId, sessionClaims);
 
@@ -55,5 +56,19 @@ export async function requireTier(minTier: Tier) {
     redirect("/upgrade");
   }
 
+  return { userId, tier, sessionClaims };
+}
+
+/**
+ * One session read + tier gate + tool launch gate. Returns null when the tool is coming soon
+ * (caller renders ComingSoon). Redirects on sign-in / upgrade like requireTier.
+ */
+export async function requireDeskTool(
+  minTier: Tier,
+  toolKey: ToolKey
+): Promise<{ userId: string; tier: Tier } | null> {
+  const { userId, tier, sessionClaims } = await requireTier(minTier);
+  const { userCanAccessTool } = await import("@/lib/tool-access-server");
+  if (!(await userCanAccessTool(userId, toolKey, sessionClaims))) return null;
   return { userId, tier };
 }

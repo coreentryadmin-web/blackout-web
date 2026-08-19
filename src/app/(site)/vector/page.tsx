@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import { requireTier } from "@/lib/auth-access";
-import { canAccessTool } from "@/lib/tool-access-server";
+import { requireDeskTool } from "@/lib/auth-access";
 import { ComingSoon } from "@/components/ComingSoon";
 import {
   VectorPageClient,
@@ -19,8 +18,7 @@ type PageProps = {
 };
 
 export default async function VectorPage({ searchParams }: PageProps) {
-  await requireTier("premium");
-  if (!(await canAccessTool("vector"))) return <ComingSoon toolKey="vector" />;
+  if (!(await requireDeskTool("premium", "vector"))) return <ComingSoon toolKey="vector" />;
 
   const { ticker: rawTicker, compare: compareRaw } = await searchParams;
   const ticker = normalizeVectorTicker(rawTicker);
