@@ -95,57 +95,19 @@ const vis = (page, testid) => page.locator(`[data-testid=${testid}]`).filter({ v
  * the wall widening and the candle-share cap composed together, and re-deriving it from any one of
  * those inputs would measure the intent rather than the result.
  */
-async function paneGeometry(page) {
-  // DISABLED. This scraped the price-axis tick labels, and on a live desk it selected a different
-  // numeric column entirely — it returned an identical axis span (309.79) for SPX at ~7700 and
-  // NVDA at ~220, which cannot both be right and is in fact neither. The candle-share measurement
-  // below does not need it: that comes from canvas pixels, in one coordinate system, and answers
-  // the same question without a second, unvalidated source of truth. Left here, inert and
-  // documented, rather than silently deleted so the next person does not re-invent the same trap.
-  return null;
-  /* eslint-disable no-unreachable */
-  return page.evaluate(() => {
-    // Price-axis tick labels: numeric, right-hand side, many of them, evenly spaced in y.
-    const nums = [];
-    for (const el of document.querySelectorAll("div,span,td")) {
-      if (el.children.length) continue;
-      const t = (el.textContent || "").trim().replace(/,/g, "");
-      if (!/^\d+(\.\d+)?$/.test(t)) continue;
-      const r = el.getBoundingClientRect();
-      if (r.width === 0 || r.height === 0) continue;
-      nums.push({ v: Number(t), x: r.x, y: r.y + r.height / 2 });
-    }
-    if (nums.length < 4) return null;
-    // The axis is the densest right-hand x-column of numeric labels.
-    const byCol = new Map();
-    for (const n of nums) {
-      const k = Math.round(n.x / 12);
-      if (!byCol.has(k)) byCol.set(k, []);
-      byCol.get(k).push(n);
-    }
-    let col = null;
-    for (const [, v] of byCol) {
-      if (v.length < 4) continue;
-      if (!col || v.length > col.length || (v.length === col.length && v[0].x > col[0].x)) col = v;
-    }
-    if (!col) return null;
-    col.sort((a, b) => a.y - b.y);
-    const top = col[0], bot = col[col.length - 1];
-    if (!(top && bot) || bot.y === top.y) return null;
-    // Price per pixel from the two extreme ticks — linear scale, which the desk uses.
-    const pxPerPrice = (bot.y - top.y) / (top.v - bot.v);
-    return {
-      axisMax: top.v,
-      axisMin: bot.v,
-      axisSpan: top.v - bot.v,
-      topY: top.y,
-      botY: bot.y,
-      pxPerPrice,
-      tickCount: col.length,
-    };
-  });
-  /* eslint-enable no-unreachable */
-}
+/**
+ * Price-pane geometry — REMOVED, deliberately, rather than left disabled.
+ *
+ * This scraped the price-axis tick labels to derive the visible price range. On a live desk it
+ * selected a different numeric column entirely: it returned an identical axis span (309.79) for
+ * SPX at ~7700 and NVDA at ~220, which cannot both be right and is in fact neither.
+ *
+ * It is not needed. The candle-share measurement below comes from canvas pixels in ONE coordinate
+ * system and answers the same question without a second, unvalidated source of truth. An earlier
+ * revision kept the body behind an early `return null` with this explanation attached; CodeQL
+ * correctly flagged the result as unreachable, and a commented-out corpse is worse documentation
+ * than a note saying what was tried and why it failed. This is that note.
+ */
 
 /**
  * Candle band in PIXELS, from the canvas.
@@ -193,7 +155,6 @@ async function analyzeShot(shotPath) {
 }
 
 async function measureFrame(page, label, outPrefix) {
-  const geom = await paneGeometry(page);
   const box = await page.evaluate(() => {
     let best = null;
     for (const c of document.querySelectorAll("canvas")) {
@@ -233,9 +194,6 @@ async function measureFrame(page, label, outPrefix) {
     lumSpread: summary.lumSpread,
     rows,
     candleShare,
-    axisSpan: geom ? geom.axisSpan : null,
-    axisMin: geom ? geom.axisMin : null,
-    axisMax: geom ? geom.axisMax : null,
   };
 }
 
