@@ -18,6 +18,11 @@ import {
   targetHalfPx,
   withA,
   trailingRefs,
+  rowPeakRefs,
+  rowSwellMul,
+  beadHalfXCap,
+  ROW_SWELL_FLOOR,
+  MIN_CLAMPED_HALF_RANGE_PX,
 } from "./vector-wall-rail-core";
 
 // ── withA ────────────────────────────────────────────────────────────────────
@@ -350,7 +355,10 @@ test("a collapsed SIZE RANGE is the failure mode, not just a small bead", () => 
   // history. The range has to survive the clamp, or the size channel is gone even when beads are
   // individually visible.
   const t = clampTuningToSpacing(BEAD_TUNING_DEFAULT, MEASURED_3M);
-  assert.ok(t.halfMax - t.halfMin >= 1, `range ${t.halfMin}-${t.halfMax} is too flat to read`);
+  assert.ok(
+    t.halfMax - t.halfMin >= MIN_CLAMPED_HALF_RANGE_PX,
+    `range ${t.halfMin}-${t.halfMax} is too flat to read at 3m`
+  );
 });
 
 test("rows stay visibly separated — the property the slab render lost", () => {
@@ -567,4 +575,34 @@ test("a bucket with no reference falls back to the frame max rather than throwin
   const m = maxPctByTime([]);
   assert.equal(m.get(999), undefined);
   assert.ok(fillAlpha(5, m.get(999) ?? 20) > 0, "caller's ?? fallback keeps the bead drawable");
+});
+
+// ── ROW SWELL (2026-08-19) — competitor-style strength along a strike row ─────────────────────
+
+test("rowPeakRefs: running peak includes the current bucket", () => {
+  const peaks = rowPeakRefs([{ pct: 3 }, { pct: 8 }, { pct: 5 }, { pct: 2 }]);
+  assert.deepEqual(peaks, [3, 8, 8, 8]);
+});
+
+test("rowSwellMul: peak bucket is full weight, faded tail is materially weaker", () => {
+  assert.equal(rowSwellMul(10, 10), 1);
+  const weak = rowSwellMul(2, 10);
+  assert.ok(weak < 0.55, `weak tail ${weak} should read clearly weaker than peak`);
+  assert.ok(weak >= ROW_SWELL_FLOOR);
+});
+
+test("row swell on targetHalfPx: a 4x pct drop yields at least 2x height ratio on the same row", () => {
+  const tuning = BEAD_TUNING_DEFAULT;
+  const peak = 12;
+  const strong = targetHalfPx(12, undefined, 100, tuning, { rowPeakPct: peak });
+  const weak = targetHalfPx(3, undefined, 100, tuning, { rowPeakPct: peak });
+  const ratio = strong / weak;
+  assert.ok(ratio >= 2, `expected >=2x swell, got ${ratio.toFixed(2)}x (${strong}/${weak})`);
+});
+
+test("beadHalfXCap: vertical swell may exceed horizontal cap at dense bar spacing", () => {
+  const halfY = 5;
+  const halfX = beadHalfXCap(halfY, 5.4);
+  assert.ok(halfX < halfY, "horizontal axis stays narrower than vertical at 3m spacing");
+  assert.ok(halfX >= 1, "cap still leaves a drawable width");
 });

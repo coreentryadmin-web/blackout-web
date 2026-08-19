@@ -138,7 +138,58 @@ export function withA(color: string, a: number): string {
 
 export type TargetHalfPxOpts = {
   /** When false, force frame-relative sizing even if `notional` is present ($ Size off). */
+  /** Running peak share on this strike row — scales bead height by pct/peak (competitor swell). */
+  rowPeakPct?: number | null;
 };
+
+/** Floor for row-relative swell multiplier — weakest moment on a row still reads present. */
+export const ROW_SWELL_FLOOR = 0.32;
+
+/** Sub-linear exponent — lifts the weak end so a fade is visible without crushing the peak. */
+export const ROW_SWELL_EXP = 0.7;
+
+/** Minimum half-height range after spacing clamp at ordinary 3m zoom (3px diameter spread). */
+export const MIN_CLAMPED_HALF_RANGE_PX = 1.5;
+
+/**
+ * Running peak gamma share on one strike row, including the current bucket.
+ *
+ * Compares each bead to the strongest this wall has been **so far along the row** — the competitor
+ * swell/fade read. Strictly historical: point i never sees pct from i+1.
+ */
+export function rowPeakRefs(points: ReadonlyArray<{ pct: number }>): number[] {
+  let peak = 0;
+  return points.map((p) => {
+    if (Number.isFinite(p.pct) && p.pct > 0) peak = Math.max(peak, p.pct);
+    return peak;
+  });
+}
+
+/**
+ * Row-relative strength in [floor, 1]: 1 at the row's peak so far, tapering as the wall bleeds off.
+ */
+export function rowSwellMul(
+  pct: number,
+  rowPeak: number,
+  opts?: { floor?: number; exp?: number }
+): number {
+  const floor = opts?.floor ?? ROW_SWELL_FLOOR;
+  const exp = opts?.exp ?? ROW_SWELL_EXP;
+  if (!Number.isFinite(pct) || pct <= 0 || !(rowPeak > 0)) return floor;
+  const t = Math.min(1, pct / rowPeak);
+  return floor + Math.pow(t, exp) * (1 - floor);
+}
+
+/**
+ * Cap horizontal bead radius so vertical swell does not widen the overlapping ribbon slab.
+ * Vertical half (`halfY`) may exceed this; draw as an ellipse.
+ */
+export function beadHalfXCap(halfY: number, barSpacingPx: number): number {
+  if (!(halfY > 0) || !Number.isFinite(halfY)) return halfY;
+  if (!(barSpacingPx > 0) || !Number.isFinite(barSpacingPx)) return halfY;
+  const cap = (barSpacingPx * 0.42) / 2;
+  return Math.min(halfY, Math.max(1, cap));
+}
 
 /**
  * TARGET bead half-height (radius) in px.
@@ -147,6 +198,9 @@ export type TargetHalfPxOpts = {
  * is a share of the ticker's OWN book, so every ticker is treated identically, which is the whole
  * point: the previous absolute-$ ladder was calibrated on SPX and clamped 100% of META/TSLA beads
  * to a single size (measured 2026-08-17).
+ *
+ * When `rowPeakPct` is set, multiplies by {@link rowSwellMul} so a row visibly swells at its peak
+ * and thins when the wall fades — the reference-product read members asked for (2026-08-19).
  *
  * `notional` is deliberately NO LONGER the primary channel. It is a real recorded quantity, but an
  * absolute one, and absolute dollars are not comparable across underlyings — which is exactly how
@@ -160,13 +214,19 @@ export function targetHalfPx(
   tuning: BeadRenderTuning = BEAD_TUNING_DEFAULT,
   opts?: TargetHalfPxOpts
 ): number {
+  let half: number;
   if (Number.isFinite(pct) && pct > 0) {
-    return beadRadiusForPctShare(pct, { floorPx: tuning.halfMin, ceilPx: tuning.halfMax });
+    half = beadRadiusForPctShare(pct, { floorPx: tuning.halfMin, ceilPx: tuning.halfMax });
+  } else {
+    // No usable share. Frame-relative is the last resort — with no share there is nothing per-ticker
+    // to normalise against, and a bead must still render rather than collapse.
+    half = tuning.halfMin + relStrengthT(pct, maxPct) * (tuning.halfMax - tuning.halfMin);
   }
-
-  // No usable share. Frame-relative is the last resort — with no share there is nothing per-ticker
-  // to normalise against, and a bead must still render rather than collapse.
-  return tuning.halfMin + relStrengthT(pct, maxPct) * (tuning.halfMax - tuning.halfMin);
+  const rowPeak = opts?.rowPeakPct;
+  if (rowPeak != null && rowPeak > 0) {
+    half *= rowSwellMul(pct, rowPeak);
+  }
+  return Math.max(tuning.minRadiusPx, half);
 }
 
 /**
@@ -456,7 +516,12 @@ export function clampTuningToSpacing(
   const ratio = tuning.halfMin > 0 ? tuning.halfMax / tuning.halfMin : 1;
   const ranged = ratio > 1 ? halfMax / ratio : halfMax;
   const visible = Math.min(halfMax * BEAD_FLOOR_MAX_SHARE_OF_CEIL, BEAD_VISIBLE_MIN_HALF_PX);
-  const halfMin = Math.min(halfMax, Math.max(floor, ranged, visible));
+  let halfMin = Math.min(halfMax, Math.max(floor, ranged, visible));
+  // Preserve at least MIN_CLAMPED_HALF_RANGE_PX of vertical dynamic range at dense zoom — a 1px
+  // spread passes tests but reads as "every bead the same" on desk (member report 2026-08-19).
+  if (halfMax - halfMin < MIN_CLAMPED_HALF_RANGE_PX) {
+    halfMin = Math.max(floor, BEAD_VISIBLE_MIN_HALF_PX, halfMax - MIN_CLAMPED_HALF_RANGE_PX);
+  }
 
   return { ...tuning, halfMax, halfMin };
 }
