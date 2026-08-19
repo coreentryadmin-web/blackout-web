@@ -136,6 +136,34 @@ export function withA(color: string, a: number): string {
   return color;
 }
 
+/** Desk background — weak beads mix toward this so yellow/magenta read as pale vs saturated shades. */
+const WALL_BEAD_SHADE_BG = { r: 4, g: 4, b: 7 };
+
+/**
+ * Per-bead hue shade from combined strength (book-relative x row-temporal).
+ *
+ * From Cursor's #2339, kept because it is the right mechanism. ALPHA alone was not enough: the rail
+ * now draws BEHIND the candles over a gradient ground, so a low-alpha bead does not reliably read
+ * as "pale" — it reads as whatever is behind it. Pre-mixing the base call/put hex toward the desk
+ * background gives a predictable SHADE at full opacity, so a weak wall is muted yellow rather than
+ * a see-through one, while the side hue (yellow vs magenta) survives at every strength.
+ *
+ * Member spec: "Weak beads -> paler, muted yellow/magenta ... Strong beads -> full saturated
+ * #ffd60a / #d97bff".
+ */
+export function wallBeadColorShade(baseHex: string, strengthT: number): string {
+  if (!HEX_6.test(baseHex)) return baseHex;
+  const t = Math.max(0, Math.min(1, Number.isFinite(strengthT) ? strengthT : 0));
+  const r0 = parseInt(baseHex.slice(1, 3), 16);
+  const g0 = parseInt(baseHex.slice(3, 5), 16);
+  const b0 = parseInt(baseHex.slice(5, 7), 16);
+  const mix = 0.68 * (1 - Math.pow(t, 0.82));
+  const r = Math.round(r0 * (1 - mix) + WALL_BEAD_SHADE_BG.r * mix);
+  const g = Math.round(g0 * (1 - mix) + WALL_BEAD_SHADE_BG.g * mix);
+  const b = Math.round(b0 * (1 - mix) + WALL_BEAD_SHADE_BG.b * mix);
+  return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+}
+
 export type TargetHalfPxOpts = {
   /** Running peak share on this strike row — scales bead height by pct/peak (competitor swell). */
   rowPeakPct?: number | null;
@@ -266,6 +294,10 @@ export const ROW_HALO_BAR_SPACING_FILL = 0.55;
 /**
  * Fraction of the ROW GAP that core bead + halo together may occupy at full swell.
  *
+ * MUST stay >= BEAD_ROW_FILL. An earlier attempt set this to 0.35 while the core kept 0.42, so the
+ * core alone busted the combined budget and the halo was squeezed to its 0.25px minimum on every
+ * row. The unit test on the SUM catches that ordering violation; a `<= 1.0` assertion did not.
+ *
  * The counterpart to {@link ROW_HALO_BAR_SPACING_FILL} on the axis that matters for legibility.
  * Measured on prod during RTH before this existed: band thickness / nearest row gap ran a median
  * p90 of 0.64 and exceeded 1.0 on 15 of 21 frames (worst 1.58 on QQQ) — above 1.0 the bead is
@@ -275,7 +307,7 @@ export const ROW_HALO_BAR_SPACING_FILL = 0.55;
  * dominant wall READS as dominant, and squeezing the peak toward the floor trades this complaint
  * for the opposite one — which is the exact oscillation #2310 and #2244 already went through once.
  */
-export const ROW_HALO_ROW_GAP_FILL = 0.7;
+export const ROW_HALO_ROW_GAP_FILL = 0.45;
 
 /**
  * Strength halo radius beyond core bead — grows with row swell, fades to a trace.
@@ -576,7 +608,11 @@ const BEAD_BAR_FILL = 2.4;
 /** Fraction of the ROW GAP (price-axis distance to the nearest neighbouring row) a bead's diameter
  *  may occupy. Deliberately about half: this is what keeps rows visibly SEPARATE — the property the
  *  reference product has and the slab render did not — and what stops beads burying the candles. */
-const BEAD_ROW_FILL = 0.55;
+const BEAD_ROW_FILL = 0.34;
+
+/** The core budget, exported for the sum invariant in the tests. It must never exceed
+ *  {@link ROW_HALO_ROW_GAP_FILL}; exporting it is what lets a test assert that ordering. */
+export const BEAD_ROW_FILL_FOR_TEST = BEAD_ROW_FILL;
 
 /**
  * The clamped ceiling may never fall below this.
