@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse, after } from "next/server";
-import { requireDatabaseInProduction, fetchNighthawkJob, failStaleNighthawkJobs } from "@/lib/db";
-import { buildEveningEdition, serializeBuildError } from "@/features/nighthawk/lib/edition-builder";
+import { requireDatabaseInProduction, fetchNighthawkJob, fetchNighthawkEditionByDate, failStaleNighthawkJobs } from "@/lib/db";
+import { buildEveningEdition, rowToNightHawkEdition, serializeBuildError } from "@/features/nighthawk/lib/edition-builder";
 import { isInEditionWindow } from "@/features/nighthawk/lib/edition-stale";
 import { nextTradingDayEt, todayEt } from "@/features/nighthawk/lib/session";
 import { isCronAuthorized } from "@/lib/market-api-auth";
@@ -70,6 +70,20 @@ export async function GET(req: NextRequest) {
   const job = await fetchNighthawkJob(editionFor);
 
   if (statusOnly) {
+    let edition_present = false;
+    let play_count: number | null = null;
+    let recap_only: boolean | null = null;
+    try {
+      const row = await fetchNighthawkEditionByDate(editionFor);
+      if (row) {
+        edition_present = true;
+        const mapped = rowToNightHawkEdition(row);
+        play_count = mapped.plays.length;
+        recap_only = mapped.recap_only ?? false;
+      }
+    } catch (err) {
+      console.warn("[cron/nighthawk-edition] status edition probe failed:", err);
+    }
     return NextResponse.json({
       ok: true,
       edition_for: editionFor,
@@ -77,6 +91,9 @@ export async function GET(req: NextRequest) {
       current_stage: job?.current_stage ?? null,
       error: job?.error ?? null,
       staged_candidates: job?.candidates_json?.length ?? 0,
+      edition_present,
+      play_count,
+      recap_only,
       note: "Long runs execute via `npm run nighthawk:run` (ECS cron worker). This route nudges/resumes within 300s.",
     });
   }

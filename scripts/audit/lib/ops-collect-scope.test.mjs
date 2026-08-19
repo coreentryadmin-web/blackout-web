@@ -6,6 +6,7 @@ import {
   spxOpsItems,
   shouldRetryWatchdogFetch,
   watchdogHttpPriority,
+  shouldPageNighthawkZeroPlays,
 } from "./ops-collect-scope.mjs";
 
 describe("watchdogHttpPriority", () => {
@@ -69,5 +70,39 @@ describe("gridOpsItems", () => {
     const scoped = gridOpsItems(items);
     assert.equal(scoped.length, 1);
     assert.match(scoped[0].title, /zerodte/);
+  });
+});
+
+describe("shouldPageNighthawkZeroPlays", () => {
+  const base = {
+    inWindow: true,
+    jobStatus: "published",
+    editionPresent: true,
+    playCount: 0,
+    recapOnly: false,
+  };
+
+  it("pages on a real zero-play publish without recap_only", () => {
+    assert.equal(shouldPageNighthawkZeroPlays(base), true);
+  });
+
+  it("does not page outside the edition catchup window", () => {
+    assert.equal(shouldPageNighthawkZeroPlays({ ...base, inWindow: false }), false);
+  });
+
+  it("does not page when the job is not published yet", () => {
+    assert.equal(shouldPageNighthawkZeroPlays({ ...base, jobStatus: "running" }), false);
+  });
+
+  it("does not page when no edition row exists yet (pre-publish shell)", () => {
+    assert.equal(shouldPageNighthawkZeroPlays({ ...base, editionPresent: false }), false);
+  });
+
+  it("does not page when plays exist", () => {
+    assert.equal(shouldPageNighthawkZeroPlays({ ...base, playCount: 2 }), false);
+  });
+
+  it("does not page on honest recap-only editions", () => {
+    assert.equal(shouldPageNighthawkZeroPlays({ ...base, recapOnly: true }), false);
   });
 });
