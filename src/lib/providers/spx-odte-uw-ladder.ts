@@ -110,9 +110,9 @@ function fetchSpxOdteScopedUwLadderWs(sym: string, expiry: string): SpxOdteUwLad
  */
 /**
  * Fetch UW GEX ladder for a specific expiry. Defaults to today's ET date (live 0DTE).
- * Correctness oracle callers MUST pass the same expiry as `resolveOdteExpiry` on the
- * served heatmap — after today's column rolls off the axis post-close, UW for calendar-
- * today would disagree with the matrix front-expiry column (ops-auto-fix #2357).
+ * Correctness oracle callers MUST pass the same expiry as `resolveZeroDteExpiry` on the
+ * served heatmap — when today's column is absent post-close, skip the oracle instead of
+ * comparing a front-expiry column (ops-auto-fix #2360).
  */
 export async function fetchSpxOdteScopedUwLadder(
   ticker = "SPX",

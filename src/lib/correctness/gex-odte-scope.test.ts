@@ -39,6 +39,30 @@ test("odteStrikeTotalsFromCells sums one expiry column", () => {
   assert.deepEqual(totals, { "7400": -1, "7550": 5 });
 });
 
+test("odteGexScopeFromHeatmap is strict 0DTE — no front-expiry fallback", () => {
+  const hm = {
+    spot: 7500,
+    expiries: ["2026-07-02", "2026-07-08"],
+    strikes: [7400, 7550],
+    gex: {
+      cells: {
+        "7400": { "2026-07-02": -20, "2026-07-08": -99 },
+        "7550": { "2026-07-02": 30, "2026-07-08": 50 },
+      },
+      strike_totals: { "7400": -119, "7550": 80 },
+      total: -39,
+      call_wall: 7550,
+      put_wall: 7400,
+      flip: null,
+      regime: { posture: "short" as const, read: "test" },
+    },
+  };
+  const scope = odteGexScopeFromHeatmap(hm as never, "2026-07-01");
+  assert.equal(scope.expiry, null);
+  assert.equal(scope.total, 0);
+  assert.deepEqual(scope.strikeTotals, {});
+});
+
 test("odteGexScopeFromHeatmap builds 0DTE net from heatmap cells", () => {
   const hm = {
     spot: 7500,

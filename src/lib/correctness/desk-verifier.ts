@@ -9,7 +9,7 @@ import {
   rollUpMetricStatus,
   worstStatus,
 } from "@/lib/correctness/types";
-import { kingFromStrikeTotals, odteGexScopeFromHeatmap, grossAbsFromStrikeTotals, grossAbsFromUwGexRows, isHairlineNetGammaSign, isNearGammaFlip, recomputeScopedGexLevels, resolveOdteExpiry } from "@/lib/correctness/gex-odte-scope";
+import { kingFromStrikeTotals, odteGexScopeFromHeatmap, grossAbsFromStrikeTotals, grossAbsFromUwGexRows, isHairlineNetGammaSign, isNearGammaFlip, recomputeScopedGexLevels, resolveZeroDteExpiry } from "@/lib/correctness/gex-odte-scope";
 import { loadMergedSpxDesk } from "@/features/spx/lib/spx-desk-loader";
 
 // ---------------------------------------------------------------------------
@@ -410,7 +410,7 @@ async function crossProviderChecks(
   try {
     const { fetchGexHeatmap } = await import("@/lib/providers/polygon-options-gex");
     const hm = await fetchGexHeatmap("SPX").catch(() => null);
-    alignedExpiry = hm ? resolveOdteExpiry(hm.expiries ?? [], ctx.today) : null;
+    alignedExpiry = hm ? resolveZeroDteExpiry(hm.expiries ?? [], ctx.today) : null;
     const odte = odteGexScopeFromHeatmap(hm, ctx.today);
     odteKing = kingFromStrikeTotals(odte.strikeTotals);
     odteNet = odte.total;
@@ -422,9 +422,24 @@ async function crossProviderChecks(
 
   if (!alignedExpiry) {
     out.push(
-      mk(ctx, "cross-provider", "king", "consistency-only", "No expiry axis on SPX matrix — desk King consistency-only.", {
-        id: "desk-oracle-king",
-      })
+      mk(
+        ctx,
+        "cross-provider",
+        "king",
+        "consistency-only",
+        `No ${ctx.today} expiry column on the SPX matrix (0DTE expired or not on axis) — UW 0DTE King oracle skipped.`,
+        { id: "desk-oracle-king" }
+      )
+    );
+    out.push(
+      mk(
+        ctx,
+        "cross-provider",
+        "gex_net",
+        "consistency-only",
+        `No ${ctx.today} expiry column on the SPX matrix (0DTE expired or not on axis) — UW 0DTE oracle skipped; net-sign consistency-only.`,
+        { id: "desk-oracle-net-sign" }
+      )
     );
     return out;
   }
