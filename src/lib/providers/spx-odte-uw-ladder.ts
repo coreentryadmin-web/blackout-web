@@ -131,17 +131,23 @@ function scopedLadderCacheMs(): number {
 }
 
 /** In-process cache shared by overlay + repeated heatmap reads. */
-let cachedScoped: { at: number; result: SpxOdteUwLadderResult } | null = null;
+let cachedScoped: { at: number; expiry: string; result: SpxOdteUwLadderResult } | null = null;
 
-/** Cached 0DTE ladder as a strike→net map (overlay hot path). */
-export async function getSpxOdteScopedUwLadderMap(): Promise<Map<number, number> | null> {
+/** Cached expiry-scoped ladder as a strike→net map (overlay hot path). */
+export async function getSpxOdteScopedUwLadderMap(
+  expiry: string = todayEtYmd()
+): Promise<Map<number, number> | null> {
   const now = Date.now();
-  if (cachedScoped && now - cachedScoped.at < scopedLadderCacheMs()) {
+  if (
+    cachedScoped &&
+    cachedScoped.expiry === expiry &&
+    now - cachedScoped.at < scopedLadderCacheMs()
+  ) {
     return strikeLadderFromUwRows(cachedScoped.result.rows);
   }
-  const result = await fetchSpxOdteScopedUwLadder("SPX");
+  const result = await fetchSpxOdteScopedUwLadder("SPX", expiry);
   if (!result.rows.length) return null;
-  cachedScoped = { at: now, result };
+  cachedScoped = { at: now, expiry, result };
   return strikeLadderFromUwRows(result.rows);
 }
 

@@ -1,4 +1,5 @@
 import type { GexHeatmap } from "@/lib/providers/polygon-options-gex";
+import { resolveOdteExpiry } from "@/lib/correctness/gex-odte-scope";
 import { wallsFromStrikeTotals, cumulativeGammaFlip } from "@/lib/providers/gex-cross-validation-core";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import {
@@ -83,10 +84,11 @@ export async function applySpxOdteGexUwOverlay(hm: GexHeatmap): Promise<GexHeatm
   if (hm.underlying !== "SPX" || !(hm.spot > 0) || hm.strikes.length === 0) return hm;
 
   const today = todayEtYmd();
-  if (!hm.expiries.includes(today)) return hm;
+  const expiry = resolveOdteExpiry(hm.expiries ?? [], today);
+  if (!expiry || !hm.expiries.includes(expiry)) return hm;
 
-  const ladder = await getSpxOdteScopedUwLadderMap();
+  const ladder = await getSpxOdteScopedUwLadderMap(expiry);
   if (!ladder || ladder.size === 0) return hm;
 
-  return applySpxOdteGexUwOverlayWithLadder(hm, ladder, today);
+  return applySpxOdteGexUwOverlayWithLadder(hm, ladder, expiry);
 }

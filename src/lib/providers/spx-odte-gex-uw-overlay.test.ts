@@ -76,3 +76,24 @@ test("applySpxOdteGexUwOverlayWithLadder is a no-op for non-SPX tickers", () => 
   const out = applySpxOdteGexUwOverlayWithLadder(hm, ladder, TODAY);
   assert.equal(out.gex.cells["7800"]?.[TODAY], hm.gex.cells["7800"]?.[TODAY]);
 });
+
+test("applySpxOdteGexUwOverlayWithLadder replaces front expiry when today is off-axis", () => {
+  const FRONT = "2026-08-20";
+  const hm = baseHeatmap();
+  hm.expiries = [FRONT, "2026-08-21"];
+  hm.near_term_expiries = [FRONT, "2026-08-21"];
+  hm.gex.cells = {
+    "7800": { [FRONT]: 9e11 },
+    "7700": { [FRONT]: 2e11 },
+    "7650": { [FRONT]: 1e11 },
+  };
+
+  const ladder = new Map<number, number>([
+    [7650, 835_268_500],
+    [7800, 200_000_100],
+  ]);
+  const out = applySpxOdteGexUwOverlayWithLadder(hm, ladder, FRONT);
+  const scope = odteGexScopeFromHeatmap(out, "2026-08-19");
+  assert.equal(scope.expiry, FRONT);
+  assert.equal(kingFromStrikeTotals(scope.strikeTotals), 7650);
+});
