@@ -69,3 +69,7 @@ test("a published edition with zero plays is flagged, and stays available", () =
   // Applied on BOTH published-row paths (exact-date hit and latest-fallback), not just one.
   assert.equal((read(ROUTE).match(/markNoPlays\(/g) ?? []).length, 3, "definition + both return paths");
 });
+
+test("pre-publish empty shells are not cached (ops-collect false-positive guard)", () => {
+  assert.match(read(ROUTE), /shouldCache:.*available !== false/s);
+});

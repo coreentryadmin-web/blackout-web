@@ -47,3 +47,24 @@ export function spxOpsItems(items) {
     );
   });
 }
+
+/**
+ * Whether ops should page on a published Night Hawk edition with zero plays.
+ * Uses DB-authoritative fields from `GET /api/cron/nighthawk-edition?status=1` — NOT the member
+ * edition API, which can return a cached pre-publish emptyEdition shell (available:false,
+ * published_at:null, recap_only:false) and false-positive even when plays exist in Postgres.
+ */
+export function shouldPageNighthawkZeroPlays({
+  inWindow,
+  jobStatus,
+  editionPresent,
+  playCount,
+  recapOnly,
+}) {
+  if (!inWindow) return false;
+  if (jobStatus !== "published") return false;
+  if (!editionPresent) return false;
+  if (playCount !== 0) return false;
+  if (recapOnly) return false;
+  return true;
+}

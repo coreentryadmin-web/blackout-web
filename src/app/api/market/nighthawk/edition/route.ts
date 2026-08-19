@@ -252,6 +252,7 @@ export async function GET(req: NextRequest) {
         maxBlockMs: nighthawkEditionReadMaxBlockMs(),
         staleOnInflight: true,
         fallback: async () => lastGoodEdition ?? emptyEdition(editionFor),
+        shouldCache: (value) => (value as NightHawkEdition).available !== false,
       }).catch(() => undefined);
       return NextResponse.json(roundFloats(instant), { headers: NO_STORE_HEADERS });
     }
@@ -264,6 +265,7 @@ export async function GET(req: NextRequest) {
         maxBlockMs: nighthawkEditionReadMaxBlockMs(),
         staleOnInflight: true,
         fallback: async () => lastGoodEdition ?? emptyEdition(editionFor),
+        shouldCache: (value) => (value as NightHawkEdition).available !== false,
       }
     );
     if (edition.available !== false) lastGoodEdition = edition;
