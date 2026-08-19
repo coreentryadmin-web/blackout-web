@@ -9671,6 +9671,18 @@ html.product-shell .nav-mega {
      column, so stretching to 100% of THAT still letterboxes the chart.
      `100dvh` (not `100vh`) so a mobile browser's collapsing URL bar can't push the chart's bottom
      edge below the viewport. */
+  /* The OTHER half of the fullscreen layering, and the half that was missing until 2026-08-19.
+     PageShell renders its content wrapper as `relative z-10`, which CREATES A STACKING CONTEXT —
+     so `.vector-page-inner-focus` below was only ever ranked against its siblings inside a box that
+     itself sat at 10 against `.nav-bar`'s 100. Measured on prod: `elementFromPoint` at the chart
+     toolbar's own centre returned `header.nav-bar`. The inner z-index could be 60, 110 or 10000 and
+     the nav would still win; the ANCESTOR is what has to move.
+     Applied only in focus mode — outside it the page content must stay under the site header.
+     Two class selectors on purpose: the value being overridden (`z-10`) is a Tailwind utility, and
+     the utilities layer is emitted after this one, so a single-class rule would lose the cascade. */
+  .vector-page-content.vector-page-content-focus {
+    z-index: 110;
+  }
   .vector-page-inner-focus {
     position: fixed;
     inset: 0;
