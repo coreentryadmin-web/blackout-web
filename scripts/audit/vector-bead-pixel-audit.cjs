@@ -72,8 +72,29 @@ const AS_JSON = argv.includes("--json");
  *  reports it as a product fault. */
 const SETTLE_MS = 16_000;
 
+/**
+ * ZOOM IS PART OF THE MEASUREMENT, not a detail (2026-08-19).
+ *
+ * The rail records a bead every 5 seconds. That is the intended cadence — so across a full RTH
+ * session a row holds thousands of beads and CORRECTLY closes into a continuous ribbon. Judging
+ * bead size or contrast at session width therefore measures nothing about the beads; it measures
+ * how many of them fit on the axis. An earlier run of this harness did exactly that and read the
+ * ribbons as a rendering defect.
+ *
+ * A member resolves individual beads by zooming, so the audit does too: it captures at each of the
+ * chart's own zoom presets and reports them separately. `structure` (~75 minutes) and `live` (~48
+ * bars) are the windows where bead geometry is legible; `session` is kept only as context, and a
+ * high merged-run count THERE is expected rather than a fault.
+ */
+const ZOOMS = [
+  { id: "session", testid: "vector-intraday-zoom-session", resolves: false },
+  { id: "structure", testid: "vector-intraday-zoom-structure", resolves: true },
+  { id: "live", testid: "vector-intraday-zoom-live", resolves: true },
+];
+
 async function captureTicker(ctx, ticker) {
   const page = await ctx.newPage();
+  const shots = [];
   try {
     await page.goto(`${BASE}/vector?ticker=${encodeURIComponent(ticker)}`, {
       waitUntil: "domcontentloaded",
@@ -81,35 +102,48 @@ async function captureTicker(ctx, ticker) {
     });
     await page.waitForTimeout(SETTLE_MS);
 
-    // The bead rail is drawn onto the chart's own canvas stack. Take the LARGEST canvas: the chart
-    // renders several (price, volume pane, the rail overlay) and the small ones would crop the rail.
-    const box = await page.evaluate(() => {
-      const canvases = Array.from(document.querySelectorAll("canvas"));
-      let best = null;
-      for (const c of canvases) {
-        const r = c.getBoundingClientRect();
-        if (r.width < 200 || r.height < 120) continue;
-        if (!best || r.width * r.height > best.width * best.height) {
-          best = { x: r.x, y: r.y, width: r.width, height: r.height };
-        }
+    for (const zoom of ZOOMS) {
+      // Resolve to the element a MEMBER can hit: the desk renders each toolbar control twice and
+      // querySelector returns the 0x0 copy first (see vector-ui-walkthrough.cjs for the full trap).
+      const btn = page.locator(`[data-testid=${zoom.testid}]`).filter({ visible: true }).last();
+      if (await btn.count()) {
+        await btn.click({ timeout: 8000 }).catch(() => {});
+        await page.waitForTimeout(4000);
+      } else if (zoom.id !== "session") {
+        shots.push({ zoom: zoom.id, error: "zoom preset control not rendered" });
+        continue;
       }
-      return best;
-    });
-    if (!box) {
-      return { ticker, error: "no chart canvas found (page did not render the chart)" };
-    }
 
-    const shot = path.join(OUT, `beads-${ticker}.png`);
-    await page.screenshot({
-      path: shot,
-      clip: {
-        x: Math.max(0, Math.floor(box.x)),
-        y: Math.max(0, Math.floor(box.y)),
-        width: Math.floor(box.width),
-        height: Math.floor(box.height),
-      },
-    });
-    return { ticker, shot, box };
+      // The bead rail is drawn onto the chart's canvas stack. Take the LARGEST canvas: the chart
+      // renders several (price, volume pane, rail overlay) and a small one would crop the rail.
+      const box = await page.evaluate(() => {
+        let best = null;
+        for (const c of document.querySelectorAll("canvas")) {
+          const r = c.getBoundingClientRect();
+          if (r.width < 200 || r.height < 120) continue;
+          if (!best || r.width * r.height > best.width * best.height) {
+            best = { x: r.x, y: r.y, width: r.width, height: r.height };
+          }
+        }
+        return best;
+      });
+      if (!box) {
+        shots.push({ zoom: zoom.id, error: "no chart canvas found" });
+        continue;
+      }
+      const shot = path.join(OUT, `beads-${ticker}-${zoom.id}.png`);
+      await page.screenshot({
+        path: shot,
+        clip: {
+          x: Math.max(0, Math.floor(box.x)),
+          y: Math.max(0, Math.floor(box.y)),
+          width: Math.floor(box.width),
+          height: Math.floor(box.height),
+        },
+      });
+      shots.push({ zoom: zoom.id, shot, resolves: zoom.resolves });
+    }
+    return { ticker, shots };
   } finally {
     await page.close().catch(() => {});
   }
@@ -140,13 +174,21 @@ async function run(session) {
   try {
     for (const ticker of TICKERS) {
       const cap = await captureTicker(ctx, ticker);
-      if (cap.error) {
-        results.push({ ticker, verdict: "RED", reason: cap.error });
-        continue;
+      for (const sh of cap.shots) {
+        if (sh.error) {
+          results.push({ ticker, zoom: sh.zoom, verdict: "RED", reason: sh.error, notes: [] });
+          continue;
+        }
+        const clusters = await analyze(sh.shot);
+        const summary = summarizeBeads(clusters);
+        summary.mergedRuns = (clusters.mergedRuns || []).length;
+        // At session width a merged run is the 5s cadence doing its job, so only the zooms that can
+        // resolve beads get a pass/fail on geometry.
+        const v = sh.resolves
+          ? verdictForTicker(summary)
+          : { verdict: "INFO", notes: ["session width — beads merge by design at this zoom"] };
+        results.push({ ticker, zoom: sh.zoom, shot: sh.shot, ...summary, ...v });
       }
-      const clusters = await analyze(cap.shot);
-      const summary = summarizeBeads(clusters);
-      results.push({ ticker, shot: cap.shot, ...summary, ...verdictForTicker(summary) });
     }
   } finally {
     await browser.close();
@@ -180,14 +222,15 @@ async function run(session) {
     console.log(`tunnel: ${counts.ok} ok, ${counts.fail} fail`);
     for (const r of results) {
       if (r.verdict === "RED" && r.reason) {
-        console.log(`  ${r.ticker.padEnd(6)} RED   ${r.reason}`);
+        console.log(`  ${r.ticker.padEnd(6)} ${String(r.zoom).padEnd(10)} RED   ${r.reason}`);
         continue;
       }
       console.log(
-        `  ${r.ticker.padEnd(6)} ${r.verdict.padEnd(5)} beads=${r.count} ` +
-          `(call ${r.callCount} / put ${r.putCount})  ` +
+        `  ${r.ticker.padEnd(6)} ${String(r.zoom).padEnd(10)} ${r.verdict.padEnd(5)} ` +
+          `beads=${String(r.count).padStart(4)} (call ${r.callCount}/put ${r.putCount}) ` +
+          `merged=${String(r.mergedRuns).padStart(3)}  ` +
           `radius p10/p50/p90=${r.radiusP10}/${r.radiusP50}/${r.radiusP90}px ` +
-          `ratio=${r.radiusRatio}x  lum spread=${r.lumSpread}  ${r.notes.join("; ")}`
+          `ratio=${r.radiusRatio}x lum=${r.lumSpread}  ${r.notes.join("; ")}`
       );
     }
   }

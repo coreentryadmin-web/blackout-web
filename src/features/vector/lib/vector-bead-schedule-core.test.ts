@@ -85,3 +85,85 @@ test("empty and unusable input is tolerated", () => {
   assert.deepEqual(selectTickersToRecord({ tickers: [], inFlight: S(), limit: 5 }).start, []);
   assert.deepEqual(selectTickersToRecord({ tickers: ["", "  "], inFlight: S(), limit: 5 }).start, []);
 });
+
+// ── ROSTER FAIRNESS (2026-08-19) ─────────────────────────────────────────────────────
+//
+// The scheduler scanned from index 0 every tick, so a BINDING ceiling served the same prefix
+// forever. Simulated against the shipped defaults this was not degradation but total starvation:
+// roster 122 / limit 64 over one RTH session gave the head 4680 samples each and the tail 0.
+//
+// Live confirmation from the session that prompted this: SPX 3964 samples, NVDA 546, QQQ 557,
+// SPY 194, with holes up to 59 minutes — and the rail drew ~10 strike rows on SPX against ONE on
+// NVDA, because a row needs samples over time to survive the trail's continuity test.
+
+/** One RTH session of 5s ticks; a record settles before the next tick. */
+function simulate(rosterSize: number, limit: number, ticks: number, rotate: boolean) {
+  const tickers = Array.from({ length: rosterSize }, (_, i) => `T${String(i).padStart(3, "0")}`);
+  const inFlight = new Set<string>();
+  const settleAt = new Map<string, number>();
+  const count = new Map<string, number>(tickers.map((t) => [t, 0]));
+  let cursor = 0;
+  for (let tick = 0; tick < ticks; tick++) {
+    for (const [t, at] of [...settleAt]) if (at <= tick) { inFlight.delete(t); settleAt.delete(t); }
+    const d = selectTickersToRecord({
+      tickers,
+      inFlight,
+      limit,
+      ...(rotate ? { cursor } : {}),
+    });
+    cursor = d.nextCursor;
+    for (const t of d.start) {
+      inFlight.add(t);
+      settleAt.set(t, tick + 1);
+      count.set(t, count.get(t)! + 1);
+    }
+  }
+  return tickers.map((t) => count.get(t)!);
+}
+
+test("WITHOUT rotation a binding ceiling starves the tail completely (the shipped bug)", () => {
+  const counts = simulate(122, 64, 4680, false);
+  assert.equal(Math.min(...counts.slice(64)), 0, "tail should be starved without rotation");
+  assert.equal(Math.min(...counts.slice(0, 64)), 4680, "head should record every tick");
+});
+
+test("WITH rotation every ticker records, and the spread is tight", () => {
+  const counts = simulate(122, 64, 4680, true);
+  const min = Math.min(...counts);
+  const max = Math.max(...counts);
+  assert.ok(min > 0, `every ticker must record at least once (min ${min})`);
+  // Round-robin should divide the ticks almost evenly: 4680 ticks x 64 slots / 122 tickers ~ 2455.
+  assert.ok(min > 2000, `worst-served ticker only got ${min} samples`);
+  assert.ok(max / min < 1.2, `unfair spread: max ${max} vs min ${min}`);
+});
+
+test("every ticker reaches the front within ceil(roster / limit) ticks", () => {
+  // The bound that makes worst-case cadence computable instead of infinite.
+  const roster = 122;
+  const limit = 64;
+  const tickers = Array.from({ length: roster }, (_, i) => `T${String(i).padStart(3, "0")}`);
+  const started = new Set<string>();
+  let cursor = 0;
+  const bound = Math.ceil(roster / limit);
+  for (let i = 0; i < bound; i++) {
+    const d = selectTickersToRecord({ tickers, inFlight: new Set(), limit, cursor });
+    cursor = d.nextCursor;
+    for (const t of d.start) started.add(t);
+  }
+  assert.equal(started.size, roster, `only ${started.size}/${roster} tickers served in ${bound} ticks`);
+});
+
+test("a shrinking roster or a huge cursor cannot throw or skip the head", () => {
+  const tickers = ["A", "B", "C"];
+  for (const cursor of [0, 3, 7, 1_000_000, -4]) {
+    const d = selectTickersToRecord({ tickers, inFlight: new Set(), limit: 2, cursor });
+    assert.equal(d.start.length, 2, `cursor ${cursor} started ${d.start.length}`);
+    assert.ok(d.nextCursor >= 0 && d.nextCursor < tickers.length, `cursor ${cursor} -> ${d.nextCursor}`);
+  }
+});
+
+test("omitting cursor keeps the original index-0 behaviour for one-shot callers", () => {
+  const tickers = ["A", "B", "C", "D"];
+  const d = selectTickersToRecord({ tickers, inFlight: new Set(), limit: 2 });
+  assert.deepEqual(d.start, ["A", "B"], "a caller with no next tick must not be rotated");
+});

@@ -26,6 +26,16 @@ const recordInFlightTickers = new Set<string>();
  */
 let narrowedTickIndex = 0;
 
+/**
+ * Round-robin cursor for the shared-universe sweep.
+ *
+ * Module-level for the same reason `recordInFlightTickers` is: fairness is a property ACROSS ticks,
+ * so the position has to outlive a single call. Without it the concurrency ceiling served the first
+ * `limit` tickers on every tick and never reached the rest — see selectTickersToRecord's fairness
+ * note for the simulation (roster 122 / limit 64 -> the tail recorded 0 samples in a whole session).
+ */
+let sharedSweepCursor = 0;
+
 export { VECTOR_BEAD_RECORD_TICK_MS } from "./vector-bead-recorder-logic";
 
 export type VectorBeadRecordResult = {
@@ -99,7 +109,9 @@ export async function recordSharedUniverseWallSamples(opts?: {
     tickers,
     inFlight: recordInFlightTickers,
     limit: concurrency,
+    cursor: sharedSweepCursor,
   });
+  sharedSweepCursor = decision.nextCursor;
   const startable = decision.start;
   for (const t of startable) recordInFlightTickers.add(t);
 

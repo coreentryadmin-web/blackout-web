@@ -11820,3 +11820,66 @@ ALL beads. The call palette (cyan) is far brighter than the put palette (red) at
 a rail of fully-opaque beads reported a large "contrast spread" purely from hue — it would have
 passed this audit on exactly the flat rail the member photographed. Spread is now measured WITHIN
 each side, with a test pinning it.
+
+## 2026-08-19 — bead recorder starved half the universe: roster scanned from index 0 every tick — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P1 — non-SPX bead rails were structurally incomplete all session, every session |
+| **Where** | `src/features/vector/lib/vector-bead-schedule-core.ts` — `selectTickersToRecord` |
+| **Status** | FIXED — circular scan from a rotating `cursor`; 5 tests added (15 pass in that file) |
+
+**Symptom the member reported.** SPX draws ~10 strike rows on the Vector rail; NVDA draws ONE, with
+no put rows at all. Measured at the chart's own `structure` zoom (~75 min) on prod at 1920x1080:
+SPX 105 beads / 6.0x size ratio / 92 luminance spread (healthy), NVDA 0 beads at that zoom and 7 at
+`live`.
+
+**Live data behind it** (`vector-bead-probe.mjs`, same session window, all four tickers):
+
+| ticker | samples | max gap |
+|---|---|---|
+| SPX | 3964 | 435s |
+| QQQ | 557 | 2105s |
+| NVDA | 546 | 3570s (~59 min) |
+| SPY | 194 | 2705s |
+
+Every ticker returned 200 with 20 call / 15-20 put walls per sample, so the data being recorded was
+healthy — the recording itself had holes.
+
+**Root cause.** `selectTickersToRecord` scanned the roster from index 0 on every tick. That is
+correct-looking ("caller ordering decides priority") and is in fact permanent: when the concurrency
+ceiling BINDS, the same prefix wins every tick and the same tail is deferred every tick, forever.
+
+Simulated against the shipped defaults (roster 122, `VECTOR_BEAD_RECORD_CONCURRENCY` default 64,
+one RTH session of 5s ticks):
+
+```
+head (1-64)    4680 samples each   <- every single tick
+tail (65-122)  0 samples each      <- never, not once
+```
+
+Not degradation — total starvation of half the universe. The non-SPX names got their ragged
+194/546/557 only because universe rebuilds reshuffled them into the first 64 for a while. A trail
+row needs samples over time to survive the continuity test, which is why the rail collapses to one
+row on a starved ticker.
+
+**Fix.** Scan CIRCULARLY from a `cursor` and return `nextCursor`; the shared sweep keeps it in a
+module-level variable (fairness is a property across ticks, so it has to outlive one call). Priority
+ordering still decides who goes first WITHIN a tick; it no longer decides who is served across
+ticks. Every ticker now reaches the front within `ceil(roster / limit)` ticks, so worst-case cadence
+is bounded and computable instead of infinite.
+
+Omitting `cursor` keeps the old index-0 behaviour, which the HTTP backup cron and the existing tests
+rely on — rotation only means something to a REPEATING caller.
+
+**Tests.** The starvation itself is pinned: one test asserts the tail records 0 without rotation,
+another that with rotation every ticker records (min > 2000 samples, max/min < 1.2), a third that
+every ticker reaches the front within `ceil(roster/limit)` ticks, plus cursor normalisation
+(shrinking roster, huge/negative cursor) and the one-shot-caller compatibility case.
+
+**Not fixed here.** Whether 64 is the right ceiling for a 122-ticker roster at a 5s cadence is a
+separate capacity question — rotation makes the cadence fair and bounded, it does not make it 5s
+for every ticker. With these numbers each ticker is served every other tick (~10s), which is the
+honest consequence of the ceiling and should be re-measured live before anyone raises it.
