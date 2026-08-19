@@ -42,6 +42,16 @@ test("rthWriterOverdue: vector-walls-warm fresh at 10s", () => {
   assert.equal(rthWriterOverdue("vector-walls-warm", last, "ok", null, now), false);
 });
 
+test("rthWriterOverdue: meridian-warm overdue after 6 min (5 min heal threshold)", () => {
+  const last = new Date(now - 6 * 60_000).toISOString();
+  assert.equal(rthWriterOverdue("meridian-warm", last, "ok", null, now), true);
+});
+
+test("rthWriterOverdue: meridian-warm fresh at 4 min", () => {
+  const last = new Date(now - 4 * 60_000).toISOString();
+  assert.equal(rthWriterOverdue("meridian-warm", last, "ok", null, now), false);
+});
+
 test("rthWriterOverdue: unknown key never overdue", () => {
   assert.equal(rthWriterOverdue("db-cleanup", null, null, null, now), false);
 });
