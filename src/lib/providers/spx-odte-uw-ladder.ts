@@ -1,3 +1,4 @@
+import { resolveOdteExpiry } from "@/lib/correctness/gex-odte-scope";
 import { fetchUwOdteSpotExposuresByStrike } from "@/lib/providers/unusual-whales";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { hasLiveGexStrikeExpiry, getGexStrikeExpiryLadder } from "@/lib/ws/uw-socket";
@@ -71,12 +72,20 @@ export function resolveSpxOdteUwLadderSource(
   return { rows: [], source: "none" };
 }
 
-async function fetchSpxOdteScopedUwLadderRest(sym: string): Promise<SpxOdteUwLadderResult | null> {
+function uwLadderSourceLabel(expiry: string, channel: "rest" | "ws"): string {
+  const today = todayEtYmd();
+  const scope = expiry === today ? "0DTE" : `expiry ${expiry}`;
+  return channel === "rest"
+    ? `spot-exposures/expiry-strike (${scope})`
+    : `gex_strike_expiry WS (${scope})`;
+}
+
+async function fetchSpxOdteScopedUwLadderRest(sym: string, expiry: string): Promise<SpxOdteUwLadderResult | null> {
   try {
-    const raw = await fetchUwOdteSpotExposuresByStrike(sym);
+    const raw = await fetchUwOdteSpotExposuresByStrike(sym, 500, expiry);
     const rows = normalizeUwOdteSpotExposureRows(raw);
     if (rows.length) {
-      return { rows, source: "spot-exposures/expiry-strike (0DTE)" };
+      return { rows, source: uwLadderSourceLabel(expiry, "rest") };
     }
   } catch {
     /* fall through */
@@ -84,13 +93,13 @@ async function fetchSpxOdteScopedUwLadderRest(sym: string): Promise<SpxOdteUwLad
   return null;
 }
 
-function fetchSpxOdteScopedUwLadderWs(sym: string, today: string): SpxOdteUwLadderResult | null {
+function fetchSpxOdteScopedUwLadderWs(sym: string, expiry: string): SpxOdteUwLadderResult | null {
   if (sym !== "SPX" || !hasLiveGexStrikeExpiry(sym)) return null;
-  const ws = getGexStrikeExpiryLadder(sym, [today]);
+  const ws = getGexStrikeExpiryLadder(sym, [expiry]);
   if (!ws || ws.ladder.size === 0) return null;
   return {
     rows: uwRowsFromStrikeLadder(ws.ladder),
-    source: "gex_strike_expiry WS (0DTE)",
+    source: uwLadderSourceLabel(expiry, "ws"),
   };
 }
 
@@ -105,11 +114,26 @@ function fetchSpxOdteScopedUwLadderWs(sym: string, today: string): SpxOdteUwLadd
  * expiries and produces a different King than the served 0DTE matrix column. Comparing
  * 0DTE vs cumulative was the root cause of ops-auto-fix #1865 (King 7750 vs 7900).
  */
-export async function fetchSpxOdteScopedUwLadder(ticker = "SPX"): Promise<SpxOdteUwLadderResult> {
+/**
+ * Resolve the expiry the UW oracle should query for a served heatmap snapshot.
+ * Matches `odteGexScopeFromHeatmap` / desk "front expiry when today's column is gone".
+ */
+export function resolveSpxOdteUwOracleExpiry(
+  expiries: string[] | null | undefined,
+  today: string = todayEtYmd()
+): string | null {
+  return resolveOdteExpiry(expiries ?? [], today);
+}
+
+export async function fetchSpxOdteScopedUwLadder(
+  ticker = "SPX",
+  expiry: string | null = null
+): Promise<SpxOdteUwLadderResult> {
   const sym = ticker.toUpperCase();
   const today = todayEtYmd();
-  const rest = await fetchSpxOdteScopedUwLadderRest(sym);
-  const ws = fetchSpxOdteScopedUwLadderWs(sym, today);
+  const resolved = expiry ?? today;
+  const rest = await fetchSpxOdteScopedUwLadderRest(sym, resolved);
+  const ws = fetchSpxOdteScopedUwLadderWs(sym, resolved);
   return resolveSpxOdteUwLadderSource(rest, ws);
 }
 
@@ -120,17 +144,22 @@ function scopedLadderCacheMs(): number {
 }
 
 /** In-process cache shared by overlay + repeated heatmap reads. */
-let cachedScoped: { at: number; result: SpxOdteUwLadderResult } | null = null;
+let cachedScoped: { at: number; expiry: string; result: SpxOdteUwLadderResult } | null = null;
 
 /** Cached 0DTE ladder as a strike→net map (overlay hot path). */
-export async function getSpxOdteScopedUwLadderMap(): Promise<Map<number, number> | null> {
+export async function getSpxOdteScopedUwLadderMap(expiry: string | null = null): Promise<Map<number, number> | null> {
   const now = Date.now();
-  if (cachedScoped && now - cachedScoped.at < scopedLadderCacheMs()) {
+  const resolved = expiry ?? todayEtYmd();
+  if (
+    cachedScoped &&
+    cachedScoped.expiry === resolved &&
+    now - cachedScoped.at < scopedLadderCacheMs()
+  ) {
     return strikeLadderFromUwRows(cachedScoped.result.rows);
   }
-  const result = await fetchSpxOdteScopedUwLadder("SPX");
+  const result = await fetchSpxOdteScopedUwLadder("SPX", resolved);
   if (!result.rows.length) return null;
-  cachedScoped = { at: now, result };
+  cachedScoped = { at: now, expiry: resolved, result };
   return strikeLadderFromUwRows(result.rows);
 }
 

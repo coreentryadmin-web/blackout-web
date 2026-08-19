@@ -402,10 +402,29 @@ async function crossProviderChecks(
     );
     return out;
   }
+
+  // Compare the expiry-scoped matrix column (same scope as UW) — NOT the desk's near-term aggregate.
+  let odteKing: number | null = null;
+  let odteNet = 0;
+  let odteStrikeTotals: Record<string, number> = {};
+  let odteExpiry: string | null = null;
+  try {
+    const { fetchGexHeatmap } = await import("@/lib/providers/polygon-options-gex");
+    const hm = await fetchGexHeatmap("SPX").catch(() => null);
+    const odte = odteGexScopeFromHeatmap(hm, ctx.today);
+    odteExpiry = odte.expiry;
+    odteKing = kingFromStrikeTotals(odte.strikeTotals);
+    odteNet = odte.total;
+    odteStrikeTotals = odte.strikeTotals;
+  } catch {
+    odteKing = null;
+    odteNet = 0;
+  }
+
   let uw: { rows: Record<string, unknown>[]; source: string } = { rows: [], source: "none" };
   try {
     const { fetchSpxOdteScopedUwLadder } = await import("@/lib/providers/spx-odte-uw-ladder");
-    uw = await fetchSpxOdteScopedUwLadder("SPX");
+    uw = await fetchSpxOdteScopedUwLadder("SPX", odteExpiry);
   } catch {
     uw = { rows: [], source: "none" };
   }
@@ -429,23 +448,6 @@ async function crossProviderChecks(
       uwMaxAbs = Math.abs(net);
       uwKing = strike;
     }
-  }
-
-  // Compare the 0DTE matrix column (same scope as UW) — NOT the desk's near-term aggregate
-  // gex_king/gex_net, which sums multiple expiries and would false-flag against a 0DTE oracle.
-  let odteKing: number | null = null;
-  let odteNet = 0;
-  let odteStrikeTotals: Record<string, number> = {};
-  try {
-    const { fetchGexHeatmap } = await import("@/lib/providers/polygon-options-gex");
-    const hm = await fetchGexHeatmap("SPX").catch(() => null);
-    const odte = odteGexScopeFromHeatmap(hm, ctx.today);
-    odteKing = kingFromStrikeTotals(odte.strikeTotals);
-    odteNet = odte.total;
-    odteStrikeTotals = odte.strikeTotals;
-  } catch {
-    odteKing = null;
-    odteNet = 0;
   }
 
   if (uwKing != null && odteKing != null && spot > 0) {

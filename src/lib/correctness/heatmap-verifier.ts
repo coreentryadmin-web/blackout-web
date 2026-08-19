@@ -1158,13 +1158,14 @@ async function crossProviderChecks(ctx: Ctx, hm: GexHeatmap): Promise<CheckResul
     return out;
   }
 
-  // Pull the SAME 0DTE-scoped UW ladder the SPX overlay uses (WS → spot-exposures REST).
-  // Do NOT use fetchUwOdteGexLadder's cumulative greek-exposure/strike fallback — that sums ALL
-  // expiries and false-flags against the served 0DTE King (ops-auto-fix #1865).
+  // Pull the SAME expiry-scoped UW ladder the SPX overlay uses (WS → spot-exposures REST).
+  // Scope MUST match odteGexScopeFromHeatmap — after today's column rolls off the axis, both
+  // sides use the front expiry (ops-auto-fix #2360: UW still on calendar-today false-flagged).
   let uw: { rows: Record<string, unknown>[]; source: string } = { rows: [], source: "none" };
   try {
     const { fetchSpxOdteScopedUwLadder } = await import("@/lib/providers/spx-odte-uw-ladder");
-    uw = await fetchSpxOdteScopedUwLadder("SPX");
+    const odteExpiry = odteGexScopeFromHeatmap(hm, ctx.today).expiry;
+    uw = await fetchSpxOdteScopedUwLadder("SPX", odteExpiry);
   } catch {
     uw = { rows: [], source: "none" };
   }

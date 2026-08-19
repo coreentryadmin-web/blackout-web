@@ -5,6 +5,7 @@ import {
   strikeLadderFromUwRows,
   resolveSpxOdteUwLadderSource,
   normalizeUwOdteSpotExposureRows,
+  resolveSpxOdteUwOracleExpiry,
 } from "./spx-odte-uw-ladder";
 
 test("uwRowsFromStrikeLadder normalizes net to call_gamma_oi rows", () => {
@@ -57,4 +58,9 @@ test("normalizeUwOdteSpotExposureRows maps net-only UW rows", () => {
   const rows = normalizeUwOdteSpotExposureRows([{ strike: 7775, net_gex: 42 }]);
   assert.equal(rows.length, 1);
   assert.equal(Number(rows[0].call_gamma_oi) + Number(rows[0].put_gamma_oi), 42);
+});
+
+test("resolveSpxOdteUwOracleExpiry matches heatmap front-expiry fallback", () => {
+  assert.equal(resolveSpxOdteUwOracleExpiry(["2026-08-20", "2026-08-21"], "2026-08-19"), "2026-08-20");
+  assert.equal(resolveSpxOdteUwOracleExpiry(["2026-08-19", "2026-08-20"], "2026-08-19"), "2026-08-19");
 });
