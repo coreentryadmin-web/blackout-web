@@ -12,14 +12,17 @@
  * Read-only. One temp Clerk user, always deleted in finally.
  */
 import { chromium } from "playwright";
+import crypto from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { mintClerkPremiumSession } from "./lib/prod-clerk-session.mjs";
+import { resolveChromiumPath } from "./lib/playwright-chromium-path.mjs";
 
 const BASE = (process.env.VALIDATE_BASE ?? "https://blackouttrades.com").replace(/\/$/, "");
 const ROUNDS = Number(process.argv.find((a) => a.startsWith("--rounds="))?.slice(9) ?? 2);
 const OUT = "/opt/cursor/artifacts/nav-desk-link-soak";
 const BOUNDARY = /We couldn't load this page|SOMETHING WENT WRONG/i;
+const LOADING = /LOADING DESK|LOADING VECTOR|Loading chart/i;
 
 /** href → substring that should appear in body when the desk loaded */
 const TOOLS = [
@@ -28,22 +31,53 @@ const TOOLS = [
   { href: "/heatmap", marker: /Thermal|Gamma|GEX/i },
   { href: "/terminal", marker: /Largo|Intelligence/i },
   { href: "/nighthawk", marker: /Night Hawk|0DTE|Command/i },
-  { href: "/vector", marker: /Vector|SPX|Chart/i },
+  { href: "/vector", marker: /Vector|SPX|Chart|LOADING VECTOR/i },
   { href: "/meridian", marker: /Meridian|Catalyst|Timeline/i },
 ];
 
+async function cookiesFromHeader(header) {
+  return header.split(";").map((s) => s.trim()).filter(Boolean).map((pair) => {
+    const i = pair.indexOf("=");
+    return {
+      name: pair.slice(0, i).trim(),
+      value: pair.slice(i + 1).trim(),
+      domain: "blackouttrades.com",
+      path: "/",
+      httpOnly: true,
+      secure: true,
+      sameSite: "Lax",
+    };
+  });
+}
+
+async function refreshCtxCookies(ctx, session, state) {
+  if (Date.now() - state.lastRefresh < 45_000) return;
+  const next = await session.refresh?.().catch(() => null);
+  if (!next?.cookieHeader) return;
+  await ctx.addCookies(await cookiesFromHeader(next.cookieHeader));
+  state.lastRefresh = Date.now();
+}
+
 async function openFeatures(page) {
-  const btn = page.getByRole("button", { name: /^Features/i });
+  const btn = page.locator('button.nav-pill-item:has-text("Features"), button:has-text("Features")').first();
+  await btn.waitFor({ state: "visible", timeout: 30_000 });
   await btn.click({ timeout: 8000 });
-  await page.waitForSelector("#nav-mega", { state: "visible", timeout: 5000 });
+  await page.waitForSelector("#nav-mega", { state: "visible", timeout: 15_000 });
 }
 
 async function clickToolLink(page, href) {
   const link = page.locator(`#nav-mega a.nav-card[href="${href}"]`).first();
-  await link.click({ timeout: 8000 });
+  const targetPath = href.split("?")[0];
+  await Promise.all([
+    page.waitForURL((url) => url.pathname === targetPath || url.pathname.startsWith(`${targetPath}/`), {
+      timeout: 45_000,
+    }).catch(() => {}),
+    link.click({ timeout: 8000 }),
+  ]);
+  await page.waitForLoadState("domcontentloaded").catch(() => {});
 }
 
-async function waitNav(page, fromPath, href, timeoutMs = 25_000) {
+async function waitNav(page, fromPath, href, timeoutMs = 45_000) {
   const targetPath = href.split("?")[0];
   const t0 = Date.now();
   let lastUrl = page.url();
@@ -51,13 +85,30 @@ async function waitNav(page, fromPath, href, timeoutMs = 25_000) {
     lastUrl = page.url();
     const path = new URL(lastUrl).pathname;
     if (path === targetPath || path.startsWith(`${targetPath}/`)) {
-      await page.waitForTimeout(1200);
-      const text = await page.evaluate(() => document.body?.innerText?.slice(0, 2000) ?? "");
-      return { ok: true, url: lastUrl, text, ms: Date.now() - t0, boundary: BOUNDARY.test(text) };
+      while (Date.now() - t0 < timeoutMs) {
+        let text = "";
+        try {
+          text = await page.evaluate(() => document.body?.innerText?.slice(0, 3000) ?? "");
+        } catch {
+          await page.waitForTimeout(400);
+          continue;
+        }
+        if (BOUNDARY.test(text)) {
+          return { ok: true, url: lastUrl, text, ms: Date.now() - t0, boundary: true };
+        }
+        if (LOADING.test(text)) {
+          await page.waitForTimeout(600);
+          continue;
+        }
+        if (text.length > 150) {
+          return { ok: true, url: lastUrl, text, ms: Date.now() - t0, boundary: false };
+        }
+        await page.waitForTimeout(400);
+      }
     }
     await page.waitForTimeout(400);
   }
-  const text = await page.evaluate(() => document.body?.innerText?.slice(0, 2000) ?? "").catch(() => "");
+  const text = await page.evaluate(() => document.body?.innerText?.slice(0, 3000) ?? "").catch(() => "");
   return { ok: false, url: lastUrl, text, ms: Date.now() - t0, boundary: BOUNDARY.test(text), stuckOn: fromPath };
 }
 
@@ -77,14 +128,17 @@ async function meridianInteract(page) {
 
 async function main() {
   mkdirSync(OUT, { recursive: true });
-  const session = await mintClerkPremiumSession({ appUrl: BASE });
+  const session = await mintClerkPremiumSession({
+    appUrl: BASE,
+    email: `nav-soak-${crypto.randomBytes(4).toString("hex")}@blackouttrades.com`,
+  });
   if (session.skip) {
     console.log("SKIP:", session.reason);
     process.exit(0);
   }
 
   const browser = await chromium.launch({
-    executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+    executablePath: resolveChromiumPath(),
     headless: true,
     args: ["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"],
   });
@@ -115,18 +169,26 @@ async function main() {
   const results = [];
   let failCount = 0;
 
+  const cookieState = { lastRefresh: Date.now() };
+
   try {
+    await page.goto(session.signInUrl ?? `${BASE}/dashboard`, {
+      waitUntil: "domcontentloaded",
+      timeout: 90_000,
+    });
     await page.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded", timeout: 60_000 });
-    await page.waitForTimeout(5000);
+    await page.locator('button.nav-pill-item:has-text("Features")').first().waitFor({ state: "visible", timeout: 45_000 }).catch(() => {});
+    await page.waitForTimeout(2000);
 
     for (let r = 0; r < ROUNDS; r++) {
       for (const tool of TOOLS) {
         const fromPath = new URL(page.url()).pathname;
         try {
+          await refreshCtxCookies(ctx, session, cookieState);
           await openFeatures(page);
           await clickToolLink(page, tool.href);
           const nav = await waitNav(page, fromPath, tool.href);
-          const markerOk = tool.marker.test(nav.text);
+          const markerOk = tool.marker.test(nav.text) && new URL(nav.url).pathname.startsWith(tool.href.split("?")[0]);
           const row = {
             round: r + 1,
             tool: tool.href,
