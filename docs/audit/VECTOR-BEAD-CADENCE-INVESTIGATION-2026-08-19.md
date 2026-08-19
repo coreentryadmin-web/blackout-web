@@ -2,7 +2,7 @@
 
 **Question:** “Why is Vector broken? I don’t see beads every 5 seconds.”
 
-**Verdict:** On current `main`, the **recorder and SSE contract are 5s for universe tickers**. What members often experience as “missing beads” is usually a **display / viewport / membership / recent-regression** issue — not a dead recorder. One shipped paint change (#2321) **did** silently discard most samples; it was **reverted same day** (#2326).
+**Verdict (CORRECTED 2026-08-19, see “What this investigation got wrong” below):** the **recorder and SSE contract are 5s for universe tickers** — every probe below stands. But the original conclusion, that the remaining gaps were viewport/membership/configuration, was **wrong**: the RENDERER was hard-capped at **one bead per candle** for every ticker at every zoom, independent of everything measured here. Root cause and fix: #2328. The paint decimation this doc did catch (#2321, reverted #2326) was a second, additive loss stacked on top of that cap.
 
 **Probe window:** 2026-08-19 ~00:53 ET (off-hours). Cadence probes ran live against prod; gap analysis needs RTH replay.
 
@@ -14,7 +14,8 @@
 |-------|-----------|-------|
 | **Universe recorder** (background, ~122 tickers) | Yes — `VECTOR_BEAD_RECORD_TICK_MS = 5000` | Append-only rails since #2322; every horizon every tick |
 | **SSE `wallTrailSec`** | Yes for SPX/NVDA/META/AMD/TSLA (probed live) | Was 15s for non-oracle until Aug 2026 fix in `vector-wall-sample-server.ts` |
-| **Client paint (`displayBucketSec`)** | Yes during live session | #2321 pixel-stride bucketing **reverted** #2326 — draw every recorded sample |
+| **Client paint (`displayBucketSec`)** | Yes during live session | #2321 pixel-stride bucketing **reverted** #2326 — the bucketer keeps every recorded sample |
+| **Canvas projection (`WallRailPrimitive`)** | **NO — one bead per candle, until #2328** | `ts.timeToCoordinate(bucketTime)` resolves only times present in the SERIES data, so 35 of every 36 5s buckets returned `null` and were dropped by a `continue` commented as an off-screen skip |
 | **What you *see* on chart** | Often **not** one dot every 5s per row | Membership hysteresis, live-follow 45m trim, DTE horizon, zoom/timeframe, Compare 4-up |
 
 **Off-hours note:** Live probe at 00:53 ET returned **0 wall-history samples** for SPX/SPY/QQQ/NVDA — expected pre-RTH. Walls endpoint still returns current ladder; trail builds once RTH recording starts.
@@ -53,7 +54,53 @@ node --import tsx scripts/audit/vector-bead-probe.mjs
 
 ---
 
-## Why it *looks* broken (even when recording is fine)
+---
+
+## What this investigation got wrong — and the lesson worth keeping
+
+This doc originally concluded *“recorder OK, display filters explain the gaps”* and listed viewport
+mode, membership hysteresis, DTE horizon and Compare throttling as the causes. **Every probe it ran
+passed, and the conclusion was still wrong.** The renderer could not draw more than one bead per
+candle:
+
+```ts
+// vector-wall-rail-primitive.ts, before #2328
+const x = ts.timeToCoordinate(p.time as Time);
+if (x == null) continue; // "off-screen bucket — skip (its neighbours still draw)"
+```
+
+`timeToCoordinate` resolves a time to a pixel **only when that time exists in the series data**. The
+bar grid is 3-minute candles; the bucket grid is 5 seconds. 35 of every 36 buckets are therefore not
+bar times, it returned `null` for each, and that `continue` — commented as an off-screen skip, which
+is exactly what it looks like — discarded them. On any ticker, at any zoom, all session.
+
+**Why the probes could not see it.** Everything this doc measured sits UPSTREAM of the canvas:
+
+| Layer probed | Result | Could it have caught the cap? |
+|---|---|---|
+| Recorder tick / roster | 5s, whole roster | No — writes Redis |
+| SSE `wallTrailSec` | 5 for every universe name | No — a contract field |
+| `wall-history` REST | SPX 3964 samples, median gap 5s | No — serves what was written |
+| `bucketWallHistoryForInterval` | keeps all 720 of an hour | No — returns an array |
+| **Pixels on the canvas** | **never measured** | **yes — the only layer that could** |
+
+A green result at every layer above the failing one is not evidence of health; it is the *shape* of a
+last-hop bug. The correct response to “all my probes pass but the member still sees it” is to probe
+one layer FURTHER DOWN, not to reclassify the report as a configuration issue.
+
+**Standing rule this earns:** a cadence claim is only closed by counting **rendered beads**, not
+samples. `scripts/audit/vector-bead-pixel-audit.cjs` clusters drawn bead pixels off the real canvas
+and is the only tool in the kit that can falsify “beads render every 5s”. Note it must run at a zoom
+where beads resolve, and against a screenshot stamped with the build that served it
+(`vector-rail-visibility-shot.cjs`) — a capture taken mid-rollout is evidence of nothing and looks
+exactly like evidence of something.
+
+**What stands unchanged.** Sections 2–5 and 7 below (membership hysteresis, live-follow 45m trim,
+DTE horizon, Compare 4-up throttling, non-universe 15s) are real, verified against `main`, and
+independent of the renderer cap. They are genuine reasons a row can be sparser than the recorder —
+they were simply not the reason for THIS report.
+
+## Why it can *still* look sparse (independent of the renderer cap)
 
 ### 1. #2321 briefly made the chart lie (FIXED #2326)
 
@@ -163,14 +210,17 @@ node --import tsx scripts/audit/vector-live-e2e.mjs --tickers=SPX,NVDA,META,TSLA
 1. DTE horizon = **All**?
 2. Live-follow **off** for full-session view?
 3. Compare 4-up — is this ticker a **background** pane?
-4. Timeframe — 3m at session zoom shows **ribbon** (touching beads), not isolated dots?
+4. Timeframe — 3m at session zoom shows **ribbon** (touching beads), not isolated dots? *(Only true from #2328 onward. Before it, isolated dots were the CORRECT symptom of the renderer cap, not a member misconfiguration — do not send a member hunting through settings for this.)*
 5. NODES row cap — fewer rows, same cadence per row?
 
 ---
 
 ## Answer to “is Vector broken?”
 
-**Recorder / contract on `main`:** No — universe names are spec’d and probed at **5s**; the worst recent regression (#2321 paint decimation) is **reverted**.
+**Recorder / contract on `main`:** healthy — universe names are spec’d and probed at **5s**.
+
+**Renderer:** it WAS broken, and none of the probes above could see it — capped at one bead per
+candle until #2328. #2321’s paint decimation (reverted #2326) was an additional loss on top.
 
 **Member-visible chart:** Can still look “broken” because:
 - rows are **sparse within themselves** (membership hysteresis — by design),
@@ -179,7 +229,9 @@ node --import tsx scripts/audit/vector-live-e2e.mjs --tickers=SPX,NVDA,META,TSLA
 - **off-hours** empty trail,
 - or **Compare** background throttling.
 
-None of those mean the 5s recorder stopped; they mean the **path from Redis sample → pixel** filtered or trimmed what you see.
+None of those mean the 5s recorder stopped; they mean the **path from Redis sample → pixel** filtered
+or trimmed what you see. That path is exactly where the real defect lived — at its very last step,
+which is the one step this investigation never measured.
 
 ---
 
@@ -188,10 +240,6 @@ None of those mean the 5s recorder stopped; they mean the **path from Redis samp
 1. Leader sweep `elapsedMs` > 5000 sustained → tune `VECTOR_BEAD_RECORD_CONCURRENCY` or shard replicas.
 2. Single-ticker dark rail with `failedTickers` in leader metrics → per-ticker heatmap timeout.
 3. Post-deploy mixed ECS builds (#2319) → self-reload / stale client; confirm single task definition on `/api/health` build sha.
-
-**Status:** Investigation doc only — no product code in this PR.
-
----
 
 ## Competitor comparison — strength swell/fade along a row (member screenshot 2026-08-19)
 
@@ -252,3 +300,17 @@ Priority order if visual check fails:
 3. **Widen enforced size range** at 3m — test `halfMax - halfMin >= 3px` at measured geometry, not 1px.
 4. **RTH visual gate** in CI or audit screenshot script — encode the competitor criterion: same-row early vs late bead height ratio ≥ 2× when pct ratio ≥ 3×.
 
+
+---
+
+**Status:** Reference doc. The defect it originally cleared is fixed in #2328; this doc is kept
+because its layer map, its list of independent sparsity causes, its swell/fade comparison, and its
+record of a green-probe false negative are all worth having.
+
+**One correction to the section above, now that the renderer cap is known.** Its three "remaining
+gaps" for why a row reads uniform were written while the rail was still drawing at most ONE BEAD PER
+CANDLE, so the first thing to re-check on desk is no longer the size budget — it is whether the row
+now has enough beads to swell across at all. A row of ~130 beads (one per 3m candle over a session)
+cannot show a swell that happens over ten minutes; a row of ~4700 (one per 5s) can. Re-run the
+"what to check on desk" list against a post-#2328 build before acting on items 1-4 of the recommended
+fix, or the measurement will attribute a sampling limit to the sizing curve.

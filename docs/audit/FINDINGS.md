@@ -38,17 +38,26 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
-## 2026-08-19 — [NEGATIVE-RESULT, member-visible] "Vector beads not every 5s" — recorder contract OK on main; display filters explain gaps — DOC
+## 2026-08-19 — [FINDING, P0 member-visible] The bead rail could never draw more than ONE bead per candle — FIXED
 
-> **kind:** `NEGATIVE-RESULT`
+> **kind:** `FINDING`
 
 | Field | Detail |
 |---|---|
-| **Report** | Member: beads not appearing every 5 seconds; Vector feels broken |
-| **Scope** | Investigation only — `docs/audit/VECTOR-BEAD-CADENCE-INVESTIGATION-2026-08-19.md` |
-| **Status** | DOC — no product code in PR; RTH gap histogram still required to close |
+| **Report** | Member: "beads dont render every 5 seconds at all", with a competitor screenshot showing dense touching ribbons against ours at ~1 bead per 15 candles |
+| **Root cause** | `vector-wall-rail-primitive.ts` positioned every bucket with `ts.timeToCoordinate(p.time)`, which resolves a time to a pixel ONLY when that time is in the SERIES data. Bars are 3m, buckets are 5s → 35 of every 36 buckets returned `null` and were dropped by a `continue` commented as an off-screen skip. The rail was hard-capped at one bead per candle, on every ticker, at every zoom. |
+| **Fix** | #2328 — `projectBucketX()` finds the bar CONTAINING a bucket and interpolates between that bar's pixel and the next one's, so a 5s bucket lands 1/36th of a bar-width into its candle. |
+| **Status** | FIXED — merged #2328. Tests state it as a contrast: the same 36 buckets yield 1 placeable x through the old lookup, 36 through the new. |
 
-**Verdict.** Live off-hours probe: SSE `wallTrailSec=5` for SPX/NVDA/META/AMD/TSLA (PASS). Wall-history empty pre-open (expected). On `main`, #2321 pixel-stride paint decimation (**reverted #2326**) was the one change that silently dropped 5s samples at render time. Remaining "gaps" are usually row membership hysteresis (#2309), live-follow 45m trim, DTE horizon ≠ All, Compare 4-up background 2× poll, or off-hours empty trail — not a dead 5s recorder.
+**Why five earlier fixes missed it.** #2320/#2322/#2324 (recorder rotation, append-only rails, whole-roster
+coverage) and #2321/#2326 (paint bucketing) were each real, and none moved the picture, because every
+layer they touched sits UPSTREAM of the canvas. The recorder wrote 5s samples (SPX 3964, median gap 5s),
+the SSE contract said 5, the REST endpoint served them, the bucketer kept all 720 of an hour. A green
+result at every layer above the failing one is the SHAPE of a last-hop bug, not evidence of health.
+
+**Standing rule:** a cadence claim is closed by counting RENDERED beads (`vector-bead-pixel-audit.cjs`),
+never by counting samples. See `docs/audit/VECTOR-BEAD-CADENCE-INVESTIGATION-2026-08-19.md` for the full
+layer map and the false-negative record.
 
 **Competitor swell/fade (2026-08-19 screenshot).** Same class of bug as FINDINGS #2312/#2313 ("row shows wall existed, never WHEN it mattered") — fixes landed 2026-08-18 but visual sign-off still open; spacing budget can collapse size range to ~1px at 3m. See investigation doc § Competitor comparison.
 
