@@ -20,6 +20,7 @@ import {
   parsePlayContextFromSearchParams,
   type LargoPlayContext,
 } from "@/lib/largo/session-metadata";
+import type { DeskSlashArgs } from "@/lib/largo/desk-scope";
 import {
   conversationTitle,
   loadConversations,
@@ -58,6 +59,12 @@ export type LargoMessage = {
   /** Post-verdict desk deep links. */
   actions?: LargoAction[];
   depth?: "quick" | "deep";
+  /** Competitor-style contextual chips — rendered inline under this answer. */
+  followups?: string[];
+  /** Active desk scope for this turn — drives mini-panel + thread context. */
+  deskScope?: string | null;
+  /** Mini-panel kind from server (helix, spx, thermal, …). */
+  miniPanel?: string | null;
 };
 
 const TOOL_LABEL: Record<string, string> = {
@@ -178,6 +185,7 @@ export function useLargoChat() {
   const [activeTicker, setActiveTicker] = useState<string | null>(null);
   const [depth, setDepth] = useState<"quick" | "deep">("deep");
   const [historicalMode, setHistoricalMode] = useState(false);
+  const [activeDeskScope, setActiveDeskScope] = useState<string | null>(null);
   const [playContext, setPlayContext] = useState<LargoPlayContext | null>(null);
   const [chartGuide, setChartGuide] = useState(false);
 
@@ -260,7 +268,14 @@ export function useLargoChat() {
   }, []);
 
   const runQuery = useCallback(
-    async (rawQ: string, opts?: { regenerate?: boolean }) => {
+    async (
+      rawQ: string,
+      opts?: {
+        regenerate?: boolean;
+        deskScope?: string | null;
+        deskScopeArgs?: DeskSlashArgs | null;
+      }
+    ) => {
       const q = rawQ.trim();
       // Attachments are captured ONCE, here, and cleared immediately. A chart pasted while the
       // previous answer was still streaming must not ride along on the next question too.
@@ -359,9 +374,12 @@ export function useLargoChat() {
             depth,
             historical: historicalMode,
             playContext,
+            deskScope: opts?.deskScope ?? undefined,
+            deskScopeArgs: opts?.deskScopeArgs ?? undefined,
           }
         );
         setSession(res.session_id);
+        if (res.desk_scope) setActiveDeskScope(res.desk_scope);
         setMessages((m) =>
           upsertAssistantMessage(m, assistantId, {
             content: res.answer,
@@ -379,12 +397,15 @@ export function useLargoChat() {
             preEarningsPack: res.pre_earnings_pack ?? null,
             actions: res.actions,
             depth: res.depth,
+            followups: Array.isArray(res.followups) ? res.followups.slice(0, 4) : [],
+            deskScope: res.desk_scope ?? null,
+            miniPanel: res.mini_panel ?? null,
           })
         );
         // Only overwrite when the server actually resolved one: a follow-up that names no ticker
         // ("and the put side?") must keep the rail on the instrument under discussion, not blank it.
         if (res.ticker) setActiveTicker(res.ticker);
-        setFollowups(Array.isArray(res.followups) ? res.followups.slice(0, 3) : []);
+        setFollowups([]);
         setCanRegenerate(true);
         recordConversation(res.session_id, threadTitleRef.current || label, provisionalSid);
       } catch (err) {
@@ -489,6 +510,7 @@ export function useLargoChat() {
     setCanRegenerate(false);
     threadTitleRef.current = "";
     lastQueryRef.current = "";
+    setActiveDeskScope(null);
     setActiveTicker(null); // a new thread is a new subject
   }, [loading, setSession]);
 
@@ -574,6 +596,8 @@ export function useLargoChat() {
     historicalMode,
     toggleHistoricalMode,
     playContext,
+    activeDeskScope,
+    setActiveDeskScope,
     chartGuide,
     setChartGuide,
     LARGO_DESK_PROMPTS,

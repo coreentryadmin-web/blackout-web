@@ -44,6 +44,7 @@ import {
 import { analyzeLargoQuestion, KNOWN_TICKERS } from "@/lib/largo/question-intent";
 import { formatImageBlock, type ImageBlock } from "@/lib/largo/core/image-attachment";
 import { deterministicLargoFollowups } from "@/lib/largo/largo-followups";
+import { contextualFollowupsFromAnswer } from "@/lib/largo/contextual-followups";
 import { withResolutionChips } from "@/lib/largo/core/resolution-chips";
 import { loadLargoPlatformSnapshotBlock } from "@/lib/largo/platform-snapshot-block";
 import { captureLargoLiveFeed, formatLargoLiveFeed } from "@/lib/largo/largo-live-feed";
@@ -132,6 +133,14 @@ import {
   formatWatchlistBlock,
   type LargoPlayContext,
 } from "@/lib/largo/session-metadata";
+import type { DeskSlashArgs } from "@/lib/largo/desk-scope";
+import {
+  deskScopeConfig,
+  formatDeskScopeBlock,
+  formatDiffBlock,
+  intentOverridesForDeskScope,
+} from "@/lib/largo/desk-scope";
+import { buildTurnSnapshot, prefetchDeskScopeBlock } from "@/lib/largo/desk-scope-prefetch";
 import { marketPhaseFromEt } from "@/lib/largo/core/system-status";
 import { getUserTier } from "@/lib/auth-access";
 
@@ -172,6 +181,9 @@ export type LargoTurnOptions = {
   /** When true, temporal layer treats the question as explicitly historical. */
   historicalMode?: boolean;
   playContext?: LargoPlayContext | null;
+  /** Active desk from slash command — SPX Slayer, HELIX, Thermal, etc. */
+  deskScope?: string | null;
+  deskScopeArgs?: DeskSlashArgs | null;
 };
 
 export type LargoStreamEvent =
@@ -193,6 +205,8 @@ export type LargoStreamEvent =
       pre_earnings_pack?: PreEarningsPackCard | null;
       actions?: LargoAction[];
       depth?: LargoDepth;
+      desk_scope?: string | null;
+      mini_panel?: string | null;
     }
   | { type: "error"; message: string };
 
@@ -368,6 +382,8 @@ async function prepareLargoTurn(
   preEarningsPack: PreEarningsPackCard | null;
   socialPack: SocialPackSlice | null;
   sessionMetadata: Awaited<ReturnType<typeof fetchLargoSessionMetadata>>;
+  activeDeskScope: string | null;
+  miniPanelKind: string | null;
 }> {
   let sid = sessionId.trim() || `web-${userId}-${Date.now()}`;
   try {
@@ -396,9 +412,37 @@ async function prepareLargoTurn(
       () => {}
     );
   }
-  // Read the previous turn's timestamp BEFORE the current question is appended. Fails soft to
-  // null (no DB, first turn, unusable timestamp) — a missing window start is reported as missing.
-  const previousTurn = await fetchPreviousUserTurn(sid, userId).catch(() => null);
+  const activeDeskScope =
+    turnOptions.deskScope?.trim() ||
+    (typeof sessionMetadata.desk_scope === "string" ? sessionMetadata.desk_scope : null) ||
+    null;
+  const deskScopeArgs = turnOptions.deskScopeArgs ?? sessionMetadata.desk_scope_args ?? null;
+  if (turnOptions.deskScope) {
+    void updateLargoSessionMetadata(sid, userId, {
+      desk_scope: turnOptions.deskScope,
+      desk_scope_args: deskScopeArgs,
+    }).catch(() => {});
+  }
+  if (deskScopeArgs?.watchTickers?.length) {
+    const merged = [
+      ...(sessionMetadata.watchlist ?? []),
+      ...deskScopeArgs.watchTickers,
+    ];
+    void updateLargoSessionMetadata(sid, userId, {
+      watchlist: merged,
+    }).catch(() => {});
+  }
+
+  const toolsUsed: string[] = ["live_feed_capture"];
+  let intent = analyzeLargoQuestion(question, history.slice(0, -1));
+  intent = intentOverridesForDeskScope(activeDeskScope, intent);
+  if (deskScopeArgs?.ticker) {
+    intent = { ...intent, tickerHint: deskScopeArgs.ticker.toUpperCase() };
+  }
+  const scopeCfg = deskScopeConfig(activeDeskScope);
+  const scopeTicker =
+    deskScopeArgs?.ticker?.toUpperCase() ?? scopeCfg?.defaultTicker ?? intent.tickerHint ?? "SPX";
+
   // Images ride on THIS turn's user message only, as content blocks ahead of the text. Order is
   // deliberate and is Anthropic's documented guidance: a model that has seen the picture before the
   // instruction answers about the picture. It also survives the tool loop unchanged — anthropic.ts
@@ -416,8 +460,39 @@ async function prepareLargoTurn(
   // so the next turn pushed a second user message, broke Anthropic role
   // alternation, and 400'd until the orphan aged out (LARGO-3).
 
-  const toolsUsed: string[] = ["live_feed_capture"];
-  const intent = analyzeLargoQuestion(question, history.slice(0, -1));
+  const previousTurn = await fetchPreviousUserTurn(sid, userId).catch(() => null);
+
+  let deskScopeBlock = formatDeskScopeBlock(activeDeskScope, deskScopeArgs ?? undefined);
+  if (scopeCfg && activeDeskScope) {
+    const prefetched = await prefetchDeskScopeBlock(scopeCfg.key, scopeTicker).catch(() => ({
+      block: "",
+      toolsUsed: [] as string[],
+    }));
+    deskScopeBlock += prefetched.block;
+    toolsUsed.push(...prefetched.toolsUsed);
+  }
+
+  let diffBlock = "";
+  if (deskScopeArgs?.mode === "diff") {
+    const prevSnap = sessionMetadata.last_turn_snapshot ?? null;
+    const nowSnap = await buildTurnSnapshot({
+      ticker: scopeTicker,
+      deskScope: activeDeskScope,
+    }).catch(() => null);
+    if (nowSnap) {
+      diffBlock = formatDiffBlock(prevSnap, nowSnap);
+      void updateLargoSessionMetadata(sid, userId, { last_turn_snapshot: nowSnap }).catch(() => {});
+    }
+  } else if (activeDeskScope && deskScopeArgs?.mode !== "watch") {
+    const nowSnap = await buildTurnSnapshot({
+      ticker: scopeTicker,
+      deskScope: activeDeskScope,
+    }).catch(() => null);
+    if (nowSnap) {
+      void updateLargoSessionMetadata(sid, userId, { last_turn_snapshot: nowSnap }).catch(() => {});
+    }
+  }
+
   const liveFeed = await captureLargoLiveFeed(intent, userId);
   const liveFeedBlock = formatLargoLiveFeed(liveFeed, intent.tickerHint ?? "SPX");
   // NO retrieval layer. This used to call searchKnowledge() (BIE Layer 2, Voyage embeddings) on
@@ -606,6 +681,8 @@ async function prepareLargoTurn(
   const tier = await getUserTier(userId).catch(() => null);
   const isAdmin = await isAdminUser(userId).catch(() => false);
   const extraBlocks =
+    deskScopeBlock +
+    diffBlock +
     formatDepthBlock(depth) +
     formatWatchlistBlock(sessionMetadata.watchlist) +
     formatPlayContextBlock(turnOptions.playContext ?? sessionMetadata.play_context) +
@@ -682,6 +759,8 @@ async function prepareLargoTurn(
     preEarningsPack,
     socialPack,
     sessionMetadata,
+    activeDeskScope,
+    miniPanelKind: scopeCfg?.miniPanel ?? null,
   };
 }
 
@@ -763,6 +842,8 @@ export async function runLargoQuery(
   pre_earnings_pack?: PreEarningsPackCard | null;
   actions?: LargoAction[];
   depth?: LargoDepth;
+  desk_scope?: string | null;
+  mini_panel?: string | null;
 }> {
   const startedAt = Date.now();
 
@@ -775,6 +856,7 @@ export async function runLargoQuery(
   const {
     sid, history, system, filteredTools, toolsUsed, tickerHint, viewer, timeframe, persistedQuestion,
     liveFeedResults, depth, compareCard, playSimilarity, preEarningsPack, socialPack,
+    activeDeskScope, miniPanelKind,
   } = await prepareLargoTurn(
     question,
     sessionId,
@@ -914,7 +996,14 @@ export async function runLargoQuery(
     // The turn id rides on the envelope so a follow-up can name the exact turn it refers to.
     if (envelope && turnId != null) envelope.turnId = turnId;
     const followups = withResolutionChips(
-      await generateLargoFollowups(question, text, tickerHint),
+      [
+        ...contextualFollowupsFromAnswer({
+          envelope,
+          compareCard,
+          ticker: tickerHint,
+        }),
+        ...(await generateLargoFollowups(question, text, tickerHint)),
+      ],
       envelope?.headline ?? ""
     );
     const actions = buildLargoActions({ ticker: tickerHint, envelope, compareCard });
@@ -934,6 +1023,8 @@ export async function runLargoQuery(
       pre_earnings_pack: preEarningsPack,
       actions,
       depth,
+      desk_scope: activeDeskScope,
+      mini_panel: miniPanelKind,
     };
   } catch (error) {
     logClaudeTurn({
@@ -1000,6 +1091,7 @@ export async function runLargoQueryStream(
   const {
     sid, history, system, filteredTools, toolsUsed, tickerHint, viewer, timeframe, persistedQuestion,
     liveFeedResults, depth, compareCard, playSimilarity, preEarningsPack, socialPack,
+    activeDeskScope, miniPanelKind,
   } = await prepareLargoTurn(
     question,
     sessionId,
@@ -1167,7 +1259,14 @@ export async function runLargoQueryStream(
     // The turn id rides on the envelope so a follow-up can name the exact turn it refers to.
     if (envelope && turnId != null) envelope.turnId = turnId;
     const followups = withResolutionChips(
-      await generateLargoFollowups(question, text, tickerHint),
+      [
+        ...contextualFollowupsFromAnswer({
+          envelope,
+          compareCard,
+          ticker: tickerHint,
+        }),
+        ...(await generateLargoFollowups(question, text, tickerHint)),
+      ],
       envelope?.headline ?? ""
     );
     const actions = buildLargoActions({ ticker: tickerHint, envelope, compareCard });
@@ -1190,6 +1289,8 @@ export async function runLargoQueryStream(
       pre_earnings_pack: preEarningsPack,
       actions,
       depth,
+      desk_scope: activeDeskScope,
+      mini_panel: miniPanelKind,
     });
   } catch (error) {
     if (isSseClientDisconnect(error)) return;

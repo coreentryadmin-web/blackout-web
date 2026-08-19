@@ -1,14 +1,24 @@
 "use client";
 
 import { clsx } from "clsx";
+import { useRef } from "react";
+import { useRouter } from "next/navigation";
 import { LargoMessageBody } from "@/features/largo/components/LargoMessageBody";
 import { LargoAnswerMessage } from "@/features/largo/components/LargoAnswerMessage";
 import { LargoThinkingState } from "@/features/largo/components/LargoThinkingState";
 import { resetIosViewport } from "@/hooks/useIosKeyboardInset";
 import { LARGO_DESK_PROMPTS, largoToolLabel, useLargoChat } from "@/hooks/useLargoChat";
+import { useLargoSlashCommands } from "@/hooks/useLargoSlashCommands";
+import { resolveLargoSlashSubmit } from "@/lib/largo/slash-commands";
+import { parseDeskSlashArgs } from "@/lib/largo/desk-scope";
+import { slashArgsFromInput } from "@/lib/largo/slash-prompt-utils";
+import { LargoProactiveComposer } from "@/features/largo/components/LargoProactiveComposer";
+import { LargoDeskScopeBanner } from "@/features/largo/components/LargoDeskScopeBanner";
 import { LargoStatusStrip } from "@/features/largo/components/LargoStatusStrip";
+import { LargoSlashMenu } from "@/features/largo/components/LargoSlashMenu";
+import { LargoSlashPromptsMenu } from "@/features/largo/components/LargoSlashPromptsMenu";
 
-const PLACEHOLDER = "Ask Largo — SPX, flow, news…";
+const PLACEHOLDER = "Type / for desk commands — SPX, flow, news…";
 const PLACEHOLDER_BUSY = "Pulling live data…";
 
 /** Mobile-only Largo desk — no web Panel, no responsive breakpoints. */
@@ -20,7 +30,6 @@ export function LargoNativeTerminal() {
     loading,
     streaming,
     hydrated,
-    followups,
     activeTools,
     statusMessage,
     awaitingFirstToken,
@@ -30,7 +39,42 @@ export function LargoNativeTerminal() {
     newConversation,
     isFresh,
     activeSessionId,
+    activeDeskScope,
+    setActiveDeskScope,
+    activeTicker,
   } = useLargoChat();
+
+  const router = useRouter();
+  const slash = useLargoSlashCommands(input, setInput, (q, scope) =>
+    void runQuery(q, { deskScope: scope?.deskScope, deskScopeArgs: scope?.deskScopeArgs })
+  );
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function askFromSlash(question: string) {
+    const desk = slash.activeDesk;
+    const args = desk ? slashArgsFromInput(input, desk.command) : "";
+    void runQuery(question, {
+      deskScope: desk?.command ?? null,
+      deskScopeArgs: parseDeskSlashArgs(args),
+    });
+    setInput("");
+    slash.clearDesk();
+  }
+
+  function submitSlashOrQuery(text: string) {
+    const resolved = resolveLargoSlashSubmit(text, slash.promptMatches);
+    if (resolved.type === "query") {
+      void runQuery(resolved.question, {
+        deskScope: resolved.deskScope ?? null,
+        deskScopeArgs: resolved.deskScopeArgs,
+      });
+      setInput("");
+      slash.clearDesk();
+      return;
+    }
+    void runQuery(resolved.text);
+    slash.clearDesk();
+  }
 
   return (
     <div className="largo-native-desk">
@@ -82,7 +126,12 @@ export function LargoNativeTerminal() {
                     loading && idx === messages.length - 1 && msg.role === "assistant"
                   }
                   className="largo-native-body"
-                  onFollowup={(q) => void runQuery(q)}
+                  onFollowup={(q) => void runQuery(q, { deskScope: activeDeskScope })}
+                  followups={msg.followups}
+                  deskScope={msg.deskScope}
+                  miniPanel={msg.miniPanel}
+                  ticker={activeTicker}
+                  nativeFollowups
                 />
               )
             ) : (
@@ -116,22 +165,6 @@ export function LargoNativeTerminal() {
           </div>
         )}
 
-        {!isFresh && !loading && followups.length > 0 && (
-          <div className="largo-native-suggestions">
-            <p className="largo-native-suggestions-label">Ask next</p>
-            {followups.map((s) => (
-              <button
-                key={s}
-                type="button"
-                className="largo-native-suggestion"
-                onClick={() => void runQuery(s)}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-        )}
-
         {loading && (awaitingFirstToken || !streaming) && (
           <div className="largo-native-bubble largo-native-bubble-assistant">
             <LargoThinkingState tools={activeTools} statusMessage={statusMessage} />
@@ -141,16 +174,64 @@ export function LargoNativeTerminal() {
         <div ref={bottomRef} />
       </div>
 
+      <LargoProactiveComposer
+        disabled={loading || !hydrated}
+        onAsk={(q) => void runQuery(q)}
+        className="largo-proactive-chips-native"
+      />
+      <LargoDeskScopeBanner
+        deskScope={activeDeskScope}
+        ticker={activeTicker}
+        onClear={() => setActiveDeskScope(null)}
+        className="largo-desk-scope-banner-native"
+      />
+
       <form
         className="largo-native-composer"
         onSubmit={(e) => {
           e.preventDefault();
-          void runQuery(input);
+          submitSlashOrQuery(input);
         }}
       >
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
+        <div className="largo-native-input-wrap">
+          <LargoSlashPromptsMenu
+            open={Boolean(slash.activeDesk && slash.promptsLoading && !loading && hydrated)}
+            payload={slash.promptPayload}
+            loading={slash.promptsLoading}
+            prompts={slash.promptMatches}
+            activeIndex={slash.promptIndex}
+            onPick={(p) => askFromSlash(p.question)}
+            onHover={slash.setPromptIndex}
+            onClose={() => {
+              slash.clearDesk();
+              setInput("");
+            }}
+            onOpenDesk={(href) => router.push(href)}
+            native
+          />
+          <LargoSlashMenu
+            open={slash.commandMenuOpen && !loading && hydrated}
+            matches={slash.commandMatches}
+            activeIndex={slash.commandIndex}
+            onPick={(cmd) => {
+              slash.applyCommand(cmd);
+              inputRef.current?.focus();
+            }}
+            onHover={slash.setCommandIndex}
+            native
+          />
+          <input
+            ref={inputRef}
+            value={input}
+            onChange={(e) => slash.onInputChange(e.target.value)}
+            onKeyDown={(e) => {
+              const result = slash.handleKeyDown(e);
+              if (result === "prompt-pick" && slash.highlightedPrompt) {
+                askFromSlash(slash.highlightedPrompt.question);
+                return;
+              }
+              if (result === "handled") return;
+            }}
           onFocus={() => bottomRef.current?.scrollIntoView({ block: "end", behavior: "smooth" })}
           onBlur={() => window.setTimeout(() => resetIosViewport(), 160)}
           placeholder={loading ? PLACEHOLDER_BUSY : PLACEHOLDER}
@@ -160,8 +241,9 @@ export function LargoNativeTerminal() {
           enterKeyHint="send"
           autoComplete="off"
           autoCorrect="off"
-          spellCheck={false}
-        />
+            spellCheck={false}
+          />
+        </div>
         {loading ? (
           <button
             type="button"
