@@ -116,10 +116,14 @@ test("aggregateVectorBars: custom 10m interval buckets", () => {
 // denominator a weak level now recedes to a faint trace by itself, so the row count no longer has
 // to do the decluttering and a low ceiling only hides readable structure.
 test("wallCountForTimeframe: preset timeframes map to the specified shown-counts", () => {
-  assert.equal(wallCountForTimeframe(1), 10, "1m shows 10 near-spot walls");
-  assert.equal(wallCountForTimeframe(3), 14, "3m shows 14");
-  assert.equal(wallCountForTimeframe(5), 16, "5m shows 16");
-  assert.equal(wallCountForTimeframe(15), 18, "15m shows 18");
+  // Walked back from 10/14/16/18 the same day: those counts compressed the SPX 3m row gap from
+  // 26px to 17px, and at 17px BEAD_READABLE_MIN_HALF_PX alone fills 38% of every slot — no
+  // thickness budget can bind below the readability floor. Still well above the pre-2026-08-19
+  // 6/10/10/12; the point was never to maximise rows, it was to stop hiding structure.
+  assert.equal(wallCountForTimeframe(1), 8, "1m shows 8 near-spot walls");
+  assert.equal(wallCountForTimeframe(3), 11, "3m shows 11");
+  assert.equal(wallCountForTimeframe(5), 13, "5m shows 13");
+  assert.equal(wallCountForTimeframe(15), 16, "15m shows 16");
   assert.equal(wallCountForTimeframe(30), 20, "30m saturates at the recorder cap");
   assert.equal(wallCountForTimeframe(60), 20, "60m stays at the cap");
   assert.equal(wallCountForTimeframe(120), 20, "2h stays at the cap");
