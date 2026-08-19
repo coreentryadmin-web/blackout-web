@@ -30,8 +30,10 @@ import { LargoDeskScopeBanner } from "./LargoDeskScopeBanner";
 import { LargoProactiveComposer } from "./LargoProactiveComposer";
 import { parseDeskSlashArgs } from "@/lib/largo/desk-scope";
 import { slashArgsFromInput } from "@/lib/largo/slash-prompt-utils";
-import type { SlashSubmoduleItem } from "@/lib/largo/slash-submodules";
+import type { LargoScopePick, LargoStarterPick } from "@/lib/largo/largo-module-starter-cards";
+import type { DeskSlashArgs } from "@/lib/largo/desk-scope";
 import type { LargoSlashCommand } from "@/lib/largo/slash-commands";
+import type { SlashSubmoduleItem } from "@/lib/largo/slash-submodules";
 
 const INPUT_PLACEHOLDER = "Type / for desk commands — SPX, flow, thermal, vector…";
 const INPUT_PLACEHOLDER_BUSY = "Pulling live data…";
@@ -108,6 +110,21 @@ export function LargoTerminal({
 
   useIosKeyboardInset(nativeShell);
 
+  function applyScope(pick: LargoScopePick) {
+    setActiveDeskScope(pick.deskScope);
+    setActiveDeskScopeArgs(pick.deskScopeArgs ?? null);
+    if (pick.prefill !== undefined) setInput(pick.prefill);
+    inputRef.current?.focus();
+  }
+
+  function askScoped(pick: LargoStarterPick) {
+    void runQuery(pick.question, {
+      deskScope: pick.deskScope,
+      deskScopeArgs: pick.deskScopeArgs,
+    });
+    setInput("");
+  }
+
   function askFromSlash(
     question: string,
     cmd?: LargoSlashCommand | null,
@@ -139,7 +156,11 @@ export function LargoTerminal({
       slash.clearDesk();
       return;
     }
-    void runQuery(resolved.text);
+    void runQuery(resolved.text, {
+      deskScope: activeDeskScope,
+      deskScopeArgs: activeDeskScopeArgs,
+    });
+    setInput("");
     slash.clearDesk();
   }
 
@@ -267,7 +288,12 @@ export function LargoTerminal({
                         loading && idx === messages.length - 1 && msg.role === "assistant"
                       }
                       className={fullPage ? "text-sm md:text-[15px] lg:text-base" : "text-sm"}
-                      onFollowup={(q) => void runQuery(q, { deskScope: activeDeskScope })}
+                      onFollowup={(q) =>
+                        void runQuery(q, {
+                          deskScope: activeDeskScope,
+                          deskScopeArgs: activeDeskScopeArgs,
+                        })
+                      }
                       followups={msg.followups}
                       deskScope={msg.deskScope}
                       deskScopeArgs={msg.deskScopeArgs}
@@ -314,14 +340,7 @@ export function LargoTerminal({
           </AnimatePresence>
 
           {isFresh && !loading && hydrated && fullPage && (
-            <LargoEmptyState
-              onPick={(pick) =>
-                void runQuery(pick.question, {
-                  deskScope: pick.deskScope,
-                  deskScopeArgs: pick.deskScopeArgs,
-                })
-              }
-            />
+            <LargoEmptyState onScope={applyScope} onAsk={askScoped} />
           )}
 
           {isFresh && !loading && hydrated && !fullPage && (
@@ -334,12 +353,8 @@ export function LargoTerminal({
               <LargoDeskModulePicker
                 variant="compact"
                 desks={largoModuleComposerDesks()}
-                onPick={(pick) =>
-                  void runQuery(pick.question, {
-                    deskScope: pick.deskScope,
-                    deskScopeArgs: pick.deskScopeArgs,
-                  })
-                }
+                onScope={applyScope}
+                onAsk={askScoped}
               />
             </motion.div>
           )}

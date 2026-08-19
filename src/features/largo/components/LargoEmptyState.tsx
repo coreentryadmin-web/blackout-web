@@ -3,14 +3,16 @@
 import { motion } from "framer-motion";
 import { ProductMark } from "@/components/marks/ProductMark";
 import { LargoDeskModulePicker } from "@/features/largo/components/LargoDeskModulePicker";
-import type { LargoStarterPick } from "@/lib/largo/largo-module-starter-cards";
+import type { LargoScopePick, LargoStarterPick } from "@/lib/largo/largo-module-starter-cards";
 
-export type { LargoStarterPick };
+export type { LargoScopePick, LargoStarterPick };
 
 export function LargoEmptyState({
-  onPick,
+  onScope,
+  onAsk,
 }: {
-  onPick: (pick: LargoStarterPick) => void;
+  onScope: (pick: LargoScopePick) => void;
+  onAsk?: (pick: LargoStarterPick) => void;
 }) {
   return (
     <motion.div
@@ -23,12 +25,12 @@ export function LargoEmptyState({
         <ProductMark product="largo" size={44} />
         <h2 className="largo-empty-title">Ask the desk anything.</h2>
         <p className="largo-empty-lead">
-          Pick a desk, then a module — or type{" "}
+          Pick a desk (optional: a module lens), type your question, send — or use{" "}
           <span className="font-mono text-cyan-400">/spx-slayer gex</span> in the composer.
         </p>
       </div>
 
-      <LargoDeskModulePicker variant="empty" onPick={onPick} />
+      <LargoDeskModulePicker variant="empty" onScope={onScope} onAsk={onAsk} />
     </motion.div>
   );
 }

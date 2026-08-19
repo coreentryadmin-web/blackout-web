@@ -13,6 +13,14 @@ export type LargoStarterPick = {
   deskScopeArgs: import("@/lib/largo/desk-scope").DeskSlashArgs;
 };
 
+/** Set desk/submodule scope without sending — member types their own question next. */
+export type LargoScopePick = {
+  deskScope: string;
+  deskScopeArgs?: import("@/lib/largo/desk-scope").DeskSlashArgs;
+  /** Prefill composer, e.g. `/spx-slayer gex ` — omit to leave input unchanged. */
+  prefill?: string;
+};
+
 export type LargoModuleStarterCard = {
   id: string;
   desk: DeskScopeKey;

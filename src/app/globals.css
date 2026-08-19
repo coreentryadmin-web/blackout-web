@@ -5376,6 +5376,69 @@ html.product-shell .nav-mega {
   .largo-suggestion-chip-desk {
     border-color: rgba(34, 211, 238, 0.35);
   }
+  .largo-module-chip-wrap {
+    display: inline-flex;
+    align-items: stretch;
+    gap: 0;
+    border-radius: 9999px;
+    overflow: hidden;
+    border: 1px solid rgba(34, 211, 238, 0.28);
+    background: rgba(8, 9, 14, 0.65);
+  }
+  .largo-module-chip-wrap .largo-suggestion-chip-module {
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  .largo-module-quick-ask {
+    padding: 0.25rem 0.55rem;
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #7dd3fc;
+    background: rgba(34, 211, 238, 0.12);
+    border: none;
+    border-left: 1px solid rgba(34, 211, 238, 0.22);
+    cursor: pointer;
+  }
+  .largo-module-quick-ask:hover {
+    background: rgba(34, 211, 238, 0.22);
+    color: #fff;
+  }
+  .largo-empty-card-module-wrap {
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    overflow: hidden;
+  }
+  .largo-empty-card-module-main {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    width: 100%;
+    padding: 0.85rem 1rem;
+    text-align: left;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+  }
+  .largo-module-quick-ask-block {
+    width: 100%;
+    padding: 0.45rem 1rem;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    text-align: left;
+    color: #22d3ee;
+    background: rgba(34, 211, 238, 0.08);
+    border: none;
+    border-top: 1px solid rgba(34, 211, 238, 0.18);
+    cursor: pointer;
+  }
+  .largo-module-quick-ask-block:hover {
+    background: rgba(34, 211, 238, 0.16);
+    color: #fff;
+  }
 
   /* ── Native (iOS) top bar: New chat + Stop ── */
   .largo-native-topbar {

@@ -8,7 +8,11 @@ import { LargoAnswerMessage } from "@/features/largo/components/LargoAnswerMessa
 import { LargoThinkingState } from "@/features/largo/components/LargoThinkingState";
 import { resetIosViewport } from "@/hooks/useIosKeyboardInset";
 import { LargoDeskModulePicker } from "@/features/largo/components/LargoDeskModulePicker";
-import { largoModuleComposerDesks } from "@/lib/largo/largo-module-starter-cards";
+import {
+  largoModuleComposerDesks,
+  type LargoScopePick,
+  type LargoStarterPick,
+} from "@/lib/largo/largo-module-starter-cards";
 import { largoToolLabel, useLargoChat } from "@/hooks/useLargoChat";
 import { useLargoSlashCommands } from "@/hooks/useLargoSlashCommands";
 import { resolveLargoSlashSubmit } from "@/lib/largo/slash-commands";
@@ -71,6 +75,21 @@ export function LargoNativeTerminal() {
     askFromSlash(mod.exampleQuestion, mod.id);
   }
 
+  function applyScope(pick: LargoScopePick) {
+    setActiveDeskScope(pick.deskScope);
+    setActiveDeskScopeArgs(pick.deskScopeArgs ?? null);
+    if (pick.prefill !== undefined) setInput(pick.prefill);
+    inputRef.current?.focus();
+  }
+
+  function askScoped(pick: LargoStarterPick) {
+    void runQuery(pick.question, {
+      deskScope: pick.deskScope,
+      deskScopeArgs: pick.deskScopeArgs,
+    });
+    setInput("");
+  }
+
   function submitSlashOrQuery(text: string) {
     const resolved = resolveLargoSlashSubmit(text, slash.promptMatches);
     if (resolved.type === "query") {
@@ -82,7 +101,11 @@ export function LargoNativeTerminal() {
       slash.clearDesk();
       return;
     }
-    void runQuery(resolved.text);
+    void runQuery(resolved.text, {
+      deskScope: activeDeskScope,
+      deskScopeArgs: activeDeskScopeArgs,
+    });
+    setInput("");
     slash.clearDesk();
   }
 
@@ -136,7 +159,12 @@ export function LargoNativeTerminal() {
                     loading && idx === messages.length - 1 && msg.role === "assistant"
                   }
                   className="largo-native-body"
-                  onFollowup={(q) => void runQuery(q, { deskScope: activeDeskScope })}
+                  onFollowup={(q) =>
+                    void runQuery(q, {
+                      deskScope: activeDeskScope,
+                      deskScopeArgs: activeDeskScopeArgs,
+                    })
+                  }
                   followups={msg.followups}
                   deskScope={msg.deskScope}
                   deskScopeArgs={msg.deskScopeArgs}
@@ -165,12 +193,8 @@ export function LargoNativeTerminal() {
             variant="native"
             desks={largoModuleComposerDesks()}
             className="largo-native-suggestions"
-            onPick={(pick) =>
-              void runQuery(pick.question, {
-                deskScope: pick.deskScope,
-                deskScopeArgs: pick.deskScopeArgs,
-              })
-            }
+            onScope={applyScope}
+            onAsk={askScoped}
           />
         )}
 

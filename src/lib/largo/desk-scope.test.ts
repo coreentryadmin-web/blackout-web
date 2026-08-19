@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   deskScopeConfig,
   formatDeskScopeBlock,
+  formatScopedAnswerContract,
   parseDeskSlashArgs,
 } from "./desk-scope";
 
@@ -38,5 +39,26 @@ describe("formatDeskScopeBlock", () => {
     const block = formatDeskScopeBlock("spx-slayer");
     assert.match(block, /SPX Slayer/);
     assert.match(block, /get_spx_play/);
+  });
+
+  it("includes scoped answer contract with submodule lens", () => {
+    const block = formatDeskScopeBlock("spx-slayer", { submodule: "gex" });
+    assert.match(block, /Scoped answer contract/);
+    assert.match(block, /one-line verdict/);
+    assert.match(block, /gex/);
+  });
+});
+
+describe("formatScopedAnswerContract", () => {
+  it("names submodule as lens when set", () => {
+    const contract = formatScopedAnswerContract({ submodule: "gex" });
+    assert.match(contract, /Submodule \*\*gex\*\*/);
+    assert.match(contract, /one-line verdict/);
+  });
+
+  it("allows desk-only scope without submodule dump", () => {
+    const contract = formatScopedAnswerContract({});
+    assert.match(contract, /exact words/);
+    assert.match(contract, /do not auto-survey all submodules/);
   });
 });

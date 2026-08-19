@@ -199,7 +199,24 @@ export function formatDeskScopeBlock(key: string | null | undefined, args?: Desk
   if (ticker && ticker !== cfg.defaultTicker) {
     block += `\n- Scoped ticker: **${ticker}** (override default ${cfg.defaultTicker}).`;
   }
+  block += formatScopedAnswerContract(args);
   return `\n\n${block}\n`;
+}
+
+/** Talon-style scoped turn — answer the exact question, not a desk tour. */
+export function formatScopedAnswerContract(args?: DeskSlashArgs): string {
+  const lens = args?.submodule
+    ? `Submodule **${args.submodule}** is a lens — not a mandate to dump every tool.`
+    : `Desk scope is set — stay on-desk but answer the member's exact words.`;
+  return `
+## Scoped answer contract
+- ${lens}
+- **Lead with a one-line verdict** that directly answers what they asked, then evidence.
+- Cite exact numbers from tools (spot, flip, walls, net flow) — no ranges unless the data is a range.
+- If they scoped desk-only and asked a narrow question, stay narrow; do not auto-survey all submodules.
+- When the read is unclear or conflicting, say **wait** — do not invent a trade or grade.
+- Follow-up chips should be strike-level questions grounded in what you just cited.
+`;
 }
 
 const TICKER_TOKEN = /^\$?([A-Z][A-Z0-9]{0,4})$/i;
