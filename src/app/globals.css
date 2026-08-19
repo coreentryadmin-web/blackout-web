@@ -5311,6 +5311,12 @@ html.product-shell .nav-mega {
     font-weight: 600;
     color: #f0f0f8;
   }
+  .largo-empty-card-desk {
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #22d3ee;
+  }
   .largo-empty-card-hint {
     font-size: 12px;
     line-height: 1.4;

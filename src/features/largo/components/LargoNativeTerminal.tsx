@@ -7,7 +7,8 @@ import { LargoMessageBody } from "@/features/largo/components/LargoMessageBody";
 import { LargoAnswerMessage } from "@/features/largo/components/LargoAnswerMessage";
 import { LargoThinkingState } from "@/features/largo/components/LargoThinkingState";
 import { resetIosViewport } from "@/hooks/useIosKeyboardInset";
-import { LARGO_DESK_PROMPTS, largoToolLabel, useLargoChat } from "@/hooks/useLargoChat";
+import { largoModuleComposerChips } from "@/lib/largo/largo-module-starter-cards";
+import { largoToolLabel, useLargoChat } from "@/hooks/useLargoChat";
 import { useLargoSlashCommands } from "@/hooks/useLargoSlashCommands";
 import { resolveLargoSlashSubmit } from "@/lib/largo/slash-commands";
 import { parseDeskSlashArgs } from "@/lib/largo/desk-scope";
@@ -160,13 +161,18 @@ export function LargoNativeTerminal() {
 
         {isFresh && !loading && hydrated && (
           <div className="largo-native-suggestions">
-            <p className="largo-native-suggestions-label">Try asking</p>
-            {LARGO_DESK_PROMPTS.map((p) => (
+            <p className="largo-native-suggestions-label">Desk modules</p>
+            {largoModuleComposerChips().map((p) => (
               <button
                 key={p.id}
                 type="button"
-                className="largo-native-suggestion"
-                onClick={() => void runQuery(p.question)}
+                className="largo-native-suggestion largo-native-suggestion-module"
+                onClick={() =>
+                  void runQuery(p.question, {
+                    deskScope: p.desk,
+                    deskScopeArgs: { submodule: p.submodule },
+                  })
+                }
               >
                 {p.label}
               </button>

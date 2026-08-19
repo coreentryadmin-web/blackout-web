@@ -2,15 +2,35 @@
 
 import { motion } from "framer-motion";
 import { ProductMark } from "@/components/marks/ProductMark";
-import { LARGO_EXAMPLE_PROMPTS } from "@/hooks/useLargoChat";
+import { largoModuleStarterCards, type LargoModuleStarterCard } from "@/lib/largo/largo-module-starter-cards";
+import type { DeskSlashArgs } from "@/lib/largo/desk-scope";
+
+export type LargoStarterPick = {
+  question: string;
+  deskScope: string;
+  deskScopeArgs: DeskSlashArgs;
+};
 
 /**
  * Commanding empty state for the full-page terminal (BIE Master Spec §6 —
  * "Not a small chat box"). Presents Largo as the platform's decision-intelligence
- * surface with example prompts spanning the engine's intent range, so the member's
- * first impression is capability, not a blank input.
+ * surface with desk submodule cards so the first impression matches the slash CLI.
  */
-export function LargoEmptyState({ onPick }: { onPick: (prompt: string) => void }) {
+export function LargoEmptyState({
+  onPick,
+}: {
+  onPick: (pick: LargoStarterPick) => void;
+}) {
+  const cards = largoModuleStarterCards();
+
+  function pickCard(card: LargoModuleStarterCard) {
+    onPick({
+      question: card.question,
+      deskScope: card.desk,
+      deskScopeArgs: { submodule: card.submodule },
+    });
+  }
+
   return (
     <motion.div
       className="largo-empty"
@@ -22,21 +42,22 @@ export function LargoEmptyState({ onPick }: { onPick: (prompt: string) => void }
         <ProductMark product="largo" size={44} />
         <h2 className="largo-empty-title">Ask the desk anything.</h2>
         <p className="largo-empty-lead">
-          Largo is the decision-intelligence engine behind BlackOut — it pulls live platform
-          data on every question, separates fact from inference, and shows its sources.
+          Largo is the decision-intelligence engine behind BlackOut — pick a desk module or type{" "}
+          <span className="font-mono text-cyan-400">/spx-slayer gex</span> for a scoped read.
         </p>
       </div>
 
-      <p className="largo-empty-label">Try one of these</p>
+      <p className="largo-empty-label">Desk modules</p>
       <div className="largo-empty-grid">
-        {LARGO_EXAMPLE_PROMPTS.map((p) => (
+        {cards.map((p) => (
           <button
-            key={p.label}
+            key={p.id}
             type="button"
-            className="largo-empty-card"
-            onClick={() => onPick(p.question)}
+            className="largo-empty-card largo-empty-card-module"
+            onClick={() => pickCard(p)}
           >
-            <span className="largo-empty-card-q">{p.label}</span>
+            <span className="largo-empty-card-desk font-mono">{p.deskLabel}</span>
+            <span className="largo-empty-card-q">{p.moduleLabel}</span>
             <span className="largo-empty-card-hint">{p.hint}</span>
           </button>
         ))}
