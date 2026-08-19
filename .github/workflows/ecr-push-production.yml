@@ -23,9 +23,34 @@ on:
 # deploys red on the static-asset step, ECS actually rolled fine; only the unraced #975 passed). Cancelling
 # the in-progress older run means only the latest commit deploys — the final ECS state is always the newest
 # code, the smoke check runs unraced, and a red deploy once again means a REAL failure (no cry-wolf).
+#
+# CANCEL -> QUEUE (2026-08-19). The reasoning above is right that overlapping deploys must not race;
+# it is wrong that CANCELLING is how you stop them, and the difference is a member-visible outage.
+#
+# `aws ecs update-service --force-new-deployment` (below) is ASYNCHRONOUS. Cancelling this workflow
+# does not roll ECS back and does not stop the rollout — it only stops WATCHING it, and skips every
+# post-roll step: the stability wait, the static-asset validation, the Cloudflare HTML purge and the
+# worker roll. So a cancelled deploy still ships its image, unattended and unverified.
+#
+# Worse, the next merge then issues ANOTHER force-new-deployment while the previous rollout is still
+# in flight, so ECS runs overlapping deployments and the service serves tasks from SEVERAL builds at
+# once. Measured 2026-08-18: five merges in ~30 minutes produced four cancelled deploys, and a probe
+# of prod /vector caught the consequence — the page self-reloading plus
+# `TypeError: Cannot read properties of undefined (reading 'call')`, which is webpack asking a
+# loaded chunk for a module factory that build does not contain. Old HTML + a different build's
+# chunks is exactly what a multi-build fleet serves.
+#
+# Queueing gives the SAME non-overlap guarantee the comment above wanted — GitHub still runs only
+# one job in this group at a time, so the static-asset check is still never raced — while letting
+# each rollout finish and get its purge and validation. Intermediate merges are cancelled while
+# PENDING, which is harmless: a pending run has not issued update-service, so it cannot leave a
+# partial rollout behind. The final ECS state is still the newest commit.
+#
+# Cost is honest: the newest commit waits for the current deploy instead of pre-empting it, so a
+# burst of merges reaches prod later. That is the right trade against serving three builds at once.
 concurrency:
   group: ecr-push-production
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read
