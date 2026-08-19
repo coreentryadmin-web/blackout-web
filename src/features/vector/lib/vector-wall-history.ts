@@ -482,8 +482,16 @@ export function trimHistoryForLiveTrails(
 export type BucketWallHistoryOpts = {
   /** Floor bucket size for live display — e.g. 5 keeps 5s bead density on 1m charts. */
   minBucketSec?: number;
-  /** When true, use minBucketSec instead of collapsing to candle width. */
+  /** When true, minBucketSec is the FLOOR rather than collapsing to candle width. */
   liveBeads?: boolean;
+  /**
+   * Horizontal px per bar, from the chart's time scale. Present = beads are bucketed to the room
+   * actually on screen (see displayBucketSec); absent = the old constant-bucket behaviour, which
+   * paints a ribbon whenever the bucket is finer than the pixels available.
+   */
+  barSpacingPx?: number;
+  /** Override the px stride between beads. Defaults to BEAD_STRIDE_PX. */
+  beadStridePx?: number;
 };
 
 /**
@@ -512,8 +520,70 @@ export function alignWallHistoryToBarTimes(
 }
 
 /**
- * Resample wall-history for chart beads. Live mode keeps the trail sample cadence (5s);
- * replay / higher-TF views collapse to candle buckets.
+ * Pixels a bead needs before the next one starts, so a row reads as BEADS and not as a bar.
+ *
+ * The rail's clamped bead ceiling is 3.2-7.5px of RADIUS, i.e. up to ~15px across. 11px of stride
+ * keeps a typical bead visibly separated from its neighbour while still letting a run of strong
+ * beads touch — touching is texture, which the reference product has too; FUSING into a constant
+ * ribbon is what destroys the per-moment read.
+ */
+const BEAD_STRIDE_PX = 11;
+
+/**
+ * How many seconds one bead should cover, given how much horizontal room a bar actually has.
+ *
+ * ── THE PAINT DEFECT THIS FIXES (2026-08-19) ─────────────────────────────────────────
+ * The bucket size was a CONSTANT: during a live session `min(candleSec, minBucketSec)` = 5s, the
+ * recorder's cadence, no matter the timeframe or the zoom. A 3-minute candle occupies ~5.4px at
+ * ordinary zoom, so 5s buckets ask for 36 beads inside those 5.4px. They cannot be anything but a
+ * smear, and no amount of shrinking the bead fixes it — shrinking is what produced the invisible
+ * dots in #2310, which the member rejected on sight.
+ *
+ * The member's own description of the correct behaviour is the specification: a bead every 5
+ * seconds is right, and "at the end of the day it looks like a bar" — because at session width it
+ * SHOULD. The bug is that it still looked like a bar zoomed IN, where there is room to resolve
+ * individual beads and the member expects to see them.
+ *
+ * ── THE RULE ─────────────────────────────────────────────────────────────────────────
+ * Bucket by PIXELS, not by clock. One bead per `BEAD_STRIDE_PX` of chart, which means the bucket
+ * shrinks toward the recorder's true 5s cadence as the member zooms in (more detail, still
+ * discrete) and grows as they zoom out (fewer beads, still discrete) instead of fusing.
+ *
+ * The result is snapped UP to a whole multiple of `minBucketSec` so bucket edges stay aligned with
+ * the recorded samples — an unaligned bucket boundary makes beads jitter along the row on every
+ * re-render as samples fall either side of it.
+ *
+ * `barSpacingPx` unusable (no chart, NaN, zero) falls back to the previous constant behaviour: the
+ * rail must still paint on a surface that cannot report its geometry.
+ */
+export function displayBucketSec(input: {
+  candleSec: number;
+  barSpacingPx: number;
+  minBucketSec: number;
+  /** Live session keeps the fine cadence as the FLOOR; replay/historical collapse to candles. */
+  liveBeads: boolean;
+  strideP: number;
+}): number {
+  const { candleSec, barSpacingPx, minBucketSec, liveBeads } = input;
+  const stride = input.strideP > 0 ? input.strideP : BEAD_STRIDE_PX;
+  const floorSec = liveBeads && minBucketSec > 0 ? Math.min(candleSec, minBucketSec) : candleSec;
+  if (!Number.isFinite(barSpacingPx) || barSpacingPx <= 0 || !Number.isFinite(candleSec) || candleSec <= 0) {
+    return floorSec;
+  }
+  // Seconds of tape per pixel, then how many seconds one bead's worth of pixels covers.
+  const secPerPx = candleSec / barSpacingPx;
+  const needSec = stride * secPerPx;
+  if (!Number.isFinite(needSec) || needSec <= floorSec) return floorSec;
+  const step = minBucketSec > 0 ? minBucketSec : 1;
+  // Snap UP to a whole multiple of the recorded cadence so bucket edges land on sample boundaries.
+  return Math.max(floorSec, Math.ceil(needSec / step) * step);
+}
+
+/**
+ * Resample wall-history for chart beads.
+ *
+ * Bucket size comes from `displayBucketSec` when the caller can report `barSpacingPx` — see that
+ * function for why a constant bucket paints a bar instead of beads.
  */
 export function bucketWallHistoryForInterval(
   history: WallHistorySample[],
@@ -522,10 +592,13 @@ export function bucketWallHistoryForInterval(
 ): WallHistorySample[] {
   if (!history.length) return history;
   const candleSec = intervalMinutes * 60;
-  const bucketSec =
-    opts?.liveBeads && opts.minBucketSec != null && opts.minBucketSec > 0
-      ? Math.min(candleSec, opts.minBucketSec)
-      : candleSec;
+  const bucketSec = displayBucketSec({
+    candleSec,
+    barSpacingPx: opts?.barSpacingPx ?? NaN,
+    minBucketSec: opts?.minBucketSec ?? 0,
+    liveBeads: Boolean(opts?.liveBeads),
+    strideP: opts?.beadStridePx ?? BEAD_STRIDE_PX,
+  });
   const map = new Map<number, WallHistorySample>();
 
   for (const sample of history) {
