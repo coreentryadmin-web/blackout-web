@@ -71,12 +71,15 @@ export function resolveSpxOdteUwLadderSource(
   return { rows: [], source: "none" };
 }
 
-async function fetchSpxOdteScopedUwLadderRest(sym: string): Promise<SpxOdteUwLadderResult | null> {
+async function fetchSpxOdteScopedUwLadderRest(
+  sym: string,
+  expiry: string
+): Promise<SpxOdteUwLadderResult | null> {
   try {
-    const raw = await fetchUwOdteSpotExposuresByStrike(sym);
+    const raw = await fetchUwOdteSpotExposuresByStrike(sym, expiry);
     const rows = normalizeUwOdteSpotExposureRows(raw);
     if (rows.length) {
-      return { rows, source: "spot-exposures/expiry-strike (0DTE)" };
+      return { rows, source: `spot-exposures/expiry-strike (${expiry})` };
     }
   } catch {
     /* fall through */
@@ -84,13 +87,13 @@ async function fetchSpxOdteScopedUwLadderRest(sym: string): Promise<SpxOdteUwLad
   return null;
 }
 
-function fetchSpxOdteScopedUwLadderWs(sym: string, today: string): SpxOdteUwLadderResult | null {
+function fetchSpxOdteScopedUwLadderWs(sym: string, expiry: string): SpxOdteUwLadderResult | null {
   if (sym !== "SPX" || !hasLiveGexStrikeExpiry(sym)) return null;
-  const ws = getGexStrikeExpiryLadder(sym, [today]);
+  const ws = getGexStrikeExpiryLadder(sym, [expiry]);
   if (!ws || ws.ladder.size === 0) return null;
   return {
     rows: uwRowsFromStrikeLadder(ws.ladder),
-    source: "gex_strike_expiry WS (0DTE)",
+    source: `gex_strike_expiry WS (${expiry})`,
   };
 }
 
@@ -105,11 +108,19 @@ function fetchSpxOdteScopedUwLadderWs(sym: string, today: string): SpxOdteUwLadd
  * expiries and produces a different King than the served 0DTE matrix column. Comparing
  * 0DTE vs cumulative was the root cause of ops-auto-fix #1865 (King 7750 vs 7900).
  */
-export async function fetchSpxOdteScopedUwLadder(ticker = "SPX"): Promise<SpxOdteUwLadderResult> {
+/**
+ * Fetch UW GEX ladder for a specific expiry. Defaults to today's ET date (live 0DTE).
+ * Correctness oracle callers MUST pass the same expiry as `resolveOdteExpiry` on the
+ * served heatmap — after today's column rolls off the axis post-close, UW for calendar-
+ * today would disagree with the matrix front-expiry column (ops-auto-fix #2357).
+ */
+export async function fetchSpxOdteScopedUwLadder(
+  ticker = "SPX",
+  expiry: string = todayEtYmd()
+): Promise<SpxOdteUwLadderResult> {
   const sym = ticker.toUpperCase();
-  const today = todayEtYmd();
-  const rest = await fetchSpxOdteScopedUwLadderRest(sym);
-  const ws = fetchSpxOdteScopedUwLadderWs(sym, today);
+  const rest = await fetchSpxOdteScopedUwLadderRest(sym, expiry);
+  const ws = fetchSpxOdteScopedUwLadderWs(sym, expiry);
   return resolveSpxOdteUwLadderSource(rest, ws);
 }
 
