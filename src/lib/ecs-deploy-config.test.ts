@@ -226,3 +226,29 @@ test("the web stability poller budgets enough time for a one-task-at-a-time roll
       `deploys AND aborts the job before the Cloudflare purge / static-asset / worker steps run`,
   );
 });
+
+// PRODUCTION DEPLOYS QUEUE, THEY DO NOT CANCEL (2026-08-19).
+//
+// `aws ecs update-service --force-new-deployment` is asynchronous: cancelling this workflow does not
+// roll ECS back and does not stop the rollout, it only stops watching it — and skips the stability
+// wait, the static-asset validation, the Cloudflare HTML purge and the worker roll. The next merge
+// then fires another force-new-deployment while the previous rollout is still in flight, so the
+// service serves tasks from several builds at once.
+//
+// Measured 2026-08-18: five merges in ~30 minutes produced four cancelled deploys, and a probe of
+// prod /vector caught the consequence — a self-reloading page plus `TypeError: Cannot read
+// properties of undefined (reading 'call')`, webpack asking a loaded chunk for a module factory
+// that build does not contain.
+//
+// Queueing keeps the original non-overlap intent (one job per group at a time, so the static-asset
+// check is still never raced) while letting each rollout finish.
+test("production deploys QUEUE rather than cancel a rollout already in flight", () => {
+  const block = workflow.match(/concurrency:\s*\n(?:\s+\S.*\n)+/);
+  assert.ok(block, "expected a concurrency block in the production deploy workflow");
+  assert.match(
+    block[0],
+    /cancel-in-progress:\s*false/,
+    "cancel-in-progress must stay false: cancelling does NOT stop an async ECS rollout, it only " +
+      "abandons it mid-flight and skips the purge/validation, leaving prod serving a mix of builds",
+  );
+});

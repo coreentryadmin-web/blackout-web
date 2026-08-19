@@ -11985,3 +11985,65 @@ last-wins rather than rendering twice; all four horizons record independently at
 Cadence: the old `mean < 2.5` budget assertion is REPLACED by `mean === 4` with the reasoning
 inline, plus a pointer test asserting the cost guard now lives in the storage layer so a future
 reader who wants to re-ration looks there instead of reintroducing the starvation.
+
+## 2026-08-19 — cancelled production deploys leave ECS serving a mix of builds — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P1 — member-visible: self-reloading desk, dead client components, no error surfaced |
+| **Where** | `.github/workflows/ecr-push-production.yml` — `concurrency.cancel-in-progress` |
+| **Status** | FIXED — deploys now QUEUE (`cancel-in-progress: false`); guard test in `src/lib/ecs-deploy-config.test.ts` |
+
+**Root cause.** `aws ecs update-service --force-new-deployment` is ASYNCHRONOUS. Cancelling the
+workflow does not roll ECS back and does not stop the rollout — it only stops WATCHING it, and skips
+every post-roll step: the stability wait, the static-asset validation, the Cloudflare HTML purge and
+the worker roll. The next merge then issues another force-new-deployment while the previous rollout
+is still in flight, so ECS runs overlapping deployments and the service serves tasks from SEVERAL
+builds simultaneously.
+
+`cancel-in-progress: true` was itself added deliberately (2026-07-23, #973/#974) to stop overlapping
+deploys false-failing the static-asset step. That diagnosis was right; cancelling was the wrong
+remedy.
+
+**Evidence.** 2026-08-18, five merges in ~30 minutes → four deploys `cancelled`, one still running:
+
+```
+23:32 in_progress  main  fix(vector): stop the bead floor collapsing...
+23:14 cancelled    main  feat(vector): NODES control...
+23:13 cancelled    main  feat(vector): full-screen chart mode...
+23:03 cancelled    main  fix(deploy): stop purging hashed build assets...
+22:43 cancelled    main  fix(vector): scale bead contrast...
+```
+
+Probe of prod `/vector?ticker=NVDA` during that window (tunnel Chromium, `framenavigated` +
+`console` + `pageerror`):
+
+```
+NAV     https://blackouttrades.com/vector?ticker=NVDA
+NAV     https://blackouttrades.com/vector?ticker=NVDA      <- the page reloaded itself
+PAGEERR TypeError: Cannot read properties of undefined (reading 'call')
+```
+
+Two navigations to one URL is the `layout.tsx` chunk-recovery guard firing. `reading 'call'` is the
+webpack signature of `__webpack_require__` invoking a module factory absent from the loaded chunk —
+i.e. HTML from one build meeting another build's chunks, which is exactly what a multi-build fleet
+serves. Note the 404 form was NOT reproducing (all 21 chunks referenced by the served HTML returned
+`200 application/javascript`), so this is distinct from the purge bug fixed the same day.
+
+**Fix.** Queue instead of cancel. GitHub still runs one job per concurrency group at a time, so the
+original non-overlap guarantee is intact and the static-asset check is still never raced — but each
+rollout now finishes and gets its purge and validation. Intermediate merges are cancelled while
+PENDING, which is harmless: a pending run has never issued update-service, so it cannot leave a
+partial rollout behind. Final ECS state is still the newest commit.
+
+**Cost, stated honestly.** The newest commit now waits for the current deploy instead of pre-empting
+it, so a burst of merges reaches prod later. That is the right trade against serving three builds at
+once.
+
+**Not fixed here.** The `layout.tsx` guard's pattern does not match the module-factory message, so
+after its one reload the page stays partially broken. Deliberately left alone: `reading 'call'` is a
+generic TypeError and matching it would reload-loop on ordinary app bugs. It needs a discriminator
+(webpack frames in the stack, or a coincident chunk request failure) and a real deploy to validate
+against.
