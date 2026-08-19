@@ -179,13 +179,21 @@ export function resolveSlashNavigateHref(cmd: LargoSlashCommand, args: string): 
 
 export type LargoSlashSubmit =
   | { type: "plain"; text: string }
-  | { type: "navigate"; href: string }
   | { type: "query"; question: string };
 
 const SINGLE_TICKER = /^\$?([A-Z][A-Z0-9]{0,4})$/i;
 
-/** Turn composer submit text into navigate, Largo query, or plain ask. */
-export function resolveLargoSlashSubmit(raw: string): LargoSlashSubmit {
+type SlashPromptLite = { question: string };
+
+function slashDefaultQuestion(cmd: LargoSlashCommand, prompts: SlashPromptLite[]): string {
+  if (cmd.kind === "prompt" && cmd.question) return cmd.question;
+  const first = prompts[0];
+  if (first) return first.question;
+  return `What should I know about ${cmd.label} right now?`;
+}
+
+/** Turn composer submit text into a Largo query. Desk slash commands stay in-terminal. */
+export function resolveLargoSlashSubmit(raw: string, prompts: SlashPromptLite[] = []): LargoSlashSubmit {
   const trimmed = raw.trim();
   if (!trimmed.startsWith("/")) return { type: "plain", text: trimmed };
 
@@ -196,14 +204,12 @@ export function resolveLargoSlashSubmit(raw: string): LargoSlashSubmit {
     return { type: "query", question: command.question ?? trimmed };
   }
 
-  // navigate
   if (!args) {
-    return { type: "navigate", href: command.href ?? "/terminal" };
+    return { type: "query", question: slashDefaultQuestion(command, prompts) };
   }
   if (SINGLE_TICKER.test(args.trim())) {
-    return { type: "navigate", href: resolveSlashNavigateHref(command, args.trim()) };
+    return { type: "query", question: slashNavigateQuestion(command, args.trim()) };
   }
-  // Natural-language tail — stay in Largo.
   return { type: "query", question: args.length > 12 ? args : slashNavigateQuestion(command, args) };
 }
 

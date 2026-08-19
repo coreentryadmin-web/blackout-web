@@ -49,14 +49,14 @@ export function LargoSlashMenu({
                 <span className="largo-slash-menu-desc">{cmd.description}</span>
               </span>
               <span className="largo-slash-menu-kind font-mono" aria-hidden>
-                {cmd.kind === "navigate" ? "Open" : "Ask"}
+                Ask
               </span>
             </button>
           </li>
         ))}
       </ul>
       <p className="largo-slash-menu-hint font-mono">
-        ↑↓ select · Tab complete · Enter send · type to filter
+        ↑↓ select · Tab open questions · type to filter
       </p>
     </div>
   );

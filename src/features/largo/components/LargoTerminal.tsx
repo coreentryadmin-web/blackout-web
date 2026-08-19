@@ -24,6 +24,7 @@ import { LargoEmptyState } from "./LargoEmptyState";
 import { LargoStatusStrip } from "./LargoStatusStrip";
 import { LargoContextRail } from "./LargoContextRail";
 import { LargoSlashMenu } from "./LargoSlashMenu";
+import { LargoSlashPromptsMenu } from "./LargoSlashPromptsMenu";
 
 const INPUT_PLACEHOLDER = "Type / for desk commands — SPX, flow, thermal, vector…";
 const INPUT_PLACEHOLDER_BUSY = "Pulling live data…";
@@ -95,19 +96,20 @@ export function LargoTerminal({
 
   useIosKeyboardInset(nativeShell);
 
+  function askFromSlash(question: string) {
+    void runQuery(question);
+    setInput("");
+    slash.clearDesk();
+  }
+
   function submitSlashOrQuery(text: string) {
-    const resolved = resolveLargoSlashSubmit(text);
-    if (resolved.type === "navigate") {
-      router.push(resolved.href);
-      setInput("");
-      return;
-    }
+    const resolved = resolveLargoSlashSubmit(text, slash.promptMatches);
     if (resolved.type === "query") {
-      void runQuery(resolved.question);
-      setInput("");
+      askFromSlash(resolved.question);
       return;
     }
     void runQuery(resolved.text);
+    slash.clearDesk();
   }
 
   function submit(e: React.FormEvent) {
@@ -434,28 +436,47 @@ export function LargoTerminal({
           )}
         >
           <div className="relative flex-1 largo-input-wrap">
+            <LargoSlashPromptsMenu
+              open={Boolean(slash.activeDesk && !loading && hydrated)}
+              payload={slash.promptPayload}
+              loading={slash.promptsLoading}
+              prompts={slash.promptMatches}
+              activeIndex={slash.promptIndex}
+              onPick={(p) => askFromSlash(p.question)}
+              onHover={slash.setPromptIndex}
+              onClose={() => {
+                slash.clearDesk();
+                setInput("");
+              }}
+              onOpenDesk={(href) => router.push(href)}
+            />
             <LargoSlashMenu
-              open={slash.open && !loading && hydrated}
-              matches={slash.matches}
-              activeIndex={slash.activeIndex}
+              open={slash.commandMenuOpen && !loading && hydrated}
+              matches={slash.commandMatches}
+              activeIndex={slash.commandIndex}
               onPick={(cmd) => {
-                slash.applyCommand(cmd, true);
+                slash.applyCommand(cmd);
                 inputRef.current?.focus();
               }}
-              onHover={slash.setActiveIndex}
+              onHover={slash.setCommandIndex}
             />
             <input
               ref={inputRef}
               value={input}
               onChange={(e) => slash.onInputChange(e.target.value)}
               onKeyDown={(e) => {
-                if (slash.handleKeyDown(e)) return;
+                const result = slash.handleKeyDown(e);
+                if (result === "prompt-pick" && slash.highlightedPrompt) {
+                  askFromSlash(slash.highlightedPrompt.question);
+                  return;
+                }
+                if (result === "handled") return;
               }}
               onPaste={handlePaste}
               placeholder={loading ? INPUT_PLACEHOLDER_BUSY : INPUT_PLACEHOLDER}
               aria-label="Ask Largo"
-              aria-autocomplete={slash.open ? "list" : undefined}
-              aria-controls={slash.open ? "largo-slash-menu" : undefined}
+              aria-autocomplete={slash.commandMenuOpen || slash.activeDesk ? "list" : undefined}
+              aria-controls={slash.activeDesk ? "largo-slash-prompts" : slash.commandMenuOpen ? "largo-slash-menu" : undefined}
               className={clsx(
                 "desk-largo-input w-full !border-cyan-400/25",
                 loading && "largo-input-busy",

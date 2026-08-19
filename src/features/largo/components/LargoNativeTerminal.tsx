@@ -12,6 +12,7 @@ import { useLargoSlashCommands } from "@/hooks/useLargoSlashCommands";
 import { resolveLargoSlashSubmit } from "@/lib/largo/slash-commands";
 import { LargoStatusStrip } from "@/features/largo/components/LargoStatusStrip";
 import { LargoSlashMenu } from "@/features/largo/components/LargoSlashMenu";
+import { LargoSlashPromptsMenu } from "@/features/largo/components/LargoSlashPromptsMenu";
 
 const PLACEHOLDER = "Type / for desk commands — SPX, flow, news…";
 const PLACEHOLDER_BUSY = "Pulling live data…";
@@ -41,19 +42,20 @@ export function LargoNativeTerminal() {
   const slash = useLargoSlashCommands(input, setInput);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  function askFromSlash(question: string) {
+    void runQuery(question);
+    setInput("");
+    slash.clearDesk();
+  }
+
   function submitSlashOrQuery(text: string) {
-    const resolved = resolveLargoSlashSubmit(text);
-    if (resolved.type === "navigate") {
-      router.push(resolved.href);
-      setInput("");
-      return;
-    }
+    const resolved = resolveLargoSlashSubmit(text, slash.promptMatches);
     if (resolved.type === "query") {
-      void runQuery(resolved.question);
-      setInput("");
+      askFromSlash(resolved.question);
       return;
     }
     void runQuery(resolved.text);
+    slash.clearDesk();
   }
 
   return (
@@ -173,15 +175,30 @@ export function LargoNativeTerminal() {
         }}
       >
         <div className="largo-native-input-wrap">
+          <LargoSlashPromptsMenu
+            open={Boolean(slash.activeDesk && !loading && hydrated)}
+            payload={slash.promptPayload}
+            loading={slash.promptsLoading}
+            prompts={slash.promptMatches}
+            activeIndex={slash.promptIndex}
+            onPick={(p) => askFromSlash(p.question)}
+            onHover={slash.setPromptIndex}
+            onClose={() => {
+              slash.clearDesk();
+              setInput("");
+            }}
+            onOpenDesk={(href) => router.push(href)}
+            native
+          />
           <LargoSlashMenu
-            open={slash.open && !loading && hydrated}
-            matches={slash.matches}
-            activeIndex={slash.activeIndex}
+            open={slash.commandMenuOpen && !loading && hydrated}
+            matches={slash.commandMatches}
+            activeIndex={slash.commandIndex}
             onPick={(cmd) => {
-              slash.applyCommand(cmd, true);
+              slash.applyCommand(cmd);
               inputRef.current?.focus();
             }}
-            onHover={slash.setActiveIndex}
+            onHover={slash.setCommandIndex}
             native
           />
           <input
@@ -189,7 +206,12 @@ export function LargoNativeTerminal() {
             value={input}
             onChange={(e) => slash.onInputChange(e.target.value)}
             onKeyDown={(e) => {
-              if (slash.handleKeyDown(e)) return;
+              const result = slash.handleKeyDown(e);
+              if (result === "prompt-pick" && slash.highlightedPrompt) {
+                askFromSlash(slash.highlightedPrompt.question);
+                return;
+              }
+              if (result === "handled") return;
             }}
           onFocus={() => bottomRef.current?.scrollIntoView({ block: "end", behavior: "smooth" })}
           onBlur={() => window.setTimeout(() => resetIosViewport(), 160)}

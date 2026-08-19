@@ -57,18 +57,29 @@ describe("resolveSlashNavigateHref", () => {
 });
 
 describe("resolveLargoSlashSubmit", () => {
-  it("navigates on bare desk command", () => {
-    assert.deepEqual(resolveLargoSlashSubmit("/helix"), {
-      type: "navigate",
-      href: "/flows",
-    });
+  const helixPrompts = [
+    {
+      id: "helix-leader",
+      label: "NVDA tape leader",
+      question: "Summarize HELIX flow on NVDA — biggest prints and net premium.",
+      rank: 10,
+    },
+  ];
+
+  it("asks dynamic question on bare desk command", () => {
+    const out = resolveLargoSlashSubmit("/helix", helixPrompts);
+    assert.equal(out.type, "query");
+    if (out.type === "query") {
+      assert.match(out.question, /NVDA/i);
+    }
   });
 
-  it("navigates with ticker arg", () => {
-    assert.deepEqual(resolveLargoSlashSubmit("/thermal SPY"), {
-      type: "navigate",
-      href: "/heatmap?ticker=SPY",
-    });
+  it("asks scoped question for ticker arg", () => {
+    const out = resolveLargoSlashSubmit("/thermal SPY");
+    assert.equal(out.type, "query");
+    if (out.type === "query") {
+      assert.match(out.question, /SPY/i);
+    }
   });
 
   it("runs prompt question for desk prompts", () => {
