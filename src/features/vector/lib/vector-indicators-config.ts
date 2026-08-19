@@ -328,13 +328,9 @@ export const VECTOR_BEAD_DISPLAY: ReadonlyArray<{
   color: string;
   hint?: string;
 }> = [
-  {
-    id: "bead-integrity-rings",
-    label: "Integrity rings (firm / moderate / thin)",
-    toolbarLabel: "Rings",
-    color: "#eab308",
-    hint: "Outer halo shows wall confidence — matches the desk terminal score",
-  },
+  /* RINGS removed from the toolbar 2026-08-19 (member: "no one uses it"). The id stays in the
+     union and the render path still honours it, so a saved preference that has it on keeps
+     working and nothing downstream needs a migration — it simply has no chip to turn it on. */
   {
     id: "bead-event-glyphs",
     label: "Event glyphs (birth, handover, flip cross, break)",

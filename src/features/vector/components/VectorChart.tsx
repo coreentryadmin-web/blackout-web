@@ -415,6 +415,9 @@ type Props = {
   linkedReplay?: VectorLinkedReplayBind | null;
   /** Compare linked replay — hide per-pane replay controls when the command bar owns transport. */
   hideReplayControls?: boolean;
+  /** Initial NODES pick for this chart. Compare panes default lower than the full-size desk and
+   *  deliberately ignore the desk-wide saved preference — see the hydrate effect. */
+  defaultNodeDensity?: VectorNodeDensity;
   /** Compare 4-up grid is live — apply a light baseline overlay dim on every pane. */
   compareFourUp?: boolean;
   /** Compare 4-up unfocused pane — slower overlay polls + stronger dim + throttled repaints. */
@@ -1335,6 +1338,7 @@ export function VectorChart({
   onCompareVisibleRange,
   linkedReplay = null,
   hideReplayControls = false,
+  defaultNodeDensity = VECTOR_DEFAULT_NODE_DENSITY,
   compareFourUp = false,
   compareFourUpBackground = false,
   comparePane = false,
@@ -1737,8 +1741,8 @@ export function VectorChart({
   // mirror is what the imperative repaint paths (refreshTrails/refreshOverlays/replay applyFrame)
   // read: they are useCallbacks with pinned deps, so reading state there would capture a stale
   // value the same way timeframeRef exists to avoid.
-  const [nodeDensity, setNodeDensityState] = useState<VectorNodeDensity>(VECTOR_DEFAULT_NODE_DENSITY);
-  const nodeDensityRef = useRef<VectorNodeDensity>(VECTOR_DEFAULT_NODE_DENSITY);
+  const [nodeDensity, setNodeDensityState] = useState<VectorNodeDensity>(defaultNodeDensity);
+  const nodeDensityRef = useRef<VectorNodeDensity>(defaultNodeDensity);
   const timeframeUserLockedRef = useRef(false);
   const autoCoarsenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const overlayDimRef = useRef(1);
@@ -4783,11 +4787,15 @@ export function VectorChart({
   // here runs the repaint effect below exactly once, so the first paint is AUTO and then converges
   // to the member's preference — rather than SSR-mismatching on a value the server cannot know.
   useEffect(() => {
+    // A pane with its own default (Compare) does NOT adopt the desk-wide saved pick — otherwise a
+    // member who pinned 20 rows on the full-size chart would get 20 rows in each quarter-height
+    // compare pane, which is the layout that needs fewer rows, not more.
+    if (defaultNodeDensity !== VECTOR_DEFAULT_NODE_DENSITY) return;
     const saved = loadNodeDensity();
     if (saved === VECTOR_DEFAULT_NODE_DENSITY) return;
     nodeDensityRef.current = saved;
     setNodeDensityState(saved);
-  }, []);
+  }, [defaultNodeDensity]);
 
   const handleNodeDensity = useCallback(
     (next: VectorNodeDensity) => {
@@ -4872,12 +4880,12 @@ export function VectorChart({
 
       {toolbarPortalEl ? createPortal(toolbar, toolbarPortalEl) : toolbar}
 
-      <VectorIntradayZoomControls
-        active={intradayZoomPreset}
-        disabled={replayMode}
-        comparePane={comparePane}
-        onZoom={handleIntradayZoom}
-      />
+      {/* SESSION / STRUCTURE / LIVE removed 2026-08-19 (member: "nobody uses it"). The chart's own
+          default viewport plus scroll/drag covers the same ground, and each preset also set the
+          pan flag, which used to disable the price-axis widening for the rest of the session (see
+          beadExtensionAllowed). `handleIntradayZoom` and the preset state stay — Compare's
+          sync-zoom bar still drives them to align panes with each other, which is a different job
+          from a per-chart zoom shortcut. */}
 
       {/* Regime banner sits directly above the canvas (passed in from the shell) so it still leads
           the chart, without a tall page-level header block eating chart height. */}

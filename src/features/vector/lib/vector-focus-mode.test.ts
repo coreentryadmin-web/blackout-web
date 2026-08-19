@@ -44,3 +44,39 @@ test("focus mode is desktop-web only", () => {
   assert.equal(focusModeAvailable({ chartOnly: false, nativeShell: true }), false);
   assert.equal(focusModeAvailable({ chartOnly: true, nativeShell: true }), false);
 });
+
+// ── FULLSCREEN MUST OUTRANK THE SITE HEADER (2026-08-19) ──────────────────────────────────────
+// Member report: "in full screen mode I dont get to select nodes .. and other options .. even
+// replay is missing". Nothing was missing. `.nav-bar` is `fixed top-0 z-[100]` and the focus
+// overlay was `z-index: 60`, so the marketing header painted over the chart toolbar — NODES,
+// Replay, the DTE chips, GEX/VEX and RINGS/EVENTS were all rendered and all unclickable.
+//
+// A layering bug is invisible to component tests (both elements exist, both are "visible" to the
+// DOM) and only shows in a screenshot. This reads the actual stylesheet so the ordering is a
+// checked invariant rather than a value someone has to remember.
+test("focus-mode overlay stacks above the site nav and below the onboarding modal", async () => {
+  const { readFileSync } = await import("node:fs");
+  const css = readFileSync(new URL("../../../app/globals.css", import.meta.url), "utf8");
+
+  const ruleZ = (selector: string): number => {
+    const at = css.indexOf(selector);
+    assert.ok(at >= 0, `${selector} not found in globals.css`);
+    const block = css.slice(at, css.indexOf("}", at));
+    const m = block.match(/z-index:\s*(\d+)/) ?? block.match(/z-\[(\d+)\]/);
+    assert.ok(m, `${selector} declares no z-index`);
+    return Number(m![1]);
+  };
+
+  const focus = ruleZ(".vector-page-inner-focus");
+  const nav = ruleZ(".nav-bar");
+  const onboarding = ruleZ(".onboarding-overlay");
+
+  assert.ok(
+    focus > nav,
+    `fullscreen (z${focus}) must outrank the site nav (z${nav}) or the chart toolbar is buried`
+  );
+  assert.ok(
+    focus < onboarding,
+    `fullscreen (z${focus}) must stay below the onboarding modal (z${onboarding})`
+  );
+});

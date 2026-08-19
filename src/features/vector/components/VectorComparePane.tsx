@@ -1,5 +1,6 @@
 "use client";
 
+import { VECTOR_COMPARE_NODE_DENSITY } from "@/features/vector/lib/vector-cadence";
 import { clsx } from "clsx";
 import dynamic from "next/dynamic";
 import { useCallback, useState } from "react";
@@ -200,6 +201,7 @@ export function VectorComparePane({
           onCompareVisibleRange={onCompareVisibleRange}
           linkedReplay={linkedReplay}
           hideReplayControls={hideReplayControls}
+          defaultNodeDensity={VECTOR_COMPARE_NODE_DENSITY}
           onReplayTimeline={onReplayTimeline}
           compareFourUp={compareFourUp}
           compareFourUpBackground={compareFourUpBackground}

@@ -39,6 +39,9 @@ const VIEWPORT = arg("viewport", "1920x1080");
 const OUT = arg("out", process.env.SHOT_OUT || ".");
 /** Fail the run outright if the tab was served by more than one build (see buildFingerprint). */
 const STRICT_BUILD = !argv.includes("--allow-mixed-build");
+/** Enter fullscreen (focus mode) before capturing — the chrome there is a separate surface, and a
+ *  control missing ONLY in fullscreen is invisible to every normal capture. */
+const FULLSCREEN = argv.includes("--fullscreen");
 
 /** The authenticated Vector SSR is multi-MB through the tunnel and the rail paints only after the
  *  wall-history fetch resolves — a short wait photographs an empty chart and blames the product. */
@@ -60,9 +63,15 @@ const SETTLE_MS = 16_000;
  */
 async function buildFingerprint(page) {
   try {
+    // ONLY the shared runtime chunks. Hashing every chunk on the page identifies the PAGE, not the
+    // build: /vector?ticker=SPX pulls the SPX desk bundles that NVDA never loads, so a per-page hash
+    // reports "mixed build" on a perfectly settled deploy — measured 2026-08-19, three "builds"
+    // across four tickers on one rollout. `webpack-*` and `main-app-*` are content-hashed and
+    // identical on every page, so they change only when the build does.
     const chunks = await page.evaluate(() =>
       Array.from(document.querySelectorAll('script[src*="/_next/static/chunks/"]'))
-        .map((el) => el.getAttribute("src"))
+        .map((el) => el.getAttribute("src") || "")
+        .filter((src) => /\/(webpack|main-app|framework)-[^/]*\.js$/.test(src))
         .sort()
         .join("|")
     );
@@ -111,6 +120,16 @@ async function buildFingerprint(page) {
         });
         await page.waitForTimeout(SETTLE_MS);
 
+        if (FULLSCREEN) {
+          const fs = page.locator("[data-testid=vector-focus-toggle]").filter({ visible: true }).last();
+          if (await fs.count()) {
+            await fs.click({ timeout: 8000 }).catch(() => {});
+            await page.waitForTimeout(3500);
+          } else {
+            console.log(`${ticker}: FULLSCREEN TOGGLE NOT RENDERED`);
+          }
+        }
+
         // All presets off ONE page load: the desk authenticates once per run (FAPI is rate-limited)
         // and a fresh load per zoom would also re-pay the multi-MB SSR through the tunnel.
         for (const zoom of ZOOMS) {
@@ -129,7 +148,7 @@ async function buildFingerprint(page) {
             await btn.click({ timeout: 8000 }).catch(() => {});
             await page.waitForTimeout(4000);
           }
-          const shot = path.join(OUT, `rail-${ticker}-${zoom}.png`);
+          const shot = path.join(OUT, `rail-${ticker}-${zoom}${FULLSCREEN ? "-fs" : ""}.png`);
           await page.screenshot({ path: shot });
           const build = await buildFingerprint(page);
           out.push({ ticker, zoom, shot, build });
