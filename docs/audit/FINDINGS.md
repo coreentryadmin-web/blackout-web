@@ -38,6 +38,18 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-08-19 — [NEGATIVE-RESULT, member-visible] "Vector beads not every 5s" — recorder contract OK on main; display filters explain gaps — DOC
+
+> **kind:** `NEGATIVE-RESULT`
+
+| Field | Detail |
+|---|---|
+| **Report** | Member: beads not appearing every 5 seconds; Vector feels broken |
+| **Scope** | Investigation only — `docs/audit/VECTOR-BEAD-CADENCE-INVESTIGATION-2026-08-19.md` |
+| **Status** | DOC — no product code in PR; RTH gap histogram still required to close |
+
+**Verdict.** Live off-hours probe: SSE `wallTrailSec=5` for SPX/NVDA/META/AMD/TSLA (PASS). Wall-history empty pre-open (expected). On `main`, #2321 pixel-stride paint decimation (**reverted #2326**) was the one change that silently dropped 5s samples at render time. Remaining "gaps" are usually row membership hysteresis (#2309), live-follow 45m trim, DTE horizon ≠ All, Compare 4-up background 2× poll, or off-hours empty trail — not a dead 5s recorder.
+
 ## 2026-08-18 — [FINDING, P0 member-visible] Every deploy purged the hashed build assets, killing hydration and freezing the whole desk — FIXED
 > **kind:** `FINDING`
 
