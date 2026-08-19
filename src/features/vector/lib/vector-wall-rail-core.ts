@@ -181,26 +181,64 @@ export function rowSwellMul(
 
 /**
  * Extra strength-halo radius beyond the core bead at full row-relative strength.
- * The halo carries most of the temporal swell so the core stays a readable circle.
+ * The halo carries temporal swell/fade — peak moments bloom, faded tail is a faint trace.
  */
-export const ROW_HALO_EXTRA_MIN_PX = 1.2;
+export const ROW_HALO_EXTRA_MIN_PX = 0.25;
 export const ROW_HALO_EXTRA_MAX_PX = 7;
 
-/** Strength halo radius beyond core bead — grows with {@link rowSwellMul}. */
-export function rowStrengthHaloExtraPx(
-  rowSwell: number,
-  opts?: { minPx?: number; maxPx?: number }
+/** Steeper than {@link ROW_SWELL_EXP} — halo collapses faster on fade so peaks read as clusters. */
+export const ROW_HALO_SWELL_EXP = 1.75;
+
+export type RowStrengthHaloOpts = {
+  minPx?: number;
+  maxPx?: number;
+  /** Chart bar spacing in px — caps peak corona so dense 3m swells bloom without a uniform slab. */
+  barSpacingPx?: number;
+};
+
+/**
+ * Horizontal px between adjacent bucket centers when beads are projected WITHIN candles.
+ * Exported for tests and spacing audits — not used to zero the halo (swell ratio is the guard).
+ */
+export function beadCenterSpacingPx(
+  barSpacingPx: number,
+  intervalSec: number,
+  trailSec = 5
 ): number {
+  if (!(barSpacingPx > 0) || !(intervalSec > 0) || !(trailSec > 0)) return NaN;
+  return barSpacingPx * (trailSec / intervalSec);
+}
+
+/** Peak corona budget scales with bar width — ~55% of a bar at full row swell. */
+export const ROW_HALO_BAR_SPACING_FILL = 0.55;
+
+/**
+ * Strength halo radius beyond core bead — grows with row swell, fades to a trace.
+ *
+ * Peak beads at a row's strongest moment get a wide soft corona (overlapping halos = the glowing
+ * cluster in the reference product). Faded beads get near-zero extra radius so gaps read through.
+ * Max halo is budgeted against bar spacing, not a fixed 7px on every bucket — that was the slab.
+ */
+export function rowStrengthHaloExtraPx(rowSwell: number, opts?: RowStrengthHaloOpts): number {
   const minPx = opts?.minPx ?? ROW_HALO_EXTRA_MIN_PX;
   const maxPx = opts?.maxPx ?? ROW_HALO_EXTRA_MAX_PX;
   const t = Math.max(0, Math.min(1, rowSwell));
-  return minPx + t * (maxPx - minPx);
+  const tHalo = Math.pow(t, ROW_HALO_SWELL_EXP);
+
+  let peakMax = maxPx;
+  const barSpacing = opts?.barSpacingPx;
+  if (barSpacing != null && Number.isFinite(barSpacing) && barSpacing > 0) {
+    peakMax = Math.min(maxPx, Math.max(minPx + 0.4, barSpacing * ROW_HALO_BAR_SPACING_FILL));
+  }
+
+  return minPx + tHalo * (peakMax - minPx);
 }
 
-/** Strength halo opacity scales with row swell — peak = bright corona, fade = faint trace. */
-export function rowStrengthHaloAlphaMul(rowSwell: number, floor = 0.14): number {
+/** Strength halo opacity — peak = bright bloom, fade = barely-there trace (second swell channel). */
+export function rowStrengthHaloAlphaMul(rowSwell: number, floor = 0.06): number {
   const t = Math.max(0, Math.min(1, rowSwell));
-  return floor + t * (1 - floor);
+  const tA = Math.pow(t, ROW_HALO_SWELL_EXP);
+  return floor + tA * (1 - floor);
 }
 
 /**
@@ -566,8 +604,9 @@ export function clampTuningToSpacing(
   const rangeCeil = Math.min(tuning.halfMax, Math.max(...limits.slice(1), halfMax));
   const wanted = halfMin + MIN_CLAMPED_HALF_RANGE_PX;
   const widenedMax = Math.max(halfMax, Math.min(rangeCeil, wanted));
+  const clampedMin = Math.min(widenedMax, halfMin);
 
-  return { ...tuning, halfMax: widenedMax, halfMin };
+  return { ...tuning, halfMax: widenedMax, halfMin: clampedMin };
 }
 
 /**

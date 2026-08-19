@@ -28,6 +28,8 @@ import {
   rowSwellMul,
   rowStrengthHaloExtraPx,
   rowStrengthHaloAlphaMul,
+  beadCenterSpacingPx,
+  ROW_HALO_BAR_SPACING_FILL,
   ROW_SWELL_FLOOR,
   MIN_CLAMPED_HALF_RANGE_PX,
 } from "./vector-wall-rail-core";
@@ -607,11 +609,24 @@ test("row swell on targetHalfPx: a 4x pct drop yields at least 2x height ratio o
   assert.ok(ratio >= 2, `expected >=2x swell, got ${ratio.toFixed(2)}x (${strong}/${weak})`);
 });
 
-test("rowStrengthHaloExtraPx: grows with row swell, peak halo is widest", () => {
-  const weak = rowStrengthHaloExtraPx(ROW_SWELL_FLOOR);
-  const peak = rowStrengthHaloExtraPx(1);
-  assert.ok(peak > weak, "peak halo extends further than faded tail");
-  assert.ok(peak >= 6, "full-strength halo is visibly larger than core");
+test("rowStrengthHaloExtraPx: peak blooms wider than faded tail at measured 3m", () => {
+  const barSpacing = 5.4;
+  const weak = rowStrengthHaloExtraPx(ROW_SWELL_FLOOR, { barSpacingPx: barSpacing });
+  const peak = rowStrengthHaloExtraPx(1, { barSpacingPx: barSpacing });
+  assert.ok(peak > weak * 2, `peak ${peak.toFixed(2)} should dominate fade ${weak.toFixed(2)}`);
+  assert.ok(peak <= barSpacing * ROW_HALO_BAR_SPACING_FILL + 0.01, "peak halo respects bar budget");
+  assert.ok(weak <= peak * 0.35, "faded tail halo is a faint trace, not a second peak");
+});
+
+test("rowStrengthHaloExtraPx: zoomed-out session gets a larger peak corona", () => {
+  const densePeak = rowStrengthHaloExtraPx(1, { barSpacingPx: 5.4 });
+  const widePeak = rowStrengthHaloExtraPx(1, { barSpacingPx: 60 });
+  assert.ok(widePeak > densePeak, "wider bars → bigger bloom at peak");
+});
+
+test("beadCenterSpacingPx: scales with bar width and interval", () => {
+  assert.ok(Math.abs(beadCenterSpacingPx(5.4, 180) - 0.15) < 0.02);
+  assert.ok(beadCenterSpacingPx(60, 180) > beadCenterSpacingPx(5.4, 180));
 });
 
 test("rowStrengthHaloAlphaMul: peak is bright, fade is a faint trace", () => {

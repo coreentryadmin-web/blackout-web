@@ -177,7 +177,9 @@ class WallRailRenderer implements IPrimitivePaneRenderer {
     private readonly _tuning: BeadRenderTuning,
     private readonly _overlayDim: number,
     private readonly _showIntegrityRings: boolean,
-    private readonly _showEventGlyphs: boolean
+    private readonly _showEventGlyphs: boolean,
+    /** Bar spacing in px — budgets peak strength-halo bloom at the current zoom. */
+    private readonly _barSpacingPx: number
   ) {}
 
   draw(target: PaneRendererTarget): void {
@@ -195,18 +197,22 @@ class WallRailRenderer implements IPrimitivePaneRenderer {
           const rMul = 1 + emph * kingBoost;
           const cy = (p.yTop + p.yBot) / 2;
           const r = Math.max(minR, ((p.yBot - p.yTop) / 2) * rMul);
-          // Strength halo UNDER the core — both swell with row-relative strength; core stays round.
-          if (p.rowSwell > 0) {
-            const haloExtra = rowStrengthHaloExtraPx(p.rowSwell);
-            const haloR = r + haloExtra;
-            const haloA = Math.min(
-              0.45,
-              p.a * rowStrengthHaloAlphaMul(p.rowSwell) * 0.38
-            );
-            ctx.fillStyle = withA(b.color, haloA);
-            ctx.beginPath();
-            ctx.arc(p.x, cy, haloR, 0, Math.PI * 2);
-            ctx.fill();
+          // Strength halo UNDER the core — swells at the row peak, fades to a trace (reference dynamics).
+          if (p.rowSwell > 0.08) {
+            const haloExtra = rowStrengthHaloExtraPx(p.rowSwell, {
+              barSpacingPx: this._barSpacingPx,
+            });
+            if (haloExtra > 0.08) {
+              const haloR = r + haloExtra;
+              const haloA = Math.min(
+                0.62,
+                p.a * rowStrengthHaloAlphaMul(p.rowSwell) * 0.52
+              );
+              ctx.fillStyle = withA(b.color, haloA);
+              ctx.beginPath();
+              ctx.arc(p.x, cy, haloR, 0, Math.PI * 2);
+              ctx.fill();
+            }
           }
           if (this._showIntegrityRings && p.tier) {
             const ring = haloRingForTier(p.tier);
@@ -278,7 +284,7 @@ class WallRailPaneView implements IPrimitivePaneView {
   renderer(): IPrimitivePaneRenderer | null {
     const projected = this._source.project();
     if (!projected) return null;
-    const { bands, glyphs, tuning } = projected;
+    const { bands, glyphs, tuning, barSpacingPx: projectedBarSpacing } = projected;
     if (bands.length === 0) return null;
     return new WallRailRenderer(
       bands,
@@ -286,7 +292,8 @@ class WallRailPaneView implements IPrimitivePaneView {
       tuning,
       this._source.overlayDim(),
       this._source.showIntegrityRings(),
-      this._source.showEventGlyphs()
+      this._source.showEventGlyphs(),
+      projectedBarSpacing
     );
   }
 }
@@ -463,7 +470,12 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
   /** Project every trail into media-space beaded bands. Also writes the per-bead TARGET half-heights
    *  and per-strike king-emphasis targets the rAF loop eases toward, and reads the eased values back
    *  so the drawn beads reflect the in-flight animation. Null when there's nothing honest to draw. */
-  project(): { bands: Band[]; glyphs: ProjectedGlyph[]; tuning: BeadRenderTuning } | null {
+  project(): {
+    bands: Band[];
+    glyphs: ProjectedGlyph[];
+    tuning: BeadRenderTuning;
+    barSpacingPx: number;
+  } | null {
     if (!this._visible || !this._data || !this._chart || !this._series) {
       this._lastGlyphs = [];
       return null;
@@ -703,6 +715,6 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
     }
 
     this._lastGlyphs = showEventGlyphs ? glyphs : [];
-    return { bands, glyphs, tuning };
+    return { bands, glyphs, tuning, barSpacingPx };
   }
 }
