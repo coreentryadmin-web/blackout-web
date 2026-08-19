@@ -15,6 +15,40 @@ function bucketLabel(dte: number): string {
   return "LEAPS";
 }
 
+/**
+ * The premium the widest bar represents.
+ *
+ * MUST be the largest bucket, not the first one. `buckets` is built in CHRONOLOGICAL order
+ * (`["0DTE", "This week", "Monthly", "LEAPS"]`), so `buckets[0]` is simply the nearest-dated
+ * bucket that survived the $50k floor — it is the biggest only by coincidence.
+ *
+ * Reading the max off `buckets[0]` meant every bucket bigger than the first computed a width over
+ * 100%, and the rail is `overflow-hidden`, so they all clipped to FULL WIDTH and became visually
+ * identical. With 0DTE $1M / This week $3M / Monthly $5M the three bars rendered the same length
+ * while the labels beside them read 11% / 33% / 56% — the chart said "equal", the numbers said 5x.
+ * A bar chart that saturates exactly when one horizon starts dominating is worse than no bar at
+ * all, because the dominance is the whole thing a member is looking for here.
+ */
+export function bucketMaxTotal(buckets: readonly { total: number }[]): number {
+  let max = 0;
+  for (const b of buckets) {
+    if (Number.isFinite(b.total) && b.total > max) max = b.total;
+  }
+  return max > 0 ? max : 1; // never divide by zero; an all-empty set renders at the floor width
+}
+
+/** Bar width as a % of the rail, floored so a tiny-but-present bucket is still visible. */
+export function barWidthPct(total: number, maxTotal: number): number {
+  if (!Number.isFinite(total) || !Number.isFinite(maxTotal) || maxTotal <= 0) return MIN_BAR_PCT;
+  const pct = (total / maxTotal) * 100;
+  if (!Number.isFinite(pct)) return MIN_BAR_PCT;
+  // Clamped at both ends: the floor keeps a small bucket visible, and the ceiling means a future
+  // change to how maxTotal is derived can never again silently push a bar past its container.
+  return Math.min(100, Math.max(MIN_BAR_PCT, pct));
+}
+
+const MIN_BAR_PCT = 8;
+
 export function ExpiryConcentration({ alerts, loading }: { alerts: FlowAlert[]; loading: boolean }) {
   const buckets = useMemo(() => {
     if (!alerts.length) return [];
@@ -44,7 +78,7 @@ export function ExpiryConcentration({ alerts, loading }: { alerts: FlowAlert[]; 
 
   if (loading || buckets.length === 0) return null;
 
-  const maxTotal = buckets[0]?.total ?? 1;
+  const maxTotal = bucketMaxTotal(buckets);
   const grandTotal = buckets.reduce((s, b) => s + b.total, 0);
 
   return (
@@ -52,7 +86,7 @@ export function ExpiryConcentration({ alerts, loading }: { alerts: FlowAlert[]; 
       <AnimatePresence initial={false}>
         {buckets.map((b, i) => {
           const pct = grandTotal > 0 ? Math.round((b.total / grandTotal) * 100) : 0;
-          const barW = Math.max(8, (b.total / maxTotal) * 100);
+          const barW = barWidthPct(b.total, maxTotal);
           const isBull = b.callPct >= 55;
           const isBear = b.callPct <= 45;
           return (
