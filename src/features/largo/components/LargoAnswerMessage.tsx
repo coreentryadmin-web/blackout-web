@@ -10,6 +10,7 @@ import { LargoMessageBody } from "@/features/largo/components/LargoMessageBody";
 import { LargoStructuredCards } from "@/features/largo/components/LargoStructuredCards";
 import { LargoActionsBar } from "@/features/largo/components/LargoActionsBar";
 import { LargoShareRow } from "@/features/largo/components/LargoShareRow";
+import { LargoFollowupChips } from "@/features/largo/components/LargoFollowupChips";
 import { BieAnswer } from "@/features/largo/answer/BieAnswer";
 import { LargoDeskRead } from "@/features/largo/answer/LargoDeskRead";
 import { LargoAnswerCaveats } from "@/features/largo/answer/LargoAnswerCaveats";
@@ -60,6 +61,8 @@ export function LargoAnswerMessage({
   actions,
   sessionId,
   ticker,
+  followups,
+  nativeFollowups = false,
 }: {
   content: string;
   source?: string | null;
@@ -76,6 +79,9 @@ export function LargoAnswerMessage({
   actions?: LargoAction[];
   sessionId?: string;
   ticker?: string | null;
+  /** Strike-specific next questions — competitor-style pills under the answer. */
+  followups?: string[];
+  nativeFollowups?: boolean;
 }) {
   const fallback = <LargoMessageBody content={content} className={className} />;
 
@@ -198,12 +204,20 @@ export function LargoAnswerMessage({
       <>
         {fallback}
         {shareRow}
+        {!streaming && followups && followups.length > 0 && onFollowup && (
+          <LargoFollowupChips followups={followups} onPick={onFollowup} native={nativeFollowups} />
+        )}
       </>
     );
   }
 
   return (
-    <BieAnswerBoundary fallback={<>{fallback}{shareRow}</>}>{rich}</BieAnswerBoundary>
+    <>
+      <BieAnswerBoundary fallback={<>{fallback}{shareRow}</>}>{rich}</BieAnswerBoundary>
+      {!streaming && followups && followups.length > 0 && onFollowup && (
+        <LargoFollowupChips followups={followups} onPick={onFollowup} native={nativeFollowups} />
+      )}
+    </>
   );
 }
 

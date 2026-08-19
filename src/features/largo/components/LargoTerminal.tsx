@@ -51,7 +51,6 @@ export function LargoTerminal({
     loading,
     streaming,
     hydrated,
-    followups,
     activeTools,
     statusMessage,
     awaitingFirstToken,
@@ -79,7 +78,7 @@ export function LargoTerminal({
   } = useLargoChat();
 
   const router = useRouter();
-  const slash = useLargoSlashCommands(input, setInput);
+  const slash = useLargoSlashCommands(input, setInput, (q) => void runQuery(q));
   const inputRef = useRef<HTMLInputElement>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -237,6 +236,7 @@ export function LargoTerminal({
                       }
                       className={fullPage ? "text-sm md:text-[15px] lg:text-base" : "text-sm"}
                       onFollowup={(q) => void runQuery(q)}
+                      followups={msg.followups}
                     />
                   )
                 ) : (
@@ -300,30 +300,6 @@ export function LargoTerminal({
                   >
                     <span aria-hidden className="largo-suggestion-arrow">▸</span>
                     {p.label}
-                  </button>
-                ))}
-              </div>
-            </motion.div>
-          )}
-
-          {!isFresh && !loading && followups.length > 0 && (
-            <motion.div
-              className="largo-suggestions largo-followups"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-            >
-              <p className="largo-suggestions-label">Ask next</p>
-              <div className="largo-suggestions-grid">
-                {followups.map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    className="largo-suggestion-chip"
-                    onClick={() => void runQuery(s)}
-                  >
-                    <span aria-hidden className="largo-suggestion-arrow">▸</span>
-                    {s}
                   </button>
                 ))}
               </div>
@@ -437,7 +413,7 @@ export function LargoTerminal({
         >
           <div className="relative flex-1 largo-input-wrap">
             <LargoSlashPromptsMenu
-              open={Boolean(slash.activeDesk && !loading && hydrated)}
+              open={Boolean(slash.activeDesk && slash.promptsLoading && !loading && hydrated)}
               payload={slash.promptPayload}
               loading={slash.promptsLoading}
               prompts={slash.promptMatches}

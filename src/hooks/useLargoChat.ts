@@ -58,6 +58,8 @@ export type LargoMessage = {
   /** Post-verdict desk deep links. */
   actions?: LargoAction[];
   depth?: "quick" | "deep";
+  /** Competitor-style contextual chips — rendered inline under this answer. */
+  followups?: string[];
 };
 
 const TOOL_LABEL: Record<string, string> = {
@@ -379,12 +381,13 @@ export function useLargoChat() {
             preEarningsPack: res.pre_earnings_pack ?? null,
             actions: res.actions,
             depth: res.depth,
+            followups: Array.isArray(res.followups) ? res.followups.slice(0, 4) : [],
           })
         );
         // Only overwrite when the server actually resolved one: a follow-up that names no ticker
         // ("and the put side?") must keep the rail on the instrument under discussion, not blank it.
         if (res.ticker) setActiveTicker(res.ticker);
-        setFollowups(Array.isArray(res.followups) ? res.followups.slice(0, 3) : []);
+        setFollowups([]);
         setCanRegenerate(true);
         recordConversation(res.session_id, threadTitleRef.current || label, provisionalSid);
       } catch (err) {

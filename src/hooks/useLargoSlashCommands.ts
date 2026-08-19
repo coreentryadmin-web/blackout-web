@@ -1,7 +1,7 @@
 "use client";
 
 import useSWR from "swr";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   filterLargoSlashCommands,
   largoSlashQueryFromInput,
@@ -19,9 +19,14 @@ import {
 
 const fetcher = (url: string) => fetch(url, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null));
 
-export function useLargoSlashCommands(input: string, setInput: (v: string) => void) {
+export function useLargoSlashCommands(
+  input: string,
+  setInput: (v: string) => void,
+  onAutoAsk?: (question: string) => void
+) {
   const [activeDesk, setActiveDesk] = useState<LargoSlashCommand | null>(null);
   const [promptIndex, setPromptIndex] = useState(0);
+  const autoAskArmedRef = useRef(false);
 
   const commandQuery = largoSlashQueryFromInput(input);
   const commandMenuOpen = commandQuery !== null && !activeDesk;
@@ -66,10 +71,21 @@ export function useLargoSlashCommands(input: string, setInput: (v: string) => vo
 
   const applyCommand = useCallback(
     (cmd: LargoSlashCommand) => {
+      autoAskArmedRef.current = Boolean(onAutoAsk);
       selectDesk(cmd);
     },
-    [selectDesk]
+    [selectDesk, onAutoAsk]
   );
+
+  useEffect(() => {
+    if (!autoAskArmedRef.current || !onAutoAsk || !activeDesk || promptsLoading) return;
+    const top = promptMatches[0];
+    if (!top) return;
+    autoAskArmedRef.current = false;
+    onAutoAsk(top.question);
+    setActiveDesk(null);
+    setInput("");
+  }, [activeDesk, promptsLoading, promptMatches, onAutoAsk, setInput]);
 
   const onInputChange = useCallback(
     (next: string) => {

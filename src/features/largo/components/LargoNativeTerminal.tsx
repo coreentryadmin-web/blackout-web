@@ -26,7 +26,6 @@ export function LargoNativeTerminal() {
     loading,
     streaming,
     hydrated,
-    followups,
     activeTools,
     statusMessage,
     awaitingFirstToken,
@@ -39,7 +38,7 @@ export function LargoNativeTerminal() {
   } = useLargoChat();
 
   const router = useRouter();
-  const slash = useLargoSlashCommands(input, setInput);
+  const slash = useLargoSlashCommands(input, setInput, (q) => void runQuery(q));
   const inputRef = useRef<HTMLInputElement>(null);
 
   function askFromSlash(question: string) {
@@ -109,6 +108,8 @@ export function LargoNativeTerminal() {
                   }
                   className="largo-native-body"
                   onFollowup={(q) => void runQuery(q)}
+                  followups={msg.followups}
+                  nativeFollowups
                 />
               )
             ) : (
@@ -142,22 +143,6 @@ export function LargoNativeTerminal() {
           </div>
         )}
 
-        {!isFresh && !loading && followups.length > 0 && (
-          <div className="largo-native-suggestions">
-            <p className="largo-native-suggestions-label">Ask next</p>
-            {followups.map((s) => (
-              <button
-                key={s}
-                type="button"
-                className="largo-native-suggestion"
-                onClick={() => void runQuery(s)}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-        )}
-
         {loading && (awaitingFirstToken || !streaming) && (
           <div className="largo-native-bubble largo-native-bubble-assistant">
             <LargoThinkingState tools={activeTools} statusMessage={statusMessage} />
@@ -176,7 +161,7 @@ export function LargoNativeTerminal() {
       >
         <div className="largo-native-input-wrap">
           <LargoSlashPromptsMenu
-            open={Boolean(slash.activeDesk && !loading && hydrated)}
+            open={Boolean(slash.activeDesk && slash.promptsLoading && !loading && hydrated)}
             payload={slash.promptPayload}
             loading={slash.promptsLoading}
             prompts={slash.promptMatches}

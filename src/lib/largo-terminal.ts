@@ -44,6 +44,7 @@ import {
 import { analyzeLargoQuestion, KNOWN_TICKERS } from "@/lib/largo/question-intent";
 import { formatImageBlock, type ImageBlock } from "@/lib/largo/core/image-attachment";
 import { deterministicLargoFollowups } from "@/lib/largo/largo-followups";
+import { contextualFollowupsFromAnswer } from "@/lib/largo/contextual-followups";
 import { withResolutionChips } from "@/lib/largo/core/resolution-chips";
 import { loadLargoPlatformSnapshotBlock } from "@/lib/largo/platform-snapshot-block";
 import { captureLargoLiveFeed, formatLargoLiveFeed } from "@/lib/largo/largo-live-feed";
@@ -914,7 +915,14 @@ export async function runLargoQuery(
     // The turn id rides on the envelope so a follow-up can name the exact turn it refers to.
     if (envelope && turnId != null) envelope.turnId = turnId;
     const followups = withResolutionChips(
-      await generateLargoFollowups(question, text, tickerHint),
+      [
+        ...contextualFollowupsFromAnswer({
+          envelope,
+          compareCard,
+          ticker: tickerHint,
+        }),
+        ...(await generateLargoFollowups(question, text, tickerHint)),
+      ],
       envelope?.headline ?? ""
     );
     const actions = buildLargoActions({ ticker: tickerHint, envelope, compareCard });
@@ -1167,7 +1175,14 @@ export async function runLargoQueryStream(
     // The turn id rides on the envelope so a follow-up can name the exact turn it refers to.
     if (envelope && turnId != null) envelope.turnId = turnId;
     const followups = withResolutionChips(
-      await generateLargoFollowups(question, text, tickerHint),
+      [
+        ...contextualFollowupsFromAnswer({
+          envelope,
+          compareCard,
+          ticker: tickerHint,
+        }),
+        ...(await generateLargoFollowups(question, text, tickerHint)),
+      ],
       envelope?.headline ?? ""
     );
     const actions = buildLargoActions({ ticker: tickerHint, envelope, compareCard });
