@@ -287,10 +287,10 @@ async function validateEvent(fetchJson, item) {
     }
   }
 
-  /* ── COHERENCE: walls must straddle sensibly ───────────────────────────────────── */
+  /* ── COHERENCE: display walls must form a sensible band (gamma can invert) ─────── */
   const cw = num(intel?.thermal?.call_wall);
   const pw = num(intel?.thermal?.put_wall);
-  if (cw != null && pw != null && cw <= pw) {
+  if (cw != null && pw != null && cw <= pw && !intel?.thermal?.walls_inverted) {
     note("FAIL", ticker, "coherence:walls", `call_wall ${cw} is not above put_wall ${pw}`);
   }
 

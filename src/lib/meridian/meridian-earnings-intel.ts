@@ -16,6 +16,7 @@ import { fetchUwDarkPool } from "@/lib/providers/unusual-whales";
 import {
   beatRateFromPrints,
   buildErPlayRead,
+  coerceMeridianWallLevels,
   flowWindowHours,
   shapeMeridianDarkPool,
 } from "@/lib/meridian/meridian-earnings-intel-core";
@@ -148,6 +149,20 @@ export async function loadMeridianEarningsIntel(input: {
   const gamma_regime =
     thermal?.gamma_regime_read ?? input.pack.positioning.gamma_regime ?? null;
 
+  const rawCallWall =
+    (scopeUsable ? (scoped.callWall ?? thermal?.call_wall) : thermal?.call_wall) ??
+    input.pack.positioning.call_wall ??
+    null;
+  const rawPutWall =
+    (scopeUsable ? (scoped.putWall ?? thermal?.put_wall) : thermal?.put_wall) ??
+    input.pack.positioning.put_wall ??
+    null;
+  const walls = coerceMeridianWallLevels({
+    call_wall: rawCallWall,
+    put_wall: rawPutWall,
+    spot,
+  });
+
   const play_read = buildErPlayRead({
     flow_bias: input.pack.flow.bias,
     dark_pool_bias: dark_pool.available ? dark_pool.bias : null,
@@ -156,8 +171,8 @@ export async function loadMeridianEarningsIntel(input: {
     days_until: input.pack.days_until,
     beat_rate: input.enrichment.beat_rates?.combined_beat_rate ?? beatRateFromPrints(input.print_history),
     spot,
-    call_wall: input.pack.positioning.call_wall ?? thermal?.call_wall ?? null,
-    put_wall: input.pack.positioning.put_wall ?? thermal?.put_wall ?? null,
+    call_wall: walls.call_wall,
+    put_wall: walls.put_wall,
     king_strike: thermal?.gex_king_strike ?? null,
   });
 
@@ -174,8 +189,8 @@ export async function loadMeridianEarningsIntel(input: {
     thermal_available: thermal?.available ?? false,
     spot,
     king_strike: thermal?.gex_king_strike ?? null,
-    call_wall: input.pack.positioning.call_wall ?? thermal?.call_wall ?? null,
-    put_wall: input.pack.positioning.put_wall ?? thermal?.put_wall ?? null,
+    call_wall: walls.call_wall,
+    put_wall: walls.put_wall,
     expected_move_pct,
     beat_rate: input.enrichment.beat_rates?.combined_beat_rate ?? beatRateFromPrints(input.print_history),
     post_print: input.enrichment.post_print,
@@ -221,8 +236,11 @@ export async function loadMeridianEarningsIntel(input: {
           available: true,
           spot: thermal.spot,
           gex_king_strike: thermal.gex_king_strike,
-          call_wall: scopeUsable ? (scoped.callWall ?? thermal.call_wall) : thermal.call_wall,
-          put_wall: scopeUsable ? (scoped.putWall ?? thermal.put_wall) : thermal.put_wall,
+          call_wall: walls.call_wall,
+          put_wall: walls.put_wall,
+          gamma_call_wall: walls.gamma_call_wall,
+          gamma_put_wall: walls.gamma_put_wall,
+          walls_inverted: walls.walls_inverted,
           flip: thermal.flip,
           max_pain: scopeUsable ? (scoped.maxPain ?? thermal.max_pain) : thermal.max_pain,
           // Which chain these levels describe. Named so a reader can tell an event-scoped wall
@@ -246,19 +264,29 @@ export async function loadMeridianEarningsIntel(input: {
           })),
           nearest_wall: thermal.nearest_wall,
         }
-      : {
+      : (() => {
+          const fallbackWalls = coerceMeridianWallLevels({
+            call_wall: input.pack.positioning.call_wall,
+            put_wall: input.pack.positioning.put_wall,
+            spot: input.pack.positioning.spot,
+          });
+          return {
           available: false,
           spot: input.pack.positioning.spot,
           gex_king_strike: null,
-          call_wall: input.pack.positioning.call_wall,
-          put_wall: input.pack.positioning.put_wall,
+          call_wall: fallbackWalls.call_wall,
+          put_wall: fallbackWalls.put_wall,
+          gamma_call_wall: fallbackWalls.gamma_call_wall,
+          gamma_put_wall: fallbackWalls.gamma_put_wall,
+          walls_inverted: fallbackWalls.walls_inverted,
           flip: input.pack.positioning.flip ?? null,
           max_pain: null,
           net_gex_label: null,
           gamma_regime: input.pack.positioning.gamma_regime,
           top_strikes: [],
           nearest_wall: null,
-        },
+        };
+        })(),
     vector: vectorEm
       ? {
           available: true,

@@ -350,6 +350,8 @@ export type MeridianEarningsEnrichment = {
   earnings_yoy: MeridianEarningsYoY | null;
   corporate_guidance: MeridianEarningsGuidanceRow | null;
   guidance_entitled: boolean;
+  /** True when a corporate guidance row exists for this ticker (distinct from SKU entitlement). */
+  guidance_on_file?: boolean;
   post_print: {
     lean: "beat" | "miss" | "inline" | "unknown";
     headline: string | null;
@@ -453,6 +455,12 @@ export type MeridianEarningsThermalRead = {
   gex_king_strike: number | null;
   call_wall: number | null;
   put_wall: number | null;
+  /** Raw gamma argmax strike when display walls were coerced for band ordering. */
+  gamma_call_wall?: number | null;
+  /** Raw gamma argmin strike when display walls were coerced for band ordering. */
+  gamma_put_wall?: number | null;
+  /** True when gamma call/put ordering inverted before display coercion. */
+  walls_inverted?: boolean;
   flip: number | null;
   max_pain: number | null;
   net_gex_label: string | null;

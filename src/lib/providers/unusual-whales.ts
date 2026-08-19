@@ -3,7 +3,7 @@ import { isUwUpstream5xx } from "@/lib/uw-upstream-5xx";
 import { isUwTransientNetwork } from "@/lib/uw-transient-network";
 import { isSpxEngineCronWindow } from "@/features/spx/lib/spx-play-session-guards";
 import { isTradingDayEt, formatEtDate } from "@/features/nighthawk/lib/session";
-import { todayEt } from "@/lib/et-date";
+import { execAtEtYmd, todayEt } from "@/lib/et-date";
 import {
   buildUwRequestKey,
   isUwCircuitOpen,
@@ -914,7 +914,8 @@ export async function fetchUwDarkPool(
       // — fabricating the current time sorted undated prints into the live tape as
       // just-executed. No trustworthy timestamp → not on the tape.
       if (!execAt) continue;
-      if (!execAt.startsWith(today)) continue;
+      const execDay = execAtEtYmd(execAt);
+      if (execDay !== today) continue;
 
       const premium = Number(row.premium ?? row.size ?? row.notional ?? 0);
       if (premium <= 0) continue;
@@ -970,7 +971,8 @@ export async function fetchUwDarkPoolMarketWide(
 
   for (const row of rows) {
     const execAt = String(row.executed_at ?? row.date ?? "");
-    if (!execAt || !execAt.startsWith(today)) continue;
+    const execDay = execAtEtYmd(execAt);
+    if (!execDay || execDay !== today) continue;
     const premium = Number(row.premium ?? row.size ?? row.notional ?? 0);
     if (premium <= 0 || (minPremium > 0 && premium < minPremium)) continue;
     const strikeRaw = Number(row.strike ?? row.price ?? row.ref_price ?? 0);
