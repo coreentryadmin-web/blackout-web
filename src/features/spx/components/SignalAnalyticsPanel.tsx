@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { etClock } from "@/lib/et-clock";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -145,7 +146,7 @@ function formatDate(iso: string): string {
 
 function formatTime(iso: string): string {
   try {
-    return new Date(iso).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+    return etClock(iso, { pad: true }) ?? "—";
   } catch {
     return iso;
   }
@@ -268,7 +269,7 @@ export function SignalAnalyticsPanel() {
         <div className="flex items-center gap-3">
           {lastRefresh && (
             <span className="text-xs text-white/30 font-mono">
-              {lastRefresh.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
+              {etClock(lastRefresh, { pad: true }) ?? "—"}
             </span>
           )}
           <button

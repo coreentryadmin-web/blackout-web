@@ -31,6 +31,7 @@ import {
   gexProximityLabel,
   printBias,
 } from "@/features/helix/lib/helix-print-detail";
+import { etClock } from "@/lib/et-clock";
 
 /** Kept for callers that only need the contract identity (ticker/strike/expiry/type). */
 export type ContractPick = Pick<FlowAlert, "ticker" | "strike" | "expiry" | "option_type">;
@@ -45,7 +46,7 @@ function timeLabel(iso: string): string {
   if (!iso) return "—";
   const t = new Date(iso).getTime();
   if (!Number.isFinite(t)) return iso.slice(11, 16) || "—";
-  return new Date(t).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+  return etClock(t, { pad: true, hour12: false }) ?? "—";
 }
 
 /** Compact notional ($6.0M / $430K) — same thresholds as fmtPremium but without the sign path. */

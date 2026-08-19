@@ -1,6 +1,7 @@
 "use client";
 
 import { FreshnessChip } from "@/components/ui";
+import { etClock } from "@/lib/et-clock";
 
 /**
  * Compact desk header. Deliberately carries NO metrics: `catalystCount` and `next24h` used to
@@ -48,7 +49,10 @@ export function MeridianHero({ asOf }: Props) {
           </div>
           {asOf && (
             <p className="meridian-hero-asof">
-              As of {new Date(asOf).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })} ET
+              {/* The " ET" below is a literal, so the time beside it MUST be Eastern. It was not:
+                  the formatter omitted `timeZone`, so this line asserted a zone it was not rendering
+                  in — "As of 07:30 PM ET" for a London member at 2:30 PM ET. */}
+              As of {etClock(asOf, { pad: true }) ?? "—"} ET
             </p>
           )}
         </div>
