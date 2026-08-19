@@ -88,6 +88,7 @@ export async function loadMeridianEarningsEnrichment(
     earnings_yoy,
     corporate_guidance: guidanceRow,
     guidance_entitled: guidanceRes.entitled,
+    guidance_on_file: guidanceRow != null,
     post_print: post_print.headline ? post_print : null,
     print_history: history.print_history,
     print_history_summary: history.print_history_summary,

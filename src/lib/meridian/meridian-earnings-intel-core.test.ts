@@ -4,6 +4,7 @@ import {
   beatArrow,
   beatRateFromPrints,
   buildErPlayRead,
+  coerceMeridianWallLevels,
   flowWindowHours,
   moveArrow,
   shapeMeridianDarkPool,
@@ -115,6 +116,42 @@ test("shapeMeridianDarkPool: empty snapshot", () => {
     detail: "No prints today",
   });
   assert.equal(shaped.available, false);
+});
+
+test("shapeMeridianDarkPool: aggregate premium without tape rows", () => {
+  const shaped = shapeMeridianDarkPool({
+    prints: [],
+    total_premium: 1_500_000,
+    call_premium: 900_000,
+    put_premium: 600_000,
+    bias: "bullish",
+    pcr: 0.67,
+    detail: null,
+  });
+  assert.equal(shaped.available, true);
+  assert.equal(shaped.top_prints.length, 0);
+  assert.equal(shaped.total_premium_label, "$1.5M");
+  assert.match(String(shaped.detail), /tape unavailable/i);
+});
+
+test("coerceMeridianWallLevels preserves gamma truth and orders display band when inverted", () => {
+  const tgt = coerceMeridianWallLevels({ call_wall: 150, put_wall: 152.5, spot: 151.01 });
+  assert.equal(tgt.gamma_call_wall, 150);
+  assert.equal(tgt.gamma_put_wall, 152.5);
+  assert.equal(tgt.walls_inverted, true);
+  assert.equal(tgt.put_wall, 150);
+  assert.equal(tgt.call_wall, 152.5);
+
+  const normal = coerceMeridianWallLevels({ call_wall: 520, put_wall: 480, spot: 500 });
+  assert.equal(normal.walls_inverted, false);
+  assert.equal(normal.call_wall, 520);
+  assert.equal(normal.put_wall, 480);
+});
+
+test("coerceMeridianWallLevels uses spot to split a pinned single strike", () => {
+  const pinned = coerceMeridianWallLevels({ call_wall: 7.5, put_wall: 7.5, spot: 8.2 });
+  assert.ok((pinned.call_wall ?? 0) > (pinned.put_wall ?? 0));
+  assert.equal(pinned.gamma_call_wall, 7.5);
 });
 
 test("buildMeridianFinancialsContext maps fundamentals bundle", () => {
