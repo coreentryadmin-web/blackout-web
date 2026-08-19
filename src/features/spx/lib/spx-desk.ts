@@ -18,7 +18,10 @@ import { safeTime } from "@/lib/safe-time";
 import { tapeDedupKey } from "@/lib/tape-dedup-key";
 import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
 import { hasLiveGexStrikeExpiry, getGexStrikeExpiryLadder } from "@/lib/ws/uw-socket";
-import { strikeTotalsFromLadder } from "@/lib/providers/gex-cross-validation-core";
+import {
+  strikeTotalsFromLadder,
+  resolveNearTermExpiriesForCrossValidation,
+} from "@/lib/providers/gex-cross-validation-core";
 import { gexPositioningFromHeatmap } from "@/lib/providers/gex-positioning";
 import { dbConfigured, fetchRecentFlows } from "@/lib/db";
 import { markFlowDataFromBriefs, resolveFlowDataAgeMs } from "@/lib/flow-data-freshness";
@@ -135,6 +138,15 @@ async function sessionStatsWithProxyVwap(
 
 let lastGoodGexWalls: GexWall[] = [];
 let lastGoodStrikeLevels: GexStrikeLevel[] = [];
+/**
+ * Near-term expiry set from the last successful matrix read.
+ *
+ * Sticky alongside the levels it scopes, because the two fallback paths below run precisely when
+ * there is no fresh `hm` to resolve it from — and a WS ladder overlaid at the WRONG scope is worse
+ * than no overlay at all (see wsNearTermStrikeLevels). Near-term expiries roll once a day, so a
+ * remembered set is a faithful stand-in for the seconds-to-minutes a matrix read is unavailable.
+ */
+let lastGoodNearTermExpiries: string[] | null = null;
 let lastGoodGammaFlip: number | null = null;
 let lastGoodGammaRegime = "unknown";
 let lastGoodUnifiedTape: SpxTapeItem[] = [];
@@ -187,17 +199,51 @@ function strikeTotalsToLevels(totals: Record<string, number>): GexStrikeLevel[] 
     .sort((a, b) => Math.abs(b.net_gex) - Math.abs(a.net_gex));
 }
 
+/**
+ * The live UW WS ladder, scoped to the SAME near-term expiries Polygon's walls use — or null.
+ *
+ * THE SCOPE IS THE WHOLE POINT. `getGexStrikeExpiryLadder(ticker)` with no allow-list sums EVERY
+ * stored expiry, and `gex-strike-expiry-ladder.ts` spells out what that does to SPX specifically:
+ *
+ *   > for SPX (where standard monthly/quarterly OpEx concentrates enormous OI on far strikes) the
+ *   > two sides were answering different questions
+ *
+ * Polygon's `strike_totals` are near-term only, on purpose — far-dated monthly/quarterly OI would
+ * otherwise swamp the actionable near-term walls. Overlaying a whole-chain ladder on top of that
+ * snapped the desk's call/put wall to a far OpEx strike hundreds of points from the near-term flip.
+ * `gex-positioning.ts` was fixed for exactly this in its own PR; the desk's three call sites were
+ * not, so the surface the fix was written to protect kept doing it.
+ *
+ * Every caller goes through here rather than repeating the WS-override block, so the scope cannot
+ * be right in two places and wrong in a third again.
+ *
+ * Returns null — meaning "keep the Polygon levels" — when the WS feed is idle, when the ladder is
+ * empty, or when NO near-term expiry set is known. That last case is deliberate and fail-closed:
+ * an unscoped ladder is not a degraded answer, it is a known-wrong one, and the Polygon levels it
+ * would replace are already correctly scoped.
+ *
+ * Exported only so the scope rule can be tested directly — reaching it through `buildSpxDesk()`
+ * would mean standing up the whole desk (db, UW REST, news, tape) to assert one allow-list.
+ */
+export function wsNearTermStrikeLevels(
+  nearTermExpiries: readonly string[] | undefined
+): GexStrikeLevel[] | null {
+  if (!nearTermExpiries?.length) return null;
+  if (!hasLiveGexStrikeExpiry("SPX")) return null;
+  const wsLadder = getGexStrikeExpiryLadder("SPX", nearTermExpiries);
+  if (!wsLadder) return null;
+  const wsLevels = strikeTotalsToLevels(strikeTotalsFromLadder(wsLadder.ladder));
+  return wsLevels.length ? wsLevels : null;
+}
+
 function stickyDeskGexFallback(spot: number): CanonicalDeskGexSnapshot {
   const flip = lastGoodGammaFlip;
   const gRegime = gammaRegimeWithHysteresis(spot, flip, lastGoodGammaRegime);
-  let fallbackLevels = lastGoodStrikeLevels;
-  if (hasLiveGexStrikeExpiry("SPX")) {
-    const wsLadder = getGexStrikeExpiryLadder("SPX");
-    if (wsLadder) {
-      const wsLevels = strikeTotalsToLevels(strikeTotalsFromLadder(wsLadder.ladder));
-      if (wsLevels.length) fallbackLevels = wsLevels;
-    }
-  }
+  // Sticky scope: this path runs when the matrix fetch failed or timed out, so there is no fresh
+  // `hm` to read expiries from. The last set a successful fetch produced is the right stand-in —
+  // near-term expiries change once a day, not once a tick.
+  const fallbackLevels =
+    wsNearTermStrikeLevels(lastGoodNearTermExpiries ?? undefined) ?? lastGoodStrikeLevels;
   const wallsFromLevels = fallbackLevels.length
     ? topGexWalls(fallbackLevels, spot, GEX_WALL_LADDER_LIMIT)
     : [];
@@ -357,15 +403,12 @@ async function resolveCanonicalDeskGex(spot: number): Promise<CanonicalDeskGexSn
   const regime = gammaRegimeWithHysteresis(spot, flip, lastGoodGammaRegime);
 
   // UW WS ladder is the same 5s real-time source Vector uses for walls.
-  // Prefer it over Polygon heatmap walls so all surfaces show identical strikes.
-  let wallLevels = levels;
-  if (hasLiveGexStrikeExpiry("SPX")) {
-    const wsLadder = getGexStrikeExpiryLadder("SPX");
-    if (wsLadder) {
-      const wsLevels = strikeTotalsToLevels(strikeTotalsFromLadder(wsLadder.ladder));
-      if (wsLevels.length) wallLevels = wsLevels;
-    }
-  }
+  // Prefer it over Polygon heatmap walls so all surfaces show identical strikes — which only holds
+  // if it is read at the SAME expiry scope Vector and the heatmap read it at. `levels` above are
+  // Polygon's near-term-only totals, so the overlay must be near-term-only too.
+  const nearTermExpiries = resolveNearTermExpiriesForCrossValidation(hm);
+  if (nearTermExpiries?.length) lastGoodNearTermExpiries = [...nearTermExpiries];
+  const wallLevels = wsNearTermStrikeLevels(nearTermExpiries) ?? levels;
   const walls = wallLevels.length ? topGexWalls(wallLevels, spot, GEX_WALL_LADDER_LIMIT) : [];
 
   if (levels.length) {
@@ -1808,14 +1851,9 @@ async function refreshPulseStructureIfNeeded(today: string): Promise<PulseStruct
 
 function gexSnapshotForPrice(price: number) {
   const gammaFlip = lastGoodGammaFlip;
-  let priceLevels = lastGoodStrikeLevels;
-  if (hasLiveGexStrikeExpiry("SPX")) {
-    const wsLadder = getGexStrikeExpiryLadder("SPX");
-    if (wsLadder) {
-      const wsLevels = strikeTotalsToLevels(strikeTotalsFromLadder(wsLadder.ladder));
-      if (wsLevels.length) priceLevels = wsLevels;
-    }
-  }
+  // Pulse fast lane — same sticky near-term scope as the fallback above, for the same reason.
+  const priceLevels =
+    wsNearTermStrikeLevels(lastGoodNearTermExpiries ?? undefined) ?? lastGoodStrikeLevels;
   const walls = topGexWalls(priceLevels, price, GEX_WALL_LADDER_LIMIT);
   const finalWalls = walls.length ? walls : lastGoodGexWalls;
   const gRegime = gammaRegimeWithHysteresis(price, gammaFlip, lastGoodGammaRegime);
