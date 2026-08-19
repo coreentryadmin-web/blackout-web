@@ -28,6 +28,52 @@ export function vectorBeadRecordConcurrency(): number {
 }
 
 /**
+ * Ceiling on records IN FLIGHT at once, across overlapping sweeps — the SELECTION bound.
+ *
+ * ── WHY THIS IS A SECOND NUMBER AND NOT `vectorBeadRecordConcurrency` ────────────────
+ * The sweep used to hand its pool width to `selectTickersToRecord` as `limit`, which quietly made
+ * one number answer two different questions:
+ *
+ *   1. "How many upstream reads may run at once?"     -> a LOAD question. 64 is the right answer.
+ *   2. "How many tickers is this tick responsible for?" -> a COVERAGE question. The only correct
+ *      answer is "all of them" — a tick that declines to start a ticker has already lost that
+ *      ticker's 5s sample, no matter how fast the ones it did start come back.
+ *
+ * Conflating them rationed CADENCE with a number chosen for LOAD. The roster is the ~22-name static
+ * allowlist plus up to `DYNAMIC_UNIVERSE_CAP` = 100 dynamic names (~122), so at limit 64 a tick
+ * could only ever start half the universe; #2320's rotating cursor made that half a FAIR half
+ * instead of always the same prefix, but fair rationing is still rationing — every ticker was
+ * served every other tick, i.e. 10s against a 5s spec, forever, and no amount of rotation fixes it.
+ *
+ * Separating the two makes the pool width the load bound (unchanged at 64: `mapInPool` still holds
+ * exactly that many fetches open) and this the in-flight bound. The default sits comfortably above
+ * any reachable roster ON PURPOSE — coverage should be limited by the roster, never by a constant —
+ * while remaining a real ceiling, so overlapping slow sweeps cannot multiply concurrent records
+ * without bound. Dial it down with `VECTOR_BEAD_RECORD_INFLIGHT_MAX` if upstream ever complains;
+ * never below the pool width, which would make the pool unable to fill itself.
+ */
+export function vectorBeadRecordInFlightMax(): number {
+  const raw = process.env.VECTOR_BEAD_RECORD_INFLIGHT_MAX?.trim();
+  const n = raw ? Number(raw) : 200;
+  const parsed = Number.isFinite(n) && n >= 1 ? Math.min(512, Math.floor(n)) : 200;
+  return Math.max(parsed, vectorBeadRecordConcurrency());
+}
+
+/**
+ * The `limit` to hand `selectTickersToRecord` for the UNIVERSE sweep.
+ *
+ * Pure so the "every ticker on the roster is startable this tick" property is a checkable
+ * expression rather than an inline `Math.min` nobody re-reads. Returns at least 1 so an empty or
+ * nonsense roster still yields a valid decision instead of a limit of 0 (which defers everything
+ * and reads, in the logs, exactly like a ceiling that is binding).
+ */
+export function sweepSelectionLimit(rosterSize: number, ceiling: number): number {
+  const roster = Number.isFinite(rosterSize) && rosterSize > 0 ? Math.floor(rosterSize) : 1;
+  const cap = Number.isFinite(ceiling) && ceiling >= 1 ? Math.floor(ceiling) : 1;
+  return Math.max(1, Math.min(roster, cap));
+}
+
+/**
  * Parallel heatmap reads for the ACTIVE non-universe lane (viewer-driven, 15s).
  *
  * Deliberately far smaller than {@link vectorBeadRecordConcurrency}, and deliberately a SEPARATE

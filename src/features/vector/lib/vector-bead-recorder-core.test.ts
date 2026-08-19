@@ -227,3 +227,82 @@ test("active lane budget is sized against 15s, not the universe lane's 5s", asyn
   assert.equal(VECTOR_BEAD_RECORD_ACTIVE_TICK_MS, 15_000);
   assert.ok(VECTOR_BEAD_RECORD_ACTIVE_TICK_MS > VECTOR_BEAD_RECORD_TICK_MS);
 });
+
+// ── COVERAGE vs LOAD: the selection limit is NOT the pool width (2026-08-19) ─────────────────
+// #2320 made the roster cut FAIR (rotating cursor) but left it a cut: `limit: concurrency` meant a
+// tick could start at most 64 of ~122 tickers, so every ticker was served every OTHER tick — 10s
+// against a 5s spec, permanently, for the entire universe. Rotation cannot fix that; only removing
+// the cut can. These pin the separation so the two budgets can never be re-conflated.
+
+test("selection ceiling is sized off the REAL max roster, not a hand-picked constant", async () => {
+  // Imports the live constants rather than restating 122: if either the dynamic cap or the static
+  // allowlist grows, this fails instead of quietly re-introducing a cadence cap nobody can see.
+  const { vectorBeadRecordInFlightMax, sweepSelectionLimit } = await import(
+    "./vector-bead-recorder-logic"
+  );
+  const { DYNAMIC_UNIVERSE_CAP } = await import("./vector-dynamic-universe");
+  const { vectorUniverseTickers } = await import("@/lib/heatmap-allowlist");
+  const maxRoster = DYNAMIC_UNIVERSE_CAP + vectorUniverseTickers().length;
+
+  assert.ok(
+    vectorBeadRecordInFlightMax() >= maxRoster,
+    `ceiling ${vectorBeadRecordInFlightMax()} would ration cadence on a full roster of ${maxRoster}`
+  );
+  // The property that matters to a member: on a full roster, EVERY ticker is startable this tick.
+  assert.equal(sweepSelectionLimit(maxRoster, vectorBeadRecordInFlightMax()), maxRoster);
+});
+
+test("sweepSelectionLimit: roster-bounded, ceiling-bounded, never zero", async () => {
+  const { sweepSelectionLimit } = await import("./vector-bead-recorder-logic");
+  assert.equal(sweepSelectionLimit(122, 200), 122, "the roster is the bound in normal operation");
+  assert.equal(sweepSelectionLimit(500, 200), 200, "the ceiling is real, not decoration");
+  // A limit of 0 defers everything and reads in the logs exactly like a binding ceiling.
+  assert.equal(sweepSelectionLimit(0, 200), 1);
+  assert.equal(sweepSelectionLimit(Number.NaN, Number.NaN), 1);
+});
+
+test("in-flight ceiling env override is honoured, bounded, and never below the pool width", async () => {
+  const { vectorBeadRecordInFlightMax, vectorBeadRecordConcurrency } = await import(
+    "./vector-bead-recorder-logic"
+  );
+  const prev = process.env.VECTOR_BEAD_RECORD_INFLIGHT_MAX;
+  try {
+    process.env.VECTOR_BEAD_RECORD_INFLIGHT_MAX = "150";
+    assert.equal(vectorBeadRecordInFlightMax(), 150);
+    process.env.VECTOR_BEAD_RECORD_INFLIGHT_MAX = "99999";
+    assert.equal(vectorBeadRecordInFlightMax(), 512);
+    // Below the pool width the pool could never fill itself — the floor is not optional.
+    process.env.VECTOR_BEAD_RECORD_INFLIGHT_MAX = "4";
+    assert.equal(vectorBeadRecordInFlightMax(), vectorBeadRecordConcurrency());
+    process.env.VECTOR_BEAD_RECORD_INFLIGHT_MAX = "garbage";
+    assert.equal(vectorBeadRecordInFlightMax(), 200, "unparseable falls back to the default");
+  } finally {
+    if (prev == null) delete process.env.VECTOR_BEAD_RECORD_INFLIGHT_MAX;
+    else process.env.VECTOR_BEAD_RECORD_INFLIGHT_MAX = prev;
+  }
+});
+
+test("a full roster is served EVERY tick, not every other tick", async () => {
+  // The end-to-end property, simulated the way the starvation in #2320 was: same roster, same
+  // rotation, the only change being which limit the sweep hands the scheduler.
+  const { selectTickersToRecord } = await import("./vector-bead-schedule-core");
+  const { sweepSelectionLimit, vectorBeadRecordInFlightMax } = await import(
+    "./vector-bead-recorder-logic"
+  );
+  const roster = Array.from({ length: 122 }, (_, i) => `T${i}`);
+  const served = new Map<string, number>();
+  let cursor = 0;
+  for (let tick = 0; tick < 20; tick++) {
+    const d = selectTickersToRecord({
+      tickers: roster,
+      inFlight: new Set<string>(), // each record settles inside its 5s tick in the healthy case
+      limit: sweepSelectionLimit(roster.length, vectorBeadRecordInFlightMax()),
+      cursor,
+    });
+    cursor = d.nextCursor;
+    for (const t of d.start) served.set(t, (served.get(t) ?? 0) + 1);
+    assert.equal(d.deferred.length, 0, `tick ${tick} deferred ${d.deferred.length} tickers`);
+  }
+  assert.equal(served.size, roster.length, "every ticker on the roster was recorded");
+  for (const [t, n] of served) assert.equal(n, 20, `${t} recorded ${n}/20 ticks`);
+});
