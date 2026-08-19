@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  beadRangeMeetsTarget,
+  BEAD_VISIBLE_MIN_HALF_PX,
+  MIN_CLAMPED_HALF_RANGE_PX,
+  beadRenderTuning,
+  targetHalfPx,
+  rowSwellMul,
   FILL_ALPHA_MAX,
   FILL_ALPHA_MIN,
   HALF_PX_MAX,
@@ -610,4 +616,81 @@ test("rowStrengthHaloExtraPx: grows with row swell, peak halo is widest", () => 
 
 test("rowStrengthHaloAlphaMul: peak is bright, fade is a faint trace", () => {
   assert.ok(rowStrengthHaloAlphaMul(1) > rowStrengthHaloAlphaMul(ROW_SWELL_FLOOR) * 2);
+});
+
+
+// ── ROW SWELL AT MEASURED GEOMETRY (2026-08-19) ───────────────────────────────────────────────
+// These assert against the REAL spacing budget (3m bar ~5.4px, ~8px between strike rows on a dense
+// single name), not against hand-written tuning values. The first version of the range guard passed
+// a synthetic-tuning test while doing nothing at all at this geometry — the numbers were right in
+// the test and wrong on the desk.
+const DENSE = { barSpacingPx: 5.4, rowGapPx: 8 };
+
+test("clamped range meets its target at the geometry the guard was written for", () => {
+  const t = clampTuningToSpacing(beadRenderTuning("default"), DENSE);
+  assert.ok(
+    beadRangeMeetsTarget(t),
+    `range ${(t.halfMax - t.halfMin).toFixed(2)}px < target ${MIN_CLAMPED_HALF_RANGE_PX}px — the ` +
+      "guard is not binding at 3m, which is exactly the case it exists for"
+  );
+});
+
+test("row swell never pushes a bead below the READABLE floor", () => {
+  // minRadiusPx (1.6) is "still technically drawn"; BEAD_VISIBLE_MIN_HALF_PX (2.0) is the floor
+  // measured against a member's eyes. A swelled fade must not walk back through it — that is the
+  // 1.1px-speck regression the floor was introduced to end.
+  const t = clampTuningToSpacing(beadRenderTuning("default"), DENSE);
+  for (const pct of [8, 4, 2, 1, 0.5, 0.1]) {
+    const half = targetHalfPx(pct, 8, undefined, t, { rowPeakPct: 8 });
+    assert.ok(
+      half >= Math.min(t.halfMax, BEAD_VISIBLE_MIN_HALF_PX) - 1e-9,
+      `pct ${pct} rendered at ${half.toFixed(2)}px — below the readable floor`
+    );
+  }
+});
+
+test("row swell is non-increasing, and differentiates until the floor binds", () => {
+  // Two properties, deliberately separate. A fade must never render LARGER than the moment before
+  // it (monotonicity), and it must actually differentiate while there is range to spend. Below the
+  // floor the radius channel is exhausted — asserted rather than hidden, because that is the real
+  // limit at dense zoom and the reason a second channel is needed down there.
+  const t = clampTuningToSpacing(beadRenderTuning("default"), DENSE);
+  const pcts = [8, 4, 2, 1, 0.5];
+  const halves = pcts.map((pct) => targetHalfPx(pct, 8, undefined, t, { rowPeakPct: 8 }));
+  for (let i = 1; i < halves.length; i++) {
+    assert.ok(
+      halves[i]! <= halves[i - 1]! + 1e-9,
+      `fade must never grow: ${halves.map((h) => h.toFixed(2)).join(" / ")}`
+    );
+  }
+  const floorPx = Math.min(t.halfMax, BEAD_VISIBLE_MIN_HALF_PX);
+  const aboveFloor = halves.filter((h) => h > floorPx + 1e-6);
+  assert.ok(aboveFloor.length >= 2, "the swell must differentiate somewhere on the row");
+  for (let i = 1; i < aboveFloor.length; i++) {
+    assert.ok(aboveFloor[i]! < aboveFloor[i - 1]! - 1e-6, "distinct while above the floor");
+  }
+});
+
+test("row swell is a no-op at the row peak, and absent without a peak", () => {
+  const t = clampTuningToSpacing(beadRenderTuning("default"), DENSE);
+  const atPeak = targetHalfPx(8, 8, undefined, t, { rowPeakPct: 8 });
+  const noSwell = targetHalfPx(8, 8, undefined, t);
+  assert.ok(Math.abs(atPeak - noSwell) < 1e-9, "the strongest bead on a row is unchanged by swell");
+  for (const bad of [null, undefined, 0, -1, Number.NaN]) {
+    assert.equal(
+      targetHalfPx(2, 8, undefined, t, { rowPeakPct: bad as number }),
+      targetHalfPx(2, 8, undefined, t),
+      `rowPeakPct=${String(bad)} must leave sizing untouched, not scale by a floor`
+    );
+  }
+});
+
+test("rowSwellMul: bounded, monotonic, and floored", () => {
+  assert.equal(rowSwellMul(8, 8), 1, "at the peak");
+  assert.ok(rowSwellMul(4, 8) < rowSwellMul(8, 8));
+  assert.ok(rowSwellMul(1, 8) < rowSwellMul(4, 8));
+  for (const [pct, peak] of [[0, 8], [-1, 8], [2, 0], [Number.NaN, 8]] as const) {
+    const m = rowSwellMul(pct, peak);
+    assert.ok(m > 0 && m <= 1, `unusable input (${pct}, ${peak}) gave ${m}`);
+  }
 });

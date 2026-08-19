@@ -137,7 +137,6 @@ export function withA(color: string, a: number): string {
 }
 
 export type TargetHalfPxOpts = {
-  /** When false, force frame-relative sizing even if `notional` is present ($ Size off). */
   /** Running peak share on this strike row — scales bead height by pct/peak (competitor swell). */
   rowPeakPct?: number | null;
 };
@@ -237,7 +236,26 @@ export function targetHalfPx(
   }
   const rowPeak = opts?.rowPeakPct;
   if (rowPeak != null && rowPeak > 0) {
+    // Scale by the row swell, then floor at READABILITY — not at `minRadiusPx`.
+    //
+    // `minRadiusPx` (1.6) is only the "still technically drawn" bound. BEAD_VISIBLE_MIN_HALF_PX
+    // (2.0) is the floor measured against a member's eyes, after NVDA rendered at a 1.1px median
+    // radius and was rejected on sight. Flooring a swelled bead at `minRadiusPx` walks the weak end
+    // straight back through it: measured at 3m/5.4px on a dense name, pct 2 / 1 / 0.5 all landed at
+    // 1.60px — sub-visible, and identical to each other.
+    //
+    // The floor is a clamp rather than an anchor on purpose. Anchoring (`floor + (half-floor)*swell`)
+    // guarantees distinct sizes at every strength, but it also compresses the swell where there IS
+    // headroom, and the swell ratio at generous zoom is the whole product goal (a 4x share drop
+    // should read as ~2x height). So: full multiplicative swell wherever the bead clears the floor,
+    // and a hard visible floor beneath it.
+    //
+    // Honest consequence, stated because it is a real limit and not a rounding detail: at dense
+    // zoom the clamped range is ~1.5px, so the very weak end of a row still PINS to the floor and
+    // stops differentiating. Sizes remain non-increasing, never sub-visible — but below roughly the
+    // floor/ceiling ratio, the fade has to be carried by a channel other than radius.
     half *= rowSwellMul(pct, rowPeak);
+    return Math.max(Math.min(tuning.halfMax, BEAD_VISIBLE_MIN_HALF_PX), tuning.minRadiusPx, half);
   }
   return Math.max(tuning.minRadiusPx, half);
 }
@@ -475,7 +493,7 @@ const BEAD_READABLE_MIN_HALF_PX = 3.2;
  * full size range back on a dense name, the honest lever is fewer rows (the NODES control), not
  * smaller beads.
  */
-const BEAD_VISIBLE_MIN_HALF_PX = 2.0;
+export const BEAD_VISIBLE_MIN_HALF_PX = 2.0;
 
 /** The floor may never eat more than this share of the clamped ceiling — some size range must
  *  survive, or the rail flattens into the uniform dots this whole budget exists to prevent. */
@@ -529,14 +547,41 @@ export function clampTuningToSpacing(
   const ratio = tuning.halfMin > 0 ? tuning.halfMax / tuning.halfMin : 1;
   const ranged = ratio > 1 ? halfMax / ratio : halfMax;
   const visible = Math.min(halfMax * BEAD_FLOOR_MAX_SHARE_OF_CEIL, BEAD_VISIBLE_MIN_HALF_PX);
-  let halfMin = Math.min(halfMax, Math.max(floor, ranged, visible));
+  const halfMin = Math.min(halfMax, Math.max(floor, ranged, visible));
+
   // Preserve at least MIN_CLAMPED_HALF_RANGE_PX of vertical dynamic range at dense zoom — a 1px
   // spread passes tests but reads as "every bead the same" on desk (member report 2026-08-19).
-  if (halfMax - halfMin < MIN_CLAMPED_HALF_RANGE_PX) {
-    halfMin = Math.max(floor, BEAD_VISIBLE_MIN_HALF_PX, halfMax - MIN_CLAMPED_HALF_RANGE_PX);
-  }
+  //
+  // It has to widen the range from the TOP. The floor is already pinned at
+  // BEAD_VISIBLE_MIN_HALF_PX and cannot go lower without reintroducing the sub-visible specks, so
+  // the original form — `halfMin = max(floor, VISIBLE, halfMax - RANGE)` — was outranked by the
+  // visibility floor and did nothing at exactly the geometry it was written for: measured at
+  // 3m/5.4px with 8px row gap, the range stayed 1.20px against a 1.50px target.
+  //
+  // And it can only widen as far as the SPACING allows. Raising the ceiling past the row-gap limit
+  // is how rows stop reading as separate rows, which is the slab this budget exists to prevent. So
+  // where the geometry genuinely cannot host the target range, the honest result is a smaller
+  // range, not a taller bead — the caller gets the physical truth and `beadRangeMeetsTarget` below
+  // lets a test say so out loud instead of asserting a number that silently never binds.
+  const rangeCeil = Math.min(tuning.halfMax, Math.max(...limits.slice(1), halfMax));
+  const wanted = halfMin + MIN_CLAMPED_HALF_RANGE_PX;
+  const widenedMax = Math.max(halfMax, Math.min(rangeCeil, wanted));
 
-  return { ...tuning, halfMax, halfMin };
+  return { ...tuning, halfMax: widenedMax, halfMin };
+}
+
+/**
+ * Does this clamped tuning actually carry the intended vertical dynamic range?
+ *
+ * Exported so a test can assert the property at MEASURED geometry rather than at synthetic tuning
+ * values. The guard it checks was shipped in a form that never fired at 3m — the numbers looked
+ * right in a unit test built from hand-written tunings and were wrong against the real budget.
+ */
+export function beadRangeMeetsTarget(
+  tuning: BeadRenderTuning,
+  targetPx: number = MIN_CLAMPED_HALF_RANGE_PX
+): boolean {
+  return tuning.halfMax - tuning.halfMin >= targetPx - 1e-9;
 }
 
 /** Closest price-axis gap between drawn rows, from their y coordinates. Infinity for <2 rows —
