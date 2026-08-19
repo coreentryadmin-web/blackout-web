@@ -72,6 +72,7 @@ import {
   clampPriceRangeSpan,
   beadExtensionAllowed,
   rowAwareSpanPct,
+  candleShareSpanCapPct,
 } from "@/features/vector/lib/vector-price-range";
 import {
   scoreTopWalls,
@@ -3887,19 +3888,32 @@ export function VectorChart({
           ...beadStrikesRef.current.call,
           ...beadStrikesRef.current.put,
         ];
-        const sessionBeadViewPct = rowAwareSpanPct(
-          spotRef.current ?? 0,
-          sessionBeadStrikes,
-          sessionRows,
-          SESSION_OVERVIEW_BEAD_VIEW_MAX_PCT,
-          BEAD_VIEW_MAX_PCT
+        // The candles get a guaranteed share of the pane and the ladder gets the remainder — the
+        // inverse of sizing for rows and letting the candles have what is left. `res.priceRange` is
+        // the autoscale band over the visible candles, i.e. the thing being protected, read BEFORE
+        // any wall widening is applied. Null when there is no measurable range, and then the
+        // row-derived span stands unchanged. See candleShareSpanCapPct.
+        const candleCapPct = candleShareSpanCapPct(res.priceRange, spotRef.current ?? 0);
+        // Compose by taking the SMALLER: this only ever tightens a window the ladder wanted wider.
+        const withCandleFloor = (pct: number) =>
+          candleCapPct == null ? pct : Math.min(pct, candleCapPct);
+        const sessionBeadViewPct = withCandleFloor(
+          rowAwareSpanPct(
+            spotRef.current ?? 0,
+            sessionBeadStrikes,
+            sessionRows,
+            SESSION_OVERVIEW_BEAD_VIEW_MAX_PCT,
+            BEAD_VIEW_MAX_PCT
+          )
         );
-        const sessionSpanPct = rowAwareSpanPct(
-          spotRef.current ?? 0,
-          sessionBeadStrikes,
-          sessionRows,
-          SESSION_OVERVIEW_MAX_SPAN_PCT,
-          BEAD_VIEW_MAX_PCT
+        const sessionSpanPct = withCandleFloor(
+          rowAwareSpanPct(
+            spotRef.current ?? 0,
+            sessionBeadStrikes,
+            sessionRows,
+            SESSION_OVERVIEW_MAX_SPAN_PCT,
+            BEAD_VIEW_MAX_PCT
+          )
         );
         const wallViewPct = sessionOverviewFrame ? sessionBeadViewPct : WALL_VIEW_MAX_PCT;
         // Two composed widenings (each only ever WIDENS, never narrows the candle band):

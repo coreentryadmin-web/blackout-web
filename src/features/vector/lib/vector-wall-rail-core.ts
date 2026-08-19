@@ -147,6 +147,29 @@ export const ROW_SWELL_FLOOR = 0.32;
 /** Sub-linear exponent — lifts the weak end so a fade is visible without crushing the peak. */
 export const ROW_SWELL_EXP = 0.7;
 
+/**
+ * Floor for BOOK-relative swell — the denominator is the whole book's peak, not one row's.
+ *
+ * Much lower than {@link ROW_SWELL_FLOOR} (0.32), and that is the point. A row-relative floor of
+ * 0.32 caps the achievable contrast at 1/0.32 = 3.1x, and every row reaches 1.0 on its own terms,
+ * so in practice a dominant wall and a marginal one differed by ~1.3x. Against a shared denominator
+ * a genuinely weak level SHOULD recede to a faint trace: that is what lets many rows be drawn
+ * without the chart turning to mush, since the dynamic range does the decluttering instead of a row
+ * cap. 0.15 gives ~6.7x of headroom while keeping the weakest bead visible rather than absent —
+ * a level that is present at 2% of book is information, and dropping it entirely would be a lie of
+ * omission.
+ */
+export const BOOK_SWELL_FLOOR = 0.15;
+
+/**
+ * Book-relative exponent. Slightly super-linear (>1) rather than the row channel's sub-linear 0.7:
+ * sub-linear exists to LIFT a weak end that was being crushed, which is the correct shape when the
+ * denominator is the row's own peak and most samples sit near 1. Against the book peak most samples
+ * sit far BELOW 1, and lifting them there is exactly what re-flattens the picture, so the curve has
+ * to lean the other way.
+ */
+export const BOOK_SWELL_EXP = 1.15;
+
 /** Minimum half-height range after spacing clamp at ordinary 3m zoom (3px diameter spread). */
 export const MIN_CLAMPED_HALF_RANGE_PX = 1.5;
 

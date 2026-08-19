@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { extendRangeForWalls, NEAREST_WALL_VIEW_MAX_PCT, BEAD_VIEW_MAX_PCT, SESSION_OVERVIEW_MAX_SPAN_PCT, filterStrikesNearSpot, clampPriceRangeSpan, beadExtensionAllowed, rowAwareSpanPct } from "./vector-price-range";
+import { extendRangeForWalls, NEAREST_WALL_VIEW_MAX_PCT, BEAD_VIEW_MAX_PCT, SESSION_OVERVIEW_MAX_SPAN_PCT, filterStrikesNearSpot, clampPriceRangeSpan, beadExtensionAllowed, rowAwareSpanPct, candleShareSpanCapPct, MIN_CANDLE_SHARE_OF_PANE } from "./vector-price-range";
 
 // Candle band ~7510–7600 around spot 7575 (the live staging case), put walls far below.
 const base = { minValue: 7510, maxValue: 7600 };
@@ -179,4 +179,60 @@ test("rowAwareSpanPct: the step is the MEDIAN gap, not the mean", () => {
   const a = rowAwareSpanPct(102, dense, 6, 0.001, 0.5);
   const b = rowAwareSpanPct(102, withWing, 6, 0.001, 0.5);
   assert.equal(a, b, "one far wing must not move the window");
+});
+
+// ── CANDLES GET A FLOOR, THE LADDER GETS THE REMAINDER (2026-08-19) ────────────────────────────
+// Member report on NVDA: "I feel like somehow the candles are too small". Measured off that frame:
+// axis 210-238 ($28 of pane), candle band ~217.3-222.1 ($4.8) — candles held 17%, the wall ladder
+// took 83%. Nothing was misbehaving; NVDA moved $4.80 while its ladder legitimately wanted $22.
+// The defect is that the window is sized from a ROW COUNT and the candles get the leftovers, so
+// their share is an accident of how far apart that ticker's walls happen to sit.
+test("candleShareSpanCapPct: the NVDA frame that prompted this is capped to the 35% floor", () => {
+  // The real numbers off that screenshot.
+  const spot = 219.28;
+  const cap = candleShareSpanCapPct({ minValue: 217.3, maxValue: 222.1 }, spot)!;
+  assert.ok(cap != null);
+
+  // $4.80 of candles at a 35% floor implies a ~$13.7 window, i.e. ~6.25% of spot.
+  assert.ok(Math.abs(cap - 4.8 / spot / 0.35) < 1e-9);
+  const spanDollars = cap * spot;
+  assert.ok(spanDollars > 13 && spanDollars < 14.5, `expected ~$13.7 window, got $${spanDollars.toFixed(2)}`);
+
+  // And that window is genuinely tighter than the $28 the row count produced, which is the point.
+  assert.ok(spanDollars < 28);
+});
+
+test("candleShareSpanCapPct: the cap only ever TIGHTENS a wider row-derived span", () => {
+  const spot = 100;
+  // 10% of spot in candles at a 35% floor -> a 28.6% window.
+  const cap = candleShareSpanCapPct({ minValue: 95, maxValue: 105 }, spot)!;
+  // A ladder asking for MORE than that is clamped down...
+  assert.equal(Math.min(0.5, cap), cap);
+  // ...but a ladder already tighter than the cap is left exactly as it was.
+  assert.equal(Math.min(0.05, cap), 0.05);
+});
+
+test("candleShareSpanCapPct: a higher floor demands a tighter window, monotonically", () => {
+  const range = { minValue: 95, maxValue: 105 };
+  const at = (share: number) => candleShareSpanCapPct(range, 100, share)!;
+  assert.ok(at(0.5) < at(0.35), "a 50% floor must be tighter than 35%");
+  assert.ok(at(0.35) < at(0.25), "a 35% floor must be tighter than 25%");
+});
+
+// The guard that makes this safe to compose blindly: without it, a candle band with no range
+// divides ~0 by the share and collapses the whole axis onto a single price.
+test("candleShareSpanCapPct: unmeasurable candles yield NO cap, never a collapsed axis", () => {
+  assert.equal(candleShareSpanCapPct({ minValue: 100, maxValue: 100 }, 100), null, "zero span");
+  assert.equal(candleShareSpanCapPct({ minValue: 105, maxValue: 100 }, 100), null, "inverted span");
+  assert.equal(candleShareSpanCapPct({ minValue: 95, maxValue: 105 }, 0), null, "no spot");
+  assert.equal(candleShareSpanCapPct({ minValue: 95, maxValue: 105 }, 100, 0), null, "no share");
+  assert.equal(candleShareSpanCapPct({ minValue: 95, maxValue: 105 }, 100, 1), null, "share of 1");
+  // A band under 0.05% of spot is noise, not a range worth reserving a third of the pane for.
+  assert.equal(candleShareSpanCapPct({ minValue: 99.99, maxValue: 100.01 }, 100), null, "sub-noise band");
+});
+
+test("MIN_CANDLE_SHARE_OF_PANE is a real fraction of the pane", () => {
+  assert.ok(MIN_CANDLE_SHARE_OF_PANE > 0 && MIN_CANDLE_SHARE_OF_PANE < 1);
+  // Below ~a quarter the candles read as a strip again, which is the bug this exists to prevent.
+  assert.ok(MIN_CANDLE_SHARE_OF_PANE >= 0.25, "a floor under 25% does not fix the reported symptom");
 });
