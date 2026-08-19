@@ -1,7 +1,8 @@
 "use client";
 
 import useSWR from "swr";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   MeridianEventDetail,
   MeridianEventKind,
@@ -80,14 +81,24 @@ export function MeridianDesk() {
    * page, and touching window during render would either break SSR or produce a hydration
    * mismatch on any link that carries state. One frame of default state is the correct trade.
    *
-   * The history entry is written with pushState for a change of EVENT (so Back returns to the
-   * previous event, which is what a reader who clicked through three names expects) and
-   * replaceState for view/filter (which are refinements of the same page, not destinations).
-   * Written directly rather than through the router because a router navigation would re-run the
-   * page and drop the SWR cache — a URL update must not cost a refetch.
+   * URL writes go through the App Router (push for event changes so Back works; replace for
+   * view/filter refinements). Raw History API URL writes desync Next's internal tree and break
+   * and breaks subsequent <Link> nav across the desk — same failure mode Night Hawk view toggles
+   * had before router.replace (see nighthawk-feed-nav.test.ts). Same-route param updates keep
+   * this client component mounted, so the timeline SWR cache is not torn down.
    */
+  const router = useRouter();
   const urlHydrated = useRef(false);
   const lastUrlState = useRef<DeskUrlState>({ event: null, view: null, filter: null });
+
+  const syncDeskUrl = useCallback(
+    (next: DeskUrlState, eventChanged: boolean) => {
+      const url = `${window.location.pathname}${deskUrlSearch(next)}`;
+      if (eventChanged) router.push(url, { scroll: false });
+      else router.replace(url, { scroll: false });
+    },
+    [router]
+  );
 
   useEffect(() => {
     const apply = (search: string) => {
@@ -113,10 +124,8 @@ export function MeridianDesk() {
     if (sameDeskUrlState(next, lastUrlState.current)) return;
     const eventChanged = next.event !== lastUrlState.current.event;
     lastUrlState.current = next;
-    const url = `${window.location.pathname}${deskUrlSearch(next)}`;
-    if (eventChanged) window.history.pushState(null, "", url);
-    else window.history.replaceState(null, "", url);
-  }, [selectedId, view, filter]);
+    syncDeskUrl(next, eventChanged);
+  }, [selectedId, view, filter, syncDeskUrl]);
   const [searchQuery, setSearchQuery] = useState("");
   /** Calendar day drill-down — clicking a day filters the print ledger; clicking it again clears. */
   const [earningsDate, setEarningsDate] = useState<string | null>(null);
