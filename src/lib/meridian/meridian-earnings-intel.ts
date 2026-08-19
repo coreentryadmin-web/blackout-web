@@ -27,6 +27,14 @@ import type {
   MeridianEarningsPrint,
 } from "@/features/meridian/lib/meridian-types";
 
+export type MeridianEarningsIntelPrefetch = {
+  fundamentals: Awaited<ReturnType<typeof fetchTickerFundamentalsBundle>> | null;
+  vectorEm: Awaited<ReturnType<typeof getVectorExpectedMove>> | null;
+  darkPoolRaw: Awaited<ReturnType<typeof fetchUwDarkPool>> | null;
+  rawHeatmap: Awaited<ReturnType<typeof fetchGexHeatmap>> | null;
+  windowHours?: number;
+};
+
 function fmtPrem(n: number): string {
   const abs = Math.abs(n);
   if (abs >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
@@ -40,23 +48,44 @@ export async function loadMeridianEarningsIntel(input: {
   pack: PreEarningsPackCard;
   print_history: MeridianEarningsPrint[];
   enrichment: MeridianEarningsEnrichment;
+  /** When provided, skips redundant upstream fetches (Meridian event parallel loader). */
+  prefetch?: MeridianEarningsIntelPrefetch;
 }): Promise<MeridianEarningsIntel> {
   const sym = input.ticker.trim().toUpperCase();
-  const windowHours = flowWindowHours(input.pack.days_until);
+  const windowHours =
+    input.prefetch?.windowHours ?? flowWindowHours(input.pack.days_until);
+  const pf = input.prefetch;
 
-  const [fundamentals, thermal, earningsEm, vectorEm, flowSummary, darkPoolRaw, rawHeatmap] = await Promise.all([
-    fetchTickerFundamentalsBundle(sym).catch(() => null),
-    gexHeatmapForLargo(sym, { lens: "gex", top_strikes: 8 }).catch(() => null),
-    loadEarningsExpectedMovePct(sym, input.pack.earnings_date).catch(() => null),
-    getVectorExpectedMove(sym, "weekly").catch(() => null),
-    marketPlatform.flows
-      .getFlowTapeSummary({ ticker: sym, limit: 30, since_hours: windowHours })
-      .catch(() => null),
-    fetchUwDarkPool(sym, { limit: 20 }).catch(() => null),
-    // The RAW matrix, for expiry scoping. The Largo wrapper only surfaces whole-book
-    // aggregates, and those are the wrong answer for a dated event — see below.
-    fetchGexHeatmap(sym).catch(() => null),
-  ]);
+  const rawHeatmapPromise =
+    pf != null
+      ? Promise.resolve(pf.rawHeatmap)
+      : fetchGexHeatmap(sym).catch(() => null);
+
+  const [fundamentals, rawHeatmap, earningsEm, vectorEm, flowSummary, darkPoolRaw] =
+    await Promise.all([
+      pf != null
+        ? Promise.resolve(pf.fundamentals)
+        : fetchTickerFundamentalsBundle(sym).catch(() => null),
+      rawHeatmapPromise,
+      input.pack.expected_move_pct != null
+        ? Promise.resolve(input.pack.expected_move_pct)
+        : loadEarningsExpectedMovePct(sym, input.pack.earnings_date).catch(() => null),
+      pf != null
+        ? Promise.resolve(pf.vectorEm)
+        : getVectorExpectedMove(sym, "weekly").catch(() => null),
+      marketPlatform.flows
+        .getFlowTapeSummary({ ticker: sym, limit: 30, since_hours: windowHours })
+        .catch(() => null),
+      pf != null
+        ? Promise.resolve(pf.darkPoolRaw)
+        : fetchUwDarkPool(sym, { limit: 20 }).catch(() => null),
+    ]);
+
+  const thermal = await gexHeatmapForLargo(sym, {
+    lens: "gex",
+    top_strikes: 8,
+    heatmap: rawHeatmap,
+  }).catch(() => null);
 
   /**
    * Dealer structure scoped to the expiry that COVERS THE PRINT.

@@ -63,16 +63,21 @@ function topStrikesFromTotals(
     .slice(0, limit);
 }
 
+type GexHeatmapFetch = Awaited<ReturnType<typeof fetchGexHeatmap>>;
+
 /** Compact Thermal matrix read for Largo — canonical cache, not a second upstream. */
 export async function gexHeatmapForLargo(
   ticker: string,
-  opts?: { lens?: GexHeatmapLargoLens; top_strikes?: number }
+  opts?: { lens?: GexHeatmapLargoLens; top_strikes?: number; heatmap?: GexHeatmapFetch | null }
 ): Promise<GexHeatmapForLargo> {
   const sym = String(ticker ?? "").trim().toUpperCase();
   const lens = opts?.lens ?? "gex";
   const topN = Math.min(24, Math.max(4, opts?.top_strikes ?? 12));
 
-  const hm = await fetchGexHeatmap(sym).catch(() => null);
+  const hm =
+    opts && "heatmap" in opts
+      ? (opts.heatmap ?? null)
+      : await fetchGexHeatmap(sym).catch(() => null);
   const pos = hm ? await getGexPositioning(sym).catch(() => null) : null;
   if (!hm || !hm.spot || !hm.strikes?.length) {
     return {

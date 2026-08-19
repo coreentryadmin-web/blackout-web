@@ -229,7 +229,10 @@ export function MeridianDesk() {
     error: detailError,
     isLoading: detailLoading,
     mutate: mutateDetail,
-  } = useSWR<MeridianEventDetail>(detailKey, fetcher, { refreshInterval: detailRefreshMs });
+  } = useSWR<MeridianEventDetail>(detailKey, fetcher, {
+    refreshInterval: detailRefreshMs,
+    keepPreviousData: true,
+  });
 
   /**
    * Refresh refetches the DETAIL as well as the timeline, and says so while it runs.
