@@ -18,6 +18,10 @@ import {
   kingStrikeByTime,
   maxPctByTime,
   trailingRefs,
+  rowPeakRefs,
+  rowSwellMul,
+  rowStrengthHaloExtraPx,
+  rowStrengthHaloAlphaMul,
   beadRenderTuning,
   clampTuningToSpacing,
   closestRowGapPx,
@@ -141,7 +145,16 @@ const EMPH_EPS = 0.01;
 const SETTLE_EPS = 0.02;
 /** King emphasis → extra radius (×) and rim/glow lift, so the dominant node stands proud and its
  *  prominence slides vertically to a new strike as the king migrates. */
-type BandPt = { x: number; yTop: number; yBot: number; a: number; emph: number; tier?: WallIntegrityTier };
+type BandPt = {
+  x: number;
+  yTop: number;
+  yBot: number;
+  /** Row-relative strength [0,1] — drives core radius and strength-halo swell. */
+  rowSwell: number;
+  a: number;
+  emph: number;
+  tier?: WallIntegrityTier;
+};
 /** One run of adjacent buckets for a wall (no time gap). Rendered as a ROW OF BEADS — one round dot
  *  per bucket, each sized by its yTop/yBot half-height (magnitude) and brightened by its own alpha
  *  (growth/fade). A dead-stretch gap splits the run so beads don't bridge time the wall was absent.
@@ -164,7 +177,9 @@ class WallRailRenderer implements IPrimitivePaneRenderer {
     private readonly _tuning: BeadRenderTuning,
     private readonly _overlayDim: number,
     private readonly _showIntegrityRings: boolean,
-    private readonly _showEventGlyphs: boolean
+    private readonly _showEventGlyphs: boolean,
+    /** Bar spacing in px — budgets peak strength-halo bloom at the current zoom. */
+    private readonly _barSpacingPx: number
   ) {}
 
   draw(target: PaneRendererTarget): void {
@@ -182,6 +197,23 @@ class WallRailRenderer implements IPrimitivePaneRenderer {
           const rMul = 1 + emph * kingBoost;
           const cy = (p.yTop + p.yBot) / 2;
           const r = Math.max(minR, ((p.yBot - p.yTop) / 2) * rMul);
+          // Strength halo UNDER the core — swells at the row peak, fades to a trace (reference dynamics).
+          if (p.rowSwell > 0.08) {
+            const haloExtra = rowStrengthHaloExtraPx(p.rowSwell, {
+              barSpacingPx: this._barSpacingPx,
+            });
+            if (haloExtra > 0.08) {
+              const haloR = r + haloExtra;
+              const haloA = Math.min(
+                0.62,
+                p.a * rowStrengthHaloAlphaMul(p.rowSwell) * 0.52
+              );
+              ctx.fillStyle = withA(b.color, haloA);
+              ctx.beginPath();
+              ctx.arc(p.x, cy, haloR, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          }
           if (this._showIntegrityRings && p.tier) {
             const ring = haloRingForTier(p.tier);
             const ringR = Math.max(minR + 1, r * (1.45 * ring.sizeMul));
@@ -252,7 +284,7 @@ class WallRailPaneView implements IPrimitivePaneView {
   renderer(): IPrimitivePaneRenderer | null {
     const projected = this._source.project();
     if (!projected) return null;
-    const { bands, glyphs, tuning } = projected;
+    const { bands, glyphs, tuning, barSpacingPx: projectedBarSpacing } = projected;
     if (bands.length === 0) return null;
     return new WallRailRenderer(
       bands,
@@ -260,7 +292,8 @@ class WallRailPaneView implements IPrimitivePaneView {
       tuning,
       this._source.overlayDim(),
       this._source.showIntegrityRings(),
-      this._source.showEventGlyphs()
+      this._source.showEventGlyphs(),
+      projectedBarSpacing
     );
   }
 }
@@ -437,7 +470,12 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
   /** Project every trail into media-space beaded bands. Also writes the per-bead TARGET half-heights
    *  and per-strike king-emphasis targets the rAF loop eases toward, and reads the eased values back
    *  so the drawn beads reflect the in-flight animation. Null when there's nothing honest to draw. */
-  project(): { bands: Band[]; glyphs: ProjectedGlyph[]; tuning: BeadRenderTuning } | null {
+  project(): {
+    bands: Band[];
+    glyphs: ProjectedGlyph[];
+    tuning: BeadRenderTuning;
+    barSpacingPx: number;
+  } | null {
     if (!this._visible || !this._data || !this._chart || !this._series) {
       this._lastGlyphs = [];
       return null;
@@ -541,6 +579,7 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
       // Trailing reference per bucket — drives the SLOW-decay channel (see decayModulation). Computed
       // ONCE per trail, not per bead: it is O(n) and this runs on every repaint.
       const refs = trailingRefs(pts);
+      const rowPeaks = rowPeakRefs(pts);
 
       const steps: number[] = [];
       for (let i = 1; i < pts.length; i++) steps.push(pts[i]!.time - pts[i - 1]!.time);
@@ -595,12 +634,12 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
         // wall used to render as a row of unchanged beads.
         const mod = beadModulation(p.pct, prev ? prev.pct : null, refs[i] ?? null, maxPct);
         const glow = magnitudeGlowBoost(p.pct); // absolute-magnitude brightness (frame-independent)
-        // TARGET half = ABSOLUTE $-ladder magnitude (or relative fallback), then the growth/fade
-        // velocity multiplier so a wall being STACKED this bucket still flares fatter.
-        // Sizing is ALWAYS the $ ladder: the recorded notional when there is one, else the pct
-        // proxy (see targetHalfPx). There is no longer a mode switch — the "$ Size" chip was
-        // removed because with the proxy restored both settings render the same ladder.
-        const target = targetHalfPx(p.pct, p.notional, maxPct, tuning) * mod.sizeMul;
+        const rowPeak = rowPeaks[i] ?? 0;
+        const rowSwell =
+          p.modeled === true || rowPeak <= 0 ? 0 : rowSwellMul(p.pct, rowPeak);
+        // Core bead radius = absolute share ladder × row swell × velocity (round dots, not ellipses).
+        const target =
+          targetHalfPx(p.pct, p.notional, maxPct, tuning, { rowPeakPct: rowPeak }) * mod.sizeMul;
         const key = beadKey(side, trail.strike, p.time);
         this._targetHalf.set(key, target);
         // Displayed half lags the target (eased by the rAF loop). Reduce-motion / first sight → snap
@@ -622,6 +661,7 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
         // off-hours or replayed rail has no "now" to be old relative to, and using Date.now() there
         // would fade an entire frozen session toward the floor for no reason a member could read.
         const ageScale = ageTaperAlpha(liveTime - p.time);
+        const rowAlphaMul = rowPeak > 0 ? rowSwellMul(p.pct, rowPeak, { floor: 0.38, exp: 0.65 }) : 1;
         const a = Math.min(
           1,
           // POINT-IN-TIME contrast: measured against the strongest wall in THAT bucket, not the
@@ -629,6 +669,7 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
           // different questions (how big was this wall ever / how much did it dominate right then).
           fillAlpha(p.pct, maxPctAtTime.get(p.time) ?? maxPct, tuning) *
             mod.alphaMul *
+            rowAlphaMul *
             (0.75 + 0.25 * Math.min(1.6, glow)) *
             tuning.drawAlphaMul *
             modeledScale *
@@ -639,7 +680,7 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
         const pEmph = p.time === liveTime ? liveEmph : wasKing ? 1 : 0;
         const tier =
           showIntegrityRings && tierByStrike ? tierByStrike.get(trail.strike) : undefined;
-        run.push({ x, yTop: y - half, yBot: y + half, a, emph: pEmph, tier });
+        run.push({ x, yTop: y - half, yBot: y + half, rowSwell, a, emph: pEmph, tier });
       }
       flush(pts.length - 1);
     };
@@ -674,6 +715,6 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
     }
 
     this._lastGlyphs = showEventGlyphs ? glyphs : [];
-    return { bands, glyphs, tuning };
+    return { bands, glyphs, tuning, barSpacingPx };
   }
 }
