@@ -134,6 +134,13 @@ import {
   type LargoPlayContext,
 } from "@/lib/largo/session-metadata";
 import type { DeskSlashArgs } from "@/lib/largo/desk-scope";
+import {
+  deskScopeConfig,
+  formatDeskScopeBlock,
+  formatDiffBlock,
+  intentOverridesForDeskScope,
+} from "@/lib/largo/desk-scope";
+import { buildTurnSnapshot, prefetchDeskScopeBlock } from "@/lib/largo/desk-scope-prefetch";
 import { marketPhaseFromEt } from "@/lib/largo/core/system-status";
 import { getUserTier } from "@/lib/auth-access";
 
@@ -428,13 +435,6 @@ async function prepareLargoTurn(
 
   const toolsUsed: string[] = ["live_feed_capture"];
   let intent = analyzeLargoQuestion(question, history.slice(0, -1));
-  const {
-    formatDeskScopeBlock,
-    formatDiffBlock,
-    intentOverridesForDeskScope,
-    deskScopeConfig,
-  } = await import("@/lib/largo/desk-scope");
-  const { prefetchDeskScopeBlock, buildTurnSnapshot } = await import("@/lib/largo/desk-scope-prefetch");
   intent = intentOverridesForDeskScope(activeDeskScope, intent);
   if (deskScopeArgs?.ticker) {
     intent = { ...intent, tickerHint: deskScopeArgs.ticker.toUpperCase() };
