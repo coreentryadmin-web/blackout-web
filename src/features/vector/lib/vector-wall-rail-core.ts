@@ -217,6 +217,34 @@ export type RowStrengthHaloOpts = {
   maxPx?: number;
   /** Chart bar spacing in px — caps peak corona so dense 3m swells bloom without a uniform slab. */
   barSpacingPx?: number;
+  /**
+   * Price-axis distance to the nearest neighbouring row, in px.
+   *
+   * THE HALO IS DRAWN IN BOTH AXES AND WAS ONLY EVER BUDGETED IN ONE (fixed 2026-08-19). The core
+   * bead obeys BEAD_ROW_FILL (0.55 of the row gap), but the halo is added ON TOP of it and was
+   * capped against bar spacing alone — a HORIZONTAL measure. Vertically it was unbounded, so at any
+   * zoom where bars are wide relative to strike spacing the corona grew past the row gap and
+   * neighbouring rows fused.
+   *
+   * Measured on prod during RTH: band thickness / nearest row gap reached 1.58 on QQQ and exceeded
+   * 1.0 on 15 of 21 frames — a ratio above 1.0 means the bead is literally thicker than the space
+   * to its neighbour. Member report: "dont you think it paints too hard like too thick for the
+   * strong nodes". The reference product runs visibly under 0.50.
+   */
+  rowGapPx?: number;
+  /**
+   * The core bead's ACTUAL half-height at this bucket, in px.
+   *
+   * The budget has to cover core + halo TOGETHER, and the first version of this fix did not: it
+   * capped the halo alone at ROW_HALO_ROW_GAP_FILL while the core independently took BEAD_ROW_FILL,
+   * summing to 1.25 of the row gap — still a slab, just a differently-derived one. The unit test
+   * on the SUM caught it; neither function was wrong on its own, which is exactly why the invariant
+   * belongs on the sum rather than on either radius.
+   *
+   * Passing the real core radius (not its ceiling) means a weak bead, whose core is small, still
+   * gets to bloom — the budget only binds where it actually needs to.
+   */
+  coreHalfPx?: number;
 };
 
 /**
@@ -236,6 +264,20 @@ export function beadCenterSpacingPx(
 export const ROW_HALO_BAR_SPACING_FILL = 0.55;
 
 /**
+ * Fraction of the ROW GAP that core bead + halo together may occupy at full swell.
+ *
+ * The counterpart to {@link ROW_HALO_BAR_SPACING_FILL} on the axis that matters for legibility.
+ * Measured on prod during RTH before this existed: band thickness / nearest row gap ran a median
+ * p90 of 0.64 and exceeded 1.0 on 15 of 21 frames (worst 1.58 on QQQ) — above 1.0 the bead is
+ * thicker than the distance to its neighbour, so rows touch and the candles behind vanish.
+ *
+ * 0.7 leaves ~30% of every slot as air. Not lower, because the whole point of the rail is that a
+ * dominant wall READS as dominant, and squeezing the peak toward the floor trades this complaint
+ * for the opposite one — which is the exact oscillation #2310 and #2244 already went through once.
+ */
+export const ROW_HALO_ROW_GAP_FILL = 0.7;
+
+/**
  * Strength halo radius beyond core bead — grows with row swell, fades to a trace.
  *
  * Peak beads at a row's strongest moment get a wide soft corona (overlapping halos = the glowing
@@ -252,6 +294,20 @@ export function rowStrengthHaloExtraPx(rowSwell: number, opts?: RowStrengthHaloO
   const barSpacing = opts?.barSpacingPx;
   if (barSpacing != null && Number.isFinite(barSpacing) && barSpacing > 0) {
     peakMax = Math.min(maxPx, Math.max(minPx + 0.4, barSpacing * ROW_HALO_BAR_SPACING_FILL));
+  }
+  // ...AND against the ROW GAP, which is the axis that actually buries things (2026-08-19).
+  // The bar-spacing cap above is horizontal; the halo is a radius and grows in both axes, so
+  // vertically it was unbounded and neighbouring rows fused into a slab.
+  //
+  // The budget covers core + halo TOGETHER: ROW_HALO_ROW_GAP_FILL is the share of the row gap the
+  // whole painted band may occupy, and the halo gets whatever the core has not already used. A
+  // halo-only cap leaves the core free to take its own BEAD_ROW_FILL share on top, which sums past
+  // the gap and reproduces the slab from a different direction.
+  const rowGap = opts?.rowGapPx;
+  if (rowGap != null && Number.isFinite(rowGap) && rowGap > 0) {
+    const bandHalfBudget = (rowGap * ROW_HALO_ROW_GAP_FILL) / 2;
+    const core = Number.isFinite(opts?.coreHalfPx) && (opts?.coreHalfPx ?? 0) > 0 ? opts!.coreHalfPx! : 0;
+    peakMax = Math.min(peakMax, Math.max(minPx, bandHalfBudget - core));
   }
 
   return minPx + tHalo * (peakMax - minPx);

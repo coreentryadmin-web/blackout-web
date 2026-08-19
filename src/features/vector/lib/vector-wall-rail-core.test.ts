@@ -27,6 +27,7 @@ import {
   rowPeakRefs,
   rowSwellMul,
   rowStrengthHaloExtraPx,
+  ROW_HALO_ROW_GAP_FILL,
   rowStrengthHaloAlphaMul,
   beadCenterSpacingPx,
   ROW_HALO_BAR_SPACING_FILL,
@@ -708,4 +709,49 @@ test("rowSwellMul: bounded, monotonic, and floored", () => {
     const m = rowSwellMul(pct, peak);
     assert.ok(m > 0 && m <= 1, `unusable input (${pct}, ${peak}) gave ${m}`);
   }
+});
+
+// ── THE HALO IS DRAWN IN TWO AXES AND WAS BUDGETED IN ONE (2026-08-19) ─────────────────────────
+// Member report during live RTH, with the strongest SPX rows circled: "dont you think it paints
+// too hard like too thick for the strong nodes".
+//
+// The core bead obeys BEAD_ROW_FILL (0.55 of the row gap). The strength halo is added ON TOP of the
+// core and was capped only against BAR SPACING — a horizontal measure — so vertically it was
+// unbounded. Measured on prod: band thickness / nearest row gap ran a median p90 of 0.64 and
+// exceeded 1.0 on 15 of 21 frames, worst 1.58 on QQQ. Above 1.0 the bead is thicker than the space
+// to its neighbour, so rows touch and the candles behind them disappear.
+//
+// Model-side tests could not have caught this: each function was individually correct, and the
+// defect lived in the SUM of two independently-budgeted radii. Hence a test on the sum.
+test("strength halo is budgeted against the ROW GAP, not just bar spacing", () => {
+  // Wide bars, tight rows — the geometry where the bar-spacing cap alone leaves the halo free.
+  const wideBars = { barSpacingPx: 40, rowGapPx: 10 };
+  const atPeak = rowStrengthHaloExtraPx(1, wideBars);
+  assert.ok(
+    atPeak <= (wideBars.rowGapPx * ROW_HALO_ROW_GAP_FILL) / 2 + 1e-9,
+    `halo ${atPeak}px must fit the row-gap budget, got more than ${(wideBars.rowGapPx * ROW_HALO_ROW_GAP_FILL) / 2}px`
+  );
+  // Without the row gap the same swell is allowed to bloom much further — which is the old bug.
+  const unbudgeted = rowStrengthHaloExtraPx(1, { barSpacingPx: 40 });
+  assert.ok(unbudgeted > atPeak, "the row-gap budget must actually bind on this geometry");
+});
+
+test("core + halo together stay inside one row's slot, leaving air between rows", () => {
+  for (const rowGapPx of [8, 12, 20, 30, 44]) {
+    const halfMax = (rowGapPx * 0.55) / 2; // BEAD_ROW_FILL, the core's own budget
+    const halo = rowStrengthHaloExtraPx(1, { barSpacingPx: 60, rowGapPx, coreHalfPx: halfMax });
+    const thickness = 2 * (halfMax + halo);
+    assert.ok(
+      thickness / rowGapPx <= 1,
+      `rowGap=${rowGapPx}: core+halo fills ${(thickness / rowGapPx).toFixed(2)} of the slot — rows would touch`
+    );
+  }
+});
+
+test("the halo still grows with strength — the budget is a ceiling, not a flattening", () => {
+  const geom = { barSpacingPx: 40, rowGapPx: 20 };
+  const weak = rowStrengthHaloExtraPx(0.2, geom);
+  const mid = rowStrengthHaloExtraPx(0.6, geom);
+  const peak = rowStrengthHaloExtraPx(1, geom);
+  assert.ok(weak < mid && mid < peak, "clamping the peak must not collapse the swell into one size");
 });

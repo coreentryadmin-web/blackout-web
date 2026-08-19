@@ -180,7 +180,10 @@ class WallRailRenderer implements IPrimitivePaneRenderer {
     private readonly _showIntegrityRings: boolean,
     private readonly _showEventGlyphs: boolean,
     /** Bar spacing in px — budgets peak strength-halo bloom at the current zoom. */
-    private readonly _barSpacingPx: number
+    private readonly _barSpacingPx: number,
+    /** Price-axis gap to the nearest neighbouring row — budgets the halo VERTICALLY, which is the
+     *  axis that decides whether rows read as separate or fuse into a slab. */
+    private readonly _rowGapPx: number
   ) {}
 
   draw(target: PaneRendererTarget): void {
@@ -202,6 +205,10 @@ class WallRailRenderer implements IPrimitivePaneRenderer {
           if (p.rowSwell > 0.08) {
             const haloExtra = rowStrengthHaloExtraPx(p.rowSwell, {
               barSpacingPx: this._barSpacingPx,
+              rowGapPx: this._rowGapPx,
+              // The REAL core radius at this bucket, so the budget covers core+halo together and a
+              // weak bead (small core) still has room to bloom.
+              coreHalfPx: r,
             });
             if (haloExtra > 0.08) {
               const haloR = r + haloExtra;
@@ -285,7 +292,7 @@ class WallRailPaneView implements IPrimitivePaneView {
   renderer(): IPrimitivePaneRenderer | null {
     const projected = this._source.project();
     if (!projected) return null;
-    const { bands, glyphs, tuning, barSpacingPx: projectedBarSpacing } = projected;
+    const { bands, glyphs, tuning, barSpacingPx: projectedBarSpacing, rowGapPx: projectedRowGap } = projected;
     if (bands.length === 0) return null;
     return new WallRailRenderer(
       bands,
@@ -294,7 +301,8 @@ class WallRailPaneView implements IPrimitivePaneView {
       this._source.overlayDim(),
       this._source.showIntegrityRings(),
       this._source.showEventGlyphs(),
-      projectedBarSpacing
+      projectedBarSpacing,
+      projectedRowGap
     );
   }
 }
@@ -385,7 +393,19 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
   }
 
   beadZOrder(): PrimitivePaneViewZOrder {
-    return this._data?.profile === "compare" ? "bottom" : "top";
+    // BEHIND THE CANDLES, EVERYWHERE (2026-08-19).
+    //
+    // Compare panes have always drawn beads at "bottom" and the main desk at "top". Comparing the
+    // two side by side on prod, the member picked the compare treatment unprompted: "the beads
+    // appear much better on compare mode .. the beads paint behind the candles .. we can do the
+    // same way for all like single stocks on main page too".
+    //
+    // It is also the more defensible default. The rail ANNOTATES price; price is the subject. At
+    // "top" a strong bead occludes the very candle it is describing, which is why every previous
+    // attempt to make strong walls read as strong ran straight into "it buries the candles" and
+    // got tuned back down. Putting the rail underneath removes that conflict entirely, so the
+    // swell can carry real dynamic range without competing with the tape for the same pixels.
+    return "bottom";
   }
 
   showIntegrityRings(): boolean {
@@ -476,6 +496,9 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
     glyphs: ProjectedGlyph[];
     tuning: BeadRenderTuning;
     barSpacingPx: number;
+    /** Price-axis gap to the nearest neighbouring row — the renderer budgets the strength halo
+     *  against it so core+halo stay inside one row's slot. */
+    rowGapPx: number;
   } | null {
     if (!this._visible || !this._data || !this._chart || !this._series) {
       this._lastGlyphs = [];
@@ -522,10 +545,11 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
       const y = series.priceToCoordinate(t.strike);
       if (y != null) rowYs.push(y);
     }
-    const tuning = clampTuningToSpacing(baseTuning, {
-      barSpacingPx,
-      rowGapPx: closestRowGapPx(rowYs),
-    });
+    // Hoisted out of the clampTuningToSpacing call: the RENDERER needs this too, to budget the
+    // strength halo vertically. Without it the halo was capped only against bar spacing (a
+    // horizontal measure) and grew past the row gap, fusing neighbouring rows into a slab.
+    const rowGapPx = closestRowGapPx(rowYs);
+    const tuning = clampTuningToSpacing(baseTuning, { barSpacingPx, rowGapPx });
 
     // Rebuild target sets from scratch each project so departed beads/strikes drop out of the loop.
     this._targetHalf.clear();
@@ -697,10 +721,22 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
           bookPeak > 0 ? rowSwellMul(p.pct, bookPeak, { floor: 0.24, exp: BOOK_SWELL_EXP }) : 1;
         const a = Math.min(
           1,
-          // POINT-IN-TIME contrast: measured against the strongest wall in THAT bucket, not the
-          // session-wide king — see maxPctByTime. Size stays absolute, so the two channels answer
-          // different questions (how big was this wall ever / how much did it dominate right then).
-          fillAlpha(p.pct, maxPctAtTime.get(p.time) ?? maxPct, tuning) *
+          // ── COLOUR USES THE SAME SHARED DENOMINATOR AS SIZE (2026-08-19) ────────────────────
+          // This divided by `maxPctAtTime` — the strongest wall in THAT BUCKET. The intent was
+          // point-in-time contrast, but the effect is that EVERY row is the bucket king at some
+          // point in the session, and at that moment it paints at full brightness regardless of
+          // how weak it is against the book. So a 5%-of-book wall and a 25% one both reach the
+          // alpha ceiling, and the rail carries no colour information at all.
+          //
+          // Member report, after the size channel was fixed: "I can see the width is fine for
+          // weaker and stronger .. but we also talked about the colors .. right now we only show
+          // sizing, but no coloring dynamics" — and later, "it paints all the beads with the same
+          // color contrast". Exactly what a per-bucket denominator produces.
+          //
+          // `maxPct` is the frame-wide king, so a weak wall now stays pale for the whole session
+          // and only a genuinely dominant one saturates — the same rule that gave the size channel
+          // its range, applied to the channel the member can actually see as colour.
+          fillAlpha(p.pct, maxPct, tuning) *
             mod.alphaMul *
             rowAlphaMul *
             (0.75 + 0.25 * Math.min(1.6, glow)) *
@@ -748,6 +784,6 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
     }
 
     this._lastGlyphs = showEventGlyphs ? glyphs : [];
-    return { bands, glyphs, tuning, barSpacingPx };
+    return { bands, glyphs, tuning, barSpacingPx, rowGapPx };
   }
 }
