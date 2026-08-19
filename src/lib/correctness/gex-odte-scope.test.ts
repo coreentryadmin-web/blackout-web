@@ -18,6 +18,13 @@ test("resolveOdteExpiry prefers today when on the axis", () => {
   assert.equal(resolveOdteExpiry(["2026-07-02", "2026-07-08"], "2026-07-01"), "2026-07-02");
 });
 
+test("resolveOdteExpiry post-roll: today off axis → front expiry (UW oracle must match)", () => {
+  // ops-auto-fix #2357: after today's 0DTE column rolls off post-close, the matrix
+  // compares the front expiry column — UW must NOT still query calendar-today.
+  assert.equal(resolveOdteExpiry(["2026-08-20", "2026-08-21"], "2026-08-19"), "2026-08-20");
+  assert.equal(resolveZeroDteExpiry(["2026-08-20", "2026-08-21"], "2026-08-19"), null);
+});
+
 test("resolveZeroDteExpiry is strict — no front fallback", () => {
   assert.equal(resolveZeroDteExpiry(["2026-07-01", "2026-07-08"], "2026-07-01"), "2026-07-01");
   assert.equal(resolveZeroDteExpiry(["2026-07-02", "2026-07-08"], "2026-07-01"), null);

@@ -19,7 +19,7 @@ import {
   rollUpMetricStatus,
   worstStatus,
 } from "@/lib/correctness/types";
-import { odteGexScopeFromHeatmap, grossAbsFromStrikeTotals, grossAbsFromUwGexRows, isHairlineNetGammaSign, isNearGammaFlip, recomputeScopedGexLevels } from "@/lib/correctness/gex-odte-scope";
+import { odteGexScopeFromHeatmap, grossAbsFromStrikeTotals, grossAbsFromUwGexRows, isHairlineNetGammaSign, isNearGammaFlip, recomputeScopedGexLevels, resolveOdteExpiry } from "@/lib/correctness/gex-odte-scope";
 
 // ---------------------------------------------------------------------------
 // HEAT MAPS data-correctness verifier — the first (primary) target of the auditor.
@@ -1161,10 +1161,38 @@ async function crossProviderChecks(ctx: Ctx, hm: GexHeatmap): Promise<CheckResul
   // Pull the SAME 0DTE-scoped UW ladder the SPX overlay uses (WS → spot-exposures REST).
   // Do NOT use fetchUwOdteGexLadder's cumulative greek-exposure/strike fallback — that sums ALL
   // expiries and false-flags against the served 0DTE King (ops-auto-fix #1865).
+  // Pull the SAME expiry-scoped UW ladder the served matrix column uses. After today's 0DTE
+  // column rolls off the axis (post-close), odteGexScopeFromHeatmap falls back to the front
+  // expiry — the UW oracle MUST query that same date, not calendar-today (ops-auto-fix #2357).
+  const alignedExpiry = resolveOdteExpiry(hm.expiries ?? [], ctx.today);
+  if (!alignedExpiry) {
+    out.push(
+      mk(
+        ctx,
+        "cross-provider",
+        "king",
+        "consistency-only",
+        "No expiry axis on SPX matrix — UW oracle skipped.",
+        { id: "oracle-king" }
+      )
+    );
+    out.push(
+      mk(
+        ctx,
+        "cross-provider",
+        "net_gex",
+        "consistency-only",
+        "No expiry axis on SPX matrix — net-GEX sign consistency-only.",
+        { id: "oracle-net-sign" }
+      )
+    );
+    return out;
+  }
+
   let uw: { rows: Record<string, unknown>[]; source: string } = { rows: [], source: "none" };
   try {
     const { fetchSpxOdteScopedUwLadder } = await import("@/lib/providers/spx-odte-uw-ladder");
-    uw = await fetchSpxOdteScopedUwLadder("SPX");
+    uw = await fetchSpxOdteScopedUwLadder("SPX", alignedExpiry);
   } catch {
     uw = { rows: [], source: "none" };
   }

@@ -432,8 +432,11 @@ function analyzeStrikeGex(rows: Record<string, unknown>[]) {
 }
 
 /** 0DTE strike GEX ladder — same expiry-strike feed, strike-level rows for gamma walls. */
-export async function fetchUwOdteSpotExposuresByStrike(ticker = "SPX", limit = 500) {
-  const expiry = todayEt();
+export async function fetchUwOdteSpotExposuresByStrike(
+  ticker = "SPX",
+  expiry: string = todayEt(),
+  limit = 500
+) {
   const data = await uwGetSafe<unknown>(`/api/stock/${safeTicker(ticker)}/spot-exposures/expiry-strike`, {
     "expirations[]": expiry,
     limit,
