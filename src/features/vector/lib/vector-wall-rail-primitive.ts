@@ -36,6 +36,7 @@ import {
 } from "./vector-wall-visual";
 import type { WallIntegrityTier } from "./vector-wall-integrity";
 import type { StrikeTrail } from "./vector-wall-history";
+import { projectBucketX } from "./vector-bead-x-projection";
 import type { VectorWallEvent } from "./vector-wall-events";
 import {
   composeWallEventGlyphs,
@@ -100,6 +101,14 @@ export type WallRailData = {
   wallEvents?: readonly VectorWallEvent[];
   eventLens?: "gex" | "vex";
   eventCursorTime?: number;
+  /**
+   * Ascending bar times currently on the chart, and the candle width in seconds.
+   *
+   * Required to place a bucket WITHIN its candle rather than on it — without them the rail can draw
+   * at most one bead per candle no matter how fast the recorder runs. See vector-bead-x-projection.
+   */
+  barTimes?: readonly number[];
+  intervalSec?: number;
 };
 
 type PaneRendererTarget = Parameters<IPrimitivePaneRenderer["draw"]>[0];
@@ -447,6 +456,8 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
       wallEvents = [],
       eventLens = "gex",
       eventCursorTime,
+      barTimes,
+      intervalSec,
     } = this._data;
     if (!(maxPct > 0)) return null;
     const baseTuning = beadRenderTuning(profile ?? "default");
@@ -557,8 +568,20 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
       for (let i = 0; i < pts.length; i++) {
         const p = pts[i]!;
         const prev = i > 0 ? pts[i - 1]! : null;
-        const x = ts.timeToCoordinate(p.time as Time);
-        if (x == null) continue; // off-screen bucket — skip (its neighbours still draw)
+        // Interpolate WITHIN the containing candle. `ts.timeToCoordinate` resolves only times that
+        // are in the series data, so calling it with a 5s bucket time under a 3m candle returned
+        // null for 35 of every 36 buckets and the skip below silently threw them away — the rail
+        // could never be denser than the candles. See vector-bead-x-projection for the full trace.
+        const x = barTimes?.length
+          ? projectBucketX(
+              p.time,
+              barTimes,
+              (t) => ts.timeToCoordinate(t as Time),
+              barSpacingPx,
+              intervalSec ?? 0
+            )
+          : ts.timeToCoordinate(p.time as Time);
+        if (x == null) continue; // genuinely unplaceable (before the first bar) — neighbours still draw
         // New run when there's a real time gap since the previous bucket.
         if (prev && p.time - prev.time > gapLimit && run.length) {
           flush(i - 1);

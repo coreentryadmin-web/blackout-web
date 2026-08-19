@@ -265,33 +265,7 @@ async function createTunneledContext({
     }, seedStorage);
   }
 
-  if (cookie) {
-    const dom = new URL(url).hostname;
-    await ctx.addCookies(
-      cookie
-        .split(";")
-        .map((s) => s.trim())
-        .filter(Boolean)
-        .map((p) => {
-          const [n, ...r] = p.split("=");
-          const name = n.trim();
-          // httpOnly ONLY for __session. Clerk deliberately leaves __client_uat readable by JS —
-          // Nav.tsx's readClientSignedIn() uses it to resolve signed-in state before Clerk's client
-          // loads. Marking it httpOnly hides it from document.cookie and makes every authenticated
-          // capture render "Sign In / Get access →" over live premium content. That artifact has
-          // been mistaken for a Cloudflare cache bug more than once; it is not one.
-          return {
-            name,
-            value: r.join("=").trim(),
-            domain: dom,
-            path: "/",
-            httpOnly: name === "__session",
-            secure: true,
-            sameSite: "Lax",
-          };
-        })
-    );
-  }
+  if (cookie) await applyCookieToContext(ctx, cookie, url);
 
   const counts = { ok: 0, fail: 0, streamsBuffered: 0, streamsHeldOpen: 0 };
 
@@ -348,8 +322,49 @@ async function createTunneledContext({
   return { browser, ctx, counts };
 }
 
+/**
+ * Put a Clerk cookie header onto a context, replacing any same-named cookie already there.
+ *
+ * Extracted so a long run can RE-APPLY a refreshed `__session` without restating the httpOnly
+ * subtlety below. A Clerk session JWT is short-lived, and a harness that authenticates once and
+ * then drives the desk for several minutes outlives it: the app starts bouncing the request back
+ * through sign-in, and because the tunnel gives the page no working Clerk client to complete that
+ * bounce, the navigation dies as ERR_TOO_MANY_REDIRECTS. That failure names neither auth nor
+ * expiry, so it reads as "this ticker's page is broken" — it killed the 4th ticker of two
+ * consecutive capture runs before anyone connected it to the clock. Pair this with the session
+ * helper's `refresh()` on any run that lasts more than a couple of minutes.
+ */
+async function applyCookieToContext(ctx, cookie, url) {
+  const dom = new URL(url).hostname;
+  await ctx.addCookies(
+    cookie
+      .split(";")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((p) => {
+        const [n, ...r] = p.split("=");
+        const name = n.trim();
+        // httpOnly ONLY for __session. Clerk deliberately leaves __client_uat readable by JS —
+        // Nav.tsx's readClientSignedIn() uses it to resolve signed-in state before Clerk's client
+        // loads. Marking it httpOnly hides it from document.cookie and makes every authenticated
+        // capture render "Sign In / Get access →" over live premium content. That artifact has
+        // been mistaken for a Cloudflare cache bug more than once; it is not one.
+        return {
+          name,
+          value: r.join("=").trim(),
+          domain: dom,
+          path: "/",
+          httpOnly: name === "__session",
+          secure: true,
+          sameSite: "Lax",
+        };
+      })
+  );
+}
+
 module.exports = {
   createTunneledContext,
+  applyCookieToContext,
   proxyFetch,
   proxyFetchFollow,
   IPHONE_UA,

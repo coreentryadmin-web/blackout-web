@@ -1227,7 +1227,11 @@ function feedWallRail(
   showIntegrityRings = false,
   showEventGlyphs = false,
   wallEvents: readonly VectorWallEvent[] = [],
-  eventCursorTime?: number
+  eventCursorTime?: number,
+  /** The candle grid the rail projects buckets against — without it the rail can draw at most one
+   *  bead per candle regardless of the recorder's cadence (see vector-bead-x-projection). */
+  barTimes: readonly number[] = [],
+  intervalSec = 0
 ): void {
   if (!rail) return;
   let maxPct = 0;
@@ -1249,6 +1253,8 @@ function feedWallRail(
       wallEvents,
       eventLens: activeLens,
       eventCursorTime,
+      barTimes,
+      intervalSec,
     },
     visible && maxPct > 0
   );
@@ -2318,7 +2324,11 @@ export function VectorChart({
       enabled.has("bead-integrity-rings"),
       enabled.has("bead-event-glyphs"),
       wallEventsRef.current,
-      eventCursorTime
+      eventCursorTime,
+      // The candle grid the rail interpolates buckets against. `displayBarsFromMinute` is the same
+      // transform the series itself was fed, so bucket x lands inside the right candle.
+      displayBarsFromMinute(minuteBarsRef.current, timeframeRef.current).map((b) => b.time),
+      timeframeRef.current * 60
     );
     // Record what was actually drawn so the autoscale provider widens to reveal these exact beads
     // at every zoom level, then nudge a rescale (off-hours there is no tick to trigger it).
@@ -2946,7 +2956,9 @@ export function VectorChart({
         enabled.has("bead-integrity-rings"),
         enabled.has("bead-event-glyphs"),
         wallEventsRef.current,
-        cursorTime
+        cursorTime,
+        barTimes,
+        timeframeRef.current * 60
       );
       // Same zoom-stability guarantee in replay: widen the axis for the beads this frame drew.
       beadStrikesRef.current = { call: call.strikes, put: put.strikes };
