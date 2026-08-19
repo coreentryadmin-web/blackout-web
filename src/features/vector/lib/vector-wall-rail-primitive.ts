@@ -20,7 +20,8 @@ import {
   trailingRefs,
   rowPeakRefs,
   rowSwellMul,
-  beadHalfXCap,
+  rowStrengthHaloExtraPx,
+  rowStrengthHaloAlphaMul,
   beadRenderTuning,
   clampTuningToSpacing,
   closestRowGapPx,
@@ -148,8 +149,8 @@ type BandPt = {
   x: number;
   yTop: number;
   yBot: number;
-  /** Horizontal half-axis when vertical swell exceeds bar spacing (ellipse, not circle). */
-  halfX: number;
+  /** Row-relative strength [0,1] — drives core radius and strength-halo swell. */
+  rowSwell: number;
   a: number;
   emph: number;
   tier?: WallIntegrityTier;
@@ -193,14 +194,26 @@ class WallRailRenderer implements IPrimitivePaneRenderer {
           const emph = p.emph;
           const rMul = 1 + emph * kingBoost;
           const cy = (p.yTop + p.yBot) / 2;
-          const halfY = Math.max(minR, ((p.yBot - p.yTop) / 2) * rMul);
-          const halfX = Math.max(minR * 0.85, p.halfX * rMul);
+          const r = Math.max(minR, ((p.yBot - p.yTop) / 2) * rMul);
+          // Strength halo UNDER the core — both swell with row-relative strength; core stays round.
+          if (p.rowSwell > 0) {
+            const haloExtra = rowStrengthHaloExtraPx(p.rowSwell);
+            const haloR = r + haloExtra;
+            const haloA = Math.min(
+              0.45,
+              p.a * rowStrengthHaloAlphaMul(p.rowSwell) * 0.38
+            );
+            ctx.fillStyle = withA(b.color, haloA);
+            ctx.beginPath();
+            ctx.arc(p.x, cy, haloR, 0, Math.PI * 2);
+            ctx.fill();
+          }
           if (this._showIntegrityRings && p.tier) {
             const ring = haloRingForTier(p.tier);
-            const ringR = Math.max(minR + 1, Math.max(halfX, halfY) * (1.45 * ring.sizeMul));
+            const ringR = Math.max(minR + 1, r * (1.45 * ring.sizeMul));
             ctx.fillStyle = withA(b.color, Math.min(0.32, p.a * 0.22 * ring.alphaMul));
             ctx.beginPath();
-            ctx.ellipse(p.x, cy, ringR, ringR, 0, 0, Math.PI * 2);
+            ctx.arc(p.x, cy, ringR, 0, Math.PI * 2);
             ctx.fill();
           }
           const fillA =
@@ -209,23 +222,22 @@ class WallRailRenderer implements IPrimitivePaneRenderer {
               : p.a;
           ctx.fillStyle = withA(b.color, fillA);
           ctx.beginPath();
-          ctx.ellipse(p.x, cy, halfX, halfY, 0, 0, Math.PI * 2);
+          ctx.arc(p.x, cy, r, 0, Math.PI * 2);
           ctx.fill();
           if (emph > 0.05 && haloMul > 0) {
             ctx.fillStyle = withA(b.color, Math.min(0.22, p.a * 0.16) * emph * haloMul);
             ctx.beginPath();
-            ctx.ellipse(p.x, cy, halfX + (2 + emph * 2) * haloMul, halfY + (2 + emph * 2) * haloMul, 0, 0, Math.PI * 2);
+            ctx.arc(p.x, cy, r + (2 + emph * 2) * haloMul, 0, Math.PI * 2);
             ctx.fill();
           }
-          const outlineR = Math.max(halfX, halfY);
-          if (outlineR >= 2.2) {
+          if (r >= 2.2) {
             ctx.lineWidth = emph > 0.5 ? 1.25 : 1;
             ctx.strokeStyle = withA(
               b.color,
               Math.min(1, fillA + 0.04 + emph * 0.3 + (this._tuning.strokeAlphaBoost ?? 0))
             );
             ctx.stroke();
-          } else if ((this._tuning.strokeAlphaBoost ?? 0) > 0 && outlineR >= minR) {
+          } else if ((this._tuning.strokeAlphaBoost ?? 0) > 0 && r >= minR) {
             // Compare panes: tiny weak beads still get a crisp outline on #040407.
             ctx.lineWidth = 1;
             ctx.strokeStyle = withA(b.color, Math.min(1, p.a + (this._tuning.strokeAlphaBoost ?? 0)));
@@ -611,27 +623,27 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
         const mod = beadModulation(p.pct, prev ? prev.pct : null, refs[i] ?? null, maxPct);
         const glow = magnitudeGlowBoost(p.pct); // absolute-magnitude brightness (frame-independent)
         const rowPeak = rowPeaks[i] ?? 0;
-        // Vertical half = absolute share ladder × row-relative swell × velocity; horizontal half is
-        // capped so swell reads as HEIGHT (competitor) rather than widening the ribbon slab.
+        const rowSwell =
+          p.modeled === true || rowPeak <= 0 ? 0 : rowSwellMul(p.pct, rowPeak);
+        // Core bead radius = absolute share ladder × row swell × velocity (round dots, not ellipses).
         const target =
           targetHalfPx(p.pct, p.notional, maxPct, tuning, { rowPeakPct: rowPeak }) * mod.sizeMul;
         const key = beadKey(side, trail.strike, p.time);
         this._targetHalf.set(key, target);
         // Displayed half lags the target (eased by the rAF loop). Reduce-motion / first sight → snap
         // to target so a bead never appears at the wrong size; only a CHANGING target then eases.
-        let halfY: number;
+        let half: number;
         if (this._reduceMotion) {
-          halfY = target;
+          half = target;
         } else {
           const cur = this._easedHalf.get(key);
           if (cur == null) {
             this._easedHalf.set(key, target);
-            halfY = target;
+            half = target;
           } else {
-            halfY = cur;
+            half = cur;
           }
         }
-        const halfX = beadHalfXCap(halfY, barSpacingPx);
         const modeledScale = p.modeled === true ? (tuning.modeledAlphaScale ?? 0.26) : 1;
         // Recency, measured against the newest bucket ON THIS RAIL rather than wall-clock now: an
         // off-hours or replayed rail has no "now" to be old relative to, and using Date.now() there
@@ -656,7 +668,7 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
         const pEmph = p.time === liveTime ? liveEmph : wasKing ? 1 : 0;
         const tier =
           showIntegrityRings && tierByStrike ? tierByStrike.get(trail.strike) : undefined;
-        run.push({ x, yTop: y - halfY, yBot: y + halfY, halfX, a, emph: pEmph, tier });
+        run.push({ x, yTop: y - half, yBot: y + half, rowSwell, a, emph: pEmph, tier });
       }
       flush(pts.length - 1);
     };

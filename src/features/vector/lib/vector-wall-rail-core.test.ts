@@ -20,7 +20,8 @@ import {
   trailingRefs,
   rowPeakRefs,
   rowSwellMul,
-  beadHalfXCap,
+  rowStrengthHaloExtraPx,
+  rowStrengthHaloAlphaMul,
   ROW_SWELL_FLOOR,
   MIN_CLAMPED_HALF_RANGE_PX,
 } from "./vector-wall-rail-core";
@@ -600,9 +601,13 @@ test("row swell on targetHalfPx: a 4x pct drop yields at least 2x height ratio o
   assert.ok(ratio >= 2, `expected >=2x swell, got ${ratio.toFixed(2)}x (${strong}/${weak})`);
 });
 
-test("beadHalfXCap: vertical swell may exceed horizontal cap at dense bar spacing", () => {
-  const halfY = 5;
-  const halfX = beadHalfXCap(halfY, 5.4);
-  assert.ok(halfX < halfY, "horizontal axis stays narrower than vertical at 3m spacing");
-  assert.ok(halfX >= 1, "cap still leaves a drawable width");
+test("rowStrengthHaloExtraPx: grows with row swell, peak halo is widest", () => {
+  const weak = rowStrengthHaloExtraPx(ROW_SWELL_FLOOR);
+  const peak = rowStrengthHaloExtraPx(1);
+  assert.ok(peak > weak, "peak halo extends further than faded tail");
+  assert.ok(peak >= 6, "full-strength halo is visibly larger than core");
+});
+
+test("rowStrengthHaloAlphaMul: peak is bright, fade is a faint trace", () => {
+  assert.ok(rowStrengthHaloAlphaMul(1) > rowStrengthHaloAlphaMul(ROW_SWELL_FLOOR) * 2);
 });

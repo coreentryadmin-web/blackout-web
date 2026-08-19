@@ -154,8 +154,8 @@ export const MIN_CLAMPED_HALF_RANGE_PX = 1.5;
 /**
  * Running peak gamma share on one strike row, including the current bucket.
  *
- * Compares each bead to the strongest this wall has been **so far along the row** — the competitor
- * swell/fade read. Strictly historical: point i never sees pct from i+1.
+ * Compares each bead to the strongest this wall has been **so far along the row** — the temporal
+ * swell/fade read along one strike. Strictly historical: point i never sees pct from i+1.
  */
 export function rowPeakRefs(points: ReadonlyArray<{ pct: number }>): number[] {
   let peak = 0;
@@ -181,14 +181,27 @@ export function rowSwellMul(
 }
 
 /**
- * Cap horizontal bead radius so vertical swell does not widen the overlapping ribbon slab.
- * Vertical half (`halfY`) may exceed this; draw as an ellipse.
+ * Extra strength-halo radius beyond the core bead at full row-relative strength.
+ * The halo carries most of the temporal swell so the core stays a readable circle.
  */
-export function beadHalfXCap(halfY: number, barSpacingPx: number): number {
-  if (!(halfY > 0) || !Number.isFinite(halfY)) return halfY;
-  if (!(barSpacingPx > 0) || !Number.isFinite(barSpacingPx)) return halfY;
-  const cap = (barSpacingPx * 0.42) / 2;
-  return Math.min(halfY, Math.max(1, cap));
+export const ROW_HALO_EXTRA_MIN_PX = 1.2;
+export const ROW_HALO_EXTRA_MAX_PX = 7;
+
+/** Strength halo radius beyond core bead — grows with {@link rowSwellMul}. */
+export function rowStrengthHaloExtraPx(
+  rowSwell: number,
+  opts?: { minPx?: number; maxPx?: number }
+): number {
+  const minPx = opts?.minPx ?? ROW_HALO_EXTRA_MIN_PX;
+  const maxPx = opts?.maxPx ?? ROW_HALO_EXTRA_MAX_PX;
+  const t = Math.max(0, Math.min(1, rowSwell));
+  return minPx + t * (maxPx - minPx);
+}
+
+/** Strength halo opacity scales with row swell — peak = bright corona, fade = faint trace. */
+export function rowStrengthHaloAlphaMul(rowSwell: number, floor = 0.14): number {
+  const t = Math.max(0, Math.min(1, rowSwell));
+  return floor + t * (1 - floor);
 }
 
 /**
@@ -199,8 +212,8 @@ export function beadHalfXCap(halfY: number, barSpacingPx: number): number {
  * point: the previous absolute-$ ladder was calibrated on SPX and clamped 100% of META/TSLA beads
  * to a single size (measured 2026-08-17).
  *
- * When `rowPeakPct` is set, multiplies by {@link rowSwellMul} so a row visibly swells at its peak
- * and thins when the wall fades — the reference-product read members asked for (2026-08-19).
+ * When `rowPeakPct` is set, multiplies by {@link rowSwellMul} so the core bead and its strength
+ * halo swell at the row peak and taper when the wall fades (2026-08-19).
  *
  * `notional` is deliberately NO LONGER the primary channel. It is a real recorded quantity, but an
  * absolute one, and absolute dollars are not comparable across underlyings — which is exactly how
