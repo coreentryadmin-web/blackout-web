@@ -61,6 +61,17 @@ layer map and the false-negative record.
 
 **Competitor swell/fade (2026-08-19 screenshot).** Same class of bug as FINDINGS #2312/#2313 ("row shows wall existed, never WHEN it mattered") — fixes landed 2026-08-18 but visual sign-off still open; spacing budget can collapse size range to ~1px at 3m. See investigation doc § Competitor comparison.
 
+## 2026-08-19 — [FINDING, P1 member-visible] Desk-to-desk navigation felt stuck / required hard refresh — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Report** | Member: page-to-page navigation not smooth, appears frozen until hard refresh |
+| **Repro** | `scripts/audit/nav-desk-link-soak.mjs` — real Features `<Link>` clicks on prod. `/vector` URL updates in ~2s but body stays at nav-only chrome for 4–20s while RSC + heavy seed load; silent `DeskLoadingSkeleton` (no readable text) reads as a blank freeze. After Meridian deeplink toggles, raw `history.pushState`/`replaceState` desyncs App Router (same class as Night Hawk pre-#fix). |
+| **Root cause** | (1) Slow `force-dynamic` desk RSC + disabled prefetch with no visible in-flight feedback. (2) MeridianDesk URL writes bypassed `router.push`/`replace`, breaking subsequent `<Link>` nav. |
+| **Fix** | `MeridianDesk` → App Router URL sync + `meridian-desk-nav.test.ts`; `DeskLoadingSkeleton` embeds `PhosphorBoot` status copy; `meridian/loading.tsx`; nav bar indeterminate progress on route pending; tool links `prefetch={null}`. **`/vector` dropped SSR `loadVectorSeedProps`** — client two-phase bootstrap (same as SPX desk); nav soak `/vector` max TTFB was **43s → sub-second HTML**. **`auth-server`/`auth-access`** — `React.cache()` on `getSession`/`auth`; `requireTier` JWT tier/admin fast path (one session read, skip Clerk `getUser` on most navigations). Probe: `scripts/audit/site-latency-probe.mjs`. |
+
 ## 2026-08-18 — [FINDING, P0 member-visible] Every deploy purged the hashed build assets, killing hydration and freezing the whole desk — FIXED
 > **kind:** `FINDING`
 

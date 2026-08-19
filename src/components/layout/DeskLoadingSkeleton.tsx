@@ -1,10 +1,19 @@
 import { Skeleton } from "@/components/ui";
+import { PhosphorBoot } from "@/components/ui/loading/PhosphorBoot";
 
 /** Layout-matched desk route skeleton — shared by route loading.tsx files. */
-export function DeskLoadingSkeleton({ variant = "default" }: { variant?: "default" | "terminal" }) {
+export function DeskLoadingSkeleton({
+  variant = "default",
+  label = "Loading desk",
+}: {
+  variant?: "default" | "terminal";
+  /** Visible status copy — silent skeleton-only loaders read as a stuck blank page during slow RSC. */
+  label?: string;
+}) {
   if (variant === "terminal") {
     return (
-      <div className="mx-auto max-w-3xl space-y-4 px-4 py-8">
+      <div className="desk-route-loading mx-auto max-w-3xl space-y-4 px-4 py-8">
+        <PhosphorBoot label={label} />
         <Skeleton width="40%" height={28} rounded="md" />
         <Skeleton width="100%" height={420} rounded="2xl" />
       </div>
@@ -12,7 +21,8 @@ export function DeskLoadingSkeleton({ variant = "default" }: { variant?: "defaul
   }
 
   return (
-    <div className="space-y-4 px-3 py-4 md:px-5">
+    <div className="desk-route-loading space-y-4 px-3 py-4 md:px-5">
+      <PhosphorBoot label={label} />
       <div className="flex flex-wrap items-end justify-between gap-4 border-b border-white/[0.06] pb-6">
         <div className="space-y-2">
           <Skeleton width={120} height={12} rounded="sm" />

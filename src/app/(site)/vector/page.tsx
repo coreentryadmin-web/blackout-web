@@ -4,7 +4,6 @@ import { canAccessTool } from "@/lib/tool-access-server";
 import { ComingSoon } from "@/components/ComingSoon";
 import {
   VectorPageClient,
-  loadVectorSeedProps,
   normalizeVectorTicker,
   VECTOR_ORACLE_TICKERS,
 } from "@/features/vector";
@@ -26,15 +25,9 @@ export default async function VectorPage({ searchParams }: PageProps) {
   const { ticker: rawTicker, compare: compareRaw } = await searchParams;
   const ticker = normalizeVectorTicker(rawTicker);
 
-  // Shared seed loader (2026-07-13, member-directed desk consolidation): the SPX Slayer dashboard
-  // embeds this same Vector surface, so ALL seed logic (bars, wall scope, observed-rail merge,
-  // modeled-prefix backfill, empty-case seeding) lives in loadVectorSeedProps — one code path for
-  // both routes, zero drift. Preload the 0DTE recorded rail so the first paint shows the full
-  // intraday bead trail when the member opens 0DTE (SPX Slayer + /vector SPX).
-  const seed = await loadVectorSeedProps(ticker, {
-    seedDteHorizon: VECTOR_ORACLE_TICKERS.has(ticker) ? "0dte" : undefined,
-  });
-
+  // Client-hydrated seed (VectorPageClient) — same rule as SPX Slayer / SpxVectorEmbed.
+  // SSR loadVectorSeedProps blocked HTML 30–90s on cold Polygon reconstruct; navigation
+  // soak measured /vector max TTFB ~43s before this change.
   return (
     <Suspense
       fallback={
@@ -47,7 +40,7 @@ export default async function VectorPage({ searchParams }: PageProps) {
       }
     >
       <VectorPageClient
-        {...seed}
+        ticker={ticker}
         initialCompareRaw={compareRaw ?? null}
         defaultDteHorizon={VECTOR_ORACLE_TICKERS.has(ticker) ? "0dte" : "all"}
         defaultChartViewport="session"

@@ -69,10 +69,11 @@ export function IosAppTabBar({ lockedTools = [] }: { lockedTools?: ToolKey[] }) 
               )}
               <Link
                 href={tab.href}
-                prefetch={false}
+                prefetch={null}
                 scroll={false}
                 onClick={() => {
                   if (!active) iosHapticSelection();
+                  window.dispatchEvent(new Event("blackout:route-pending"));
                 }}
                 className={clsx(
                   "ios-app-tab-link",
