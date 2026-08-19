@@ -981,54 +981,47 @@ test("raising N is strictly additive — it can never REMOVE a row that N=3 drew
 // The member's own words are the spec: a bead every 5s is correct, and at session width "it looks
 // like a bar" — because there it should. The defect was that it still looked like a bar zoomed IN.
 
-test("displayBucketSec: a tight zoom coarsens the bucket so beads stay discrete", () => {
-  // The measured geometry that produced the ribbon: 3m candles at ~5.4px per bar.
-  const sec = displayBucketSec({
-    candleSec: 180,
-    barSpacingPx: 5.4,
-    minBucketSec: 5,
-    liveBeads: true,
-    strideP: 11,
-  });
-  // 11px of stride at 5.4px/bar is ~2 bars = ~367s, snapped up to a multiple of the 5s cadence.
-  assert.ok(sec >= 365 && sec % 5 === 0, `expected a coarse 5s-aligned bucket, got ${sec}`);
-  // The point of the whole change: far fewer beads than the 36-per-bar the constant asked for.
-  assert.ok(180 / sec < 1, "one bead must cover at least a full candle at this zoom");
-});
-
-test("displayBucketSec: zooming IN reveals detail, down to the recorded cadence", () => {
-  const wide = displayBucketSec({ candleSec: 60, barSpacingPx: 6, minBucketSec: 5, liveBeads: true, strideP: 11 });
-  const mid = displayBucketSec({ candleSec: 60, barSpacingPx: 30, minBucketSec: 5, liveBeads: true, strideP: 11 });
-  const deep = displayBucketSec({ candleSec: 60, barSpacingPx: 200, minBucketSec: 5, liveBeads: true, strideP: 11 });
-  assert.ok(wide > mid && mid > deep, `bucket must shrink as the member zooms in: ${wide}/${mid}/${deep}`);
-  // Never finer than what was actually recorded — inventing sub-cadence beads would be fabrication.
-  assert.equal(deep, 5, `deep zoom should reach the 5s recorded cadence, got ${deep}`);
-});
-
-test("displayBucketSec: never finer than the recorded cadence, at any zoom", () => {
-  for (const barSpacingPx of [1, 5.4, 12, 60, 400, 5000]) {
-    const sec = displayBucketSec({ candleSec: 60, barSpacingPx, minBucketSec: 5, liveBeads: true, strideP: 11 });
-    assert.ok(sec >= 5, `barSpacing ${barSpacingPx} produced a sub-cadence bucket ${sec}`);
+test("displayBucketSec: a live session draws the recorder's own cadence, at every zoom", () => {
+  // REPLACES #2321's pixel-stride tests, which pinned the defect as the spec. Those asserted that a
+  // 3m candle at ~5.4px should coarsen to a ~367s bucket — i.e. throw away 34 of every 36 recorded
+  // samples — and they passed the entire time the member was looking at one bead per 15 candles.
+  for (const candleSec of [60, 180, 300, 900]) {
+    assert.equal(
+      displayBucketSec({ candleSec, minBucketSec: 5, liveBeads: true }),
+      5,
+      `live beads must keep the 5s cadence on a ${candleSec}s candle`
+    );
   }
 });
 
-test("displayBucketSec: an unreadable zoom falls back to the previous constant behaviour", () => {
-  for (const bad of [Number.NaN, 0, -12, Number.POSITIVE_INFINITY]) {
-    const live = displayBucketSec({ candleSec: 180, barSpacingPx: bad, minBucketSec: 5, liveBeads: true, strideP: 11 });
-    assert.equal(live, 5, `live fallback should be the 5s floor, got ${live} for ${bad}`);
-    const hist = displayBucketSec({ candleSec: 180, barSpacingPx: bad, minBucketSec: 5, liveBeads: false, strideP: 11 });
-    assert.equal(hist, 180, `historical fallback should be the candle, got ${hist} for ${bad}`);
+test("displayBucketSec: the candle is the FLOOR, so a sub-cadence candle cannot over-sample", () => {
+  // A 1s candle (never shipped, but the bound must hold) must not ask for beads finer than the bar.
+  assert.equal(displayBucketSec({ candleSec: 1, minBucketSec: 5, liveBeads: true }), 1);
+});
+
+test("displayBucketSec: replay/historical frames collapse to the candle", () => {
+  assert.equal(displayBucketSec({ candleSec: 180, minBucketSec: 5, liveBeads: false }), 180);
+  assert.equal(displayBucketSec({ candleSec: 60, minBucketSec: 0, liveBeads: true }), 60,
+    "no recorded cadence to honour — fall back to the candle");
+});
+
+test("displayBucketSec: a nonsense candle still yields a usable bucket", () => {
+  for (const bad of [Number.NaN, 0, -12]) {
+    assert.equal(displayBucketSec({ candleSec: bad, minBucketSec: 5, liveBeads: true }), 5);
   }
 });
 
-test("bucketWallHistoryForInterval: the ribbon collapses to a countable number of beads", () => {
-  // One session-hour of 5s samples on one strike — 720 samples, which is what smeared.
+test("bucketWallHistoryForInterval: every recorded sample paints — the ribbon IS the render", () => {
+  // One session-hour of 5s samples on one strike. #2321 collapsed this to <20 beads on the theory
+  // that a continuous row is illegible; the member's reference product draws all 720, and a 5s
+  // cadence under a 3m candle is 36 samples per bar BY DESIGN. Bead SIZE adapts to available room
+  // (clampTuningToSpacing); bead COUNT is the data and is not a rendering knob.
   const history = Array.from({ length: 720 }, (_, i) =>
     ({ time: 1_700_000_000 + i * 5, walls: { callWalls: [{ strike: 100, pct: 5 }], putWalls: [] } }) as never
   );
-  const ribbon = bucketWallHistoryForInterval(history, 3, { minBucketSec: 5, liveBeads: true });
-  const beads = bucketWallHistoryForInterval(history, 3, { minBucketSec: 5, liveBeads: true, barSpacingPx: 5.4 });
-  assert.equal(ribbon.length, 720, "without a zoom the old constant bucket keeps every sample");
-  assert.ok(beads.length < 20, `an hour at tight zoom should be a handful of beads, got ${beads.length}`);
-  assert.ok(beads.length > 0, "it must not empty the rail");
+  const live = bucketWallHistoryForInterval(history, 3, { minBucketSec: 5, liveBeads: true });
+  assert.equal(live.length, 720, "a live rail keeps every recorded sample");
+  const historical = bucketWallHistoryForInterval(history, 3, { minBucketSec: 5, liveBeads: false });
+  // 3595s of tape crosses 21 three-minute bucket boundaries (the first and last are partial).
+  assert.equal(historical.length, 21, "a historical frame collapses to one bead per 3m candle");
 });
