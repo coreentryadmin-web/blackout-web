@@ -155,18 +155,28 @@ async function analyzeShot(shotPath) {
 }
 
 async function measureFrame(page, label, outPrefix) {
-  const box = await page.evaluate(() => {
-    let best = null;
-    for (const c of document.querySelectorAll("canvas")) {
-      const r = c.getBoundingClientRect();
-      if (r.width < 200 || r.height < 120) continue;
-      if (!best || r.width * r.height > best.width * best.height) {
-        best = { x: r.x, y: r.y, width: r.width, height: r.height };
+  // POLL for the canvas instead of trusting one fixed settle budget.
+  //
+  // MU and SMCI both reported "no chart canvas" on a run where three other ticker batches were
+  // competing for the same tunnel — and both render four healthy canvases with zero console errors
+  // when given room. A fixed wait turns harness contention into what reads as a product failure,
+  // which is the most expensive kind of wrong answer this harness can give.
+  let box = null;
+  for (let i = 0; i < 8 && !box; i++) {
+    box = await page.evaluate(() => {
+      let best = null;
+      for (const c of document.querySelectorAll("canvas")) {
+        const r = c.getBoundingClientRect();
+        if (r.width < 200 || r.height < 120) continue;
+        if (!best || r.width * r.height > best.width * best.height) {
+          best = { x: r.x, y: r.y, width: r.width, height: r.height };
+        }
       }
-    }
-    return best;
-  });
-  if (!box) return { label, error: "no chart canvas" };
+      return best;
+    });
+    if (!box) await page.waitForTimeout(4000);
+  }
+  if (!box) return { label, error: "no chart canvas after 32s of polling" };
   const shot = path.join(OUT, `${outPrefix}.png`);
   await page.screenshot({
     path: shot,

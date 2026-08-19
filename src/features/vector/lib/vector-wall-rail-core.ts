@@ -266,16 +266,26 @@ export const ROW_HALO_BAR_SPACING_FILL = 0.55;
 /**
  * Fraction of the ROW GAP that core bead + halo together may occupy at full swell.
  *
- * The counterpart to {@link ROW_HALO_BAR_SPACING_FILL} on the axis that matters for legibility.
- * Measured on prod during RTH before this existed: band thickness / nearest row gap ran a median
- * p90 of 0.64 and exceeded 1.0 on 15 of 21 frames (worst 1.58 on QQQ) — above 1.0 the bead is
- * thicker than the distance to its neighbour, so rows touch and the candles behind vanish.
+ * CALIBRATED FROM PIXELS, NOT FROM GEOMETRY (retuned 2026-08-19, second pass).
  *
- * 0.7 leaves ~30% of every slot as air. Not lower, because the whole point of the rail is that a
- * dominant wall READS as dominant, and squeezing the peak toward the floor trades this complaint
- * for the opposite one — which is the exact oscillation #2310 and #2244 already went through once.
+ * The first value here was 0.7, reasoned geometrically: leave 30% of each slot as air. Measured on
+ * prod after it shipped, SPX still slabbed — band thickness / row gap came back at p90 0.91, max
+ * 1.73. The geometric budget is not what the eye sees: a halo is drawn with alpha falloff, so its
+ * visible extent runs past its geometric radius and a 0.7 budget measures ~0.9 in pixels.
+ *
+ * Two independent causes made SPX worse rather than better across that deploy, and both are worth
+ * recording because either alone would have been misdiagnosed:
+ *   - the budget/measurement gap above; and
+ *   - the AUTO ladder step-up landing in the same release, which took SPX 3m from 20 rows to 22 and
+ *     the median row gap from 26px to 17px. A proportional budget holds its ratio, but the absolute
+ *     room per row shrank, so the same ratio reads thicker.
+ *
+ * 0.35 is set to land the MEASURED p90 near 0.45 given that ~1.3x falloff factor, against a
+ * reference implementation that runs visibly under 0.50. Re-derive it by re-running
+ * scripts/audit/vector-bead-thickness-probe.cjs rather than by reasoning about the radius — that
+ * is the whole lesson of this second pass.
  */
-export const ROW_HALO_ROW_GAP_FILL = 0.7;
+export const ROW_HALO_ROW_GAP_FILL = 0.35;
 
 /**
  * Strength halo radius beyond core bead — grows with row swell, fades to a trace.
@@ -573,10 +583,14 @@ export function maxPctByTime(
  */
 const BEAD_BAR_FILL = 2.4;
 
-/** Fraction of the ROW GAP (price-axis distance to the nearest neighbouring row) a bead's diameter
- *  may occupy. Deliberately about half: this is what keeps rows visibly SEPARATE — the property the
- *  reference product has and the slab render did not — and what stops beads burying the candles. */
-const BEAD_ROW_FILL = 0.55;
+/** Fraction of the ROW GAP (price-axis distance to the nearest neighbouring row) a bead's CORE
+ *  diameter may occupy. Trimmed 0.55 -> 0.42 on 2026-08-19 alongside ROW_HALO_ROW_GAP_FILL: with
+ *  the AUTO ladder now packing 22 rows onto an SPX 3m pane (median gap 17px, down from 26px), a
+ *  0.55 core alone left too little of the slot for the halo to add anything without the rows
+ *  fusing. Member, looking at the live SPX rail: "I think the size needs to be reduced .. its too
+ *  thick imo". Still well clear of BEAD_READABLE_MIN_HALF_PX, which floors the ceiling so this can
+ *  never collapse the size range it exists to preserve. */
+const BEAD_ROW_FILL = 0.42;
 
 /**
  * The clamped ceiling may never fall below this.
