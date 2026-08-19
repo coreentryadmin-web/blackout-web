@@ -70,6 +70,7 @@ import {
   SESSION_OVERVIEW_MAX_SPAN_PCT,
   filterStrikesNearSpot,
   clampPriceRangeSpan,
+  beadExtensionAllowed,
 } from "@/features/vector/lib/vector-price-range";
 import {
   scoreTopWalls,
@@ -3865,7 +3866,14 @@ export function VectorChart({
         // During a wheel-zoom cooldown, return the raw candle range WITHOUT extending
         // for walls/beads — this lets the member's scroll-zoom hold tight to the visible
         // candles instead of snapping back to the wide wall-inclusive band on every tick.
-        if (memberViewportLocked(chartUserPannedRef.current, wheelZoomCooldownRef.current)) {
+        //
+        // Gated on the WHEEL stamp alone, deliberately — NOT on memberViewportLocked, which also
+        // reads `chartUserPanned`. The intraday zoom presets set that flag programmatically and
+        // nothing clears it until a Session reset, so pressing STRUCTURE or LIVE used to disable
+        // this widening for the rest of the session: the axis collapsed to the candle band and
+        // every bead row outside it clipped. See beadExtensionAllowed for the measured before/after
+        // and for why the same collapse reads as "NVDA has one level, SPX has ten".
+        if (!beadExtensionAllowed(wheelZoomCooldownRef.current)) {
           return res;
         }
         const preset = intradayZoomPresetRef.current;
