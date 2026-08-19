@@ -12,6 +12,7 @@ import {
   executionTaxBps,
   isZeroDteMarkStale,
   ledgerDisplayPnlPct,
+  directionalClosedDisplayPnlPct,
   livePnlPctFor,
   pinnedLivePnlPct,
   reconcileLedgerLivePnlPct,
@@ -306,8 +307,14 @@ test("ledgerDisplayPnlPct: a stopped row with no trim tranches armed pins to PLA
 });
 
 test("ledgerDisplayPnlPct: META-class stopped runner with +87% peak returns trim-scale blend (~+6.67%)", () => {
-  const row = { status: "CLOSED", entry_premium: 3.15, last_mark: 1.57, peak_premium: 5.9, trough_premium: 1.57 };
+  // The policy is now STATED rather than assumed. This row is the real WS-10/WS-11 META case, which
+  // committed under trim_scale — so the blend is the correct read for it and the expected value is
+  // unchanged. Before the policy argument existed this same expectation was ALSO being applied to
+  // ratchet-committed rows, which is the defect: see the REGRESSION test below.
+  const row = { status: "CLOSED", entry_premium: 3.15, last_mark: 1.57, peak_premium: 5.9, trough_premium: 1.57, exitMode: "trim_scale" as const };
   assert.equal(ledgerDisplayPnlPct(row), 6.67);
+  // Same row, ratchet-committed: nothing was banked, so the stop is the result.
+  assert.equal(ledgerDisplayPnlPct({ ...row, exitMode: "ratchet" }), -50);
 });
 
 test("ledgerDisplayPnlPct: a non-stopped row derives from the mark (target/time-stop/live)", () => {
@@ -435,7 +442,8 @@ test("reconcileLedgerLivePnlPct: winning condor POSITIVE, breached condor NEGATI
     reconcileLedgerLivePnlPct({ is_condor: false, closed_reason: "stopped", entry_premium: 6.02, last_mark: 2.0, peak_premium: 6.5, trough_premium: 2.0 }),
     PLAN_RULES.stop_pct
   );
-  // META-class: peak +87% armed both trim tranches — as-managed blend, not −50%.
+  // META-class: peak +87% armed both trim tranches — as-managed blend, not −50%. The policy is now
+  // STATED: this row committed under trim_scale, which is what earns the blend.
   assert.equal(
     reconcileLedgerLivePnlPct({
       is_condor: false,
@@ -444,7 +452,72 @@ test("reconcileLedgerLivePnlPct: winning condor POSITIVE, breached condor NEGATI
       last_mark: 1.57,
       peak_premium: 5.9,
       trough_premium: 1.57,
+      exit_policy_at_commit: "trim_scale",
     }),
     6.67
   );
+});
+
+// ---------------------------------------------------------------------------
+// A STOPPED PLAY MUST NOT BE CREDITED WITH TRIM TRANCHES IT NEVER TOOK.
+//
+// `directionalClosedDisplayPnlPct` applied the trim-scale AS-MANAGED blend to every stopped
+// directional row whose latched peak cleared +20%, without asking which policy had managed it.
+// Not every row is on trim_scale: resolveExitModeForTier commits C-tier plays under RATCHET, and
+// ZERODTE_EXIT_MODE=ratchet is an operator kill-switch for all tiers. A ratchet row banks NOTHING
+// on the way up — that IS the difference between the policies — so crediting it a third at +20%
+// and a third at +50% invents exits the member was never guided to take.
+//
+// The arithmetic is the whole finding: peak >= +50% then stopped at -50% renders as
+// 1/3(+20) + 1/3(+50) + 1/3(-50) = +6.67%. A play that lost half its premium displays as a WINNER.
+// ---------------------------------------------------------------------------
+
+/** Peaked at +50% (arms both tranches), then stopped: trough at -50% of entry. */
+const STOPPED_AFTER_BIG_PEAK = {
+  status: "CLOSED" as const,
+  entry_premium: 1.0,
+  peak_premium: 1.5,
+  trough_premium: 0.5,
+  last_mark: 0.5,
+};
+
+test("REGRESSION: a stopped RATCHET-committed play shows the real -50%, not a fabricated +6.67%", () => {
+  const shown = directionalClosedDisplayPnlPct({ ...STOPPED_AFTER_BIG_PEAK, exitMode: "ratchet" });
+  assert.equal(shown, -50, "a ratchet row banks nothing on the way up — the stop is the result");
+  assert.ok(shown! < 0, "a play that lost half its premium must never display as a winner");
+});
+
+test("a stopped TRIM_SCALE-committed play still shows the as-managed blend", () => {
+  // Unchanged behaviour for the policy the blend was written for: 1/3@+20 + 1/3@+50 + 1/3@-50.
+  const shown = directionalClosedDisplayPnlPct({ ...STOPPED_AFTER_BIG_PEAK, exitMode: "trim_scale" });
+  assert.equal(shown, 6.67);
+});
+
+test("an UNKNOWN policy (legacy row, no commit-time pin) pins to the stop rather than guessing", () => {
+  // Of the two possible errors on a stopped play, understating it is the safe one. The mechanical
+  // pin is also a number the published methodology already defines and reports.
+  assert.equal(directionalClosedDisplayPnlPct({ ...STOPPED_AFTER_BIG_PEAK, exitMode: null }), -50);
+  assert.equal(directionalClosedDisplayPnlPct(STOPPED_AFTER_BIG_PEAK), -50, "absent field behaves as unknown");
+});
+
+test("a stopped play that never armed a tranche is -50 under EVERY policy", () => {
+  const smallPeak = { ...STOPPED_AFTER_BIG_PEAK, peak_premium: 1.05 }; // +5% peak, no tranche armed
+  for (const exitMode of ["ratchet", "trim_scale", null] as const) {
+    assert.equal(directionalClosedDisplayPnlPct({ ...smallPeak, exitMode }), -50, `exitMode=${exitMode}`);
+  }
+});
+
+test("reconcileLedgerLivePnlPct honours the row's frozen policy end-to-end", () => {
+  const base = {
+    is_condor: false,
+    closed_reason: "stopped" as const,
+    entry_premium: 1.0,
+    last_mark: 0.5,
+    peak_premium: 1.5,
+    trough_premium: 0.5,
+    status: "CLOSED",
+  };
+  assert.equal(reconcileLedgerLivePnlPct({ ...base, exit_policy_at_commit: "ratchet" }), -50);
+  assert.equal(reconcileLedgerLivePnlPct({ ...base, exit_policy_at_commit: "trim_scale" }), 6.67);
+  assert.equal(reconcileLedgerLivePnlPct({ ...base, exit_policy_at_commit: null }), -50);
 });

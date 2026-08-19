@@ -243,7 +243,32 @@ export function peakPnlPct(entryPremium: number | null, peakPremium: number | nu
   return pinnedLivePnlPct(entryPremium, peakPremium);
 }
 
-/** Directional closed-row P&L: trim-scale blend when peak armed tranches, else mechanical stop pin. */
+/**
+ * Directional closed-row P&L: the trim-scale AS-MANAGED blend ONLY when the row was actually
+ * MANAGED under trim_scale; otherwise the mechanical stop pin.
+ *
+ * WHY THE POLICY ARGUMENT EXISTS. This function used to apply the blend to every stopped
+ * directional row whose latched peak happened to clear +20%, without asking which exit policy had
+ * managed it. Not every row is on trim_scale: `resolveExitModeForTier` commits C-tier plays under
+ * RATCHET, and `ZERODTE_EXIT_MODE=ratchet` is an operator kill-switch for all tiers. A ratchet row
+ * banks NOTHING on the way up — that is the entire difference between the two policies — so
+ * crediting it ⅓@+20% and ⅓@+50% invents partial exits the member was never guided to take.
+ *
+ * The arithmetic makes the size of that plain: a row that peaked ≥ +50% and then stopped at −50%
+ * renders as ⅓(+20) + ⅓(+50) + ⅓(−50) = **+6.67%**. A play that lost half its premium is displayed
+ * as a WINNER, wearing a P&L the member could not have achieved under the policy their play was
+ * committed with.
+ *
+ * `exitMode` is passed in rather than read here so this module stays pure and free of the env/DB
+ * shell — the caller resolves it from the row's own frozen `entry_context.exit_policy_at_commit`
+ * (`readFrozenExitMode`), the field WS/Q13 added precisely so a row is always judged under the
+ * policy it was COMMITTED with rather than whatever the env says later.
+ *
+ * UNKNOWN POLICY PINS TO THE STOP, DELIBERATELY. A legacy row predating the pin returns null from
+ * `readFrozenExitMode`. Rather than guess, this pins to the mechanical −50%. Of the two possible
+ * errors on a stopped play, understating it is the safe one and overstating it is not — and the
+ * mechanical pin is already a number the published methodology defines and reports.
+ */
 export function directionalClosedDisplayPnlPct(row: {
   status?: string | null;
   entry_premium: number | null;
@@ -252,6 +277,8 @@ export function directionalClosedDisplayPnlPct(row: {
   last_mark: number | null;
   /** Board path: closed_reason already classified this row as stopped. */
   force_stopped?: boolean;
+  /** Frozen exit policy for THIS row. Only "trim_scale" may claim banked tranches. */
+  exitMode?: "ratchet" | "trim_scale" | null;
 }): number | null {
   const isStopped =
     row.force_stopped === true ||
@@ -264,6 +291,8 @@ export function directionalClosedDisplayPnlPct(row: {
   if (!isStopped) {
     return pinnedLivePnlPct(row.entry_premium, row.last_mark);
   }
+  // Only a row COMMITTED under trim_scale may be credited with banked tranches.
+  if (row.exitMode !== "trim_scale") return PLAN_RULES.stop_pct;
   const peakPct = peakPnlPct(row.entry_premium, row.peak_premium);
   const managed = trimScaleBlendedPnlAtStop(peakPct, PLAN_RULES.stop_pct);
   return managed ?? PLAN_RULES.stop_pct;
@@ -277,6 +306,8 @@ export function ledgerDisplayPnlPct(row: {
   last_mark: number | null;
   peak_premium: number | null;
   trough_premium: number | null;
+  /** Frozen exit policy for THIS row — see directionalClosedDisplayPnlPct. */
+  exitMode?: "ratchet" | "trim_scale" | null;
 }): number | null {
   if (row.status === "CLOSED") return directionalClosedDisplayPnlPct(row);
   if (closedStopReason(row) === "stopped") return PLAN_RULES.stop_pct;
@@ -297,13 +328,15 @@ export function ledgerDisplayPnlPct(row: {
  */
 export function reconcileLedgerLivePnlPct(row: {
   is_condor: boolean;
-  /** "stopped" triggers trim-scale blend when peak armed tranches; else mechanical stop pin. */
+  /** "stopped" triggers the trim-scale blend ONLY when exitMode is "trim_scale"; else stop pin. */
   closed_reason: string | null;
   entry_premium: number | null;
   last_mark: number | null;
   peak_premium?: number | null;
   trough_premium?: number | null;
   status?: string | null;
+  /** Frozen exit policy for THIS row — see directionalClosedDisplayPnlPct. */
+  exit_policy_at_commit?: "ratchet" | "trim_scale" | null;
 }): number | null {
   if (row.is_condor) return condorSellerPnlPct(row.entry_premium, row.last_mark);
   if (row.closed_reason === "stopped") {
@@ -313,6 +346,7 @@ export function reconcileLedgerLivePnlPct(row: {
       trough_premium: row.trough_premium ?? null,
       last_mark: row.last_mark,
       force_stopped: true,
+      exitMode: row.exit_policy_at_commit ?? null,
     });
   }
   return pinnedLivePnlPct(row.entry_premium, row.last_mark);
