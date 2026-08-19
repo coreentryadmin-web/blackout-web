@@ -7,32 +7,45 @@
  * measurement nobody has checked is worth no more than the visualization it was built to check.
  */
 
+/** Absolute floor for "painted, not chart ground". Low on purpose — the rail's fill-alpha floor is
+ *  0.25, so a weak bead over near-black sits in the 50s. An absolute gate here is what made the
+ *  first version blind to dim beads. */
+const DIM_FLOOR = 32;
+
 /**
  * Is this pixel part of a bead?
  *
- * Beads are drawn in the lens colours — cyan/teal for calls, red/rose for puts — over a near-black
- * chart ground, and the candles themselves are green/red too. Two rules separate them:
+ * THE COLOURS ARE THE WHOLE POINT (corrected 2026-08-19). The intraday GEX lens draws the rail in
+ * AMBER for calls and VIOLET for puts:
  *
- *  1. SATURATION + BRIGHTNESS floor. The chart ground and its gridlines are dark and near-grey;
- *     a bead pixel is both brighter and far more saturated than either.
- *  2. CHANNEL DOMINANCE. A call bead is blue-and-green dominant with LOW red (cyan); a put bead is
- *     red dominant. A green candle body is green-dominant with low blue, which is why the call test
- *     requires blue to be comparable to green rather than merely "not red" — without that, every
- *     green candle in the session counts as a bead and the size distribution is measured off the
- *     tape instead of the rail.
+ *     CALL_WALL_COLOR = "#ffd60a"   (255, 214,  10)
+ *     PUT_WALL_COLOR  = "#d97bff"   (217, 123, 255)
+ *
+ * The first version of this file tested for CYAN calls and RED puts. Neither is a bead colour on
+ * this surface — cyan is the GAMMA FLIP guide (`#22d3ee`) and red is a DOWN CANDLE. So the audit was
+ * not measuring the rail at all; it clustered the flip line and candle bodies and reported their
+ * geometry as bead size. Every count, radius and ratio it produced before this fix is void.
+ *
+ * Both tests are RATIOS so they hold across the whole fill-alpha range (0.25-0.98) — an absolute
+ * channel threshold is precisely what discarded dim beads before:
+ *
+ *   amber : red and green far above blue, red >= green
+ *           -> a GREEN candle fails (low red); a DOWN candle fails (low green)
+ *   violet: blue above green, red above green, blue comparable to red
+ *           -> the cyan flip line fails (green exceeds red); a red candle fails (low blue)
+ *
+ * VEX lens (`#7dd3fc` / `#fb7185`) is deliberately NOT matched: the desk opens on GEX, and silently
+ * accepting a second palette would let a run measure a different lens than it reports.
  */
-function classifyPixel(r, g, b, a) {
+function classifyPixel(r, g, b, a, dimFloor = DIM_FLOOR) {
   if (a < 40) return null;
   const max = Math.max(r, g, b);
+  if (max < dimFloor) return null;
   const min = Math.min(r, g, b);
-  if (max < 70) return null; // chart ground / gridlines
-  const sat = (max - min) / (max || 1);
-  if (sat < 0.35) return null; // grey chrome: axis labels, crosshair, text
+  if ((max - min) / (max || 1) < 0.28) return null; // grey chrome: axis text, crosshair
 
-  // Call beads: cyan family — blue AND green both well above red.
-  if (b > r * 1.35 && g > r * 1.15 && b > 90) return "call";
-  // Put beads: red family — red clearly above both others.
-  if (r > g * 1.35 && r > b * 1.35 && r > 90) return "put";
+  if (r > b * 2.2 && g > b * 1.8 && r >= g * 0.95) return "call";
+  if (b > g * 1.5 && r > g * 1.25 && b > r * 0.85) return "put";
   return null;
 }
 
@@ -62,6 +75,7 @@ function clusterBeadPixels(data, width, height, channels = 4) {
 
   const seen = new Uint8Array(width * height);
   const clusters = [];
+  const merged = [];
   const stack = [];
   for (let start = 0; start < kind.length; start++) {
     if (!kind[start] || seen[start]) continue;
@@ -109,7 +123,14 @@ function clusterBeadPixels(data, width, height, channels = 4) {
     // counting those would inflate the bead count AND flatten the size distribution toward one
     // value — the exact failure this audit exists to detect, so it must not create it itself.
     const aspect = Math.max(w, h) / Math.max(1, Math.min(w, h));
-    if (aspect > 4) continue;
+    if (aspect > 4) {
+      // A long thin run is EITHER a price line OR a row of beads that has merged into a ribbon.
+      // Silently dropping it hides the second case, which at a wide zoom is the NORMAL appearance
+      // of a 5-second bead cadence compressed into a session — not a defect. Record it so a run
+      // reports "this zoom is too wide to resolve beads" instead of "there are almost no beads".
+      merged.push({ side: side === 1 ? "call" : "put", area, width: w, height: h });
+      continue;
+    }
     clusters.push({
       side: side === 1 ? "call" : "put",
       area,
@@ -122,6 +143,7 @@ function clusterBeadPixels(data, width, height, channels = 4) {
       y: minY + h / 2,
     });
   }
+  clusters.mergedRuns = merged;
   return clusters;
 }
 
