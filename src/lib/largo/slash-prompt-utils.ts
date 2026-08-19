@@ -4,6 +4,7 @@
  */
 
 import type { LargoSlashCommand } from "@/lib/largo/slash-commands";
+import type { SlashSubmoduleItem } from "@/lib/largo/slash-submodules";
 
 export type SlashPrompt = {
   id: string;
@@ -21,6 +22,8 @@ export type SlashPromptsPayload = {
   command: string;
   as_of: string;
   prompts: SlashPrompt[];
+  /** Stable submodule catalog for Modules tab. */
+  modules: SlashSubmoduleItem[];
   /** Open desk in browser — secondary action, not primary. */
   href: string | null;
 };

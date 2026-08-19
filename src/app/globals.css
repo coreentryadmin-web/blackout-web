@@ -6057,6 +6057,45 @@ html.product-shell .nav-mega {
     color: #7dd3fc;
   }
 
+  .largo-slash-prompts-tabs {
+    display: flex;
+    gap: 0.25rem;
+    padding: 0.35rem 0.75rem 0.25rem;
+    border-bottom: 1px solid rgba(34, 211, 238, 0.1);
+  }
+
+  .largo-slash-tab {
+    padding: 0.25rem 0.55rem;
+    font-family: var(--font-jetbrains, monospace);
+    font-size: 9px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: #7dd3fc;
+    background: transparent;
+    border: 1px solid rgba(34, 211, 238, 0.15);
+    border-radius: 0.35rem;
+    cursor: pointer;
+  }
+
+  .largo-slash-tab-active {
+    color: #fff;
+    border-color: rgba(34, 211, 238, 0.45);
+    background: rgba(34, 211, 238, 0.12);
+  }
+
+  .largo-slash-module-id {
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #22d3ee;
+  }
+
+  .largo-slash-module-item .largo-slash-prompt-hint {
+    font-size: 10px;
+    color: #bae6fd;
+    opacity: 0.85;
+  }
+
   .largo-slash-prompts-list {
     margin: 0;
     padding: 0.25rem 0;
@@ -6250,6 +6289,16 @@ html.product-shell .nav-mega {
     font-size: 11px;
     font-weight: 600;
     color: #e0f2fe;
+  }
+
+  .largo-desk-scope-submodule {
+    color: #22d3ee;
+    font-weight: 500;
+  }
+
+  .largo-desk-scope-ticker {
+    color: #7dd3fc;
+    font-weight: 500;
   }
 
   .largo-desk-scope-clear {

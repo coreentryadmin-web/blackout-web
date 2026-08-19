@@ -556,6 +556,7 @@ export async function queryLargoStream(
   actions?: import("@/lib/largo/largo-actions").LargoAction[];
   depth?: "quick" | "deep";
   desk_scope?: string | null;
+  desk_scope_args?: import("@/lib/largo/desk-scope").DeskSlashArgs | null;
   mini_panel?: string | null;
 }> {
   const abort = new AbortController();
@@ -643,6 +644,7 @@ export async function queryLargoStream(
     actions?: import("@/lib/largo/largo-actions").LargoAction[];
     depth?: "quick" | "deep";
     desk_scope?: string | null;
+    desk_scope_args?: import("@/lib/largo/desk-scope").DeskSlashArgs | null;
     mini_panel?: string | null;
   };
   let result: LargoDone | null = null;
@@ -695,6 +697,7 @@ export async function queryLargoStream(
             actions: event.actions,
             depth: event.depth,
             desk_scope: event.desk_scope ?? null,
+            desk_scope_args: event.desk_scope_args ?? null,
             mini_panel: event.mini_panel ?? null,
           };
         }

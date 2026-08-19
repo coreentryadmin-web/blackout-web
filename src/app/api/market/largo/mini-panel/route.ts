@@ -13,12 +13,13 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const desk = String(url.searchParams.get("desk") ?? "").trim();
   const ticker = String(url.searchParams.get("ticker") ?? "").trim() || undefined;
+  const submodule = String(url.searchParams.get("submodule") ?? "").trim() || undefined;
 
   if (!desk) {
     return NextResponse.json({ error: "desk is required" }, { status: 400 });
   }
 
-  const panel = await fetchMiniPanelPayload({ desk, ticker });
+  const panel = await fetchMiniPanelPayload({ desk, ticker, submodule });
   if (!panel) {
     return NextResponse.json({ error: "unknown desk" }, { status: 404 });
   }

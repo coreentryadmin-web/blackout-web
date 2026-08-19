@@ -29,6 +29,7 @@ import { LargoDeskScopeBanner } from "./LargoDeskScopeBanner";
 import { LargoProactiveComposer } from "./LargoProactiveComposer";
 import { parseDeskSlashArgs } from "@/lib/largo/desk-scope";
 import { slashArgsFromInput } from "@/lib/largo/slash-prompt-utils";
+import type { SlashSubmoduleItem } from "@/lib/largo/slash-submodules";
 import type { LargoSlashCommand } from "@/lib/largo/slash-commands";
 
 const INPUT_PLACEHOLDER = "Type / for desk commands — SPX, flow, thermal, vector…";
@@ -82,6 +83,8 @@ export function LargoTerminal({
     setChartGuide,
     activeDeskScope,
     setActiveDeskScope,
+    activeDeskScopeArgs,
+    setActiveDeskScopeArgs,
   } = useLargoChat();
 
   const router = useRouter();
@@ -104,15 +107,24 @@ export function LargoTerminal({
 
   useIosKeyboardInset(nativeShell);
 
-  function askFromSlash(question: string, cmd?: LargoSlashCommand | null) {
+  function askFromSlash(
+    question: string,
+    cmd?: LargoSlashCommand | null,
+    submodule?: string | null
+  ) {
     const desk = cmd ?? slash.activeDesk;
     const args = desk ? slashArgsFromInput(input, desk.command) : "";
+    const parsed = desk ? parseDeskSlashArgs(args, desk.command) : parseDeskSlashArgs(args);
     void runQuery(question, {
       deskScope: desk?.command ?? null,
-      deskScopeArgs: parseDeskSlashArgs(args),
+      deskScopeArgs: submodule ? { ...parsed, submodule } : parsed,
     });
     setInput("");
     slash.clearDesk();
+  }
+
+  function askFromModule(mod: SlashSubmoduleItem) {
+    askFromSlash(mod.exampleQuestion, slash.activeDesk, mod.id);
   }
 
   function submitSlashOrQuery(text: string) {
@@ -257,6 +269,7 @@ export function LargoTerminal({
                       onFollowup={(q) => void runQuery(q, { deskScope: activeDeskScope })}
                       followups={msg.followups}
                       deskScope={msg.deskScope}
+                      deskScopeArgs={msg.deskScopeArgs}
                       miniPanel={msg.miniPanel}
                       ticker={activeTicker}
                     />
@@ -362,8 +375,12 @@ export function LargoTerminal({
 
         <LargoDeskScopeBanner
           deskScope={activeDeskScope}
+          submodule={activeDeskScopeArgs?.submodule}
           ticker={activeTicker}
-          onClear={() => setActiveDeskScope(null)}
+          onClear={() => {
+            setActiveDeskScope(null);
+            setActiveDeskScopeArgs(null);
+          }}
         />
 
         {(attachments.length > 0 || attachError) && (
@@ -446,11 +463,15 @@ export function LargoTerminal({
         >
           <div className="relative flex-1 largo-input-wrap">
             <LargoSlashPromptsMenu
-              open={Boolean(slash.activeDesk && slash.promptsLoading && !loading && hydrated)}
+              open={Boolean(slash.activeDesk && !loading && hydrated)}
               payload={slash.promptPayload}
               loading={slash.promptsLoading}
+              tab={slash.panelTab}
+              onTabChange={slash.setPanelTab}
+              modules={slash.moduleMatches}
               prompts={slash.promptMatches}
               activeIndex={slash.promptIndex}
+              onPickModule={askFromModule}
               onPick={(p) => askFromSlash(p.question, slash.activeDesk)}
               onHover={slash.setPromptIndex}
               onClose={() => {
@@ -475,9 +496,15 @@ export function LargoTerminal({
               onChange={(e) => slash.onInputChange(e.target.value)}
               onKeyDown={(e) => {
                 const result = slash.handleKeyDown(e);
-                if (result === "prompt-pick" && slash.highlightedPrompt) {
-                  askFromSlash(slash.highlightedPrompt.question);
-                  return;
+                if (result === "prompt-pick") {
+                  if (slash.panelTab === "modules" && slash.highlightedModule) {
+                    askFromModule(slash.highlightedModule);
+                    return;
+                  }
+                  if (slash.highlightedPrompt) {
+                    askFromSlash(slash.highlightedPrompt.question);
+                    return;
+                  }
                 }
                 if (result === "handled") return;
               }}

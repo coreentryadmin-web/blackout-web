@@ -5,6 +5,8 @@
 
 import { fmtPremium } from "@/lib/fmt-money";
 import type { LargoSlashCommand } from "@/lib/largo/slash-commands";
+import { submoduleItemsForDesk } from "@/lib/largo/slash-submodules";
+import { deskScopeConfig } from "@/lib/largo/desk-scope";
 export type { SlashPrompt, SlashPromptsPayload } from "@/lib/largo/slash-prompt-utils";
 import type { SlashPrompt, SlashPromptsPayload } from "@/lib/largo/slash-prompt-utils";
 
@@ -400,8 +402,12 @@ export async function buildSlashPromptsForDesk(
       as_of: new Date().toISOString(),
       href: null,
       prompts: promptCommandAsSlashPrompt(cmd),
+      modules: [],
     };
   }
+
+  const defaultTicker = deskScopeConfig(desk)?.defaultTicker ?? "SPX";
+  const modules = submoduleItemsForDesk(desk, defaultTicker);
 
   let prompts: SlashPrompt[] = [];
   switch (desk) {
@@ -447,6 +453,7 @@ export async function buildSlashPromptsForDesk(
     as_of: new Date().toISOString(),
     href,
     prompts,
+    modules,
   };
 }
 

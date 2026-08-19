@@ -20,6 +20,7 @@ import { largoAnswerToEnvelope } from "@/features/largo/answer/answer-format";
 import { proseSections } from "@/features/largo/answer/section-policy";
 import { BieScenarioCards } from "@/features/largo/answer/BieScenarioCards";
 import { questionWantsSocialContentPack } from "@/lib/largo/desk-prompts";
+import type { DeskSlashArgs } from "@/lib/largo/desk-scope";
 
 function wantsLargoShareRow(
   streaming: boolean,
@@ -65,6 +66,7 @@ export function LargoAnswerMessage({
   followups,
   nativeFollowups = false,
   deskScope,
+  deskScopeArgs,
   miniPanel,
 }: {
   content: string;
@@ -86,6 +88,7 @@ export function LargoAnswerMessage({
   followups?: string[];
   nativeFollowups?: boolean;
   deskScope?: string | null;
+  deskScopeArgs?: DeskSlashArgs | null;
   miniPanel?: string | null;
 }) {
   const fallback = <LargoMessageBody content={content} className={className} />;
@@ -210,7 +213,11 @@ export function LargoAnswerMessage({
         <div className="largo-answer-with-panel">
           <div className="largo-answer-main">{fallback}</div>
           {!streaming && deskScope && miniPanel && miniPanel !== "generic" && (
-            <LargoDeskMiniPanel desk={deskScope} ticker={ticker} />
+            <LargoDeskMiniPanel
+              desk={deskScope}
+              ticker={ticker}
+              submodule={deskScopeArgs?.submodule}
+            />
           )}
         </div>
         {shareRow}
@@ -228,7 +235,11 @@ export function LargoAnswerMessage({
           <BieAnswerBoundary fallback={<>{fallback}{shareRow}</>}>{rich}</BieAnswerBoundary>
         </div>
         {!streaming && deskScope && miniPanel && miniPanel !== "generic" && (
-          <LargoDeskMiniPanel desk={deskScope} ticker={ticker} />
+          <LargoDeskMiniPanel
+            desk={deskScope}
+            ticker={ticker}
+            submodule={deskScopeArgs?.submodule}
+          />
         )}
       </div>
       {!streaming && followups && followups.length > 0 && onFollowup && (

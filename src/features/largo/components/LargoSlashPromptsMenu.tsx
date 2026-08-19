@@ -2,15 +2,21 @@
 
 import { clsx } from "clsx";
 import { ExternalLink, X } from "lucide-react";
-import type { SlashPrompt } from "@/lib/largo/slash-prompt-utils";
-import type { SlashPromptsPayload } from "@/lib/largo/slash-prompt-utils";
+import type { SlashPrompt, SlashPromptsPayload } from "@/lib/largo/slash-prompt-utils";
+import type { SlashSubmoduleItem } from "@/lib/largo/slash-submodules";
+
+export type SlashPanelTab = "modules" | "live";
 
 export function LargoSlashPromptsMenu({
   open,
   payload,
   loading,
+  tab,
+  onTabChange,
+  modules,
   prompts,
   activeIndex,
+  onPickModule,
   onPick,
   onHover,
   onClose,
@@ -20,8 +26,12 @@ export function LargoSlashPromptsMenu({
   open: boolean;
   payload: SlashPromptsPayload | null | undefined;
   loading: boolean;
+  tab: SlashPanelTab;
+  onTabChange: (tab: SlashPanelTab) => void;
+  modules: SlashSubmoduleItem[];
   prompts: SlashPrompt[];
   activeIndex: number;
+  onPickModule: (mod: SlashSubmoduleItem) => void;
   onPick: (prompt: SlashPrompt) => void;
   onHover: (index: number) => void;
   onClose: () => void;
@@ -29,6 +39,10 @@ export function LargoSlashPromptsMenu({
   native?: boolean;
 }) {
   if (!open) return null;
+
+  const activeList = tab === "modules" ? modules : prompts;
+  const hasModules = modules.length > 0;
+  const hasLive = prompts.length > 0 || loading;
 
   return (
     <div
@@ -60,41 +74,91 @@ export function LargoSlashPromptsMenu({
         </div>
       </div>
 
-      {loading && !prompts.length && (
+      {hasModules && (
+        <div className="largo-slash-prompts-tabs" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "modules"}
+            className={clsx("largo-slash-tab", tab === "modules" && "largo-slash-tab-active")}
+            onClick={() => onTabChange("modules")}
+          >
+            Modules
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "live"}
+            className={clsx("largo-slash-tab", tab === "live" && "largo-slash-tab-active")}
+            onClick={() => onTabChange("live")}
+          >
+            Live
+          </button>
+        </div>
+      )}
+
+      {tab === "live" && loading && !prompts.length && (
         <p className="largo-slash-prompts-loading font-mono">Pulling live desk reads…</p>
       )}
 
-      {!loading && !prompts.length && (
+      {tab === "live" && !loading && !prompts.length && !hasModules && (
         <p className="largo-slash-prompts-loading font-mono">No live prompts — type your question and send.</p>
       )}
 
-      {prompts.length > 0 && (
+      {tab === "modules" && !modules.length && (
+        <p className="largo-slash-prompts-loading font-mono">Type a question or pick Live prompts.</p>
+      )}
+
+      {activeList.length > 0 && (
         <ul className="largo-slash-prompts-list">
-          {prompts.map((p, i) => (
-            <li key={p.id}>
-              <button
-                type="button"
-                role="option"
-                aria-selected={i === activeIndex}
-                className={clsx(
-                  "largo-slash-prompt-item",
-                  i === activeIndex && "largo-slash-prompt-item-active"
-                )}
-                onMouseEnter={() => onHover(i)}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => onPick(p)}
-              >
-                <span className="largo-slash-prompt-label font-syne">{p.label}</span>
-                {p.live && <span className="largo-slash-prompt-live font-mono">{p.live}</span>}
-                {p.hint && !p.live && <span className="largo-slash-prompt-hint">{p.hint}</span>}
-              </button>
-            </li>
-          ))}
+          {tab === "modules"
+            ? modules.map((m, i) => (
+                <li key={m.id}>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={i === activeIndex}
+                    className={clsx(
+                      "largo-slash-prompt-item largo-slash-module-item",
+                      i === activeIndex && "largo-slash-prompt-item-active"
+                    )}
+                    onMouseEnter={() => onHover(i)}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => onPickModule(m)}
+                  >
+                    <span className="largo-slash-prompt-label font-syne">{m.label}</span>
+                    <span className="largo-slash-module-id font-mono">{m.id}</span>
+                    <span className="largo-slash-prompt-hint">{m.description}</span>
+                  </button>
+                </li>
+              ))
+            : prompts.map((p, i) => (
+                <li key={p.id}>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={i === activeIndex}
+                    className={clsx(
+                      "largo-slash-prompt-item",
+                      i === activeIndex && "largo-slash-prompt-item-active"
+                    )}
+                    onMouseEnter={() => onHover(i)}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => onPick(p)}
+                  >
+                    <span className="largo-slash-prompt-label font-syne">{p.label}</span>
+                    {p.live && <span className="largo-slash-prompt-live font-mono">{p.live}</span>}
+                    {p.hint && !p.live && <span className="largo-slash-prompt-hint">{p.hint}</span>}
+                  </button>
+                </li>
+              ))}
         </ul>
       )}
 
       <p className="largo-slash-menu-hint font-mono">
-        ↑↓ pick a question · Enter ask · type to filter · Esc close
+        {hasModules
+          ? "↑↓ pick · Tab switch Modules/Live · Enter ask · Esc close"
+          : "↑↓ pick a question · Enter ask · type to filter · Esc close"}
       </p>
     </div>
   );

@@ -20,7 +20,10 @@ describe("parseDeskSlashArgs", () => {
     assert.deepEqual(parseDeskSlashArgs("compare mag7"), { mode: "compare-mag7" });
   });
   it("parses gate trace", () => {
-    assert.deepEqual(parseDeskSlashArgs("gate trace"), { mode: "gate-trace" });
+    assert.deepEqual(parseDeskSlashArgs("gate trace", "spx-slayer"), {
+      mode: "gate-trace",
+      submodule: "gates",
+    });
   });
   it("parses watch tickers", () => {
     assert.deepEqual(parseDeskSlashArgs("watch NVDA SPY"), {

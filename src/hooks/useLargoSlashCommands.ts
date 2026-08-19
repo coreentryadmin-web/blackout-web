@@ -7,7 +7,6 @@ import {
   largoSlashQueryFromInput,
   parseLargoSlashInput,
   type LargoSlashCommand,
-  type SlashMatch,
 } from "@/lib/largo/slash-commands";
 import {
   filterSlashPrompts,
@@ -17,6 +16,8 @@ import {
   type SlashPromptsPayload,
 } from "@/lib/largo/slash-prompt-utils";
 import { parseDeskSlashArgs } from "@/lib/largo/desk-scope";
+import { filterSubmodules, type SlashSubmoduleItem } from "@/lib/largo/slash-submodules";
+import type { SlashPanelTab } from "@/features/largo/components/LargoSlashPromptsMenu";
 
 const fetcher = (url: string) => fetch(url, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null));
 
@@ -30,6 +31,7 @@ export function useLargoSlashCommands(
 ) {
   const [activeDesk, setActiveDesk] = useState<LargoSlashCommand | null>(null);
   const [promptIndex, setPromptIndex] = useState(0);
+  const [panelTab, setPanelTab] = useState<SlashPanelTab>("modules");
   const autoAskArmedRef = useRef(false);
 
   const commandQuery = largoSlashQueryFromInput(input);
@@ -52,11 +54,38 @@ export function useLargoSlashCommands(
 
   const promptArgs = activeDesk ? slashArgsFromInput(input, activeDesk.command) : "";
   const allPrompts = promptPayload?.prompts ?? [];
-  const promptMatches = useMemo(
-    () => (activeDesk ? filterSlashPrompts(allPrompts, promptArgs) : []),
-    [activeDesk, allPrompts, promptArgs]
+  const allModules = promptPayload?.modules ?? [];
+
+  const { submoduleToken, filterQuery } = useMemo(() => {
+    if (!activeDesk || !promptArgs) {
+      return { submoduleToken: "", filterQuery: promptArgs };
+    }
+    const parsed = parseDeskSlashArgs(promptArgs, activeDesk.command);
+    if (parsed.submodule) {
+      return { submoduleToken: parsed.submodule, filterQuery: promptArgs.replace(/^\S+\s*/, "") };
+    }
+    const first = promptArgs.split(/\s+/)[0] ?? "";
+    return { submoduleToken: "", filterQuery: first };
+  }, [activeDesk, promptArgs]);
+
+  const moduleMatches = useMemo(
+    () => (activeDesk ? filterSubmodules(allModules, filterQuery) : []),
+    [activeDesk, allModules, filterQuery]
   );
-  const clampedPromptIndex = promptMatches.length ? Math.min(promptIndex, promptMatches.length - 1) : 0;
+  const promptMatches = useMemo(
+    () => (activeDesk ? filterSlashPrompts(allPrompts, filterQuery) : []),
+    [activeDesk, allPrompts, filterQuery]
+  );
+
+  const activeList = panelTab === "modules" && moduleMatches.length ? moduleMatches : promptMatches;
+  const clampedPromptIndex = activeList.length ? Math.min(promptIndex, activeList.length - 1) : 0;
+
+  // Prefer Modules tab when typing matches a stable submodule prefix.
+  useEffect(() => {
+    if (!activeDesk || !filterQuery) return;
+    if (moduleMatches.length && !promptMatches.length) setPanelTab("modules");
+    else if (promptMatches.length && !moduleMatches.length) setPanelTab("live");
+  }, [activeDesk, filterQuery, moduleMatches.length, promptMatches.length]);
 
   const selectDesk = useCallback(
     (cmd: LargoSlashCommand) => {
@@ -64,6 +93,7 @@ export function useLargoSlashCommands(
       setInput(`/${cmd.command}`);
       setPromptIndex(0);
       setCommandIndex(0);
+      setPanelTab("modules");
     },
     [setInput]
   );
@@ -71,6 +101,7 @@ export function useLargoSlashCommands(
   const clearDesk = useCallback(() => {
     setActiveDesk(null);
     setPromptIndex(0);
+    setPanelTab("modules");
   }, []);
 
   const applyCommand = useCallback(
@@ -83,12 +114,12 @@ export function useLargoSlashCommands(
 
   useEffect(() => {
     if (!autoAskArmedRef.current || !onAutoAsk || !activeDesk || promptsLoading) return;
-    const top = promptMatches[0];
-    if (!top) return;
+    const topLive = promptMatches[0];
+    if (!topLive) return;
     autoAskArmedRef.current = false;
-    onAutoAsk(top.question, {
+    onAutoAsk(topLive.question, {
       deskScope: activeDesk.command,
-      deskScopeArgs: parseDeskSlashArgs(promptArgs),
+      deskScopeArgs: parseDeskSlashArgs(promptArgs, activeDesk.command),
     });
     setActiveDesk(null);
     setInput("");
@@ -120,18 +151,26 @@ export function useLargoSlashCommands(
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>): "prompt-pick" | "handled" | false => {
-      if (activeDesk && promptMatches.length) {
+      if (activeDesk && activeList.length) {
         if (e.key === "ArrowDown") {
           e.preventDefault();
-          setPromptIndex((i) => (i + 1) % promptMatches.length);
+          setPromptIndex((i) => (i + 1) % activeList.length);
           return "handled";
         }
         if (e.key === "ArrowUp") {
           e.preventDefault();
-          setPromptIndex((i) => (i - 1 + promptMatches.length) % promptMatches.length);
+          setPromptIndex((i) => (i - 1 + activeList.length) % activeList.length);
           return "handled";
         }
-        if (e.key === "Tab" || (e.key === "Enter" && e.shiftKey)) {
+        if (e.key === "Tab") {
+          e.preventDefault();
+          if (allModules.length) {
+            setPanelTab((t) => (t === "modules" ? "live" : "modules"));
+            setPromptIndex(0);
+          }
+          return "handled";
+        }
+        if (e.key === "Enter" && e.shiftKey) {
           e.preventDefault();
           return "prompt-pick";
         }
@@ -170,7 +209,8 @@ export function useLargoSlashCommands(
     },
     [
       activeDesk,
-      promptMatches,
+      activeList,
+      allModules.length,
       commandMenuOpen,
       commandMatches,
       clampedCommandIndex,
@@ -180,7 +220,9 @@ export function useLargoSlashCommands(
     ]
   );
 
-  const highlightedPrompt = promptMatches[clampedPromptIndex] ?? null;
+  const highlightedPrompt = panelTab === "live" ? (promptMatches[clampedPromptIndex] ?? null) : null;
+  const highlightedModule =
+    panelTab === "modules" ? (moduleMatches[clampedPromptIndex] as SlashSubmoduleItem | null) : null;
 
   return {
     commandMenuOpen,
@@ -189,9 +231,14 @@ export function useLargoSlashCommands(
     activeDesk,
     promptPayload,
     promptsLoading,
+    panelTab,
+    setPanelTab,
+    moduleMatches,
     promptMatches,
     promptIndex: clampedPromptIndex,
     highlightedPrompt,
+    highlightedModule,
+    submoduleToken,
     applyCommand,
     selectDesk,
     clearDesk,
@@ -199,5 +246,7 @@ export function useLargoSlashCommands(
     handleKeyDown,
     setCommandIndex,
     setPromptIndex,
+    parseArgsForDesk: (args: string) =>
+      activeDesk ? parseDeskSlashArgs(args, activeDesk.command) : parseDeskSlashArgs(args),
   };
 }

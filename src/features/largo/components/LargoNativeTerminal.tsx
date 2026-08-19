@@ -12,6 +12,7 @@ import { useLargoSlashCommands } from "@/hooks/useLargoSlashCommands";
 import { resolveLargoSlashSubmit } from "@/lib/largo/slash-commands";
 import { parseDeskSlashArgs } from "@/lib/largo/desk-scope";
 import { slashArgsFromInput } from "@/lib/largo/slash-prompt-utils";
+import type { SlashSubmoduleItem } from "@/lib/largo/slash-submodules";
 import { LargoProactiveComposer } from "@/features/largo/components/LargoProactiveComposer";
 import { LargoDeskScopeBanner } from "@/features/largo/components/LargoDeskScopeBanner";
 import { LargoStatusStrip } from "@/features/largo/components/LargoStatusStrip";
@@ -41,6 +42,8 @@ export function LargoNativeTerminal() {
     activeSessionId,
     activeDeskScope,
     setActiveDeskScope,
+    activeDeskScopeArgs,
+    setActiveDeskScopeArgs,
     activeTicker,
   } = useLargoChat();
 
@@ -50,15 +53,20 @@ export function LargoNativeTerminal() {
   );
   const inputRef = useRef<HTMLInputElement>(null);
 
-  function askFromSlash(question: string) {
+  function askFromSlash(question: string, submodule?: string | null) {
     const desk = slash.activeDesk;
     const args = desk ? slashArgsFromInput(input, desk.command) : "";
+    const parsed = desk ? parseDeskSlashArgs(args, desk.command) : parseDeskSlashArgs(args);
     void runQuery(question, {
       deskScope: desk?.command ?? null,
-      deskScopeArgs: parseDeskSlashArgs(args),
+      deskScopeArgs: submodule ? { ...parsed, submodule } : parsed,
     });
     setInput("");
     slash.clearDesk();
+  }
+
+  function askFromModule(mod: SlashSubmoduleItem) {
+    askFromSlash(mod.exampleQuestion, mod.id);
   }
 
   function submitSlashOrQuery(text: string) {
@@ -129,6 +137,7 @@ export function LargoNativeTerminal() {
                   onFollowup={(q) => void runQuery(q, { deskScope: activeDeskScope })}
                   followups={msg.followups}
                   deskScope={msg.deskScope}
+                  deskScopeArgs={msg.deskScopeArgs}
                   miniPanel={msg.miniPanel}
                   ticker={activeTicker}
                   nativeFollowups
@@ -181,8 +190,12 @@ export function LargoNativeTerminal() {
       />
       <LargoDeskScopeBanner
         deskScope={activeDeskScope}
+        submodule={activeDeskScopeArgs?.submodule}
         ticker={activeTicker}
-        onClear={() => setActiveDeskScope(null)}
+        onClear={() => {
+          setActiveDeskScope(null);
+          setActiveDeskScopeArgs(null);
+        }}
         className="largo-desk-scope-banner-native"
       />
 
@@ -195,11 +208,15 @@ export function LargoNativeTerminal() {
       >
         <div className="largo-native-input-wrap">
           <LargoSlashPromptsMenu
-            open={Boolean(slash.activeDesk && slash.promptsLoading && !loading && hydrated)}
+            open={Boolean(slash.activeDesk && !loading && hydrated)}
             payload={slash.promptPayload}
             loading={slash.promptsLoading}
+            tab={slash.panelTab}
+            onTabChange={slash.setPanelTab}
+            modules={slash.moduleMatches}
             prompts={slash.promptMatches}
             activeIndex={slash.promptIndex}
+            onPickModule={askFromModule}
             onPick={(p) => askFromSlash(p.question)}
             onHover={slash.setPromptIndex}
             onClose={() => {
@@ -226,9 +243,15 @@ export function LargoNativeTerminal() {
             onChange={(e) => slash.onInputChange(e.target.value)}
             onKeyDown={(e) => {
               const result = slash.handleKeyDown(e);
-              if (result === "prompt-pick" && slash.highlightedPrompt) {
-                askFromSlash(slash.highlightedPrompt.question);
-                return;
+              if (result === "prompt-pick") {
+                if (slash.panelTab === "modules" && slash.highlightedModule) {
+                  askFromModule(slash.highlightedModule);
+                  return;
+                }
+                if (slash.highlightedPrompt) {
+                  askFromSlash(slash.highlightedPrompt.question);
+                  return;
+                }
               }
               if (result === "handled") return;
             }}
