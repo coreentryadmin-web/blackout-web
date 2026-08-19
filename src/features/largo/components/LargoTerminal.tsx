@@ -5,7 +5,10 @@ import { useDictation } from "@/hooks/useDictation";
 import { motion, AnimatePresence } from "framer-motion";
 import { ImagePlus, Mic, Square, X } from "lucide-react";
 import { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useIosKeyboardInset } from "@/hooks/useIosKeyboardInset";
+import { useLargoSlashCommands } from "@/hooks/useLargoSlashCommands";
+import { resolveLargoSlashSubmit } from "@/lib/largo/slash-commands";
 import {
   LARGO_SUGGESTIONS,
   LARGO_DESK_PROMPTS,
@@ -20,8 +23,9 @@ import { LargoTerminalToolbar } from "./LargoTerminalToolbar";
 import { LargoEmptyState } from "./LargoEmptyState";
 import { LargoStatusStrip } from "./LargoStatusStrip";
 import { LargoContextRail } from "./LargoContextRail";
+import { LargoSlashMenu } from "./LargoSlashMenu";
 
-const INPUT_PLACEHOLDER = "Ask the desk — SPX levels, a ticker, flow, news…";
+const INPUT_PLACEHOLDER = "Type / for desk commands — SPX, flow, thermal, vector…";
 const INPUT_PLACEHOLDER_BUSY = "Pulling live data…";
 
 export function LargoTerminal({
@@ -73,6 +77,10 @@ export function LargoTerminal({
     setChartGuide,
   } = useLargoChat();
 
+  const router = useRouter();
+  const slash = useLargoSlashCommands(input, setInput);
+  const inputRef = useRef<HTMLInputElement>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
 
@@ -87,9 +95,24 @@ export function LargoTerminal({
 
   useIosKeyboardInset(nativeShell);
 
+  function submitSlashOrQuery(text: string) {
+    const resolved = resolveLargoSlashSubmit(text);
+    if (resolved.type === "navigate") {
+      router.push(resolved.href);
+      setInput("");
+      return;
+    }
+    if (resolved.type === "query") {
+      void runQuery(resolved.question);
+      setInput("");
+      return;
+    }
+    void runQuery(resolved.text);
+  }
+
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    void runQuery(input);
+    submitSlashOrQuery(input);
   }
 
   /**
@@ -411,12 +434,28 @@ export function LargoTerminal({
           )}
         >
           <div className="relative flex-1 largo-input-wrap">
+            <LargoSlashMenu
+              open={slash.open && !loading && hydrated}
+              matches={slash.matches}
+              activeIndex={slash.activeIndex}
+              onPick={(cmd) => {
+                slash.applyCommand(cmd, true);
+                inputRef.current?.focus();
+              }}
+              onHover={slash.setActiveIndex}
+            />
             <input
+              ref={inputRef}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => slash.onInputChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (slash.handleKeyDown(e)) return;
+              }}
               onPaste={handlePaste}
               placeholder={loading ? INPUT_PLACEHOLDER_BUSY : INPUT_PLACEHOLDER}
               aria-label="Ask Largo"
+              aria-autocomplete={slash.open ? "list" : undefined}
+              aria-controls={slash.open ? "largo-slash-menu" : undefined}
               className={clsx(
                 "desk-largo-input w-full !border-cyan-400/25",
                 loading && "largo-input-busy",
