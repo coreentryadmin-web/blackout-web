@@ -190,3 +190,65 @@ None of those mean the 5s recorder stopped; they mean the **path from Redis samp
 3. Post-deploy mixed ECS builds (#2319) → self-reload / stale client; confirm single task definition on `/api/health` build sha.
 
 **Status:** Investigation doc only — no product code in this PR.
+
+---
+
+## Competitor comparison — strength swell/fade along a row (member screenshot 2026-08-19)
+
+### What the reference product shows (red circles)
+
+On SPY, each horizontal bead **row** is a time series at one strike. Beads **swell vertically** where that strike’s gamma share was heavy at that moment, and **thin + dim** where it was weak. Reading left→right on one row answers: *“When was this level hot, and when did it die?”*
+
+That is the core job of the rail — not just “a wall existed here.”
+
+### What BlackOut is supposed to do on `main` (post #2312 / #2313)
+
+The canvas rail (`WallRailPrimitive`) uses **two channels on purpose**:
+
+| Channel | Input | Question it answers |
+|---------|--------|---------------------|
+| **Size (radius)** | Raw `pct` at that bucket via `beadRadiusForPctShare` | “How big was this wall **at that moment**?” (absolute share of the book) |
+| **Brightness** | `pct` vs **that bucket’s** king via `maxPctByTime` | “How much did it **dominate the board right then**?” |
+| **Velocity** | `beadModulation` (fast bucket + slow 15m trailing ref) | “Is it **stacking or bleeding** right now?” |
+| **Recency** | `ageTaperAlpha` on alpha only | “How **old** is this sample?” (not strength) |
+
+So along one row, a wall that went **20% → 2%** over the session should render **fat bright beads early, thin dim beads late** — same idea as the competitor circles.
+
+**Deliberate constraint:** we do **not** re-tint old beads using **today’s** strength. A bead at 10:15 stays a statement about 10:15. That avoids the old kingStrike bug (crown painted retroactively across history).
+
+### Why ours still reads “all beads look alike” (three remaining gaps)
+
+**1. This exact report was filed and fixed in code — but visual sign-off is still open**
+
+FINDINGS 2026-08-18 (#2312): *“Against the reference product a single row visibly SWELLS and FADES… Ours rendered every bead in a row alike.”* Fix: split size vs alpha curves, point-in-time contrast (#2313), spacing budget correction.
+
+That entry ends with: **“Still unverified visually at time of writing.”** Code landed; desk-side before/after on SPY/NVDA may not have been closed.
+
+**2. Spacing budget vs dynamic range (the tradeoff that keeps biting us)**
+
+At 3m zoom (~5.4px/bar), `clampTuningToSpacing` caps bead radius so rows don’t bury candles. Tests require `halfMax - halfMin >= 1px` — a **1px size range** is technically “passing” but **human-invisible**. When the ceiling collapses, every magnitude maps to one thickness → flat row (looks like competitor’s opposite).
+
+`BEAD_BAR_FILL = 2.4` allows horizontal overlap (touching ribbon, like reference). Side effect: overlapping circles **union** to the max thickness in that stretch — a row of varying radii can still **look** uniform (slab texture).
+
+**3. Velocity modulation is subtle vs competitor swell**
+
+`decayModulation` / `growthModulation` move size by at most ~±22–28% **on top of** the pct ladder. If `pct` in the payload is flat (wall stays ~same share all day), modulation stays neutral. The competitor swell in the screenshot is mostly **absolute strength over time** (pct changing), not a separate velocity channel.
+
+### What to check on desk (SPY, session overview, DTE All, 3m)
+
+Pick **one circled row** in the competitor shot — same strike on our chart:
+
+1. Hover/scrub time → does `pct` in the payload actually move (e.g. 8% → 2%) or stay flat?
+2. Do bead radii change along that row, or is every dot the same px height?
+3. If data moves but pixels don’t → **render budget** still crushing the size channel (regression or deploy skew).
+4. If data is flat → **upstream wall ladder** not changing enough at that strike (data/GEX path, not paint).
+
+### Recommended product fix (future PR — not in this doc PR)
+
+Priority order if visual check fails:
+
+1. **Strength-over-time sizing:** map bead **height** to `pct / trailingPeakPct` on the same strike (self-relative swell like the screenshot), while keeping absolute pct for cross-strike comparison.
+2. **Spacing:** decouple vertical swell from horizontal overlap — e.g. allow taller beads without wider diameter (competitor reads vertical thickness, not circle union).
+3. **Widen enforced size range** at 3m — test `halfMax - halfMin >= 3px` at measured geometry, not 1px.
+4. **RTH visual gate** in CI or audit screenshot script — encode the competitor criterion: same-row early vs late bead height ratio ≥ 2× when pct ratio ≥ 3×.
+

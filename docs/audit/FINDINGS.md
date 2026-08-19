@@ -50,6 +50,8 @@ Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
 **Verdict.** Live off-hours probe: SSE `wallTrailSec=5` for SPX/NVDA/META/AMD/TSLA (PASS). Wall-history empty pre-open (expected). On `main`, #2321 pixel-stride paint decimation (**reverted #2326**) was the one change that silently dropped 5s samples at render time. Remaining "gaps" are usually row membership hysteresis (#2309), live-follow 45m trim, DTE horizon ≠ All, Compare 4-up background 2× poll, or off-hours empty trail — not a dead 5s recorder.
 
+**Competitor swell/fade (2026-08-19 screenshot).** Same class of bug as FINDINGS #2312/#2313 ("row shows wall existed, never WHEN it mattered") — fixes landed 2026-08-18 but visual sign-off still open; spacing budget can collapse size range to ~1px at 3m. See investigation doc § Competitor comparison.
+
 ## 2026-08-18 — [FINDING, P0 member-visible] Every deploy purged the hashed build assets, killing hydration and freezing the whole desk — FIXED
 > **kind:** `FINDING`
 
