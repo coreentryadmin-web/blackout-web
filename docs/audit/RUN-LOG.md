@@ -344,3 +344,42 @@ First orchestrator attempt failed on missing `node_modules` (tsx/playwright/pg/r
 - 1k concurrent: likely OK on cache hits; 10k+: UW/Redis hot-path saturation; 50k–100k: upstream provider ceiling before horizontal web scale helps
 
 **Status.** GREEN required gates; optional latency flaky during deploy — re-run RTH for paint baselines.
+
+## 2026-08-19 — Vector rail validation, PRE-DEPLOY baseline (all tickers x all horizons)
+
+New tool: `scripts/audit/vector-rail-validate.mjs`. One command, per ticker x horizon: samples,
+median/max gap, rows drawn per side, beads-per-row, and wall BIRTHS/DEATHS.
+
+Captured against prod on ET session 2026-08-18, **before #2322 (append-only rails + rationing
+removed) deployed** — so this is the "before" column for tomorrow's comparison.
+
+| ticker | horizon | verdict | samples | medGap | maxGap | rows c/p | beads/row | born | died | static |
+|---|---|---|---|---|---|---|---|---|---|---|
+| SPX | all | GREEN | 649 | 60 | 245 | 8/8 | 217 | 22 | 20 | 10 |
+| SPX | 0dte | GREEN | 3964 | 5 | 435 | 8/8 | 1035 | 31 | 25 | 7 |
+| SPX | weekly | GREEN | 3845 | 5 | 435 | 8/8 | 1207 | 21 | 24 | 5 |
+| SPX | monthly | GREEN | 3845 | 5 | 435 | 8/8 | 1353 | 17 | 20 | 8 |
+| NVDA | all | GREEN | 442 | 60 | 600 | 6/8 | 307 | 7 | 6 | 10 |
+| NVDA | 0dte | RED | 546 | 5 | 3570 | 8/8 | 298 | 10 | 11 | 11 |
+| NVDA | weekly | RED | 100 | 70 | 3275 | 7/8 | 80 | 5 | 4 | 12 |
+| NVDA | monthly | RED | 98 | 70 | 4205 | 7/8 | 84 | 4 | 3 | 10 |
+| TSLA | 0dte | RED | 750 | 5 | 2105 | 8/8 | 523 | 8 | 6 | 13 |
+| TSLA | weekly | RED | 591 | 5 | 2105 | 8/8 | 332 | 10 | 9 | 10 |
+| AAPL | weekly | RED | 70 | 300 | 4205 | 8/8 | 53 | 7 | 6 | 12 |
+| SPY | weekly | RED | 64 | 300 | 3305 | 8/8 | 31 | 15 | 15 | 11 |
+| QQQ | weekly | RED | 97 | 70 | 3905 | 8/8 | 41 | 19 | 18 | 9 |
+
+(Full 24-row output in the PR; the rows above are the ones that carry the argument.)
+
+**Three things this settles.**
+
+1. **Row selection was never broken.** Every ticker draws 6-8 rows per side on every horizon,
+   identical to SPX. The "NVDA has one level, SPX has ten" report is entirely beads-per-row:
+   SPX weekly 1207 beads/row against NVDA 80, AAPL 53, SPY 31.
+2. **Births and deaths WORK.** Every rail shows staggered births and deaths (SPX 0dte 31 born /
+   25 died; QQQ 0dte 27/33; NVDA weekly 5/4). No rail is a static ladder, so the "same walls all
+   day" failure mode is NOT present. This was an open question and the answer is positive.
+3. **The discrimination is on the NARROWED horizons only.** The blended "all" rail is coarse for
+   everyone (~442 samples, 60s median) including SPX — no per-ticker bias there. On 0dte/weekly/
+   monthly, SPX sits at 3845-3964 samples / 5s median while every other name is 64-750 with 35-70
+   minute holes. That is the viewing-drives-density effect #2322 removes.
