@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 import { CRON_JOBS } from "./cron-registry";
@@ -52,10 +52,12 @@ function emittedKeysByRoute(): Map<string, Set<string>> {
     const routeFile = join(CRON_ROUTES_DIR, entry, "route.ts");
     let src: string;
     try {
-      if (!statSync(routeFile).isFile()) continue;
+      // Read straight through rather than stat-then-read: the stat was a redundant existence check
+      // that CodeQL correctly flags as a TOCTOU race, and the read has to handle the missing/not-a-
+      // file case anyway. A directory without a route.ts simply throws here and is skipped.
       src = readFileSync(routeFile, "utf8");
     } catch {
-      continue; // not a cron route directory
+      continue; // no route.ts in this directory — not a cron route
     }
 
     const keys = new Set<string>();
