@@ -43,6 +43,7 @@ import {
   vectorPanelVisibility,
   shouldExitFocusMode,
   focusModeAvailable,
+  focusModeContentClass,
 } from "@/features/vector/lib/vector-focus-mode";
 import { VECTOR_DEFAULT_TICKER } from "@/features/vector/lib/vector-ticker";
 
@@ -764,7 +765,14 @@ export function VectorPageShell({
         "vector-page-shell ios-native-page ios-native-page-vector",
         nativeShell && "vector-page-shell-native"
       )}
-      contentClassName={clsx("vector-page-content !py-0", nativeShell && "vector-page-content-native")}
+      contentClassName={clsx(
+        "vector-page-content !py-0",
+        // PageShell's wrapper is `relative z-10`, which is a STACKING CONTEXT — without lifting it
+        // too, the fullscreen surface's z-110 can never beat the nav's z-100. See
+        // focusModeContentClass() for the full reasoning.
+        focusModeContentClass(focusMode),
+        nativeShell && "vector-page-content-native"
+      )}
     >
       <div
         className={clsx(
