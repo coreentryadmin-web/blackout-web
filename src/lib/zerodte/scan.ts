@@ -155,6 +155,7 @@ import {
 } from "./plan";
 import {
   executionTaxBps,
+  latchPremiumBounds,
   zeroDteHalfSpreadFrac,
   ZERODTE_DEFAULT_HALF_SPREAD_FRAC,
 } from "./marks-math";
@@ -1726,9 +1727,34 @@ export async function syncLedgerLiveState(rows: ZeroDteSetupLogRow[]): Promise<Z
       if (r.status === "CLOSED") return r;
       const occ = typeof r.plan_json?.occ === "string" ? (r.plan_json.occ as string) : null;
       const mark = occ ? (snaps.get(occ)?.mark ?? null) : null;
-      const entryRef = r.entry_premium ?? 0;
-      const peak = Math.max(r.peak_premium ?? entryRef, mark ?? 0);
-      const trough = Math.min(r.trough_premium ?? (r.entry_premium ?? Number.MAX_VALUE), mark ?? Number.MAX_VALUE);
+      // LATCH ONLY WHAT IS ACTUALLY KNOWN — an absent premium must stay absent.
+      //
+      // The trough used to read
+      //   Math.min(r.trough_premium ?? (r.entry_premium ?? Number.MAX_VALUE), mark ?? Number.MAX_VALUE)
+      // so a row with no prior trough, no entry premium and no fresh mark latched
+      // Number.MAX_VALUE — 1.7976931348623157e308 — and persisted/served it as `trough_premium`.
+      // Iron condors are the population that hits it: a credit structure carries no single entry
+      // premium, so the first `??` falls through, and any tick without a quote supplies the second.
+      //
+      // Nothing downstream caught it because `Number.isFinite(1.79e308)` is TRUE: the response
+      // sanitizer, the audit suite's `scanFinite` sweep and the malformed-value scan all pass it
+      // through as a perfectly good number. Only reading the payload finds it.
+      //
+      // `derivePlayStatus` already takes `peak: number | null` and `trough: number | null`, so the
+      // sentinel bought nothing in the first place — null was always the supported way to say
+      // "not known yet".
+      //
+      // The peak had the same shape with the opposite failure: `?? 0` made an unknown peak read as
+      // ZERO, which understates rather than absurdly overstates, so it was invisible. Both now
+      // latch across the finite candidates and stay null when there are none.
+      // ONE latch, shared with the 1s marks lane (marks-math.advancePlayLatch). This used to be an
+      // inline Math.min/Math.max pair with a Number.MAX_VALUE sentinel, which is how the two lanes
+      // came to disagree — see latchPremiumBounds for the full account.
+      const { peak, trough } = latchPremiumBounds(
+        r.peak_premium ?? r.entry_premium,
+        r.trough_premium ?? r.entry_premium,
+        mark
+      );
       // Exit engine FIRST with plan-stop deferred — a latched trough at −50% must not
       // skip the ratchet floor when peak had armed breakeven (FINDINGS 2026-08-04).
       const preStop = derivePlayStatus({
@@ -1770,8 +1796,13 @@ export async function syncLedgerLiveState(rows: ZeroDteSetupLogRow[]): Promise<Z
       }
       // Widen the returned latches with the exit mark too (the lane mark can sit
       // outside the snapshot mark) — mirrors the DB write's GREATEST/LEAST.
-      const peakOut = finalMark != null ? Math.max(peak, finalMark) : peak;
-      const troughOut = finalMark != null ? Math.min(trough, finalMark) : trough;
+      // Null-safe widening. `Math.max(null, x)` coerces null to 0, so the old form would have
+      // silently latched a 0 peak the moment `peak` became nullable — the same class of bug one
+      // level down.
+      const peakOut =
+        finalMark != null ? (peak != null ? Math.max(peak, finalMark) : finalMark) : peak;
+      const troughOut =
+        finalMark != null ? (trough != null ? Math.min(trough, finalMark) : finalMark) : trough;
       return { ...r, status, last_mark: finalMark ?? r.last_mark, peak_premium: peakOut, trough_premium: troughOut };
     })
   );
