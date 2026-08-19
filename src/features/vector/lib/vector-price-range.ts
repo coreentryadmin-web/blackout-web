@@ -134,3 +134,52 @@ export function extendRangeForWalls(
   }
   return { minValue, maxValue };
 }
+
+/**
+ * How long after a member's own scroll-zoom the price axis stops widening for walls/beads.
+ *
+ * Mirrors the chart's wheel cooldown: during an active zoom gesture the axis must hold exactly
+ * where the member put it, or the next SSE tick (~1/s in RTH) re-runs autoscale and snaps the view
+ * back to the wide wall-inclusive band mid-gesture.
+ */
+export const BEAD_EXTENSION_WHEEL_COOLDOWN_MS = 8_000;
+
+/**
+ * May the price axis widen to include the drawn wall/bead rows right now?
+ *
+ * ── THE BUG THIS SEPARATES OUT (2026-08-19) ──────────────────────────────────────────
+ * The candle series' `autoscaleInfoProvider` used to skip its wall/bead widening whenever
+ * `memberViewportLocked(chartUserPanned, wheelZoomAt)` was true. That predicate is correct for what
+ * it was built for — suppressing programmatic TIME-axis refits and auto-coarsen once the member has
+ * taken control — but `chartUserPanned` is also set PROGRAMMATICALLY by the intraday zoom presets:
+ * `handleIntradayZoom` sets it for `structure` and `live` so the preset's own range is not
+ * immediately refitted away. Nothing clears it until a `session` reset.
+ *
+ * So pressing STRUCTURE or LIVE permanently disabled the price-axis widening, and the axis
+ * collapsed to the candle range for the rest of the session. Measured on prod at the `structure`
+ * preset:
+ *
+ *     SPX   axis 7680.00 - 7772.00   span 1.20% of spot   ~14 bead rows visible
+ *     NVDA  axis  218.70 -  220.90   span 1.00% of spot     1 bead row visible
+ *
+ * Both rails are healthy underneath — the real client pipeline (bucket -> lifecycle ->
+ * pickActiveStrikes) yields 7-10 rows per side for NVDA off the very same payload. The rows are
+ * produced and then clipped, because a STRIKE STEP is ~0.065% of price on SPX and ~1.14% on NVDA:
+ * a candle-only band holds a dozen SPX strikes and less than one NVDA strike. That is why the
+ * defect reads as "NVDA only has one level while SPX has ten" and looks ticker-specific when the
+ * cause is a shared flag with two meanings.
+ *
+ * ── THE RULE ─────────────────────────────────────────────────────────────────────────
+ * Only a member's OWN recent zoom gesture suppresses the widening. A time-axis preset is not a
+ * statement about the price axis. Drag-panning is not either — and it does not need to be covered
+ * here, because a member who drags the price scale turns `autoScale` off outright, at which point
+ * lightweight-charts stops consulting the provider at all.
+ */
+export function beadExtensionAllowed(
+  wheelZoomAtMs: number,
+  nowMs: number = Date.now(),
+  cooldownMs: number = BEAD_EXTENSION_WHEEL_COOLDOWN_MS
+): boolean {
+  if (!Number.isFinite(wheelZoomAtMs) || wheelZoomAtMs <= 0) return true;
+  return !(nowMs - wheelZoomAtMs < cooldownMs);
+}

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { extendRangeForWalls, NEAREST_WALL_VIEW_MAX_PCT, BEAD_VIEW_MAX_PCT, SESSION_OVERVIEW_MAX_SPAN_PCT, filterStrikesNearSpot, clampPriceRangeSpan } from "./vector-price-range";
+import { extendRangeForWalls, NEAREST_WALL_VIEW_MAX_PCT, BEAD_VIEW_MAX_PCT, SESSION_OVERVIEW_MAX_SPAN_PCT, filterStrikesNearSpot, clampPriceRangeSpan, beadExtensionAllowed } from "./vector-price-range";
 
 // Candle band ~7510–7600 around spot 7575 (the live staging case), put walls far below.
 const base = { minValue: 7510, maxValue: 7600 };
@@ -100,4 +100,36 @@ test("clampPriceRangeSpan: squashed SPX session overview reframes around spot", 
   assert.ok(span <= spot * SESSION_OVERVIEW_MAX_SPAN_PCT + 1, `span ${span} must fit cap`);
   assert.ok(out.minValue <= candles.minValue);
   assert.ok(out.maxValue >= candles.maxValue);
+});
+
+// ── PRICE-AXIS WIDENING vs THE TIME-AXIS PRESETS (2026-08-19) ────────────────────────────────
+// The autoscale provider used to skip its wall/bead widening on `memberViewportLocked`, which reads
+// `chartUserPanned` — a flag the intraday zoom presets set PROGRAMMATICALLY and nothing clears until
+// a Session reset. Pressing STRUCTURE or LIVE therefore collapsed the price axis to the candle band
+// for the rest of the session. Measured on prod at `structure`: SPX axis span 1.20% of spot (~14
+// bead rows visible), NVDA 1.00% (ONE row) — the same collapse, reading as a ticker-specific defect
+// only because an SPX strike step is ~0.065% of price and an NVDA step is ~1.14%.
+
+test("beadExtensionAllowed: a time-axis preset does not suppress the price-axis widening", () => {
+  // The preset path sets no wheel stamp at all — that is the whole point. Whatever it does to the
+  // pan flag, the rail must still be revealed.
+  assert.equal(beadExtensionAllowed(0, 1_000_000), true);
+  assert.equal(beadExtensionAllowed(Number.NaN, 1_000_000), true);
+  assert.equal(beadExtensionAllowed(-1, 1_000_000), true);
+});
+
+test("beadExtensionAllowed: a member's own recent scroll-zoom still suppresses it", () => {
+  // Kept deliberately: during a live gesture the ~1/s SSE tick re-runs autoscale, and widening
+  // mid-gesture snaps the view back to the wall-inclusive band under the member's cursor.
+  const now = 1_000_000;
+  assert.equal(beadExtensionAllowed(now - 100, now), false, "mid-gesture");
+  assert.equal(beadExtensionAllowed(now - 7_999, now), false, "inside the cooldown");
+  assert.equal(beadExtensionAllowed(now - 8_001, now), true, "cooldown elapsed — rail comes back");
+});
+
+test("beadExtensionAllowed: the cooldown is bounded, so a stale stamp can never lock the rail off", () => {
+  // The failure mode being excluded: a flag that, once set, disables the rail forever. A wheel
+  // stamp from earlier in the session must not still be suppressing anything.
+  const now = 1_000_000;
+  assert.equal(beadExtensionAllowed(now - 60 * 60 * 1000, now), true);
 });
