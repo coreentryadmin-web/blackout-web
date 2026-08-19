@@ -484,14 +484,6 @@ export type BucketWallHistoryOpts = {
   minBucketSec?: number;
   /** When true, minBucketSec is the FLOOR rather than collapsing to candle width. */
   liveBeads?: boolean;
-  /**
-   * Horizontal px per bar, from the chart's time scale. Present = beads are bucketed to the room
-   * actually on screen (see displayBucketSec); absent = the old constant-bucket behaviour, which
-   * paints a ribbon whenever the bucket is finer than the pixels available.
-   */
-  barSpacingPx?: number;
-  /** Override the px stride between beads. Defaults to BEAD_STRIDE_PX. */
-  beadStridePx?: number;
 };
 
 /**
@@ -520,69 +512,50 @@ export function alignWallHistoryToBarTimes(
 }
 
 /**
- * Pixels a bead needs before the next one starts, so a row reads as BEADS and not as a bar.
+ * How many seconds one bead should cover.
  *
- * The rail's clamped bead ceiling is 3.2-7.5px of RADIUS, i.e. up to ~15px across. 11px of stride
- * keeps a typical bead visibly separated from its neighbour while still letting a run of strong
- * beads touch — touching is texture, which the reference product has too; FUSING into a constant
- * ribbon is what destroys the per-moment read.
- */
-const BEAD_STRIDE_PX = 11;
-
-/**
- * How many seconds one bead should cover, given how much horizontal room a bar actually has.
+ * ── WHAT THIS USED TO DO, AND WHY IT WAS WRONG (reverted 2026-08-19) ─────────────────
+ * #2321 made this bucket by PIXELS: one bead per `BEAD_STRIDE_PX` (11px) of chart, on the theory
+ * that a row which fuses into a continuous ribbon has lost its per-moment read. That theory is
+ * wrong for this product, and the member said so twice — first as a description of correct
+ * behaviour ("it's painting a bead every 5 seconds which is correct .. at the end of the day it
+ * looks like a bar"), then as a bug report against the shipped result, alongside the reference
+ * product: a screenshot of ~1 bead per 15 candles next to a competitor whose rows are dense,
+ * touching ribbons of every recorded sample.
  *
- * ── THE PAINT DEFECT THIS FIXES (2026-08-19) ─────────────────────────────────────────
- * The bucket size was a CONSTANT: during a live session `min(candleSec, minBucketSec)` = 5s, the
- * recorder's cadence, no matter the timeframe or the zoom. A 3-minute candle occupies ~5.4px at
- * ordinary zoom, so 5s buckets ask for 36 beads inside those 5.4px. They cannot be anything but a
- * smear, and no amount of shrinking the bead fixes it — shrinking is what produced the invisible
- * dots in #2310, which the member rejected on sight.
- *
- * The member's own description of the correct behaviour is the specification: a bead every 5
- * seconds is right, and "at the end of the day it looks like a bar" — because at session width it
- * SHOULD. The bug is that it still looked like a bar zoomed IN, where there is room to resolve
- * individual beads and the member expects to see them.
+ * The ribbon IS the render. A 5s cadence under a 3-minute candle is 36 samples per bar, and a rail
+ * that draws all of them is showing the member every moment the wall existed. Spacing them out
+ * does not make the rail more legible, it throws away 34 of every 36 samples the recorder worked
+ * to capture — and it does so silently, which is why it read as "the recorder is broken" rather
+ * than as a paint decision.
  *
  * ── THE RULE ─────────────────────────────────────────────────────────────────────────
- * Bucket by PIXELS, not by clock. One bead per `BEAD_STRIDE_PX` of chart, which means the bucket
- * shrinks toward the recorder's true 5s cadence as the member zooms in (more detail, still
- * discrete) and grows as they zoom out (fewer beads, still discrete) instead of fusing.
+ * Draw what was recorded. During a live session the bucket is the recorder's own cadence
+ * (`minBucketSec`, 5s), floored by the candle width; replay/historical frames collapse to candles.
+ * No pixel term, no zoom term — those are the inputs that let a paint heuristic quietly discard
+ * data.
  *
- * The result is snapped UP to a whole multiple of `minBucketSec` so bucket edges stay aligned with
- * the recorded samples — an unaligned bucket boundary makes beads jitter along the row on every
- * re-render as samples fall either side of it.
- *
- * `barSpacingPx` unusable (no chart, NaN, zero) falls back to the previous constant behaviour: the
- * rail must still paint on a surface that cannot report its geometry.
+ * Bead SIZE, not bead COUNT, is the channel that adapts to available room: `clampTuningToSpacing`
+ * in vector-wall-rail-core.ts already shrinks the radius against bar spacing and row gap, with a
+ * measured floor so beads never collapse into the invisible specks of #2310.
  */
 export function displayBucketSec(input: {
   candleSec: number;
-  barSpacingPx: number;
   minBucketSec: number;
-  /** Live session keeps the fine cadence as the FLOOR; replay/historical collapse to candles. */
+  /** Live session keeps the recorder's fine cadence; replay/historical collapse to candles. */
   liveBeads: boolean;
-  strideP: number;
 }): number {
-  const { candleSec, barSpacingPx, minBucketSec, liveBeads } = input;
-  const stride = input.strideP > 0 ? input.strideP : BEAD_STRIDE_PX;
-  const floorSec = liveBeads && minBucketSec > 0 ? Math.min(candleSec, minBucketSec) : candleSec;
-  if (!Number.isFinite(barSpacingPx) || barSpacingPx <= 0 || !Number.isFinite(candleSec) || candleSec <= 0) {
-    return floorSec;
+  const { candleSec, minBucketSec, liveBeads } = input;
+  if (!Number.isFinite(candleSec) || candleSec <= 0) {
+    return minBucketSec > 0 ? minBucketSec : 1;
   }
-  // Seconds of tape per pixel, then how many seconds one bead's worth of pixels covers.
-  const secPerPx = candleSec / barSpacingPx;
-  const needSec = stride * secPerPx;
-  if (!Number.isFinite(needSec) || needSec <= floorSec) return floorSec;
-  const step = minBucketSec > 0 ? minBucketSec : 1;
-  // Snap UP to a whole multiple of the recorded cadence so bucket edges land on sample boundaries.
-  return Math.max(floorSec, Math.ceil(needSec / step) * step);
+  return liveBeads && minBucketSec > 0 ? Math.min(candleSec, minBucketSec) : candleSec;
 }
 
 /**
  * Resample wall-history for chart beads.
  *
- * Bucket size comes from `displayBucketSec` when the caller can report `barSpacingPx` — see that
+ * Bucket size comes from `displayBucketSec` — the recorder's own cadence during a live session; see that
  * function for why a constant bucket paints a bar instead of beads.
  */
 export function bucketWallHistoryForInterval(
@@ -594,10 +567,8 @@ export function bucketWallHistoryForInterval(
   const candleSec = intervalMinutes * 60;
   const bucketSec = displayBucketSec({
     candleSec,
-    barSpacingPx: opts?.barSpacingPx ?? NaN,
     minBucketSec: opts?.minBucketSec ?? 0,
     liveBeads: Boolean(opts?.liveBeads),
-    strideP: opts?.beadStridePx ?? BEAD_STRIDE_PX,
   });
   const map = new Map<number, WallHistorySample>();
 

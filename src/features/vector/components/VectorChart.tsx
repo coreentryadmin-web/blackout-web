@@ -71,6 +71,7 @@ import {
   filterStrikesNearSpot,
   clampPriceRangeSpan,
   beadExtensionAllowed,
+  rowAwareSpanPct,
 } from "@/features/vector/lib/vector-price-range";
 import {
   scoreTopWalls,
@@ -1121,22 +1122,6 @@ function buildWallBeadMarkers(
   return markers;
 }
 
-/**
- * Horizontal px per bar, straight from the chart's time scale.
- *
- * Feeds the bead bucketer so a row is resampled to the room actually on screen. Wrapped because
- * lightweight-charts throws once the chart is disposed, and a rail that cannot read the zoom must
- * degrade to the constant bucket rather than take the repaint down with it.
- */
-function readBarSpacingPx(chart: IChartApi | null): number {
-  try {
-    const v = chart?.timeScale().options().barSpacing;
-    return typeof v === "number" && Number.isFinite(v) ? v : Number.NaN;
-  } catch {
-    return Number.NaN;
-  }
-}
-
 function applyWallBeadMarkers(
   beadsPlugin: ISeriesMarkersPluginApi<Time> | null,
   history: WallHistorySample[],
@@ -1157,17 +1142,12 @@ function applyWallBeadMarkers(
   /** Compare panes: dimmer, smaller zoom-anchor ghosts. */
   compactBeads = false,
   /** Replay: snap bucket times to visible bar timestamps so the canvas rail can project x. */
-  alignBarTimes?: readonly number[],
-  /** Horizontal px per bar from the chart's time scale — beads are bucketed to the room actually
-   *  on screen, so a row reads as beads at every zoom instead of fusing into a bar. NaN when the
-   *  chart cannot report it, which falls back to the old constant bucket. */
-  barSpacingPx: number = Number.NaN
+  alignBarTimes?: readonly number[]
 ): { strikes: number[]; rendered: StrikeTrail[] } {
   if (!beadsPlugin) return { strikes: [], rendered: [] };
   let bucketed = bucketWallHistoryForInterval(history, intervalMinutes, {
     minBucketSec: trailBucketSec,
     liveBeads,
-    barSpacingPx,
   });
   if (alignBarTimes?.length) {
     bucketed = alignWallHistoryToBarTimes(bucketed, alignBarTimes);
@@ -2303,8 +2283,7 @@ export function VectorChart({
       trailBucketSec,
       spotRef.current,
       compareCompactBeadsRef.current,
-      undefined,
-      readBarSpacingPx(chartRef.current)
+      undefined
     );
     const put = applyWallBeadMarkers(
       putBeadsRef.current,
@@ -2320,8 +2299,7 @@ export function VectorChart({
       trailBucketSec,
       spotRef.current,
       compareCompactBeadsRef.current,
-      undefined,
-      readBarSpacingPx(chartRef.current)
+      undefined
     );
     // Feed the ribbon rail the SAME composed call+put trails (both sides share one frame reference).
     const enabled = indicatorsRef.current;
@@ -2935,8 +2913,7 @@ export function VectorChart({
         trailBucketSec,
         spotRef.current,
         compareCompactBeadsRef.current,
-        barTimes,
-        readBarSpacingPx(chartRef.current)
+        barTimes
       );
       const put = applyWallBeadMarkers(
         putBeadsRef.current,
@@ -2952,8 +2929,7 @@ export function VectorChart({
         trailBucketSec,
         spotRef.current,
         compareCompactBeadsRef.current,
-        barTimes,
-        readBarSpacingPx(chartRef.current)
+        barTimes
       );
       // Feed the ribbon rail the point-in-time trails so replay scrubs the bands too, not just dots.
       const enabled = indicatorsRef.current;
@@ -3881,9 +3857,35 @@ export function VectorChart({
           (preset === "session" ||
             (preset == null && defaultChartViewportRef.current === "session")) &&
           !liveFollowEnabledRef.current;
-        const wallViewPct = sessionOverviewFrame
-          ? SESSION_OVERVIEW_BEAD_VIEW_MAX_PCT
-          : WALL_VIEW_MAX_PCT;
+        // The session-overview caps are PERCENTAGES OF PRICE, which is the wrong unit for "how many
+        // strike rows fit" — a 5-pt SPX strike is 0.065% of price and a $2.50 NVDA strike is 1.14%,
+        // so one constant spans ~37 rows on the index and ~2 on the single name. Size the window
+        // off the ticker's own strike step instead, with the old constant kept as the FLOOR (SPX,
+        // which already had room for far more rows than any cap, is unchanged) and a hard ceiling
+        // so a pathological ladder still cannot squash the candles. See rowAwareSpanPct.
+        const sessionRows = resolveNodeCount(
+          nodeDensityRef.current,
+          wallCountForTimeframe(timeframeRef.current)
+        );
+        const sessionBeadStrikes = [
+          ...beadStrikesRef.current.call,
+          ...beadStrikesRef.current.put,
+        ];
+        const sessionBeadViewPct = rowAwareSpanPct(
+          spotRef.current ?? 0,
+          sessionBeadStrikes,
+          sessionRows,
+          SESSION_OVERVIEW_BEAD_VIEW_MAX_PCT,
+          BEAD_VIEW_MAX_PCT
+        );
+        const sessionSpanPct = rowAwareSpanPct(
+          spotRef.current ?? 0,
+          sessionBeadStrikes,
+          sessionRows,
+          SESSION_OVERVIEW_MAX_SPAN_PCT,
+          BEAD_VIEW_MAX_PCT
+        );
+        const wallViewPct = sessionOverviewFrame ? sessionBeadViewPct : WALL_VIEW_MAX_PCT;
         // Two composed widenings (each only ever WIDENS, never narrows the candle band):
         // 1) the current live ladder (rangeWallsRef) within the tight ±WALL_VIEW_MAX_PCT window;
         // 2) the strikes ACTUALLY drawn as beads (beadStrikesRef) within the wider BEAD_VIEW_MAX_PCT.
@@ -3897,10 +3899,10 @@ export function VectorChart({
           rangeWallsRef.current.call,
           rangeWallsRef.current.put,
           wallViewPct,
-          sessionOverviewFrame ? SESSION_OVERVIEW_BEAD_VIEW_MAX_PCT : undefined
+          sessionOverviewFrame ? sessionBeadViewPct : undefined
         );
         let beadViewPct = compareCompactBeadsRef.current ? COMPARE_BEAD_VIEW_MAX_PCT : BEAD_VIEW_MAX_PCT;
-        if (sessionOverviewFrame) beadViewPct = SESSION_OVERVIEW_BEAD_VIEW_MAX_PCT;
+        if (sessionOverviewFrame) beadViewPct = sessionBeadViewPct;
         const beadCalls = sessionOverviewFrame
           ? filterStrikesNearSpot(beadStrikesRef.current.call, spotRef.current ?? 0, beadViewPct)
           : beadStrikesRef.current.call;
@@ -3919,7 +3921,7 @@ export function VectorChart({
           priceRange = clampPriceRangeSpan(
             priceRange,
             spotRef.current,
-            SESSION_OVERVIEW_MAX_SPAN_PCT,
+            sessionSpanPct,
             res.priceRange
           );
         }

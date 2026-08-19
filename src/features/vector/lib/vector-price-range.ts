@@ -183,3 +183,66 @@ export function beadExtensionAllowed(
   if (!Number.isFinite(wheelZoomAtMs) || wheelZoomAtMs <= 0) return true;
   return !(nowMs - wheelZoomAtMs < cooldownMs);
 }
+
+/**
+ * Turn "show N bead rows" into a price-span percentage, using the ticker's OWN strike geometry.
+ *
+ * ── WHY A PERCENTAGE CANNOT BE THE SPEC (2026-08-19) ─────────────────────────────────
+ * `SESSION_OVERVIEW_BEAD_VIEW_MAX_PCT` (3%) and `SESSION_OVERVIEW_MAX_SPAN_PCT` (2.4%) were both
+ * tuned against a member reference screenshot — of SPX. A percentage of price is a fine unit for
+ * "how much chart to show" and a useless one for "how many strike rows fit", because the strike
+ * LADDER is not proportional to price:
+ *
+ *     SPX   5-pt strikes at ~7690  ->  0.065% per step  ->  2.4% spans ~37 rows
+ *     NVDA  $2.50 strikes at ~219  ->  1.14%  per step  ->  2.4% spans  ~2 rows
+ *
+ * Same constant, same code, a 18x difference in how much of the rail a member is allowed to see.
+ * That is the second half of "why does NVDA have only one level while SPX has ten" — the first half
+ * being the viewport-lock bug fixed alongside this. Neither is a recorder, roster or row-selection
+ * problem: both rails are fully recorded and 7-10 rows per side are selected for drawing.
+ *
+ * ── THE RULE ─────────────────────────────────────────────────────────────────────────
+ * Ask the strikes how wide a row is, and size the window to hold `rows` of them. The percentage
+ * survives as a FLOOR (never shrink a view that was already fine — SPX is unaffected, since 37 rows
+ * of room already exceeds any row cap) and a separate hard cap survives as the ceiling, so a
+ * pathological ladder still cannot squash the candles to a sliver.
+ *
+ * Falls back to `basePct` whenever the geometry cannot be measured — fewer than two strikes, a
+ * missing spot, a degenerate step. An unmeasurable ladder must degrade to today's behaviour, never
+ * to an invented window.
+ */
+export function rowAwareSpanPct(
+  spot: number,
+  strikes: readonly number[],
+  rows: number,
+  basePct: number,
+  hardCapPct: number
+): number {
+  const base = Number.isFinite(basePct) && basePct > 0 ? basePct : 0;
+  const cap = Number.isFinite(hardCapPct) && hardCapPct > 0 ? hardCapPct : base;
+  if (!(typeof spot === "number" && Number.isFinite(spot) && spot > 0)) return base;
+  if (!(Number.isFinite(rows) && rows >= 1)) return base;
+
+  const sorted = [...new Set(strikes.filter((s) => Number.isFinite(s) && s > 0))].sort((a, b) => a - b);
+  if (sorted.length < 2) return base;
+
+  // MEDIAN adjacent gap, not mean: a ladder mixes a dense near-spot region with sparse far wings
+  // (SPX lists 5-pt strikes near spot and 25-pt strikes far out), and a mean would be dragged by
+  // the wings into a window far wider than the rows a member actually reads.
+  const gaps: number[] = [];
+  for (let i = 1; i < sorted.length; i++) {
+    const g = sorted[i]! - sorted[i - 1]!;
+    if (g > 0) gaps.push(g);
+  }
+  if (!gaps.length) return base;
+  gaps.sort((a, b) => a - b);
+  const step = gaps[Math.floor(gaps.length / 2)]!;
+
+  // `rows` counts rows across the whole window, so the span is (rows - 1) steps plus half a step of
+  // padding at each end — otherwise the outermost row sits exactly on the frame edge and reads as
+  // clipped even though it was included.
+  const neededSpan = step * rows;
+  const pct = neededSpan / spot;
+  if (!Number.isFinite(pct) || pct <= 0) return base;
+  return Math.min(cap, Math.max(base, pct));
+}

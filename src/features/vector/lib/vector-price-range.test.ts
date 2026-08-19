@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { extendRangeForWalls, NEAREST_WALL_VIEW_MAX_PCT, BEAD_VIEW_MAX_PCT, SESSION_OVERVIEW_MAX_SPAN_PCT, filterStrikesNearSpot, clampPriceRangeSpan, beadExtensionAllowed } from "./vector-price-range";
+import { extendRangeForWalls, NEAREST_WALL_VIEW_MAX_PCT, BEAD_VIEW_MAX_PCT, SESSION_OVERVIEW_MAX_SPAN_PCT, filterStrikesNearSpot, clampPriceRangeSpan, beadExtensionAllowed, rowAwareSpanPct } from "./vector-price-range";
 
 // Candle band ~7510–7600 around spot 7575 (the live staging case), put walls far below.
 const base = { minValue: 7510, maxValue: 7600 };
@@ -132,4 +132,51 @@ test("beadExtensionAllowed: the cooldown is bounded, so a stale stamp can never 
   // stamp from earlier in the session must not still be suppressing anything.
   const now = 1_000_000;
   assert.equal(beadExtensionAllowed(now - 60 * 60 * 1000, now), true);
+});
+
+// ── ROW-AWARE SPAN: a percentage of price is the wrong unit for "how many rows fit" ──────────
+// SESSION_OVERVIEW_MAX_SPAN_PCT (2.4%) was tuned on SPX, where it spans ~37 strike steps. The same
+// constant on NVDA spans ~2. That is the second half of "NVDA has one level, SPX has ten".
+
+test("rowAwareSpanPct: a dense index ladder is UNCHANGED (the constant already had room)", () => {
+  // SPX 5-pt strikes at ~7690 → 0.065% per step. 10 rows needs 0.65%, well under the 2.4% floor,
+  // so the tuned session-overview look is preserved exactly.
+  const strikes = Array.from({ length: 12 }, (_, i) => 7650 + i * 5);
+  assert.equal(rowAwareSpanPct(7690, strikes, 10, SESSION_OVERVIEW_MAX_SPAN_PCT, BEAD_VIEW_MAX_PCT),
+    SESSION_OVERVIEW_MAX_SPAN_PCT);
+});
+
+test("rowAwareSpanPct: a coarse single-name ladder WIDENS to hold the same row count", () => {
+  // NVDA $2.50 strikes at ~219 → 1.14% per step. 10 rows needs ~11.4%, so the window opens from
+  // 2.4% (≈2 rows) to cover the rail the chart actually drew.
+  const strikes = [207.5, 210, 212.5, 215, 217.5, 220, 222.5, 225, 227.5, 230];
+  const pct = rowAwareSpanPct(219.28, strikes, 10, SESSION_OVERVIEW_MAX_SPAN_PCT, BEAD_VIEW_MAX_PCT);
+  assert.ok(pct > SESSION_OVERVIEW_MAX_SPAN_PCT, `expected widening, got ${pct}`);
+  assert.ok(pct <= BEAD_VIEW_MAX_PCT, "never past the hard ceiling");
+  // Exactly 10 steps of 2.5 on a 219.28 spot — the span tracks the ladder, not a constant.
+  assert.ok(Math.abs(pct - 25 / 219.28) < 1e-9, `span should track the ladder, got ${pct}`);
+});
+
+test("rowAwareSpanPct: the hard ceiling still bounds a pathological ladder", () => {
+  // Two strikes 100 apart on a $50 name: the row-derived span would be many multiples of price.
+  assert.equal(rowAwareSpanPct(50, [10, 110], 10, 0.024, 0.2), 0.2);
+});
+
+test("rowAwareSpanPct: unmeasurable geometry degrades to today's constant, never to a guess", () => {
+  assert.equal(rowAwareSpanPct(219, [220], 10, 0.024, 0.2), 0.024, "one strike — no step to measure");
+  assert.equal(rowAwareSpanPct(219, [], 10, 0.024, 0.2), 0.024, "no strikes");
+  assert.equal(rowAwareSpanPct(0, [210, 220], 10, 0.024, 0.2), 0.024, "no spot");
+  assert.equal(rowAwareSpanPct(219, [220, 220], 10, 0.024, 0.2), 0.024, "degenerate zero step");
+  assert.equal(rowAwareSpanPct(219, [210, 220], 0, 0.024, 0.2), 0.024, "no rows requested");
+});
+
+test("rowAwareSpanPct: the step is the MEDIAN gap, not the mean", () => {
+  // A real ladder is dense near spot and sparse in the wings (SPX lists 5-pt strikes near the money
+  // and 25-pt strikes far out). A mean would be dragged by the wings into a window far wider than
+  // the rows a member reads.
+  const dense = [100, 101, 102, 103, 104, 105];
+  const withWing = [...dense, 200];
+  const a = rowAwareSpanPct(102, dense, 6, 0.001, 0.5);
+  const b = rowAwareSpanPct(102, withWing, 6, 0.001, 0.5);
+  assert.equal(a, b, "one far wing must not move the window");
 });
