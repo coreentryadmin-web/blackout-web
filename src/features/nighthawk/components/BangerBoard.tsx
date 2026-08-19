@@ -23,6 +23,7 @@ import { useState } from "react";
 import useSWR from "swr";
 import { Badge, EmptyState, Panel, Skeleton } from "@/components/ui";
 import { computeScaleOutTriggerInfo } from "@/lib/zerodte/scale-out";
+import { etDateTimeShort } from "@/lib/et-clock";
 
 type BangerPlay = {
   id: number;
@@ -109,12 +110,9 @@ function fmtTimestamp(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  // `undefined` locale took the VIEWER's locale AND zone, so one row read "19 Aug, 19:30" in
+  // London and "Aug 19, 2:30 PM" in New York for the same instant. Both pinned now.
+  return etDateTimeShort(d) ?? "—";
 }
 
 /** The 3-4 point discovery rationale members can actually parse at a glance — labeled, not a raw dump. */

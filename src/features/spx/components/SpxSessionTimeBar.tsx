@@ -31,16 +31,13 @@ import { etMinutes } from "@/features/spx/lib/spx-play-session-time";
 import { isTradingDayEt } from "@/features/nighthawk/lib/session";
 import { todayEt } from "@/lib/et-date";
 import { todayEtYmd } from "@/lib/providers/spx-session";
+import { etClock } from "@/lib/et-clock";
 
 const CLOCK_TICK_MS = 30_000; // minute-resolution cursor; 30s keeps it never >30s stale
 const FEED_POLL_MS = 60_000; // fallback poll; the rail's CustomEvent updates us instantly
 
 function fmtDotTime(at: number): string {
-  return new Date(at).toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: "America/New_York",
-  });
+  return etClock(at) ?? "—";
 }
 
 type Props = {

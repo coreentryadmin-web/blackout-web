@@ -34,6 +34,7 @@ import {
   WinRateRing,
   pct,
 } from "@/components/admin/AdminUi";
+import { etDateTimeShort } from "@/lib/et-clock";
 
 type SectionId =
   | "overview"
@@ -71,13 +72,7 @@ const SECTIONS: Array<{ id: SectionId; label: string; icon: string }> = [
 
 function fmtTime(iso: string | null | undefined): string {
   if (!iso) return "—";
-  return new Date(iso).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-  });
+  return etDateTimeShort(iso, { seconds: true }) ?? "—";
 }
 
 function OverviewSection({ data }: { data: SpxAdminDashboardPayload }) {
