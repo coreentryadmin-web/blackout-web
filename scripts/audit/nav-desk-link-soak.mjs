@@ -57,6 +57,8 @@ async function refreshCtxCookies(ctx, session, state) {
   await ctx.addCookies(await cookiesFromHeader(next.cookieHeader));
   state.lastRefresh = Date.now();
 }
+
+async function openFeatures(page) {
   const btn = page.locator('button.nav-pill-item:has-text("Features"), button:has-text("Features")').first();
   await btn.waitFor({ state: "visible", timeout: 30_000 });
   await btn.click({ timeout: 8000 });
