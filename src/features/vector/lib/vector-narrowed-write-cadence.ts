@@ -35,12 +35,38 @@
 import type { VectorDteHorizon } from "./vector-dte-horizon";
 
 /**
- * Sweeps between weekly/monthly writes. 12 x 5s = 60s.
+ * Sweeps between weekly/monthly writes. **1 = every sweep (5s), the same cadence as 0DTE.**
  *
- * Chosen as the coarsest cadence that still reads as "live" on a chart whose candles are 1m at the
- * finest — a rail sampled faster than the candles it sits under buys nothing a viewer can see.
+ * ── WHY THIS IS 1 AGAIN (2026-08-19) ─────────────────────────────────────────────────
+ * The rationing above was never about what a viewer needs — it was about WRITE COST, because an
+ * append used to rewrite the whole growing rail. That is fixed: rails are append-only lists now
+ * (`redisListKey` in vector-wall-persist.ts), so one sample costs one RPUSH regardless of how long
+ * the session already is. The budget this constant was defending no longer exists.
+ *
+ * The measured consequence of rationing, which is why it had to go: a rail is only dense for a
+ * ticker somebody is WATCHING, because viewing triggers live 5s writes. Live prod, one session:
+ *
+ *     SPX  weekly 3845 samples   (viewed all session — the flagship desk)
+ *     TSLA weekly  591
+ *     NVDA weekly  100
+ *     AAPL weekly   70
+ *
+ * The Vector chart OPENS on weekly. So an unviewed ticker showed a rail built from ~100 samples
+ * across ~15 strike rows — about 6 beads per row — which renders as one visible level while SPX
+ * renders ten. Members read that as "the beads are broken on everything except SPX", and they were
+ * right: whether your ticker had a usable rail depended on whether anyone happened to be looking at
+ * it, which is not a property any product should have.
+ *
+ * The requirement is now explicit and unconditional: **every universe ticker records every rail
+ * every 5s, viewed or not** (non-universe rides the 15s active lane, likewise viewed or not).
+ *
+ * ── THE COST, STATED ─────────────────────────────────────────────────────────────────
+ * 4 rail writes per ticker per tick instead of ~2.2 (`meanRailWritesPerTick`). That is the same
+ * WRITE COUNT that overran the sweep in #2273 — but not the same write. Each is now O(1) rather
+ * than O(session length), which is the variable that actually blew the budget: #2273's writes got
+ * more expensive every minute of the session, and these do not.
  */
-export const NARROWED_SLOW_HORIZON_EVERY_N_TICKS = 12;
+export const NARROWED_SLOW_HORIZON_EVERY_N_TICKS = 1;
 
 /** Horizons written on EVERY sweep. The one a member watches intraday. */
 const FAST_HORIZONS: readonly VectorDteHorizon[] = ["0dte"];

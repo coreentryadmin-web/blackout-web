@@ -1,6 +1,6 @@
 import { logToken } from "@/lib/log-token";
-import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
-import { mergeWallHistory, type WallHistorySample } from "./vector-wall-history";
+import { sharedCacheGet, sharedCacheSet, sharedListAppend, sharedListRange } from "@/lib/shared-cache";
+import { mergeWallHistory, compactHistoryToCap, type WallHistorySample } from "./vector-wall-history";
 import type { VectorDteHorizon } from "./vector-dte-horizon";
 
 const KEY_PREFIX = "vector:wall-history";
@@ -28,6 +28,52 @@ function redisKey(storageTicker: string, sessionYmd: string): string {
 }
 
 /**
+ * APPEND-ONLY rail key (a Redis list), alongside the legacy whole-value blob.
+ *
+ * ── WHY A SECOND SHAPE ───────────────────────────────────────────────────────────────
+ * The blob form makes ONE append cost a whole-rail rewrite: read (or memo), merge, then
+ * `sharedCacheSet` the entire growing session. That cost is what capped the recorder. #2273 put all
+ * four rails per ticker on the 5s sweep — ~122 to 488 whole-rail rewrites per tick — the sweep blew
+ * its 5s budget, the blended rail everyone depends on regressed to 10-25s, and #2274 reverted it
+ * the same day. The lesson drawn then was to write the slow horizons less often; the actual problem
+ * was that an append cost O(session) at all.
+ *
+ * With a list, an append is RPUSH of ONE sample: O(1), and its payload does not grow with the
+ * session. That is what makes "every universe ticker, every rail, every 5s" affordable rather than
+ * a budget negotiation.
+ *
+ * The blob is still READ (and still written by anything on an older build) so a rollout cannot lose
+ * a rail mid-session — see loadSessionWallHistory, which unions both shapes.
+ */
+function redisListKey(storageTicker: string, sessionYmd: string): string {
+  return `${KEY_PREFIX}:seq:${storageTicker}:${sessionYmd}`;
+}
+
+/**
+ * Hard bound on list length. Above `MAX_HISTORY` (5760) the blob path compacts rather than
+ * truncates; the list is trimmed from the left as a backstop only, so this sits well above the
+ * compaction cap and exists to stop an unbounded key, not to shape the rail.
+ */
+const LIST_MAX_LEN = 20_000;
+
+
+/**
+ * Last-wins collapse by bucket time, preserving append order.
+ *
+ * The list is an append LOG, so the same bucket can appear more than once — from this replica
+ * refreshing it, or from two replicas recording the same tick. The newest entry for a bucket is the
+ * one to keep, which is exactly the semantics the blob form had via read-modify-write.
+ */
+function collapseByTimeLastWins(samples: readonly WallHistorySample[]): WallHistorySample[] {
+  const byTime = new Map<number, WallHistorySample>();
+  for (const s of samples) {
+    if (!s || !Number.isFinite(s.time)) continue;
+    byTime.set(s.time, s); // later append overwrites earlier
+  }
+  return [...byTime.values()].sort((a, b) => a.time - b.time);
+}
+
+/**
  * Load the durable per-bar wall ladder for a session (shared across replicas).
  *
  * Redis-first (hot cache). On a Redis miss — cold replica, eviction, restart — fall back to
@@ -42,8 +88,28 @@ export async function loadSessionWallHistory(
 ): Promise<WallHistorySample[]> {
   if (!sessionYmd) return [];
   const st = wallRailStorageId(ticker, horizon);
-  const hit = await sharedCacheGet<WallHistorySample[]>(redisKey(st, sessionYmd));
-  if (hit && hit.length) return hit;
+
+  // UNION both shapes, never one-or-the-other.
+  //
+  // The rail is written as an append-only list now (see redisListKey) but the blob still exists for
+  // any session that started on an older build, and any replica still running one keeps writing it.
+  // Reading only the list would blank a mid-session rail on deploy; reading only the blob would
+  // ignore everything recorded since. Merging is cheap — mergeWallHistory already dedupes by bucket
+  // time and sorts — and it is also what makes CROSS-REPLICA duplicate appends harmless, which the
+  // list form needs since it no longer has a read-modify-write to serialise them.
+  const [seq, blob] = await Promise.all([
+    sharedListRange<WallHistorySample>(redisListKey(st, sessionYmd)),
+    sharedCacheGet<WallHistorySample[]>(redisKey(st, sessionYmd)),
+  ]);
+  if (seq.length || (blob && blob.length)) {
+    // Collapse repeats WITHIN the list first, last-wins per bucket. The append path deliberately
+    // re-appends a bucket when the recorder refreshes it with newer walls (the blob form was
+    // last-write-wins), and mergeWallHistory only reconciles ACROSS its two arguments — it keeps
+    // duplicates inside one of them. Without this collapse a refreshed bucket would render twice.
+    const collapsed = collapseByTimeLastWins(seq);
+    const merged = mergeWallHistory(blob ?? [], collapsed);
+    if (merged.length) return compactHistoryToCap(merged);
+  }
 
   // Redis empty/absent — try the durable Postgres mirror. Lazy dynamic import keeps the
   // server-only DB module out of any client bundle that transitively reaches this file.
@@ -78,7 +144,8 @@ export async function loadSessionWallHistory(
   } catch (err) {
     console.warn("[vector-wall-persist] db fallback failed", `${logToken(st)}:${logToken(sessionYmd)}`, err);
   }
-  return hit ?? [];
+  // Nothing in either Redis shape and nothing durable.
+  return [];
 }
 
 /**
@@ -266,47 +333,27 @@ export async function appendSessionWallSample(
   if (!sessionYmd) return false;
   const st = wallRailStorageId(ticker, horizon);
   try {
-    const memoKey = `${st}:${sessionYmd}`;
-    const memo = railMemo.get(memoKey);
-    // Resynced on THIS append? Computed once and reused below, because the answer decides both
-    // where `existing` came from AND whether the resync clock may be reset. Deriving it twice is
-    // how the two fell out of step — see the `at` note below.
-    const resynced = railMemoNeedsResync(memo?.at, Date.now());
-    const existing =
-      resynced || !memo ? await loadSessionWallHistory(sessionYmd, ticker, horizon) : memo.rail;
-    // Stamp the moment of the authoritative READ, not the moment the write finishes — the window
-    // this clock measures is "how stale may my copy be", and a slow write must not buy extra
-    // staleness.
-    const resyncedAt = nextRailMemoAt(memo?.at, resynced, Date.now());
-    const next = mergeWallHistory(existing, [sample]);
-    if (next === existing) return false; // no-op merge — nothing new to write
-    await sharedCacheSet(redisKey(st, sessionYmd), next, TTL_SEC);
-    // Memoize only AFTER the write lands. Caching an unwritten rail would let a failed Redis SET
-    // silently become this process's idea of the truth, and every later append would build on a
-    // rail that exists nowhere else — the memo must never be ahead of the store.
-    // `at` is only refreshed on a real Redis resync (below), so the resync window is measured from
-    // the last authoritative READ, not from the last write. Otherwise a busy rail written every 5s
-    // would keep pushing its own deadline out and never resync at all.
-    // `at` advances ONLY when this append actually re-read Redis, so the window is measured from
-    // the last authoritative read rather than from the last write — otherwise a rail written every
-    // 5s would keep pushing its own deadline out and never resync.
+    // O(1) APPEND. The previous implementation memoised the rail in-process, merged the new sample
+    // into a copy of the WHOLE session, and wrote all of it back on every 5s tick — so the cost of
+    // recording one bead grew with the length of the day. RPUSH costs one sample, always.
     //
-    // THE BUG THIS FIXES: the expression was `at: memo?.at ?? Date.now()`, which reads as the same
-    // intent and is not. It refreshes `at` only when there was NO memo at all — i.e. exactly once,
-    // on the rail's first append. Every later resync re-read Redis and then wrote the ORIGINAL
-    // timestamp straight back, so from ~60s into a rail's life `Date.now() - memo.at` was always
-    // past the window and EVERY append re-read and re-parsed the entire session rail. The memo
-    // stopped working one minute into the session, silently, and the O(rail length) JSON cost it
-    // exists to remove came back — growing all session, which is the exact shape of the sweep
-    // degradation it was introduced to fix (5s early, 10-30s by midday).
-    railMemo.set(memoKey, { rail: next, at: resyncedAt });
+    // Dedupe moved to the READ (loadSessionWallHistory unions and merges), which is where it has to
+    // live anyway now that two replicas can append to the same rail concurrently. The blob form's
+    // `next === existing` no-op check could only ever dedupe within ONE process.
+    // NOTE: a repeat of the same bucket time is NOT skipped. The recorder legitimately re-writes a
+    // bucket with fresher walls inside the same window, and the blob form was last-write-wins per
+    // bucket. Appending both and resolving on read preserves that exactly; skipping here would
+    // silently pin the FIRST reading of every bucket, which is a data change disguised as an
+    // optimisation. Duplicate entries are bounded by the list trim and collapse on read.
+    const len = await sharedListAppend(redisListKey(st, sessionYmd), sample, TTL_SEC, LIST_MAX_LEN);
+
     // Durable write-through: fan the SAME bucket out to Postgres so the rail survives Redis
     // restarts. Non-blocking and best-effort — Redis stays authoritative for the boolean
     // return, and a DB failure (or the server-only module failing to load in an unexpected
     // context) must not affect the live recorder. Lazy dynamic import keeps the server-only
     // DB module out of any client bundle that transitively reaches this file.
     enqueueDurableWallSample(sessionYmd, st, sample);
-    return true;
+    return len > 0;
   } catch (err) {
     // Persistence is a supplementary visual and must never block the live stream —
     // but swallowing the error SILENTLY hid a session-long recording gap (an empty
@@ -317,6 +364,7 @@ export async function appendSessionWallSample(
     return false;
   }
 }
+
 
 /**
  * Load only the newest `limit` samples of a session's rail.
