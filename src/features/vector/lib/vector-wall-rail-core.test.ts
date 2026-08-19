@@ -738,11 +738,11 @@ test("strength halo is budgeted against the ROW GAP, not just bar spacing", () =
 
 test("core + halo together stay inside one row's slot, leaving air between rows", () => {
   for (const rowGapPx of [8, 12, 20, 30, 44]) {
-    const halfMax = (rowGapPx * 0.55) / 2; // BEAD_ROW_FILL, the core's own budget
+    const halfMax = (rowGapPx * 0.44) / 2; // BEAD_ROW_FILL, the core's own budget
     const halo = rowStrengthHaloExtraPx(1, { barSpacingPx: 60, rowGapPx, coreHalfPx: halfMax });
     const thickness = 2 * (halfMax + halo);
     assert.ok(
-      thickness / rowGapPx <= 1,
+      thickness / rowGapPx <= ROW_HALO_ROW_GAP_FILL + 1e-9,
       `rowGap=${rowGapPx}: core+halo fills ${(thickness / rowGapPx).toFixed(2)} of the slot — rows would touch`
     );
   }

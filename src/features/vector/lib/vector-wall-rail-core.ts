@@ -271,11 +271,11 @@ export const ROW_HALO_BAR_SPACING_FILL = 0.55;
  * p90 of 0.64 and exceeded 1.0 on 15 of 21 frames (worst 1.58 on QQQ) — above 1.0 the bead is
  * thicker than the distance to its neighbour, so rows touch and the candles behind vanish.
  *
- * 0.7 leaves ~30% of every slot as air. Not lower, because the whole point of the rail is that a
- * dominant wall READS as dominant, and squeezing the peak toward the floor trades this complaint
- * for the opposite one — which is the exact oscillation #2310 and #2244 already went through once.
+ * 0.52 leaves ~48% of every slot as air — aligned with the reference product's visibly-under-0.50
+ * thickness on strong nodes. The first 0.7 pass (#2337) fixed the halo budgeting bug but still
+ * painted SPX 7720 as a slab (live p90 fill 0.90 on 2026-08-19 RTH).
  */
-export const ROW_HALO_ROW_GAP_FILL = 0.7;
+export const ROW_HALO_ROW_GAP_FILL = 0.52;
 
 /**
  * Strength halo radius beyond core bead — grows with row swell, fades to a trace.
@@ -576,7 +576,7 @@ const BEAD_BAR_FILL = 2.4;
 /** Fraction of the ROW GAP (price-axis distance to the nearest neighbouring row) a bead's diameter
  *  may occupy. Deliberately about half: this is what keeps rows visibly SEPARATE — the property the
  *  reference product has and the slab render did not — and what stops beads burying the candles. */
-const BEAD_ROW_FILL = 0.55;
+const BEAD_ROW_FILL = 0.44;
 
 /**
  * The clamped ceiling may never fall below this.
