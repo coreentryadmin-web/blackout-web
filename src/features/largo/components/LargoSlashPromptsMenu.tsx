@@ -2,8 +2,8 @@
 
 import { clsx } from "clsx";
 import { ExternalLink, X } from "lucide-react";
-import type { SlashPrompt } from "@/lib/largo/slash-prompts";
-import type { SlashPromptsPayload } from "@/lib/largo/slash-prompts";
+import type { SlashPrompt } from "@/lib/largo/slash-prompt-utils";
+import type { SlashPromptsPayload } from "@/lib/largo/slash-prompt-utils";
 
 export function LargoSlashPromptsMenu({
   open,

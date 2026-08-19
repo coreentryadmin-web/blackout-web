@@ -5,7 +5,8 @@ import {
   slashArgsFromInput,
   slashDefaultQuestion,
   type SlashPrompt,
-} from "./slash-prompts";
+} from "./slash-prompt-utils";
+import { slashDefaultQuestion } from "./slash-prompts";
 
 const SAMPLE: SlashPrompt[] = [
   { id: "a", label: "NVDA tape leader", question: "Summarize HELIX on NVDA", live: "+$42M net", rank: 10 },

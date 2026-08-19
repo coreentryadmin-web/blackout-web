@@ -28,7 +28,7 @@ import { LargoSlashPromptsMenu } from "./LargoSlashPromptsMenu";
 import { LargoDeskScopeBanner } from "./LargoDeskScopeBanner";
 import { LargoProactiveComposer } from "./LargoProactiveComposer";
 import { parseDeskSlashArgs } from "@/lib/largo/desk-scope";
-import { slashArgsFromInput } from "@/lib/largo/slash-prompts";
+import { slashArgsFromInput } from "@/lib/largo/slash-prompt-utils";
 import type { LargoSlashCommand } from "@/lib/largo/slash-commands";
 
 const INPUT_PLACEHOLDER = "Type / for desk commands — SPX, flow, thermal, vector…";

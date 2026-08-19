@@ -11,7 +11,7 @@ import { LARGO_DESK_PROMPTS, largoToolLabel, useLargoChat } from "@/hooks/useLar
 import { useLargoSlashCommands } from "@/hooks/useLargoSlashCommands";
 import { resolveLargoSlashSubmit } from "@/lib/largo/slash-commands";
 import { parseDeskSlashArgs } from "@/lib/largo/desk-scope";
-import { slashArgsFromInput } from "@/lib/largo/slash-prompts";
+import { slashArgsFromInput } from "@/lib/largo/slash-prompt-utils";
 import { LargoProactiveComposer } from "@/features/largo/components/LargoProactiveComposer";
 import { LargoDeskScopeBanner } from "@/features/largo/components/LargoDeskScopeBanner";
 import { LargoStatusStrip } from "@/features/largo/components/LargoStatusStrip";

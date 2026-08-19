@@ -15,7 +15,7 @@ import {
   slashDeskKeyFromCommand,
   type SlashPrompt,
   type SlashPromptsPayload,
-} from "@/lib/largo/slash-prompts";
+} from "@/lib/largo/slash-prompt-utils";
 import { parseDeskSlashArgs } from "@/lib/largo/desk-scope";
 
 const fetcher = (url: string) => fetch(url, { cache: "no-store" }).then((r) => (r.ok ? r.json() : null));
