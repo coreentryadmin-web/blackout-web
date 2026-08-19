@@ -492,6 +492,94 @@ export const CRON_JOBS: CronJobDefinition[] = [
       "Write SPX coaching alerts (VWAP / gamma walls / posture) to coaching_alerts — replaces the never-shipped position-coaching-monitor cron",
     produces_member_alert: true,
   },
+  // ---------------------------------------------------------------------------
+  // SIX JOBS THAT RUN AND LOG BUT HAD NO HEALTH ENTRY (added 2026-08-19).
+  //
+  // Each of these calls `logCronRun(<key>)` on every invocation and each has a real schedule in
+  // blackout-infra's `terraform/modules/crons/cron-jobs.json` — they were simply never added here,
+  // so `buildCronHealthSnapshot` never looked their run rows up and the board covered 40 of the 50
+  // cron routes. A job absent from this list cannot be reported stale, failed, or dark: it is not
+  // "healthy", it is unwatched. `banger-live-sync` marks the live banger board every 5 minutes
+  // during the session and was among them.
+  //
+  // Every cadence and `schedule_cron_utc` below is copied from that infra file rather than inferred,
+  // so the stale window matches the schedule that actually fires. `stale_after_min` is set to a few
+  // times the interval, matching how the neighbouring entries are tuned — long enough that one
+  // missed tick is not an alert, short enough that a dead job is caught the same session.
+  //
+  // The four `x-*` jobs already had pause handling in admin-cron-health.ts via
+  // `X_MARKETING_CRON_KEYS` (exactly these four), which only makes sense for registry jobs — more
+  // evidence they were meant to be here. When marketing is paused they relabel to
+  // "Paused (X marketing env)" rather than going stale.
+  // ---------------------------------------------------------------------------
+  {
+    key: "banger-discovery",
+    name: "Banger Discovery",
+    kind: "http",
+    path: "/api/cron/banger-discovery",
+    schedule_label: "4:15 PM ET weekdays (post-close)",
+    // Daily job: a full day plus slack, so one missed evening is caught the next morning and a
+    // weekend does not alert.
+    stale_after_min: 1800,
+    schedule_cron_utc: "15 20 * * 1-5",
+    weekdays_only: true,
+    description: "Whole-market banger scan → next-session candidates",
+  },
+  {
+    key: "banger-live-sync",
+    name: "Banger Live Sync",
+    kind: "http",
+    path: "/api/cron/banger-live-sync",
+    schedule_label: "~Every 5 min (market hours)",
+    stale_after_min: 20,
+    schedule_cron_utc: "*/5 11-21 * * 1-5",
+    weekdays_only: true,
+    market_hours_only: true,
+    description: "Live marks + outcome sync for the banger board",
+    produces_member_alert: true,
+  },
+  {
+    key: "x-autopost",
+    name: "X Autopost",
+    kind: "http",
+    path: "/api/cron/x-autopost",
+    schedule_label: "Every 2h",
+    stale_after_min: 240,
+    schedule_cron_utc: "0 12,14,16,18,20,22,0 * * *",
+    description: "Scheduled X posts (paused via X marketing env)",
+  },
+  {
+    key: "x-growth",
+    name: "X Growth",
+    kind: "http",
+    path: "/api/cron/x-growth",
+    schedule_label: "Hourly 9AM–6PM ET weekdays",
+    stale_after_min: 150,
+    schedule_cron_utc: "0 13-22 * * 1-5",
+    weekdays_only: true,
+    description: "X growth pass — likes/follows/RT (paused via X marketing env)",
+  },
+  {
+    key: "x-replies",
+    name: "X Replies",
+    kind: "http",
+    path: "/api/cron/x-replies",
+    schedule_label: "Hourly 9AM–6PM ET weekdays",
+    stale_after_min: 150,
+    schedule_cron_utc: "20 13-22 * * 1-5",
+    weekdays_only: true,
+    description: "Reply to X mentions (paused via X marketing env)",
+  },
+  {
+    key: "x-analytics",
+    name: "X Analytics",
+    kind: "http",
+    path: "/api/cron/x-analytics",
+    schedule_label: "Daily 7:30 PM ET",
+    stale_after_min: 1800,
+    schedule_cron_utc: "30 23 * * *",
+    description: "Pull X post/profile metrics into analytics",
+  },
 ];
 
 export const CRON_JOB_BY_KEY = Object.fromEntries(CRON_JOBS.map((j) => [j.key, j])) as Record<
