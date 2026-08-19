@@ -11927,3 +11927,61 @@ the rail must still paint on a surface that cannot report its geometry.
 spaced ~11px apart rather than ~5.4px, that clamp is more conservative than it needs to be and beads
 could grow — but that is a second behaviour change and it wants its own before/after measurement at
 the zooms this PR makes meaningful, not a same-PR guess.
+
+## 2026-08-19 — a ticker's bead rail depended on whether anyone was WATCHING it — FIXED
+
+> **kind:** `FINDING`
+
+| | |
+|---|---|
+| **Severity** | P1 — every universe ticker except the viewed ones had an unusable weekly/monthly rail |
+| **Where** | `vector-wall-persist.ts` (whole-rail rewrite) + `vector-narrowed-write-cadence.ts` (rationing) |
+| **Status** | FIXED — append-only rails (O(1)); slow-horizon rationing removed; 28 tests across both files |
+
+**The symptom.** SPX drew 10-12 strike levels on the Vector rail; NVDA drew one. The row pipeline
+was never at fault — running the REAL production functions over the REAL recorded history, NVDA
+yields 7-8 rows per side, the same as SPX. What differed was beads ON those rows, on the horizon the
+chart actually opens with (weekly), same live session:
+
+| ticker | weekly samples |
+|---|---|
+| SPX | 3845 |
+| TSLA | 591 |
+| NVDA | 100 |
+| AAPL | 70 |
+
+~100 beads across ~15 rows is ~6 beads per row: one row shows a run, the rest read as noise.
+
+**Root cause — two compounding, both about write COST.**
+
+1. **Viewing drove density.** Viewing a ticker triggers live 5s writes. SPX is under a viewer all
+   session (flagship desk), so its weekly rail was dense. Unviewed names got only the shared sweep.
+   Whether your ticker had a usable rail depended on whether somebody happened to be looking at it.
+2. **The sweep rationed the slow horizons.** `NARROWED_SLOW_HORIZON_EVERY_N_TICKS = 12` wrote
+   weekly/monthly once a minute rather than every 5s. That rationing was never about what a viewer
+   needs — it was defending a write budget, because an append REWROTE THE WHOLE GROWING RAIL
+   (`sharedCacheSet` of the entire session). #2273 put all four rails on the 5s sweep, ~122 -> 488
+   whole-rail rewrites per tick, the sweep overran its 5s deadline, the blended rail everyone
+   depends on regressed to 10-25s, and #2274 reverted it the same day.
+
+**Fix — make the write cheap, then stop rationing.**
+
+Rails are now APPEND-ONLY Redis lists: one `RPUSH` per sample, O(1), payload independent of how long
+the session already is. The budget that forced the rationing no longer exists, so
+`NARROWED_SLOW_HORIZON_EVERY_N_TICKS` is 1 — **every universe ticker records every rail every 5s,
+viewed or not**; non-universe rides the existing 15s active lane on the same terms.
+
+Write COUNT returns to the 4-per-ticker-per-tick of #2273, but not the same write: each is now O(1)
+instead of O(session length), and it was the growth — writes getting more expensive every minute of
+the session — that actually blew the budget.
+
+**Rollout safety.** `loadSessionWallHistory` UNIONS both shapes (list + legacy blob) rather than
+choosing one, so a mid-session deploy cannot blank a rail while some replicas still write blobs.
+Duplicate buckets — from a refresh, or from two replicas recording the same tick — collapse
+last-wins on read, which is exactly the semantics the read-modify-write had.
+
+**Tests.** Storage: a 400-sample rail reads back complete and in order; a refreshed bucket collapses
+last-wins rather than rendering twice; all four horizons record independently at full cadence.
+Cadence: the old `mean < 2.5` budget assertion is REPLACED by `mean === 4` with the reasoning
+inline, plus a pointer test asserting the cost guard now lives in the storage layer so a future
+reader who wants to re-ration looks there instead of reintroducing the starvation.

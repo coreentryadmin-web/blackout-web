@@ -26,6 +26,13 @@ function setMemoryEntry(key: string, entry: MemoryEntry): void {
 
 type RedisClient = {
   get(key: string): Promise<string | null>;
+  /** List ops — the append-only primitive behind sharedListAppend/sharedListRange. Present on
+   *  ioredis; typed here structurally and probed at runtime so a client without them degrades to
+   *  the in-memory fallback rather than throwing. */
+  rpush?(key: string, ...values: string[]): Promise<number>;
+  lrange?(key: string, start: number, stop: number): Promise<string[]>;
+  ltrim?(key: string, start: number, stop: number): Promise<unknown>;
+  expire?(key: string, ttlSec: number): Promise<unknown>;
   // Variadic to cover both the plain `SET key val EX ttl` write and the atomic claim
   // `SET key val EX ttl NX` (see sharedCacheSetNx). ioredis returns "OK" on a successful SET and
   // null when an NX SET is refused because the key already exists.
@@ -210,3 +217,106 @@ export const DESK_STICKY_TTL_SEC = {
   gex: Number(process.env.SPX_REDIS_GEX_TTL_SEC ?? 120),
   tape: Number(process.env.SPX_REDIS_TAPE_TTL_SEC ?? 60),
 } as const;
+
+
+// ── APPEND-ONLY LISTS ────────────────────────────────────────────────────────────────
+//
+// WHY THIS EXISTS. `sharedCacheSet` is a whole-value write: it serialises the ENTIRE value and
+// stores it. For a value that GROWS all session and is appended to every few seconds — the Vector
+// bead rails — that is O(session length) of JSON per append, and the cost climbs all day.
+//
+// That is not a theoretical worry, it is the measured cause of a same-day revert: #2273 put all
+// four rails per ticker on the 5s sweep, ~122 -> 488 whole-rail rewrites per tick, the sweep
+// overran its 5s budget, and the blended rail everyone depends on regressed from 5s to 10-25s.
+// #2274 reverted it. The conclusion drawn at the time was "spend the extra writes where they buy
+// something"; the real problem was that a single append cost a whole-rail rewrite at all.
+//
+// RPUSH is O(1) and its payload is ONE sample regardless of how long the rail already is. That is
+// what makes per-tick writes for every horizon affordable.
+//
+// TTL and trimming are handled WITHOUT an extra round trip per append: RPUSH returns the new
+// length, so the TTL is set when the list is created and refreshed (with a trim) only every
+// `MAINTAIN_EVERY` appends. A rail written every 5s therefore costs one command per append and
+// three occasionally, instead of a growing SET every time.
+
+/** Appends between TTL-refresh + trim maintenance. 64 x 5s ~ every 5 minutes. */
+const LIST_MAINTAIN_EVERY = 64;
+
+function memoryList(key: string): string[] {
+  const hit = memory.get(key);
+  if (!hit || hit.expiresAt <= Date.now()) return [];
+  try {
+    const parsed = JSON.parse(hit.value);
+    return Array.isArray(parsed) ? (parsed as string[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Append one entry to a bounded, TTL'd list. Returns the list's new length (0 when the append
+ * could not be recorded anywhere).
+ *
+ * `maxLen` bounds the list from the RIGHT (newest kept) so an unexpectedly long session cannot
+ * grow it without limit — the same role `compactHistoryToCap` plays for the blob form.
+ */
+export async function sharedListAppend(
+  key: string,
+  value: unknown,
+  ttlSec: number,
+  maxLen: number
+): Promise<number> {
+  const payload = JSON.stringify(value);
+  const full = `blackout:${key}`;
+
+  const redis = await getRedis();
+  if (redis?.rpush) {
+    try {
+      const len = await redis.rpush(full, payload);
+      // First append creates the key with no TTL — set it immediately, or the rail never expires.
+      if (len === 1) {
+        await redis.expire?.(full, ttlSec);
+      } else if (len % LIST_MAINTAIN_EVERY === 0) {
+        // Refresh the TTL so a session-long rail does not expire mid-session, and trim in the same
+        // maintenance window rather than on every append.
+        await redis.ltrim?.(full, -maxLen, -1);
+        await redis.expire?.(full, ttlSec);
+      }
+      return len;
+    } catch {
+      // fall through to the memory copy
+    }
+  }
+
+  const list = memoryList(full);
+  list.push(payload);
+  const bounded = list.length > maxLen ? list.slice(list.length - maxLen) : list;
+  setMemoryEntry(full, { value: JSON.stringify(bounded), expiresAt: Date.now() + ttlSec * 1000 });
+  return bounded.length;
+}
+
+/** Read a list appended by {@link sharedListAppend}. Unparseable entries are skipped, never thrown
+ *  on — one bad element must not cost the caller the whole rail. */
+export async function sharedListRange<T>(key: string): Promise<T[]> {
+  const full = `blackout:${key}`;
+  const redis = await getRedis();
+  let raw: string[] | null = null;
+  if (redis?.lrange) {
+    try {
+      raw = await redis.lrange(full, 0, -1);
+    } catch {
+      raw = null;
+    }
+  }
+  if (!raw || raw.length === 0) raw = memoryList(full);
+
+  const out: T[] = [];
+  for (const entry of raw) {
+    try {
+      out.push(JSON.parse(entry) as T);
+    } catch {
+      // skip
+    }
+  }
+  return out;
+}

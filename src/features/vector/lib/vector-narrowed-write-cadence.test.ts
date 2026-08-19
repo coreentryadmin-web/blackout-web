@@ -29,16 +29,30 @@ test("tick 0 seeds ALL rails so a fresh replica is never blank on weekly/monthly
   assert.deepEqual(horizonsForTick(0).sort(), ["0dte", "monthly", "weekly"]);
 });
 
-test("THE BUDGET: mean writes per ticker stay well under the 4 that got #2273 reverted", () => {
-  // #2273 wrote 1 blended + 3 narrowed = 4 every tick (~122 -> ~488 per 5s tick), the sweep
-  // overran, and the healthy blended rail regressed from 5s to 10-25s.
+test("THE CONTRACT: every rail is written on every sweep, for every ticker", () => {
+  // REWRITTEN 2026-08-19. This test used to assert `mean < 2.5` — a WRITE BUDGET, because an append
+  // rewrote the whole growing rail and four per ticker per tick overran the 5s sweep (#2273 ->
+  // reverted by #2274). Rails are append-only lists now (one RPUSH, O(1), payload independent of
+  // session length), so the budget this guarded no longer exists.
+  //
+  // What replaced it is a REQUIREMENT, not a compromise: a ticker's rail must not depend on whether
+  // anyone is watching it. Measured before this change, one live session: SPX weekly 3845 samples
+  // (viewed all day), NVDA 100, AAPL 70 — and the chart opens on weekly, so unviewed names drew one
+  // level where SPX drew ten.
   const mean = meanRailWritesPerTick();
-  assert.ok(mean < 2.5, `mean ${mean} must stay far below 4`);
-  assert.ok(mean >= 2, `mean ${mean} must still be writing 0dte every tick`);
-
-  // Spelled out: 11 ticks of 2 writes + 1 tick of 4.
+  assert.equal(mean, 4, `every tick must write blended + all three narrowed rails (got ${mean})`);
   assert.equal(railWritesForTick(0), 4, "seed tick writes everything");
-  assert.equal(railWritesForTick(1), 2, "ordinary tick writes blended + 0dte only");
+  assert.equal(railWritesForTick(1), 4, "so does every ordinary tick — no rationing");
+  assert.equal(railWritesForTick(97), 4, "and it never drifts with the index");
+});
+
+test("the cost guard moved to the STORAGE layer, and that is the invariant to protect", () => {
+  // The thing that actually broke #2273 was not the write COUNT, it was that each write was
+  // O(session length) and grew all day. That property is now owned by vector-wall-persist
+  // (redisListKey / sharedListAppend) and covered by its own tests — see "a long rail costs a
+  // constant-size append". This assertion exists so a future reader who wants to re-ration the
+  // cadence for cost reasons looks THERE first rather than reintroducing the starvation here.
+  assert.equal(NARROWED_SLOW_HORIZON_EVERY_N_TICKS, 1, "rationing is off; cost is handled in storage");
 });
 
 test("cadence is a pure function of the index — deterministic across replicas", () => {
@@ -58,5 +72,9 @@ test("a nonsense tick index degrades to the seed tick rather than throwing or wr
 test("the returned array is a copy — a caller cannot mutate the schedule", () => {
   const h = horizonsForTick(1);
   h.push("all");
-  assert.deepEqual(horizonsForTick(1), ["0dte"], "internal constants must be untouched");
+  assert.deepEqual(
+    horizonsForTick(1),
+    ["0dte", "weekly", "monthly"],
+    "internal constants must be untouched"
+  );
 });

@@ -272,3 +272,49 @@ test("the resync window is never skipped entirely — staleness stays bounded", 
     assert.ok(now - (at ?? now) < WINDOW, `stamp went stale at ${elapsed}ms`);
   }
 });
+
+// ── APPEND-ONLY RAIL (2026-08-19) ────────────────────────────────────────────────────
+//
+// The rail is written as a Redis list now: one RPUSH per sample, O(1), payload independent of how
+// long the session already is. The blob form made every append a whole-rail rewrite, which is what
+// capped the recorder — #2273 put four rails per ticker on the 5s sweep, the sweep blew its budget,
+// and #2274 reverted it the same day.
+
+test("a long rail costs a constant-size append, not a whole-rail rewrite", async () => {
+  const session = "2099-03-01";
+  for (let i = 0; i < 400; i++) {
+    await appendSessionWallSample(session, { time: 1000 + i * 5, walls: walls(100 + i, 90) }, "AMD");
+  }
+  const loaded = await loadSessionWallHistory(session, "AMD");
+  assert.equal(loaded.length, 400, "every appended bucket must be readable");
+  assert.equal(loaded[0]!.time, 1000, "oldest bucket kept");
+  assert.equal(loaded[loaded.length - 1]!.time, 1000 + 399 * 5, "newest bucket kept");
+  // Order is the property the chart depends on — beads are drawn along this axis.
+  for (let i = 1; i < loaded.length; i++) {
+    assert.ok(loaded[i]!.time > loaded[i - 1]!.time, `rail out of order at ${i}`);
+  }
+});
+
+test("a refreshed bucket collapses last-wins instead of rendering twice", async () => {
+  const session = "2099-03-02";
+  await appendSessionWallSample(session, { time: 300, walls: walls(10, 5) }, "TSLA");
+  await appendSessionWallSample(session, { time: 300, walls: walls(11, 5) }, "TSLA");
+  await appendSessionWallSample(session, { time: 300, walls: walls(12, 5) }, "TSLA");
+  const loaded = await loadSessionWallHistory(session, "TSLA");
+  assert.equal(loaded.length, 1, "one bucket, however many times it was refreshed");
+  assert.equal(loaded[0]!.walls.callWalls[0]!.strike, 12, "newest reading wins");
+});
+
+test("every horizon records independently at full cadence", async () => {
+  // The point of the whole change: weekly/monthly are no longer rationed against a write budget.
+  const session = "2099-03-03";
+  for (const horizon of ["all", "0dte", "weekly", "monthly"] as const) {
+    for (let i = 0; i < 5; i++) {
+      await appendSessionWallSample(session, { time: 700 + i * 5, walls: walls(50 + i, 40) }, "NVDA", horizon);
+    }
+  }
+  for (const horizon of ["all", "0dte", "weekly", "monthly"] as const) {
+    const rail = await loadSessionWallHistory(session, "NVDA", horizon);
+    assert.equal(rail.length, 5, `${horizon} rail should hold every sample`);
+  }
+});
