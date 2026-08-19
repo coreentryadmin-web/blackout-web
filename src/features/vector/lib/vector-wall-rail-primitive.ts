@@ -18,8 +18,9 @@ import {
   kingStrikeByTime,
   maxPctByTime,
   trailingRefs,
-  rowPeakRefs,
   rowSwellMul,
+  BOOK_SWELL_FLOOR,
+  BOOK_SWELL_EXP,
   rowStrengthHaloExtraPx,
   rowStrengthHaloAlphaMul,
   beadRenderTuning,
@@ -579,7 +580,6 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
       // Trailing reference per bucket — drives the SLOW-decay channel (see decayModulation). Computed
       // ONCE per trail, not per bead: it is O(n) and this runs on every repaint.
       const refs = trailingRefs(pts);
-      const rowPeaks = rowPeakRefs(pts);
 
       const steps: number[] = [];
       for (let i = 1; i < pts.length; i++) steps.push(pts[i]!.time - pts[i - 1]!.time);
@@ -634,12 +634,40 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
         // wall used to render as a row of unchanged beads.
         const mod = beadModulation(p.pct, prev ? prev.pct : null, refs[i] ?? null, maxPct);
         const glow = magnitudeGlowBoost(p.pct); // absolute-magnitude brightness (frame-independent)
-        const rowPeak = rowPeaks[i] ?? 0;
+        // ── ONE DENOMINATOR FOR EVERY ROW (2026-08-19) ───────────────────────────────────────
+        // This used to divide each bucket by `rowPeaks[i]` — that row's RUNNING peak. Two defects
+        // fell out of it, both measured on the real 2026-08-18 SPX session:
+        //
+        //   1. A running peak is self-fulfilling. Each bucket is compared to the highest that wall
+        //      has been SO FAR, so a wall that builds gradually is always near its own max and
+        //      paints full-size all session. SPX 7700's share swung 2.36%->25.69% (10.9x) and its
+        //      median bucket still rendered at 0.96 of maximum. A member's words for that: "a
+        //      strong bead which was strong gets continued throughout the day .. when it weakens
+        //      it has to paint small beads .. but it is not doing that."
+        //   2. Row-relative normalisation destroys cross-row contrast outright. Every row reaches
+        //      1.0 on its own terms, so a 25.7%-of-book wall and a 5.8% one painted the same size
+        //      (measured separation at each row's median: 1.26x).
+        //
+        // `maxPct` — the strongest wall on the frame — is the denominator that fixes both, because
+        // it is SHARED. Measured on the same session it takes 7700 from a flat 0.96 to a live
+        // 0.32..0.93 and restores ordering across rows by actual share.
+        //
+        // Rejected: each row's own SESSION peak (rather than running). It fixes (1) but not (2),
+        // and measurably INVERTS the ordering — the weakest wall painted 0.81x the size of the
+        // dominant one, which is worse than shipping nothing. See
+        // scripts/audit/vector-swell-normalization-ab.mts for the A/B this came from.
+        //
+        // The cost, stated plainly: `maxPct` is a frame-wide peak, so when a new record wall prints
+        // the whole rail restretches. The previous design bought immunity to that with strict
+        // no-lookahead, and paid for it with a rail that could not show strength at all.
+        const bookPeak = maxPct;
         const rowSwell =
-          p.modeled === true || rowPeak <= 0 ? 0 : rowSwellMul(p.pct, rowPeak);
-        // Core bead radius = absolute share ladder × row swell × velocity (round dots, not ellipses).
+          p.modeled === true || bookPeak <= 0
+            ? 0
+            : rowSwellMul(p.pct, bookPeak, { floor: BOOK_SWELL_FLOOR, exp: BOOK_SWELL_EXP });
+        // Core bead radius = absolute share ladder × book swell × velocity (round dots, not ellipses).
         const target =
-          targetHalfPx(p.pct, p.notional, maxPct, tuning, { rowPeakPct: rowPeak }) * mod.sizeMul;
+          targetHalfPx(p.pct, p.notional, maxPct, tuning, { rowPeakPct: bookPeak }) * mod.sizeMul;
         const key = beadKey(side, trail.strike, p.time);
         this._targetHalf.set(key, target);
         // Displayed half lags the target (eased by the rAF loop). Reduce-motion / first sight → snap
@@ -661,7 +689,12 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
         // off-hours or replayed rail has no "now" to be old relative to, and using Date.now() there
         // would fade an entire frozen session toward the floor for no reason a member could read.
         const ageScale = ageTaperAlpha(liveTime - p.time);
-        const rowAlphaMul = rowPeak > 0 ? rowSwellMul(p.pct, rowPeak, { floor: 0.38, exp: 0.65 }) : 1;
+        // Same shared denominator for the ALPHA channel, for the same reason as the size channel
+        // above — a row-relative alpha kept every row at full brightness on its own terms. Floored
+        // higher than the size channel (0.24 vs 0.15): a bead that shrinks to a dot and ALSO fades
+        // to near-transparent disappears entirely, and the two channels multiply.
+        const rowAlphaMul =
+          bookPeak > 0 ? rowSwellMul(p.pct, bookPeak, { floor: 0.24, exp: BOOK_SWELL_EXP }) : 1;
         const a = Math.min(
           1,
           // POINT-IN-TIME contrast: measured against the strongest wall in THAT bucket, not the

@@ -50,14 +50,25 @@ export const VECTOR_WALL_NODES_PER_SIDE = 20;
  */
 export function wallCountForTimeframe(tf: VectorTimeframeMinutes): number {
   let count: number;
-  if (tf <= 1) count = 6;
-  else if (tf <= 3) count = VECTOR_0DTE_WALL_COUNT;
-  else if (tf <= 5) count = 10;
-  else if (tf <= 15) count = 12;
-  else if (tf <= 30) count = 14;
-  else if (tf <= 60) count = 16;
-  else if (tf <= 120) count = 18;
-  else count = 20; // 2h+ custom intervals — widest view, saturates at the cap
+  // ── THE WALK STEPS UP (2026-08-19) ───────────────────────────────────────────────────────
+  // Every row used to cost the same visual weight, because the bead swell was normalised against
+  // each row's OWN peak — so a marginal level painted about as large as a dominant one (measured
+  // separation on real SPX data: 1.26x). Under that rendering a low ceiling was the only defence
+  // against a chart of uniform bars, and 6 rows on a 1m chart was the right call.
+  //
+  // The rail now normalises every row against ONE shared denominator (the frame's strongest wall,
+  // see BOOK_SWELL_FLOOR), so a weak level recedes to a faint trace on its own. The dynamic range
+  // does the decluttering, which is what lets a chart carry many more rows without turning to mush
+  // — the reference implementation a member sent for comparison shows ~26 rows, of which perhaps
+  // six are ever prominent. So the constraint that set these numbers is gone, and holding the old
+  // ceiling now just hides structure a member could otherwise read at a glance.
+  //
+  // Manual NODES is unaffected and still overrides in both directions, up to the recorder's cap.
+  if (tf <= 1) count = 10;
+  else if (tf <= 3) count = Math.max(VECTOR_0DTE_WALL_COUNT, 14);
+  else if (tf <= 5) count = 16;
+  else if (tf <= 15) count = 18;
+  else count = 20; // 30m+ — widest views saturate at the recorder cap
   return Math.max(1, Math.min(VECTOR_WALL_NODES_PER_SIDE, count));
 }
 
