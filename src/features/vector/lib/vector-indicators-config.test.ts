@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  isVectorBeadDisplayId,
   VECTOR_OVERLAYS,
   VECTOR_OVERLAY_FAMILIES,
   VECTOR_LEVELS,
@@ -134,10 +135,20 @@ test("VECTOR_INDICATOR_GROUPS: covers every family + level + structure id exactl
     "gex-heatmap",
     "gamma-regime",
     "volume-profile",
-    "bead-integrity-rings",
+    // "bead-integrity-rings" is deliberately ABSENT — see the retired-toggle test below.
     "bead-event-glyphs",
   ];
   assert.deepEqual([...grouped].sort(), [...expected].sort());
+});
+
+test("bead-integrity-rings is retired from the UI but still a valid saved preference", () => {
+  // RINGS was removed from the toolbar and the indicator menu 2026-08-19 (member: "no one uses
+  // it"). The ID intentionally survives: it is still a legal VectorIndicatorId and the rail still
+  // honours it, so a member whose saved set contains it keeps a working preference and no
+  // storage migration is needed. Deleting the id outright is what would break them.
+  const surfaced = VECTOR_INDICATOR_GROUPS.flatMap((g) => g.items.map((i) => i.id));
+  assert.ok(!surfaced.includes("bead-integrity-rings"), "must not be offered in the UI any more");
+  assert.ok(isVectorBeadDisplayId("bead-integrity-rings"), "but must remain a valid id");
 });
 
 test("expected-move-cone: opt-in companion to the flat band, in the Expected move group, OFF by default", () => {

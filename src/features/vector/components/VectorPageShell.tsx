@@ -1,5 +1,6 @@
 "use client";
 
+import type { VectorNodeDensity } from "@/features/vector/lib/vector-node-density";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -133,6 +134,8 @@ type Props = {
   onCompareVisibleRange?: (paneId: string, fromSec: number, toSec: number) => void;
   linkedReplay?: import("@/features/vector/lib/vector-compare-replay").VectorLinkedReplayBind | null;
   hideReplayControls?: boolean;
+  /** Initial NODES pick, threaded to the chart. Compare panes pass a lower count than the desk. */
+  defaultNodeDensity?: VectorNodeDensity;
   onReplayTimeline?: (timeline: number[]) => void;
   compareFourUp?: boolean;
   compareFourUpBackground?: boolean;
@@ -199,6 +202,7 @@ export function VectorPageShell({
   onCompareVisibleRange,
   linkedReplay = null,
   hideReplayControls = false,
+  defaultNodeDensity,
   onReplayTimeline,
   compareFourUp = false,
   compareFourUpBackground = false,
@@ -628,6 +632,7 @@ export function VectorPageShell({
           onCompareVisibleRange={onCompareVisibleRange}
           linkedReplay={linkedReplay}
           hideReplayControls={hideReplayControls}
+          defaultNodeDensity={defaultNodeDensity}
           onReplayTimeline={onReplayTimeline}
           compareFourUp={compareFourUp}
           compareFourUpBackground={compareFourUpBackground}

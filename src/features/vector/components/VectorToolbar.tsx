@@ -146,6 +146,15 @@ export function VectorToolbar(props: Props) {
             onOpeningRangeMinutes={onOpeningRangeMinutes}
           />
           <VectorBeadRailToggle enabled={indicators} onToggle={onToggleIndicator} lens={lens} />
+          {/* NODES was absent from this branch only — a compare pane is where row count matters MOST
+              (four charts, quarter the height each) and it was the one place a member could not
+              change it. testids off: four panes would otherwise emit the same id four times. */}
+          <VectorNodesToggle
+            value={nodeDensity}
+            onChange={onNodeDensity}
+            autoCount={nodeAutoCount}
+            exposeTestIds={false}
+          />
           {drawMenu}
           {replayLeadSlot}
           {!hideReplayControls ? (

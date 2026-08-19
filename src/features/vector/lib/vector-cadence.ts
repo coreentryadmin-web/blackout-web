@@ -33,6 +33,19 @@ export const VECTOR_GEX_HEATMAP_FAST_MOVE_PCT = 0.005;
 /** Compare 4-up: background panes poll overlays at 2× the normal cadence. */
 export const VECTOR_COMPARE_FOUR_UP_POLL_MULTIPLIER = 2;
 
+/**
+ * Compare-mode defaults, deliberately different from the full-size desk.
+ *
+ * A compare grid is four charts at roughly a quarter the height each. The desk defaults were tuned
+ * for one full-height chart: at that size AUTO's 10-20 rows read fine, and a 3m candle has room to
+ * breathe. Reused as-is in a quarter pane they crowd the rail into a solid block and leave too few
+ * candles to compare shapes across tickers, which is the entire job of the mode.
+ *
+ * 8 rows and 5m candles are the pane-sized equivalents. Members can still change both per pane.
+ */
+export const VECTOR_COMPARE_NODE_DENSITY = 8;
+export const VECTOR_COMPARE_DEFAULT_TIMEFRAME = 5;
+
 /** Compare 4-up: minimum ms between live-tick overlay repaints on background panes. */
 export const VECTOR_COMPARE_FOUR_UP_OVERLAY_REFRESH_MS = 2_000;
 
