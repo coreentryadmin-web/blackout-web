@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import type { MeridianEventDetail, MeridianTimelineItem } from "@/features/meridian/lib/meridian-types";
+import type { MeridianEventDetail, MeridianTimelineItem, MeridianEarningsAnalyticsRow } from "@/features/meridian/lib/meridian-types";
 import { FreshnessChip } from "@/components/ui";
 import { fmtPct } from "./MeridianDesk";
 import {
@@ -36,6 +36,8 @@ type Props = {
   boardTickers?: string[];
   /** The full lane, for panels that compare this event against the others on screen. */
   allItems?: readonly MeridianTimelineItem[];
+  earningsAnalyticsRows?: readonly MeridianEarningsAnalyticsRow[];
+  onSelectEarningsTicker?: (ticker: string) => void;
 };
 
 function HeadlineList({
@@ -65,6 +67,8 @@ export function MeridianEventDetailPanel({
   error,
   boardTickers = [],
   allItems = [],
+  earningsAnalyticsRows = [],
+  onSelectEarningsTicker,
 }: Props) {
   const theme = kindTheme(item.kind);
 
@@ -349,7 +353,15 @@ export function MeridianEventDetailPanel({
       )}
 
       {!loading && !error && detail?.kind === "earnings" && (
-        <MeridianEarningsTabs detail={detail} tab={earningsTab} item={item} allItems={allItems} />
+        <MeridianEarningsTabs
+          detail={detail}
+          tab={earningsTab}
+          onTabChange={setEarningsTab}
+          item={item}
+          allItems={allItems}
+          analyticsRows={earningsAnalyticsRows}
+          onSelectTicker={onSelectEarningsTicker}
+        />
       )}
 
       <MeridianActionDock item={item} boardTickers={boardTickers} />

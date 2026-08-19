@@ -206,6 +206,12 @@ export function MeridianDesk() {
     allItems.find((i) => i.id === activeId) ??
     (activeId && lookupTimelineItem?.id === activeId ? lookupTimelineItem : null);
 
+  const activeTickerAnalyticsRows = useMemo(() => {
+    const sym = activeItem?.ticker?.toUpperCase();
+    if (!sym) return [];
+    return (data?.earnings_analytics_rows ?? []).filter((r) => r.ticker.toUpperCase() === sym);
+  }, [activeItem?.ticker, data?.earnings_analytics_rows]);
+
   /**
    * Poll cadence scaled by how close the print is.
    *
@@ -655,6 +661,8 @@ export function MeridianDesk() {
               error={detailError ? String(detailError.message) : null}
               boardTickers={data?.board_tickers ?? []}
               allItems={allItems}
+              earningsAnalyticsRows={activeTickerAnalyticsRows}
+              onSelectEarningsTicker={selectEarningsTicker}
             />
           ) : (
             <MeridianEmpty message="Select a catalyst to open the structure brief." />

@@ -54,9 +54,12 @@ export function buildCohortForItem(
 export function MeridianPeerCohortPanel({
   item,
   allItems,
+  onSelectTicker,
 }: {
   item: MeridianTimelineItem;
   allItems: readonly MeridianTimelineItem[];
+  /** Jump to a peer's timeline event — same contract as the analytics print clock. */
+  onSelectTicker?: (ticker: string) => void;
 }) {
   const cohort = useMemo(() => buildCohortForItem(item, allItems), [item, allItems]);
   if (!cohort) return null;
@@ -108,16 +111,35 @@ export function MeridianPeerCohortPanel({
       )}
 
       <ul className="mpeer-rows">
-        {cohort.members.slice(0, 12).map((m) => (
-          <li
-            key={m.ticker}
-            className={`mpeer-row${m.ticker === item.ticker?.toUpperCase() ? " is-subject" : ""}`}
-          >
-            <span className="mpeer-tkr">{m.ticker}</span>
-            <span className="mpeer-when">{m.date ?? ""}</span>
-            <span className="mpeer-val">{m.value == null ? "—" : `${m.value}%`}</span>
-          </li>
-        ))}
+        {cohort.members.slice(0, 12).map((m) => {
+          const isSubject = m.ticker === item.ticker?.toUpperCase();
+          const row = (
+            <>
+              <span className="mpeer-tkr">{m.ticker}</span>
+              <span className="mpeer-when">{m.date ?? ""}</span>
+              <span className="mpeer-val">{m.value == null ? "—" : `${m.value}%`}</span>
+            </>
+          );
+          return (
+            <li
+              key={m.ticker}
+              className={`mpeer-row${isSubject ? " is-subject" : ""}${onSelectTicker && !isSubject ? " is-clickable" : ""}`}
+            >
+              {onSelectTicker && !isSubject ? (
+                <button
+                  type="button"
+                  className="mpeer-row-hit"
+                  onClick={() => onSelectTicker(m.ticker)}
+                  title={`Open ${m.ticker} earnings`}
+                >
+                  {row}
+                </button>
+              ) : (
+                row
+              )}
+            </li>
+          );
+        })}
       </ul>
       {cohort.members.length > 12 && (
         <span className="msum-thin">+{cohort.members.length - 12} more in cohort</span>

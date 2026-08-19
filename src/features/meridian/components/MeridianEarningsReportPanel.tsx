@@ -28,6 +28,11 @@ import {
   PILLAR_DIMENSION,
   type MeridianDimension,
 } from "@/lib/meridian/meridian-viz-core";
+import {
+  earningsTabForDimension,
+  earningsTabNavLabel,
+  type MeridianEarningsTabId,
+} from "@/lib/meridian/meridian-earnings-tab-nav-core";
 import { MeridianHalo3D, MeridianOrbital } from "./meridian-spatial";
 import {
   MeridianBeatHistory,
@@ -60,9 +65,11 @@ type Props = {
   >;
   /** ISO instant of the print, for the countdown. */
   eventAt?: string | null;
+  /** Jump from a dimension drill-down to the tab that holds the full book. */
+  onNavigateTab?: (tab: MeridianEarningsTabId) => void;
 };
 
-export function MeridianEarningsReportPanel({ ticker, intel, enrichment, eventAt }: Props) {
+export function MeridianEarningsReportPanel({ ticker, intel, enrichment, eventAt, onNavigateTab }: Props) {
   const { report, thermal, dark_pool: darkPool } = intel;
   // Drawer state: which dimension (if any) is expanded into its underlying pillars.
   const [openDim, setOpenDim] = useState<MeridianDimension | null>(null);
@@ -175,6 +182,17 @@ export function MeridianEarningsReportPanel({ ticker, intel, enrichment, eventAt
               </li>
             ))}
           </ul>
+          {onNavigateTab && (
+            <div className="mr-drawer-foot">
+              <button
+                type="button"
+                className="mr-drawer-jump"
+                onClick={() => onNavigateTab(earningsTabForDimension(openDim))}
+              >
+                Open full {earningsTabNavLabel(earningsTabForDimension(openDim))} →
+              </button>
+            </div>
+          )}
         </div>
       )}
 
