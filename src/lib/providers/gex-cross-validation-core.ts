@@ -182,10 +182,25 @@ export type GammaFlipDetail = {
 
 const FLIP_MAX_DIST_PCT = 0.12;
 
+/**
+ * How close a plausible crossing must be to the PREVIOUS reported flip to be treated as the same
+ * level. 0.4% of spot — wide enough to absorb a strike-grid step and a snapshot's worth of
+ * cumulative-gamma noise, far narrower than the ~10% relocations the nearest-spot rule produced.
+ */
+const FLIP_HYSTERESIS_PCT = 0.004;
+
 /** `cumulativeGammaFlip` with the null cause attached — see GammaFlipReason. */
 export function cumulativeGammaFlipDetail(
   strikeTotals: Record<string, number>,
-  spot = 0
+  spot = 0,
+  opts?: {
+    /**
+     * The flip this ticker reported on the previous snapshot, when the caller has it. Supplying it
+     * enables hysteresis: a plausible crossing within FLIP_HYSTERESIS_PCT of the incumbent wins, so
+     * a level cannot be relocated by noise between two adjacent scans.
+     */
+    previousFlip?: number | null;
+  }
 ): GammaFlipDetail {
   const rows = Object.entries(strikeTotals)
     .map(([s, g]) => ({ strike: Number(s), gamma: g }))
@@ -236,8 +251,36 @@ export function cumulativeGammaFlipDetail(
       nearestCrossing: nearest,
     };
   }
+  // SELECTION: the LOWEST plausible crossing, not the one nearest spot.
+  //
+  // Nearest-to-spot is unstable by construction. A near-zero net-GEX book crosses zero more than
+  // once, and when two crossings sit at similar distance the winner is decided by where spot
+  // happens to be — so a sub-0.2% move swaps them, relocating the reported flip by tens of points
+  // and INVERTING `above_gamma_flip`, the long/short gamma posture the desk shows members.
+  //
+  // Observed live on SPX, 2026-08-19, across one session in which spot traded a 0.2% range:
+  //   13:47Z null -> 14:38Z 769.15 -> 15:55Z 803.98 -> 16:34Z 809.14 -> 16:45Z 849.17 -> 17:34Z null
+  // An 80-point migration and two disappearances on an underlying that barely moved. The nulls are
+  // this function's `crossings_far_from_spot` branch firing once the winning crossing wandered
+  // outside ±12%.
+  //
+  // The lowest crossing is both the textbook "zero gamma level" — cumulative dealer gamma summed
+  // from the bottom of the book, at the strike it first turns positive — and, critically,
+  // INDEPENDENT OF SPOT except through the plausibility window. The same book therefore yields the
+  // same flip on every scan, which is the property the old rule lacked.
+  //
+  // Hysteresis is layered on top for the residual case: a new crossing appearing or vanishing
+  // between snapshots can still move `min`, so when the caller supplies the previous flip, a
+  // plausible crossing within FLIP_HYSTERESIS_PCT of it keeps the level pinned.
+  const previous = opts?.previousFlip;
+  if (previous != null && Number.isFinite(previous)) {
+    const incumbent = plausible.find((c) => Math.abs(c - previous) <= spot * FLIP_HYSTERESIS_PCT);
+    if (incumbent != null) {
+      return { flip: incumbent, reason: "resolved", crossings: crossings.length, nearestCrossing: nearest };
+    }
+  }
   return {
-    flip: plausible.reduce((best, c) => (Math.abs(c - spot) < Math.abs(best - spot) ? c : best)),
+    flip: plausible.reduce((lowest, c) => (c < lowest ? c : lowest)),
     reason: "resolved",
     crossings: crossings.length,
     nearestCrossing: nearest,

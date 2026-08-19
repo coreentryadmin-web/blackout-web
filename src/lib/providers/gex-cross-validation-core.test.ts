@@ -226,3 +226,63 @@ test("crossValidateGexLevels respects ±2 strike tolerance", () => {
 test("crossValidateGexLevels returns null for empty ladder", () => {
   assert.equal(crossValidateGexLevels({ callWall: 720, putWall: 700, gammaFlip: 710 }, new Map()), null);
 });
+
+// ---------------------------------------------------------------------------
+// A BISTABLE FLIP: two crossings, and spot decides which one is reported.
+//
+// The old rule picked the plausible crossing NEAREST SPOT. On a near-zero net-GEX book the
+// cumulative profile crosses zero more than once, and when two crossings sit at similar distance
+// the winner is decided by where spot happens to be — so a sub-0.1% move swaps them, relocating the
+// reported flip by several points and INVERTING `above_gamma_flip`, the long/short gamma posture
+// the desk shows members.
+//
+// Observed live on SPX, 2026-08-19, one session, spot range ~0.2%:
+//   13:47Z null → 14:38Z 769.15 → 15:55Z 803.98 → 16:34Z 809.14 → 16:45Z 849.17 → 17:34Z null
+// An 80-point migration and two disappearances on an underlying that barely moved.
+//
+// This book crosses at ≈104.17 and ≈111.88, deliberately placed either side of the test spot.
+// ---------------------------------------------------------------------------
+const TWO_CROSSING_BOOK: Record<string, number> = {
+  "100": -10, // cum -10
+  "105": 12, //  cum  +2  → crossing ≈104.17
+  "110": -5, //  cum  -3  → back net-short
+  "115": 8, //   cum  +5  → crossing ≈111.88
+  "120": 2, //   cum  +7
+};
+
+test("gamma flip is STABLE across a spot nudge that used to swap which crossing wins", () => {
+  // At 108 the lower crossing is marginally nearer; at 108.1 the upper one is. Under the old
+  // nearest-spot rule those two calls returned different levels ~7.7 points apart.
+  const a = cumulativeGammaFlip(TWO_CROSSING_BOOK, 108);
+  const b = cumulativeGammaFlip(TWO_CROSSING_BOOK, 108.1);
+  assert.equal(a, b, "a 0.09% spot move must not relocate the flip");
+  assert.equal(a, 104.17, "the LOWEST crossing — the textbook zero-gamma level — is reported");
+});
+
+test("both crossings are still counted and reported, so the ambiguity stays visible", () => {
+  const d = cumulativeGammaFlipDetail(TWO_CROSSING_BOOK, 108);
+  assert.equal(d.reason, "resolved");
+  assert.equal(d.crossings, 2, "a multi-crossing book is not silently presented as a clean one");
+});
+
+test("the reported flip does not depend on spot at all while spot stays inside the window", () => {
+  // The old rule made the flip a function of spot; the new one makes it a function of the BOOK.
+  const levels = [103, 105, 108, 110, 112].map((s) => cumulativeGammaFlip(TWO_CROSSING_BOOK, s));
+  assert.deepEqual(levels, [104.17, 104.17, 104.17, 104.17, 104.17]);
+});
+
+test("hysteresis: a supplied previous flip keeps its level when it is still a real crossing", () => {
+  // A new lower crossing appearing between snapshots can still move `min`. When the caller has the
+  // previous value, an incumbent within FLIP_HYSTERESIS_PCT of a plausible crossing wins.
+  const d = cumulativeGammaFlipDetail(TWO_CROSSING_BOOK, 108, { previousFlip: 111.88 });
+  assert.equal(d.flip, 111.88, "the incumbent level is not abandoned for a tie-break");
+  // …but a previous flip that no longer corresponds to any crossing is discarded, not carried.
+  const stale = cumulativeGammaFlipDetail(TWO_CROSSING_BOOK, 108, { previousFlip: 90 });
+  assert.equal(stale.flip, 104.17, "a stale incumbent must never outlive the book that produced it");
+});
+
+test("REGRESSION: a single-crossing book is unaffected by the selection change", () => {
+  const oneCrossing = { "100": -10, "105": 12, "110": 3 };
+  assert.equal(cumulativeGammaFlip(oneCrossing, 104), 104.17);
+  assert.equal(cumulativeGammaFlip(oneCrossing, 108), 104.17);
+});
