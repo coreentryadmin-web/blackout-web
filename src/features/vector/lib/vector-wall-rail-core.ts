@@ -136,6 +136,29 @@ export function withA(color: string, a: number): string {
   return color;
 }
 
+/** Desk background — weak beads mix toward this so yellow/magenta read as pale vs saturated shades. */
+const WALL_BEAD_SHADE_BG = { r: 4, g: 4, b: 7 };
+
+/**
+ * Per-bead hue shade from combined strength (book-relative × row-temporal).
+ *
+ * Opacity alone was not enough on #040407 — weak and strong beads looked like the same yellow or
+ * purple. Mixing the base call/put hex toward the desk background at low strength yields visibly
+ * different shades while keeping the side hue (yellow vs magenta).
+ */
+export function wallBeadColorShade(baseHex: string, strengthT: number): string {
+  if (!HEX_6.test(baseHex)) return baseHex;
+  const t = Math.max(0, Math.min(1, Number.isFinite(strengthT) ? strengthT : 0));
+  const r0 = parseInt(baseHex.slice(1, 3), 16);
+  const g0 = parseInt(baseHex.slice(3, 5), 16);
+  const b0 = parseInt(baseHex.slice(5, 7), 16);
+  const mix = 0.68 * (1 - Math.pow(t, 0.82));
+  const r = Math.round(r0 * (1 - mix) + WALL_BEAD_SHADE_BG.r * mix);
+  const g = Math.round(g0 * (1 - mix) + WALL_BEAD_SHADE_BG.g * mix);
+  const b = Math.round(b0 * (1 - mix) + WALL_BEAD_SHADE_BG.b * mix);
+  return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
+}
+
 export type TargetHalfPxOpts = {
   /** Running peak share on this strike row — scales bead height by pct/peak (competitor swell). */
   rowPeakPct?: number | null;

@@ -29,6 +29,7 @@ import {
   rowStrengthHaloExtraPx,
   ROW_HALO_ROW_GAP_FILL,
   rowStrengthHaloAlphaMul,
+  wallBeadColorShade,
   beadCenterSpacingPx,
   ROW_HALO_BAR_SPACING_FILL,
   ROW_SWELL_FLOOR,
@@ -569,6 +570,28 @@ test("SIZE stays absolute while CONTRAST goes relative — the two channels diff
     fillAlpha(2, 2.2) > fillAlpha(9, 40),
     "but the small wall that owned its moment must out-shine the big one that did not"
   );
+});
+
+test("wallBeadColorShade: weak beads are paler yellow/magenta, peaks stay saturated", () => {
+  const callStrong = wallBeadColorShade("#ffd60a", 1);
+  const callWeak = wallBeadColorShade("#ffd60a", 0.15);
+  const putStrong = wallBeadColorShade("#d97bff", 1);
+  const putWeak = wallBeadColorShade("#d97bff", 0.15);
+  assert.notEqual(callStrong, callWeak);
+  assert.notEqual(putStrong, putWeak);
+  assert.equal(callStrong, "#ffd60a");
+  assert.equal(putStrong, "#d97bff");
+});
+
+test("rowPeakRefs grows monotonically along a swell then holds", () => {
+  const peaks = rowPeakRefs([
+    { pct: 2 },
+    { pct: 5 },
+    { pct: 8 },
+    { pct: 6 },
+    { pct: 4 },
+  ]);
+  assert.deepEqual(peaks, [2, 5, 8, 8, 8]);
 });
 
 test("maxPctByTime ignores junk and covers both sides of the board", () => {
