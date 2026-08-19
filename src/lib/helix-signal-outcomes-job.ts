@@ -1,6 +1,7 @@
 import { fetchRecentFlows, insertHelixSignalOutcomes, fetchPendingHelixSignalCheckpoints, updateHelixSignalCheckpoint } from "@/lib/db";
 import { detectVelocitySpikes, detectSplitFlow } from "@/features/helix/lib/helix-signal-detection";
-import { fetchStockMinuteBars } from "@/lib/providers/polygon";
+import { fetchStockMinuteBars, fetchIndexMinuteBars } from "@/lib/providers/polygon";
+import { flowPriceSymbol } from "@/lib/providers/flow-price-symbol";
 
 /**
  * Helix signal-outcome ledger job (Tier 2 item #9, 2026-08-02 audit). Two halves, both
@@ -70,8 +71,17 @@ export async function recordHelixSignalFirings(nowMs = Date.now()): Promise<{ in
 async function priceNearMs(ticker: string, targetMs: number): Promise<number | null> {
   const from = String(targetMs - 5 * 60_000);
   const to = String(targetMs + 5 * 60_000);
+  // INDEX ROOTS DO NOT LIVE IN THE EQUITY NAMESPACE. UW's tape carries the option root, so SPX /
+  // SPXW / NDX / RUT / VIX arrive here as bare symbols that `/v2/aggs/ticker/SPX/...` answers with
+  // HTTP 200, status OK and ZERO results — a silent empty success, not an error. Every index signal
+  // therefore graded as "price unknown" forever. See flow-price-symbol.ts for the verified mapping
+  // and why the Vector resolver (which defaults unknown input to SPX) must not be reused here.
+  const resolved = flowPriceSymbol(ticker);
+  if (!resolved) return null;
   try {
-    const bars = await fetchStockMinuteBars(ticker, from, to);
+    const bars = resolved.isIndex
+      ? await fetchIndexMinuteBars(resolved.symbol, from, to)
+      : await fetchStockMinuteBars(resolved.symbol, from, to);
     const timed = bars.filter((b): b is typeof b & { t: number } => b.t != null);
     if (!timed.length) return null;
     // Closest bar to targetMs, not just the first/last — the market can be closed for

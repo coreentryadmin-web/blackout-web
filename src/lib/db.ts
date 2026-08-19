@@ -2819,10 +2819,28 @@ export type HelixSignalOutcomePendingRow = {
 /** Rows whose `checkpoint` (5m/15m/1h) is still unfilled AND old enough that the
  *  checkpoint time has actually elapsed — never asks Polygon for a price that's still
  *  in the future. */
+/**
+ * How far back the grader will keep retrying a checkpoint it has never managed to fill.
+ *
+ * The queue is oldest-first with a fixed LIMIT, so a row that can NEVER be graded does not merely
+ * fail — it occupies a slot at the HEAD of every subsequent run, forever. Index signals did exactly
+ * that (their price lookups hit the equity namespace and came back empty; see flow-price-symbol.ts),
+ * and once enough of them accumulate they consume the whole per-run budget and no gradeable row is
+ * ever reached again. The tracker would stop producing outcomes silently, with nothing in the logs.
+ *
+ * Fixing the index lookup removes today's cause; this bounds the CLASS. A delisted ticker, an index
+ * root not in the map, or a symbol Polygon drops would otherwise reintroduce the same head-of-line
+ * block. Seven days is comfortably past any weekend gap (a Friday-close firing's 1h checkpoint needs
+ * the following Monday), and a 5m/15m/1h follow-through measurement that is a week late has no
+ * product value left — it is not worth blocking live rows to keep asking for it.
+ */
+const HELIX_CHECKPOINT_MAX_AGE_DAYS = 7;
+
 export async function fetchPendingHelixSignalCheckpoints(
   checkpoint: "price_5m" | "price_15m" | "price_1h",
   minAgeMinutes: number,
-  limit = 200
+  limit = 200,
+  maxAgeDays = HELIX_CHECKPOINT_MAX_AGE_DAYS
 ): Promise<HelixSignalOutcomePendingRow[]> {
   await ensureSchema();
   const res = await (await getPool()).query<HelixSignalOutcomePendingRow>(
@@ -2833,10 +2851,11 @@ export async function fetchPendingHelixSignalCheckpoints(
     WHERE ${checkpoint} IS NULL
       AND price_at_fire IS NOT NULL
       AND fired_at <= NOW() - ($1 || ' minutes')::interval
+      AND fired_at >= NOW() - ($3 || ' days')::interval
     ORDER BY fired_at ASC
     LIMIT $2
     `,
-    [minAgeMinutes, limit]
+    [minAgeMinutes, limit, maxAgeDays]
   );
   return res.rows;
 }
