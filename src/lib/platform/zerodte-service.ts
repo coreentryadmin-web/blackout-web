@@ -110,6 +110,14 @@ export type ZeroDteBoardLedgerRow = {
   trough_premium: number | null;
   /** Latched peak excursion vs pinned entry — the high-water mark for closed-card display. */
   peak_pnl_pct: number | null;
+  /**
+   * The exit policy this row was COMMITTED under (entry_context.exit_policy_at_commit, Q13), or
+   * null for a legacy row that predates the pin. Carried on the payload because `live_pnl_pct` is
+   * derived TWICE — once here and once in the post-roundFloats re-price — and both derivations
+   * must agree on which policy managed the row. Only "trim_scale" may be credited with banked
+   * trim tranches on a stopped close.
+   */
+  exit_policy_at_commit: "ratchet" | "trim_scale" | null;
   live_pnl_pct: number | null;
   /** Why a CLOSED play closed — now DISTINGUISHES the exit type (pre-this-change a
    *  ratchet exit and a target trim were both null, indistinguishable). "stopped" uses
@@ -438,6 +446,11 @@ function mapLedgerRow(
     peak_pnl_pct: peakPnlPct(r.entry_premium, r.peak_premium),
     // Structure-aware: seller-framed for a credit condor; directional stopped closes use
     // trim-scale AS-MANAGED when peak armed tranches — the ONE derivation both build sites share.
+    // The row's FROZEN exit policy, carried on the payload so the post-roundFloats re-price below
+    // derives the same number from the same policy. resolveExitLadder already refuses to render a
+    // trim ladder for a row that never committed to one; the P&L had no such guard, and credited
+    // trim tranches to ratchet-committed rows.
+    exit_policy_at_commit: readFrozenExitMode(r.entry_context),
     live_pnl_pct: reconcileLedgerLivePnlPct({
       is_condor: isCondor,
       closed_reason: closedReason === "stopped" ? "stopped" : null,
@@ -446,6 +459,7 @@ function mapLedgerRow(
       peak_premium: r.peak_premium,
       trough_premium: r.trough_premium,
       status: r.status,
+      exit_policy_at_commit: readFrozenExitMode(r.entry_context),
     }),
     closed_reason: boardClosedReason,
     floor_pnl_pct: floorPnlPct,
