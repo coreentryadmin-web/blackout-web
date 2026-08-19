@@ -1,0 +1,20 @@
+# Railway config for the Vector-Alerts cron service.
+# Wire it up: service Settings -> Config-as-code -> set path to "railway.vector-alerts.toml"
+# Requires CRON_SECRET on this service (same value as blackout-web).
+[build]
+builder = "nixpacks"
+buildCommand = "echo 'cron trigger service: no app build needed'"
+watchPatterns = [
+  "scripts/hit-cron.mjs",
+  "railway.vector-alerts.toml",
+  "nixpacks.toml",
+]
+
+[deploy]
+startCommand = "node scripts/hit-cron.mjs /api/cron/vector-alerts"
+# Every 2 minutes during market hours. The route is INERT BY DEFAULT (no push until
+# VECTOR_ALERTS_PUSH + VAPID are set) — scheduling it logs healthy skipped runs and
+# keeps the watchdog green, same convention as gex-alerts.
+cronSchedule = "*/2 11-21 * * 1-5"
+restartPolicyType = "never"
+numReplicas = 1
