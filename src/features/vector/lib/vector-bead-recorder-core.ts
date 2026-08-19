@@ -5,8 +5,10 @@ import { recordVectorUniverseWallSample } from "./vector-universe";
 import {
   activeLaneSelectionLimit,
   mapInPool,
+  sweepSelectionLimit,
   vectorActiveBeadRecordConcurrency,
   vectorBeadRecordConcurrency,
+  vectorBeadRecordInFlightMax,
 } from "./vector-bead-recorder-logic";
 import { partitionUniverseForReplica } from "./vector-bead-shard";
 import { selectTickersToRecord } from "./vector-bead-schedule-core";
@@ -105,10 +107,15 @@ export async function recordSharedUniverseWallSamples(opts?: {
   // Guard the TICKER, not the sweep. The leader used to drop any tick landing while the previous
   // sweep ran, so ONE slow name cost all ~122 tickers their sample — measured live 2026-08-18 as a
   // 60s median gap against a 5s spec. A ticker still recording skips this tick and only this tick.
+  // COVERAGE and LOAD are separate budgets (see sweepSelectionLimit / vectorBeadRecordInFlightMax).
+  // Handing the pool width in here is what capped a tick at 64 of ~122 tickers, so even after
+  // #2320's rotation made the cut FAIR, every ticker was still served every other tick — 10s
+  // against a 5s spec, for the whole universe, permanently. The pool width below still bounds
+  // concurrent upstream reads; it no longer decides who gets a bead this tick.
   const decision = selectTickersToRecord({
     tickers,
     inFlight: recordInFlightTickers,
-    limit: concurrency,
+    limit: sweepSelectionLimit(tickers.length, vectorBeadRecordInFlightMax()),
     cursor: sharedSweepCursor,
   });
   sharedSweepCursor = decision.nextCursor;
@@ -238,9 +245,13 @@ export async function recordActiveNonUniverseWallSamples(opts?: {
   const decision = selectTickersToRecord({
     tickers,
     inFlight: recordInFlightTickers,
+    // The GLOBAL argument is the in-flight ceiling, not the pool width. Passing the pool width here
+    // used to be harmless only because the universe sweep could never hold more than 64 records at
+    // once; now that a sweep holds the whole roster (~122), `min(64, cap + 122)` would resolve to
+    // 64 and leave `free = 64 - 122 < 0`, silently starving the viewer lane to zero.
     limit: activeLaneSelectionLimit(
       laneCap,
-      vectorBeadRecordConcurrency(),
+      vectorBeadRecordInFlightMax(),
       recordInFlightTickers.size
     ),
   });
