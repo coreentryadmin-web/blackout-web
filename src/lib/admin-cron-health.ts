@@ -153,10 +153,17 @@ function effectiveStaleMinutes(job: CronJobDefinition): { effective: number; mul
   return { effective: job.stale_after_min, multiplier: 1 };
 }
 
-function evaluateJob(
+/**
+ * Exported for the unit test, and taking an injectable `now` for the same reason: every branch here
+ * turns on where the clock is relative to the market session, so a test that used the real clock
+ * would assert one thing during RTH and the opposite overnight — a date bomb inside the very check
+ * that exists to catch jobs going dark.
+ */
+export function evaluateJob(
   job: CronJobDefinition,
   last: CronJobRunRow | undefined,
-  runs24h: CronJobRunRow[]
+  runs24h: CronJobRunRow[],
+  now: Date = new Date()
 ): CronJobHealth {
   const counts = { ok: 0, failed: 0, skipped: 0 };
   for (const r of runs24h) {
@@ -167,6 +174,31 @@ function evaluateJob(
 
   if (!last) {
     const { effective: effMin, multiplier: effMult } = effectiveStaleMinutes(job);
+
+    // A JOB THAT HAS NEVER RUN IS THE DEADEST A JOB CAN BE — IT MUST NOT REPORT AS "unknown".
+    //
+    // This branch used to return `status: "unknown"` unconditionally and skip the staleness
+    // evaluation below entirely, which meant the board's own worst case was the one case it could
+    // not see. On 2026-08-19 that was live: `helix-signal-outcomes` and `largo-morning-brief` were
+    // both missing from `cron-jobs.json` in blackout-infra and had therefore NEVER been invoked in
+    // production — the brief endpoint was serving `available: false, staleDate: 2026-06-29`, 51 days
+    // cold — while this board showed them as `unknown` and the summary reported
+    // `stale: 0, failed: 0, market_hours_stale: 0`. Read at a glance, that is green.
+    //
+    // "No run has ever been logged" is strictly WORSE evidence than "the last run was a while ago",
+    // so it gets at least the same severity: past its window it is `stale`, and a market-hours job
+    // stale during RTH still trips `market_hours_stale` — the #90 silent-death flag — exactly as it
+    // would with a stale-but-present run row.
+    //
+    // `unknown` survives for the one case where staleness genuinely cannot be judged yet: the job is
+    // off-window or inside an off-schedule idle gap, so it is not DUE to have run. Suppressing there
+    // matches the treatment a logged run gets below and keeps the board from crying wolf overnight,
+    // which is the reason the off-window suppression exists at all.
+    const offWindowNoRun = Boolean(job.market_hours_only) && !inMarketHoursEt(now);
+    const offScheduleNoRun =
+      Boolean(job.schedule_cron_utc) && isInOffScheduleIdleGap(job.schedule_cron_utc!, now);
+    const notDueYet = offWindowNoRun || offScheduleNoRun;
+
     return {
       key: job.key,
       name: job.name,
@@ -174,9 +206,11 @@ function evaluateJob(
       path: job.path ?? null,
       schedule_label: job.schedule_label,
       description: job.description,
-      status: "unknown",
-      status_label: "No runs logged",
-      market_hours_stale: false,
+      status: notDueYet ? "unknown" : "stale",
+      status_label: notDueYet
+        ? "No runs logged (not due — outside its window)"
+        : "NEVER logged a run — job may not be scheduled at all",
+      market_hours_stale: Boolean(job.market_hours_only) && !offWindowNoRun,
       last_run_at: null,
       last_status: null,
       last_duration_ms: null,
@@ -189,7 +223,7 @@ function evaluateJob(
     };
   }
 
-  const ageMin = (Date.now() - new Date(last.started_at).getTime()) / 60_000;
+  const ageMin = (now.getTime() - new Date(last.started_at).getTime()) / 60_000;
   const { effective: staleThreshold, multiplier: staleMultiplier } = effectiveStaleMinutes(job);
 
   // Market-hours-only crons (flow-ingest, spx-evaluate, heatmap-warm, gex-alerts, …)
@@ -197,11 +231,11 @@ function evaluateJob(
   // so age inevitably exceeds the threshold — flagging them STALE is a false alarm. While
   // off-window, suppress the stale flag as long as the last logged run was a legitimate skip
   // or success (a "failed" last run is still surfaced below regardless of window).
-  const offWindow = Boolean(job.market_hours_only) && !inMarketHoursEt();
+  const offWindow = Boolean(job.market_hours_only) && !inMarketHoursEt(now);
   const suppressStaleOffWindow =
     offWindow && (last.status === "skipped" || last.status === "ok");
   const offScheduleGap = Boolean(job.schedule_cron_utc) &&
-    isInOffScheduleIdleGap(job.schedule_cron_utc!, new Date());
+    isInOffScheduleIdleGap(job.schedule_cron_utc!, now);
   const suppressStaleOffSchedule =
     offScheduleGap && (last.status === "skipped" || last.status === "ok");
 
