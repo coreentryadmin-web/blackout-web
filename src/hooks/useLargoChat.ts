@@ -73,8 +73,35 @@ export type LargoMessage = {
   miniPanel?: string | null;
 };
 
+/**
+ * Internal tool name -> what a member reads on the source chip.
+ *
+ * A NAME MISSING HERE IS NOT INVISIBLE — it renders RAW. The chip text is uppercased by CSS, so an
+ * unmapped `platform_vitals_prefetch` reaches the member as "PLATFORM VITALS PREFETCH".
+ *
+ * CAUGHT ON PROD 2026-08-20 in a phone screenshot of a real answer. Auditing the map against every
+ * name largo-terminal actually pushes found EIGHT unmapped, not one — the screenshot happened to
+ * catch a single instance of a systematic gap.
+ *
+ * Same family as #2412 ("The Meridian prefetch already has..."), one layer over: that fixed the
+ * model narrating machinery in PROSE, this is the UI printing machinery in CHROME. Fixing the
+ * prompt could never have fixed this, which is why the sweep mattered more than the one sighting.
+ *
+ * `largo-tool-labels.test.ts` now fails when a pushed name has no entry, so the next one added
+ * server-side cannot reach a member as an internal identifier.
+ */
 const TOOL_LABEL: Record<string, string> = {
   blackout_intelligence: "BLACKOUT Intelligence",
+  // Prefetches: named for WHAT WAS READ, never for the mechanism that read it. "prefetch" is
+  // plumbing — a member has no idea what one is or why it is on their answer.
+  platform_vitals_prefetch: "platform vitals",
+  social_content_pack_prefetch: "social pack",
+  ticker_social_guide_prefetch: "ticker social guide",
+  meridian_timeline_prefetch: "Meridian timeline",
+  get_peer_ticker_compare: "peer comparison",
+  get_helix_thermal_compare: "HELIX vs Thermal",
+  get_play_similarity: "similar plays",
+  get_pre_earnings_pack: "pre-earnings pack",
   live_feed_capture: "live desk feed",
   get_spx_structure: "SPX desk",
   get_spx_confluence: "confluence engine",
