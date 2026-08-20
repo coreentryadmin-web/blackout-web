@@ -11,6 +11,15 @@ import {
   NIGHTHAWK_RE,
   PLATFORM_READ_RE,
   PLAY_STATE_RE,
+  BEST_PLAY_RE,
+  SPX_DTE_HORIZON_RE,
+  SPX_ENGINE_HISTORY_RE,
+  SPX_INTERNALS_RE,
+  SPX_LOTTO_RE,
+  SPX_PIN_RE,
+  SPX_POWER_HOUR_RE,
+  SPX_PULSE_RE,
+  SPX_SIGNAL_LOG_RE,
   RECORD_READ_RE,
   SPX_DESK_RE,
   SPX_ENGINE_STATE_RE,
@@ -219,7 +228,11 @@ export function analyzeLargoQuestion(
   const ctx = `${recentUserText(history)} ${question}`.toLowerCase();
 
   const needsSpxDesk = matchesIntent(ctx, SPX_DESK_RE);
-  const needsPlayState = matchesIntent(ctx, PLAY_STATE_RE);
+  const needsBestPlay = matchesIntent(ctx, BEST_PLAY_RE);
+  const needsSpxDteHorizon = matchesIntent(ctx, SPX_DTE_HORIZON_RE);
+  const spxScoped = needsSpxDesk || /\b(spx|s&p|sniper|slayer)\b/.test(ctx);
+  const needsPlayState =
+    matchesIntent(ctx, PLAY_STATE_RE) || (needsBestPlay && spxScoped);
   const needsFlow = matchesIntent(ctx, FLOW_RE);
   const needsNews = matchesIntent(ctx, NEWS_RE);
   const needsVol = matchesIntent(ctx, VOL_RE);
@@ -237,6 +250,13 @@ export function analyzeLargoQuestion(
   const needsVectorAnalytics = matchesIntent(ctx, VECTOR_ANALYTICS_RE);
   const needsHelixRead = matchesIntent(ctx, HELIX_READ_RE);
   const needsRecordRead = matchesIntent(ctx, RECORD_READ_RE);
+  const needsSpxPin = matchesIntent(ctx, SPX_PIN_RE);
+  const needsSpxPulse = matchesIntent(ctx, SPX_PULSE_RE);
+  const needsSpxLotto = matchesIntent(ctx, SPX_LOTTO_RE);
+  const needsSpxPowerHour = matchesIntent(ctx, SPX_POWER_HOUR_RE);
+  const needsSpxSignalLog = matchesIntent(ctx, SPX_SIGNAL_LOG_RE);
+  const needsSpxEngineHistory = matchesIntent(ctx, SPX_ENGINE_HISTORY_RE);
+  const needsSpxInternals = matchesIntent(ctx, SPX_INTERNALS_RE);
 
   const tickerHint = extractTicker(question, recentUserText(history));
   const scopeTicker = tickerHint ?? (needsSpxDesk ? "SPX" : null);
@@ -289,6 +309,33 @@ export function analyzeLargoQuestion(
   }
   if (needsPlayState) {
     toolHints.push("get_spx_play", "get_open_plays");
+  }
+  if (needsBestPlay && spxScoped) {
+    toolHints.push("get_spx_play", "get_gate_rules", "get_spx_confluence");
+  }
+  if (needsSpxDteHorizon && spxScoped) {
+    toolHints.push("get_lotto_live", "get_option_chain", "get_spx_play");
+  }
+  if (needsSpxPin && spxScoped) {
+    toolHints.push("get_spx_pin", "get_gex_heatmap");
+  }
+  if (needsSpxPulse && spxScoped) {
+    toolHints.push("get_spx_pulse", "get_spx_structure");
+  }
+  if (needsSpxLotto && spxScoped) {
+    toolHints.push("get_lotto_live", "get_lotto_state", "get_spx_play");
+  }
+  if (needsSpxPowerHour && spxScoped) {
+    toolHints.push("get_power_hour", "get_spx_pin", "get_spx_play");
+  }
+  if (needsSpxSignalLog && spxScoped) {
+    toolHints.push("get_signal_log", "get_open_plays");
+  }
+  if (needsSpxEngineHistory && spxScoped) {
+    toolHints.push("get_spx_engine_snapshots", "get_gate_rules", "get_spx_play");
+  }
+  if (needsSpxInternals && spxScoped) {
+    toolHints.push("get_spx_structure", "get_spx_pulse");
   }
   if (scopeTicker) {
     toolHints.push("get_quote", "get_technicals", "get_news", "get_options_flow", "get_dark_pool");

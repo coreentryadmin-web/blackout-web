@@ -65,7 +65,7 @@ const DESK_ORDER: DeskScopeKey[] = [
 ];
 
 const DESK_BLURBS: Partial<Record<DeskScopeKey, string>> = {
-  "spx-slayer": "0DTE play engine, GEX matrix, gates, EOD pin",
+  "spx-slayer": "0DTE play engine, GEX, pulse, pin, gates, lotto, internals",
   helix: "Institutional options flow tape and whale prints",
   thermal: "Dealer gamma, vanna matrix, positioning",
   vector: "Live chart structure, walls, play card",

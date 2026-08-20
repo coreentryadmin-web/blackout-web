@@ -61,9 +61,11 @@ export async function fetchMiniPanelPayload(input: {
     switch (cfg.key as DeskScopeKey) {
       case "spx-slayer": {
         const { marketPlatform } = await import("@/lib/platform");
-        const [play, gexMod] = await Promise.all([
+        const productReads = await import("@/lib/largo/product-reads");
+        const [play, gexMod, structure] = await Promise.all([
           marketPlatform.spx.getSpxPlayState().catch(() => null),
           import("@/lib/largo/gex-heatmap-for-largo").then((m) => m.gexHeatmapForLargo("SPX")).catch(() => null),
+          marketPlatform.spx.getSpxDeskSummary().catch(() => null),
         ]);
         const gex = gexMod as {
           spot?: number;
@@ -77,6 +79,13 @@ export async function fetchMiniPanelPayload(input: {
           action?: string;
           grade?: string;
           spot?: number;
+        } | null;
+        const desk = structure as {
+          price?: number;
+          vwap?: number;
+          ema20?: number;
+          tick?: number;
+          trin?: number;
         } | null;
         if (subId === "play" || subId === "gates") {
           base.rows = [
@@ -93,17 +102,83 @@ export async function fetchMiniPanelPayload(input: {
             { label: "Spot", value: p?.spot != null ? String(Math.round(p.spot)) : gex?.spot != null ? String(Math.round(gex.spot)) : "—" },
           ];
         } else if (subId === "pin") {
+          const pinMod = await productReads.spxPinForLargo().catch(() => null);
+          const pin = (pinMod as { pin?: { pinConfirmed?: number; magnet?: { strike?: number } } } | null)?.pin;
           base.rows = [
-            { label: "Spot", value: gex?.spot != null ? String(Math.round(gex.spot)) : "—" },
-            { label: "Call wall", value: gex?.call_wall != null ? String(Math.round(gex.call_wall)) : "—" },
-            { label: "Put wall", value: gex?.put_wall != null ? String(Math.round(gex.put_wall)) : "—" },
+            { label: "Pin", value: pin?.pinConfirmed != null ? String(Math.round(pin.pinConfirmed)) : "—" },
+            { label: "Magnet", value: pin?.magnet?.strike != null ? String(Math.round(pin.magnet.strike)) : "—" },
+            { label: "Spot", value: gex?.spot != null ? String(Math.round(gex.spot)) : desk?.price != null ? String(Math.round(desk.price)) : "—" },
             { label: "Flip", value: gex?.flip != null ? String(Math.round(gex.flip)) : "—" },
+          ];
+        } else if (subId === "pulse") {
+          const pulseMod = await productReads.spxPulseForLargo().catch(() => null);
+          const pulse = (pulseMod as { pulse?: { price?: number; gammaFlip?: number; macroPhase?: { event?: string } } } | null)?.pulse;
+          base.rows = [
+            { label: "Spot", value: pulse?.price != null ? String(Math.round(pulse.price)) : "—" },
+            { label: "Flip", value: pulse?.gammaFlip != null ? String(Math.round(pulse.gammaFlip)) : "—" },
+            { label: "Macro", value: pulse?.macroPhase?.event ?? "—" },
+            { label: "Play", value: [p?.phase, p?.action].filter(Boolean).join(" · ") || "—" },
           ];
         } else if (subId === "technicals") {
           base.rows = [
-            { label: "Spot", value: gex?.spot != null ? String(Math.round(gex.spot)) : "—" },
+            { label: "Spot", value: desk?.price != null ? String(Math.round(desk.price)) : gex?.spot != null ? String(Math.round(gex.spot)) : "—" },
+            { label: "VWAP", value: desk?.vwap != null ? String(Math.round(desk.vwap)) : "—" },
+            { label: "EMA 20", value: desk?.ema20 != null ? String(Math.round(desk.ema20)) : "—" },
             { label: "Flip", value: gex?.flip != null ? String(Math.round(gex.flip)) : "—" },
+          ];
+        } else if (subId === "internals") {
+          base.rows = [
+            { label: "TICK", value: desk?.tick != null ? String(Math.round(desk.tick)) : "—", tone: (desk?.tick ?? 0) >= 0 ? "bull" : "bear" },
+            { label: "TRIN", value: desk?.trin != null ? desk.trin.toFixed(2) : "—" },
+            { label: "Spot", value: desk?.price != null ? String(Math.round(desk.price)) : "—" },
             { label: "Play", value: [p?.phase, p?.action].filter(Boolean).join(" · ") || "—" },
+          ];
+        } else if (subId === "lotto") {
+          const lotto = await marketPlatform.spx.getSpxLottoState().catch(() => null);
+          const rows = Array.isArray(lotto) ? lotto : [];
+          const top = rows[0] as { phase?: string; direction?: string; strike?: number } | undefined;
+          base.rows = [
+            { label: "Lotto", value: top ? [top.phase, top.direction].filter(Boolean).join(" · ") || "Active" : "—" },
+            { label: "Strike", value: top?.strike != null ? String(Math.round(top.strike)) : "—" },
+            { label: "0DTE", value: [p?.phase, p?.action].filter(Boolean).join(" · ") || "—" },
+          ];
+        } else if (subId === "power-hour") {
+          const ph = await marketPlatform.spx.getSpxPowerHourState().catch(() => null);
+          const phRow = ph as { phase?: string; direction?: string; strike?: number } | null;
+          base.rows = [
+            { label: "PH", value: phRow ? [phRow.phase, phRow.direction].filter(Boolean).join(" · ") || "—" : "—" },
+            { label: "Strike", value: phRow?.strike != null ? String(Math.round(phRow.strike)) : "—" },
+            { label: "Spot", value: desk?.price != null ? String(Math.round(desk.price)) : "—" },
+          ];
+        } else if (subId === "signal-log") {
+          const log = await marketPlatform.spx.getSpxSignalLog(5).catch(() => null);
+          const last = (Array.isArray(log) ? log[0] : null) as { action?: string; grade?: string } | null;
+          base.rows = [
+            { label: "Last", value: last ? [last.action, last.grade].filter(Boolean).join(" · ") || "—" : "—" },
+            { label: "Open", value: p?.action ?? "—" },
+            { label: "Spot", value: desk?.price != null ? String(Math.round(desk.price)) : "—" },
+          ];
+        } else if (subId === "engine-history") {
+          const snaps = await marketPlatform.spx.getSpxEngineSnapshots(3).catch(() => null);
+          const last = (Array.isArray(snaps) ? snaps[0] : null) as { phase?: string; action?: string } | null;
+          base.rows = [
+            { label: "Snapshot", value: last ? [last.phase, last.action].filter(Boolean).join(" · ") || "—" : "—" },
+            { label: "Now", value: [p?.phase, p?.action].filter(Boolean).join(" · ") || "—" },
+          ];
+        } else if (subId === "record") {
+          const stats = await marketPlatform.spx.getSpxSetupStats().catch(() => null);
+          const s = stats as { win_rate?: number; total?: number } | null;
+          base.rows = [
+            { label: "Win rate", value: s?.win_rate != null ? `${s.win_rate.toFixed(1)}%` : "—" },
+            { label: "Graded", value: s?.total != null ? String(s.total) : "—" },
+          ];
+        } else if (subId === "vector") {
+          const { fetchVectorFullState } = await import("@/lib/bie/vector-full-state");
+          const state = await fetchVectorFullState("SPX").catch(() => null);
+          base.rows = [
+            { label: "Spot", value: state?.spot != null ? String(Math.round(state.spot)) : "—" },
+            { label: "Regime", value: state?.regime?.posture ?? "—", tone: biasTone(state?.regime?.posture) },
+            { label: "Slayer", value: [p?.phase, p?.action].filter(Boolean).join(" · ") || "—" },
           ];
         } else if (subId === "flow-gex") {
           const { flowBriefForLargo } = await import("@/lib/largo/product-reads");

@@ -13,9 +13,11 @@ import { parseDeskSlashArgs, formatDeskScopeBlock } from "./desk-scope";
 describe("submodulesForDesk", () => {
   it("returns SPX Slayer modules", () => {
     const mods = submodulesForDesk("spx-slayer");
-    assert.ok(mods.length >= 6);
+    assert.ok(mods.length >= 14);
     assert.ok(mods.some((m) => m.id === "gex"));
     assert.ok(mods.some((m) => m.id === "play"));
+    assert.ok(mods.some((m) => m.id === "pulse"));
+    assert.ok(mods.some((m) => m.id === "engine-history"));
   });
 
   it("covers all product desks", () => {

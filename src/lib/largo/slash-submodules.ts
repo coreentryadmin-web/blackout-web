@@ -51,24 +51,39 @@ const SPX_SLAYER: DeskSubmoduleDef[] = [
     preferredTools: ["get_gex_heatmap", "get_positioning", "get_spx_structure"],
     focusLines: [
       "Lead with GEX matrix: flip, call wall, put wall, king strike, net GEX regime.",
+      "When VEX/vanna is asked, cite vanna posture and charm context from the same matrix read.",
       "Use get_gex_heatmap (SPX 0DTE) — cite exact strike levels.",
     ],
     defaultQuestion: () =>
       "What's the SPX GEX matrix — flip, call wall, put wall, and gamma regime?",
   },
   {
+    id: "pulse",
+    label: "Pulse rail",
+    aliases: ["pulse", "signals", "rail", "events"],
+    description: "Live SPX pulse — flip crosses, magnet shifts, macro phases, wall builds",
+    rank: 25,
+    preferredTools: ["get_spx_pulse", "get_spx_structure", "get_spx_play"],
+    focusLines: [
+      "Lead with pulse rail events — flip cross, magnet shift, macro phase, wall build/dissolve.",
+      "Use get_spx_pulse for structural transitions; cross-check levels with get_spx_structure.",
+    ],
+    defaultQuestion: () =>
+      "What's firing on the SPX pulse rail right now — flip, magnet, macro, and wall events?",
+  },
+  {
     id: "pin",
     label: "EOD pin",
     aliases: ["pin", "eod-pin", "eod", "magnet"],
-    description: "End-of-day pin magnet and wall stability",
+    description: "End-of-day pin forecaster — magnet, cone, projected close",
     rank: 30,
-    preferredTools: ["get_spx_structure", "get_gex_heatmap", "get_positioning"],
+    preferredTools: ["get_spx_pin", "get_gex_heatmap", "get_positioning"],
     focusLines: [
-      "Lead with EOD pin read: magnet strike, wall stability, fade vs hold into close.",
-      "Pin = dealer positioning + time decay — cite the king strike and nearest walls.",
+      "Lead with EOD pin forecast from get_spx_pin — pin strike, magnet, confidence band, fade vs hold.",
+      "Do NOT substitute max pain or walls alone — the desk runs a dedicated pin forecaster.",
     ],
     defaultQuestion: () =>
-      "What's the SPX EOD pin setup — magnet strike, wall stability, and fade risk into close?",
+      "What's the SPX EOD pin setup — magnet strike, projected close, and fade risk into the bell?",
   },
   {
     id: "gates",
@@ -85,6 +100,34 @@ const SPX_SLAYER: DeskSubmoduleDef[] = [
       "Walk the SPX gate checklist — which gates pass, which fail, and why?",
   },
   {
+    id: "lotto",
+    label: "Lotto runner",
+    aliases: ["lotto", "runner", "multi-dte", "3dte", "weekly"],
+    description: "Live SPX lotto runner — multi-day horizon vs 0DTE engine",
+    rank: 42,
+    preferredTools: ["get_lotto_live", "get_lotto_state", "get_spx_play"],
+    focusLines: [
+      "Lead with lotto runner state from get_lotto_live — phase, direction, strike, invalidation.",
+      "Contrast with the main 0DTE play engine; say honestly if no lotto is active.",
+    ],
+    defaultQuestion: () =>
+      "Is there a live SPX lotto runner — phase, direction, strike, and how it differs from 0DTE?",
+  },
+  {
+    id: "power-hour",
+    label: "Power hour",
+    aliases: ["power-hour", "powerhour", "ph", "245", "close-play"],
+    description: "Power Hour play (2:45–3:15 PM ET) — direction, levels, status",
+    rank: 44,
+    preferredTools: ["get_power_hour", "get_spx_pin", "get_spx_play"],
+    focusLines: [
+      "Lead with Power Hour play from get_power_hour — phase, direction, strike, levels.",
+      "Cross-check pin forecast into the close when relevant.",
+    ],
+    defaultQuestion: () =>
+      "What's the SPX Power Hour play — phase, direction, strike, and levels into the close?",
+  },
+  {
     id: "technicals",
     label: "Technicals",
     aliases: ["technicals", "tech", "vwap", "ema", "structure"],
@@ -99,18 +142,88 @@ const SPX_SLAYER: DeskSubmoduleDef[] = [
       "What's the SPX technical structure — VWAP, EMA stack, and trend vs dealer levels?",
   },
   {
+    id: "signal-log",
+    label: "Signal log",
+    aliases: ["signal-log", "signals-log", "committed", "last-signal"],
+    description: "Committed SPX BUY/SELL/TRIM signals from Postgres",
+    rank: 52,
+    preferredTools: ["get_signal_log", "get_spx_play", "get_open_plays"],
+    focusLines: [
+      "Lead with committed signal log — last BUY/SELL/TRIM, strike, grade, outcome if graded.",
+      "get_signal_log is committed signals only — gate blocks and near-misses are NOT here.",
+    ],
+    defaultQuestion: () =>
+      "What's in the SPX signal log — last committed signals and open play exposure?",
+  },
+  {
+    id: "engine-history",
+    label: "Engine history",
+    aliases: ["engine-history", "snapshots", "rejection", "scanning", "blocked"],
+    description: "SPX engine snapshot log — rejections, scanning, gate blocks over time",
+    rank: 54,
+    preferredTools: ["get_spx_engine_snapshots", "get_gate_rules", "get_spx_play"],
+    focusLines: [
+      "Lead with engine snapshots — phase transitions, gate blocks, rejection reasons.",
+      "Use get_spx_engine_snapshots for 'why blocked at 10:15' — NOT get_signal_log (committed only).",
+    ],
+    defaultQuestion: () =>
+      "What has the SPX play engine been doing — recent snapshots, blocks, and rejection reasons?",
+  },
+  {
+    id: "record",
+    label: "SPX record",
+    aliases: ["record", "win-rate", "stats", "graded"],
+    description: "SPX Slayer graded stats — win rate, setup breakdown, recent outcomes",
+    rank: 56,
+    preferredTools: ["get_setup_stats", "get_trade_history", "get_signal_log"],
+    focusLines: [
+      "Lead with public SPX graded stats — win rate, sample size, setup breakdown.",
+      "Cite sample size; never fabricate expectancy on thin data.",
+    ],
+    defaultQuestion: () =>
+      "What's the SPX Slayer track record — win rate, setup stats, and recent graded outcomes?",
+  },
+  {
+    id: "internals",
+    label: "Market internals",
+    aliases: ["internals", "tick", "trin", "breadth", "add"],
+    description: "NYSE TICK/TRIN/ADD and breadth vs SPX play posture",
+    rank: 58,
+    preferredTools: ["get_spx_structure", "get_spx_pulse", "get_spx_play"],
+    focusLines: [
+      "Lead with TICK/TRIN/ADD from get_spx_structure — cite whether breadth supports or conflicts with play.",
+      "Flag internals_estimated when breadth is proxy-derived, not live NYSE.",
+    ],
+    defaultQuestion: () =>
+      "What are SPX market internals — TICK, TRIN, breadth — and do they support today's play?",
+  },
+  {
     id: "flow-gex",
     label: "Flow × GEX",
     aliases: ["flow-gex", "flowgex", "confluence", "conflict"],
     description: "HELIX flow vs dealer GEX — agreement or conflict",
     rank: 60,
-    preferredTools: ["get_spx_confluence", "get_flow_brief", "get_gex_heatmap"],
+    preferredTools: ["get_spx_confluence", "get_flow_brief", "get_gex_heatmap", "get_thermal_compare"],
     focusLines: [
       "Lead with flow vs GEX confluence — where HELIX and dealer positioning agree or conflict.",
-      "Use get_spx_confluence; name the conflict explicitly if skew disagrees with gamma regime.",
+      "Use get_spx_confluence and get_thermal_compare; name conflicts explicitly.",
     ],
     defaultQuestion: () =>
       "Where do HELIX flow and SPX dealer GEX agree or conflict right now?",
+  },
+  {
+    id: "vector",
+    label: "Vector overlay",
+    aliases: ["vector", "chart", "beads", "structure-feed"],
+    description: "Vector structure overlay on SPX — beads, walls, play card",
+    rank: 62,
+    preferredTools: ["get_vector_full_state", "get_spx_structure", "get_spx_play"],
+    focusLines: [
+      "Lead with Vector structure on SPX — beads, walls, play card bias/grade.",
+      "Cross-check SPX Slayer play engine when Vector and Slayer disagree.",
+    ],
+    defaultQuestion: () =>
+      "What does Vector show on SPX — structure, beads, walls, and play card vs the Slayer engine?",
   },
 ];
 

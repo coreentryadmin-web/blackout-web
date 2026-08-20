@@ -12195,3 +12195,17 @@ after its one reload the page stays partially broken. Deliberately left alone: `
 generic TypeError and matching it would reload-loop on ordinary app bugs. It needs a discriminator
 (webpack frames in the stack, or a coincident chunk request failure) and a real deploy to validate
 against.
+
+---
+
+## 2026-08-20 — [FINDING, P2 Largo] SPX Slayer Largo — full desk coverage (14 submodules, prefetch, intent) — OPEN PR #2382
+
+> **kind:** `FINDING`
+> **status:** `OPEN` — PR #2382 phase 2 pushed; prod audit pending post-merge
+
+| Field | Detail |
+|---|---|
+| **Root cause** | Phase 1: `PLAY_STATE_RE` word order, implicit macro calendar, 3DTE hints. Phase 2: ~35% of `/dashboard` unwired — pin used GEX-only prefetch (not `get_spx_pin`), technicals/internals skipped VWAP/TICK/TRIN, 8 slices had no submodule (pulse, lotto, power-hour, signal-log, engine-history, record, internals, vector), flow-gex missing thermal compare prefetch. |
+| **Evidence** | Pre-fix prod audit 44 scenarios: 37 PASS / 6 WARN / 1 FAIL (~65% coverage). FOMC day cited "FOMC at 14:00 ET" live. Gap analysis: pin forecaster, engine snapshots, signal log, lotto/power-hour, breadth internals had tools but no slash submodule or prefetch path. |
+| **Fix** | PR #2382 — phase 1: `BEST_PLAY_RE`, `SPX_DTE_HORIZON_RE`, `needsNews` on spx-slayer. Phase 2: 14 SPX submodules, submodule-aware prefetch + mini-panel, intent keywords, audit ~70 scenarios (`npm run validate:largo-spx-slayer`). |
+| **Status** | OPEN — merge + full prod audit after deploy. |
