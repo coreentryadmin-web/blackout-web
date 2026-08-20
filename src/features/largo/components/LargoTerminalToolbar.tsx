@@ -5,6 +5,8 @@ import { useEffect, useRef, useState } from "react";
 import { History, Plus, RefreshCw, Maximize2, Minimize2, X } from "lucide-react";
 import type { LargoConversation } from "@/features/largo/conversation-history";
 import { groupConversationsByDay } from "@/features/largo/lib/session-grouping";
+import { LargoAnswerModeToggle } from "./LargoAnswerModeToggle";
+import type { LargoDepth } from "@/lib/largo/largo-depth";
 
 /**
  * Command bar for the full-page Largo terminal (BIE Master Spec §6 — persistent,
@@ -20,7 +22,7 @@ export function LargoTerminalToolbar({
   canRegenerate,
   loading,
   depth,
-  onToggleDepth,
+  onSetDepth,
   historicalMode,
   onToggleHistorical,
   onToggleFullscreen,
@@ -34,8 +36,8 @@ export function LargoTerminalToolbar({
   onRegenerate: () => void;
   canRegenerate: boolean;
   loading: boolean;
-  depth: "quick" | "deep";
-  onToggleDepth: () => void;
+  depth: LargoDepth;
+  onSetDepth: (mode: LargoDepth) => void;
   historicalMode: boolean;
   onToggleHistorical: () => void;
   onToggleFullscreen: () => void;
@@ -143,16 +145,12 @@ export function LargoTerminalToolbar({
           )}
         </div>
 
-        <button
-          type="button"
-          className={clsx("largo-toolbar-btn", depth === "quick" && "is-active")}
-          aria-pressed={depth === "quick"}
+        <LargoAnswerModeToggle
+          mode={depth}
+          onChange={onSetDepth}
           disabled={loading}
-          onClick={onToggleDepth}
-          title={depth === "quick" ? "Quick read (Haiku, 2 tools)" : "Deep dive (Sonnet, full loop)"}
-        >
-          <span className="largo-toolbar-btn-label">{depth === "quick" ? "Quick read" : "Deep dive"}</span>
-        </button>
+          variant="toolbar"
+        />
 
         <button
           type="button"

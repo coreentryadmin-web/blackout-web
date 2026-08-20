@@ -54,10 +54,11 @@ describe("session-metadata watchlist", () => {
 });
 
 describe("largo-depth", () => {
-  it("quick uses Haiku and 2 rounds", () => {
-    assert.equal(parseLargoDepth("quick"), "quick");
-    assert.equal(largoDepthConfig("quick").maxRounds, 2);
-    assert.match(largoDepthConfig("quick").model, /haiku/i);
+  it("concrete uses Haiku and tight loop", () => {
+    assert.equal(parseLargoDepth("concrete"), "concrete");
+    assert.equal(parseLargoDepth("quick"), "concrete");
+    assert.equal(largoDepthConfig("concrete").maxRounds, 3);
+    assert.match(largoDepthConfig("concrete").model, /haiku/i);
   });
 
   it("deep uses Sonnet", () => {

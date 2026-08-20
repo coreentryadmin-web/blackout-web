@@ -28,6 +28,7 @@ import { LargoSlashMenu } from "./LargoSlashMenu";
 import { LargoSlashPromptsMenu } from "./LargoSlashPromptsMenu";
 import { LargoDeskScopeBanner } from "./LargoDeskScopeBanner";
 import { LargoProactiveComposer } from "./LargoProactiveComposer";
+import { LargoAnswerModeToggle } from "./LargoAnswerModeToggle";
 import { parseDeskSlashArgs } from "@/lib/largo/desk-scope";
 import { slashArgsFromInput } from "@/lib/largo/slash-prompt-utils";
 import type { LargoScopePick, LargoStarterPick } from "@/lib/largo/largo-module-starter-cards";
@@ -79,6 +80,7 @@ export function LargoTerminal({
     addAttachments,
     removeAttachment,
     depth,
+    setAnswerMode,
     toggleDepth,
     historicalMode,
     toggleHistoricalMode,
@@ -220,7 +222,7 @@ export function LargoTerminal({
             canRegenerate={canRegenerate}
             loading={loading}
             depth={depth}
-            onToggleDepth={toggleDepth}
+            onSetDepth={setAnswerMode}
             historicalMode={historicalMode}
             onToggleHistorical={toggleHistoricalMode}
             onToggleFullscreen={onToggleFullscreen ?? (() => {})}
@@ -299,6 +301,7 @@ export function LargoTerminal({
                       deskScopeArgs={msg.deskScopeArgs}
                       miniPanel={msg.miniPanel}
                       ticker={activeTicker}
+                      answerMode={msg.depth === "deep" ? "deep" : "concrete"}
                     />
                   )
                 ) : (
@@ -390,6 +393,15 @@ export function LargoTerminal({
           disabled={loading || !hydrated}
           onAsk={(q) => void runQuery(q)}
         />
+
+        {!fullPage && (
+          <LargoAnswerModeToggle
+            mode={depth}
+            onChange={setAnswerMode}
+            disabled={loading || !hydrated}
+            variant="composer"
+          />
+        )}
 
         <LargoDeskScopeBanner
           deskScope={activeDeskScope}

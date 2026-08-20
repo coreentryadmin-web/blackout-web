@@ -21,7 +21,7 @@ export type LargoSessionMetadata = {
   morning_brief?: boolean;
   play_context?: LargoPlayContext | null;
   /** Last depth mode the member used in this session. */
-  depth?: "quick" | "deep";
+  depth?: "concrete" | "deep" | "quick";
   /** Active desk from slash command — persists through follow-ups in this thread. */
   desk_scope?: string | null;
   desk_scope_args?: DeskSlashArgs | null;
@@ -69,7 +69,9 @@ export function mergeSessionMetadata(
   if (patch.watchlist) base.watchlist = normalizeWatchlist(patch.watchlist);
   if (patch.morning_brief != null) base.morning_brief = Boolean(patch.morning_brief);
   if (patch.play_context !== undefined) base.play_context = patch.play_context;
-  if (patch.depth === "quick" || patch.depth === "deep") base.depth = patch.depth;
+  if (patch.depth === "concrete" || patch.depth === "deep" || patch.depth === "quick") {
+    base.depth = patch.depth === "quick" ? "concrete" : patch.depth;
+  }
   if (patch.desk_scope !== undefined) base.desk_scope = patch.desk_scope;
   if (patch.desk_scope_args !== undefined) base.desk_scope_args = patch.desk_scope_args;
   if (patch.last_turn_snapshot !== undefined) base.last_turn_snapshot = patch.last_turn_snapshot;

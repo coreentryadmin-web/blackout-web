@@ -1,5 +1,6 @@
 import type { ClaimVerification } from "@/lib/bie/verifier";
 import type { BieAnswerEnvelope } from "@/lib/bie/answer-envelope";
+import type { LargoDepth } from "@/lib/largo/largo-depth";
 
 /** The server's auto-render directive — mirrors `VisualDirective` in largo-terminal.ts. */
 type LargoVisualDirective = {
@@ -509,7 +510,7 @@ export class LargoStreamAborted extends Error {
 export type LargoImageAttachment = { data: string; media_type: string };
 
 export type LargoQueryOptions = {
-  depth?: "quick" | "deep";
+  depth?: LargoDepth;
   historical?: boolean;
   playContext?: import("@/lib/largo/session-metadata").LargoPlayContext | null;
   deskScope?: string | null;
@@ -554,7 +555,7 @@ export async function queryLargoStream(
   play_similarity?: import("@/lib/largo/play-similarity").PlaySimilarityCard | null;
   pre_earnings_pack?: import("@/lib/largo/pre-earnings-pack").PreEarningsPackCard | null;
   actions?: import("@/lib/largo/largo-actions").LargoAction[];
-  depth?: "quick" | "deep";
+  depth?: LargoDepth;
   desk_scope?: string | null;
   desk_scope_args?: import("@/lib/largo/desk-scope").DeskSlashArgs | null;
   mini_panel?: string | null;
@@ -642,7 +643,7 @@ export async function queryLargoStream(
     play_similarity?: import("@/lib/largo/play-similarity").PlaySimilarityCard | null;
     pre_earnings_pack?: import("@/lib/largo/pre-earnings-pack").PreEarningsPackCard | null;
     actions?: import("@/lib/largo/largo-actions").LargoAction[];
-    depth?: "quick" | "deep";
+    depth?: LargoDepth;
     desk_scope?: string | null;
     desk_scope_args?: import("@/lib/largo/desk-scope").DeskSlashArgs | null;
     mini_panel?: string | null;
