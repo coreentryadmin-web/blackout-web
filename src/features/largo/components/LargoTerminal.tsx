@@ -236,7 +236,7 @@ export function LargoTerminal({
         {/* Rail + transcript. The rail is a SIBLING, not an overlay: it must not cover the answer
             it is context for, and it appears only once the server has resolved an instrument, so
             screen width is never permanently spent on an empty column. */}
-        <div className={clsx("largo-main", activeTicker && "largo-main-railed")}>
+        <div className="largo-main">
         <div
           role="log"
           aria-live="polite"
