@@ -60,6 +60,37 @@ export type GexHeatmapForLargo = {
   source: "polygon";
 };
 
+/**
+ * Strip the parenthetical LEVEL out of a regime read before it reaches the model.
+ *
+ * The regime read is prose that restates a level already supplied as a typed field:
+ *
+ *   flip (typed field) .... 7893.38
+ *   gamma_regime_read ..... "Spot 7,707.98 is below the gamma flip (7,887.15) -> short gamma ..."
+ *
+ * Those two numbers DISAGREE on prod, deterministically. Measured 2026-08-20 across four samples
+ * 20s apart and once more through a FORCED rebuild (`?force=1`, 9.5s, genuinely recomputed): the
+ * delta was 6.22 pts every single time. So it is not staleness and not caching — `gex.flip` and
+ * `gex.regime.flip` are computed from different inputs on every request.
+ *
+ * That data defect is NOT fixed here; it lives in the matrix builder and is filed for its own
+ * change. What is fixed here is the consequence: Largo was handed the SAME QUANTITY TWICE with TWO
+ * VALUES, and faithfully reported both — "Gamma flip 7891.94 (7886.81 on Thermal matrix)" — which
+ * reads to a member as the product contradicting itself.
+ *
+ * The prose duplicate carries no information the typed field lacks, so removing it costs nothing
+ * and removes the contradiction. The regime WORDS (long/short gamma, resistance, support) are
+ * exactly what the read is for and are kept intact.
+ *
+ * Deliberately NOT done: rewriting the embedded number to match the canonical field. That would
+ * paper over a real disagreement and make the data bug invisible to the next audit — the failure
+ * mode this whole exercise exists to prevent.
+ */
+function stripEmbeddedLevel(read: string | null | undefined): string | null {
+  if (!read) return null;
+  return String(read).replace(/\s*\(\s*[\d,]+(?:\.\d+)?\s*\)/g, "").replace(/\s{2,}/g, " ").trim();
+}
+
 function topStrikesFromTotals(
   totals: Record<string, number>,
   limit: number
@@ -170,7 +201,7 @@ export async function gexHeatmapForLargo(
     vex_flip: hm.vex?.flip ?? null,
     net_dex: pos?.net_dex ?? hm.dex?.total ?? null,
     net_charm: pos?.net_charm ?? hm.charm?.total ?? null,
-    gamma_regime_read: pos?.gamma_regime_read ?? hm.gex?.regime?.read ?? null,
+    gamma_regime_read: stripEmbeddedLevel(pos?.gamma_regime_read ?? hm.gex?.regime?.read),
     vanna_regime_read: pos?.vanna_regime_read ?? hm.vex?.regime?.read ?? null,
     dex_regime_read: pos?.dex_regime_read ?? hm.dex?.regime?.read ?? null,
     charm_regime_read: pos?.charm_regime_read ?? hm.charm?.regime?.read ?? null,
