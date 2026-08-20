@@ -124,3 +124,106 @@ test("both producers share ONE regime builder — no third copy of the math", ()
   );
   assert.match(fnBody, /buildGexRegime\(/, "it must delegate instead");
 });
+
+/**
+ * A NULL FLIP IS NOT A NULL REGIME.
+ *
+ * MEASURED ON PROD 2026-08-20, full RTH session (13:33Z → 19:35Z, ~6 hours):
+ *
+ *     SPX   flip=null  flip_reason=net_short_everywhere  total=-45.32B  184 strikes
+ *     SPY   flip=null  flip_reason=net_short_everywhere  total=-11.91B  270 strikes
+ *     QQQ   flip=null  flip_reason=net_short_everywhere  total= -4.67B  288 strikes
+ *     NVDA  flip=219.64  flip_reason=resolved            total= +0.96B   67 strikes
+ *
+ * NVDA resolving throughout is what proves the machinery was healthy — the indices genuinely had
+ * no zero-gamma crossing, because dealers were net short at EVERY strike. `net_short_everywhere`
+ * is therefore the strongest possible SHORT reading, not an absence of information.
+ *
+ * The desk reported "regime unavailable" for six hours about a book whose regime was certain, and
+ * Largo repeated the core's own sentence — "until the chain prints a clean dealer-gamma profile" —
+ * verbatim to members. That phrasing says *wait for data*. The truth was *this is the data*.
+ *
+ * `insufficient_strikes` must keep reporting undetermined: that one really is an outage.
+ */
+
+test("net_short_everywhere yields SHORT posture, not undetermined", () => {
+  const r = buildGexRegime({
+    spot: 7654.11,
+    flip: null,
+    callWall: 7700,
+    putWall: 7650,
+    flipReason: "net_short_everywhere",
+  });
+  assert.equal(r.posture, "short", "no long-gamma region anywhere is unambiguously short gamma");
+  assert.equal(r.flip, null, "but there is still no flip level to quote");
+});
+
+test("the read states the structural fact instead of blaming the data", () => {
+  const r = buildGexRegime({
+    spot: 7654.11,
+    flip: null,
+    callWall: 7700,
+    putWall: 7650,
+    flipReason: "net_short_everywhere",
+  });
+  assert.match(r.read, /net short gamma at EVERY strike/i, "must name the actual structure");
+  assert.match(r.read, /short gamma: momentum \/ vol expansion/, "and carry the regime verdict");
+  assert.doesNotMatch(
+    r.read,
+    /until the chain prints/i,
+    "must NOT say 'wait for data' about data that arrived and is complete"
+  );
+  // Walls still travel — they are the tradeable levels when no flip exists.
+  assert.match(r.read, /Resistance 7,700/);
+  assert.match(r.read, /support 7,650/);
+});
+
+test("insufficient_strikes REMAINS undetermined — that one is a real outage", () => {
+  // The whole value of flip_reason is that these two are not interchangeable. If a data outage
+  // started reporting SHORT, the fix would have traded a silent gap for a fabricated regime.
+  const r = buildGexRegime({
+    spot: 7654.11,
+    flip: null,
+    callWall: null,
+    putWall: null,
+    flipReason: "insufficient_strikes",
+  });
+  assert.equal(r.posture, null);
+  assert.match(r.read, /undetermined/i);
+  assert.doesNotMatch(r.read, /net short gamma at EVERY strike/i);
+});
+
+test("an omitted reason behaves exactly as before", () => {
+  // Opt-in: callers that do not pass flipReason must not change behaviour.
+  const r = buildGexRegime({ spot: 7654.11, flip: null, callWall: null, putWall: null });
+  assert.equal(r.posture, null);
+  assert.match(r.read, /undetermined/i);
+});
+
+test("a resolved flip still wins over the reason", () => {
+  // Ordering matters: an actual crossing is more specific than any reason code.
+  const r = buildGexRegime({
+    spot: 217.34,
+    flip: 219.64,
+    callWall: 225,
+    putWall: 210,
+    flipReason: "resolved",
+  });
+  assert.equal(r.posture, "short", "spot below the resolved flip");
+  assert.match(r.read, /below the gamma flip \(219\.64\)/);
+});
+
+test("REGRESSION: both producers pass the reason through", () => {
+  // A fix only one producer gets is precisely the drift this core module was split out to prevent
+  // — the overlay recomputes the flip after replacing the 0DTE column, so it must recompute the
+  // REASON with it rather than inheriting the pre-overlay book's explanation.
+  const gex = readFileSync(join(process.cwd(), "src/lib/providers/polygon-options-gex.ts"), "utf8");
+  const overlay = readFileSync(
+    join(process.cwd(), "src/lib/providers/spx-odte-gex-uw-overlay.ts"),
+    "utf8"
+  );
+  assert.match(gex, /flipReason\b/, "matrix producer must thread the reason");
+  assert.match(gex, /gexFlipDetail\.reason/, "and take it from the detail it already computes");
+  assert.match(overlay, /cumulativeGammaFlipDetail/, "overlay must compute the DETAIL");
+  assert.match(overlay, /flipReason: flipDetail\.reason/, "and pass its own reason, not a stale one");
+});

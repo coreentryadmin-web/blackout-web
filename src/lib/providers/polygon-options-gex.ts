@@ -933,7 +933,8 @@ function computeGexRegime(
   strikeTotals: Record<string, number>,
   spot: number,
   flip: number | null,
-  maxPain: number | null
+  maxPain: number | null,
+  flipReason?: GammaFlipReason
 ): { callWall: number | null; putWall: number | null; regime: GexRegime } {
   // Shared with Thermal's per-expiry Key Levels — see gexWallsFromStrikeTotals. Two copies of the
   // wall scan could drift; one cannot.
@@ -944,7 +945,7 @@ function computeGexRegime(
   // import from HERE, because this file imports IT (line 18). Before the split, the overlay
   // recomputed `gex.flip` after replacing the 0DTE column and had no reachable way to rebuild the
   // regime, so it left one describing the pre-overlay book.
-  const regime = buildGexRegime({ spot, flip, callWall, putWall });
+  const regime = buildGexRegime({ spot, flip, callWall, putWall, flipReason });
 
   // Note: maxPain is surfaced as its own field; intentionally not folded into `read`.
   void maxPain;
@@ -1352,7 +1353,8 @@ export function prunePastExpiriesFromHeatmap(hm: GexHeatmap, todayYmd: string): 
     gexPruned.strikeTotals,
     hm.spot,
     gexFlip,
-    hm.max_pain
+    hm.max_pain,
+    gexFlipDetail.reason
   );
 
   const vexFlip = computeZeroGammaFlip(vexPruned.strikeTotals, hm.spot);
@@ -3317,7 +3319,8 @@ async function buildGexHeatmapUncached(
     gexBuilt.strikeTotals,
     spot,
     gexFlip,
-    maxPain
+    maxPain,
+    gexFlipDetail.reason
   );
 
   // ── SYNTHETIC ORDER BOOK — forced hedging flow per price level ───────────────────────────

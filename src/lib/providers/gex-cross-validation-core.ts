@@ -435,16 +435,59 @@ export function buildGexRegime(input: {
   flip: number | null;
   callWall: number | null;
   putWall: number | null;
+  /**
+   * WHY the flip is null, when it is. A null flip has two very different meanings and this is what
+   * separates them — see GammaFlipReason. Optional so existing callers keep compiling; omitting it
+   * only costs the `net_short_everywhere` read below, never correctness.
+   */
+  flipReason?: GammaFlipReason;
 }): GexRegimeCore {
-  const { spot, flip, callWall, putWall } = input;
+  const { spot, flip, callWall, putWall, flipReason } = input;
+
+  /**
+   * A NULL FLIP IS NOT A NULL REGIME.
+   *
+   * `net_short_everywhere` means the cumulative gamma profile never turns positive — dealers are
+   * net short at every strike. That is not missing information, it is the strongest possible SHORT
+   * gamma reading: there is no long-gamma region for price to reach. Deriving posture only from
+   * `spot >= flip` threw that away and reported "undetermined" about a book whose regime is
+   * certain.
+   *
+   * MEASURED ON PROD 2026-08-20 across a full RTH session: SPX, SPY and QQQ all held
+   * `flip_reason: net_short_everywhere` from the open to the close (SPX net GEX -45.32B over 184
+   * strikes). NVDA, with a net-positive book, resolved a flip normally the whole time — so the
+   * machinery was healthy and the indices genuinely had no flip. For six hours the desk reported
+   * its core regime as unavailable when it was in fact unambiguously short.
+   *
+   * `insufficient_strikes` stays undetermined, because that one IS a data outage.
+   */
   const posture: "long" | "short" | null =
-    flip != null && spot > 0 ? (spot >= flip ? "long" : "short") : null;
+    spot > 0
+      ? flip != null
+        ? spot >= flip
+          ? "long"
+          : "short"
+        : flipReason === "net_short_everywhere"
+          ? "short"
+          : null
+      : null;
 
   const fmt = (n: number) =>
     n.toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 0 });
 
   let read: string;
-  if (posture == null || flip == null || !(spot > 0)) {
+  if (posture === "short" && flip == null && spot > 0) {
+    // Say the STRUCTURAL FACT, not "unavailable". The old string ("...until the chain prints a
+    // clean dealer-gamma profile") reads as a data problem — still computing, check back — and
+    // Largo repeated it verbatim to members all session. It is the opposite of the truth: the
+    // chain printed fine, and what it printed was a book with no long-gamma region at all.
+    const resistance = callWall != null ? ` Resistance ${fmt(callWall)}` : "";
+    const support = putWall != null ? `${resistance ? "," : ""} support ${fmt(putWall)}` : "";
+    const tail = resistance || support ? `.${resistance}${support}.` : ".";
+    read =
+      `No gamma flip — dealers are net short gamma at EVERY strike, so there is no long-gamma ` +
+      `region above spot ${fmt(spot)} → short gamma: momentum / vol expansion, moves accelerate${tail}`;
+  } else if (posture == null || flip == null || !(spot > 0)) {
     read = "Gamma flip undetermined — regime read unavailable until the chain prints a clean dealer-gamma profile.";
   } else {
     const resistance = callWall != null ? ` Resistance ${fmt(callWall)}` : "";
