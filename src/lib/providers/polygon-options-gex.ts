@@ -16,6 +16,7 @@ import { fmtPremium } from "@/lib/fmt-money";
 import { persistGexRegimeEvents } from "./gex-regime-events";
 import { zeroGammaFlip as computeZeroGammaFlip, cumulativeGammaFlipDetail, gexWallsFromStrikeTotals, type GammaFlipReason } from "@/lib/providers/gex-cross-validation-core";
 import { applySpxOdteGexUwOverlay } from "@/lib/providers/spx-odte-gex-uw-overlay";
+import { buildGexRegime } from "@/lib/providers/gex-cross-validation-core";
 export { zeroGammaFlip as computeZeroGammaFlip, cumulativeGammaFlip } from "@/lib/providers/gex-cross-validation-core";
 
 const BASE = (process.env.POLYGON_API_BASE ?? "https://api.massive.com").replace(/\/$/, "");
@@ -938,31 +939,17 @@ function computeGexRegime(
   // wall scan could drift; one cannot.
   const { callWall, putWall } = gexWallsFromStrikeTotals(strikeTotals);
 
-  const posture: "long" | "short" | null =
-    flip != null && spot > 0 ? (spot >= flip ? "long" : "short") : null;
-
-  const fmt = (n: number) =>
-    n.toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 0 });
-
-  let read: string;
-  if (posture == null || flip == null || !(spot > 0)) {
-    read = "Gamma flip undetermined — regime read unavailable until the chain prints a clean dealer-gamma profile.";
-  } else if (posture === "long") {
-    const resistance = callWall != null ? ` Resistance ${fmt(callWall)}` : "";
-    const support = putWall != null ? `${resistance ? "," : ""} support ${fmt(putWall)}` : "";
-    const tail = resistance || support ? `.${resistance}${support}.` : ".";
-    read = `Spot ${fmt(spot)} is above the gamma flip (${fmt(flip)}) → long gamma: range-bound, fade extremes${tail}`;
-  } else {
-    const resistance = callWall != null ? ` Resistance ${fmt(callWall)}` : "";
-    const support = putWall != null ? `${resistance ? "," : ""} support ${fmt(putWall)}` : "";
-    const tail = resistance || support ? `.${resistance}${support}.` : ".";
-    read = `Spot ${fmt(spot)} is below the gamma flip (${fmt(flip)}) → short gamma: momentum / vol expansion, moves accelerate${tail}`;
-  }
+  // Posture + read DELEGATE to the pure builder in gex-cross-validation-core. That module has zero
+  // imports, which is what lets `spx-odte-gex-uw-overlay.ts` reuse the identical logic — it cannot
+  // import from HERE, because this file imports IT (line 18). Before the split, the overlay
+  // recomputed `gex.flip` after replacing the 0DTE column and had no reachable way to rebuild the
+  // regime, so it left one describing the pre-overlay book.
+  const regime = buildGexRegime({ spot, flip, callWall, putWall });
 
   // Note: maxPain is surfaced as its own field; intentionally not folded into `read`.
   void maxPain;
 
-  return { callWall, putWall, regime: { flip, posture, read } };
+  return { callWall, putWall, regime };
 }
 
 /**

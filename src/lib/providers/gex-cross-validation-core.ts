@@ -391,3 +391,69 @@ export function gexWallsFromStrikeTotals(strikeTotals: Record<string, number>): 
   }
   return { callWall, putWall };
 }
+
+/** Regime shape — structurally identical to `GexRegime` in polygon-options-gex.ts. */
+export type GexRegimeCore = {
+  flip: number | null;
+  posture: "long" | "short" | null;
+  read: string;
+};
+
+/**
+ * Posture + read for a gamma book, derived from the flip it is measured against.
+ *
+ * LIVES HERE BECAUSE TWO MODULES MUST AGREE AND CANNOT IMPORT EACH OTHER.
+ * `polygon-options-gex.ts` imports `spx-odte-gex-uw-overlay.ts` (line 18), so the overlay can only
+ * type-import back. This module has zero imports, so both can depend on it.
+ *
+ * THE BUG THAT MADE THIS NECESSARY. `recomputeNearTermGexStrikeTotals` re-derives strike_totals,
+ * total, call_wall, put_wall and `gex.flip` after the SPX 0DTE UW ladder replaces today's column —
+ * but left `gex.regime` untouched. So on SPX the served payload carried a flip from the UW-overlaid
+ * book and a regime (its own `flip`, its `posture`, and its `read` sentence) describing the
+ * PRE-overlay book:
+ *
+ *     gex.flip ........ 7893.38
+ *     regime.flip ..... 7887.16
+ *     regime.read ..... "Spot 7,707.98 is below the gamma flip (7,887.15) -> short gamma ..."
+ *
+ * Measured on prod 2026-08-20: the 6.22 pt delta held across four samples 20s apart AND through a
+ * forced rebuild (`?force=1`, 9.5s), which is what ruled out caching and staleness — the overlay
+ * re-runs on every request, so it re-creates the skew every time.
+ *
+ * `GexRegime.flip` is documented as "mirrors gex.flip". That invariant is the whole point of this
+ * function: posture and read are computed FROM the flip passed in, so a caller that updates the
+ * flip and calls this cannot leave a regime pointing at the old one.
+ *
+ * WHY POSTURE MATTERS MORE THAN THE 6 POINTS. `posture` is `spot >= flip ? long : short`, and long
+ * vs short gamma inverts the entire trading interpretation — dampened and mean-reverting versus
+ * amplified and trending. With spot ~180 pts below both flips the answer happened to be "short"
+ * either way, which is exactly why this survived: the visible symptom was a cosmetic number
+ * mismatch, while the latent failure is a wrong REGIME whenever spot sits between the two.
+ */
+export function buildGexRegime(input: {
+  spot: number;
+  flip: number | null;
+  callWall: number | null;
+  putWall: number | null;
+}): GexRegimeCore {
+  const { spot, flip, callWall, putWall } = input;
+  const posture: "long" | "short" | null =
+    flip != null && spot > 0 ? (spot >= flip ? "long" : "short") : null;
+
+  const fmt = (n: number) =>
+    n.toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 0 });
+
+  let read: string;
+  if (posture == null || flip == null || !(spot > 0)) {
+    read = "Gamma flip undetermined — regime read unavailable until the chain prints a clean dealer-gamma profile.";
+  } else {
+    const resistance = callWall != null ? ` Resistance ${fmt(callWall)}` : "";
+    const support = putWall != null ? `${resistance ? "," : ""} support ${fmt(putWall)}` : "";
+    const tail = resistance || support ? `.${resistance}${support}.` : ".";
+    read =
+      posture === "long"
+        ? `Spot ${fmt(spot)} is above the gamma flip (${fmt(flip)}) → long gamma: range-bound, fade extremes${tail}`
+        : `Spot ${fmt(spot)} is below the gamma flip (${fmt(flip)}) → short gamma: momentum / vol expansion, moves accelerate${tail}`;
+  }
+  return { flip, posture, read };
+}
