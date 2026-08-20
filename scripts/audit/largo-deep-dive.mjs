@@ -50,6 +50,8 @@ const argv = process.argv.slice(2);
 const AS_JSON = argv.includes("--json");
 const LIMIT = Number((argv.find((a) => a.startsWith("--limit=")) ?? "").slice(8)) || null;
 /** Delay between calls. The desk AI gate rate-limits a burst; see the pacing note in the loop. */
+/** Run only these scenario ids — lets an adversarial subset be re-measured without a full pass. */
+const ONLY = ((argv.find((a) => a.startsWith("--only=")) ?? "").slice(7) || "").split(",").filter(Boolean);
 const PACE_MS = Number((argv.find((a) => a.startsWith("--pace=")) ?? "").slice(7)) || 6000;
 
 const LEN_TARGET = 700;
@@ -403,7 +405,8 @@ if (isDirectRun) void (async () => {
       console.error(`SOURCE DISAGREEMENT — gamma flip published as ${JSON.stringify(flips)}`);
     }
 
-    const list = LIMIT ? QUESTIONS.slice(0, LIMIT) : QUESTIONS;
+    const filtered = ONLY.length ? QUESTIONS.filter((q) => ONLY.includes(q.id)) : QUESTIONS;
+    const list = LIMIT ? filtered.slice(0, LIMIT) : filtered;
     for (const sc of list) {
       const row = { id: sc.id, q: sc.q, subject: sc.subject, modes: {} };
       for (const mode of ["concrete", "deep"]) {
