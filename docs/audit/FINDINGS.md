@@ -12198,14 +12198,14 @@ against.
 
 ---
 
-## 2026-08-20 — [FINDING, P2 Largo] SPX Slayer Largo — best-play word order, implicit macro calendar, 3DTE routing — FIXED
+## 2026-08-20 — [FINDING, P2 Largo] SPX Slayer Largo — full desk coverage (14 submodules, prefetch, intent) — OPEN PR #2382
 
 > **kind:** `FINDING`
-> **status:** `FIXED` — merged as #2382.
+> **status:** `OPEN` — PR #2382 phase 2 pushed; prod audit pending post-merge
 
 | Field | Detail |
 |---|---|
-| **Root cause** | (1) `PLAY_STATE_RE` required ticker-before-play — "best play for SPX" missed `get_spx_play` hints. (2) `get_economic_calendar` only on explicit FOMC/CPI keywords. (3) 3DTE/7DTE had no tool hints. |
-| **Evidence** | Prod audit 44 scenarios: 37 PASS / 6 WARN / 1 FAIL. Scenarios 13–44: 29 PASS / 3 WARN / 0 FAIL. FOMC day cited "FOMC at 14:00 ET" live. |
-| **Fix** | PR #2382 — `BEST_PLAY_RE`, `SPX_DTE_HORIZON_RE`, `needsNews` on spx-slayer scope, `npm run validate:largo-spx-slayer`. |
-| **Status** | FIXED — merged #2382. Verified on current `main`: full suite green, `npm run build` green, client/server boundary guard clean. |
+| **Root cause** | Phase 1: `PLAY_STATE_RE` word order, implicit macro calendar, 3DTE hints. Phase 2: ~35% of `/dashboard` unwired — pin used GEX-only prefetch (not `get_spx_pin`), technicals/internals skipped VWAP/TICK/TRIN, 8 slices had no submodule (pulse, lotto, power-hour, signal-log, engine-history, record, internals, vector), flow-gex missing thermal compare prefetch. |
+| **Evidence** | Pre-fix prod audit 44 scenarios: 37 PASS / 6 WARN / 1 FAIL (~65% coverage). FOMC day cited "FOMC at 14:00 ET" live. Gap analysis: pin forecaster, engine snapshots, signal log, lotto/power-hour, breadth internals had tools but no slash submodule or prefetch path. |
+| **Fix** | PR #2382 — phase 1: `BEST_PLAY_RE`, `SPX_DTE_HORIZON_RE`, `needsNews` on spx-slayer. Phase 2: 14 SPX submodules, submodule-aware prefetch + mini-panel, intent keywords, audit ~70 scenarios (`npm run validate:largo-spx-slayer`). |
+| **Status** | OPEN — merge + full prod audit after deploy. |

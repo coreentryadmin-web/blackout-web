@@ -29,10 +29,18 @@ export function hasGroundedAnswer(answer) {
 export const SUBMODULE_TOPIC = {
   play: /\b(phase|action|grade|play|invalidation|engine)\b/i,
   gex: /\b(flip|wall|gamma|gex|strike|regime|king)\b/i,
-  pin: /\b(pin|magnet|close|eod|fade|wall)\b/i,
+  pulse: /\b(pulse|flip|magnet|macro|wall|event|cross|shift)\b/i,
+  pin: /\b(pin|magnet|close|eod|fade|wall|cone|projected)\b/i,
   gates: /\b(gate|pass|fail|block|checklist|trace)\b/i,
+  lotto: /\b(lotto|runner|multi.?day|3\s*dte|weekly|0dte|play)\b/i,
+  "power-hour": /\b(power hour|phase|direction|strike|level|close)\b/i,
   technicals: /\b(vwap|ema|structure|trend|session|level)\b/i,
+  "signal-log": /\b(signal|log|committed|buy|sell|trim|open)\b/i,
+  "engine-history": /\b(engine|snapshot|block|reject|scan|gate|history)\b/i,
+  record: /\b(win rate|record|stats|graded|setup|expectancy)\b/i,
+  internals: /\b(tick|trin|breadth|internals|add|support|conflict)\b/i,
   "flow-gex": /\b(flow|confluence|conflict|helix|gex|skew)\b/i,
+  vector: /\b(vector|beads|structure|regime|chart|play card|slayer)\b/i,
 };
 
 export function toolOverlap(preferred, used) {

@@ -29,9 +29,9 @@ describe("largoDeskStarterCards", () => {
 describe("largoSubmoduleCardsForDesk", () => {
   it("returns all SPX Slayer modules for step two", () => {
     const mods = largoSubmoduleCardsForDesk("spx-slayer");
-    assert.ok(mods.length >= 6);
+    assert.ok(mods.length >= 14);
     assert.ok(mods.some((m) => m.submodule === "gex"));
-    assert.ok(mods.some((m) => m.submodule === "play"));
+    assert.ok(mods.some((m) => m.submodule === "pulse"));
   });
 });
 

@@ -441,6 +441,27 @@ test("3DTE SPX horizon hints lotto + option chain", () => {
   assert.match(intent.guidance, /get_option_chain/);
 });
 
+test("engine history at time hints get_spx_engine_snapshots", () => {
+  const intent = analyzeLargoQuestion("Why was SPX blocked around 10:15 — engine snapshots?", []);
+  assert.match(intent.guidance, /get_spx_engine_snapshots/);
+});
+
+test("signal log hints get_signal_log", () => {
+  const intent = analyzeLargoQuestion("What was the last committed SPX signal in the signal log?", []);
+  assert.match(intent.guidance, /get_signal_log/);
+});
+
+test("pin forecast hints get_spx_pin", () => {
+  const intent = analyzeLargoQuestion("Walk the SPX pin cone and projected close", []);
+  assert.match(intent.guidance, /get_spx_pin/);
+});
+
+test("internals TICK TRIN hints structure + pulse", () => {
+  const intent = analyzeLargoQuestion("Where are TICK and TRIN for SPX breadth?", []);
+  assert.match(intent.guidance, /get_spx_structure/);
+  assert.match(intent.guidance, /get_spx_pulse/);
+});
+
 test("domain vocabulary in capitals is still NOT a ticker", () => {
   // LARGO-9 in its original form: CALLS / HOLD / SETUP / BULL mis-pinned as symbols. That came
   // from uppercasing the whole question; this branch reads the ORIGINAL text, so ordinary prose

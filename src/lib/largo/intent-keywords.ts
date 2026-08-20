@@ -291,7 +291,31 @@ export const SWING_RE =
 
 /** SPX EOD pin forecaster (distinct from gamma magnet / max pain). */
 export const SPX_PIN_RE =
-  /\b(pin forecast|eod pin|pin strike|where.*pin|close.*pin|spx pin)\b/i;
+  /\b(pin forecast|eod pin|pin strike|where.*pin|close.*pin|spx pin|pin cone|projected close)\b/i;
+
+/** SPX pulse rail — structural transitions on the desk. */
+export const SPX_PULSE_RE =
+  /\b(pulse rail|desk pulse|spx pulse|flip cross|magnet shift|wall build|macro phase)\b/i;
+
+/** SPX lotto runner — multi-day horizon distinct from 0DTE engine. */
+export const SPX_LOTTO_RE =
+  /\b(lotto runner|lotto live|lotto play|multi.?day lotto|lotto state)\b/i;
+
+/** SPX Power Hour play (2:45–3:15 PM ET). */
+export const SPX_POWER_HOUR_RE =
+  /\b(power hour|powerhour|2:45|3:15|close play|ph play)\b/i;
+
+/** Committed SPX signal log — BUY/SELL/TRIM only. */
+export const SPX_SIGNAL_LOG_RE =
+  /\b(signal log|signals log|last signal|committed signal|spx signal history)\b/i;
+
+/** SPX engine snapshot history — rejections, scanning, gate blocks over time. */
+export const SPX_ENGINE_HISTORY_RE =
+  /\b(engine snapshot|engine history|scanning history|why blocked|why was .{0,20} blocked|rejection log|what was the engine doing)\b|\b(at|around)\s+\d{1,2}:\d{2}\b.*\b(block|reject|gate|engine)\b|\b(block|reject|gate|engine)\b.*\b(at|around)\s+\d{1,2}:\d{2}\b/i;
+
+/** NYSE breadth internals on the SPX desk. */
+export const SPX_INTERNALS_RE =
+  /\b(tick|trin|add|market internals|breadth|advance.?decline)\b/i;
 
 /** Public track record / graded performance stats. */
 export const RECORD_READ_RE =

@@ -20,14 +20,17 @@ export async function prefetchDeskScopeBlock(
     switch (desk) {
       case "spx-slayer": {
         const { marketPlatform } = await import("@/lib/platform");
+        const productReads = await import("@/lib/largo/product-reads");
         const subId = sub?.id;
         if (!subId) {
-          const [play, gex] = await Promise.all([
+          const [play, gex, pin, pulse] = await Promise.all([
             marketPlatform.spx.getSpxPlayState().catch(() => null),
             import("@/lib/largo/gex-heatmap-for-largo").then((m) => m.gexHeatmapForLargo("SPX")).catch(() => null),
+            productReads.spxPinForLargo().catch(() => null),
+            productReads.spxPulseForLargo().catch(() => null),
           ]);
           toolsUsed.push("desk_prefetch_spx");
-          chunks.push(JSON.stringify({ play, gex_summary: gex }, null, 0).slice(0, 5000));
+          chunks.push(JSON.stringify({ play, gex_summary: gex, pin, pulse }, null, 0).slice(0, 5000));
         } else if (subId === "play" || subId === "gates") {
           const [play, structure] = await Promise.all([
             marketPlatform.spx.getSpxPlayState().catch(() => null),
@@ -37,26 +40,94 @@ export async function prefetchDeskScopeBlock(
           chunks.push(
             JSON.stringify({ play, macro_events: (structure as { macro_events?: unknown })?.macro_events ?? [] }, null, 0).slice(0, 4500)
           );
-        } else if (subId === "gex" || subId === "pin") {
+        } else if (subId === "gex") {
           const gex = await import("@/lib/largo/gex-heatmap-for-largo")
             .then((m) => m.gexHeatmapForLargo("SPX"))
             .catch(() => null);
           toolsUsed.push("desk_prefetch_spx_gex");
           chunks.push(JSON.stringify({ gex_summary: gex }, null, 0).slice(0, 4000));
-        } else if (subId === "technicals") {
-          const gex = await import("@/lib/largo/gex-heatmap-for-largo")
-            .then((m) => m.gexHeatmapForLargo("SPX"))
-            .catch(() => null);
+        } else if (subId === "pin") {
+          const [pin, gex] = await Promise.all([
+            productReads.spxPinForLargo().catch(() => null),
+            import("@/lib/largo/gex-heatmap-for-largo").then((m) => m.gexHeatmapForLargo("SPX")).catch(() => null),
+          ]);
+          toolsUsed.push("desk_prefetch_spx_pin");
+          chunks.push(JSON.stringify({ pin_forecast: pin, gex_summary: gex }, null, 0).slice(0, 4000));
+        } else if (subId === "pulse") {
+          const pulse = await productReads.spxPulseForLargo().catch(() => null);
+          toolsUsed.push("desk_prefetch_spx_pulse");
+          chunks.push(JSON.stringify({ pulse }, null, 0).slice(0, 4000));
+        } else if (subId === "technicals" || subId === "internals") {
+          const structure = await marketPlatform.spx.getSpxDeskSummary().catch(() => null);
           toolsUsed.push("desk_prefetch_spx_technicals");
-          chunks.push(JSON.stringify({ gex_summary: gex }, null, 0).slice(0, 4000));
+          const s = structure as {
+            vwap?: number;
+            ema20?: number;
+            ema50?: number;
+            ema200?: number;
+            tick?: number;
+            trin?: number;
+            add?: number;
+            price?: number;
+            above_vwap?: boolean;
+          } | null;
+          chunks.push(
+            JSON.stringify(
+              subId === "internals"
+                ? { tick: s?.tick, trin: s?.trin, add: s?.add, price: s?.price }
+                : {
+                    vwap: s?.vwap,
+                    ema20: s?.ema20,
+                    ema50: s?.ema50,
+                    ema200: s?.ema200,
+                    price: s?.price,
+                    above_vwap: s?.above_vwap,
+                  },
+              null,
+              0
+            ).slice(0, 4000)
+          );
+        } else if (subId === "lotto") {
+          const [lotto, play] = await Promise.all([
+            marketPlatform.spx.getSpxLottoState().catch(() => null),
+            marketPlatform.spx.getSpxPlayState().catch(() => null),
+          ]);
+          toolsUsed.push("desk_prefetch_spx_lotto");
+          chunks.push(JSON.stringify({ lotto, play_engine: play }, null, 0).slice(0, 4000));
+        } else if (subId === "power-hour") {
+          const ph = await marketPlatform.spx.getSpxPowerHourState().catch(() => null);
+          toolsUsed.push("desk_prefetch_spx_power_hour");
+          chunks.push(JSON.stringify({ power_hour: ph }, null, 0).slice(0, 4000));
+        } else if (subId === "signal-log") {
+          const log = await marketPlatform.spx.getSpxSignalLog(15).catch(() => null);
+          toolsUsed.push("desk_prefetch_spx_signal_log");
+          chunks.push(JSON.stringify({ signal_log: log }, null, 0).slice(0, 4000));
+        } else if (subId === "engine-history") {
+          const snaps = await marketPlatform.spx.getSpxEngineSnapshots(15).catch(() => null);
+          toolsUsed.push("desk_prefetch_spx_engine_history");
+          chunks.push(JSON.stringify({ engine_snapshots: snaps }, null, 0).slice(0, 4000));
+        } else if (subId === "record") {
+          const [stats, history] = await Promise.all([
+            marketPlatform.spx.getSpxSetupStats().catch(() => null),
+            marketPlatform.spx.getSpxTradeHistory({ days: 30 }).catch(() => null),
+          ]);
+          toolsUsed.push("desk_prefetch_spx_record");
+          chunks.push(JSON.stringify({ setup_stats: stats, trade_history: history }, null, 0).slice(0, 4000));
+        } else if (subId === "vector") {
+          const { fetchVectorFullState } = await import("@/lib/bie/vector-full-state");
+          const vector = await fetchVectorFullState("SPX").catch(() => null);
+          toolsUsed.push("desk_prefetch_spx_vector");
+          chunks.push(JSON.stringify({ vector }, null, 0).slice(0, 4000));
         } else if (subId === "flow-gex") {
           const { flowBriefForLargo } = await import("@/lib/largo/product-reads");
-          const [gex, brief] = await Promise.all([
+          const { helixThermalCompareForLargo } = await import("@/lib/largo/helix-thermal-compare");
+          const [gex, brief, compare] = await Promise.all([
             import("@/lib/largo/gex-heatmap-for-largo").then((m) => m.gexHeatmapForLargo("SPX")).catch(() => null),
             flowBriefForLargo().catch(() => null),
+            helixThermalCompareForLargo("SPX").catch(() => null),
           ]);
           toolsUsed.push("desk_prefetch_spx_flow_gex");
-          chunks.push(JSON.stringify({ gex_summary: gex, flow_brief: brief }, null, 0).slice(0, 4000));
+          chunks.push(JSON.stringify({ gex_summary: gex, flow_brief: brief, thermal_compare: compare }, null, 0).slice(0, 4000));
         }
         break;
       }
