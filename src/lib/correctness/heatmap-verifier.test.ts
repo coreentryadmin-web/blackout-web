@@ -453,7 +453,7 @@ test("spxDeskCrossToolChecks: RTH flags a real desk-vs-matrix flip divergence", 
   const flip = findCheck(out, "gamma_flip", "desk-vs-matrix-flip");
   assert.ok(flip);
   assert.equal(flip!.outcome, "flag");
-  assert.match(flip!.detail, /7899\.11.*8071\.03/);
+  assert.match(flip!.detail, /7,899\.11.*8,071\.03/);
 });
 
 test("spxDeskCrossToolChecks: stale desk GEX skips flip check during RTH", () => {
