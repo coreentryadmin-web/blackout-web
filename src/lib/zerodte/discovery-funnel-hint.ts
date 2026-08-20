@@ -49,14 +49,50 @@ export function buildDiscoveryFunnelHint(
   };
 }
 
-/** Best-effort session funnel hint for the member board strip. */
+/**
+ * Best-effort session funnel hint for the member board strip.
+ *
+ * SUPPLIES THE EXACT COUNTS. `aggregateZeroDteFunnel` counts kinds INSIDE its sample window and
+ * `exactOr` prefers a true aggregate when one is passed. #2402 wired that for the ADMIN funnel and
+ * this member path — a second caller of the same aggregator — was left passing nothing, so it fell
+ * back to the sample on every field. It is the surface MEMBERS see; admin is internal.
+ *
+ * MEASURED ON PROD 2026-08-20 at 20:17Z, both read at the same instant, AFTER #2402 deployed:
+ *
+ *                          board     admin    truth
+ *     commit_events            0         7    7 ledger rows
+ *     gate_blocked_events    305     3,239
+ *     detected_tickers        47       157
+ *
+ * The board understated commits to ZERO and gate-blocks by 10.6x. The mechanism is the newest-N
+ * window: with 3,239 gate-blocked events, the newest 500 are all late-session blocks, so the 7
+ * commits (14:08-14:44Z) fall outside the window entirely and read as "nothing committed today"
+ * on a day that committed seven plays and halted the governor on six losers.
+ *
+ * The sample stays at 500/200 — it still feeds `by_gate` ranking and the capped flags, which are
+ * about the DISTRIBUTION and are fine sampled. Only the totals move to exact.
+ */
 export async function fetchDiscoveryFunnelHint(sessionDate: string): Promise<DiscoveryFunnelHint | null> {
-  const { dbConfigured, fetchZeroDteDiscoveryEvents, fetchZeroDteScanRejections } = await import("@/lib/db");
+  const {
+    dbConfigured,
+    fetchZeroDteDiscoveryEvents,
+    fetchZeroDteScanRejections,
+    countZeroDteDiscoveryEventsByKind,
+    countZeroDteDetectedTickers,
+  } = await import("@/lib/db");
   if (!dbConfigured()) return null;
   try {
     const [events, rejections] = await Promise.all([
       fetchZeroDteDiscoveryEvents({ session_date: sessionDate, limit: 500 }),
       fetchZeroDteScanRejections({ session_date: sessionDate, limit: 200 }),
+    ]);
+    // Best-effort, INDEPENDENTLY of each other and of the samples above: an exact-count query that
+    // fails must degrade to the sampled number for that field alone, not take down the whole strip.
+    // `?? null` (not `|| null`) so a legitimate exact ZERO survives — the same distinction
+    // `exactOr` relies on downstream.
+    const [exactKinds, exactDetected] = await Promise.all([
+      countZeroDteDiscoveryEventsByKind(sessionDate).catch(() => null),
+      countZeroDteDetectedTickers(sessionDate).catch(() => null),
     ]);
     const agg = aggregateZeroDteFunnel({
       session_date: sessionDate,
@@ -64,6 +100,8 @@ export async function fetchDiscoveryFunnelHint(sessionDate: string): Promise<Dis
       rejections,
       events_sample_capped: events.length >= 500,
       rejections_sample_capped: rejections.length >= 200,
+      exact_kind_counts: exactKinds ?? null,
+      exact_detected_tickers: exactDetected ?? null,
     });
     return buildDiscoveryFunnelHint(agg);
   } catch {
