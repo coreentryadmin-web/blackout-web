@@ -12198,14 +12198,14 @@ against.
 
 ---
 
-## 2026-08-20 — [FINDING, P2 Largo] SPX Slayer Largo — best-play word order, implicit macro calendar, 3DTE routing — OPEN PR #2382
+## 2026-08-20 — [FINDING, P2 Largo] SPX Slayer Largo — best-play word order, implicit macro calendar, 3DTE routing — FIXED
 
 > **kind:** `FINDING`
-> **status:** `OPEN` — draft PR #2382; CI was red on FINDINGS hygiene (fixed in this commit)
+> **status:** `FIXED` — merged as #2382.
 
 | Field | Detail |
 |---|---|
 | **Root cause** | (1) `PLAY_STATE_RE` required ticker-before-play — "best play for SPX" missed `get_spx_play` hints. (2) `get_economic_calendar` only on explicit FOMC/CPI keywords. (3) 3DTE/7DTE had no tool hints. |
 | **Evidence** | Prod audit 44 scenarios: 37 PASS / 6 WARN / 1 FAIL. Scenarios 13–44: 29 PASS / 3 WARN / 0 FAIL. FOMC day cited "FOMC at 14:00 ET" live. |
 | **Fix** | PR #2382 — `BEST_PLAY_RE`, `SPX_DTE_HORIZON_RE`, `needsNews` on spx-slayer scope, `npm run validate:largo-spx-slayer`. |
-| **Status** | OPEN — not merged; not auto-merged per standing instruction. |
+| **Status** | FIXED — merged #2382. Verified on current `main`: full suite green, `npm run build` green, client/server boundary guard clean. |
