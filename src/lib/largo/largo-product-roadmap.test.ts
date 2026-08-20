@@ -57,7 +57,15 @@ describe("largo-depth", () => {
   it("concrete uses Haiku and tight loop", () => {
     assert.equal(parseLargoDepth("concrete"), "concrete");
     assert.equal(parseLargoDepth("quick"), "concrete");
-    assert.equal(largoDepthConfig("concrete").maxRounds, 3);
+    // 3 -> 2 on 2026-08-20. Concrete measured median 24.5s / p90 34.6s on prod, which is not a
+    // "fast direct answer" — each round is a full model round-trip re-reading the whole context.
+    // Asserted as a RELATION to deep rather than a bare literal, so the next tightening does not
+    // fail this test for being correct.
+    assert.ok(
+      largoDepthConfig("concrete").maxRounds < largoDepthConfig("deep").maxRounds,
+      "concrete must run a tighter loop than deep dive"
+    );
+    assert.equal(largoDepthConfig("concrete").maxRounds, 2);
     assert.match(largoDepthConfig("concrete").model, /haiku/i);
   });
 
