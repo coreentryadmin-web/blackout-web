@@ -239,8 +239,17 @@ export function extractClaim(text, field) {
       const end = at + lm[0].length;
       // Clause-bounded windows on each side. `(`/`)` are NOT boundaries — "7,700 (put wall)" is one
       // clause and is the single most common way these levels are written.
-      const after = s.slice(end, end + 40).split(CLAUSE_BREAK)[0] ?? "";
-      const beforeRaw = s.slice(Math.max(0, at - 40), at);
+      // WINDOW = 90 chars, and the CLAUSE is the real bound.
+      //
+      // It was 40, which is a second and much cruder bound than CLAUSE_BREAK — and it silently
+      // truncated a correct answer: "max pain for today's (2026-08-20) 0DTE expiry sits at 7,725"
+      // puts the level 45 chars past the label, so the window ended mid-phrase and the only
+      // candidate left inside it was the date. Rejecting the date (above) then produced NOT_STATED
+      // about an answer that states it plainly — trading one false verdict for another.
+      // 90 chars cannot over-reach, because the clause split still runs first and nearest-wins
+      // still decides; the cap only exists to stop an unpunctuated wall of text scanning forever.
+      const after = s.slice(end, end + 90).split(CLAUSE_BREAK)[0] ?? "";
+      const beforeRaw = s.slice(Math.max(0, at - 90), at);
       const beforeParts = beforeRaw.split(CLAUSE_BREAK);
       const before = beforeParts[beforeParts.length - 1] ?? "";
 
@@ -250,6 +259,15 @@ export function extractClaim(text, field) {
           // Skip distances: the number is followed by pts/points/%/above/below.
           const tail = String(seg).slice((m.index ?? 0) + m[0].length);
           if (side === "after" && DISTANCE_SUFFIX_RE.test(tail)) continue;
+          // Skip DATE COMPONENTS. Verbatim from prod: "SPX max pain for today's (2026-08-20) 0DTE
+          // expiry sits at 7,725" was graded `max_pain: said 2026, truth 7720 (73.76% off)` — a
+          // fabricated 74% data error against an answer whose real claim (7,725) is correct within
+          // tolerance. Parentheses are deliberately NOT clause breaks (see above), which is what
+          // lets a bracketed date sit closer to the label than the answer does.
+          // Detected structurally, not by range: a year is only distinguishable from a 4-digit SPX
+          // level by the `-`/`/` joining it to more digits. A range test would reject real levels.
+          const head = String(seg).slice(0, m.index ?? 0);
+          if (/^[-/]\d/.test(tail) || /\d[-/]$/.test(head)) continue;
           const n = toNum(m[1]);
           if (!Number.isFinite(n)) continue;
           const d = dist(m);
@@ -466,22 +484,47 @@ if (isDirectRun) void (async () => {
   }
 
   // ── rollup ──
-  const sum = (mode, pick) => results.map((r) => r.modes[mode]).filter(Boolean).map(pick);
+  /**
+   * EVERY AGGREGATE IS COMPUTED FROM STATUS-200 ROWS ONLY.
+   *
+   * A transport failure carries no information about the product, and averaging it in does not
+   * merely add noise — it inverts the verdict. MEASURED 2026-08-20: a session drop at scenario 5
+   * of 20 left 32 rows of 401 returning in 70-900ms, and this rollup reported
+   * `latency median 0.5s  shapeFails 16` — i.e. a healthy system described as broken and fast,
+   * with a latency figure ~25x better than the truth. The same class of contamination already had
+   * to be removed once for HTTP 429.
+   *
+   * The transport count is PRINTED rather than silently dropped: a run that graded 8 of 40 calls
+   * must never present its numbers as if it had graded 40.
+   */
+  const rows = (mode) => results.map((r) => r.modes[mode]).filter(Boolean);
+  const graded = (mode) => rows(mode).filter((m) => m.status === 200);
+  const sum = (mode, pick) => graded(mode).map(pick);
   const med = (a) => (a.length ? [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)] : 0);
   const lines = ["", "═══ DEEP DIVE ROLLUP ═══"];
   for (const mode of ["concrete", "deep"]) {
+    const all = rows(mode);
+    const ok200 = graded(mode);
+    const transportFails = all.length - ok200.length;
     const lens = sum(mode, (m) => m.len).filter(Boolean);
     const mss = sum(mode, (m) => m.ms).filter(Boolean);
     const shapeFails = sum(mode, (m) => m.shapeFails.length).reduce((a, b) => a + b, 0);
-    const claims = results.flatMap((r) => r.modes[mode]?.claims ?? []);
+    const claims = ok200.flatMap((m) => m.claims ?? []);
     const ok = claims.filter((c) => c.verdict === "OK").length;
     const wrongSrc = claims.filter((c) => c.verdict === "WRONG_SOURCE").length;
     const wrong = claims.filter((c) => c.verdict === "WRONG").length;
     const notStated = claims.filter((c) => c.verdict === "NOT_STATED").length;
     lines.push(
-      `${mode.toUpperCase().padEnd(9)} len median ${String(med(lens)).padStart(5)}  latency median ${(med(mss) / 1000).toFixed(1)}s  ` +
+      `${mode.toUpperCase().padEnd(9)} graded ${ok200.length}/${all.length}` +
+      (transportFails ? `  (${transportFails} TRANSPORT FAIL — excluded)` : "") +
+      `  len median ${String(med(lens)).padStart(5)}  latency median ${(med(mss) / 1000).toFixed(1)}s  ` +
       `shapeFails ${shapeFails}  claims ok=${ok} wrongSource=${wrongSrc} wrong=${wrong} notStated=${notStated}`
     );
+    // A run that graded under half its calls has not measured the product; say so where it cannot
+    // be skimmed past, rather than letting a confident-looking median stand in for the evidence.
+    if (ok200.length * 2 < all.length) {
+      lines.push(`${" ".repeat(9)} ⚠ ${mode}: majority of calls never reached the product — treat these numbers as UNMEASURED`);
+    }
   }
   console.log(AS_JSON ? JSON.stringify({ truth, results }, null, 2) : lines.join("\n"));
 })();

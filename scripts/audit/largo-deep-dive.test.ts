@@ -145,3 +145,24 @@ test("play answers are graded against a longer target than single-fact answers",
   assert.ok(1270 <= 1300, "a complete play answer must fit under the ceiling");
   assert.ok(1100 > 700, "the play target must exceed the single-fact target");
 });
+
+test("REGRESSION: a bracketed DATE is not the level", () => {
+  // Verbatim from prod 2026-08-20. Graded `max_pain: said 2026, truth 7720 (73.76% off)` — a
+  // fabricated 74% data error against a correct answer. Parentheses are deliberately not clause
+  // boundaries (that is what makes "7,700 (put wall)" parse), which is exactly what lets a
+  // bracketed date sit nearer the label than the answer.
+  const a =
+    "SPX max pain for today's (2026-08-20) 0DTE expiry sits at 7,725 — spot at 7,707.98 is trading about 17 points below it.";
+  assert.equal(extractClaim(a, "max_pain"), 7725);
+});
+
+test("date components are rejected structurally, not by magnitude", () => {
+  // A year is only distinguishable from a 4-digit SPX level by the separator joining it to more
+  // digits. A range test (\"reject 1900-2100\") would reject real levels the moment SPX trades there,
+  // and would still miss 8/23.
+  assert.equal(extractClaim("max pain 2026-08-20 is 7,720", "max_pain"), 7720);
+  assert.equal(extractClaim("max pain for 8/23 sits at 7,720", "max_pain"), 7720);
+  // The guard must not eat ordinary levels that merely neighbour punctuation.
+  assert.equal(extractClaim("max pain 7,720 (chain-computed)", "max_pain"), 7720);
+  assert.equal(extractClaim("call wall at 7,800.", "call_wall"), 7800);
+});
