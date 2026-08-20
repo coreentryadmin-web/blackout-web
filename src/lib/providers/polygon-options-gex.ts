@@ -14,7 +14,14 @@ import { isHeatmapPreset } from "../heatmap-allowlist";
 import { isLiveOdteSession } from "./unusual-whales";
 import { fmtPremium } from "@/lib/fmt-money";
 import { persistGexRegimeEvents } from "./gex-regime-events";
-import { zeroGammaFlip as computeZeroGammaFlip, cumulativeGammaFlipDetail, gexWallsFromStrikeTotals, type GammaFlipReason } from "@/lib/providers/gex-cross-validation-core";
+import {
+  zeroGammaFlip as computeZeroGammaFlip,
+  cumulativeGammaFlipDetail,
+  gexWallsFromStrikeTotals,
+  wallsByHorizon,
+  type GammaFlipReason,
+  type HorizonWalls,
+} from "@/lib/providers/gex-cross-validation-core";
 import { applySpxOdteGexUwOverlay } from "@/lib/providers/spx-odte-gex-uw-overlay";
 import { buildGexRegime } from "@/lib/providers/gex-cross-validation-core";
 export { zeroGammaFlip as computeZeroGammaFlip, cumulativeGammaFlip } from "@/lib/providers/gex-cross-validation-core";
@@ -273,10 +280,27 @@ export type GexMetricBlock = {
   cells: Record<string, Record<string, number>>;
   /** Net dealer dollar-gamma summed across all expiries, per strike. */
   strike_totals: Record<string, number>;
-  /** Strike with the LARGEST POSITIVE net dealer gamma (dealer long-gamma → resistance/pin), or null. */
+  /**
+   * Strike with the LARGEST POSITIVE net dealer gamma ABOVE SPOT (resistance/pin), or null.
+   *
+   * SUMMED OVER `near_term_expiries` — on SPX currently FIFTEEN expiries running three weeks out.
+   * That is a real quantity and it is NOT the near-dated wall: measured 2026-08-20 at spot 7641.16
+   * the aggregate read 7800 (+158.8) while the front expiry alone read 7700 (+58.8). Use
+   * `walls_by_horizon` when the question is about a specific DTE.
+   */
   call_wall: number | null;
-  /** Strike with the LARGEST NEGATIVE net dealer gamma (support), or null. */
+  /** Strike with the LARGEST NEGATIVE net dealer gamma BELOW SPOT (support), or null. Same
+   *  multi-expiry scope caveat as `call_wall`. */
   put_wall: number | null;
+  /**
+   * The same walls, cut by DTE horizon (0DTE / 3DTE / 7DTE), cumulative.
+   *
+   * Exists because one number called "the call wall" is not one thing, and the aggregate above
+   * cannot answer "where is the wall for the trade I am putting on today". OPTIONAL + additive:
+   * older cached payloads omit it. An empty bucket carries `expiries: []` and null walls, which
+   * means NO EXPIRY IN RANGE — the live post-close state of 0DTE — never "no wall".
+   */
+  walls_by_horizon?: HorizonWalls[];
   /** Total net dealer dollar-gamma across the whole matrix. */
   total: number;
   /** Linear-interpolated zero-gamma flip strike, or null when undetermined. */
@@ -1422,6 +1446,10 @@ export function prunePastExpiriesFromHeatmap(hm: GexHeatmap, todayYmd: string): 
       flip_reason: gexFlipDetail.reason,
       call_wall: callWall,
       put_wall: putWall,
+      // Built from the PRUNED cells the payload actually ships, so the horizons can never describe
+      // a book the member is not being served. `todayEtYmd()` is the session the DTE is counted
+      // from — a horizon is meaningless without the day it is relative to.
+      walls_by_horizon: wallsByHorizon(gexPruned.cells, todayEtYmd(), hm.spot),
       regime: gexRegime,
     },
     vex: {

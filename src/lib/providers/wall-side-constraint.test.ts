@@ -120,3 +120,36 @@ test("session counting skips weekends", () => {
   assert.equal(sessionsBetweenYmd("2026-08-20", "2026-08-31"), 7);
   assert.equal(sessionsBetweenYmd("2026-08-20", "2026-08-20"), 0);
 });
+
+/**
+ * The horizons have to REACH the member, not merely exist.
+ *
+ * The recurring failure of this session — correct logic nothing calls. `walls_by_horizon` is
+ * useless if the matrix does not populate it, the Largo projection does not carry it, or the
+ * prompt never tells the model to name the scope.
+ */
+
+test("the matrix populates walls_by_horizon from the SHIPPED cells", () => {
+  const src = readFileSync(join(process.cwd(), "src/lib/providers/polygon-options-gex.ts"), "utf8");
+  // Built from the PRUNED cells, so the horizons can never describe a book the member is not served.
+  assert.match(src, /walls_by_horizon: wallsByHorizon\(gexPruned\.cells, todayEtYmd\(\), hm\.spot\)/);
+});
+
+test("the Largo projection carries the horizons — and declares them when degraded", () => {
+  const src = readFileSync(join(process.cwd(), "src/lib/largo/gex-heatmap-for-largo.ts"), "utf8");
+  assert.match(src, /walls_by_horizon:\s*\n?\s*hm\.gex\?\.walls_by_horizon\?\.map/);
+  // The degraded branch must set null, not omit. `undefined` reads to the model as "field absent"
+  // rather than "value unknown" — the exact ambiguity that produced the fabricated vanna negative.
+  const nullBranch = src.slice(0, src.indexOf("top_strikes: topStrikesFromTotals"));
+  assert.match(nullBranch, /walls_by_horizon: null/);
+});
+
+test("the prompt requires the horizon to be NAMED, with the empty-bucket trap called out", () => {
+  const sys = readFileSync(join(process.cwd(), "src/lib/largo/system-prompt.ts"), "utf8");
+  assert.match(sys, /A wall without its horizon is not a level \(non-negotiable\)/);
+  assert.match(sys, /0DTE call wall 7,700/, "must carry a worked ✅ example");
+  // The distinction that matters: an empty bucket is a chain fact, not a market fact.
+  assert.match(sys, /a bucket with no expiry is not a book without a wall/i);
+  // Disagreement between horizon and aggregate is signal, not noise to smooth away.
+  assert.match(sys, /that gap is the interesting part/i);
+});
