@@ -1,4 +1,4 @@
-import type { GexHeatmap } from "@/lib/providers/polygon-options-gex";
+import type { GexHeatmap, SpxOdteOverlayState } from "@/lib/providers/polygon-options-gex";
 import { resolveOdteExpiry } from "@/lib/correctness/gex-odte-scope";
 import { wallsFromStrikeTotals, cumulativeGammaFlipDetail, buildGexRegime } from "@/lib/providers/gex-cross-validation-core";
 import { todayEtYmd } from "@/lib/providers/spx-session";
@@ -111,14 +111,53 @@ export function applySpxOdteGexUwOverlayWithLadder(
  * RTH — the data-correctness oracle uses the same 0DTE-scoped ladder, so members must see the same King.
  */
 export async function applySpxOdteGexUwOverlay(hm: GexHeatmap): Promise<GexHeatmap> {
-  if (hm.underlying !== "SPX" || !(hm.spot > 0) || hm.strikes.length === 0) return hm;
+  /**
+   * STAMP WHETHER THE OVERLAY RAN — every exit, including the silent ones.
+   *
+   * When the UW ladder is missing this function returns the UN-OVERLAID matrix, and the payload
+   * looked identical to an overlaid one: same shape, same `live` tag, no marker. So the endpoint
+   * served TWO DIFFERENT BOOKS interchangeably and nothing downstream could tell which it had.
+   *
+   * MEASURED ON PROD 2026-08-20 during RTH, 12 samples ~2s apart: 8 distinct payload signatures,
+   * including two consecutive reads at an IDENTICAL spot (7694.11) returning 216 strikes / -17.21B
+   * and 185 strikes / -13.70B. Walls swung call 7750<->7900 and put 7400->7690->7600->7500 on a
+   * 0.12% spot move. A member asking twice inside a minute got three different wall pairs, each
+   * tagged "live".
+   *
+   * Two controls point the same way. SPY — which has no overlay — held 268-270 strikes across the
+   * whole session. And post-close, when this function no-ops because today's expiry has dropped out
+   * of `hm.expiries`, SPX itself was rock stable: 184 strikes and an identical range across 6
+   * samples. Both are consistent with the overlay, not with chain pagination (the page guard is
+   * 200, floored at 40) which was the earlier and wrong hypothesis.
+   *
+   * This change is OBSERVABILITY ONLY — no served number moves. It exists because the correlation
+   * above is inferred from shape, and a `applied: false` flag turns confirming it into reading one
+   * field instead of re-deriving it from strike counts. The same lesson as the audit-session bug
+   * fixed earlier today: a path that cannot report its own failure costs far more than the failure.
+   */
+  const mark = (applied: boolean, reason: SpxOdteOverlayState["reason"]): GexHeatmap => {
+    hm.gex.odte_overlay = { applied, reason };
+    return hm;
+  };
+
+  if (hm.underlying !== "SPX" || !(hm.spot > 0) || hm.strikes.length === 0) return mark(false, "not_applicable");
 
   const today = todayEtYmd();
   const expiry = resolveOdteExpiry(hm.expiries ?? [], today);
-  if (!expiry || !hm.expiries.includes(expiry)) return hm;
+  // Not a fault: outside RTH there is no 0DTE expiry left to overlay.
+  if (!expiry || !hm.expiries.includes(expiry)) return mark(false, "no_odte_expiry");
 
   const ladder = await getSpxOdteScopedUwLadderMap(expiry);
-  if (!ladder || ladder.size === 0) return hm;
+  // THE ONE THAT MATTERS. A 0DTE expiry exists and should have been overlaid, and was not — so
+  // this payload is the raw Polygon book while a neighbouring request may carry the UW-overlaid one.
+  if (!ladder || ladder.size === 0) {
+    console.warn(
+      `[spx-odte-overlay] ladder unavailable for ${expiry} — serving UN-OVERLAID SPX matrix; walls/flip/total differ from an overlaid read`
+    );
+    return mark(false, "ladder_unavailable");
+  }
 
-  return applySpxOdteGexUwOverlayWithLadder(hm, ladder, expiry);
+  const out = applySpxOdteGexUwOverlayWithLadder(hm, ladder, expiry);
+  out.gex.odte_overlay = { applied: true, reason: "applied" };
+  return out;
 }
