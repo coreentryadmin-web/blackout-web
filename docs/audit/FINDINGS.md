@@ -12198,11 +12198,16 @@ against.
 
 ---
 
-## 2026-08-20 — SPX Slayer Largo audit harness + macro/DTE routing
+## 2026-08-20 — [FINDING, P2 member-visible] SPX Slayer Largo missed play/macro/DTE routing — FIXED
+
+> **kind:** `FINDING`
+
+| **Status** | FIXED — merged #2382. Four routing gaps closed; 44-scenario prod matrix added. |
+|---|---|
 
 | Severity | Area | Root cause | Fix | Status |
 |----------|------|------------|-----|--------|
-| P2 | Largo intent | `PLAY_STATE_RE` required ticker-before-play — "best play for SPX" missed play-engine hints | `BEST_PLAY_RE` + reverse alternation (`intent-keywords.ts`) | OPEN PR cursor/spx-largo-audit-3d11 |
-| P2 | Largo SPX scope | Implicit "SPX today?" could skip economic calendar unless question named FOMC/CPI | `needsNews=true` on spx-slayer desk scope override | OPEN PR |
-| P2 | Largo 3DTE/7DTE | No tool hints for multi-day horizon questions | `SPX_DTE_HORIZON_RE` → lotto + option chain | OPEN PR |
-| P3 | Ops | No repeatable prod matrix for SPX Slayer submodules + macro edge cases | `npm run validate:largo-spx-slayer` (44 scenarios) | OPEN PR |
+| P2 | Largo intent | `PLAY_STATE_RE` required ticker-before-play — "best play for SPX" missed play-engine hints | `BEST_PLAY_RE` + reverse alternation (`intent-keywords.ts`) | FIXED (#2382) |
+| P2 | Largo SPX scope | Implicit "SPX today?" could skip economic calendar unless question named FOMC/CPI | `needsNews=true` on spx-slayer desk scope override | FIXED (#2382) |
+| P2 | Largo 3DTE/7DTE | No tool hints for multi-day horizon questions | `SPX_DTE_HORIZON_RE` → lotto + option chain | FIXED (#2382) |
+| P3 | Ops | No repeatable prod matrix for SPX Slayer submodules + macro edge cases | `npm run validate:largo-spx-slayer` (44 scenarios) | FIXED (#2382) |
