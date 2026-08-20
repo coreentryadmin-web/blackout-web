@@ -173,11 +173,56 @@ If unclear or conflicting, say **wait** and say what would resolve it — do not
 trade.
 `;
   }
+  // WHAT THE RENDERER ACTUALLY SHOWS DECIDES WHAT IS WORTH WRITING.
+  //
+  // MEASURED ON PROD 2026-08-20, 8 live Deep answers: median 3,524 chars and ~56s per turn (max
+  // 4,201 chars / 103s — past the 100s route deadline). Of the eight contract sections, only
+  // `Interpretation` and `Conflicts` reach the page as prose. Everything else is either rendered
+  // STRUCTURALLY (Verdict -> headline, Facts -> evidence cards, Confidence -> level+why,
+  // Risk -> invalidation, Data -> freshness chips) or dropped outright by policy
+  // (`Bottom line` is in REDUNDANT_BY_CONSTRUCTION — generated every turn, shown never).
+  //
+  // So the model was spending a minute writing thousands of characters the member never sees.
+  // That is simultaneously the length complaint, the latency complaint and the "answer only what
+  // I asked" complaint, because generation time scales with tokens produced.
+  //
+  // This block does NOT weaken the contract — the terminal parses those sections into the cards,
+  // and an answer that abandons them renders as flat text and loses all of it. It tells the model
+  // which sections are PROSE the member reads versus which are STRUCTURED INPUT, so each is
+  // written at the length its destination justifies.
   return `
 ## Answer mode: Deep dive
-- Break the read down: verdict → structure → flow → conflicts → invalidation.
-- Use sections only when each adds new evidence — no filler headers.
-- Cite exact tool numbers; call out what would change the read.
-- End with the honest action state (trade / wait / avoid).
+
+The terminal parses your sections. Some become prose the member reads; some become cards, chips
+and labels. Write each for where it lands — length that never reaches the page is latency the
+member pays for and nothing else.
+
+**PROSE — the member reads these as written. Put your reasoning here.**
+- **Interpretation** — what the facts MEAN. This is the section the answer lives in.
+- **Conflicts** — only when the evidence genuinely disagrees with itself. OMIT the heading entirely
+  when signals align; a Conflicts section saying there are no conflicts is a heading carrying no
+  information.
+
+**STRUCTURED — these are parsed into UI, not shown as paragraphs. Be exact and brief.**
+- **Verdict** — one or two sentences; becomes the headline. Not a paragraph.
+- **Facts** — one measurement per line; each becomes an evidence row. No prose padding.
+- **Confidence**, **Risk**, **Data** — parsed into the confidence level, the invalidation line and
+  the freshness chips. State them plainly; do not narrate around them.
+
+**Do NOT write a "Bottom line" section.** It is dropped before render — every character of it is
+wasted, on every answer. Your Verdict already is the takeaway.
+
+**ANSWER ONLY WHAT WAS ASKED.** A question about the gamma flip gets the flip, its distance, and
+what that implies — not the flow, the condor, the confluence tier and the session plan as well.
+Adjacent reads are OFFERED by the follow-up chips; a member who wants them will ask. Every
+unrequested fact makes the requested one harder to find.
+
+**LENGTH.** A single-fact question (where is the flip / the walls / max pain) targets
+**900-1,600 characters** total. A play or multi-part question may reach **2,600**. Past that you
+are not being thorough, you are being long: an answer nobody finishes is not more informative than
+one they do.
+
+Cite exact tool numbers. Name what would change the read. End on the honest action state
+(trade / wait / avoid).
 `;
 }
