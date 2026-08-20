@@ -143,7 +143,20 @@ Both harnesses and their `npm run validate:vector-*` scripts were removed with i
    phone: `createOrAdoptAuditUserViaCurl` (spawnSync-curl harnesses) / `createAuditClerkUser`
    (fetch harnesses) adopt the leftover user on an e-mail collision and REDRAW the phone on a
    phone collision (bounded retries). The old e-mail-only recovery aborted whole unattended
-   runs on a phone clash — see FINDINGS 2026-08-06 [P3, tooling]. So
+   runs on a phone clash — see FINDINGS 2026-08-06 [P3, tooling].
+   **IDENTITY IS PER-RUN, NOT SHARED (changed 2026-08-20, #2403/#2407).** The default address is
+   now `claude-audit-temp+<pid><uptime>@…`, not the bare shared one. WHY: adoption-on-collision
+   means two runs overlapping IN TIME share ONE user, and whichever finishes first `cleanup()`s it
+   **out from under the other** — the survivor then holds a session whose user no longer exists,
+   so `refresh()` cannot mint and re-establish returns **HTTP 404 `resource_not_found`**. Measured:
+   two probes overlapping a validator burst died at t=60s/t=90s; one probe run alone survived 7/7
+   refreshes to t=210s; a fourth "solo" run died at t=120s because an earlier probe was still alive.
+   **This is very likely the 401 storm mis-read as a PRODUCT fault three times** (thermal validator
+   sectors, force-rebuild "IWM 0/5", the Vector board poll) — all long runs, all alongside other
+   audits. Per-run identity removed an accidental garbage collector (one shared user held one phone
+   forever), so `mintClerkPremiumSession` now SWEEPS tagged temp users older than 30 min before
+   minting — the age gate must exceed the longest harness (~15 min) or it re-creates the delete
+   race it was built to remove. So
    **"log in and check every page" IS possible headlessly** — validates served HTML / DOM / component
    presence for the whole authenticated desk/app. Always DELETE the temp user after (cleanup).
 2. **Live UI / pixel validation — WORKS, but ONLY via `proxy-browser.cjs`. Read
