@@ -500,3 +500,111 @@ export function buildGexRegime(input: {
   }
   return { flip, posture, read };
 }
+
+/**
+ * WALLS BY DTE HORIZON — because one number called "the call wall" is not one thing.
+ *
+ * The served `gex.call_wall` is computed by `recomputeNearTermGexStrikeTotals` over
+ * `near_term_expiries`, which on SPX is currently FIFTEEN expiries running three weeks out. That
+ * aggregate is a legitimate quantity, but nothing in the payload said so, and it is not what a
+ * member means by "the call wall" when they are trading today.
+ *
+ * MEASURED ON PROD 2026-08-20, SPX spot 7641.16:
+ *
+ *     SERVED call_wall   7800   +158.8 pts  (+2.1%)   <- 15-expiry aggregate, to 2026-09-11
+ *     2026-08-21 alone   7700    +58.8 pts  (+0.8%)   <- the actual front-expiry wall
+ *     2026-08-28 alone   7800   +158.8 pts            <- where the aggregate's number comes from
+ *
+ * A wall 2.1% OTM is not actionable on a 0DTE or 1DTE trade, and reading the aggregate as
+ * near-dated is the natural mistake. Right number, missing scope — the same defect family as
+ * "0DTE max pain" quoting a settled session, and as the vanna walls that were dropped and then
+ * explained away.
+ *
+ * The fix is NOT to change what the aggregate computes. It is to publish the horizons beside it so
+ * the difference is visible and each number can be named. What "near-term" should mean is a
+ * product decision and is deliberately left alone.
+ */
+export type HorizonWalls = {
+  /** Horizon label as a member reads it. */
+  label: string;
+  /** Trading-session distance this bucket covers, inclusive. */
+  maxDte: number;
+  /** Expiries that actually contributed — empty when the chain has none in range. */
+  expiries: string[];
+  callWall: number | null;
+  putWall: number | null;
+  /** Signed distance from spot, in points, for whichever walls resolved. */
+  callWallPts: number | null;
+  putWallPts: number | null;
+};
+
+/** Trading-session distance from `fromYmd` to `toYmd`, counting weekdays. Holidays are not
+ *  modelled here — a holiday shifts a bucket by at most one session and never reorders them. */
+export function sessionsBetweenYmd(fromYmd: string, toYmd: string): number {
+  const a = new Date(`${fromYmd}T00:00:00Z`);
+  const b = new Date(`${toYmd}T00:00:00Z`);
+  if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return Number.NaN;
+  if (b <= a) return 0;
+  let sessions = 0;
+  const cur = new Date(a);
+  while (cur < b) {
+    cur.setUTCDate(cur.getUTCDate() + 1);
+    const d = cur.getUTCDay();
+    if (d !== 0 && d !== 6) sessions += 1;
+  }
+  return sessions;
+}
+
+/**
+ * Walls for each DTE bucket, computed from the SAME cells the aggregate uses.
+ *
+ * Buckets are CUMULATIVE (0DTE ⊂ 3DTE ⊂ 7DTE), which is what a trader means: "the 3DTE wall" is
+ * the wall of the book they are exposed to over three sessions, not the wall of the third session
+ * alone. A per-expiry-only reading would show a 2026-08-27 "call wall" BELOW spot — real for that
+ * strip in isolation, and misleading as a level.
+ */
+export function wallsByHorizon(
+  cells: Record<string, Record<string, number>> | null | undefined,
+  todayYmd: string,
+  spot: number,
+  buckets: Array<{ label: string; maxDte: number }> = [
+    { label: "0DTE", maxDte: 0 },
+    { label: "3DTE", maxDte: 3 },
+    { label: "7DTE", maxDte: 7 },
+  ]
+): HorizonWalls[] {
+  const out: HorizonWalls[] = [];
+  const byExpiry = new Map<string, number>();
+  for (const byExp of Object.values(cells ?? {})) {
+    for (const exp of Object.keys(byExp ?? {})) {
+      if (!byExpiry.has(exp)) byExpiry.set(exp, sessionsBetweenYmd(todayYmd, exp));
+    }
+  }
+  for (const { label, maxDte } of buckets) {
+    const inRange = [...byExpiry.entries()]
+      .filter(([, dte]) => Number.isFinite(dte) && dte <= maxDte)
+      .map(([exp]) => exp)
+      .sort();
+    const totals: Record<string, number> = {};
+    for (const [strike, byExp] of Object.entries(cells ?? {})) {
+      let sum = 0;
+      for (const exp of inRange) {
+        const v = byExp?.[exp];
+        if (typeof v === "number" && Number.isFinite(v)) sum += v;
+      }
+      // A zero sum carries no wall information; keeping it would only dilute the scan.
+      if (sum !== 0) totals[strike] = sum;
+    }
+    const { callWall, putWall } = wallsFromStrikeTotals(totals);
+    out.push({
+      label,
+      maxDte,
+      expiries: inRange,
+      callWall,
+      putWall,
+      callWallPts: callWall != null && spot > 0 ? Number((callWall - spot).toFixed(2)) : null,
+      putWallPts: putWall != null && spot > 0 ? Number((putWall - spot).toFixed(2)) : null,
+    });
+  }
+  return out;
+}
