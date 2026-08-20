@@ -57,6 +57,7 @@ import {
   rankCapabilities,
 } from "@/lib/largo/registry/capability-registry";
 import { formatSessionCalendarBlock } from "@/lib/largo/temporal/session-calendar";
+import { emptyAnswerFallback } from "@/lib/largo/empty-answer-fallback";
 import {
   formatTemporalBlock,
   resolveTimeframe,
@@ -924,7 +925,11 @@ export async function runLargoQuery(
 
     let text =
       answer?.trim() ||
-      "I couldn't pull enough live data to answer that — try naming a ticker or asking about SPX structure.";
+      emptyAnswerFallback({
+        elapsedMs: Date.now() - startedAt,
+        budgetMs: largoLoopTimeoutMs(depth),
+        toolsUsed,
+      });
 
     const ctxNumbers = collectContextNumbers([capturedResults, history.map((h) => h.content)]);
     // Verify the PROSE, not the component payloads. Every number inside a ```blackout block also
@@ -1185,7 +1190,11 @@ export async function runLargoQueryStream(
 
     let text =
       answer?.trim() ||
-      "I couldn't pull enough live data to answer that — try naming a ticker or asking about SPX structure.";
+      emptyAnswerFallback({
+        elapsedMs: Date.now() - startedAt,
+        budgetMs: largoLoopTimeoutMs(depth),
+        toolsUsed,
+      });
 
     // Layer 4 verification: every numeric claim vs the turn's source data (tool
     // results + the history the model was shown). Heavily-unverified answers get
