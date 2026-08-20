@@ -4,6 +4,7 @@
  *
  *   node --import tsx scripts/audit/largo-spx-slayer-audit.mjs
  *   LARGO_SPX_AUDIT_LIMIT=5 node --import tsx scripts/audit/largo-spx-slayer-audit.mjs
+ *   LARGO_SPX_AUDIT_OFFSET=12 LARGO_SPX_AUDIT_OUT=audit-output/largo-spx-slayer-audit-13-44.json ...
  *
  * READ-ONLY against production; temp Clerk user deleted in finally.
  */
@@ -17,6 +18,7 @@ import { scoreSpxScenario } from "./largo-spx-slayer-scoring.mjs";
 const BASE = (process.env.LARGO_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
 const OUT = process.env.LARGO_SPX_AUDIT_OUT ?? "audit-output/largo-spx-slayer-audit.json";
 const limit = process.env.LARGO_SPX_AUDIT_LIMIT ? Number(process.env.LARGO_SPX_AUDIT_LIMIT) : null;
+const offset = process.env.LARGO_SPX_AUDIT_OFFSET ? Number(process.env.LARGO_SPX_AUDIT_OFFSET) : 0;
 
 const deskCfg = deskScopeConfig("spx-slayer");
 const submodules = submodulesForDesk("spx-slayer");
@@ -374,9 +376,14 @@ async function askLargo(cookie, scenario, sessionId) {
 }
 
 const allScenarios = buildScenarios();
-const scenarios = limit != null && Number.isFinite(limit) ? allScenarios.slice(0, limit) : allScenarios;
+let scenarios = allScenarios.slice(Number.isFinite(offset) ? offset : 0);
+if (limit != null && Number.isFinite(limit)) scenarios = scenarios.slice(0, limit);
 
-console.log(`SPX Slayer Largo audit — ${scenarios.length}/${allScenarios.length} scenarios @ ${BASE}\n`);
+console.log(
+  `SPX Slayer Largo audit — ${scenarios.length}/${allScenarios.length} scenarios @ ${BASE}` +
+    (offset ? ` (offset ${offset})` : "") +
+    `\n`
+);
 
 const session = await mintClerkPremiumSession({
   appUrl: BASE,

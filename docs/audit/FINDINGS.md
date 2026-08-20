@@ -12198,16 +12198,14 @@ against.
 
 ---
 
-## 2026-08-20 — [FINDING, P2 member-visible] SPX Slayer Largo missed play/macro/DTE routing — FIXED
+## 2026-08-20 — [FINDING, P2 Largo] SPX Slayer Largo — best-play word order, implicit macro calendar, 3DTE routing — OPEN PR #2382
 
 > **kind:** `FINDING`
+> **status:** `OPEN` — draft PR #2382; CI was red on FINDINGS hygiene (fixed in this commit)
 
-| **Status** | FIXED — merged #2382. Four routing gaps closed; 44-scenario prod matrix added. |
+| Field | Detail |
 |---|---|
-
-| Severity | Area | Root cause | Fix | Status |
-|----------|------|------------|-----|--------|
-| P2 | Largo intent | `PLAY_STATE_RE` required ticker-before-play — "best play for SPX" missed play-engine hints | `BEST_PLAY_RE` + reverse alternation (`intent-keywords.ts`) | FIXED (#2382) |
-| P2 | Largo SPX scope | Implicit "SPX today?" could skip economic calendar unless question named FOMC/CPI | `needsNews=true` on spx-slayer desk scope override | FIXED (#2382) |
-| P2 | Largo 3DTE/7DTE | No tool hints for multi-day horizon questions | `SPX_DTE_HORIZON_RE` → lotto + option chain | FIXED (#2382) |
-| P3 | Ops | No repeatable prod matrix for SPX Slayer submodules + macro edge cases | `npm run validate:largo-spx-slayer` (44 scenarios) | FIXED (#2382) |
+| **Root cause** | (1) `PLAY_STATE_RE` required ticker-before-play — "best play for SPX" missed `get_spx_play` hints. (2) `get_economic_calendar` only on explicit FOMC/CPI keywords. (3) 3DTE/7DTE had no tool hints. |
+| **Evidence** | Prod audit 44 scenarios: 37 PASS / 6 WARN / 1 FAIL. Scenarios 13–44: 29 PASS / 3 WARN / 0 FAIL. FOMC day cited "FOMC at 14:00 ET" live. |
+| **Fix** | PR #2382 — `BEST_PLAY_RE`, `SPX_DTE_HORIZON_RE`, `needsNews` on spx-slayer scope, `npm run validate:largo-spx-slayer`. |
+| **Status** | OPEN — not merged; not auto-merged per standing instruction. |
