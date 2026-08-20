@@ -77,7 +77,37 @@ export async function mintClerkPremiumSession({
   if (!secret || !publishableKey) {
     return { skip: true, reason: "CLERK_SECRET_KEY / NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY not set" };
   }
-  const email = emailOverride || process.env.AUDIT_EMAIL || "claude-audit-temp@blackouttrades.com";
+  /**
+   * PER-RUN IDENTITY — the fix for concurrent harnesses deleting each other's user.
+   *
+   * Every harness used to default to ONE address. `createAuditClerkUser` adopts an existing user
+   * on e-mail collision (deliberate, so a leftover from a crashed run gets reused rather than
+   * orphaned) — but that means two runs overlapping in time share ONE Clerk user, and whichever
+   * finishes first calls `cleanup()` and DELETES it out from under the other. The survivor is then
+   * holding a session whose user no longer exists: its JWT expires normally, `refresh()` cannot
+   * mint another, and re-establishing fails.
+   *
+   * MEASURED 2026-08-20. `POST /sign_in_tokens` returned **HTTP 404 resource_not_found** mid-run —
+   * not a rate limit, not an expiry: the user was gone. Three probe runs made the mechanism
+   * unambiguous: two that overlapped a 6-pass validator burst died at t=60s and t=90s; one run
+   * alone survived 7/7 refreshes to t=210s; and a fourth "solo" run died at t=120s because an
+   * EARLIER probe was still alive and its cleanup deleted the shared user.
+   *
+   * This is very likely the 401 storm that `CLAUDE.md` records as having been mis-read as a product
+   * fault three separate times (thermal validator sectors, force-rebuild "IWM 0/5", the Vector
+   * board poll) — all of them long runs, all of them alongside other audits.
+   *
+   * The suffix is per-PROCESS, not random-per-call, so one run keeps one identity across
+   * re-establishment while never colliding with a concurrent run. Adoption still works for its
+   * real purpose: a leftover from a PREVIOUS run of the SAME process id is adopted; a live
+   * concurrent run is invisible. An explicit `email` override (used by the entitlement probe to
+   * mint a non-admin member) is honoured untouched.
+   */
+  const runTag = `${process.pid.toString(36)}${Math.floor(process.uptime() * 1000).toString(36)}`;
+  const email =
+    emailOverride ||
+    process.env.AUDIT_EMAIL ||
+    `claude-audit-temp+${runTag}@blackouttrades.com`;
   const fapi = fapiHost(publishableKey);
   const backend = (method, path, body) =>
     fetch(`${API}${path}`, {
@@ -110,8 +140,22 @@ export async function mintClerkPremiumSession({
      */
     const establish = async () => {
       const tokenRes = await backend("POST", "/sign_in_tokens", { user_id: userId });
-      const ticket = (await tokenRes.json().catch(() => null))?.token;
-      if (!ticket) return { error: "sign_in_tokens mint failed" };
+      const tokenJson = await tokenRes.json().catch(() => null);
+      const ticket = tokenJson?.token;
+      if (!ticket) {
+        // CARRY THE STATUS AND CLERK'S OWN REASON. "mint failed" is not actionable: a 429 (the
+        // rate limit CLAUDE.md warns about on rapid sign-in cycles) and a 422 (a user that no
+        // longer exists) demand opposite responses — back off versus stop retrying entirely —
+        // and the bare message made them the same event. Clerk returns `errors[].code`, which is
+        // the machine-readable discriminator; never log the token itself.
+        const code = Array.isArray(tokenJson?.errors)
+          ? tokenJson.errors.map((e) => e?.code).filter(Boolean).join(",")
+          : "";
+        return {
+          error: `sign_in_tokens mint failed (HTTP ${tokenRes.status}${code ? ` ${code}` : ""})`,
+          status: tokenRes.status,
+        };
+      }
 
       const signInRes = await fetch(`${fapi}/v1/client/sign_ins?_clerk_js_version=${CJS}`, {
         method: "POST",
