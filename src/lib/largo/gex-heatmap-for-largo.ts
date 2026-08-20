@@ -25,6 +25,22 @@ export type GexHeatmapForLargo = {
   gex_king_strike: number | null;
   net_gex: number | null;
   net_vex: number | null;
+  /**
+   * VANNA WALLS — the vex analogue of call_wall/put_wall.
+   *
+   * These were the one summary scalar family the projection dropped, and the omission was not
+   * harmless. Asked "Where are SPX vanna walls?" on prod (2026-08-20) Largo answered that vanna
+   * walls "don't appear as discrete strikes in the live feed the way gamma walls do; vanna is a
+   * distributed effect across the matrix rather than a concentrated barrier at one level" — a
+   * confident structural claim, stated as market fact, about data the heatmap was publishing at
+   * that exact moment (pos_wall 7900, neg_wall 7625).
+   *
+   * That is worse than an "I don't have that": a member reads it as "the platform does not compute
+   * this", when it does and it is on their heatmap. Missing input became a fabricated NEGATIVE.
+   */
+  vex_pos_wall: number | null;
+  vex_neg_wall: number | null;
+  vex_flip: number | null;
   net_dex: number | null;
   net_charm: number | null;
   gamma_regime_read: string | null;
@@ -97,6 +113,9 @@ export async function gexHeatmapForLargo(
       gex_king_strike: null,
       net_gex: null,
       net_vex: null,
+      vex_pos_wall: null,
+      vex_neg_wall: null,
+      vex_flip: null,
       net_dex: null,
       net_charm: null,
       gamma_regime_read: null,
@@ -146,6 +165,9 @@ export async function gexHeatmapForLargo(
     gex_king_strike: pos?.gex_king_strike ?? null,
     net_gex: pos?.net_gex ?? hm.gex?.total ?? null,
     net_vex: pos?.net_vex ?? hm.vex?.total ?? null,
+    vex_pos_wall: hm.vex?.pos_wall ?? null,
+    vex_neg_wall: hm.vex?.neg_wall ?? null,
+    vex_flip: hm.vex?.flip ?? null,
     net_dex: pos?.net_dex ?? hm.dex?.total ?? null,
     net_charm: pos?.net_charm ?? hm.charm?.total ?? null,
     gamma_regime_read: pos?.gamma_regime_read ?? hm.gex?.regime?.read ?? null,
