@@ -28,18 +28,44 @@ const S_MAX = 2_000_000_000;
 
 const ISO_DATE = /\d{4}-\d{2}-\d{2}/;
 
+// A string that is ENTIRELY a number. Unusual Whales serves its whole surface this way —
+// `"price":"7705"`, `"gamma_per_one_percent_move_oi":"3865614809.8"` — so a scanner that only
+// looks at typeof "number" is blind to every GEX, flow and dark-pool payload in the system. That
+// blindness is not theoretical: it reported those tools as carrying zero data.
+const NUMERIC_STRING = /^-?\d+(\.\d+)?$/;
+
+/** The number a leaf represents, whether it arrived as a number or as a numeric string. */
+export function asNumber(v) {
+  if (typeof v === "number") return Number.isFinite(v) ? v : null;
+  if (typeof v === "string" && NUMERIC_STRING.test(v.trim())) {
+    const n = Number(v.trim());
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
 /** True when a number carries more decimals than any real quote does. */
-export function isUnroundedFloat(n) {
-  if (typeof n !== "number" || !Number.isFinite(n) || Number.isInteger(n)) return false;
-  const s = String(n);
+export function isUnroundedFloat(raw) {
+  const n = asNumber(raw);
+  if (n === null || Number.isInteger(n)) return false;
+  // Judge the ORIGINAL text when it arrived as a string: `"7.10"` is a deliberate 2dp quote, while
+  // String(7.1) would erase the trailing zero and change what is being measured.
+  const s = typeof raw === "string" ? raw.trim() : String(n);
   if (s.includes("e") || s.includes("E")) return false;
   const decimals = s.split(".")[1]?.length ?? 0;
   return decimals > MAX_SANE_DECIMALS;
 }
 
+/** Decimal-place count of a leaf, judged on its own text when it arrived as a string. */
+function decimalsOf(raw) {
+  const text = typeof raw === "string" ? raw.trim() : String(asNumber(raw));
+  return text.split(".")[1]?.length ?? 0;
+}
+
 /** "ms" | "s" | null — whether a number sits in a plausible epoch range. */
-export function epochUnit(n) {
-  if (typeof n !== "number" || !Number.isFinite(n)) return null;
+export function epochUnit(raw) {
+  const n = asNumber(raw);
+  if (n === null) return null;
   if (n >= MS_MIN && n <= MS_MAX) return "ms";
   if (n >= S_MIN && n <= S_MAX) return "s";
   return null;
@@ -80,13 +106,13 @@ export function scanPayload(root, { maxFindings = 200, maxNodes = 200_000 } = {}
         const childPath = `${path}[${i}]`;
         // A bare number IN an array is data too — a raw series like `[7499.360000000001, ...]`
         // has no key to hang off, and walking straight past it was a silent hole in the scan.
-        if (typeof v === "number") {
+        if (asNumber(v) !== null) {
           if (isUnroundedFloat(v)) {
             findings.push({
               kind: "unrounded_float",
               path: childPath,
               value: v,
-              detail: `${String(v).split(".")[1].length} decimals`,
+              detail: `${decimalsOf(v)} decimals`,
             });
           }
           return;
@@ -99,13 +125,15 @@ export function scanPayload(root, { maxFindings = 200, maxNodes = 200_000 } = {}
       const labelled = carriesReadableDate(node);
       for (const [k, v] of Object.entries(node)) {
         const childPath = path ? `${path}.${k}` : k;
-        if (typeof v === "number") {
+        // Numeric STRINGS count: UW encodes its whole surface that way, so restricting this to
+        // typeof "number" made every GEX/flow payload unscannable.
+        if (asNumber(v) !== null) {
           if (isUnroundedFloat(v)) {
             findings.push({
               kind: "unrounded_float",
               path: childPath,
               value: v,
-              detail: `${String(v).split(".")[1].length} decimals`,
+              detail: `${decimalsOf(v)} decimals`,
             });
           }
           const unit = epochUnit(v);
@@ -154,13 +182,13 @@ export function countNumericLeaves(root, { maxNodes = 200_000 } = {}) {
     if (++nodes > maxNodes) return;
     if (Array.isArray(node)) {
       return node.forEach((v) => {
-        if (typeof v === "number" && Number.isFinite(v)) n++;
+        if (asNumber(v) !== null) n++;
         else walk(v);
       });
     }
     if (node && typeof node === "object") {
       for (const v of Object.values(node)) {
-        if (typeof v === "number" && Number.isFinite(v)) n++;
+        if (asNumber(v) !== null) n++;
         else walk(v);
       }
     }

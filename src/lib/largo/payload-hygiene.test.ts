@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 // @ts-expect-error — plain-JS audit lib, deliberately not typed (it runs under bare node too).
 import {
+  asNumber,
   carriesReadableDate,
   classifyResult,
   countNumericLeaves,
@@ -88,6 +89,35 @@ test("an EMPTY payload is never reported as clean — the trap the scanner itsel
 
 test("numeric leaves are counted through nesting and arrays", () => {
   assert.equal(countNumericLeaves({ a: 1, b: { c: 2 }, d: [3, { e: 4 }] }), 4);
-  assert.equal(countNumericLeaves({ a: "1", b: null, c: true }), 0, "strings and bools are not data");
+  // A numeric string IS data — UW encodes every number that way. Only non-numeric strings,
+  // null and booleans are not.
+  assert.equal(countNumericLeaves({ a: "1", b: null, c: true }), 1);
+  assert.equal(countNumericLeaves({ a: "SPX", b: null, c: true }), 0);
   assert.equal(countNumericLeaves({ a: NaN }), 0, "NaN is not a measurement");
+});
+
+test("UW's string-encoded numerics are seen — the entire GEX/flow surface was invisible", () => {
+  // Real shape from fetchUwSpotExposures("SPX"): every numeric is a STRING.
+  assert.equal(asNumber("7705"), 7705);
+  assert.equal(asNumber("3865614809.8"), 3865614809.8);
+  assert.equal(asNumber("-28907371001.32"), -28907371001.32);
+  assert.equal(asNumber("2026-08-20T10:30:58.529000Z"), null, "a timestamp string is not a number");
+  assert.equal(asNumber("SPX"), null);
+  assert.equal(asNumber(""), null);
+  assert.equal(asNumber(null), null);
+
+  // A UW payload now counts as data rather than reading as EMPTY.
+  const uw = { data: [{ price: "7705", ticker: "SPX", gamma: "3865614809.8", charm: "-28907371001.32" }] };
+  assert.equal(classifyResult(uw), "scanned");
+});
+
+test("a malformed number is malformed whether it arrived as a number or a string", () => {
+  assert.equal(isUnroundedFloat("7707.9800000000005"), true);
+  assert.equal(isUnroundedFloat("7641.16"), false);
+  // A string keeps its OWN text: "7.10" is a deliberate 2dp quote, not 7.1.
+  assert.equal(isUnroundedFloat("7.10"), false);
+  assert.equal(epochUnit("1787202000000"), "ms");
+
+  const { findings } = scanPayload({ row: { t: "1787202000000", px: "7707.9800000000005" } });
+  assert.deepEqual(summarize(findings), { unrounded_float: 1, bare_epoch: 1 });
 });

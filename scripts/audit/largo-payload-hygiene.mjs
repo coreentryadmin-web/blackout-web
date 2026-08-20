@@ -42,14 +42,23 @@ const TOOLS = [
   ["get_nbbo", { ticker: "SPY" }],
   ["get_technicals", { ticker: TICKER }],
   ["get_gex_heatmap", { ticker: TICKER }],
-  ["get_spot_exposures", { ticker: TICKER }],
-  ["get_greek_exposure", { ticker: TICKER }],
-  ["get_flow_alerts", { ticker: TICKER }],
-  ["get_darkpool", { ticker: "SPY" }],
-  ["get_net_flow_expiry", { ticker: TICKER }],
+  ["get_gex", { ticker: TICKER }],
+  ["get_greeks", { ticker: TICKER }],
+  ["get_greek_flow", { ticker: TICKER }],
+  ["get_options_flow", { ticker: TICKER }],
+  ["get_flow_per_strike", { ticker: TICKER }],
+  ["get_flow_expiry_breakdown", { ticker: TICKER }],
+  ["get_dark_pool", { ticker: "SPY" }],
   ["get_max_pain", { ticker: TICKER }],
-  ["get_option_chain", { ticker: TICKER }],
+  ["get_options_chain", { ticker: TICKER }],
+  ["get_atm_chains", { ticker: TICKER }],
+  ["get_oi_per_strike", { ticker: TICKER }],
+  ["get_iv_stats", { ticker: TICKER }],
+  ["get_positioning", { ticker: TICKER }],
+  ["get_wall_dynamics", { ticker: TICKER }],
+  ["get_spx_pin", { ticker: TICKER }],
   ["get_market_stats", {}],
+  ["get_market_breadth", {}],
   ["get_hot_tickers", {}],
   ["get_vector_pulse", { ticker: TICKER }],
   ["get_vector_full_state", { ticker: TICKER }],
@@ -61,6 +70,25 @@ const mod = await import(new URL("../../src/lib/largo/run-tool.ts", import.meta.
 const runLargoTool = mod.runLargoTool ?? mod.default?.runLargoTool;
 if (typeof runLargoTool !== "function") {
   console.error("could not resolve runLargoTool; module keys:", Object.keys(mod));
+  process.exit(2);
+}
+
+// Validate every name against the REAL registry before running anything. An invented tool name
+// returns instantly with no data, which reads as EMPTY — i.e. "this tool has no data" rather than
+// "this tool does not exist". The first run of this harness reported coverage of 9/19 on that
+// basis, and five of the ten missing were names that had never existed. A typo must be a loud
+// harness failure, never a quiet product verdict.
+const defsMod = await import(new URL("../../src/lib/largo/tool-defs.ts", import.meta.url).pathname);
+const defsNs = defsMod.default ?? defsMod;
+const defs = Object.values(defsNs).find((v) => Array.isArray(v) && v[0]?.name);
+const KNOWN = new Set((defs ?? []).map((d) => d.name));
+const unknown = [...new Set(TOOLS.map(([n]) => n))].filter((n) => !KNOWN.has(n));
+if (!KNOWN.size) {
+  console.error("could not read the tool registry — refusing to run a scan that cannot be validated");
+  process.exit(2);
+}
+if (unknown.length) {
+  console.error(`HARNESS ERROR — these tool names do not exist: ${unknown.join(", ")}`);
   process.exit(2);
 }
 
