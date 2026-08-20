@@ -1,0 +1,74 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+
+// @ts-expect-error — plain-JS audit lib, deliberately not typed (it runs under bare node too).
+import {
+  carriesReadableDate,
+  epochUnit,
+  isUnroundedFloat,
+  scanPayload,
+  summarize,
+} from "../../../scripts/audit/lib/payload-hygiene.mjs";
+
+test("an unrounded float is the arithmetic artifact, not a quoted precision", () => {
+  // Both real, both served by prod endpoints.
+  assert.equal(isUnroundedFloat(7499.360000000001), true);
+  assert.equal(isUnroundedFloat(7707.9800000000005), true);
+  // A real quote, a whole number, and a non-number are all fine.
+  assert.equal(isUnroundedFloat(7641.16), false);
+  assert.equal(isUnroundedFloat(0.0625), false);
+  assert.equal(isUnroundedFloat(7641), false);
+  assert.equal(isUnroundedFloat("7641.16"), false);
+  assert.equal(isUnroundedFloat(NaN), false);
+  // Exponential notation is a magnitude choice, not a float artifact.
+  assert.equal(isUnroundedFloat(1e-7), false);
+});
+
+test("epoch ranges are tight enough that prices and volumes are not timestamps", () => {
+  assert.equal(epochUnit(1787202000000), "ms");
+  assert.equal(epochUnit(1787202000), "s");
+  assert.equal(epochUnit(7641.16), null, "an SPX print is not an epoch");
+  assert.equal(epochUnit(0), null);
+  assert.equal(epochUnit(9.9e12), null, "a market cap is not an epoch");
+});
+
+test("an object that already states a date in words is not making the reader guess", () => {
+  assert.equal(carriesReadableDate({ t: 1787202000000, session_date: "2026-08-20" }), true);
+  assert.equal(carriesReadableDate({ t: 1787202000000, c: 7641.16 }), false);
+  assert.equal(carriesReadableDate(null), false);
+});
+
+test("the exact bar that produced the off-by-one-session answer is flagged", () => {
+  const before = { results: [{ t: 1787202000000, c: 7641.16 }] };
+  const { findings } = scanPayload(before);
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0].kind, "bare_epoch");
+  assert.equal(findings[0].path, "results[0].t");
+});
+
+test("the same bar AFTER the session-date fix is clean", () => {
+  const after = { results: [{ t: 1787202000000, c: 7641.16, session_date: "2026-08-20" }] };
+  assert.deepEqual(scanPayload(after).findings, []);
+});
+
+test("only time-shaped keys are judged as time — market cap is left alone", () => {
+  const { findings } = scanPayload({ row: { market_cap: 1_500_000_000_000, name: "ACME" } });
+  assert.deepEqual(findings, [], "a 1.5e12 market cap must not read as a timestamp");
+});
+
+test("both classes are found and rolled up together", () => {
+  const { findings } = scanPayload({
+    quote: { updated_at: 1787202000000, price: 7499.360000000001 },
+  });
+  assert.deepEqual(summarize(findings), { unrounded_float: 1, bare_epoch: 1 });
+});
+
+test("a truncated walk says so rather than reading as a clean bill of health", () => {
+  const results = Array.from({ length: 50 }, () => ({ t: 1787202000000 }));
+  const out = scanPayload({ results }, { maxFindings: 10 });
+  assert.equal(out.findings.length, 10);
+  assert.equal(out.truncated, true, "hitting the cap must be reported, never silent");
+
+  const small = scanPayload({ results: [{ t: 1787202000000 }] }, { maxFindings: 10 });
+  assert.equal(small.truncated, false);
+});
