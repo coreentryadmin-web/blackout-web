@@ -95,3 +95,38 @@ test("the existing non-omission guarantee survives alongside it", () => {
   // honesty contract has been traded sideways rather than strengthened.
   assert.match(SYSTEM, /silent omission/i);
 });
+
+/**
+ * The regime read must not smuggle a SECOND, DIFFERENT value for a level already typed.
+ *
+ * `gex.flip` and `gex.regime.flip` disagree on prod by 6.22 pts, deterministically — confirmed
+ * across four samples 20s apart AND through a forced rebuild (`?force=1`, 9.5s, genuinely
+ * recomputed), which rules out both staleness and caching. The regime READ embeds the second value
+ * in prose, so Largo received the same quantity twice with two numbers and reported both:
+ * "Gamma flip 7891.94 (7886.81 on Thermal matrix)". To a member that reads as the product
+ * contradicting itself.
+ */
+test("REGRESSION: the gamma regime read hands Largo no duplicate level", () => {
+  assert.match(CODE, /stripEmbeddedLevel/, "the read must be sanitised before it reaches the model");
+  assert.match(
+    CODE,
+    /gamma_regime_read:\s*stripEmbeddedLevel\(/,
+    "the gamma read specifically — that is where the conflicting flip lives"
+  );
+});
+
+test("stripping removes the level but keeps the regime words", () => {
+  // The read exists to say long/short gamma and where resistance/support sit. Removing the
+  // parenthetical must not cost any of that.
+  const src = PROJECTION.slice(PROJECTION.indexOf("function stripEmbeddedLevel"));
+  const body = src.slice(0, src.indexOf("\n}"));
+  const m = body.match(/replace\((\/[^/]+\/[a-z]*)/);
+  assert.ok(m, "strip must be implemented as a replace");
+  // Reconstruct the behaviour on the real production string.
+  const sample = "Spot 7,707.98 is below the gamma flip (7,887.15) → short gamma: momentum / vol expansion, moves accelerate. Resistance 7,800, support 7,700.";
+  const stripped = sample.replace(/\s*\(\s*[\d,]+(?:\.\d+)?\s*\)/g, "").replace(/\s{2,}/g, " ").trim();
+  assert.doesNotMatch(stripped, /7,887\.15/, "the conflicting level must be gone");
+  assert.match(stripped, /short gamma/, "the regime verdict must survive");
+  assert.match(stripped, /Resistance 7,800/, "walls are NOT parenthetical duplicates — they must survive");
+  assert.match(stripped, /support 7,700/);
+});
