@@ -131,4 +131,14 @@ describe("resolveLargoSlashSubmit", () => {
       assert.match(out.question, /GEX matrix/i);
     }
   });
+
+  it("parses /spx-slayer /gex with member question", () => {
+    const out = resolveLargoSlashSubmit("/spx-slayer /gex What's the read?");
+    assert.equal(out.type, "query");
+    if (out.type === "query") {
+      assert.equal(out.deskScope, "spx-slayer");
+      assert.equal(out.deskScopeArgs?.submodule, "gex");
+      assert.equal(out.question, "What's the read?");
+    }
+  });
 });

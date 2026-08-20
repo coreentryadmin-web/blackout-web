@@ -17,9 +17,20 @@ export type LargoStarterPick = {
 export type LargoScopePick = {
   deskScope: string;
   deskScopeArgs?: import("@/lib/largo/desk-scope").DeskSlashArgs;
-  /** Prefill composer, e.g. `/spx-slayer gex ` — omit to leave input unchanged. */
+  /** Prefill composer, e.g. `/spx-slayer /gex ` — omit to leave input unchanged. */
   prefill?: string;
 };
+
+/** Visible composer prefix when desk (+ optional submodule) scope is active. */
+export function formatLargoScopePrefill(desk: string, submodule?: string | null): string {
+  const root = desk.trim().replace(/^\//, "");
+  if (!root) return "";
+  if (submodule?.trim()) {
+    const sub = submodule.trim().replace(/^\//, "");
+    return `/${root} /${sub} `;
+  }
+  return `/${root} `;
+}
 
 export type LargoModuleStarterCard = {
   id: string;

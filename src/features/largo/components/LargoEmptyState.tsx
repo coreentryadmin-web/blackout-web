@@ -26,7 +26,7 @@ export function LargoEmptyState({
         <h2 className="largo-empty-title">Ask the desk anything.</h2>
         <p className="largo-empty-lead">
           Pick a desk (optional: a module lens), type your question, send — or use{" "}
-          <span className="font-mono text-cyan-400">/spx-slayer gex</span> in the composer.
+          <span className="font-mono text-cyan-400">/spx-slayer /gex</span> in the composer.
         </p>
       </div>
 
