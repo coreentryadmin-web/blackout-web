@@ -224,9 +224,25 @@ export async function mintClerkPremiumSession({
        * fault (thermal validator sectors, force-rebuild "IWM 0/5", now this), which is why the
        * recovery belongs HERE and not in each harness.
        */
-      if (Date.now() - lastEstablishedAt < MIN_REESTABLISH_MS) return null;
+      if (Date.now() - lastEstablishedAt < MIN_REESTABLISH_MS) {
+        console.warn(
+          `[clerk-session] refresh returned no JWT; re-establish throttled (${Math.round((MIN_REESTABLISH_MS - (Date.now() - lastEstablishedAt)) / 1000)}s left)`
+        );
+        return null;
+      }
       const fresh = await establish();
-      if (fresh.error) return null;
+      if (fresh.error) {
+        // NEVER SILENT. The previous version returned null here with no log, which is the very
+        // fail-open pattern this whole block exists to remove — reintroduced one level down. It
+        // made the two failures indistinguishable from outside: "re-establish never ran" and
+        // "re-establish ran and failed" both presented as a run that simply 401s forever.
+        // MEASURED 2026-08-20: refresh went NULL at t=90s and stayed null; the app 401'd from
+        // t=150s; and the success log never appeared — which proved nothing, because the failure
+        // path had no log either.
+        console.warn(`[clerk-session] re-establish FAILED: ${fresh.error}`);
+        lastEstablishedAt = Date.now(); // throttle retries after a real failure, not just successes
+        return null;
+      }
       clientCookies = fresh.cookies;
       sessionId = fresh.sessionId;
       clientUat = fresh.clientUat;
