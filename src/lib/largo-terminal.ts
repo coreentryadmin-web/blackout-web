@@ -156,6 +156,22 @@ function largoLoopTimeoutMs(depth: LargoDepth): number {
   return Math.min(largoDepthConfig(depth).timeoutMs, LARGO_TOOL_LOOP_TIMEOUT_MS);
 }
 
+/**
+ * WALL-CLOCK budget for the whole tool loop — the thing `largoLoopTimeoutMs` was mistaken for.
+ *
+ * That function bounds ONE round (anthropic.ts spends it as the per-request client timeout), so
+ * nothing bounded the loop: `maxRounds: 10` on Deep dive meant ten individually-legal rounds could
+ * add up without limit. The route's own 100s deadline caught the overrun, but as a generic
+ * "ran long" message rather than the partial answer the loop had already written.
+ *
+ * Clamped against `largoToolLoopBudgetMs()` — the live, env-tunable "route deadline minus
+ * prefetch/post overhead" figure — so the loop always gives up BEFORE the route does, leaving room
+ * for verifyClaims, the caveat pass and persistence to run on whatever it returns.
+ */
+function largoLoopBudgetMs(depth: LargoDepth): number {
+  return Math.min(largoDepthConfig(depth).loopBudgetMs, largoToolLoopBudgetMs());
+}
+
 const LARGO_TOOL_LOOP_MAX_ROUNDS = (() => {
   const raw = process.env.LARGO_TOOL_LOOP_MAX_ROUNDS?.trim();
   const n = raw ? Number(raw) : 10;
@@ -907,6 +923,7 @@ export async function runLargoQuery(
       maxTokens: depthCfg.maxTokens,
       maxRounds: depthCfg.maxRounds,
       timeoutMs: largoLoopTimeoutMs(depth),
+      loopBudgetMs: largoLoopBudgetMs(depth),
       maxRetries: 1,
       cacheSystem: true,
       aiGate: "largo",
@@ -927,7 +944,10 @@ export async function runLargoQuery(
       answer?.trim() ||
       emptyAnswerFallback({
         elapsedMs: Date.now() - startedAt,
-        budgetMs: largoLoopTimeoutMs(depth),
+        // The LOOP budget, not the per-round timeout. #2396 classifies an empty answer as a
+        // timeout at 85% of budget; measuring total elapsed against a per-round cap made every
+        // multi-round Deep turn look timed-out and every long single-round one look fine.
+        budgetMs: largoLoopBudgetMs(depth),
         toolsUsed,
       });
 
@@ -1155,6 +1175,7 @@ export async function runLargoQueryStream(
       maxTokens: depthCfg.maxTokens,
       maxRounds: depthCfg.maxRounds,
       timeoutMs: largoLoopTimeoutMs(depth),
+      loopBudgetMs: largoLoopBudgetMs(depth),
       maxRetries: 1,
       cacheSystem: true,
       aiGate: "largo",
@@ -1192,7 +1213,10 @@ export async function runLargoQueryStream(
       answer?.trim() ||
       emptyAnswerFallback({
         elapsedMs: Date.now() - startedAt,
-        budgetMs: largoLoopTimeoutMs(depth),
+        // The LOOP budget, not the per-round timeout. #2396 classifies an empty answer as a
+        // timeout at 85% of budget; measuring total elapsed against a per-round cap made every
+        // multi-round Deep turn look timed-out and every long single-round one look fine.
+        budgetMs: largoLoopBudgetMs(depth),
         toolsUsed,
       });
 

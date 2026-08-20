@@ -324,7 +324,25 @@ function extractTextFromBlocks(content: Array<{ type: string; text?: string }>):
     .trim();
 }
 
-function extractTextFromLastAssistant(messages: AnthropicMessage[]): string | null {
+/**
+ * Best real answer written so far, for the loop's four early-exit paths (spend ceiling, wall-clock
+ * budget, round-create failure, final-synthesis failure).
+ *
+ * SKIPS ROUNDS THAT ENDED IN TOOL CALLS. An assistant message carrying a `tool_use` block was the
+ * model narrating its plan — "Let me pull the SPX GEX heatmap and check the flip" — not answering.
+ * Returning that to a member is worse than returning nothing: the fallback at least says the turn
+ * did not finish, whereas narration LOOKS like an answer and contains no read at all.
+ *
+ * The codebase already knew this in one place and not here. The streaming path emits `answer_reset`
+ * for exactly this case, documented as "a round ended in tool calls, meaning what it streamed was
+ * the model narrating its plan rather than answering" — the same distinction, enforced for the
+ * streamed text but not for the value the loop returns. All four exits shared the gap, so the guard
+ * belongs in the extractor rather than at any one call site.
+ *
+ * A message with tool calls is never a finished answer by construction: had it been, the loop would
+ * have stopped there instead of running the tools.
+ */
+export function extractTextFromLastAssistant(messages: AnthropicMessage[]): string | null {
   for (let i = messages.length - 1; i >= 0; i--) {
     if (messages[i].role !== "assistant") continue;
     const content = messages[i].content;
@@ -334,9 +352,9 @@ function extractTextFromLastAssistant(messages: AnthropicMessage[]): string | nu
       continue;
     }
     if (Array.isArray(content)) {
-      const text = extractTextFromBlocks(
-        content as Array<{ type: string; text?: string }>
-      );
+      const blocks = content as Array<{ type: string; text?: string }>;
+      if (blocks.some((b) => b?.type === "tool_use")) continue;
+      const text = extractTextFromBlocks(blocks);
       if (text) return text;
     }
   }
@@ -481,6 +499,21 @@ export async function anthropicToolLoop(params: {
    *  client default is 20s — too tight for a Largo round that fans out heavy tool calls. Defaults
    *  to 60s here. (#77 hardening E / LARGO timeout gap.) */
   timeoutMs?: number;
+  /**
+   * WALL-CLOCK budget for the WHOLE loop, across every round.
+   *
+   * `timeoutMs` is PER REQUEST — its own comment says so ("a single slow round can't hang on the
+   * 20s client default"). It has never bounded the loop. With `maxRounds: 10` a Deep dive turn is
+   * therefore unbounded in practice: ten rounds, each individually inside the per-round cap, add up
+   * with nothing stopping them. Measured on prod 2026-08-20: 81.7s, 89.8s and 98.3s turns, against
+   * what everyone had been reading as a "75s timeout".
+   *
+   * The ALB in front of this has a 120s idle timeout, so an unbounded loop does not degrade into a
+   * slow answer — it degrades into a dropped connection.
+   *
+   * Omitted or 0 keeps the previous unbounded behaviour, so no existing caller changes.
+   */
+  loopBudgetMs?: number;
   /** Per-request retry override threaded into every round. Defaults to 1 so a slow round doesn't
    *  retry 3× and stack into a multi-minute hang before falling back. */
   maxRetries?: number;
@@ -541,7 +574,26 @@ export async function anthropicToolLoop(params: {
     params.cacheSystem === true
   );
 
+  const loopStartedAt = Date.now();
+  const loopBudgetMs = params.loopBudgetMs ?? 0;
+
   for (let round = 0; round < maxRounds; round++) {
+    // BUDGET CHECKED BETWEEN ROUNDS, AND NEVER BEFORE THE FIRST.
+    //
+    // Returning the assistant text accumulated so far mirrors the spend-ceiling guard directly
+    // below: a partial real answer beats nothing. Callers that get null fall through to an
+    // empty-answer fallback, and on prod that fallback told members "I couldn't pull enough live
+    // data" about turns that had plenty of data and simply ran long — advice that cannot help,
+    // because it names the wrong cause.
+    //
+    // `round > 0` guarantees at least one attempt even with an already-spent budget; a loop that
+    // returns before calling the model once would report "no data" having looked at nothing.
+    if (loopBudgetMs > 0 && round > 0 && Date.now() - loopStartedAt >= loopBudgetMs) {
+      console.warn(
+        `[anthropic] tool loop hit its ${loopBudgetMs}ms wall-clock budget after ${round} round(s) — returning partial`
+      );
+      return extractTextFromLastAssistant(messages as unknown as AnthropicMessage[]) ?? null;
+    }
     if (await isAiSpendCeilingTripped()) {
       console.warn("[anthropic] daily AI spend ceiling reached mid tool-loop — stopping");
       return extractTextFromLastAssistant(messages as unknown as AnthropicMessage[]) ?? null;

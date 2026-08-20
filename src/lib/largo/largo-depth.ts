@@ -19,7 +19,35 @@ export function largoDepthConfig(depth: LargoDepth): {
   model: string;
   maxRounds: number;
   maxTokens: number;
+  /** PER-ROUND request timeout. Not a loop budget — see `loopBudgetMs`. */
   timeoutMs: number;
+  /**
+   * WALL-CLOCK budget for the whole tool loop, across every round.
+   *
+   * `timeoutMs` is per REQUEST and always was — anthropic.ts passes it as the client's `timeout` on
+   * each round, and its own comment says it exists so "a single slow round can't hang". Nothing
+   * bounded the loop itself, so with `maxRounds: 10` a Deep turn was unbounded in practice: ten
+   * rounds each individually inside the per-round cap add up with nothing stopping them.
+   *
+   * The budget the loop SHOULD have had already existed and was never wired to the loop.
+   * `largoToolLoopBudgetMs()` in providers/config.ts is documented as the "Anthropic tool-loop
+   * budget — route deadline minus prefetch/post overhead" and computes exactly that (100s route
+   * deadline − 20s). largo-terminal then spent it as a per-ROUND `timeoutMs` clamp. So the deep
+   * value here is that same 75s, and largo-terminal clamps it against the live env-tunable function
+   * rather than this constant drifting away from it.
+   *
+   * Sizing is fixed by the route, NOT by the ALB. `/api/market/largo/query` races every turn
+   * against `largoMemberRouteDeadlineMs()` (100s) and returns its own member-visible message. A
+   * loop budget at or above that could never fire — the route would win first and the member would
+   * get the generic route-timeout copy instead of the partial answer the loop had already written.
+   * The loop must give up first, with enough headroom left for verifyClaims, the caveat pass and
+   * persistence to run on what it returns.
+   *
+   * Measured on prod 2026-08-20: Deep turns of 81.7s, 89.8s and 98.3s against what everyone read as
+   * a "75s timeout". Under this budget those turns return the partial answer accumulated so far
+   * instead of nothing.
+   */
+  loopBudgetMs: number;
   label: string;
 } {
   if (depth === "concrete") {
@@ -38,6 +66,9 @@ export function largoDepthConfig(depth: LargoDepth): {
       // member than a long answer.
       maxTokens: 900,
       timeoutMs: 30_000,
+      // Concrete runs 2 rounds; its budget matches the per-round cap because a tight loop that
+      // needs longer than one round's worth of wall clock is not a Concrete answer any more.
+      loopBudgetMs: 30_000,
       label: "Concrete (Haiku, tight read)",
     };
   }
@@ -46,6 +77,10 @@ export function largoDepthConfig(depth: LargoDepth): {
     maxRounds: 10,
     maxTokens: 4096,
     timeoutMs: 75_000,
+    // Mirrors `largoToolLoopBudgetMs()`'s default. largo-terminal clamps against the live function,
+    // so lowering LARGO_TOOL_LOOP_BUDGET_MS or the route deadline still tightens this without a
+    // deploy — this constant is the ceiling, not the authority.
+    loopBudgetMs: 75_000,
     label: "Deep dive (Sonnet, full loop)",
   };
 }
