@@ -288,12 +288,28 @@ function buildDynamicSystem(
   history: AnthropicMessage[],
   liveFeedBlock: string,
   platformVitalsBlock: string,
-  extraBlocks = ""
+  extraBlocks = "",
+  /** Answer mode — the closing line below contradicts Concrete unless it knows the mode. */
+  depth: LargoDepth = "deep"
 ): AnthropicSystemBlock[] {
   const intent = analyzeLargoQuestion(question, history);
   const platformSection = platformVitalsBlock.trim()
     ? `\n\n${platformVitalsBlock.trim()}\n`
     : "";
+  // THE LAST LINE OF THE PROMPT WINS, AND THIS IS THE LAST LINE.
+  //
+  // It used to read "opinion in Bottom line" unconditionally. The Concrete block bans **Bottom
+  // line** outright, but it lives inside `extraBlocks` — several hundred tokens EARLIER than this
+  // sentence. So the model read "never emit Bottom line", then finished on "opinion in Bottom
+  // line", and did what the closing instruction said.
+  //
+  // Measured on prod 2026-08-20, immediately after the Concrete rewrite shipped: bullets, headings
+  // and tables were gone from all 10 Concrete answers, and **Bottom line:** survived in 9 of 10 —
+  // the one section whose instruction was repeated after the ban. Position beat emphasis.
+  const opinionClause =
+    depth === "concrete"
+      ? "keep opinion to the closing clause of your own prose — no labelled section, and no **Bottom line**."
+      : "opinion in Bottom line.";
   const dynamicPart = `## This turn
 
 ${formatSessionCalendarBlock(todayEtYmd())}
@@ -302,7 +318,7 @@ ${liveFeedBlock}${platformSection}${extraBlocks}
 
 ${intent.guidance}
 
-Session memory is in Postgres — honor follow-ups. Re-fetch via tools if you need fresher flow, matrix, or platform numbers. Facts from the live feed and platform vitals only; opinion in Bottom line.`;
+Session memory is in Postgres — honor follow-ups. Re-fetch via tools if you need fresher flow, matrix, or platform numbers. Facts from the live feed and platform vitals only; ${opinionClause}`;
 
   return [
     {
@@ -719,7 +735,8 @@ async function prepareLargoTurn(
     history.slice(0, -1),
     liveFeedBlock + knowledgeBlock + temporalBlock + capabilityBlock + entityBlock + ontologyBlock + tradeBlock + conversationBlock + planBlock + drillDownBlock + formatImageBlock(images.length),
     platformVitalsBlock,
-    extraBlocks
+    extraBlocks,
+    depth
   );
 
   resetLargoSpxDeskCache(userId);

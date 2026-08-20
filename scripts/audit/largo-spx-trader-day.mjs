@@ -62,7 +62,7 @@ const DAY = [
   { id: "open-bias", q: "Is SPX bullish or bearish right now?", subject: "bias" },
   { id: "open-walls", q: "Where are the SPX gamma walls?", subject: "walls", foreign: [/confluence/i, /grade [A-F]\b/i, /win rate/i] },
   { id: "open-flip", q: "Where is the SPX gamma flip?", subject: "flip", foreign: [/win rate/i, /confluence/i] },
-  { id: "open-play", q: "What's the best SPX play today?", subject: "play" },
+  { id: "open-play", q: "What's the best SPX play today?", subject: "play" , wantsContract: true },
 
   // ── intraday ───────────────────────────────────────────────────────────────────────────────
   { id: "mid-flow", q: "What's the SPX options flow showing?", subject: "flow", foreign: [/ema\d+/i, /vwap/i] },
@@ -72,19 +72,19 @@ const DAY = [
   { id: "mid-pin", q: "Where does SPX pin into the close?", subject: "pin", foreign: [/confluence/i, /flow/i] },
 
   // ── the trade ──────────────────────────────────────────────────────────────────────────────
-  { id: "trade-strike", q: "Which SPX strike should I buy for a 0DTE call?", subject: "strike" },
+  { id: "trade-strike", q: "Which SPX strike should I buy for a 0DTE call?", subject: "strike" , wantsContract: true },
   { id: "trade-stop", q: "Where's my invalidation if I'm long SPX here?", subject: "invalidation" },
   { id: "trade-size", q: "How much should I risk on this SPX trade?", subject: "sizing" },
-  { id: "trade-condor", q: "Is there an iron condor setup on SPX today?", subject: "condor" },
+  { id: "trade-condor", q: "Is there an iron condor setup on SPX today?", subject: "condor" , wantsContract: true },
 
   // ── power hour / close ─────────────────────────────────────────────────────────────────────
-  { id: "ph-power", q: "Anything for SPX power hour?", subject: "power hour" },
+  { id: "ph-power", q: "Anything for SPX power hour?", subject: "power hour" , wantsContract: true },
   { id: "ph-hold", q: "Should I hold my SPX position into the close?", subject: "hold" },
   { id: "close-record", q: "How has the SPX desk done this month?", subject: "record", foreign: [/gamma flip/i, /put wall/i] },
 
   // ── multi-horizon ──────────────────────────────────────────────────────────────────────────
-  { id: "dte-3", q: "Best 3DTE SPX setup?", subject: "3dte" },
-  { id: "dte-7", q: "What about a 7DTE SPX position?", subject: "7dte" },
+  { id: "dte-3", q: "Best 3DTE SPX setup?", subject: "3dte" , wantsContract: true },
+  { id: "dte-7", q: "What about a 7DTE SPX position?", subject: "7dte" , wantsContract: true },
 
   // ── the one-word and the sloppy ────────────────────────────────────────────────────────────
   { id: "terse-spx", q: "SPX?", subject: "spx", maxLen: 700 },
@@ -99,6 +99,10 @@ const TABLE_RE = /^\s*\|.*\|\s*$/m;
 const BOLD_LABEL_RE = /\*\*(Verdict|Facts|Interpretation|Confidence|Conflicts|Risk|Data|Bottom line)\b[^*]*\*\*\s*:?/i;
 /** A first sentence that decides something, rather than restating the question. */
 const PREAMBLE_RE = /^\s*(sure|certainly|here'?s|let me|i'?ll|to answer|great question|based on (?:the|your))/i;
+/** A concrete option contract: `7800C`, `SPX 7800C 08/21`, `7700 put`, `7800 call`. */
+const CONTRACT_RE = /\b\d{3,5}(?:\.\d+)?\s*(?:C|P)\b|\b\d{3,5}(?:\.\d+)?\s+(?:call|put)s?\b/i;
+/** A stated probability, however phrased — a percentage or an explicit delta. */
+const PROBABILITY_RE = /\b\d{1,3}(?:\.\d+)?\s*%|\bdelta\b|\b0\.\d{1,2}\s*(?:delta)?\b/i;
 
 function firstSentence(text) {
   const t = String(text).trim().replace(/^\*\*[^*]+\*\*\s*:?\s*/, "");
@@ -195,6 +199,28 @@ function gradeShape(sc, r) {
   }
 
   if (sc.want && !sc.want.test(a)) fails.push(`never addressed ${sc.want}`);
+
+  // A PLAY QUESTION MUST NAME A CONTRACT.
+  //
+  // This harness originally graded only SHAPE, and that blind spot cost a real bug: it scored an
+  // answer to "what's the best SPX play today?" without noticing the question had never ROUTED as
+  // a play question at all (TRADE_RE required the qualifier adjacent to the noun, so the ticker in
+  // the middle broke it), which meant the entire trade contract — contract, probability,
+  // empty-board handling — was absent. A well-shaped non-answer passed.
+  //
+  // "The board has no committed play" is an inventory status, not an answer. The only acceptable
+  // ways out are naming the contract, or explicitly disclosing that a required read was
+  // unavailable — never a bare "wait for the open".
+  if (sc.wantsContract) {
+    const named = CONTRACT_RE.test(a);
+    const disclosedGap = /\b(unavailable|could not read|no (?:live )?(?:chain|quote|delta))\b/i.test(a);
+    if (!named && !disclosedGap) {
+      fails.push("play question answered without naming a contract (strike + right + expiry)");
+    }
+    if (named && !PROBABILITY_RE.test(a) && !disclosedGap) {
+      notes.push("named a contract but stated no probability/delta");
+    }
+  }
 
   return { verdict: fails.length ? "FAIL" : "PASS", fails, notes, len, firstSentence: fs };
 }
