@@ -38,6 +38,120 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-08-19 — [FINDING, P0 correctness] `main` went red with every PR green — #2365 and #2366 collided on the 0DTE expiry resolver — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Root cause** | A **semantic merge conflict**. #2365 (`dc96a83a`) ADDED a test asserting a front-expiry fallback; #2366 (`63eca2c6`) REMOVED that fallback from `resolveZeroDteExpiry`. `verify` runs on the PR head, not the merge result, so each was legitimately green alone and red only once both were in the tree. |
+| **Defect location** | The TEST only. Both production changes are correct and neither was reverted — `resolveOdteExpiry` (non-strict, what the live caller uses) and `resolveZeroDteExpiry` (strict, behind `odteGexScopeFromHeatmap`) are deliberately different. The test verified the non-strict WRITE by asking the STRICT reader. |
+| **Fix** | #2369 — the test now asserts the caller-resolved expiry on the cells directly, plus a second test that pins the two resolvers APART, so the natural way to make it green (restoring the fallback) fails loudly. |
+| **Status** | FIXED — merged #2369. |
+
+**Standing note.** This failure mode is invisible to per-PR CI by construction. It sat on `main` ~15 minutes
+before anything noticed. Mitigation adopted for the rest of the session: before pushing a batch, stack every
+in-flight branch on the target `main` in one worktree and run the suite ONCE against the combined tree.
+That run (8483 pass / 0 fail) is what proved the following six did not collide.
+
+## 2026-08-19 — [FINDING, P1 member-visible] Member-facing clocks rendered in the VIEWER's timezone, not the market's — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Root cause** | Ten formatters called `toLocaleTimeString`/`toLocaleDateString` with no `timeZone`, so they resolved to the browser's zone. A member in London saw a 09:30 ET open labelled 14:30. |
+| **Fix** | #2368 — all ten pinned to `America/New_York`. |
+| **Status** | FIXED — merged #2368. |
+
+## 2026-08-19 — [FINDING, P0 member-visible] Vector replay showed candles with no beads — the scrubber spanned 3 sessions, the rail 1 — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Report** | Member: "why is the replay not working ?? beads are not showing on replay mode .. only shows candles", screenshot at step 75/1521. |
+| **Root cause** | `buildReplayTimeline` unioned timestamps from ALL loaded bars, but the wall rail only renders the CURRENT session. Cursor positions in the earlier sessions mapped to times the rail had no data for → zero beads. |
+| **Fix** | #2370 — the timeline is scoped with `lastSessionBars(bars)`. |
+| **Evidence** | Live prod probe (`vector-replay-beads-probe.cjs`, #2377) on the pre-fix build, SPX: LIVE-mode control painted **18271 bead px** (4400 call / 13871 put) across 11 canvases; REPLAY painted **0** at all 7 sampled scrub positions. The same run showed the clock running BACKWARDS while scrubbing forward (9:30 → 10:46 → 13:18 → 11:46 → 11:28 → 15:42) — the multi-session span made visible. |
+| **Status** | FIXED — merged #2370. **Post-deploy visual sign-off still OPEN** (see below). |
+
+**Open.** The AFTER capture was not taken: production was mid-rollout through the rest of the session and
+the market was closed. Re-run during RTH:
+`NODE_USE_ENV_PROXY=1 node scripts/audit/vector-replay-beads-probe.cjs --ticker=SPX --label=after`
+A fixed run shows beads across the scrub range and a monotonic clock. **Until that run exists this fix is
+verified by test and by root cause, NOT by pixels.**
+
+## 2026-08-19 — [FINDING, P1 correctness] Helix index signals could never grade — the equity namespace answers 200 with no data — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Root cause** | UW's tape carries the option root, so SPX/SPXW/NDX/RUT/VIX arrived as bare symbols and `priceNearMs` sent them to `/v2/aggs/ticker/SPX/...`. Polygon answers that with **HTTP 200, `status: "OK"`, zero results** — a silent empty success, not an error. `priceNearMs` returned null for every index row, forever. |
+| **Secondary** | Those rows then held the head of an oldest-first, fixed-LIMIT queue on every subsequent run, so ungradeable rows could starve gradeable ones. |
+| **Fix** | #2371 — new `flowPriceSymbol()` maps index roots to their `I:` symbol (weeklies map to the BASE index: `SPXW`→`I:SPX`, since `I:SPXW` returns zero bars) and the grader branches to `fetchIndexMinuteBars`. Unknown symbols stay on the equity path and are NEVER guessed into an `I:` form — deliberately not reusing `vectorPolygonMinuteSymbol`, which defaults unknown input to SPX and would grade one instrument against the S&P 500. Queue bounded by `HELIX_CHECKPOINT_MAX_AGE_DAYS = 7`. |
+| **Status** | FIXED — merged #2371. |
+
+## 2026-08-19 — [FINDING, P2 member-visible] Expiry Concentration bars saturated exactly when one horizon started dominating — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Root cause** | Buckets are built in CHRONOLOGICAL order, but the bar scale read its maximum off `buckets[0]` — the nearest-dated bucket, largest only by coincidence. Any larger bucket computed a width over 100%; the rail is `overflow-hidden`, so they all clipped to FULL WIDTH. |
+| **Symptom** | 0DTE $1M / This week $3M / Monthly $5M rendered as three identical bars while the labels beside them read 11% / 33% / 56%. The numbers were right and the picture was wrong. |
+| **Fix** | #2372 — `bucketMaxTotal()` takes the true max; `barWidthPct()` clamps at both ends. |
+| **Status** | FIXED — merged #2372. |
+
+## 2026-08-19 — [FINDING, P0 affects trade selection] The SPX session-quality modifier inverted for every SHORT setup — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Root cause** | The confluence `score` is SIGNED (positive long, negative short), and the session-window modifier was added straight onto it. `sessionW` describes CONFIDENCE, not direction, so adding it signed inverted it for one side: a −8 lunch-chop penalty made a −70 short **stronger** (−78), and a +6 ORB bonus made it **weaker** (−64). |
+| **Member-facing consequence** | The action gate is `score <= -22 → BUY_PUT`. A bearish read at −18 (a HOLD) was pushed to −26 by the lunch-chop penalty and became a **BUY_PUT** with a higher confidence % and better grade — i.e. the quality penalty manufactured put-buy signals in the lowest-quality window of the day. The mirror case demoted qualifying shorts during ORB and power hour. |
+| **Why it survived** | Long-side behaviour was always correct, so half the tests anyone would write by hand pass against the bug. |
+| **Fix** | #2355 — the modifier is applied ALONG the current sign. `scoreNewsRisk` directly below IS directional and is correctly added signed; that distinction is now a comment at the call site. |
+| **Status** | FIXED — merged #2355, user-authorised (changes trade selection). |
+
+**Not quantified.** How many historical SPX plays this changed has NOT been measured — that needs re-scoring
+past sessions through the real scorer and is separate work.
+
+## 2026-08-19 — [FINDING, P1 member-visible] Largo peer relative strength graded SPX/VIX against the equity namespace, then made a verdict out of the absence — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Root cause** | Two compounding defects. (1) `buildPeerRelativeStrength` resolved its subject with `stockSymbol()`, which STRIPS the `I:` prefix, so index roots hit the equity aggregates endpoint and every return came back null. (2) The verdict was `(stockD10 ?? 0) > (peerD10 ?? 0)`, substituting a measured 0% for an ABSENT return. |
+| **Consequence** | With the subject unknown the answer was decided entirely by the sign of SPY's 10-day move — "lagging" in an up tape, "outperforming" in a down one. Same unknown subject, opposite verdicts, neither measured, and nothing in the output distinguishes them from a real read. |
+| **Evidence** | Live, both providers (`api.massive.com` and `api.polygon.io`), identical: `SPY 6 bars · SPX 0 bars · VIX 0 bars · I:SPX 6 bars · I:VIX 6 bars`. |
+| **Blast radius** | `run-tool.ts:370` (`get_peer_rs`) is UNGUARDED — the member-facing path. `bie/technicals-read.ts` had `&& sym !== "SPX"`, a SYMPTOM workaround at one call site that never covered VIX or the tool path. |
+| **Fix** | #2375 — index subjects route to `fetchIndexDailyBars`; `relativeStrengthLeader()` returns null rather than defaulting. `buildLargoTechnicals` in the same file already branched correctly; only this function did not. |
+| **Status** | FIXED — merged #2375. |
+
+**Checked and CLEARED (same class, not defects).** Sweeping every `fetchStockDailyBars`/`fetchStockMinuteBars`
+caller: Night Hawk's grading path (`play-outcomes.ts`, `regrade-stuck.ts`, `debrief-persist.ts`) is safe —
+its `INDEX_TICKERS` are ETF proxies (`SPY`, `QQQ`, `IWM`, `XLF`…), genuinely in the equity namespace;
+`vector-gex-reconstruct-server.ts` already branches on `isVectorIndexTicker`; `discord-context-enrichment.ts`
+degrades to null via a `vols.length < 5` floor rather than fabricating.
+
+## 2026-08-19 — [OPS-NOTE] `POLYGON_API_BASE` is set to the literal string `POLYGON_API_BASE` in this sandbox — DOCUMENTED
+
+> **kind:** `OPS-NOTE`
+
+| Field | Detail |
+|---|---|
+| **Status** | DOCUMENTED — environment note, no code change. Nothing to fix in the tree; the committed scripts already self-default. |
+
+The committed audit scripts self-default around it, so this only bites ad-hoc probes: `curl "$POLYGON_API_BASE/..."`
+resolves to a relative path and returns EMPTY output with exit 0 — which reads as "the API returned nothing"
+rather than "the variable is not a URL". Cost ~10 minutes mid-investigation. Set it explicitly
+(`https://api.massive.com`, fallback `https://api.polygon.io`) in any one-off probe. This is the
+`${{shared.*}}`-does-not-resolve trap already noted in CLAUDE.md, in a new place.
+
 ## 2026-08-19 — [FINDING, P0 member-visible] The bead rail could never draw more than ONE bead per candle — FIXED
 
 > **kind:** `FINDING`
