@@ -1314,7 +1314,99 @@ async function crossProviderChecks(ctx: Ctx, hm: GexHeatmap): Promise<CheckResul
 // ---------------------------------------------------------------------------
 // LAYER 5 — CROSS-TOOL CONSISTENCY (same value across surfaces; SPX). #80 class.
 // ---------------------------------------------------------------------------
-async function crossToolChecks(ctx: Ctx, hm: GexHeatmap): Promise<CheckResult[]> {
+
+/** Minimal merged-desk shape for the SPX desk-vs-matrix cross-tool lane (exported for tests). */
+export type SpxDeskCrossToolInput = {
+  available?: boolean;
+  price?: number;
+  gamma_flip?: number | null;
+  gex_stale?: boolean;
+  gex_age_ms?: number | null;
+};
+
+/**
+ * SPX Slayer desk vs the held Heat Maps snapshot. Off-hours the merged desk cache can lag a
+ * fresh matrix rebuild by one TTL (ops-collect runs `?force=1` premarket) — skip then, same as
+ * freshness. During RTH, skip flip when the desk itself marks GEX stale.
+ */
+export function spxDeskCrossToolChecks(
+  ctx: Ctx,
+  hm: GexHeatmap,
+  marketOpen: boolean,
+  merged: SpxDeskCrossToolInput
+): CheckResult[] {
+  const out: CheckResult[] = [];
+  if (!marketOpen) {
+    out.push(
+      mk(
+        ctx,
+        "cross-tool",
+        "gamma_flip",
+        "skipped",
+        "Market closed — SPX desk vs Heat Maps cross-tool check skipped (desk cache may lag a fresh matrix rebuild off-hours).",
+        { id: "desk-vs-matrix-flip" }
+      )
+    );
+    return out;
+  }
+  if (!merged?.available || !(merged.price! > 0) || !(hm.spot > 0)) {
+    out.push(
+      mk(ctx, "cross-tool", "spot", "skipped", "SPX desk unavailable/closed — desk cross-tool check skipped.", {
+        id: "desk-vs-matrix-spot",
+      })
+    );
+    return out;
+  }
+  const sd = fractionalDiff(merged.price!, hm.spot);
+  out.push(
+    mk(
+      ctx,
+      "cross-tool",
+      "spot",
+      sd <= TOL.spotFractional ? "consistency-only" : "flag",
+      sd <= TOL.spotFractional
+        ? `SPX desk price ${fmt(merged.price!)} == heatmap spot ${fmt(hm.spot)}.`
+        : `SPX desk price ${fmt(merged.price!)} != heatmap spot ${fmt(hm.spot)} (Δ ${(sd * 100).toFixed(2)}%) — desk vs Heat Maps spot divergence (#80 class).`,
+      { id: "desk-vs-matrix-spot", expected: hm.spot, actual: merged.price, tolerance: TOL.spotFractional }
+    )
+  );
+  if (merged.gex_stale) {
+    out.push(
+      mk(
+        ctx,
+        "cross-tool",
+        "gamma_flip",
+        "skipped",
+        "SPX desk GEX marked stale — desk-vs-matrix flip check skipped (desk shows last-good, not live).",
+        { id: "desk-vs-matrix-flip" }
+      )
+    );
+    return out;
+  }
+  if (merged.gamma_flip != null && hm.gex.flip != null) {
+    const close = Math.abs(merged.gamma_flip - hm.gex.flip) <= Math.max(hm.spot * 0.01, 1);
+    out.push(
+      mk(
+        ctx,
+        "cross-tool",
+        "gamma_flip",
+        close ? "consistency-only" : "flag",
+        close
+          ? `SPX desk γ-flip ${fmt(merged.gamma_flip)} ≈ heatmap flip ${fmt(hm.gex.flip)}.`
+          : `SPX desk γ-flip ${fmt(merged.gamma_flip)} != heatmap flip ${fmt(hm.gex.flip)} — same label, different level (#80 class).`,
+        {
+          id: "desk-vs-matrix-flip",
+          expected: hm.gex.flip,
+          actual: merged.gamma_flip,
+          tolerance: Math.max(hm.spot * 0.01, 1),
+        }
+      )
+    );
+  }
+  return out;
+}
+
+async function crossToolChecks(ctx: Ctx, hm: GexHeatmap, marketOpen: boolean): Promise<CheckResult[]> {
   const out: CheckResult[] = [];
   const { root } = resolveOptionsRoot(ctx.ticker);
 
@@ -1394,53 +1486,12 @@ async function crossToolChecks(ctx: Ctx, hm: GexHeatmap): Promise<CheckResult[]>
     );
   }
 
-  // SPX-only: confirm the SPX desk (SPX Slayer) reads the same spot / King / flip as the matrix.
+  // SPX-only: confirm the SPX desk (SPX Slayer) reads the same spot / flip as the matrix.
   if (root === "SPX") {
     try {
       const { loadMergedSpxDesk } = await import("@/features/spx/lib/spx-desk-loader");
       const { merged } = await loadMergedSpxDesk();
-      if (merged?.available && merged.price > 0 && hm.spot > 0) {
-        const sd = fractionalDiff(merged.price, hm.spot);
-        out.push(
-          mk(
-            ctx,
-            "cross-tool",
-            "spot",
-            sd <= TOL.spotFractional ? "consistency-only" : "flag",
-            sd <= TOL.spotFractional
-              ? `SPX desk price ${fmt(merged.price)} == heatmap spot ${fmt(hm.spot)}.`
-              : `SPX desk price ${fmt(merged.price)} != heatmap spot ${fmt(hm.spot)} (Δ ${(sd * 100).toFixed(2)}%) — desk vs Heat Maps spot divergence (#80 class).`,
-            { id: "desk-vs-matrix-spot", expected: hm.spot, actual: merged.price, tolerance: TOL.spotFractional }
-          )
-        );
-        // Desk gamma flip vs matrix flip.
-        if (merged.gamma_flip != null && hm.gex.flip != null) {
-          const close = Math.abs(merged.gamma_flip - hm.gex.flip) <= Math.max(hm.spot * 0.01, 1);
-          out.push(
-            mk(
-              ctx,
-              "cross-tool",
-              "gamma_flip",
-              close ? "consistency-only" : "flag",
-              close
-                ? `SPX desk γ-flip ${fmt(merged.gamma_flip)} ≈ heatmap flip ${fmt(hm.gex.flip)}.`
-                : `SPX desk γ-flip ${fmt(merged.gamma_flip)} != heatmap flip ${fmt(hm.gex.flip)} — same label, different level (#80 class).`,
-              {
-                id: "desk-vs-matrix-flip",
-                expected: hm.gex.flip,
-                actual: merged.gamma_flip,
-                tolerance: Math.max(hm.spot * 0.01, 1),
-              }
-            )
-          );
-        }
-      } else {
-        out.push(
-          mk(ctx, "cross-tool", "spot", "skipped", "SPX desk unavailable/closed — desk cross-tool check skipped.", {
-            id: "desk-vs-matrix-spot",
-          })
-        );
-      }
+      out.push(...spxDeskCrossToolChecks(ctx, hm, marketOpen, merged));
     } catch {
       out.push(
         mk(ctx, "cross-tool", "spot", "skipped", "SPX desk load failed — desk cross-tool check skipped.", {
@@ -1630,7 +1681,7 @@ export async function verifyHeatmapTicker(ticker: string, marketOpen: boolean): 
     ["freshness", () => [freshnessCheck(ctx, hm, marketOpen)]],
     ["shadow", () => shadowRecomputeChecks(ctx, hm)],
     ["oracle", () => crossProviderChecks(ctx, hm)],
-    ["cross-tool", () => crossToolChecks(ctx, hm)],
+    ["cross-tool", () => crossToolChecks(ctx, hm, marketOpen)],
     ["dex-charm-cross-tool", () => dexCharmCrossToolChecks(ctx, hm)],
   ];
   for (const [name, run] of runners) {

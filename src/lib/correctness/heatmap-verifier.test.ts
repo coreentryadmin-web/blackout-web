@@ -25,9 +25,11 @@ mock.module("server-only", { namedExports: {} });
 let dexCharmInvariantChecks: typeof import("./heatmap-verifier").dexCharmInvariantChecks;
 let dexCharmSanityChecks: typeof import("./heatmap-verifier").dexCharmSanityChecks;
 let dexCharmCrossToolChecks: typeof import("./heatmap-verifier").dexCharmCrossToolChecks;
+let spxDeskCrossToolChecks: typeof import("./heatmap-verifier").spxDeskCrossToolChecks;
 
 before(async () => {
-  ({ dexCharmInvariantChecks, dexCharmSanityChecks, dexCharmCrossToolChecks } = await import("./heatmap-verifier"));
+  ({ dexCharmInvariantChecks, dexCharmSanityChecks, dexCharmCrossToolChecks, spxDeskCrossToolChecks } =
+    await import("./heatmap-verifier"));
 });
 
 // ---------------------------------------------------------------------------
@@ -394,4 +396,89 @@ test("dexCharmCrossToolChecks: getGexPositioning agrees with the matrix's own DE
   assert.equal(findCheck(out, "dex_posture", "positioning-vs-matrix-dex-posture")?.outcome, "consistency-only");
   assert.equal(findCheck(out, "net_charm", "positioning-vs-matrix-charm")?.outcome, "consistency-only");
   assert.equal(findCheck(out, "charm_posture", "positioning-vs-matrix-charm-posture")?.outcome, "consistency-only");
+});
+
+// ---------------------------------------------------------------------------
+// spxDeskCrossToolChecks — off-hours / stale-desk guards (ops-auto #2399)
+// ---------------------------------------------------------------------------
+
+test("spxDeskCrossToolChecks: off-hours skips desk-vs-matrix flip even when levels diverge", () => {
+  const ctx = makeCtx({ ticker: "SPX" });
+  const hm = makeHeatmap({
+    underlying: "SPX",
+    spot: 7700,
+    gex: {
+      cells: {},
+      strike_totals: {},
+      call_wall: null,
+      put_wall: null,
+      total: 0,
+      flip: 8071.03,
+      regime: { flip: 8071.03, posture: "short", read: "test" },
+    },
+  });
+  const out = spxDeskCrossToolChecks(ctx, hm, false, {
+    available: true,
+    price: 7700,
+    gamma_flip: 7899.11,
+    gex_stale: false,
+  });
+  const flip = findCheck(out, "gamma_flip", "desk-vs-matrix-flip");
+  assert.ok(flip);
+  assert.equal(flip!.outcome, "skipped");
+  assert.match(flip!.detail, /Market closed/);
+});
+
+test("spxDeskCrossToolChecks: RTH flags a real desk-vs-matrix flip divergence", () => {
+  const ctx = makeCtx({ ticker: "SPX" });
+  const hm = makeHeatmap({
+    underlying: "SPX",
+    spot: 7700,
+    gex: {
+      cells: {},
+      strike_totals: {},
+      call_wall: null,
+      put_wall: null,
+      total: 0,
+      flip: 8071.03,
+      regime: { flip: 8071.03, posture: "short", read: "test" },
+    },
+  });
+  const out = spxDeskCrossToolChecks(ctx, hm, true, {
+    available: true,
+    price: 7700,
+    gamma_flip: 7899.11,
+    gex_stale: false,
+  });
+  const flip = findCheck(out, "gamma_flip", "desk-vs-matrix-flip");
+  assert.ok(flip);
+  assert.equal(flip!.outcome, "flag");
+  assert.match(flip!.detail, /7899\.11.*8071\.03/);
+});
+
+test("spxDeskCrossToolChecks: stale desk GEX skips flip check during RTH", () => {
+  const ctx = makeCtx({ ticker: "SPX" });
+  const hm = makeHeatmap({
+    underlying: "SPX",
+    spot: 7700,
+    gex: {
+      cells: {},
+      strike_totals: {},
+      call_wall: null,
+      put_wall: null,
+      total: 0,
+      flip: 8071.03,
+      regime: { flip: 8071.03, posture: "short", read: "test" },
+    },
+  });
+  const out = spxDeskCrossToolChecks(ctx, hm, true, {
+    available: true,
+    price: 7700,
+    gamma_flip: 7899.11,
+    gex_stale: true,
+  });
+  const flip = findCheck(out, "gamma_flip", "desk-vs-matrix-flip");
+  assert.ok(flip);
+  assert.equal(flip!.outcome, "skipped");
+  assert.match(flip!.detail, /stale/);
 });

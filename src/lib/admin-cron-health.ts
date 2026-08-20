@@ -120,6 +120,8 @@ export type CronHealthPayload = {
   generated_at: string;
   cron_secret_configured: boolean;
   db_configured: boolean;
+  /** Set when Postgres snapshot queries fail — route stays 200 so ops-collect does not false-P0 on a blip. */
+  db_snapshot_error?: string | null;
   logged_runs_total: number;
   diagnostics_note: string | null;
   summary: {
@@ -298,11 +300,23 @@ export function evaluateJob(
 }
 
 export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
-  const [lastRuns, recentRuns, latestNhJob] = await Promise.all([
-    dbConfigured() ? fetchCronJobLastRuns() : Promise.resolve([]),
-    dbConfigured() ? fetchCronJobRecentRuns(48) : Promise.resolve([]),
-    dbConfigured() ? fetchLatestNighthawkJob() : Promise.resolve(null),
-  ]);
+  let lastRuns: Awaited<ReturnType<typeof fetchCronJobLastRuns>> = [];
+  let recentRuns: Awaited<ReturnType<typeof fetchCronJobRecentRuns>> = [];
+  let latestNhJob: Awaited<ReturnType<typeof fetchLatestNighthawkJob>> = null;
+  let dbSnapshotError: string | null = null;
+
+  if (dbConfigured()) {
+    try {
+      [lastRuns, recentRuns, latestNhJob] = await Promise.all([
+        fetchCronJobLastRuns(),
+        fetchCronJobRecentRuns(48),
+        fetchLatestNighthawkJob(),
+      ]);
+    } catch (error) {
+      dbSnapshotError = error instanceof Error ? error.message : String(error);
+      console.error("[cron-health] Postgres snapshot failed:", dbSnapshotError);
+    }
+  }
 
   const lastByKey = Object.fromEntries(lastRuns.map((r) => [r.job_key, r]));
   const since24h = Date.now() - 24 * 60 * 60_000;
@@ -492,6 +506,7 @@ export async function buildCronHealthSnapshot(): Promise<CronHealthPayload> {
     generated_at: new Date().toISOString(),
     cron_secret_configured: Boolean(process.env.CRON_SECRET?.trim()),
     db_configured: dbConfigured(),
+    db_snapshot_error: dbSnapshotError,
     logged_runs_total: loggedRunsTotal,
     diagnostics_note: diagnosticsNote,
     summary,
