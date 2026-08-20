@@ -524,13 +524,31 @@ async function prepareLargoTurn(
       void updateLargoSessionMetadata(sid, userId, { last_turn_snapshot: nowSnap }).catch(() => {});
     }
   } else if (activeDeskScope && deskScopeArgs?.mode !== "watch") {
-    const nowSnap = await buildTurnSnapshot({
+    // NOT AWAITED. Outside `diff` mode this snapshot feeds NOTHING the member sees — its only
+    // consumer is the fire-and-forget `updateLargoSessionMetadata` write below, which exists so
+    // that a LATER `diff` turn has a baseline to compare against. Awaiting it made every ordinary
+    // turn wait on a desk round-trip for a value that never reaches the answer.
+    //
+    // MEASURED ON PROD 2026-08-20 during RTH, via the SSE stream: a Concrete turn spent 22.3s and
+    // 15.1s (two questions) between the request and the FIRST `tool_start` — roughly half of a
+    // 44.1s / 41.4s turn — before any tool ran. That window is a chain of sequential awaits ahead
+    // of the first model round-trip, and this is one of them.
+    //
+    // The `diff` branch above KEEPS its await: there `nowSnap` feeds `formatDiffBlock` straight
+    // into the prompt, so the answer genuinely depends on it. The distinction is exactly "does the
+    // member's answer read this value", not "is it cheap".
+    //
+    // Errors stay swallowed as before — a failed snapshot must never surface as a failed turn.
+    void buildTurnSnapshot({
       ticker: scopeTicker,
       deskScope: activeDeskScope,
-    }).catch(() => null);
-    if (nowSnap) {
-      void updateLargoSessionMetadata(sid, userId, { last_turn_snapshot: nowSnap }).catch(() => {});
-    }
+    })
+      .then((nowSnap) => {
+        if (nowSnap) {
+          void updateLargoSessionMetadata(sid, userId, { last_turn_snapshot: nowSnap }).catch(() => {});
+        }
+      })
+      .catch(() => {});
   }
 
   const liveFeed = await captureLargoLiveFeed(intent, userId);
