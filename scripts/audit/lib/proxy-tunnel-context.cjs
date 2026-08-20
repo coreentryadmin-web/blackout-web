@@ -236,6 +236,13 @@ async function createTunneledContext({
    * a silently-truncated page.
    */
   requestTimeoutMs = undefined,
+  /**
+   * Browser timezone (IANA id, e.g. "Asia/Tokyo"). Needed to validate that member-facing clocks
+   * render in MARKET time rather than the viewer's — the #2368 defect is invisible from a browser
+   * already sitting in ET, because both readings agree there and a passing check proves nothing.
+   * Unset by default, i.e. the runner's own zone, so no existing caller changes behaviour.
+   */
+  timezoneId = null,
 } = {}) {
   const [vw, vh] = String(viewport).split("x").map(Number);
 
@@ -250,6 +257,7 @@ async function createTunneledContext({
     userAgent: desktop ? DESKTOP_UA : IPHONE_UA,
     deviceScaleFactor: desktop ? 1 : 3,
     isMobile: !desktop,
+    ...(timezoneId ? { timezoneId } : {}),
   });
 
   if (seedStorage) {

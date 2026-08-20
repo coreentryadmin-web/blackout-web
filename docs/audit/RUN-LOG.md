@@ -9,6 +9,52 @@ already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
 
+## 2026-08-20 — [UI] Post-deploy live validation of #2368 (ET clocks) — PASS; #2372 SKIPPED off-hours
+
+**Severity.** — (no product defect found)
+
+**Why it ran.** Seven member-visible fixes shipped 2026-08-19/20 verified by unit test and root
+cause; none had been observed in a browser against production. The replay-beads fix got its own
+pixel probe. This closes the gap for the two remaining fixes that are observable OFF-HOURS.
+
+**#2368 — ET clock pinning: PASS.** Ten formatters called `toLocaleTimeString`/`toLocaleDateString`
+with no `timeZone`, so they rendered in the VIEWER's zone. Measured live on `/nighthawk` from a
+browser pinned to **Asia/Tokyo** (UTC+9), confirmed via `Intl.DateTimeFormat().resolvedOptions()`:
+
+| metric | value |
+|---|---|
+| clock strings rendered | 54 |
+| parsed to a time | 40 |
+| inside the ET session window (04:00–20:00) | **40 / 40** |
+| overnight-shifted (>=21:00 or <=03:00) | **0** |
+| observed range | 10:02 – 14:33 |
+| tunnel routing | 138 ok / 0 fail |
+
+Unpinned, a UTC+9 browser renders those ET instants ~13h later — clustered in 22:00–06:00. The
+observed range is the ET session itself, and the two windows do not overlap, so one load settles it.
+
+**#2372 — Expiry Concentration bars: SKIPPED, not passed.** The panel hides below a $50k premium
+floor and the tape is frozen off-hours, so zero buckets rendered. Nothing to measure. Re-run during
+RTH; the harness reports SKIP rather than inventing a verdict.
+
+**A harness correction worth recording.** The first version of the clock check rendered the page in
+two zones and required the clock sets to match byte-for-byte. It reported **FAIL** — with an
+ASYMMETRIC diff: 8 strings only in the Tokyo load, ZERO only in the Los Angeles load. A timezone
+fault differs on BOTH sides by construction, so a one-sided difference is **live-data drift** on a
+board whose timestamps legitimately move between two loads minutes apart. Reporting it would have
+been a false alarm on a working fix. The check is now a single-load window test, which is immune to
+drift; the cross-zone comparison is retained as context and never gates the verdict.
+
+**Also:** `ERR_CONNECTION_RESET` hit mid-run while the `fab8a26f` deploy was still rolling — a
+draining ECS replica, not the sandbox egress block. The harness now retries navigation 3x with
+backoff, the same trap `meridian-earnings-ui-audit.mjs` already documents.
+
+**Tooling:** `scripts/audit/post-deploy-ui-validate.cjs` (new); `timezoneId` threaded through
+`scripts/audit/lib/proxy-tunnel-context.cjs` — without it this fix cannot be validated at all, since
+a runner already in ET sees both readings agree and a pass proves nothing.
+
+---
+
 ## 2026-08-14 — [Thermal/GEX] Force-rebuild timing baseline — overnight, 20/20 clean, an order of magnitude under the cap
 
 **Severity.** — (no product defect found; this is a measurement, and it did NOT justify the config change it was run to justify)
