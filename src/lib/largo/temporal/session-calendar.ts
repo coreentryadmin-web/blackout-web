@@ -88,8 +88,29 @@ export function upcomingSessions(
  * Written as flat assertions rather than prose: this is reference data the model checks a date
  * against, not something it should paraphrase back to the member.
  */
-export function formatSessionCalendarBlock(todayYmd: string, count = 5): string {
+/**
+ * `etMinutesNow` — minutes since ET midnight, when the caller knows them.
+ *
+ * The SETTLED decision is made HERE, not by the caller, because it needs the calendar's own
+ * trading-day classification. A caller passing a market-phase enum cannot make it correctly:
+ * `CLOSED` covers both 11pm Thursday (today HAS settled) and 2am Thursday (today has NOT), and
+ * getting that backwards would announce a settled expiry twelve hours early — a new defect in
+ * place of the old one.
+ *
+ * Optional, so every existing caller and test is unaffected; omit it and the block reads exactly
+ * as before.
+ */
+export function formatSessionCalendarBlock(
+  todayYmd: string,
+  count = 5,
+  etMinutesNow?: number
+): string {
   const today = classifyEtDay(todayYmd);
+  // A trading day, past the 16:00 ET cash close. Non-trading days are NOT marked settled — the
+  // block already states "NOT a trading day" for those, and "today's options have settled" would
+  // be a strange thing to tell someone on a Saturday.
+  const settled =
+    today.kind === "trading" && typeof etMinutesNow === "number" && etMinutesNow >= 16 * 60;
   const { trading, skipped } = upcomingSessions(todayYmd, count);
   const fmt = (d: CalendarDay) => `${d.ymd} (${d.weekday})`;
 
@@ -100,6 +121,27 @@ export function formatSessionCalendarBlock(todayYmd: string, count = 5): string 
   if (skipped.length) {
     lines.push(
       `NOT trading days: ${skipped.map((d) => `${fmt(d)} — ${d.kind}`).join(", ")}`
+    );
+  }
+  if (settled) {
+    // WITHOUT THIS, "0DTE" SILENTLY MEANS A SETTLED SESSION.
+    //
+    // The block already carried the session DATE and a rule saying "check here before you state a
+    // DTE" — but nothing said whether that session was still open, so `0DTE = today` was the only
+    // inference available. Market phase WAS computed and DID reach the prompt, but only as a voice
+    // instruction ("Off-hours: shorter answers"), never as a fact.
+    //
+    // MEASURED ON PROD 2026-08-20 at ~16:45 ET, after the close: "What is the current 0DTE max
+    // pain?" answered "SPX 0DTE max pain is **7685**". 7685 was CORRECT — it is the max pain for
+    // 2026-08-21, and the chain had properly rolled (`expiries[0] = 2026-08-21`). The DATA was
+    // right and the LABEL was wrong: post-close, 8/21 is 1DTE, not 0DTE. Right number, settled
+    // session — the same family as the Sunday-expiry defect, and on a term where a trader depends
+    // on the precision.
+    lines.push(
+      `EXPIRY STATUS: today's (${todayYmd}) options have SETTLED — the session is over. "0DTE" no ` +
+        `longer refers to ${todayYmd}. The front expiry is now ${trading[0]?.ymd ?? "the next session"}, ` +
+        `which is 1DTE until that session opens. Count DTE from the next trading session, and if a ` +
+        `member says "0DTE" after the close, say which expiry you are actually quoting.`
     );
   }
   lines.push(

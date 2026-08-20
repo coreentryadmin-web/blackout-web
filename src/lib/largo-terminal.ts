@@ -307,7 +307,16 @@ function buildDynamicSystem(
   platformVitalsBlock: string,
   extraBlocks = "",
   /** Answer mode — the closing line below contradicts Concrete unless it knows the mode. */
-  depth: LargoDepth = "deep"
+  depth: LargoDepth = "deep",
+  /**
+   * Minutes since ET midnight. Defaults undefined so existing callers are unchanged.
+   *
+   * The market phase was already computed for `formatRegimePersonalityBlock`, but only as a VOICE
+   * instruction ("Off-hours: shorter answers"). The calendar block — the one that tells the model
+   * to check before stating a DTE — never learned the time, so "0DTE" kept meaning "today" after
+   * today had settled. The calendar decides what the time MEANS; this only supplies it.
+   */
+  etMinutesNow?: number
 ): AnthropicSystemBlock[] {
   const intent = analyzeLargoQuestion(question, history);
   const platformSection = platformVitalsBlock.trim()
@@ -329,7 +338,7 @@ function buildDynamicSystem(
       : "opinion in Bottom line.";
   const dynamicPart = `## This turn
 
-${formatSessionCalendarBlock(todayEtYmd())}
+${formatSessionCalendarBlock(todayEtYmd(), 5, etMinutesNow)}
 
 ${liveFeedBlock}${platformSection}${extraBlocks}
 
@@ -734,7 +743,8 @@ async function prepareLargoTurn(
   }).formatToParts(now);
   const part = (t: string) => et.find((p) => p.type === t)?.value ?? "";
   const DAYS: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-  const marketPhase = marketPhaseFromEt(DAYS[part("weekday")] ?? 1, Number(part("hour")) * 60 + Number(part("minute")));
+  const etMinutesNow = Number(part("hour")) * 60 + Number(part("minute"));
+  const marketPhase = marketPhaseFromEt(DAYS[part("weekday")] ?? 1, etMinutesNow);
 
   const tier = await getUserTier(userId).catch(() => null);
   const isAdmin = await isAdminUser(userId).catch(() => false);
@@ -771,7 +781,8 @@ async function prepareLargoTurn(
     liveFeedBlock + knowledgeBlock + temporalBlock + capabilityBlock + entityBlock + ontologyBlock + tradeBlock + conversationBlock + planBlock + drillDownBlock + formatImageBlock(images.length),
     platformVitalsBlock,
     extraBlocks,
-    depth
+    depth,
+    etMinutesNow
   );
 
   resetLargoSpxDeskCache(userId);
