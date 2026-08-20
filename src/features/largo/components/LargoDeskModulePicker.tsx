@@ -5,6 +5,7 @@ import { ChevronLeft } from "lucide-react";
 import { useState } from "react";
 import type { DeskScopeKey } from "@/lib/largo/desk-scope";
 import {
+  formatLargoScopePrefill,
   largoDeskStarterCards,
   largoSubmoduleCardsForDesk,
   type LargoDeskStarterCard,
@@ -39,7 +40,7 @@ export function LargoDeskModulePicker({
     if (meta) {
       onScope({
         deskScope: id,
-        prefill: `/${meta.command} `,
+        prefill: formatLargoScopePrefill(meta.command),
       });
     }
   }
@@ -48,7 +49,7 @@ export function LargoDeskModulePicker({
     onScope({
       deskScope: card.desk,
       deskScopeArgs: { submodule: card.submodule },
-      prefill: `/${card.desk} ${card.submodule} `,
+      prefill: formatLargoScopePrefill(card.desk, card.submodule),
     });
   }
 

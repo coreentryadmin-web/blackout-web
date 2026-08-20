@@ -1,10 +1,21 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  formatLargoScopePrefill,
   largoDeskStarterCards,
   largoModuleStarterCards,
   largoSubmoduleCardsForDesk,
 } from "./largo-module-starter-cards";
+
+describe("formatLargoScopePrefill", () => {
+  it("prefills desk-only scope", () => {
+    assert.equal(formatLargoScopePrefill("spx-slayer"), "/spx-slayer ");
+  });
+
+  it("prefills desk + submodule with slash on both", () => {
+    assert.equal(formatLargoScopePrefill("spx-slayer", "gex"), "/spx-slayer /gex ");
+  });
+});
 
 describe("largoDeskStarterCards", () => {
   it("returns product desks for step one", () => {

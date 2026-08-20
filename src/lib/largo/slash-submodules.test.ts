@@ -50,9 +50,19 @@ describe("peelSubmoduleFromArgs", () => {
     assert.equal(submodule?.id, "whales");
     assert.equal(rest, "NVDA");
   });
+
+  it("peels submodule when token has leading slash", () => {
+    const { submodule, rest } = peelSubmoduleFromArgs("spx-slayer", "/gex What's the read?");
+    assert.equal(submodule?.id, "gex");
+    assert.equal(rest, "What's the read?");
+  });
 });
 
 describe("parseDeskSlashArgs with desk", () => {
+  it("parses /spx-slayer /gex", () => {
+    assert.deepEqual(parseDeskSlashArgs("/gex", "spx-slayer"), { submodule: "gex" });
+  });
+
   it("parses /spx-slayer gex", () => {
     assert.deepEqual(parseDeskSlashArgs("gex", "spx-slayer"), { submodule: "gex" });
   });

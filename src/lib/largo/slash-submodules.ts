@@ -1,7 +1,7 @@
 /**
  * Stable desk submodules — the second CLI layer after desk scope.
  * Grammar: `/ <desk> [ <submodule> ] [ <ticker> ] [ <modifier> ]`
- * Example: `/spx-slayer gex`, `/helix whales NVDA`, `/thermal compare mag7`
+ * Example: `/spx-slayer /gex`, `/helix /whales NVDA`, `/thermal /compare mag7`
  *
  * Client-safe: static metadata only. Prefetch/mini-panel slices live in server modules.
  */
@@ -499,7 +499,7 @@ export function peelSubmoduleFromArgs(
   if (!raw || !desk) return { submodule: null, rest: raw };
 
   const parts = raw.split(/\s+/);
-  const first = parts[0] ?? "";
+  const first = (parts[0] ?? "").replace(/^\//, "");
   const mod = resolveSubmodule(desk, first);
   if (!mod) return { submodule: null, rest: raw };
 

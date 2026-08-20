@@ -6,7 +6,7 @@
 import { TOOLS, type ToolKey } from "@/lib/tool-access";
 import { LARGO_DESK_PROMPTS } from "@/lib/largo/desk-prompts";
 import { parseDeskSlashArgs, type DeskSlashArgs, deskScopeConfig } from "@/lib/largo/desk-scope";
-import { submoduleDefaultQuestion } from "@/lib/largo/slash-submodules";
+import { peelSubmoduleFromArgs, submoduleDefaultQuestion } from "@/lib/largo/slash-submodules";
 
 export type LargoSlashCommandKind = "navigate" | "prompt";
 
@@ -283,7 +283,11 @@ function questionForSlash(cmd: LargoSlashCommand, args: string, parsed: DeskSlas
   if (cmd.kind === "prompt" && cmd.question) return cmd.question;
 
   const deskKey = cmd.kind === "navigate" ? cmd.command : null;
+  const memberTail =
+    deskKey && parsed.submodule ? peelSubmoduleFromArgs(deskKey, args).rest.trim() : args.trim();
+
   if (parsed.submodule && deskKey) {
+    if (memberTail) return memberTail;
     const cfg = deskScopeConfig(deskKey);
     const ticker = parsed.ticker ?? cfg?.defaultTicker ?? "SPX";
     const subQ = submoduleDefaultQuestion(deskKey, parsed.submodule, ticker);
@@ -295,7 +299,7 @@ function questionForSlash(cmd: LargoSlashCommand, args: string, parsed: DeskSlas
 
   if (!args) return slashDefaultQuestion(cmd, prompts);
   if (SINGLE_TICKER.test(args.trim())) return slashNavigateQuestion(cmd, args.trim());
-  return args.length > 12 ? args : slashNavigateQuestion(cmd, args);
+  return memberTail.length > 12 ? memberTail : slashNavigateQuestion(cmd, args);
 }
 
 /** Turn composer submit text into a Largo query. Desk slash commands stay in-terminal. */

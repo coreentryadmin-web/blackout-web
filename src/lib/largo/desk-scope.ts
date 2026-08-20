@@ -221,7 +221,7 @@ export function formatScopedAnswerContract(args?: DeskSlashArgs): string {
 
 const TICKER_TOKEN = /^\$?([A-Z][A-Z0-9]{0,4})$/i;
 
-/** Parse tail after slash command: `/helix whales NVDA`, `/spx-slayer gex`, `/thermal compare mag7`. */
+/** Parse tail after slash command: `/helix /whales NVDA`, `/spx-slayer /gex`, `/thermal compare mag7`. */
 export function parseDeskSlashArgs(args: string, desk?: string | null): DeskSlashArgs {
   const raw = args.trim();
   if (!raw) return {};
@@ -261,7 +261,7 @@ export function parseDeskSlashArgs(args: string, desk?: string | null): DeskSlas
     return out;
   }
 
-  // Peel stable submodule when desk is known: `/spx-slayer gex`, `/helix whales NVDA`.
+  // Peel stable submodule when desk is known: `/spx-slayer /gex`, `/helix /whales NVDA`.
   let tail = raw;
   let submodule: string | undefined;
   if (desk) {
