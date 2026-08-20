@@ -1,6 +1,6 @@
 import type { GexHeatmap } from "@/lib/providers/polygon-options-gex";
 import { resolveOdteExpiry } from "@/lib/correctness/gex-odte-scope";
-import { wallsFromStrikeTotals, cumulativeGammaFlip, buildGexRegime } from "@/lib/providers/gex-cross-validation-core";
+import { wallsFromStrikeTotals, cumulativeGammaFlipDetail, buildGexRegime } from "@/lib/providers/gex-cross-validation-core";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import {
   getSpxOdteScopedUwLadderMap,
@@ -31,7 +31,12 @@ export function recomputeNearTermGexStrikeTotals(hm: GexHeatmap): void {
   const { callWall, putWall } = wallsFromStrikeTotals(totals);
   hm.gex.call_wall = callWall;
   hm.gex.put_wall = putWall;
-  const flip = cumulativeGammaFlip(totals, hm.spot);
+  // DETAIL, not just the value: the overlay replaces today's 0DTE column, so it must recompute
+  // WHY the flip is null alongside the flip itself. Carrying the value while inheriting the
+  // pre-overlay reason is the same class of staleness this function was fixed for once already.
+  const flipDetail = cumulativeGammaFlipDetail(totals, hm.spot);
+  const flip = flipDetail.flip;
+  hm.gex.flip_reason = flipDetail.reason;
   hm.gex.flip = flip;
 
   // REBUILD THE REGIME FROM THE NEW FLIP — it used to be left behind here.
@@ -56,7 +61,7 @@ export function recomputeNearTermGexStrikeTotals(hm: GexHeatmap): void {
   // (dampened/mean-reverting vs amplified/trending). With spot ~180 pts below both flips the answer
   // was "short" either way, which is precisely why this survived unnoticed — the failure only bites
   // when spot sits BETWEEN the two.
-  hm.gex.regime = buildGexRegime({ spot: hm.spot, flip, callWall, putWall });
+  hm.gex.regime = buildGexRegime({ spot: hm.spot, flip, callWall, putWall, flipReason: flipDetail.reason });
 }
 
 /**
