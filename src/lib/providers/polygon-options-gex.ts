@@ -291,6 +291,19 @@ export type GexMetricBlock = {
   flip_reason?: GammaFlipReason;
   /** Regime read derived from spot vs the gamma flip. */
   regime: GexRegime;
+  /**
+   * Did the SPX 0DTE UW overlay run for THIS payload? Absent on non-SPX and on snapshots written
+   * before this field existed. `applied: false, reason: "ladder_unavailable"` means the served
+   * matrix is the raw Polygon book while a neighbouring request may carry the UW-overlaid one —
+   * the two disagree on strike count, net total and both walls.
+   */
+  odte_overlay?: SpxOdteOverlayState;
+};
+
+/** Whether the SPX 0DTE UW overlay applied, and why not when it did not. */
+export type SpxOdteOverlayState = {
+  applied: boolean;
+  reason: "applied" | "not_applicable" | "no_odte_expiry" | "ladder_unavailable";
 };
 
 /**
