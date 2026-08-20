@@ -77,13 +77,15 @@ type Stamped = { session_date?: string; et?: string };
  * intraday bars get `et`. Bars without a usable `t` pass through untouched — a missing timestamp
  * must not become a wrong date.
  */
-export function stampBars<T extends Record<string, unknown>>(
+export function stampBars<T extends object>(
   bars: readonly T[],
   timespan: AggTimespan
 ): Array<T & Stamped> {
   const daily = timespan === "day" || timespan === "week";
   return bars.map((bar) => {
-    const t = bar?.t;
+    // `T extends object` rather than `Record<string, unknown>` so typed bar shapes (AggBar) keep
+    // their type through the stamp instead of being cast to a bag at every call site.
+    const t = (bar as { t?: unknown } | null)?.t;
     if (daily) {
       const date = etSessionDate(t);
       return date ? { ...bar, session_date: date } : { ...bar };

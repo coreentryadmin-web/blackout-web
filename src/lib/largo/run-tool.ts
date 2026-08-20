@@ -1363,7 +1363,7 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
           ticker: sym,
           candle_size: size,
           source: "polygon",
-          bars: stampBars(polygonBars.slice(-60) as unknown as Array<Record<string, unknown>>, cfg.span),
+          bars: stampBars(polygonBars.slice(-60), cfg.span),
         };
       }
       return {

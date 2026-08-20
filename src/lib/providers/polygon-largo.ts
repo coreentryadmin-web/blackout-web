@@ -6,6 +6,7 @@ import { polygonTrackedFetch, isPolygonCircuitOpen } from "./polygon-rate-limite
 import { polygonConfigured } from "./config";
 import { priorEtYmd, todayEtYmd } from "./spx-session";
 import { recordDataSourceing } from "@/features/nighthawk/lib/diagnostics";
+import { stampBars } from "@/lib/largo/temporal/bar-session-date";
 
 // Primary/fallback URL failover: when the circuit breaker trips (5 consecutive 429s),
 // switch to the fallback URL so requests aren't blocked for the full pause window.
@@ -384,7 +385,12 @@ export async function fetchPolygonMtfTechnicals(ticker: string) {
     trend_stack: trendStack,
     atr14,
     rel_volume,
-    daily_bars: daily.slice(-60),
+    // Stamped, not bare. Unlabelled, this array is the single worst offender in the whole tool
+    // surface: asked for a named past date, the model picked `daily_bars[0]` — the OLDEST bar in a
+    // 60-session window — and reported its close as the answer, citing t=1779858000000 (2026-05-27)
+    // for a question about 2026-08-17. A bar that carries its own session date can be selected BY
+    // that date instead of by position.
+    daily_bars: stampBars(daily.slice(-60), "day"),
     prev_day: prevDay
       ? { open: prevDay.o, high: prevDay.h, low: prevDay.l, close: prevDay.c, volume: prevDay.v }
       : null,
