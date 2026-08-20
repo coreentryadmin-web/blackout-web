@@ -96,37 +96,76 @@ export async function mintClerkPremiumSession({
     userId = created.userId;
     if (!userId) return { skip: true, reason: created.error ?? "could not create or adopt a temp Clerk user" };
 
-    const tokenRes = await backend("POST", "/sign_in_tokens", { user_id: userId });
-    const ticket = (await tokenRes.json().catch(() => null))?.token;
-    if (!ticket) return { skip: true, reason: "sign_in_tokens mint failed" };
+    /**
+     * Full sign-in for `userId`: mint a ticket, exchange it, take a first JWT.
+     *
+     * Extracted so `refresh()` can REDO it. Everything it produces (the client-cookie jar, the
+     * session id, the pinned `__client_uat`) is state that Clerk can invalidate as a SET — when it
+     * does, rotating the token alone cannot recover, because the token endpoint is exactly what
+     * stopped working. Re-establishing is the only way back.
+     *
+     * Reuses the SAME Clerk user. CLAUDE.md's "authenticate once per run" warning is about FAPI
+     * rate-limiting rapid sign-in cycles; this fires only on demonstrated failure and is throttled
+     * by `MIN_REESTABLISH_MS` below, so a long run performs a handful, not one per request.
+     */
+    const establish = async () => {
+      const tokenRes = await backend("POST", "/sign_in_tokens", { user_id: userId });
+      const ticket = (await tokenRes.json().catch(() => null))?.token;
+      if (!ticket) return { error: "sign_in_tokens mint failed" };
 
-    const signInRes = await fetch(`${fapi}/v1/client/sign_ins?_clerk_js_version=${CJS}`, {
-      method: "POST",
-      headers: { Origin: appUrl, Referer: `${appUrl}/`, "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ strategy: "ticket", ticket }),
-    });
-    // MUTABLE jar: `refresh()` rotates these in place (see the WHY on refresh below). It was a
-    // `const` snapshot, which is what made long-running sessions die at ~72s.
-    const clientCookies = collectSetCookies(signInRes);
-    const signInJson = await signInRes.json().catch(() => null);
-    const sessionId = signInJson?.response?.created_session_id;
-    if (!sessionId) return { skip: true, reason: "FAPI ticket exchange did not return created_session_id" };
+      const signInRes = await fetch(`${fapi}/v1/client/sign_ins?_clerk_js_version=${CJS}`, {
+        method: "POST",
+        headers: { Origin: appUrl, Referer: `${appUrl}/`, "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ strategy: "ticket", ticket }),
+      });
+      // MUTABLE jar: `refresh()` rotates these in place (see the WHY on refresh below). It was a
+      // `const` snapshot, which is what made long-running sessions die at ~72s.
+      const cookies = collectSetCookies(signInRes);
+      const signInJson = await signInRes.json().catch(() => null);
+      const sid = signInJson?.response?.created_session_id;
+      if (!sid) return { error: "FAPI ticket exchange did not return created_session_id" };
 
-    // Pinned once (not recomputed per-request) — see data-validator.mjs's own
-    // comment on session-token-iat-before-client-uat for why recomputing this
-    // per call would intermittently 401 every request after the first.
-    const clientUat = Math.floor(Date.now() / 1000);
-    const mintRes = await fetch(`${fapi}/v1/client/sessions/${sessionId}/tokens?_clerk_js_version=${CJS}`, {
-      method: "POST",
-      headers: {
-        Origin: appUrl,
-        Referer: `${appUrl}/`,
-        "Content-Type": "application/x-www-form-urlencoded",
-        Cookie: clientCookies.join("; "),
-      },
-    });
-    const jwt = (await mintRes.json().catch(() => null))?.jwt;
-    if (!jwt) return { skip: true, reason: "session token mint failed" };
+      // Pinned once per establishment (not recomputed per-request) — see data-validator.mjs's own
+      // comment on session-token-iat-before-client-uat for why recomputing this
+      // per call would intermittently 401 every request after the first.
+      const uat = Math.floor(Date.now() / 1000);
+      const mintRes = await fetch(`${fapi}/v1/client/sessions/${sid}/tokens?_clerk_js_version=${CJS}`, {
+        method: "POST",
+        headers: {
+          Origin: appUrl,
+          Referer: `${appUrl}/`,
+          "Content-Type": "application/x-www-form-urlencoded",
+          Cookie: cookies.join("; "),
+        },
+      });
+      const firstJwt = (await mintRes.json().catch(() => null))?.jwt;
+      if (!firstJwt) return { error: "session token mint failed" };
+      return { cookies, sessionId: sid, clientUat: uat, jwt: firstJwt, ticket };
+    };
+
+    const first = await establish();
+    if (first.error) return { skip: true, reason: first.error };
+
+    // Mutable across re-establishment. `let`, not `const`: a re-established session replaces the
+    // jar, the session id AND the pinned uat together — they are only valid as a matched set.
+    let clientCookies = first.cookies;
+    let sessionId = first.sessionId;
+    let clientUat = first.clientUat;
+    // Kept for `signInUrl` (a browser hand-off used by the UI harnesses). Re-establishing mints a
+    // NEW ticket, so this tracks the latest rather than the first — a stale ticket is single-use
+    // and would hand a caller a sign-in link that silently fails.
+    let ticket = first.ticket;
+    const jwt = first.jwt;
+
+    /**
+     * Floor between re-establishments. Guards the one way this recovery could make things worse:
+     * if the FAPI sign-in path is itself rate-limited or down, an unthrottled retry would hammer it
+     * once per request and turn a degraded run into an abusive one. A run needing more than one
+     * re-establish per minute has a real outage behind it, and should surface as 401s rather than
+     * quietly retry forever.
+     */
+    const MIN_REESTABLISH_MS = 60_000;
+    let lastEstablishedAt = Date.now();
 
     /**
      * Re-mint the session JWT. This is the SAME call the browser's Clerk client makes on a timer.
@@ -168,8 +207,33 @@ export async function mintClerkPremiumSession({
       // board poll), which is why the rotation is done here rather than worked around per-harness.
       mergeCookies(clientCookies, collectSetCookies(r));
       const next = (await r.json().catch(() => null))?.jwt;
-      if (!next) return null;
-      return { jwt: next, cookieHeader: `__session=${next}; __client_uat=${clientUat}` };
+      if (next) return { jwt: next, cookieHeader: `__session=${next}; __client_uat=${clientUat}` };
+
+      /**
+       * TOKEN ENDPOINT STOPPED ISSUING — RE-ESTABLISH RATHER THAN FAIL OPEN.
+       *
+       * Returning null here (the previous behaviour) is unrecoverable by construction: every
+       * caller's cookie jar keeps the dead JWT, so the run 401s for its entire remainder. The
+       * cookie rotation above fixed the common cause of this, but not all of them — Clerk can drop
+       * the SESSION itself, and no amount of rotating a token against a dead session revives it.
+       *
+       * MEASURED 2026-08-20: a paired Largo audit died at the 5th of 20 scenarios (~200s in). The
+       * first four graded normally and the remaining 32 calls returned 401 in 70-900ms, which the
+       * rollup then averaged into "latency median 0.5s, shapeFails 16" — a healthy system reported
+       * as broken and fast. That is the third time this failure mode has been mis-read as a product
+       * fault (thermal validator sectors, force-rebuild "IWM 0/5", now this), which is why the
+       * recovery belongs HERE and not in each harness.
+       */
+      if (Date.now() - lastEstablishedAt < MIN_REESTABLISH_MS) return null;
+      const fresh = await establish();
+      if (fresh.error) return null;
+      clientCookies = fresh.cookies;
+      sessionId = fresh.sessionId;
+      clientUat = fresh.clientUat;
+      ticket = fresh.ticket;
+      lastEstablishedAt = Date.now();
+      console.warn("[clerk-session] token endpoint stopped issuing — re-established the session");
+      return { jwt: fresh.jwt, cookieHeader: `__session=${fresh.jwt}; __client_uat=${clientUat}` };
     };
 
     return {
@@ -177,7 +241,7 @@ export async function mintClerkPremiumSession({
       userId,
       refresh,
       cookieHeader: `__session=${jwt}; __client_uat=${clientUat}`,
-      signInUrl: `${appUrl}/sign-in?__clerk_ticket=${ticket}`,
+      get signInUrl() { return `${appUrl}/sign-in?__clerk_ticket=${ticket}`; },
       cleanup: async () => {
         await deleteAuditClerkUser(secret, userId);
       },
