@@ -68,6 +68,26 @@ test("Concrete states a measurable length target, not just 'tight'", () => {
   assert.match(CONCRETE, /\d{3,4}\s*characters?|\d{1,2},\d{3}/, "Concrete must state a character target/ceiling");
 });
 
+test("Concrete forbids bullets, tables and bold inline labels — not just headings", () => {
+  // "No section headers" was satisfiable by emitting the same eight sections as **bold labels**,
+  // which is what production actually returned. The ban has to name every form.
+  assert.match(CONCRETE, /no bullet lists?/i, "bullets must be forbidden");
+  assert.match(CONCRETE, /no tables?/i, "tables must be forbidden");
+  assert.match(CONCRETE, /bold inline labels?/i, "bold inline labels must be forbidden too");
+  assert.match(CONCRETE, /prose only/i, "must positively specify prose");
+});
+
+test("Concrete scopes the answer to the question asked", () => {
+  // The competitor behaviour the mode is modelled on: a narrow question gets a narrow answer.
+  // Without this, a "where are the walls" question came back with flip + flow + regime + play.
+  assert.match(CONCRETE, /answer only what was asked/i, "must restrict scope to the question");
+});
+
+test("Concrete requires the FIRST SENTENCE to be the answer", () => {
+  // A leading verdict word is what makes the reply scannable in one glance.
+  assert.match(CONCRETE, /first sentence must BE the answer/i);
+});
+
 test("Concrete keeps the data-honesty guarantee, and only drops its heading", () => {
   // The system prompt is right that a silent omission is undetectable by the member. Concrete is
   // allowed to remove the HEADING; it must not remove the disclosure.

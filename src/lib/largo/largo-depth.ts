@@ -25,9 +25,19 @@ export function largoDepthConfig(depth: LargoDepth): {
   if (depth === "concrete") {
     return {
       model: COMMENTARY_MODEL,
-      maxRounds: 3,
-      maxTokens: 2048,
-      timeoutMs: 45_000,
+      // TWO ROUNDS, NOT THREE. Measured on prod 2026-08-20: concrete median 24.5s, p90 34.6s —
+      // far too slow for the mode whose whole promise is a fast, direct answer. Each extra round
+      // is a full model round-trip with the entire context re-read. A one-line-plus-paragraph
+      // answer does not need a third pass; if a question genuinely does, it belongs in Deep dive.
+      maxRounds: 2,
+      // THE OUTPUT CAP IS THE SPEED FIX. Generation time scales with tokens produced, and concrete
+      // was emitting ~5,650 chars (~1,400 tokens) against a target of one paragraph — so most of
+      // that 24.5s was spent writing prose the mode was never supposed to produce. 900 tokens
+      // (~3,600 chars) is deliberately well ABOVE the ~700-char target: the prompt does the
+      // shaping, and this is only a backstop, because a mid-sentence truncation is worse for a
+      // member than a long answer.
+      maxTokens: 900,
+      timeoutMs: 30_000,
       label: "Concrete (Haiku, tight read)",
     };
   }
@@ -64,20 +74,36 @@ export function formatDepthBlock(depth: LargoDepth): string {
     return `
 ## Answer mode: Concrete — THIS OVERRIDES THE SECTION CONTRACT ABOVE
 
-When this mode is active the eight-section contract does NOT apply. Do not emit **Verdict**,
-**Facts**, **Interpretation**, **Confidence**, **Conflicts**, **Risk**, **Data** or **Bottom line**
-as headings. Write prose.
+The eight-section contract does NOT apply here. Do not emit **Verdict**, **Facts**,
+**Interpretation**, **Confidence**, **Conflicts**, **Risk**, **Data** or **Bottom line** — not as
+headings, not as bold inline labels, not in any form. No bullet lists. No tables. Plain prose only,
+one to two short paragraphs.
 
-- **Open with the answer in one line** — the thing they asked, decided (e.g. "Wait — not a trade" /
-  "Bullish above 6,450").
-- **Then one tight paragraph**: exact spot, flip, walls, flow. Cite tool numbers, not ranges.
-- **Target 900 characters, hard ceiling 1,600.** If the read genuinely needs more, the member should
-  switch to Deep dive — do not quietly grow Concrete into it.
-- **Keep the data honesty, lose the heading.** If a read was stale, missing or unavailable, say so
-  in a short clause inside the paragraph ("VIX unavailable, so no vol confirmation"). Never omit it
-  silently; never give it its own section.
-- If unclear or conflicting, say **wait** — do not invent a grade or trade.
-- Follow-up chips should be strike-level questions grounded in what you just cited.
+ANSWER ONLY WHAT WAS ASKED. If they asked where the walls are, give the walls — do not also deliver
+the flip, the flow, the regime, the play and the invalidation. Every fact you add that they did not
+ask for makes the one they did ask for harder to find. A narrow question gets a narrow answer.
+
+**The first sentence must BE the answer**, with the decisive word first and the reasoning attached
+to it. Not a preamble, not a restatement of the question:
+
+  "Divergent — only SPY is readable as agreeing, with SPXW and QQQ both dissenting, so no
+   directional pull on SPY's floor is confirmed right now."
+
+  "AAPL flow skews call-heavy: $178.3M single-leg premium today, 72.8% calls, put/call 0.37."
+
+Then at most one more paragraph carrying the specific numbers that justify it — exact strikes,
+exact levels, exact premiums, with the distance or ratio that makes them mean something ("2pts /
+0.71% below spot", "26% of king"). Numbers inline, in prose.
+
+**Target 400-700 characters. Hard ceiling 1,200.** If the question genuinely needs more than that,
+answer the asked part and say Deep dive covers the rest — do not quietly grow Concrete into it.
+
+Keep the data honesty, lose the heading: if a read was stale, missing or unavailable, say so in a
+clause inside the sentence it affects ("VIX unavailable, so no vol confirmation"). Never omit it
+silently; never give it its own section.
+
+If unclear or conflicting, say **wait** and say what would resolve it — do not invent a grade or a
+trade.
 `;
   }
   return `
