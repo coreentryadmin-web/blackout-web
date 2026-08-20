@@ -206,6 +206,7 @@ export type LargoStreamEvent =
       actions?: LargoAction[];
       depth?: LargoDepth;
       desk_scope?: string | null;
+      desk_scope_args?: DeskSlashArgs | null;
       mini_panel?: string | null;
     }
   | { type: "error"; message: string };
@@ -383,6 +384,7 @@ async function prepareLargoTurn(
   socialPack: SocialPackSlice | null;
   sessionMetadata: Awaited<ReturnType<typeof fetchLargoSessionMetadata>>;
   activeDeskScope: string | null;
+  deskScopeArgs: DeskSlashArgs | null;
   miniPanelKind: string | null;
 }> {
   let sid = sessionId.trim() || `web-${userId}-${Date.now()}`;
@@ -435,7 +437,7 @@ async function prepareLargoTurn(
 
   const toolsUsed: string[] = ["live_feed_capture"];
   let intent = analyzeLargoQuestion(question, history.slice(0, -1));
-  intent = intentOverridesForDeskScope(activeDeskScope, intent);
+  intent = intentOverridesForDeskScope(activeDeskScope, intent, deskScopeArgs);
   if (deskScopeArgs?.ticker) {
     intent = { ...intent, tickerHint: deskScopeArgs.ticker.toUpperCase() };
   }
@@ -464,7 +466,11 @@ async function prepareLargoTurn(
 
   let deskScopeBlock = formatDeskScopeBlock(activeDeskScope, deskScopeArgs ?? undefined);
   if (scopeCfg && activeDeskScope) {
-    const prefetched = await prefetchDeskScopeBlock(scopeCfg.key, scopeTicker).catch(() => ({
+    const prefetched = await prefetchDeskScopeBlock(
+      scopeCfg.key,
+      scopeTicker,
+      deskScopeArgs?.submodule ?? null
+    ).catch(() => ({
       block: "",
       toolsUsed: [] as string[],
     }));
@@ -760,6 +766,7 @@ async function prepareLargoTurn(
     socialPack,
     sessionMetadata,
     activeDeskScope,
+    deskScopeArgs,
     miniPanelKind: scopeCfg?.miniPanel ?? null,
   };
 }
@@ -843,6 +850,7 @@ export async function runLargoQuery(
   actions?: LargoAction[];
   depth?: LargoDepth;
   desk_scope?: string | null;
+  desk_scope_args?: DeskSlashArgs | null;
   mini_panel?: string | null;
 }> {
   const startedAt = Date.now();
@@ -856,7 +864,7 @@ export async function runLargoQuery(
   const {
     sid, history, system, filteredTools, toolsUsed, tickerHint, viewer, timeframe, persistedQuestion,
     liveFeedResults, depth, compareCard, playSimilarity, preEarningsPack, socialPack,
-    activeDeskScope, miniPanelKind,
+    activeDeskScope, deskScopeArgs, miniPanelKind,
   } = await prepareLargoTurn(
     question,
     sessionId,
@@ -1024,6 +1032,7 @@ export async function runLargoQuery(
       actions,
       depth,
       desk_scope: activeDeskScope,
+      desk_scope_args: deskScopeArgs,
       mini_panel: miniPanelKind,
     };
   } catch (error) {
@@ -1091,7 +1100,7 @@ export async function runLargoQueryStream(
   const {
     sid, history, system, filteredTools, toolsUsed, tickerHint, viewer, timeframe, persistedQuestion,
     liveFeedResults, depth, compareCard, playSimilarity, preEarningsPack, socialPack,
-    activeDeskScope, miniPanelKind,
+    activeDeskScope, deskScopeArgs, miniPanelKind,
   } = await prepareLargoTurn(
     question,
     sessionId,
@@ -1290,6 +1299,7 @@ export async function runLargoQueryStream(
       actions,
       depth,
       desk_scope: activeDeskScope,
+      desk_scope_args: deskScopeArgs,
       mini_panel: miniPanelKind,
     });
   } catch (error) {

@@ -4,6 +4,7 @@
 
 import type { DeskMiniPanelKind, DeskScopeKey } from "@/lib/largo/desk-scope";
 import { deskScopeConfig } from "@/lib/largo/desk-scope";
+import { resolveSubmodule } from "@/lib/largo/slash-submodules";
 import { fmtPremium } from "@/lib/fmt-money";
 
 export type MiniPanelRow = {
@@ -16,6 +17,8 @@ export type LargoMiniPanelPayload = {
   kind: DeskMiniPanelKind;
   desk: string;
   label: string;
+  /** Active submodule slice when scoped via `/desk submodule`. */
+  submodule?: string | null;
   ticker: string;
   as_of: string;
   href: string | null;
@@ -34,20 +37,25 @@ function biasTone(bias: string | null | undefined): MiniPanelRow["tone"] {
 export async function fetchMiniPanelPayload(input: {
   desk: string;
   ticker?: string;
+  submodule?: string | null;
 }): Promise<LargoMiniPanelPayload | null> {
   const cfg = deskScopeConfig(input.desk);
   if (!cfg) return null;
   const ticker = (input.ticker ?? cfg.defaultTicker).toUpperCase();
+  const sub = resolveSubmodule(cfg.key, input.submodule ?? "");
   const as_of = new Date().toISOString();
   const base: LargoMiniPanelPayload = {
     kind: cfg.miniPanel,
     desk: cfg.key,
-    label: cfg.label,
+    label: sub ? `${cfg.label} · ${sub.label}` : cfg.label,
+    submodule: sub?.id ?? null,
     ticker,
     as_of,
     href: cfg.href,
     rows: [],
   };
+
+  const subId = sub?.id;
 
   try {
     switch (cfg.key as DeskScopeKey) {
@@ -62,6 +70,7 @@ export async function fetchMiniPanelPayload(input: {
           flip?: number;
           call_wall?: number;
           put_wall?: number;
+          net_gex?: number;
         } | null;
         const p = play as {
           phase?: string;
@@ -69,17 +78,56 @@ export async function fetchMiniPanelPayload(input: {
           grade?: string;
           spot?: number;
         } | null;
-        base.rows = [
-          { label: "Spot", value: gex?.spot != null ? String(Math.round(gex.spot)) : p?.spot != null ? String(Math.round(p.spot)) : "—" },
-          { label: "Flip", value: gex?.flip != null ? String(Math.round(gex.flip)) : "—" },
-          { label: "Call wall", value: gex?.call_wall != null ? String(Math.round(gex.call_wall)) : "—" },
-          { label: "Put wall", value: gex?.put_wall != null ? String(Math.round(gex.put_wall)) : "—" },
-          {
-            label: "Play",
-            value: [p?.phase, p?.action, p?.grade].filter(Boolean).join(" · ") || "—",
-            tone: (p?.action ?? "").toLowerCase().includes("short") ? "bear" : "bull",
-          },
-        ];
+        if (subId === "play" || subId === "gates") {
+          base.rows = [
+            {
+              label: "Phase",
+              value: p?.phase ?? "—",
+            },
+            {
+              label: "Action",
+              value: p?.action ?? "—",
+              tone: (p?.action ?? "").toLowerCase().includes("short") ? "bear" : "bull",
+            },
+            { label: "Grade", value: p?.grade ?? "—" },
+            { label: "Spot", value: p?.spot != null ? String(Math.round(p.spot)) : gex?.spot != null ? String(Math.round(gex.spot)) : "—" },
+          ];
+        } else if (subId === "pin") {
+          base.rows = [
+            { label: "Spot", value: gex?.spot != null ? String(Math.round(gex.spot)) : "—" },
+            { label: "Call wall", value: gex?.call_wall != null ? String(Math.round(gex.call_wall)) : "—" },
+            { label: "Put wall", value: gex?.put_wall != null ? String(Math.round(gex.put_wall)) : "—" },
+            { label: "Flip", value: gex?.flip != null ? String(Math.round(gex.flip)) : "—" },
+          ];
+        } else if (subId === "technicals") {
+          base.rows = [
+            { label: "Spot", value: gex?.spot != null ? String(Math.round(gex.spot)) : "—" },
+            { label: "Flip", value: gex?.flip != null ? String(Math.round(gex.flip)) : "—" },
+            { label: "Play", value: [p?.phase, p?.action].filter(Boolean).join(" · ") || "—" },
+          ];
+        } else if (subId === "flow-gex") {
+          const { flowBriefForLargo } = await import("@/lib/largo/product-reads");
+          const brief = await flowBriefForLargo().catch(() => null);
+          const b = brief as { net_premium?: number; bias?: string } | null;
+          base.rows = [
+            { label: "Net flow", value: b?.net_premium != null ? fmtPremium(b.net_premium) : "—", tone: (b?.net_premium ?? 0) >= 0 ? "bull" : "bear" },
+            { label: "Flow bias", value: b?.bias ?? "—", tone: biasTone(b?.bias) },
+            { label: "Flip", value: gex?.flip != null ? String(Math.round(gex.flip)) : "—" },
+            { label: "Net GEX", value: gex?.net_gex != null ? fmtPremium(gex.net_gex) : "—", tone: (gex?.net_gex ?? 0) >= 0 ? "bull" : "bear" },
+          ];
+        } else {
+          base.rows = [
+            { label: "Spot", value: gex?.spot != null ? String(Math.round(gex.spot)) : p?.spot != null ? String(Math.round(p.spot)) : "—" },
+            { label: "Flip", value: gex?.flip != null ? String(Math.round(gex.flip)) : "—" },
+            { label: "Call wall", value: gex?.call_wall != null ? String(Math.round(gex.call_wall)) : "—" },
+            { label: "Put wall", value: gex?.put_wall != null ? String(Math.round(gex.put_wall)) : "—" },
+            {
+              label: "Play",
+              value: [p?.phase, p?.action, p?.grade].filter(Boolean).join(" · ") || "—",
+              tone: (p?.action ?? "").toLowerCase().includes("short") ? "bear" : "bull",
+            },
+          ];
+        }
         break;
       }
       case "helix": {
@@ -94,60 +142,99 @@ export async function fetchMiniPanelPayload(input: {
           tide?: string;
         } | null;
         const bp = a?.biggest_print;
-        base.rows = [
-          {
-            label: "Net premium",
-            value: b?.net_premium != null ? fmtPremium(b.net_premium) : "—",
-            tone: (b?.net_premium ?? 0) >= 0 ? "bull" : "bear",
-          },
-          { label: "Bias", value: b?.bias ?? "—", tone: biasTone(b?.bias) },
-          { label: "Whales", value: b?.whale_count != null ? String(b.whale_count) : "—" },
-          {
-            label: "Top print",
-            value: bp?.premium
-              ? `${bp.option_type ?? ""} ${bp.strike ?? ""} · ${fmtPremium(bp.premium)}`.trim()
-              : "—",
-          },
-          { label: "Tide", value: a?.tide ?? "—", tone: biasTone(a?.tide) },
-        ];
+        if (subId === "whales") {
+          base.rows = [
+            {
+              label: "Top print",
+              value: bp?.premium
+                ? `${bp.option_type ?? ""} ${bp.strike ?? ""} · ${fmtPremium(bp.premium)}`.trim()
+                : "—",
+            },
+            { label: "Whales", value: b?.whale_count != null ? String(b.whale_count) : "—" },
+            { label: "Net premium", value: b?.net_premium != null ? fmtPremium(b.net_premium) : "—", tone: (b?.net_premium ?? 0) >= 0 ? "bull" : "bear" },
+          ];
+        } else if (subId === "tide") {
+          base.rows = [
+            { label: "Tide", value: a?.tide ?? "—", tone: biasTone(a?.tide) },
+            { label: "Bias", value: b?.bias ?? "—", tone: biasTone(b?.bias) },
+            { label: "Net premium", value: b?.net_premium != null ? fmtPremium(b.net_premium) : "—", tone: (b?.net_premium ?? 0) >= 0 ? "bull" : "bear" },
+          ];
+        } else {
+          base.rows = [
+            {
+              label: "Net premium",
+              value: b?.net_premium != null ? fmtPremium(b.net_premium) : "—",
+              tone: (b?.net_premium ?? 0) >= 0 ? "bull" : "bear",
+            },
+            { label: "Bias", value: b?.bias ?? "—", tone: biasTone(b?.bias) },
+            { label: "Whales", value: b?.whale_count != null ? String(b.whale_count) : "—" },
+            {
+              label: "Top print",
+              value: bp?.premium
+                ? `${bp.option_type ?? ""} ${bp.strike ?? ""} · ${fmtPremium(bp.premium)}`.trim()
+                : "—",
+            },
+            { label: "Tide", value: a?.tide ?? "—", tone: biasTone(a?.tide) },
+          ];
+        }
         break;
       }
       case "thermal": {
         const { getGexPositioning } = await import("@/lib/providers/gex-positioning");
         const pos = await getGexPositioning(ticker).catch(() => null);
-        base.rows = [
-          { label: "Spot", value: pos?.spot != null ? String(Math.round(pos.spot)) : "—" },
-          { label: "Flip", value: pos?.flip != null ? String(Math.round(pos.flip)) : "—" },
-          { label: "Call wall", value: pos?.call_wall != null ? String(Math.round(pos.call_wall)) : "—" },
-          { label: "Put wall", value: pos?.put_wall != null ? String(Math.round(pos.put_wall)) : "—" },
-          {
-            label: "Net GEX",
-            value: pos?.net_gex != null ? fmtPremium(pos.net_gex) : "—",
-            tone: (pos?.net_gex ?? 0) >= 0 ? "bull" : "bear",
-          },
-        ];
+        if (subId === "vex") {
+          base.rows = [
+            { label: "Spot", value: pos?.spot != null ? String(Math.round(pos.spot)) : "—" },
+            { label: "Net GEX", value: pos?.net_gex != null ? fmtPremium(pos.net_gex) : "—", tone: (pos?.net_gex ?? 0) >= 0 ? "bull" : "bear" },
+            { label: "Flip", value: pos?.flip != null ? String(Math.round(pos.flip)) : "—" },
+          ];
+        } else {
+          base.rows = [
+            { label: "Spot", value: pos?.spot != null ? String(Math.round(pos.spot)) : "—" },
+            { label: "Flip", value: pos?.flip != null ? String(Math.round(pos.flip)) : "—" },
+            { label: "Call wall", value: pos?.call_wall != null ? String(Math.round(pos.call_wall)) : "—" },
+            { label: "Put wall", value: pos?.put_wall != null ? String(Math.round(pos.put_wall)) : "—" },
+            {
+              label: "Net GEX",
+              value: pos?.net_gex != null ? fmtPremium(pos.net_gex) : "—",
+              tone: (pos?.net_gex ?? 0) >= 0 ? "bull" : "bear",
+            },
+          ];
+        }
         break;
       }
       case "vector": {
         const { fetchVectorFullState } = await import("@/lib/bie/vector-full-state");
         const state = await fetchVectorFullState(ticker).catch(() => null);
         const play = state?.play;
-        base.rows = [
-          { label: "Spot", value: state?.spot != null ? String(Math.round(state.spot)) : "—" },
-          {
-            label: "Regime",
-            value: state?.regime?.posture ?? "—",
-            tone: biasTone(state?.regime?.posture),
-          },
-          {
-            label: "Flip",
-            value: state?.gammaFlip != null ? String(Math.round(state.gammaFlip)) : "—",
-          },
-          {
-            label: "Play",
-            value: play ? [play.grade, play.bias].filter(Boolean).join(" · ") || "—" : "—",
-          },
-        ];
+        if (subId === "regime") {
+          base.rows = [
+            { label: "Regime", value: state?.regime?.posture ?? "—", tone: biasTone(state?.regime?.posture) },
+            { label: "Spot", value: state?.spot != null ? String(Math.round(state.spot)) : "—" },
+          ];
+        } else if (subId === "play") {
+          base.rows = [
+            { label: "Play", value: play ? [play.grade, play.bias].filter(Boolean).join(" · ") || "—" : "—" },
+            { label: "Spot", value: state?.spot != null ? String(Math.round(state.spot)) : "—" },
+          ];
+        } else {
+          base.rows = [
+            { label: "Spot", value: state?.spot != null ? String(Math.round(state.spot)) : "—" },
+            {
+              label: "Regime",
+              value: state?.regime?.posture ?? "—",
+              tone: biasTone(state?.regime?.posture),
+            },
+            {
+              label: "Flip",
+              value: state?.gammaFlip != null ? String(Math.round(state.gammaFlip)) : "—",
+            },
+            {
+              label: "Play",
+              value: play ? [play.grade, play.bias].filter(Boolean).join(" · ") || "—" : "—",
+            },
+          ];
+        }
         break;
       }
       case "nighthawk": {
@@ -157,17 +244,30 @@ export async function fetchMiniPanelPayload(input: {
         const plays = (zerodte as { plays?: Array<{ ticker?: string; status?: string; pnl_pct?: number }> } | null)?.plays ?? [];
         const open = plays.filter((p) => !/closed|graded/i.test(String(p.status ?? "")));
         const top = [...open].sort((a, b) => (b.pnl_pct ?? 0) - (a.pnl_pct ?? 0))[0];
-        base.rows = [
-          { label: "Open", value: String(open.length) },
-          {
-            label: "Top P&L",
-            value: top
-              ? `${top.ticker ?? ""} ${top.pnl_pct != null ? `${top.pnl_pct >= 0 ? "+" : ""}${top.pnl_pct.toFixed(1)}%` : ""}`.trim()
-              : "—",
-            tone: (top?.pnl_pct ?? 0) >= 0 ? "bull" : "bear",
-          },
-          { label: "Board", value: plays.length ? `${plays.length} plays` : "—" },
-        ];
+        if (subId === "marks") {
+          base.rows = [
+            {
+              label: "Top P&L",
+              value: top
+                ? `${top.ticker ?? ""} ${top.pnl_pct != null ? `${top.pnl_pct >= 0 ? "+" : ""}${top.pnl_pct.toFixed(1)}%` : ""}`.trim()
+                : "—",
+              tone: (top?.pnl_pct ?? 0) >= 0 ? "bull" : "bear",
+            },
+            { label: "Open", value: String(open.length) },
+          ];
+        } else {
+          base.rows = [
+            { label: "Open", value: String(open.length) },
+            {
+              label: "Top P&L",
+              value: top
+                ? `${top.ticker ?? ""} ${top.pnl_pct != null ? `${top.pnl_pct >= 0 ? "+" : ""}${top.pnl_pct.toFixed(1)}%` : ""}`.trim()
+                : "—",
+              tone: (top?.pnl_pct ?? 0) >= 0 ? "bull" : "bear",
+            },
+            { label: "Board", value: plays.length ? `${plays.length} plays` : "—" },
+          ];
+        }
         break;
       }
       case "meridian": {

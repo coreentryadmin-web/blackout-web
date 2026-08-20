@@ -2,15 +2,18 @@
 
 import { motion } from "framer-motion";
 import { ProductMark } from "@/components/marks/ProductMark";
-import { LARGO_EXAMPLE_PROMPTS } from "@/hooks/useLargoChat";
+import { LargoDeskModulePicker } from "@/features/largo/components/LargoDeskModulePicker";
+import type { LargoScopePick, LargoStarterPick } from "@/lib/largo/largo-module-starter-cards";
 
-/**
- * Commanding empty state for the full-page terminal (BIE Master Spec §6 —
- * "Not a small chat box"). Presents Largo as the platform's decision-intelligence
- * surface with example prompts spanning the engine's intent range, so the member's
- * first impression is capability, not a blank input.
- */
-export function LargoEmptyState({ onPick }: { onPick: (prompt: string) => void }) {
+export type { LargoScopePick, LargoStarterPick };
+
+export function LargoEmptyState({
+  onScope,
+  onAsk,
+}: {
+  onScope: (pick: LargoScopePick) => void;
+  onAsk?: (pick: LargoStarterPick) => void;
+}) {
   return (
     <motion.div
       className="largo-empty"
@@ -22,25 +25,12 @@ export function LargoEmptyState({ onPick }: { onPick: (prompt: string) => void }
         <ProductMark product="largo" size={44} />
         <h2 className="largo-empty-title">Ask the desk anything.</h2>
         <p className="largo-empty-lead">
-          Largo is the decision-intelligence engine behind BlackOut — it pulls live platform
-          data on every question, separates fact from inference, and shows its sources.
+          Pick a desk (optional: a module lens), type your question, send — or use{" "}
+          <span className="font-mono text-cyan-400">/spx-slayer gex</span> in the composer.
         </p>
       </div>
 
-      <p className="largo-empty-label">Try one of these</p>
-      <div className="largo-empty-grid">
-        {LARGO_EXAMPLE_PROMPTS.map((p) => (
-          <button
-            key={p.label}
-            type="button"
-            className="largo-empty-card"
-            onClick={() => onPick(p.question)}
-          >
-            <span className="largo-empty-card-q">{p.label}</span>
-            <span className="largo-empty-card-hint">{p.hint}</span>
-          </button>
-        ))}
-      </div>
+      <LargoDeskModulePicker variant="empty" onScope={onScope} onAsk={onAsk} />
     </motion.div>
   );
 }

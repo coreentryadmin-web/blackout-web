@@ -63,6 +63,7 @@ export type LargoMessage = {
   followups?: string[];
   /** Active desk scope for this turn — drives mini-panel + thread context. */
   deskScope?: string | null;
+  deskScopeArgs?: DeskSlashArgs | null;
   /** Mini-panel kind from server (helix, spx, thermal, …). */
   miniPanel?: string | null;
 };
@@ -186,6 +187,7 @@ export function useLargoChat() {
   const [depth, setDepth] = useState<"quick" | "deep">("deep");
   const [historicalMode, setHistoricalMode] = useState(false);
   const [activeDeskScope, setActiveDeskScope] = useState<string | null>(null);
+  const [activeDeskScopeArgs, setActiveDeskScopeArgs] = useState<DeskSlashArgs | null>(null);
   const [playContext, setPlayContext] = useState<LargoPlayContext | null>(null);
   const [chartGuide, setChartGuide] = useState(false);
 
@@ -380,6 +382,8 @@ export function useLargoChat() {
         );
         setSession(res.session_id);
         if (res.desk_scope) setActiveDeskScope(res.desk_scope);
+        if (res.desk_scope_args) setActiveDeskScopeArgs(res.desk_scope_args);
+        else if (opts?.deskScopeArgs) setActiveDeskScopeArgs(opts.deskScopeArgs);
         setMessages((m) =>
           upsertAssistantMessage(m, assistantId, {
             content: res.answer,
@@ -399,6 +403,7 @@ export function useLargoChat() {
             depth: res.depth,
             followups: Array.isArray(res.followups) ? res.followups.slice(0, 4) : [],
             deskScope: res.desk_scope ?? null,
+            deskScopeArgs: res.desk_scope_args ?? opts?.deskScopeArgs ?? null,
             miniPanel: res.mini_panel ?? null,
           })
         );
@@ -511,6 +516,7 @@ export function useLargoChat() {
     threadTitleRef.current = "";
     lastQueryRef.current = "";
     setActiveDeskScope(null);
+    setActiveDeskScopeArgs(null);
     setActiveTicker(null); // a new thread is a new subject
   }, [loading, setSession]);
 
@@ -598,6 +604,8 @@ export function useLargoChat() {
     playContext,
     activeDeskScope,
     setActiveDeskScope,
+    activeDeskScopeArgs,
+    setActiveDeskScopeArgs,
     chartGuide,
     setChartGuide,
     LARGO_DESK_PROMPTS,

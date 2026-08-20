@@ -17,14 +17,17 @@ const TONE_CLASS: Record<string, string> = {
 export function LargoDeskMiniPanel({
   desk,
   ticker,
+  submodule,
   className,
 }: {
   desk: string;
   ticker?: string | null;
+  submodule?: string | null;
   className?: string;
 }) {
   const qs = new URLSearchParams({ desk });
   if (ticker) qs.set("ticker", ticker);
+  if (submodule) qs.set("submodule", submodule);
   const { data, isLoading, mutate } = useSWR<LargoMiniPanelPayload | null>(
     `/api/market/largo/mini-panel?${qs.toString()}`,
     fetcher,

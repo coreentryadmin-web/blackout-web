@@ -121,4 +121,14 @@ describe("resolveLargoSlashSubmit", () => {
       assert.deepEqual(out.deskScopeArgs?.watchTickers, ["NVDA", "SPY"]);
     }
   });
+
+  it("parses /spx-slayer gex via resolveLargoSlashSubmit", () => {
+    const out = resolveLargoSlashSubmit("/spx-slayer gex");
+    assert.equal(out.type, "query");
+    if (out.type === "query") {
+      assert.equal(out.deskScope, "spx-slayer");
+      assert.equal(out.deskScopeArgs?.submodule, "gex");
+      assert.match(out.question, /GEX matrix/i);
+    }
+  });
 });

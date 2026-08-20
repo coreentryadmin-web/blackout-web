@@ -5,6 +5,11 @@
 
 import type { LargoProduct } from "@/lib/largo/registry/capability-registry";
 import type { LargoQuestionIntent } from "@/lib/largo/question-intent";
+import {
+  formatSubmoduleFocusBlock,
+  peelSubmoduleFromArgs,
+  resolveSubmodule,
+} from "@/lib/largo/slash-submodules";
 
 export type DeskScopeKey =
   | "spx-slayer"
@@ -166,6 +171,8 @@ export function deskScopeConfig(key: string | null | undefined): DeskScopeConfig
 }
 
 export type DeskSlashArgs = {
+  /** Stable submodule id from slash-submodules registry (e.g. gex, whales, board). */
+  submodule?: string;
   ticker?: string;
   mode?: "compare-mag7" | "gate-trace" | "trinity" | "board" | "diff" | "watch";
   watchTickers?: string[];
@@ -176,6 +183,12 @@ export function formatDeskScopeBlock(key: string | null | undefined, args?: Desk
   if (!cfg) return "";
   const ticker = args?.ticker ?? cfg.defaultTicker;
   let block = cfg.focusBlock;
+  if (args?.submodule) {
+    const mod = resolveSubmodule(key, args.submodule);
+    if (mod) {
+      block += formatSubmoduleFocusBlock(key, mod.id, ticker);
+    }
+  }
   if (args?.mode === "compare-mag7") {
     block += `\n- Member asked for **Mag7 Thermal compare** — use get_positioning / compare grid for mega-cap names.`;
   } else if (args?.mode === "gate-trace") {
@@ -186,27 +199,53 @@ export function formatDeskScopeBlock(key: string | null | undefined, args?: Desk
   if (ticker && ticker !== cfg.defaultTicker) {
     block += `\n- Scoped ticker: **${ticker}** (override default ${cfg.defaultTicker}).`;
   }
+  block += formatScopedAnswerContract(args);
   return `\n\n${block}\n`;
+}
+
+/** Talon-style scoped turn — answer the exact question, not a desk tour. */
+export function formatScopedAnswerContract(args?: DeskSlashArgs): string {
+  const lens = args?.submodule
+    ? `Submodule **${args.submodule}** is a lens — not a mandate to dump every tool.`
+    : `Desk scope is set — stay on-desk but answer the member's exact words.`;
+  return `
+## Scoped answer contract
+- ${lens}
+- **Lead with a one-line verdict** that directly answers what they asked, then evidence.
+- Cite exact numbers from tools (spot, flip, walls, net flow) — no ranges unless the data is a range.
+- If they scoped desk-only and asked a narrow question, stay narrow; do not auto-survey all submodules.
+- When the read is unclear or conflicting, say **wait** — do not invent a trade or grade.
+- Follow-up chips should be strike-level questions grounded in what you just cited.
+`;
 }
 
 const TICKER_TOKEN = /^\$?([A-Z][A-Z0-9]{0,4})$/i;
 
-/** Parse tail after slash command: `/helix NVDA`, `/thermal compare mag7`, `/spx gate trace`. */
-export function parseDeskSlashArgs(args: string): DeskSlashArgs {
+/** Parse tail after slash command: `/helix whales NVDA`, `/spx-slayer gex`, `/thermal compare mag7`. */
+export function parseDeskSlashArgs(args: string, desk?: string | null): DeskSlashArgs {
   const raw = args.trim();
   if (!raw) return {};
 
+  // Multi-word terminal modes — must run before submodule peel ("gate trace" ≠ gates + TRACE).
   if (/^compare\s+(mag7|mag\s*7|mega)/i.test(raw)) {
-    return { mode: "compare-mag7" };
+    const out: DeskSlashArgs = { mode: "compare-mag7" };
+    if (desk === "thermal") out.submodule = "compare";
+    return out;
   }
   if (/^gate\s*trace/i.test(raw)) {
-    return { mode: "gate-trace" };
+    const out: DeskSlashArgs = { mode: "gate-trace" };
+    if (desk) out.submodule = "gates";
+    return out;
   }
   if (/^trinity/i.test(raw) || /^spx\s+spy\s+qqq/i.test(raw)) {
-    return { mode: "trinity", ticker: "SPX" };
+    const out: DeskSlashArgs = { mode: "trinity", ticker: "SPX" };
+    if (desk === "largo") out.submodule = "trinity";
+    return out;
   }
   if (/^board/i.test(raw)) {
-    return { mode: "board" };
+    const out: DeskSlashArgs = { mode: "board" };
+    if (desk === "nighthawk") out.submodule = "board";
+    return out;
   }
   if (/^diff/i.test(raw)) {
     return { mode: "diff" };
@@ -217,20 +256,40 @@ export function parseDeskSlashArgs(args: string): DeskSlashArgs {
       .split(/[\s,]+/)
       .map((t) => t.replace(/^\$/, "").toUpperCase())
       .filter((t) => TICKER_TOKEN.test(t));
-    return { mode: "watch", watchTickers: tickers };
+    const out: DeskSlashArgs = { mode: "watch", watchTickers: tickers };
+    if (desk === "largo") out.submodule = "watchlist";
+    return out;
   }
 
-  const first = raw.split(/\s+/)[0] ?? "";
-  if (TICKER_TOKEN.test(first)) {
-    return { ticker: first.replace(/^\$/, "").toUpperCase() };
+  // Peel stable submodule when desk is known: `/spx-slayer gex`, `/helix whales NVDA`.
+  let tail = raw;
+  let submodule: string | undefined;
+  if (desk) {
+    const peeled = peelSubmoduleFromArgs(desk, raw);
+    if (peeled.submodule) {
+      submodule = peeled.submodule.id;
+      tail = peeled.rest;
+    }
   }
-  return {};
+  if (!tail && submodule) {
+    return { submodule };
+  }
+  if (!tail) return submodule ? { submodule } : {};
+
+  const first = tail.split(/\s+/)[0] ?? "";
+  if (TICKER_TOKEN.test(first)) {
+    const ticker = first.replace(/^\$/, "").toUpperCase();
+    return submodule ? { submodule, ticker } : { ticker };
+  }
+
+  return submodule ? { submodule } : {};
 }
 
 /** Bias question-intent when desk scope is active. */
 export function intentOverridesForDeskScope(
   key: string | null | undefined,
-  base: LargoQuestionIntent
+  base: LargoQuestionIntent,
+  args?: DeskSlashArgs | null
 ): LargoQuestionIntent {
   const cfg = deskScopeConfig(key);
   if (!cfg) return base;
@@ -263,6 +322,29 @@ export function intentOverridesForDeskScope(
       break;
     default:
       next.needsPlatformRead = true;
+  }
+  const sub = args?.submodule ? resolveSubmodule(key, args.submodule) : null;
+  if (sub) {
+    if (sub.id === "play" || sub.id === "gates") {
+      next.needsPlayState = true;
+      next.needsSpxEngineState = true;
+    }
+    if (sub.id === "gex" || sub.id === "pin" || sub.id === "matrix" || sub.id === "positioning" || sub.id === "vex") {
+      next.needsThermalRead = true;
+    }
+    if (sub.id === "tape" || sub.id === "whales" || sub.id === "tide" || sub.id === "flow-gex") {
+      next.needsFlow = true;
+      next.needsHelixRead = true;
+    }
+    if (sub.id === "board" || sub.id === "marks" || sub.id === "discovery" || sub.id === "condor") {
+      next.needsZeroDteCommand = true;
+    }
+    if (sub.id === "trinity" || sub.id === "conflict") {
+      next.needsPlatformRead = true;
+    }
+    if (sub.id === "stats" || sub.id === "recent" || sub.id === "setup") {
+      next.needsRecordRead = true;
+    }
   }
   if (!next.tickerHint && cfg.defaultTicker) {
     next.tickerHint = cfg.defaultTicker;

@@ -5,7 +5,8 @@
 
 import { TOOLS, type ToolKey } from "@/lib/tool-access";
 import { LARGO_DESK_PROMPTS } from "@/lib/largo/desk-prompts";
-import { parseDeskSlashArgs, type DeskSlashArgs } from "@/lib/largo/desk-scope";
+import { parseDeskSlashArgs, type DeskSlashArgs, deskScopeConfig } from "@/lib/largo/desk-scope";
+import { submoduleDefaultQuestion } from "@/lib/largo/slash-submodules";
 
 export type LargoSlashCommandKind = "navigate" | "prompt";
 
@@ -280,6 +281,18 @@ function questionForSlash(cmd: LargoSlashCommand, args: string, parsed: DeskSlas
     return `Summarize what matters on my watchlist: ${parsed.watchTickers.join(", ")}.`;
   }
   if (cmd.kind === "prompt" && cmd.question) return cmd.question;
+
+  const deskKey = cmd.kind === "navigate" ? cmd.command : null;
+  if (parsed.submodule && deskKey) {
+    const cfg = deskScopeConfig(deskKey);
+    const ticker = parsed.ticker ?? cfg?.defaultTicker ?? "SPX";
+    const subQ = submoduleDefaultQuestion(deskKey, parsed.submodule, ticker);
+    if (subQ && !parsed.ticker) return subQ;
+    if (subQ && parsed.ticker) {
+      return subQ.replace(/\bSPX\b/g, parsed.ticker).replace(/\b{ticker}\b/g, parsed.ticker);
+    }
+  }
+
   if (!args) return slashDefaultQuestion(cmd, prompts);
   if (SINGLE_TICKER.test(args.trim())) return slashNavigateQuestion(cmd, args.trim());
   return args.length > 12 ? args : slashNavigateQuestion(cmd, args);
@@ -293,7 +306,8 @@ export function resolveLargoSlashSubmit(raw: string, prompts: SlashPromptLite[] 
   const { command, args } = parseLargoSlashInput(trimmed);
   if (!command) return { type: "plain", text: trimmed };
 
-  const parsedArgs = parseDeskSlashArgs(args);
+  const deskForParse = command.kind === "navigate" ? command.command : null;
+  const parsedArgs = parseDeskSlashArgs(args, deskForParse);
   const { deskScope, deskScopeArgs } = deskScopeForCommand(command, args, parsedArgs);
   const question = questionForSlash(command, args, parsedArgs, prompts);
 
