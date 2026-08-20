@@ -4848,7 +4848,10 @@ html.product-shell .nav-mega {
     display: flex;
     align-items: baseline;
     gap: 0.5rem;
+    /* `min-width: 0` lets the flex item shrink past its content; `overflow: hidden` is what makes
+       the child's ellipsis actually engage rather than the text escaping the box. */
     min-width: 0;
+    overflow: hidden;
   }
   .largo-toolbar-dot {
     width: 7px;
@@ -4867,6 +4870,16 @@ html.product-shell .nav-mega {
     text-transform: uppercase;
     color: #e0f2fe;
     white-space: nowrap;
+    /* WITHOUT THESE THE LABEL PAINTS OVER THE BUTTONS.
+       The toolbar is `justify-content: space-between` with `.largo-toolbar-actions { flex-shrink: 0 }`,
+       so at narrow widths the brand is what gives way. `nowrap` with no overflow handling means the
+       text does not shrink, wrap OR clip — it simply spills across the actions.
+       MEASURED ON PROD 2026-08-20 at 430x932: "Largo Terminal" and "Concrete" physically overlapping
+       by 30x20px, rendering as "LARGO TERM(IN)CONCRETE" in two independent captures 8 min apart.
+       `.largo-toolbar-sub` directly below already carries exactly this pair; the name was simply
+       missed. */
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .largo-toolbar-sub {
     font-family: var(--font-mono, monospace);
