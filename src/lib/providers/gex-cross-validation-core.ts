@@ -36,10 +36,40 @@ export function resolveNearTermExpiriesForCrossValidation(
 }
 
 /** Largest-positive (call) and largest-negative (put) wall strikes from per-strike totals. */
-export function wallsFromStrikeTotals(strikeTotals: Record<string, number>): {
+export function wallsFromStrikeTotals(
+  strikeTotals: Record<string, number>,
+  /**
+   * Spot. When supplied, the walls are SIDE-CONSTRAINED: a call wall must sit above spot and a put
+   * wall below it. Omit it and the historical unconstrained behaviour is preserved exactly, so no
+   * existing call site changes until it is wired deliberately.
+   *
+   * WHY THIS IS NEEDED. Without the constraint this picks max-positive-GEX and max-negative-GEX
+   * ANYWHERE, so a "call wall" can land below spot and a "put wall" above it — inverted as
+   * resistance/support, which is the only way a member reads them.
+   *
+   * MEASURED ON PROD 2026-08-20, 8 tickers sampled, THREE serving an inverted level:
+   *   AAPL  spot 312.66  call_wall 310  <- resistance BELOW price (constrained: 320)
+   *   SPY   spot 763.11  put_wall  765  <- support ABOVE price    (constrained: 760)
+   *   META  spot 545.91  put_wall  550  <- support ABOVE price    (constrained: 540)
+   * AAPL is the clearest harm: "resistance at 310" while price is already 312.66 reads as
+   * "we are through resistance" when the engine means no such thing.
+   *
+   * It flips on thin margins, so it is not rare by construction — on the live SPX 3DTE book 7500
+   * beat 7700 by 2.65B vs 2.52B, a 5% gap that put the answer on the wrong side of spot.
+   *
+   * Same class as the depth-ladder finding in CLAUDE.md: a wall check that conflates a PER-STRIKE
+   * quantity with a whole-book one.
+   *
+   * NO FALLBACK TO THE WRONG SIDE. If no strike qualifies, the wall is null — "there is no call
+   * wall above spot in this book" is a true statement, and inventing one below spot is not. The
+   * return type has always been nullable, so consumers already handle it.
+   */
+  spot?: number
+): {
   callWall: number | null;
   putWall: number | null;
 } {
+  const constrained = typeof spot === "number" && Number.isFinite(spot) && spot > 0;
   let callWall: number | null = null;
   let putWall: number | null = null;
   let maxPos = 0;
@@ -48,11 +78,11 @@ export function wallsFromStrikeTotals(strikeTotals: Record<string, number>): {
     const strike = Number(s);
     const g = Number(gRaw);
     if (!Number.isFinite(strike) || !Number.isFinite(g)) continue;
-    if (g > maxPos) {
+    if (g > maxPos && (!constrained || strike > spot)) {
       maxPos = g;
       callWall = strike;
     }
-    if (g < maxNeg) {
+    if (g < maxNeg && (!constrained || strike < spot)) {
       maxNeg = g;
       putWall = strike;
     }
@@ -301,7 +331,10 @@ export function uwLevelsFromLadder(
   spot = 0
 ): { callWall: number | null; putWall: number | null; gammaFlip: number | null } {
   const strikeTotals = strikeTotalsFromLadder(ladder);
-  const { callWall, putWall } = wallsFromStrikeTotals(strikeTotals);
+  // `spot` was already a parameter here and simply was not reaching the wall scan — so a call wall
+  // could resolve below it. Side-constrained now; `spot = 0` (the default) keeps the old behaviour
+  // for callers that genuinely have no quote.
+  const { callWall, putWall } = wallsFromStrikeTotals(strikeTotals, spot);
   const gammaFlip = cumulativeGammaFlip(strikeTotals, spot);
   return { callWall, putWall, gammaFlip };
 }
@@ -595,7 +628,7 @@ export function wallsByHorizon(
       // A zero sum carries no wall information; keeping it would only dilute the scan.
       if (sum !== 0) totals[strike] = sum;
     }
-    const { callWall, putWall } = wallsFromStrikeTotals(totals);
+    const { callWall, putWall } = wallsFromStrikeTotals(totals, spot);
     out.push({
       label,
       maxDte,
