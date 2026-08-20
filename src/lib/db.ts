@@ -4052,6 +4052,52 @@ export async function fetchZeroDteScanRejections(opts?: {
   })  );
 }
 
+/**
+ * TRUE per-kind counts for one session — a `GROUP BY`, not a sample.
+ *
+ * `fetchZeroDteDiscoveryEvents` takes the newest N rows and the funnel then counts kinds inside
+ * that window. That is correct only while N exceeds the day's event count. It does not:
+ * MEASURED ON PROD 2026-08-20, mid-session, the admin funnel returned
+ * `detected 642 + gate_blocked 1354 + commit 4 = 2000` — exactly `EVENTS_SAMPLE_LIMIT`, i.e. the
+ * window was saturated and everything older than the newest 2000 events was invisible.
+ *
+ * The damage is not evenly spread. `gate_blocked` runs to thousands a session while `commit` runs
+ * to single digits, so commits are ~0.2% of the stream and whether ANY of them survive the window
+ * is luck of the ordering. At the same instant the board reported `commit_events: 0`, the admin
+ * funnel reported 4, and the ledger held 7 committed rows — one quantity, three answers, and the
+ * most visible one said nothing had traded on a day that traded seven times.
+ *
+ * A rare-but-critical event must never compete with a high-volume one for sample slots. This counts
+ * in the database, so it is exact regardless of volume, and cheap: one indexed aggregate per call.
+ */
+export async function countZeroDteDiscoveryEventsByKind(
+  sessionDate: string
+): Promise<Record<string, number>> {
+  await ensureSchema();
+  const res = await (await getPool()).query(
+    `SELECT kind, COUNT(*)::int AS n FROM zerodte_discovery_events WHERE session_date = $1 GROUP BY kind`,
+    [sessionDate]
+  );
+  const out: Record<string, number> = {};
+  for (const r of res.rows) out[String(r.kind)] = Number(r.n);
+  return out;
+}
+
+/**
+ * Distinct tickers that reached `detected` this session — also a real aggregate.
+ *
+ * Same reasoning as above: `detected` is the second-highest-volume kind, so a sampled distinct
+ * count under-reports the funnel's mouth exactly when the session has been busiest.
+ */
+export async function countZeroDteDetectedTickers(sessionDate: string): Promise<number> {
+  await ensureSchema();
+  const res = await (await getPool()).query(
+    `SELECT COUNT(DISTINCT ticker)::int AS n FROM zerodte_discovery_events WHERE session_date = $1 AND kind = 'detected'`,
+    [sessionDate]
+  );
+  return Number(res.rows[0]?.n ?? 0);
+}
+
 export async function fetchZeroDteDiscoveryEvents(opts?: {
   session_date?: string;
   ticker?: string;
