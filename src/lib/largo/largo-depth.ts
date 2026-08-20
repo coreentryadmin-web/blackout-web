@@ -42,11 +42,40 @@ export function largoDepthConfig(depth: LargoDepth): {
 
 export function formatDepthBlock(depth: LargoDepth): string {
   if (depth === "concrete") {
+    // THIS BLOCK MUST OVERRIDE THE SECTION CONTRACT EXPLICITLY.
+    //
+    // The system prompt has no notion of answer mode and states, unconditionally, that "Verdict
+    // and Data are required on every answer, however short", on top of an eight-section contract.
+    // This block used to say only "no section headers" — a small, quiet instruction against a
+    // large, emphatic one. The model followed the system prompt, exactly as it should when two
+    // instructions conflict and neither claims precedence.
+    //
+    // Measured on prod, 44 scenarios, 2026-08-20:
+    //   Concrete median 5,650 chars (max 6,883)
+    //   Deep dive median 4,960 chars (max 8,186)
+    // Concrete answers were LONGER than Deep dive ones — the mode was inert, and every reply came
+    // back with **Verdict:** / **Facts:** / **Interpretation:** / **Bottom line:** headings.
+    //
+    // So this now names the sections it collapses and says which instruction wins. The honesty
+    // guarantee behind **Data** is deliberately KEPT and moved inline rather than dropped: the
+    // system prompt is right that "a silent omission is the one failure a member cannot detect for
+    // themselves", and that is true at any length. What Concrete removes is the heading, not the
+    // disclosure.
     return `
-## Answer mode: Concrete
-- **Lead with a one-line verdict** that directly answers what they asked (e.g. "Wait — not a trade" / "Bullish above 769").
-- Follow with **one tight paragraph**: exact spot, flip, walls, flow — cite tool numbers, not ranges.
-- No desk tour, no section headers, no scenario grids, no "Answered N/M parts".
+## Answer mode: Concrete — THIS OVERRIDES THE SECTION CONTRACT ABOVE
+
+When this mode is active the eight-section contract does NOT apply. Do not emit **Verdict**,
+**Facts**, **Interpretation**, **Confidence**, **Conflicts**, **Risk**, **Data** or **Bottom line**
+as headings. Write prose.
+
+- **Open with the answer in one line** — the thing they asked, decided (e.g. "Wait — not a trade" /
+  "Bullish above 6,450").
+- **Then one tight paragraph**: exact spot, flip, walls, flow. Cite tool numbers, not ranges.
+- **Target 900 characters, hard ceiling 1,600.** If the read genuinely needs more, the member should
+  switch to Deep dive — do not quietly grow Concrete into it.
+- **Keep the data honesty, lose the heading.** If a read was stale, missing or unavailable, say so
+  in a short clause inside the paragraph ("VIX unavailable, so no vol confirmation"). Never omit it
+  silently; never give it its own section.
 - If unclear or conflicting, say **wait** — do not invent a grade or trade.
 - Follow-up chips should be strike-level questions grounded in what you just cited.
 `;
