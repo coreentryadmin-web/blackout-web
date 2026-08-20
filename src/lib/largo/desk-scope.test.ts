@@ -38,6 +38,8 @@ describe("formatDeskScopeBlock", () => {
   it("includes SPX Slayer focus", () => {
     const block = formatDeskScopeBlock("spx-slayer");
     assert.match(block, /SPX Slayer/);
+    assert.match(block, /Macro\/events/);
+    assert.match(block, /3DTE\/7DTE/);
     assert.match(block, /get_spx_play/);
   });
 

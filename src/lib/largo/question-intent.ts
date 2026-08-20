@@ -11,6 +11,8 @@ import {
   NIGHTHAWK_RE,
   PLATFORM_READ_RE,
   PLAY_STATE_RE,
+  BEST_PLAY_RE,
+  SPX_DTE_HORIZON_RE,
   RECORD_READ_RE,
   SPX_DESK_RE,
   SPX_ENGINE_STATE_RE,
@@ -219,7 +221,11 @@ export function analyzeLargoQuestion(
   const ctx = `${recentUserText(history)} ${question}`.toLowerCase();
 
   const needsSpxDesk = matchesIntent(ctx, SPX_DESK_RE);
-  const needsPlayState = matchesIntent(ctx, PLAY_STATE_RE);
+  const needsBestPlay = matchesIntent(ctx, BEST_PLAY_RE);
+  const needsSpxDteHorizon = matchesIntent(ctx, SPX_DTE_HORIZON_RE);
+  const spxScoped = needsSpxDesk || /\b(spx|s&p|sniper|slayer)\b/.test(ctx);
+  const needsPlayState =
+    matchesIntent(ctx, PLAY_STATE_RE) || (needsBestPlay && spxScoped);
   const needsFlow = matchesIntent(ctx, FLOW_RE);
   const needsNews = matchesIntent(ctx, NEWS_RE);
   const needsVol = matchesIntent(ctx, VOL_RE);
@@ -289,6 +295,12 @@ export function analyzeLargoQuestion(
   }
   if (needsPlayState) {
     toolHints.push("get_spx_play", "get_open_plays");
+  }
+  if (needsBestPlay && spxScoped) {
+    toolHints.push("get_spx_play", "get_gate_rules", "get_spx_confluence");
+  }
+  if (needsSpxDteHorizon && spxScoped) {
+    toolHints.push("get_lotto_live", "get_option_chain", "get_spx_play");
   }
   if (scopeTicker) {
     toolHints.push("get_quote", "get_technicals", "get_news", "get_options_flow", "get_dark_pool");

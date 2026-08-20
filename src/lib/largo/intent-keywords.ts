@@ -1,7 +1,7 @@
 /** Shared intent keyword patterns for Largo tool routing and question analysis. */
 
 export const SPX_DESK_RE =
-  /\b(spx|s&p 500|s&p|0dte|sniper|gamma flip|gex|dealer|max pain|vwap|hod|lod|pdh|pdl|internals|tick|trin|greek flow|dealer gamma|mag7|mag 7|mega.?cap)\b/;
+  /\b(spx|s&p 500|s&p|0dte|sniper|gamma flip|gex|vex|vanna|dealer|max pain|vwap|hod|lod|pdh|pdl|internals|tick|trin|greek flow|dealer gamma|mag7|mag 7|mega.?cap)\b/;
 
 export const SPX_DESK_TOOLS_RE = /\b(spx|s&p|play|signal|0dte|sniper|gamma|gex|dealer|greek flow|mag7|mag 7)\b/;
 
@@ -21,7 +21,15 @@ export const FLOW_RE =
 export const FLOW_TOOLS_RE = /\b(flow|flows|flowing|tape|sweep|whale|dark pool|premium|unusual)\b/;
 
 export const PLAY_STATE_RE =
-  /\b(spx|s&p|0dte|sniper|lotto)\b.*\b(buy|sell|hold|trim|play|setup|signal)\b|\b(play state|open play|desk play)\b/i;
+  /\b(spx|s&p|0dte|sniper|lotto)\b.*\b(buy|sell|hold|trim|play|setup|signal)\b|\b(play|setup|signal)\b.*\b(spx|s&p|0dte|sniper|lotto)\b|\b(play state|open play|desk play|best play|best setup)\b/i;
+
+/** "Best play for SPX" — play token often precedes the ticker (task: SPX Largo audit). */
+export const BEST_PLAY_RE =
+  /\b(best play|best setup|what(?:'s| is) the play|what should i (?:buy|trade)|top play)\b/i;
+
+/** Multi-day SPX horizon — lotto runner vs pure 0DTE engine (3DTE/7DTE/weekly). */
+export const SPX_DTE_HORIZON_RE =
+  /\b(3\s*dte|3dte|7\s*dte|7dte|weekly|next week|swing dte|multi.?day dte)\b/i;
 
 export const NEWS_RE = /\b(news|headline|catalyst|earnings|cpi|fomc|macro|calendar|gdp|unemployment|inflation)\b/;
 

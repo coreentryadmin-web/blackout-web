@@ -51,6 +51,7 @@ const SPX_SLAYER: DeskSubmoduleDef[] = [
     preferredTools: ["get_gex_heatmap", "get_positioning", "get_spx_structure"],
     focusLines: [
       "Lead with GEX matrix: flip, call wall, put wall, king strike, net GEX regime.",
+      "When VEX/vanna is asked, cite vanna posture and charm context from the same matrix read.",
       "Use get_gex_heatmap (SPX 0DTE) — cite exact strike levels.",
     ],
     defaultQuestion: () =>

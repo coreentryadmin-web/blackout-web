@@ -29,9 +29,14 @@ export async function prefetchDeskScopeBlock(
           toolsUsed.push("desk_prefetch_spx");
           chunks.push(JSON.stringify({ play, gex_summary: gex }, null, 0).slice(0, 5000));
         } else if (subId === "play" || subId === "gates") {
-          const play = await marketPlatform.spx.getSpxPlayState().catch(() => null);
+          const [play, structure] = await Promise.all([
+            marketPlatform.spx.getSpxPlayState().catch(() => null),
+            marketPlatform.spx.getSpxDeskSummary().catch(() => null),
+          ]);
           toolsUsed.push("desk_prefetch_spx_play");
-          chunks.push(JSON.stringify({ play }, null, 0).slice(0, 4000));
+          chunks.push(
+            JSON.stringify({ play, macro_events: (structure as { macro_events?: unknown })?.macro_events ?? [] }, null, 0).slice(0, 4500)
+          );
         } else if (subId === "gex" || subId === "pin") {
           const gex = await import("@/lib/largo/gex-heatmap-for-largo")
             .then((m) => m.gexHeatmapForLargo("SPX"))

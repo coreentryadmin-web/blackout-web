@@ -429,6 +429,18 @@ test("the desk's OWN published plays are recognisable", () => {
   }
 });
 
+test("best play for SPX (play before ticker) hints play engine tools", () => {
+  const intent = analyzeLargoQuestion("What do you think is the best play for SPX today?", []);
+  assert.equal(intent.needsPlayState, true);
+  assert.match(intent.guidance, /get_spx_play/);
+});
+
+test("3DTE SPX horizon hints lotto + option chain", () => {
+  const intent = analyzeLargoQuestion("What's the best 3DTE play on SPX?", []);
+  assert.match(intent.guidance, /get_lotto_live/);
+  assert.match(intent.guidance, /get_option_chain/);
+});
+
 test("domain vocabulary in capitals is still NOT a ticker", () => {
   // LARGO-9 in its original form: CALLS / HOLD / SETUP / BULL mis-pinned as symbols. That came
   // from uppercasing the whole question; this branch reads the ORIGINAL text, so ordinary prose
