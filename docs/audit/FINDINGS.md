@@ -12209,3 +12209,30 @@ against.
 | **Evidence** | Pre-fix prod audit 44 scenarios: 37 PASS / 6 WARN / 1 FAIL (~65% coverage). FOMC day cited "FOMC at 14:00 ET" live. Gap analysis: pin forecaster, engine snapshots, signal log, lotto/power-hour, breadth internals had tools but no slash submodule or prefetch path. |
 | **Fix** | PR #2382 — phase 1: `BEST_PLAY_RE`, `SPX_DTE_HORIZON_RE`, `needsNews` on spx-slayer. Phase 2: 14 SPX submodules, submodule-aware prefetch + mini-panel, intent keywords, audit ~70 scenarios (`npm run validate:largo-spx-slayer`). |
 | **Status** | OPEN — merge + full prod audit after deploy. |
+
+## 2026-08-20 — [FINDING, P2 Largo] Concrete answer mode shipped INERT — the section contract silently won — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Largo's **Concrete** ("fast, direct answer") mode returned the same eight-section, bullet-listed, `**Verdict:**`-labelled wall of prose as Deep dive. `"walls?"` — a three-character question about two strike levels — returned 5,235 characters carrying the flip, the flow, the regime, a play and an invalidation. |
+| **Root cause** | `formatDepthBlock("concrete")` (`src/lib/largo/largo-depth.ts`) said only *"no section headers"*. The system prompt (`src/lib/largo/system-prompt.ts`) carries no notion of answer mode and states, **unconditionally**, that "Verdict and Data are required on every answer, however short", on top of an eight-section contract. Two conflicting instructions, **neither claiming precedence** — the model followed the longer, more emphatic one, which is the correct resolution. It then satisfied "no section headers" *literally* by emitting the same eight sections as `**bold inline labels**`, which defeats the instruction entirely. |
+| **Evidence** | Prod, 44 scenarios: Concrete median **5,650 ch** (max 6,883) vs Deep dive median **4,960 ch** (max 8,186). **Concrete answers were LONGER than Deep dive answers** — an inversion with no prompt-shaping explanation, and the proof the mode was doing nothing. Dedicated 25-question shape audit: **0/25** passed, median 3,368 ch against a 700 ch target, latency median 19.9s / p90 30.2s. |
+| **Why not caught** | Every existing Largo audit graded whether an answer was **correct**. None graded whether it was **shaped** as the mode promised, so an entirely inert mode scored green on every check. `largo-product-roadmap.test.ts` asserted the *config* (model, maxRounds) but never the *prompt contract*. |
+| **Fix** | PR #2385. The Concrete block now states outright that the eight-section contract **does not apply**, names all eight sections and bans them as headings, bold inline labels and any other form, bans bullets/tables, positively specifies prose, scopes the reply to the question asked (`ANSWER ONLY WHAT WAS ASKED`), requires the first sentence to BE the answer (with worked examples), and states a measurable **400–700 ch target / 1,200 ch ceiling**. Speed: `maxRounds` 3→2, `maxTokens` 2048→900, `timeoutMs` 45s→30s — the **output cap is the real speed fix**, since generation time scales with tokens emitted and most of the 24.5s median was spent writing prose the mode was never supposed to produce. |
+| **Deliberately unchanged** | The **data-honesty guarantee**. The system prompt is right that "a silent omission is the one failure a member cannot detect for themselves", and that holds at any length — so Concrete drops the **Data** *heading*, not the *disclosure*: stale/missing/unavailable reads must now be stated inline in the sentence they affect. Trading verbosity for dishonesty would have been a worse bug than the one being fixed. Deep dive is untouched; it is the mode the contract was written for. |
+| **Regression guard** | `src/lib/largo/largo-depth-contract.test.ts` (10 tests) pins every property that made the mode inert — precedence claim, named sections, measurable target, bullets/tables/bold-labels all forbidden, question-scoping, first-sentence rule, surviving honesty rule, Deep unchanged, modes distinguishable. `scripts/audit/largo-spx-trader-day.mjs` (`npm run validate:largo-trader-day`) grades live replies on SHAPE, not just content — the check whose absence let this ship. |
+| **Status** | FIXED — PR #2385. |
+
+## 2026-08-20 — [FINDING, P2 Largo] SPX submodule prefetch: pin fell through to GEX, technicals label outran its payload — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Found in the **live tool traces** of the 44-scenario prod audit, not by reading code: `sub-pin-*` reported `desk_prefetch_spx_gex`, and `sub-technicals-*` reported `desk_prefetch_spx_technicals` while the payload it pushed was the GEX matrix. |
+| **Root cause** | In `src/lib/largo/desk-scope-prefetch.ts`, PIN was OR-ed into the `gex` branch — so the one submodule whose entire subject is the EOD magnet was handed a gamma summary. TECHNICALS was worse: it fetched the GEX matrix, pushed it as `gex_summary`, and **announced** `desk_prefetch_spx_technicals`. |
+| **Why not caught** | The audit's routing matrix grades off the `tools=` label. **A mislabelled prefetch launders a wrong payload as a right one** — technicals scored *correct* on every routing check precisely because its label was right and only its payload was wrong. A check that reads the label can never catch a bug in what the label describes. |
+| **Fix** | Both branches fetch their own subject. Guarded by `src/lib/largo/desk-scope-prefetch-spx.test.ts` (PR #2385), which asserts the **subject** of each branch (pin fetches a pin source; technicals names EMA/VWAP) rather than a specific reader function — both defects were fixed concurrently with different readers than first proposed, so a test pinned to an import name would have broken on a correct fix. It also asserts every SPX branch both pushes a payload and records a label, and that labels stay **distinct** (with intentional shares declared), so a fallthrough is visible in the trace at all. |
+| **Status** | FIXED — PR #2385. |
