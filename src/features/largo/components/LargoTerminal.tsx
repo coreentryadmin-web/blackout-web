@@ -23,7 +23,6 @@ import { LargoEmptyState } from "./LargoEmptyState";
 import { LargoDeskModulePicker } from "./LargoDeskModulePicker";
 import { largoModuleComposerDesks } from "@/lib/largo/largo-module-starter-cards";
 import { LargoStatusStrip } from "./LargoStatusStrip";
-import { LargoContextRail } from "./LargoContextRail";
 import { LargoSlashMenu } from "./LargoSlashMenu";
 import { LargoSlashPromptsMenu } from "./LargoSlashPromptsMenu";
 import { LargoDeskScopeBanner } from "./LargoDeskScopeBanner";
@@ -301,9 +300,6 @@ export function LargoTerminal({
                         })
                       }
                       followups={msg.followups}
-                      deskScope={msg.deskScope}
-                      deskScopeArgs={msg.deskScopeArgs}
-                      miniPanel={msg.miniPanel}
                       ticker={activeTicker}
                       answerMode={msg.depth === "deep" ? "deep" : "concrete"}
                     />
@@ -379,7 +375,6 @@ export function LargoTerminal({
           </AnimatePresence>
           <div ref={bottomRef} />
         </div>
-        {fullPage && <LargoContextRail ticker={activeTicker} />}
         </div>
 
         {/* Staged attachments sit ABOVE the input, not inside it: the member must be able to see

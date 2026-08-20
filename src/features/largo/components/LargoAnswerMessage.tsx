@@ -11,7 +11,6 @@ import { LargoMessageBody } from "@/features/largo/components/LargoMessageBody";
 import { LargoStructuredCards } from "@/features/largo/components/LargoStructuredCards";
 import { LargoActionsBar } from "@/features/largo/components/LargoActionsBar";
 import { LargoFollowupChips } from "@/features/largo/components/LargoFollowupChips";
-import { LargoDeskMiniPanel } from "@/features/largo/components/LargoDeskMiniPanel";
 import { BieAnswer } from "@/features/largo/answer/BieAnswer";
 import { LargoDeskRead } from "@/features/largo/answer/LargoDeskRead";
 import { LargoConcreteAnswer } from "@/features/largo/answer/LargoConcreteAnswer";
@@ -20,7 +19,6 @@ import { splitAnswerCaveats } from "@/features/largo/answer/answer-caveats";
 import { largoAnswerToEnvelope } from "@/features/largo/answer/answer-format";
 import { proseSections } from "@/features/largo/answer/section-policy";
 import { BieScenarioCards } from "@/features/largo/answer/BieScenarioCards";
-import type { DeskSlashArgs } from "@/lib/largo/desk-scope";
 
 /**
  * Renders a Largo assistant turn. Concrete mode = Talon-style prose; Deep dive = structured cards.
@@ -43,9 +41,6 @@ export function LargoAnswerMessage({
   ticker,
   followups,
   nativeFollowups = false,
-  deskScope,
-  deskScopeArgs,
-  miniPanel,
   answerMode = "concrete",
 }: {
   content: string;
@@ -65,9 +60,6 @@ export function LargoAnswerMessage({
   ticker?: string | null;
   followups?: string[];
   nativeFollowups?: boolean;
-  deskScope?: string | null;
-  deskScopeArgs?: DeskSlashArgs | null;
-  miniPanel?: string | null;
   /** Concrete = tight Talon read; Deep dive = full structured breakdown. */
   answerMode?: LargoDepth;
 }) {
@@ -175,13 +167,6 @@ export function LargoAnswerMessage({
       <>
         <div className="largo-answer-with-panel">
           <div className="largo-answer-main">{fallback}</div>
-          {!streaming && deskScope && miniPanel && miniPanel !== "generic" && (
-            <LargoDeskMiniPanel
-              desk={deskScope}
-              ticker={ticker}
-              submodule={deskScopeArgs?.submodule}
-            />
-          )}
         </div>
         {followupRow}
       </>
@@ -194,13 +179,6 @@ export function LargoAnswerMessage({
         <div className="largo-answer-main">
           <BieAnswerBoundary fallback={fallback}>{rich}</BieAnswerBoundary>
         </div>
-        {!streaming && deskScope && miniPanel && miniPanel !== "generic" && (
-          <LargoDeskMiniPanel
-            desk={deskScope}
-            ticker={ticker}
-            submodule={deskScopeArgs?.submodule}
-          />
-        )}
       </div>
       {followupRow}
     </>

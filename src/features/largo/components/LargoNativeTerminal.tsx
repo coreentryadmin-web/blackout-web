@@ -173,9 +173,6 @@ export function LargoNativeTerminal() {
                     })
                   }
                   followups={msg.followups}
-                  deskScope={msg.deskScope}
-                  deskScopeArgs={msg.deskScopeArgs}
-                  miniPanel={msg.miniPanel}
                   ticker={activeTicker}
                   nativeFollowups
                   answerMode={msg.depth === "deep" ? "deep" : "concrete"}

@@ -106,6 +106,37 @@ test("Concrete keeps the data-honesty guarantee, and only drops its heading", ()
   );
 });
 
+test("every number must carry the relation that makes it mean something", () => {
+  // A bare figure is telemetry, not an answer: the member cannot tell whether 140 is near, far,
+  // big or irrelevant. The competitor answers this was modelled on never print a naked number —
+  // it is always strike + expiry + distance, or a share of the largest node.
+  assert.match(CONCRETE, /no number without its relation/i);
+  assert.match(CONCRETE, /% of king|share-of-the-biggest/i, "must show the ratio form");
+  assert.match(CONCRETE, /below spot/i, "must show the distance form");
+});
+
+test("it must state the mechanism in plain English, not dump indicator names", () => {
+  // The member's exact complaint: answers were "throwing random words" — `Tide bullish, NOPE
+  // +0.50, TICK +265, TRIN 2.0` is a symbol dump that leaves them to decode it.
+  assert.match(CONCRETE, /say what it means, not what it is called/i);
+  assert.match(CONCRETE, /symbol dump/i);
+  assert.match(CONCRETE, /plain English/i);
+});
+
+test("inline source tags are banned — the rails already carry provenance", () => {
+  // `(SPX desk · live)` after every clause is what made the old answers unreadable as prose.
+  // This bans the CLUTTER, not the disclosure: the stale/missing rule above is untouched.
+  assert.match(CONCRETE, /do not attach source tags/i);
+  assert.match(CONCRETE, /SPX desk · live/, "must name the exact form it rejects");
+});
+
+test("brevity is achieved by OFFERING the rest, not by omitting it", () => {
+  // The mechanism that lets a 600-char answer be complete: adjacent reads live in the follow-up
+  // chips. Without this the model resolves "be short" against "be thorough" by padding.
+  assert.match(CONCRETE, /follow-up chips/i);
+  assert.match(CONCRETE, /trust them to ask/i);
+});
+
 test("Deep dive is unchanged in kind — it still asks for a structured breakdown", () => {
   assert.match(DEEP, /Deep dive/);
   assert.match(DEEP, /verdict|structure|flow|conflicts|invalidation/i);
