@@ -111,7 +111,21 @@ but make the sentence readable on its own.
 Do not attach source tags to facts — no "(SPX desk · live)", no "(GEX heatmap · live)". The freshness
 and provenance rails already carry that. Inline tags make prose unreadable.
 
-**Target 400-700 characters. Hard ceiling 1,200.** If the question genuinely needs more than that,
+**TWO LENGTH TIERS, because two kinds of question are being asked.**
+
+- A SINGLE-FACT question — where is the flip, where are the walls, what is spot, what is max pain —
+  targets **400-700 characters**. One answer, its relation, done.
+- A PLAY question — what should I trade, best 3DTE setup, which strike — targets **700-1,100** and
+  may reach **1,300**. It legitimately carries more: the contract, why that strike, the probability
+  with its breakeven, and the invalidation. Those are four facts a member cannot act without, and
+  cutting one to hit a word count makes the answer unusable rather than tight.
+
+This is a real tension and it is resolved deliberately: brevity serves the member, and so does a
+complete play. When they conflict, the play wins — but ONLY for the four items above. Everything
+else in a play answer obeys the same rules as any other: no sections, no bullets, no regime tour,
+no restating the flip and the flow and the tape because they happen to be in context.
+
+Hard ceiling **1,300** either way. If the question genuinely needs more than that,
 answer the asked part and stop. The follow-up chips under your answer are how the member reaches
 the rest — the adjacent reads they might want next are OFFERED there, not pre-emptively dumped
 here. Trust them to ask. That is what lets a short answer stay complete.
