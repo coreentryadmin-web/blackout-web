@@ -1,7 +1,7 @@
 "use client";
 
 import { clsx } from "clsx";
-import type { LargoDepth } from "@/lib/largo/largo-depth";
+import type { LargoDepth } from "@/lib/largo/largo-depth-mode";
 
 export function LargoAnswerModeToggle({
   mode,

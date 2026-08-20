@@ -1,6 +1,6 @@
 import type { ClaimVerification } from "@/lib/bie/verifier";
 import type { BieAnswerEnvelope } from "@/lib/bie/answer-envelope";
-import type { LargoDepth } from "@/lib/largo/largo-depth";
+import type { LargoDepth } from "@/lib/largo/largo-depth-mode";
 
 /** The server's auto-render directive — mirrors `VisualDirective` in largo-terminal.ts. */
 type LargoVisualDirective = {

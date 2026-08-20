@@ -20,8 +20,11 @@ import {
   parsePlayContextFromSearchParams,
   type LargoPlayContext,
 } from "@/lib/largo/session-metadata";
-import type { LargoDepth } from "@/lib/largo/largo-depth";
-import { normalizeLargoDepth } from "@/lib/largo/largo-depth";
+import type { LargoDepth } from "@/lib/largo/largo-depth-mode";
+// Client-safe module on purpose: importing a VALUE from largo-depth.ts pulls
+// providers/anthropic -> api-telemetry-persist ("server-only") into the browser bundle
+// and fails the Next build.
+import { normalizeLargoDepth } from "@/lib/largo/largo-depth-mode";
 import type { DeskSlashArgs } from "@/lib/largo/desk-scope";
 import {
   conversationTitle,

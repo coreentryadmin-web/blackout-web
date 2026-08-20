@@ -6,7 +6,7 @@ import type { LargoCompareCard as LargoCompareCardPayload } from "@/lib/largo/co
 import type { PlaySimilarityCard } from "@/lib/largo/play-similarity";
 import type { PreEarningsPackCard } from "@/lib/largo/pre-earnings-pack";
 import type { LargoAction } from "@/lib/largo/largo-actions";
-import type { LargoDepth } from "@/lib/largo/largo-depth";
+import type { LargoDepth } from "@/lib/largo/largo-depth-mode";
 import { LargoMessageBody } from "@/features/largo/components/LargoMessageBody";
 import { LargoStructuredCards } from "@/features/largo/components/LargoStructuredCards";
 import { LargoActionsBar } from "@/features/largo/components/LargoActionsBar";

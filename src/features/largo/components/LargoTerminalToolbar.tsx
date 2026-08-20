@@ -6,7 +6,7 @@ import { History, Plus, RefreshCw, Maximize2, Minimize2, X } from "lucide-react"
 import type { LargoConversation } from "@/features/largo/conversation-history";
 import { groupConversationsByDay } from "@/features/largo/lib/session-grouping";
 import { LargoAnswerModeToggle } from "./LargoAnswerModeToggle";
-import type { LargoDepth } from "@/lib/largo/largo-depth";
+import type { LargoDepth } from "@/lib/largo/largo-depth-mode";
 
 /**
  * Command bar for the full-page Largo terminal (BIE Master Spec §6 — persistent,

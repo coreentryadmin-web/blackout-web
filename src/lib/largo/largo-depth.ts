@@ -6,17 +6,14 @@
 
 import { COMMENTARY_MODEL, LARGO_MODEL } from "@/lib/providers/anthropic";
 
-export type LargoDepth = "concrete" | "deep";
+// The type + the pure mode parsers live in largo-depth-mode.ts, which imports nothing
+// server-only. This module reaches providers/anthropic for the model ids, and that transitively
+// imports `server-only` — so a CLIENT module must import the parsers from largo-depth-mode
+// directly. Re-exported here so every existing server-side import path keeps working.
+export { normalizeLargoDepth, parseLargoDepth } from "@/lib/largo/largo-depth-mode";
+export type { LargoDepth } from "@/lib/largo/largo-depth-mode";
 
-/** Legacy client storage used "quick" before Concrete rename. */
-export function normalizeLargoDepth(raw: unknown): LargoDepth {
-  if (raw === "concrete" || raw === "quick") return "concrete";
-  return "deep";
-}
-
-export function parseLargoDepth(raw: unknown): LargoDepth {
-  return normalizeLargoDepth(raw);
-}
+import type { LargoDepth } from "@/lib/largo/largo-depth-mode";
 
 export function largoDepthConfig(depth: LargoDepth): {
   model: string;
