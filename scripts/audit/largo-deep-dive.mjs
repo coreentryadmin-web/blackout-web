@@ -49,6 +49,8 @@ const OUT = process.env.LARGO_DEEP_OUT ?? "audit-output/largo-deep-dive.json";
 const argv = process.argv.slice(2);
 const AS_JSON = argv.includes("--json");
 const LIMIT = Number((argv.find((a) => a.startsWith("--limit=")) ?? "").slice(8)) || null;
+/** Delay between calls. The desk AI gate rate-limits a burst; see the pacing note in the loop. */
+const PACE_MS = Number((argv.find((a) => a.startsWith("--pace=")) ?? "").slice(7)) || 6000;
 
 const LEN_TARGET = 700;
 const LEN_CEILING = 1200;
@@ -169,8 +171,12 @@ const CLAIM_LABELS = {
   gex_flip: [/\b(?:gamma )?flip\b/gi],
   max_pain: [/\bmax pain\b/gi],
   pin: [/\bpins?\b/gi, /\bprojected close\b/gi],
-  vex_pos_wall: [/\b(?:positive|pos)[- ]?vanna(?: wall)?\b/gi, /\bvanna (?:resistance|call) wall\b/gi],
-  vex_neg_wall: [/\b(?:negative|neg)[- ]?vanna(?: wall)?\b/gi, /\bvanna (?:support|put) wall\b/gi],
+  // The raw FIELD NAME is included deliberately. Largo was observed echoing `vex_pos_wall`
+  // verbatim into member prose (see the jargon-leak fix), and a grader that only knows the human
+  // phrasing scores that correct-but-ugly answer as NOT_STATED — hiding a real fix behind a false
+  // negative. Match what the product actually emits, then fix the phrasing separately.
+  vex_pos_wall: [/\b(?:positive|pos)[- ]?vanna(?: wall)?\b/gi, /\bvanna (?:resistance|call) wall\b/gi, /\bvex_pos_wall\b/gi],
+  vex_neg_wall: [/\b(?:negative|neg)[- ]?vanna(?: wall)?\b/gi, /\bvanna (?:support|put) wall\b/gi, /\bvex_neg_wall\b/gi],
 };
 
 /**
@@ -401,6 +407,11 @@ if (isDirectRun) void (async () => {
     for (const sc of list) {
       const row = { id: sc.id, q: sc.q, subject: sc.subject, modes: {} };
       for (const mode of ["concrete", "deep"]) {
+        // PACE THE RUN. The first 20-question attempt got HTTP 429 from question 11 onward and
+        // lost 11 of 20 — and, worse, the rollup counted each 60ms 429 as a "latency" sample and
+        // each as a shape failure, so the summary read as a fast, broken product. A harness that
+        // reports its own throttling as a product defect is worse than one that runs slowly.
+        if (PACE_MS > 0) await new Promise((r) => setTimeout(r, PACE_MS));
         // A fresh session id per (question, mode) so a Concrete answer cannot prime the Deep one.
         const sid = `deep-${mode}-${sc.id}-${Date.now()}`;
         let r;
