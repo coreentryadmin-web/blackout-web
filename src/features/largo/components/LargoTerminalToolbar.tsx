@@ -2,7 +2,7 @@
 
 import { clsx } from "clsx";
 import { useEffect, useRef, useState } from "react";
-import { History, Plus, RefreshCw, Maximize2, Minimize2, X } from "lucide-react";
+import { History, Plus, RefreshCw, Maximize2, Minimize2, X, CalendarClock } from "lucide-react";
 import type { LargoConversation } from "@/features/largo/conversation-history";
 import { groupConversationsByDay } from "@/features/largo/lib/session-grouping";
 import { LargoAnswerModeToggle } from "./LargoAnswerModeToggle";
@@ -159,7 +159,15 @@ export function LargoTerminalToolbar({
           disabled={loading}
           onClick={onToggleHistorical}
           title="Historical mode — past session snapshots"
+          aria-label="Historical mode"
         >
+          {/* ICON IS NOT DECORATION HERE. At <=640px `.largo-toolbar-btn-label { display: none }`
+              hides the label, and this was the ONLY button whose sole child was that label — so on
+              a phone it collapsed to an EMPTY 15x15 box: invisible, unhittable (under the 24px
+              minimum), and announced only via `title`. Every sibling already carried an icon that
+              survives the label being hidden; this one was the exception. Measured on prod
+              2026-08-20 at 430x932. */}
+          <CalendarClock size={15} aria-hidden />
           <span className="largo-toolbar-btn-label">Historical</span>
         </button>
 
