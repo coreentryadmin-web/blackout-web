@@ -182,6 +182,33 @@ function writtenUppercase(question: string, token: string): boolean {
   return new RegExp(`\\b${safe}\\b`).test(question);
 }
 
+/**
+ * Is `token` a ticker the MEMBER actually meant, judged by how they wrote it in `sourceText`?
+ *
+ * EXPORTED so there is exactly ONE answer to this question in the codebase. `parseDeskSlashArgs`
+ * used to decide it independently with a bare `/^\$?([A-Z][A-Z0-9]{0,4})$/i` on the first token —
+ * case-INSENSITIVE and with no stopword list — so under an active desk scope every ordinary
+ * question donated its first word as a ticker: "how is SPX looking" -> HOW, "what is a good play?"
+ * -> WHAT, "where are the walls" -> WHERE, "is the system aligned?" -> IS. The stopword set that
+ * would have caught all of them was sitting in this module the whole time, unreachable.
+ *
+ * The discriminator is CASE, and it is the member's own signal: a bare lowercase function word is
+ * never a ticker, while `$NOW` or a genuinely shouted `NOW` is. That is what lets an unknown
+ * symbol (CRWV, OKLO) still work without a static allowlist that can never be complete.
+ */
+export function looksLikeMemberTicker(token: string, sourceText: string): boolean {
+  const raw = String(token ?? "").trim();
+  const hadDollar = raw.startsWith("$");
+  const cand = raw.replace(/^\$/, "").toUpperCase();
+  if (!/^[A-Z][A-Z0-9]{0,4}$/.test(cand)) return false;
+  // An explicit $-symbol is unambiguous — the member marked it themselves.
+  if (hadDollar) return true;
+  // A function word only counts when genuinely shouted in the member's own text.
+  if (STOPWORD_TICKERS.has(cand) && !writtenUppercase(sourceText, cand)) return false;
+  if (KNOWN_TICKERS.has(cand)) return true;
+  return writtenUppercase(sourceText, cand) && !DOMAIN_UPPERCASE_WORDS.has(cand);
+}
+
 function extractTicker(question: string, historyText: string): string | null {
   // Normalise to uppercase so mixed-case and ALL-CAPS questions are handled identically.
   const qUpper = question.toUpperCase();

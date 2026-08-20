@@ -5,6 +5,7 @@
 
 import type { LargoProduct } from "@/lib/largo/registry/capability-registry";
 import type { LargoQuestionIntent } from "@/lib/largo/question-intent";
+import { looksLikeMemberTicker } from "@/lib/largo/question-intent";
 import {
   formatSubmoduleFocusBlock,
   peelSubmoduleFromArgs,
@@ -293,8 +294,18 @@ export function parseDeskSlashArgs(args: string, desk?: string | null): DeskSlas
   }
   if (!tail) return submodule ? { submodule } : {};
 
+  // The first token is only a ticker if the MEMBER wrote it as one.
+  //
+  // This used to be a bare `TICKER_TOKEN.test(first)` — case-insensitive, no stopword list — so a
+  // scoped desk turned the opening word of any ordinary question into its ticker: "how is SPX
+  // looking" -> HOW, "what is a good play?" -> WHAT, "is the system aligned?" -> IS. That ticker
+  // then drove the prefetch, the mini-panel and the follow-up chips, so a member asking about SPX
+  // got a session pinned to a symbol that does not exist.
+  //
+  // `looksLikeMemberTicker` is the SAME predicate question-intent.ts uses for free-text questions,
+  // reused rather than reimplemented — the duplicate-and-drift is what produced this bug.
   const first = tail.split(/\s+/)[0] ?? "";
-  if (TICKER_TOKEN.test(first)) {
+  if (looksLikeMemberTicker(first, tail)) {
     const ticker = first.replace(/^\$/, "").toUpperCase();
     return submodule ? { submodule, ticker } : { ticker };
   }
