@@ -46,6 +46,12 @@ jobs:
         run: node scripts/verify-api-auth-guards.mjs
       - name: Tailwind @apply opacity guard (recurring build breaker)
         run: node scripts/check-tailwind-apply-opacity.mjs
+      - name: Client/server boundary guard (recurring build breaker)
+        # Sits BEFORE the tests on purpose. A "use client" module that reaches `import "server-only"`
+        # fails `next build` and nothing else — tsc is clean and the unit suite passes — so without
+        # this the feedback only arrives at the LAST step, ~4 minutes in. Same placement rationale
+        # as the tailwind guard directly above.
+        run: node scripts/audit/client-server-boundary.mjs
       - name: Unit tests
         # Same entrypoint a developer runs (`npm test`), so a local pass means this pass. The glob
         # is expanded inside the script rather than by the shell — Node 20 does not expand globs in
