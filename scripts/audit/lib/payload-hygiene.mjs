@@ -76,7 +76,23 @@ export function scanPayload(root, { maxFindings = 200, maxNodes = 200_000 } = {}
       return;
     }
     if (Array.isArray(node)) {
-      node.forEach((v, i) => walk(v, `${path}[${i}]`));
+      node.forEach((v, i) => {
+        const childPath = `${path}[${i}]`;
+        // A bare number IN an array is data too — a raw series like `[7499.360000000001, ...]`
+        // has no key to hang off, and walking straight past it was a silent hole in the scan.
+        if (typeof v === "number") {
+          if (isUnroundedFloat(v)) {
+            findings.push({
+              kind: "unrounded_float",
+              path: childPath,
+              value: v,
+              detail: `${String(v).split(".")[1].length} decimals`,
+            });
+          }
+          return;
+        }
+        walk(v, childPath);
+      });
       return;
     }
     if (node && typeof node === "object") {
@@ -120,4 +136,44 @@ export function summarize(findings) {
   const by = {};
   for (const f of findings) by[f.kind] = (by[f.kind] ?? 0) + 1;
   return by;
+}
+
+/**
+ * How many numeric leaves a payload actually carries.
+ *
+ * WHY THIS IS LOAD-BEARING. An empty payload has nothing malformed in it, so it scans CLEAN — and
+ * a run against a sandbox with placeholder credentials reported "17/17 tools clean" while four of
+ * those tools had returned in 0ms with no data at all. That is the precise failure this whole
+ * scanner exists to catch, committed by the scanner itself. A result with no numbers in it is not
+ * evidence of hygiene; it is evidence that the probe never ran.
+ */
+export function countNumericLeaves(root, { maxNodes = 200_000 } = {}) {
+  let n = 0;
+  let nodes = 0;
+  const walk = (node) => {
+    if (++nodes > maxNodes) return;
+    if (Array.isArray(node)) {
+      return node.forEach((v) => {
+        if (typeof v === "number" && Number.isFinite(v)) n++;
+        else walk(v);
+      });
+    }
+    if (node && typeof node === "object") {
+      for (const v of Object.values(node)) {
+        if (typeof v === "number" && Number.isFinite(v)) n++;
+        else walk(v);
+      }
+    }
+  };
+  walk(root);
+  return n;
+}
+
+/** Below this a payload is treated as EMPTY (probe did not really run), never as clean. */
+export const MIN_NUMERIC_LEAVES = 3;
+
+/** "error" | "empty" | "scanned" — never let the middle one be reported as the last one. */
+export function classifyResult(result, { error } = {}) {
+  if (error) return "error";
+  return countNumericLeaves(result) < MIN_NUMERIC_LEAVES ? "empty" : "scanned";
 }

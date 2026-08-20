@@ -21,7 +21,7 @@
  *   node --require ./scripts/audit/lib/allow-server-only.cjs --import tsx \
  *     scripts/audit/largo-payload-hygiene.mjs [--ticker=SPX] [--tools=a,b] [--json]
  */
-import { scanPayload, summarize } from "./lib/payload-hygiene.mjs";
+import { classifyResult, countNumericLeaves, scanPayload, summarize } from "./lib/payload-hygiene.mjs";
 
 const arg = (k, d) => {
   const hit = process.argv.find((a) => a.startsWith(`--${k}=`));
@@ -71,7 +71,10 @@ for (const [name, input] of TOOLS) {
   try {
     const result = await runLargoTool(name, input, "payload-hygiene-audit");
     const { findings, truncated } = scanPayload(result);
-    rows.push({ label, status: "OK", ms: Date.now() - t0, findings, truncated });
+    // A payload with (almost) no numbers in it did not really run — placeholder creds, a refused
+    // host, an empty upstream. It scans clean by construction, so it must NOT be counted as clean.
+    const status = classifyResult(result) === "empty" ? "EMPTY" : "OK";
+    rows.push({ label, status, ms: Date.now() - t0, findings, truncated, leaves: countNumericLeaves(result) });
   } catch (e) {
     rows.push({
       label,
@@ -85,6 +88,7 @@ for (const [name, input] of TOOLS) {
 
 const all = rows.flatMap((r) => r.findings);
 const ok = rows.filter((r) => r.status === "OK");
+const empty = rows.filter((r) => r.status === "EMPTY");
 const errored = rows.filter((r) => r.status === "ERROR");
 const dirty = ok.filter((r) => r.findings.length > 0);
 
@@ -96,7 +100,12 @@ if (JSON_OUT) {
       console.log(`\n[ERROR] ${r.label} — ${r.error.slice(0, 160)}`);
       continue;
     }
-    const tag = r.findings.length ? `${r.findings.length} FLAGGED` : "clean";
+    const tag =
+      r.status === "EMPTY"
+        ? `no data (${r.leaves} numeric leaves) — NOT a pass`
+        : r.findings.length
+          ? `${r.findings.length} FLAGGED`
+          : `clean (${r.leaves} numeric leaves)`;
     console.log(`\n[${r.status}] ${r.label} ${r.ms}ms — ${tag}${r.truncated ? " (TRUNCATED)" : ""}`);
     for (const f of r.findings.slice(0, 6)) {
       console.log(`    ${f.kind.padEnd(16)} ${f.path} = ${f.value}  (${f.detail})`);
@@ -104,11 +113,17 @@ if (JSON_OUT) {
     if (r.findings.length > 6) console.log(`    … ${r.findings.length - 6} more`);
   }
   console.log(
-    `\n=== ${ok.length - dirty.length}/${ok.length} tools clean · ${all.length} flagged leaves ` +
-      `· ${errored.length} ERRORED (not counted as clean) ===`
+    `\n=== ${ok.length - dirty.length}/${ok.length} SCANNED tools clean · ${all.length} flagged leaves ` +
+      `· ${empty.length} EMPTY · ${errored.length} ERRORED (neither counted as clean) ===`
   );
+  if (empty.length || errored.length) {
+    console.log(
+      `    coverage: ${ok.length}/${rows.length} tools actually returned data. ` +
+        `An EMPTY or ERRORED tool is an UNKNOWN, not a pass.`
+    );
+  }
   console.log(`    ${JSON.stringify(summarize(all))}`);
 }
 
-// A tool that threw is an unknown, not a pass — exit non-zero on findings OR on errors.
-process.exit(all.length || errored.length ? 1 : 0);
+// A tool that threw or came back empty is an unknown, not a pass.
+process.exit(all.length || errored.length || empty.length ? 1 : 0);

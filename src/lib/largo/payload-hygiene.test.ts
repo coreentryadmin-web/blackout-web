@@ -4,6 +4,8 @@ import assert from "node:assert/strict";
 // @ts-expect-error — plain-JS audit lib, deliberately not typed (it runs under bare node too).
 import {
   carriesReadableDate,
+  classifyResult,
+  countNumericLeaves,
   epochUnit,
   isUnroundedFloat,
   scanPayload,
@@ -71,4 +73,21 @@ test("a truncated walk says so rather than reading as a clean bill of health", (
 
   const small = scanPayload({ results: [{ t: 1787202000000 }] }, { maxFindings: 10 });
   assert.equal(small.truncated, false);
+});
+
+test("an EMPTY payload is never reported as clean — the trap the scanner itself fell into", () => {
+  // A sandbox run with placeholder creds returned these and scored "17/17 tools clean".
+  for (const emptyish of [{}, { bars: [] }, { data: [], note: "unavailable" }, null, { ok: false }]) {
+    assert.equal(classifyResult(emptyish), "empty", `${JSON.stringify(emptyish)} must not be clean`);
+  }
+  // A payload that genuinely carries numbers is scanned for real.
+  assert.equal(classifyResult({ results: [{ t: 1787202000000, c: 7641.16, o: 7700 }] }), "scanned");
+  // An error beats everything — it is an unknown, not an empty and not a pass.
+  assert.equal(classifyResult({ results: [{ c: 1, o: 2, h: 3 }] }, { error: new Error("x") }), "error");
+});
+
+test("numeric leaves are counted through nesting and arrays", () => {
+  assert.equal(countNumericLeaves({ a: 1, b: { c: 2 }, d: [3, { e: 4 }] }), 4);
+  assert.equal(countNumericLeaves({ a: "1", b: null, c: true }), 0, "strings and bools are not data");
+  assert.equal(countNumericLeaves({ a: NaN }), 0, "NaN is not a measurement");
 });
