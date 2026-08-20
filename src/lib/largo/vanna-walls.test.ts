@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { stripEmbeddedLevel } from "./strip-embedded-level";
 import { join } from "node:path";
 
 /**
@@ -116,17 +117,34 @@ test("REGRESSION: the gamma regime read hands Largo no duplicate level", () => {
 });
 
 test("stripping removes the level but keeps the regime words", () => {
-  // The read exists to say long/short gamma and where resistance/support sit. Removing the
-  // parenthetical must not cost any of that.
-  const src = PROJECTION.slice(PROJECTION.indexOf("function stripEmbeddedLevel"));
-  const body = src.slice(0, src.indexOf("\n}"));
-  const m = body.match(/replace\((\/[^/]+\/[a-z]*)/);
-  assert.ok(m, "strip must be implemented as a replace");
-  // Reconstruct the behaviour on the real production string.
-  const sample = "Spot 7,707.98 is below the gamma flip (7,887.15) → short gamma: momentum / vol expansion, moves accelerate. Resistance 7,800, support 7,700.";
-  const stripped = sample.replace(/\s*\(\s*[\d,]+(?:\.\d+)?\s*\)/g, "").replace(/\s{2,}/g, " ").trim();
-  assert.doesNotMatch(stripped, /7,887\.15/, "the conflicting level must be gone");
-  assert.match(stripped, /short gamma/, "the regime verdict must survive");
-  assert.match(stripped, /Resistance 7,800/, "walls are NOT parenthetical duplicates — they must survive");
-  assert.match(stripped, /support 7,700/);
+  // Exercises the REAL function. The first version of this test reconstructed the regex inline,
+  // and that copy silently drifted the moment the implementation was hardened for CodeQL — the
+  // test kept passing while verifying a pattern no longer in use. That is the same
+  // duplicate-and-drift failure this audit has now found three times in product code; a test is
+  // not exempt from it.
+  const sample =
+    "Spot 7,707.98 is below the gamma flip (7,887.15) → short gamma: momentum / vol expansion, moves accelerate. Resistance 7,800, support 7,700.";
+  const out = stripEmbeddedLevel(sample) ?? "";
+  assert.doesNotMatch(out, /7,887\.15/, "the conflicting level must be gone");
+  assert.doesNotMatch(out, /\(\s*\)/, "no empty parens left behind");
+  assert.match(out, /short gamma/, "the regime verdict must survive");
+  assert.match(out, /Resistance 7,800/, "bare wall levels are not duplicates — they must survive");
+  assert.match(out, /support 7,700/);
+  assert.match(out, /Spot 7,707\.98 is below the gamma flip/, "the sentence must still read");
+});
+
+test("stripEmbeddedLevel is total — null in, null out, no throw", () => {
+  assert.equal(stripEmbeddedLevel(null), null);
+  assert.equal(stripEmbeddedLevel(undefined), null);
+  assert.equal(stripEmbeddedLevel(""), null);
+});
+
+test("bounded regex does not blow up on a pathological run of spaces", () => {
+  // The CodeQL alert this guards. An unbounded `\s*\(\s*...` retries every split on input like
+  // this; the bounded form cannot. Asserted as a TIME budget because the failure mode is latency,
+  // not a wrong answer.
+  const evil = "flip " + " ".repeat(50_000) + "(";
+  const t0 = Date.now();
+  stripEmbeddedLevel(evil);
+  assert.ok(Date.now() - t0 < 1000, "must not backtrack into the seconds on adversarial spacing");
 });
