@@ -118,3 +118,93 @@ test("aggregateZeroDteFunnel: raw_rejections carries first_seen/last_seen chrono
   assert.equal(out.raw_rejections[1]!.ticker, "AMD");
   assert.equal(out.raw_rejections[1]!.gate_failed, "cortex_veto_blind");
 });
+
+/**
+ * FUNNEL TOTALS MUST NOT BE DERIVED FROM A CAPPED SAMPLE.
+ *
+ * `fetchZeroDteDiscoveryEvents` returns the newest `EVENTS_SAMPLE_LIMIT` (2000) rows and the funnel
+ * counted kinds inside that window. MEASURED ON PROD 2026-08-20 mid-session the admin funnel
+ * returned `detected 642 + gate_blocked 1354 + commit 4 = 2000` — exactly the cap, i.e. saturated.
+ *
+ * The damage is not evenly spread. `gate_blocked` runs to thousands a session while `commit` runs
+ * to single digits, so commits are ~0.2% of the stream and whether any survive the window is luck
+ * of the ordering. At one instant the BOARD said `commit_events: 0`, the ADMIN funnel said 4, and
+ * the LEDGER held 7 committed rows — one quantity, three answers, and the most visible one said
+ * nothing traded on a day that traded seven times.
+ */
+
+test("REGRESSION: a saturated sample does not decide the commit count", () => {
+  // 2000 sampled events, every one gate_blocked — the shape a busy session actually produces once
+  // the window saturates. The sample contains ZERO commits.
+  const events = Array.from({ length: 2000 }, (_, i) => ({
+    observed_at: `2026-08-20T15:0${i % 10}:00Z`,
+    ticker: `T${i % 50}`,
+    kind: "gate_blocked",
+    gate_code: "score_floor",
+    score: null,
+    detail: null,
+    payload: null,
+  }));
+
+  const sampledOnly = aggregateZeroDteFunnel({
+    session_date: "2026-08-20",
+    events,
+    rejections: [],
+    events_sample_capped: true,
+    rejections_sample_capped: false,
+  });
+  assert.equal(sampledOnly.commit_events, 0, "the sample genuinely contains no commits");
+
+  // Same sample, plus the exact aggregate. The seven real commits must survive.
+  const withExact = aggregateZeroDteFunnel({
+    session_date: "2026-08-20",
+    events,
+    rejections: [],
+    events_sample_capped: true,
+    rejections_sample_capped: false,
+    exact_kind_counts: { gate_blocked: 5400, detected: 900, commit: 7 },
+    exact_detected_tickers: 118,
+  });
+  assert.equal(withExact.commit_events, 7, "the exact count must win over the saturated sample");
+  assert.equal(withExact.gate_blocked_events, 5400, "and it must win for the high-volume kind too");
+  assert.equal(withExact.detected_tickers, 118, "distinct tickers likewise");
+});
+
+test("an exact ZERO is not overwritten by a sampled non-zero", () => {
+  // `??`, not `||`. A real zero is a fact — "nothing committed today" is exactly the answer the
+  // funnel exists to give on a halted session, and `||` would discard it for the sampled value.
+  const events = [
+    { observed_at: "2026-08-20T15:00:00Z", ticker: "SPY", kind: "commit", gate_code: "COMMIT", score: 70, detail: null, payload: null },
+  ];
+  const out = aggregateZeroDteFunnel({
+    session_date: "2026-08-20",
+    events,
+    rejections: [],
+    events_sample_capped: false,
+    rejections_sample_capped: false,
+    exact_kind_counts: { commit: 0 },
+    exact_detected_tickers: 0,
+  });
+  assert.equal(out.commit_events, 0, "exact zero must survive");
+  assert.equal(out.detected_tickers, 0);
+});
+
+test("without exact counts the sampled behaviour is unchanged", () => {
+  // The counts are optional so every existing caller keeps working. This pins that the fallback is
+  // byte-identical to the old path rather than quietly changed.
+  const events = [
+    { observed_at: "2026-08-20T15:00:00Z", ticker: "SPY", kind: "commit", gate_code: "COMMIT", score: 70, detail: null, payload: null },
+    { observed_at: "2026-08-20T15:01:00Z", ticker: "QQQ", kind: "detected", gate_code: null, score: 60, detail: null, payload: null },
+    { observed_at: "2026-08-20T15:02:00Z", ticker: "IWM", kind: "gate_blocked", gate_code: "score_floor", score: 10, detail: null, payload: null },
+  ];
+  const out = aggregateZeroDteFunnel({
+    session_date: "2026-08-20",
+    events,
+    rejections: [],
+    events_sample_capped: false,
+    rejections_sample_capped: false,
+  });
+  assert.equal(out.commit_events, 1);
+  assert.equal(out.gate_blocked_events, 1);
+  assert.equal(out.detected_tickers, 1);
+});

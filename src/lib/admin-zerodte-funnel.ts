@@ -10,7 +10,13 @@
  * not vetoed by Cortex that state). Purely additive to the existing response shape; no new
  * instrumentation, no write path touched.
  */
-import { dbConfigured, fetchZeroDteDiscoveryEvents, fetchZeroDteScanRejections } from "@/lib/db";
+import {
+  countZeroDteDetectedTickers,
+  countZeroDteDiscoveryEventsByKind,
+  dbConfigured,
+  fetchZeroDteDiscoveryEvents,
+  fetchZeroDteScanRejections,
+} from "@/lib/db";
 import { todayEt } from "@/features/nighthawk/lib/session";
 
 const EVENTS_SAMPLE_LIMIT = 2000;
@@ -126,6 +132,13 @@ export function aggregateZeroDteFunnel(input: {
   }>;
   events_sample_capped: boolean;
   rejections_sample_capped: boolean;
+  /**
+   * EXACT session totals from a `GROUP BY`, when available. Optional so every existing caller and
+   * test keeps working on the sampled path; when present they WIN, because a total derived from a
+   * capped window is not a total.
+   */
+  exact_kind_counts?: Record<string, number> | null;
+  exact_detected_tickers?: number | null;
 }): Omit<ZeroDteFunnelSnapshot, "generated_at" | "db_configured" | "errors"> {
   const detectedTickers = new Set<string>();
   const kindCounts = new Map<string, number>();
@@ -193,11 +206,16 @@ export function aggregateZeroDteFunnel(input: {
       last_seen: r.last_seen ?? null,
     }));
 
+  // Prefer the exact aggregate; fall back to the sampled count only when the query failed.
+  // `?? undefined` (not `||`) so a legitimate exact ZERO is not replaced by a sampled non-zero.
+  const exact = input.exact_kind_counts ?? null;
+  const exactOr = (kind: string, sampled: number) => exact?.[kind] ?? sampled;
+
   return {
     session_date: input.session_date,
-    detected_tickers: detectedTickers.size,
-    gate_blocked_events: gateBlockedEvents,
-    commit_events: commitEvents,
+    detected_tickers: input.exact_detected_tickers ?? detectedTickers.size,
+    gate_blocked_events: exactOr("gate_blocked", gateBlockedEvents),
+    commit_events: exactOr("commit", commitEvents),
     rejection_rows: input.rejections.length,
     by_gate,
     by_kind,
@@ -235,6 +253,9 @@ export async function fetchZeroDteFunnelSnapshot(sessionDate = todayEt()): Promi
   let rejections: Awaited<ReturnType<typeof fetchZeroDteScanRejections>> = [];
   let events_sample_capped = false;
   let rejections_sample_capped = false;
+  /** Exact per-kind totals; null when the count query failed and we fall back to the sample. */
+  let kindCounts: Record<string, number> | null = null;
+  let detectedTickerCount: number | null = null;
 
   try {
     events = await fetchZeroDteDiscoveryEvents({
@@ -242,6 +263,18 @@ export async function fetchZeroDteFunnelSnapshot(sessionDate = todayEt()): Promi
       limit: EVENTS_SAMPLE_LIMIT,
     });
     events_sample_capped = events.length >= EVENTS_SAMPLE_LIMIT;
+    // EXACT counts, independent of the sample above.
+    //
+    // The sample exists to power `recent_events` / `by_gate` / `raw_events`, which are inherently
+    // "latest N" views. The FUNNEL TOTALS are not — they are claims about the whole session, and
+    // deriving them from a saturated window silently understates them. Fetched here so a failure
+    // degrades to the old sampled numbers rather than blanking the funnel.
+    try {
+      kindCounts = await countZeroDteDiscoveryEventsByKind(sessionDate);
+      detectedTickerCount = await countZeroDteDetectedTickers(sessionDate);
+    } catch (e) {
+      errors.push(`discovery_event_counts: ${e instanceof Error ? e.message : "count failed"}`);
+    }
   } catch (e) {
     errors.push(`discovery_events: ${e instanceof Error ? e.message : "read failed"}`);
   }
@@ -262,6 +295,8 @@ export async function fetchZeroDteFunnelSnapshot(sessionDate = todayEt()): Promi
     rejections,
     events_sample_capped,
     rejections_sample_capped,
+    exact_kind_counts: kindCounts,
+    exact_detected_tickers: detectedTickerCount,
   });
 
   return {
