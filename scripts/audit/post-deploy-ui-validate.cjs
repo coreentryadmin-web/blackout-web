@@ -49,9 +49,6 @@ const arg = (n, d) => {
 };
 const TICKER = arg("ticker", "SPX");
 
-/** Clock-shaped strings: "9:30 AM", "16:05", "3:42:20 PM". */
-const CLOCK_RE = /\b\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM|am|pm)?\b/g;
-
 /**
  * Navigate with ONE retry. `ERR_CONNECTION_RESET` mid-run is a DRAINING ECS REPLICA during a
  * rollout, not the sandbox egress block — the same trap `meridian-earnings-ui-audit.mjs` documents.
