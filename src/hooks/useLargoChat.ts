@@ -20,6 +20,11 @@ import {
   parsePlayContextFromSearchParams,
   type LargoPlayContext,
 } from "@/lib/largo/session-metadata";
+import type { LargoDepth } from "@/lib/largo/largo-depth-mode";
+// Client-safe module on purpose: importing a VALUE from largo-depth.ts pulls
+// providers/anthropic -> api-telemetry-persist ("server-only") into the browser bundle
+// and fails the Next build.
+import { normalizeLargoDepth } from "@/lib/largo/largo-depth-mode";
 import type { DeskSlashArgs } from "@/lib/largo/desk-scope";
 import {
   conversationTitle,
@@ -58,7 +63,7 @@ export type LargoMessage = {
   preEarningsPack?: PreEarningsPackCard | null;
   /** Post-verdict desk deep links. */
   actions?: LargoAction[];
-  depth?: "quick" | "deep";
+  depth?: LargoDepth;
   /** Competitor-style contextual chips — rendered inline under this answer. */
   followups?: string[];
   /** Active desk scope for this turn — drives mini-panel + thread context. */
@@ -184,7 +189,7 @@ export function useLargoChat() {
   // The instrument the SERVER resolved for the most recent answer — the contextual rail's only
   // source. Kept across follow-ups so the rail persists through a chain about the same name.
   const [activeTicker, setActiveTicker] = useState<string | null>(null);
-  const [depth, setDepth] = useState<"quick" | "deep">("deep");
+  const [depth, setDepth] = useState<LargoDepth>("concrete");
   const [historicalMode, setHistoricalMode] = useState(false);
   const [activeDeskScope, setActiveDeskScope] = useState<string | null>(null);
   const [activeDeskScopeArgs, setActiveDeskScopeArgs] = useState<DeskSlashArgs | null>(null);
@@ -245,7 +250,7 @@ export function useLargoChat() {
       }
     }
     const storedDepth = sessionStorage.getItem(DEPTH_STORAGE_KEY);
-    if (storedDepth === "quick" || storedDepth === "deep") setDepth(storedDepth);
+    if (storedDepth) setDepth(normalizeLargoDepth(storedDepth));
     if (sessionStorage.getItem(HISTORICAL_STORAGE_KEY) === "1") setHistoricalMode(true);
   }, []);
 
@@ -551,13 +556,14 @@ export function useLargoChat() {
     [loading, setSession]
   );
 
-  const toggleDepth = useCallback(() => {
-    setDepth((d) => {
-      const next = d === "quick" ? "deep" : "quick";
-      if (typeof window !== "undefined") sessionStorage.setItem(DEPTH_STORAGE_KEY, next);
-      return next;
-    });
+  const setAnswerMode = useCallback((mode: LargoDepth) => {
+    setDepth(mode);
+    if (typeof window !== "undefined") sessionStorage.setItem(DEPTH_STORAGE_KEY, mode);
   }, []);
+
+  const toggleDepth = useCallback(() => {
+    setAnswerMode(depth === "concrete" ? "deep" : "concrete");
+  }, [depth, setAnswerMode]);
 
   const toggleHistoricalMode = useCallback(() => {
     setHistoricalMode((h) => {
@@ -598,6 +604,7 @@ export function useLargoChat() {
     switchConversation,
     isFresh,
     depth,
+    setAnswerMode,
     toggleDepth,
     historicalMode,
     toggleHistoricalMode,

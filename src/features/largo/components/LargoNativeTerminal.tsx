@@ -21,6 +21,7 @@ import { slashArgsFromInput } from "@/lib/largo/slash-prompt-utils";
 import type { SlashSubmoduleItem } from "@/lib/largo/slash-submodules";
 import { LargoProactiveComposer } from "@/features/largo/components/LargoProactiveComposer";
 import { LargoDeskScopeBanner } from "@/features/largo/components/LargoDeskScopeBanner";
+import { LargoAnswerModeToggle } from "@/features/largo/components/LargoAnswerModeToggle";
 import { LargoStatusStrip } from "@/features/largo/components/LargoStatusStrip";
 import { LargoSlashMenu } from "@/features/largo/components/LargoSlashMenu";
 import { LargoSlashPromptsMenu } from "@/features/largo/components/LargoSlashPromptsMenu";
@@ -51,6 +52,8 @@ export function LargoNativeTerminal() {
     activeDeskScopeArgs,
     setActiveDeskScopeArgs,
     activeTicker,
+    depth,
+    setAnswerMode,
   } = useLargoChat();
 
   const router = useRouter();
@@ -171,6 +174,7 @@ export function LargoNativeTerminal() {
                   miniPanel={msg.miniPanel}
                   ticker={activeTicker}
                   nativeFollowups
+                  answerMode={msg.depth === "deep" ? "deep" : "concrete"}
                 />
               )
             ) : (
@@ -221,6 +225,14 @@ export function LargoNativeTerminal() {
           setActiveDeskScopeArgs(null);
         }}
         className="largo-desk-scope-banner-native"
+      />
+
+      <LargoAnswerModeToggle
+        mode={depth}
+        onChange={setAnswerMode}
+        disabled={loading || !hydrated}
+        variant="composer"
+        className="largo-answer-mode-native"
       />
 
       <form

@@ -4931,6 +4931,101 @@ html.product-shell .nav-mega {
     }
   }
 
+  .largo-answer-mode {
+    display: inline-flex;
+    align-items: stretch;
+    border-radius: 0.55rem;
+    border: 1px solid rgba(34, 211, 238, 0.25);
+    overflow: hidden;
+    background: rgba(4, 4, 7, 0.6);
+  }
+  .largo-answer-mode-composer {
+    margin: 0 0.75rem 0.5rem;
+    width: calc(100% - 1.5rem);
+  }
+  .largo-answer-mode-native {
+    margin: 0 0.65rem 0.45rem;
+    width: calc(100% - 1.3rem);
+  }
+  .largo-answer-mode-btn {
+    flex: 1;
+    padding: 0.38rem 0.65rem;
+    border: none;
+    background: transparent;
+    color: #7dd3fc;
+    font-family: var(--font-mono, monospace);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .largo-answer-mode-btn + .largo-answer-mode-btn {
+    border-left: 1px solid rgba(34, 211, 238, 0.2);
+  }
+  .largo-answer-mode-btn.is-active {
+    background: rgba(34, 211, 238, 0.18);
+    color: #fff;
+  }
+  .largo-answer-mode-btn:hover:not(:disabled):not(.is-active) {
+    background: rgba(34, 211, 238, 0.08);
+    color: #e0f2fe;
+  }
+  .largo-answer-mode-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .largo-concrete-answer {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+  }
+  .largo-concrete-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #7dd3fc;
+  }
+  .largo-concrete-mark {
+    color: #22d3ee;
+  }
+  .largo-concrete-asof {
+    color: #9fb3c8;
+  }
+  .largo-concrete-verdict {
+    margin: 0;
+    font-family: var(--font-syne, sans-serif);
+    font-size: 1.05rem;
+    font-weight: 600;
+    line-height: 1.35;
+    color: #f0f0f8;
+  }
+  .largo-concrete-body {
+    color: #e0f2fe;
+    line-height: 1.55;
+  }
+  .largo-concrete-body-after-verdict {
+    margin-top: -0.15rem;
+  }
+  .largo-concrete-body .largo-message-prose {
+    font-size: 14px;
+    line-height: 1.55;
+  }
+  .largo-concrete-body .largo-fmt-verdict {
+    display: none;
+  }
+  .largo-concrete-body .largo-fmt-heading {
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #22d3ee;
+    margin-top: 0.75rem;
+  }
+
   .largo-history-wrap {
     position: relative;
   }
