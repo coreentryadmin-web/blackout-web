@@ -56,6 +56,7 @@ import {
   LARGO_CAPABILITIES,
   rankCapabilities,
 } from "@/lib/largo/registry/capability-registry";
+import { formatSessionCalendarBlock } from "@/lib/largo/temporal/session-calendar";
 import {
   formatTemporalBlock,
   resolveTimeframe,
@@ -295,7 +296,7 @@ function buildDynamicSystem(
     : "";
   const dynamicPart = `## This turn
 
-Session date (ET): ${todayEtYmd()}
+${formatSessionCalendarBlock(todayEtYmd())}
 
 ${liveFeedBlock}${platformSection}${extraBlocks}
 
