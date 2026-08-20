@@ -12195,3 +12195,14 @@ after its one reload the page stays partially broken. Deliberately left alone: `
 generic TypeError and matching it would reload-loop on ordinary app bugs. It needs a discriminator
 (webpack frames in the stack, or a coincident chunk request failure) and a real deploy to validate
 against.
+
+---
+
+## 2026-08-20 — SPX Slayer Largo audit harness + macro/DTE routing
+
+| Severity | Area | Root cause | Fix | Status |
+|----------|------|------------|-----|--------|
+| P2 | Largo intent | `PLAY_STATE_RE` required ticker-before-play — "best play for SPX" missed play-engine hints | `BEST_PLAY_RE` + reverse alternation (`intent-keywords.ts`) | OPEN PR cursor/spx-largo-audit-3d11 |
+| P2 | Largo SPX scope | Implicit "SPX today?" could skip economic calendar unless question named FOMC/CPI | `needsNews=true` on spx-slayer desk scope override | OPEN PR |
+| P2 | Largo 3DTE/7DTE | No tool hints for multi-day horizon questions | `SPX_DTE_HORIZON_RE` → lotto + option chain | OPEN PR |
+| P3 | Ops | No repeatable prod matrix for SPX Slayer submodules + macro edge cases | `npm run validate:largo-spx-slayer` (44 scenarios) | OPEN PR |
