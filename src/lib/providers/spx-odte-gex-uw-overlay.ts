@@ -1,6 +1,6 @@
 import type { GexHeatmap } from "@/lib/providers/polygon-options-gex";
 import { resolveOdteExpiry } from "@/lib/correctness/gex-odte-scope";
-import { wallsFromStrikeTotals, cumulativeGammaFlip } from "@/lib/providers/gex-cross-validation-core";
+import { wallsFromStrikeTotals, cumulativeGammaFlip, buildGexRegime } from "@/lib/providers/gex-cross-validation-core";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import {
   getSpxOdteScopedUwLadderMap,
@@ -31,7 +31,32 @@ export function recomputeNearTermGexStrikeTotals(hm: GexHeatmap): void {
   const { callWall, putWall } = wallsFromStrikeTotals(totals);
   hm.gex.call_wall = callWall;
   hm.gex.put_wall = putWall;
-  hm.gex.flip = cumulativeGammaFlip(totals, hm.spot);
+  const flip = cumulativeGammaFlip(totals, hm.spot);
+  hm.gex.flip = flip;
+
+  // REBUILD THE REGIME FROM THE NEW FLIP — it used to be left behind here.
+  //
+  // Everything above is re-derived after the UW 0DTE ladder replaces today's column, but
+  // `hm.gex.regime` was not. `GexRegime.flip` is documented as "mirrors gex.flip", and on SPX it
+  // stopped doing so the moment this overlay ran: the served payload carried a flip from the
+  // overlaid book beside a regime — its own `flip`, its `posture`, and its `read` sentence — still
+  // describing the pre-overlay one.
+  //
+  // Measured on prod 2026-08-20:
+  //     gex.flip ........ 7893.38
+  //     regime.flip ..... 7887.16   (6.22 pts stale)
+  //     regime.read ..... "... below the gamma flip (7,887.15) -> short gamma ..."
+  // The delta held across four samples 20s apart AND through a forced rebuild (`?force=1`, 9.5s),
+  // which is what ruled out caching: this overlay re-runs per request and re-created the skew every
+  // time. Largo, handed both numbers under one name, reported both — "Gamma flip 7891.94 (7886.81
+  // on Thermal matrix)" — which reads to a member as the product contradicting itself.
+  //
+  // The 6 points are the visible symptom; `posture` is the real exposure. It is
+  // `spot >= flip ? long : short`, and long vs short gamma inverts the whole interpretation
+  // (dampened/mean-reverting vs amplified/trending). With spot ~180 pts below both flips the answer
+  // was "short" either way, which is precisely why this survived unnoticed — the failure only bites
+  // when spot sits BETWEEN the two.
+  hm.gex.regime = buildGexRegime({ spot: hm.spot, flip, callWall, putWall });
 }
 
 /**
