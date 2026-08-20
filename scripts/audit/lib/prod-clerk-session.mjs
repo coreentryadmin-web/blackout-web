@@ -116,6 +116,53 @@ export async function mintClerkPremiumSession({
       body: body ? JSON.stringify(body) : undefined,
     });
 
+  /**
+   * RECLAIM LEAKED TEMP USERS BEFORE MINTING A NEW ONE.
+   *
+   * Per-run identity (the fix for concurrent runs deleting each other's user) removed an
+   * accidental garbage collector. When every harness shared ONE address, adoption meant one user
+   * existed forever and held exactly one phone number. Now each run CREATES a user, and each
+   * consumes a number from the `+1415555xxxx` pool — so any run that dies before its `finally`
+   * leaks a user that holds its number indefinitely.
+   *
+   * MEASURED 2026-08-20, ~40 minutes after shipping per-run identity: a validator pass failed with
+   * `phone-number collision persisted across 2 attempt(s) with distinct +1415555XXXX numbers —
+   * likely leaked temp users holding numbers`. 5 of 6 passes in the same burst were clean, so it
+   * is a rising-probability collision, not a hard break — which is exactly how it would go
+   * unnoticed until the pool was badly fouled.
+   *
+   * The sweep only touches users that are BOTH ours by e-mail prefix AND older than
+   * `STALE_USER_MS`. That age gate is the whole safety argument: it must exceed the longest
+   * plausible run, or this reintroduces the delete-race it was built to avoid. 30 minutes is far
+   * beyond any harness here (the longest, the paired Largo audit, runs ~15).
+   *
+   * Best-effort throughout: a sweep failure must never block the run that needed a session.
+   */
+  const STALE_USER_MS = 30 * 60_000;
+  const sweepLeakedAuditUsers = async () => {
+    try {
+      const res = await backend("GET", "/users?limit=100&order_by=%2Bcreated_at");
+      const users = await res.json().catch(() => null);
+      if (!Array.isArray(users)) return 0;
+      const cutoff = Date.now() - STALE_USER_MS;
+      let swept = 0;
+      for (const u of users) {
+        const addr = u?.email_addresses?.[0]?.email_address ?? "";
+        // Tagged temp users only. A bare `claude-audit-temp@` (the pre-per-run default) is left
+        // alone: another agent or an older checkout may still be using it.
+        if (!/^claude-audit-temp\+/.test(addr)) continue;
+        if (typeof u?.created_at !== "number" || u.created_at > cutoff) continue;
+        await deleteAuditClerkUser(secret, u.id).catch(() => {});
+        swept += 1;
+      }
+      if (swept > 0) console.warn(`[clerk-session] swept ${swept} leaked temp user(s) older than 30m`);
+      return swept;
+    } catch {
+      return 0; // never block a run on housekeeping
+    }
+  };
+  await sweepLeakedAuditUsers();
+
   let userId = null;
   try {
     const created = await createAuditClerkUser({

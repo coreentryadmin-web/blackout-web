@@ -65,3 +65,52 @@ test("adoption is still present — it is scoped, not removed", () => {
   );
   assert.match(helper, /adoptByEmail/, "adoption must remain available for genuine leftovers");
 });
+
+/**
+ * PER-RUN IDENTITY REMOVED AN ACCIDENTAL GARBAGE COLLECTOR — this restores an explicit one.
+ *
+ * When every harness shared ONE address, adoption meant one user existed forever and held exactly
+ * one phone number from the `+1415555xxxx` pool. Per-run identity makes each run CREATE a user, so
+ * every run consumes a number, and any run that dies before its `finally` leaks one indefinitely.
+ *
+ * MEASURED 2026-08-20, ~40 minutes after per-run identity shipped: a validator pass failed with
+ * `phone-number collision persisted across 2 attempt(s) with distinct +1415555XXXX numbers —
+ * likely leaked temp users holding numbers`. 5 of 6 passes in that burst were clean — a rising
+ * -probability collision rather than a hard break, which is precisely how it would foul the pool
+ * unnoticed.
+ */
+
+test("REGRESSION: leaked temp users are swept before a new one is minted", () => {
+  assert.match(CODE, /sweepLeakedAuditUsers/, "a sweep must exist");
+  assert.match(CODE, /await sweepLeakedAuditUsers\(\)/, "and must run before the mint");
+  // It must run BEFORE user creation, or it reclaims nothing for the run that needed it.
+  // Compare against the CALL SITE, not the import. `createAuditClerkUser` appears in the import
+  // line at the top of the file, so a bare indexOf matches there and the ordering assertion passes
+  // for the wrong reason — it would keep passing even if the sweep ran after the mint.
+  assert.ok(
+    CODE.indexOf("await sweepLeakedAuditUsers()") < CODE.indexOf("await createAuditClerkUser({"),
+    "sweep must precede the createAuditClerkUser CALL"
+  );
+});
+
+test("the sweep is age-gated, and the gate exceeds any real run", () => {
+  // THE SAFETY ARGUMENT. Without an age gate this is exactly the delete-race that per-run identity
+  // was built to remove — it would reap a LIVE concurrent run's user. The threshold must exceed the
+  // longest harness here (the paired Largo audit, ~15 min).
+  const ms = /STALE_USER_MS = (\d+) \* 60_000/.exec(CODE)?.[1];
+  assert.ok(ms, "the threshold must be stated as minutes");
+  assert.ok(Number(ms) >= 30, `age gate ${ms}m must comfortably exceed the ~15m longest run`);
+  assert.match(CODE, /u\.created_at > cutoff\) continue/, "fresh users must be skipped");
+});
+
+test("the sweep only reaps OUR tagged users", () => {
+  // Scoped to the per-run prefix. The bare pre-per-run address is deliberately left alone: another
+  // agent or an older checkout may still be using it, and reaping it would break them.
+  assert.match(CODE, /\^claude-audit-temp\\\+/, "must match only the tagged prefix");
+});
+
+test("housekeeping never blocks the run", () => {
+  // A sweep failure must not stop a harness from getting a session — the sweep is an optimisation,
+  // the session is the job.
+  assert.match(CODE, /return 0; \/\/ never block a run on housekeeping/);
+});
