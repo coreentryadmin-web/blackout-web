@@ -167,7 +167,7 @@ export async function getGexPositioning(
   if (hasLiveGexStrikeExpiry(root)) {
     const wsLadder = getGexStrikeExpiryLadder(root, nearTermExpiries);
     if (wsLadder) {
-      const wsWalls = wallsFromStrikeTotals(strikeTotalsFromLadder(wsLadder.ladder));
+      const wsWalls = wallsFromStrikeTotals(strikeTotalsFromLadder(wsLadder.ladder), base.spot);
       if (wsWalls.callWall != null) base.call_wall = wsWalls.callWall;
       if (wsWalls.putWall != null) base.put_wall = wsWalls.putWall;
     }

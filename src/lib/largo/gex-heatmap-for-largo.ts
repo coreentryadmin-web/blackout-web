@@ -20,8 +20,30 @@ export type GexHeatmapForLargo = {
   top_strikes: Array<{ strike: number; net: number; pct_of_total: number }>;
   /** Canonical summary scalars — same contract as get_positioning / Thermal UI. */
   flip: number | null;
+  /**
+   * MULTI-EXPIRY AGGREGATE — summed over `near_term_expiries`, which on SPX is currently FIFTEEN
+   * expiries running three weeks out. Real, but NOT the near-dated wall, and the model had no way
+   * to know that: measured 2026-08-20 at spot 7641.16 the aggregate read 7800 (+158.8) while the
+   * front expiry alone read 7700 (+58.8). `walls_by_horizon` is what answers a DTE-specific
+   * question.
+   */
   call_wall: number | null;
   put_wall: number | null;
+  /**
+   * Walls cut by DTE horizon, cumulative (0DTE subset of 3DTE subset of 7DTE), gamma lens.
+   *
+   * Carried so an answer can NAME the scope it is quoting instead of implying a single wall
+   * exists. A bucket with `expiries: 0` means no expiry in range — the live post-close state of
+   * 0DTE — and must be reported as that, never as a missing wall.
+   */
+  walls_by_horizon: Array<{
+    label: string;
+    expiries: number;
+    call_wall: number | null;
+    put_wall: number | null;
+    call_wall_pts: number | null;
+    put_wall_pts: number | null;
+  }> | null;
   max_pain: number | null;
   gex_king_strike: number | null;
   net_gex: number | null;
@@ -111,6 +133,7 @@ export async function gexHeatmapForLargo(
       top_strikes: [],
       flip: null,
       call_wall: null,
+      walls_by_horizon: null,
       put_wall: null,
       max_pain: null,
       gex_king_strike: null,
@@ -164,6 +187,15 @@ export async function gexHeatmapForLargo(
     flip: pos?.flip ?? hm.gex?.flip ?? null,
     call_wall: pos?.call_wall ?? hm.gex?.call_wall ?? null,
     put_wall: pos?.put_wall ?? hm.gex?.put_wall ?? null,
+    walls_by_horizon:
+      hm.gex?.walls_by_horizon?.map((h) => ({
+        label: h.label,
+        expiries: h.expiries.length,
+        call_wall: h.callWall,
+        put_wall: h.putWall,
+        call_wall_pts: h.callWallPts,
+        put_wall_pts: h.putWallPts,
+      })) ?? null,
     max_pain: pos?.max_pain ?? hm.max_pain ?? null,
     gex_king_strike: pos?.gex_king_strike ?? null,
     net_gex: pos?.net_gex ?? hm.gex?.total ?? null,

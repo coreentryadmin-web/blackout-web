@@ -28,7 +28,9 @@ export function recomputeNearTermGexStrikeTotals(hm: GexHeatmap): void {
   hm.gex.strike_totals = totals;
   hm.gex.total = total;
 
-  const { callWall, putWall } = wallsFromStrikeTotals(totals);
+  // Side-constrained: `hm.spot` is the same spot the rest of this recompute uses, so a wall that
+  // lands on the wrong side of it was never a level a member could act on.
+  const { callWall, putWall } = wallsFromStrikeTotals(totals, hm.spot);
   hm.gex.call_wall = callWall;
   hm.gex.put_wall = putWall;
   // DETAIL, not just the value: the overlay replaces today's 0DTE column, so it must recompute
