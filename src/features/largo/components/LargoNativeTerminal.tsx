@@ -9,6 +9,7 @@ import { LargoThinkingState } from "@/features/largo/components/LargoThinkingSta
 import { resetIosViewport } from "@/hooks/useIosKeyboardInset";
 import { LargoDeskModulePicker } from "@/features/largo/components/LargoDeskModulePicker";
 import {
+  formatLargoScopePrefill,
   largoModuleComposerDesks,
   type LargoScopePick,
   type LargoStarterPick,
@@ -78,7 +79,10 @@ export function LargoNativeTerminal() {
   function applyScope(pick: LargoScopePick) {
     setActiveDeskScope(pick.deskScope);
     setActiveDeskScopeArgs(pick.deskScopeArgs ?? null);
-    if (pick.prefill !== undefined) setInput(pick.prefill);
+    const prefill =
+      pick.prefill ??
+      formatLargoScopePrefill(pick.deskScope, pick.deskScopeArgs?.submodule ?? null);
+    setInput(prefill);
     inputRef.current?.focus();
   }
 

@@ -29,6 +29,7 @@ import { LargoSlashPromptsMenu } from "./LargoSlashPromptsMenu";
 import { LargoDeskScopeBanner } from "./LargoDeskScopeBanner";
 import { LargoProactiveComposer } from "./LargoProactiveComposer";
 import { parseDeskSlashArgs } from "@/lib/largo/desk-scope";
+import { formatLargoScopePrefill } from "@/lib/largo/largo-module-starter-cards";
 import { slashArgsFromInput } from "@/lib/largo/slash-prompt-utils";
 import type { LargoScopePick, LargoStarterPick } from "@/lib/largo/largo-module-starter-cards";
 import type { DeskSlashArgs } from "@/lib/largo/desk-scope";
@@ -113,7 +114,10 @@ export function LargoTerminal({
   function applyScope(pick: LargoScopePick) {
     setActiveDeskScope(pick.deskScope);
     setActiveDeskScopeArgs(pick.deskScopeArgs ?? null);
-    if (pick.prefill !== undefined) setInput(pick.prefill);
+    const prefill =
+      pick.prefill ??
+      formatLargoScopePrefill(pick.deskScope, pick.deskScopeArgs?.submodule ?? null);
+    setInput(prefill);
     inputRef.current?.focus();
   }
 
