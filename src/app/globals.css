@@ -23283,131 +23283,25 @@ html.product-shell .nav-mega {
 }
 
 @layer components {
-  /* Rail + transcript. Grid, not overlay: the rail must never cover the answer it is context for.
-     It only takes a column once an instrument is resolved, so width is never permanently spent. */
+  /* Transcript column. The context RAIL that used to sit beside it was removed — unmounted since
+     an earlier release (imported nowhere), so its styles painted nothing. `.largo-main` stays: it
+     is the live flex container for the transcript. */
   .largo-main {
     display: flex;
     flex: 1;
     min-height: 0;
     gap: 0.75rem;
   }
-  .largo-rail {
-    flex: 0 0 11rem;
-    align-self: flex-start;
-    padding: 0.6rem;
-    border: 1px solid var(--largo-info-dim);
-    background: rgba(8, 12, 20, 0.5);
-    font-family: var(--font-mono, ui-monospace, monospace);
-  }
-  /* Below the desk breakpoint the rail would leave the transcript unreadably narrow, so it stacks
-     above it instead of being hidden — the numbers are the point, the position is not. */
   @media (max-width: 1024px) {
     .largo-main {
       flex-direction: column;
     }
-    .largo-rail {
-      flex: 0 0 auto;
-      align-self: stretch;
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
-      gap: 0.25rem 0.75rem;
-    }
   }
-  .largo-rail-head {
-    font-family: var(--font-anton, sans-serif);
-    font-size: 1.05rem;
-    letter-spacing: 0.06em;
-    color: var(--largo-primary);
-    border-bottom: 1px solid var(--largo-info-dim);
-    padding-bottom: 0.3rem;
-    margin-bottom: 0.4rem;
-  }
-  .largo-rail-spot {
-    font-size: 1.15rem;
-    font-weight: 600;
-    color: var(--largo-primary);
-  }
-  .largo-rail-regime {
-    font-size: 9px;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: var(--largo-muted);
-    margin-bottom: 0.45rem;
-  }
-  .largo-rail-group {
-    padding-top: 0.35rem;
-    margin-top: 0.35rem;
-    border-top: 1px solid rgba(148, 163, 184, 0.12);
-  }
-  .largo-rail-row {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 0.4rem;
-    padding: 0.12rem 0;
-    font-size: 10px;
-  }
-  .largo-rail-label {
-    color: var(--largo-muted-faint);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-  }
-  .largo-rail-value {
-    color: var(--largo-primary);
-    font-weight: 600;
-  }
-  .largo-rail-bull { color: var(--largo-bull); }
-  .largo-rail-bear { color: var(--largo-bear); }
   /* LEVEL LADDER — price-ordered, spot marked in place. Three columns so the prices form a single
      scannable numeric edge; a ragged left column defeats the whole point of ordering them. */
-  .largo-rail-ladder {
-    display: grid;
-    gap: 0.05rem;
-  }
-  .largo-rail-rung {
-    display: grid;
-    grid-template-columns: 3.6rem 1fr auto;
-    align-items: baseline;
-    gap: 0.35rem;
-    padding: 0.1rem 0.2rem;
-    font-size: 9.5px;
-    border-left: 2px solid transparent;
-  }
-  .largo-rail-rung-price {
-    color: var(--largo-primary);
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-  }
-  .largo-rail-rung-label {
-    color: var(--largo-muted-faint);
-    letter-spacing: 0.08em;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .largo-rail-rung-dist {
-    color: var(--largo-muted);
-    font-variant-numeric: tabular-nums;
-  }
   /* The member's actual position in the structure — the one row the eye should find first. */
-  .largo-rail-rung-spot {
-    border-left-color: var(--largo-info);
-    background: rgba(34, 211, 238, 0.08);
-  }
-  .largo-rail-rung-spot .largo-rail-rung-price { color: var(--largo-info); }
-  .largo-rail-rung-spot .largo-rail-rung-label { color: var(--largo-info); }
   /* A wall that MIGRATED since the last read. Amber = watch, per the desk's colour semantics —
      it is not bullish or bearish, it is a thing that changed while you were reading. */
-  .largo-rail-rung-moved {
-    border-left-color: var(--largo-warn);
-  }
-  .largo-rail-rung-moved .largo-rail-rung-price { color: var(--largo-warn); }
-  .largo-rail-degraded {
-    margin-top: 0.4rem;
-    font-size: 9px;
-    letter-spacing: 0.08em;
-    color: var(--largo-warn);
-  }
 }
 
 @layer components {
