@@ -34,6 +34,20 @@ export const VECTOR_FRACTION_DP = {
   movePct: 6,
   /** expected-move: annualized ATM IV as a decimal (0.15 = 15%). 2dp loses a full vol point. */
   atmIv: 4,
+  /**
+   * expected-move: time to expiry in DAYS, and fractional for 0DTE — the engine's own doc requires
+   * "the FRACTION OF THE TRADING DAY REMAINING … NOT 0", and `computeExpectedMove` returns null on
+   * `!(dteDays > 0)`. At 2dp every intraday value collapses to exactly the input the engine defines
+   * as invalid, so the payload contradicts itself: a non-null band alongside `dteDays: 0`.
+   *
+   * Caught LIVE 2026-08-21 01:23 UTC on `GET /api/market/vector/expected-move?ticker=SPX`:
+   *   served dteDays 0  ·  true 0.00069445 (60s to expiry)  ·  band still present (±210.8 pts)
+   * Recovered from the served payload as (movePct / atmIv)^2 * 365 — the engine's own formula.
+   *
+   * Weekly/monthly horizons are whole days and pass through untouched (roundFloats short-circuits
+   * on integers); 6dp is ~0.09s of resolution, far finer than the quantity is ever known to.
+   */
+  dteDays: 6,
   /** pin-forecast: confidence 0..1. The core already emits it at toFixed(3); 2dp threw that away. */
   pinPct: 3,
   /** pin-forecast: magnet strength as a fraction of chain OI. Small on a diffuse book. */

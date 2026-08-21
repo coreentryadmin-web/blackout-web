@@ -330,7 +330,7 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
 
   t(
     "get_helix_tape_analytics",
-    "HELIX secondary panels computed from the Postgres flow tape — the aggregates the UI renders as Net Premium leaderboard, Route Breakdown (SWEEP/BLOCK/SPLIT/…), Expiry Concentration, and session call/put skew. get_helix_derived covers Stacked Hits/Velocity/Split Flow; THIS tool covers the leaderboard/route/expiry panels. Optional ticker narrows the tape to one name.",
+    "HELIX secondary panels computed from the Postgres flow tape — the aggregates the UI renders as Net Premium leaderboard, Route Breakdown (SWEEP/BLOCK/SPLIT/…), Expiry Concentration, and session call/put skew. get_helix_derived covers Stacked Hits/Velocity/Split Flow; THIS tool covers the leaderboard/route/expiry panels. Optional ticker narrows the tape to one name. EXPIRY — read `expiry_horizons` (0DTE / This week / Monthly / LEAPS, with call/put split) for any question about horizon, and ALWAYS for \"is there 0DTE flow\": it is the aggregation the member panel shows and it is complete. `expiry_concentration` is the per-DATE detail and is only the top 8 BY PREMIUM — `expiry_concentration_truncated` tells you whether dates were dropped, and near-dated expiries are the ones that drop, because 0DTE prints are small next to LEAPS blocks. Never infer a date's horizon yourself: every row carries `dte` and `horizon`, measured against `session_date` (the ET CALENDAR DATE this tape is scored against). `session_date` is NOT the same as the date part of `as_of` — after ~8pm ET the UTC date is already tomorrow, so treating an expiry as 0DTE because it matches `as_of` is wrong by a full session. `available` is true even on an empty tape; `empty_reason: \"no_prints_in_window\"` means the window was genuinely quiet, not that the tool failed.",
     {
       ticker: { type: "string", description: "Optional — omit for market-wide tape panels." },
       limit: { type: "integer", default: 200, description: "Prints to aggregate (default 200)." },
@@ -438,7 +438,7 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
 
   t(
     "get_earnings_calendar",
-    "Market-wide earnings calendar (Alpha Vantage, 3-month horizon) — next report date per ticker. Distinct from get_earnings (Benzinga per-ticker). Optional ticker filter.",
+    "Market-wide earnings calendar (Alpha Vantage, 3-month horizon) — next report date per ticker. Distinct from get_earnings (Benzinga per-ticker). Optional ticker filter. Read `available` and `configured` before concluding anything from an empty result: `available:false` means the calendar could not be read at all, and `configured:false` means it holds no dates for ANY ticker — neither is evidence that a ticker has no upcoming report. Only `available:true` + `configured:true` + a null `next_report_date` means the horizon genuinely has no date for that ticker.",
     { ticker: { type: "string", description: "Optional — filter to one symbol." } }
   ),
 
@@ -497,7 +497,7 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
 
   t(
     "get_helix_thermal_compare",
-    "HELIX flow vs Thermal GEX on ONE ticker — parallel side-by-side bias, premiums, flip, walls, and conflict flag. Use for 'flow vs GEX', 'HELIX vs Thermal', or when systems disagree on direction. Prefer this over calling get_flow_tape and get_gex separately for compare questions.",
+    "HELIX flow vs Thermal GEX on ONE ticker — parallel side-by-side bias, premiums, flip, walls, and a non-directional regime interaction. Use for 'flow vs GEX', 'HELIX vs Thermal', or when systems disagree. READING IT — the thermal side is NOT directional: `bias` is 'neutral' for long gamma (mean-reverting) or 'mixed' for short gamma (amplifies moves BOTH ways), with `gamma_posture` and `volatility_regime` carrying the real read; never restate it as bullish or bearish. `regime_interaction.read` is the honest flow-vs-regime line — use it instead of inventing a direction conflict. `conflict: false` is not automatically agreement — read `conflict_note`, which says whether the two sides were compared at all. TIMING — `as_of` is an ET wall-clock stamp and `session_date` is the ET SESSION (never derive a session from a UTC date); `market_session` says whether the cash session was open; `thermal.freshness` is 'cached' because the gamma read is a cache read, and its age is the MATRIX COMPUTE age, not the age of the price it models.",
     {
       ticker: { type: "string", description: "Ticker (default SPX)." },
     }
