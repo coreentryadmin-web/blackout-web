@@ -12287,4 +12287,4 @@ against.
 | **Blast radius** | `IntradayRead` is consumed by `board.ts` (`ZeroDteSetup.intraday`), `gates.ts` (G-1 staleness via `biasAsOfMs`), `confluence.ts` (`market_aligned`), `intel.ts` (narrative) and `scan.ts` (`underlying_at`). All are downstream of this one filter, so all are corrected together; none needed its own edit. The SPY read used as the market tape gets the same correction, which is why the G-1 freshness anchor stops reporting a post-close read as fresh. |
 | **Regression guard** | `src/lib/zerodte/board.test.ts` (+4): an after-hours print moves no RTH number and cannot set `day_high` or `last`; the close bound is exclusive (a 16:00 bar must not become `last`); pre-market stays excluded (the fix bounds the close without loosening the open); and a bars set that is *entirely* after-hours reads as empty rather than as a session. |
 | **Gates** | `npx tsc --noEmit` clean · `npm test` **8729 pass / 0 fail** (Node 20.20.2) · `npm run build` clean · `npx eslint` clean. |
-| **Status** | FIXED — PR #2442 (stacked on #2440). |
+| **Status** | FIXED — PR #2443 (stacked on #2440). |
