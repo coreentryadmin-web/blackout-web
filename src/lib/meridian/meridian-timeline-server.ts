@@ -3,7 +3,7 @@ import "server-only";
 import { daysUntilEt } from "@/features/meridian/lib/meridian-timeline";
 import type { EarningsTimelineInput, FdaTimelineInput } from "@/features/meridian/lib/meridian-timeline";
 import { serverCache } from "@/lib/server-cache";
-import { describeEmCoverage, type EmCoverage } from "@/lib/meridian/meridian-em-priority";
+import type { EmCoverage } from "@/lib/meridian/meridian-em-priority";
 import {
   benzingaRowsToTimelineInputs,
   overlayTimelineExpectedMoves,
@@ -132,8 +132,6 @@ export async function loadMeridianEarningsTimeline(
   // Fails OPEN: if the universe is unavailable, nothing is filtered and the flag says so. An
   // empty earnings lane would tell the reader "there are no earnings this week", which is a lie
   // an infrastructure error must never be allowed to tell.
-  let expectedMoveCoverage: EmCoverage = describeEmCoverage(0, 0, 0);
-
   const optionableList = await fetchUwOptionableTickers();
   const split = partitionOptionable(rows, buildOptionableIndex(optionableList), (r) => r.ticker);
   rows = split.kept;
@@ -149,7 +147,7 @@ export async function loadMeridianEarningsTimeline(
     }))
   );
   const emByTicker = em.byTicker;
-  expectedMoveCoverage = em.coverage;
+  const expectedMoveCoverage = em.coverage;
   rows = overlayTimelineExpectedMoves(rows, emByTicker);
 
   // Sector cohort key, so the lane can group and the detail panel can rank a name against the
