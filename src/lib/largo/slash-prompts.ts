@@ -113,7 +113,11 @@ async function buildHelixPrompts(): Promise<SlashPrompt[]> {
   const topRoute = routes[0];
   // Explicit null check rather than leaning on `null >= 25` being false: the fail-safe is correct
   // today by accident of coercion, and the next edit should not have to rediscover that.
-  if (topRoute && topRoute.pct != null && topRoute.pct >= 25) {
+  // OTHER is not a route — it is the bucket everything unclassifiable falls into, and it holds
+  // ~99% of the live tape because `alert_rule` is absent on most prints. "OTHER leading :: 100%
+  // of tape premium" was shipping on this chip: absence dressed as a finding. A chip that always
+  // says the same thing carries no information, so suppress it rather than render it.
+  if (topRoute && topRoute.route !== "OTHER" && topRoute.pct != null && topRoute.pct >= 25) {
     pushUnique(out, {
       id: "helix-route",
       label: `${topRoute.route} leading`,
