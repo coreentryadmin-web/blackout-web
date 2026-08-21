@@ -118,3 +118,73 @@ test("distribution counts are present even below the rate threshold, where the r
   assert.equal(s.reversedCount, MIN_GRADED_SAMPLE_FOR_WIN_RATE - 1);
   assert.equal(s.continuedCount, 0);
 });
+
+// ── Per-signal-type breakdown ────────────────────────────────────────────────
+// "Which HELIX signal is more reliable, split_flow or velocity_spike?" must be answerable from
+// the aggregate payload, each type with its OWN denominator and its OWN sub-threshold null.
+
+test("bySignalType splits the population per type, each with its own denominator", () => {
+  const rows = [
+    ...Array.from({ length: 10 }, () => row({ signal_type: "velocity_spike", outcome: "continued" })),
+    ...Array.from({ length: 6 }, () => row({ signal_type: "split_flow", outcome: "continued" })),
+    ...Array.from({ length: 4 }, () => row({ signal_type: "split_flow", outcome: "reversed" })),
+  ];
+  const s = summarizeHelixSignalOutcomes(rows);
+  const vel = s.bySignalType.find((t) => t.signal_type === "velocity_spike")!;
+  const split = s.bySignalType.find((t) => t.signal_type === "split_flow")!;
+  assert.equal(vel.gradedCount, 10);
+  assert.equal(vel.winRatePct, 100);
+  assert.equal(split.gradedCount, 10);
+  assert.equal(split.winRatePct, 60);
+  assert.equal(split.reversedCount, 4);
+});
+
+test("per-type rate is null below the per-type minimum even when the aggregate clears it", () => {
+  // The whole point: a type carried by 3 fires must not borrow the aggregate's confidence. Aggregate
+  // here is 12 graded (rate shown); split_flow alone is 3 graded (rate withheld).
+  const rows = [
+    ...Array.from({ length: 9 }, () => row({ signal_type: "velocity_spike", outcome: "continued" })),
+    ...Array.from({ length: 3 }, () => row({ signal_type: "split_flow", outcome: "continued" })),
+  ];
+  const s = summarizeHelixSignalOutcomes(rows);
+  assert.equal(s.gradedCount, 12);
+  assert.notEqual(s.winRatePct, null, "aggregate clears the threshold");
+  const split = s.bySignalType.find((t) => t.signal_type === "split_flow")!;
+  assert.equal(split.gradedCount, 3);
+  assert.equal(split.winRatePct, null, "a 3-fire type must not report a rate");
+  assert.equal(split.continuedCount, 3, "…but its raw counts are still present");
+});
+
+test("per-type graded counts sum to the aggregate, and types sort most-graded-first", () => {
+  const rows = [
+    ...Array.from({ length: 5 }, () => row({ signal_type: "split_flow", outcome: "continued" })),
+    ...Array.from({ length: 12 }, () => row({ signal_type: "velocity_spike", outcome: "flat" })),
+    ...Array.from({ length: 3 }, () => row({ signal_type: "velocity_spike", outcome: "pending" })),
+  ];
+  const s = summarizeHelixSignalOutcomes(rows);
+  assert.equal(
+    s.bySignalType.reduce((n, t) => n + t.gradedCount, 0),
+    s.gradedCount
+  );
+  assert.equal(
+    s.bySignalType.reduce((n, t) => n + t.pendingCount, 0),
+    s.pendingCount
+  );
+  // velocity_spike has more graded (12) than split_flow (5) → it leads.
+  assert.equal(s.bySignalType[0].signal_type, "velocity_spike");
+});
+
+test("an empty signal_type is bucketed as 'unknown', never dropped from the reconciliation", () => {
+  const s = summarizeHelixSignalOutcomes([
+    row({ signal_type: "", outcome: "continued" }),
+    row({ signal_type: "velocity_spike", outcome: "reversed" }),
+  ]);
+  const unknown = s.bySignalType.find((t) => t.signal_type === "unknown");
+  assert.ok(unknown, "empty type must surface as 'unknown'");
+  assert.equal(unknown!.gradedCount, 1);
+  assert.equal(
+    s.bySignalType.reduce((n, t) => n + t.gradedCount, 0),
+    s.gradedCount,
+    "unknown bucket keeps the per-type total reconciled with the aggregate"
+  );
+});

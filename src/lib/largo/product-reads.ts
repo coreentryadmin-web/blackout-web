@@ -258,6 +258,7 @@ export async function helixSignalOutcomesForLargo(limit = 50) {
   try {
     const rows = await fetchRecentHelixSignalOutcomes(limit);
     const summary = summarizeHelixSignalOutcomes(rows);
+    const { bySignalType, ...summaryScalars } = summary;
     const ROWS_SHOWN = 20;
     const compact = rows.slice(0, ROWS_SHOWN).map((r) => ({
       ticker: r.ticker,
@@ -283,12 +284,28 @@ export async function helixSignalOutcomesForLargo(limit = 50) {
        *  grader's threshold either way), `pending` (not yet checkpointed at 1h). */
       outcome_values: ["continued", "reversed", "flat", "pending"],
       summary: {
-        ...summary,
+        // The internal camelCase `bySignalType` is re-projected below under model-facing snake_case
+        // names; strip it here so the payload carries one shape, not both.
+        ...summaryScalars,
         /** The honest name for winRatePct. `continued` is a DIRECTIONAL follow-through, not a
          *  closed trade, and `flat` is counted outside it — calling it a "win rate" invites the
          *  model to report the complement as losses when most of it never moved at all. */
         continuation_rate_pct: summary.winRatePct,
         min_graded_for_rate: MIN_GRADED_SAMPLE_FOR_WIN_RATE,
+        /** Per-signal-type follow-through — answers "which HELIX signal is more reliable,
+         *  split_flow or velocity_spike?" without hand-counting the capped `rows` list. Each type
+         *  carries its own denominator (`graded`), and `continuation_rate_pct` is null below
+         *  `min_graded_for_rate` — a per-type rate off a handful of fires is noise, not a verdict.
+         *  Counts across types sum to the aggregate. */
+        by_signal_type: bySignalType.map((t) => ({
+          signal_type: t.signal_type,
+          graded: t.gradedCount,
+          pending: t.pendingCount,
+          continued: t.continuedCount,
+          flat: t.flatCount,
+          reversed: t.reversedCount,
+          continuation_rate_pct: t.winRatePct,
+        })),
       },
     });
   } catch (e) {
