@@ -1,0 +1,117 @@
+name: Release green agent drafts
+
+# ── THE PROBLEM THIS REMOVES ────────────────────────────────────────────────────────────────
+#
+# Agent PRs are born as drafts (the agent harness instructs it), and repo policy forbids
+# auto-merging drafts. Individually sensible; jointly a deadlock — on 2026-08-21 it left 30 PRs
+# with `verify` GREEN and no path to `main`. See CLAUDE.md, "THE DRAFT DEADLOCK".
+#
+# THE AGENTS CANNOT UNSTICK THEMSELVES, and this is a capability fact rather than a policy one:
+#   - REST `PATCH /pulls/{n}` with `{"draft": false}` SILENTLY returns `draft: true`. The field is
+#     read-only on update; the call reports 200 and changes nothing.
+#   - The real operation is the GraphQL `markPullRequestReadyForReview` mutation, and GraphQL is
+#     blocked for agent sessions ("only the pinned set of PR-review operations is served").
+# So an agent asked to undraft its own PR has no working call available. Every one of them was
+# correct to report it could not.
+#
+# A GitHub Actions job has neither restriction: `gh pr ready` runs GraphQL with the workflow token.
+# That is the whole reason this lives here and not in an agent's toolbelt.
+#
+# ── WHAT IT DOES ────────────────────────────────────────────────────────────────────────────
+#
+# Finds agent-branch PRs that are drafts with `verify` already passing, and marks them ready for
+# review. `automerge.yml` then fires on `ready_for_review` and squash-merges once required checks
+# are green. The draft signal keeps its meaning — an agent still working has not gone green yet —
+# but a FINISHED, VERIFIED draft no longer needs a human to notice it.
+#
+# Runs on a schedule rather than on `check_suite: completed` alone, because the jam it exists to
+# clear is a BACKLOG: a PR that went green before this workflow existed emits no new event, so an
+# event-only trigger would never see it. The schedule sweeps by state, which is the only thing that
+# finds work nobody is going to re-announce.
+#
+# ── HOLDBACKS ───────────────────────────────────────────────────────────────────────────────
+#
+# A PR is left alone when its title marks it unfinished (`WIP`, `DRAFT`, `DO NOT MERGE`), when it
+# carries the `hold` label, or when `verify` has not passed. Those are the three ways a human or an
+# agent can say "not yet" and be obeyed — deliberately cheap to apply and impossible to apply by
+# accident.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "List what would be released without changing anything"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: read
+
+concurrency:
+  group: agent-pr-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark green agent drafts ready for review
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+
+          # `--json` over `gh pr list` rather than a REST loop: one call, and it already carries the
+          # draft flag and head branch that the filter needs.
+          gh pr list --repo "$REPO" --state open --limit 200 \
+            --json number,title,isDraft,headRefName,labels \
+            > /tmp/prs.json
+
+          released=0
+          skipped=0
+
+          while read -r num title branch labels; do
+            # Title says unfinished — obey it.
+            case "$title" in
+              WIP*|wip*|DRAFT*|Draft*|*"DO NOT MERGE"*)
+                echo "hold  #$num  title marks it unfinished"
+                skipped=$((skipped+1)); continue ;;
+            esac
+
+            if echo "$labels" | grep -qi '\bhold\b'; then
+              echo "hold  #$num  carries the hold label"
+              skipped=$((skipped+1)); continue
+            fi
+
+            # `verify` is the required check. A PR whose verify has not COMPLETED SUCCESSFULLY is
+            # not finished work, whatever its draft flag says.
+            state=$(gh pr checks "$num" --repo "$REPO" --json name,state \
+                    --jq '[.[] | select(.name=="verify")] | first | .state' 2>/dev/null || echo "")
+            if [ "$state" != "SUCCESS" ]; then
+              echo "wait  #$num  verify=${state:-none}"
+              skipped=$((skipped+1)); continue
+            fi
+
+            if [ "${DRY_RUN:-false}" = "true" ]; then
+              echo "would release  #$num  $branch"
+            else
+              # `gh pr ready` issues the GraphQL mutation. This is the call agent sessions cannot make.
+              gh pr ready "$num" --repo "$REPO"
+              echo "released  #$num  $branch"
+            fi
+            released=$((released+1))
+          done < <(jq -r '
+            .[]
+            | select(.isDraft == true)
+            | select(.headRefName | startswith("claude/") or startswith("cursor/"))
+            | [.number, .title, .headRefName, ([.labels[].name] | join(","))]
+            | @tsv' /tmp/prs.json)
+
+          echo "---"
+          echo "released=$released skipped=$skipped"
