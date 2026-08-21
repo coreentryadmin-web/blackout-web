@@ -426,8 +426,16 @@ const NIGHTHAWK: DeskSubmoduleDef[] = [
     aliases: ["condor", "iron", "premium"],
     description: "Iron condor geometry, credit, breach status",
     rank: 40,
-    preferredTools: ["get_zerodte_plays", "get_open_plays"],
-    focusLines: ["Lead with condor legs — short/long strikes, net credit, breach vs inside."],
+    // get_zerodte_plays now carries the `iron_condor` product descriptor and per-row `condor`
+    // geometry — it is the ONLY tool with the condor. get_open_plays is the SPX single-instrument
+    // engine and never had condor data; pointing the condor desk at it is what left Largo unable
+    // to find the product (measured 2026-08-21) and confabulating an SPX-Slayer win rate for it.
+    preferredTools: ["get_zerodte_plays"],
+    focusLines: [
+      "Lead with condor legs — short/long strikes, net credit, breach vs inside. ALWAYS pair the " +
+        "win rate with the intraday-breach rate (negative skew, never free edge). Never say Night " +
+        "Hawk has no iron condor.",
+    ],
     defaultQuestion: () => "How are Night Hawk iron condors tracking — credit, wings, breach?",
   },
 ];
