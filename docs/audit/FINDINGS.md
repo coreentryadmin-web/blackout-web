@@ -4,6 +4,22 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-21 — [FINDING, P2 Largo/Night Hawk] The iron condor had no queryable record and would have contaminated the directional one — SEPARATE LANE ADDED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **The gap** | After #2519 exposed the condor's BACKTESTED characteristics to Largo, the natural follow-up — *"and how has it actually done?"* — had no answer. Condors are graded (`condor_win` / `condor_breach_loss`, `gradeCondorFromBars`) and persist into the SAME `zerodte_setup_log` the directional record reads (`entry_context.play_type === "CONDOR"`), but `buildZeroDteRecord` never separated them: it classifies every row by P&L sign, so a condor's kept credit would count as a directional win and a condor's defined-loss breach as a directional loss. |
+| **Two instruments, opposite skews** | The directional record is positive-skew (~40-50% hit, big payoff). A sold condor is negative-skew (~80% small credits, ~20% defined losses, WIN = close INSIDE both shorts). Averaging them into one P&L-sign win rate produces a number that describes neither. |
+| **Measured before acting** | Queried `/api/market/zerodte/record?days=90` on prod: **286 flagged, 275 graded, ZERO condor-outcome rows.** The condor engine is flag-ON by default (and PIN source is too) but has committed nothing in 90 days — so the contamination is currently **LATENT**. This separates the lanes before it isn't, and closes a subtler honesty gap: #2519 surfaces 77-92% backtested win rates, which with no live record a member could read as performance. |
+| **Fix** | New pure `src/lib/zerodte/condor-record.ts`: `isCondorRow(entry_context)` and `buildCondorRecord(rows)`. `buildZeroDteRecord` now partitions on `play_type` — the directional headline is built from directional rows ONLY (a no-op on today's numbers, since 0 condors), and a `condor` sub-record carries the condor lane's OWN realized win rate, **realized breach rate** (to compare against the backtested ~18.7% companion — a live number, not an estimate), and avg P&L. With zero commits it returns an explicit `no_live_record: true` and a note stating there is no realized track record and pointing at the backtested descriptor in `get_zerodte_plays iron_condor` — so the backtest is never presented as live performance. Surfaced through `zerodteRecordForLargo` (aggregates-first, truncation-safe) and, additively, the member `/api/market/zerodte/record` route. |
+| **Blast radius** | `buildZeroDteRecord` gains a partition (no-op in prod) and a `condor` field; new pure helper; both Largo and member record consumers get the field additively. No provider, no grading logic, no gate, no condor engine change — only how condor results are SEPARATED and reported. |
+| **Regression guard** | `condor-record.test.ts` (+5): empty lane states "no live record" and points to the backtest; realized win/breach rates come from actual grades; ungradeable is not a grade; committed-but-ungraded quotes no rate; avg P&L blends credits and defined losses. `record.test.ts` (+2): a mixed set keeps condors OUT of the directional headline/buckets and in their own lane; an all-directional window leaves the directional numbers untouched with an empty condor lane. All 21 pre-existing record tests still pass unchanged (directional numbers identical). |
+| **Not a trading-behaviour change** | No gate, rail, sizing, exit rule or grading is touched. With 0 condors in prod the headline numbers are byte-identical. No `sim:0dte` owed. |
+| **Product-health signal raised separately** | The condor engine being armed-by-default but committing 0 plays in 90 days is flagged to the coordinator for the PIN/discovery owner — diagnosing WHY (strict gates vs a dormant PIN source vs a prod env override) needs the discovery pipeline, outside this lane. |
+| **Status** | DONE (in-lane). |
+
 ## 2026-08-21 — [FINDING, P2 Meridian harness] The full audit never looked at mobile — the viewport where today's rail defects actually live — FIXED
 
 > **kind:** `FINDING`

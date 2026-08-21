@@ -11,6 +11,7 @@
 // NEVER blend them with SPX Slayer's pnl-points or Night Hawk's stock-move percentages.
 
 import type { ZeroDteSetupLogRow } from "@/lib/db";
+import { buildCondorRecord, isCondorRow, type CondorRecord } from "./condor-record";
 import { etMinutesOf } from "./plan";
 import { tierFromEntryContext, type ZeroDteTier } from "./tiers";
 
@@ -124,6 +125,10 @@ export type ZeroDteRecord = {
    *  never the member-facing headline (see ZERODTE_RECORD_METHODOLOGY). Identical to the
    *  headline whenever no engine exit fired on any row (the clean hold-to-plan path). */
   mechanical: ZeroDteRecordRollup;
+  /** The iron condor's OWN record — a structurally different instrument (WIN=inside/LOSS=breach),
+   *  separated from the directional numbers above so the two opposite skews are never blended.
+   *  Usually an explicit "no live record" state: condors are flag-on but rarely commit. */
+  condor: CondorRecord;
   available: boolean;
 };
 
@@ -528,8 +533,17 @@ export function buildZeroDteRecord(
   rows: ZeroDteSetupLogRow[],
   window: { since: string; through: string; days: number }
 ): ZeroDteRecord {
-  const sorted = [...rows].sort(
+  const all = [...rows].sort(
     (a, b) => b.session_date.localeCompare(a.session_date) || a.ticker.localeCompare(b.ticker)
+  );
+  // The directional record is DIRECTIONAL rows only. A sold iron condor is graded WIN=close-inside
+  // / LOSS=breach (opposite skew), and blending it into a P&L-sign win rate mixes two instruments.
+  // 0 condors in prod today, so this filter is a no-op on the live numbers — but it is what stops
+  // the headline from silently absorbing a condor breach the day one commits.
+  const condorRows = all.filter((r) => isCondorRow(r.entry_context));
+  const sorted = all.filter((r) => !isCondorRow(r.entry_context));
+  const condor = buildCondorRecord(
+    condorRows.map((r) => ({ plan_outcome: r.plan_outcome, plan_pnl_pct: r.plan_pnl_pct }))
   );
   // Two parallel tracks over the SAME rows: as-managed (headline) + mechanical (comparison).
   const managed: GradedRow[] = sorted
@@ -558,6 +572,7 @@ export function buildZeroDteRecord(
     by_direction: bucketize(managed, (g) => g.row.direction),
     by_score_band: bucketize(managed, (g) => scoreBand(scoreForBanding(g.row))),
     mechanical: rollup(mechanical),
+    condor,
     available: managed.length > 0,
   };
 }
