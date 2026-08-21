@@ -198,6 +198,35 @@ adjusts its numbers to match a peer has destroyed the signal and left a false co
 - **`${{shared.*}}` env refs do NOT resolve here** — set literals: `UW_API_KEY` (UUID), `DATABASE_URL`, `REDIS_URL`, `POLYGON_API_BASE`. Working: `POLYGON_API_KEY`, `CLERK_SECRET_KEY`, Clerk publishable key. **Benzinga rides the Polygon key** — the Benzinga news/catalysts feed is served under the same Polygon subscription at `{POLYGON_API_BASE}/benzinga/v2/news?...&apiKey={POLYGON_API_KEY}` (re-verified live 2026-07-13: 200 for `channels=fda|guidance|m&a` and `ticker=NVDA&channels=earnings`). There is **no separate `BENZINGA_API_KEY`**; news fetches live via the Polygon key. (Earlier note claiming the key was missing was stale.)
 - Clerk instance requires a **phone number** on user creation; rapid sign-in/token cycles get **FAPI-rate-limited** — authenticate once per run.
 
+## GitHub API: FOUR separate budgets, do not conflate them (measured 2026-08-21)
+
+"Rate limited" is four different facts here with four different remedies, and treating them as one
+wasted an hour. Check which one you are actually hitting before concluding anything:
+
+| # | Budget | Who spends it | Symptom | What it means |
+|---|---|---|---|---|
+| 1 | **Session REST** (GitHub App installation token) | `curl`/`fetch` to `api.github.com` | plentiful — 15000/hr | The workhorse. Poll CI here, not through MCP. |
+| 2 | **Session GraphQL** | nothing — **blocked outright at the proxy** | `"This GraphQL query is not enabled for this session — only the pinned set of PR-review operations is served"` | NOT a budget. No amount of waiting helps. `/rate_limit` still reports a healthy `graphql` quota, which is misleading — the block is upstream of the quota. |
+| 3 | **GitHub MCP server** | `mcp__github__*` tools | `"Retry after 16m39s"` | Its own limiter, independent of 1 and 2. This is the ONLY path that can undraft a PR, so exhausting it blocks releases specifically. |
+| 4 | **`AGENT_RELEASE_TOKEN` PAT** (user `284440397`) | `agent-pr-release.yml` in Actions | `"API rate limit exceeded for user ID 284440397"` | A user PAT gets 5000/hr **per user, shared across all that user's PATs** — a different pool from #1, which is why the session can be healthy while the workflow starves. |
+
+**The consequence that matters:** #4 is on the SAME account the fleet uses, so a job that leans on
+it is rate-limited precisely when the fleet is busy — exactly when there is a backlog to release.
+`agent-pr-release.yml` hit this three runs in a row and never reached a single PR.
+
+**The fix was NOT a second account.** That was the obvious answer and it treats a self-inflicted
+problem as an infrastructure one. `GITHUB_TOKEN` can do every READ the job needs; the PAT is only
+required for `gh pr ready`, the one call `GITHUB_TOKEN` is refused. So the job now splits them —
+reads on `GITHUB_TOKEN`, the PAT injected for that single command — which at a cap of 3 releases
+per run costs the PAT **12 calls an hour**. The general rule: when a shared, scarce credential
+starves, look first at what you are spending it on. A budget problem is usually a scope problem.
+
+**A green `agent-pr-release` run does NOT mean it released anything.** Since it now exits 0 on a
+rate limit (deliberately — see the workflow header), "success" and "did nothing" look identical from
+the conclusion. **Read the log.** Runs 32460029586 and 32461784083 are both green and both end
+`RATE LIMITED while listing PRs — exiting 0, next run retries.` As of this writing the workflow has
+never actually released a PR; that is still unproven, not proven.
+
 ## Access reality — three DIFFERENT things, do not conflate (learned 2026-07-22)
 1. **Logging into the live site as a real member — WORKS, pure HTTP, no browser.** Mint a temp
    admin+premium user (Clerk Backend API) → `POST /sign_in_tokens` → FAPI ticket exchange
