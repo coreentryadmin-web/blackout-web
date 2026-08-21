@@ -196,3 +196,65 @@ test("expiryConcentration falls back to ET-anchored daysToExpiry when the row ha
 test("empty tape produces no horizons rather than a fabricated bucket", () => {
   assert.deepEqual(expiryHorizonConcentration([]), []);
 });
+
+// ── Tape window coverage guards ──────────────────────────────────────────────
+// Regression cover for reporting a REQUESTED window as if it were the analysed period. Live
+// 2026-08-20 a 168-hour request with limit 500 returned 500 rows spanning 54 minutes.
+
+import { tapeWindowCoverage } from "./helix-tape-analytics";
+
+function atPrint(alerted_at: string, premium = 1_000): FlowAlert {
+  return {
+    ticker: "AAA", option_type: "CALL", strike: 1, expiry: "2026-08-20",
+    route: "SWEEP", alert_rule: "Sweep", score: 1, direction: "bullish",
+    premium, alerted_at, dte: 0,
+  } as FlowAlert;
+}
+
+test("actual_hours is the span of the PRINTS, not the requested window", () => {
+  const rows = [
+    atPrint("2026-08-20T19:55:00Z"),
+    atPrint("2026-08-20T20:49:00Z"),
+  ];
+  const w = tapeWindowCoverage(rows, 168, 500, new Date("2026-08-20T20:50:00Z"));
+  assert.equal(w.requested_hours, 168);
+  assert.equal(w.actual_hours, 0.9); // 54 minutes
+  assert.notEqual(w.actual_hours, w.requested_hours);
+});
+
+test("limit_reached flags a limit-bound read so the window is not quoted as the period", () => {
+  const rows = Array.from({ length: 500 }, (_, i) =>
+    atPrint(new Date(Date.parse("2026-08-20T20:00:00Z") + i * 1000).toISOString())
+  );
+  assert.equal(tapeWindowCoverage(rows, 168, 500).limit_reached, true);
+  assert.equal(tapeWindowCoverage(rows.slice(0, 499), 168, 500).limit_reached, false);
+});
+
+test("newest_age_minutes exposes an off-hours tape that is complete but stale", () => {
+  const w = tapeWindowCoverage(
+    [atPrint("2026-08-20T20:49:00Z")],
+    168, 500,
+    new Date("2026-08-21T00:49:00Z")
+  );
+  assert.equal(w.newest_age_minutes, 240);
+});
+
+test("timestampless prints are counted out, never silently widening the span", () => {
+  // UW sends some prints with no time; the REST read surfaces '' rather than fabricating one.
+  const w = tapeWindowCoverage(
+    [atPrint("2026-08-20T20:00:00Z"), atPrint(""), atPrint("2026-08-20T20:30:00Z")],
+    168, 500
+  );
+  assert.equal(w.prints, 3);
+  assert.equal(w.undated_prints, 1);
+  assert.equal(w.actual_hours, 0.5);
+});
+
+test("an empty tape reports a null span, not a zero-hour one", () => {
+  const w = tapeWindowCoverage([], 168, 500);
+  assert.equal(w.actual_hours, null);
+  assert.equal(w.oldest_print, null);
+  assert.equal(w.prints, 0);
+  // 0 rows against a 500 limit is genuinely window-bound, not limit-bound.
+  assert.equal(w.limit_reached, false);
+});

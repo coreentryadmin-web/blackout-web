@@ -1,6 +1,7 @@
 import type { FlowAlert } from "@/lib/api";
 import { executionRouteKey, daysToExpiry } from "@/features/helix/lib/helix-flow-format";
 import { HELIX_NET_PREMIUM_LEADERS_LIMIT } from "@/features/helix/lib/helix-strike-leaders";
+import { etStamp } from "@/lib/largo/temporal/bar-session-date";
 
 /** The member panel's horizon buckets, in CHRONOLOGICAL order (ExpiryConcentration.tsx). */
 export const EXPIRY_HORIZONS = ["0DTE", "This week", "Monthly", "LEAPS"] as const;
@@ -165,5 +166,60 @@ export function sessionFlowSkew(alerts: FlowAlert[]) {
     total_premium: total,
     call_pct: total > 0 ? Math.round((calls / total) * 100) : 50,
     whale_prints: alerts.filter((a) => a.premium >= 1_000_000).length,
+  };
+}
+
+/**
+ * What the returned tape ACTUALLY covers, as opposed to what was asked for.
+ *
+ * WHY THIS EXISTS. A tape read is bounded by TWO things — a time window and a row LIMIT — and
+ * the limit almost always binds first. Measured live 2026-08-20: a **168-hour** request with
+ * `limit: 500` came back with 500 rows spanning **19:55 to 20:49 UTC — 54 minutes**. Even at
+ * `limit: 5000` the span was 5.4 hours, not 168. Reporting the REQUESTED window as the window
+ * lets a model say "over the last 7 days SPX leads net premium with $280M" about fifty-four
+ * minutes of tape. The requested bound is an intent; only the prints themselves are evidence.
+ *
+ * `limit_reached` is the tell: when it is true the window did not bind, the limit did, and
+ * `actual_hours` is the only honest description of the population.
+ *
+ * Timestampless prints (UW sends some with no time; the REST read surfaces them as `''` rather
+ * than fabricating one) cannot contribute to a span, so they are counted out separately rather
+ * than silently widening or narrowing it.
+ */
+export function tapeWindowCoverage(
+  alerts: FlowAlert[],
+  requestedHours: number,
+  limit: number,
+  now: Date = new Date()
+) {
+  const ts = alerts
+    .map((a) => Date.parse(a.alerted_at))
+    .filter((n) => Number.isFinite(n))
+    .sort((a, b) => a - b);
+  const undated = alerts.length - ts.length;
+  if (!ts.length) {
+    return {
+      requested_hours: requestedHours,
+      actual_hours: null,
+      oldest_print: null,
+      newest_print: null,
+      prints: alerts.length,
+      undated_prints: undated,
+      limit_reached: alerts.length >= limit,
+    };
+  }
+  const oldest = ts[0];
+  const newest = ts[ts.length - 1];
+  return {
+    requested_hours: requestedHours,
+    /** Span of the prints themselves — oldest to newest, NOT oldest-to-now. */
+    actual_hours: Math.round(((newest - oldest) / 3_600_000) * 10) / 10,
+    oldest_print: etStamp(oldest),
+    newest_print: etStamp(newest),
+    /** How stale the freshest print is — an off-hours read can be current AND hours old. */
+    newest_age_minutes: Math.max(0, Math.round((now.getTime() - newest) / 60_000)),
+    prints: alerts.length,
+    undated_prints: undated,
+    limit_reached: alerts.length >= limit,
   };
 }
