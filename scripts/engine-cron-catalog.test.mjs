@@ -13,6 +13,8 @@ import { CRON_SERVICE_NAMES } from "./railway-cron-services.mjs";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 const ENGINE_CRONS = [
+  // zerodte-grade is scheduled again (blackout-infra now generates it), so the registry mirrors
+  // its toml once more and scheduled-cron-catalog.test.mjs asserts the two agree.
   { key: "zerodte-grade", scheduleHint: "*/15", scheduleCronUtc: true },
   { key: "swing-discovery", scheduleHint: null },
   { key: "swing-active-refresh", scheduleHint: "*/15" },

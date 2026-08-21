@@ -25,6 +25,20 @@ function canvas(): Uint8Array {
   return buf;
 }
 
+/**
+ * The REAL intraday GEX rail palette, taken from bead-pixel-eval.cjs:
+ *   CALL_WALL_COLOR = "#ffd60a" (255, 214, 10)  — amber
+ *   PUT_WALL_COLOR  = "#d97bff" (217, 123, 255) — violet
+ *
+ * This file previously painted CYAN calls and RED puts. The classifier was corrected away from
+ * those on 2026-08-19 ("neither is a bead colour on this surface — cyan is the GAMMA FLIP guide
+ * and red is a DOWN CANDLE"), but the test was not, so every assertion here was checking the
+ * classifier against two colours it is specifically built to REJECT. It went unnoticed because
+ * nothing runs the tests under scripts/ — see the CI-wiring change in this PR.
+ */
+const CALL_RGB = [255, 214, 10] as const;
+const PUT_RGB = [217, 123, 255] as const;
+
 /** Paint a filled disc. `lumScale` stands in for the rail's fill alpha over a black ground. */
 function disc(
   buf: Uint8Array,
@@ -34,7 +48,7 @@ function disc(
   side: "call" | "put",
   lumScale = 1
 ) {
-  const base = side === "call" ? [30, 220, 240] : [240, 60, 70];
+  const base = side === "call" ? CALL_RGB : PUT_RGB;
   for (let y = Math.floor(cy - r); y <= Math.ceil(cy + r); y++) {
     for (let x = Math.floor(cx - r); x <= Math.ceil(cx + r); x++) {
       if (x < 0 || y < 0 || x >= W || y >= H) continue;
@@ -51,12 +65,17 @@ function disc(
 test("classifyPixel separates beads from ground, chrome and candles", () => {
   assert.equal(classifyPixel(5, 5, 8, 255), null, "chart ground");
   assert.equal(classifyPixel(160, 160, 165, 255), null, "grey axis text");
-  assert.equal(classifyPixel(30, 220, 240, 255), "call", "cyan call bead");
-  assert.equal(classifyPixel(240, 60, 70, 255), "put", "red put bead");
+  assert.equal(classifyPixel(...CALL_RGB, 255), "call", "amber call bead (#ffd60a)");
+  assert.equal(classifyPixel(...PUT_RGB, 255), "put", "violet put bead (#d97bff)");
+  // The two colours this classifier was corrected AWAY from must not read as beads: cyan is the
+  // gamma-flip guide (#22d3ee) and red is a down candle. Measuring those is what made every
+  // pre-2026-08-19 count, radius and ratio void.
+  assert.equal(classifyPixel(34, 211, 238, 255), null, "cyan gamma-flip guide is not a call bead");
+  assert.equal(classifyPixel(240, 60, 70, 255), null, "red down-candle body is not a put bead");
   // A green candle body is green-dominant with LOW blue — it must not read as a call bead, or the
   // size distribution gets measured off the tape instead of the rail.
   assert.equal(classifyPixel(20, 200, 60, 255), null, "green candle body");
-  assert.equal(classifyPixel(30, 220, 240, 10), null, "fully transparent");
+  assert.equal(classifyPixel(...CALL_RGB, 10), null, "fully transparent");
 });
 
 test("clustering finds each disc once and recovers its radius", () => {
@@ -110,8 +129,8 @@ test("the member's reported failure — same size, same contrast — reads RED",
 });
 
 test("hue difference between sides is not mistaken for contrast", () => {
-  // The metric's original form measured luminance spread across ALL beads. The call palette (cyan)
-  // is far brighter than the put palette (red) at identical alpha, so a rail of fully-opaque beads
+  // The metric's original form measured luminance spread across ALL beads. The call palette (amber)
+  // is far brighter than the put palette (violet) at identical alpha, so a rail of fully-opaque beads
   // reported a large spread purely from hue — which would have passed this audit on exactly the
   // flat rail the member photographed. Spread is now measured WITHIN each side.
   const buf = canvas();
