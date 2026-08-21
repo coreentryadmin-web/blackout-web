@@ -268,6 +268,102 @@ test("an empty tape reports a null span, not a zero-hour one", () => {
   assert.equal(w.limit_reached, false);
 });
 
+// ── Absence-vs-measurement guards ────────────────────────────────────────────
+// An unmeasurable skew must never reach the model as a measured 50/50 balance. Same defect
+// class as the peer-relative-strength verdict manufactured from two nulls (FINDINGS 2026-08-19).
+
+test("sessionFlowSkew reports call_pct null on an empty tape, never 50", () => {
+  const s = sessionFlowSkew([]);
+  assert.equal(s.call_pct, null);
+  assert.equal(s.alert_count, 0);
+  assert.equal(s.total_premium, 0);
+});
+
+test("sessionFlowSkew reports call_pct null when every print is typeless", () => {
+  // Live-reachable: gap-#6 keeps typeless prints out of both premium legs.
+  const s = sessionFlowSkew([
+    { ...atPrint("2026-08-20T20:00:00Z", 3_000_000), option_type: "UNKNOWN" } as FlowAlert,
+  ]);
+  assert.equal(s.call_pct, null);
+  assert.equal(s.total_premium, 0);
+});
+
+test("typeless_prints reconciles whale_prints against total_premium", () => {
+  // A $3M typeless print IS a whale and is NOT premium — the payload must let a reader see why.
+  const s = sessionFlowSkew([
+    { ...atPrint("2026-08-20T20:00:00Z", 3_000_000), option_type: "UNKNOWN" } as FlowAlert,
+  ]);
+  assert.equal(s.whale_prints, 1);
+  assert.equal(s.total_premium, 0);
+  assert.equal(s.typeless_prints, 1);
+});
+
+test("a real skew is still reported as a number", () => {
+  const s = sessionFlowSkew([
+    { ...atPrint("2026-08-20T20:00:00Z", 750_000), option_type: "CALL" } as FlowAlert,
+    { ...atPrint("2026-08-20T20:01:00Z", 250_000), option_type: "PUT" } as FlowAlert,
+  ]);
+  assert.equal(s.call_pct, 75);
+  assert.equal(s.typeless_prints, 0);
+});
+
+test("netPremiumLeaders reports call_pct null for a ticker with no measurable premium", () => {
+  const rows = netPremiumLeaders([
+    { ...atPrint("2026-08-20T20:00:00Z", 2_000_000), ticker: "ZZZ", option_type: "UNKNOWN" } as FlowAlert,
+  ]);
+  assert.equal(rows[0]?.ticker, "ZZZ");
+  assert.equal(rows[0]?.total, 0);
+  assert.equal(rows[0]?.call_pct, null);
+});
+
+// ── Fetch-contract guards ────────────────────────────────────────────────────
+// The layer that had NO coverage, which is why two population defects shipped. Every other test
+// in this file builds its own fixture array, so none of them can see a defect in how rows are
+// SELECTED. `order: "recent"` is load-bearing: it decides which prints survive the LIMIT.
+
+import { helixTapeFetchOptions } from "./helix-tape-analytics";
+
+const LIMITS = { maxLimit: 5000, defaultSinceHours: 168, maxSinceHours: 720 };
+
+test("the tape is always requested NEWEST-FIRST, never biggest-premium-first", () => {
+  assert.equal(helixTapeFetchOptions({ limit: 500, ...LIMITS }).order, "recent");
+  assert.equal(helixTapeFetchOptions({ limit: 400, sinceHours: 1, ...LIMITS }).order, "recent");
+});
+
+test("an omitted window falls back to the member desk's own default, not the DB's 48h", () => {
+  assert.equal(helixTapeFetchOptions({ limit: 500, ...LIMITS }).since_hours, 168);
+  assert.equal(
+    helixTapeFetchOptions({ limit: 500, sinceHours: undefined, ...LIMITS }).since_hours,
+    168
+  );
+});
+
+test("a RIGHT NOW window is passed through", () => {
+  assert.equal(helixTapeFetchOptions({ limit: 500, sinceHours: 1, ...LIMITS }).since_hours, 1);
+});
+
+test("hostile or nonsense inputs are clamped, never forwarded", () => {
+  assert.equal(helixTapeFetchOptions({ limit: 500, sinceHours: 99_999, ...LIMITS }).since_hours, 720);
+  assert.equal(helixTapeFetchOptions({ limit: 500, sinceHours: 0, ...LIMITS }).since_hours, 1);
+  assert.equal(helixTapeFetchOptions({ limit: 500, sinceHours: -5, ...LIMITS }).since_hours, 1);
+  assert.equal(helixTapeFetchOptions({ limit: 500, sinceHours: Number.NaN, ...LIMITS }).since_hours, 168);
+  assert.equal(helixTapeFetchOptions({ limit: 9_999_999, ...LIMITS }).limit, 5000);
+  assert.equal(helixTapeFetchOptions({ limit: 0, ...LIMITS }).limit, 1);
+});
+
+test("ticker is upper-cased, and omitted rather than sent empty for a market-wide read", () => {
+  assert.equal(helixTapeFetchOptions({ ticker: "spx", limit: 500, ...LIMITS }).ticker, "SPX");
+  assert.equal(helixTapeFetchOptions({ ticker: null, limit: 500, ...LIMITS }).ticker, undefined);
+  assert.equal(helixTapeFetchOptions({ ticker: "", limit: 500, ...LIMITS }).ticker, undefined);
+});
+
+test("get_helix_derived's own caps are honoured through the shared builder", () => {
+  // Derived caps at 1000 rows, not the tape's 5000 — a window needs depth but not the whole table.
+  const o = helixTapeFetchOptions({ limit: 1000, maxLimit: 1000, defaultSinceHours: 168, maxSinceHours: 720 });
+  assert.equal(o.limit, 1000);
+  assert.equal(o.order, "recent");
+});
+
 test("an ingest-stamped print never dates the tape — it is not a print time", () => {
   // Live 2026-08-20: 438 of 500 prints were tape_time_estimated. Reading alerted_at made the
   // tape look 282 minutes old against the desk's 309 — 27 minutes fresher than it was.
@@ -308,6 +404,46 @@ test("timed_prints vs prints exposes how much of the tape cannot be dated", () =
   assert.equal(w.undated_prints, 9);
 });
 
+test("all three HELIX tape tools share ONE request builder — they cannot drift apart", () => {
+  // get_helix_tape_analytics, get_helix_derived and get_flow_brief all read the same Postgres
+  // tape and all three had the same population defect. They now differ only in their row cap.
+  const common = { defaultSinceHours: 168, maxSinceHours: 720 };
+  const tape = helixTapeFetchOptions({ limit: 500, maxLimit: 5000, ...common });
+  const derived = helixTapeFetchOptions({ limit: 400, maxLimit: 1000, ...common });
+  const brief = helixTapeFetchOptions({ limit: 500, maxLimit: 5000, ...common });
+  for (const o of [tape, derived, brief]) {
+    assert.equal(o.order, "recent");
+    assert.equal(o.since_hours, 168);
+  }
+  assert.equal(tape.limit, 500);
+  assert.equal(derived.limit, 400);
+  assert.equal(brief.limit, 500);
+});
+
+test("an expiry's reported dte does not depend on row ORDER", () => {
+  // Coordinator review of #2420 flagged this: dte was taken from the FIRST print seen per expiry
+  // key. Correct while every row agrees, but order-dependent — and this function exists to stop
+  // a horizon being decided by ordering.
+  const rows = [
+    { ...atPrint("2026-08-20T20:00:00Z", 1_000), expiry: "2026-08-20", dte: 3 } as FlowAlert,
+    { ...atPrint("2026-08-20T20:01:00Z", 1_000), expiry: "2026-08-20", dte: 0 } as FlowAlert,
+  ];
+  const forward = expiryConcentration(rows, 8);
+  const reversed = expiryConcentration([...rows].reverse(), 8);
+  assert.equal(forward[0]?.dte, reversed[0]?.dte, "same input, either order, same dte");
+  assert.equal(forward[0]?.dte, 0, "resolves toward the NEARER horizon");
+  assert.equal(forward[0]?.horizon, reversed[0]?.horizon);
+});
+
+test("an already-expired expiry keeps its negative dte rather than being recomputed", () => {
+  // SQL returns expiry - ET_today, which goes negative once expired. daysToExpiry clamps at 0,
+  // so recomputing from the key would silently discard that signal.
+  const rows = [{ ...atPrint("2026-08-20T20:00:00Z", 1_000), expiry: "2026-08-18", dte: -2 } as FlowAlert];
+  const out = expiryConcentration(rows, 8);
+  assert.equal(out[0]?.dte, -2);
+  assert.equal(out[0]?.horizon, "0DTE");
+});
+
 test("a SHORT burst never reports zero hours — rounding must not fabricate 'no span'", () => {
   // Coordinator review of #2428: actual_hours was rounded to 1dp inside the compute path, so any
   // span under 3 minutes became exactly 0 — and the tool description tells the model to quote
@@ -343,4 +479,68 @@ test("prints with no exchange time report WHY there is no span", () => {
   assert.equal(w.actual_hours, null);
   // "all_prints_undated" is a different fact from "no prints at all" and must not read as it.
   assert.equal(w.no_dated_print_reason, "all_prints_undated");
+});
+
+test("a non-numeric limit is clamped, never forwarded as LIMIT NaN", () => {
+  // Math.floor(NaN) is NaN; unguarded it reaches Postgres as `LIMIT NaN`, which throws and
+  // surfaces to the model as available:false — a healthy tool reported as broken.
+  const L = { maxLimit: 5000, defaultSinceHours: 168, maxSinceHours: 720 };
+  for (const bad of [Number.NaN, Infinity, -Infinity]) {
+    const o = helixTapeFetchOptions({ limit: bad as number, ...L });
+    assert.ok(Number.isFinite(o.limit), `limit must be finite, got ${o.limit}`);
+    assert.ok(o.limit >= 1 && o.limit <= 5000);
+  }
+});
+
+// ── Rule-7 sweep: a share needs a denominator ────────────────────────────────
+// _COMMON.md #7 — "a rate must never be printed without the denominator it came from". A `pct`
+// is a share of total premium; with a zero denominator, 0% is not a small share, it is no
+// measurement. Found by sweeping the lane for the same shape as the call_pct:50 defect.
+
+test("route pct is null, not 0, when the tape has no premium to take a share of", () => {
+  // NB routeBreakdown sums premium regardless of SIDE — unlike the call/put splits, a typeless
+  // print still contributes. So the zero-denominator case here is a tape of zero-premium prints,
+  // not a typeless one. My first version of this test asserted the wrong premise and the suite
+  // caught it; the distinction is worth keeping written down.
+  const rows = routeBreakdown([
+    { ...atPrint("2026-08-20T20:00:00Z", 0), alert_rule: "Sweep" } as FlowAlert,
+  ]);
+  assert.equal(rows[0]?.count, 1, "the print is still counted");
+  assert.equal(rows[0]?.premium, 0);
+  assert.equal(rows[0]?.pct, null, "0% would assert a measured share of nothing");
+});
+
+test("route pct counts a TYPELESS print's premium — it is side-blind by design", () => {
+  const rows = routeBreakdown([
+    { ...atPrint("2026-08-20T20:00:00Z", 3_000_000), option_type: "UNKNOWN", alert_rule: "Sweep" } as FlowAlert,
+  ]);
+  assert.equal(rows[0]?.premium, 3_000_000);
+  assert.equal(rows[0]?.pct, 100, "a real share of a real total");
+});
+
+test("horizon pct is null on a zero denominator", () => {
+  const rows = expiryHorizonConcentration([
+    { ...atPrint("2026-08-20T20:00:00Z", 3_000_000), option_type: "UNKNOWN", dte: 0 } as FlowAlert,
+  ]);
+  assert.equal(rows[0]?.count, 1);
+  assert.equal(rows[0]?.pct, null);
+  assert.equal(rows[0]?.call_pct, null);
+});
+
+test("per-date pct is null on a zero denominator", () => {
+  // Same side-blind aggregation as routeBreakdown, so the reachable zero case is zero premium.
+  const rows = expiryConcentration([
+    { ...atPrint("2026-08-20T20:00:00Z", 0), dte: 0, expiry: "2026-08-20" } as FlowAlert,
+  ]);
+  assert.equal(rows[0]?.count, 1);
+  assert.equal(rows[0]?.pct, null);
+});
+
+test("a real share is still reported as a number", () => {
+  const rows = routeBreakdown([
+    { ...atPrint("2026-08-20T20:00:00Z", 7_500_000), option_type: "CALL", alert_rule: "Sweep" } as FlowAlert,
+    { ...atPrint("2026-08-20T20:01:00Z", 2_500_000), option_type: "PUT", alert_rule: "Block" } as FlowAlert,
+  ]);
+  const sweep = rows.find((r) => r.route === "SWEEP");
+  assert.equal(sweep?.pct, 75);
 });
