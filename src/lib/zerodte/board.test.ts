@@ -1341,6 +1341,31 @@ test("intraday: VWAP, opening range and 5m trend from minute bars", () => {
   assert.ok(read.vwap_dist_pct! > 0);
 });
 
+// The intraday read carries every number a member acts on intraday (VWAP, opening range,
+// 5m trend, day high/low) and its ONLY time anchor was a bare epoch. A reader that guesses
+// the session convention misdates the whole read — and this is the freshness anchor G-1
+// fails closed on. The readable stamp must be the SAME instant, never a second source.
+test("intraday read carries a readable ET stamp beside the raw epoch", () => {
+  const bars = [ibar(0, 100), ibar(20, 101), ibar(45, 102)];
+  const read = computeIntradayRead(bars);
+  assert.equal(read.last_bar_ms, OPEN_MS + 45 * M);
+  // 2026-07-06 09:30 ET + 45m = 10:15 ET.
+  assert.equal(read.last_bar_et, "2026-07-06 10:15 ET");
+});
+
+test("an empty read nulls BOTH time fields — never a stamp without an epoch", () => {
+  const read = computeIntradayRead([]);
+  assert.equal(read.last_bar_ms, null);
+  assert.equal(read.last_bar_et, null);
+});
+
+test("the stamp never replaces the epoch the gates compute on", () => {
+  const bars = [ibar(0, 100), ibar(30, 101)];
+  const read = computeIntradayRead(bars);
+  assert.equal(typeof read.last_bar_ms, "number", "G-1 staleness math reads this — it must stay numeric");
+  assert.equal(typeof read.last_bar_et, "string");
+});
+
 test("intraday: pre-market-only bars produce nulls, never a guess", () => {
   const pre = [{ t: OPEN_MS - 60 * M, h: 101, l: 99, c: 100, v: 50 }];
   const read = computeIntradayRead(pre);

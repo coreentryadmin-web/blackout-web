@@ -127,6 +127,37 @@ export function etNowParts(): { hour: number; minute: number; weekday: string } 
   };
 }
 
+/**
+ * "YYYY-MM-DD HH:mm ET" for an epoch-ms instant — the READABLE twin of a raw timestamp.
+ *
+ * WHY THIS EXISTS. A bare epoch on a payload makes the reader guess the session
+ * convention, and a reader that guesses wrong misdates the data (see PR #2418: an OHLC
+ * bar carrying only `t` produced a dated close off by a full session). Anywhere an
+ * epoch is the ONLY time anchor on an object, it needs one of these beside it.
+ *
+ * Returns null for anything that is not a finite epoch-ms — never a fabricated date,
+ * and never the Unix epoch dressed up as a real timestamp.
+ */
+export function etStampFromMs(tMs: unknown): string | null {
+  if (typeof tMs !== "number" || !Number.isFinite(tMs)) return null;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: ET,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date(tMs));
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  const date = `${get("year")}-${get("month")}-${get("day")}`;
+  if (date.includes("NaN") || get("year") === "") return null;
+  // Intl renders midnight as "24" in some ICU versions under hour12:false — normalize so a
+  // stamp can never read as an hour that does not exist.
+  const hour = get("hour") === "24" ? "00" : get("hour");
+  return `${date} ${hour}:${get("minute")} ET`;
+}
+
 export function isWeekdayEt(): boolean {
   const { weekday } = etNowParts();
   return weekday !== "Sat" && weekday !== "Sun";

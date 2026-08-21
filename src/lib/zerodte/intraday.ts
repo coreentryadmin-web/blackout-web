@@ -6,6 +6,7 @@
 // Pure functions only; the scan does the fetching.
 
 import { etMinutesOf, NEW_PLAY_CUTOFF_ET_MINUTES } from "./plan";
+import { etStampFromMs } from "@/features/nighthawk/lib/session";
 
 export type IntradayBar = { t: number; h: number; l: number; c: number; v?: number };
 
@@ -26,8 +27,22 @@ export type IntradayRead = {
   day_low: number | null;
   /** Epoch-ms of the newest RTH bar in the read — how FRESH this read actually is.
    *  The G-1 tape-alignment gate (./gates.ts) fails closed on a stale SPY read: a
-   *  bias computed from bars that stopped arriving isn't a bias, it's a memory. */
+   *  bias computed from bars that stopped arriving isn't a bias, it's a memory.
+   *  COMPUTE PATH — gates read this. Never round it, never replace it. */
   last_bar_ms: number | null;
+  /** The SAME instant as `last_bar_ms`, readable: "YYYY-MM-DD HH:mm ET".
+   *
+   *  WHY BOTH. `last_bar_ms` was the ONLY time anchor on this object, and this object
+   *  carries every intraday number a member acts on — session VWAP, the opening range,
+   *  the 5m trend, day high/low. A reader handed a bare epoch has to guess the session
+   *  convention, and guessing wrong misdates the whole read: on 2026-08-20 the value was
+   *  1787256240000, which reads as "20:04" in UTC and is actually 16:04 ET, one minute
+   *  past the close. That is the freshness anchor for a risk gate being misread by four
+   *  hours. Same class as PR #2418's dated-close-off-by-a-session defect.
+   *
+   *  This is ADDITIVE and display-only — the epoch above is untouched, so no gate,
+   *  staleness bound or calculation changes. Null exactly when `last_bar_ms` is null. */
+  last_bar_et: string | null;
 };
 
 const RTH_OPEN = 9 * 60 + 30;
@@ -51,6 +66,7 @@ export function computeIntradayRead(bars: IntradayBar[]): IntradayRead {
       day_high: null,
       day_low: null,
       last_bar_ms: null,
+      last_bar_et: null,
     };
   }
 
@@ -100,6 +116,7 @@ export function computeIntradayRead(bars: IntradayBar[]): IntradayRead {
     day_high: Number.isFinite(dayHigh) ? Math.round(dayHigh * 100) / 100 : null,
     day_low: Number.isFinite(dayLow) ? Math.round(dayLow * 100) / 100 : null,
     last_bar_ms: rth[rth.length - 1]!.t,
+    last_bar_et: etStampFromMs(rth[rth.length - 1]!.t),
   };
 }
 
