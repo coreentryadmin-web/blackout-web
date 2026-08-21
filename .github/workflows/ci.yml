@@ -34,7 +34,14 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
+      # FULL HISTORY, ON PURPOSE. `src/findings-no-loss.test.ts` asserts that no FINDINGS entry
+      # present in the merge base has been deleted, and it can only do that if the base commit is
+      # in the local object store. The default fetch-depth of 1 leaves it unresolvable, at which
+      # point the guard SKIPS — and a guard that silently skips is the exact failure it exists to
+      # catch (PR #2552 dropped five findings past a hygiene suite that passed 8/8).
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v7
         with:
           node-version: 20
