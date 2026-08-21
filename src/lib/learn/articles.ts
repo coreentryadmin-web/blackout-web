@@ -2566,7 +2566,7 @@ Reading static screenshots is not enough. [SPX Slayer](/learn/spx-slayer) shows 
   {
     slug: "market-maker-hedging-explained",
     path: "/learn/market-maker-hedging-explained",
-    metaTitle: "Market Maker Hedging Explained for Options Traders | BlackOut",
+    metaTitle: "Market Maker Hedging Explained for Options Traders",
     metaDescription:
       "Market makers hedge every options trade by buying and selling the underlying. Learn how that mechanical flow creates gamma flip, walls, and intraday SPX pins.",
     targetKeyword: "market maker hedging options",
@@ -2609,7 +2609,7 @@ BlackOut [Thermal](/learn/heat-maps) and [SPX Slayer](/learn/spx-slayer) surface
   {
     slug: "best-0dte-trading-strategies",
     path: "/learn/best-0dte-trading-strategies",
-    metaTitle: "Best 0DTE Trading Strategies (Structured, Not Random) | BlackOut",
+    metaTitle: "Best 0DTE Trading Strategies: Structured, Not Random",
     metaDescription:
       "The best 0DTE strategies start with dealer gamma: fade walls in positive GEX, ride momentum below the flip, sell condors in range regimes, and size properly.",
     targetKeyword: "best 0dte trading strategies",
@@ -2656,7 +2656,7 @@ The first 30 minutes of 0DTE carry peak gamma. Traders with a clear [opening pos
   {
     slug: "spx-vs-spy-options-explained",
     path: "/learn/spx-vs-spy-options-explained",
-    metaTitle: "SPX vs SPY Options: Settlement, Assignment, Tax Differences | BlackOut",
+    metaTitle: "SPX vs SPY Options: Settlement, Assignment & Tax",
     metaDescription: "SPX vs SPY options compared: cash vs physical settlement, European vs American style, assignment risk, contract size, and why traders pick one over the other.",
     targetKeyword: "SPX vs SPY options",
     type: "article",
@@ -2701,7 +2701,7 @@ BlackOut's whole 0DTE stack — [SPX Slayer](/learn/spx-slayer), [Thermal](/lear
   {
     slug: "options-tax-treatment-1256",
     path: "/learn/options-tax-treatment-1256",
-    metaTitle: "How Options Are Taxed: Section 1256 & the 60/40 Rule | BlackOut",
+    metaTitle: "How Options Are Taxed: Section 1256 & the 60/40 Rule",
     metaDescription: "How options are taxed in the US: Section 1256 contracts, the 60/40 capital gains split, mark-to-market rules, and why SPX gets different treatment than SPY.",
     targetKeyword: "options tax treatment Section 1256",
     type: "article",
@@ -2744,7 +2744,7 @@ BlackOut's SPX-focused tools — [SPX Slayer](/learn/spx-slayer), [Thermal](/lea
   {
     slug: "wheel-strategy-cash-secured-puts",
     path: "/learn/wheel-strategy-cash-secured-puts",
-    metaTitle: "The Wheel Strategy Explained: Cash-Secured Puts & Covered Calls | BlackOut",
+    metaTitle: "The Wheel Strategy: Cash-Secured Puts & Covered Calls",
     metaDescription: "The wheel options strategy explained: selling cash-secured puts, taking assignment, then selling covered calls — the mechanics, the math, and the real risks.",
     targetKeyword: "wheel strategy cash secured puts",
     type: "article",
@@ -2791,7 +2791,7 @@ The wheel is a single-name, longer-horizon strategy — a different timeframe th
   {
     slug: "straddles-strangles-options-explained",
     path: "/learn/straddles-strangles-options-explained",
-    metaTitle: "Straddles & Strangles Explained: Trading Volatility | BlackOut",
+    metaTitle: "Straddles & Strangles Explained: Trading Volatility",
     metaDescription: "Straddles and strangles explained: how long and short volatility plays work, the breakeven math, IV crush risk, and when each structure actually makes sense.",
     targetKeyword: "straddles and strangles explained",
     type: "article",
@@ -2869,7 +2869,7 @@ BlackOut's SPX-focused tools — [SPX Slayer](/learn/spx-slayer), [Thermal](/lea
   {
     slug: "butterfly-spread-strategy-guide",
     path: "/learn/butterfly-spread-strategy-guide",
-    metaTitle: "Butterfly Spread Strategy Guide: Pinning a Single Strike | BlackOut",
+    metaTitle: "Butterfly Spread Strategy: Pinning a Single Strike",
     metaDescription: "The butterfly spread explained: the three-strike structure, max profit at the body, and how it compares to an iron condor for pinning price at expiration.",
     targetKeyword: "butterfly spread strategy",
     type: "article",
