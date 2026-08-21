@@ -120,6 +120,11 @@ export const VECTOR_FULL_STATE_FIXTURE: VectorFullState = {
     dataAge: 1200,
   },
   asOf: "2026-07-13T14:40:00.000Z",
+  // 14:40Z is 10:40 ET on the same date — an in-session stamp, so the anchor agrees with the
+  // instant here. The cross-midnight case (where they do NOT agree) is covered explicitly in
+  // vector-state-freshness.test.ts rather than baked into the shared fixture.
+  asOfEt: "2026-07-13 10:40 ET",
+  sessionDate: "2026-07-13",
   flowMarkers: {
     available: true,
     expiry: "2026-07-13",
