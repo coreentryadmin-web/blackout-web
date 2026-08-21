@@ -4,6 +4,25 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-21 — [FINDING, P2 audit-tooling] The Clerk temp-user sweep paged the 100 OLDEST users of a 799-user instance — it had never deleted anything — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | 81 leaked `claude-audit-temp+*` Clerk users were live in production, the oldest **19 hours** old, despite `mintClerkPremiumSession` running a reclaim sweep before every mint. |
+| **Root cause** | `sweepLeakedAuditUsers` requested `GET /users?limit=100&order_by=+created_at` — the hundred **OLDEST** users in the instance. The instance holds **799** users, and the oldest 100 are real members aged **23–65 days**. Measured live 2026-08-21: that window contains **zero** temp users, so the sweep matched nothing and deleted nothing **on every run it had ever made**. It was dead code from the day it shipped. |
+| **Why it wasn't caught earlier** | It lived inside a closure in `mintClerkPremiumSession` with no pure seam, so nothing could unit-test it, and it fails **silently by construction**: the function is wrapped in `try/catch` returning 0 and is explicitly best-effort ("never block a run on housekeeping"). A sweep that reclaims nothing and a sweep that has nothing to reclaim produce identical output — `swept 0`, which is to say no output at all, since it only logs when `swept > 0`. |
+| **Impact** | Not cosmetic. Each leaked user holds a number from the `+1415555xxxx` pool. `prod-clerk-session.mjs`'s own header records the consequence it was written to prevent: a validator pass died with `phone-number collision persisted across 2 attempt(s) with distinct +1415555XXXX numbers — likely leaked temp users holding numbers`. The garbage collector added in response to that failure was never actually running. |
+| **Fix** | The request is now **scoped server-side** with `email_address_query=claude-audit-temp+`, so the returned page contains only sweep candidates and paging position stops mattering for correctness. Verified live: the scoped query returns 81 rows, **81/81** matching the tag. |
+| **Fix rationale** | Flipping to `order_by=-created_at` was the obvious one-character fix and is **wrong** — it would work today only by luck, because the newest 100 happen to be temp users right now. On a busy day the newest 100 could all sit under the 30-minute age gate and older leaks would fall outside the window again: the same paging bug, mirrored. Scoping the query removes the class of bug rather than moving it. |
+| **What was deliberately NOT changed** | Both safety properties are kept verbatim, and both still do real work: **only `+`-tagged addresses** (the bare pre-per-run `claude-audit-temp@` is left alone — another agent or an older checkout may still hold it, and the server-side filter is a substring match that DOES return it), and **only older than 30 minutes** (the gate must exceed the longest harness, ~15 min, or this reintroduces the concurrent-run delete race that per-run identity was built to remove). |
+| **Evidence of the fix** | Selection dry-run against production: **76 of 81** selected for sweep (ages **39 min – 20.3 h**), **5 correctly preserved** as too young to rule out a live run. Before the fix the same instance state yielded **0**. The mint-side address is now built from the same exported constant the sweep filters on, so the two sides cannot drift — a sweep that no longer recognises what mint produces is indistinguishable from no sweep at all, which is exactly what shipped. |
+| **Regression guard** | `selectSweepableAuditUsers(users, nowMs, staleMs)` extracted as a pure exported function (the same seam-extraction this module already needed for `mergeCookies`) with 6 tests: selects tagged users past the gate; **never** sweeps one under the gate; leaves the bare shared address alone; never sweeps a real member however old, including an address that merely *contains* the tag; a non-array error body yields no deletions; rows missing id/created_at/email are skipped rather than guessed. |
+| **Honest limit** | The 76 leaked users were **not** deleted by this run — the bulk delete was declined by the sandbox permission layer, correctly, as a destructive action on production records. The fix is verified by the selection dry-run above; the actual reclamation happens on the next `mintClerkPremiumSession` after this merges. Worth re-checking the temp-user count then rather than assuming. |
+| **Gates on Node 20.20.2** | `npx tsc --noEmit` clean · `npx eslint` clean · `prod-clerk-session.test.mjs` 11/11 (5 pre-existing + 6 new) · `clerk-audit-user.test.mjs` clean · full `npm test` 9376 pass / 0 fail. |
+| **Status** | FIXED — this PR (draft). |
+
 ## 2026-08-21 — [FINDING, P1 Thermal/Largo] `get_positioning` hid a nearer gamma flip — Largo told a member a 1%-fragile regime was a "comfortable 7% cushion" — FIXED
 
 > **kind:** `FINDING`
