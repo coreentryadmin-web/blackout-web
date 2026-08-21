@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 
 import {
   advancePlayLatch,
+  closedPnlDisplay,
   closedStopReason,
   condorSellerPnlPct,
   executablePnlPct,
@@ -579,4 +580,75 @@ test("the two lanes now agree BY CONSTRUCTION — advancePlayLatch routes throug
   assert.equal(viaLane.peak, viaPrimitive.peak);
   assert.equal(viaLane.trough, viaPrimitive.trough);
   assert.equal(viaLane.trough, null, "the condor-shaped row is null on BOTH lanes now");
+});
+
+// ── closedPnlDisplay — the peak may only be shown when it was actually banked ──────────
+//
+// Fixtures are the REAL live board rows from 2026-08-20. Five of those seven closed rows
+// displayed a non-negative number for a losing trade because the peak was shown
+// unconditionally; only ONDS had banked a tranche.
+const LIVE_2026_08_20 = [
+  { ticker: "TEM", status: "CLOSED", peak_pnl_pct: 1.35, live_pnl_pct: -8.85 },
+  { ticker: "ONDS", status: "CLOSED", peak_pnl_pct: 52.08, live_pnl_pct: 45.83 },
+  { ticker: "SSPC", status: "CLOSED", peak_pnl_pct: -6.98, live_pnl_pct: -6.98 },
+  { ticker: "TSLA", status: "CLOSED", peak_pnl_pct: 2.36, live_pnl_pct: -1.89 },
+  { ticker: "SNDK", status: "CLOSED", peak_pnl_pct: 1.34, live_pnl_pct: -38.25 },
+  { ticker: "HIMS", status: "CLOSED", peak_pnl_pct: -0.6, live_pnl_pct: -20.24 },
+  { ticker: "LITE", status: "CLOSED", peak_pnl_pct: -0.49, live_pnl_pct: -25.86 },
+];
+
+test("a peak with NO tranche banked is not shown — the realized number is", () => {
+  // SNDK is the worst case: +1.34% peak against a -38.25% realized loss.
+  const v = closedPnlDisplay(LIVE_2026_08_20.find((r) => r.ticker === "SNDK")!);
+  assert.equal(v.is_peak, false);
+  assert.equal(v.tranches_armed, 0);
+  assert.equal(v.pct, -38.25, "must show the realized loss, not the +1.34% high tick");
+});
+
+test("a peak that DID bank tranches is still shown — the fix is not a blanket ban", () => {
+  const v = closedPnlDisplay(LIVE_2026_08_20.find((r) => r.ticker === "ONDS")!);
+  assert.equal(v.is_peak, true);
+  assert.equal(v.tranches_armed, 2, "peak 52.08 arms both the +20 and +50 tranches");
+  assert.equal(v.pct, 52.08);
+  assert.equal(v.realized_pct, 45.83, "the realized number must ride along for disclosure");
+});
+
+test("no closed row may display a number better than its realized P&L without banking", () => {
+  for (const row of LIVE_2026_08_20) {
+    const v = closedPnlDisplay(row);
+    if (v.tranches_armed === 0) {
+      assert.equal(v.pct, row.live_pnl_pct, `${row.ticker} must show realized`);
+    }
+    assert.ok(
+      v.tranches_armed > 0 || (v.pct ?? 0) <= (row.live_pnl_pct ?? 0) + 1e-9,
+      `${row.ticker} overstates its result with nothing banked`
+    );
+  }
+});
+
+test("the whole 2026-08-20 session stops reading green: 5 overstatements -> 0", () => {
+  const overstated = LIVE_2026_08_20.filter((r) => {
+    const v = closedPnlDisplay(r);
+    return (v.pct ?? 0) > (r.live_pnl_pct ?? 0) + 0.05 && v.tranches_armed === 0;
+  });
+  assert.equal(overstated.length, 0);
+});
+
+test("an OPEN row is untouched — this rule is about closed results only", () => {
+  const v = closedPnlDisplay({ status: "OPEN", peak_pnl_pct: 80, live_pnl_pct: 12 });
+  assert.equal(v.is_peak, false);
+  assert.equal(v.pct, 12, "a live position shows its live mark");
+});
+
+test("a missing peak falls back to the live mark rather than blanking the cell", () => {
+  const v = closedPnlDisplay({ status: "CLOSED", peak_pnl_pct: null, live_pnl_pct: -50 });
+  assert.equal(v.pct, -50);
+  assert.equal(v.is_peak, false);
+});
+
+test("realized_pct is always carried, so a peak can never be shown without its disclosure", () => {
+  for (const row of LIVE_2026_08_20) {
+    const v = closedPnlDisplay(row);
+    if (v.is_peak) assert.notEqual(v.realized_pct, null);
+  }
 });

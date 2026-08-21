@@ -17,7 +17,7 @@ import type { MarketStateSnapshot } from "@/lib/zerodte/market-state-engine";
 import { DiscoveryFunnelStrip, GovPill, MarketStateStrip } from "./zerodte-board-strips";
 import { buildIntelNote, type IntelAction } from "@/lib/zerodte/intel";
 import { capConvictionDisplay } from "@/lib/zerodte/conviction";
-import { isZeroDteMarkStale, trimScaleTranchesArmed, type ZeroDteMarkSource } from "@/lib/zerodte/marks-math";
+import { closedPnlDisplay, isZeroDteMarkStale, trimScaleTranchesArmed, type ZeroDteMarkSource } from "@/lib/zerodte/marks-math";
 import type { ZeroDteLiveMarkRow } from "@/lib/zerodte/live-marks";
 import { etMinutesOf } from "@/lib/zerodte/plan";
 import {
@@ -674,10 +674,11 @@ function StatsCell({ row }: { row: PlayRow }) {
       </span>
     );
   }
-  // CLOSED rows: show the latched peak excursion (+87% for META-class runners), not the
-  // mechanical hold-to-stop pin — members banked tranches into that peak before the runner stopped.
-  const displayPct =
-    row.status === "CLOSED" && row.peak_pnl_pct != null ? row.peak_pnl_pct : row.live_pnl_pct;
+  // CLOSED rows show the latched peak ONLY when the trim ladder actually banked into it —
+  // see closedPnlDisplay (marks-math.ts) for why an unbanked peak is a loss shown as a gain.
+  const pnlView = closedPnlDisplay(row);
+  const { is_peak: showPeak, tranches_armed: tranchesArmed } = pnlView;
+  const displayPct = pnlView.pct;
   if (displayPct != null) {
     const up = displayPct >= 0;
     return (
@@ -692,8 +693,12 @@ function StatsCell({ row }: { row: PlayRow }) {
         title={
           row.mark_stale
             ? "Quote is stale — waiting for a live tick"
-            : row.status === "CLOSED" && row.peak_pnl_pct != null && row.closed_reason === "stopped"
-              ? `Peak excursion — as-managed realized ${row.live_pnl_pct != null ? `${row.live_pnl_pct >= 0 ? "+" : ""}${row.live_pnl_pct.toFixed(1)}%` : "—"}`
+            : // Whenever a PEAK is on screen the realized number must be one hover away — the
+              // disclosure used to be gated on closed_reason === "stopped", but the live board's
+              // closed rows carry "thesis" and "flat", so on 2026-08-20 it rendered on NONE of
+              // the seven and the member had no way to reach the realized figure at all.
+              showPeak
+              ? `Peak excursion after ${tranchesArmed} trim tranche${tranchesArmed === 1 ? "" : "s"} banked — as-managed realized ${row.live_pnl_pct != null ? `${row.live_pnl_pct >= 0 ? "+" : ""}${row.live_pnl_pct.toFixed(1)}%` : "—"}`
               : undefined
         }
       >
