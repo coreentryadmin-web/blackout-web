@@ -54,6 +54,7 @@ mock.module("../db", {
 });
 
 let bangerBoardForLargo: typeof import("./product-reads").bangerBoardForLargo;
+let nighthawkHorizonsForLargo: typeof import("./product-reads").nighthawkHorizonsForLargo;
 let zerodteRecordForLargo: typeof import("./product-reads").zerodteRecordForLargo;
 let thermalCompareRow: typeof import("./product-reads").thermalCompareRow;
 let etSessionNow: typeof import("./product-reads").etSessionNow;
@@ -62,6 +63,7 @@ let ageSecondsFrom: typeof import("./product-reads").ageSecondsFrom;
 before(async () => {
   ({
     bangerBoardForLargo,
+    nighthawkHorizonsForLargo,
     zerodteRecordForLargo,
     thermalCompareRow,
     etSessionNow,
@@ -81,6 +83,34 @@ describe("product-reads", () => {
       if (prev === undefined) delete process.env.BANGER_ENGINE_ENABLED;
       else process.env.BANGER_ENGINE_ENABLED = prev;
     }
+  });
+});
+
+// A bare UTC `as_of` reads a full session ahead between ~20:00 ET and midnight. Both of
+// these payloads are session-scoped — banger rows are keyed by session_date, and the 0DTE
+// counts answer "how many are open TODAY" — so the session has to be stated, not inferred.
+describe("session anchors (Largo product contract C1)", () => {
+  it("banger board states its ET session alongside the UTC instant", async () => {
+    const prev = process.env.BANGER_ENGINE_ENABLED;
+    process.env.BANGER_ENGINE_ENABLED = "1";
+    try {
+      const r = (await bangerBoardForLargo()) as Record<string, unknown>;
+      if (r.available === false) return; // db-less environment: nothing to anchor
+      assert.match(String(r.as_of), /^\d{4}-\d{2}-\d{2}T.*Z$/);
+      assert.match(String(r.session_date), /^\d{4}-\d{2}-\d{2}$/);
+      assert.equal(String(r.as_of_et).slice(0, 10), r.session_date);
+    } finally {
+      if (prev === undefined) delete process.env.BANGER_ENGINE_ENABLED;
+      else process.env.BANGER_ENGINE_ENABLED = prev;
+    }
+  });
+
+  it("nighthawk horizons states its ET session alongside the UTC instant", async () => {
+    const r = (await nighthawkHorizonsForLargo()) as Record<string, unknown>;
+    assert.match(String(r.as_of), /^\d{4}-\d{2}-\d{2}T.*Z$/);
+    assert.match(String(r.session_date), /^\d{4}-\d{2}-\d{2}$/);
+    assert.match(String(r.as_of_et), /^\d{4}-\d{2}-\d{2} \d{2}:\d{2} ET$/);
+    assert.equal(String(r.as_of_et).slice(0, 10), r.session_date);
   });
 });
 
@@ -173,6 +203,9 @@ describe("zerodteRecordForLargo — empty and ungraded windows", () => {
     assert.equal(rec.graded, 0);
     assert.equal(rec.losses, 0, "an ungraded play is not a loss");
     assert.equal(rec.win_rate_pct, null);
+  });
+});
+
 describe("thermalCompareRow — a reading carries the session it belongs to", () => {
   // Live capture 2026-08-21T00:29Z (20:29 ET): the served spot is EXACTLY SPY's 16:00 ET
   // close, four and a half hours old, under an envelope stamp that reads as "now".
@@ -199,12 +232,34 @@ describe("thermalCompareRow — a reading carries the session it belongs to", ()
     assert.equal(row.matrix_age_sec, 300);
   });
 
-  it("reports nulls — never a borrowed timestamp — when the matrix is cold", () => {
+  it("anchors the matrix time to its ET SESSION, not just a UTC instant", () => {
+    const row = thermalCompareRow("SPY", LIVE_SPY, Date.parse("2026-08-21T00:29:56.192Z"));
+    // MATRIX_ASOF is 2026-08-21T00:24Z — a UTC date one day AHEAD of the ET session it belongs to.
+    assert.equal(row.matrix_asof, "2026-08-21T00:24:56.192Z");
+    assert.equal(row.matrix_session_date, "2026-08-20", "ET session, not the UTC date");
+    assert.match(String(row.matrix_asof_et), / ET$/);
+  });
+
+  it("says the gamma read is CACHED, separately from how old the computation is", () => {
+    const row = thermalCompareRow("SPY", LIVE_SPY, Date.parse("2026-08-21T00:29:56.192Z"));
+    // freshness must not be inferable from age: 300s of COMPUTE age over a 4.5h-old print.
+    assert.equal(row.freshness, "cached");
+    assert.equal(row.matrix_age_sec, 300);
+    assert.equal(row.unavailable, null);
+  });
+
+  it("reports nulls — never a borrowed timestamp — when the matrix is cold, and says why", () => {
     const row = thermalCompareRow("NVDA", null);
     assert.equal(row.available, false);
     assert.equal(row.spot, null);
     assert.equal(row.matrix_asof, null);
+    assert.equal(row.matrix_asof_et, null);
+    assert.equal(row.matrix_session_date, null);
     assert.equal(row.matrix_age_sec, null);
+    assert.equal(row.freshness, null);
+    // A wall of nulls with no reason makes a reader guess; name the state instead.
+    assert.match(String(row.unavailable?.reason), /matrix cold/i);
+    assert.equal(row.unavailable?.retryable, true);
   });
 });
 

@@ -852,6 +852,9 @@ export async function helixTapeAnalyticsForLargo(
  * the tool payload and the prompt block can never disagree about what session it is.
  */
 export function etSessionNow(now = new Date()): { phase: string; et_time: string } {
+  // Callers pass a FROZEN instant: the phase, the envelope stamp and every row age in one payload
+  // must describe the SAME moment. A payload generated across 15:59:59 -> 16:00:01 must not
+  // report OPEN beside rows anchored after the close.
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
     hour: "numeric",
@@ -912,7 +915,12 @@ export function thermalCompareRow(ticker: string, pos: ThermalComparePositioning
       gamma_regime_read: null,
       cross_validation: null,
       matrix_asof: null,
+      matrix_asof_et: null,
+      matrix_session_date: null,
       matrix_age_sec: null,
+      freshness: null,
+      // A cold row says WHY, rather than serving a wall of nulls a reader has to guess at.
+      unavailable: { reason: "GEX matrix cold for this ticker", retryable: true },
     };
   }
   return {
@@ -930,7 +938,18 @@ export function thermalCompareRow(ticker: string, pos: ThermalComparePositioning
     // Previously dropped, leaving the envelope's generated-at stamp as the payload's ONLY
     // timestamp — which reads as "this is the price right now".
     matrix_asof: pos.asof,
+    // ET ANCHOR beside the raw instant. `matrix_asof` is a UTC ISO whose calendar date rolls at
+    // 20:00 ET, and the tool description now tells the model to name the session a price belongs
+    // to — so the session has to be available in ET terms, not inferred from a UTC date.
+    matrix_asof_et: etStamp(Date.parse(pos.asof)),
+    matrix_session_date: etSessionDate(Date.parse(pos.asof)),
     matrix_age_sec: ageSecondsFrom(pos.asof, now),
+    // getGexPositioning is a documented STRICT CACHE READER — never a second upstream — so
+    // "cached" is the honest steady state. It matters that this is separate from `matrix_age_sec`:
+    // that age is the age of the COMPUTATION, not of the price. Measured 2026-08-21, SPY was
+    // matrix_age_sec ~300 over a print that had settled 4.5 hours earlier.
+    freshness: "cached" as const,
+    unavailable: null,
   };
 }
 
@@ -945,8 +964,16 @@ export async function thermalCompareForLargo(tickers?: string[]) {
   // gexHeatmapForLargo re-fetches the entire chain per ticker and was timing out Largo turns
   // at ~120s on cold SPX+SPY. getGexPositioning reads the shared warmed cache — same numbers
   // the Thermal compare UI shows.
+  // ONE instant for the whole payload. `thermalCompareRow` defaults `now` per call, so without
+  // this each row's age was measured whenever its own getGexPositioning promise happened to
+  // resolve — seconds to tens of seconds apart on a cold ticker — and the ages between rows were
+  // not differenceable. Freezing it also keeps the envelope's session phase consistent with the
+  // rows, so a payload spanning 15:59:59 -> 16:00:01 cannot report OPEN over post-close rows.
+  const nowMs = Date.now();
   const rows = await Promise.all(
-    list.map(async (ticker) => thermalCompareRow(ticker, await getGexPositioning(ticker).catch(() => null)))
+    list.map(async (ticker) =>
+      thermalCompareRow(ticker, await getGexPositioning(ticker).catch(() => null), nowMs)
+    )
   );
   // SESSION CONTEXT — the missing half of "when".
   //
@@ -959,11 +986,18 @@ export async function thermalCompareForLargo(tickers?: string[]) {
   // So: keep `as_of` (unchanged, and now explicitly named as generated-at) and add the two facts
   // that make it interpretable — which session the wall clock is in, and how old each ticker's
   // matrix is. Both are derived, not fetched: no extra upstream, no pressure on the UW budget.
-  const session = etSessionNow();
+  const session = etSessionNow(new Date(nowMs));
   return roundFloats({
     available: rows.some((r) => r.available),
-    /** When this payload was GENERATED — not the age of the numbers in it. See `market_session`. */
-    as_of: new Date().toISOString(),
+    /**
+     * When this payload was GENERATED, as an ET wall-clock stamp — NOT a UTC ISO. A UTC instant
+     * rolls its calendar DATE at 20:00 ET, so for the last four hours of every trading day a
+     * session resolved from it is a full session ahead (#2418 / #2420 class).
+     */
+    as_of: etStamp(nowMs),
+    session_date: etSessionDate(nowMs),
+    /** Machine-orderable instant, kept for consumers that sort on it. */
+    as_of_utc: new Date(nowMs).toISOString(),
     market_session: session.phase,
     et_time: session.et_time,
     tickers: rows,
