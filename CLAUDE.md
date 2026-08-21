@@ -195,6 +195,16 @@ adjusts its numbers to match a peer has destroyed the signal and left a false co
   Server-side UW/Polygon WS still run on ECS and the browser still gets SSE + SWR polling — that
   part is unchanged — but an audit no longer has to validate WS-sourced numbers *only* through REST.
 - **Playwright mobile UI E2E works** — `npm run test:ios-ui-e2e` drives prod (or `VALIDATE_BASE`) with iPhone viewport + `BlackOutiOSApp` UA, Clerk cookie auth, tab/segment clicks, and screenshots under `/opt/cursor/artifacts/ios-ui-e2e/`. Full `ios-native-shell` CSS requires PR #557 merged/deployed; until then the suite still clicks the tab bar and primary controls on the live `ios-app` shell.
+- **THE SANDBOX CLONE IS SHALLOW — `git merge-base` and `git merge-tree` LIE (2026-08-21).** The
+  repo arrives with `.git/shallow` set, so history is truncated. Any branch whose tip predates the
+  cut has **no common ancestor in the local object store**, and git reports that as
+  `fatal: refusing to merge unrelated histories` with `merge-base` exiting 1 and printing nothing.
+  That reads as "this PR is built on a foreign history" — a scary, wrong conclusion about the PR.
+  It is a fact about the clone. Measured on #2331, a perfectly ordinary Cursor PR that the release
+  sweep's trial-merge silently classified as unmergeable. **Run `git rev-parse
+  --is-shallow-repository` before believing any merge-base result**, and
+  `git fetch --unshallow -q origin` (~30s) once per container. A container restart brings the
+  shallow clone back.
 - **Direct Postgres (raw TCP) is blocked**, same as WebSockets — only HTTP(S) egress through the agent proxy works. So `pg_stat_activity`/lock/row-count probes against prod are **not possible from this sandbox** — root-causing a live DB-side issue (lock contention, slow query, table bloat) needs either an AWS ECS exec session or a temporary HTTP-exposed debug endpoint in the app itself. Don't spend time retrying a raw `pg.Client` connection here.
 - **`${{shared.*}}` env refs do NOT resolve here** — set literals: `UW_API_KEY` (UUID), `DATABASE_URL`, `REDIS_URL`, `POLYGON_API_BASE`. Working: `POLYGON_API_KEY`, `CLERK_SECRET_KEY`, Clerk publishable key. **Benzinga rides the Polygon key** — the Benzinga news/catalysts feed is served under the same Polygon subscription at `{POLYGON_API_BASE}/benzinga/v2/news?...&apiKey={POLYGON_API_KEY}` (re-verified live 2026-07-13: 200 for `channels=fda|guidance|m&a` and `ticker=NVDA&channels=earnings`). There is **no separate `BENZINGA_API_KEY`**; news fetches live via the Polygon key. (Earlier note claiming the key was missing was stale.)
 - Clerk instance requires a **phone number** on user creation; rapid sign-in/token cycles get **FAPI-rate-limited** — authenticate once per run.

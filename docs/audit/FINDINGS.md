@@ -4,6 +4,22 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-21 — [FINDING, P1 tooling] The FINDINGS merge resolver raised a false collision on identical edits and carried damaged input through silently — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Releasing a 12-PR batch, `findings-merge-resolve.mjs` refused two PRs (#2515, #2502) with `1 entry/entries edited on BOTH sides — resolve by hand`, and produced a file for a third (#2446) that it reported as a clean merge but which failed `findings-hygiene.test.ts` immediately afterwards with four headings "glued to the previous line". Two different failure modes, one tool, both surfacing only under batch use. |
+| **Root cause A — false collision** | The contested test asked only "did theirs change from base AND did ours change from base". When a lane's finding lands on `main` through a batch PR while the lane branch still carries it, both stages hold **byte-identical** text. That satisfies both halves of the test, so the resolver refused. On #2515 and #2502 the entire divergence from base was **one trailing blank line, present identically on both sides** — there was nothing to choose between and nothing to lose. |
+| **Root cause B — damaged input** | A heading fused onto the end of a previous line stops being an entry: `splitEntries` reads it as body text of the entry above. The resolver's own "no silent loss" guard compares what it wrote against what it parsed — but it parsed the damaged input the same way it wrote it, so the counts balanced and the guard passed. The gluing defect in the resolver's own output was fixed earlier; the branches that merged before that fix **still carry the damage**, and every one of them is an input to a future merge. |
+| **Evidence** | #2446: `not ok 7 - entry headings are never glued onto the end of another line`, naming lines 5, 16, 32 and 46 — four entries the resolver had just declared merged. #2515/#2502: `difflib` on the contested entry versus base shows `+` one blank line on ours and the identical `+` one blank line on theirs. |
+| **Fix** | Decision logic extracted to `scripts/audit/lib/findings-merge-core.mjs` (`splitEntries`, `repairGlued`, `countGlued`, `resolveStages`) so it can be exercised against fixtures rather than only against a live three-stage merge. (A) `resolveStages` returns early on `ourLines === theirLines` — convergent edits are not collisions. (B) every stage is repaired **before** it is split, and the repair count is REPORTED, not applied silently: a repaired input means some other open branch is still carrying the damage, and that is information the operator needs. |
+| **Why not "just relax the guard"** | The divergent case is still refused, and the entry-count guard is unchanged. What changed is that the tool no longer treats "no difference" as "a difference I cannot adjudicate", and no longer treats input it cannot parse as input that parsed fine. Both are the same defect class this repo keeps recording: **an unknown rendered as a measurement.** |
+| **Blast radius** | The resolver is the only path the coordinator uses to land agent PRs past the FINDINGS append collision, so a false refusal blocks releases and a silent corruption ships. Both were exercised on the same batch. `findings-hygiene.test.ts` catches (B) downstream but only if someone runs it — it is not a merge-time gate. |
+| **Regression guard** | `src/findings-merge-resolve.test.ts` (9 tests): preamble separation, occurrence-keyed duplicate headings, one-sided append, identical-edit acceptance, divergent-edit refusal, glued-heading detection, repair, repair-is-counted, and no glued heading in the output. Verified non-vacuous — removing the identical-edit early return and the repair call fails exactly tests 4 and 8, and nothing else. |
+| **Status** | FIXED. |
+
 ## 2026-08-21 — [FINDING, P2 Helix] get_helix_derived capped four panels with no total — the display limit read as the count — FIXED
 
 > **kind:** `FINDING`
