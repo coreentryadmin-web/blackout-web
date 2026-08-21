@@ -1837,6 +1837,7 @@ module compares for bit-identity.
 | **Fix** | Six-part bundle on `cursor/spx-matrix-timeout-fix-3d11`: (1) strict cache-reader member route — `loadHeatmapCacheReaderOnly` never awaits cold builds on normal GET; (2) `GET /api/market/gex-heatmap/batch` — one round trip for 3–7 compare columns; (3) `comparePresetWarmTickers()` seeds boot-warm + heatmap-warm; (4) batch prefetch on landing, preset switch, and sector-picker hover; (5) `?compact=1` 0DTE strike-band payload; (6) `?force=1` only on manual ↻ (removed per-column auto stale/blank force + stagger storm). Prior partial: `shouldForceBlankMatrixRefresh`, 12s fetch timeout. |
 | **Blast radius** | All Thermal compare presets (3–7 columns). Warm Redis hits should paint in <1s; cold names show honest empty/retry instead of 55s+ force hangs. |
 
+
 > **kind:** `FINDING`
 
 | Field | Value |
@@ -3926,6 +3927,7 @@ archetype intended-DTE realign. Branch `cursor/swing-cto-audit-3d11`.
 ## 2026-07-29 — [Grid/0DTE] zerodte board HTTP 504 on aged snapshot cold-build
 > **kind:** `FINDING`
 
+
 **Severity.** P0 member path (Night Hawk `/api/market/zerodte/board`).
 
 **Symptoms.** Parallel grid-rth audit burst: `integration:zerodte-board` HTTP **504**;
@@ -4048,6 +4050,7 @@ overlays stay on the static allowlist (2 RPS). CORE SPY/SPX/QQQ still force-refr
 
 ## 2026-07-29 — [Thermal] Triple desk SPY/QQQ not refreshing every 5–10s
 > **kind:** `FINDING`
+
 
 **Severity.** P1 UX — compare desk felt stuck; SPX stayed ~5s while SPY/QQQ asof climbed
 15–25s (live poll 2026-07-29 ~15:58 ET). Browser showed force requests stuck on
@@ -12826,22 +12829,12 @@ against.
 | **Gates** | `npx tsc --noEmit` clean · `npm test` **8854 pass / 0 fail** (Node 20.20.2) · `npm run build` clean · `npx eslint` clean. |
 | **Status** | FIXED — PR #2477. |
 
-## 2026-08-21 — [FINDING, P2 member-visible] "OTHER leading · 100% of tape premium" — a missing field rendered as a route verdict — FIXED
 ## 2026-08-21 — [FINDING, P3 Marketing] "How BlackOut Thinks" pipeline status badges (01-04) rendered as garbled double-exposed text on the live homepage — FIXED
 
 > **kind:** `FINDING`
 
 | Field | Detail |
 |---|---|
-| **How it was found** | **Live post-deploy validation of #2428**, not code reading. With the fix deployed (Batch 4, `bde2ad73`), `GET /api/market/largo/slash-prompts?desk=helix` on production returned a chip reading **`OTHER leading :: 100% of tape premium`**. The #2428 validation itself passed — this is a different defect the validation surfaced. |
-| **Root cause — two compounding** | `executionRouteKey` scans `alert_rule` for six venue keywords (SWEEP/BLOCK/SPLIT/CROSS/FLOOR/MULTI) and returns `OTHER` for everything else. On the live tape: (1) **`alert_rule` is absent on 74.3% of prints**, and (2) of the 25.7% that carry one, **95.8% are `RepeatedHits` / `RepeatedHitsAscendingFill` / `RepeatedHitsDescendingFill`** — a real UW rule naming a **pattern**, not a venue — so they land in `OTHER` as well. |
-| **Evidence** | Live prod 2026-08-21, 5,000-row / 168h tape: `alert_rule` present on **1,285 (25.7%)**; values `RepeatedHits` 846, `…AscendingFill` 189, `…DescendingFill` 196, `FloorTrade*` 28, `LowHistoricVolumeFloor` 22, `SweepsFollowedByFloor` 4. Bucketed: **`OTHER` 4,946 (98.9%) · `FLOOR` 50 · `SWEEP` 4** — only **1.1%** of the tape carries a route the buckets can describe. |
-| **Why it matters** | `OTHER` is not a venue; it is the bucket everything unclassifiable falls into. "OTHER leads with 100% of tape premium" reads as a claim about the market — that flow went through an unclassified route — when the truth is **we have no route data for three quarters of the tape and a pattern label for most of the rest.** Rule 7, on a member-visible chip and in a Largo tool whose description promised "Route Breakdown (SWEEP/BLOCK/SPLIT/…)". |
-| **Not caused by #2428** | Checked both populations: premium-ordered/48h gave `OTHER 100% · FLOOR 0%`, recent-ordered/168h gave `OTHER 100%`. The defect predates the population change and is merely *visible* now because live validation looked at the rendered chip. |
-| **Fix** | New `routeCoverage()` reports `prints_with_alert_rule`, `prints_with_known_route`, `known_route_pct` and a `route_data_sparse` flag, served as `route_coverage` beside `route_breakdown`. The tool description now states that OTHER dominating means the field is missing and forbids reporting "OTHER leads" as a fact about flow. The slash-prompts chip is **suppressed** when the top route is `OTHER` — a chip that always says the same thing carries no information. `known_route_pct` is `null` on an empty tape, not `0`: 0% would claim we looked. |
-| **Deliberately unchanged** | `executionRouteKey` itself, and the member `RouteBreakdown` panel that shares it. Widening the keyword set (e.g. mapping `RepeatedHits*` to a "REPEAT" bucket) is a product decision about what the panel means, not a data-honesty fix, and it would change what members see. Disclosure first; the mapping question is logged for the coordinator. |
-| **Regression guard** | 5 tests: a tape with no rules reports zero coverage and flags sparse; a `RepeatedHits` print counts as *rule present* but *route unknown* (both facts must survive); real venue rules count as known; the measured 1.1% live proportion flags sparse; an empty tape reports `null` coverage rather than 0%. |
-| **Status** | FIXED — PR #2485. Gates on Node 20: tsc 0, eslint 0, build ok, 8906 pass / 0 fail. |
 | **Symptom** | Spotted while sourcing a full-page homepage screenshot for a cinematic showcase video: each of the four "How BlackOut Thinks" pipeline stage cards (IDENTIFY / VALIDATE / EXECUTE / RESULTS) shows a small top-right status badge that is supposed to read `● ONLINE` once the card scrolls into view. On the live capture it instead rendered as unreadable overlapping glyphs (visually: `•NOLNONEN E`) — confirmed live on all 4 stages, not a capture artifact. |
 | **Root cause** | Two independent mechanisms write the same label onto `.pipe-status` and neither knows about the other. `LandingRedesignFx.tsx`'s scroll `IntersectionObserver` sets `statusEl.innerHTML = '<span class="status-dot"></span>ONLINE'` the instant a stage becomes visible. Separately, `marketing-redesign.css` had `.pipe-stage.pipe-lit .pipe-status::after{content:"ONLINE";position:absolute;color:var(--g)}`. With no `top`/`left` set, an absolutely-positioned `::after` renders at its in-flow "static position" (CSS2.1 §10.3.7) — i.e. immediately after the preceding content, not offset away from it — so the CSS-generated "ONLINE" lands directly on top of the JS-authored "ONLINE", double-exposing into the garbled text seen live. |
 | **Evidence** | `src/components/landing/RedesignHome.tsx` seeds the four badges with static `OFFLINE` markup pre-hydration (lines 223/250/277/304, confirmed only 4 instances repo-wide); `src/components/landing/LandingRedesignFx.tsx:882` overwrites it to `ONLINE` on scroll-into-view; `src/app/marketing-redesign.css:772` (pre-fix) independently injected a second `ONLINE` via `::after` on the same lit state. Full-page crop of the live homepage screenshot shows all 4 badges affected identically once scrolled into view; zoomed per-badge crops confirm the two overlapping "ONLINE" strings. |
@@ -12850,6 +12843,7 @@ against.
 | **Why not caught** | Purely visual, sub-pixel-adjacent double-text — never threw, never failed a data/API check, and every existing audit harness in this repo validates numbers/data correctness, not homepage marketing-page rendering. It surfaced only because a video-asset screenshot was inspected closely enough to zoom into the badge. |
 | **Regression guard** | `src/components/landing/RedesignHome.seo.test.ts` (new case): asserts `LandingRedesignFx.tsx` still authors the lit `.pipe-status` label via `statusEl.innerHTML`, and asserts `marketing-redesign.css` contains no `.pipe-status::after{content:"ONLINE"|"OFFLINE"}` rule. Verified the guard actually catches the regression: reverting only the CSS fix (keeping the new test) fails the added test; reverting both passes only the 3 pre-existing tests. |
 | **Status** | FIXED on branch `fix/pipeline-status-badge-double-render`. |
+
 
 ## 2026-08-21 — [FINDING, P2 Meridian] The Play-read banner squeezed its own label to zero width and cut its text mid-word — FIXED
 
@@ -12885,3 +12879,19 @@ against.
 | **Regression guard** | `src/lib/zerodte/feed-envelope.test.ts` (+8, pure): an unreadable board omits `plays` entirely; a measured quiet session is reportable and says so; the two empty states never serialize alike; known plays on a degraded board stay reportable but say marks may be stale; a healthy board carries provenance and no needless caveat; every branch states its ET session; and both surfaces refuse to publish an unknown as an empty list. `scan.test.ts`'s 25 existing tests pass unchanged through the re-export. |
 | **Not a trading-behaviour change** | No gate, rail, sizing, exit rule or grading function is touched. No `sim:0dte` before/after is owed. |
 | **Status** | FIXED. |
+
+## 2026-08-21 — [FINDING, P2 member-visible] "OTHER leading · 100% of tape premium" — a missing field rendered as a route verdict — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **How it was found** | **Live post-deploy validation of #2428**, not code reading. With the fix deployed (Batch 4, `bde2ad73`), `GET /api/market/largo/slash-prompts?desk=helix` on production returned a chip reading **`OTHER leading :: 100% of tape premium`**. The #2428 validation itself passed — this is a different defect the validation surfaced. |
+| **Root cause — two compounding** | `executionRouteKey` scans `alert_rule` for six venue keywords (SWEEP/BLOCK/SPLIT/CROSS/FLOOR/MULTI) and returns `OTHER` for everything else. On the live tape: (1) **`alert_rule` is absent on 74.3% of prints**, and (2) of the 25.7% that carry one, **95.8% are `RepeatedHits` / `RepeatedHitsAscendingFill` / `RepeatedHitsDescendingFill`** — a real UW rule naming a **pattern**, not a venue — so they land in `OTHER` as well. |
+| **Evidence** | Live prod 2026-08-21, 5,000-row / 168h tape: `alert_rule` present on **1,285 (25.7%)**; values `RepeatedHits` 846, `…AscendingFill` 189, `…DescendingFill` 196, `FloorTrade*` 28, `LowHistoricVolumeFloor` 22, `SweepsFollowedByFloor` 4. Bucketed: **`OTHER` 4,946 (98.9%) · `FLOOR` 50 · `SWEEP` 4** — only **1.1%** of the tape carries a route the buckets can describe. |
+| **Why it matters** | `OTHER` is not a venue; it is the bucket everything unclassifiable falls into. "OTHER leads with 100% of tape premium" reads as a claim about the market — that flow went through an unclassified route — when the truth is **we have no route data for three quarters of the tape and a pattern label for most of the rest.** Rule 7, on a member-visible chip and in a Largo tool whose description promised "Route Breakdown (SWEEP/BLOCK/SPLIT/…)". |
+| **Not caused by #2428** | Checked both populations: premium-ordered/48h gave `OTHER 100% · FLOOR 0%`, recent-ordered/168h gave `OTHER 100%`. The defect predates the population change and is merely *visible* now because live validation looked at the rendered chip. |
+| **Fix** | New `routeCoverage()` reports `prints_with_alert_rule`, `prints_with_known_route`, `known_route_pct` and a `route_data_sparse` flag, served as `route_coverage` beside `route_breakdown`. The tool description now states that OTHER dominating means the field is missing and forbids reporting "OTHER leads" as a fact about flow. The slash-prompts chip is **suppressed** when the top route is `OTHER` — a chip that always says the same thing carries no information. `known_route_pct` is `null` on an empty tape, not `0`: 0% would claim we looked. |
+| **Deliberately unchanged** | `executionRouteKey` itself, and the member `RouteBreakdown` panel that shares it. Widening the keyword set (e.g. mapping `RepeatedHits*` to a "REPEAT" bucket) is a product decision about what the panel means, not a data-honesty fix, and it would change what members see. Disclosure first; the mapping question is logged for the coordinator. |
+| **Regression guard** | 5 tests: a tape with no rules reports zero coverage and flags sparse; a `RepeatedHits` print counts as *rule present* but *route unknown* (both facts must survive); real venue rules count as known; the measured 1.1% live proportion flags sparse; an empty tape reports `null` coverage rather than 0%. |
+| **Status** | FIXED — PR #2485. Gates on Node 20: tsc 0, eslint 0, build ok, 8906 pass / 0 fail. |
