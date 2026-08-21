@@ -90,7 +90,7 @@ Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 | **NOT changed — raised instead** | The 0.65 / 0.35 lean thresholds are untouched, so a 1-print 100% still produces a bullish pillar; it now says `"100% beat rate over 1 print"` where it used to say `"on recent prints"`. Gating the lean on a minimum cohort is a product behaviour change, so it goes to the coordinator rather than in here. |
 | **Regression guard** | 4 tests in `meridian-benzinga-earnings-core.test.ts` (every rate carries its count; null rate ⇒ zero count so "no rate" and "a rate of zero" cannot be confused; pooled ≠ averaged on the lopsided case; pooled **==** averaged when the cohorts match) and 4 in `meridian-earnings-intel-core.test.ts` (singular "1 print", plural "8 prints", the miss branch, and the unknown-cohort silence). Non-vacuous: stubbing `cohortSuffix` to `""` fails the rationale test. |
 | **Gates on Node 20.20.2** | `npx tsc --noEmit` clean · `npm test` **9053 pass / 0 fail** · `npm run build` clean · `npx eslint` clean (2 pre-existing `react-hooks/exhaustive-deps` warnings on `MeridianDesk.tsx`, present on `main` before this change — verified by stashing). |
-| **Status** | FIXED — PR #____ (draft). Not yet live-verified. |
+| **Status** | FIXED — PR #2513 (draft). Not yet live-verified. |
 
 ## 2026-08-21 — [FINDING, P2 Largo] Rule-7 sweep of the HELIX lane — two more places absence was published as measurement — FIXED
 
