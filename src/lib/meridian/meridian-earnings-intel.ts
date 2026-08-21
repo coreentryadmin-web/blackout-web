@@ -15,6 +15,7 @@ import { buildMeridianFinancialsContext } from "@/lib/meridian/meridian-financia
 import { fetchUwDarkPool } from "@/lib/providers/unusual-whales";
 import {
   beatRateFromPrints,
+  beatRateWithCohort,
   buildErPlayRead,
   coerceMeridianWallLevels,
   flowWindowHours,
@@ -163,13 +164,24 @@ export async function loadMeridianEarningsIntel(input: {
     spot,
   });
 
+  // ONE resolution of the rate and its cohort, used by both consumers below. Resolving it twice
+  // invited them to disagree, and a rate that reaches two readers with two different denominators
+  // is the defect this carries the cohort to prevent.
+  const beatFromPrints = beatRateWithCohort(input.print_history);
+  const beat_rate = input.enrichment.beat_rates?.combined_beat_rate ?? beatFromPrints.rate;
+  const beat_rate_graded =
+    input.enrichment.beat_rates?.combined_beat_rate != null
+      ? (input.enrichment.beat_rates?.combined_graded ?? null)
+      : beatFromPrints.graded;
+
   const play_read = buildErPlayRead({
     flow_bias: input.pack.flow.bias,
     dark_pool_bias: dark_pool.available ? dark_pool.bias : null,
     gamma_regime,
     expected_move_pct,
     days_until: input.pack.days_until,
-    beat_rate: input.enrichment.beat_rates?.combined_beat_rate ?? beatRateFromPrints(input.print_history),
+    beat_rate,
+    beat_rate_graded,
     spot,
     call_wall: walls.call_wall,
     put_wall: walls.put_wall,
@@ -192,7 +204,8 @@ export async function loadMeridianEarningsIntel(input: {
     call_wall: walls.call_wall,
     put_wall: walls.put_wall,
     expected_move_pct,
-    beat_rate: input.enrichment.beat_rates?.combined_beat_rate ?? beatRateFromPrints(input.print_history),
+    beat_rate,
+    beat_rate_graded,
     post_print: input.enrichment.post_print,
     earnings_yoy: input.enrichment.earnings_yoy,
     financials: buildMeridianFinancialsContext(fundamentals),
