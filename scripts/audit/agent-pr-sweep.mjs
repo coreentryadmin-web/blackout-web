@@ -60,6 +60,7 @@ const REPO = flag("repo", "coreentryadmin-web/blackout-web");
 // A coordinator's own PRs are the ones NOBODY ELSE is watching. They belong in the sweep most of all.
 const PREFIXES = flag("prefix", "claude/,cursor/,fix/,batch/,docs/").split(",").filter(Boolean);
 const JSON_OUT = has("json");
+const CHOKEPOINTS = has("chokepoints");
 const MARK_READY = has("mark-ready");
 const LIMIT = Number(flag("limit", "0")) || 0;
 const ONLY = (flag("only", "") || "").split(",").map((s) => s.trim()).filter(Boolean);
@@ -180,6 +181,54 @@ function collisionsAmong(rows) {
   return { pairs, safe, unknown };
 }
 
+/**
+ * Which FILES the open agent PRs contend on — the structural cause of the pair-wise collisions
+ * that `collisionsAmong` reports one at a time.
+ *
+ * WHY THIS IS A DIFFERENT QUESTION. The pair list answers "can I release these two together". This
+ * answers "why does that question keep having a bad answer". Measured 2026-08-21 across 30 open
+ * agent PRs:
+ *
+ *     src/lib/largo/tool-defs.ts        16 PRs   helix,meridian,nighthawk,thermal,vector
+ *     src/lib/largo/product-reads.ts     9 PRs   helix,nighthawk,thermal,vector
+ *
+ * More than half the fleet's open work touches ONE file, and every product lane touches it. That is
+ * not bad luck, it is the shape of the code: both files are per-product registries in a single
+ * module, so a lane cannot ship anything Largo-facing without editing a file every other lane is
+ * also editing. Collisions are therefore permanent and independent of how carefully anyone
+ * sequences releases.
+ *
+ * The fix is to split them per product behind a barrel, and the cost of that split is one rebase
+ * for every PR currently touching the file — so it must be done when the backlog is SMALL. This
+ * flag exists to tell you when that window has arrived, rather than guessing. Run it before
+ * planning the split; if `tool-defs.ts` is still in double digits, it is not the moment.
+ *
+ * `docs/` is excluded for the same reason as everywhere else: FINDINGS.md is touched by every agent
+ * PR by construction and would top this list while telling you nothing.
+ */
+function chokepoints(rows) {
+  const counts = new Map();
+  const lanes = new Map();
+  let unreadable = 0;
+  for (const r of rows) {
+    const res = api(`/pulls/${r.number}/files?per_page=100`);
+    if (!res.ok || !Array.isArray(res.data)) { unreadable += 1; continue; }
+    const lane = r.branch.split("/")[1]?.split("-")[0] ?? "?";
+    for (const f of res.data) {
+      const fn = f.filename;
+      if (fn.startsWith("docs/")) continue;
+      counts.set(fn, (counts.get(fn) ?? 0) + 1);
+      if (!lanes.has(fn)) lanes.set(fn, new Set());
+      lanes.get(fn).add(lane);
+    }
+  }
+  const ranked = [...counts.entries()]
+    .filter(([, n]) => n >= 2)
+    .sort((a, b) => b[1] - a[1])
+    .map(([file, n]) => ({ file, prs: n, lanes: [...lanes.get(file)].sort() }));
+  return { ranked, unreadable, scanned: rows.length - unreadable };
+}
+
 function classify(pr, verify, all) {
   if (verify === "failed" || all === "failed") return "CI-FAILED";
 
@@ -253,6 +302,25 @@ function main() {
 
   const buckets = {};
   for (const r of rows) (buckets[r.bucket] ??= []).push(r);
+
+  if (CHOKEPOINTS) {
+    const { ranked, unreadable, scanned } = chokepoints(rows);
+    if (JSON_OUT) {
+      console.log(JSON.stringify({ repo: REPO, scanned, unreadable, chokepoints: ranked }, null, 2));
+    } else {
+      console.log(`Merge chokepoints — ${REPO} (${scanned} agent PR(s) scanned)\n`);
+      // Unreadable file lists are reported, never silently dropped: a PR whose files could not be
+      // read contributes nothing to the counts, so the counts UNDERSTATE contention by exactly that
+      // much. Saying so is the difference between a measurement and a guess.
+      if (unreadable) console.log(`⚠ ${unreadable} PR(s) had unreadable file lists — counts below are a FLOOR, not a total.\n`);
+      console.log(`  ${"file".padEnd(52)} ${"PRs".padStart(4)}  lanes`);
+      for (const c of ranked.slice(0, 12)) {
+        console.log(`  ${c.file.padEnd(52)} ${String(c.prs).padStart(4)}  ${c.lanes.join(",")}`);
+      }
+      if (ranked.length === 0) console.log("  (no file touched by more than one open agent PR)");
+    }
+    return;
+  }
 
   if (JSON_OUT) {
     console.log(JSON.stringify({ repo: REPO, total: rows.length, degraded, buckets }, null, 2));
