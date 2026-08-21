@@ -564,7 +564,11 @@ export async function vectorPulseForLargo(ticker: string, horizon = "all") {
         tone: s.tone,
         tier: s.tier ?? null,
         line: s.line,
+        // `at` is epoch MILLISECONDS (PulseSignal.at). `at_et` is that instant on the market's
+        // clock, so a reader never has to convert an epoch to answer "when did this fire, and was
+        // it this session?" — the bare-epoch defect class (#2418), applied per signal.
         at: s.at,
+        at_et: etStamp(s.at),
         level: s.level ?? null,
         magnitude: s.magnitude ?? null,
         // The trade implication and the WHY are the two fields that make a signal actionable
@@ -572,10 +576,32 @@ export async function vectorPulseForLargo(ticker: string, horizon = "all") {
         implication: s.implication ?? null,
         why: s.why ?? null,
       })),
-      snapshot: current,
+      // `current.at` is epoch ms; ship the ET stamp beside it for the same reason the signals do.
+      snapshot: { ...current, at_et: etStamp(current.at) },
       /** The bead rail and its dynamics, alongside the signals derived from them, so a "what is
-       *  the pulse telling me" answer can cite the underlying wall behaviour in the same breath. */
-      wall_events: state.wallEvents.slice(-12),
+       *  the pulse telling me" answer can cite the underlying wall behaviour in the same breath.
+       *
+       *  UNITS NORMALIZED HERE. `VectorWallEvent.time` is epoch SECONDS (the SSE rail's own unit —
+       *  see vector-pulse.ts, which multiplies it by 1000 to build a signal's ms `at`), while
+       *  `signals[].at` and `snapshot.at` in this very payload are epoch MILLISECONDS. Shipping the
+       *  raw `time` put two timestamp families 1000x apart under one payload with nothing to say
+       *  which was which — a model correlating "when did this wall event happen" against a signal
+       *  would be off by a factor of 1000. So each event is re-expressed on the SAME `at`(ms)+
+       *  `at_et`(ET) convention as everything else here, and the ambiguous seconds field is dropped. */
+      wall_events: state.wallEvents.slice(-12).map((e) => {
+        const atMs = e.time * 1000;
+        return {
+          at: atMs,
+          at_et: etStamp(atMs),
+          lens: e.lens,
+          kind: e.kind,
+          message: e.message,
+          severity: e.severity,
+          strike: e.strike ?? null,
+          flip: e.flip ?? null,
+          side: e.side ?? null,
+        };
+      }),
       bead_samples: state.wallHistory.length,
     });
   } catch (e) {

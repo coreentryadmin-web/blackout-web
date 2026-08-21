@@ -783,6 +783,24 @@ production after deploy to confirm the `Allow: /api/og` lines are served.
 
 **Second lesson, from the `observed_session_date` row.** The fix for a defect class is a fresh chance to commit that same defect one field over. This PR's whole subject is "a timestamp must ship with its meaning", and the block it introduced shipped `observed_at` as a bare UTC instant — correctly, for a reason that had nothing to do with sessions — beside a `session_date` describing something else. Nothing about having just written the rule made it apply itself to the new code. **Re-run the audit that found the defect against the diff that fixes it**, before the diff ships, not after.
 
+
+## 2026-08-21 — [FINDING, P1 member-visible] `get_vector_pulse` shipped wall-event timestamps in epoch-SECONDS beside signal timestamps in epoch-MILLISECONDS — 1000× apart, unlabelled — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Found by** | Post-close Largo stress run — driving the three Vector tools through the real `runLargoTool` + `roundResultForReading` path and walking every leaf the model receives (the user's "stress-test Largo hard" directive). |
+| **Root cause** | The pulse payload carries three families of timestamp. `signals[].at` and `snapshot.at` are epoch **milliseconds** (`PulseSnapshot.at = nowMs`; a wall-structure signal's `at` is `ev.time * 1000`). But `wall_events` was shipped as `state.wallEvents.slice(-12)` **unmapped**, and `VectorWallEvent.time` is epoch **seconds** — the SSE rail's native unit, which `vector-pulse.ts` multiplies by 1000 precisely because it is seconds. So one payload carried two timestamp scales 1000× apart, under two different field names (`at` vs `time`), with nothing disclosing which was which. |
+| **Why it matters** | A model asked "did the wall event happen before or after the regime-flip signal?" lines up `wall_events[].time` (e.g. `1787302881`) against `signals[].at` (e.g. `1787302881240`) and reads the event as **1970** relative to the signal — or, converting the other way, dates it 56 years into the future. Both are raw epochs with no ET/session anchor, so "did this happen this session?" is unanswerable without the model guessing the unit first. Same defect class as the bare-epoch OHLC bar (#2418) and the structure epochs (#2451), now with a units-mismatch on top. |
+| **Fix** | In `vectorPulseForLargo`, every pulse timestamp is put on ONE convention: `at` = epoch **ms**, `at_et` = that instant as an ET stamp. Signals gain `at_et` beside `at`; the snapshot gains `at_et`; and `wall_events` is re-expressed — each event mapped to `{ at: time*1000, at_et, lens, kind, message, severity, strike, flip, side }`, so the ambiguous seconds `time` field is **gone** rather than sitting next to a ms `at`. The tool description now states the convention outright. |
+| **Blast radius** | `get_vector_pulse` only. Grepped `src/` and `scripts/`: nothing outside the model consumes the pulse payload's `wall_events` / `signals[].at`, so reshaping them breaks no consumer. `VectorWallEvent` itself and the desk UI that renders it are untouched — only what the tool ships to Largo changed. |
+| **Regression guard** | Two tests in `vector-pulse-wiring.test.ts`: the mapping (wall-event seconds converted to ms, `at_et` on events + signals + snapshot, and the raw `state.wallEvents.slice(-12)` array no longer shipped as-is) and the description teaching the convention. **Both fail against the pre-fix source with the tests kept in place.** |
+| **Relationship to the freshness work above** | Complements it. The freshness block anchors the payload's OVERALL age (observed_at / as_of / session_date). This anchors each INDIVIDUAL event and signal, which the freshness block does not touch — a "when did the put wall start building?" answer needs the event's own stamp, not the snapshot's. |
+| **Status** | FIXED — stacked on the freshness change (same function). Gates on Node 20. |
+
+**Lesson worth keeping.** The units mismatch had been invisible because both fields are plain integers that look like timestamps — nothing crashes, nothing rounds wrong, the payload validates. It only surfaces when you ask the model's actual question ("line these two events up on a timeline") instead of reading the fields in isolation. **Two correct numbers in incompatible units are indistinguishable from two numbers, until something correlates them.** The stress run found it by driving the real tool and reading what a model would have to reconcile, not by scanning the code for a known pattern.
+
 ## 2026-08-19 — [FINDING, P0 correctness] `main` went red with every PR green — #2365 and #2366 collided on the 0DTE expiry resolver — FIXED
 
 > **kind:** `FINDING`
