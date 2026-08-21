@@ -1,5 +1,7 @@
 import { before, test, mock } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { GexHeatmap, DexMetricBlock, CharmMetricBlock } from "@/lib/providers/polygon-options-gex";
 import type { CheckResult } from "./types";
 
@@ -481,4 +483,14 @@ test("spxDeskCrossToolChecks: stale desk GEX skips flip check during RTH", () =>
   assert.ok(flip);
   assert.equal(flip!.outcome, "skipped");
   assert.match(flip!.detail, /stale/);
+});
+
+test("INV-3 call/put wall checks use side-constrained deriveWalls (spot passed — #2503)", () => {
+  const src = readFileSync(join(process.cwd(), "src/lib/correctness/heatmap-verifier.ts"), "utf8");
+  assert.match(src, /function deriveWalls\([\s\S]*spot\?: number/);
+  assert.match(
+    src,
+    /deriveWalls\(\s*hm\.gex\.strike_totals,\s*spot\s*\)/
+  );
+  assert.match(src, /cross-provider[\s\S]*odte_overlay\?\.applied !== true/);
 });
