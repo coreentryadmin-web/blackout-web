@@ -4,6 +4,22 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-21 — [FINDING, P1 Tooling/CI] `main` went red on two individually-green PRs — a deferral outlived the PR it deferred to — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `main` failed `src/lib/largo/contract/session-anchor.test.ts` (2 of 5) for ~20 minutes on `b860d47a`, and every open PR that rebased onto it inherited the failure. #2480, #2451 and #2487 all went red on a mistake in none of their diffs — confirmed by pulling each CI log, where the run's *only* two failures were `the known-gap list SHRINKS` and `every known gap still exists`. Three lanes were about to debug someone else's bug. |
+| **Root cause** | #2421 shipped the C1 ratchet with `src/lib/largo/run-tool.ts` listed in its `KNOWN_GAPS` allowlist, deferring that one fix to the meridian lane's open #2482 rather than writing a second, conflicting fix to the same six lines. The deferral was the right call. What was wrong was the implicit assumption that #2421 would land FIRST and #2482 would delete the entry on its way in. #2482 was already non-draft, so `automerge.yml` took it the moment its checks went green; #2421 merged five minutes later; and `main` acquired the fix and the "still broken" allowlist entry in the wrong order. |
+| **Why it wasn't caught earlier** | Both PRs were genuinely green — each was verified on Node 20 against a `main` that did not yet contain the other. There is no pre-merge check that composes two pending branches, and `automerge.yml` merges by check-completion time, which is effectively random. The failure mode only exists in the composition, so no amount of per-PR verification would have found it. Same shape as THE DRAFT DEADLOCK: nothing failed on its own. |
+| **Blast radius** | Every open PR at the time, plus `main` itself. Zero production impact — the defect was in a test's allowlist, not in shipped code, and the underlying payload was correctly anchored throughout (that was #2482's whole point). |
+| **Fix** | #2486 deletes the stale entry and its deferral comment. `main` re-verified GREEN by re-running the guard against `origin/main` after the merge rather than assuming the merge did what was intended — which is how the window was bounded at all. |
+| **What was deliberately NOT changed** | The shrink assertion was **not** softened to a warning. An allowlist that silently retains entries for already-fixed files is precisely the stale-by-omission failure it was written to prevent, and this repo has been bitten by that before. The guard behaved correctly at every step; the sequencing around it did not. |
+| **Standing rule added** | `CLAUDE.md` → "CROSS-PR ORDERING DEPENDENCIES — sequence them, do not race them". An allowlist entry, TODO or comment that defers to an OPEN PR is an ordering dependency that `automerge.yml` cannot see. Land the deferred-to PR first and confirm it is in `main` before releasing the dependent one, or put both in one merge — never release both and hope. Paired with "a merge is not a verification": re-run the affected check against `origin/main` after merging anything whose correctness depends on `main`'s state. |
+| **Gates** | Node 20.20.2 · `npx tsc --noEmit` clean · `npm test` **9040 pass / 0 fail / 1 skipped**. |
+| **Status** | FIXED — PR #2486; rule recorded in the same batch. |
+
 ## How to read this file
 
 Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
