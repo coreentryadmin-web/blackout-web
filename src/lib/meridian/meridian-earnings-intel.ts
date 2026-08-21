@@ -9,6 +9,7 @@ import {
 } from "@/lib/meridian/meridian-event-expiry-core";
 import { getVectorExpectedMove } from "@/features/vector/lib/vector-expected-move-server";
 import { loadEarningsExpectedMovePct } from "@/lib/meridian/meridian-earnings-expected-move";
+import { expiryCoversPrint } from "@/lib/meridian/meridian-em-scope";
 import { marketPlatform } from "@/lib/platform";
 import { roundFloats } from "@/lib/round-floats";
 import { thermalScopes } from "@/lib/meridian/meridian-thermal-scope";
@@ -115,13 +116,30 @@ export async function loadMeridianEarningsIntel(input: {
 
   const dark_pool = shapeMeridianDarkPool(darkPoolRaw);
 
+  /**
+   * The Vector fallback may only stand in when its expiry actually SPANS THE PRINT.
+   *
+   * `getVectorExpectedMove(sym, "weekly")` quotes the weekly horizon's FRONT expiry, which after
+   * 16:00 ET is the series that expired that afternoon — and a dead expiry is floored at one
+   * minute of life rather than dropped, so it yields a tiny number instead of no number. Measured
+   * on prod 2026-08-21 21:50Z: PDD three days from its print served `0.1` under
+   * `source: "chain_iv"` while its own covering chain implied **7.6%** (ATM straddle 6.74 on spot
+   * 88.53). See meridian-em-scope.ts for the full reproduction.
+   *
+   * A weekly cone is a fine number; it is not this name's earnings move unless it covers the
+   * event. When it does not, fall through to the calendar figure and say `calendar` — a coarser
+   * answer honestly labelled beats a precise-looking one that is wrong by ~90x.
+   */
+  const vectorCoversPrint =
+    vectorEm?.movePct != null && expiryCoversPrint(vectorEm.expiry, input.pack.earnings_date);
+
   const expected_move_pct =
     earningsEm ??
-    (vectorEm?.movePct != null ? Number((vectorEm.movePct * 100).toFixed(1)) : null) ??
+    (vectorCoversPrint ? Number((vectorEm!.movePct * 100).toFixed(1)) : null) ??
     input.pack.expected_move_pct;
 
   const expected_move_source =
-    earningsEm != null || vectorEm?.movePct != null
+    earningsEm != null || vectorCoversPrint
       ? "chain_iv"
       : input.pack.expected_move_pct != null
         ? "calendar"
