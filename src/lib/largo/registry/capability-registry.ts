@@ -43,6 +43,11 @@ export type LargoProduct =
   | "TRACK_RECORD"
   | "MARKET"
   | "CATALYSTS"
+  // Meridian is a desk in its own right, like HELIX or THERMAL, and was the only one missing from
+  // this union — which is the exposure gap restated: a product with no registry identity cannot be
+  // planned for. CATALYSTS covers the plain calendars ("when"); MERIDIAN covers the desk's read on
+  // them ("and what of it"), and the planner must be able to tell those apart.
+  | "MERIDIAN"
   | "PLATFORM";
 
 /**
@@ -1518,6 +1523,50 @@ export const LARGO_CAPABILITIES: readonly LargoCapability[] = [
     entitlement: "premium",
     keywords: ["earnings history", "beat", "miss", "eps", "past earnings"],
     joinsWith: ["fund.earnings_calendar"],
+  },
+  // ── Meridian: the catalyst desk ──
+  // Registered as MERIDIAN rather than CATALYSTS on purpose. The calendar tools answer "when",
+  // and Meridian answers "and what does the desk make of it" — a different question with a
+  // different payload, so folding them together would let the planner substitute one for the other.
+  {
+    id: "meridian.timeline",
+    product: "MERIDIAN",
+    tool: "get_meridian_timeline",
+    answers: "What catalysts are coming — macro, earnings, OpEx and FDA in one ranked ET timeline?",
+    temporal: "live_only",
+    freshness: "periodic",
+    entities: ["ticker", "session"],
+    entitlement: "premium",
+    keywords: [
+      "catalyst", "catalysts", "calendar", "coming up", "this week", "timeline",
+      "what moves", "event", "events", "opex", "macro", "fomc", "cpi", "earnings this week",
+    ],
+    caveat:
+      "Live only — the forward schedule as it stands now, not a record of past events. `truncated: true` means the list was capped by `limit`; raise it rather than concluding nothing else is scheduled.",
+    joinsWith: ["meridian.event", "fund.earnings_calendar"],
+  },
+  {
+    id: "meridian.event",
+    product: "MERIDIAN",
+    tool: "get_meridian_event",
+    answers:
+      "What does the desk know about ONE catalyst — print history anchored to BMO/AMC timing, implied vs realized, dealer structure, the play read, OpEx pin accuracy, prior macro releases?",
+    // POINT_IN_TIME, not as_of. The registry's own guard caught this and it was right: the tool
+    // takes a `date`, so `earnings:NVDA:2026-05-20` reaches a print from three months ago. Filing
+    // it as `as_of` would tell the planner this source cannot speak about the past, and the
+    // historical questions — "how did this name trade its last four prints", "how did similar
+    // setups behave" — are most of why the tool is worth having.
+    temporal: "point_in_time",
+    freshness: "periodic",
+    entities: ["ticker", "session"],
+    entitlement: "premium",
+    keywords: [
+      "why", "detail", "play read", "pin", "max pain", "dealer", "expected move",
+      "how does it react", "reaction", "prior", "last print", "gamma flip",
+    ],
+    caveat:
+      "Needs an event id from get_meridian_timeline, or kind + ticker + date. Earnings reactions carry a `reaction_basis` saying WHICH session was measured — an AMC print's reaction is the next session, and a value without its basis is not comparable across names.",
+    joinsWith: ["meridian.timeline", "fund.earnings_history"],
   },
   {
     id: "fund.earnings_calendar",
