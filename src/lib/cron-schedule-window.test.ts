@@ -101,6 +101,22 @@ describe("cron-schedule-window", () => {
     assert.equal(next?.toISOString(), "2026-08-10T13:15:00.000Z");
   });
 
+  it("largo-morning-brief: off-window gap before 13:25 UTC weekday fire — ops #2569", () => {
+    const cron = "25 13,14 * * 1-5";
+    const now = new Date("2026-08-21T12:52:00.000Z"); // Fri 8:52 AM ET
+    assert.equal(isInOffScheduleIdleGap(cron, now), true);
+    const last = lastExpectedCronFireUtc(cron, now);
+    const next = nextExpectedCronFireUtc(cron, now);
+    assert.equal(last?.toISOString(), "2026-08-20T14:25:00.000Z");
+    assert.equal(next?.toISOString(), "2026-08-21T13:25:00.000Z");
+  });
+
+  it("largo-morning-brief: in-window at scheduled 13:25 UTC — missed tick should not be idle", () => {
+    const cron = "25 13,14 * * 1-5";
+    const now = new Date("2026-08-21T13:25:00.000Z");
+    assert.equal(isInOffScheduleIdleGap(cron, now), false);
+  });
+
   it("nighthawk-outcomes: off-window gap Mon before 20:30 UTC after Fri run — ops #1983", () => {
     const cron = "30 20,21 * * 1-5";
     const now = new Date("2026-08-10T05:00:00.000Z");
