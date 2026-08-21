@@ -45,6 +45,12 @@ name: Release green agent drafts
 # spending the same budget on listing and check lookup let the workflow starve itself out of its
 # own purpose. Both are REST now; see the comments at each call site.
 #
+# That alone was not enough. The PAT's REST budget is ALSO shared per-user, and three consecutive
+# runs then no-opped on it without ever reaching a PR. The fix that actually works is a TOKEN
+# SPLIT: `GITHUB_TOKEN` does every read, and the PAT is spent on nothing but the one mutation it
+# is uniquely able to perform. At a cap of 3 releases per run that is 12 PAT calls an hour — a
+# budget no amount of fleet activity can exhaust. See the `env:` block.
+#
 # The coordinator can still release by hand when needed — the GitHub MCP `update_pull_request` tool
 # sets `draft: false` (verified on #2458, #2424, #2423, #2422) — but it is no longer the only path.
 #
@@ -96,9 +102,24 @@ jobs:
     steps:
       - name: Mark green agent drafts ready for review
         env:
-          # Prefer the release PAT; fall back to GITHUB_TOKEN, which can READ everything this job
-          # needs but cannot perform the undraft itself.
-          GH_TOKEN: ${{ secrets.AGENT_RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          # TWO TOKENS, SPLIT BY JOB — this is the whole reason the workflow now works.
+          #
+          # `GITHUB_TOKEN` does every READ: listing PRs and reading check runs. It can do both, its
+          # budget is per-repo-per-run and effectively free here, and it is refreshed every run.
+          #
+          # The PAT is used for EXACTLY ONE THING: `gh pr ready`, the markPullRequestReadyForReview
+          # mutation, which is the only call `GITHUB_TOKEN` is refused
+          # ("Resource not accessible by integration", measured run 32447301837).
+          #
+          # WHY THE SPLIT MATTERS. A user PAT gets 5000/hr shared across ALL of that user's tokens,
+          # and this one lives on the account the agent fleet also works from — so its budget is
+          # drained precisely when the fleet is busy, which is exactly when there is a backlog to
+          # release. Runs 32459351655, 32460029586 and 32461784083 all died or no-opped on that,
+          # never once reaching a PR. Spending it on the listing was the mistake: at a cap of 3
+          # releases per run this now costs the PAT **12 calls an hour**, which no amount of fleet
+          # activity can exhaust.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TOKEN: ${{ secrets.AGENT_RELEASE_TOKEN }}
           HAVE_RELEASE_TOKEN: ${{ secrets.AGENT_RELEASE_TOKEN != '' }}
           REPO: ${{ github.repository }}
           DRY_RUN: ${{ inputs.dry_run }}
@@ -236,7 +257,8 @@ jobs:
               # `gh pr ready` issues markPullRequestReadyForReview. Requires AGENT_RELEASE_TOKEN —
               # GITHUB_TOKEN is refused ("Resource not accessible by integration"). This is the one
               # GraphQL call in the job, and the only one that changes anything.
-              if ! gh pr ready "$num" --repo "$REPO" 2>/tmp/gh-err.txt; then
+              # The ONLY call that uses the PAT. Everything above ran on GITHUB_TOKEN.
+              if ! GH_TOKEN="$RELEASE_TOKEN" gh pr ready "$num" --repo "$REPO" 2>/tmp/gh-err.txt; then
                 if rate_limited /tmp/gh-err.txt; then
                   echo "RATE LIMITED releasing #$num — exiting 0 after $released release(s)."
                   echo "### Agent PR release — RATE LIMITED after releasing $released" \
