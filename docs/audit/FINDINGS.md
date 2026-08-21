@@ -4,6 +4,22 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-21 — [FINDING, P2 Meridian] #2591 was half-done: the advisory read still leaned "into earnings" about a print that had already happened — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **How it was found** | LIVE-VALIDATING my own #2591 on production at 14:29 ET. That PR passed its own check — all three of today's prints were correctly headlined "BEKE printed — beat; the reaction is the read now" instead of "Imminent print — stand aside for reaction". But the SAME payload's `play_read.headline` read **"Flow + structure lean bullish into earnings"** on BEKE and BKE, about prints that landed before the open. |
+| **Root cause, and it is mine** | #2591 added `printed` to `buildErPlayRead` and used it to suppress the `imminent` branch — correctly. It did not touch the branches that suppression now falls THROUGH to, and two of those say "into earnings", which is forward-looking in exactly the same way. In the report core I did guard the equivalent phrasings ("leans bullish into earnings") in the same PR; I applied the reasoning in one function and not in the other. Same defect, one branch over. |
+| **Fix** | `intoOrAfter = input.printed ? "since the print" : "into earnings"`, applied to the bullish and bearish headlines. The mixed-signal headline carries no temporal claim and is untouched. |
+| **Why this matters more than the wording** | The advisory read is the line a member acts on. "Lean bullish into earnings" on a name that reported six hours ago invites positioning for an event that cannot happen again, and it does so with more confidence than the pre-print read had, because the post-print signal stack is stronger. |
+| **Regression guard** | 2 tests in `meridian-earnings-intel-core.test.ts` (17 in the file): a printed name must not be described as leaning "into earnings" and must say "since the print"; an UPCOMING print must still say "into earnings" so the guard cannot swallow the case the phrasing exists for. |
+| **Non-vacuity** | Two mutations: the post-#2591 shipped state (imminent guarded, "into earnings" not) -> the printed test fails; over-correcting so an upcoming print also loses the forward phrasing -> the upcoming test fails. |
+| **Note on process** | This is the second time today that live-validating my own merged work found the work incomplete. The validation step is not a formality — a PR that passes its own test can still be half a fix, and only the deployed payload shows the parts the test did not think to look at. |
+| **Gates on Node 20.20.2** | `npx tsc --noEmit` clean · `npm test` **9444 pass / 0 fail / 1 skipped** · `npm run build` clean · `npx eslint` (2 changed files) clean. |
+| **Status** | FIXED — this PR (draft). Not yet live-verified: after deploy, re-read `intel.play_read.headline` on a name that has printed and confirm it says "since the print". |
+
 ## 2026-08-21 — [FINDING, P1 Meridian] "Expected move" served 0.1% for a print whose chain implied 7.6% — a dead expiry, labelled `chain_iv` — FIXED
 
 > **kind:** `FINDING`
