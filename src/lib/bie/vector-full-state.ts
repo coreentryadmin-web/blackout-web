@@ -63,6 +63,7 @@ import { readVectorFullStateCache, writeVectorFullStateCache } from "@/lib/bie/v
 import { reportVectorAbsences, type VectorAbsenceReport } from "@/lib/bie/vector-absent-sections";
 import { isEtCashRth } from "@/lib/et-market-hours";
 import { describeVectorFreshness, type VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
+import { etStamp, etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 
 /** The default chart timeframe (minutes) a cached snapshot is computed at — the cron warms this TF;
  *  a reader asking for a different TF must recompute live (its technicals differ). */
@@ -92,7 +93,9 @@ export type VectorHeatmapSummary = {
  * move / max pain / confluence / wall integrity / technicals / the derived `play`) and
  * ADDS the desk-only context the snapshot has no slot for, so BIE sees EVERYTHING Vector
  * shows — the static structure AND the temporal wall dynamics (beads forming/growing/fading):
- *  - `asOf`          — when this state was assembled (ISO).
+ *  - `asOf`          — when this state was assembled, as a UTC ISO instant.
+ *  - `asOfEt` / `sessionDate` — the SAME instant on the market's clock, plus the ET trading
+ *                      session it belongs to. Frozen with the measurement (see the type).
  *  - `flowMarkers`   — options-flow prints for the horizon's front expiry (feature #20).
  *  - `ladder`        — the full per-strike GEX ladder (king strikes + magnitudes), not just
  *                      the top walls the snapshot carries.
@@ -108,7 +111,29 @@ export type VectorHeatmapSummary = {
  * Every added field is null/empty when its read had nothing real — never fabricated.
  */
 export type VectorFullState = VectorSnapshot & {
+  /** When this state was assembled, as a UTC ISO instant. Machine-orderable, session-ambiguous. */
   asOf: string;
+  /**
+   * `asOf` on the MARKET's clock — the same instant, stamped ET.
+   *
+   * A bare UTC instant does not say which trading session it belongs to, and after ~20:00 ET its
+   * calendar date is already tomorrow. This state is served to a model that is routinely asked
+   * "is this today's tape?", so the instant travels with its session rather than requiring the
+   * reader to convert an ISO string in its head. Contract C1 (`session-anchor.test.ts`).
+   */
+  asOfEt: string | null;
+  /**
+   * The ET trading-session date `asOf` falls in.
+   *
+   * PERSISTED with the snapshot rather than derived at read time, unlike the freshness block's
+   * age. "How old is this?" is a fact about the READ and changes every second; "which session was
+   * this measured in?" is a fact about the MEASUREMENT and is frozen the moment it is taken. A
+   * cached snapshot re-served an hour later has a different age and the same session date, so the
+   * two belong on opposite sides of the cache boundary.
+   *
+   * Null only when `Date.now()` produced something `etSessionDate` could not read.
+   */
+  sessionDate: string | null;
   flowMarkers: VectorFlowMarkers | null;
   ladder: GexLadder | null;
   heatmap: VectorHeatmapSummary | null;
@@ -144,6 +169,11 @@ export async function computeVectorFullState(
   timeframeMin = VECTOR_FULL_STATE_DEFAULT_TIMEFRAME_MIN
 ): Promise<VectorFullState | null> {
   const t = normalizeVectorTicker(ticker);
+  // Read the clock ONCE, before the fan-out, and stamp every time field below from it. Taken at
+  // the START of the fan-out deliberately: it is the moment the underlying reads were issued, and
+  // it errs OLD by the fan-out's duration (~0.7s target) rather than young — the safe direction
+  // for a field whose whole job is to disclose staleness.
+  const asOfMs = Date.now();
 
   try {
     // Fail-open PER read (mirrors fetchEcosystemContext): most of these already .catch()
@@ -261,7 +291,12 @@ export async function computeVectorFullState(
     return roundFloats<VectorFullState>({
       ...snapshot,
       play,
-      asOf: new Date().toISOString(),
+      asOf: new Date(asOfMs).toISOString(),
+      // All three from ONE `asOfMs`, never three separate clock reads: two `new Date()` calls
+      // either side of a slow fan-out can straddle a session boundary and stamp a state whose
+      // instant and session date disagree — a self-contradicting payload is worse than a bare one.
+      asOfEt: etStamp(asOfMs),
+      sessionDate: etSessionDate(asOfMs),
       flowMarkers: flowMarkers ?? null,
       ladder,
       heatmap: heatmapGrid

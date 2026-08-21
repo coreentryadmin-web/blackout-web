@@ -85,7 +85,6 @@ const KNOWN_GAPS: Record<string, string> = {
   "src/lib/bie/platform-context.ts": "coordinator",
   "src/lib/bie/full-platform-snapshot.ts": "coordinator — cross-product snapshot; anchor with the rest of the integration layer",
   "src/lib/bie/spx-desk-brief.ts": "coordinator (SPX lane)",
-  "src/lib/bie/vector-full-state.ts": "vector lane",
   "src/lib/largo/slash-prompts.ts": "coordinator",
   "src/lib/largo/social-content-pack.ts": "coordinator — member-visible copy",
   // ── Exposed 2026-08-21 when ROOTS was WIDENED from ["src/lib/largo","src/lib/bie"] to ["src"].

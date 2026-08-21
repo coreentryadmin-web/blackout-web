@@ -58,9 +58,21 @@ export type VectorFreshnessBlock = {
    * ET stamp would collide two genuinely distinct observations taken inside the same minute.
    */
   observed_at: string | null;
+  /**
+   * The ET trading session `observed_at` falls in — the MEASUREMENT's session, not the read's.
+   *
+   * `observed_at` has to stay a UTC instant (see above), which makes it exactly the kind of stamp
+   * contract C1 exists for: after ~20:00 ET its calendar date is already tomorrow. Without this
+   * field the block ships a pair that LOOKS self-contradicting — a snapshot measured 20:05 ET on
+   * the 20th carries `observed_at: "...T00:05Z"` on the 21st beside `session_date: "2026-08-20"`,
+   * and a model reconciling them has to guess which one to believe. Two labelled sessions that
+   * genuinely differ are readable; one labelled session next to a bare instant is not.
+   */
+  observed_session_date: string | null;
   /** When this tool READ it, as an ET stamp — the market's clock, not UTC. */
   as_of: string | null;
-  /** The ET session date of the read. A UTC ISO stamp after 20:00 ET reads as the NEXT day. */
+  /** The ET session date of the READ (pairs with `as_of`; compare against `observed_session_date`
+   *  to see whether the snapshot was measured in the session being asked about). */
   session_date: string | null;
   /** Whole seconds between measurement and read. Null when `observed_at` could not be parsed. */
   age_seconds: number | null;
@@ -89,6 +101,9 @@ export function describeVectorFreshness(
   if (!Number.isFinite(observedMs)) {
     return {
       observed_at: observedAtIso ?? null,
+      // Unparseable as an instant means unparseable as a session too — null, never a fallback to
+      // the read's session, which would silently relabel an unknown measurement as today's.
+      observed_session_date: null,
       as_of: asOfEt,
       session_date: sessionDate,
       age_seconds: null,
@@ -107,6 +122,10 @@ export function describeVectorFreshness(
 
   return {
     observed_at: new Date(observedMs).toISOString(),
+    // Derived from the MEASUREMENT instant, so it is right for a snapshot from any source — a v3
+    // state that persisted its own `sessionDate`, an older cached entry that did not, or a state
+    // handed in by a test. Same pure function of the same instant either way, never a guess.
+    observed_session_date: etSessionDate(observedMs),
     as_of: asOfEt,
     session_date: sessionDate,
     age_seconds: ageSec,
