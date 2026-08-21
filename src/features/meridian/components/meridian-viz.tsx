@@ -392,11 +392,20 @@ export function MeridianMoveRail({
 export function MeridianStructureLadder({
   thermal,
   onLevelHover,
+  levelScopes,
 }: {
   thermal: Parameters<typeof structureLadder>[0];
   onLevelHover?: (value: number | null) => void;
+  /**
+   * Which chain each level came from — pass `thermal.level_scopes` straight through. Omitted,
+   * the ladder marks nothing, which is what it did before and is honest: no claim either way.
+   */
+  levelScopes?: Parameters<typeof structureLadder>[1];
 }) {
-  const levels = useMemo(() => structureLadder(thermal), [thermal]);
+  const levels = useMemo(() => structureLadder(thermal, levelScopes), [thermal, levelScopes]);
+  // Only worth marking rows when the list actually MIXES scopes. Tagging every row "aggregate"
+  // on a whole-book ladder is noise on a panel that already says so once, above.
+  const mixed = useMemo(() => new Set(levels.map((l) => l.scope).filter(Boolean)).size > 1, [levels]);
   const domain = useMemo(() => priceDomain(levels.map((l) => l.value)), [levels]);
   // Rows carry their true price, but two levels a few cents apart land on the same pixel and
   // print on top of each other — measured live: king node 780 and max pain 775 resolved 7px
@@ -435,9 +444,25 @@ export function MeridianStructureLadder({
             onFocus={() => onLevelHover?.(l.value)}
             onBlur={() => onLevelHover?.(null)}
             disabled={!onLevelHover}
-            aria-label={`${l.label} ${fmtPrice(l.value)}${l.distPct === null ? "" : `, ${fmtSignedPct(l.distPct)} from spot`}`}
+            aria-label={`${l.label} ${fmtPrice(l.value)}${l.distPct === null ? "" : `, ${fmtSignedPct(l.distPct)} from spot`}${
+              mixed && l.scope === "aggregate" ? ", from the whole-book aggregate, not this print's expiry" : ""
+            }`}
           >
-            <span className="mv-ladder-label">{l.label}</span>
+            <span className="mv-ladder-label">
+              {l.label}
+              {/* A level from a DIFFERENT chain than its neighbours, marked where it is read.
+                  On prod 2026-08-21 the king node (twelve expiries) sat directly above the call
+                  wall (one expiry) with nothing to tell them apart. The mark is not decoration:
+                  the two answer different questions. */}
+              {mixed && l.scope === "aggregate" && (
+                <abbr
+                  className="mv-ladder-scope"
+                  title="Whole-book aggregate across the near-term expiries — not re-summed from this print's expiry"
+                >
+                  agg
+                </abbr>
+              )}
+            </span>
             <span className="mv-ladder-bar" />
             <span className="mv-ladder-value">{fmtPrice(l.value)}</span>
             <span className={`mv-ladder-dist ${l.distPct === null ? "" : l.distPct >= 0 ? "mv-bull" : "mv-bear"}`}>

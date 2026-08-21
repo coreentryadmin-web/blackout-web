@@ -501,12 +501,28 @@ export type MeridianEarningsThermalRead = {
   top_strikes: Array<{ strike: number; net_label: string; pct_of_total: number }>;
   nearest_wall: { strike: number; kind: "resistance" | "support"; distance_pts: number } | null;
   /**
-   * Which chain the levels above describe. "event_expiry" = the first expiry on or after the
-   * print, i.e. the contract that actually prices it. "aggregate" = the whole-book near-term
+   * Which chain the WALLS and MAX PAIN describe. "event_expiry" = the first expiry on or after
+   * the print, i.e. the contract that actually prices it. "aggregate" = the whole-book near-term
    * sum, which mixes expiries that may die before the company reports. They render identically,
    * so the scope has to be stated.
+   *
+   * It does NOT describe `gex_king_strike`, `flip`, `net_gex_label`, `gamma_regime`,
+   * `top_strikes` or `nearest_wall` — see `level_scopes` and `structure_scope` below. Rendering
+   * this one value as a badge over all of them is the mislabel those two fields exist to end.
    */
   expiry_scope?: "event_expiry" | "aggregate";
+  /** Per-level scope, so a list that mixes them can mark which is which. */
+  level_scopes?: Record<
+    "call_wall" | "put_wall" | "gamma_call_wall" | "gamma_put_wall" | "max_pain" | "gex_king_strike" | "flip",
+    "event_expiry" | "aggregate"
+  >;
+  /**
+   * Scope of the derived structure block — `net_gex_label`, `gamma_regime`, `top_strikes` and
+   * `nearest_wall`. Always "aggregate": none of them is re-derived per expiry today.
+   */
+  structure_scope?: "event_expiry" | "aggregate";
+  /** Reader-facing description of that block's basis, e.g. "whole-book aggregate across 12…". */
+  structure_scope_label?: string;
   expiry_used?: string | null;
   expiry_days_from_event?: number | null;
   expiry_label?: string | null;
