@@ -171,7 +171,10 @@ export async function loadMeridianEarningsIntel(input: {
   const beat_rate = input.enrichment.beat_rates?.combined_beat_rate ?? beatFromPrints.rate;
   const beat_rate_graded =
     input.enrichment.beat_rates?.combined_beat_rate != null
-      ? (input.enrichment.beat_rates?.combined_graded ?? null)
+      // prints_graded, NOT combined_graded: the pooled denominator counts READINGS (eps +
+      // revenue), so an 8-print name reports 16 — and both consumers render it as "over N
+      // prints". Measured live on NVDA: "100% beat rate over 16 prints" against 8 real prints.
+      ? (input.enrichment.beat_rates?.prints_graded ?? null)
       : beatFromPrints.graded;
 
   const play_read = buildErPlayRead({
