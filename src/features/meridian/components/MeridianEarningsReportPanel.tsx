@@ -214,11 +214,22 @@ export function MeridianEarningsReportPanel({ ticker, intel, enrichment, eventAt
         {thermal?.available && (
           <div className="mr-panel">
             <span className="mr-panel-title">Dealer structure</span>
-            <MeridianStructureLadder thermal={thermal} onLevelHover={setHoverLevel} />
+            {/* Same ladder, same mixed scopes as the Positioning tab — the king node and the
+                gamma flip are whole-book even when the walls beside them are re-summed from the
+                print's own expiry. Marked here too, or the Report tab quietly re-tells the
+                mislabel the Positioning tab now avoids. */}
+            <MeridianStructureLadder
+              thermal={thermal}
+              levelScopes={thermal.level_scopes}
+              onLevelHover={setHoverLevel}
+            />
             {thermal.net_gex_label && (
               <p className="mv-note">
                 net GEX {thermal.net_gex_label}
                 {thermal.gamma_regime ? ` · ${thermal.gamma_regime}` : ""}
+                {thermal.structure_scope_label ? (
+                  <span className="mv-note-scope"> · {thermal.structure_scope_label}</span>
+                ) : null}
               </p>
             )}
           </div>

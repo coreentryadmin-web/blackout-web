@@ -1750,6 +1750,17 @@ html.nav-locked body { overflow: hidden; }
   white-space: nowrap;
 }
 .mv-ladder-bar { height: 1px; background: var(--mv-hairline); }
+/* A level read off a DIFFERENT chain than the rows around it. Deliberately quiet — it is a
+   qualifier on a number, not a warning — but it carries a title, so the full sentence is one
+   hover away rather than absent. `abbr` because that is exactly what it is. */
+.mv-ladder-scope {
+  margin-left: 0.3rem;
+  font-size: 0.56rem; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--mv-chrome); opacity: 0.75;
+  border-bottom: 1px dotted currentColor; text-decoration: none; cursor: help;
+}
+/* The basis line under a whole-book figure. Dimmer than the figure it qualifies. */
+.mv-note-scope { opacity: 0.72; }
 .mv-ladder-value { font-weight: 700; color: #e2f4ff; }
 .mv-ladder-dist { text-align: right; }
 .mv-ladder-spot .mv-ladder-label { color: #fff; }
