@@ -33,19 +33,34 @@ import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "..");
 const TEST_DIR = join(REPO_ROOT, "src");
+/**
+ * The audit harnesses and deploy tooling keep their unit tests beside the code, under scripts/.
+ * They were collected by NOTHING — not this runner, not any workflow, not any npm script — so
+ * 32 test files gated no merge. CLAUDE.md describes several of those helpers as "unit-tested",
+ * which was true of the files and false of the pipeline.
+ *
+ * Two of them had already rotted silently by the time this was noticed: bead-pixel-eval's test
+ * still asserted the cyan/red palette its own lib was corrected away from months earlier, and
+ * x-marketing-paused's test read LIVE production secrets and passed only where AWS was
+ * unreachable. Both are fixed in the same change that adds this directory.
+ *
+ * `.mjs`/`.mts` are included here because that is what the audit libs are written in; src/ is
+ * TypeScript-only and stays that way.
+ */
+const SCRIPTS_TEST_DIR = join(REPO_ROOT, "scripts");
 
 /** The Node major CI and the production image both run. Keep in sync with .nvmrc / Dockerfile. */
 const EXPECTED_NODE_MAJOR = 20;
 
-/** Every `*.test.ts` under src/, sorted so a run is reproducible and diffable across machines. */
-function collectTestFiles(dir) {
+/** Test files under `dir`, sorted so a run is reproducible and diffable across machines. */
+function collectTestFiles(dir, exts = [".test.ts"]) {
   const found = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const full = join(dir, entry.name);
     if (entry.isDirectory()) {
       if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
-      found.push(...collectTestFiles(full));
-    } else if (entry.name.endsWith(".test.ts")) {
+      found.push(...collectTestFiles(full, exts));
+    } else if (exts.some((e) => entry.name.endsWith(e))) {
       found.push(full);
     }
   }
@@ -69,12 +84,23 @@ if (runningMajor !== EXPECTED_NODE_MAJOR) {
   );
 }
 
-const files = collectTestFiles(TEST_DIR).sort();
-if (files.length === 0) {
+const srcFiles = collectTestFiles(TEST_DIR).sort();
+if (srcFiles.length === 0) {
   console.error(`No *.test.ts files found under ${relative(REPO_ROOT, TEST_DIR)} — refusing to report success.`);
   process.exit(1);
 }
-console.log(`Running ${files.length} test files on Node ${process.versions.node}`);
+const scriptFiles = collectTestFiles(SCRIPTS_TEST_DIR, [".test.ts", ".test.mjs", ".test.mts"]).sort();
+if (scriptFiles.length === 0) {
+  // Same refusal as src/: a collector that silently finds nothing reports a clean pass, which is
+  // exactly the failure this directory was added to end.
+  console.error(`No test files found under ${relative(REPO_ROOT, SCRIPTS_TEST_DIR)} — refusing to report success.`);
+  process.exit(1);
+}
+const files = [...srcFiles, ...scriptFiles];
+console.log(
+  `Running ${files.length} test files on Node ${process.versions.node} ` +
+    `(${srcFiles.length} under src/, ${scriptFiles.length} under scripts/)`
+);
 
 const child = spawn(
   process.execPath,

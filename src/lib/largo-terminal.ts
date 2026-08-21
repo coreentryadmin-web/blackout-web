@@ -26,6 +26,7 @@ import {
   logClaudeTurn,
   persistClaudeTurn,
 } from "@/lib/largo/turn-outcome";
+import { logTurnPhases, summarizeTurnPhases } from "@/lib/largo/turn-phase-timings";
 import type { BieAnswerEnvelope } from "@/lib/bie/answer-envelope";
 import { parseAnswerEnvelope, validateAnswerContract, fallbackAnswerEnvelope } from "@/lib/largo/answer-contract";
 import { sanitizeLargoMemberText } from "@/lib/largo/sanitize-member-text";
@@ -955,6 +956,9 @@ export async function runLargoQuery(
   const diagnostics: ToolCallDiagnostic[] = [];
 
   try {
+    // Mark the prefetch/loop boundary so the phase split below can attribute the wall clock. See
+    // turn-phase-timings.ts: everything before this line was deterministic prefetch (no model call).
+    const loopStartedAt = Date.now();
     const answer = await anthropicToolLoop({
       system,
       tools: filteredTools,
@@ -975,6 +979,16 @@ export async function runLargoQuery(
         diagnostics,
       }),
     });
+    logTurnPhases(
+      summarizeTurnPhases({
+        depth,
+        startedAt,
+        loopStartedAt,
+        endedAt: Date.now(),
+        toolCount: new Set(toolsUsed).size,
+        answered: Boolean(answer?.trim()),
+      })
+    );
 
     // APPENDED, NOT PREPENDED. The extractors take the first match, so anything the model
     // explicitly called still wins and the feed can only fill gaps. See `liveFeedResults`.
@@ -1207,6 +1221,9 @@ export async function runLargoQueryStream(
       }
     };
 
+    // Mark the prefetch/loop boundary so the phase split below can attribute the wall clock. See
+    // turn-phase-timings.ts: everything before this line was deterministic prefetch (no model call).
+    const loopStartedAt = Date.now();
     const answer = await anthropicToolLoop({
       system,
       tools: filteredTools,
@@ -1244,6 +1261,16 @@ export async function runLargoQueryStream(
         diagnostics,
       }),
     });
+    logTurnPhases(
+      summarizeTurnPhases({
+        depth,
+        startedAt,
+        loopStartedAt,
+        endedAt: Date.now(),
+        toolCount: new Set(toolsUsed).size,
+        answered: Boolean(answer?.trim()),
+      })
+    );
 
     // APPENDED, NOT PREPENDED. The extractors take the first match, so anything the model
     // explicitly called still wins and the feed can only fill gaps. See `liveFeedResults`.

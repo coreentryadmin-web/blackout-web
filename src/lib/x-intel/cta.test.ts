@@ -4,6 +4,9 @@ import { describe, it } from "node:test";
 import {
   buildCta,
   CTA_CHAR_LIMIT,
+  CASHTAG_LIMIT,
+  cashtags,
+  xWeightedLength,
   previewAllCtas,
   selectCtaVariant,
 } from "@/lib/x-intel/cta";
@@ -77,13 +80,21 @@ describe("buildCta", () => {
     }
   });
 
-  it("fits inside X's character limit", () => {
+  it("fits its attention budget, measured the way X measures", () => {
+    // Raw .length reported 586 for a block X sees as roughly half that, because each tagged link
+    // is ~120 characters of mostly UTM and X counts every URL as 23. Budgeting against the raw
+    // number would mean stripping the tracking the learning loop runs on to fix a limit that was
+    // never being exceeded.
     for (const cta of previewAllCtas(CYCLE)) {
-      assert.ok(
-        cta.text.length <= CTA_CHAR_LIMIT,
-        `${cta.variant} is ${cta.text.length} chars`,
-      );
+      const n = xWeightedLength(cta.text);
+      assert.ok(n <= CTA_CHAR_LIMIT, `${cta.variant} is ${n} weighted chars`);
     }
+  });
+
+  it("counts a URL as 23 regardless of how long it really is", () => {
+    const short = xWeightedLength("a https://x.com b");
+    const long = xWeightedLength(`a https://x.com/${"q".repeat(200)} b`);
+    assert.equal(short, long);
   });
 
   it("tags every link with the cycle key so a click traces to its package", () => {
@@ -113,9 +124,29 @@ describe("buildCta", () => {
     }
   });
 
-  it("rotates across at least three distinct destinations", () => {
+  it("carries exactly ONE ask, not a stack of them", () => {
+    // The operator's revision: pick one at random, keep the post to 280. The stacked version ran
+    // ~290 weighted characters on its own, so the ask alone consumed the whole post budget.
+    for (const cta of previewAllCtas(CYCLE)) {
+      const urls = cta.text.match(/https?:\/\//g) ?? [];
+      assert.equal(urls.length, 1, `${cta.variant} carries ${urls.length} links`);
+      assert.ok(!cta.text.includes("\n"), `${cta.variant} is more than one line`);
+    }
+  });
+
+  it("reaches every destination ACROSS the rotation", () => {
     const hosts = new Set(previewAllCtas(CYCLE).map((c) => new URL(c.url!).host));
-    assert.ok(hosts.size >= 3, `only ${hosts.size} destination(s): ${[...hosts].join(", ")}`);
+    for (const host of ["discord.gg", "whop.com", "www.blackouttrades.com"]) {
+      assert.ok(hosts.has(host), `no variant reaches ${host}`);
+    }
+  });
+
+  it("leaves room for the evidence", () => {
+    // An ask is a claim on the same 280 characters the levels and times need.
+    for (const cta of previewAllCtas(CYCLE)) {
+      const n = xWeightedLength(cta.text);
+      assert.ok(n <= CTA_CHAR_LIMIT, `${cta.variant} is ${n} weighted chars, budget ${CTA_CHAR_LIMIT}`);
+    }
   });
 
   it("carries no hashtags and no @tags other than our own handle", () => {
@@ -133,14 +164,33 @@ describe("buildCta", () => {
     assert.notEqual(cta.variant, "SOFT");
   });
 
-  it("states the desk prices consistently with the pricing rules", () => {
-    const paid = previewAllCtas(CYCLE).filter(
-      (c) => c.variant === "PRICING" || c.variant === "WHOP_OFFER",
-    );
-    assert.equal(paid.length, 2);
-    for (const c of paid) {
-      assert.ok(c.text.includes("$199/mo"), `${c.variant} omits the full-desk price`);
-      assert.ok(c.text.includes("$49/mo"), `${c.variant} omits the SPX price`);
+  it("states each price and the promo exactly where it belongs", () => {
+    const by = new Map(previewAllCtas(CYCLE).map((c) => [c.variant, c.text]));
+    assert.ok(by.get("PRICING_FULL")!.includes("$199/mo"), "PRICING_FULL omits the full-desk price");
+    assert.ok(by.get("PRICING_SPX")!.includes("$49/mo"), "PRICING_SPX omits the SPX price");
+    assert.ok(by.get("PROMO")!.includes("BLACK50"), "PROMO omits the code");
+    // And an ask that is not about price must not quietly become one.
+    for (const v of ["DISCORD", "WHOP", "SITE"] as const) {
+      assert.ok(!/\$\d/.test(by.get(v)!), `${v} smuggles a price in`);
     }
+  });
+
+});
+
+describe("cashtags — the one distribution channel a cold account still has", () => {
+  it("prefixes and upper-cases, and drops duplicates keeping the lead ticker first", () => {
+    assert.equal(cashtags(["bac", "NVDA", "bac"]), "$BAC $NVDA");
+  });
+
+  it("caps the list — a wall of tickers reads as spam to a reader and to the ranker", () => {
+    assert.equal(cashtags(["A", "B", "C", "D", "E", "F"]).split(" ").length, CASHTAG_LIMIT);
+  });
+
+  it("refuses things that are not symbols rather than emitting a bare $", () => {
+    assert.equal(cashtags(["", "  ", "TOOLONGSYM"]), "");
+  });
+
+  it("accepts an already-prefixed ticker without doubling the $", () => {
+    assert.equal(cashtags(["$SPY"]), "$SPY");
   });
 });

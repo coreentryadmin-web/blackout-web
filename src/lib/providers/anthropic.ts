@@ -636,19 +636,40 @@ export async function anthropicToolLoop(params: {
     let content: ContentBlock[];
 
     if (params.onEvent) {
-      const stream = client.messages.stream(createParams, reqOpts);
-      stream.on("text", (delta) => {
-        try {
-          params.onEvent?.({ type: "token", text: delta });
-        } catch {
-          /* SSE client disconnected — stop forwarding tokens */
-        }
-      });
-      const finalMessage = await withTelemetry(
-        "anthropic-tool-loop-stream",
-        () => stream.finalMessage(),
-        loopMaxRetries
-      );
+      // Wrap the STREAMING round exactly as the non-stream branch below (#77 hardening E). The guard
+      // was applied to only one of the two branches, and that asymmetry was member-facing: a round
+      // timeout / 429 / network error after retries throws out of `stream.finalMessage()`, and
+      // because the streaming branch (the Deep path — it sets `onEvent`) had no catch, that throw
+      // propagated all the way to `runLargoQueryStream`'s catch, which returns the INTERNAL-ERROR
+      // fallback ("I hit an internal error … the desk tools did not complete cleanly") as an HTTP
+      // 200. On the identical upstream fault a Concrete (non-stream) turn degraded cleanly to the
+      // accumulated-text / empty-answer path here. So the SAME degraded round rendered as two
+      // different member messages purely by depth — and the Deep one wrongly blamed the desk tools.
+      // On failure, fall back to whatever assistant text prior rounds accumulated (often a usable
+      // partial), else null → the empty-answer fallback, the same graceful path the non-stream
+      // branch takes. (#2582.)
+      let finalMessage;
+      try {
+        const stream = client.messages.stream(createParams, reqOpts);
+        stream.on("text", (delta) => {
+          try {
+            params.onEvent?.({ type: "token", text: delta });
+          } catch {
+            /* SSE client disconnected — stop forwarding tokens */
+          }
+        });
+        finalMessage = await withTelemetry(
+          "anthropic-tool-loop-stream",
+          () => stream.finalMessage(),
+          loopMaxRetries
+        );
+      } catch (err) {
+        console.error(
+          "[anthropic] tool-loop stream round failed — falling back to accumulated assistant text",
+          err instanceof Error ? err.message : String(err)
+        );
+        return extractTextFromLastAssistant(messages as unknown as AnthropicMessage[]) ?? null;
+      }
       trackSpend(model, finalMessage.usage);
       logCacheUsage("tool-loop-stream", finalMessage.usage);
       content = finalMessage.content;
