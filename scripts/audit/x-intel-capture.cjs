@@ -79,6 +79,34 @@ async function hideMarketingChrome(page) {
 
 
 /**
+ * Render a container LARGER before screenshotting it.
+ *
+ * A dense table is the one thing this desk builds that a feed cannot carry. The Universe Scanner
+ * at 2560 wide measures 2512x498 — a 5:1 strip that the frame scorer rejects twice over, for
+ * aspect and for legibility 0.43, and it is right: eleven rows of small mono type letterboxed to
+ * a sliver is a screenshot a reader has to tap to use.
+ *
+ * Narrowing the viewport fixes the aspect but not the type, because legibility here is the share
+ * of the frame a glyph occupies, and that does not change when you shrink the page around it.
+ * CSS zoom does change it: the layout reflows at the larger size, so the glyphs grow relative to
+ * the frame and the panel gets taller, which improves both numbers at once.
+ *
+ * Applied to the container rather than the body so the surrounding page does not reflow around a
+ * scaled document, and reverted implicitly by the run ending.
+ */
+async function zoomContainer(page, selector, factor) {
+  return page.evaluate(
+    ([sel, f]) => {
+      const el = document.querySelector(sel);
+      if (!el) return false;
+      el.style.setProperty('zoom', String(f));
+      return true;
+    },
+    [selector, factor],
+  );
+}
+
+/**
  * The FIRST match is usually the WRONG match on this desk.
  *
  * `VectorToolbar` renders its controls TWICE — a compact row for narrow viewports and a desk row —
@@ -240,6 +268,13 @@ async function scanner(page, o, log) {
   // be captured honestly, but it must never be mistaken for a loaded one.
   const rowCount = await page.locator('.vector-scanner-body tr, .vector-scanner-body [role="row"]').count();
   log.push(`rows→${rowCount}`);
+
+  // Type size is the whole game for a table attachment; see `zoomContainer`.
+  if (o.pageZoom) {
+    const ok = await zoomContainer(page, '.vector-scanner-panel', o.pageZoom);
+    await page.waitForTimeout(1500);
+    log.push(`page-zoom→${o.pageZoom}${ok ? '' : ' (NO TARGET)'}`);
+  }
 
   if (o.rows) {
     // Crop to the top N rows by clipping the panel box — the story is the head of the ranking.
@@ -501,7 +536,7 @@ async function vector(page, o, log) {
     sector: arg('sector',''), panel: arg('panel',''), out: arg('out','/tmp/shots/out.png'),
     tf: arg('tf',''), horizon: arg('horizon',''), zoom: arg('zoom','6'),
     mode: arg('mode',''), preset: arg('preset',''), indicators: arg('indicators',''),
-    zoomAnchor: arg('zoom-anchor',''),
+    zoomAnchor: arg('zoom-anchor',''), pageZoom: arg('page-zoom',''),
     expiry: arg('expiry',''), rows: arg('rows',''), panelLabel: arg('panel-label',''), eventClass: arg('class',''),
   };
   /**
