@@ -7,6 +7,8 @@ import "server-only";
 
 import { roundFloats } from "@/lib/round-floats";
 import { todayEtYmd } from "@/lib/providers/spx-session";
+import { etStamp } from "@/lib/largo/temporal/bar-session-date";
+import { weekdayEt } from "@/lib/largo/temporal/session-calendar";
 import { loadMeridianEarningsPrintHistory } from "@/lib/meridian/meridian-earnings-history";
 import { loadEarningsExpectedMovePct } from "@/lib/meridian/meridian-earnings-expected-move";
 import {
@@ -14,13 +16,12 @@ import {
   loadNextEarningsFromBenzinga,
 } from "@/lib/meridian/meridian-benzinga-earnings";
 import { parseNextEarningsFromBenzinga } from "@/lib/meridian/meridian-benzinga-earnings-core";
+import {
+  toPreEarningsHistoryRows,
+  type PreEarningsHistoryRow,
+} from "@/lib/largo/pre-earnings-history-rows";
 
-export type PreEarningsHistoryRow = {
-  report_date: string | null;
-  surprise_pct: number | null;
-  beat: boolean | null;
-  expected_move_pct: number | null;
-};
+export type { PreEarningsHistoryRow };
 
 export type PreEarningsExposure = {
   on_board: boolean;
@@ -54,9 +55,28 @@ export type PreEarningsPackCard = {
   };
   history: PreEarningsHistoryRow[];
   history_summary: string | null;
+  /**
+   * Non-null when the earnings-calendar fetch FAILED. An empty `history` with a null error means
+   * the company genuinely has no prints on file; an empty `history` WITH an error means we could
+   * not look. Collapsing those two into one empty array is how "we don't know" gets reported as
+   * "there is nothing".
+   */
+  history_error: string | null;
   zerodte: PreEarningsExposure | null;
-  nighthawk: PreEarningsExposure | null;
+  /**
+   * ET-ANCHORED, not a bare UTC instant. Every date on this card is an ET SESSION — the report
+   * date, the print timing, the reaction window — and all of them are read against "today". A
+   * reader handed `2026-08-21T03:12:00.000Z` at 23:12 ET on 2026-08-20 has to INFER which session
+   * that is, and in production a model did exactly that inference and landed a full session out.
+   */
   as_of: string;
+  /**
+   * The ET session date this card was built on, and its weekday. The weekday is not decoration:
+   * BMO/AMC reasoning is weekday reasoning — "the next session" after a Friday AMC print is
+   * Monday, not Saturday — and a model got a weekday wrong in production on this very surface.
+   */
+  as_of_session: string;
+  as_of_weekday: string;
 };
 
 function historySummary(rows: PreEarningsHistoryRow[]): string | null {
@@ -153,12 +173,9 @@ export async function preEarningsPackForLargo(
           ? "Balanced flow ahead of earnings"
           : "Insufficient flow in window";
 
-  const history: PreEarningsHistoryRow[] = historyRes.print_history.map((p) => ({
-    report_date: p.report_date,
-    surprise_pct: p.surprise_pct ?? null,
-    beat: p.beat ?? null,
-    expected_move_pct: p.expected_move_pct ?? null,
-  }));
+  // Carry the REACTION and its BASIS through — see pre-earnings-history-rows.ts for why this
+  // projection is a separate, tested module rather than an inline .map().
+  const history = toPreEarningsHistoryRows(historyRes.print_history, 6);
 
   return roundFloats({
     kind: "pre_earnings",
@@ -182,10 +199,16 @@ export async function preEarningsPackForLargo(
       summary: flowSummary,
       net_premium: total >= 1 ? net : null,
     },
-    history: history.slice(0, 6),
+    history,
     history_summary: historyRes.print_history_summary ?? historySummary(history),
+    history_error: historyRes.history_error ?? null,
     zerodte,
-    nighthawk: null,
-    as_of: new Date().toISOString(),
+    // `nighthawk` is deliberately GONE rather than hardcoded to null. It was declared, never
+    // populated, and never read by any consumer — so its only effect was to tell a model that
+    // Night Hawk exposure had been checked and found absent, when it had never been looked up.
+    // A field that implies a measurement nobody took is worse than no field.
+    as_of: etStamp(Date.now()) ?? new Date().toISOString(),
+    as_of_session: today,
+    as_of_weekday: weekdayEt(today),
   });
 }
