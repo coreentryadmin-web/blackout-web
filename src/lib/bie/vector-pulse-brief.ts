@@ -245,7 +245,10 @@ export function formatVectorPulseMarkdown(
   state: VectorFullState,
   fresh: PulseSignal[],
   hadPrev: boolean,
-  nowMs = Date.parse(state.asOf) || Date.now()
+  nowMs = Date.parse(state.asOf) || Date.now(),
+  /** False when this read diffed the SAME snapshot as the previous one — see the empty-state
+   *  wording below. Defaults to true so existing callers keep their current phrasing. */
+  isNewObservation = true
 ): string {
   const sym = state.ticker.toUpperCase();
   const lines: string[] = [
@@ -259,10 +262,16 @@ export function formatVectorPulseMarkdown(
   ];
 
   if (fresh.length === 0) {
+    // Three genuinely different empty states, and only one of them is "the tape is quiet".
+    // Collapsing them was the defect: a re-served cached snapshot diffed against itself produced
+    // the "structure is stable" line, which asserts a fact about the market from an observation
+    // that was never taken.
     lines.push(
-      hadPrev
-        ? "_No new transitions since your last ask — structure is stable. Ask for the full desk read or a specific wall._"
-        : "_First pulse on this ticker — session wall events and live intel above. Ask again after the next refresh to see transitions._"
+      !hadPrev
+        ? "_First pulse on this ticker — session wall events and live intel above. Ask again after the next refresh to see transitions._"
+        : !isNewObservation
+          ? "_No new Vector reading since your last ask — this is the same snapshot, so there is nothing new to diff yet. Not a claim that the tape is quiet; ask again after the next refresh._"
+          : "_No new transitions since your last ask — structure is stable. Ask for the full desk read or a specific wall._"
     );
   } else {
     lines.push(formatSignalsTable(fresh, nowMs));
@@ -307,7 +316,10 @@ export async function composeVectorPulseRead(
   const { fresh, cacheEntry, current } = await buildPulseSignalsForState(state, cached, nowMs);
   await writeVectorPulseCache(ticker, horizon, cacheEntry);
 
-  const answer = formatVectorPulseMarkdown(state, fresh, Boolean(cached?.snapshot), nowMs);
+  // `snapshot.at` IS the observation instant, so an unchanged one means this read re-diffed the
+  // same cached state rather than observing anything new.
+  const isNewObservation = cached?.snapshot?.at == null || cached.snapshot.at !== current.at;
+  const answer = formatVectorPulseMarkdown(state, fresh, Boolean(cached?.snapshot), nowMs, isNewObservation);
 
   return {
     answer: toProfessionalMarkdown(answer),
@@ -325,10 +337,11 @@ export async function appendVectorPulseSection(
 ): Promise<{ markdown: string; signals: PulseSignal[] }> {
   const nowMs = Date.parse(state.asOf) || Date.now();
   const cached = await readVectorPulseCache(state.ticker, state.horizon);
-  const { fresh, cacheEntry } = await buildPulseSignalsForState(state, cached, nowMs);
+  const { fresh, cacheEntry, current } = await buildPulseSignalsForState(state, cached, nowMs);
   await writeVectorPulseCache(state.ticker, state.horizon, cacheEntry);
 
-  const partial = formatVectorPulseMarkdown(state, fresh, Boolean(cached?.snapshot));
+  const isNewObservation = cached?.snapshot?.at == null || cached.snapshot.at !== current.at;
+  const partial = formatVectorPulseMarkdown(state, fresh, Boolean(cached?.snapshot), nowMs, isNewObservation);
   const idx = partial.indexOf("**SIGNALS**");
   const markdown = idx >= 0 ? `\n\n---\n\n${partial.slice(idx)}` : "";
   return { markdown, signals: fresh };
