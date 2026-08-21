@@ -172,6 +172,36 @@ async function settle(page, ms, log) {
 }
 
 /**
+ * Wait for an opened Meridian event to lay out, not merely to have text.
+ *
+ * The detail pane populates its text well before it has any height. A capture taken on a fixed
+ * post-click wait framed `.meridian-detail` at 2128x282 — the kicker, the title, a band of loading
+ * stripes and the JUMP TO DESK rail, with the actual brief clipped off below. Probing found
+ * `innerText` already 1325 characters and zero skeleton nodes at t+0s, so "is the content there"
+ * is the wrong question: it was there and the box had not grown to hold it.
+ *
+ * So the readiness signal is the BOX, and it is settled rather than thresholded — two consecutive
+ * identical heights above a floor, which catches both "still growing" and "grew, then a lazy panel
+ * pushed it further".
+ */
+async function settleDetail(page, log, { minHeight = 600, timeoutMs = 30000 } = {}) {
+  const detail = page.locator('.meridian-detail').first();
+  let last = -1;
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await page.waitForTimeout(1200);
+    const box = await detail.boundingBox().catch(() => null);
+    const h = box ? Math.round(box.height) : 0;
+    if (h >= minHeight && h === last) { log.push(`detail→${h}px`); return true; }
+    last = h;
+  }
+  // Say so rather than capturing a stub silently — a clipped brief looks like a product with
+  // nothing in it.
+  log.push(`detail→NEVER SETTLED (${last}px, wanted >=${minHeight})`);
+  return false;
+}
+
+/**
  * MERIDIAN. Two desk views (Timeline / Analytics grid) and, on an opened event, five brief tabs
  * (Summary / Report / Estimates / Positioning / History).
  *
@@ -211,7 +241,9 @@ async function meridian(page, o, log) {
     // Select an EARNINGS row specifically — see the header note.
     const row = page.locator('.meridian-theme-earnings').filter({ hasText: o.ticker }).first();
     if (await row.count()) {
-      await row.click(); await page.waitForTimeout(9000); log.push('event→opened');
+      await row.click();
+      await settleDetail(page, log);
+      log.push('event→opened');
     } else {
       log.push(`event→none for ${o.ticker} (captured honestly)`);
     }
@@ -424,10 +456,36 @@ async function vector(page, o, log) {
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
   await settle(page, 12000, log);
 
-  // timeframe
+  // TIMEFRAME and NODE DENSITY — the two controls that decide whether beads read as RAILS or as a
+  // dotted line, and the two the operator's reference frames have set that mine did not.
+  //
+  // `vector-nodes-select` defaults to AUTO, which resolved to 11 rows. The operator's exemplars run
+  // 20 rows on a 3-minute chart: every strike near spot gets its own rail of individual beads
+  // instead of a sparse scatter, and 3m candles fill the session rather than leaving gaps between
+  // them. Both selects render a compact and a desk copy, so both go through `vis()`.
   if (o.tf) {
     const sel = vis(page, '#vector-tf-select');
-    if (await sel.count()) { await sel.selectOption(o.tf).catch(()=>{}); await page.waitForTimeout(4000); log.push(`tf→${o.tf}`); }
+    // Wait for it. The toolbar hydrates after the chart, so a bare count() at the 12s settle is a
+    // coin flip — one run set tf and nodes, the next silently skipped both and captured an AUTO-11
+    // chart while the caption described a 20-row one.
+    await sel.waitFor({ state: 'visible', timeout: 20000 }).catch(() => {});
+    if (await sel.count()) {
+      await sel.selectOption(o.tf).catch(() => {});
+      await page.waitForTimeout(5000);
+      // Report what the control actually holds — a silently rejected value would leave the frame
+      // on a timeframe the caption does not describe.
+      log.push(`tf→${await sel.inputValue().catch(() => '?')}`);
+    } else log.push(`tf!${o.tf} CONTROL ABSENT — frame is on the default timeframe`);
+  }
+  if (o.nodes) {
+    // id OR test id: the probe matched it on either, and only the test id is actually present.
+    const sel = vis(page, '#vector-nodes-select, select[data-testid="vector-nodes-select"]');
+    await sel.waitFor({ state: 'visible', timeout: 20000 }).catch(() => {});
+    if (await sel.count()) {
+      await sel.selectOption(o.nodes).catch(() => {});
+      await page.waitForTimeout(5000);
+      log.push(`nodes→${await sel.inputValue().catch(() => '?')}`);
+    } else log.push(`nodes!${o.nodes} CONTROL ABSENT — frame is on AUTO density`);
   }
   // horizon chip (0DTE / WEEKLY / MONTHLY)
   if (o.horizon) {
@@ -549,6 +607,40 @@ async function vector(page, o, log) {
     await page.waitForTimeout(1200);
     log.push(`zoom→${o.zoom || 6}@${anchor}`);
   }
+
+  // PRICE-AXIS ZOOM — separate, and the one the reference frames actually depend on.
+  //
+  // `--zoom` wheels over the plot, which compresses TIME. The operator's frames are tight on
+  // PRICE: the SPX reference spans about 48 points on a 7,680 index, roughly 0.6%, so each strike
+  // gets its own horizontal band and the bead rails read as distinct ropes instead of stacking
+  // into one another. Wheeling over the price scale itself is what changes that axis.
+  const pbox = await chart.boundingBox();
+  if (o.priceZoom && pbox) {
+    // DRAG, not wheel. Wheeling over the price scale was a silent no-op: an otherwise identical
+    // pair of runs with and without it produced the same 212.50-220.00 axis. This scale responds to
+    // a vertical drag on it, so that is what this does — and it reads the axis span before and
+    // after so the step log reports what CHANGED rather than what was requested.
+    const px = pbox.x + pbox.width * 0.985;
+    const spanOf = () =>
+      page.evaluate(() => {
+        const t = Array.from(document.querySelectorAll('text, div'))
+          .map((e) => Number(String(e.textContent || '').replace(/,/g, '')))
+          .filter((n) => Number.isFinite(n) && n > 0);
+        return t.length ? Math.max(...t) - Math.min(...t) : null;
+      });
+    const before = await spanOf();
+    for (let i = 0; i < Number(o.priceZoom); i += 1) {
+      await page.mouse.move(px, pbox.y + pbox.height * 0.35);
+      await page.mouse.down();
+      await page.mouse.move(px, pbox.y + pbox.height * 0.15, { steps: 12 });
+      await page.mouse.up();
+      await page.waitForTimeout(700);
+    }
+    await page.mouse.move(4, 4);
+    await page.waitForTimeout(2500);
+    const after = await spanOf();
+    log.push(`price-zoom→${o.priceZoom}${before && after && before === after ? ' (NO CHANGE)' : ''}`);
+  }
   return chart;
 }
 
@@ -559,7 +651,7 @@ async function vector(page, o, log) {
     sector: arg('sector',''), panel: arg('panel',''), out: arg('out','/tmp/shots/out.png'),
     tf: arg('tf',''), horizon: arg('horizon',''), zoom: arg('zoom','6'),
     mode: arg('mode',''), preset: arg('preset',''), indicators: arg('indicators',''),
-    zoomAnchor: arg('zoom-anchor',''), pageZoom: arg('page-zoom',''),
+    zoomAnchor: arg('zoom-anchor',''), pageZoom: arg('page-zoom',''), nodes: arg('nodes',''), priceZoom: arg('price-zoom',''),
     expiry: arg('expiry',''), rows: arg('rows',''), panelLabel: arg('panel-label',''), eventClass: arg('class',''),
   };
   /**
