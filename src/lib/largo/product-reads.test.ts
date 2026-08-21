@@ -211,6 +211,8 @@ describe("thermalCompareRow — a reading carries the session it belongs to", ()
   // close, four and a half hours old, under an envelope stamp that reads as "now".
   const MATRIX_ASOF = "2026-08-21T00:24:56.192Z";
   const LIVE_SPY = {
+    // Live near-term set for SPY, 2026-08-21 — the scope the aggregate below was summed over.
+    near_term_expiries: ["2026-08-21", "2026-08-24", "2026-08-25", "2026-09-18"],
     spot: 762.6,
     change_pct: 0.31,
     asof: MATRIX_ASOF,
@@ -291,5 +293,51 @@ describe("etSessionNow / ageSecondsFrom", () => {
     assert.equal(ageSecondsFrom(null), null);
     assert.equal(ageSecondsFrom("not-a-date"), null);
     assert.equal(ageSecondsFrom("2026-08-21T00:24:56.192Z", Date.parse("2026-08-21T00:25:56.192Z")), 60);
+  });
+});
+
+describe("thermalCompareRow — a multi-expiry aggregate names its scope", () => {
+  const LIVE_SPY_SCOPED = {
+    near_term_expiries: ["2026-09-18", "2026-08-21", "2026-08-25"],
+    spot: 762.6,
+    change_pct: 0.31,
+    asof: "2026-08-21T00:24:56.192Z",
+    flip: null,
+    call_wall: 780,
+    put_wall: 765,
+    net_gex: -10_984_439_955.55,
+    gamma_regime_read: "No gamma flip — dealers are net short gamma at EVERY strike.",
+    gex_cross_validation: null,
+  };
+
+  it("carries the count and date range the numbers were summed over", () => {
+    const row = thermalCompareRow("SPY", LIVE_SPY_SCOPED) as {
+      expiry_scope: { count: number; first: string; last: string } | null;
+    };
+    // Measured 2026-08-21: this aggregate said "short, flip null" while /heatmap scoped to one
+    // expiry said "LONG GAMMA, flip 756". Both correct; unreconcilable without the scope.
+    assert.deepEqual(row.expiry_scope, {
+      count: 3,
+      first: "2026-08-21",
+      last: "2026-09-18",
+    });
+  });
+
+  it("sorts the range rather than trusting upstream order", () => {
+    // The input above is deliberately out of order — first/last must be the real extremes.
+    const row = thermalCompareRow("SPY", LIVE_SPY_SCOPED) as {
+      expiry_scope: { first: string; last: string } | null;
+    };
+    assert.equal(row.expiry_scope?.first, "2026-08-21");
+    assert.equal(row.expiry_scope?.last, "2026-09-18");
+  });
+
+  it("reports a null scope rather than an empty shape when the matrix has no expiry list", () => {
+    const noList = thermalCompareRow("SPY", { ...LIVE_SPY_SCOPED, near_term_expiries: undefined }) as {
+      expiry_scope: unknown;
+    };
+    assert.equal(noList.expiry_scope, null);
+    const cold = thermalCompareRow("NVDA", null) as { expiry_scope: unknown };
+    assert.equal(cold.expiry_scope, null);
   });
 });
