@@ -369,6 +369,30 @@ export function buildMeridianEarningsReport(input: ReportInput): MeridianEarning
     });
   }
 
+  /**
+   * HAS THE PRINT ALREADY LANDED? Not the same question as "is it near".
+   *
+   * `imminent` is a distance in days, and on the day of a BMO print it stays true for the whole
+   * session — including the ~6.5 hours AFTER the company has reported. Measured on prod
+   * 2026-08-21 at 12:52 ET, all three names that printed that morning were still headlined
+   * "Imminent print — stand aside for reaction":
+   *
+   *   BEKE 06:00 ET  post_print "Beat · EPS +50% · Rev +3%"    verdict bullish
+   *   BJ   06:45 ET  post_print "Beat · EPS +14.3% · Rev +8.9%" verdict bullish
+   *   BKE  06:50 ET  post_print "Mixed print vs street"         verdict neutral
+   *
+   * The contradiction is internal: `hasFreshPrint` below is derived from the SAME post-print data
+   * and is used two lines down to set the verdict, so the function already knows the numbers are
+   * out. It then printed a headline saying they are not, over the top of a verdict that exists
+   * only because they are. `inline` counts as printed too — a mixed print is still a print, and
+   * BKE is why this reads `!== "unknown"` rather than the beat/miss pair.
+   */
+  const printed = input.post_print != null && input.post_print.lean !== "unknown";
+  // `imminent` keeps its ORIGINAL meaning — a distance in days — because the verdict branch below
+  // reads it, and widening it there would silently re-route an inline print (BKE: post_print
+  // "inline", so printed but not hasFreshPrint) from a neutral verdict into the pre-print signal
+  // stack, flipping it bullish off a score that describes anticipation. `printed` is applied only
+  // where the forward-looking CLAIM is made: the headline and the confidence hedge.
   const imminent = input.days_until != null && input.days_until <= 1;
   const hasFreshPrint = input.post_print?.lean === "beat" || input.post_print?.lean === "miss";
   let verdict: MeridianEarningsReport["verdict"] = "neutral";
@@ -385,7 +409,10 @@ export function buildMeridianEarningsReport(input: ReportInput): MeridianEarning
   }
 
   const activeSignals = signals.filter((s) => s.weight > 0 && s.lean !== "neutral");
-  const confidence: MeridianEarningsReport["confidence"] = imminent
+  // The `imminent -> low` hedge exists because an UNKNOWN upcoming print dominates any signal
+  // stack. Once the numbers are out that uncertainty is resolved, so holding confidence at "low"
+  // for the rest of the session understates a read the print itself has now informed.
+  const confidence: MeridianEarningsReport["confidence"] = imminent && !printed
     ? "low"
     : Math.abs(total) >= 5
       ? "high"
@@ -393,8 +420,16 @@ export function buildMeridianEarningsReport(input: ReportInput): MeridianEarning
         ? "medium"
         : "low";
 
-  const headline =
-    imminent
+  // "into earnings" is also forward-looking, so a printed name cannot fall through to it either.
+  // Post-print the honest headline names what the numbers did, which is the thing the reader is
+  // actually looking at — and the verdict above is already derived from exactly that.
+  const headline = printed
+    ? verdict === "bullish"
+      ? `${input.ticker} printed — beat; the reaction is the read now`
+      : verdict === "bearish"
+        ? `${input.ticker} printed — miss; the reaction is the read now`
+        : `${input.ticker} printed — mixed vs street; the reaction is the read now`
+    : imminent
       ? "Imminent print — stand aside for reaction"
       : verdict === "bullish"
         ? `${input.ticker} leans bullish into earnings`

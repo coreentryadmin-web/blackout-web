@@ -104,3 +104,83 @@ test("buildMeridianEarningsReport: YoY growth adds yoy pillar", () => {
   });
   assert.ok(report.signals.some((s) => s.pillar === "yoy"));
 });
+
+/* ── "imminent" is a distance, not a state ───────────────────────────────────────────── */
+
+/**
+ * Measured on prod 2026-08-21 at 12:52 ET. All three names that reported that MORNING were still
+ * headlined "Imminent print — stand aside for reaction" — six hours after the numbers were out,
+ * on a Report tab that rendered `report.headline` as its primary <h3>.
+ *
+ *   BEKE 06:00 ET  post_print "Beat · EPS +50% · Rev +3%"     verdict bullish
+ *   BJ   06:45 ET  post_print "Beat · EPS +14.3% · Rev +8.9%"  verdict bullish
+ *   BKE  06:50 ET  post_print "Mixed print vs street"          verdict neutral
+ */
+const PRINTED_TODAY = [
+  { ticker: "BEKE", lean: "beat" as const, expect: /printed — beat/ },
+  { ticker: "BJ", lean: "beat" as const, expect: /printed — beat/ },
+  { ticker: "BKE", lean: "inline" as const, expect: /printed — mixed vs street/ },
+];
+
+function reportFor(over: Record<string, unknown>) {
+  // Built from `baseInput`, the fixture the rest of this file uses, so these cases exercise the
+  // same required shape as every other test rather than a hand-rolled partial.
+  return buildMeridianEarningsReport({ ...baseInput, earnings_yoy: null, ...over } as Parameters<
+    typeof buildMeridianEarningsReport
+  >[0]);
+}
+
+test("a print that has already landed is never headlined as imminent", () => {
+  for (const c of PRINTED_TODAY) {
+    const r = reportFor({
+      ticker: c.ticker,
+      days_until: 0,
+      post_print: { lean: c.lean, headline: "Beat · EPS +50%" },
+    });
+    assert.doesNotMatch(
+      r.headline,
+      /imminent/i,
+      `${c.ticker}: the numbers are out; "imminent" is false and the advice premised on it is too`
+    );
+    // ...and it must not fall through to the other forward-looking phrasing either.
+    assert.doesNotMatch(r.headline, /into earnings/i, `${c.ticker}: "into earnings" is also forward-looking`);
+    assert.match(r.headline, c.expect, `${c.ticker}: headline should describe the print that happened`);
+  }
+});
+
+test("an actually-upcoming print keeps the imminent headline", () => {
+  // The guard must not swallow the case the sentence exists for.
+  const r = reportFor({ days_until: 0, post_print: null });
+  assert.match(r.headline, /Imminent print — stand aside for reaction/);
+  const unknown = reportFor({ days_until: 1, post_print: { lean: "unknown", headline: null } });
+  assert.match(unknown.headline, /Imminent print/, "an unknown lean is not a print");
+});
+
+test("confidence stops being pinned to low once the print is out", () => {
+  // The `imminent -> low` hedge is there because an UNKNOWN upcoming print dominates any signal
+  // stack. Post-print that uncertainty is resolved, so holding "low" all session understates a
+  // read the print itself informed.
+  //
+  // `baseInput` is the aligned-bullish fixture (test 1 asserts score >= 3), so it is strong
+  // enough for the score-derived confidence to rise ABOVE low — which is what makes this test
+  // able to fail. A weak fixture would stay "low" either way and pin nothing.
+  const upcoming = reportFor({ days_until: 0, post_print: null });
+  assert.equal(upcoming.confidence, "low", "pre-print the hedge must still apply");
+
+  const landed = reportFor({ days_until: 0, post_print: { lean: "beat", headline: "Beat" } });
+  assert.notEqual(
+    landed.confidence,
+    "low",
+    "once the numbers are out, confidence must be derived from the signals rather than pinned by " +
+      "a hedge against an uncertainty that no longer exists"
+  );
+  assert.ok(Math.abs(landed.score) >= 3, "guard: this fixture must actually carry signal");
+});
+
+test("the verdict branch is untouched — an inline print does not get re-routed", () => {
+  // `imminent` deliberately keeps its day-distance meaning, because the verdict falls through to
+  // the pre-print signal stack on `!imminent`. Widening it would flip an inline print's neutral
+  // verdict to whatever the anticipation score said, which is the opposite of an improvement.
+  const inline = reportFor({ days_until: 0, post_print: { lean: "inline", headline: "Mixed" } });
+  assert.equal(inline.verdict, "neutral", "an inline print stays neutral, not scored off anticipation");
+});
