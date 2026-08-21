@@ -1051,9 +1051,13 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
     }
     case "get_cortex_decision": {
       const { cortexDecisionForLargo } = await import("@/lib/largo/product-reads");
+      // `date`/`session_date` (YYYY-MM-DD) explains a SPECIFIC past play's frozen commit evidence,
+      // not just today's. Absent → today, the prior behaviour.
+      const cortexDate = input.date ?? input.session_date;
       return cortexDecisionForLargo(
         input.ticker ? String(input.ticker) : null,
-        input.question ? String(input.question) : ""
+        input.question ? String(input.question) : "",
+        cortexDate ? String(cortexDate) : undefined
       );
     }
     case "get_horizon_outcomes": {
