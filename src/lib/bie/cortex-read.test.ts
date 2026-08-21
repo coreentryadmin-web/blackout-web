@@ -459,3 +459,39 @@ test("renderCortexCitation + directionFromQuestion", () => {
   assert.equal(mod.directionFromQuestion("NVDA puts?"), "short");
   assert.equal(mod.directionFromQuestion("cortex NVDA"), "long");
 });
+
+// ── composeCortexRead: the historical WHY-of-record capability ────────────────────────
+
+test("composeCortexRead: an explicit past date reads THAT session's pinned play, not today's", async () => {
+  ledgerRows = [row({ ticker: "NVDA", session_date: "2026-07-14" })]; // today's row — must NOT be used
+  datedRows = [row({ ticker: "NVDA", session_date: "2026-07-11" })];
+  datedCalls = [];
+  const composed = await mod.composeCortexRead("NVDA", "", "2026-07-11");
+  assert.deepEqual(datedCalls, ["2026-07-11"], "the dated ledger reader was used");
+  assert.equal((composed.context as { session_date: string }).session_date, "2026-07-11");
+  assert.equal((composed.context as { mode: string }).mode, "pinned");
+});
+
+test("composeCortexRead: a dated ask with no play of record says so — it does NOT answer with a live read", async () => {
+  datedRows = []; // nothing committed that session
+  rejectionRows = []; // and no skip on record either
+  datedCalls = [];
+  fetchInputsCalls = [];
+  const composed = await mod.composeCortexRead("NVDA", "", "2026-07-11");
+  assert.deepEqual(datedCalls, ["2026-07-11"]);
+  assert.equal(fetchInputsCalls.length, 0, "a dated question must NOT trigger a live Cortex read");
+  assert.match(composed.answer, /No 0DTE Command play of record for NVDA on 2026-07-11/);
+  assert.match(composed.answer, /a live read would describe TODAY/i);
+  assert.equal((composed.context as { mode: string }).mode, "unavailable");
+});
+
+test("composeCortexRead: without a date, behaviour is unchanged — today's ledger, live fallback", async () => {
+  ledgerRows = [];
+  rejectionRows = [];
+  datedCalls = [];
+  fetchInputsCalls = [];
+  const composed = await mod.composeCortexRead("NVDA", "calls");
+  assert.deepEqual(datedCalls, [], "no dated read when no date is given");
+  assert.ok(fetchInputsCalls.length >= 1, "falls through to the live read as before");
+  assert.ok(composed.answer.length > 0);
+});
