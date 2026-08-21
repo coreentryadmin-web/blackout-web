@@ -59,6 +59,22 @@ Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
 **Lesson worth keeping.** A centralized fix is not adopted until every call site imports it. `VECTOR_FRACTION_DP` was created *specifically* so this class could not recur, documented that intent in its own header, and still left the highest-leverage consumer — the one feeding the model, not the chart — on the broken default for two weeks. When a shared helper exists to prevent a defect class, grep its importers against the full list of call sites that serve the same numbers; the map existing is not evidence that it is used.
 
+## 2026-08-21 — [FINDING, P0 member-visible] Largo's Thermal compare column read `bullish` off a SHORT-gamma matrix — 3 of 3 tickers inverted — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Root cause** | `thermalBiasFromRegime` in `src/lib/largo/helix-thermal-compare.ts` classified dealer gamma by REGEX over `gamma_regime_read`, which is member-facing PROSE ending in a levels list. `/positive\|long gamma\|support\|pin/` was tested FIRST, so the word **"support"** in "… Resistance 780, support 765." returned `bullish` for a matrix the same sentence describes as "net short gamma at EVERY strike … moves accelerate". |
+| **Why the prose at all** | `GexPositioning` already carries `gamma_posture` as a typed `"long" \| "short" \| null`, set from `gex.regime.posture`, sitting directly beside the prose being parsed. The typed field was ignored. `strip-embedded-level.ts` already documents that the regime read restates typed fields — the same insight, not applied here. |
+| **Second, deeper defect** | The AXIS was wrong regardless of ordering. Dealer gamma is not directional: short gamma amplifies a move in EITHER direction, so `short gamma -> bearish` asserts a direction the matrix never measured. |
+| **Third defect (same code path)** | With both sides cold the card served `conflict: false, conflict_note: null` — indistinguishable from a genuine all-clear. Two absent readings were published as agreement. Same shape in `peer_divergence`. |
+| **Evidence** | Live `GET /api/market/gex-positioning` 2026-08-21T00:10Z: SPY / SPX / QQQ all "net short gamma at EVERY strike", all three classified `bullish` by the shipped function — 3 of 3 inverted. Captured verbatim as the fixture in `helix-thermal-compare.test.ts`; restoring the old classifier fails that test with `actual: 'bullish'`. |
+| **Blast radius** | Both card modes (`helix_thermal` and `peer_tickers`) route through `fetchTickerFlowAndGamma`, and the card ships BOTH as the `get_helix_thermal_compare` tool and as a prefetched prompt block (`largo-terminal.ts:671-675`). Member-visible: `LargoCompareCard.tsx:138` renders `bias` as literal coloured text. A lane-wide grep found no other prose-scraped classifier. |
+| **Fix** | #PR — derive from `gamma_posture`; gamma side now reports `neutral` (long: mean-reverting) / `mixed` (short: amplifies both ways) / `unknown`, never bullish or bearish, plus new typed `gamma_posture` + `volatility_regime` fields. `describeConflict` resolves flag and note together so `false` always says whether it means "compared, agree" or "not compared". The pure derivation was extracted as `compareSidesFrom` so it is testable without module mocking — the `@/` alias does not resolve under `--experimental-test-module-mocks` (same tsx resolver-hook interaction as #2073). |
+| **Also removed** | A 4-char ticker-prefix re-filter that was a no-op: `fetchRecentFlows` (`db.ts:2543`) already applies exact `ticker = $1`, so it only ever re-matched rows that were already exact, and its `scoped.length ? scoped : recent` fallback was unreachable. Behaviour-preserving deletion. |
+| **Status** | FIXED — tsc clean, 8695 pass / 0 fail on Node 20 (baseline `main` 8686/0, +9 = the new tests), `npm run build` green, eslint clean. |
+
 ## 2026-08-19 — [FINDING, P0 correctness] `main` went red with every PR green — #2365 and #2366 collided on the 0DTE expiry resolver — FIXED
 
 > **kind:** `FINDING`
