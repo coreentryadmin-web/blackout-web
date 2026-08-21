@@ -270,7 +270,28 @@ export async function helixSignalOutcomesForLargo(limit = 50) {
   try {
     const rows = await fetchRecentHelixSignalOutcomes(limit);
     const summary = summarizeHelixSignalOutcomes(rows);
-    const { bySignalType, ...summaryScalars } = summary;
+    // Strip the raw camelCase span fields too — they are re-projected below as `graded_window` with
+    // ET sessions attached, so the payload carries one shape (the C1 rule: never hand the model a
+    // bare UTC instant it must convert to know the session).
+    const { bySignalType, gradedOldestFiredAt, gradedNewestFiredAt, ...summaryScalars } = summary;
+    /**
+     * The TIME scope of a continuation rate. A rate is a number with no time until it names the
+     * window it covers; `rows_summarized` already gives the COUNT scope, this gives the TIME scope.
+     * Null bounds when nothing graded carries a time. `span_hours` is unrounded — roundFloats owns
+     * the model boundary. `oldest`/`newest` ISO are kept beside the ET sessions so a consumer can
+     * still sort on the instant.
+     */
+    const gradedWindow = (oldestIso: string | null, newestIso: string | null) => {
+      const oMs = oldestIso ? Date.parse(oldestIso) : NaN;
+      const nMs = newestIso ? Date.parse(newestIso) : NaN;
+      return {
+        oldest_fired_at: oldestIso ?? null,
+        newest_fired_at: newestIso ?? null,
+        oldest_session: oldestIso ? sessionDateForTimestamp(oldestIso) : null,
+        newest_session: newestIso ? sessionDateForTimestamp(newestIso) : null,
+        span_hours: Number.isFinite(oMs) && Number.isFinite(nMs) ? (nMs - oMs) / 3_600_000 : null,
+      };
+    };
     const ROWS_SHOWN = 20;
     const compact = rows.slice(0, ROWS_SHOWN).map((r) => ({
       ticker: r.ticker,
@@ -315,6 +336,12 @@ export async function helixSignalOutcomesForLargo(limit = 50) {
          *  model to report the complement as losses when most of it never moved at all. */
         continuation_rate_pct: summary.winRatePct,
         min_graded_for_rate: MIN_GRADED_SAMPLE_FOR_WIN_RATE,
+        /** The TIME window the aggregate rate covers — the graded rows' fired_at span, with ET
+         *  sessions. The ledger holds the 50 most-recent rows and a fire cannot be graded until
+         *  forward bars exist, so early in a session every graded row is from a PRIOR one: quote
+         *  the rate as "X% over N fires between <oldest_session> and <newest_session>", never as
+         *  current. Read it beside `as_of` (the READ time), which is not the data's time. */
+        graded_window: gradedWindow(gradedOldestFiredAt, gradedNewestFiredAt),
         /** Per-signal-type follow-through — answers "which HELIX signal is more reliable,
          *  split_flow or velocity_spike?" without hand-counting the capped `rows` list. Each type
          *  carries its own denominator (`graded`), and `continuation_rate_pct` is null below
@@ -328,6 +355,9 @@ export async function helixSignalOutcomesForLargo(limit = 50) {
           flat: t.flatCount,
           reversed: t.reversedCount,
           continuation_rate_pct: t.winRatePct,
+          /** Each type's rate has its OWN window — split_flow and velocity_spike do not fire on the
+           *  same cadence, so one can be a session stale while the other is current. */
+          graded_window: gradedWindow(t.gradedOldestFiredAt, t.gradedNewestFiredAt),
         })),
       },
     });
