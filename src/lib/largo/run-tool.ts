@@ -1082,9 +1082,11 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
 
     case "get_helix_derived": {
       const { helixDerivedForLargo } = await import("@/lib/largo/product-reads");
+      const derivedHours = input.since_hours ?? input.hours;
       return helixDerivedForLargo(
         input.ticker ? String(input.ticker) : null,
-        Number(input.limit ?? 400)
+        Number(input.limit ?? 400),
+        derivedHours != null ? Number(derivedHours) : undefined
       );
     }
 

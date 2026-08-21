@@ -316,6 +316,54 @@ test("netPremiumLeaders reports call_pct null for a ticker with no measurable pr
   assert.equal(rows[0]?.call_pct, null);
 });
 
+// ── Fetch-contract guards ────────────────────────────────────────────────────
+// The layer that had NO coverage, which is why two population defects shipped. Every other test
+// in this file builds its own fixture array, so none of them can see a defect in how rows are
+// SELECTED. `order: "recent"` is load-bearing: it decides which prints survive the LIMIT.
+
+import { helixTapeFetchOptions } from "./helix-tape-analytics";
+
+const LIMITS = { maxLimit: 5000, defaultSinceHours: 168, maxSinceHours: 720 };
+
+test("the tape is always requested NEWEST-FIRST, never biggest-premium-first", () => {
+  assert.equal(helixTapeFetchOptions({ limit: 500, ...LIMITS }).order, "recent");
+  assert.equal(helixTapeFetchOptions({ limit: 400, sinceHours: 1, ...LIMITS }).order, "recent");
+});
+
+test("an omitted window falls back to the member desk's own default, not the DB's 48h", () => {
+  assert.equal(helixTapeFetchOptions({ limit: 500, ...LIMITS }).since_hours, 168);
+  assert.equal(
+    helixTapeFetchOptions({ limit: 500, sinceHours: undefined, ...LIMITS }).since_hours,
+    168
+  );
+});
+
+test("a RIGHT NOW window is passed through", () => {
+  assert.equal(helixTapeFetchOptions({ limit: 500, sinceHours: 1, ...LIMITS }).since_hours, 1);
+});
+
+test("hostile or nonsense inputs are clamped, never forwarded", () => {
+  assert.equal(helixTapeFetchOptions({ limit: 500, sinceHours: 99_999, ...LIMITS }).since_hours, 720);
+  assert.equal(helixTapeFetchOptions({ limit: 500, sinceHours: 0, ...LIMITS }).since_hours, 1);
+  assert.equal(helixTapeFetchOptions({ limit: 500, sinceHours: -5, ...LIMITS }).since_hours, 1);
+  assert.equal(helixTapeFetchOptions({ limit: 500, sinceHours: Number.NaN, ...LIMITS }).since_hours, 168);
+  assert.equal(helixTapeFetchOptions({ limit: 9_999_999, ...LIMITS }).limit, 5000);
+  assert.equal(helixTapeFetchOptions({ limit: 0, ...LIMITS }).limit, 1);
+});
+
+test("ticker is upper-cased, and omitted rather than sent empty for a market-wide read", () => {
+  assert.equal(helixTapeFetchOptions({ ticker: "spx", limit: 500, ...LIMITS }).ticker, "SPX");
+  assert.equal(helixTapeFetchOptions({ ticker: null, limit: 500, ...LIMITS }).ticker, undefined);
+  assert.equal(helixTapeFetchOptions({ ticker: "", limit: 500, ...LIMITS }).ticker, undefined);
+});
+
+test("get_helix_derived's own caps are honoured through the shared builder", () => {
+  // Derived caps at 1000 rows, not the tape's 5000 — a window needs depth but not the whole table.
+  const o = helixTapeFetchOptions({ limit: 1000, maxLimit: 1000, defaultSinceHours: 168, maxSinceHours: 720 });
+  assert.equal(o.limit, 1000);
+  assert.equal(o.order, "recent");
+});
+
 test("an ingest-stamped print never dates the tape — it is not a print time", () => {
   // Live 2026-08-20: 438 of 500 prints were tape_time_estimated. Reading alerted_at made the
   // tape look 282 minutes old against the desk's 309 — 27 minutes fresher than it was.
@@ -356,6 +404,22 @@ test("timed_prints vs prints exposes how much of the tape cannot be dated", () =
   assert.equal(w.undated_prints, 9);
 });
 
+test("all three HELIX tape tools share ONE request builder — they cannot drift apart", () => {
+  // get_helix_tape_analytics, get_helix_derived and get_flow_brief all read the same Postgres
+  // tape and all three had the same population defect. They now differ only in their row cap.
+  const common = { defaultSinceHours: 168, maxSinceHours: 720 };
+  const tape = helixTapeFetchOptions({ limit: 500, maxLimit: 5000, ...common });
+  const derived = helixTapeFetchOptions({ limit: 400, maxLimit: 1000, ...common });
+  const brief = helixTapeFetchOptions({ limit: 500, maxLimit: 5000, ...common });
+  for (const o of [tape, derived, brief]) {
+    assert.equal(o.order, "recent");
+    assert.equal(o.since_hours, 168);
+  }
+  assert.equal(tape.limit, 500);
+  assert.equal(derived.limit, 400);
+  assert.equal(brief.limit, 500);
+});
+
 test("a SHORT burst never reports zero hours — rounding must not fabricate 'no span'", () => {
   // Coordinator review of #2428: actual_hours was rounded to 1dp inside the compute path, so any
   // span under 3 minutes became exactly 0 — and the tool description tells the model to quote
@@ -391,4 +455,15 @@ test("prints with no exchange time report WHY there is no span", () => {
   assert.equal(w.actual_hours, null);
   // "all_prints_undated" is a different fact from "no prints at all" and must not read as it.
   assert.equal(w.no_dated_print_reason, "all_prints_undated");
+});
+
+test("a non-numeric limit is clamped, never forwarded as LIMIT NaN", () => {
+  // Math.floor(NaN) is NaN; unguarded it reaches Postgres as `LIMIT NaN`, which throws and
+  // surfaces to the model as available:false — a healthy tool reported as broken.
+  const L = { maxLimit: 5000, defaultSinceHours: 168, maxSinceHours: 720 };
+  for (const bad of [Number.NaN, Infinity, -Infinity]) {
+    const o = helixTapeFetchOptions({ limit: bad as number, ...L });
+    assert.ok(Number.isFinite(o.limit), `limit must be finite, got ${o.limit}`);
+    assert.ok(o.limit >= 1 && o.limit <= 5000);
+  }
 });
