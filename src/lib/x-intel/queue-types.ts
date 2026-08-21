@@ -196,12 +196,29 @@ export type XIntelOutcome = {
  * `variant` is stored so the learning loop can attribute conversions to a specific CTA. A rotation
  * nobody records is just variety.
  */
+/**
+ * ONE ASK PER POST, ROTATED (operator decision, 2026-08-21 — revised).
+ *
+ * The first cut rotated whether a post asked for anything. The second stacked every link and the
+ * price into every post. Neither is what the operator wants: **pick one at random, keep the post
+ * to 280 characters.**
+ *
+ * That is the right call and the earlier stacked version was wrong on its own terms — the block ran
+ * ~290 weighted characters, so the ask alone consumed the entire post budget and left nothing for
+ * the evidence the post exists to show.
+ *
+ * Rotation stays least-recently-used rather than actually random: at ~7 packages a day a random
+ * pick produces runs and gaps indistinguishable from an offer that works or does not, so the
+ * learning loop could never tell a good ask from a lucky week. LRU gives even exposure, and the
+ * variant lands on the queue row so every ask is attributable down the funnel.
+ */
 export const X_INTEL_CTA_VARIANTS = [
-  "SOFT",
   "DISCORD",
+  "WHOP",
   "SITE",
-  "PRICING",
-  "WHOP_OFFER",
+  "PRICING_SPX",
+  "PRICING_FULL",
+  "PROMO",
 ] as const;
 
 export type XIntelCtaVariant = (typeof X_INTEL_CTA_VARIANTS)[number];
@@ -333,6 +350,19 @@ export type XIntelQueueDraft = Omit<XIntelQueueRow, "id" | "created_at">;
 // ---------------------------------------------------------------------------
 
 /**
+ * Length as X counts it: every URL is a t.co shortlink worth 23 characters.
+ *
+ * Lives here rather than in `cta.ts` because the gate needs it and `queue-types.ts` is the
+ * client-safe module the reviewer's surface already imports.
+ */
+export function xWeightedPostLength(text: string | null | undefined): number {
+  if (!text) return 0;
+  const urls = text.match(/https?:\/\/\S+/g) ?? [];
+  const raw = urls.reduce((n, u) => n + u.length, 0);
+  return text.length - raw + urls.length * 23;
+}
+
+/**
  * Why a package may NOT be marked READY, or null if it may.
  *
  * This is deliberately a REFUSAL, not a warning. The brief's rule is that a precedence claim is
@@ -382,6 +412,17 @@ export function readyBlockReason(
 
   if (!row.post_copy || !row.post_copy.trim()) {
     return "READY requires post_copy — there is nothing for a reviewer to paste";
+  }
+
+  // 280, MEASURED THE WAY X MEASURES.
+  //
+  // X replaces every URL with a t.co link counted as a fixed 23 characters however long the
+  // original is. Each tagged link here runs ~120 raw characters, almost all of it UTM, so a raw
+  // length check would reject posts that fit comfortably — and the fix for that would have been to
+  // strip the tracking the learning loop is built on. Counting X's way keeps both.
+  const weighted = xWeightedPostLength(row.post_copy);
+  if (weighted > 280) {
+    return `READY requires the post to fit 280 characters — this is ${weighted} (URLs counted as 23, as X counts them)`;
   }
 
   // The package format IS the proof. Two genuinely distinct surfaces is the floor; three

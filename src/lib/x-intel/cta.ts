@@ -98,90 +98,123 @@ function tagged(url: string, cycleKey: string, variant: XIntelCtaVariant): strin
   return u.toString();
 }
 
-type Builder = (cycleKey: string) => { text: string; url: string | null };
+type Builder = (cycleKey: string, variant: XIntelCtaVariant) => { text: string; url: string | null };
 
+/**
+ * ONE ASK, SHORT ENOUGH TO LEAVE ROOM FOR THE EVIDENCE.
+ *
+ * Each is a single line. The post is capped at 280 characters, and X counts a URL as 23 whatever
+ * its real length, so an ask costs roughly its visible words plus 23 — which leaves the bulk of the
+ * post for the levels, the times and the move.
+ */
 const BUILDERS: Record<XIntelCtaVariant, Builder> = {
-  SOFT: (cycle) => {
-    const url = tagged(LINKS.site, cycle, "SOFT");
-    return { text: `Every read on this desk is live — ${url}`, url };
+  DISCORD: (cycle, v) => {
+    const url = tagged(LINKS.discord, cycle, v);
+    return { text: `Free Discord — ${url}`, url };
   },
-
-  DISCORD: (cycle) => {
-    const url = tagged(LINKS.discord, cycle, "DISCORD");
-    return {
-      text: `We break these down live in the free Discord — ${url}`,
-      url,
-    };
+  WHOP: (cycle, v) => {
+    const url = tagged(LINKS.whop, cycle, v);
+    return { text: `Join the desk — ${url}`, url };
   },
-
-  SITE: (cycle) => {
-    const url = tagged(LINKS.site, cycle, "SITE");
-    return {
-      text: `Every surface in this post is live on the desk — ${url}`,
-      url,
-    };
+  SITE: (cycle, v) => {
+    const url = tagged(LINKS.site, cycle, v);
+    return { text: `Live on the desk — ${url}`, url };
   },
-
-  PRICING: (cycle) => {
-    const url = tagged(LINKS.site, cycle, "PRICING");
-    return {
-      text: `The full BLACKOUT desk is ${PRICING.full}. SPX Slayer alone is ${PRICING.spx}. ${url}`,
-      url,
-    };
+  PRICING_SPX: (cycle, v) => {
+    const url = tagged(LINKS.site, cycle, v);
+    return { text: `SPX Slayer ${PRICING.spx} — ${url}`, url };
   },
-
-  WHOP_OFFER: (cycle) => {
-    const url = tagged(LINKS.whop, cycle, "WHOP_OFFER");
-    return {
-      text: `${PROMO_CODE} takes 50% off your first month — full desk ${PRICING.full}, SPX ${PRICING.spx}. ${url}`,
-      url,
-    };
+  PRICING_FULL: (cycle, v) => {
+    const url = tagged(LINKS.site, cycle, v);
+    return { text: `Full desk ${PRICING.full} — ${url}`, url };
+  },
+  PROMO: (cycle, v) => {
+    const url = tagged(LINKS.whop, cycle, v);
+    return { text: `${PROMO_CODE} — 50% off month one. ${url}`, url };
   },
 };
 
-/** Variants that ask for money. Never two in a row — see `selectCtaVariant`. */
-const PAID_VARIANTS: ReadonlySet<XIntelCtaVariant> = new Set<XIntelCtaVariant>([
-  "PRICING",
-  "WHOP_OFFER",
-]);
+/**
+ * CASHTAGS.
+ *
+ * X indexes `$TICKER` and surfaces posts on the symbol's own page, which is the one distribution
+ * channel available to an account that cannot rely on followers. A package about BAC that writes
+ * "BAC" is invisible to everyone browsing $BAC.
+ *
+ * Deduplicated and order-preserving so the lead ticker stays first, and capped — a wall of tickers
+ * reads as spam to a reader and to the ranker, and at 280 characters it is also unaffordable.
+ */
+export const CASHTAG_LIMIT = 4;
+
+export function cashtags(tickers: ReadonlyArray<string>): string {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const t of tickers) {
+    const sym = t.trim().toUpperCase().replace(/^\$/, "");
+    // Index tickers like SPX carry no cashtag on X; a $ in front of a non-symbol is just noise.
+    if (!/^[A-Z][A-Z.]{0,5}$/.test(sym) || seen.has(sym)) continue;
+    seen.add(sym);
+    out.push(`$${sym}`);
+    if (out.length >= CASHTAG_LIMIT) break;
+  }
+  return out.join(" ");
+}
 
 /**
- * Pick the next variant: least recently used, never a paid ask immediately after another one.
+ * Pick the next ask: least recently used.
  *
  * PURE and total. `recent` is newest-first, exactly as `recentCtaVariants()` returns it. With no
- * history it returns the head of the canonical order, so a cold start is deterministic rather than
- * arbitrary — a fresh database and a replayed one choose the same thing, which is what makes the
- * rotation reproducible in a test.
+ * history it returns the head of the canonical order, so a cold start is deterministic — a fresh
+ * database and a replayed one choose the same thing, which is what makes the rotation reproducible
+ * in a test.
  */
 export function selectCtaVariant(
   recent: ReadonlyArray<XIntelCtaVariant>,
 ): XIntelCtaVariant {
-  const lastWasPaid = recent.length > 0 && PAID_VARIANTS.has(recent[0]!);
-
-  // Rank by how long ago each variant was last used; never-used sorts first.
   const lastUsedIndex = (v: XIntelCtaVariant): number => {
     const i = recent.indexOf(v);
     return i === -1 ? Number.POSITIVE_INFINITY : i;
   };
-
-  const eligible = X_INTEL_CTA_VARIANTS.filter(
-    (v) => !(lastWasPaid && PAID_VARIANTS.has(v)),
-  );
-
-  // `eligible` can never be empty: SOFT, DISCORD and SITE are all unpaid, so the back-to-back
-  // guard can never exclude everything. The fallback is defensive, not reachable.
-  const pool = eligible.length ? eligible : X_INTEL_CTA_VARIANTS;
-
-  return [...pool].sort((a, b) => {
+  return [...X_INTEL_CTA_VARIANTS].sort((a, b) => {
     const d = lastUsedIndex(b) - lastUsedIndex(a);
     if (d !== 0) return d;
-    // Stable tie-break on canonical order so two never-used variants resolve deterministically.
     return X_INTEL_CTA_VARIANTS.indexOf(a) - X_INTEL_CTA_VARIANTS.indexOf(b);
   })[0]!;
 }
 
-/** X's limit applies to the reply too. */
-export const CTA_CHAR_LIMIT = 280;
+/**
+ * MEASURE LENGTH THE WAY X DOES.
+ *
+ * X replaces every URL with a t.co shortlink and counts it as a fixed 23 characters no matter how
+ * long the original is. That matters enormously here: each tagged link runs ~120 raw characters,
+ * almost all of it UTM, so a raw `.length` check reported this block at 586 when X sees roughly
+ * half that. Budgeting against the raw number would have driven me to strip the very tracking the
+ * learning loop is built on, to fix a limit that was never being exceeded.
+ */
+export const T_CO_LENGTH = 23;
+
+export function xWeightedLength(text: string): number {
+  const urls = text.match(/https?:\/\/\S+/g) ?? [];
+  const raw = urls.reduce((n, u) => n + u.length, 0);
+  return text.length - raw + urls.length * T_CO_LENGTH;
+}
+
+/**
+ * Budget for the CTA BLOCK, measured X's way.
+ *
+ * Not 280: the CTA is no longer a standalone reply that has to fit a post on its own, it is the
+ * foot of a long-form body. This is a budget for how much of the reader's attention the ask may
+ * take from the evidence above it, which is a different question from what the platform allows.
+ */
+export const CTA_CHAR_LIMIT = 60;
+
+/**
+ * THE POST BUDGET. X's hard limit, and the operator's instruction: keep it short.
+ *
+ * Enforced on the WHOLE post rather than on the CTA, because the ask and the evidence compete for
+ * the same 280 characters and only the total is a real constraint.
+ */
+export const POST_CHAR_LIMIT = 280;
 
 /**
  * Build the CTA reply for one package.
@@ -194,14 +227,14 @@ export function buildCta(
   recent: ReadonlyArray<XIntelCtaVariant> = [],
 ): XIntelCta {
   const variant = selectCtaVariant(recent);
-  const { text, url } = BUILDERS[variant](cycleKey);
+  const { text, url } = BUILDERS[variant](cycleKey, variant);
   return { variant, text, url, placement: "body" };
 }
 
 /** Every variant's copy, for the admin page's preview and for tests. */
 export function previewAllCtas(cycleKey: string): XIntelCta[] {
   return X_INTEL_CTA_VARIANTS.map((variant) => {
-    const { text, url } = BUILDERS[variant](cycleKey);
+    const { text, url } = BUILDERS[variant](cycleKey, variant);
     return { variant, text, url, placement: "body" as const };
   });
 }
