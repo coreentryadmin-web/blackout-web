@@ -330,7 +330,7 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
 
   t(
     "get_flow_brief",
-    "HELIX FlowBrief — deterministic session memo (call/put skew, whale count, massive print callouts). Same composeFlowBrief the /flows FlowBrief panel uses — NOT an LLM hallucination. Use for 'summarize the tape', 'what is flow doing', 'give me the flow brief'."
+    "HELIX FlowBrief — deterministic session memo (call/put skew, whale count, massive print callouts). Same composeFlowBrief the /flows FlowBrief panel uses — NOT an LLM hallucination. Use for 'summarize the tape', 'what is flow doing', 'give me the flow brief'. Prints are read NEWEST-FIRST, the same population the member's /flows desk shows. WINDOW — never quote `window.requested_hours` as the period summarised: the row limit almost always binds first, so quote `window.actual_hours` and say the read is limit-bound when `window.limit_reached` is true. `window.newest_age_minutes` tells you how stale the freshest print is, and `window.undated_prints` how many prints carry no real UW time at all (routinely most of the tape) — a memo over a cold or largely undated tape must say so."
   ),
 
   t(

@@ -487,14 +487,32 @@ export async function helixDerivedForLargo(
 }
 
 /** Deterministic FlowBrief memo — same composeFlowBrief the HELIX UI uses (no LLM). */
-export async function flowBriefForLargo() {
+export async function flowBriefForLargo(sinceHours = HELIX_FLOW_DEFAULT_SINCE_HOURS) {
   try {
-    const [{ getFlowTapeSummary }, { fetchUwDarkPoolRecent }, { composeFlowBrief }] = await Promise.all([
+    const [
+      { getFlowTapeSummary },
+      { fetchUwDarkPoolRecent },
+      { composeFlowBrief },
+      { helixTapeFetchOptions, tapeWindowCoverage },
+    ] = await Promise.all([
       import("@/lib/platform").then((m) => ({ getFlowTapeSummary: m.marketPlatform.flows.getFlowTapeSummary })),
       import("@/lib/providers/unusual-whales"),
       import("@/lib/bie/flow-brief"),
+      import("@/lib/largo/helix-tape-analytics"),
     ]);
-    const summary = await getFlowTapeSummary({ limit: 200 });
+    // THIRD tool on the same tape with the same population defect: `{ limit: 200 }` alone left
+    // `order` undefined, so fetchRecentFlows served the 200 BIGGEST prints of 48h. FlowBrief is a
+    // SESSION memo — call/put skew, whale count, massive-print callouts — so composing it from
+    // whatever was largest since the day before yesterday describes a window the member is not
+    // looking at. Routed through the SAME builder as the other two so the three cannot drift.
+    const fetchOpts = helixTapeFetchOptions({
+      limit: HELIX_FLOW_PAGE_SIZE,
+      sinceHours,
+      maxLimit: HELIX_FLOW_MAX_LIMIT,
+      defaultSinceHours: HELIX_FLOW_DEFAULT_SINCE_HOURS,
+      maxSinceHours: HELIX_FLOW_MAX_SINCE_HOURS,
+    });
+    const summary = await getFlowTapeSummary(fetchOpts);
     const alerts = summary.recent ?? [];
     const darkRaw = await fetchUwDarkPoolRecent(40).catch(() => []);
     const darkPrints = (darkRaw ?? [])
@@ -516,6 +534,10 @@ export async function flowBriefForLargo() {
       alert_count: alerts.length,
       total_premium: summary.total_premium ?? null,
       top_tickers: summary.top_tickers ?? [],
+      /** Same honest-window disclosure the other HELIX tape tools carry: the row limit binds
+       *  before the time window does, so a "session" memo can cover far less than a session. */
+      window: tapeWindowCoverage(alerts, fetchOpts.since_hours, fetchOpts.limit),
+      ordered_by: "recent",
     });
   } catch (e) {
     return {
