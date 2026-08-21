@@ -32,10 +32,18 @@ export const VECTOR_FULL_STATE_CACHE_TTL_SEC = 15 * 60;
  * because `magnet.distancePct` moved from a fraction to a PERCENT (2026-08-21), and a v1 entry
  * would have fed Largo a magnet distance 100x too small with nothing in the payload to reveal it.
  * A new key namespace makes the old entries unreachable instead of unreadable-but-served.
+ *
+ * v3 (2026-08-21) adds `asOfEt` / `sessionDate` — the ET session anchor beside `asOf`. That is an
+ * ADDITIVE field rather than a unit change, so it would have been tempting to leave the key alone;
+ * the reason not to is that a v2 entry served under v3 code carries `undefined` for both, and the
+ * anchor then appears on some reads and vanishes on others for the 15 minutes after a deploy with
+ * nothing in the payload to say why. An anchor that is sometimes absent is the silent-degradation
+ * failure this file's versioning exists to prevent, so the rule is really "bump when the payload's
+ * CONTRACT changes", of which a unit change is one case.
  */
-const VECTOR_FULL_STATE_CACHE_VERSION = "v2";
+const VECTOR_FULL_STATE_CACHE_VERSION = "v3";
 
-/** `vector:full-state:v2:{normalizedTicker}:{horizon}` — one snapshot per ticker+horizon. */
+/** `vector:full-state:v3:{normalizedTicker}:{horizon}` — one snapshot per ticker+horizon. */
 export function vectorFullStateCacheKey(ticker: string, horizon: VectorDteHorizon): string {
   return `vector:full-state:${VECTOR_FULL_STATE_CACHE_VERSION}:${normalizeVectorTicker(ticker)}:${horizon}`;
 }

@@ -46,6 +46,7 @@ import { createOrAdoptAuditUserViaCurl } from './lib/clerk-audit-user.mjs';
 import { orderLedgerRowsForMarkCheck, classifyMarkEvidence } from './lib/ledger-mark-evidence.mjs';
 import { checkWallInvariants } from './lib/gex-wall-invariants.mjs';
 
+import { subprocessErrorMessage } from "./lib/redact.mjs";
 const SECRET = req('CLERK_SECRET_KEY');
 const PUB = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || '';
 const UWK = req('UW_API_KEY');
@@ -94,7 +95,7 @@ function curl({ method = 'GET', url, headers = {}, form, urlencodeForm, json, ja
   if (saveJar) args.push('-c', JAR);
   args.push(url);
   try { const s = Number(execFileSync('curl', args, { encoding: 'utf8', maxBuffer: 80 * 1024 * 1024 }).trim()); return { s, b: existsSync(bf) ? readFileSync(bf, 'utf8') : '' }; }
-  catch (e) { return { s: 0, b: '', err: String(e.message || e).split('\n')[0] }; }
+  catch (e) { return { s: 0, b: '', err: subprocessErrorMessage(e) }; }
 }
 const J = (r) => { try { return JSON.parse(r.b); } catch { return null; } };
 const backend = (m, p, j) => curl({ method: m, url: `${API}${p}`, headers: { Authorization: `Bearer ${SECRET}` }, json: j });

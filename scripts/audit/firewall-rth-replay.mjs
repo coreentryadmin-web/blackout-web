@@ -60,6 +60,7 @@ import { join } from "node:path";
 import { generateDefaultAuditPhone } from "./lib/audit-phone.mjs";
 import { createOrAdoptAuditUserViaCurl } from "./lib/clerk-audit-user.mjs";
 
+import { subprocessErrorMessage, redactSecrets } from "./lib/redact.mjs";
 const SRC = new URL("../../src/", import.meta.url).pathname;
 
 // ── Secrets / hosts ─────────────────────────────────────────────────────────────────
@@ -111,7 +112,7 @@ function curl({ method = "GET", url, headers = {}, form, urlencodeForm, json, ja
     const s = Number(execFileSync("curl", args, { encoding: "utf8", maxBuffer: 80 * 1024 * 1024 }).trim());
     return { s, b: existsSync(bf) ? readFileSync(bf, "utf8") : "" };
   } catch (e) {
-    return { s: 0, b: "", err: String(e.message || e).split("\n")[0] };
+    return { s: 0, b: "", err: subprocessErrorMessage(e) };
   }
 }
 const J = (r) => {
@@ -322,7 +323,7 @@ function runGatesInChild(envOverrides, input) {
       envOverrides
     );
   } catch (e) {
-    return { error: String(e.message || e).split("\n").slice(-3).join(" ") };
+    return { error: redactSecrets(String(e.message || e).split("\n").slice(-3).join(" ")) };
   }
 }
 
@@ -400,7 +401,7 @@ try {
     const match = JSON.stringify(res.otmRej) === JSON.stringify(mine) && res.setups === newSetups.length;
     capCheck = `child cap=${res.cap} → ${res.setups} setups, otm-rejected [${res.otmRej.join(", ") || "—"}] · post-filter match: ${match ? "YES ✓" : "NO ✗"}`;
   } catch (e) {
-    capCheck = `child cross-check failed: ${String(e.message || e).split("\n").slice(-2).join(" ")}`;
+    capCheck = `child cross-check failed: ${redactSecrets(String(e.message || e).split("\n").slice(-2).join(" "))}`;
   }
 
   console.log(`\n  OLD (cap off): ${oldSetups.length} setups   NEW (cap ${NEW_CAP}): ${newSetups.length} setups   → cap removes ${removedByCap.length}`);
@@ -444,7 +445,7 @@ try {
       new Promise((resolve) => setTimeout(() => resolve("__timeout__"), 12_000)),
     ]);
   } catch (e) {
-    earnSnap = { __error__: String(e.message || e).split("\n")[0] };
+    earnSnap = { __error__: subprocessErrorMessage(e) };
   }
   if (earnSnap === "__timeout__") {
     console.log(`  earnings snapshot: UNAVAILABLE (read timed out) — cannot evaluate Part B this run. Reporting honestly.`);

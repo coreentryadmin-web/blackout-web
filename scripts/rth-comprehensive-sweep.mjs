@@ -13,6 +13,7 @@ import { generateDefaultAuditPhone } from "./audit/lib/audit-phone.mjs";
 import { auditSecret } from "./audit/lib/prod-secrets.mjs";
 import { createOrAdoptAuditUserViaCurl } from "./audit/lib/clerk-audit-user.mjs";
 
+import { subprocessErrorMessage } from "./audit/lib/redact.mjs";
 const baseArg = process.argv.find((a) => a.startsWith("--base="));
 const BASE = (baseArg ? baseArg.slice("--base=".length) : "https://blackouttrades.com").replace(/\/$/, "");
 const SECRET = process.env.CLERK_SECRET_KEY;
@@ -101,7 +102,7 @@ function curl({ method = "GET", url, headers = {}, form, urlencodeForm, json, ja
     const s = Number(execFileSync("curl", args, { encoding: "utf8", maxBuffer: 80 * 1024 * 1024 }).trim());
     return { s, b: existsSync(bf) ? readFileSync(bf, "utf8") : "" };
   } catch (e) {
-    return { s: 0, b: "", err: String(e.message || e).split("\n")[0] };
+    return { s: 0, b: "", err: subprocessErrorMessage(e) };
   }
 }
 const J = (r) => { try { return JSON.parse(r.b); } catch { return null; } };
