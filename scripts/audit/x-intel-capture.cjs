@@ -269,6 +269,45 @@ async function vector(page, o, log) {
     return page.locator('body').first();
   }
 
+  // INDICATORS. The operator approved the zoomed-chart framing as the reference standard and asked
+  // for 1-2 varied indicators per capture. Vector exposes ~18 across moving averages, key levels,
+  // structure, oscillators, confluence, flow and expected move — a real variation axis, and the
+  // product's OWN annotations (HH/HL, BOS/CHOCH, golden pocket, wall labels) are the annotations
+  // the composition rules prefer over anything drawn on afterwards.
+  //
+  // ⚠️ NOT WORKING YET (2026-08-21). The menu trigger click times out — `.vector-ind-menu > button`
+  // matches, but something intercepts the click. Left in place, opt-in via `--indicators`, and
+  // wrapped so a failure DEGRADES rather than kills: an indicator is an enhancement to a frame,
+  // not a precondition for it, so losing one must not cost the whole capture. The run says so out
+  // loud in its step log rather than producing a frame that quietly lacks what the caption
+  // promises. Next: find what is intercepting — likely an overlay or a pointer-events guard.
+  if (o.indicators) {
+    try {
+    const trigger = page.locator('.vector-ind-menu > button').first();
+    if (await trigger.count()) {
+      await trigger.click({ timeout: 8000 });
+      await page.waitForTimeout(1200);
+      for (const name of o.indicators.split(',').map((x) => x.trim()).filter(Boolean)) {
+        const item = page.locator('[role="menuitemcheckbox"]', { hasText: new RegExp(name, 'i') }).first();
+        if (!(await item.count())) { log.push(`indicator?${name} absent`); continue; }
+        const before = await item.getAttribute('aria-checked');
+        await item.click();
+        await page.waitForTimeout(900);
+        const after = await item.getAttribute('aria-checked');
+        // Report what actually toggled rather than what was asked for — an indicator that silently
+        // failed to enable would leave the frame missing the evidence the caption promises.
+        log.push(`indicator→${name}${before === after ? ' (NO CHANGE)' : ' ✓'}`);
+      }
+      await page.keyboard.press('Escape').catch(() => {});
+      await page.waitForTimeout(2500);
+    } else {
+      log.push('indicators→menu trigger not found');
+    }
+    } catch (e) {
+      log.push(`indicators→FAILED (${String(e.message).split('\n')[0].slice(0, 60)}) — frame captured without them`);
+    }
+  }
+
   const chart = page.locator('.vector-chart-wrap').first();
   await chart.waitFor({ state: 'visible', timeout: 25000 });
   await page.waitForTimeout(4000);
@@ -298,7 +337,7 @@ async function vector(page, o, log) {
     view: arg('view','matrix'), lens: arg('lens','GEX').toUpperCase(),
     sector: arg('sector',''), panel: arg('panel',''), out: arg('out','/tmp/shots/out.png'),
     tf: arg('tf',''), horizon: arg('horizon',''), zoom: arg('zoom','6'),
-    mode: arg('mode',''), preset: arg('preset',''), panelLabel: arg('panel-label',''), eventClass: arg('class',''),
+    mode: arg('mode',''), preset: arg('preset',''), indicators: arg('indicators',''), panelLabel: arg('panel-label',''), eventClass: arg('class',''),
   };
   const { browser, ctx, counts } = await createTunneledContext({
     url: 'https://blackouttrades.com/', cookie: arg('cookie',''), viewport: arg('viewport','2560x1440'), desktop: true,
