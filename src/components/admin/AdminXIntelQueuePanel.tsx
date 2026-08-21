@@ -8,6 +8,7 @@ import {
   GlassPanel,
   MetricChip,
 } from "@/components/admin/AdminUi";
+import { franchiseWordmark } from "@/lib/x-intel/franchises";
 import { X_INTEL_QUEUE_FIXTURES } from "@/lib/x-intel/queue-fixtures";
 import type {
   XIntelAttachment,
@@ -155,6 +156,19 @@ function AttachmentCard({ a }: { a: XIntelAttachment }) {
         </span>
       </div>
       <p className="text-[11px] text-white/80">{a.caption}</p>
+      {/* The view signature, so a reviewer can SEE whether the feed is repeating itself. Visual
+          memory that only the ranker can read is visual memory nobody can audit. */}
+      {a.view && (
+        <p className="mt-0.5 font-mono text-[10px] text-white/35">
+          {a.view.view_id}
+          {a.view.timeframe ? ` · ${a.view.timeframe}` : ""}
+          {Object.entries(a.view.filters).length
+            ? ` · ${Object.entries(a.view.filters)
+                .map(([k, v]) => `${k}=${v}`)
+                .join(" ")}`
+            : ""}
+        </p>
+      )}
       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5">
         <a
           href={a.image_url}
@@ -189,8 +203,12 @@ function PackageCard({ row }: { row: XIntelQueueRow }) {
     >
       <div className="flex flex-wrap gap-1.5">
         <MetricChip label="status" value={row.status} tone={STATUS_TONE[row.status]} />
-        {row.format && (
-          <MetricChip label="format" value={row.format.replace(/_/g, " ")} tone="violet" />
+        {row.franchise && (
+          <MetricChip
+            label="franchise"
+            value={franchiseWordmark(row.franchise)}
+            tone="violet"
+          />
         )}
         <MetricChip
           label="attachments"

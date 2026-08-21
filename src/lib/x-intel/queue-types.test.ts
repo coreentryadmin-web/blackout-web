@@ -227,6 +227,22 @@ describe("fixtures", () => {
     }
   });
 
+  it("every attachment from a BLACKOUT surface carries a view signature for visual memory", () => {
+    for (const row of X_INTEL_QUEUE_FIXTURES) {
+      for (const a of row.attachments) {
+        assert.ok(a.view, `${row.cycle_key} slot ${a.slot} has no view signature`);
+      }
+    }
+  });
+
+  it("no package repeats the same view twice within itself", () => {
+    // Three near-identical screenshots is a failed package, not a package with a weak third slot.
+    for (const row of X_INTEL_QUEUE_FIXTURES) {
+      const ids = row.attachments.map((a) => a.view?.view_id).filter(Boolean);
+      assert.equal(new Set(ids).size, ids.length, `${row.cycle_key} repeats a view`);
+    }
+  });
+
   it("omits `confidence` entirely where it is not calibrated — never null, never a default", () => {
     const nvda = X_INTEL_QUEUE_FIXTURES.find((r) => r.ticker_or_market === "NVDA");
     assert.ok(nvda);

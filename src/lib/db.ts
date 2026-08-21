@@ -2197,7 +2197,7 @@ async function runMigrations(): Promise<void> {
       headline TEXT NOT NULL,
       post_copy TEXT,
       thread JSONB,
-      format TEXT,
+      franchise TEXT,
       attachments JSONB NOT NULL DEFAULT '[]'::jsonb,
       products_referenced JSONB NOT NULL DEFAULT '[]'::jsonb,
       underlying_evidence JSONB NOT NULL DEFAULT '[]'::jsonb,

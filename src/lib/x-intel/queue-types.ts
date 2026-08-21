@@ -32,6 +32,9 @@
  * and they are always accompanied by their ET rendering.
  */
 
+import type { XIntelFranchise } from "@/lib/x-intel/franchises";
+import type { XIntelViewSignature } from "@/lib/x-intel/visual-memory";
+
 /** The seven intelligence surfaces this lane reads, plus the market itself for price frames. */
 export const X_INTEL_SURFACES = [
   "spx_slayer",
@@ -52,25 +55,15 @@ export const X_INTEL_STATUSES = ["READY", "REVIEW", "SKIP"] as const;
 export type XIntelStatus = (typeof X_INTEL_STATUSES)[number];
 
 /**
- * Post formats, rotated so the account does not ship the same template every hour.
- * Stored on the row so the ranker can read the last N and penalise a repeat — rotation you have
- * to remember is rotation you will lose.
+ * The post's franchise — a recurring, recognisable BLACKOUT format, not a generic category.
+ * Defined in `franchises.ts`; re-exported here so the row type stays readable in one place.
+ *
+ * Stored on the row so the ranker can read the last N and rotate. Rotation you have to remember is
+ * rotation you will lose — and the operator's instruction is explicit that the account must NOT
+ * invent a fresh identity every hour.
  */
-export const X_INTEL_FORMATS = [
-  "BREAKING_MARKET_MOVE",
-  "WHALE_FLOW",
-  "SPX_INTELLIGENCE",
-  "GAMMA_SHIFT",
-  "BLACKOUT_CALLED_IT",
-  "TRADE_UPDATE",
-  "EARNINGS_MOVE",
-  "CROSS_PRODUCT_CONFLUENCE",
-  "MARKET_DIVERGENCE",
-  "WHAT_CHANGED",
-  "CLOSING_INTELLIGENCE",
-] as const;
-
-export type XIntelFormat = (typeof X_INTEL_FORMATS)[number];
+export type { XIntelFranchise } from "@/lib/x-intel/franchises";
+export type { XIntelViewSignature } from "@/lib/x-intel/visual-memory";
 
 /**
  * The three-beat attachment story: WHAT HAPPENED → WHAT BLACKOUT SAW → WHY IT MATTERED.
@@ -90,6 +83,18 @@ export type XIntelAttachment = {
   source_url: string;
   /** C1 — when the frame was taken, not when the row was written. */
   captured_at_et: string;
+  /**
+   * VISUAL MEMORY. The full state that produced this exact frame — product, page, panel,
+   * visualization, ticker, timeframe, filters, composition.
+   *
+   * Recorded so the next cycle can avoid repeating it. Without this the attachment chooser has no
+   * memory and converges on whichever view scored well once, which is how a feed becomes the same
+   * two screenshots forever. See `visual-memory.ts`.
+   *
+   * Null only for a frame that did not come from the catalog — a price chart from outside the
+   * platform, for instance. It is never null for a BLACKOUT surface.
+   */
+  view: XIntelViewSignature | null;
 };
 
 /**
@@ -204,7 +209,7 @@ export type XIntelQueueRow = {
   post_copy: string | null;
   /** Ordered. Null when the package is a single post rather than a thread. */
   thread: string[] | null;
-  format: XIntelFormat | null;
+  franchise: XIntelFranchise | null;
   attachments: XIntelAttachment[];
   products_referenced: XIntelSurface[];
   underlying_evidence: XIntelEvidence[];

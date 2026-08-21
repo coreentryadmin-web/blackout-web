@@ -1,10 +1,11 @@
 import "server-only";
 
 import { dbConfigured, dbQuery } from "@/lib/db";
+import { X_INTEL_FRANCHISES, type XIntelFranchise } from "@/lib/x-intel/franchises";
+import type { XIntelVisualMemoryEntry } from "@/lib/x-intel/visual-memory";
 import {
   attachmentCaptureBlockReason,
   readyBlockReason,
-  X_INTEL_FORMATS,
   X_INTEL_CTA_VARIANTS,
   X_INTEL_STATUSES,
   X_INTEL_SURFACES,
@@ -14,7 +15,6 @@ import {
   type XIntelCta,
   type XIntelCtaVariant,
   type XIntelEvidence,
-  type XIntelFormat,
   type XIntelOutcome,
   type XIntelQueueDraft,
   type XIntelQueueRow,
@@ -57,7 +57,7 @@ type QueueDbRow = {
   headline: string;
   post_copy: string | null;
   thread: unknown;
-  format: string | null;
+  franchise: string | null;
   attachments: unknown;
   products_referenced: unknown;
   underlying_evidence: unknown;
@@ -98,11 +98,11 @@ function asStatus(value: string): XIntelStatus {
     : "REVIEW";
 }
 
-function asFormat(value: string | null): XIntelFormat | null {
+const FRANCHISE_SLUGS: ReadonlySet<string> = new Set(X_INTEL_FRANCHISES.map((f) => f.slug));
+
+function asFranchise(value: string | null): XIntelFranchise | null {
   if (!value) return null;
-  return (X_INTEL_FORMATS as readonly string[]).includes(value)
-    ? (value as XIntelFormat)
-    : null;
+  return FRANCHISE_SLUGS.has(value) ? (value as XIntelFranchise) : null;
 }
 
 function asSurfaces(value: unknown): XIntelSurface[] {
@@ -141,7 +141,7 @@ function hydrate(r: QueueDbRow): XIntelQueueRow {
     headline: r.headline,
     post_copy: r.post_copy,
     thread: Array.isArray(r.thread) ? (r.thread as string[]) : null,
-    format: asFormat(r.format),
+    franchise: asFranchise(r.franchise),
     attachments: asArray<XIntelAttachment>(r.attachments),
     products_referenced: asSurfaces(r.products_referenced),
     underlying_evidence: asArray<XIntelEvidence>(r.underlying_evidence),
@@ -158,7 +158,7 @@ function hydrate(r: QueueDbRow): XIntelQueueRow {
 
 const SELECT_COLUMNS = `
   id, cycle_key, session_date, created_at_et, created_at, status,
-  ticker_or_market, headline, post_copy, thread, format,
+  ticker_or_market, headline, post_copy, thread, franchise,
   attachments, products_referenced, underlying_evidence, chronology,
   market_outcome, confidence, reason_selected, runners_up, posted_tweet_id, cta
 `;
@@ -197,7 +197,7 @@ export async function saveQueueRow(
   const res = await dbQuery<QueueDbRow>(
     `INSERT INTO ${X_INTEL_QUEUE_TABLE} (
        cycle_key, session_date, created_at_et, status, ticker_or_market, headline,
-       post_copy, thread, format, attachments, products_referenced, underlying_evidence,
+       post_copy, thread, franchise, attachments, products_referenced, underlying_evidence,
        chronology, market_outcome, confidence, reason_selected, runners_up, posted_tweet_id,
        cta
      ) VALUES (
@@ -214,7 +214,7 @@ export async function saveQueueRow(
        headline = EXCLUDED.headline,
        post_copy = EXCLUDED.post_copy,
        thread = EXCLUDED.thread,
-       format = EXCLUDED.format,
+       franchise = EXCLUDED.franchise,
        attachments = EXCLUDED.attachments,
        products_referenced = EXCLUDED.products_referenced,
        underlying_evidence = EXCLUDED.underlying_evidence,
@@ -234,7 +234,7 @@ export async function saveQueueRow(
       draft.headline,
       draft.post_copy,
       JSON.stringify(draft.thread),
-      draft.format,
+      draft.franchise,
       JSON.stringify(draft.attachments),
       JSON.stringify(draft.products_referenced),
       JSON.stringify(draft.underlying_evidence),
@@ -306,22 +306,22 @@ export async function getQueueRowByCycle(
 }
 
 /**
- * The formats used most recently, newest first — the ranker reads this to penalise a repeat.
+ * The franchises used most recently, newest first — the ranker reads this to penalise a repeat.
  * SKIP rows are excluded: an hour with nothing to say did not consume a format, and counting it
  * would push the rotation forward on the strength of a post that never existed.
  */
-export async function recentFormats(limit = 8): Promise<XIntelFormat[]> {
+export async function recentFranchises(limit = 8): Promise<XIntelFranchise[]> {
   if (!dbConfigured()) return [];
-  const res = await dbQuery<{ format: string | null }>(
-    `SELECT format FROM ${X_INTEL_QUEUE_TABLE}
-      WHERE status <> 'SKIP' AND format IS NOT NULL
+  const res = await dbQuery<{ franchise: string | null }>(
+    `SELECT franchise FROM ${X_INTEL_QUEUE_TABLE}
+      WHERE status <> 'SKIP' AND franchise IS NOT NULL
       ORDER BY created_at DESC
       LIMIT $1`,
     [Math.min(Math.max(limit, 1), 50)],
   );
   return res.rows
-    .map((r) => asFormat(r.format))
-    .filter((f): f is XIntelFormat => f != null);
+    .map((r) => asFranchise(r.franchise))
+    .filter((f): f is XIntelFranchise => f != null);
 }
 
 /**
@@ -345,6 +345,39 @@ export async function recentCtaVariants(limit = 8): Promise<XIntelCtaVariant[]> 
     .filter((v): v is XIntelCtaVariant =>
       v != null && (X_INTEL_CTA_VARIANTS as readonly string[]).includes(v),
     );
+}
+
+/**
+ * Recent attachment view signatures, newest-first — the visual memory the attachment chooser reads
+ * before selecting a frame.
+ *
+ * Flattened across packages and slots so the answer is "what have we photographed lately", not
+ * "what did each package use". SKIP rows contribute nothing because they published no frames.
+ *
+ * The limit is a package count, not an attachment count: `limit` packages back, every frame each
+ * one used. Bounding by attachments would make the window silently shorter after a run of
+ * three-attachment packages, which is exactly when repetition is most likely.
+ */
+export async function recentVisualMemory(
+  packageLimit = 12,
+): Promise<XIntelVisualMemoryEntry[]> {
+  if (!dbConfigured()) return [];
+  const res = await dbQuery<{ cycle_key: string; attachments: unknown }>(
+    `SELECT cycle_key, attachments FROM ${X_INTEL_QUEUE_TABLE}
+      WHERE status <> 'SKIP'
+      ORDER BY created_at DESC
+      LIMIT $1`,
+    [Math.min(Math.max(packageLimit, 1), 60)],
+  );
+  const out: XIntelVisualMemoryEntry[] = [];
+  for (const row of res.rows) {
+    for (const a of asArray<XIntelAttachment>(row.attachments)) {
+      // A frame with no signature (an off-platform price chart) contributes no visual memory —
+      // there is no platform view to avoid repeating.
+      if (a.view) out.push({ signature: a.view, cycle_key: row.cycle_key });
+    }
+  }
+  return out;
 }
 
 /** Records which tweet a package became — the learning loop's join key. */
