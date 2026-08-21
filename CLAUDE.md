@@ -310,6 +310,27 @@ never actually released a PR; that is still unproven, not proven.
    `terraform apply -auto-approve` (human-gated `workflow_dispatch`, needs `ACM_CERTIFICATE_ARN` secret,
    reconciles the WHOLE stack = drift risk). `deregistration_delay` on the prod TG was set to 30s this
    way on 2026-07-22 (was the 300s default → deploys served stale for ~5min; now ~30s).
+
+   **⛔ TERRAFORM STATE DOES NOT MATCH PRODUCTION — most resources were applied MANUALLY (standing,
+   from the operator, 2026-08-21).** So `terraform apply` is not "the safe way to make an infra
+   change" here; it is the risky way. An apply reconciles against a state that has drifted, and what
+   it does to a resource it did not create is not predictable from reading the diff.
+   - **Never `terraform apply` against production.** Not to "sync", not to "check", not with
+     `-auto-approve`.
+   - **Never destroy a resource.** If something looks orphaned, it is far likelier that state is
+     wrong than that production is.
+   - **Need a NEW resource? Create it MANUALLY** (boto3 — there is no `aws` CLI here), then codify it
+     in terraform as a *record* so it does not drift back.
+   - **Changing an EXISTING resource? One surgical in-place call**, after reading the live object
+     first and passing every unchanged attribute back verbatim.
+   - **A terraform change in a PR is a RECORD, not an instruction to apply.** Say so in the PR, or
+     someone will helpfully apply it.
+
+   Confirmed live 2026-08-21 rather than assumed: `blackout-production-banger-discovery` carries the
+   description *"Engine B: whole-market weekly-banger discovery+commit, once per session day"*, while
+   `terraform/modules/crons/main.tf` generates `"BlackOut cron: ${each.value.path}"`. An apply would
+   silently overwrite operator-authored metadata on a correctly-working rule. That is the small,
+   visible end of the drift; the large end is not visible from the repo at all.
 4. **Cloudflare purge works in-session** — `CF_API_TOKEN` + `CF_ZONE_ID` are valid;
    `POST api.cloudflare.com/.../zones/$CF_ZONE_ID/purge_cache {"purge_everything":true}` after a
    *visible* deploy clears the edge once ECS has drained. The token also **reads AND writes the
