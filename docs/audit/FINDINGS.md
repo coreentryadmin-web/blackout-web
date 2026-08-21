@@ -257,6 +257,25 @@ Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 | **Also removed** | A 4-char ticker-prefix re-filter that was a no-op: `fetchRecentFlows` (`db.ts:2543`) already applies exact `ticker = $1`, so it only ever re-matched rows that were already exact, and its `scoped.length ? scoped : recent` fallback was unreachable. Behaviour-preserving deletion. |
 | **Status** | FIXED — tsc clean, 8695 pass / 0 fail on Node 20 (baseline `main` 8686/0, +9 = the new tests), `npm run build` green, eslint clean. |
 
+## 2026-08-21 — [FINDING, P1 member-visible] The pin forecast reached Largo with its tail scenarios ZEROED — the second call site that never adopted `VECTOR_FRACTION_DP` — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Root cause** | `spxPinForLargo` and `spxPulseForLargo` (`product-reads.ts`) called **bare `roundFloats(...)`** at the default 2dp on a payload built almost entirely from 0..1 probabilities. |
+| **Found by** | The sweep the #2423 lesson asks for — grepping `VECTOR_FRACTION_DP`'s importers against every call site that serves the same numbers. It had exactly **three** importers (`/api/market/vector/expected-move`, `/api/market/vector/pin-forecast`, and `vector-full-state.ts` as of #2423), against a much larger set of consumers. |
+| **The route already documented the exact damage** | `/api/market/vector/pin-forecast`'s own header: *"The core deliberately emits `pinPct` and `magnet.strengthPct` at `toFixed(3)`; a blanket 2dp at the boundary silently threw that third digit away and floored a sub-1% `scenarios[].p` to zero."* That is precisely what the two Largo readers were doing — the route was fixed, the model-facing boundary kept the default. |
+| **Evidence** (realistic forecast; HTTP route vs the Largo reader, same input) | `pinPct` 0.412 → **0.41** (route 0.412)<br>`magnet.strengthPct` 0.084 → **0.08** (route 0.084)<br>`scenarios[].p` 0.009 → **0.01** (route 0.009)<br>`scenarios[].p` 0.004 → **`0`** (route 0.004) ← **ZEROED**<br>`drivers[].weight` 0.128 → **0.13** (route 0.128)<br>`atmIv` 0.1344 → **0.13** (route 0.1344) |
+| **Why the zero is the sharp end** | A scenario probability served as exactly `0` does not read as "unlikely" to a model — it reads as **impossible**, and it is the TAIL scenarios that get zeroed. A pin cone whose tails are all `0` describes a certainty the forecast never claimed. `drivers[].weight` is also the ordering key for the click-to-explain list, so quantizing it can reorder the explanation a member is shown. |
+| **Fix** | Both readers now pass `VECTOR_FRACTION_DP`. No new map, no new convention — the same one the two routes already use. |
+| **Blast radius** | `get_spx_pin` and `get_spx_pulse` (the two Largo readers). The HTTP routes were already correct. Checked and NOT affected: no other `roundFloats` call site in `product-reads.ts` serves a fraction-of-one field — the rest are dollar/percent-scale (premiums, P&L percentages, scores). |
+| **Naming note for the coordinator** | The map is called `VECTOR_FRACTION_DP` and this is an SPX-sourced payload, which reads oddly. It is nonetheless the right map: the Vector pin-forecast route and the SPX pin forecast share one core (`spx-pin-forecast-core.ts`), so the field names and their scales are identical. Renaming it to something product-neutral would be a reasonable follow-up; it was deliberately not done here to keep this PR single-issue. |
+| **Regression guard** | `src/lib/largo/pin-precision.test.ts` — pins the pre-fix behaviour (the 0.4% tail served as `0`), asserts every 0..1 field survives the map, and asserts both readers carry the override at their call sites. **2 of 4 fail against the pre-fix tree.** |
+| **Status** | FIXED — both Largo pin readers adopt the shared precision map. Gates on Node 20 (branched off `main` @ 7a28522): `tsc --noEmit` clean, 8802 pass / 0 fail, `npm run build` clean, eslint clean. |
+
+**Lesson worth keeping — the same one, now with a second instance to prove it.** #2423 concluded that *a centralized fix is not adopted until every call site imports it*. Acting on that as a literal instruction — grep the map's importers, not the map's existence — found this within minutes. The map had three importers and the defect class had at least five call sites. **An importer count is a cheap, mechanical audit that nobody had run**, and it is worth running for every shared helper whose whole purpose is to prevent a class of defect.
+
 ## 2026-08-19 — [FINDING, P0 correctness] `main` went red with every PR green — #2365 and #2366 collided on the 0DTE expiry resolver — FIXED
 
 > **kind:** `FINDING`
