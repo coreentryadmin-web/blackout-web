@@ -1359,6 +1359,44 @@ test("an empty read nulls BOTH time fields — never a stamp without an epoch", 
   assert.equal(read.last_bar_et, null);
 });
 
+// Polygon serves extended-hours minutes by default, and the filter bounded only the OPEN —
+// so after 16:00 ET the session VWAP, day high/low, `last` and `trend_5m` folded in
+// after-hours prints on an object named `rth`. Measured on real 2026-08-20 bars: 7/7
+// board tickers differed post-close, 5 of them flipping trend_5m outright, while all 8
+// mid-session checkpoints (10:00 through 15:59 ET) were byte-identical.
+test("after-hours bars are excluded from the RTH read", () => {
+  const rthBars = [ibar(0, 100), ibar(30, 101), ibar(380, 102)]; // 09:30, 10:00, 15:50
+  const withAfterHours = [...rthBars, ibar(400, 130), ibar(500, 140)]; // 16:10, 17:50
+  const clean = computeIntradayRead(rthBars);
+  const polluted = computeIntradayRead(withAfterHours);
+  assert.deepEqual(polluted, clean, "an after-hours print must not move any RTH number");
+  assert.equal(polluted.day_high, 102.5, "day_high must be the SESSION high, not an after-hours print");
+  assert.equal(polluted.last, clean.last, "last must be the close, not the after-hours last");
+});
+
+test("the close bound is exclusive — a 16:00-stamped bar is already after-hours", () => {
+  // Polygon minute bars are START-stamped: 15:59 covers 15:59:00-15:59:59 and is the last
+  // RTH bar; 16:00 is the first after-hours minute.
+  const upTo1559 = computeIntradayRead([ibar(0, 100), ibar(389, 101)]); // 09:30, 15:59
+  const plus1600 = computeIntradayRead([ibar(0, 100), ibar(389, 101), ibar(390, 199)]); // +16:00
+  assert.deepEqual(plus1600, upTo1559);
+  assert.equal(plus1600.last, 101, "the 16:00 bar must not become `last`");
+});
+
+test("pre-market bars stay excluded — the fix bounds the close without loosening the open", () => {
+  const withPre = computeIntradayRead([ibar(-120, 90), ibar(0, 100), ibar(30, 101)]); // 07:30 pre
+  const withoutPre = computeIntradayRead([ibar(0, 100), ibar(30, 101)]);
+  assert.deepEqual(withPre, withoutPre);
+});
+
+test("a bars set that is ENTIRELY after-hours reads as empty, never as a session", () => {
+  const read = computeIntradayRead([ibar(400, 130), ibar(500, 140)]);
+  assert.equal(read.vwap, null);
+  assert.equal(read.last_bar_ms, null);
+  assert.equal(read.last_bar_et, null);
+  assert.equal(read.trend_5m, "flat");
+});
+
 test("the stamp never replaces the epoch the gates compute on", () => {
   const bars = [ibar(0, 100), ibar(30, 101)];
   const read = computeIntradayRead(bars);

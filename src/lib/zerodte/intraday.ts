@@ -46,13 +46,30 @@ export type IntradayRead = {
 };
 
 const RTH_OPEN = 9 * 60 + 30;
+/** 16:00 ET — the close, EXCLUSIVE.
+ *
+ *  Polygon minute aggregates are START-stamped, so the last bar of the regular session
+ *  is stamped 15:59 (it covers 15:59:00-15:59:59). A bar stamped 16:00 is the first
+ *  after-hours minute, so the bound is `<`, not `<=`.
+ *
+ *  WHY THIS CONSTANT DID NOT EXIST. The filter below bounded only the OPEN, while the
+ *  function's own doc promised "non-RTH bars are ignored". Polygon serves extended-hours
+ *  minutes by default, so pre-market was correctly dropped and post-market silently was
+ *  not — after 16:00 ET the session VWAP, day high/low, `last` and `trend_5m` all folded
+ *  in after-hours prints, on an object named `rth`. */
+const RTH_CLOSE = 16 * 60;
 const OR_END = 10 * 60; // opening range = first 30 minutes
 
-/** Compute the intraday read from a session's minute bars (any order; non-RTH
- *  bars are ignored). Empty/absent RTH data → nulls, never a guess. */
+/** Compute the intraday read from a session's minute bars (any order; non-RTH bars —
+ *  pre-market AND after-hours — are ignored). Empty/absent RTH data → nulls, never a
+ *  guess. */
 export function computeIntradayRead(bars: IntradayBar[]): IntradayRead {
   const rth = bars
-    .filter((b) => Number.isFinite(b.t) && etMinutesOf(b.t) >= RTH_OPEN)
+    .filter((b) => {
+      if (!Number.isFinite(b.t)) return false;
+      const m = etMinutesOf(b.t);
+      return m >= RTH_OPEN && m < RTH_CLOSE;
+    })
     .sort((a, b) => a.t - b.t);
   if (rth.length === 0) {
     return {
