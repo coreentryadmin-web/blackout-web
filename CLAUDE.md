@@ -220,7 +220,32 @@ adjusts its numbers to match a peer has destroyed the signal and left a false co
    `.cursor/rules/live-ui-validation.mdc`. Real desk paths are `/nighthawk`, `/terminal`,
    `/vector`, `/flows`, `/heatmap` — there is no `/night-hawk` and no `/swings`; an unstyled
    Times render is the 404 page, not a CSS failure.
-3. **AWS — the operator supplies valid creds; the sandbox defaults are INVALID.** Default
+3. **AWS — WORKS IN-SESSION when the operator's creds are present (corrected 2026-08-21).** This
+   note previously said the sandbox defaults are always placeholders. That is not reliably true:
+   on 2026-08-21 `sts get-caller-identity` returned `arn:aws:iam::177922194517:user/vinay-blackout`
+   with no creds pasted that session. **Test before assuming** — `pip install boto3` (not
+   preinstalled, installs fine) then `boto3.client("sts").get_caller_identity()`. There is no `aws`
+   CLI; use boto3. Secrets Manager is writable: `blackout-production/<area>/<name>` is the
+   convention (`blackout-production/app/env` is a 98-key JSON blob ECS injects; `rds/master`;
+   `seo/gsc-service-account`; `marketing/x-pixel`).
+   **Before overwriting any existing secret, FINGERPRINT-COMPARE first** — a supplied credential is
+   often identical to what is already live, and blindly writing it risks breaking production for no
+   gain. `RESEND_API_KEY` was re-supplied on 2026-08-21 and proved byte-identical; nothing was
+   written.
+3b. **Google Search Console — service account, in Secrets Manager (2026-08-21).**
+   `blackout-production/seo/gsc-service-account` holds `claude-seo@blackout-trades.iam.gserviceaccount.com`,
+   verified `siteOwner` on **`sc-domain:blackouttrades.com`** — a **DOMAIN property**, so URL-encode
+   it as `sc-domain%3Ablackouttrades.com` in API paths. Getting that wrong returns an EMPTY result
+   rather than an error, which reads as "no search data" and is the same absence-as-fact trap this
+   file keeps documenting. A plain Google **API key does NOT work** for this API
+   (`UNAUTHENTICATED: API keys are not supported by this API`) — it needs a service account or OAuth.
+3c. **Python's crypto stack is BROKEN here — sign JWTs in Node.** `import cryptography` dies with a
+   `pyo3_runtime.PanicException` (`No module named '_cffi_backend'`), which takes `PyJWT` and
+   `google-auth` down with it, so the standard `google-api-python-client` path is unusable. Node's
+   built-in `crypto` works: `crypto.createSign("RSA-SHA256").update(unsigned).sign(sa.private_key)`
+   → POST `token_uri` with `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer`. `openssl` is
+   also present.
+3d. **AWS (original note, still true when creds ARE absent).** Default
    `AWS_ACCESS_KEY_ID/SECRET` env vars are placeholders (`InvalidClientTokenId`). When the operator
    pastes valid creds (in-session env vars), the `aws` CLI works through the proxy — pass `--region
    us-east-1` explicitly (bare `AWS_REGION` didn't stick; use `AWS_DEFAULT_REGION` or `--region`).
