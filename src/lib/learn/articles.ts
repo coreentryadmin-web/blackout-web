@@ -118,6 +118,9 @@ New to the terminology? See the [Options Trading Glossary](/learn/options-tradin
     description: "The gamma flip is the price where dealers switch from stabilizing the market to amplifying it. Learn to find it and why it defines the character of the day.",
     body: `If you only learn one dealer-positioning concept, make it the **gamma flip**. It's the price level where the market's behavior fundamentally changes — from calm and mean-reverting to fast and trending. Pros obsess over it because it tells them the *character* of the day before they place a single trade.
 
+![The gamma flip: net dealer gamma crossing zero, splitting the long-gamma stabilizing regime from the short-gamma amplifying regime.](/images/diagrams/gamma-flip.svg)
+*Above the flip, dealer hedging dampens moves; below it, hedging amplifies them.*
+
 ## What the gamma flip actually is
 
 The gamma flip is the price at which aggregate dealer gamma crosses from positive to negative. Above it, dealers are typically long gamma and *stabilize* the market. Below it, they flip short gamma and *destabilize* it. (For the underlying mechanics, see [What Is Dealer Gamma Exposure?](/learn/what-is-dealer-gamma-exposure). For how the hedging process works step by step, see [Delta Hedging Explained](/learn/delta-hedging-explained).)
