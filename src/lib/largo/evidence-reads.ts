@@ -35,22 +35,25 @@ export type { GraderAgreementForLargo };
 
 // ── Gate-blocked value (the counterfactual) ────────────────────────────────────────────────
 
+/** Same rule as `GraderAgreementForLargo`: a scalar that was not measured is `null`, and a list
+ *  that was not measured is ABSENT — an empty `by_gate` invites "no gate blocked anything", which
+ *  is the opposite of what a failed read means. */
 export type GateValueForLargo = {
   available: boolean;
   window_days: number;
   /** Every gate-blocked play in the window, whether or not it could be graded. */
-  blocked_total: number;
+  blocked_total: number | null;
   /** Of those, counterfactually graded on real bars. NEVER assumed equal to blocked_total. */
-  graded_total: number;
+  graded_total: number | null;
   /** Graded plays the gate was right about — they would have lost. */
-  would_have_lost_total: number;
+  would_have_lost_total: number | null;
   /** Graded plays the gate cost us — they would have won. This is the number that makes the
    *  measurement honest, and it is required rather than optional for exactly that reason. */
-  would_have_won_total: number;
+  would_have_won_total: number | null;
   /** Blocked plays that would not even have filled — the gate was trivially right. Kept out of
    *  the won/lost read, per `gateBlockedValue`'s own contract. */
-  unfilled_total: number;
-  by_gate: GateBlockedValueLine[];
+  unfilled_total: number | null;
+  by_gate?: GateBlockedValueLine[];
   note?: string;
 };
 
@@ -85,8 +88,12 @@ export async function gateBlockedValueForLargo(days = 30): Promise<GateValueForL
     const decisive = graded.filter((g) => g.outcome !== "unfilled");
     const won = decisive.filter((g) => g.won).length;
 
+    // `available: inputs.length > 0` reported a SUCCESSFUL read of a quiet window as if the tool
+    // were unavailable. "The publish gate blocked nothing in 30 days" is a real measurement — and
+    // an important one, since a gate that never fires may be miscalibrated — but Largo could never
+    // say it, because the payload told the model there was no data. The read succeeded.
     return {
-      available: inputs.length > 0,
+      available: true,
       window_days: windowDays,
       blocked_total: inputs.length,
       graded_total: graded.length,
@@ -102,16 +109,20 @@ export async function gateBlockedValueForLargo(days = 30): Promise<GateValueForL
             : undefined,
     };
   } catch (err) {
+    // Five zeros used to ship here. "0 plays blocked" on a FAILED read is the most misleading
+    // number this tool can produce: the gate's entire value proposition is the count of bad plays
+    // it stopped, so a broken read published the gate as having done nothing.
     return {
       available: false,
       window_days: windowDays,
-      blocked_total: 0,
-      graded_total: 0,
-      would_have_lost_total: 0,
-      would_have_won_total: 0,
-      unfilled_total: 0,
-      by_gate: [],
-      note: `gate-value read failed: ${err instanceof Error ? err.message : String(err)}`,
+      blocked_total: null,
+      graded_total: null,
+      would_have_lost_total: null,
+      would_have_won_total: null,
+      unfilled_total: null,
+      note:
+        `gate-value read failed: ${err instanceof Error ? err.message : String(err)} — ` +
+        `none of these totals is a measurement. Do not say the gate blocked nothing.`,
     };
   }
 }
@@ -126,15 +137,17 @@ export async function graderAgreementForLargo(days = 90): Promise<GraderAgreemen
     grader_b: "official lane · executable / as-executed",
   };
   if (!dbConfigured()) {
+    // Was four zeros and an empty list. `agreement_pct` in the same object already knew to be
+    // null; the counts did not, so a failed read published "0 plays, 0 comparable, 0 agreed"
+    // as though it had looked. Nothing here was measured, so nothing here is a number.
     return {
       ...base,
       available: false,
-      total_plays: 0,
-      comparable: 0,
-      agreed: 0,
+      total_plays: null,
+      comparable: null,
+      agreed: null,
       agreement_pct: null,
-      disagreements: [],
-      note: "database_unavailable",
+      note: "database_unavailable — nothing was read, so none of these counts is a measurement.",
     };
   }
   try {
@@ -143,25 +156,32 @@ export async function graderAgreementForLargo(days = 90): Promise<GraderAgreemen
     const since = formatEtDate(new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000));
     const rows = (await fetchZeroDteSetupLogRange(since, Math.min(2000, windowDays * 20))) as LedgerRowLike[];
     const cmp = compareGraderLanes(rows);
+    // `available: cmp.comparable > 0` reported a SUCCESSFUL read of a window with nothing to
+    // compare as if the tool were unavailable — and threw away `total_plays`, which is a real
+    // measurement of that window. "We looked at 54 plays and none carries a grade on both lanes"
+    // is an answer, and a useful one; "unavailable" is not. The read succeeded, so available is
+    // true and the missing RATE stays null.
     return {
       ...base,
       ...cmp,
-      available: cmp.comparable > 0,
+      available: true,
       note:
-        cmp.comparable === 0
-          ? "No rows in this window carry a grade on both lanes — nothing to compare."
+        (cmp.comparable ?? 0) === 0
+          ? "No rows in this window carry a grade on both lanes, so there is no agreement rate " +
+            "to quote. This is a MEASURED result over `total_plays`, not a failed read."
           : undefined,
     };
   } catch (err) {
     return {
       ...base,
       available: false,
-      total_plays: 0,
-      comparable: 0,
-      agreed: 0,
+      total_plays: null,
+      comparable: null,
+      agreed: null,
       agreement_pct: null,
-      disagreements: [],
-      note: `grader comparison failed: ${err instanceof Error ? err.message : String(err)}`,
+      note:
+        `grader comparison failed: ${err instanceof Error ? err.message : String(err)} — ` +
+        `none of these counts is a measurement.`,
     };
   }
 }
