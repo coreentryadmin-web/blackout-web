@@ -18,6 +18,12 @@ import { chromium } from "playwright";
 import sharp from "sharp";
 import crypto from "node:crypto";
 import { createAuditClerkUser } from "./audit/lib/clerk-audit-user.mjs";
+// Every publish gate the cron path uses, imported rather than reimplemented — see the module
+// header for the measured defect this closes (this script had NONE of them).
+import {
+  recordManualPost,
+  resolvePublishRefusal,
+} from "./audit/lib/x-publish-guard.mjs";
 
 const args = process.argv.slice(2);
 const flag = (k) => args.includes(`--${k}`);
@@ -913,7 +919,7 @@ function buildTweet(ticker, plan) {
   return text.slice(0, 280);
 }
 
-async function postShowcaseCollage(collagePath, tweetText, xCreds, manifest) {
+async function postShowcaseCollage(collagePath, tweetText, xCreds, manifest, secrets) {
   if (!existsSync(collagePath)) {
     throw new Error(`Collage missing: ${collagePath}`);
   }
@@ -930,8 +936,27 @@ async function postShowcaseCollage(collagePath, tweetText, xCreds, manifest) {
     return;
   }
 
-  if (!xCreds.ck || !xCreds.at) {
-    throw new Error("X API credentials missing from secrets — cannot post");
+  // THE GATE. Runs before any X write — media upload included, because an upload is itself a
+  // billed API call against the same budget. A refusal here is a normal, successful outcome of the
+  // run: the collage and manifest are still written, nothing is published.
+  const { refusal, guard } = await resolvePublishRefusal({
+    secrets,
+    text: tweetText,
+    hasCredentials: Boolean(xCreds.ck && xCreds.at),
+  });
+  if (refusal) {
+    manifest.posted = { skipped: true, reason: refusal, guard };
+    writeManifest(manifest);
+    console.log(`REFUSED — ${refusal}`);
+    console.log("Collage + manifest written; nothing was published.");
+    return;
+  }
+  if (guard) {
+    console.log(
+      `Post guard OK — ${guard.postsToday} post(s) today, ${
+        guard.minutesSinceLast == null ? "no prior post" : `${Math.round(guard.minutesSinceLast)}m since last`
+      }`,
+    );
   }
 
   const mediaId = await uploadMedia(collage, xCreds);
@@ -939,6 +964,11 @@ async function postShowcaseCollage(collagePath, tweetText, xCreds, manifest) {
   const tweetId = assertSafeTweetId(result.id);
   const url = tweetPublicUrl(tweetId);
   console.log(`Tweet API accepted id=${tweetId} — verifying on timeline…`);
+
+  // Count it against the ET-day budget the admin panel reports. Recorded immediately after the API
+  // accepts, NOT after timeline verification: the request has been spent either way, and a budget
+  // that only counts posts we could confirm under-reports exactly when things are going wrong.
+  await recordManualPost();
 
   const verification = await verifyTweetPersisted(tweetId, xCreds);
   manifest.posted = {
@@ -1009,7 +1039,7 @@ async function main() {
     const collagePath = join(OUT, `showcase-${TICKER}-collage.png`);
     const tweetText = buildTweet(TICKER, plan);
     try {
-      await postShowcaseCollage(collagePath, tweetText, xCreds, manifest);
+      await postShowcaseCollage(collagePath, tweetText, xCreds, manifest, secrets);
     } catch (err) {
       manifest.error = String(err?.message ?? err);
       writeManifest(manifest);
@@ -1054,7 +1084,7 @@ async function main() {
     console.log(`Collage: ${collagePath} (${collage.length} bytes)`);
 
     const tweetText = buildTweet(TICKER, plan);
-    await postShowcaseCollage(collagePath, tweetText, xCreds, manifest);
+    await postShowcaseCollage(collagePath, tweetText, xCreds, manifest, secrets);
   } catch (err) {
     manifest.error = String(err?.message ?? err);
     writeManifest(manifest);
