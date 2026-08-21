@@ -269,7 +269,19 @@ export function orbitalGeometry(size: number): OrbitalGeometry {
   // disc — and `labelMaxW` is DERIVED rather than a second constant, so a label can never be
   // allowed to be wider than the room it has. A constant that has to agree with a geometry is a
   // constant that eventually disagrees with it.
-  const box = Math.max(size, MIN_ORBITAL_SIZE);
+  return orbitalGeometryUnclamped(Math.max(size, MIN_ORBITAL_SIZE));
+}
+
+/**
+ * The same geometry WITHOUT the legibility floor.
+ *
+ * Exists so `MIN_ORBITAL_SIZE`'s own regression test can ask "does a box just below the floor
+ * really collide?" — a question `orbitalGeometry` cannot answer, because it clamps. Sharing the
+ * formula is the point: a test that recomputed the disc its own way to sweep below the floor
+ * would be proving something about its own arithmetic, which is precisely the failure this whole
+ * change is about. Not for rendering — nothing should draw a disc below the floor.
+ */
+export function orbitalGeometryUnclamped(box: number): OrbitalGeometry {
   const margin = Math.min(LABEL_MARGIN, box * 0.3);
   const R = box / 2 - margin;
   const rimR = R + 10;
@@ -279,14 +291,41 @@ export function orbitalGeometry(size: number): OrbitalGeometry {
 const LABEL_MARGIN = 96;
 
 /**
- * Below this the diagram cannot be drawn honestly: the innermost orbit stops clearing the core
- * mark, so the heaviest pillar — the one the reader most needs — paints over the centre. Rather
- * than render a broken disc at whatever size it was handed, the geometry takes the floor and the
- * component sizes its box from `geo.size`. Refusing to shrink past a legibility limit is the
- * same principle as "no data, no mark": better a diagram that takes the room it needs than one
- * that lies at the size it was given.
+ * Below this the diagram cannot be drawn honestly.
+ *
+ * The floor was 300, set by the CORE MARK: below it the innermost orbit stops clearing the
+ * centre, so the heaviest pillar — the one the reader most needs — paints over it.
+ *
+ * The binding constraint is now the LABELS, and it is larger. The report panel renders this
+ * diagram at 310 collapsed and 400 expanded; at 310 two rim labels physically overlap. Measured
+ * on live prod 2026-08-21 (BEKE, Report tab, collapsed):
+ *
+ *   "Thermal nodes" ∩ "Vector expected move"  →  8.79 × 6.71px
+ *
+ * Swept with the shipping label set through the same `orbitalGeometry` / `orbitalLabelOffset`
+ * the component calls, the overlap count goes 2 → 1 at 328px and 1 → 0 at **376px**, in both
+ * weight regimes. 376 is therefore the smallest box at which this diagram's own labels do not
+ * print through each other, and `orbital labels: the floor really is the floor` sweeps for it so
+ * the number cannot silently stop being true.
+ *
+ * Refusing to shrink past a legibility limit is the same principle as "no data, no mark": better
+ * a diagram that takes the room it needs than one that lies at the size it was given. The
+ * component already sizes its box from `geo.size` rather than from the prop, so raising the floor
+ * is enough — no call site has to know.
  */
-export const MIN_ORBITAL_SIZE = 300;
+export const MIN_ORBITAL_SIZE = 376;
+
+/**
+ * The rendered metrics of `.ms-orb-label`, measured rather than assumed.
+ *
+ * `CHAR_PX` is the 0.52rem mono advance and `LINE_PX` the label's box height. They live here, not
+ * in the test, because the test that uses them is the guard for label collision — and a guard
+ * that carries its own private idea of how wide a character is can pass while the render fails.
+ * `LINE_PX` was 11 in that test; the live box measures 12.47px, which is enough on its own to
+ * turn a real vertical overlap into a miss.
+ */
+export const ORBITAL_LABEL_CHAR_PX = 5.7;
+export const ORBITAL_LABEL_LINE_PX = 12.5;
 
 /**
  * Where a node's label sits, expressed as an offset from the ORB (which is where the label is
