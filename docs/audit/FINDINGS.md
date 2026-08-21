@@ -4,6 +4,36 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-21 — [FINDING, P0 correctness] SPX 0DTE net-GEX sign false-flagged vs UW when overlay timed out at 2s — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Severity** | P0 data-correctness (ops-auto-fix #2503, fingerprint `ee994b4b2bf8`). |
+| **Root cause** | Three coupled defects. (1) `finalizeHeatmapForServe` raced the UW overlay against a **2s** cap and returned the **un-overlaid Polygon book** on timeout with **no** `odte_overlay` marker — Polygon 0DTE net sign routinely disagrees with UW `spot-exposures/expiry-strike`. (2) `heatmap-verifier` INV-3 compared served side-constrained call/put walls (#2417) to an **unconstrained** `deriveWalls`, false-flagging SPY/SPX (e.g. put 7600 vs 7650). (3) Cross-provider oracle compared UW to Polygon whenever overlay silently skipped. |
+| **Evidence** | Live ops-collect 2026-08-21 13:07Z: intermittent flags `[cross-provider/net_gex] SPX 0DTE net-GEX sign (positive) CONTRADICTS UW (… negative)` plus `[invariant/call_wall]` / `[invariant/put_wall]` side-constraint mismatches; 3/3 probe runs showed flags on 2/3. |
+| **Fix** | Overlay default cap **2s → 8s**; timeout now stamps `odte_overlay: { applied: false, reason: "overlay_timeout" }`; SPX matrix **build** applies overlay before cache write; cross-provider skips when overlay did not apply; INV-3 passes `spot` into side-constrained `deriveWalls`. |
+| **Status** | FIXED — tsc clean, run-tests green on Node 20. |
+
+## 2026-08-21 — [FINDING, P1 Largo/Night Hawk] Largo denied the iron condor exists and confabulated a 60–65% win rate from another product — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Stress-testing live Largo: *"What is the win rate on the Night Hawk iron condor, and is there a catch?"* Largo answered **"Night Hawk does not have a dedicated iron condor setup type"** and quoted a made-up **"~60–65% win rate"** pulled from **SPX Slayer's** track record. The 0DTE iron condor is a production, flag-ON-by-default Night Hawk product (`condor.ts`, `iron-condor.ts`) — it sells a delta-neutral 0DTE condor, short strikes ±0.6–0.8% from midday, and is rendered on the member's own command deck with its win rate and breach rate. Largo told a member a live product does not exist and invented a number for it. |
+| **How it was found** | A live Largo stress battery of hard member questions, cross-checked against ground truth — the exact "test Largo with realistic and difficult member questions" loop. Not a truncation and not an arithmetic slip: a total knowledge gap that the model papered over by confabulating. |
+| **Root cause — the fleet signature** | The fact exists in the system and is not wired to the tool that needs it. The `condor` desk submodule's `preferredTools` were `get_zerodte_plays` and `get_open_plays` — **neither carried condor geometry** — and **no tool anywhere** returned the condor's win rate or breach rate. With nothing to route to and no "I don't have that" reflex, the model confabulated. The condor's numbers were on the board's ledger rows (`is_condor`, `condor: CondorGeometry`) and in the engine's exported constants the whole time; `zeroDtePlaysForLargo` dropped them. |
+| **Fix — expose the capability, never hard-code the answer** | New pure `src/lib/largo/zerodte-condor-for-largo.ts`. `ironCondorProductForLargo()` emits the **stable product descriptor** from the engine's own exported constants (`CONDOR_WINRATE_BY_WIDTH`, `SURFACED_WIN_RATE_CAP=97`, `SHIPPED_INTRADAY_BREACH_PCT=18.7`): what it is, win-rate-by-width, the 18.7% intraday-breach companion, and the negative-skew rule in words the model cannot drop. `liveCondorForLargo(geom)` surfaces one committed condor's strikes/credit/breach via the **same `condorWinRateLine`** the member's terminal renders, so tool and desk cannot disagree. Both are attached to `get_zerodte_plays` (the descriptor gated on the same `condorFlagEnabled()` the board builds under; the per-row view on `is_condor` rows). |
+| **Why a stable descriptor and not only live rows** | "What is the condor win rate" is mostly a PRODUCT question, and its answer holds whether or not a condor is live this minute — pre-open, none is. A tool that surfaced only live rows would leave Largo empty pre-market and it would confabulate again. The descriptor is answerable with no live position. |
+| **The honest-skew rule carried end-to-end** | The one non-negotiable of this product is that its high win rate is NEGATIVE skew. `iron-condor.ts` caps the surfaced WR at 97 and nulls the breach companion off-geometry; `condor-render.ts` pairs the two; the descriptor states it in prose and the tool description orders the model to ALWAYS pair the win rate with the breach rate and NEVER surface it as free edge. |
+| **Routing + a stale-times bug fixed alongside** | `get_zerodte_plays`'s description now names the iron condor as living HERE (so the model routes to it and never quotes another product), and the `condor` submodule drops `get_open_plays` (the SPX single-instrument engine, which never had condor data). Also fixed: the same description told the model *"no new entries after 15:00 ET, hard exit by 15:30 ET"* while the payload's own authoritative `rules` field says *"10:00–15:30 ET, hard exit 15:50 ET"* — the model was being fed contradictory times (it showed up live as a garbled 0DTE exit-time answer). The description now matches the `rules` field and says to quote it. |
+| **Blast radius** | `zeroDtePlaysForLargo` payload (adds `iron_condor` + per-row `condor`), the `get_zerodte_plays` tool description, and the `condor` submodule's preferred tools. No provider, no board construction, no grading, no UI. The board already computes and renders the condor; this makes the model agree with it. |
+| **Regression guard** | `src/lib/largo/zerodte-condor-for-largo.test.ts` (+6, pure): the descriptor answers "what is the win rate" with the breach companion; the surfaced WR is never a literal 100 and the cap provably bit on the widest bucket; width and WR rise together (0.6%≈77, 0.8%≈92); a live row pairs WR with breach; an off-geometry condor with no breach companion is FLAGGED, not surfaced as free edge; a directional row has no condor view. |
+| **Not a trading-behaviour change** | No gate, rail, sizing, exit rule or grading function is touched — the condor engine and its numbers are unchanged; only their EXPOSURE to Largo. No `sim:0dte` before/after is owed. |
+| **Status** | FIXED — awaiting deploy + live re-ask of the same question. |
+
 ## 2026-08-21 — [FINDING, P2 tooling] A conflicted PR has NO CI run at all, and the absence read as a broken CI trigger — FIXED
 
 > **kind:** `FINDING`
