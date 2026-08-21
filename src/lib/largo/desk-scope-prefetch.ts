@@ -243,9 +243,15 @@ export async function buildTurnSnapshot(input: {
 
   const nowMs = Date.now();
   return {
-    // ET-anchored: formatDiffBlock renders this straight into the prompt, and a UTC calendar date
-    // rolls at 20:00 ET — so the last four hours of every session would be narrated under
-    // tomorrow's date.
+    // ET-anchored, not UTC. This block is injected as desk context and formatDiffBlock renders it
+    // straight into the prompt, and a UTC calendar date rolls at 20:00 ET — so the last four hours
+    // of every session would be narrated under tomorrow's date. The measured failure: the model
+    // concluded the current session was the NEXT calendar day and invented a "prior close" for the
+    // session that had just ended. See largo-live-feed.ts.
+    //
+    // `?? new Date(nowMs).toISOString()` is unreachable in practice (nowMs is always a finite
+    // epoch) and exists only to keep the field non-nullable for the declared type — a null here
+    // would be worse than a UTC stamp, because an absent `as_of` reads as "no time at all".
     as_of: etStamp(nowMs) ?? new Date(nowMs).toISOString(),
     session_date: etSessionDate(nowMs),
     // WHICH MATRIX the levels below came from. Without it two turns 90 seconds apart can hold

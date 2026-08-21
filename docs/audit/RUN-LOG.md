@@ -429,3 +429,115 @@ removed) deployed** — so this is the "before" column for tomorrow's comparison
    everyone (~442 samples, 60s median) including SPX — no per-ticker bias there. On 0dte/weekly/
    monthly, SPX sits at 3845-3964 samples / 5s median while every other name is 64-750 with 35-70
    minute holes. That is the viewing-drives-density effect #2322 removes.
+
+## 2026-08-21 — Largo payload hygiene: both systemic classes measured to ZERO
+
+`scripts/audit/largo-payload-hygiene.mjs`, 28 tools, live upstream data, run through the REAL
+model-facing path (`roundResultForReading`, as `makeGuardedToolRunner` applies it).
+
+| class | before | after | fixed by |
+|---|---|---|---|
+| `bare_epoch` (a timestamp with no readable date on the same object) | 60 | **0** | #2418 |
+| `unrounded_float` (more decimals than any real measurement) | 547 | **0** | #2419 |
+
+`21/21 SCANNED tools clean · 0 flagged leaves · 7 EMPTY · 0 ERRORED`. The 7 EMPTY are off-hours
+tools with genuinely no data (post-close); they are reported as UNKNOWN and are NOT counted as
+passes — an empty payload scans clean by construction, which is the failure this harness exists to
+catch and once committed itself.
+
+**Scope of the claim.** This runs the real code path against live upstreams, so it proves the fixes
+work. It does not prove members are receiving them — that is the deploy, which was still rolling ECS
+when this ran. The separate answer-level check (`scratch/largo-dated-close-probe.mjs`, baseline
+**1/5** dated closes correct) hits the live site and is still outstanding.
+
+**Harness correction made in the same run.** The scanner previously called `runLargoTool` directly,
+which bypasses the guarded runner — so it was measuring a payload no model ever sees. It would have
+kept reporting hundreds of already-rounded floats as violations, and could not have verified #2419
+at all. It now mirrors the real path and refuses to run if it cannot resolve the rounding function,
+rather than silently scanning the raw surface again.
+
+## 2026-08-21 — Largo truncation probe, first live run (Night Hawk lane)
+
+New harness `scripts/audit/largo-truncation-probe.mjs`. Asks the LIVE agent whether each tool's
+raw `tool_result` ended with the transport's `…[truncated]` marker — the question no prior Largo
+audit asked, and the only way to answer it from this sandbox (the in-process hygiene scanner
+cannot reach any DB-backed tool here).
+
+```
+CONTROL get_nighthawk_outcomes -> TRUNCATED
+  instrument PROVEN — it detected a real truncation, so COMPLETE below means clean
+
+  ✅ get_zerodte_record         COMPLETE
+  ✅ get_zerodte_plays          COMPLETE
+  ✅ get_nighthawk_edition      COMPLETE
+  ❌ get_nighthawk_outcomes     TRUNCATED
+
+=== 1 TRUNCATED · 3 clean · 0 unverified · 0 indeterminate ===
+```
+
+Two results worth recording:
+
+1. **#2433 and #2436 are confirmed holding in PRODUCTION**, not merely CI-green — `get_zerodte_record`
+   and `get_nighthawk_edition` both come back COMPLETE, and `get_zerodte_record`'s last visible key
+   is `plays`, which is exactly the aggregates-first / sample-last shape #2433 shipped.
+2. **The control fired**, so the three COMPLETEs are trustworthy negatives rather than a run that
+   silently never reached the model. `get_nighthawk_outcomes` is the tool #2480 fixes and is still
+   truncated on the deployed build, as expected.
+
+Swept separately with the same probe and also COMPLETE: `get_nighthawk_dossier` (last key
+`archived`), `get_cortex_decision` (`context`), `get_horizon_outcomes` (`sample`).
+
+
+## 2026-08-21 — Largo truncation probe, full lane sweep (Night Hawk)
+
+Second live run, now over all 13 lane tools rather than 3-4 at a time. Two things came out of it —
+one a validation, one a defect in the harness itself.
+
+```
+CONTROL get_nighthawk_outcomes -> TRUNCATED
+  instrument PROVEN — it detected a real truncation, so COMPLETE below means clean
+
+  ✅ get_zerodte_record       ✅ get_zerodte_plays      ✅ get_zerodte_rejections
+  ✅ get_nighthawk_edition    ❌ get_nighthawk_outcomes ✅ get_nighthawk_horizons
+  ✅ get_nighthawk_dossier    ✅ get_horizon_outcomes   ✅ get_cortex_decision
+  ✅ get_gate_blocked_value   ✅ get_grader_agreement
+  ❔ get_banger_board         ❔ get_swing_horizon      — HTTP 401
+
+=== 1 TRUNCATED · 10 clean · 0 unverified · 2 indeterminate ===
+```
+
+**The validation.** Ten lane tools measured CLEAN in production with the control proving the
+instrument in the same run. `get_zerodte_record` (#2433) and `get_nighthawk_edition` (#2436) are
+confirmed holding on the deployed build, and eight more lane tools now have a first measurement
+rather than an assumption. `get_nighthawk_outcomes` is still TRUNCATED, which is correct: #2480
+fixes it and is still an unmerged draft. Nothing here is new breakage.
+
+**The defect, in the probe.** The FIRST attempt at this sweep returned twelve INDETERMINATEs and
+gave no way to tell why — a model that hedged, a model that never answered, and twelve HTTP
+failures all rendered as the same blank. They were HTTP 401: the temp Clerk session stops
+authenticating partway through a run this long. One fact — the session died — had been smeared
+across twelve rows, each of which read like a finding about a tool.
+
+That is the same shape this repo keeps catching in the product (an absence printed as an
+emptiness), found this time in the audit tooling. Two changes: every INDETERMINATE now states
+which kind of unknown it is (`HTTP 401 — the question never reached the model`, `reply claimed
+BOTH truncated and complete`, `empty reply`, `never appears in the trace`), and a 401/403 now
+ABORTS the run and says so once, instead of spending the remaining queries on a locked door and
+reporting the results as per-tool unknowns.
+
+`get_banger_board` and `get_swing_horizon` were left UNMEASURED by that run, not clean — and a
+gap you have written down is a gap you have to close. Re-probed on their own (a two-tool run stays
+well inside the session's lifetime, which is what the abort now makes visible):
+
+```
+CONTROL get_nighthawk_outcomes -> TRUNCATED
+  instrument PROVEN
+
+  ✅ get_banger_board       COMPLETE
+  ✅ get_swing_horizon      COMPLETE
+
+=== 0 TRUNCATED · 2 clean · 0 unverified · 0 indeterminate ===
+```
+
+**The lane is now fully measured**: 12 of 13 tools COMPLETE on the deployed build, and the one
+TRUNCATED is `get_nighthawk_outcomes`, which #2480 fixes and which is still an unmerged draft.
