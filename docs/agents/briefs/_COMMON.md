@@ -195,6 +195,7 @@ node scripts/audit/findings-merge-resolve.mjs   # coordinator-only, during a mer
 npm test                                        # exact command CI runs; warns loudly off Node 20
 ```
 
-See also `docs/agents/FLEET.md` (why the fleet is structured this way),
+See also `docs/agents/COORDINATOR.md` (the coordinator's standing role — what it owes you, and
+when a task force is archived), `docs/agents/FLEET.md` (why the fleet is structured this way),
 `CLAUDE.md` (audit policy, environment realities), and
 `docs/audit/LARGO-PRODUCT-CONTRACT.md` (the ten-point contract every Largo-facing read follows).

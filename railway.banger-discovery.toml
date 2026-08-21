@@ -1,0 +1,39 @@
+# Railway config for the Banger-Discovery cron service.
+# Wire it up: service Settings -> Config-as-code -> set path to "railway.banger-discovery.toml"
+# Requires CRON_SECRET on this service (same value as blackout-web).
+#
+# WHY THIS FILE EXISTS AT ALL (added 2026-08-21). `banger-discovery` was present in blackout-infra's
+# terraform/modules/crons/cron-jobs.json but had NO railway.*.toml. That manifest is GENERATED —
+# blackout-infra's scripts/sync-cron-schedules.mjs reads every railway.*.toml in this repo and
+# writeFileSync's the whole file from scratch, with no merge and no preservation of hand-added
+# entries. So this job's schedule existed only as a hand-edit in the generated output, and the next
+# person to run the sync would have deleted it silently. The route would still exist, still be
+# registered in cron-registry.ts, still report "healthy" — and never fire again. This file makes the
+# schedule survive a regeneration. (`x-autopost` has the same gap and still needs the same treatment.)
+[build]
+builder = "nixpacks"
+buildCommand = "echo 'cron trigger service: no app build needed'"
+# Only redeploy this trigger service when its OWN driver/config changes — NOT on docs/src commits.
+watchPatterns = [
+  "scripts/hit-cron.mjs",
+  "railway.banger-discovery.toml",
+  "nixpacks.toml",
+]
+
+[deploy]
+startCommand = "node scripts/hit-cron.mjs /api/cron/banger-discovery"
+# TWO UTC HOURS, because EventBridge classic Rules fire on a FIXED UTC clock and the 16:00 ET close
+# moves with daylight saving. 20:15 UTC is 16:15 ET in EDT; 21:15 UTC is 16:15 ET in EST — so one
+# fire always lands ~15 min AFTER the close whatever the offset. The route's own inEtWindow guard
+# self-skips the off-band fire, and it does so BEFORE claiming the day's idempotency marker, so the
+# skipped fire cannot lock out the good one.
+#
+# This replaces `15 20 * * 1-5` (single fire), which was 16:15 ET only in EDT and 15:15 ET — FORTY-FIVE
+# MINUTES BEFORE THE CLOSE — in EST, where it screened an unsettled grouped-daily tape and committed
+# positions from it. Mirrors railway.gex-eod-snapshot.toml / railway.nighthawk-outcomes.toml's
+# dual-band convention.
+# NOTE: if cronSchedule was set in the Railway dashboard UI, the dashboard value overrides this
+# TOML — update it there too.
+cronSchedule = "15 20,21 * * 1-5"
+restartPolicyType = "never"
+numReplicas = 1
