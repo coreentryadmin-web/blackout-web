@@ -497,3 +497,32 @@ export function dedupeEarningsRowsByEvent<T extends { ticker?: string | null; da
   );
   return [...keyed, ...unkeyable];
 }
+
+/**
+ * How far back to look, and how many rows to ask for, to actually GET `prints` past prints.
+ *
+ * The lookback MUST be derived from the number of prints wanted, never fixed — the same lesson
+ * `barLimitForWindow` cost us on the Polygon aggregates. This was pinned at 420 days, which is
+ * ~4.6 quarters, so a caller asking for 6 prints could never receive 6. Measured live 2026-08-21
+ * against the 420-day window: NVDA returned 4 usable past prints, WMT 5, AAPL 5 — every one short
+ * of the 6 the pre-earnings pack requests and the 8 `loadMeridianEarningsPrintHistory` defaults to.
+ *
+ * It is not a WRONG number — `print_history_summary` states its real n ("4/4 EPS beats over last 4
+ * prints"), so nobody is misled about the sample. It is a silently SMALLER sample than asked for,
+ * which quietly weakens every beat-rate and average-move statistic computed over it.
+ *
+ * ~91 days between quarterly prints; 95 gives slack for a shifted report date, plus a 60-day
+ * cushion so a company that reports slightly late still yields the full count.
+ */
+const DAYS_PER_QUARTERLY_PRINT = 95;
+export function benzingaTickerWindow(prints: number): { lookbackDays: number; limit: number } {
+  const wanted = Math.min(24, Math.max(1, Math.trunc(prints) || 1));
+  return {
+    lookbackDays: wanted * DAYS_PER_QUARTERLY_PRINT + 60,
+    // The response is sorted `date.desc` over a window spanning past AND future, and Benzinga
+    // projects ~4-8 quarters ahead — those future rows sit at the TOP of a desc sort and consume
+    // the budget before any past print is reached. So the cap has to cover both ends, not just
+    // the prints being asked for. +12 covers the projected tail with room.
+    limit: Math.min(200, wanted + 12),
+  };
+}

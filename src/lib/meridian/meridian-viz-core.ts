@@ -699,7 +699,37 @@ export function etWallClockToIso(ymd: string | null | undefined, hhmmss?: string
  *
  * When the items cannot all fit at `minGap`, they distribute evenly across the full span:
  * squashing is honest (they really are that close), silent overlap is not.
+ *
+ * `minGap` MUST be a real row height, measured, not assumed — see MV_LADDER_ROW_PX.
  */
+/**
+ * The dealer-structure ladder's geometry, in ONE place because CSS and this module have to agree.
+ *
+ * `MeridianStructureLadder` fed `resolveCollisions` a hardcoded `16 / 132` — "one row height as a
+ * fraction of the ladder". The ladder really is 132px, but a row is **not** 16px. Measured live
+ * on prod 2026-08-21 (mobile 430x932, BABA positioning tab):
+ *
+ *   ladder height 132px · row height 20.5px · enforced centre gap 16px
+ *   Spot → Call wall        centres 16.0px apart → overlap  4.5px
+ *   Call wall → King node   centres 16.0px apart → overlap  4.5px
+ *   King node → Gamma flip  centres 22.3px apart → overlap  6.8px
+ *   Gamma flip → Put wall   centres 17.8px apart → overlap 11.3px
+ *
+ * EVERY adjacent pair overlapped. The resolver was doing exactly what it was told; it was told a
+ * row was 16px tall when it renders at 20.5px, so "one row height" of separation was 4.5px short
+ * of one row height. `meridian-interaction-audit.mjs` measured the same collisions independently
+ * at 1440px — `"King node" ∩ "Gamma flip" 74x4px`, `"Gamma flip" ∩ "Put wall" 74x8px`.
+ *
+ * This is the `largo-card-deadspace.mjs` lesson again: a layout packed against an ESTIMATE that
+ * nothing ever compared to pixels. The row height is now PINNED in CSS (`--mv-ladder-row-h`) and
+ * asserted equal to this constant by `meridian-viz-core.test.ts`, so the two cannot drift apart
+ * silently again.
+ */
+export const MV_LADDER_HEIGHT_PX = 132;
+export const MV_LADDER_ROW_PX = 20;
+/** One full row of separation, as the [0,1] fraction `resolveCollisions` works in. */
+export const MV_LADDER_MIN_GAP = MV_LADDER_ROW_PX / MV_LADDER_HEIGHT_PX;
+
 export function resolveCollisions(positions: number[], minGap: number): number[] {
   const n = positions.length;
   if (n === 0) return [];

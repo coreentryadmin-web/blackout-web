@@ -42,7 +42,9 @@ export async function loadMeridianEarningsPrintHistory(
   history_error: string | null;
 }> {
   const sym = ticker.trim().toUpperCase();
-  const benzingaRes = await loadBenzingaTickerEarnings(sym, eventDate ?? null);
+  // Forward the count we actually need: the loader derives its LOOKBACK WINDOW from it. Pinned at
+  // 420 days, the window was ~4.6 quarters, so asking for 8 prints returned 4-5 (measured live).
+  const benzingaRes = await loadBenzingaTickerEarnings(sym, eventDate ?? null, limit);
 
   const print_history = benzingaRowsToPrintHistory(benzingaRes.rows, limit);
 

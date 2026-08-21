@@ -15,6 +15,10 @@ import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { isTradingDayEt, inRthOpenWindow, etParts, todayEtYmd } from "./gha-et-window.mjs";
 import { flipsAgree, spotsAgree } from "./audit/lib/cross-tool-tolerance.mjs";
+import {
+  isVectorCandleStale,
+  maxVectorCandleFreshSec,
+} from "./audit/lib/vector-candle-freshness.mjs";
 import { mintVectorAuditSession } from "./audit/lib/vector-audit-auth.mjs";
 
 const baseArg = process.argv.find((a) => a.startsWith("--base="));
@@ -30,6 +34,7 @@ mkdirSync(OUT, { recursive: true });
 const GUIDE_CAP = 6;
 const BEAD_CAP = 8;
 const WALL_DEPTH_PROBE = 6;
+const STREAM_PROBE_MS = 8000;
 
 function etClock(now = new Date()) {
   const p = etParts(now);
@@ -160,7 +165,7 @@ async function probeStream(session, holdMs = 8000) {
   return result.snaps;
 }
 
-async function runTick(session, tickNum) {
+async function runTick(session, tickNum, probeHoldMs = STREAM_PROBE_MS) {
   const issues = [];
   const warns = [];
   const et = etClock();
@@ -168,7 +173,7 @@ async function runTick(session, tickNum) {
 
   let snaps;
   try {
-    snaps = await probeStream(session, 8000);
+    snaps = await probeStream(session, probeHoldMs);
   } catch (e) {
     issues.push(`stream: ${e.message}`);
     logLine(`TICK ${tickNum} ${stamp} FAIL ${issues.join("; ")}`);
@@ -195,10 +200,13 @@ async function runTick(session, tickNum) {
   const candleFreshSec =
     last.t > 0 ? Math.max(0, Math.round((receivedAt - last.t) / 1000)) : null;
 
+  const wallTrailSec = Number(last.wallTrailSec);
+  const maxCandleFreshSec = maxVectorCandleFreshSec(wallTrailSec, probeHoldMs);
+
   if (!candle?.close) {
     issues.push("candle null");
-  } else if (candleFreshSec != null && candleFreshSec > 8) {
-    issues.push(`candle stale ${candleFreshSec}s`);
+  } else if (isVectorCandleStale(candleFreshSec, wallTrailSec, probeHoldMs)) {
+    issues.push(`candle stale ${candleFreshSec}s (max ${maxCandleFreshSec}s, trail ${wallTrailSec || 5}s)`);
   }
 
   if (spotIdx > 0 && candle?.close > 0 && !spotsAgree(spotIdx, candle.close, spotIdx)) {
@@ -288,6 +296,8 @@ async function runTick(session, tickNum) {
     status,
     candle: candle?.close ?? null,
     candleFreshSec,
+    maxCandleFreshSec,
+    wallTrailSec: wallTrailSec || null,
     gexCall,
     gexPut,
     vexCall,
