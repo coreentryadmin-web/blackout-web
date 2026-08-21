@@ -174,6 +174,9 @@ BlackOut [Thermal](/learn/heat-maps) maps the gamma flip in real time every morn
     description: "Call walls and put walls are where dealer gamma concentrates — often acting as magnets, resistance, and support. Learn to read them on the SPX chain.",
     body: `Traders draw support and resistance from past price. Dealers have a different kind of level — one built from where options gamma piles up. The two biggest are the **call wall** and the **put wall**, and they often behave like magnets and barriers on the SPX chart.
 
+![The call wall and put wall: dealer gamma concentrates at strikes above and below spot, forming a ceiling and a floor that price tends to pin between.](/images/diagrams/call-put-wall.svg)
+*The call wall caps rallies from above; the put wall cushions selloffs from below; price tends to stay pinned between them.*
+
 ## What a call wall is
 
 The call wall is the strike above current price with the largest concentration of call gamma. Because dealers are hedging all those calls, price often gets *pinned* toward the wall and struggles to break above it — it acts like resistance or a magnet. When a call wall finally breaks, it can trigger a fast move as dealers scramble to re-hedge.

@@ -18,17 +18,20 @@ import {
   loadBenzingaTickerGuidance,
   loadTickerEstimateRevisions,
 } from "@/lib/meridian/meridian-benzinga-earnings";
+import { meridianFeedText, meridianFeedTextOrNull } from "@/lib/meridian/meridian-feed-text";
 import type { MeridianEarningsEnrichment } from "@/features/meridian/lib/meridian-types";
 
 function shapeHeadlines(
   rows: Array<{ title?: string; channel?: string; published?: string; type?: string }>
 ): MeridianEarningsEnrichment["catalysts"] {
   return rows
-    .filter((r) => r.title?.trim())
+    // Decoded first, then filtered: a title that is only entities and whitespace is not a headline.
+    .map((r) => ({ ...r, title: meridianFeedText(r.title) }))
+    .filter((r) => r.title.length > 0)
     .slice(0, 6)
     .map((r) => ({
-      title: String(r.title).trim(),
-      channel: r.channel?.trim() || r.type?.trim() || null,
+      title: r.title,
+      channel: meridianFeedTextOrNull(r.channel) ?? meridianFeedTextOrNull(r.type),
       published: r.published?.trim() || null,
     }));
 }

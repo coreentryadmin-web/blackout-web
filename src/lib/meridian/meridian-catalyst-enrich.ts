@@ -14,6 +14,7 @@ import type {
   MeridianPriceTargetRow,
   MeridianStreetSkew,
 } from "@/features/meridian/lib/meridian-types";
+import { meridianFeedText } from "@/lib/meridian/meridian-feed-text";
 
 export type MeridianAnalystRevision = {
   title: string;
@@ -44,12 +45,15 @@ export type MeridianCatalystBundle = {
   congress_trades: MeridianCongressActivity[];
 };
 
+
 const ANALYST_CHANNELS =
   "analyst ratings,price target,upgrades,downgrades,analyst color";
 
 function shapeAnalyst(rows: Array<{ title?: string; published?: string; channels?: string[] }>): MeridianAnalystRevision[] {
   return rows.slice(0, 10).map((r) => {
-    const title = String(r.title ?? "").trim();
+    // DECODE BEFORE PARSING. `firm` is sliced out of this string below and the action keywords are
+    // matched against it, so an encoded title puts entities inside a derived value.
+    const title = meridianFeedText(r.title);
     let action: string | null = null;
     if (/upgrade|raises|lift/i.test(title)) action = "upgrade";
     else if (/downgrade|cut|lower/i.test(title)) action = "downgrade";
@@ -74,14 +78,16 @@ async function loadPriceTargetRows(ticker: string): Promise<MeridianPriceTargetR
     const articles = await fetchBenzingaNews(12, { ticker: sym, channels: "price target" });
     const out: MeridianPriceTargetRow[] = [];
     for (const a of articles) {
-      const text = `${a.title} ${a.teaser} ${a.body}`;
+      // Decoded before `parsePriceTargetFromText` reads it — a numeric entity can hide a character
+      // the parser is looking for, and the parsed value is a NUMBER shown to a member.
+      const text = meridianFeedText(`${a.title ?? ""} ${a.teaser ?? ""} ${a.body ?? ""}`);
       const parsed = parsePriceTargetFromText(text);
       if (!parsed) continue;
       out.push({
         price_target: parsed.value,
         firm: parsed.firm,
         action: parsed.action,
-        summary: (a.title || a.teaser || "").slice(0, 200),
+        summary: meridianFeedText(a.title || a.teaser || "").slice(0, 200),
         published: a.published || null,
       });
       if (out.length >= 6) break;
@@ -100,7 +106,7 @@ function shapeCatalystBriefs(
     .slice(0, 8)
     .map((c) => ({
       type: c.type,
-      title: c.title,
+      title: meridianFeedText(c.title),
       published: c.published || null,
     }));
 }
