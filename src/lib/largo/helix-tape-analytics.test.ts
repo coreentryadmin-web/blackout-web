@@ -544,3 +544,29 @@ test("a real share is still reported as a number", () => {
   const sweep = rows.find((r) => r.route === "SWEEP");
   assert.equal(sweep?.pct, 75);
 });
+
+// ── C1: a firing's session must not be inferred from a UTC instant ───────────
+// get_helix_signal_outcomes emitted fired_at raw and get_helix_derived stamped a bare UTC as_of.
+// After ~20:00 ET the UTC calendar date is already tomorrow — the bare-instant trap from #2418/
+// #2420/#2422. The file-level session-anchor ratchet could not see either: product-reads.ts
+// already counted as anchored via helixTapeAnalyticsForLargo, and signal-outcomes carried no
+// as_of construction to scan at all.
+
+import { sessionDateForTimestamp } from "./helix-tape-analytics";
+
+test("a ledger fired_at resolves to its ET session, not its UTC date", () => {
+  // 2026-08-21T00:30Z is still 2026-08-20 in ET — the case that inverts a naive UTC read.
+  assert.equal(sessionDateForTimestamp("2026-08-21 00:30:14+00"), "2026-08-20");
+  // The ledger's actual microsecond+offset text form must parse.
+  assert.equal(sessionDateForTimestamp("2026-08-20 20:30:14.282385+00"), "2026-08-20");
+});
+
+test("an intraday fire keeps its own ET session", () => {
+  assert.equal(sessionDateForTimestamp("2026-08-20 18:00:00+00"), "2026-08-20"); // 14:00 ET
+});
+
+test("a missing or unparseable fire time becomes null, never a fabricated session", () => {
+  for (const v of [null, undefined, "", "not-a-date", "N/A"]) {
+    assert.equal(sessionDateForTimestamp(v as string | null), null);
+  }
+});

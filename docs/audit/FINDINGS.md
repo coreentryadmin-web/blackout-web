@@ -12847,3 +12847,19 @@ against.
 | **Regression guard** | `src/features/meridian/components/meridian-banner-css.test.ts` (4 tests) reads `desk-app.css` and asserts the sub can shrink (`flex` is not `none`, `min-width: 0`), can wrap (`white-space` is not `nowrap`), does **not** wrap mid-word, that `flex-wrap` is unconditional, and that the body keeps a rem basis. Verified non-vacuous: restoring the old declarations fails all four. |
 | **Not yet live-verified** | Measured against the deployed (broken) build; the fix is verified by the CSS contract test, not by a post-deploy pixel re-measurement. Re-run `meridian-interaction-audit.mjs` once this ships. |
 | **Status** | FIXED. |
+
+## 2026-08-21 — [FINDING, P2 Largo] Two HELIX tools resolved a session from a bare UTC instant — invisible to the file-level anchor ratchet — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **How found** | Heartbeat STEP 3 sweep for the recurring "bare UTC instant as a date" class, over the HELIX tools that were NOT in the seven-PR stack. Two hits, both live on `main`. |
+| **`get_helix_derived`** | `helixDerivedForLargo` returned `as_of: new Date(nowMs).toISOString()` and **no `session_date`** — a bare UTC instant. Every derivation it serves (stacks, velocity, split-flow) is implicitly "now", and after ~20:00 ET the UTC calendar date is already tomorrow, so a model resolving today from `as_of` is a session ahead — the defect fixed in #2418/#2420/#2422, one tool over. |
+| **`get_helix_signal_outcomes`** | The payload carried **no `as_of` at all**, and each row emitted `fired_at` raw (timestamptz text, UTC offset). To answer "which session did this signal fire in" the model had to convert UTC→ET itself, which crosses a calendar day after 20:00 ET. |
+| **Why the ratchet did not catch either** | `src/lib/largo/contract/session-anchor.test.ts` (#2421) is **file-granular**: a file counts as anchored if it calls `etStamp`/`etSessionDate` *anywhere*. `product-reads.ts` already passes because `helixTapeAnalyticsForLargo` anchors — so `helixDerivedForLargo`'s UTC-only stamp in the same file was exempt by association. And `helixSignalOutcomesForLargo` constructs no `as_of` for the scan's regex to match, so it was never a candidate. Neither is a ratchet bug; both are the gap a file-level scan structurally cannot see. |
+| **Fix** | `helixDerivedForLargo` now stamps `as_of: etStamp(nowMs)` + `session_date: etSessionDate(nowMs)` on both return paths. `helixSignalOutcomesForLargo` gains an envelope `as_of` + `session_date`, and each row gains `fired_session` — the ET session date of the firing, from a new pure `sessionDateForTimestamp()`. That helper returns **null**, never a fabricated date, for a missing or unparseable `fired_at`. Tool descriptions now tell the model to read `fired_session`/`session_date` and never infer the session from the UTC instant. |
+| **Deliberately not touched — other lanes** | The same bare-`toISOString()` pattern also appears at `product-reads.ts` line 110 (`bangerBoardForLargo`, banger lane) and line 171 (`nighthawkHorizonsForLargo`, Night Hawk lane). Not mine to fix; flagged to the coordinator. Both are invisible to the ratchet for the identical file-level reason. |
+| **Testability** | The row derivation was extracted to `sessionDateForTimestamp()` in `helix-tape-analytics.ts` specifically so it is unit-testable — `product-reads.ts` reaches `server-only` and cannot be imported by a test, which is exactly how these two payloads went uncovered. |
+| **Regression guard** | 3 tests: a ledger `fired_at` resolves to its ET session not its UTC date (incl. the 00:30Z-is-yesterday-ET case and the microsecond+offset text form); an intraday fire keeps its own session; a missing/garbage timestamp becomes `null`, never a session. |
+| **Status** | FIXED — gates on Node 20: tsc 0, eslint 0, build ok, 9050 pass / 0 fail; the session-anchor ratchet still passes. |

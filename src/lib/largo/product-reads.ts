@@ -28,6 +28,7 @@ import {
   MIN_GRADED_SAMPLE_FOR_WIN_RATE,
 } from "@/features/helix/lib/helix-signal-outcome-summary";
 import { etStamp, etSessionDate } from "@/lib/largo/temporal/bar-session-date";
+import { sessionDateForTimestamp } from "@/lib/largo/helix-tape-analytics";
 import {
   helixTickerIdentity,
   tapeFreshness,
@@ -263,12 +264,23 @@ export async function helixSignalOutcomesForLargo(limit = 50) {
        *  "continued" is meaningless without it (a continued BEARISH firing means price FELL). */
       direction: r.direction,
       outcome: r.outcome,
+      /** The raw ledger timestamp (timestamptz text, carries +00) AND the ET SESSION it fired in.
+       *  fired_at alone forces the model to convert UTC->ET to know the session, and after
+       *  ~20:00 ET that conversion crosses a calendar day — the exact bare-instant trap C1 exists
+       *  to close. fired_session states it outright. */
       fired_at: r.fired_at,
+      fired_session: sessionDateForTimestamp(r.fired_at),
       price_at_fire: r.price_at_fire,
       price_1h: r.price_1h,
     }));
+    const nowMs = Date.now();
     return roundFloats({
       available: true,
+      // C1: the read's own ET stamp + session date. This payload previously carried NO as_of at
+      // all, so the ratchet's UTC-construction scan never flagged it, yet the model still had to
+      // guess "today" to reason about how recent a firing is.
+      as_of: etStamp(nowMs),
+      session_date: etSessionDate(nowMs),
       /** No silent caps: the summary is computed over every fetched row, the list is the newest
        *  ROWS_SHOWN of them. Without this the model reads a 40-sample rate beside 20 rows and
        *  has no way to know the two describe different populations. */
@@ -612,6 +624,8 @@ export async function helixDerivedForLargo(
       return {
         available: true,
         ticker: ticker?.toUpperCase() ?? null,
+        as_of: etStamp(nowMs),
+        session_date: etSessionDate(nowMs),
         prints_analyzed: 0,
         empty_reason: "no_prints_in_window",
         stacked_hits: [],
@@ -629,7 +643,14 @@ export async function helixDerivedForLargo(
     return roundFloats({
       available: true,
       ticker: ticker?.toUpperCase() ?? null,
-      as_of: new Date(nowMs).toISOString(),
+      // C1: the ET stamp + session date, from the shared helpers — not a bare UTC ISO string.
+      // The file-level session-anchor ratchet counts product-reads.ts as anchored because
+      // helixTapeAnalyticsForLargo already calls etStamp, so this payload's UTC-only stamp slipped
+      // through — a real per-payload gap the file-granular scan cannot see. `session_date` is the
+      // session every derivation here is implicitly "now" for; after ~20:00 ET the UTC date is
+      // already tomorrow, so a model resolving today from as_of alone is a session ahead.
+      as_of: etStamp(nowMs),
+      session_date: etSessionDate(nowMs),
       prints_analyzed: alerts.length,
       hits_window_min: HELIX_STRIKE_HITS_WINDOW_MIN,
 

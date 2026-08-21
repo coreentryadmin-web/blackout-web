@@ -2,7 +2,7 @@ import type { FlowAlert } from "@/lib/api";
 import { executionRouteKey, daysToExpiry } from "@/features/helix/lib/helix-flow-format";
 import { HELIX_NET_PREMIUM_LEADERS_LIMIT } from "@/features/helix/lib/helix-strike-leaders";
 import { WHALE_PRINT_PREMIUM } from "@/features/helix/lib/helix-flow-limits";
-import { etStamp } from "@/lib/largo/temporal/bar-session-date";
+import { etStamp, etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 import { flowEventTimeMs } from "@/lib/flow-timestamp";
 
 /** The member panel's horizon buckets, in CHRONOLOGICAL order (ExpiryConcentration.tsx). */
@@ -336,4 +336,20 @@ export function helixTapeFetchOptions(opts: {
     since_hours: Math.min(maxSinceHours, Math.max(1, hours)),
     order: "recent" as const,
   };
+}
+
+/**
+ * ET session date for a ledger timestamp string (e.g. the signal-outcome ledger's
+ * `fired_at`, a timestamptz text like "2026-08-20 20:30:14+00").
+ *
+ * The value the model actually needs when it asks which session a firing belongs to. `fired_at`
+ * is UTC-offset text; after ~20:00 ET its calendar date is already tomorrow, so converting it in
+ * the model's head is the bare-instant trap C1 exists to close. Returns null — never a fabricated
+ * date — for a missing or unparseable timestamp, so an absent fire time cannot become a real
+ * session.
+ */
+export function sessionDateForTimestamp(ts: string | null | undefined): string | null {
+  if (!ts) return null;
+  const ms = Date.parse(ts);
+  return Number.isFinite(ms) ? etSessionDate(ms) : null;
 }
