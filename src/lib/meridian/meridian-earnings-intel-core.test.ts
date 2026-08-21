@@ -245,3 +245,57 @@ test("beatRateWithCohort: the rate and its denominator, or null and zero", () =>
   assert.equal(none.rate, null);
   assert.equal(none.graded, 0);
 });
+
+/* ── "into earnings" is forward-looking too ──────────────────────────────────────────── */
+
+test("buildErPlayRead: a printed name is never described as leaning INTO earnings", () => {
+  // #2591 stopped this function saying "Imminent print — favor reaction over prediction" once a
+  // name had reported. Validating that PR on production showed the fix was half-done: BEKE, BJ
+  // and BKE had all reported before the open, and with the imminent branch correctly suppressed
+  // they fell straight through to
+  //
+  //   "Flow + structure lean bullish INTO earnings"
+  //
+  // about a print six hours in the past. The report core had its "into earnings" phrasings guarded
+  // in the same PR; this one was missed. Same defect, one branch over.
+  const printed = buildErPlayRead({
+    flow_bias: "bullish",
+    dark_pool_bias: "bullish",
+    gamma_regime: "positive gamma",
+    expected_move_pct: 3,
+    days_until: 0,
+    beat_rate: 0.8,
+    beat_rate_graded: 8,
+    spot: 100,
+    call_wall: 105,
+    put_wall: 95,
+    king_strike: 100,
+    printed: true,
+  });
+  assert.doesNotMatch(printed.headline, /imminent/i, "the print already happened");
+  assert.doesNotMatch(
+    printed.headline,
+    /into earnings/i,
+    "a lean cannot point INTO an event that has already occurred"
+  );
+  assert.match(printed.headline, /since the print/i, "it should describe what has happened since");
+});
+
+test("buildErPlayRead: an upcoming print still leans INTO earnings", () => {
+  // The guard must not swallow the case the phrasing exists for.
+  const upcoming = buildErPlayRead({
+    flow_bias: "bullish",
+    dark_pool_bias: "bullish",
+    gamma_regime: "positive gamma",
+    expected_move_pct: 3,
+    days_until: 4,
+    beat_rate: 0.8,
+    beat_rate_graded: 8,
+    spot: 100,
+    call_wall: 105,
+    put_wall: 95,
+    king_strike: 100,
+  });
+  assert.match(upcoming.headline, /into earnings/i);
+  assert.doesNotMatch(upcoming.headline, /since the print/i);
+});
