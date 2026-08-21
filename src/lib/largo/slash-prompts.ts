@@ -106,9 +106,14 @@ async function buildHelixPrompts(): Promise<SlashPrompt[]> {
     });
   }
 
-  const routes = (analytics as { route_breakdown?: Array<{ route: string; pct: number }> }).route_breakdown ?? [];
+  // `pct` is `number | null` — null when the tape carried no premium to take a share of. This is
+  // an `as` cast, so tsc cannot catch drift from the producer; declaring `number` here would leave
+  // the next reader trusting a type that is false (the same trap that put "50% calls" on a chip).
+  const routes = (analytics as { route_breakdown?: Array<{ route: string; pct: number | null }> }).route_breakdown ?? [];
   const topRoute = routes[0];
-  if (topRoute && topRoute.pct >= 25) {
+  // Explicit null check rather than leaning on `null >= 25` being false: the fail-safe is correct
+  // today by accident of coercion, and the next edit should not have to rediscover that.
+  if (topRoute && topRoute.pct != null && topRoute.pct >= 25) {
     pushUnique(out, {
       id: "helix-route",
       label: `${topRoute.route} leading`,
