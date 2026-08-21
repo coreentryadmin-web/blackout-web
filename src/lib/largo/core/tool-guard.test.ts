@@ -200,3 +200,28 @@ test("the diagnostics line names the slowest tool first and never carries data",
 test("no tool calls means no log line", () => {
   assert.equal(formatToolDiagnostics([]), "");
 });
+
+test("what the model receives is rounded for reading, and captured results match it", async () => {
+  // The guarded runner is the boundary between data that is COMPUTED WITH and data that is READ.
+  // Every other runLargoTool caller bypasses it and keeps full precision on purpose.
+  const h = harness(MEMBER, async () => ({
+    results: [{ t: 1787202000000, c: 7707.9800000000005, session_date: "2026-08-19" }],
+    total_premium: 4276339.059400001,
+    delta: 0.9160819881475173,
+    uw_string: "45756696.409090909091",
+    ticker: "SPX",
+  }));
+  const out = (await h.run("get_quote", { ticker: "SPX" })) as Record<string, any>;
+
+  assert.equal(out.results[0].c, 7707.98);
+  assert.equal(out.total_premium, 4276339.0594);
+  assert.equal(out.delta, 0.916082);
+  assert.equal(out.uw_string, "45756696.4091", "UW numeric strings are rounded and stay strings");
+  assert.equal(out.results[0].t, 1787202000000, "an epoch is an integer and must not be touched");
+  assert.equal(out.results[0].session_date, "2026-08-19", "labels survive rounding");
+  assert.equal(out.ticker, "SPX");
+
+  // capturedResults feeds the extractors that render levels, so it must carry the SAME numbers the
+  // model was shown — otherwise a rendered level and a spoken level could disagree.
+  assert.equal(h.capturedResults[0], out);
+});
