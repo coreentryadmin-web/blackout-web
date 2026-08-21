@@ -178,7 +178,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Still open, deliberately not fixed here** | Only **4 of 154** earnings items on the live timeline carry an `expected_move_pct` at all (2.6%), while `get_earnings_history` has NVDA's 5.33% readily. That is a coverage gap in the timeline's implied-move overlay, not a defect in these tools — raised separately rather than widened into this PR. |
 | **Gates on Node 20.20.2** | `npx tsc --noEmit` clean · `npm test` **9089 pass / 0 fail** · `npm run build` clean · `npx eslint` clean. |
 | **Shared files** | `run-tool.ts` (two new cases), `tool-defs.ts` (two new defs), `system-prompt.ts` (one line), `product-knowledge.ts` (the Meridian section), `capability-registry.ts` (one union member, two entries). All additive; no existing tool's behaviour changed. |
-| **Status** | FIXED — PR #____ (draft). Not yet live-verified in production. |
+| **Status** | FIXED — PR #2545 (draft). Not yet live-verified in production. |
 
 ## 2026-08-21 — [FINDING, P2 Largo] Rule-7 sweep of the HELIX lane — two more places absence was published as measurement — FIXED
 
