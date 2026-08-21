@@ -4,6 +4,22 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-21 — [FINDING, P1 Tooling/CI] `main` went red on two individually-green PRs — a deferral outlived the PR it deferred to — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `main` failed `src/lib/largo/contract/session-anchor.test.ts` (2 of 5) for ~20 minutes on `b860d47a`, and every open PR that rebased onto it inherited the failure. #2480, #2451 and #2487 all went red on a mistake in none of their diffs — confirmed by pulling each CI log, where the run's *only* two failures were `the known-gap list SHRINKS` and `every known gap still exists`. Three lanes were about to debug someone else's bug. |
+| **Root cause** | #2421 shipped the C1 ratchet with `src/lib/largo/run-tool.ts` listed in its `KNOWN_GAPS` allowlist, deferring that one fix to the meridian lane's open #2482 rather than writing a second, conflicting fix to the same six lines. The deferral was the right call. What was wrong was the implicit assumption that #2421 would land FIRST and #2482 would delete the entry on its way in. #2482 was already non-draft, so `automerge.yml` took it the moment its checks went green; #2421 merged five minutes later; and `main` acquired the fix and the "still broken" allowlist entry in the wrong order. |
+| **Why it wasn't caught earlier** | Both PRs were genuinely green — each was verified on Node 20 against a `main` that did not yet contain the other. There is no pre-merge check that composes two pending branches, and `automerge.yml` merges by check-completion time, which is effectively random. The failure mode only exists in the composition, so no amount of per-PR verification would have found it. Same shape as THE DRAFT DEADLOCK: nothing failed on its own. |
+| **Blast radius** | Every open PR at the time, plus `main` itself. Zero production impact — the defect was in a test's allowlist, not in shipped code, and the underlying payload was correctly anchored throughout (that was #2482's whole point). |
+| **Fix** | #2486 deletes the stale entry and its deferral comment. `main` re-verified GREEN by re-running the guard against `origin/main` after the merge rather than assuming the merge did what was intended — which is how the window was bounded at all. |
+| **What was deliberately NOT changed** | The shrink assertion was **not** softened to a warning. An allowlist that silently retains entries for already-fixed files is precisely the stale-by-omission failure it was written to prevent, and this repo has been bitten by that before. The guard behaved correctly at every step; the sequencing around it did not. |
+| **Standing rule added** | `CLAUDE.md` → "CROSS-PR ORDERING DEPENDENCIES — sequence them, do not race them". An allowlist entry, TODO or comment that defers to an OPEN PR is an ordering dependency that `automerge.yml` cannot see. Land the deferred-to PR first and confirm it is in `main` before releasing the dependent one, or put both in one merge — never release both and hope. Paired with "a merge is not a verification": re-run the affected check against `origin/main` after merging anything whose correctness depends on `main`'s state. |
+| **Gates** | Node 20.20.2 · `npx tsc --noEmit` clean · `npm test` **9040 pass / 0 fail / 1 skipped**. |
+| **Status** | FIXED — PR #2486; rule recorded in the same batch. |
+
 ## How to read this file
 
 Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
@@ -12811,4 +12827,22 @@ against.
 | **Why not caught** | A selector-based UI check passes a banner whose text is clipped — `meridian-earnings-ui-audit.mjs` asserts the marks painted, and they did. Every property that matters lives in the stylesheet, so `tsc` and a render test both pass on the broken version. It needed pixels, and pixels needed the cohort guard from the same session: the harness had been judging a micro-cap whose Play-read banner never rendered at all. |
 | **Regression guard** | `src/features/meridian/components/meridian-banner-css.test.ts` (4 tests) reads `desk-app.css` and asserts the sub can shrink (`flex` is not `none`, `min-width: 0`), can wrap (`white-space` is not `nowrap`), does **not** wrap mid-word, that `flex-wrap` is unconditional, and that the body keeps a rem basis. Verified non-vacuous: restoring the old declarations fails all four. |
 | **Not yet live-verified** | Measured against the deployed (broken) build; the fix is verified by the CSS contract test, not by a post-deploy pixel re-measurement. Re-run `meridian-interaction-audit.mjs` once this ships. |
+| **Status** | FIXED. |
+
+## 2026-08-21 — [FINDING, P1 Largo/Night Hawk] Four lane tools published fabricated zeros on a failed read — including "the gate blocked nothing" — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Auditing every tool in the lane for the "which empty is this" rule after #2477/#2492/#2495, four more were filling their unavailable branches with numbers they had not measured. `graderAgreementForLargo` returned `total_plays: 0, comparable: 0, agreed: 0, disagreements: []` on both a missing database and a thrown query. `gateBlockedValueForLargo` returned **five** zero totals and `by_gate: []`. `horizonOutcomesForLargo` returned `outcomes: []`. `bangerBoardForLargo` returned `open: [], closed: []` on all three of its failure branches. |
+| **The tell** | In `graderAgreementForLargo`'s own return object, `agreement_pct` was correctly `null` while `total_plays`, `comparable` and `agreed` were `0`. **The rate knew it had not been measured; the counts did not.** One object, two standards, and the model has no way to tell that `0` came from a failed connection rather than from an empty window. |
+| **The worst instance** | `gateBlockedValueForLargo` returning `blocked_total: 0` on a **failed** read. The publish gate's entire value proposition is the count of bad plays it stopped, so a broken read published the gate as having done nothing at all. |
+| **The inverse defect, same two files** | `available: cmp.comparable > 0` and `available: inputs.length > 0` reported a **successful** read of a quiet window as if the tool were unavailable. "The publish gate blocked nothing in 30 days" is a real measurement — and an important one, since a gate that never fires may be miscalibrated — but Largo could never say it, because the payload told the model there was no data. Worse for the grader: `available: false` also discarded `total_plays`, which had genuinely been measured. Both now report `available: true` whenever the read succeeded, with the missing RATE left null and a note saying the emptiness was measured. |
+| **Fix — two shapes, on purpose** | A scalar that was not measured is **`null`**: present, and unmistakably not a number. A list that was not measured is **absent**, because an empty array is countable and invites exactly the "0 disagreements" / "0 open positions" claim that is the defect. `GraderAgreementForLargo` and `GateValueForLargo` gained `number \| null` counts and optional list fields; `horizonOutcomesForLargo` and `bangerBoardForLargo` simply stop emitting their lists on failure, each with a note saying not to report zero. |
+| **An `outcomes` key that only existed when it was empty** | `horizonOutcomesForLargo`'s SUCCESS path returns `sample`; only its two failure paths returned `outcomes`. So the one time this payload carried an `outcomes` array was when there were none — precisely backwards. |
+| **Blast radius** | `evidence-reads.ts` (`get_gate_blocked_value`, `get_grader_agreement`), `product-reads.ts` (`get_horizon_outcomes`, `get_banger_board`) — four of my lane's tools, at the Largo boundary. `GateValueForLargo`/`GraderAgreementForLargo` have no consumers outside these two files, so widening the counts to nullable touches nothing else. No provider, no API route, no UI, no cron, no grading. |
+| **Regression guard** | `evidence-reads.test.ts` (+4): a failed grader read reports null counts and no `disagreements` list; a failed gate-value read reports null totals and no `by_gate`; both still state the window they could not measure; and `compareGraderLanes([])` keeps its **real** zeros, because a measured window of no rows genuinely is 0 plays and nulling that would trade one lie for another. The tests mock the db module rather than depending on whether a `DATABASE_URL` happens to resolve — which also cut them from ~20s of connection timeouts to under 1s. |
+| **Not a trading-behaviour change** | No gate, rail, sizing, exit rule or grading function is touched — this changes how gate and grader RESULTS are reported, not how anything is gated or graded. No `sim:0dte` before/after is owed. |
+| **Gates** | `npm test` **9049 pass / 0 fail / 1 skipped** (Node 20.20.2) · `tsc --noEmit` clean · `eslint` clean. |
 | **Status** | FIXED. |

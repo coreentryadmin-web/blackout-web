@@ -9,17 +9,29 @@
 
 import { isZeroDteWin, officialPlanOutcome, officialPlanPnlPct, type OfficialGradableRow } from "@/lib/zerodte/record";
 
+/**
+ * NULL FOR AN UNMEASURED COUNT, ABSENT FOR AN UNMEASURED LIST.
+ *
+ * These counts used to be plain `number` and every unavailable path filled them with 0 — while
+ * `agreement_pct` in the same object was correctly `null`. The rate knew it had not been measured;
+ * the counts did not, and a model reading `total_plays: 0` on a failed database read has no way to
+ * tell that from a genuinely empty window.
+ *
+ * The two shapes are deliberately different. A scalar is `null`: present, and explicitly not a
+ * measurement, which a model cannot mistake for a number. A LIST is omitted entirely, because an
+ * empty array is countable and invites exactly the "0 disagreements" claim that is the defect.
+ */
 export type GraderAgreementForLargo = {
   available: boolean;
   window_days: number;
-  total_plays: number;
+  total_plays: number | null;
   /** Rows carrying evidence on BOTH lanes — the only population that can test the invariant. */
-  comparable: number;
-  agreed: number;
+  comparable: number | null;
+  agreed: number | null;
   agreement_pct: number | null;
   grader_a: string;
   grader_b: string;
-  disagreements: { ticker: string; date: string | null; mid: string; official: string }[];
+  disagreements?: { ticker: string; date: string | null; mid: string; official: string }[];
   note?: string;
 };
 
