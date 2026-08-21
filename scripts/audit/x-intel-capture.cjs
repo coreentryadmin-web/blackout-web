@@ -338,8 +338,15 @@ async function scanner(page, o, log) {
 
   // Verify it actually populated — an empty screener is a real state ("No names match") and must
   // be captured honestly, but it must never be mistaken for a loaded one.
-  const rowCount = await page.locator('.vector-scanner-body tr, .vector-scanner-body [role="row"]').count();
+  // Count the rows by their own class, not by a descendant guess.
+  //
+  // `.vector-scanner-body tr` reported FOUR rows on a screener holding about ninety (MEASURED
+  // 2026-08-21). This count exists precisely so a run can tell a populated screener from an empty
+  // one — "No names match" is a real and postable state — so a counter that silently under-reports
+  // defeats the only thing it is for.
+  const rowCount = await page.locator('.vector-scanner-row').count();
   log.push(`rows→${rowCount}`);
+  if (!rowCount) log.push('rows→EMPTY SCREENER (a real state — caption it as one)');
 
   // Type size is the whole game for a table attachment; see `zoomContainer`.
   if (o.pageZoom) {
@@ -350,10 +357,21 @@ async function scanner(page, o, log) {
 
   if (o.rows) {
     // Crop to the top N rows by clipping the panel box — the story is the head of the ranking.
+    // MEASURE THE NTH ROW, do not model it.
+    //
+    // The first version computed `150 + rows * 26` and the second scaled that by the container
+    // zoom. Both were guesses about a layout that reflows, and both produced letterboxed strips the
+    // frame scorer rejected — 3.5:1, then 4.6:1. The rows are in the DOM with real coordinates, so
+    // clipping to the bottom of the Nth one is exact and survives any future restyle.
     const box = await panel.boundingBox();
+    const nth = page.locator('.vector-scanner-row').nth(Math.max(0, Number(o.rows) - 1));
+    const rb = (await nth.count()) ? await nth.boundingBox() : null;
+    if (box && rb) {
+      return { clip: { x: box.x, y: box.y, width: box.width, height: rb.y + rb.height - box.y } };
+    }
     if (box) {
-      const height = Math.min(box.height, 150 + Number(o.rows) * 26);
-      return { clip: { x: box.x, y: box.y, width: box.width, height } };
+      log.push(`rows!${o.rows} — row ${o.rows} not found, framing the whole panel`);
+      return { clip: { x: box.x, y: box.y, width: box.width, height: box.height } };
     }
   }
   return panel;
@@ -688,14 +706,20 @@ async function vector(page, o, log) {
     const grid = page.locator('.vector-chart-terminal-grid').first();
     const gb = await grid.boundingBox();
     const cb = await chart.boundingBox();
+    // START AT THE TOOLBAR, not the chart. The reference composition includes the control row —
+    // ticker, COMPARE, FULL SCREEN, timeframe, INDICATORS, TOOLS — because it tells the reader what
+    // they are looking at and that it is a live product rather than a rendered image.
+    const tb = await page.locator('.vector-page-toolbar').first().boundingBox();
+    const top = tb ? Math.min(tb.y, cb ? cb.y : tb.y) : cb ? cb.y : 0;
     if (gb && cb) {
       // STOP AT THE CHART'S RIGHT EDGE. The grid's full width is the whole desk — ladder, chart,
       // the Helix live-tape rail and the position/technicals rail, four columns. All of it is real
       // and none of it belongs in one attachment: at that width the candles compress to a ribbon
       // and the reader's eye has nowhere to land. The reference composition is two columns.
       const width = cb.x + cb.width - gb.x;
-      log.push(`layout→ladder ${Math.round(width)}x${Math.round(cb.height)}`);
-      return { clip: { x: gb.x, y: cb.y, width, height: cb.height } };
+      const height = cb.y + cb.height - top;
+      log.push(`layout→ladder ${Math.round(width)}x${Math.round(height)}${tb ? ' +toolbar' : ''}`);
+      return { clip: { x: gb.x, y: top, width, height } };
     }
     log.push('layout!ladder — grid or chart box missing, fell back to the chart alone');
   }

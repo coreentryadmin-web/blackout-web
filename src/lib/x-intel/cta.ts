@@ -98,78 +98,51 @@ function tagged(url: string, cycleKey: string, variant: XIntelCtaVariant): strin
   return u.toString();
 }
 
-type EdgeLine = { readonly variant: XIntelCtaVariant; readonly line: string };
+type Builder = (cycleKey: string, variant: XIntelCtaVariant) => { text: string; url: string | null };
 
 /**
- * ONE TRUE, SPECIFIC CLAIM PER POST.
+ * ONE ASK, SHORT ENOUGH TO LEAVE ROOM FOR THE EVIDENCE.
  *
- * Every line here names something the desk actually does, in the terms a trader would check. That
- * constraint is not style — the post above this block is a measured screenshot, so a vague claim
- * underneath one ("powerful analytics", "institutional-grade data") reads as the part that was made
- * up, and costs the evidence its credibility. Each of these was observed on the live platform.
+ * Each is a single line. The post is capped at 280 characters, and X counts a URL as 23 whatever
+ * its real length, so an ask costs roughly its visible words plus 23 — which leaves the bulk of the
+ * post for the levels, the times and the move.
  */
-const EDGES: ReadonlyArray<EdgeLine> = [
-  {
-    variant: "SCANNER",
-    line: "The Universe Scanner ranks the whole board by distance to its gamma flip — you see who is about to matter before it moves.",
+const BUILDERS: Record<XIntelCtaVariant, Builder> = {
+  DISCORD: (cycle, v) => {
+    const url = tagged(LINKS.discord, cycle, v);
+    return { text: `Free Discord — ${url}`, url };
   },
-  {
-    variant: "FLIP_ALERTS",
-    line: "Positioning alerts fire the moment spot crosses the flip — regime change, timestamped, not noticed twenty minutes later.",
+  WHOP: (cycle, v) => {
+    const url = tagged(LINKS.whop, cycle, v);
+    return { text: `Join the desk — ${url}`, url };
   },
-  {
-    variant: "EXPIRY_MATRIX",
-    line: "Every strike against every expiry, with net GEX, walls, flip and max pain — and you can read 0DTE and all-expiry separately, because they often disagree.",
+  SITE: (cycle, v) => {
+    const url = tagged(LINKS.site, cycle, v);
+    return { text: `Live on the desk — ${url}`, url };
   },
-  {
-    variant: "BEAD_RAILS",
-    line: "Gamma drawn on the chart itself — every strike's beads and wall bands sitting on the candles, not in a table you have to translate.",
+  PRICING_SPX: (cycle, v) => {
+    const url = tagged(LINKS.site, cycle, v);
+    return { text: `SPX Slayer ${PRICING.spx} — ${url}`, url };
   },
-  {
-    variant: "EARNINGS_BASE_RATES",
-    line: "Earnings scored against this name's own base rate with the sample size shown — and it says \"insufficient history\" rather than inventing a number.",
+  PRICING_FULL: (cycle, v) => {
+    const url = tagged(LINKS.site, cycle, v);
+    return { text: `Full desk ${PRICING.full} — ${url}`, url };
   },
-  {
-    variant: "TAPE",
-    line: "The tape with the size that matters: net premium, repeat strikes, dark-pool blocks, and which side actually paid up.",
+  PROMO: (cycle, v) => {
+    const url = tagged(LINKS.whop, cycle, v);
+    return { text: `${PROMO_CODE} — 50% off month one. ${url}`, url };
   },
-  {
-    variant: "OPEX_HISTORY",
-    line: "OpEx and macro days graded against every prior session on record — cross-market, with the pin-versus-close history attached.",
-  },
-  {
-    variant: "NIGHT_HAWK",
-    line: "Every play on the board with its P&L, closed and graded — the losers stay on the page.",
-  },
-];
-
-/**
- * THE OFFER IS CONSTANT (operator decision, 2026-08-21).
- *
- * Cashtags, the free Discord, the site, Whop and the price go on EVERY post. The earlier design
- * rotated whether a post asked for anything at all, on the reasoning that an account asking for a
- * sale every time stops being one traders open. The operator's call is that the links are how the
- * lead arrives and a post without them is a post that cannot convert — and they are the one who can
- * see the funnel. What rotates instead is the CLAIM, which keeps the rotation measurable.
- */
-function offerBlock(cycleKey: string, variant: XIntelCtaVariant): string {
-  return [
-    `Free Discord — ${tagged(LINKS.discord, cycleKey, variant)}`,
-    `The desk — ${tagged(LINKS.site, cycleKey, variant)}`,
-    `Full desk ${PRICING.full} · SPX Slayer ${PRICING.spx} · ${PROMO_CODE} takes 50% off month one`,
-    tagged(LINKS.whop, cycleKey, variant),
-  ].join("\n");
-}
+};
 
 /**
  * CASHTAGS.
  *
  * X indexes `$TICKER` and surfaces posts on the symbol's own page, which is the one distribution
- * channel available to a cold account that does not depend on followers. A package about BAC that
- * writes "BAC" is invisible to everyone browsing $BAC.
+ * channel available to an account that cannot rely on followers. A package about BAC that writes
+ * "BAC" is invisible to everyone browsing $BAC.
  *
  * Deduplicated and order-preserving so the lead ticker stays first, and capped — a wall of tickers
- * reads as spam to a reader and as spam to the ranker.
+ * reads as spam to a reader and to the ranker, and at 280 characters it is also unaffordable.
  */
 export const CASHTAG_LIMIT = 4;
 
@@ -188,20 +161,16 @@ export function cashtags(tickers: ReadonlyArray<string>): string {
 }
 
 /**
- * Pick the next claim: least recently used.
+ * Pick the next ask: least recently used.
  *
  * PURE and total. `recent` is newest-first, exactly as `recentCtaVariants()` returns it. With no
- * history it returns the head of the canonical order, so a cold start is deterministic rather than
- * arbitrary — a fresh database and a replayed one choose the same thing, which is what makes the
- * rotation reproducible in a test.
- *
- * The earlier version also refused two paid asks in a row. Every post now carries the same offer,
- * so there is no longer any such thing as a paid variant and that guard had nothing left to guard.
+ * history it returns the head of the canonical order, so a cold start is deterministic — a fresh
+ * database and a replayed one choose the same thing, which is what makes the rotation reproducible
+ * in a test.
  */
 export function selectCtaVariant(
   recent: ReadonlyArray<XIntelCtaVariant>,
 ): XIntelCtaVariant {
-  // Rank by how long ago each was last used; never-used sorts first.
   const lastUsedIndex = (v: XIntelCtaVariant): number => {
     const i = recent.indexOf(v);
     return i === -1 ? Number.POSITIVE_INFINITY : i;
@@ -209,7 +178,6 @@ export function selectCtaVariant(
   return [...X_INTEL_CTA_VARIANTS].sort((a, b) => {
     const d = lastUsedIndex(b) - lastUsedIndex(a);
     if (d !== 0) return d;
-    // Stable tie-break on canonical order so two never-used variants resolve deterministically.
     return X_INTEL_CTA_VARIANTS.indexOf(a) - X_INTEL_CTA_VARIANTS.indexOf(b);
   })[0]!;
 }
@@ -238,7 +206,15 @@ export function xWeightedLength(text: string): number {
  * foot of a long-form body. This is a budget for how much of the reader's attention the ask may
  * take from the evidence above it, which is a different question from what the platform allows.
  */
-export const CTA_CHAR_LIMIT = 400;
+export const CTA_CHAR_LIMIT = 60;
+
+/**
+ * THE POST BUDGET. X's hard limit, and the operator's instruction: keep it short.
+ *
+ * Enforced on the WHOLE post rather than on the CTA, because the ask and the evidence compete for
+ * the same 280 characters and only the total is a real constraint.
+ */
+export const POST_CHAR_LIMIT = 280;
 
 /**
  * Build the CTA reply for one package.
@@ -251,25 +227,14 @@ export function buildCta(
   recent: ReadonlyArray<XIntelCtaVariant> = [],
 ): XIntelCta {
   const variant = selectCtaVariant(recent);
-  const edge = EDGES.find((e) => e.variant === variant) ?? EDGES[0]!;
-  const url = tagged(LINKS.site, cycleKey, variant);
-  return {
-    variant,
-    text: `${edge.line}\n\n${offerBlock(cycleKey, variant)}`,
-    url,
-    placement: "body",
-  };
+  const { text, url } = BUILDERS[variant](cycleKey, variant);
+  return { variant, text, url, placement: "body" };
 }
 
 /** Every variant's copy, for the admin page's preview and for tests. */
 export function previewAllCtas(cycleKey: string): XIntelCta[] {
   return X_INTEL_CTA_VARIANTS.map((variant) => {
-    const edge = EDGES.find((e) => e.variant === variant) ?? EDGES[0]!;
-    return {
-      variant,
-      text: `${edge.line}\n\n${offerBlock(cycleKey, variant)}`,
-      url: tagged(LINKS.site, cycleKey, variant),
-      placement: "body" as const,
-    };
+    const { text, url } = BUILDERS[variant](cycleKey, variant);
+    return { variant, text, url, placement: "body" as const };
   });
 }

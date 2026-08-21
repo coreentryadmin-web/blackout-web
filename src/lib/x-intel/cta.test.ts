@@ -124,13 +124,28 @@ describe("buildCta", () => {
     }
   });
 
-  it("puts every destination in every post, not one per post", () => {
-    // The operator's call: the links are how a lead arrives, so a post missing them cannot convert.
-    // What rotates is the CLAIM above them, not whether the ask is present.
+  it("carries exactly ONE ask, not a stack of them", () => {
+    // The operator's revision: pick one at random, keep the post to 280. The stacked version ran
+    // ~290 weighted characters on its own, so the ask alone consumed the whole post budget.
     for (const cta of previewAllCtas(CYCLE)) {
-      for (const host of ["discord.gg", "whop.com", "blackouttrades.com"]) {
-        assert.ok(cta.text.includes(host), `${cta.variant} omits ${host}`);
-      }
+      const urls = cta.text.match(/https?:\/\//g) ?? [];
+      assert.equal(urls.length, 1, `${cta.variant} carries ${urls.length} links`);
+      assert.ok(!cta.text.includes("\n"), `${cta.variant} is more than one line`);
+    }
+  });
+
+  it("reaches every destination ACROSS the rotation", () => {
+    const hosts = new Set(previewAllCtas(CYCLE).map((c) => new URL(c.url!).host));
+    for (const host of ["discord.gg", "whop.com", "www.blackouttrades.com"]) {
+      assert.ok(hosts.has(host), `no variant reaches ${host}`);
+    }
+  });
+
+  it("leaves room for the evidence", () => {
+    // An ask is a claim on the same 280 characters the levels and times need.
+    for (const cta of previewAllCtas(CYCLE)) {
+      const n = xWeightedLength(cta.text);
+      assert.ok(n <= CTA_CHAR_LIMIT, `${cta.variant} is ${n} weighted chars, budget ${CTA_CHAR_LIMIT}`);
     }
   });
 
@@ -149,19 +164,17 @@ describe("buildCta", () => {
     assert.notEqual(cta.variant, "SOFT");
   });
 
-  it("states both desk prices and the promo code on every post", () => {
-    for (const c of previewAllCtas(CYCLE)) {
-      assert.ok(c.text.includes("$199/mo"), `${c.variant} omits the full-desk price`);
-      assert.ok(c.text.includes("$49/mo"), `${c.variant} omits the SPX price`);
-      assert.ok(c.text.includes("BLACK50"), `${c.variant} omits the promo code`);
+  it("states each price and the promo exactly where it belongs", () => {
+    const by = new Map(previewAllCtas(CYCLE).map((c) => [c.variant, c.text]));
+    assert.ok(by.get("PRICING_FULL")!.includes("$199/mo"), "PRICING_FULL omits the full-desk price");
+    assert.ok(by.get("PRICING_SPX")!.includes("$49/mo"), "PRICING_SPX omits the SPX price");
+    assert.ok(by.get("PROMO")!.includes("BLACK50"), "PROMO omits the code");
+    // And an ask that is not about price must not quietly become one.
+    for (const v of ["DISCORD", "WHOP", "SITE"] as const) {
+      assert.ok(!/\$\d/.test(by.get(v)!), `${v} smuggles a price in`);
     }
   });
 
-  it("leads every post with a claim, and never the same one twice running", () => {
-    const lines = previewAllCtas(CYCLE).map((c) => c.text.split("\n")[0]!);
-    assert.equal(new Set(lines).size, lines.length, "two variants share a claim line");
-    for (const l of lines) assert.ok(l.length > 40, `claim too thin to be specific: "${l}"`);
-  });
 });
 
 describe("cashtags — the one distribution channel a cold account still has", () => {
