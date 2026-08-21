@@ -81,6 +81,41 @@ principle as `scripts/audit/agent-pr-sweep.mjs`: **sweep by state, never by memo
 launched.** A coordinator that keeps a mental roster loses it on every restart; one that queries
 never can.
 
+## The control channel — how the coordinator actually talks to a lane
+
+**There is no `send_message` tool on the `claude-code-remote` server, and `SendMessage` cannot
+address a remote session.** Both facts led to the wrong conclusion that lanes were unreachable.
+They are reachable; the mechanism is just named something else.
+
+```
+create_trigger(persistent_session_id: "<session id>", prompt: "<the message>")
+fire_trigger(trigger_id: "<returned id>")
+```
+
+`create_trigger` with `persistent_session_id` targets ONE existing session, and `fire_trigger`
+delivers immediately instead of waiting for a schedule. The prompt arrives in that session as an
+ordinary user turn.
+
+**Verified 2026-08-21, by behaviour rather than by return code.** Two lanes changed what they were
+doing within seconds of delivery:
+
+| Lane | Before | After |
+|---|---|---|
+| SEO | "Checking local git state and branch sync" | "#2448/#2454 conflict analysis; folding docs PR into code PR" |
+| Meridian | `need_input` — "reopen remaining 6 draft PRs as fresh non-drafts" | `review_ready` — "rebasing branches on latest main" |
+
+Meridian's is the one that matters: it **abandoned** a plan the message explicitly told it to
+abandon. A tool returning 200 proves delivery to an endpoint; a peer changing course proves the
+message was read and understood.
+
+Two cautions:
+
+- **`ListAgents` is not the discovery tool for this.** It sees in-process subagents only, so it
+  reports "No reachable agents" for a healthy fleet. Use `list_sessions`.
+- **Triggers created this way carry no MCP connectors.** Firing into a PERSISTENT session is fine
+  — it keeps its own tool configuration, as the verification above shows. A trigger that SPAWNS a
+  fresh session would give it no connector tools, which is a different and much worse outcome.
+
 ### Tags
 
 | Tag | Meaning |
