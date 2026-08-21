@@ -82,7 +82,19 @@ jobs:
           skipped=0
           max=${MAX_RELEASE:-3}
 
-          while read -r num title branch labels; do
+          # IFS=TAB, not the default whitespace split.
+          #
+          # The jq output is TSV and PR titles contain spaces, so a default `read` splits a title
+          # across $title/$branch/$labels and every field after the first is garbage. The first dry
+          # run made it visible — the branch column printed "dealer-structure", "Meridian", "add",
+          # which are title words. Two safety checks were silently reading the wrong data:
+          #   - the `hold` LABEL check was grepping title text, so it both missed a real hold label
+          #     and could hold a PR whose title merely contained the word;
+          #   - the `*"DO NOT MERGE"*` title case could never match, because $title held only the
+          #     first word.
+          # A holdback that reads the wrong field is worse than no holdback: it reports enforcement
+          # it is not performing.
+          while IFS=$'\t' read -r num title branch labels; do
             # PACE THE RELEASE. Each merge triggers a production deploy (ecr-push-production on
             # merge to main), and the backlog this workflow exists to clear is ~35 PRs — releasing
             # them in one sweep would queue ~35 ECS force-deploys back to back. A cap of 3 per
