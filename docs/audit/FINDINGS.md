@@ -38,6 +38,19 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-08-21 — [FINDING, P2 availability] One bad ticker took down the whole Thermal Discord cron, breach alerts included — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Root cause** | `fetchThermalColumns` in `src/app/api/cron/thermal-discord/route.ts` fanned out over SPY/SPX/QQQ in a `for` loop with a bare `await fetchGexHeatmap(ticker)` and no per-ticker guard. `fetchGexHeatmap` is typed `Promise<GexHeatmap \| null>`, but null is only its "not configured / unknown root" answer — it can also REJECT, and a rejection threw past the entire handler. |
+| **Evidence that it rejects** | Every other fan-out over it in the repo already assumes so: `heatmap-warm/route.ts:86` wraps it in `Promise.allSettled`, and `desk-warm/route.ts:60-67` has a dedicated `"[cron/desk-warm] background fetchGexHeatmap(SPX/SPY) failed:"` branch reading `gexResults.status === "rejected"`. `gex-positioning.ts` and six other call sites use `.catch(() => null)`. This cron was the only fan-out doing neither. |
+| **Blast radius** | Worse than a missing card: `runThermalBreachAlerts` runs AFTER this call, so one failing ticker also suppressed flip/wall breach alerts for the two HEALTHY tickers, plus the EOD recap. `ThermalCardColumn.heatmap` is already `GexHeatmap \| null` and every consumer filters `heatmap != null`, so the degraded path was designed for and simply unreachable. |
+| **Fix** | #PR — `Promise.allSettled` per ticker; a rejected ticker degrades to a null column and the healthy ones still post. Mapping extracted to `thermal-discord-columns.ts` (route-local, same pattern as the existing dedup/RTH helpers) with 5 unit tests. Failures are logged, never dropped silently: downstream a null column is indistinguishable from a cold cache, so a silent drop would hide a real upstream fault behind a benign-looking gap. |
+| **Checked and NOT a defect** | The Discord card already labels itself with the real matrix `asof` (`thermal-discord-card.ts:438-442`), not "now" — unlike the Largo thermal tools. `runThermalEodRecap` self-guards on `isThermalEodRecapDue`, so calling it every tick posts nothing outside the 16:00-16:30 ET window. |
+| **Status** | FIXED — tsc clean, 8691 pass / 0 fail on Node 20 (baseline `main` 8686/0, +5 = the new tests), eslint clean. |
+
 ## 2026-08-19 — [FINDING, P0 correctness] `main` went red with every PR green — #2365 and #2366 collided on the 0DTE expiry resolver — FIXED
 
 > **kind:** `FINDING`
