@@ -4,6 +4,21 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-21 — [FINDING, P2 tooling] 32 test files under `scripts/` were collected by nothing — "unit-tested" was true of the files and false of the pipeline — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `scripts/run-tests.mjs` — "THE test runner, the one command CI and a developer both run" — collected `*.test.ts` under `src/` **only** (L35, L48). Every test file under `scripts/` was therefore run by no workflow and no npm script. Verified: `grep` across `.github/workflows/` for `tsx --test` / `node --test` / any `scripts/**test` path returns **nothing**, and the only npm script naming one (`eval:bie:score-test`) is called by no workflow. 32 files, gating nothing. |
+| **Why it is a phantom-guard finding** | `CLAUDE.md` describes these helpers as protected: "unit-tested by `zerodte-e2e-suite.test.ts`" (L133), "Pure verdict helpers in `lib/truncation-verdict.mjs` (11 unit tests)" (L156), "A unit test holds every block within 0.85-1.35 of its measured drawn height, **so this class of bug cannot return invisibly**" (L145). The tests exist and pass; nothing runs them. That is rule 7's shape exactly — an absent thing (enforcement) rendered as a present one. Among the unguarded: `x-publish-guard.test.mjs` (a publish gate), `roll-ecs.test.ts` (the break-glass deploy tool), `clerk-audit-user.test.mjs`. |
+| **Proof it was not merely theoretical** | Running all 32 under Node 20.20.2 found **2 already broken**, rotted silently because nothing would have said so. (1) `bead-pixel-eval.test.ts` still asserted **cyan calls / red puts** — the exact palette its own lib was corrected away from on 2026-08-19, whose header states "every count, radius and ratio it produced before this fix is void". The test was checking the classifier against two colours it is specifically built to REJECT. (2) `x-marketing-paused.test.mjs` deleted its env vars and relied on the default secret reader returning nothing — true only where AWS is unreachable. This container reads **98 live production secrets**, so the default returned prod's real `X_MARKETING_POSTS_PAUSED=1` and the test failed. A unit test was asking production what the answer is. |
+| **Fix** | `collectTestFiles` takes an extension list; the runner now also collects `scripts/**/*.test.{ts,mjs,mts}` and refuses to report success if that directory yields zero files — the same guard `src/` already had, because a collector that silently finds nothing reports a clean pass, which is the failure being fixed. Both rotted tests repaired first: bead-pixel now paints the real amber `#ffd60a` / violet `#d97bff` palette (**and** asserts the cyan flip-guide and red down-candle are rejected, pinning the 2026-08-19 correction); `x-marketing-paused` takes an injectable secret reader so the logic is tested instead of prod's current configuration. |
+| **Gates on Node 20.20.2** | `npm test` -> **1027 test files (995 src/, 32 scripts/) · 9414 tests · 9413 pass · 0 fail · 1 skipped**. Roughly 360 previously-ungated assertions now gate the merge. |
+| **Consequence for the rest of this sweep** | The three P1 fixes from this sweep each ship a regression test under `scripts/`. Until this change lands they are pinned but **not gated**; with it, they are both. |
+| **Status** | FIXED — this PR. Found by the documented-but-unwired ("phantom guards") sweep. |
+
+
 ## 2026-08-21 — [FINDING, P1 X marketing] `X_MARKETING_POSTS_PAUSED` did not stop all posting — a second publisher bypassed every gate — FIXED
 
 > **kind:** `FINDING`
