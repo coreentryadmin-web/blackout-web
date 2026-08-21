@@ -42,6 +42,18 @@ export type CompareGammaPosture = "long" | "short" | null;
  */
 export type CompareVolatilityRegime = "suppressing" | "amplifying" | null;
 
+/**
+ * How fresh the reading behind a side is. `getGexPositioning` is a documented STRICT CACHE
+ * READER — it never hits a second upstream — so "cached" is the honest steady-state value for
+ * the gamma side, not a degraded one.
+ *
+ * Carried because `age_seconds` alone is not freshness: the gamma side's age is the age of the
+ * MATRIX COMPUTATION, and a matrix recomputed 300 seconds ago can be modelling a price that
+ * settled four and a half hours earlier. A reader given only the age lands straight back in the
+ * bug this card was fixed for.
+ */
+export type CompareFreshness = "live" | "delayed" | "cached" | "snapshot" | "stale" | null;
+
 export type HelixThermalSide = {
   available: boolean;
   /**
@@ -66,14 +78,57 @@ export type HelixThermalSide = {
   gamma_posture?: CompareGammaPosture;
   /** Gamma side only — what that posture does to realized vol. */
   volatility_regime?: CompareVolatilityRegime;
+  /** How fresh this side's reading is — see CompareFreshness for why age alone is not enough. */
+  freshness?: CompareFreshness;
+  /**
+   * Age of THIS side's reading in whole seconds. On the gamma side this is the age of the matrix
+   * COMPUTATION, not of the price it models — read it with `freshness` and `market_session`.
+   */
+  age_seconds?: number | null;
 };
+
+/**
+ * The non-directional relationship between the two sides.
+ *
+ * Replaces a field that was removed rather than leaving the card silent. The old flow-vs-gamma
+ * "conflict" flag asserted a DIRECTION conflict against a gamma read that has no direction, so
+ * every `true` it produced was manufactured. But the real relationship is meaningful and was
+ * simply never expressed: bullish flow entering an AMPLIFYING (short-gamma) regime is a
+ * materially higher-variance position than the same flow entering a SUPPRESSING one, because the
+ * tape accelerates in both directions rather than being faded back toward heavy strikes.
+ *
+ * Null whenever either side is unknown — the same "nothing was compared" honesty the conflict
+ * flag now carries.
+ */
+export type CompareRegimeInteraction = {
+  flow_bias: "bullish" | "bearish" | "neutral";
+  volatility_regime: "suppressing" | "amplifying";
+  /** One line naming the interaction, never a direction call on the gamma side. */
+  read: string;
+} | null;
 
 export type HelixThermalCompareCard = {
   kind: "helix_thermal";
   ticker: string;
-  as_of: string;
+  /**
+   * When this CARD was built, as an ET wall-clock stamp ("2026-08-21 09:31 ET").
+   *
+   * NOT a UTC ISO instant. A UTC instant rolls its calendar DATE at 20:00 ET, so for the last
+   * four hours of every trading day anything resolving "which session is this" from it is a full
+   * session ahead — the defect class fixed in #2418 (bars) and #2420 (Helix expiry). Null only
+   * when the stamp cannot be formatted, never a silently wrong date.
+   */
+  as_of: string | null;
+  /** The ET SESSION this card belongs to (YYYY-MM-DD) — the anchor `as_of` alone cannot give. */
+  session_date?: string | null;
+  /** Machine-orderable UTC instant, kept alongside the ET stamp for consumers that sort on it. */
+  as_of_utc?: string;
+  /** ET cash-session phase when the card was built (OPEN / PRE-MARKET / AFTER-HOURS / CLOSED). */
+  market_session?: string;
   helix: HelixThermalSide;
   thermal: HelixThermalSide;
+  /** Non-directional flow-vs-regime interaction — see CompareRegimeInteraction. */
+  regime_interaction?: CompareRegimeInteraction;
   /**
    * True ONLY when both sides produced a real, directional reading and those readings
    * oppose. Two absent sides are NOT agreement: when either side is unknown this is
@@ -91,12 +146,21 @@ export type PeerTickerRow = {
   /** True only when BOTH sides are known and directionally oppose — see HelixThermalCompareCard.conflict. */
   conflict: boolean;
   conflict_note: string | null;
+  /** Non-directional flow-vs-regime interaction for this peer — see CompareRegimeInteraction. */
+  regime_interaction?: CompareRegimeInteraction;
 };
 
 export type PeerTickerCompareCard = {
   kind: "peer_tickers";
   tickers: string[];
-  as_of: string;
+  /** ET wall-clock stamp — see HelixThermalCompareCard.as_of for why this is not a UTC ISO. */
+  as_of: string | null;
+  /** The ET SESSION this card belongs to (YYYY-MM-DD). */
+  session_date?: string | null;
+  /** Machine-orderable UTC instant, kept alongside the ET stamp. */
+  as_of_utc?: string;
+  /** ET cash-session phase when the card was built (OPEN / PRE-MARKET / AFTER-HOURS / CLOSED). */
+  market_session?: string;
   rows: PeerTickerRow[];
   /**
    * True when peers with a KNOWN flow bias point in opposite directions. Requires at

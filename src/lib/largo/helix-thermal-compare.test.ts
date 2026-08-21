@@ -1,7 +1,13 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { compareSidesFrom, type ComparePositioningInput } from "./helix-thermal-compare";
+import {
+  cardStamp,
+  compareSidesFrom,
+  regimeInteractionFor,
+  type ComparePositioningInput,
+} from "./helix-thermal-compare";
+import { etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 
 /**
  * The LIVE production `gamma_regime_read` for SPY, captured 2026-08-21T00:10Z from
@@ -127,5 +133,61 @@ describe("compare card — flow side arithmetic", () => {
       available: true,
     });
     assert.equal(flow.call_premium, 500_000);
+  });
+});
+
+describe("compare card — the stamp is an ET session anchor, not a UTC instant", () => {
+  it("stamps ET wall-clock and session date, keeping the UTC instant alongside", () => {
+    // 2026-08-21T00:29Z = 2026-08-20 20:29 ET — the exact instant measured live, and the window
+    // where a UTC date is already a session ahead.
+    const card = cardStamp(Date.parse("2026-08-21T00:29:00Z"));
+    // A UTC ISO rolls its calendar DATE at 20:00 ET, so a session resolved from it is a full
+    // session ahead for the last four hours of every trading day (#2418 / #2420 class).
+    assert.doesNotMatch(String(card.as_of), /^\d{4}-\d{2}-\d{2}T.*Z$/, "as_of must not be a UTC ISO");
+    assert.match(String(card.as_of), / ET$/);
+    assert.match(String(card.session_date), /^\d{4}-\d{2}-\d{2}$/);
+    assert.match(String(card.as_of_utc), /^\d{4}-\d{2}-\d{2}T.*Z$/, "machine instant kept alongside");
+    assert.equal(card.as_of, "2026-08-20 20:29 ET");
+    assert.equal(card.session_date, "2026-08-20", "ET session, NOT the 2026-08-21 UTC date");
+    assert.equal(card.as_of_utc, "2026-08-21T00:29:00.000Z");
+    assert.equal(card.market_session, "CLOSED");
+  });
+
+  it("freezes ONE instant per payload so phase and stamps cannot straddle a boundary", () => {
+    // Same input instant must always give the same anchor — no second clock read inside.
+    const a = cardStamp(Date.parse("2026-08-20T19:59:59Z"));
+    const b = cardStamp(Date.parse("2026-08-20T19:59:59Z"));
+    assert.deepEqual(a, b);
+  });
+
+  it("the ET session date can differ from the UTC date — that is the whole point", () => {
+    // 2026-08-21T00:29Z is 2026-08-20 20:29 ET. The UTC date is already the 21st.
+    const utcDate = new Date("2026-08-21T00:29:00Z").toISOString().slice(0, 10);
+    assert.equal(utcDate, "2026-08-21");
+    assert.equal(etSessionDate(Date.parse("2026-08-21T00:29:00Z")), "2026-08-20");
+  });
+});
+
+describe("compare card — regime_interaction replaces the removed conflict signal", () => {
+  it("names bullish flow entering an amplifying regime as higher variance", () => {
+    const r = compareSidesFrom(LIVE_SPY_POS, BULLISH_FLOW);
+    const ri = regimeInteractionFor(r.flow.bias, r.gamma.volatility_regime ?? null);
+    assert.equal(ri?.flow_bias, "bullish");
+    assert.equal(ri?.volatility_regime, "amplifying");
+    assert.match(String(ri?.read), /amplifying regime/i);
+    assert.match(String(ri?.read), /either direction/i);
+    // It must never restate the gamma side as a direction.
+    assert.doesNotMatch(String(ri?.read), /gamma is (bullish|bearish)/i);
+  });
+
+  it("is null when either side has no reading", () => {
+    assert.equal(regimeInteractionFor("unknown", "amplifying"), null);
+    assert.equal(regimeInteractionFor("bullish", null), null);
+  });
+
+  it("describes a suppressing regime as damping follow-through", () => {
+    const ri = regimeInteractionFor("bearish", "suppressing");
+    assert.match(String(ri?.read), /suppressing regime/i);
+    assert.match(String(ri?.read), /damped/i);
   });
 });
