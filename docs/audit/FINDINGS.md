@@ -535,6 +535,25 @@ Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 | **Gates on Node 20.20.2** | `npx tsc --noEmit` clean · `npm test` **9043 pass / 0 fail** · `npm run build` clean · `npx eslint` clean. |
 | **Status** | FIXED — PR #2497 (draft). The fix itself is **not yet live-verified**: it is held by the CSS contract test, and the pixels must be re-measured once it ships. |
 
+## 2026-08-21 — [FINDING, P1 Meridian] The options-implied move was computed for 4.5% of prints, and NVDA was not one of them — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | On a live 21-day timeline: **154 earnings prints, 7 carrying an `expected_move_pct` (4.5%)**. NVDA — the most-watched print of the window, high impact, five days out — showed **nothing**. The implied move is one of the two numbers a member reads off an earnings row. |
+| **Root cause 1 — the budget was spent in calendar order** | `batchLoadEarningsExpectedMovePct` did `[...byTicker.entries()].slice(0, BATCH_CAP)` — a hard cap of 36 over a Map in INSERTION order, which is calendar order and unrelated to whether anyone is watching the name. Proof it was the binding constraint: the 7 names that resolved sat at positions **2, 17, 24, 26, 28, 30, 33** — every one inside the cap, none beyond it. |
+| **The data was there the whole time** | Six high-impact names past position 36, asked directly: **VEEV 15.2% · SJM 9.2% · NVDA 7.7% · NTNX 18.2% · HPQ 12.5% · DCI 10.3%.** Every one had a chain. Meanwhile 29 of the 36 pulls that WERE spent went to micro-caps with no chain at all — the budget was being spent almost exactly backwards. |
+| **Root cause 2 — a 36-wide burst against a saturated limiter** | Ranking alone moved coverage from 7 to **2**. Each pull is a GEX positioning read plus a full chain fetch, fired as one `Promise.all` of 36 while the timeline load is already saturating the same Polygon limiter with its own per-ticker GEX work. A standalone 12-concurrency test resolved **9/12 and did not reproduce it** — the contention only appears against the full load, so only the end-to-end measurement settled it. Bounded to 6 in flight. |
+| **Fix** | `meridian-em-priority.ts`: rank by impact → Benzinga importance → soonest → ticker (stable, so the covered set cannot flap between loads), THEN cap. Plus `EM_CONCURRENCY = 6`. The cap stays — 154 chain pulls per timeline load is not affordable, and raising it would trade a visible gap for a latency one. Same principle `detailRefreshMsFor` already applies to polling: spend the budget where it changes a decision. |
+| **Measured end-to-end, live** | items with an implied move **7 → 28 (4.5% → 18.2%)** · high-impact prints covered **~0 → 28 of 52 (54%)** · **NVDA null → 7.7%**. The ranked top-36 is now PDD, BMO, BNS, INTU, CRM, CRWD, **NVDA**, SNPS, ADSK, MRVL, DELL, PANW, HPQ, VEEV, OKTA… where it used to be micro-caps. |
+| **Absence now carries its reason** | `expected_move_coverage` ships on the timeline payload: `{requested: 151, attempted: 36, skipped: 115, resolved: 28, note}`. Before this, `expected_move_pct: null` meant BOTH "this name has no options chain" and "we never looked" — different facts, and only one is about the name. The note is emitted **only when something was skipped**, because a warning that always fires is one nobody reads. |
+| **A bug I wrote and the test caught** | `daysScore` did `Number(c.days_until)`, and `Number(null)` is `0` — so a row with an unknown date scored as "reporting today", the most urgent value there is, and outranked a confirmed mega-cap print for a scarce pull. **The identical `Number(null)` trap I had fixed hours earlier in `meridian-timeline-for-largo.ts`**, written again in a new file. Guarded in one helper used by both scores; unknown importance now also ranks below a real 0, because "we do not know" is weaker evidence than "we know it is low". |
+| **Regression guard** | 9 tests in `meridian-em-priority.test.ts`, built on a fixture shaped like the live lane (40 micro-caps then NVDA/VEEV/HPQ, so NVDA sits past the real cap): NVDA survives the cap and leads; the tiebreak order is deterministic; an unknown date sorts last; blank tickers/dates are dropped before a slot is spent; duplicates take one slot; a zero cap attempts nothing; and coverage reports a truncation but stays silent when nothing was skipped. Non-vacuous — removing the null guard fails the unknown-date test. |
+| **Follow-up, not in this PR** | `get_meridian_timeline` (#2545) should surface `expected_move_coverage` in its payload once both land, so the model gets the same skipped-vs-no-chain distinction the UI now has. |
+| **Gates on Node 20.20.2** | `npx tsc --noEmit` clean · `npm test` **9291 pass / 0 fail** · `npm run build` clean · `npx eslint` clean. |
+| **Status** | FIXED — PR #2559 (draft). Verified end-to-end against live upstreams before opening; production verification still owed. |
+
 ## 2026-08-21 — [FINDING, P2 Largo] Rule-7 sweep of the HELIX lane — two more places absence was published as measurement — FIXED
 
 > **kind:** `FINDING`
