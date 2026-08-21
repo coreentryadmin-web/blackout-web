@@ -82,8 +82,9 @@ predecessor cannot pass on:
    wiped it.
 3. **You cannot undraft your own PR, and that is expected.** REST `PATCH {"draft": false}` silently
    returns `draft: true` — the field is read-only on update. GraphQL's
-   `markPullRequestReadyForReview` is blocked for agent sessions. `agent-pr-release.yml` sweeps
-   every 15 minutes and releases any agent draft whose `verify` is green. **Open the PR, get CI
+   `markPullRequestReadyForReview` is blocked for agent sessions — and the Actions `GITHUB_TOKEN`
+   is refused it too, so `agent-pr-release.yml` reports green drafts but cannot release them until
+   an `AGENT_RELEASE_TOKEN` PAT exists. The coordinator releases them meanwhile. **Open the PR, get CI
    green, stop. Do not burn turns trying to undraft it, and do not treat a draft as a failure.**
 4. **Ask the coordinator, never the user.** Questions go in a PR comment or a message to the
    coordinator session.
