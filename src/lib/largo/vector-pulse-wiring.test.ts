@@ -69,3 +69,34 @@ test("the reader never reimplements the pulse detector", () => {
   assert.ok(src.includes("fetchVectorFullState"), "must read the real Vector state");
   assert.ok(!src.includes("detectPulseSignals("), "must not call the detector directly — go through the real builder");
 });
+
+test("every pulse timestamp is shipped on the same at(ms)+at_et(ET) convention, not a raw epoch", () => {
+  // THE DEFECT: `VectorWallEvent.time` is epoch SECONDS (vector-pulse.ts multiplies it by 1000 to
+  // build a signal's ms `at`), while `signals[].at` and `snapshot.at` are epoch MILLISECONDS. The
+  // pulse tool shipped the raw `time` beside the raw `at`, so one payload carried two timestamp
+  // families 1000x apart, both unlabelled — a model correlating a wall event with a signal was off
+  // by three orders of magnitude, and neither carried an ET/session anchor (contract C1's class).
+  const src = readFileSync("src/lib/largo/product-reads.ts", "utf8");
+  const fn = src.slice(
+    src.indexOf("export async function vectorPulseForLargo"),
+    src.indexOf("export async function", src.indexOf("export async function vectorPulseForLargo") + 1)
+  );
+  // Wall events are re-expressed in ms and stamped, and the ambiguous seconds field is gone.
+  assert.match(fn, /e\.time \* 1000/, "wall-event seconds must be converted to ms");
+  assert.match(fn, /at_et: etStamp\(atMs\)/, "each wall event carries an ET stamp");
+  assert.doesNotMatch(
+    fn,
+    /wall_events: state\.wallEvents\.slice\(-12\),/,
+    "the raw wall-event array (seconds `time`, no ET) must not be shipped as-is"
+  );
+  // Signals and the snapshot both gain the ET sibling.
+  assert.match(fn, /at: s\.at,\s*\n\s*at_et: etStamp\(s\.at\)/, "each signal carries at_et beside at");
+  assert.match(fn, /\.\.\.current, at_et: etStamp\(current\.at\)/, "the snapshot carries at_et");
+});
+
+test("the pulse description states the timestamp convention it now ships", () => {
+  const def = LARGO_TOOL_DEFS.find((d) => d.name === "get_vector_pulse");
+  assert.ok(def, "get_vector_pulse must be declared");
+  assert.match(def.description, /at_et/, "the description must teach the at_et field");
+  assert.match(def.description, /MILLISECONDS/, "…and that `at` is epoch ms");
+});

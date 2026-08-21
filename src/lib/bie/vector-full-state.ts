@@ -62,6 +62,8 @@ import { VECTOR_FRACTION_DP } from "@/features/vector/lib/vector-response-roundi
 import { readVectorFullStateCache, writeVectorFullStateCache } from "@/lib/bie/vector-full-state-cache";
 import { reportVectorAbsences, type VectorAbsenceReport } from "@/lib/bie/vector-absent-sections";
 import { isEtCashRth } from "@/lib/et-market-hours";
+import { describeVectorFreshness, type VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
+import { etStamp, etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 
 /** The default chart timeframe (minutes) a cached snapshot is computed at — the cron warms this TF;
  *  a reader asking for a different TF must recompute live (its technicals differ). */
@@ -91,7 +93,9 @@ export type VectorHeatmapSummary = {
  * move / max pain / confluence / wall integrity / technicals / the derived `play`) and
  * ADDS the desk-only context the snapshot has no slot for, so BIE sees EVERYTHING Vector
  * shows — the static structure AND the temporal wall dynamics (beads forming/growing/fading):
- *  - `asOf`          — when this state was assembled (ISO).
+ *  - `asOf`          — when this state was assembled, as a UTC ISO instant.
+ *  - `asOfEt` / `sessionDate` — the SAME instant on the market's clock, plus the ET trading
+ *                      session it belongs to. Frozen with the measurement (see the type).
  *  - `flowMarkers`   — options-flow prints for the horizon's front expiry (feature #20).
  *  - `ladder`        — the full per-strike GEX ladder (king strikes + magnitudes), not just
  *                      the top walls the snapshot carries.
@@ -107,7 +111,29 @@ export type VectorHeatmapSummary = {
  * Every added field is null/empty when its read had nothing real — never fabricated.
  */
 export type VectorFullState = VectorSnapshot & {
+  /** When this state was assembled, as a UTC ISO instant. Machine-orderable, session-ambiguous. */
   asOf: string;
+  /**
+   * `asOf` on the MARKET's clock — the same instant, stamped ET.
+   *
+   * A bare UTC instant does not say which trading session it belongs to, and after ~20:00 ET its
+   * calendar date is already tomorrow. This state is served to a model that is routinely asked
+   * "is this today's tape?", so the instant travels with its session rather than requiring the
+   * reader to convert an ISO string in its head. Contract C1 (`session-anchor.test.ts`).
+   */
+  asOfEt: string | null;
+  /**
+   * The ET trading-session date `asOf` falls in.
+   *
+   * PERSISTED with the snapshot rather than derived at read time, unlike the freshness block's
+   * age. "How old is this?" is a fact about the READ and changes every second; "which session was
+   * this measured in?" is a fact about the MEASUREMENT and is frozen the moment it is taken. A
+   * cached snapshot re-served an hour later has a different age and the same session date, so the
+   * two belong on opposite sides of the cache boundary.
+   *
+   * Null only when `Date.now()` produced something `etSessionDate` could not read.
+   */
+  sessionDate: string | null;
   flowMarkers: VectorFlowMarkers | null;
   ladder: GexLadder | null;
   heatmap: VectorHeatmapSummary | null;
@@ -143,6 +169,11 @@ export async function computeVectorFullState(
   timeframeMin = VECTOR_FULL_STATE_DEFAULT_TIMEFRAME_MIN
 ): Promise<VectorFullState | null> {
   const t = normalizeVectorTicker(ticker);
+  // Read the clock ONCE, before the fan-out, and stamp every time field below from it. Taken at
+  // the START of the fan-out deliberately: it is the moment the underlying reads were issued, and
+  // it errs OLD by the fan-out's duration (~0.7s target) rather than young — the safe direction
+  // for a field whose whole job is to disclose staleness.
+  const asOfMs = Date.now();
 
   try {
     // Fail-open PER read (mirrors fetchEcosystemContext): most of these already .catch()
@@ -260,7 +291,12 @@ export async function computeVectorFullState(
     return roundFloats<VectorFullState>({
       ...snapshot,
       play,
-      asOf: new Date().toISOString(),
+      asOf: new Date(asOfMs).toISOString(),
+      // All three from ONE `asOfMs`, never three separate clock reads: two `new Date()` calls
+      // either side of a slow fan-out can straddle a session boundary and stamp a state whose
+      // instant and session date disagree — a self-contradicting payload is worse than a bare one.
+      asOfEt: etStamp(asOfMs),
+      sessionDate: etSessionDate(asOfMs),
       flowMarkers: flowMarkers ?? null,
       ladder,
       heatmap: heatmapGrid
@@ -299,37 +335,55 @@ export async function fetchVectorFullState(
   ticker: string,
   horizon: VectorDteHorizon = VECTOR_DEFAULT_DTE_HORIZON,
   timeframeMin: number = VECTOR_FULL_STATE_DEFAULT_TIMEFRAME_MIN
-): Promise<(VectorFullState & VectorAbsenceReport) | null> {
+): Promise<(VectorFullState & VectorAbsenceReport & VectorFreshnessBlock) | null> {
   const cacheable = timeframeMin === VECTOR_FULL_STATE_DEFAULT_TIMEFRAME_MIN;
 
   if (cacheable) {
     const cached = await readVectorFullStateCache(ticker, horizon);
-    if (cached) return withAbsenceReport(cached);
+    // Compose both read-time labels: absence (which sections were unreadable) AND freshness
+    // (how old this served snapshot is). Both are derived on the way OUT, never persisted.
+    if (cached) return withReadContext(cached);
   }
 
   const live = await computeVectorFullState(ticker, horizon, timeframeMin);
 
   // Self-warm on a default-TF miss so the next reader hits cache even if the cron hasn't run
   // (off-hours, cold task). Fire-and-forget — a cache write must never delay or fail the read.
+  //
+  // NOTE the ordering: the cache is written the RAW `live` state, and the freshness block is
+  // attached to a SEPARATE returned object. So nothing time-dependent is ever persisted — a stored
+  // age would freeze at zero and describe every later read as instantaneous, which is this defect
+  // inverted. That is what makes it safe to attach here rather than in a caller-side wrapper.
   if (live && cacheable) void writeVectorFullStateCache(ticker, horizon, live);
 
-  return live ? withAbsenceReport(live) : null;
+  return live ? withReadContext(live) : null;
 }
 
 /**
- * Attach the absence report on the way OUT rather than storing it on the snapshot.
+ * Attach the READ-time labelling — absence report AND freshness — on the way OUT, never on the
+ * stored snapshot. Two lanes converged here (#2435 absence, #2427 freshness); both belong at this
+ * single shared entry point and both are derived purely from the served state, so they compose
+ * into ONE wrapper rather than two passes.
  *
- * Two reasons it belongs here and not in `computeVectorFullState`. (1) It is derived purely from
- * the state's own fields, so deriving it on read means a cache entry written before this existed
- * still gets a correct report — no cache-shape version bump, no window where the field is missing.
- * (2) It keeps the CACHED object exactly what the cron writes, so what is stored stays the raw
- * desk state and the labelling stays a property of the answer.
+ * WHY ON READ, NOT IN computeVectorFullState. (1) Both are derived from the state's own fields, so
+ * a cache entry written before either existed still gets a correct report on read — no cache-shape
+ * bump, no window where a field is missing. (2) The CACHED object stays exactly what the cron
+ * writes (the raw desk state), so nothing time-dependent is ever persisted — a stored age would
+ * freeze at zero and describe every later read as instantaneous, the freshness defect inverted.
  *
- * `isRth` is evaluated against the snapshot's OWN `asOf`, not against "now": the question the
- * bead-rail reason answers is "was the market open when this was measured", which is what explains
- * an empty rail. Using "now" would mislabel a pre-open snapshot read after the bell.
+ * WHY THE SHARED ENTRY POINT. Every consumer ships this same un-aged, unlabelled snapshot — not
+ * just the two Vector tools: get_ecosystem_context, the wall-dynamics reader, desk-scope-prefetch,
+ * mini-panel, full-platform-snapshot, scenario-read, play-suggest-read, slash-prompts, the
+ * /api/market/largo/{status,context} routes and Night Hawk's Cortex. Labelling in a caller-side
+ * wrapper would have left a dozen surfaces serving a stale, unlabelled read.
+ *
+ * `isRth` is evaluated against the snapshot's OWN `asOf`, not "now": the bead-rail reason answers
+ * "was the market open when this was MEASURED", which is what explains an empty rail; "now" would
+ * mislabel a pre-open snapshot read after the bell.
  */
-function withAbsenceReport(state: VectorFullState): VectorFullState & VectorAbsenceReport {
+function withReadContext(
+  state: VectorFullState
+): VectorFullState & VectorAbsenceReport & VectorFreshnessBlock {
   const observedAt = Date.parse(state.asOf);
   return {
     ...state,
@@ -348,6 +402,7 @@ function withAbsenceReport(state: VectorFullState): VectorFullState & VectorAbse
       play: state.play,
       isRth: isEtCashRth(Number.isFinite(observedAt) ? new Date(observedAt) : new Date()),
     }),
+    ...describeVectorFreshness(state.asOf, Date.now()),
   };
 }
 
