@@ -81,7 +81,18 @@ explicitly permit the answer "no, do not do this". An agent that can only agree 
 A task force is time-boxed: one job, report, done. When it has reported:
 
 1. Take delivery of the output — land its PR, or have it hand you the content if it cannot push.
-2. Confirm nothing else is owed.
+2. **Confirm nothing else is owed — by scanning its ENTIRE open-PR set, not the PR you came about.**
+   Also read its last `post_turn_summary` / `task_summary`: an agent mid-task says so there.
+
+   > Failed this within an hour of writing it. I verified the DST task force's #2536 had landed —
+   > all four artifacts, checked in `main` by file — and archived it. Its final status read
+   > *"#2553 verify running; awaiting green to close #2540"*. It had two PRs in flight. The rule was
+   > right and my execution was one check short, because I confirmed "nothing owed" for the thing I
+   > was looking at rather than for the agent.
+   >
+   > Recovery is cheap if you notice: adopt the open work yourself rather than unarchiving. What is
+   > NOT cheap is not noticing — an archived agent stops reporting, so its unfinished PRs simply go
+   > quiet and look like everyone else's backlog.
 3. `archive_session(session_id)`.
 
 Why it matters: a finished agent left running **drifts into another lane's territory**, holds state
