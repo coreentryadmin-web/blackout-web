@@ -11,6 +11,7 @@ import { getVectorExpectedMove } from "@/features/vector/lib/vector-expected-mov
 import { loadEarningsExpectedMovePct } from "@/lib/meridian/meridian-earnings-expected-move";
 import { marketPlatform } from "@/lib/platform";
 import { roundFloats } from "@/lib/round-floats";
+import { thermalScopes } from "@/lib/meridian/meridian-thermal-scope";
 import { buildMeridianFinancialsContext } from "@/lib/meridian/meridian-financials-context";
 import { fetchUwDarkPool } from "@/lib/providers/unusual-whales";
 import {
@@ -265,7 +266,14 @@ export async function loadMeridianEarningsIntel(input: {
           max_pain: scopeUsable ? (scoped.maxPain ?? thermal.max_pain) : thermal.max_pain,
           // Which chain these levels describe. Named so a reader can tell an event-scoped wall
           // from a whole-book one — they render identically otherwise.
+          //
+          // `expiry_scope` describes the WALLS and MAX PAIN, which are the fields re-summed above.
+          // It never described the king node, the flip, net GEX, the top-strike table, the nearest
+          // wall or the regime sentence — those are passed through from the whole-book aggregate
+          // — but it was rendered as a badge over all of them. `...thermalScopes()` states the
+          // scope of each, so the payload and the panel cannot disagree about it.
           expiry_scope: scopeUsable ? "event_expiry" : "aggregate",
+          ...thermalScopes(scopeUsable, scoped.aggregateExpiryCount),
           expiry_used: scoped.expiryUsed,
           expiry_days_from_event: scoped.daysFromEvent,
           expiry_label: scopeUsable
@@ -301,6 +309,9 @@ export async function loadMeridianEarningsIntel(input: {
           walls_inverted: fallbackWalls.walls_inverted,
           flip: input.pack.positioning.flip ?? null,
           max_pain: null,
+          // No chain was read at all, so nothing here is event-scoped. Declared rather than
+          // omitted: a UI that has to treat a MISSING scope as a scope is back to guessing.
+          ...thermalScopes(false, null),
           net_gex_label: null,
           gamma_regime: input.pack.positioning.gamma_regime,
           top_strikes: [],

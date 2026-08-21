@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img" aria-label="Conceptual diagram of the call wall and put wall: dealer gamma concentrates at strikes above and below spot, forming a ceiling (call wall, resistance) and a floor (put wall, support) that price tends to pin between.">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0B0E13"/>
+      <stop offset="1" stop-color="#07080B"/>
+    </linearGradient>
+    <linearGradient id="callBar" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#A3E635" stop-opacity="0.15"/>
+      <stop offset="1" stop-color="#A3E635" stop-opacity="0.9"/>
+    </linearGradient>
+    <linearGradient id="putBar" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#FB7185" stop-opacity="0.15"/>
+      <stop offset="1" stop-color="#FB7185" stop-opacity="0.9"/>
+    </linearGradient>
+    <linearGradient id="pinBand" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#A3E635" stop-opacity="0.06"/>
+      <stop offset="0.5" stop-color="#FBBF24" stop-opacity="0.05"/>
+      <stop offset="1" stop-color="#FB7185" stop-opacity="0.06"/>
+    </linearGradient>
+    <style>
+      text{font-family:'JetBrains Mono',ui-monospace,monospace;fill:#E8ECF3}
+      .h{font-family:'Syne',system-ui,sans-serif;font-weight:800}
+      .lbl{font-size:20px;letter-spacing:.02em}
+      .cap{font-size:16px;fill:#909BAC}
+      .tag{font-size:15px;letter-spacing:.16em;fill:#5B6573}
+      .px{font-size:15px;fill:#909BAC}
+    </style>
+  </defs>
+
+  <rect width="1200" height="630" rx="18" fill="url(#bg)"/>
+  <rect x="1" y="1" width="1198" height="628" rx="17" fill="none" stroke="#1A1F29"/>
+
+  <!-- title -->
+  <text class="h" x="60" y="74" font-size="38" fill="#fff">Call Wall &amp; Put Wall</text>
+  <text class="cap" x="60" y="104">Where dealer gamma piles up — a ceiling above spot, a floor below — and price pins between them.</text>
+  <text class="tag" x="60" y="150">BLACKOUT · SPX DEALER POSITIONING</text>
+
+  <!-- plot -->
+  <g transform="translate(60,186)">
+    <!-- pin band between the two walls -->
+    <rect x="250" y="70" width="830" height="196" fill="url(#pinBand)"/>
+    <line x1="250" y1="70" x2="1080" y2="70" stroke="#A3E635" stroke-width="1" stroke-dasharray="2 6" opacity="0.5"/>
+    <line x1="250" y1="266" x2="1080" y2="266" stroke="#FB7185" stroke-width="1" stroke-dasharray="2 6" opacity="0.5"/>
+
+    <!-- price axis baseline -->
+    <line x1="250" y1="0" x2="250" y2="360" stroke="#2B3340" stroke-width="1"/>
+    <text class="tag" x="250" y="392" fill="#5B6573">GAMMA CONCENTRATION BY STRIKE →</text>
+
+    <!-- gamma bars (length ∝ gamma at strike). y ascending = price descending -->
+    <!-- 7720 small call -->
+    <rect x="250" y="24" width="150" height="20" rx="3" fill="url(#callBar)"/>
+    <text class="px" x="230" y="39" text-anchor="end">7720</text>
+    <!-- 7700 CALL WALL (largest above) -->
+    <rect x="250" y="60" width="620" height="24" rx="3" fill="url(#callBar)"/>
+    <text class="px" x="230" y="77" text-anchor="end" fill="#A3E635">7700</text>
+    <!-- 7680 mid call -->
+    <rect x="250" y="100" width="300" height="20" rx="3" fill="url(#callBar)"/>
+    <text class="px" x="230" y="115" text-anchor="end">7680</text>
+
+    <!-- SPOT line -->
+    <line x1="240" y1="150" x2="1080" y2="150" stroke="#FBBF24" stroke-width="2"/>
+    <circle cx="250" cy="150" r="5" fill="#FBBF24" stroke="#07080B" stroke-width="2"/>
+    <text class="px" x="230" y="155" text-anchor="end" fill="#FBBF24">SPOT 7665</text>
+
+    <!-- 7650 mid put -->
+    <rect x="250" y="180" width="280" height="20" rx="3" fill="url(#putBar)"/>
+    <text class="px" x="230" y="195" text-anchor="end">7650</text>
+    <!-- 7600 PUT WALL (largest below) -->
+    <rect x="250" y="242" width="560" height="24" rx="3" fill="url(#putBar)"/>
+    <text class="px" x="230" y="259" text-anchor="end" fill="#FB7185">7600</text>
+    <!-- 7580 small put -->
+    <rect x="250" y="300" width="130" height="20" rx="3" fill="url(#putBar)"/>
+    <text class="px" x="230" y="315" text-anchor="end">7580</text>
+
+    <!-- price path pinning between the walls -->
+    <path d="M250,150 C 340,80 430,74 520,120 C 610,166 700,250 800,258 C 900,264 980,150 1080,150"
+          fill="none" stroke="#E8ECF3" stroke-width="2.5" stroke-linecap="round" opacity="0.85"/>
+
+    <!-- wall labels — right-aligned to the plot's right edge so no caption can clip the frame -->
+    <text class="lbl h" x="1080" y="54" text-anchor="end" fill="#A3E635">CALL WALL</text>
+    <text class="cap" x="1080" y="76" text-anchor="end" fill="#A3E635" opacity="0.85">resistance · magnet</text>
+    <text class="lbl h" x="1080" y="250" text-anchor="end" fill="#FB7185">PUT WALL</text>
+    <text class="cap" x="1080" y="272" text-anchor="end" fill="#FB7185" opacity="0.85">support · cushion</text>
+
+    <!-- pin annotation — lifted above the price path -->
+    <text class="cap" x="600" y="132" text-anchor="middle" fill="#FBBF24" opacity="0.9">price pins between the walls</text>
+  </g>
+
+  <text class="tag" x="60" y="612" fill="#3d4552">Conceptual illustration · blackouttrades.com/learn/call-wall-put-wall-explained</text>
+</svg>
