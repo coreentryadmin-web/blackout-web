@@ -22,7 +22,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Checked and CLEARED** | No earnings path uses the un-anchored `stockReactionsForDates`; the OpEx and FDA paths do, deliberately and documented. `barWindowForDates` runs to today with a window-derived limit, so trap #1 does not truncate the anchor session away. |
 | **Regression guard** | 5 new tests in `meridian-reaction-core.test.ts` (gap-inclusive AMC read; the sign inversion pinned explicitly; BMO's two reads must stay equal; unknown-timing measure; an AMC print whose own report-date bar is missing yields no reaction rather than substituting the session read) and 2 in `pre-earnings-history-rows.test.ts`. The existing key-completeness test caught the two new fields, as designed. |
 | **Gates on Node 20.20.2** | `npx tsc --noEmit` clean · `npm test` **8994 pass / 0 fail** · `npm run build` clean · `npx eslint` clean. |
-| **Status** | FIXED — PR #____ (draft). NOT yet live-validated; the deployed UI must be re-checked once this ships. |
+| **Status** | FIXED — PR #2488 (draft). NOT yet live-validated; the deployed UI must be re-checked once this ships. |
 
 ## 2026-08-21 — [FINDING, P2 Largo] Rule-7 sweep of the HELIX lane — two more places absence was published as measurement — FIXED
 
