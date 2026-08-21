@@ -44,7 +44,7 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 
 const FILE = process.argv[2] || "docs/audit/FINDINGS.md";
 
@@ -135,10 +135,40 @@ if (added.length === 0) {
 
 // Newest-first is this file's convention, and every appended entry is new, so theirs go directly
 // after the preamble — ahead of ours only in file position, which carries no meaning beyond recency.
-const body = [...added, ...o.entries]
-  .map((e) => e.lines.join("\n").replace(/\s+$/, ""))
-  .join("\n\n");
+const merged = [...added, ...o.entries];
+const body = merged.map((e) => e.lines.join("\n").replace(/\s+$/, "")).join("\n\n");
 
-writeFileSync(FILE, `${o.preamble}${body}\n`);
+// THE PREAMBLE SEPARATOR IS LOAD-BEARING, AND ITS ABSENCE COMPOUNDS.
+//
+// `split()` builds the preamble with `join("\n")`, which does NOT leave a trailing newline. Writing
+// `preamble + body` therefore glued the preamble's last line onto the first heading:
+//
+//     | **Status** | FIXED. |## 2026-08-21 — [FINDING, P1 SEO/CWV] Homepage desktop CLS 0.55 …
+//
+// A heading that is not at line start STOPS BEING AN ENTRY. `findings-hygiene.test.ts` splits on
+// /\n(?=## )/ and never saw it, so the entry was absorbed into the one above — inheriting its kind
+// tag and Status row — and every hygiene check stayed green, because they all operate on the parsed
+// entry list and an entry that has ceased to exist trips none of them.
+//
+// It COMPOUNDED because this resolver re-reads its own output: a glued heading is no longer a `## `
+// at line start, so the next run counts it as preamble and glues the next one on top. Four batch
+// merges produced four invisible entries across three lanes before a lane agent noticed the
+// rendering was garbage.
+const preamble = o.preamble.replace(/\s*$/, "");
+writeFileSync(FILE, `${preamble}\n\n${body}\n`);
+
+// NO SILENT LOSS. Re-parse what was just written and assert the entry count. The defect above was
+// invisible precisely because nothing counted — the file parsed 450 entries and should have parsed
+// 454, and no check compared those numbers. This one does, and fails loudly rather than reporting a
+// successful merge over a file it has damaged.
+const written = readFileSync(FILE, "utf8");
+const headingCount = written.split("\n").filter((l) => l.startsWith("## ")).length;
+if (headingCount !== merged.length) {
+  console.error(
+    `${FILE}: REFUSING — wrote ${merged.length} entries but the file parses ${headingCount}. ` +
+      `Entries have been glued or lost; the file is NOT safe to commit.`
+  );
+  process.exit(3);
+}
 console.log(`${FILE}: merged ${added.length} entry/entries from theirs (${o.entries.length} kept).`);
 for (const a of added) console.log(`  + ${a.heading.slice(0, 100)}`);
