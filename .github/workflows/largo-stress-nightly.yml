@@ -28,7 +28,7 @@ jobs:
         run: npm run validate:largo-stress-live-all
       - name: Open ops issue on failure
         if: failure()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const title = `ops-auto-fix: Largo nightly stress failed (${new Date().toISOString().slice(0,10)})`;

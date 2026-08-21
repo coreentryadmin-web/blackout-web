@@ -39,6 +39,16 @@ export type CaptureLesson = {
 
 export const CAPTURE_LESSONS: ReadonlyArray<CaptureLesson> = [
   {
+    id: "platform-finds-stories-for-you",
+    applies_to: "*",
+    evidence: "MEASURED",
+    sample_size: 1,
+    lesson:
+      "Start a cycle at the Vector Universe Scanner and the Helix Net Premium Leaderboard, not by browsing seven products. They RANK the market by actionability and by where premium is going, so the candidate list arrives pre-sorted.",
+    observation:
+      "Vector scanner 'Nearest flip' at 06:45 ET 2026-08-21 returned TSLA on its flip exactly (349.20 vs 349.20, call wall 350), then SMCI -0.1%, RIOT +0.1%, MU -0.3% — a ranked story queue before opening a single chart. The scanner's own hint calls this preset 'most actionable'.",
+  },
+  {
     id: "default-view-is-not-honest-view",
     applies_to: "*",
     evidence: "MEASURED",
@@ -49,6 +59,16 @@ export const CAPTURE_LESSONS: ReadonlyArray<CaptureLesson> = [
       "SPY 2026-08-21: front-expiry default read LONG GAMMA / NET GEX -$1.8B; expiry ALL read SHORT GAMMA at every strike / -$7.6B. Opposite regimes from the same page.",
   },
   {
+    id: "right-number-wrong-horizon",
+    applies_to: "thermal",
+    evidence: "MEASURED",
+    sample_size: 1,
+    lesson:
+      "An accurate transcription of the WRONG SCOPE is still a false claim. Capture ALL (the operator's rule), but name the horizon of every level that reaches copy, and build a session claim on the near-dated read.",
+    observation:
+      "SPX 2026-08-21 06:05-06:32 ET: ALL read SHORT GAMMA / call wall 7,900 / vol EXPANDED / no flip; 0DTE read LONG GAMMA / call wall 7,700 / vol SUPPRESSED / flip 7,633. Opposite stories, same ticker, same morning. A draft quoting the ALL figures told readers hedging would amplify a move on a session whose 0DTE book says dealers are stabilizing.",
+  },
+  {
     id: "frame-level-before-crop",
     applies_to: "*",
     evidence: "MEASURED",
@@ -57,6 +77,26 @@ export const CAPTURE_LESSONS: ReadonlyArray<CaptureLesson> = [
       "Choose the container first, crop second. A frame chosen at the wrong level cannot be rescued by cropping.",
     observation:
       "`.meridian-page-root` measured 14,704px tall; and a Vector `.vector-chart-wrap` crop dropped the toolbar the operator wanted in frame.",
+  },
+  {
+    id: "scanner-finds-stories-but-is-a-poor-attachment",
+    applies_to: "vector",
+    evidence: "MEASURED",
+    sample_size: 1,
+    lesson:
+      "The Universe Scanner is a story-FINDING tool, not a lead attachment. Finding and showing are different jobs. If a ranking must be shown, crop to ~6 rows and use it as a confirmation slot.",
+    observation:
+      "A 14-row scanner crop measured 4.89:1 with timeline legibility 0.43 — a letterboxed strip whose numbers cannot be read without tapping. I had praised it as postable before measuring it.",
+  },
+  {
+    id: "measure-frames-do-not-judge-them",
+    applies_to: "*",
+    evidence: "MEASURED",
+    sample_size: 10,
+    lesson:
+      "Run `x-intel-frame-quality.mjs` on every candidate frame. A reject list applied by eye is applied by whoever remembers to apply it, and full-resolution review cannot see what collapses at phone size.",
+    observation:
+      "Scored 10 frames captured 2026-08-21: 7 pass, 3 reject. The operator-approved Vector zoom scored highest on timeline legibility (0.88) without the metric being tuned for it; the first version of the metric passed all nine inputs, which meant it was broken rather than lenient.",
   },
   {
     id: "judge-at-timeline-size",
@@ -196,6 +236,46 @@ export const CAPTURE_LESSONS: ReadonlyArray<CaptureLesson> = [
     sample_size: 0,
     lesson:
       "Night Hawk timelines may drive signups more than P&L screenshots, because a timestamped sequence is harder to fake than a number. UNTESTED.",
+  },
+  {
+    id: "vector-axis-is-utc",
+    applies_to: "vector",
+    evidence: "MEASURED",
+    sample_size: 2,
+    lesson:
+      "The Vector chart's time axis is UTC, not ET. Convert before any time reaches copy. Reading it as ET moves every event four hours earlier and turns a premarket print into a session one — the exact error class that put a far-dated call wall into a 0DTE sentence.",
+    observation:
+      "NVDA 2026-08-21, captured 15:07-15:09 UTC / 11:07-11:09 ET. Two independent anchors put the axis in UTC: the previous session's closing volume spike sits at '20:00' (16:00 ET close) and today's opening spike at '13:30' (09:30 ET open), and the right edge lands just past 14:00 with roughly an hour of candles beyond it, matching a 15:08 UTC capture. A zoomed frame from the same run showed a flush at '09:00' that a first reading called the open; it is 05:00 ET premarket.",
+  },
+  {
+    id: "spot-is-not-the-last-visible-candle",
+    applies_to: "vector",
+    evidence: "MEASURED",
+    sample_size: 5,
+    lesson:
+      "Read spot from the regime banner or the price tag, never from where the candles happen to stop. A zoomed or scrolled frame ends wherever the viewport ends, which is not the latest bar.",
+    observation:
+      "NVDA 2026-08-21: five zoomed captures showed rightmost candles at 216.30-217.84 while the banner read 214.89-215.26. The banner was right — /v2/last/trade/NVDA returned 215.2659 at 11:04:41 ET and the Thermal header read 215.05 at 11:01:05 ET. At full fit the chart's own price tag read 215.12, agreeing with its banner. The disagreement was the zoom, not the data.",
+  },
+  {
+    id: "vector-toolbar-renders-twice",
+    applies_to: "vector",
+    evidence: "MEASURED",
+    sample_size: 1,
+    lesson:
+      "Address desk controls with a visible-only locator. The responsive toolbars render a compact and a wide copy of every control and collapse the unused one to a zero-size box instead of unmounting it, so the first match can be a control that is impossible to click.",
+    observation:
+      "/vector?ticker=NVDA at 2560x1440: two nodes carry data-testid=\"vector-indicator-trigger\". Copy 0 has rect [0,0,0,0] and elementFromPoint at its origin returns the nav; copy 1 has rect [570,89,116,32] and hit-tests to itself. Playwright reported the first as an 8s click timeout, which read as a broken button for a day and blocked the Indicators menu and FULL SCREEN alike.",
+  },
+  {
+    id: "state-before-view",
+    applies_to: "*",
+    evidence: "MEASURED",
+    sample_size: 2,
+    lesson:
+      "Set the state that lives on the base view BEFORE switching the view. Doing it the other way loses the state, the framing, or both.",
+    observation:
+      "Vector: entering full screen and then opening the Indicators menu dropped the chart from 2512x1354 to 1196x1398 portrait in an otherwise identical run. Thermal: FORCED FLOW (DEPTH) renders no expiry bar at all, so ALL has to be set on MATRIX first.",
   },
 ];
 
