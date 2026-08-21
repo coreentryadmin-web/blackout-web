@@ -164,7 +164,7 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
 
   t("get_financials", "UW financial statements.", T, ["ticker"]),
 
-  t("get_earnings", "Benzinga earnings channel + UW earnings/estimates. Every move/return field is served as a PERCENT under a `_pct` name (expected_move_pct, reaction_pct, pre_/post_earnings_move_*_pct) — use them as percents directly, do not rescale. `expected_move` (no _pct) is a DOLLAR amount, not a percent.", T, ["ticker"]),
+  t("get_earnings", "Per-ticker earnings: Benzinga STRUCTURED calendar primary — `next_report` (date, BMO/AMC time, confirmed vs projected) and `print_history` (actual vs estimated EPS and revenue, with each print's reaction anchored to its report timing) — plus UW earnings/estimates. `related_news` is news MENTIONING this ticker in the earnings channel, NOT its own results — never quote it as this company's earnings. A non-null `calendar_error` means the calendar could not be READ, which is not evidence the company has no scheduled report. Move/return fields are PERCENTS under `_pct` names; `expected_move` (no suffix) is a DOLLAR amount. Neither is to be rescaled.", T, ["ticker"]),
 
   t("get_earnings_history", "UW earnings history and estimates — one row per past print. Move/return fields are PERCENTS under `_pct` names (reaction_pct is the print reaction, (post_close-pre_close)/pre_close x100); `expected_move` is a DOLLAR amount. Do not rescale either.", T, ["ticker"]),
 

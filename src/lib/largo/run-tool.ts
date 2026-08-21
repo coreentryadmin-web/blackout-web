@@ -791,20 +791,54 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
     case "get_earnings": {
       const sym = uwTicker(ticker);
       return serverCache(`earnings:${sym}`, TTL.EARNINGS, async () => {
-        // PRIMARY: Benzinga earnings news via Polygon (unlimited calls, no rate limit).
-        // SUPPLEMENTAL: UW earnings history and estimates (rate-limited; used only when Benzinga lacks data).
-        const benzinga = await fetchBenzingaEarnings(sym, 15);
-        const [uw, estimates] = await Promise.all([
+        // WHY THE STRUCTURED FEED IS PRIMARY AND THE NEWS CHANNEL IS NOT (don't reorder this):
+        //
+        // `fetchBenzingaEarnings` is `fetchBenzingaNews(channels: "earnings")` — the news channel
+        // filtered to stories that MENTION this ticker in an earnings context. It is not this
+        // company's earnings. Probed live 2026-08-21, `get_earnings("NVDA")` returned headlines
+        // about Fabrinet, Anthropic and Cerebras: no EPS, no revenue, no report date, no BMO/AMC
+        // time, no confirmed-vs-projected status. Asked "when does NVDA report and what's
+        // expected", that is all the model had.
+        //
+        // Benzinga's STRUCTURED earnings feed carries exactly those facts and the rest of Meridian
+        // has been reading it all along (`meridian-benzinga-earnings.ts`, `meridian-ticker-lookup`,
+        // the timeline). Same Polygon key, same entitlement — the tool simply never asked for it.
+        //
+        // Reused, not re-derived: `loadBenzingaTickerEarnings` already carries the
+        // don't-cache-a-failure fix (FINDINGS 2026-08-18 — a failed fetch cached as `{rows: []}`
+        // rendered as "this company has no earnings history" for ten minutes), and
+        // `loadMeridianEarningsPrintHistory` already anchors each print's reaction to its BMO/AMC
+        // timing and carries `reaction_basis`.
+        const [{ loadBenzingaTickerEarnings }, { parseNextEarningsFromBenzinga }, { loadMeridianEarningsPrintHistory }] =
+          await Promise.all([
+            import("@/lib/meridian/meridian-benzinga-earnings"),
+            import("@/lib/meridian/meridian-benzinga-earnings-core"),
+            import("@/lib/meridian/meridian-earnings-history"),
+          ]);
+        const [related, calendar, history, uw, estimates] = await Promise.all([
+          fetchBenzingaEarnings(sym, 15),
+          loadBenzingaTickerEarnings(sym, null),
+          loadMeridianEarningsPrintHistory(sym, 6),
           fetchUwEarnings(sym),
           fetchUwEarningsEstimates(sym),
         ]);
-        // UW serves this whole surface as STRINGS, with moves/returns as unlabelled fractions
-        // to ~20 decimals — `reaction: "-0.0915"` is -9.15%, not -0.09%. roundFloats is blind
-        // to it (it short-circuits on typeof number). See uw-earnings-normalize.ts.
+        const next_report = parseNextEarningsFromBenzinga(sym, calendar.rows, todayEtYmd());
+        const calendar_error = (calendar as { error?: string | null }).error ?? null;
+        // UW serves its side of this payload as STRINGS, with moves/returns as unlabelled
+        // fractions — `reaction: "-0.0915"` is -9.15%, not -0.09%. See uw-earnings-normalize.ts.
         return normalizeUwEarnings({
           ticker: sym,
-          source: benzinga.length ? "benzinga" : "unusual_whales",
-          benzinga_news: benzinga,
+          source: calendar.rows.length ? "benzinga_structured" : related.length ? "benzinga_news" : "unusual_whales",
+          // The single most-asked fact, and the one the news channel could never answer.
+          next_report,
+          print_history: history.print_history,
+          print_history_summary: history.print_history_summary,
+          // Absence of a lookup is not absence of a report date — a non-null error means the
+          // calendar could not be READ, not that this company has nothing scheduled.
+          calendar_error: calendar_error ?? history.history_error ?? null,
+          // Renamed from `benzinga_news`: these are stories mentioning this ticker in the earnings
+          // channel, NOT its own results. The old name invited exactly the wrong reading.
+          related_news: related,
           unusual_whales: uw,
           estimates,
         });
