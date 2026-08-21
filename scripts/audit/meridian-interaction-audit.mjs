@@ -32,6 +32,7 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { createTunneledContext } = require("./lib/proxy-tunnel-context.cjs");
+import { splitOverFetches } from "./lib/expected-poll-count.mjs";
 import {
   EARNINGS_ROW_BASE,
   describeCohort,
@@ -187,6 +188,9 @@ async function auditViewport(vp, cookie) {
     const consoleErrors = [];
     const badResponses = [];
     const requestCounts = new Map();
+    // When the page actually opened, so a fetch count can be judged against the time it had to
+    // accumulate in. Two Meridian panels poll on purpose (10-15s), so a bare count is not a defect.
+    const pageOpenedAt = Date.now();
     page.on("console", (m) => {
       if (m.type() === "error") consoleErrors.push(m.text().slice(0, 180));
     });
@@ -344,15 +348,32 @@ async function auditViewport(vp, cookie) {
       });
     }
 
-    const dupes = [...requestCounts.entries()].filter(([, n]) => n > 2);
-    if (dupes.length > 0) {
+    // A COUNT IS NOT A DEFECT WITHOUT THE TIME IT ACCUMULATED IN.
+    //
+    // MeridianDesk polls the event detail through SWR at 10s (event within the hour) or 15s
+    // (already printed). This check used to flag anything over 2 and so reported `4×
+    // /api/market/meridian/event?id=earnings:BEKE:2026-08-21` as a duplicate fetch, on a run that
+    // held the page ~60s. The product was correct; the check was not — and it fired hardest on
+    // the panels nearest a live catalyst, which is the worst place to cry wolf.
+    const elapsedMs = Date.now() - pageOpenedAt;
+    const { over, explained } = splitOverFetches([...requestCounts.entries()], elapsedMs);
+    if (over.length > 0) {
       record({
         severity: "P3",
         viewport: vp.name,
         where: "network",
-        issue: `${dupes.length} API endpoints fetched more than twice`,
-        sample: dupes.slice(0, 5).map(([u, n]) => `${n}× ${u.slice(-70)}`),
+        issue: `${over.length} API endpoints fetched more than polling can explain (page open ${Math.round(elapsedMs / 1000)}s)`,
+        sample: over.slice(0, 5).map((o) => `${o.count}× (max ${o.max}) ${o.url.slice(-64)}`),
       });
+    }
+    // Say what was EXPLAINED as well. Silence here would read as "nothing repeated", when what
+    // actually happened is that a repeat was understood — a different fact, and the one that
+    // proves this check was not simply widened until it stopped firing.
+    if (explained.length > 0) {
+      console.log(
+        `  [poll] ${explained.length} endpoint(s) repeated within their polling cadence over ${Math.round(elapsedMs / 1000)}s: ` +
+          explained.map((e) => `${e.count}/${e.max} ${e.url.slice(-48)}`).join(", ")
+      );
     }
     if (badResponses.length > 0) {
       // A 401/403 is THIS HARNESS losing its session, not the product failing. A run can outlive
