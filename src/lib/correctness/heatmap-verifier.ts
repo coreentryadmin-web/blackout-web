@@ -77,7 +77,7 @@ const TOL = {
  * Independent wall extrema from per-strike net totals.
  * When `spot` is supplied, call/put walls are SIDE-CONSTRAINED (call above spot, put below) —
  * the same contract production serves via `wallsFromStrikeTotals(strikeTotals, spot)` since #2417.
- * King stays unconstrained argmax |net|.
+ * King stays unconstrained argmax |net|. Unconstrained argmax false-flagged inverted walls (ops-auto-fix #2503).
  */
 function deriveWalls(
   strikeTotals: Record<string, number>,
@@ -1193,6 +1193,33 @@ async function crossProviderChecks(ctx: Ctx, hm: GexHeatmap): Promise<CheckResul
         "net_gex",
         "consistency-only",
         `No ${ctx.today} expiry column on the SPX matrix (0DTE expired or not on axis) — UW 0DTE oracle skipped; net-sign consistency-only.`,
+        { id: "oracle-net-sign" }
+      )
+    );
+    return out;
+  }
+
+  // When the UW overlay did not run, the served 0DTE column is Polygon-derived and WILL disagree
+  // with the UW oracle by design — flagging that is a false positive (ops-auto-fix #2503).
+  if (hm.gex.odte_overlay?.applied !== true) {
+    const why = hm.gex.odte_overlay?.reason ?? "unknown";
+    out.push(
+      mk(
+        ctx,
+        "cross-provider",
+        "king",
+        "consistency-only",
+        `SPX 0DTE UW overlay not applied (${why}) — King consistency-only; Polygon column vs UW oracle is not a like-for-like compare.`,
+        { id: "oracle-king" }
+      )
+    );
+    out.push(
+      mk(
+        ctx,
+        "cross-provider",
+        "net_gex",
+        "consistency-only",
+        `SPX 0DTE UW overlay not applied (${why}) — net-GEX sign consistency-only until overlay lands.`,
         { id: "oracle-net-sign" }
       )
     );

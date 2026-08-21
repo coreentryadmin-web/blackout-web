@@ -6,6 +6,8 @@
  */
 import type { ZeroDteSetupLogRow } from "@/lib/db";
 import { zeroDtePlaysToolEnvelope } from "@/lib/zerodte/feed-envelope";
+import { condorFlagEnabled } from "@/lib/zerodte/condor";
+import { ironCondorProductForLargo, liveCondorForLargo } from "@/lib/largo/zerodte-condor-for-largo";
 import { fetchNighthawkEchoForTickers, type EcosystemNightHawkTake } from "@/lib/bie/ecosystem-context";
 import { etNowParts, isTradingDayEt, nextTradingDayEt, todayEt } from "@/features/nighthawk/lib/session";
 import { fetchBenzingaNews } from "@/lib/providers/polygon";
@@ -1070,6 +1072,11 @@ export async function zeroDtePlaysForLargo(): Promise<Record<string, unknown>> {
       // pre-wiring rows; Largo cites the letter, never invents one.
       tier: r.tier,
       graded: r.plan_outcome ? { outcome: r.plan_outcome, pnl_pct: r.plan_pnl_pct } : null,
+      // A CREDIT iron condor is a different instrument from a directional long — the strike/
+      // direction fields above describe it poorly, and its win rate + intraday-breach rate live
+      // in the pinned geometry, not in live_pnl_pct. Surface the condor view so Largo answers a
+      // condor question about a condor row with the condor's own numbers.
+      ...(r.is_condor ? { condor: liveCondorForLargo(r.condor) } : {}),
     };
   });
 
@@ -1159,9 +1166,16 @@ export async function zeroDtePlaysForLargo(): Promise<Record<string, unknown>> {
   });
   const known = envelope.available !== false;
 
+  // The stable "what IS the iron condor" descriptor, so a condor question is answerable even with
+  // no condor live this session (pre-open, always). Gated on the same flag the board builds under:
+  // with the engine off there is no condor product to describe. This is what stops Largo denying
+  // the product exists and confabulating a win rate — the defect measured 2026-08-21.
+  const ironCondor = condorFlagEnabled() ? ironCondorProductForLargo() : undefined;
+
   return {
     source: "0DTE Command (always-on scanner, /grid)",
     ...envelope,
+    ...(ironCondor ? { iron_condor: ironCondor } : {}),
     ...(known ? { plays } : {}),
     // A board that could not be built has no setups either, so there are no fresh finds to
     // report — and printing an empty list beside an unknown committed set repeats the same
