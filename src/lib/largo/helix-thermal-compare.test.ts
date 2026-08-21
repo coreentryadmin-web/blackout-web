@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   cardStamp,
   compareSidesFrom,
+  flowWindowPhrase,
   regimeInteractionFor,
   type ComparePositioningInput,
 } from "./helix-thermal-compare";
@@ -240,7 +241,58 @@ describe("compare card — a reading names its window and its session", () => {
     const { flow } = compareSidesFrom(LIVE_SPY_POS, NO_FLOW);
     assert.match(String(flow.summary), /48h/);
   });
+});
 
+/**
+ * The window-overstatement defect (fixed): the card named the REQUESTED lookback (168h) as its
+ * window. On an index name the 500-print limit binds long before that window does — measured live
+ * 2026-08-20, a 168h / limit-500 request returned 500 rows spanning 54 minutes — so "last 168h"
+ * described under an hour of tape. window_hours must be the ANALYSED span (evidence); the requested
+ * bound and the limit tell are carried alongside so a model can see the population was count-capped.
+ */
+describe("compare card — window_hours is the analysed span, not the requested lookback", () => {
+  it("carries the analysed span, the requested intent, and the limit tell separately", () => {
+    const { flow } = compareSidesFrom(LIVE_SPY_POS, {
+      rows: [
+        { ticker: "SPX", premium: 900_000, option_type: "call" },
+        { ticker: "SPX", premium: 100_000, option_type: "put" },
+      ],
+      available: true,
+      // A 168h request that actually spanned ~0.9h because the print limit bound first.
+      windowHours: 0.9,
+      windowMinutes: 54,
+      requestedWindowHours: 168,
+      windowLimitReached: true,
+    });
+    // The EVIDENCE span, not the 168h intent.
+    assert.equal(flow.window_hours, 0.9);
+    assert.equal(flow.window_hours_requested, 168);
+    assert.equal(flow.window_limit_reached, true);
+    // The sentence must NOT say 168h — it names the measured span in minutes and flags the cap.
+    assert.doesNotMatch(String(flow.summary), /168/);
+    assert.match(String(flow.summary), /54m/);
+    assert.match(String(flow.summary), /print-capped/);
+  });
+
+  it("flowWindowPhrase names a sub-hour span in minutes, never rounds it to 0h", () => {
+    // 0.9h at 1dp is 0.9h, but 0.03h (~2min) rounds to 0.0h — the exact zero-hour trap. Minutes fix it.
+    assert.equal(flowWindowPhrase(0.03, 2, false), " (last 2m)");
+    assert.equal(flowWindowPhrase(0.9, 54, true), " (last 54m, print-capped)");
+  });
+
+  it("flowWindowPhrase uses hours for multi-hour spans and rounds the string to 1dp", () => {
+    assert.equal(flowWindowPhrase(5.44, 326, false), " (last 5.4h)");
+    assert.equal(flowWindowPhrase(48, 2880, false), " (last 48h)");
+  });
+
+  it("flowWindowPhrase names no measured window when no print carried a time — never the request", () => {
+    // The whole point: a null span must not fall back to "(last 168h)". Silence, or a cap note.
+    assert.equal(flowWindowPhrase(null, null, false), "");
+    assert.equal(flowWindowPhrase(null, null, true), " (most recent prints)");
+  });
+});
+
+describe("compare card — the stamp anchoring (continued)", () => {
   it("anchors the matrix time to its ET SESSION, not just a UTC instant", () => {
     const now = Date.parse("2026-08-21T00:29:56.192Z");
     const { gamma } = compareSidesFrom(LIVE_SPY_POS, NO_FLOW, now);
