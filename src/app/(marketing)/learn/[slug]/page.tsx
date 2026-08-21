@@ -3,11 +3,12 @@ import { notFound } from "next/navigation";
 import { LearnArticleView } from "@/components/learn/LearnArticleView";
 import { LearnGuideView } from "@/components/learn/LearnGuideView";
 import { LearnGlossaryPage } from "@/components/learn/LearnGlossaryPage";
-import { ArticleJsonLd, FAQPageJsonLd } from "@/components/seo/JsonLd";
+import { ArticleJsonLd, FAQPageJsonLd, DefinedTermSetJsonLd } from "@/components/seo/JsonLd";
 import { Breadcrumbs } from "@/components/seo/Breadcrumbs";
 import { publicPageMetadata, buildOgImageUrl } from "@/lib/page-metadata";
 import { LEARN_ARTICLES, getArticle } from "@/lib/learn/articles";
 import { getLearnGuide } from "@/lib/learn/guides";
+import { glossaryTermsFlat } from "@/lib/learn/guides/glossary";
 import { GUIDE_SEO, isLearnGuideSlug } from "@/lib/learn/guide-seo";
 import { guideFaqs } from "@/lib/learn/types";
 import { LEARN_NAV } from "@/lib/learn/nav";
@@ -80,6 +81,13 @@ export default async function LearnSlugPage({ params }: Props) {
           dateModified={seo.dateModified}
         />
         {faqs.length > 0 && <FAQPageJsonLd items={faqs} />}
+        {slug === "glossary" && (
+          <DefinedTermSetJsonLd
+            path="/learn/glossary"
+            name="BlackOut Options & Dealer-Positioning Glossary"
+            terms={glossaryTermsFlat()}
+          />
+        )}
         <Breadcrumbs
           items={[
             { name: "Home", href: "/" },
