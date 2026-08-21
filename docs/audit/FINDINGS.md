@@ -72,7 +72,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Not a trading-behaviour change** | No gate, rail, sizing, exit rule or grading is touched. No `sim:0dte` owed. |
 | **Status** | FIXED — extends the "why did your product say that / what was the evidence" cluster from today-only to any historical session. |
 
-## 2026-08-21 — [FINDING, P2 audit-tooling] The GEX wall verifier still asserted the pre-#2417 unconstrained argmin — a confident FAIL on healthy data on 67% of open-session passes — FIXED
+## 2026-08-21 — [FINDING, P2 audit-tooling] The GEX wall verifier still asserted the pre-#2417 unconstrained argmin — a confident FAIL on healthy data on 16 of 26 open-session passes — FIXED
 
 > **kind:** `FINDING`
 
