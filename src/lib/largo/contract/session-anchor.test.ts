@@ -46,7 +46,6 @@ const KNOWN_GAPS: Record<string, string> = {
   "src/lib/bie/spx-desk-brief.ts": "coordinator (SPX lane)",
   "src/lib/bie/vector-desk-brief.ts": "vector lane",
   "src/lib/bie/vector-full-state.ts": "vector lane",
-  "src/lib/largo/desk-scope-prefetch.ts": "coordinator (SPX lane)",
   "src/lib/largo/gate-rules.ts": "night hawk lane",
   "src/lib/largo/helix-thermal-compare.ts": "thermal lane — changes already requested on PR #2422",
   "src/lib/largo/pre-earnings-pack.ts": "meridian lane — date-arithmetic heavy, highest risk of the set",
