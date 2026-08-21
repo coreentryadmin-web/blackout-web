@@ -134,8 +134,36 @@ const OVERLAP_PROBE = (rootSel) => {
       if (ox > 2 && oy > 2) hits.push({ a: a.t, b: b.t, ox: Math.round(ox), oy: Math.round(oy) });
     }
   }
+  // CLIPPED, as opposed to CAPPED.
+  //
+  // Text cut off by its own container is only a defect when the reader cannot get it back. The
+  // Meridian orbital rim is the counter-example this exclusion exists for: `.ms-orb-label` sets
+  // `max-width: 84px; overflow: hidden; text-overflow: ellipsis` ON PURPOSE, so a long pillar name
+  // cannot shove into its neighbour's slot on a crowded rim — and the full string is carried on the
+  // parent button's `title` AND `aria-label`, with `.ms-orb:hover` restoring it in place. Four
+  // labels ("Vector expected move", "Street / analysts", "News & catalysts", "Insider activity")
+  // were reported as clipped on every single run, on a panel that is behaving exactly as designed.
+  //
+  // That is a standing false positive, and this file's own header says why that matters: a check
+  // which fires on healthy pages teaches its reader to skip the report. So the rule is narrowed,
+  // not relaxed — text still clipped with NO way to recover it is still reported, which is the
+  // case that actually costs a member something.
   const clipped = boxes
-    .filter(({ el }) => el.scrollWidth > el.clientWidth + 1 && getComputedStyle(el).overflow !== "visible")
+    .filter(({ el }) => {
+      if (!(el.scrollWidth > el.clientWidth + 1)) return false;
+      if (getComputedStyle(el).overflow === "visible") return false;
+      const full = (el.textContent ?? "").replace(/\s+/g, " ").trim();
+      if (!full) return false;
+      // Recoverable if the element or any ancestor spells the full text out in a title or an
+      // accessible name. Deliberately an ANCESTOR walk: the label is capped but the control that
+      // owns it is what carries the name, which is where a reader (or a screen reader) finds it.
+      for (let p = el; p && p !== document.body; p = p.parentElement) {
+        const carried = `${p.getAttribute("title") ?? ""} ${p.getAttribute("aria-label") ?? ""}`
+          .replace(/\s+/g, " ");
+        if (carried.includes(full)) return false;
+      }
+      return true;
+    })
     .map(({ t }) => t);
   return { hits: hits.slice(0, 12), hitCount: hits.length, clipped: clipped.slice(0, 8), leaves: boxes.length };
 };
