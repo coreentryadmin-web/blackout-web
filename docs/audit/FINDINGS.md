@@ -4,6 +4,21 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-21 — [FINDING, P2 Thermal/tooling] The live GEX-wall validator checked the OLD unconstrained wall definition — blind to the exact inverted-wall class #2521 fixed — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | During RTH live validation (market open), `data-validator.mjs`'s "gex walls match their definition" check **FAILED on correct production data**: `put_wall=760 ... spot=764.93 | expected ... put=765 (putOk=false)`. Reproduced on live SPY (`scripts/audit/lib/*` via a direct probe): served `put_wall=760` is the largest-negative-gamma strike BELOW spot (−1.99B) — correct; the checker's "expected" 765 is the largest-negative ANYWHERE (−2.73B), which sits ABOVE spot. |
+| **Root cause** | `scripts/audit/lib/gex-wall-invariants.mjs` computed the expected walls as the raw argmax/argmin of the strike totals (`wallsFromStrikeTotals`), and its own comments argued an inverted book — a put wall above spot — was "legitimate". That WAS the definition on 2026-08-14. But #2417 and #2521 SIDE-CONSTRAINED the served walls: a call wall must sit at/above spot, a put wall at/below. Production's `wallsFromStrikeTotals(totals, spot)` now returns the largest-positive ABOVE spot / largest-negative BELOW spot (null when none qualifies). The checker was never updated, so it kept comparing against the pre-#2417 definition. |
+| **Why it matters (beyond a noisy FAIL)** | A checker whose EXPECTED value is the inverted level cannot tell a correct wall from a genuinely inverted one — both differ from its expectation the same way. So during the exact window it exists to catch a wrong-side wall on a live tape, it was **blind to the #2521 defect class** and, worse, cried wolf on healthy data (the "ARM frozen-mark" false-positive shape this file was written to avoid, now recurring one definition later). |
+| **Evidence** | Live SPY 2026-08-21 RTH: spot 764.74, served put_wall 760 (largest neg below spot, −1.99B), unconstrained argmin 765 (−2.73B, above spot). Full `data-validator.mjs` run went from **25 PASS / 2 FAIL** (wall FAIL + a transient open-timing MRNA 0DTE price, not this lane) to **27 PASS / 0 FAIL** after the fix. New unit test `an inverted CALL wall (below spot) is caught` fails against the pre-fix helper. |
+| **Blast radius** | Only the audit tooling: `gex-wall-invariants.mjs` + its `.test.mjs`, consumed by `data-validator.mjs`. Production wall logic is untouched (it is already correct — that is what the checker was mis-flagging). The `ordering` field the validator prints is now effectively always "normal" (put ≤ spot ≤ call), left as informational. |
+| **Fix** | The wall definition now lives in ONE place — production's zero-import `wallsFromStrikeTotals(totals, spot)` in `gex-cross-validation-core.ts`. The checker IMPORTS it and passes spot, rather than keeping a second copy that drifted (same principle as the x-publish-guard finding: a second copy of a rule is the same fork in a different shape). `checkWallInvariants` now flags a served wall on the wrong side of spot as a definitional FAIL. Test rewritten to the side-constrained definition, including the SPX case that used to assert "inverted is legitimate" (now a DEFECT) and a new inverted-call-wall case for the #2521 class. |
+| **Gates** | Node 20.20.2 · `gex-wall-invariants.test.mjs` 14/14 · live `data-validator.mjs` 27 PASS / 0 FAIL on the RTH tape. |
+| **Status** | FIXED — this PR. Found during the RTH live-validation window, cross-checking every /heatmap number against the provider. |
+
 ## 2026-08-21 — [FINDING, P1 Thermal/Largo] `get_positioning` hid a nearer gamma flip — Largo told a member a 1%-fragile regime was a "comfortable 7% cushion" — FIXED
 
 > **kind:** `FINDING`

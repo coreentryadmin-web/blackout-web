@@ -2,21 +2,29 @@
 // usually true.
 //
 // WHY THIS EXISTS: data-validator asserted `put_wall < call_wall` as a hard PASS/FAIL. That reads
-// like a safety property but it is only a market REGULARITY, and it broke live on 2026-08-14:
-// SPX served put_wall 8000 ABOVE call_wall 7800 while spot sat at 7788. Nothing was wrong. At
-// 8000 the near-term book was the most-negative-gamma strike in the chain (-2.086e9) even though
-// the full-expiry book there was positive (+1.703e9); 7800 was the most positive (+1.075e10).
-// `computeGexWalls` returned exactly what it is defined to return.
+// like a safety property but it is only a market REGULARITY, so the check was rewritten (2026-08-14)
+// to assert the DEFINITION of a wall instead of its usual ordering — strictly stronger, since it
+// catches swapped walls, a stale wall, or a wall computed off a different chain.
 //
-// The check only ever passed because it ran against SPY. Asserting a regularity as an invariant
-// produces a confident FAIL on healthy data the first time the market does something normal but
-// uncommon — the same failure mode as the ARM "frozen mark" false positive.
+// WHAT CHANGED (2026-08-21, RTH-caught): the definition itself moved. #2417 and #2521 SIDE-CONSTRAIN
+// the served walls against spot — a call wall (resistance) must sit AT/ABOVE spot, a put wall
+// (support) AT/BELOW it. "A call wall below spot is not a call wall, it is inverted"; the same holds
+// for a put wall above spot. Production's `wallsFromStrikeTotals(totals, spot)` no longer returns the
+// raw argmax/argmin — it returns the largest-positive strike ABOVE spot and the largest-negative
+// BELOW it (null when none qualifies, never a wall on the wrong side). This checker was still
+// computing the UNCONSTRAINED argmax/argmin, so post-#2521 it FALSE-FAILED every correctly
+// side-constrained wall (measured live: SPY spot 764.74, served put_wall 760 — the largest negative
+// BELOW spot — vs this checker's "expected" 765, the largest negative ANYWHERE, which sits above
+// spot). Worse than noisy: a checker whose expectation is the inverted value cannot tell a correct
+// wall from a genuinely inverted one, so it was blind to the exact defect #2521 fixed.
 //
-// What IS invariant is the DEFINITION: the call wall is the strike carrying the most positive net
-// GEX, the put wall the most negative, over the same strike totals the payload serves. That is
-// checkable against the payload itself, it is strictly stronger than an ordering heuristic (it
-// would catch swapped walls, a stale wall, or a wall computed off a different chain — none of
-// which the ordering test can see), and it stays true when the structure inverts.
+// THE FIX, and why it is an import not a re-implementation: the wall definition now lives in exactly
+// one place — production's `wallsFromStrikeTotals` in gex-cross-validation-core.ts (a zero-import
+// pure module). A second copy of the rule here is the same fork that drifted in the first place, so
+// the checker IMPORTS the production function and passes spot. Its expectation can no longer diverge
+// from what production actually serves.
+
+import { wallsFromStrikeTotals as sideConstrainedWalls } from "../../../src/lib/providers/gex-cross-validation-core.ts";
 
 /** Coerce to a finite number, else null. Explicit null guard: Number(null) is 0, a real strike. */
 function num(v) {
@@ -26,37 +34,45 @@ function num(v) {
 }
 
 /**
- * Reduce a `{ strike: netGex }` map to its extremes.
- * Returns nulls when the map is empty or unusable — never invents a wall.
+ * Reduce a `{ strike: netGex }` map to its walls, using the SAME side-constrained definition
+ * production serves (call wall = largest-positive strike AT/ABOVE spot, put wall = largest-negative
+ * AT/BELOW spot). Delegates the extremes to production's `wallsFromStrikeTotals` so the two can
+ * never drift; only `n` (the count of usable strikes, for the skip guard) is computed here.
+ *
+ * `spot` omitted → production's UNCONSTRAINED behaviour (raw argmax/argmin), preserved for callers
+ * that genuinely have no quote. The live checker always has spot and passes it.
+ * Returns nulls when the map is empty/unusable, or when no strike sits on the correct side of spot —
+ * never invents a wall on the wrong side.
  */
-export function wallsFromStrikeTotals(strikeTotals) {
-  const rows = Object.entries(strikeTotals || {})
+export function wallsFromStrikeTotals(strikeTotals, spot) {
+  const n = Object.entries(strikeTotals || {})
     .map(([k, v]) => [num(k), num(v)])
-    .filter(([k, v]) => k != null && v != null);
-  if (!rows.length) return { callWall: null, putWall: null, n: 0 };
-  let hi = rows[0], lo = rows[0];
-  for (const r of rows) {
-    if (r[1] > hi[1]) hi = r;
-    if (r[1] < lo[1]) lo = r;
-  }
-  return { callWall: hi[0], putWall: lo[0], n: rows.length };
+    .filter(([k, v]) => k != null && v != null).length;
+  if (!n) return { callWall: null, putWall: null, n: 0 };
+  const { callWall, putWall } = sideConstrainedWalls(strikeTotals, num(spot) ?? 0);
+  return { callWall, putWall, n };
 }
 
 /**
- * Check the served walls against the served strike totals.
+ * Check the served walls against the served strike totals, using production's side-constrained
+ * wall definition (spot is REQUIRED for the constraint to apply — without it the expectation falls
+ * back to the raw argmax/argmin and a genuinely inverted wall would pass).
  *
  * `definitional` is the real assertion:
- *   'pass'  — both walls equal the argmax/argmin of the totals
- *   'fail'  — at least one does not (swapped, stale, or off a different chain)
+ *   'pass'  — both walls equal production's side-constrained walls for these totals + spot
+ *   'fail'  — at least one does not (swapped, stale, off a different chain, OR served on the wrong
+ *             side of spot — an inverted call/put wall, which is now a defect, not a curiosity)
  *   'skip'  — no usable strike totals to check against (do NOT call that a failure)
  *
- * `ordering` is reported, never asserted: 'normal' when put < call, 'inverted' otherwise.
- * An inverted book is a real and occasionally-correct market structure.
+ * `ordering` is reported, never asserted: 'normal' when put < call, 'inverted' otherwise. The
+ * ordering can still legitimately invert (the most-negative BELOW-spot strike can sit above the
+ * most-positive ABOVE-spot one); it is the wrong-SIDE-of-spot wall that is the defect, and that is
+ * what `definitional` now catches.
  */
 export function checkWallInvariants({ callWall, putWall, strikeTotals, spot } = {}) {
   const cw = num(callWall);
   const pw = num(putWall);
-  const expected = wallsFromStrikeTotals(strikeTotals);
+  const expected = wallsFromStrikeTotals(strikeTotals, spot);
 
   const ordering = cw != null && pw != null ? (pw < cw ? "normal" : "inverted") : "unknown";
 
