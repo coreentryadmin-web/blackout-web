@@ -9,13 +9,13 @@ import { VECTOR_FULL_STATE_FIXTURE } from "./vector-full-state-fixture";
 
 describe("vector-full-state cache", () => {
   test("cache key is vector:full-state:{version}:{ticker}:{horizon}, normalized", () => {
-    assert.equal(vectorFullStateCacheKey("nvda", "all"), "vector:full-state:v2:NVDA:all");
-    assert.equal(vectorFullStateCacheKey("SPY", "0dte"), "vector:full-state:v2:SPY:0dte");
+    assert.equal(vectorFullStateCacheKey("nvda", "all"), "vector:full-state:v3:NVDA:all");
+    assert.equal(vectorFullStateCacheKey("SPY", "0dte"), "vector:full-state:v3:SPY:0dte");
   });
 
   // The version segment is the ONLY thing that makes a unit change safe to deploy: readers are
   // cache-first with a 15-min TTL, so without it the new code would serve old-shape snapshots for
-  // 15 minutes (v1 held magnet.distancePct as a fraction, v2 holds it as a percent).
+  // 15 minutes (v1 held magnet.distancePct as a fraction; v3 added the ET session anchor beside asOf).
   test("the key carries an explicit payload-shape version", () => {
     assert.match(vectorFullStateCacheKey("SPX", "weekly"), /^vector:full-state:v\d+:SPX:weekly$/);
   });
