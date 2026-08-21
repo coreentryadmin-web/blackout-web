@@ -544,3 +544,57 @@ test("a real share is still reported as a number", () => {
   const sweep = rows.find((r) => r.route === "SWEEP");
   assert.equal(sweep?.pct, 75);
 });
+
+// ── Route coverage: OTHER 99% is missing data, not a finding ─────────────────
+// Found by validating the DEPLOYED #2428 on production: the member chip read
+// "OTHER leading :: 100% of tape premium". Measured on a live 5,000-row / 168h tape:
+// alert_rule present on 25.7%, and 1,231 of those 1,285 are RepeatedHits* — a PATTERN rule,
+// not a venue — so executionRouteKey yields OTHER 4,946 / FLOOR 50 / SWEEP 4.
+
+import { routeCoverage } from "./helix-tape-analytics";
+
+function ruled(rule: string | undefined, premium = 1_000): FlowAlert {
+  return { ...atPrint("2026-08-20T20:00:00Z", premium), alert_rule: rule } as FlowAlert;
+}
+
+test("a tape with no alert_rule reports zero known-route coverage, and says it is sparse", () => {
+  const c = routeCoverage([ruled(undefined), ruled(undefined), ruled(undefined)]);
+  assert.equal(c.prints, 3);
+  assert.equal(c.prints_with_alert_rule, 0);
+  assert.equal(c.prints_with_known_route, 0);
+  assert.equal(c.known_route_pct, 0);
+  assert.equal(c.route_data_sparse, true);
+});
+
+test("a PATTERN rule is not a route — RepeatedHits counts as present but unrouted", () => {
+  // The live tape's dominant rule. It has a rule, so it is not "missing"; it names no venue, so
+  // it cannot support a route claim. Both facts have to survive into the payload.
+  const c = routeCoverage([ruled("RepeatedHits"), ruled("RepeatedHitsAscendingFill")]);
+  assert.equal(c.prints_with_alert_rule, 2, "the rule IS present");
+  assert.equal(c.prints_with_known_route, 0, "but it names no execution route");
+  assert.equal(c.route_data_sparse, true);
+});
+
+test("real venue rules are counted as known routes", () => {
+  const c = routeCoverage([ruled("FloorTradeLargeCap"), ruled("SweepsFollowedByFloor")]);
+  assert.equal(c.prints_with_known_route, 2);
+  assert.equal(c.known_route_pct, 100);
+  assert.equal(c.route_data_sparse, false);
+});
+
+test("the live proportion is reported as sparse", () => {
+  // 1.1% known-route coverage, the measured live figure.
+  const rows = [
+    ...Array.from({ length: 1 }, () => ruled("FloorTradeLargeCap")),
+    ...Array.from({ length: 99 }, () => ruled(undefined)),
+  ];
+  const c = routeCoverage(rows);
+  assert.equal(c.known_route_pct, 1);
+  assert.equal(c.route_data_sparse, true);
+});
+
+test("an empty tape reports null coverage, not 0%", () => {
+  const c = routeCoverage([]);
+  assert.equal(c.known_route_pct, null, "0% would claim we looked and found none");
+  assert.equal(c.route_data_sparse, false);
+});

@@ -60,7 +60,44 @@ export function netPremiumLeaders(alerts: FlowAlert[], limit = HELIX_NET_PREMIUM
     .slice(0, limit);
 }
 
-/** Route breakdown — same buckets as HELIX RouteBreakdown panel. */
+/**
+ * How much of the tape can be classified into an execution route AT ALL.
+ *
+ * `executionRouteKey` looks for six venue keywords (SWEEP/BLOCK/SPLIT/CROSS/FLOOR/MULTI) inside
+ * `alert_rule` and returns OTHER for everything else. Two facts about the live tape make OTHER
+ * the answer almost always, and neither is visible in a bucket list:
+ *
+ *   1. **`alert_rule` is absent on most prints.** Measured live 2026-08-21 over a 5,000-row /
+ *      168h tape: present on 1,285 rows — **25.7%**.
+ *   2. **The rules that ARE present mostly do not name a route.** 1,231 of those 1,285 (95.8%)
+ *      are `RepeatedHits` / `RepeatedHitsAscendingFill` / `RepeatedHitsDescendingFill` — a real
+ *      UW rule describing a PATTERN, not a venue, so they fall to OTHER too.
+ *
+ * Net: **OTHER 4,946 (98.9%), FLOOR 50, SWEEP 4** — and the member chip read
+ * "OTHER leading :: 100% of tape premium". That is absence rendered as a finding: it sounds like
+ * a claim that flow went through an unclassified venue, when the truth is that we have no route
+ * data for three quarters of the tape and a pattern label for most of the rest.
+ */
+export function routeCoverage(alerts: FlowAlert[]) {
+  const withRule = alerts.filter((a) => a.alert_rule).length;
+  const routed = alerts.filter((a) => a.alert_rule && executionRouteKey(a) !== "OTHER").length;
+  return {
+    prints: alerts.length,
+    /** Prints carrying any `alert_rule` at all. */
+    prints_with_alert_rule: withRule,
+    /** Prints whose rule actually names an execution route — the only ones the buckets describe. */
+    prints_with_known_route: routed,
+    // null, not 0, on an empty tape: no prints means no coverage to report, not 0% coverage.
+    known_route_pct: alerts.length > 0 ? Math.round((routed / alerts.length) * 1000) / 10 : null,
+    /** True when the buckets describe so little of the tape that "OTHER leads" is a statement
+     *  about MISSING DATA rather than about flow. Read this before quoting a route share. */
+    route_data_sparse: alerts.length > 0 ? routed / alerts.length < 0.1 : false,
+  };
+}
+
+/** Route breakdown — same buckets as HELIX RouteBreakdown panel.
+ *  Read `routeCoverage()` alongside it: OTHER dominates because the route field is mostly
+ *  absent, not because the flow is unusual. */
 export function routeBreakdown(alerts: FlowAlert[]) {
   const map = new Map<string, { premium: number; count: number }>();
   for (const a of alerts) {

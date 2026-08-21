@@ -722,6 +722,7 @@ export async function helixTapeAnalyticsForLargo(
       sessionFlowSkew,
       tapeWindowCoverage,
       helixTapeFetchOptions,
+      routeCoverage,
     } = await import("@/lib/largo/helix-tape-analytics");
     // Read the SAME POPULATION the /flows desk reads. Ordering is not cosmetic here: it decides
     // which prints survive the LIMIT. The previous call passed neither `since_hours` nor `order`,
@@ -788,6 +789,11 @@ export async function helixTapeAnalyticsForLargo(
       ...(sessionDirection ? { direction: sessionDirection } : {}),
       net_premium_leaders: netPremiumLeaders(alerts),
       route_breakdown: routeBreakdown(alerts),
+      /** Read BEFORE quoting a route share. OTHER dominates this tape because `alert_rule` is
+       *  absent on ~74% of prints and most of the rest name a PATTERN, not a venue — measured
+       *  live: only 1.1% of a 5,000-row tape carries a known route. `route_data_sparse` says so
+       *  outright rather than leaving "OTHER 100%" to read as a fact about the market. */
+      route_coverage: routeCoverage(alerts),
       /** The aggregation the member's Expiry Concentration panel renders. Complete — at most
        *  four buckets, so no horizon can ever be truncated away. Read THIS for "is there 0DTE
        *  flow"; the per-date list below is a premium-ranked top-N and drops near-dated
