@@ -19,9 +19,10 @@
  *
  * Run from the REPO ROOT:
  *   node --require ./scripts/audit/lib/allow-server-only.cjs --import tsx \
- *     scripts/audit/largo-payload-hygiene.mjs [--ticker=SPX] [--tools=a,b] [--json]
+ *     scripts/audit/largo-payload-hygiene.mjs [--ticker=SPX] [--tools=a,b] [--timeout=90] [--json]
  */
 import { classifyResult, countNumericLeaves, scanPayload, summarize } from "./lib/payload-hygiene.mjs";
+import { resolveToolSelection } from "./lib/tool-selection.mjs";
 
 const arg = (k, d) => {
   const hit = process.argv.find((a) => a.startsWith(`--${k}=`));
@@ -29,6 +30,30 @@ const arg = (k, d) => {
 };
 const JSON_OUT = process.argv.includes("--json");
 const TICKER = arg("ticker", "SPX");
+/** Per-tool deadline. A tool that cannot reach its upstream must fail LOUDLY and let the
+ *  run continue, not wedge it. Without this the scan hangs indefinitely on the first
+ *  unreachable dependency — which is exactly what a sandbox with no route to Postgres
+ *  does to every DB-backed tool in the list. A hang is an unknown, and this turns it
+ *  into a reported ERROR, which the summary already refuses to count as a pass. */
+const TIMEOUT_MS = Math.max(1, Number(arg("timeout", "90"))) * 1000;
+/** `--tools=a,b` — scan only these. Documented since this file was written but never
+ *  parsed, so passing it silently scanned the FULL default list and printed a verdict
+ *  for tools the operator had not asked about. That is this file's own stated failure
+ *  mode ("the probe never ran" must not read as "nothing wrong here") committed by the
+ *  file itself: a scan you did not run, laundered as one you did. */
+// POLYGON_API_BASE is often the unresolved `${{shared.*}}` placeholder in this sandbox
+// (it arrives as the literal string "POLYGON_API_BASE") — accept it ONLY when it is a real
+// http(s) URL, else fall back to the code's own default host. Same guard every sibling audit
+// script carries; without it every Polygon-backed tool in the list ERRORs on a disallowed
+// host, which is loud but makes the harness unrunnable out of the box.
+const rawBase = process.env.POLYGON_API_BASE;
+process.env.POLYGON_API_BASE =
+  rawBase && /^https?:\/\//.test(rawBase) ? rawBase : "https://api.massive.com";
+
+const ONLY = (arg("tools", "") || "")
+  .split(",")
+  .map((t) => t.trim())
+  .filter(Boolean);
 
 // Read-only tools whose results are DATA the model reasons over numerically. Deliberately not all
 // 126: the rest are prose/product reads where a stray float changes nothing a member can see.
@@ -62,6 +87,29 @@ const TOOLS = [
   ["get_hot_tickers", {}],
   ["get_vector_pulse", { ticker: TICKER }],
   ["get_vector_full_state", { ticker: TICKER }],
+  // ── Night Hawk / 0DTE lane ────────────────────────────────────────────────────
+  // Added for the same reason the rest of the list exists: these are DATA reads the
+  // model reasons over numerically — option premiums, realized P&L, win rates,
+  // gross-premium gates. A stray float or a bare epoch here reaches a member as a
+  // trade number, which is the highest-consequence place on the surface for one.
+  // (Every skip in this file is a judgement, so every ADDITION gets one too.)
+  ["get_zerodte_plays", {}],
+  ["get_zerodte_record", { days: 30 }],
+  ["get_zerodte_rejections", {}],
+  ["get_nighthawk_edition", {}],
+  ["get_nighthawk_outcomes", {}],
+  ["get_nighthawk_horizons", {}],
+  ["get_nighthawk_dossier", {}],
+  ["get_horizon_outcomes", {}],
+  ["get_swing_horizon", {}],
+  ["get_banger_board", {}],
+  ["get_gate_blocked_value", { days: 30 }],
+  ["get_grader_agreement", { days: 90 }],
+  ["get_cortex_decision", { ticker: TICKER }],
+  ["get_lotto_state", {}],
+  ["get_lotto_live", {}],
+  ["get_spx_play", {}],
+  ["get_open_plays", {}],
 ];
 
 // tsx's CJS interop puts the exports under `default` on some resolution paths and at the top level
@@ -92,12 +140,42 @@ if (unknown.length) {
   process.exit(2);
 }
 
+// Apply --tools AFTER the registry validation above, so a name that does not exist is a
+// harness error rather than an empty selection that reads as "nothing to report".
+// Selection logic lives in ./lib/tool-selection.mjs and is unit-tested, per this
+// directory's rule that verdict-shaped helpers are not left inline and unproven.
+const selection = resolveToolSelection(ONLY, TOOLS, KNOWN);
+if (selection.unknown.length) {
+  console.error(`HARNESS ERROR — not real tool names: ${selection.unknown.join(", ")}`);
+  process.exit(2);
+}
+if (selection.uncurated.length) {
+  console.error(
+    `HARNESS ERROR — these are real tools but this harness has no argument recipe for them: ` +
+      `${selection.uncurated.join(", ")}. Add them to TOOLS (with the inputs they need) rather ` +
+      `than letting the scan quietly omit them.`
+  );
+  process.exit(2);
+}
+const SELECTED = selection.selected;
+if (selection.filtered) {
+  // Say what is being scanned. A narrowed run and a full run otherwise print the same
+  // shape of summary, and mistaking one for the other is how a partial pass gets quoted
+  // as whole-surface coverage.
+  console.error(`(scanning ${SELECTED.length} selected tool(s) of ${TOOLS.length} curated)`);
+}
+
 const rows = [];
-for (const [name, input] of TOOLS) {
+for (const [name, input] of SELECTED) {
   const label = `${name}(${Object.values(input).join(",") || "-"})`;
   const t0 = Date.now();
   try {
-    const result = await runLargoTool(name, input, "payload-hygiene-audit");
+    const result = await Promise.race([
+      runLargoTool(name, input, "payload-hygiene-audit"),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`TIMEOUT after ${TIMEOUT_MS / 1000}s`)), TIMEOUT_MS).unref()
+      ),
+    ]);
     const { findings, truncated } = scanPayload(result);
     // A payload with (almost) no numbers in it did not really run — placeholder creds, a refused
     // host, an empty upstream. It scans clean by construction, so it must NOT be counted as clean.

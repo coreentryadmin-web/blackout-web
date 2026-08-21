@@ -3,6 +3,7 @@
  */
 
 import type { DeskMiniPanelKind, DeskScopeKey } from "@/lib/largo/desk-scope";
+import { etSessionDate, etStamp } from "@/lib/largo/temporal/bar-session-date";
 import { deskScopeConfig } from "@/lib/largo/desk-scope";
 import { resolveSubmodule } from "@/lib/largo/slash-submodules";
 import { fmtPremium } from "@/lib/fmt-money";
@@ -20,7 +21,20 @@ export type LargoMiniPanelPayload = {
   /** Active submodule slice when scoped via `/desk submodule`. */
   submodule?: string | null;
   ticker: string;
+  /** ET wall-clock stamp for when this panel was built — NOT a UTC ISO. */
   as_of: string;
+  /** The ET SESSION this panel belongs to (YYYY-MM-DD). */
+  session_date?: string | null;
+  /** Machine-orderable UTC instant, kept alongside the ET stamp. */
+  as_of_utc?: string;
+  /** Set by reads backed by a cached snapshot — when that SOURCE was computed (raw ISO). */
+  source_asof?: string | null;
+  /** That source time as an ET wall-clock stamp. */
+  source_asof_et?: string | null;
+  /** The ET SESSION that source belongs to. */
+  source_session_date?: string | null;
+  /** How fresh the underlying read is (e.g. "cached" for a strict cache reader). */
+  freshness?: string | null;
   href: string | null;
   rows: MiniPanelRow[];
   stale?: boolean;
@@ -43,7 +57,15 @@ export async function fetchMiniPanelPayload(input: {
   if (!cfg) return null;
   const ticker = (input.ticker ?? cfg.defaultTicker).toUpperCase();
   const sub = resolveSubmodule(cfg.key, input.submodule ?? "");
-  const as_of = new Date().toISOString();
+  // ET-anchored, not a UTC ISO. A UTC instant rolls its calendar DATE at 20:00 ET, so anything
+  // resolving "which session is this" from it is a full session ahead for the last four hours of
+  // every trading day. `as_of` here is carried but not currently rendered or parsed by any
+  // consumer (checked: LargoDeskMiniPanel, useLargoChat, slash-submodules, the route), so the
+  // format change is safe; `as_of_utc` keeps a machine-orderable instant regardless.
+  const nowMs = Date.now();
+  const as_of = etStamp(nowMs) ?? new Date(nowMs).toISOString();
+  const session_date = etSessionDate(nowMs);
+  const as_of_utc = new Date(nowMs).toISOString();
   const base: LargoMiniPanelPayload = {
     kind: cfg.miniPanel,
     desk: cfg.key,
@@ -51,6 +73,8 @@ export async function fetchMiniPanelPayload(input: {
     submodule: sub?.id ?? null,
     ticker,
     as_of,
+    session_date,
+    as_of_utc,
     href: cfg.href,
     rows: [],
   };
@@ -257,6 +281,17 @@ export async function fetchMiniPanelPayload(input: {
       case "thermal": {
         const { getGexPositioning } = await import("@/lib/providers/gex-positioning");
         const pos = await getGexPositioning(ticker).catch(() => null);
+        // WHEN the matrix these rows are read from was computed. `as_of` above is when the PANEL
+        // was built, which is not the same fact: every row below (Spot / Flip / Call wall / Put
+        // wall / Net GEX) is a snapshot off a cached matrix, and dropping its time left the
+        // panel's own build stamp as the only date in the payload — which reads as "now".
+        if (pos?.asof) {
+          base.source_asof = pos.asof;
+          base.source_asof_et = etStamp(Date.parse(pos.asof));
+          base.source_session_date = etSessionDate(Date.parse(pos.asof));
+          // getGexPositioning is a documented strict cache reader.
+          base.freshness = "cached";
+        }
         if (subId === "vex") {
           base.rows = [
             { label: "Spot", value: pos?.spot != null ? String(Math.round(pos.spot)) : "—" },
