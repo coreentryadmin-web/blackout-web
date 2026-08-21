@@ -240,7 +240,7 @@ Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 | **Regression guard** | 9 tests in `meridian-em-priority.test.ts`, built on a fixture shaped like the live lane (40 micro-caps then NVDA/VEEV/HPQ, so NVDA sits past the real cap): NVDA survives the cap and leads; the tiebreak order is deterministic; an unknown date sorts last; blank tickers/dates are dropped before a slot is spent; duplicates take one slot; a zero cap attempts nothing; and coverage reports a truncation but stays silent when nothing was skipped. Non-vacuous — removing the null guard fails the unknown-date test. |
 | **Follow-up, not in this PR** | `get_meridian_timeline` (#2545) should surface `expected_move_coverage` in its payload once both land, so the model gets the same skipped-vs-no-chain distinction the UI now has. |
 | **Gates on Node 20.20.2** | `npx tsc --noEmit` clean · `npm test` **9291 pass / 0 fail** · `npm run build` clean · `npx eslint` clean. |
-| **Status** | FIXED — PR #____ (draft). Verified end-to-end against live upstreams before opening; production verification still owed. |
+| **Status** | FIXED — PR #2559 (draft). Verified end-to-end against live upstreams before opening; production verification still owed. |
 
 ## 2026-08-21 — [FINDING, P2 Largo] Rule-7 sweep of the HELIX lane — two more places absence was published as measurement — FIXED
 
