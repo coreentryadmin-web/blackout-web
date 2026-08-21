@@ -4,6 +4,23 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-21 — [FINDING, P2 Meridian harness] The full audit never looked at mobile — the viewport where today's rail defects actually live — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `meridian-interaction-audit.mjs` runs desktop → tablet → mobile. In every full run today the mobile pass died on its **first** navigation with `ERR_CONNECTION_RESET`, having routed **3** requests against desktop's 173 and tablet's 135. The run printed one HARNESS line and finished, so a three-viewport audit was in fact a two-viewport audit — and 430px is precisely the width the rail-label overlap defects (#2580) were found at. |
+| **Why it matters more than a flaky harness** | The audit's whole contract is that a check it could not run is reported as HARNESS, never as a product verdict. That held. But nothing escalated the fact that the SAME viewport failed every time: a run whose last third is structurally unaudited reads, at a glance, like a clean run. Absence of evidence was being presented as absence of defects. |
+| **Measured, not assumed** | Mobile **alone**: `routed: 226 ok, 0 fail`, `0 P2 · 4 P3 · 0 HARNESS` — the first fully clean mobile pass of the day, which also independently confirms #2580 at 430px. Mobile **third**: 3 routed, reset, every time. **Not the UA** — the same page over the same tunnel returns `200` and byte-identical **58,201** bytes for the iPhone and desktop UAs, so nothing UA-gated is failing. |
+| **Root cause** | Agent-proxy tunnel saturation, the exact signature `docs/audit/LIVE-UI-CONNECTION.md` documents: after two passes' worth of CONNECTs the proxy refuses new ones and Chromium surfaces a connection reset, while the proxy's own `recentRelayFailures` list stays EMPTY. Closing the browser does not return the tunnels instantly. The harness's single flat **12s** retry was written for a draining ECS replica and was never long enough to outlast this. |
+| **Fix** | New `scripts/audit/lib/proxy-saturation.mjs` holds the numbers in one place: 4 navigation attempts with **backing-off** waits `8s / 20s / 40s` (68s total patience vs the old 12s), and a **30s cooldown between viewports** so the proxy can reclaim tunnels before the next pass opens a few hundred more. Backoff rather than a longer flat wait: a run that recovers on attempt 2 should not pay attempt 3's wait. `meridian-interaction-audit.mjs` imports both — no literals left at the call sites. |
+| **What was deliberately NOT changed** | Exhausting the retries still records **HARNESS** and abandons that viewport (`return false`). The fix buys the audit a real chance to look; it does not let a viewport that could not be reached read as one that was audited and found clean. No product code is touched — this is harness-only. |
+| **Regression guard** | `src/meridian-audit-proxy-saturation.test.ts` (+9, under `src/` because `scripts/run-tests.mjs` walks `src/` only): total patience is measured in minutes not seconds; the waits strictly escalate; retrying is bounded and the final attempt has no wait left; a nonsense attempt/index gives up rather than hanging; the cooldown is not charged to the first viewport; the flat `12_000` retry is gone from the script; the loop is bounded by the shared `NAV_ATTEMPTS` and the cooldown is not re-declared locally; and the exhausted branch still emits HARNESS **and** returns false. |
+| **Non-vacuity** | Five mutants, all caught: restoring the single 12s retry (2 fail); flattening the waits at the same 68s total (1); removing the cooldown (1); `break`-ing instead of `return false` on exhaustion (1); making the HARNESS branch unreachable (1). Restored: 9/9 pass. |
+| **Gates on Node 20.20.2** | `npx tsc --noEmit` clean · `npm test` **9451 pass / 0 fail / 1 skipped** · `npm run build` clean · `npx eslint` clean on all three changed files. |
+| **Status** | FIXED — this PR. The end-to-end proof owed is a full three-viewport run that reaches mobile; that is a live run against prod, not a CI check. |
+
 ## 2026-08-21 — [FINDING, P1 Largo/Night Hawk] Largo cited a 40% Night Hawk win rate over 5 plays; the real window was 74 resolved at 50% — FIXED
 
 > **kind:** `FINDING`

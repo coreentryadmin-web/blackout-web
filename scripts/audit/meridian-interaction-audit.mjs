@@ -33,6 +33,7 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { createTunneledContext } = require("./lib/proxy-tunnel-context.cjs");
 import { splitOverFetches } from "./lib/expected-poll-count.mjs";
+import { NAV_ATTEMPTS, navRetryWaitMs, viewportCooldownMs } from "./lib/proxy-saturation.mjs";
 import {
   EARNINGS_ROW_BASE,
   describeCohort,
@@ -130,13 +131,30 @@ const SMALL_TARGET_PROBE = (rootSel) => {
 
 async function openEarningsEvent(page, vp) {
   const goto = () => page.goto(`${BASE}/meridian`, { waitUntil: "domcontentloaded", timeout: 90_000 });
-  try {
-    await goto();
-  } catch {
-    // A dead connection here is a DRAINING ECS REPLICA mid-rollout, not the sandbox egress
-    // block — the tunnel is already proven by this point. Retry once before giving up.
-    await page.waitForTimeout(12_000);
-    await goto();
+  // THE LAST VIEWPORT WAS NEVER AUDITED — the agent proxy saturates after two passes and refuses
+  // new CONNECTs, so mobile (where the rail defects live) died on its first navigation every full
+  // run. One flat 12s retry was not enough to outlast it. See lib/proxy-saturation.mjs for the
+  // measurement and for why the waits back off instead of getting longer.
+  let navigated = false;
+  for (let attempt = 0; attempt < NAV_ATTEMPTS && !navigated; attempt += 1) {
+    try {
+      await goto();
+      navigated = true;
+    } catch (err) {
+      const wait = navRetryWaitMs(attempt);
+      if (wait == null) {
+        // Out of attempts. Report it as HARNESS — this viewport was NOT audited, and a run that
+        // could not look must never read as a run that looked and found nothing.
+        record({
+          severity: "HARNESS",
+          viewport: vp,
+          where: "run",
+          issue: `navigation failed ${attempt + 1}x — ${String(err?.message ?? err).slice(0, 120)}`,
+        });
+        return false;
+      }
+      await page.waitForTimeout(wait);
+    }
   }
   if (!(await page.waitForSelector(".meridian-desk", { timeout: 45_000 }).catch(() => null))) {
     record({ severity: "HARNESS", viewport: vp, where: "page", issue: "desk shell never rendered" });
@@ -417,7 +435,11 @@ async function main() {
       console.log(`HARNESS SKIP: ${session.reason}`);
       return;
     }
-    for (const vp of VIEWPORTS) {
+    for (const [idx, vp] of VIEWPORTS.entries()) {
+      // Let the agent proxy reclaim its tunnels between viewports; without this the next viewport
+      // starts against a proxy that is already full. Costs half a minute, buys a pass that runs.
+      const cooldown = viewportCooldownMs(idx);
+      if (cooldown > 0) await new Promise((r) => setTimeout(r, cooldown));
       console.log(`\n── ${vp.name} (${vp.viewport}) ──`);
       const r = await auditViewport(vp, session.cookieHeader);
       console.log(`  routed: ${JSON.stringify(r.counts)}`);
