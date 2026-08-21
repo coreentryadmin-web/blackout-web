@@ -368,11 +368,54 @@ test("zeroDtePlaysFeed: a still-live play with no quote change stays exactly as 
   assert.equal(feed.plays[0]!.last_mark, 4.2);
 });
 
-test("zeroDtePlaysFeed: no ledger rows today — available:false, never a guess", async () => {
+// ── C3: absence is not emptiness ─────────────────────────────────────────────────
+// These two states used to return the IDENTICAL `available: false` payload. Largo's
+// system prompt treats this feed as the authoritative source for the turn, so the
+// collapse meant a ledger OUTAGE was reported to a member as a quiet session.
+test("zeroDtePlaysFeed: scanner ran, nothing committed — a MEASURED empty, not a failure", async () => {
   resetState();
   const { zeroDtePlaysFeed } = await mod();
-  const feed = await zeroDtePlaysFeed();
-  assert.deepEqual(feed, { available: false, note: "no 0DTE plays flagged this session" });
+  const feed = (await zeroDtePlaysFeed()) as Record<string, unknown>;
+  assert.equal(feed.available, true, "a quiet session is the tool WORKING, not the tool broken");
+  assert.deepEqual(feed.plays, []);
+  assert.equal(feed.state, "no_plays_committed");
+  assert.equal(feed.degraded, undefined);
+  assert.match(String(feed.note), /MEASURED/);
+});
+
+test("zeroDteFeedEmptyEnvelope: ledger unreadable — an UNKNOWN that must not read as 'no plays'", async () => {
+  const { zeroDteFeedEmptyEnvelope } = await mod();
+  const blind = zeroDteFeedEmptyEnvelope(false, "2026-07-06");
+  assert.equal(blind.available, false);
+  assert.equal(blind.degraded, true);
+  assert.equal(blind.reason, "ledger_unreadable");
+  assert.equal(blind.plays, undefined, "no empty plays array — that is what invited 'no plays today'");
+  assert.match(String(blind.note), /NOT 'no plays today'/);
+});
+
+test("zeroDteFeedEmptyEnvelope: the two empty states never serialize alike", async () => {
+  const { zeroDteFeedEmptyEnvelope } = await mod();
+  const quiet = zeroDteFeedEmptyEnvelope(true, "2026-07-06");
+  const blind = zeroDteFeedEmptyEnvelope(false, "2026-07-06");
+  assert.notDeepEqual(quiet, blind, "a quiet session and a blind one must be distinguishable");
+  assert.equal(quiet.available, true);
+  assert.equal(blind.available, false);
+  // Both must carry the session they describe — an undated envelope is C1's defect.
+  assert.equal(quiet.session_date, "2026-07-06");
+  assert.equal(blind.session_date, "2026-07-06");
+});
+
+test("zeroDtePlaysFeed: a same-session last-good latch still counts as KNOWN, not blind", async () => {
+  // readZeroDteLedgerChecked keeps a last-good snapshot for today; a transient failure
+  // after a good read is still a known committed set, so the feed must stay available.
+  resetState();
+  state.ledgerRows = [baseRow({ status: "OPEN" })];
+  const { zeroDtePlaysFeed } = await mod();
+  await zeroDtePlaysFeed();                 // primes the latch with a good read
+  state.ledgerReadFails = true;
+  const feed = (await zeroDtePlaysFeed()) as Record<string, unknown>;
+  assert.equal(feed.available, true, "a latched same-session ledger is known, not unreadable");
+  assert.equal(feed.reason, undefined);
 });
 
 test("zeroDtePlaysFeed: a graded CLOSED play surfaces its result string unchanged", async () => {

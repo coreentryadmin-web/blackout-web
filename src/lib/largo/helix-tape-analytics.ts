@@ -1,6 +1,7 @@
 import type { FlowAlert } from "@/lib/api";
 import { executionRouteKey, daysToExpiry } from "@/features/helix/lib/helix-flow-format";
 import { HELIX_NET_PREMIUM_LEADERS_LIMIT } from "@/features/helix/lib/helix-strike-leaders";
+import { WHALE_PRINT_PREMIUM } from "@/features/helix/lib/helix-flow-limits";
 import { etStamp } from "@/lib/largo/temporal/bar-session-date";
 import { flowEventTimeMs } from "@/lib/flow-timestamp";
 
@@ -48,7 +49,12 @@ export function netPremiumLeaders(alerts: FlowAlert[], limit = HELIX_NET_PREMIUM
       puts,
       net: calls - puts,
       total: calls + puts,
-      call_pct: calls + puts > 0 ? Math.round((calls / (calls + puts)) * 100) : 50,
+      // null, not 50. The panel's `: 50` is a RENDERING fallback — it centres a bar that has
+      // nothing to show. Handed to a model it becomes a claim: "this name's flow is balanced
+      // 50/50", asserted about a name whose premium was never measured. A ticker reaches this
+      // map on any print, but only CALL/PUT prints add premium (gap-#6), so a name whose prints
+      // are all typeless lands here with total 0 — live-reachable, not hypothetical.
+      call_pct: calls + puts > 0 ? Math.round((calls / (calls + puts)) * 100) : null,
     }))
     .sort((a, b) => b.total - a.total)
     .slice(0, limit);
@@ -70,7 +76,10 @@ export function routeBreakdown(alerts: FlowAlert[]) {
       route,
       premium,
       count,
-      pct: total > 0 ? Math.round((premium / total) * 100) : 0,
+      // null, not 0, when there is no premium to take a share OF. `pct` is a share-of-total, so
+      // with a zero denominator "0%" is not a small share — it is no measurement at all, and a
+      // route row only exists because prints landed on it. Same rule as call_pct (_COMMON.md #7).
+      pct: total > 0 ? Math.round((premium / total) * 100) : null,
     }))
     .sort((a, b) => b.premium - a.premium);
 }
@@ -115,11 +124,13 @@ export function expiryHorizonConcentration(alerts: FlowAlert[], now: Date = new 
       premium,
       // null, not 50 — an unmeasurable skew must not read as a measured balance.
       call_pct: premium > 0 ? Math.round((call_premium / premium) * 100) : null,
-      pct: 0,
+      pct: null as number | null,
     };
   });
   const total = rows.reduce((s, r) => s + r.premium, 0);
-  for (const r of rows) r.pct = total > 0 ? Math.round((r.premium / total) * 100) : 0;
+  // null on a zero denominator — a horizon holding prints with no measurable premium has no
+  // share, which is a different fact from a 0% share.
+  for (const r of rows) r.pct = total > 0 ? Math.round((r.premium / total) * 100) : null;
   return rows;
 }
 
@@ -136,9 +147,18 @@ export function expiryConcentration(alerts: FlowAlert[], limit = 8, now: Date = 
   const map = new Map<string, { premium: number; count: number; dte: number }>();
   for (const a of alerts) {
     const key = String(a.expiry ?? "unknown").slice(0, 10);
-    const cur = map.get(key) ?? { premium: 0, count: 0, dte: dteOf(a, now) };
+    const rowDte = dteOf(a, now);
+    const cur = map.get(key) ?? { premium: 0, count: 0, dte: rowDte };
     cur.premium += a.premium;
     cur.count += 1;
+    // MIN, not first-seen. Every row under one expiry key should carry the same DTE — both come
+    // from the same ET-anchored query — so today these are identical and this changes nothing.
+    // But "should" was doing load-bearing work: first-seen makes the reported DTE depend on ROW
+    // ORDER, and this function's whole purpose is to stop a horizon being decided by ordering.
+    // Min is order-independent by construction, keeps SQL's authoritative (possibly negative,
+    // i.e. expired) value rather than recomputing it, and resolves any future disagreement toward
+    // the NEARER horizon — the conservative answer when the question is "is this 0DTE".
+    cur.dte = Math.min(cur.dte, rowDte);
     map.set(key, cur);
   }
   const total = [...map.values()].reduce((s, v) => s + v.premium, 0);
@@ -149,13 +169,27 @@ export function expiryConcentration(alerts: FlowAlert[], limit = 8, now: Date = 
       horizon: expiryHorizonLabel(dte),
       premium,
       count,
-      pct: total > 0 ? Math.round((premium / total) * 100) : 0,
+      pct: total > 0 ? Math.round((premium / total) * 100) : null,
     }))
     .sort((a, b) => b.premium - a.premium)
     .slice(0, limit);
 }
 
-/** Session-wide call/put skew from the tape. */
+/**
+ * Session-wide call/put skew from the tape.
+ *
+ * `call_pct` is null when nothing measurable is on the tape, NEVER 50. An empty or quiet window
+ * is routine — the last-1h read at 00:47 ET on 2026-08-20 returned zero prints — and 50 reads to
+ * a model as a measured, perfectly balanced tape rather than as the absence of a measurement.
+ * The same substitution of a default for an absent value produced the peer-relative-strength
+ * defect (FINDINGS 2026-08-19), where a verdict was manufactured out of two nulls.
+ *
+ * `whale_prints` and `total_premium` count DIFFERENT populations on purpose: a whale is any
+ * print at or above the threshold, while premium is only summed for CALL/PUT prints (gap-#6
+ * leaves typeless prints out of both sides). That is why `{whale_prints: 1, total_premium: 0}`
+ * is reachable and is not a contradiction — `typeless_prints` is reported so the gap between the
+ * two counts is explainable from the payload instead of looking like a broken sum.
+ */
 export function sessionFlowSkew(alerts: FlowAlert[]) {
   const calls = alerts.filter((a) => a.option_type === "CALL").reduce((s, a) => s + a.premium, 0);
   const puts = alerts.filter((a) => a.option_type === "PUT").reduce((s, a) => s + a.premium, 0);
@@ -165,8 +199,13 @@ export function sessionFlowSkew(alerts: FlowAlert[]) {
     call_premium: calls,
     put_premium: puts,
     total_premium: total,
-    call_pct: total > 0 ? Math.round((calls / total) * 100) : 50,
-    whale_prints: alerts.filter((a) => a.premium >= 1_000_000).length,
+    call_pct: total > 0 ? Math.round((calls / total) * 100) : null,
+    whale_prints: alerts.filter((a) => a.premium >= WHALE_PRINT_PREMIUM).length,
+    /** Prints that are neither CALL nor PUT — counted in alert_count/whale_prints but in
+     *  neither premium leg, so this is the reconciliation between the two. */
+    typeless_prints: alerts.filter(
+      (a) => a.option_type !== "CALL" && a.option_type !== "PUT"
+    ).length,
   };
 }
 
@@ -258,5 +297,43 @@ export function tapeWindowCoverage(
      *  from LIVE. When this dwarfs `timed_prints`, most of the tape cannot be dated at all. */
     undated_prints: undated,
     limit_reached: alerts.length >= limit,
+  };
+}
+
+/**
+ * The tape request BOTH HELIX Largo tools issue — the layer where the population is chosen.
+ *
+ * Extracted as a pure function because that choice is what broke, twice, and it was untestable
+ * where it lived: it sat inline in `product-reads.ts`, whose import graph reaches `server-only`,
+ * so no unit test could ever reach it. Every existing test built a fixture array and called the
+ * aggregation functions directly, which cannot see a defect in how the rows are SELECTED.
+ *
+ * `order: "recent"` is the load-bearing field and is not a sort preference. Left unset,
+ * `getFlowTape` only infers "recent" when `since_hours <= 6`, so both tools fell through to
+ * `ORDER BY total_premium DESC` — the biggest prints of two days. Ordering decides which prints
+ * survive the LIMIT, i.e. it selects a different POPULATION. Measured live 2026-08-20 at the same
+ * 400-row limit: premium-ordered vs recent-ordered overlapped 0 of 10 stacked_hits and 0 of 12
+ * top_prints — identical counts, entirely disjoint contents, top-print direction inverted.
+ */
+export function helixTapeFetchOptions(opts: {
+  ticker?: string | null;
+  limit: number;
+  sinceHours?: number;
+  maxLimit: number;
+  defaultSinceHours: number;
+  maxSinceHours: number;
+}) {
+  const { ticker, limit, sinceHours, maxLimit, defaultSinceHours, maxSinceHours } = opts;
+  const hours = Number.isFinite(sinceHours as number)
+    ? Math.floor(sinceHours as number)
+    : defaultSinceHours;
+  return {
+    // Guarded the same way as the window. Math.floor(NaN) is NaN, and an unguarded NaN reaches
+    // Postgres as `LIMIT NaN`, which throws and surfaces to the model as available:false — a
+    // healthy tool reported as broken because one argument was bad.
+    limit: Math.min(maxLimit, Math.max(1, Number.isFinite(limit) ? Math.floor(limit) : maxLimit)),
+    ticker: ticker ? ticker.toUpperCase() : undefined,
+    since_hours: Math.min(maxSinceHours, Math.max(1, hours)),
+    order: "recent" as const,
   };
 }

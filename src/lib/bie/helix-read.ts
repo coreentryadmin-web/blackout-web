@@ -69,7 +69,10 @@ export async function composeHelixRead(ticker: string | null, question?: string)
 
   if (regime && !regime.error) {
     lines.push(
-      `- Regime: **${regime.regime_label ?? "—"}** · anomalies **${regime.flow_anomaly_count ?? regime.critical_anomalies ?? 0}** · ${regime.session_phase ?? "—"}`
+      // The count falls back to "—", not 0, for the same reason the labels either side of it
+      // already do. "anomalies **0**" reads as "we scanned and found none"; an absent field means
+      // we do not know, and those are different claims (_COMMON.md #7).
+      `- Regime: **${regime.regime_label ?? "—"}** · anomalies **${regime.flow_anomaly_count ?? regime.critical_anomalies ?? "—"}** · ${regime.session_phase ?? "—"}`
     );
   }
 

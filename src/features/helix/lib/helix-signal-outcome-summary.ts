@@ -17,22 +17,43 @@ export const MIN_GRADED_SAMPLE_FOR_WIN_RATE = 10;
 export type HelixSignalOutcomeSummary = {
   gradedCount: number;
   pendingCount: number;
+  /** Firings that CONTINUED in the signal's own direction. Kept under this name because the
+   *  existing tracker panel reads it; it is a continuation count, not a P&L "win". */
   winCount: number;
   /** null when gradedCount < MIN_GRADED_SAMPLE_FOR_WIN_RATE — never a fabricated 0%. */
   winRatePct: number | null;
+  /** The full graded distribution. `winRatePct` alone cannot express it, and the missing half
+   *  changes the read: live 2026-08-20, 40 graded split 25 continued / 12 flat / 3 reversed, so
+   *  "62.5%" implied 37.5% went wrong when only 7.5% actually reversed and 30% went nowhere.
+   *  A signal that rarely reverses but often stalls is a different instrument from one that is
+   *  wrong a third of the time, and the two were indistinguishable in the payload. */
+  continuedCount: number;
+  flatCount: number;
+  reversedCount: number;
+  /** Graded rows whose outcome is none of continued/flat/reversed — 0 today. Present so an
+   *  unrecognised grade can never be silently absorbed into one of the three real buckets. */
+  otherCount: number;
 };
 
 export function summarizeHelixSignalOutcomes(rows: HelixSignalOutcomeRow[]): HelixSignalOutcomeSummary {
   const graded = rows.filter((r) => r.outcome !== "pending");
-  const wins = graded.filter((r) => r.outcome === "continued").length;
+  const continuedCount = graded.filter((r) => r.outcome === "continued").length;
+  const flatCount = graded.filter((r) => r.outcome === "flat").length;
+  const reversedCount = graded.filter((r) => r.outcome === "reversed").length;
   const gradedCount = graded.length;
   return {
     gradedCount,
     pendingCount: rows.length - gradedCount,
-    winCount: wins,
+    winCount: continuedCount,
     winRatePct:
       gradedCount >= MIN_GRADED_SAMPLE_FOR_WIN_RATE
-        ? Math.round((wins / gradedCount) * 1000) / 10
+        ? Math.round((continuedCount / gradedCount) * 1000) / 10
         : null,
+    continuedCount,
+    flatCount,
+    reversedCount,
+    // Derived by subtraction rather than by a fourth filter, so the four buckets ALWAYS sum to
+    // gradedCount even if the grader gains a new outcome value.
+    otherCount: gradedCount - continuedCount - flatCount - reversedCount,
   };
 }

@@ -24,8 +24,18 @@ import { buildZeroDteRecord } from "@/lib/zerodte/record";
 import { getNighthawkMetrics } from "@/features/nighthawk/lib/analytics";
 import { fitRowsToBudget, sampleNote } from "@/lib/largo/fit-tool-result";
 import { formatEtDate, todayEt } from "@/features/nighthawk/lib/session";
-import { summarizeHelixSignalOutcomes } from "@/features/helix/lib/helix-signal-outcome-summary";
+import {
+  summarizeHelixSignalOutcomes,
+  MIN_GRADED_SAMPLE_FOR_WIN_RATE,
+} from "@/features/helix/lib/helix-signal-outcome-summary";
 import { etStamp, etSessionDate } from "@/lib/largo/temporal/bar-session-date";
+import {
+  helixTickerIdentity,
+  tapeFreshness,
+  tapeDirection,
+  unavailable,
+  HELIX_TAPE_PROVENANCE,
+} from "@/lib/largo/helix-contract";
 import {
   HELIX_FLOW_DEFAULT_SINCE_HOURS,
   HELIX_FLOW_MAX_SINCE_HOURS,
@@ -326,26 +336,59 @@ export async function nighthawkOutcomesForLargo(windowDays = 30) {
 
 export async function helixSignalOutcomesForLargo(limit = 50) {
   if (!dbConfigured()) {
-    return { available: false, rows: [], summary: null, error: "database_unavailable" };
+    // C3. NOT retryable: a missing DATABASE_URL will not resolve on a retry, and telling the
+    // model to try again would burn a turn on a certainty.
+    return {
+      ...unavailable("database_unavailable", "HELIX signal-outcome ledger", false),
+      rows: [],
+      summary: null,
+    };
   }
   try {
     const rows = await fetchRecentHelixSignalOutcomes(limit);
     const summary = summarizeHelixSignalOutcomes(rows);
-    const compact = rows.slice(0, 20).map((r) => ({
+    const ROWS_SHOWN = 20;
+    const compact = rows.slice(0, ROWS_SHOWN).map((r) => ({
       ticker: r.ticker,
       signal_type: r.signal_type,
+      /** The signal's OWN directional read at fire time — `outcome` is relative to this, so
+       *  "continued" is meaningless without it (a continued BEARISH firing means price FELL). */
+      direction: r.direction,
       outcome: r.outcome,
       fired_at: r.fired_at,
       price_at_fire: r.price_at_fire,
       price_1h: r.price_1h,
     }));
-    return roundFloats({ available: true, rows: compact, summary });
+    return roundFloats({
+      available: true,
+      /** No silent caps: the summary is computed over every fetched row, the list is the newest
+       *  ROWS_SHOWN of them. Without this the model reads a 40-sample rate beside 20 rows and
+       *  has no way to know the two describe different populations. */
+      rows: compact,
+      rows_shown: compact.length,
+      rows_summarized: rows.length,
+      /** `outcome` vocabulary, stated so the model never has to infer it: `continued` (moved in
+       *  the firing's direction), `reversed` (moved against it), `flat` (moved less than the
+       *  grader's threshold either way), `pending` (not yet checkpointed at 1h). */
+      outcome_values: ["continued", "reversed", "flat", "pending"],
+      summary: {
+        ...summary,
+        /** The honest name for winRatePct. `continued` is a DIRECTIONAL follow-through, not a
+         *  closed trade, and `flat` is counted outside it — calling it a "win rate" invites the
+         *  model to report the complement as losses when most of it never moved at all. */
+        continuation_rate_pct: summary.winRatePct,
+        min_graded_for_rate: MIN_GRADED_SAMPLE_FOR_WIN_RATE,
+      },
+    });
   } catch (e) {
     return {
-      available: false,
+      ...unavailable(
+        e instanceof Error ? e.message : "helix_signal_outcomes_failed",
+        "HELIX signal-outcome ledger (velocity-spike / split-flow follow-through)",
+        true
+      ),
       rows: [],
       summary: null,
-      error: e instanceof Error ? e.message : "helix_signal_outcomes_failed",
     };
   }
 }
@@ -608,7 +651,11 @@ export async function vectorPulseForLargo(ticker: string, horizon = "all") {
  * `nowMs` is passed explicitly rather than read inside: the velocity and hit windows are rolling,
  * and a shared clock keeps all four derivations describing the SAME instant.
  */
-export async function helixDerivedForLargo(ticker?: string | null, limit = 400) {
+export async function helixDerivedForLargo(
+  ticker?: string | null,
+  limit = 400,
+  sinceHours = HELIX_FLOW_DEFAULT_SINCE_HOURS
+) {
   try {
     const [
       { marketPlatform },
@@ -624,13 +671,30 @@ export async function helixDerivedForLargo(ticker?: string | null, limit = 400) 
       import("@/features/helix/lib/helix-strike-leaders"),
     ]);
 
-    // The SAME tape the /flows page renders. A bigger limit than a normal tape read because every
-    // derivation below is a WINDOW over history — a 50-print slice would silently under-report
-    // every stack and every spike.
-    const summary = await marketPlatform.flows.getFlowTapeSummary({
-      limit: Math.min(1000, Math.max(50, limit)),
-      ticker: ticker ? ticker.toUpperCase() : undefined,
-    });
+    // The SAME tape the /flows page renders — which requires ORDER as well as size. This comment
+    // asserted that property for months while the call below violated it: with no `order` and no
+    // `since_hours`, fetchRecentFlows fell to `ORDER BY total_premium DESC` over 48h, i.e. the
+    // BIGGEST prints of two days. Every derivation below is a ROLLING WINDOW anchored to nowMs
+    // (repeat hits, prints-per-15min, opposing premium inside 30min), so a population selected by
+    // SIZE is the wrong input by construction — it answers "what is stacking right now" with
+    // whatever was largest since the day before yesterday.
+    //
+    // Measured live 2026-08-20, same 400-row limit, premium-ordered vs recent-ordered:
+    // stacked_hits overlapped **0 of 10** and top_prints **0 of 12** — the counts matched by
+    // coincidence while the contents were entirely disjoint, and the top-print direction inverted
+    // (SPY puts vs SPX calls). A bigger limit is still wanted, for the reason originally given: a
+    // 50-print slice would under-report every stack and every spike.
+    const { helixTapeFetchOptions: derivedFetchOptions } = await import("@/lib/largo/helix-tape-analytics");
+    const summary = await marketPlatform.flows.getFlowTapeSummary(
+      derivedFetchOptions({
+        ticker,
+        limit: Math.min(1000, Math.max(50, limit)),
+        sinceHours,
+        maxLimit: 1000,
+        defaultSinceHours: HELIX_FLOW_DEFAULT_SINCE_HOURS,
+        maxSinceHours: HELIX_FLOW_MAX_SINCE_HOURS,
+      })
+    );
     const alerts = Array.isArray(summary?.recent) ? summary.recent : [];
     const nowMs = Date.now();
 
@@ -678,26 +742,51 @@ export async function helixDerivedForLargo(ticker?: string | null, limit = 400) 
       split_flow: split.slice(0, 12),
     });
   } catch (e) {
+    // C3. Arrays stay present and EMPTY so an existing consumer does not crash, but `available`
+    // is false and `unavailable` says why — an empty array alone reads as "nothing is stacking",
+    // which is a finding, not a failure.
     return {
-      available: false,
+      ...unavailable(
+        e instanceof Error ? e.message : "helix_derived_failed",
+        "HELIX derived panels (stacked hits, top prints, velocity radar, split flow)",
+        true
+      ),
+      ...HELIX_TAPE_PROVENANCE,
       stacked_hits: [],
       top_prints: [],
       velocity_spikes: [],
       split_flow: [],
-      error: e instanceof Error ? e.message : "helix_derived_failed",
     };
   }
 }
 
 /** Deterministic FlowBrief memo — same composeFlowBrief the HELIX UI uses (no LLM). */
-export async function flowBriefForLargo() {
+export async function flowBriefForLargo(sinceHours = HELIX_FLOW_DEFAULT_SINCE_HOURS) {
   try {
-    const [{ getFlowTapeSummary }, { fetchUwDarkPoolRecent }, { composeFlowBrief }] = await Promise.all([
+    const [
+      { getFlowTapeSummary },
+      { fetchUwDarkPoolRecent },
+      { composeFlowBrief },
+      { helixTapeFetchOptions, tapeWindowCoverage },
+    ] = await Promise.all([
       import("@/lib/platform").then((m) => ({ getFlowTapeSummary: m.marketPlatform.flows.getFlowTapeSummary })),
       import("@/lib/providers/unusual-whales"),
       import("@/lib/bie/flow-brief"),
+      import("@/lib/largo/helix-tape-analytics"),
     ]);
-    const summary = await getFlowTapeSummary({ limit: 200 });
+    // THIRD tool on the same tape with the same population defect: `{ limit: 200 }` alone left
+    // `order` undefined, so fetchRecentFlows served the 200 BIGGEST prints of 48h. FlowBrief is a
+    // SESSION memo — call/put skew, whale count, massive-print callouts — so composing it from
+    // whatever was largest since the day before yesterday describes a window the member is not
+    // looking at. Routed through the SAME builder as the other two so the three cannot drift.
+    const fetchOpts = helixTapeFetchOptions({
+      limit: HELIX_FLOW_PAGE_SIZE,
+      sinceHours,
+      maxLimit: HELIX_FLOW_MAX_LIMIT,
+      defaultSinceHours: HELIX_FLOW_DEFAULT_SINCE_HOURS,
+      maxSinceHours: HELIX_FLOW_MAX_SINCE_HOURS,
+    });
+    const summary = await getFlowTapeSummary(fetchOpts);
     const alerts = summary.recent ?? [];
     const darkRaw = await fetchUwDarkPoolRecent(40).catch(() => []);
     const darkPrints = (darkRaw ?? [])
@@ -719,12 +808,20 @@ export async function flowBriefForLargo() {
       alert_count: alerts.length,
       total_premium: summary.total_premium ?? null,
       top_tickers: summary.top_tickers ?? [],
+      /** Same honest-window disclosure the other HELIX tape tools carry: the row limit binds
+       *  before the time window does, so a "session" memo can cover far less than a session. */
+      window: tapeWindowCoverage(alerts, fetchOpts.since_hours, fetchOpts.limit),
+      ordered_by: "recent",
     });
   } catch (e) {
     return {
-      available: false,
+      ...unavailable(
+        e instanceof Error ? e.message : "flow_brief_failed",
+        "HELIX FlowBrief session memo",
+        true
+      ),
+      ...HELIX_TAPE_PROVENANCE,
       brief: null,
-      error: e instanceof Error ? e.message : "flow_brief_failed",
     };
   }
 }
@@ -744,6 +841,7 @@ export async function helixTapeAnalyticsForLargo(
       expiryHorizonConcentration,
       sessionFlowSkew,
       tapeWindowCoverage,
+      helixTapeFetchOptions,
     } = await import("@/lib/largo/helix-tape-analytics");
     // Read the SAME POPULATION the /flows desk reads. Ordering is not cosmetic here: it decides
     // which prints survive the LIMIT. The previous call passed neither `since_hours` nor `order`,
@@ -751,23 +849,17 @@ export async function helixTapeAnalyticsForLargo(
     // horizon was absent from the population ENTIRELY (measured live 2026-08-20: 17 0DTE prints
     // worth $2.7M, none of them in the top 200 by premium against $2.1B of LEAPS blocks), and the
     // Net Premium leaderboard disagreed with the member's own panel by up to 105x on SPXW.
-    const windowHours = Math.min(
-      HELIX_FLOW_MAX_SINCE_HOURS,
-      Math.max(1, Number.isFinite(sinceHours) ? Math.floor(sinceHours) : HELIX_FLOW_DEFAULT_SINCE_HOURS)
-    );
-    // Guarded the same way as the window: Math.floor(NaN) is NaN, and an unguarded NaN reaches
-    // Postgres as `LIMIT NaN`, which throws and surfaces to the model as available:false — a
-    // healthy tool reported as broken because of one bad argument.
-    const rowLimit = Math.min(
-      HELIX_FLOW_MAX_LIMIT,
-      Math.max(1, Number.isFinite(limit) ? Math.floor(limit) : HELIX_FLOW_PAGE_SIZE)
-    );
-    const summary = await marketPlatform.flows.getFlowTapeSummary({
-      limit: rowLimit,
-      ticker: ticker ? ticker.toUpperCase() : undefined,
-      since_hours: windowHours,
-      order: "recent",
+    const fetchOpts = helixTapeFetchOptions({
+      ticker,
+      limit,
+      sinceHours,
+      maxLimit: HELIX_FLOW_MAX_LIMIT,
+      defaultSinceHours: HELIX_FLOW_DEFAULT_SINCE_HOURS,
+      maxSinceHours: HELIX_FLOW_MAX_SINCE_HOURS,
     });
+    const windowHours = fetchOpts.since_hours;
+    const rowLimit = fetchOpts.limit;
+    const summary = await marketPlatform.flows.getFlowTapeSummary(fetchOpts);
     const alerts = summary.recent ?? [];
     const now = new Date();
     const nowMs = now.getTime();
@@ -780,6 +872,9 @@ export async function helixTapeAnalyticsForLargo(
     // already tomorrow. A model resolving "today" from a UTC `as_of` is a full session ahead
     // and reads the next expiry as 0DTE — the exact defect this payload is being fixed for.
     const byExpiry = expiryConcentration(alerts, 8, now);
+    const coverage = tapeWindowCoverage(alerts, windowHours, rowLimit, now);
+    const sessionSkew = sessionFlowSkew(alerts);
+    const sessionDirection = tapeDirection(sessionSkew.call_pct);
     const distinctExpiries = new Set(
       alerts.map((a) => String(a.expiry ?? "unknown").slice(0, 10))
     ).size;
@@ -790,13 +885,15 @@ export async function helixTapeAnalyticsForLargo(
       // convention get_helix_derived already uses.
       available: true,
       empty_reason: alerts.length === 0 ? "no_prints_in_window" : undefined,
-      ticker: ticker?.toUpperCase() ?? null,
+      ...helixTickerIdentity(ticker),
+      ...HELIX_TAPE_PROVENANCE,
       as_of: etStamp(nowMs),
       session_date: etSessionDate(nowMs),
       /** What the tape ACTUALLY covers. A requested window is an intent, not evidence: the row
        *  LIMIT binds first almost every time, so `requested_hours` alone would let a model
        *  describe 54 minutes of prints as a week of flow. Read `actual_hours` + `limit_reached`. */
-      window: tapeWindowCoverage(alerts, windowHours, rowLimit, now),
+      window: coverage,
+      ...tapeFreshness(coverage.newest_age_minutes),
       ordered_by: "recent",
       /** `false`, not null: C3 asks that null never stand for a known state, and "no floor was
        *  applied" is a known state — a reader seeing null could reasonably take it as "unknown".
@@ -806,7 +903,9 @@ export async function helixTapeAnalyticsForLargo(
        *  member's on-screen numbers can be explained rather than looking like a data fault. */
       premium_floor_applied: false,
       member_panel_premium_floor: HELIX_MEMBER_PANEL_PREMIUM_FLOOR,
-      session: sessionFlowSkew(alerts),
+      session: sessionSkew,
+      /** C5. OMITTED, not "neutral", when the skew is unmeasurable — neutral is a measurement. */
+      ...(sessionDirection ? { direction: sessionDirection } : {}),
       net_premium_leaders: netPremiumLeaders(alerts),
       route_breakdown: routeBreakdown(alerts),
       /** The aggregation the member's Expiry Concentration panel renders. Complete — at most
@@ -822,9 +921,16 @@ export async function helixTapeAnalyticsForLargo(
       total_premium: summary.total_premium ?? null,
     });
   } catch (e) {
+    // C3: a real absence. NOT the same shape as a quiet tape, which stays available:true with
+    // an empty_reason — telling the model a working tool is broken every off-hours evening
+    // would destroy the one distinction this surface is careful about.
     return {
-      available: false,
-      error: e instanceof Error ? e.message : "helix_tape_analytics_failed",
+      ...unavailable(
+        e instanceof Error ? e.message : "helix_tape_analytics_failed",
+        "HELIX tape aggregates (net premium, route, expiry horizons, session skew)",
+        true
+      ),
+      ...HELIX_TAPE_PROVENANCE,
     };
   }
 }
