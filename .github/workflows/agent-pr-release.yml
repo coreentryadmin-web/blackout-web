@@ -45,6 +45,10 @@ on:
         description: "List what would be released without changing anything"
         type: boolean
         default: false
+      max_release:
+        description: "Maximum PRs to release in this run (default 3)"
+        type: string
+        default: "3"
 
 permissions:
   contents: read
@@ -64,6 +68,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           DRY_RUN: ${{ inputs.dry_run }}
+          MAX_RELEASE: ${{ inputs.max_release || '3' }}
         run: |
           set -euo pipefail
 
@@ -75,8 +80,20 @@ jobs:
 
           released=0
           skipped=0
+          max=${MAX_RELEASE:-3}
 
           while read -r num title branch labels; do
+            # PACE THE RELEASE. Each merge triggers a production deploy (ecr-push-production on
+            # merge to main), and the backlog this workflow exists to clear is ~35 PRs — releasing
+            # them in one sweep would queue ~35 ECS force-deploys back to back. A cap of 3 per
+            # 15-minute run drains the backlog in a few hours while keeping any single bad change
+            # inside a small, attributable window. It is not a throughput limit worth tuning up:
+            # the constraint is deploy blast radius, not queue depth.
+            if [ "$released" -ge "$max" ]; then
+              echo "cap   #$num  reached max=$max for this run"
+              skipped=$((skipped+1)); continue
+            fi
+
             # Title says unfinished — obey it.
             case "$title" in
               WIP*|wip*|DRAFT*|Draft*|*"DO NOT MERGE"*)
