@@ -1,6 +1,7 @@
 import type { MacroEvent } from "@/lib/providers/macro-events";
 import type { MeridianEventKind, MeridianImpact, MeridianTimelineItem } from "./meridian-types";
 import { impactFromEarningsImportance } from "@/lib/meridian/meridian-benzinga-earnings-core";
+import { isTradingDayEt } from "@/features/nighthawk/lib/session";
 
 export type MacroTimelineInput = Pick<MacroEvent, "event" | "date" | "time" | "impact" | "estimate">;
 export type EarningsTimelineInput = {
@@ -79,6 +80,45 @@ export function thirdFridayYmd(year: number, month1: number): string {
   return "";
 }
 
+/**
+ * The monthly expiration for a month — the third Friday, ROLLED BACK when that Friday is a market
+ * holiday.
+ *
+ * Listed monthly options expire on the third Friday, and when that Friday is a holiday the
+ * expiration moves to the **preceding trading day**. Both OpEx generators here took the raw third
+ * Friday, so on such a month they emitted a date on which nothing could settle AND omitted the
+ * date on which everything actually did.
+ *
+ * Measured live 2026-08-21: the prior-OpEx panel carried a `2026-06-19` row, permanently null —
+ * no close, no session move. **2026-06-19 is Juneteenth.** `isTradingDayEt` returns false for it,
+ * and Polygon's I:SPX daily bars run 06-18 → 06-22 with nothing between. The real June 2026
+ * expiry, Thursday **2026-06-18**, was absent from the history entirely, so `buildOpexPinAccuracy`
+ * was grading over a set with a hole in it.
+ *
+ * Swept 2024-2028, exactly two third Fridays are not trading days — 2026-06-19 and 2027-06-18,
+ * both Juneteenth. Rare, live right now, and recurring; Good Friday can land on an April third
+ * Friday in other years.
+ *
+ * `isTradingDayEt` is the SHARED source of truth (weekday + the US market holiday set), not a
+ * second holiday list — a private copy is how two parts of a product come to disagree about what
+ * day it is. It is safe to import here: neither it nor its dependency carries `server-only`, and
+ * three client components already import that module.
+ */
+export function monthlyExpiryYmd(year: number, month1: number): string {
+  const friday = thirdFridayYmd(year, month1);
+  if (!friday) return "";
+  if (isTradingDayEt(friday)) return friday;
+  // Walk back to the previous trading day. Bounded: a run of more than a few closed days does not
+  // occur, and an unbounded loop on bad input would be worse than returning the raw Friday.
+  const [y, m, d] = friday.split("-").map(Number) as [number, number, number];
+  for (let back = 1; back <= 7; back += 1) {
+    const dt = new Date(Date.UTC(y, m - 1, d - back));
+    const ymd = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`;
+    if (isTradingDayEt(ymd)) return ymd;
+  }
+  return friday;
+}
+
 /** Upcoming monthly OpEx dates from `startYmd` through `daysAhead` calendar days. */
 export function upcomingOpexDates(startYmd: string, daysAhead: number): string[] {
   const parts = startYmd.split("-").map(Number) as [number, number, number];
@@ -91,7 +131,7 @@ export function upcomingOpexDates(startYmd: string, daysAhead: number): string[]
   const endY = end.getUTCFullYear();
   const endM = end.getUTCMonth() + 1;
   while (y < endY || (y === endY && m <= endM + 1)) {
-    const opex = thirdFridayYmd(y, m);
+    const opex = monthlyExpiryYmd(y, m);
     if (opex && opex >= startYmd && daysUntilEt(opex, startYmd) <= daysAhead) out.push(opex);
     m += 1;
     if (m > 12) {
@@ -102,7 +142,7 @@ export function upcomingOpexDates(startYmd: string, daysAhead: number): string[]
   return [...new Set(out)].sort();
 }
 
-/** Prior monthly OpEx (third Friday) dates strictly before `beforeYmd`. */
+/** Prior monthly OpEx dates strictly before `beforeYmd` — holiday-rolled, see monthlyExpiryYmd. */
 export function priorOpexDates(beforeYmd: string, limit = 6): string[] {
   const parts = beforeYmd.split("-").map(Number) as [number, number, number];
   let y = parts[0];
@@ -114,7 +154,7 @@ export function priorOpexDates(beforeYmd: string, limit = 6): string[] {
       m = 12;
       y -= 1;
     }
-    const opex = thirdFridayYmd(y, m);
+    const opex = monthlyExpiryYmd(y, m);
     if (opex && opex < beforeYmd) out.push(opex);
   }
   return out.sort((a, b) => b.localeCompare(a)).slice(0, limit);

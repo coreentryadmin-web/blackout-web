@@ -112,6 +112,15 @@ test("fetchGexHeatmap caps inflight/cold builds with gexHeatmapMaxBlockMs (never
   );
 });
 
+test("SPX matrix build applies UW 0DTE overlay before cache write (#2503)", () => {
+  const src = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "polygon-options-gex.ts"),
+    "utf8"
+  );
+  assert.match(src, /if \(root === "SPX"\)[\s\S]*applySpxOdteGexUwOverlay\(heatmap\)/);
+  assert.match(src, /markSpxOdteOverlayFailed\(pruned, "overlay_timeout"\)/);
+});
+
 test("gex heatmap Redis TTL covers SWR window (not 5s matrix TTL only)", () => {
   const src = readFileSync(
     join(dirname(fileURLToPath(import.meta.url)), "polygon-options-gex.ts"),

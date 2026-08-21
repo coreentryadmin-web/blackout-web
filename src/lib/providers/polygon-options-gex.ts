@@ -17,7 +17,7 @@ import { persistGexRegimeEvents } from "./gex-regime-events";
 import {
   zeroGammaFlip as computeZeroGammaFlip,
   cumulativeGammaFlipDetail,
-  gexWallsFromStrikeTotals,
+  wallsFromStrikeTotals,
   wallsByHorizon,
   type GammaFlipReason,
   type HorizonWalls,
@@ -327,7 +327,7 @@ export type GexMetricBlock = {
 /** Whether the SPX 0DTE UW overlay applied, and why not when it did not. */
 export type SpxOdteOverlayState = {
   applied: boolean;
-  reason: "applied" | "not_applicable" | "no_odte_expiry" | "ladder_unavailable";
+  reason: "applied" | "not_applicable" | "no_odte_expiry" | "ladder_unavailable" | "overlay_timeout";
 };
 
 /**
@@ -973,9 +973,17 @@ function computeGexRegime(
   maxPain: number | null,
   flipReason?: GammaFlipReason
 ): { callWall: number | null; putWall: number | null; regime: GexRegime } {
-  // Shared with Thermal's per-expiry Key Levels — see gexWallsFromStrikeTotals. Two copies of the
-  // wall scan could drift; one cannot.
-  const { callWall, putWall } = gexWallsFromStrikeTotals(strikeTotals);
+  // SIDE-CONSTRAINED against spot — a call wall must sit at/above spot (resistance) and a put wall
+  // at/below it (support). #2417 established this ("a call wall below spot is not a call wall, it is
+  // inverted") and wired the OVERLAY producers (WS override, cross-val, horizons) through the
+  // constrained `wallsFromStrikeTotals`, but the BASE matrix scan here was left on the unconstrained
+  // `gexWallsFromStrikeTotals`. So off-hours (WS idle) and for every non-WS single name (all the
+  // time), `gex.call_wall`/`gex.put_wall` could still serve an inverted level. Measured live
+  // 2026-08-21: MSFT spot 481.97 served call_wall 480 (resistance $2 BELOW price) while the real
+  // overhead wall was 500; AMZN spot 261.64 served 260 vs the real 270. All three callers pass a
+  // real spot, so the constraint always applies. `null` is the honest answer when no positive-gamma
+  // strike sits above spot — never a wall on the wrong side. This is the fifth producer #2417 missed.
+  const { callWall, putWall } = wallsFromStrikeTotals(strikeTotals, spot);
 
   // Posture + read DELEGATE to the pure builder in gex-cross-validation-core. That module has zero
   // imports, which is what lets `spx-odte-gex-uw-overlay.ts` reuse the identical logic — it cannot
@@ -1516,7 +1524,18 @@ async function readHeatmapRedisEntry(
   }
 }
 
-/** Prune + SPX 0DTE UW overlay so served King matches the cross-provider oracle. */
+/** Stamp overlay failure on a matrix copy — never return an unmarked un-overlaid SPX book. */
+function markSpxOdteOverlayFailed(hm: GexHeatmap, reason: SpxOdteOverlayState["reason"]): GexHeatmap {
+  return {
+    ...hm,
+    gex: {
+      ...hm.gex,
+      odte_overlay: { applied: false, reason },
+    },
+  };
+}
+
+/** Prune + SPX 0DTE UW overlay so served King/net sign matches the cross-provider oracle. */
 async function finalizeHeatmapForServe(
   cacheKey: string,
   data: GexHeatmap | null
@@ -1528,11 +1547,11 @@ async function finalizeHeatmapForServe(
     return await Promise.race([
       applySpxOdteGexUwOverlay(pruned),
       new Promise<GexHeatmap>((resolve) => {
-        setTimeout(() => resolve(pruned), overlayMs);
+        setTimeout(() => resolve(markSpxOdteOverlayFailed(pruned, "overlay_timeout")), overlayMs);
       }),
     ]);
   } catch {
-    return pruned;
+    return markSpxOdteOverlayFailed(pruned, "ladder_unavailable");
   }
 }
 
@@ -3613,13 +3632,23 @@ async function buildGexHeatmapUncached(
   };
 
   // Cache once for everyone: in-memory + Redis. 500 users → one matrix, zero per-user fetch.
-  const entry = { at: now, data: heatmap };
+  // SPX: apply the UW 0DTE overlay at WRITE time (no read-path timeout race) so cached copies
+  // already carry the oracle-aligned 0DTE column (ops-auto-fix #2503).
+  let toCache = heatmap;
+  if (root === "SPX") {
+    try {
+      toCache = await applySpxOdteGexUwOverlay(heatmap);
+    } catch {
+      toCache = markSpxOdteOverlayFailed(heatmap, "ladder_unavailable");
+    }
+  }
+  const entry = { at: now, data: toCache };
   setCachedHeatmap(cacheKey, entry);
   void import("../shared-cache").then(({ sharedCacheSet }) =>
     sharedCacheSet(cacheKey, entry, gexHeatmapRedisTtlSec())
   );
 
-  return heatmap;
+  return toCache;
 }
 
 /**

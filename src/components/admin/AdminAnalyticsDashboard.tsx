@@ -8,6 +8,7 @@ import { AdminNightHawkDashboard } from "@/components/admin/AdminNightHawkDashbo
 import { AdminSpxDashboard } from "@/components/admin/AdminSpxDashboard";
 import { AdminOperationsDashboard } from "@/components/admin/AdminOperationsDashboard";
 import { AdminBieDashboard } from "@/components/admin/AdminBieDashboard";
+import { AdminXIntelQueuePanel } from "@/components/admin/AdminXIntelQueuePanel";
 import { AdminShell, type AdminTabId } from "@/components/admin/AdminShell";
 import { TabCanvas } from "@/components/admin/AdminUi";
 import { TrackRecordView } from "@/components/track-record";
@@ -20,6 +21,7 @@ function parseTab(value: string | null): AdminTabId {
     value === "apis" ||
     value === "crons" ||
     value === "bie" ||
+    value === "x-intel" ||
     value === "track-record"
   ) {
     return value;
@@ -85,6 +87,11 @@ export function AdminAnalyticsDashboard() {
         {tab === "bie" && (
           <TabCanvas theme="neutral">
             <AdminBieDashboard />
+          </TabCanvas>
+        )}
+        {tab === "x-intel" && (
+          <TabCanvas theme="neutral">
+            <AdminXIntelQueuePanel />
           </TabCanvas>
         )}
       </div>

@@ -1,6 +1,8 @@
 import { marketPlatform } from "@/lib/platform";
 import type { BieComposed } from "@/lib/bie/composers-shared";
 
+import { optionSideSuffix, parseHelixReadIntent } from "@/lib/bie/helix-read-intent";
+
 const fmt = (n: unknown, d = 0): string =>
   typeof n === "number" && Number.isFinite(n)
     ? n.toLocaleString("en-US", { maximumFractionDigits: d })
@@ -20,8 +22,11 @@ export async function composeHelixRead(ticker: string | null, question?: string)
   const { fetchHotTickers } = await import("@/lib/bie/hot-tickers");
   const { computeFlowStrikeStacks } = await import("@/lib/largo/flow-strike-stacks");
 
+  // The population must match the question: biggest-prints wants premium order, everything else
+  // (strike stacks are a ROLLING signal) wants the recent session. See parseHelixReadIntent.
+  const intent = parseHelixReadIntent(question);
   const [tape, regime, nearMisses, darkPool, hotTickers] = await Promise.all([
-    marketPlatform.flows.getFlowTapeSummary({ limit: 50, ticker: scoped ?? undefined }),
+    marketPlatform.flows.getFlowTapeSummary({ limit: 50, ticker: scoped ?? undefined, order: intent.order }),
     runLargoTool("get_market_regime", {}).catch(() => null) as Promise<Record<string, unknown> | null>,
     runLargoTool("get_flow_anomaly_near_misses", {
       ticker: scoped ?? undefined,
@@ -36,10 +41,8 @@ export async function composeHelixRead(ticker: string | null, question?: string)
     : (tape.recent ?? []);
   const stacks = computeFlowStrikeStacks(rows);
 
-  const topNMatch = question?.match(/\btop\s+(\d+)\b/i);
-  const listOnly = question && /\b(list only|prints? by premium|biggest prints?)\b/i.test(question);
-  if (listOnly || topNMatch) {
-    const n = topNMatch ? Math.min(10, Math.max(1, Number(topNMatch[1]))) : 3;
+  if (intent.listOnly || intent.topN != null) {
+    const n = intent.topN ?? 3;
     const sorted = [...rows].sort((a, b) => (b.premium ?? 0) - (a.premium ?? 0));
     const lines = [`**Top ${n} HELIX prints by premium**${scoped ? ` — ${scoped}` : ""}`, ""];
     if (sorted.length === 0) {
@@ -47,7 +50,7 @@ export async function composeHelixRead(ticker: string | null, question?: string)
     } else {
       for (const p of sorted.slice(0, n)) {
         lines.push(
-          `- **${p.ticker}** ${p.strike ?? "—"}${p.option_type === "put" ? "p" : "c"} · $${fmt(p.premium, 0)} · ${p.direction ?? "—"}`
+          `- **${p.ticker}** ${p.strike ?? "—"}${optionSideSuffix(p.option_type)} · $${fmt(p.premium, 0)} · ${p.direction ?? "—"}`
         );
       }
     }
@@ -90,7 +93,7 @@ export async function composeHelixRead(ticker: string | null, question?: string)
     lines.push("", "**Strike stacks (tape-derived)**");
     for (const s of stacks.slice(0, 5)) {
       lines.push(
-        `- ${s.ticker} ${s.strike}${s.option_type === "call" ? "c" : "p"} · $${fmt(s.total_premium, 0)} · ${s.alert_count} hits · ${s.kind}`
+        `- ${s.ticker} ${s.strike}${optionSideSuffix(s.option_type)} · $${fmt(s.total_premium, 0)} · ${s.alert_count} hits · ${s.kind}`
       );
     }
   }
