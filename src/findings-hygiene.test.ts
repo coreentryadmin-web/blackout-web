@@ -206,3 +206,35 @@ test("entry headings are never glued onto the end of another line", () => {
     "entry heading glued to the previous line — insert a blank line before it, or the entry is invisible to every other check here"
   );
 });
+
+/**
+ * A merge conflict must never reach the file — and until now nothing checked.
+ *
+ * `findings-merge-resolve.mjs` refuses a merge it cannot union, printing
+ * "N entry/entries edited on BOTH sides — resolve by hand" and leaving markers in place. That
+ * refusal is easy to run straight past: `git add -A` after it stages the markers, and every other
+ * gate stays green. Measured on 2026-08-21 — a branch went to the remote with **15 markers** in
+ * this file while these very tests reported **7/7**, because they parse headings and kind tags and
+ * a `<<<<<<<` line is neither. A second branch the same hour carried 18.
+ *
+ * The markers are also silently destructive: a conflicted region duplicates one entry's heading
+ * and orphans another's body, which is the corruption #2471 and #2474 were both cleaning up.
+ *
+ * Checked at line starts only, so an entry can still quote a marker inside prose or a code fence
+ * — several entries in this log discuss exactly this failure.
+ */
+test("no merge conflict markers survive in the log", () => {
+  const raw = readFileSync(FINDINGS, "utf8");
+  const offenders = raw
+    .split("\n")
+    .map((line, i) => ({ line, n: i + 1 }))
+    .filter(({ line }) => /^(<{7}|={7}|>{7})(\s|$)/.test(line))
+    .map(({ line, n }) => `line ${n}: ${line.slice(0, 60)}`);
+
+  assert.deepEqual(
+    offenders,
+    [],
+    "unresolved merge conflict markers in FINDINGS.md — findings-merge-resolve.mjs refuses a " +
+      "merge it cannot union and leaves these behind; resolve by hand rather than staging them"
+  );
+});

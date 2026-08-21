@@ -1,11 +1,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+
+import { REPORT_PILLAR_LABELS } from "./meridian-earnings-report-core";
 import {
   project,
   orbitalLayout,
   orbitalPoint,
   orbitalGeometry,
   orbitalLabelOffset,
+  orbitalGeometryUnclamped,
+  ORBITAL_LABEL_CHAR_PX,
+  ORBITAL_LABEL_LINE_PX,
   ORBIT_INNER,
   MIN_ORBITAL_SIZE,
   tiltFromPointer,
@@ -158,12 +163,15 @@ test("ringStack: confidence maps to distinct, ordered fills", () => {
  * so it cannot pass while the rendered layout fails — a check that recomputes placement its
  * own way proves nothing about what ships.
  */
-const ORBIT_PILLARS: ReadonlyArray<readonly [string, string]> = [
-  ["flow", "Helix flow"], ["dark_pool", "Dark pool"], ["thermal", "Thermal"],
-  ["vector", "Vector"], ["analyst", "Analyst"], ["news", "News"],
-  ["insider", "Insider"], ["history", "Latest print"], ["surprise", "Surprise"],
-  ["yoy", "Year on year"], ["fundamentals", "Fundamentals"],
-];
+// The SHIPPING labels, imported rather than restated. This fixture used to carry its own
+// shorter copies — "Vector" for "Vector expected move", "Thermal" for "Thermal nodes",
+// "Analyst" for "Street / analysts" — so it laid out boxes roughly HALF the width of the ones
+// that render, found no collision, and passed while live prod overlapped by 8.79 × 6.71px.
+// A guard that invents its own fixture for the very values under test proves nothing about
+// what ships.
+const ORBIT_PILLARS: ReadonlyArray<readonly [string, string]> = Object.entries(
+  REPORT_PILLAR_LABELS
+) as ReadonlyArray<readonly [string, string]>;
 
 // Two weight regimes, because they fail differently and production produces both: FLAT
 // collapses every node onto one orbit, SPREAD pulls heavy pillars into the core (the NKLR
@@ -173,13 +181,18 @@ const WEIGHT_REGIMES: ReadonlyArray<readonly [string, (i: number) => number]> = 
   ["spread", (i) => 0.2 + i * 0.55],
 ];
 
-const CHAR_PX = 5.7; // 0.52rem mono advance — must track .ms-orb-label's font-size
-const LINE_PX = 11;
+// Measured, and shared with the module rather than re-declared here. LINE_PX was 11 against a
+// live box of 12.47px — enough on its own to turn a real vertical overlap into a miss.
+const CHAR_PX = ORBITAL_LABEL_CHAR_PX;
+const LINE_PX = ORBITAL_LABEL_LINE_PX;
 
 function labelBoxes(size: number, weight: (i: number) => number) {
-  const geo = orbitalGeometry(size);
   // The EFFECTIVE box, not the requested one — below MIN_ORBITAL_SIZE the geometry clamps, and
   // measuring against the request would report a clip the component never renders.
+  return labelBoxesForGeo(orbitalGeometry(size), weight);
+}
+
+function labelBoxesForGeo(geo: ReturnType<typeof orbitalGeometry>, weight: (i: number) => number) {
   const half = geo.size / 2;
   const signals = ORBIT_PILLARS.map(([pillar, label], i) => ({
     pillar, label, lean: i % 3 === 0 ? "bullish" : i % 3 === 1 ? "bearish" : "neutral",
@@ -198,7 +211,9 @@ function labelBoxes(size: number, weight: (i: number) => number) {
 }
 
 for (const [regime, weight] of WEIGHT_REGIMES) {
-  for (const size of [260, 300, 340]) {
+  // The floor and the two sizes the report panel actually asks for. 260/300/340 used to be here,
+  // but every one of them now clamps to the floor, so they were three copies of one test.
+  for (const size of [MIN_ORBITAL_SIZE, 400, 520]) {
     test(`orbital labels: no overlap and none clipped — ${regime} weights @ ${size}px`, () => {
       const boxes = labelBoxes(size, weight);
       assert.ok(boxes.length >= 10, "fixture should exercise a full pillar book");
@@ -248,4 +263,46 @@ test("orbitalGeometry: a label is never allowed to be wider than the room it has
     assert.ok(geo.R > 0, `no disc at ${size}px`);
     assert.ok(geo.size >= MIN_ORBITAL_SIZE, "the box never goes below the legibility floor");
   }
+});
+
+/**
+ * The floor is not a taste call — it is the smallest box at which this diagram's own labels stop
+ * printing through each other, and this sweeps for it rather than trusting the number.
+ *
+ * If a label is ever renamed, a pillar added, or the font changed, the true floor moves and this
+ * fails with the new value. That is the point: MIN_ORBITAL_SIZE records a measurement, and a
+ * recorded measurement that nothing re-measures is just a constant again.
+ */
+test("orbital labels: the floor really is the floor — the smallest collision-free box", () => {
+  const collidesIn = (boxes: ReturnType<typeof labelBoxes>) => {
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) {
+        const a = boxes[i]!, b = boxes[j]!;
+        const ox = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);
+        const oy = Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0);
+        if (ox > 1 && oy > 1) return true;
+      }
+    }
+    return false;
+  };
+  const collides = (size: number) =>
+    WEIGHT_REGIMES.some(([, weight]) => collidesIn(labelBoxes(size, weight)));
+  // Below the floor, through the SHARED unclamped formula — never a second copy of the geometry.
+  const labelBoxesAtRaw = (size: number) =>
+    WEIGHT_REGIMES.flatMap(([, weight]) => labelBoxesForGeo(orbitalGeometryUnclamped(size), weight));
+
+  assert.equal(collides(MIN_ORBITAL_SIZE), false, `labels collide AT the floor ${MIN_ORBITAL_SIZE}px`);
+
+  // Sweep below the floor with the clamp bypassed — labelBoxes goes through orbitalGeometry,
+  // which clamps, so ask the geometry directly for the largest colliding box.
+  let largestColliding = 0;
+  for (let size = 260; size < MIN_ORBITAL_SIZE; size += 2) {
+    if (orbitalGeometryUnclamped(size).R <= 0) continue;
+    if (collidesIn(labelBoxesAtRaw(size))) largestColliding = size;
+  }
+  assert.ok(
+    largestColliding >= MIN_ORBITAL_SIZE - 8,
+    `the floor is ${MIN_ORBITAL_SIZE - largestColliding}px higher than it needs to be — ` +
+      `the last colliding box was ${largestColliding}px, so the diagram is taking room it does not need`
+  );
 });

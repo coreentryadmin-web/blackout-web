@@ -25,6 +25,7 @@ import {
   readSwingServingSnapshot,
 } from "@/lib/swing/serving-lane";
 import { buildZeroDteRecord } from "@/lib/zerodte/record";
+import { bangerPnlForModel } from "./banger-pnl";
 import { fitRowsToBudget, sampleNote } from "@/lib/largo/fit-tool-result";
 import { formatEtDate, todayEt } from "@/features/nighthawk/lib/session";
 import {
@@ -101,10 +102,14 @@ export async function bangerBoardForLargo(limit = 40) {
       entry_premium: row.entry_premium,
       last_mark: row.last_mark,
       status: row.status,
-      live_pnl_pct:
-        row.entry_premium && row.last_mark
-          ? ((row.last_mark - row.entry_premium) / row.entry_premium) * 100
-          : row.realized_pnl_pct,
+      scaled_already: row.scaled_already,
+      // One field named `live_pnl_pct` used to carry BOTH the mark-to-market of an open position
+      // and, on a closed one, the same arithmetic applied to the remaining leg — which on a
+      // scaled position ignores the banked tranche. Measured on the live board 2026-08-21: all
+      // eight closed rows disagreed with their own recorded `realized_pnl_pct`, every one of them
+      // understating, one flipping the sign of a winner. `bangerPnlForModel` emits the number
+      // that matches the status, under a name that says what it measures.
+      ...bangerPnlForModel(row),
       scale_out_action: row.scale_out_action,
       discovery_gain: row.discovery_gain,
     });
@@ -128,7 +133,13 @@ export async function bangerBoardForLargo(limit = 40) {
       /** How many open rows this response actually carries. Below open_count when truncated. */
       open_shown: open.length,
       truncated: trueOpenCount != null && trueOpenCount > open.length,
+      // `closed` is capped at 12 rows. The open side already states `open_shown` and `truncated`
+      // so the model cannot mistake a page for a total; the closed side said nothing, and
+      // `closed_count` is itself page-limited — it counts the closed rows among the most recent
+      // `limit` of ALL statuses, not every closed row there is. Both facts are now stated.
       closed_count: closed.length,
+      closed_count_is_page_limited: true,
+      closed_shown: Math.min(closed.length, 12),
       open: open.map(mapRow),
       closed: closed.slice(0, 12).map(mapRow),
     });
@@ -684,7 +695,7 @@ export async function helixDerivedForLargo(
     // coincidence while the contents were entirely disjoint, and the top-print direction inverted
     // (SPY puts vs SPX calls). A bigger limit is still wanted, for the reason originally given: a
     // 50-print slice would under-report every stack and every spike.
-    const { helixTapeFetchOptions: derivedFetchOptions } = await import("@/lib/largo/helix-tape-analytics");
+    const { helixTapeFetchOptions: derivedFetchOptions, cappedList } = await import("@/lib/largo/helix-tape-analytics");
     const summary = await marketPlatform.flows.getFlowTapeSummary(
       derivedFetchOptions({
         ticker,
@@ -720,6 +731,17 @@ export async function helixDerivedForLargo(
     const velocity = detectVelocitySpikes(alerts, nowMs);
     const split = detectSplitFlow(alerts, nowMs);
 
+    // NO SILENT CAPS (rule 7). Each panel below is capped for payload size, but the cap was
+    // invisible: a model seeing 20 stacked_hits had no way to know 34 contracts were stacking, so
+    // "how many are stacking right now" answered with the DISPLAY limit as if it were the count.
+    // `cappedList` carries the true total + a truncated flag beside each list, the same discipline
+    // get_helix_signal_outcomes (rows_shown/rows_summarized) and get_helix_tape_analytics
+    // (expiry_concentration_truncated) already use.
+    const stackedHits = cappedList(stacks, 20);
+    const topPrints = cappedList(top.rows, 12);
+    const velocitySpikes = cappedList(velocity, 12);
+    const splitFlow = cappedList(split, 12);
+
     return roundFloats({
       available: true,
       ticker: ticker?.toUpperCase() ?? null,
@@ -734,21 +756,30 @@ export async function helixDerivedForLargo(
       prints_analyzed: alerts.length,
       hits_window_min: HELIX_STRIKE_HITS_WINDOW_MIN,
 
-      /** STACKED HITS — repeated prints on the SAME contract (strike + expiry + side). */
-      stacked_hits: stacks.slice(0, 20),
+      /** STACKED HITS — repeated prints on the SAME contract (strike + expiry + side). `_total` is
+       *  how many stacked contracts exist; `_truncated` says the list is a top-N slice of them. */
+      stacked_hits: stackedHits.items,
+      stacked_hits_total: stackedHits.total,
+      stacked_hits_truncated: stackedHits.truncated,
 
       /** TOP PRINTS — the conviction-scored leaders. `mode` says which ranking is in force, and
        *  `session_fallback` flags that every row is OUTSIDE the rolling window, i.e. these are
        *  stale session leaders rather than live conviction. Reporting them as live would be wrong. */
-      top_prints: top.rows.slice(0, 12),
+      top_prints: topPrints.items,
+      top_prints_total: topPrints.total,
+      top_prints_truncated: topPrints.truncated,
       top_prints_mode: top.mode,
       top_prints_session_fallback: top.sessionFallback,
 
       /** VELOCITY RADAR — prints per 15min vs the prior window, per ticker. */
-      velocity_spikes: velocity.slice(0, 12),
+      velocity_spikes: velocitySpikes.items,
+      velocity_spikes_total: velocitySpikes.total,
+      velocity_spikes_truncated: velocitySpikes.truncated,
 
       /** SPLIT FLOW — opposing call AND put premium on the same name inside 30 min. */
-      split_flow: split.slice(0, 12),
+      split_flow: splitFlow.items,
+      split_flow_total: splitFlow.total,
+      split_flow_truncated: splitFlow.truncated,
     });
   } catch (e) {
     // C3. Arrays stay present and EMPTY so an existing consumer does not crash, but `available`

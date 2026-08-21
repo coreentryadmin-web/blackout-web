@@ -78,6 +78,33 @@ export function MarkdownBody({ content }: { content: string }) {
           <p>{parseInline(trimmed.slice(2))}</p>
         </blockquote>,
       );
+    } else if (/^!\[[^\]]*\]\([^)]+\)/.test(trimmed)) {
+      // Standalone image block: `![alt](/src)` with an optional `*caption*` on the next line.
+      // width/height are set from the known asset ratio so the browser reserves the space and the
+      // image adds ZERO layout shift (see the homepage-CLS fix — never ship a CLS regression).
+      const lines = trimmed.split(/\n/);
+      const m = lines[0].match(/^!\[([^\]]*)\]\(([^)]+)\)/);
+      const alt = m?.[1] ?? "";
+      const src = m?.[2] ?? "";
+      const capLine = lines[1]?.trim() ?? "";
+      const caption = /^\*.*\*$/.test(capLine) ? capLine.replace(/^\*|\*$/g, "") : "";
+      elements.push(
+        <figure key={key++} className="my-8">
+          {/* eslint-disable-next-line @next/next/no-img-element -- committed static diagram, not remote/user content */}
+          <img
+            src={src}
+            alt={alt}
+            width={1200}
+            height={630}
+            loading="lazy"
+            className="w-full rounded-xl border border-white/10"
+            style={{ height: "auto" }}
+          />
+          {caption ? (
+            <figcaption className="mt-3 text-center text-sm text-mute">{parseInline(caption)}</figcaption>
+          ) : null}
+        </figure>,
+      );
     } else if (/^\d+\.\s/.test(trimmed)) {
       const items = trimmed.split(/\n/).map((line) => line.replace(/^\d+\.\s+/, ""));
       elements.push(
