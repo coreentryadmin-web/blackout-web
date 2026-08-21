@@ -769,7 +769,16 @@
 }
 .pipe-stage.pipe-lit .pipe-status{color:var(--g)}
 .pipe-stage.pipe-lit .status-dot{background:var(--g);box-shadow:0 0 8px var(--g);animation:led 2s ease infinite}
-.pipe-stage.pipe-lit .pipe-status::after{content:"ONLINE";position:absolute;color:var(--g)}
+/* NOTE: do not add a ::after{content:"ONLINE"} rule here. LandingRedesignFx.tsx's
+   IntersectionObserver already rewrites .pipe-status's innerHTML to the dot + "ONLINE"
+   text the instant a stage scrolls into view (see the `pipe-lit` class toggle there).
+   A CSS-generated ::after with the same literal text used to sit here too; with
+   position:absolute and no top/left it rendered at its in-flow "static position"
+   (CSS2.1 10.3.7) -- i.e. immediately after the real "ONLINE" text node, not away from
+   it -- so the two labels double-exposed into unreadable overlapping glyphs on every
+   "How BlackOut Thinks" pipeline card (01-04) as soon as it scrolled into view. Fixed
+   by deleting the redundant CSS copy; the JS-authored text (already gated on the same
+   pipe-lit trigger) is the single source of truth for this label. */
 .pipe-status span + span{display:none}
 
 /* Stage body — two-column: text + visual */

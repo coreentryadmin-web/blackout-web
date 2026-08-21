@@ -54,6 +54,29 @@ write-up policy below, and still keep PRs small/single-issue — the standing au
 until CI is fixed; changes the user explicitly flags as deploy-risky (hold on a branch until
 they say go).
 
+**CROSS-PR ORDERING DEPENDENCIES — sequence them, do not race them (added 2026-08-21, after a
+red `main`).** Two PRs can each be green, each be correct in isolation, and still break `main` when
+composed. Measured that day: #2482 fixed `get_earnings_market`'s bare UTC stamp; #2421 shipped a
+new C1 ratchet (`src/lib/largo/contract/session-anchor.test.ts`) that listed the SAME file in its
+KNOWN_GAPS allowlist, deliberately deferring the fix rather than writing a second conflicting one.
+Correct call — but it made #2421 depend on #2482 landing SECOND. #2482 was already non-draft, so
+`automerge.yml` took it as soon as its checks went green, #2421 merged five minutes later, and the
+allowlist arrived describing a file that was already fixed. The "list SHRINKS" assertion fired,
+correctly, on `main` and on every open PR that rebased onto it (#2480, #2451, #2487 all went red on
+someone else's mistake). Fixed by #2486.
+
+The general shape: **an allowlist entry, a TODO, or a comment that defers to an OPEN PR is an
+ordering dependency, and `automerge.yml` does not know about it.** It merges by check-completion
+time, which is effectively random. So when one PR's correctness depends on another's merge state:
+land the deferred-to PR FIRST and confirm it is in `main` before releasing the dependent one, or
+put both in a single merge. Never release both and hope. And do not respond to the resulting
+breakage by weakening the guard — a ratchet that tolerates stale entries is the stale-by-omission
+failure it was written to prevent.
+
+**A merge is not a verification.** After merging anything whose correctness depends on the state of
+`main`, re-run the affected check AGAINST `origin/main` rather than trusting that the merge did what
+you expected. That is how the twenty-minute red window above was caught at all.
+
 ## PR write-up policy (standing instruction)
 Every PR — fix or docs — gets a deep, clean write-up so Cursor (a parallel agent working the
 same repo) can read the diff cold and understand it without asking follow-up questions:
@@ -81,6 +104,26 @@ Both harnesses and their `npm run validate:vector-*` scripts were removed with i
   `staging.blackouttrades.com`.
 - If a pre-prod render/value gate is wanted again, **stand up a fresh ephemeral target first** and
   point a new harness at it — the old one is gone on purpose.
+
+## Largo product contract (standing instruction)
+Every product surface exposed to Largo — Helix, Thermal, Vector, Meridian, Night Hawk, SPX — follows
+**`docs/audit/LARGO-PRODUCT-CONTRACT.md`** (prose) and imports its types from
+**`src/lib/largo/contract/product-read.ts`**. Ten points: time, freshness, absence, identity,
+direction, confidence, evidence, provenance, precision, historical context. It exists because
+parallel lanes otherwise invent incompatible schemas and the cross-product questions become
+unanswerable — not for lack of data, but because it cannot be joined.
+
+Two properties are easy to get backwards, so they are stated here too:
+- The contract is **ADDITIVE**. `ProductRead<T>` WRAPS a product's own `T`. **Flattening
+  product-specific intelligence to satisfy the contract is a violation, not compliance** — keep both
+  the native field and the normalized one.
+- **`confidence` must be OMITTED when a product cannot calibrate it.** An invented score is compared
+  against another lane's measured one, so fabricated certainty does not stay local — it corrupts
+  cross-product ranking. Omission is honest; fabrication is not.
+
+Cross-product **disagreement is represented, never reconciled by the lanes themselves**. Vector and
+Helix both read flow and will sometimes differ; that difference is information. A lane that quietly
+adjusts its numbers to match a peer has destroyed the signal and left a false consensus.
 
 ## Audit toolkit (committed)
 - `scripts/audit/data-validator.mjs` — cross-provider validator (Polygon+UW ground truth vs the numbers members see: prices/indices, GEX/greeks, track-record math, malformed-number scan). Secrets from env only; one temp Clerk user per run, always deleted. Exits non-zero on any FAIL.
@@ -200,7 +243,32 @@ Both harnesses and their `npm run validate:vector-*` scripts were removed with i
    `.cursor/rules/live-ui-validation.mdc`. Real desk paths are `/nighthawk`, `/terminal`,
    `/vector`, `/flows`, `/heatmap` — there is no `/night-hawk` and no `/swings`; an unstyled
    Times render is the 404 page, not a CSS failure.
-3. **AWS — the operator supplies valid creds; the sandbox defaults are INVALID.** Default
+3. **AWS — WORKS IN-SESSION when the operator's creds are present (corrected 2026-08-21).** This
+   note previously said the sandbox defaults are always placeholders. That is not reliably true:
+   on 2026-08-21 `sts get-caller-identity` returned `arn:aws:iam::177922194517:user/vinay-blackout`
+   with no creds pasted that session. **Test before assuming** — `pip install boto3` (not
+   preinstalled, installs fine) then `boto3.client("sts").get_caller_identity()`. There is no `aws`
+   CLI; use boto3. Secrets Manager is writable: `blackout-production/<area>/<name>` is the
+   convention (`blackout-production/app/env` is a 98-key JSON blob ECS injects; `rds/master`;
+   `seo/gsc-service-account`; `marketing/x-pixel`).
+   **Before overwriting any existing secret, FINGERPRINT-COMPARE first** — a supplied credential is
+   often identical to what is already live, and blindly writing it risks breaking production for no
+   gain. `RESEND_API_KEY` was re-supplied on 2026-08-21 and proved byte-identical; nothing was
+   written.
+3b. **Google Search Console — service account, in Secrets Manager (2026-08-21).**
+   `blackout-production/seo/gsc-service-account` holds `claude-seo@blackout-trades.iam.gserviceaccount.com`,
+   verified `siteOwner` on **`sc-domain:blackouttrades.com`** — a **DOMAIN property**, so URL-encode
+   it as `sc-domain%3Ablackouttrades.com` in API paths. Getting that wrong returns an EMPTY result
+   rather than an error, which reads as "no search data" and is the same absence-as-fact trap this
+   file keeps documenting. A plain Google **API key does NOT work** for this API
+   (`UNAUTHENTICATED: API keys are not supported by this API`) — it needs a service account or OAuth.
+3c. **Python's crypto stack is BROKEN here — sign JWTs in Node.** `import cryptography` dies with a
+   `pyo3_runtime.PanicException` (`No module named '_cffi_backend'`), which takes `PyJWT` and
+   `google-auth` down with it, so the standard `google-api-python-client` path is unusable. Node's
+   built-in `crypto` works: `crypto.createSign("RSA-SHA256").update(unsigned).sign(sa.private_key)`
+   → POST `token_uri` with `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer`. `openssl` is
+   also present.
+3d. **AWS (original note, still true when creds ARE absent).** Default
    `AWS_ACCESS_KEY_ID/SECRET` env vars are placeholders (`InvalidClientTokenId`). When the operator
    pastes valid creds (in-session env vars), the `aws` CLI works through the proxy — pass `--region
    us-east-1` explicitly (bare `AWS_REGION` didn't stick; use `AWS_DEFAULT_REGION` or `--region`).
