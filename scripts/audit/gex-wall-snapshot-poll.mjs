@@ -36,10 +36,11 @@
  *     --out=/path/to/gex-wall-snapshots.json
  *
  * SECRETS from env only (never hardcoded): CLERK_SECRET_KEY, NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY.
- * Deletes its temp Clerk user in a finally block, same as every other audit harness.
+ * Deletes its temp Clerk user in a finally block, same as every other audit harness — AND on
+ * SIGINT/SIGTERM, which for a long unattended poller is the likeliest way it ever ends.
  */
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { generateDefaultAuditPhone } from "./lib/audit-phone.mjs";
@@ -289,22 +290,52 @@ async function main() {
     if (i < passes - 1) await sleep(EVERY_MINUTES * 60 * 1000);
   }
   console.log(`\nDone. ${totalCaptured} row(s) captured across ${passes} passes -> ${OUT}`);
-  await cleanup();
 }
 
+// Idempotent: the finally, the signal handlers and the early-exit paths can all reach this, and
+// a double DELETE would print a spurious failure on the second call.
+let _cleanedUp = false;
 async function cleanup() {
-  if (userId) {
-    try {
-      backend("DELETE", `/users/${userId}`);
-      console.log(`(cleanup) deleted temp user ${userId}`);
-    } catch {
-      /* best-effort */
-    }
+  if (_cleanedUp) return;
+  _cleanedUp = true;
+  if (!userId) return;
+  try {
+    const d = backend("DELETE", `/users/${userId}`);
+    const v = backend("GET", `/users/${userId}`);
+    // Verify, don't assume. A DELETE that 200s and leaves the user alive is the failure mode
+    // worth knowing about, and it is invisible without the read-back.
+    console.log(`(cleanup) temp user ${userId} — DELETE ${d.s}, verify ${v.s} ${v.s === 404 ? "(gone)" : "(STILL PRESENT — delete by hand)"}`);
+  } catch {
+    /* best-effort */
   }
 }
 
-main().catch(async (e) => {
-  console.error("FATAL:", e?.stack || e);
-  await cleanup();
-  process.exit(1);
-});
+// A SIGINT/SIGTERM must still delete the temp Clerk user. This poller is documented to run
+// unattended for tens of minutes under nohup/&, so a kill is a NORMAL way for it to end — not an
+// edge case. Without these handlers, Ctrl-C leaked a live admin+premium account on production
+// Clerk, which has no TTL and would sit there indefinitely. Same shape data-validator.mjs uses.
+let _signalling = false;
+function _signalCleanup() {
+  if (_signalling) return;
+  _signalling = true;
+  cleanup()
+    .catch(() => {})
+    .finally(() => {
+      try { rmSync(TMP, { recursive: true, force: true }); } catch { /* best-effort */ }
+      process.exit(130);
+    });
+}
+process.on("SIGINT", _signalCleanup);
+process.on("SIGTERM", _signalCleanup);
+
+main()
+  .catch((e) => {
+    console.error("FATAL:", e?.stack || e);
+    process.exitCode = 1;
+  })
+  // The claim in this file's header is "deletes its temp Clerk user in a finally block". It is now
+  // literally that, rather than three hand-placed calls that between them missed the signal path.
+  .finally(async () => {
+    await cleanup();
+    try { rmSync(TMP, { recursive: true, force: true }); } catch { /* best-effort */ }
+  });
