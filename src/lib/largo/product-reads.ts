@@ -4,6 +4,9 @@
 // never crash on a cold lane.
 
 import { roundFloats } from "@/lib/round-floats";
+// Session phase comes from the ONE canonical helper (largo/core), not a local re-derivation —
+// a second copy of the RTH boundaries is how two surfaces end up disagreeing about the session.
+import { marketPhaseFromEt } from "@/lib/largo/core/system-status";
 import { fetchBangerBoardRows, fetchBangerOpenCount } from "@/lib/banger/positions-db";
 import { isBangerEngineEnabled } from "@/lib/banger/flag";
 import { bangerScaleOutNote } from "@/lib/zerodte/scale-out";
@@ -709,6 +712,94 @@ export async function helixTapeAnalyticsForLargo(
   }
 }
 
+/**
+ * ET session phase + wall-clock minutes, for stamping a thermal read with the session it
+ * belongs to. Same derivation `largo-terminal.ts` uses for the regime-personality block, so
+ * the tool payload and the prompt block can never disagree about what session it is.
+ */
+export function etSessionNow(now = new Date()): { phase: string; et_time: string } {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hour: "numeric",
+    minute: "numeric",
+    weekday: "short",
+    hour12: false,
+  }).formatToParts(now);
+  const part = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  const DAYS: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  const hh = part("hour").padStart(2, "0");
+  const mm = part("minute").padStart(2, "0");
+  return {
+    phase: marketPhaseFromEt(DAYS[part("weekday")] ?? 1, Number(part("hour")) * 60 + Number(part("minute"))),
+    et_time: `${hh}:${mm} ET`,
+  };
+}
+
+/** Whole seconds between an ISO timestamp and now, or null when the stamp is unusable. */
+export function ageSecondsFrom(iso: string | null | undefined, now = Date.now()): number | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return null;
+  return Math.max(0, Math.round((now - t) / 1000));
+}
+
+/** The subset of `GexPositioning` the compare strip serves. Structural so this stays pure. */
+export type ThermalComparePositioning = {
+  spot: number;
+  change_pct: number;
+  asof: string;
+  flip: number | null;
+  call_wall: number | null;
+  put_wall: number | null;
+  net_gex: number;
+  gamma_regime_read: string;
+  gex_cross_validation?: unknown;
+} | null;
+
+/**
+ * PURE: one compare-strip row from one positioning snapshot.
+ *
+ * Extracted so the row shape is testable without the aliased dynamic imports in
+ * `thermalCompareForLargo` — with `mock.module` active, tsx stops resolving "@/" for dynamic
+ * imports across the loaded graph (same resolver-hook interaction as #2073), so an integration
+ * test of that function cannot run at all. Keeping the mapping pure sidesteps it.
+ */
+export function thermalCompareRow(ticker: string, pos: ThermalComparePositioning, now = Date.now()) {
+  if (!pos) {
+    return {
+      ticker,
+      available: false,
+      spot: null,
+      change_pct: null,
+      flip: null,
+      call_wall: null,
+      put_wall: null,
+      net_gex: null,
+      gamma_regime_read: null,
+      cross_validation: null,
+      matrix_asof: null,
+      matrix_age_sec: null,
+    };
+  }
+  return {
+    ticker,
+    available: true,
+    spot: pos.spot,
+    change_pct: pos.change_pct,
+    flip: pos.flip,
+    call_wall: pos.call_wall,
+    put_wall: pos.put_wall,
+    net_gex: pos.net_gex,
+    gamma_regime_read: pos.gamma_regime_read,
+    cross_validation: pos.gex_cross_validation ?? null,
+    // WHEN this ticker's matrix was computed, carried straight off the positioning contract.
+    // Previously dropped, leaving the envelope's generated-at stamp as the payload's ONLY
+    // timestamp — which reads as "this is the price right now".
+    matrix_asof: pos.asof,
+    matrix_age_sec: ageSecondsFrom(pos.asof, now),
+  };
+}
+
 /** Thermal compare strip — SPY/SPX/QQQ side-by-side positioning summary. */
 export async function thermalCompareForLargo(tickers?: string[]) {
   const { THERMAL_COMPARE_TICKERS } = await import("@/features/thermal/lib/thermal-desk-state");
@@ -721,39 +812,26 @@ export async function thermalCompareForLargo(tickers?: string[]) {
   // at ~120s on cold SPX+SPY. getGexPositioning reads the shared warmed cache — same numbers
   // the Thermal compare UI shows.
   const rows = await Promise.all(
-    list.map(async (ticker) => {
-      const pos = await getGexPositioning(ticker).catch(() => null);
-      if (!pos) {
-        return {
-          ticker,
-          available: false,
-          spot: null,
-          change_pct: null,
-          flip: null,
-          call_wall: null,
-          put_wall: null,
-          net_gex: null,
-          gamma_regime_read: null,
-          cross_validation: null,
-        };
-      }
-      return {
-        ticker,
-        available: true,
-        spot: pos.spot,
-        change_pct: pos.change_pct,
-        flip: pos.flip,
-        call_wall: pos.call_wall,
-        put_wall: pos.put_wall,
-        net_gex: pos.net_gex,
-        gamma_regime_read: pos.gamma_regime_read,
-        cross_validation: pos.gex_cross_validation ?? null,
-      };
-    })
+    list.map(async (ticker) => thermalCompareRow(ticker, await getGexPositioning(ticker).catch(() => null)))
   );
+  // SESSION CONTEXT — the missing half of "when".
+  //
+  // `as_of` is the time this tool RAN, and it was the only timestamp in the payload. That is
+  // not the time the numbers describe. Measured live 2026-08-21T00:29Z (20:29 ET): the payload
+  // served SPY `spot: 762.6`, which is EXACTLY SPY's 16:00 ET close — a four-and-a-half-hour-old
+  // number presented under a stamp that reads as "now". A model asked "where is SPY trading"
+  // answers with a closing price and calls it live, and nothing in the payload contradicts it.
+  //
+  // So: keep `as_of` (unchanged, and now explicitly named as generated-at) and add the two facts
+  // that make it interpretable — which session the wall clock is in, and how old each ticker's
+  // matrix is. Both are derived, not fetched: no extra upstream, no pressure on the UW budget.
+  const session = etSessionNow();
   return roundFloats({
     available: rows.some((r) => r.available),
+    /** When this payload was GENERATED — not the age of the numbers in it. See `market_session`. */
     as_of: new Date().toISOString(),
+    market_session: session.phase,
+    et_time: session.et_time,
     tickers: rows,
   });
 }

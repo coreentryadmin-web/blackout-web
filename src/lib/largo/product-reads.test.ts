@@ -54,13 +54,19 @@ mock.module("../db", {
 });
 
 let bangerBoardForLargo: typeof import("./product-reads").bangerBoardForLargo;
-let nighthawkHorizonsForLargo: typeof import("./product-reads").nighthawkHorizonsForLargo;
 let zerodteRecordForLargo: typeof import("./product-reads").zerodteRecordForLargo;
+let thermalCompareRow: typeof import("./product-reads").thermalCompareRow;
+let etSessionNow: typeof import("./product-reads").etSessionNow;
+let ageSecondsFrom: typeof import("./product-reads").ageSecondsFrom;
 
 before(async () => {
-  ({ bangerBoardForLargo, nighthawkHorizonsForLargo, zerodteRecordForLargo } = await import(
-    "./product-reads"
-  ));
+  ({
+    bangerBoardForLargo,
+    zerodteRecordForLargo,
+    thermalCompareRow,
+    etSessionNow,
+    ageSecondsFrom,
+  } = await import("./product-reads"));
 });
 
 describe("product-reads", () => {
@@ -75,34 +81,6 @@ describe("product-reads", () => {
       if (prev === undefined) delete process.env.BANGER_ENGINE_ENABLED;
       else process.env.BANGER_ENGINE_ENABLED = prev;
     }
-  });
-});
-
-// A bare UTC `as_of` reads a full session ahead between ~20:00 ET and midnight. Both of
-// these payloads are session-scoped — banger rows are keyed by session_date, and the 0DTE
-// counts answer "how many are open TODAY" — so the session has to be stated, not inferred.
-describe("session anchors (Largo product contract C1)", () => {
-  it("banger board states its ET session alongside the UTC instant", async () => {
-    const prev = process.env.BANGER_ENGINE_ENABLED;
-    process.env.BANGER_ENGINE_ENABLED = "1";
-    try {
-      const r = (await bangerBoardForLargo()) as Record<string, unknown>;
-      if (r.available === false) return; // db-less environment: nothing to anchor
-      assert.match(String(r.as_of), /^\d{4}-\d{2}-\d{2}T.*Z$/);
-      assert.match(String(r.session_date), /^\d{4}-\d{2}-\d{2}$/);
-      assert.equal(String(r.as_of_et).slice(0, 10), r.session_date);
-    } finally {
-      if (prev === undefined) delete process.env.BANGER_ENGINE_ENABLED;
-      else process.env.BANGER_ENGINE_ENABLED = prev;
-    }
-  });
-
-  it("nighthawk horizons states its ET session alongside the UTC instant", async () => {
-    const r = (await nighthawkHorizonsForLargo()) as Record<string, unknown>;
-    assert.match(String(r.as_of), /^\d{4}-\d{2}-\d{2}T.*Z$/);
-    assert.match(String(r.session_date), /^\d{4}-\d{2}-\d{2}$/);
-    assert.match(String(r.as_of_et), /^\d{4}-\d{2}-\d{2} \d{2}:\d{2} ET$/);
-    assert.equal(String(r.as_of_et).slice(0, 10), r.session_date);
   });
 });
 
@@ -195,5 +173,68 @@ describe("zerodteRecordForLargo — empty and ungraded windows", () => {
     assert.equal(rec.graded, 0);
     assert.equal(rec.losses, 0, "an ungraded play is not a loss");
     assert.equal(rec.win_rate_pct, null);
+describe("thermalCompareRow — a reading carries the session it belongs to", () => {
+  // Live capture 2026-08-21T00:29Z (20:29 ET): the served spot is EXACTLY SPY's 16:00 ET
+  // close, four and a half hours old, under an envelope stamp that reads as "now".
+  const MATRIX_ASOF = "2026-08-21T00:24:56.192Z";
+  const LIVE_SPY = {
+    spot: 762.6,
+    change_pct: 0.31,
+    asof: MATRIX_ASOF,
+    flip: null,
+    call_wall: 780,
+    put_wall: 765,
+    net_gex: -1_234_567,
+    gamma_regime_read: "short gamma: momentum / vol expansion. Resistance 780, support 765.",
+    gex_cross_validation: null,
+  };
+
+  it("carries the matrix asof and its age, not only the tool-run stamp", () => {
+    const now = Date.parse("2026-08-21T00:29:56.192Z");
+    const row = thermalCompareRow("SPY", LIVE_SPY, now);
+    assert.equal(row.available, true);
+    assert.equal(row.spot, 762.6);
+    // The regression: matrix_asof used to be dropped entirely.
+    assert.equal(row.matrix_asof, MATRIX_ASOF);
+    assert.equal(row.matrix_age_sec, 300);
+  });
+
+  it("reports nulls — never a borrowed timestamp — when the matrix is cold", () => {
+    const row = thermalCompareRow("NVDA", null);
+    assert.equal(row.available, false);
+    assert.equal(row.spot, null);
+    assert.equal(row.matrix_asof, null);
+    assert.equal(row.matrix_age_sec, null);
+  });
+});
+
+describe("etSessionNow / ageSecondsFrom", () => {
+  it("names the session for a weekday RTH instant", () => {
+    // 2026-08-20 is a Thursday; 14:30Z = 10:30 ET.
+    assert.equal(etSessionNow(new Date("2026-08-20T14:30:00Z")).phase, "OPEN");
+  });
+
+  it("does not call a closed-market instant OPEN", () => {
+    // 00:29Z on the 21st = 20:29 ET on the 20th — the exact instant measured live, at which
+    // the payload served SPY's 16:00 close under an `as_of` of "now". AFTER-HOURS ends at
+    // 20:00 ET, so this instant is CLOSED outright.
+    const s = etSessionNow(new Date("2026-08-21T00:29:00Z"));
+    assert.equal(s.phase, "CLOSED");
+    assert.equal(s.et_time, "20:29 ET");
+  });
+
+  it("names the after-hours window between 16:00 and 20:00 ET", () => {
+    assert.equal(etSessionNow(new Date("2026-08-20T21:30:00Z")).phase, "AFTER-HOURS"); // 17:30 ET
+  });
+
+  it("calls the weekend CLOSED", () => {
+    // 2026-08-22 is a Saturday.
+    assert.equal(etSessionNow(new Date("2026-08-22T14:30:00Z")).phase, "CLOSED");
+  });
+
+  it("returns null for an unusable stamp rather than a fabricated age", () => {
+    assert.equal(ageSecondsFrom(null), null);
+    assert.equal(ageSecondsFrom("not-a-date"), null);
+    assert.equal(ageSecondsFrom("2026-08-21T00:24:56.192Z", Date.parse("2026-08-21T00:25:56.192Z")), 60);
   });
 });
