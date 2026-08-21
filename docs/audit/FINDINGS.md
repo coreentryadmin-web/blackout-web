@@ -4,6 +4,21 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-21 — [FINDING, P2 SEO] Decommissioned `staging.blackouttrades.com` is still indexed by Google — surfaced by the first-ever GSC pull — FLAGGED (DNS remediation, not code)
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **How it surfaced** | The SEO lane had **no** organic ground truth until today — the only GSC credential supplied was a plain Google API key, which the Search Console API rejects (`API keys are not supported by this API`). The working path (service account at `blackout-production/seo/gsc-service-account`, siteOwner on the DOMAIN property `sc-domain:blackouttrades.com`, JWT→OAuth) is now wired as `scripts/audit/gsc-search-analytics.mjs`. Its **first run** immediately showed the finding below. |
+| **Finding** | `https://staging.blackouttrades.com/terminal` is in Google's index and drew **2 clicks / 8 impressions at avg position 5.6** over 2026-07-22→08-18. Staging was **decommissioned 2026-07-25** (ECS/ALB/RDS/DNS-origin all deleted — see CLAUDE.md). The impressions are residual from before the teardown; the page now returns **Cloudflare 530 (error 1016, origin DNS gone)** — verified live. So a dead subdomain is still indexed, still ranking, and now serves users an error page. |
+| **Evidence** | `curl -I https://staging.blackouttrades.com/` → `530`; DNS still resolves to Cloudflare IPs (`172.67.218.42`, `2606:4700:…`), i.e. the CF **DNS record survived the origin teardown**. `node scripts/audit/gsc-search-analytics.mjs` → the staging row appears in TOP PAGES. |
+| **Why it matters** | A 530 is not indexable content, so Google will eventually drop it — but "eventually" is weeks-to-months, during which the brand's SERP shows a broken subdomain and a sliver of link equity points at nothing. It is also a duplicate-surface risk if staging is ever stood back up without `noindex`. |
+| **Remediation — NOT done here, deliberately** | The fix is a **DNS action**, not a code change: remove the `staging` CF DNS record so the host NXDOMAINs (cleanest — Google drops it fastest), or point it at a 410/301. There is **no code fix in this repo** — staging was a separate, now-deleted deployment; this app's robots/middleware only ever served the apex host. Removing a DNS record is outward-facing and hard to reverse, so it is **flagged to the coordinator** rather than executed autonomously. `CF_API_TOKEN` may not even carry DNS-edit scope (it is a cache-ruleset token). |
+| **Also delivered (the tooling)** | `scripts/audit/gsc-search-analytics.mjs` + pure helpers `scripts/audit/lib/gsc-query.mjs` (unit-tested, 5 tests). Reads the secret from Secrets Manager, **never prints key material**, signs RS256 in Node (Python crypto is broken in-sandbox), encodes the domain property as `sc-domain%3A…` behind a named+tested `encodeSiteProperty` (a wrong form returns EMPTY, not an error — the absence-as-fact trap), and skips cleanly with exit 2 if AWS creds are absent rather than fabricating zeros. |
+| **First measured baseline (28d, 2026-07-22→08-18)** | **10 clicks / 908 impressions / 1.10% CTR / avg position 32.4.** Homepage carries 9 of the 10 clicks (pos 2.7); the `/learn` corpus draws impressions but ~0 clicks at positions 16–60. This REPLACES the `SEO-BASELINE-2026-08-21.md` §4 "UNAVAILABLE" rows — those were honest as of the audit date; the next baseline refresh folds these numbers in. |
+| **Status** | Tooling BUILT + tested; staging indexation FLAGGED to coordinator for a DNS decision. Gates on Node 20.20.2. |
+
 ## 2026-08-21 — [FINDING, P1 tooling] `zerodte-sim-replay --reset` deleted a live prod board snapshot straight past its own documented refusal — FIXED
 
 > **kind:** `FINDING`
@@ -18,7 +33,6 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Regression guard** | 4 tests in `zerodte-sim-replay.test.mjs`: the refusal fires on a live-looking foreign snapshot; it stays quiet for our own marked snapshot, an empty target and `--force`; an unparseable-but-present snapshot is treated as foreign; and — the one that matters — a source-level assertion that the `--reset` branch calls `assertSafeTarget` before `resetKeys()`. Verified non-vacuous: removing the call takes the suite to 9 pass / 1 fail. |
 | **Caveat on the guard** | These tests live under `scripts/`, which `npm test` does not collect — see the sibling P2 finding from this sweep. Until that is wired, this guard is pinned but not gated. |
 | **Status** | FIXED — this PR. Found by the documented-but-unwired ("phantom guards") sweep. |
-
 
 ## 2026-08-21 — [FINDING, P1 X marketing] `X_MARKETING_POSTS_PAUSED` did not stop all posting — a second publisher bypassed every gate — FIXED
 
@@ -708,7 +722,6 @@ production after deploy to confirm the `Allow: /api/og` lines are served.
 | **Found by** | Post-close Largo-mastery probe (charter): the deep question battery surfaced a historical flip value the model itself flagged as odd, which led to the live plausibility scan. |
 | **Status** | FIXED (walls) — tsc clean, 9056 pass / 0 fail on Node 20, `wall-side-constraint.test.ts` 13/13; live re-validation pending the prod deploy. |
 
-
 ## 2026-08-21 — [FINDING, P1 member-visible] Vector's BOS/CHoCH panel dated every structure break with a bare epoch — and its events span three sessions — FIXED
 > **kind:** `FINDING`
 
@@ -727,7 +740,6 @@ production after deploy to confirm the `Allow: /api/og` lines are served.
 | **Status** | FIXED — ET anchors on every structure time, scanner coverage extended, description updated. Gates on Node 20 (branched off `main` @ 507fb36): `tsc --noEmit` clean, 8718 pass / 0 fail, `npm run build` clean, eslint clean. |
 
 **Lesson worth keeping.** The scanner earned its keep on its first run over a surface it had never covered — and the finding was in the tool it was NOT configured to call. Two separate omissions had to line up: the panel shipped bare epochs, and the scanner's tool list never named the panel. Coverage lists are code; an unscanned tool reports as nothing at all, which reads like silence and means ignorance. When adding a scanner, diff its target list against the actual tool registry rather than trusting that the list is complete.
-
 
 ## 2026-08-21 — [FINDING, P1 member-visible] `get_vector_full_state` failed open on every section, so "we could not read it" and "there is nothing there" arrived identical — FIXED
 > **kind:** `FINDING`
