@@ -9,6 +9,7 @@ import { isAuthFailureStatus } from "./auth-status.mjs";
 import { generateDefaultAuditPhone } from "./audit-phone.mjs";
 import { createOrAdoptAuditUserViaCurl } from "./clerk-audit-user.mjs";
 
+import { subprocessErrorMessage } from "./redact.mjs";
 const CJS = "5.57.0";
 const UA =
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36";
@@ -60,7 +61,7 @@ export async function mintVectorAuditSession({
       const s = Number(execFileSync("curl", args, { encoding: "utf8", maxBuffer: 80 * 1024 * 1024 }).trim());
       return { s, b: existsSync(bf) ? readFileSync(bf, "utf8") : "" };
     } catch (e) {
-      return { s: 0, b: "", err: String(e.message || e).split("\n")[0] };
+      return { s: 0, b: "", err: subprocessErrorMessage(e) };
     }
   };
   const J = (r) => {
