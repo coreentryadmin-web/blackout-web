@@ -73,6 +73,7 @@ type QueueDbRow = {
   cta: unknown;
   skip_kind: string | null;
   blind_spots: unknown;
+  session_claim: boolean | null;
 };
 
 function asArray<T>(value: unknown): T[] {
@@ -163,6 +164,7 @@ function hydrate(r: QueueDbRow): XIntelQueueRow {
     runners_up: asArray<XIntelRunnerUp>(r.runners_up),
     skip_kind: asSkipKind(r.skip_kind),
     blind_spots: asArray<XIntelBlindSpot>(r.blind_spots),
+    session_claim: r.session_claim === true,
     posted_tweet_id: r.posted_tweet_id,
     cta: (r.cta as XIntelCta | null) ?? null,
   };
@@ -175,7 +177,7 @@ const SELECT_COLUMNS = `
   ticker_or_market, headline, post_copy, thread, franchise,
   attachments, products_referenced, underlying_evidence, chronology,
   market_outcome, confidence, reason_selected, runners_up, posted_tweet_id, cta,
-  skip_kind, blind_spots
+  skip_kind, blind_spots, session_claim
 `;
 
 export type SaveQueueRowResult = {
@@ -214,12 +216,12 @@ export async function saveQueueRow(
        cycle_key, session_date, created_at_et, status, ticker_or_market, headline,
        post_copy, thread, franchise, attachments, products_referenced, underlying_evidence,
        chronology, market_outcome, confidence, reason_selected, runners_up, posted_tweet_id,
-       cta, skip_kind, blind_spots
+       cta, skip_kind, blind_spots, session_claim
      ) VALUES (
        $1, $2, $3, $4, $5, $6,
        $7, $8::jsonb, $9, $10::jsonb, $11::jsonb, $12::jsonb,
        $13::jsonb, $14::jsonb, $15::jsonb, $16, $17::jsonb, $18,
-       $19::jsonb, $20, $21::jsonb
+       $19::jsonb, $20, $21::jsonb, $22
      )
      ON CONFLICT (cycle_key) DO UPDATE SET
        session_date = EXCLUDED.session_date,
@@ -240,7 +242,8 @@ export async function saveQueueRow(
        runners_up = EXCLUDED.runners_up,
        cta = EXCLUDED.cta,
        skip_kind = EXCLUDED.skip_kind,
-       blind_spots = EXCLUDED.blind_spots
+       blind_spots = EXCLUDED.blind_spots,
+       session_claim = EXCLUDED.session_claim
      RETURNING ${SELECT_COLUMNS}`,
     [
       draft.cycle_key,
@@ -265,6 +268,7 @@ export async function saveQueueRow(
       JSON.stringify(draft.cta),
       draft.skip_kind,
       JSON.stringify(draft.blind_spots),
+      draft.session_claim,
     ],
   );
 
