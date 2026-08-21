@@ -25,8 +25,24 @@
  *   READY-BUT-DRAFT  green CI, still a draft — finished work outside the pipeline. THE JAM.
  *   CI-RUNNING       still building; nothing to do but wait.
  *   CI-FAILED        needs an agent, not a merge.
- *   CONFLICTED       needs a rebase.
+ *   CONFLICTED       needs a rebase. NOTE: a conflicted PR also has NO CI RUN AT ALL — see below.
  *   MERGEABLE        non-draft and green — auto-merge should be taking it.
+ *
+ * ── "verify NEVER RAN" IS NOT A SECOND PROBLEM (measured 2026-08-21) ─────────────────────────
+ *
+ * A conflicted PR shows ZERO workflow runs on its head SHA — not queued, not skipped, absent. That
+ * reads as a broken CI trigger and sends you looking for a cause that does not exist. It is the
+ * SAME fact as the conflict: `ci.yml` runs `on: pull_request`, GitHub builds those runs against
+ * `refs/pull/N/merge`, and for a conflicted PR that ref cannot be created, so no run is ever
+ * started.
+ *
+ * Measured decisively on #2563, one branch, two pushes: an empty commit while the PR was
+ * conflicted produced **0** workflow runs; resolving the conflict and pushing produced **4**
+ * immediately. Nothing else changed.
+ *
+ * The consequence for this sweep: never report "no CI run" as its own bucket or chase it as its
+ * own remedy. It resolves when the conflict does. Treating them as two problems doubles the work
+ * and invents a phantom infrastructure fault — which is what happened before this note was written.
  *
  * Read-only unless `--mark-ready` is passed, which marks READY-BUT-DRAFT PRs ready for review so
  * `automerge.yml` picks them up. That flag is deliberately opt-in and bounded by `--limit`:
@@ -361,6 +377,10 @@ function main() {
       mergeable: full.mergeable,
       verify,
       all,
+      // Zero check runs on the head SHA. Recorded so the printer can say WHY, rather than leaving
+      // an operator to discover the absence and read it as a broken CI trigger — see the
+      // "verify NEVER RAN" note at the top of this file.
+      noRuns: runs.length === 0,
       bucket: classify(full, verify, all),
     };
   });
@@ -400,7 +420,16 @@ function main() {
     }
     for (const [name, list] of Object.entries(buckets).sort((a, b) => b[1].length - a[1].length)) {
       console.log(`${name}  (${list.length})`);
-      for (const r of list) console.log(`  #${r.number}  ${r.title.slice(0, 76)}`);
+      for (const r of list) {
+        // A conflicted PR has no CI run BECAUSE it is conflicted (GitHub cannot build
+        // refs/pull/N/merge), so the absence is explained inline instead of read as a second fault.
+        const why = r.noRuns
+          ? name === "CONFLICTED"
+            ? "  [no CI run — expected while conflicted]"
+            : "  [no CI run at all]"
+          : "";
+        console.log(`  #${r.number}  ${r.title.slice(0, 76)}${why}`);
+      }
       console.log();
     }
     const jam = buckets["READY-BUT-DRAFT"] ?? [];
