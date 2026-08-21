@@ -14,8 +14,26 @@ name: Release green agent drafts
 # So an agent asked to undraft its own PR has no working call available. Every one of them was
 # correct to report it could not.
 #
-# A GitHub Actions job has neither restriction: `gh pr ready` runs GraphQL with the workflow token.
-# That is the whole reason this lives here and not in an agent's toolbelt.
+# ── AND NEITHER CAN THE DEFAULT WORKFLOW TOKEN (measured 2026-08-21, run 32447301837) ──────
+#
+# This workflow originally claimed that "a GitHub Actions job has neither restriction". That was
+# ASSUMED, never tested, and it is false. The first live run failed:
+#
+#     API call failed: GraphQL: Resource not accessible by integration
+#     (markPullRequestReadyForReview)
+#
+# `GITHUB_TOKEN` cannot mark a PR ready for review even with `pull-requests: write` — the mutation
+# is not available to the Actions integration at all. So the release needs a credential that CAN:
+# a repo-scoped PAT or a GitHub App installation token, supplied as the `AGENT_RELEASE_TOKEN`
+# secret.
+#
+# WITHOUT THAT SECRET THIS JOB SKIPS CLEANLY rather than failing. A workflow that goes red every
+# 15 minutes trains everyone to ignore it, and the thing it would be reporting — "I still cannot
+# undraft" — is a standing configuration fact, not an incident. It reports the gap once, in the
+# summary, and exits 0.
+#
+# Until the secret exists, the coordinator releases PRs manually (the GitHub MCP
+# `update_pull_request` tool CAN set `draft: false` — verified on #2458, #2424, #2423, #2422).
 #
 # ── WHAT IT DOES ────────────────────────────────────────────────────────────────────────────
 #
@@ -65,7 +83,10 @@ jobs:
     steps:
       - name: Mark green agent drafts ready for review
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Prefer the release PAT; fall back to GITHUB_TOKEN, which can READ everything this job
+          # needs but cannot perform the undraft itself.
+          GH_TOKEN: ${{ secrets.AGENT_RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          HAVE_RELEASE_TOKEN: ${{ secrets.AGENT_RELEASE_TOKEN != '' }}
           REPO: ${{ github.repository }}
           DRY_RUN: ${{ inputs.dry_run }}
           MAX_RELEASE: ${{ inputs.max_release || '3' }}
@@ -127,10 +148,11 @@ jobs:
               skipped=$((skipped+1)); continue
             fi
 
-            if [ "${DRY_RUN:-false}" = "true" ]; then
+            if [ "${DRY_RUN:-false}" = "true" ] || [ "${HAVE_RELEASE_TOKEN}" != "true" ]; then
               echo "would release  #$num  $branch"
             else
-              # `gh pr ready` issues the GraphQL mutation. This is the call agent sessions cannot make.
+              # `gh pr ready` issues markPullRequestReadyForReview. Requires AGENT_RELEASE_TOKEN —
+              # GITHUB_TOKEN is refused ("Resource not accessible by integration").
               gh pr ready "$num" --repo "$REPO"
               echo "released  #$num  $branch"
             fi
@@ -143,4 +165,23 @@ jobs:
             | @tsv' /tmp/prs.json)
 
           echo "---"
+          if [ "${HAVE_RELEASE_TOKEN}" != "true" ]; then
+            # Exit 0 on purpose. This is a standing configuration gap, not a run failure, and a
+            # workflow that goes red every 15 minutes is a workflow nobody reads.
+            {
+              echo "### Agent PR release — NOT ARMED"
+              echo ""
+              echo "\`AGENT_RELEASE_TOKEN\` is not set, so this run reported what it WOULD release"
+              echo "and changed nothing."
+              echo ""
+              echo "\`GITHUB_TOKEN\` cannot undraft a PR: \`markPullRequestReadyForReview\` returns"
+              echo "\"Resource not accessible by integration\" (measured, run 32447301837). Arming this"
+              echo "needs a repo-scoped PAT or GitHub App token with pull-request write, stored as"
+              echo "\`AGENT_RELEASE_TOKEN\`."
+              echo ""
+              echo "Candidates this run: **$released**  ·  skipped: $skipped"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "NOT ARMED — AGENT_RELEASE_TOKEN absent; reported $released candidate(s), released none."
+            exit 0
+          fi
           echo "released=$released skipped=$skipped"

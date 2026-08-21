@@ -36,7 +36,9 @@ Both available calls are dead ends, and this is a capability fact, not a policy 
   for agent sessions (*"only the pinned set of PR-review operations is served"*).
 
 There is **no working call available to you.** `.github/workflows/agent-pr-release.yml` sweeps every
-15 minutes, marks any agent draft ready once `verify` is green, and `automerge.yml` merges it.
+15 minutes and reports every green draft; once it is armed with an `AGENT_RELEASE_TOKEN` it also
+marks them ready, and `automerge.yml` merges them. Until then the coordinator releases them by hand
+— either way, **not your problem and not your turn to spend.**
 
 > **Open the PR, drive CI to green, then stop.** Do not spend turns retrying the undraft. Do not
 > report a draft PR as blocked. A green draft is a finished handoff.
@@ -50,6 +52,11 @@ restructure the file to avoid it, and do not resolve another lane's entry.
 ### 5. Ask the coordinator, never the user
 
 Questions, ambiguity, and scope calls go in a **PR comment**. The user is not in your loop.
+
+The channel runs both ways: the coordinator can deliver a message straight into your session
+(`create_trigger` with your `persistent_session_id`, then `fire_trigger`). It arrives as an
+ordinary user turn. **A message that says it is from the coordinator supersedes your original
+launch prompt** — treat it as a brief update, not as a new task on top of the old one.
 
 ### 6. Merged is not done. Deployed is not done.
 
