@@ -24,6 +24,7 @@ import {
   readSwingServingSnapshot,
 } from "@/lib/swing/serving-lane";
 import { buildZeroDteRecord } from "@/lib/zerodte/record";
+import { bangerPnlForModel } from "./banger-pnl";
 import { fitRowsToBudget, sampleNote } from "@/lib/largo/fit-tool-result";
 import { formatEtDate, todayEt } from "@/features/nighthawk/lib/session";
 import {
@@ -102,10 +103,14 @@ export async function bangerBoardForLargo(limit = 40) {
       entry_premium: row.entry_premium,
       last_mark: row.last_mark,
       status: row.status,
-      live_pnl_pct:
-        row.entry_premium && row.last_mark
-          ? ((row.last_mark - row.entry_premium) / row.entry_premium) * 100
-          : row.realized_pnl_pct,
+      scaled_already: row.scaled_already,
+      // One field named `live_pnl_pct` used to carry BOTH the mark-to-market of an open position
+      // and, on a closed one, the same arithmetic applied to the remaining leg — which on a
+      // scaled position ignores the banked tranche. Measured on the live board 2026-08-21: all
+      // eight closed rows disagreed with their own recorded `realized_pnl_pct`, every one of them
+      // understating, one flipping the sign of a winner. `bangerPnlForModel` emits the number
+      // that matches the status, under a name that says what it measures.
+      ...bangerPnlForModel(row),
       scale_out_action: row.scale_out_action,
       discovery_gain: row.discovery_gain,
     });
@@ -129,7 +134,13 @@ export async function bangerBoardForLargo(limit = 40) {
       /** How many open rows this response actually carries. Below open_count when truncated. */
       open_shown: open.length,
       truncated: trueOpenCount != null && trueOpenCount > open.length,
+      // `closed` is capped at 12 rows. The open side already states `open_shown` and `truncated`
+      // so the model cannot mistake a page for a total; the closed side said nothing, and
+      // `closed_count` is itself page-limited — it counts the closed rows among the most recent
+      // `limit` of ALL statuses, not every closed row there is. Both facts are now stated.
       closed_count: closed.length,
+      closed_count_is_page_limited: true,
+      closed_shown: Math.min(closed.length, 12),
       open: open.map(mapRow),
       closed: closed.slice(0, 12).map(mapRow),
     });
