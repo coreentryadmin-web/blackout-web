@@ -2211,7 +2211,10 @@ async function runMigrations(): Promise<void> {
       -- A SKIP is a result, but WHICH result matters: QUIET is a claim about the market, BLIND is
       -- a claim about the pipeline. Collapsing them lets an outage read as a calm tape.
       skip_kind TEXT,
-      blind_spots JSONB NOT NULL DEFAULT '[]'::jsonb
+      blind_spots JSONB NOT NULL DEFAULT '[]'::jsonb,
+      -- True when the copy claims how TODAY'S session behaves. Gates the horizon check: an
+      -- all-expiry aggregate must not be narrated as a description of the next six hours.
+      session_claim BOOLEAN NOT NULL DEFAULT FALSE
     );
   `);
   await p.query(

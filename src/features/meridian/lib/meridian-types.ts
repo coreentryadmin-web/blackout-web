@@ -372,7 +372,11 @@ export type MeridianEarningsEnrichment = {
      *  what `combined_beat_rate` is now pooled over rather than averaged across. */
     eps_graded?: number;
     revenue_graded?: number;
+    /** Pooled READINGS (eps + revenue) — the denominator of `combined_beat_rate`. Not a print
+     *  count: 8 prints graded on both measures give 16. Never render this as "prints". */
     combined_graded?: number;
+    /** Distinct prints with at least one gradeable measure — the number a human should be shown. */
+    prints_graded?: number;
   } | null;
   analyst_revisions: MeridianAnalystRevision[];
   price_targets: MeridianPriceTargetRow[];
@@ -404,7 +408,19 @@ export type MeridianEarningsPrint = {
    * `reaction_measure` says which read produced it.
    */
   reaction_pct?: number | null;
-  reaction_measure?: "session_open_to_close" | "prior_close_to_close" | null;
+  /**
+   * How `reaction_pct` was measured. The `_to_last` variants mean the anchor session was STILL
+   * OPEN when this was read, so the far end is the last trade rather than a close and the value
+   * is still moving. See ReactionMeasure in meridian-reaction-core.
+   */
+  reaction_measure?:
+    | "session_open_to_close"
+    | "prior_close_to_close"
+    | "session_open_to_last"
+    | "prior_close_to_last"
+    | null;
+  /** False while the anchor session is open — `reaction_pct` is provisional. Null if unmeasured. */
+  reaction_settled?: boolean | null;
   eps_estimate: number | null;
   eps_actual: number | null;
   revenue_estimate?: number | null;

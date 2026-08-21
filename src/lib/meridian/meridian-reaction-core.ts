@@ -107,7 +107,31 @@ export type ReactionBasis = "bmo_session" | "amc_next_session" | "assumed_report
  *   prior_close_to_close  — the last close BEFORE the print → the anchor session's close. The
  *                           only read that contains the gap, and the correct one for AMC.
  */
-export type ReactionMeasure = "session_open_to_close" | "prior_close_to_close";
+export type ReactionMeasure =
+  | "session_open_to_close"
+  | "prior_close_to_close"
+  /**
+   * The same two reads, taken while the anchor session is STILL OPEN — so the far end is the last
+   * trade, not the close.
+   *
+   * Measured on prod 2026-08-21 at 09:46 ET, sixteen minutes into a session that closes at 16:00.
+   * Today's BMO prints came back as settled measurements:
+   *
+   *   BEKE  reaction_pct -4.74  reaction_measure "session_open_to_close"  reaction_basis "bmo_session"
+   *   BJ    reaction_pct  1.74  reaction_measure "session_open_to_close"
+   *   BKE   reaction_pct  2.21  reaction_measure "session_open_to_close"
+   *
+   * BJ and BKE match Polygon's PARTIAL daily bar for today exactly — a bar whose "close" is
+   * simply the last trade so far. BEKE moved from -4.74 to -4.24 between two reads a minute
+   * apart, which is the number disproving its own label while you watch.
+   *
+   * Nothing in the payload marked it: no `provisional`, `partial`, `in_progress`, `settled` or
+   * `session_complete` field existed anywhere. So a six-hour-old-at-most, still-moving figure was
+   * presented identically to a print from three quarters ago, and `session_open_to_close` asserted
+   * a close that had not happened.
+   */
+  | "session_open_to_last"
+  | "prior_close_to_last";
 
 /**
  * Classify a Benzinga earnings `time` (ET, "HH:MM:SS") against the RTH bell.
@@ -135,6 +159,13 @@ function nextSessionYmd(orderedYmds: string[], afterYmd: string): string | null 
 export type PrintReaction = SessionReaction & {
   reaction_basis: ReactionBasis | null;
   /**
+   * False when the anchor session has not closed yet, so `reaction_pct` is still moving.
+   * Null when nothing was measured. Derived rather than left for the reader to infer from the
+   * measure enum: a consumer filtering for settled history should not have to know which two of
+   * four measure values mean "final".
+   */
+  reaction_settled: boolean | null;
+  /**
    * THE reaction to the print, measured the way `reaction_measure` says. Prefer this over
    * `session_change_pct` for anything that calls itself a reaction: the two are the same
    * number for a pre-open print and routinely differ in SIGN for a post-close one.
@@ -151,7 +182,13 @@ export function reactionForPrint(
   byYmd: Map<string, DailyBarLike>,
   orderedYmds: string[],
   reportYmd: string,
-  timing: PrintTiming
+  timing: PrintTiming,
+  /**
+   * The ET date of a session that is currently OPEN, or null when the market is closed.
+   * Passed in rather than read from a clock so this stays pure and testable — the same reason
+   * the bar series is passed in rather than fetched.
+   */
+  openSessionYmd: string | null = null
 ): PrintReaction {
   const basis: ReactionBasis =
     timing === "amc" ? "amc_next_session" : timing === "bmo" ? "bmo_session" : "assumed_report_session";
@@ -162,6 +199,7 @@ export function reactionForPrint(
     reaction_basis: null,
     reaction_pct: null,
     reaction_measure: null,
+    reaction_settled: null,
   };
   if (!anchor) return nulls;
   const rx = reactionForYmd(byYmd, orderedYmds, anchor);
@@ -178,8 +216,17 @@ export function reactionForPrint(
         ? pctChange(priorClose, anchorBar.c)
         : null
       : rx.session_change_pct;
+  // The anchor session being TODAY-and-open is what makes the far end a last trade rather than a
+  // close, so the measure says so and `reaction_settled` carries the same fact as a boolean.
+  const settled = !(openSessionYmd != null && anchor === openSessionYmd);
   const measure: ReactionMeasure =
-    timing === "amc" ? "prior_close_to_close" : "session_open_to_close";
+    timing === "amc"
+      ? settled
+        ? "prior_close_to_close"
+        : "prior_close_to_last"
+      : settled
+        ? "session_open_to_close"
+        : "session_open_to_last";
 
   // Basis only means something once a real move was measured — reporting a basis beside two
   // nulls would claim we know how a value we do not have was derived. Same for the measure:
@@ -190,19 +237,21 @@ export function reactionForPrint(
     reaction_basis: measured ? basis : null,
     reaction_pct,
     reaction_measure: reaction_pct != null ? measure : null,
+    reaction_settled: reaction_pct != null ? settled : null,
   };
 }
 
 /** Batch print reactions. `timings` maps report date → print timing. */
 export function reactionsForPrints(
   bars: DailyBarLike[],
-  prints: Array<{ ymd: string; timing: PrintTiming }>
+  prints: Array<{ ymd: string; timing: PrintTiming }>,
+  openSessionYmd: string | null = null
 ): Map<string, PrintReaction> {
   const byYmd = indexBarsByYmd(bars);
   const orderedYmds = [...byYmd.keys()].sort();
   const out = new Map<string, PrintReaction>();
   for (const p of prints) {
-    out.set(p.ymd, reactionForPrint(byYmd, orderedYmds, p.ymd, p.timing));
+    out.set(p.ymd, reactionForPrint(byYmd, orderedYmds, p.ymd, p.timing, openSessionYmd));
   }
   return out;
 }

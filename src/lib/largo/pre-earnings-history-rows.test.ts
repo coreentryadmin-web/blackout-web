@@ -89,6 +89,7 @@ describe("toPreEarningsHistoryRows: the projection must not drop the reaction", 
       "expected_move_pct",
       "reaction_pct",
       "reaction_measure",
+      "reaction_settled",
       "session_change_pct",
       "next_day_change_pct",
       "reaction_basis",
@@ -176,4 +177,37 @@ test("a print with no reaction at all claims neither a measure nor an assumption
   assert.equal(rows[0].reaction_pct, null);
   assert.equal(rows[0].reaction_measure, null);
   assert.equal(rows[0].reaction_assumed, false);
+});
+
+test("an unsettled reaction reaches the model flagged, not disguised as settled history", () => {
+  // Measured on prod 2026-08-21 at 09:46 ET: today's BMO prints arrived as
+  // `reaction_measure: "session_open_to_close"` sixteen minutes into a session closing at 16:00,
+  // with no provisional marker anywhere. The model had no way to tell a still-moving number from
+  // a print three quarters old, which is the difference between context and a false comparison.
+  const rows = toPreEarningsHistoryRows([
+    {
+      report_date: "2026-08-21",
+      reaction_pct: -4.74,
+      reaction_measure: "session_open_to_last",
+      reaction_settled: false,
+      reaction_basis: "bmo_session",
+      session_change_pct: -4.74,
+    },
+    {
+      report_date: "2026-05-20",
+      reaction_pct: -1.77,
+      reaction_measure: "prior_close_to_close",
+      reaction_settled: true,
+      reaction_basis: "amc_next_session",
+      session_change_pct: -1.25,
+    },
+  ]);
+
+  assert.equal(rows[0].reaction_settled, false, "today's print is still moving");
+  assert.equal(rows[0].reaction_measure, "session_open_to_last");
+  assert.equal(rows[1].reaction_settled, true, "a settled print is unaffected");
+  assert.equal(rows[1].reaction_measure, "prior_close_to_close");
+
+  // Both survive JSON — an absent key and a false one read very differently to a model.
+  assert.equal(JSON.parse(JSON.stringify(rows[0])).reaction_settled, false);
 });
