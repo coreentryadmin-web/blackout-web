@@ -8,6 +8,7 @@ import {
   type FlowStrikeStack,
 } from "@/lib/largo/flow-strike-stacks";
 import { sanitizeFeedText } from "@/lib/largo/sanitize-feed-text";
+import { classifyEtDay } from "@/lib/largo/temporal/session-calendar";
 import { roundFloats } from "@/lib/round-floats";
 import { getGexPositioning } from "@/lib/providers/gex-positioning";
 import { getActiveTradingHalts, isTradingHaltChannelStale, tideStore, warmUwClusterFreshnessFromRedis } from "@/lib/ws/uw-socket";
@@ -299,8 +300,30 @@ export function formatLargoLiveFeed(rawFeed: LargoLiveFeed, ticker: string): str
   // character-for-character — wasted tokens and a nonsense precision signal to the
   // model. Same shared helper the API responses use; integers/strings untouched.
   const feed = roundFloats(rawFeed);
+  // WHEN this block was captured, in ET, with the session date spelled out.
+  //
+  // This block calls itself "authoritative source for this turn" and carried NO timestamp at all,
+  // so the model had to infer when "this turn" was — and inferred wrong. Measured live on
+  // 2026-08-20 at 21:20 ET: asked what SPX closed at on 2026-08-20, Largo called the live figure
+  // "2026-08-21, after-hours" (the UTC date), concluded that today's close must therefore belong
+  // to some earlier session, and FABRICATED one — 7,710.43 against a true 7,641.16, with two runs
+  // producing two different fake numbers. It had the right value in hand and mis-dated it.
+  //
+  // The weekday is included because the model got that wrong too in the same capture ("2026-08-18
+  // (Monday)" for a Tuesday). All three facts already existed in the codebase and simply were not
+  // wired to the block that needed them.
+  const nowMs = Date.now();
+  const capturedEt = etStamp(nowMs);
+  const sessionYmd = etSessionDate(nowMs);
+  const day = sessionYmd ? classifyEtDay(sessionYmd) : null;
   const lines: string[] = [
     "## Live feed (auto-captured — authoritative source for this turn)",
+    capturedEt && sessionYmd
+      ? `Captured ${capturedEt}. The current ET trading session is ${sessionYmd}` +
+        `${day ? ` (${day.weekday}, ${day.kind})` : ""}. ` +
+        "Dates in ET, NOT UTC — after ~20:00 ET the UTC date is already tomorrow, so never derive " +
+        "a session from a UTC stamp."
+      : "Captured now.",
     "Use ONLY figures from this block or tools you call now. Do not invent stacks, premiums, levels, or trader intent. Strike stacks below are UW-verified.",
     "",
   ];

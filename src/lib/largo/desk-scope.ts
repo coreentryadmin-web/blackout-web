@@ -399,7 +399,16 @@ export function intentOverridesForDeskScope(
 }
 
 export type TurnSnapshot = {
+  /** "YYYY-MM-DD HH:mm ET" — never a UTC instant. See session_date. */
   as_of: string;
+  /**
+   * The ET trading session this snapshot belongs to.
+   *
+   * NOT the date part of `as_of` by coincidence — it is the point. After ~20:00 ET the UTC date is
+   * already tomorrow, and a UTC `as_of` here let the model conclude the current session was the
+   * NEXT calendar day, then invent a "prior close" for the session that had just ended.
+   */
+  session_date: string | null;
   ticker: string;
   desk_scope?: string | null;
   spot: number | null;
@@ -407,8 +416,6 @@ export type TurnSnapshot = {
   call_wall: number | null;
   put_wall: number | null;
   net_premium: number | null;
-  /** The ET SESSION this snapshot was taken in. */
-  session_date?: string | null;
   /** WHICH GEX matrix the positioning levels came from — see formatDiffBlock. */
   matrix_asof?: string | null;
 };

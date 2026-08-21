@@ -1,0 +1,106 @@
+# BLACKOUT — SEO, Search & Authority: weekly autonomous run.
+#
+# Standing brief: docs/agents/SEO-SEARCH-AUTHORITY.md
+#
+# WHY A WORKFLOW AND NOT A SESSION TRIGGER. The coordinator's remote-session control plane is not
+# reliably available (it disconnected mid-session on 2026-08-21), and an in-session cron dies with
+# the session. A repo workflow is the only scheduler here that survives both. Same launch pattern as
+# grid-rth-all-day-agent.yml.
+#
+# SCHEDULE — 06:00 America/Los_Angeles, year round.
+# Cron in GitHub Actions is UTC and has no DST, so a single expression drifts an hour twice a year.
+# Both candidate hours are scheduled and a guard drops the wrong one, which is exact in either
+# offset. 13:00 UTC is 06:00 PDT; 14:00 UTC is 06:00 PST. Exactly one passes the guard on any given
+# Monday.
+name: SEO weekly (Mon 06:00 PT)
+
+on:
+  schedule:
+    - cron: "0 13 * * 1"
+    - cron: "0 14 * * 1"
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Why this run was triggered (e.g. 'post public-URL change')"
+        required: false
+        default: "manual"
+
+concurrency:
+  group: seo-weekly
+  cancel-in-progress: false
+
+jobs:
+  launch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Drop the wrong DST half of the schedule
+        id: gate
+        run: |
+          set -euo pipefail
+          # workflow_dispatch always runs; only the cron pair needs the guard.
+          if [ "${{ github.event_name }}" != "schedule" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          PT_HOUR=$(TZ=America/Los_Angeles date +%H)
+          if [ "$PT_HOUR" = "06" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Local PT hour is $PT_HOUR, not 06 — this is the other DST half. Skipping."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Launch the SEO & Authority agent
+        if: steps.gate.outputs.run == 'true'
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          RUN_REASON: ${{ github.event.inputs.reason || 'weekly' }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CURSOR_API_KEY:-}" ]; then
+            echo "CURSOR_API_KEY not set — cannot launch. This is a REAL failure to report, not a"
+            echo "silent skip: the weekly SEO run did not happen. Set the secret or launch manually."
+            exit 0
+          fi
+
+          PROMPT='BLACKOUT — SEO, Search & Authority: weekly autonomous run ('"$RUN_REASON"').
+
+          Read docs/agents/SEO-SEARCH-AUTHORITY.md COMPLETELY before doing anything — it is your
+          standing brief and it carries the constraints that make this run correct rather than busy.
+
+          Execute the weekly cycle: SEARCH PERFORMANCE, TECHNICAL HEALTH, INDEXING, RANKINGS, QUERY
+          OPPORTUNITIES, CONTENT GAPS, PROGRAMMATIC SEO, INTERNAL LINKS, SCHEMA, CORE WEB VITALS,
+          BACKLINKS & AUTHORITY, COMPETITORS, then PRIORITIZE, IMPLEMENT, TEST, PR, CI, MERGE,
+          DEPLOY, LIVE VERIFY. Compare against the stored baseline.
+
+          Google Search Console IS available: service account in AWS Secrets Manager us-east-1 at
+          blackout-production/seo/gsc-service-account, verified siteOwner on the DOMAIN property
+          sc-domain:blackouttrades.com (URL-encode as sc-domain%3Ablackouttrades.com — a URL-prefix
+          guess returns an EMPTY result rather than an error). Python cryptography is broken in this
+          sandbox; sign the JWT in Node. Pull up to 16 months.
+
+          Prioritise queries already earning impressions but ranking poorly (roughly position 8-30)
+          over creating new pages. Do NOT generate thin pages or filler to raise indexed-page count.
+          Do NOT change stable pages to look productive. Every change needs a defensible search or
+          user-value objective stated in the PR.
+
+          HARD CONSTRAINT: do not ship public indexable pages publishing derived Polygon or Unusual
+          Whales data — the data-licensing question is still open. Design and size it; do not deploy it.
+
+          Report which metrics were UNMEASURABLE and why. An unmeasured metric is not a zero.
+          MERGED IS NOT DONE — live-verify every change on the real site. Never self-declare DONE.'
+          export PROMPT
+
+          payload=$(node -e "
+            console.log(JSON.stringify({
+              prompt: { text: process.env.PROMPT },
+              repos: [{ url: 'https://github.com/coreentryadmin-web/blackout-web', startingRef: 'main' }],
+              autoCreatePR: true
+            }));
+          ")
+
+          curl -sf -X POST https://api.cursor.com/v1/agents \
+            -u "${CURSOR_API_KEY}:" \
+            -H "Content-Type: application/json" \
+            -d "$payload" | head -c 400
