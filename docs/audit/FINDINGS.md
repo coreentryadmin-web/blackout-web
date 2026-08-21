@@ -4,6 +4,20 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-21 — [FINDING, P2 Largo/Night Hawk] The gate-value tool let Largo print a self-contradictory "3 of 16 (23.1%)" — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Stress-testing live Largo: *"which gate blocked the most winners, and its win rate on the plays it blocked?"* Largo answered **"target_unreachable... 3 of 16 (23.1%)"** and **"stale_quote_basis blocked 7 plays with a 66.7% win rate (4 would have won)"**. Both are internally inconsistent: 3/16 = 18.75%, not 23.1%; 4/7 = 57%, not 66.7%. A member who checks the arithmetic finds it does not add up. |
+| **Root cause** | The rate is correct — `would_have_won_rate_pct` is computed server-side over `decisive.length` (wins+losses): 3/13 = 23.1%, 4/6 = 66.7%. But that denominator was **named nowhere in the payload**. The per-gate line shipped `blocked_n`, `graded_n`, `would_have_won` and the rate, so the model paired the correct rate with the most prominent count (`blocked_n`) and printed a number that contradicts itself. Not the model doing bad arithmetic — the model quoting a right rate against a wrong denominator because the right one was invisible. Same lesson as #2480: never make the model choose the denominator. |
+| **Fix** | `gateBlockedValue` (pure, `src/features/nighthawk/lib/debrief-aggregate.ts`) now emits two additive fields per gate: `decided_n` (the rate denominator — wins+losses, explicitly NOT `blocked_n` or `graded_n`), and `summary`, a ready-made sentence whose every number already agrees — *"target_unreachable blocked 16; of the 13 that would have decided (win/loss), 3 would have won (23.1%) and 10 would have lost; 3 more would not have filled."* A gate with no decisive counterfactual says *"no win rate to quote"* and renders no percent. The `get_gate_blocked_value` tool description now states the denominator rule outright and tells the model to prefer quoting `summary`. |
+| **Blast radius** | Additive fields on `GateBlockedValueLine`; the aggregator and one tool description. The admin dashboard consumer (`AdminBieDashboard.tsx`) reads `by_gate` and is unaffected. No provider, no gate logic, no grading — the numbers are unchanged, only made unambiguous. |
+| **Regression guard** | `debrief-aggregate.test.ts` (+1 test, extended another): `decided_n` is wins+losses (not `blocked_n(5)` or `graded_n(4)`); the `summary` sentence's counts all agree so a model cannot print "1 of 5 (33.3%)"; and a gate with no decisive counterfactual quotes no rate and renders no percent. |
+| **Not a trading-behaviour change** | No gate threshold, rail, sizing, exit rule or grading function is touched. No `sim:0dte` before/after is owed. |
+| **Status** | FIXED. |
+
 ## 2026-08-21 — [FINDING, P1 Largo/Night Hawk] Largo denied the iron condor exists and confabulated a 60–65% win rate from another product — FIXED
 
 > **kind:** `FINDING`
