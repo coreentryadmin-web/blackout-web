@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { before, describe, it, mock } from "node:test";
 
 import { MAX_TOOL_RESULT_CHARS } from "@/lib/providers/anthropic";
+import { buildZeroDteRecord } from "@/lib/zerodte/record";
 
 mock.module("server-only", { namedExports: {} });
 
@@ -133,5 +134,35 @@ describe("zerodteRecordForLargo — deliverable to the model", () => {
   it("still fits at the widest window the tool allows (days=90)", async () => {
     const chars = JSON.stringify(await zerodteRecordForLargo(90)).length;
     assert.ok(chars < MAX_TOOL_RESULT_CHARS, `days=90 record is ${chars} chars`);
+  });
+});
+
+// Edge states the record must answer honestly rather than degrade into a fabricated number:
+// pre-open, a holiday, a session the fail-closed firewall held entirely, and a session still
+// in flight where every play is open. The load-bearing assertion is win_rate_pct === null —
+// a 0% win rate would be a fact the data does not contain.
+describe("zerodteRecordForLargo — empty and ungraded windows", () => {
+  it("an empty window reports null rates, never a fabricated 0%", () => {
+    const rec = buildZeroDteRecord([], { since: "2026-08-14", through: "2026-08-21", days: 7 });
+    assert.equal(rec.total_flagged, 0);
+    assert.equal(rec.graded, 0);
+    assert.equal(rec.available, false);
+    assert.equal(rec.win_rate_pct, null, "0% would claim a measurement the window does not contain");
+    assert.equal(rec.mechanical.win_rate_pct, null);
+  });
+
+  it("a session where every play is still open reports them unGRADED, not as losses", () => {
+    const held = [1, 2, 3].map((i) => ({
+      session_date: "2026-08-21", ticker: `T${i}`, direction: "long",
+      first_flagged_at: "2026-08-21T14:00:00.000Z", score_max: 60, conviction: "B",
+      plan_outcome: null, plan_pnl_pct: null, direction_hit: null, move_pct: null,
+      entry_context: null, status: "OPEN",
+    })) as unknown as Parameters<typeof buildZeroDteRecord>[0];
+    const rec = buildZeroDteRecord(held, { since: "2026-08-14", through: "2026-08-21", days: 7 });
+    assert.equal(rec.total_flagged, 3);
+    assert.equal(rec.ungraded, 3);
+    assert.equal(rec.graded, 0);
+    assert.equal(rec.losses, 0, "an ungraded play is not a loss");
+    assert.equal(rec.win_rate_pct, null);
   });
 });

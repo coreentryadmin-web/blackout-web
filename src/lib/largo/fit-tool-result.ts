@@ -88,10 +88,15 @@ export function fitRowsToBudget<Row>(
  */
 export function sampleNote(kept: number, total: number, noun: string, detailHint?: string): string {
   const scope =
-    kept >= total
-      ? `All ${total} ${noun} in the window.`
-      : `Most recent ${kept} of ${total} ${noun} in the window, newest first — a SAMPLE, not the whole list. ` +
-        `Every aggregate in this result is computed over all ${total}, never over these ${kept}: ` +
-        `quote the aggregates for any count, rate or total.`;
+    total === 0
+      ? // "All 0 committed plays" reads as a malformed sentence and invites the model to
+        // treat it as a parse failure rather than a real, reportable state. An empty window
+        // is a legitimate answer — pre-open, a holiday, a session the firewall held entirely.
+        `No ${noun} in the window.`
+      : kept >= total
+        ? `All ${total} ${noun} in the window.`
+        : `Most recent ${kept} of ${total} ${noun} in the window, newest first — a SAMPLE, not the whole list. ` +
+          `Every aggregate in this result is computed over all ${total}, never over these ${kept}: ` +
+          `quote the aggregates for any count, rate or total.`;
   return detailHint ? `${scope} ${detailHint}` : scope;
 }

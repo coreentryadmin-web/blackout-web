@@ -65,3 +65,13 @@ test("sampleNote does not claim a sample when the whole list is present", () => 
   assert.match(note, /All 7/);
   assert.doesNotMatch(note, /SAMPLE/i);
 });
+
+// An empty window is a legitimate ANSWER — pre-open, a holiday, a session the fail-closed
+// firewall held entirely. "All 0 committed plays" reads as a malformed sentence and invites
+// the model to treat a real state as a parse failure.
+test("an empty list reads as a real state, not a broken sentence", () => {
+  const note = sampleNote(0, 0, "committed 0DTE plays");
+  assert.match(note, /^No committed 0DTE plays in the window\./);
+  assert.doesNotMatch(note, /All 0/);
+  assert.doesNotMatch(note, /SAMPLE/i);
+});
