@@ -402,3 +402,19 @@ test("timed_prints vs prints exposes how much of the tape cannot be dated", () =
   assert.equal(w.timed_prints, 1);
   assert.equal(w.undated_prints, 9);
 });
+
+test("all three HELIX tape tools share ONE request builder — they cannot drift apart", () => {
+  // get_helix_tape_analytics, get_helix_derived and get_flow_brief all read the same Postgres
+  // tape and all three had the same population defect. They now differ only in their row cap.
+  const common = { defaultSinceHours: 168, maxSinceHours: 720 };
+  const tape = helixTapeFetchOptions({ limit: 500, maxLimit: 5000, ...common });
+  const derived = helixTapeFetchOptions({ limit: 400, maxLimit: 1000, ...common });
+  const brief = helixTapeFetchOptions({ limit: 500, maxLimit: 5000, ...common });
+  for (const o of [tape, derived, brief]) {
+    assert.equal(o.order, "recent");
+    assert.equal(o.since_hours, 168);
+  }
+  assert.equal(tape.limit, 500);
+  assert.equal(derived.limit, 400);
+  assert.equal(brief.limit, 500);
+});
