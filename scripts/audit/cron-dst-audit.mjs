@@ -155,6 +155,90 @@ const GATES = {
     gate: (e) => isWeekdayEt(e) && e.minsEt >= hm(9, 30) && e.minsEt <= hm(16, 0),
   },
 
+
+  // --- The rest of the ET-gated fleet. Found by extracting every route's SKIP REASON rather than by
+  // --- grepping for "America/New_York", which is wrong in both directions: a route that formats an ET
+  // --- date for a dedup key mentions the zone but does not gate on it (gex-alerts), and a route whose
+  // --- gate arrives through a helper does not mention it at all (swing-discovery, market-regime-detector).
+  // --- Every one of these fires on the wide 11-21 UTC band, which brackets both the [9:30,16:00] RTH gate
+  // --- and the [7:00,16:15) SPX-engine gate under EDT *and* EST. That band width is what absorbs the DST
+  // --- shift; the jobs that break are the ones pinned to one or two specific UTC hours.
+  "spx-evaluate": {
+    desc: "isSpxEngineCronWindow(): ET ∈ [7:00, 16:15) weekdays (+ trading-day gate)",
+    src: "src/features/spx/lib/spx-play-session-guards.ts",
+    gate: (e) => isWeekdayEt(e) && e.minsEt >= hm(7, 0) && e.minsEt < hm(16, 15),
+  },
+  "spx-issues-sync": {
+    desc: "isSpxEngineCronWindow(): ET ∈ [7:00, 16:15) weekdays (+ trading-day gate)",
+    src: "src/features/spx/lib/spx-play-session-guards.ts",
+    gate: (e) => isWeekdayEt(e) && e.minsEt >= hm(7, 0) && e.minsEt < hm(16, 15),
+  },
+  "data-integrity": {
+    desc: "isSpxEngineCronWindow(): ET ∈ [7:00, 16:15) weekdays (+ trading-day gate)",
+    src: "src/features/spx/lib/spx-play-session-guards.ts",
+    gate: (e) => isWeekdayEt(e) && e.minsEt >= hm(7, 0) && e.minsEt < hm(16, 15),
+  },
+  "data-correctness": {
+    desc: "isSpxEngineCronWindow(): ET ∈ [7:00, 16:15) weekdays (+ trading-day gate)",
+    src: "src/features/spx/lib/spx-play-session-guards.ts",
+    gate: (e) => isWeekdayEt(e) && e.minsEt >= hm(7, 0) && e.minsEt < hm(16, 15),
+  },
+  "provider-health-reconcile": {
+    desc: "isSpxEngineCronWindow(): ET ∈ [7:00, 16:15) weekdays (+ trading-day gate)",
+    src: "src/features/spx/lib/spx-play-session-guards.ts",
+    gate: (e) => isWeekdayEt(e) && e.minsEt >= hm(7, 0) && e.minsEt < hm(16, 15),
+  },
+  "market-regime-detector": {
+    desc: "isSpxEngineCronWindow(): ET ∈ [7:00, 16:15) weekdays (+ trading-day gate)",
+    src: "src/features/spx/lib/spx-play-session-guards.ts",
+    gate: (e) => isWeekdayEt(e) && e.minsEt >= hm(7, 0) && e.minsEt < hm(16, 15),
+  },
+  "bie-full-state-snapshot": {
+    desc: "isEtCashRth(): ET ∈ [9:30, 16:00] weekdays",
+    src: "src/lib/et-market-hours.ts",
+    gate: (e) => isWeekdayEt(e) && e.minsEt >= hm(9, 30) && e.minsEt <= hm(16, 0),
+  },
+  "coaching-alerts": {
+    desc: "isEtCashRth(): ET ∈ [9:30, 16:00] weekdays",
+    src: "src/lib/et-market-hours.ts",
+    gate: (e) => isWeekdayEt(e) && e.minsEt >= hm(9, 30) && e.minsEt <= hm(16, 0),
+  },
+  "vector-walls-warm": {
+    desc: "isEtCashRth(): ET ∈ [9:30, 16:00] weekdays",
+    src: "src/lib/et-market-hours.ts",
+    gate: (e) => isWeekdayEt(e) && e.minsEt >= hm(9, 30) && e.minsEt <= hm(16, 0),
+  },
+  "vector-universe-snapshot": {
+    desc: "isEtCashRth(): ET ∈ [9:30, 16:00] weekdays",
+    src: "src/lib/et-market-hours.ts",
+    gate: (e) => isWeekdayEt(e) && e.minsEt >= hm(9, 30) && e.minsEt <= hm(16, 0),
+  },
+  "vector-full-state-snapshot": {
+    desc: "isEtCashRth(): ET ∈ [9:30, 16:00] weekdays",
+    src: "src/lib/et-market-hours.ts",
+    gate: (e) => isWeekdayEt(e) && e.minsEt >= hm(9, 30) && e.minsEt <= hm(16, 0),
+  },
+  "vector-dark-pool-warm": {
+    desc: "isEtCashRth(): ET ∈ [9:30, 16:00] weekdays",
+    src: "src/lib/et-market-hours.ts",
+    gate: (e) => isWeekdayEt(e) && e.minsEt >= hm(9, 30) && e.minsEt <= hm(16, 0),
+  },
+  "vector-bead-record": {
+    desc: "isEtCashRth(): ET ∈ [9:30, 16:00] weekdays",
+    src: "src/lib/et-market-hours.ts",
+    gate: (e) => isWeekdayEt(e) && e.minsEt >= hm(9, 30) && e.minsEt <= hm(16, 0),
+  },
+  "meridian-warm": {
+    desc: "isEtExtendedWarmHours(): ET ∈ [4:00, 20:00] weekdays",
+    src: "src/lib/et-market-hours.ts",
+    gate: (e) => isWeekdayEt(e) && e.minsEt >= hm(4, 0) && e.minsEt <= hm(20, 0),
+  },
+  "nighthawk-playbook": {
+    desc: "isInEditionWindow(): ET ∈ [17:30, 19:30] trading days (17:30 + 120m catch-up)",
+    src: "src/features/nighthawk/lib/edition-stale.ts",
+    gate: (e) => isWeekdayEt(e) && e.minsEt >= hm(17, 30) && e.minsEt <= hm(19, 30),
+  },
+
   // --- Inspected and found to apply NO ET wall-clock gate. -------------------
   "gex-alerts": {
     desc: "NO ET gate — America/New_York used only for the per-day dedup key (etDate()); run gate is GEX_ALERTS_PUSH + VAPID",
