@@ -65,7 +65,7 @@ test("omitting spot preserves the historical behaviour EXACTLY", () => {
   assert.deepEqual(wallsFromStrikeTotals(t), wallsFromStrikeTotals(t, Number.NaN));
 });
 
-test("the four member-facing producers pass spot", () => {
+test("all FIVE producers pass spot — including the base matrix scan #2417 missed", () => {
   // The recurring failure of this whole session: correct logic that nothing calls. Asserted on
   // source because reaching these needs Polygon, Redis and a live WS channel.
   const root = process.cwd();
@@ -73,10 +73,29 @@ test("the four member-facing producers pass spot", () => {
   const overlay = readFileSync(join(root, "src/lib/providers/spx-odte-gex-uw-overlay.ts"), "utf8");
   const route = readFileSync(join(root, "src/app/api/market/gex-heatmap/route.ts"), "utf8");
   const pos = readFileSync(join(root, "src/lib/providers/gex-positioning.ts"), "utf8");
+  const matrix = readFileSync(join(root, "src/lib/providers/polygon-options-gex.ts"), "utf8");
   assert.match(core, /wallsFromStrikeTotals\(strikeTotals, spot\)/, "uwLevelsFromLadder");
   assert.match(overlay, /wallsFromStrikeTotals\(totals, hm\.spot\)/, "SPX 0DTE overlay");
   assert.match(route, /wallsFromStrikeTotals\([^)]*\), heatmap\.spot\)/, "heatmap WS override");
   assert.match(pos, /wallsFromStrikeTotals\([^)]*\), base\.spot\)/, "positioning WS override");
+  // #2417 wired the four OVERRIDE paths but left computeGexRegime — the BASE matrix scan that
+  // produces gex.call_wall/put_wall served off-hours and for every non-WS single name — on the
+  // unconstrained scan. That is why MSFT/AMZN served inverted walls on 2026-08-21. This is the
+  // one every other value builds on.
+  assert.match(matrix, /const \{ callWall, putWall \} = wallsFromStrikeTotals\(strikeTotals, spot\)/, "base matrix (computeGexRegime)");
+  // and the unconstrained scan must no longer be imported here — no path can regress to it
+  assert.doesNotMatch(matrix, /gexWallsFromStrikeTotals\(/, "base matrix must not CALL the unconstrained scan");
+  assert.doesNotMatch(matrix, /^import[^;]*gexWallsFromStrikeTotals/m, "and must not import it");
+});
+
+test("the inverted-wall cases measured live on 2026-08-21 resolve to the correct side", () => {
+  // MSFT spot 481.97: heaviest +gamma is 480 (below spot) but the served resistance must be the
+  // heaviest +gamma ABOVE spot, 500. AMZN spot 261.64: 260 below vs the real 270 above.
+  const msft = { "480": 3.22e8, "500": 1.54e8, "475": -2.0e8 };
+  assert.equal(wallsFromStrikeTotals(msft).callWall, 480, "unconstrained picks the wrong side (below spot)");
+  assert.equal(wallsFromStrikeTotals(msft, 481.97).callWall, 500, "constrained picks real overhead resistance");
+  const amzn = { "260": 3.0e8, "270": 1.14e8, "255": -1.5e8 };
+  assert.equal(wallsFromStrikeTotals(amzn, 261.64).callWall, 270);
 });
 
 /** Horizon bucketing — the labelling half of the same problem. */
