@@ -4,6 +4,96 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-21 — [FINDING, P0 correctness] SPX 0DTE net-GEX sign false-flagged vs UW when overlay timed out at 2s — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Severity** | P0 data-correctness (ops-auto-fix #2503, fingerprint `ee994b4b2bf8`). |
+| **Root cause** | Three coupled defects. (1) `finalizeHeatmapForServe` raced the UW overlay against a **2s** cap and returned the **un-overlaid Polygon book** on timeout with **no** `odte_overlay` marker — Polygon 0DTE net sign routinely disagrees with UW `spot-exposures/expiry-strike`. (2) `heatmap-verifier` INV-3 compared served side-constrained call/put walls (#2417) to an **unconstrained** `deriveWalls`, false-flagging SPY/SPX (e.g. put 7600 vs 7650). (3) Cross-provider oracle compared UW to Polygon whenever overlay silently skipped. |
+| **Evidence** | Live ops-collect 2026-08-21 13:07Z: intermittent flags `[cross-provider/net_gex] SPX 0DTE net-GEX sign (positive) CONTRADICTS UW (… negative)` plus `[invariant/call_wall]` / `[invariant/put_wall]` side-constraint mismatches; 3/3 probe runs showed flags on 2/3. |
+| **Fix** | Overlay default cap **2s → 8s**; timeout now stamps `odte_overlay: { applied: false, reason: "overlay_timeout" }`; SPX matrix **build** applies overlay before cache write; cross-provider skips when overlay did not apply; INV-3 passes `spot` into side-constrained `deriveWalls`. |
+| **Status** | FIXED — tsc clean, run-tests green on Node 20. |
+
+## 2026-08-21 — [FINDING, P1 Largo/Night Hawk] Largo denied the iron condor exists and confabulated a 60–65% win rate from another product — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Stress-testing live Largo: *"What is the win rate on the Night Hawk iron condor, and is there a catch?"* Largo answered **"Night Hawk does not have a dedicated iron condor setup type"** and quoted a made-up **"~60–65% win rate"** pulled from **SPX Slayer's** track record. The 0DTE iron condor is a production, flag-ON-by-default Night Hawk product (`condor.ts`, `iron-condor.ts`) — it sells a delta-neutral 0DTE condor, short strikes ±0.6–0.8% from midday, and is rendered on the member's own command deck with its win rate and breach rate. Largo told a member a live product does not exist and invented a number for it. |
+| **How it was found** | A live Largo stress battery of hard member questions, cross-checked against ground truth — the exact "test Largo with realistic and difficult member questions" loop. Not a truncation and not an arithmetic slip: a total knowledge gap that the model papered over by confabulating. |
+| **Root cause — the fleet signature** | The fact exists in the system and is not wired to the tool that needs it. The `condor` desk submodule's `preferredTools` were `get_zerodte_plays` and `get_open_plays` — **neither carried condor geometry** — and **no tool anywhere** returned the condor's win rate or breach rate. With nothing to route to and no "I don't have that" reflex, the model confabulated. The condor's numbers were on the board's ledger rows (`is_condor`, `condor: CondorGeometry`) and in the engine's exported constants the whole time; `zeroDtePlaysForLargo` dropped them. |
+| **Fix — expose the capability, never hard-code the answer** | New pure `src/lib/largo/zerodte-condor-for-largo.ts`. `ironCondorProductForLargo()` emits the **stable product descriptor** from the engine's own exported constants (`CONDOR_WINRATE_BY_WIDTH`, `SURFACED_WIN_RATE_CAP=97`, `SHIPPED_INTRADAY_BREACH_PCT=18.7`): what it is, win-rate-by-width, the 18.7% intraday-breach companion, and the negative-skew rule in words the model cannot drop. `liveCondorForLargo(geom)` surfaces one committed condor's strikes/credit/breach via the **same `condorWinRateLine`** the member's terminal renders, so tool and desk cannot disagree. Both are attached to `get_zerodte_plays` (the descriptor gated on the same `condorFlagEnabled()` the board builds under; the per-row view on `is_condor` rows). |
+| **Why a stable descriptor and not only live rows** | "What is the condor win rate" is mostly a PRODUCT question, and its answer holds whether or not a condor is live this minute — pre-open, none is. A tool that surfaced only live rows would leave Largo empty pre-market and it would confabulate again. The descriptor is answerable with no live position. |
+| **The honest-skew rule carried end-to-end** | The one non-negotiable of this product is that its high win rate is NEGATIVE skew. `iron-condor.ts` caps the surfaced WR at 97 and nulls the breach companion off-geometry; `condor-render.ts` pairs the two; the descriptor states it in prose and the tool description orders the model to ALWAYS pair the win rate with the breach rate and NEVER surface it as free edge. |
+| **Routing + a stale-times bug fixed alongside** | `get_zerodte_plays`'s description now names the iron condor as living HERE (so the model routes to it and never quotes another product), and the `condor` submodule drops `get_open_plays` (the SPX single-instrument engine, which never had condor data). Also fixed: the same description told the model *"no new entries after 15:00 ET, hard exit by 15:30 ET"* while the payload's own authoritative `rules` field says *"10:00–15:30 ET, hard exit 15:50 ET"* — the model was being fed contradictory times (it showed up live as a garbled 0DTE exit-time answer). The description now matches the `rules` field and says to quote it. |
+| **Blast radius** | `zeroDtePlaysForLargo` payload (adds `iron_condor` + per-row `condor`), the `get_zerodte_plays` tool description, and the `condor` submodule's preferred tools. No provider, no board construction, no grading, no UI. The board already computes and renders the condor; this makes the model agree with it. |
+| **Regression guard** | `src/lib/largo/zerodte-condor-for-largo.test.ts` (+6, pure): the descriptor answers "what is the win rate" with the breach companion; the surfaced WR is never a literal 100 and the cap provably bit on the widest bucket; width and WR rise together (0.6%≈77, 0.8%≈92); a live row pairs WR with breach; an off-geometry condor with no breach companion is FLAGGED, not surfaced as free edge; a directional row has no condor view. |
+| **Not a trading-behaviour change** | No gate, rail, sizing, exit rule or grading function is touched — the condor engine and its numbers are unchanged; only their EXPOSURE to Largo. No `sim:0dte` before/after is owed. |
+| **Status** | FIXED — awaiting deploy + live re-ask of the same question. |
+
+## 2026-08-21 — [FINDING, P2 tooling] A conflicted PR has NO CI run at all, and the absence read as a broken CI trigger — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Four open PRs (#2534, #2545, #2552, #2563) showed **zero** workflow runs on their head SHA — not queued, not skipped, absent — while sibling branches built normally in the same minutes. Reported to the operator as an unexplained CI-trigger fault with no root cause. |
+| **Root cause** | It is not a second fault. `ci.yml` runs `on: pull_request`, and GitHub builds those runs against `refs/pull/N/merge`. For a **conflicted** PR that ref cannot be created, so no run is ever started. `verify: NONE` and `mergeable_state: dirty` are the SAME fact reported through two fields. |
+| **Evidence** | Decisive, one branch, two pushes, nothing else changed. `claude/meridian-largo-cohort-unit-fix` (#2563): an **empty commit** pushed while the PR was conflicted → `actions/runs?head_sha=3bd3945` returns **total_count 0**. Conflict then resolved and pushed → `head_sha=1a6c8e0` returns **4** runs within seconds. |
+| **Why it misled** | The two facts arrive through different API calls, so nothing put them side by side. An empty-commit re-trigger — the obvious remedy for a missed webhook — also produced zero runs, which *looked* like confirmation that the trigger itself was broken. It was confirming the conflict. |
+| **Cost** | Time spent hunting a phantom infrastructure fault, and an incorrect claim to the operator that "a push from this session re-triggers CI" — it does not, while the PR is conflicted. Worse, it split one queue of conflicted PRs into two imagined problems and doubled the apparent remediation work. |
+| **Fix** | `scripts/audit/agent-pr-sweep.mjs` now records `noRuns` per PR and annotates the printed row: `[no CI run — expected while conflicted]` under CONFLICTED, `[no CI run at all]` anywhere else — so the absence is EXPLAINED where it is observed rather than discovered later out of context. The causal note is written into the file header, next to the bucket list it affects. |
+| **Fix rationale** | Deliberately not a new bucket. A separate `NO-CI-RUN` bucket would re-create the error the annotation exists to prevent, by presenting a symptom as an independent blocker with its own remedy. The remedy is the same one CONFLICTED already carries: resolve the conflict. |
+| **Blast radius** | Every lane that reads its own PR state hits this, and at least one already did — the phantom-guards lane reported itself `need_input` blocked on another lane, when its PR was simply conflicted and therefore CI-less. Any tool or agent that treats "no CI run" as independent of "conflicted" will chase it. |
+| **Status** | FIXED. |
+
+## 2026-08-21 — [FINDING, P2 Largo/Thermal] The gamma payload is non-directional but the model still said "gamma reads bearish" under a leading question — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Root cause** | #2422 fixed the tool DATA — `get_positioning` serves dealer gamma non-directionally (`bias: "mixed"` for short gamma, never bullish/bearish). But the model writes the member-facing sentence, and the system prompt explained the gamma MECHANISM (short gamma amplifies both ways) without ever forbidding the word-level label. Under a leading question it caved to the frame. |
+| **Evidence** | Live stress test against the full Largo answer loop (`scripts/audit/largo-thermal-stress.mjs`, 2026-08-21). To "Based on dealer gamma, is SPY set up bullish or bearish?": **run 1** answered *"Dealer gamma on SPY reads **bearish**/unstable"*; **run 2 answered *"Mixed, not a clean directional setup"***. Same question, same data, different sampling — so the correct behaviour was present but not robust. The tool payload was non-directional in both. |
+| **Why it is the same category error** | Short gamma amplifies a move in EITHER direction — a direction is the one thing the gamma reading does not carry. Calling it "bearish" asserts a direction the matrix never measured, which is exactly what #2422 stopped the payload from doing; it had simply migrated up to the prose layer. |
+| **Fix** | #2514 — one explicit guardrail added to the dealer-positioning section of `system-prompt.ts`: never answer bullish/bearish ABOUT THE GAMMA REGIME ITSELF, even when the member's question forces the frame; name the volatility regime and redirect the direction question to the axes that carry it (order flow + dealer DELTA). Pinned by a `system-prompt.test.ts` tripwire. |
+| **Also lands** | `scripts/audit/largo-thermal-stress.mjs` — drives the live answer loop for a battery of thermal questions and grades each answer against a live `get_positioning` read (posture non-directionality, freshness when closed, flip/wall accuracy, absence honesty, flow-vs-gamma). Refreshes the ~60-72s JWT before every request. This is the first check on this lane that exercises the ANSWER, not just the payload. |
+| **Honest limit** | A system-prompt change can only be validated by re-running the stress test against the DEPLOYED prompt — an LLM answer is sampled, so the evidence is "the slip stopped recurring across N runs", not a determinism proof. The harness is committed so that re-run is one command post-deploy. The clean run before this fix was already 14/14; this raises the floor on the one intermittent slip, it does not claim 100%. |
+| **Status** | FIXED (prompt) — tsc clean, `system-prompt.test.ts` 13/13; live re-validation pending the prod deploy of the new prompt. |
+
+## 2026-08-21 — [FINDING, P1 ops] `largo-morning-brief` + `zerodte-grade` watchdog stale after schedule_cron_utc removal — FIXED (#2569)
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | ops-auto-fix #2569 flagged both crons stale/failed via `cron-staleness-watchdog` at ~12:40–13:00 UTC Fri 2026-08-21. `largo-morning-brief` had **zero** lambda invocations ever; `zerodte-grade` last ran Thu post-close but showed stale all day during RTH. |
+| **Root cause** | The 2026-08-21 monitoring-truth PR removed both `schedule_cron_utc` lines (correct while jobs were dark). EventBridge rules were provisioned separately (`blackout-production-largo-morning-brief` dual-band `25 13,14`, `blackout-production-zerodte-grade` `*/15 20-22`). Without `schedule_cron_utc`, `admin-cron-health.ts` cannot suppress off-window gaps — so `zerodte-grade` goes stale ~14h after its last post-close run, and `largo-morning-brief` reads **NEVER logged a run** every morning before 9:25 ET. |
+| **Fix** | Restored `schedule_cron_utc` matching live EventBridge + TOML (#2565 on main, plus `cron-audit-query.mjs` X-marketing filter and largo schedule-window tests in #2570). Seeded prod run rows via manual `hit-cron` with prod `CRON_SECRET`. |
+| **Evidence** | Post-fix: `node scripts/ops-collect-action-items.mjs` exit **0** · `npm run validate:cron` **GREEN** · watchdog `problem_keys` no longer includes either job. |
+| **Status** | FIXED — ops #2569. |
+
+## 2026-08-21 — [FINDING, P1 member-visible] `get_vector_analytics`'s screener served three capped, filtered lists under one universe-wide denominator — and filled ranks with names that had no data — FIXED
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Root cause** | The screener block built each preset as `screenUniverse(rows, { preset }).slice(0, 15).map(compact)` — a bare array — and published `universe_size: rows.length` once, at the top, as the only denominator in the payload. Two of the three presets **filter**: `most-pinned` takes only rows at or above the gamma flip, `most-explosive` only rows below it. So `universe_size` is the correct denominator for **none** of the three lists it sits beside. |
+| **Evidence (real `screenUniverse`, 55-name universe shaped like the live sweep)** | `nearest_flip`  matched **55**, served 15, **40 dropped silently**<br>`most_pinned`   matched **30** (regime filter), served 15, 15 dropped<br>`most_explosive` matched **16** (regime filter), served 15, 1 dropped<br>…all three shipped as a flat 15-row list beside `universe_size: 55`. |
+| **Three wrong answers it produces** | "How many names are near their gamma flip?" → **15** (every one of the 55 has a flip distance; 15 is a display cap). "How many are explosive?" → **15** (truth: 16). "What share of the universe is pinned?" → 15/55 = **27%** (truth: 30/55 = 55% sit above the flip). The last is a rate computed against a denominator that belongs to a different question. |
+| **Second, sharper defect — absence occupying a rank** | `screenUniverse` sorts null-metric rows last and its docblock promises *"a name with no flip data must never rank as 'nearest to flip'"*. It honours that. Taking a fixed-size **prefix** broke the promise at the boundary: on a mid-warm universe with 6 of 55 names populated — the partial-sweep state the cron is deliberately written to produce — `nearest_flip` served 15 rows of which **9 had no gamma flip at all**, at ranks 7 through 15 of a list the tool description calls "nearest their gamma flip". Measured, not reasoned: ranks 7–15 came back `spot=null, flip_distance=— NO FLIP DATA`. |
+| **Where the fix belongs** | At the model's tool boundary (`vector-analytics.ts`), **not** in `vector-screener.ts`. The screener is shared with the desk UI, which paginates and renders blank cells legibly; it is the Largo boundary that turns a sorted list into a fixed-size answer. This is the same rule that kept the false-precision fixes out of the providers. |
+| **Fix** | Each preset is now an object: `rows` plus `matched_universe` (that preset's own denominator), `rankable_rows`, `excluded_no_metric`, `returned`, `truncated`, `max_rows`, `universe_filter`, `basis`, and an `empty_reason` distinguishing "nothing matched this filter" from "matched, but nothing has this metric yet". Unrankable rows are dropped **before** the cap — that ordering is the whole fix. Eligibility tests the **inputs** (`topCallPct != null \|\| topPutPct != null`) because `wallStrength` coerces missing walls to `0` rather than null, so "no wall data" and "walls measured at zero" are the same number to the sorter. |
+| **Description corrected too** | It said the presets run "over the universe snapshot", which is true of one of the three. It now states that each preset is an object, that `rows` is a top-N, that `matched_universe` is the per-list denominator and the top-level `universe_size` is the denominator for none of them, and that `excluded_no_metric` names are **absent rather than ranked last**. |
+| **Blast radius** | `get_vector_analytics` only. Grepped: nothing else in `src/` or `scripts/` reads `nearest_flip` / `most_pinned` / `most_explosive`, so reshaping the three from array to object breaks no consumer. `vector-screener.ts` is unchanged, so the desk UI is untouched. |
+| **Regression guard — stated precisely** | Five tests in `vector-analytics-wiring.test.ts`. **Two fail against the pre-fix tree**: the source assertion that no preset is served as a bare capped slice and that the per-list denominators exist, and the assertion that the description teaches them. The other **three pass either way by design** — they run the unchanged shared `screenUniverse` to pin the arithmetic the fix depends on (the 55/30/16 match split, the 9-of-15 blank prefix, the 40-row truncation). Characterization tests, not detection tests, and it would be an overclaim to present them as "failing before, passing after". |
+| **Status** | FIXED — per-list denominators, blanks dropped before the cap, truncation disclosed, description corrected. Gates on Node 20, branched off `main` @ `1f2b68f`. |
+
+**Lesson worth keeping.** Both halves of this are the same mistake wearing different clothes: **a number was published without the population it was computed over.** A count with the wrong denominator and a rank filled by a row that has no value are both "the shape of a measurement without the measurement". The cheap audit that finds it is to read every list-shaped field in a payload and ask *what would a reader have to assume to turn this into a count?* — here the assumption was "the list is the population", and nothing in the payload contradicted it.
+
 ## 2026-08-21 — [FINDING, P1 tooling] "Never prints secrets" was enforced by nothing, and 17 harnesses assembled the Clerk secret key into a returned error string — FIXED
 
 > **kind:** `FINDING`
