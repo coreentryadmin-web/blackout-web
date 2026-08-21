@@ -3,9 +3,13 @@
  *
  * Confirms on the real deployment the three things the offline measurements asserted:
  *
- *  1. `/api/market/vector/expected-move` serves `movePct` as a real FRACTION (it passes
- *     VECTOR_FRACTION_DP), and shows what the same number becomes under the BIE boundary's
- *     bare `roundFloats(dp=2)` — the two disagree, and that disagreement IS the defect.
+ *  1. `/api/market/vector/expected-move` serves `movePct` as a real FRACTION, and that the value
+ *     Largo ACTUALLY receives through get_vector_full_state — the BIE boundary's VECTOR_FRACTION_DP
+ *     rounding (#2423) composed with the guarded runner's roundResultForReading (6 sig-figs below 1)
+ *     — still carries the fraction rather than collapsing to a bare-dp2 `0.01`. The pre-#2423 bare
+ *     `roundFloats(dp=2)` value is shown ONLY as the fixed defect, never as "what Largo received":
+ *     an earlier version of this probe conflated the two and would now report a fixed surface as
+ *     broken — a probe measuring a transform the product no longer uses.
  *  2. The wall-history rail off-hours: an empty rail before the open is the recorder working
  *     as designed, not missing data (the premise behind `wall_history_empty_reason`).
  *  3. The walls/flip surface is live, so an empty rail cannot be blamed on a dead ticker.
@@ -16,6 +20,10 @@
  */
 import { fetchAuditJson, releaseAuditClerkSession } from "./lib/audit-auth-fetch.mjs";
 import { roundFloats } from "../../src/lib/round-floats.ts";
+// The ACTUAL transform every tool result passes through before the model reads it
+// (makeGuardedToolRunner → roundResultForReading). Modelling "what Largo received" with anything
+// else is the defect this probe used to commit — see the expected_move block below.
+import { roundResultForReading } from "../../src/lib/largo/core/round-for-reading.ts";
 import { VECTOR_FRACTION_DP } from "../../src/features/vector/lib/vector-response-rounding.ts";
 import { todayEtYmd } from "../../src/lib/providers/spx-session.ts";
 
@@ -45,12 +53,27 @@ async function main() {
     const em = await fetchAuditJson(BASE, `/api/market/vector/expected-move?ticker=${ticker}`);
     if (em.ok && em.json && typeof em.json === "object") {
       const served = em.json.movePct ?? em.json?.expectedMove?.movePct ?? null;
+      // What Largo ACTUALLY receives for movePct through get_vector_full_state: the BIE boundary
+      // rounds the state with VECTOR_FRACTION_DP (movePct kept to 6dp, #2423), then the guarded
+      // tool runner applies roundResultForReading (6 SIGNIFICANT digits below 1). Model BOTH stages
+      // in order — that composed value is the honest "what Largo received".
+      const largoReceived =
+        served == null
+          ? null
+          : roundResultForReading(roundFloats({ movePct: served }, 2, VECTOR_FRACTION_DP)).movePct;
+      // The ORIGINAL defect (#2423), kept for regression visibility ONLY: a bare roundFloats(dp=2)
+      // collapses 0.005443 → 0.01. This is NOT what Largo receives — an earlier version of this
+      // probe printed it as such and would today report a FIXED surface as still broken.
+      const preFixBareDp2 = served == null ? null : roundFloats({ movePct: served }).movePct;
       row.expected_move = {
         http: em.status,
         route_movePct: served,
-        // What the SAME number becomes through the BIE boundary's default rounding.
-        bie_boundary_movePct: served == null ? null : roundFloats({ movePct: served }).movePct,
-        route_with_keydp: served == null ? null : roundFloats({ movePct: served }, 2, VECTOR_FRACTION_DP).movePct,
+        largo_received_movePct: largoReceived,
+        pre_2423_bare_dp2: preFixBareDp2,
+        // The fix holds when the reader's value still carries the fraction, i.e. it did NOT collapse
+        // to the bare-dp2 value. Guards against a future regression in either rounding stage.
+        preserved:
+          served == null ? null : largoReceived !== preFixBareDp2 && largoReceived !== 0,
         atm_iv: em.json.atmIv ?? null,
       };
     } else {
@@ -96,8 +119,9 @@ async function main() {
     const e = row.expected_move;
     if (e.route_movePct != null) {
       log(`  expected-move  route serves movePct = ${e.route_movePct}  (${(e.route_movePct * 100).toFixed(3)}%)`);
-      log(`                 BIE boundary dp=2    = ${e.bie_boundary_movePct}   <-- what Largo received`);
-      if (e.bie_boundary_movePct === 0) log(`                 *** SERVED AS ZERO ***`);
+      log(`                 Largo receives       = ${e.largo_received_movePct}  ${e.preserved ? "[PASS — fraction preserved]" : "[FAIL — collapsed]"}`);
+      log(`                 (pre-#2423 bare dp=2 would have been ${e.pre_2423_bare_dp2} — the fixed defect, NOT what Largo gets)`);
+      if (!e.preserved) log(`                 *** REGRESSION: reader value collapsed to ${e.largo_received_movePct} ***`);
     } else {
       log(`  expected-move  HTTP ${e.http} — ${e.error ?? "no movePct"}`);
     }
