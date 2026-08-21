@@ -138,6 +138,79 @@ const CROSS_CHECK_OFF_TITLE =
  * Per-layer freshness from matrix/overlay/cross-val timestamps.
  * Never fabricates a live state when the sample is missing.
  */
+/**
+ * What the matrix-panel status badge is allowed to claim.
+ *
+ * THE BUG THIS REPLACES. The badge read `live = !error && data.available && hasStrikes && !stale`
+ * and rendered a green pulsing **"Quote live"**. None of those four terms is about liveness:
+ * `stale` there is the TICKER-SWITCH guard ("the matrix in hand belongs to a different underlying
+ * than the one selected"), not an age check. So the pill meant "we have an options chain for this
+ * ticker" while SAYING "this price is live".
+ *
+ * Measured live 2026-08-21 at 20:41 ET — four and a half hours after the cash close — `/heatmap`
+ * showed `SPY 762.60` under a green pulsing "Quote live". 762.60 is EXACTLY SPY's 16:00 ET close
+ * (confirmed against Polygon's prior-session bar). The badge was asserting a live quote over a
+ * settled close, which is the one thing a freshness pill exists to prevent.
+ *
+ * So liveness now requires the cash session to actually be open. `isEtCashRth` is the canonical
+ * gate (holiday- and early-close-aware, and documented safe on both server and client) — this
+ * helper takes the answer as an input rather than calling it, to stay pure and testable.
+ *
+ * `marketOpen: null` means NOT YET KNOWN (pre-hydration — the caller resolves the clock in an
+ * effect to avoid an SSR/client mismatch, the same way ThermalFreshnessBar does). Unknown must
+ * never render as live: claiming live and correcting it a tick later is the failure we are fixing.
+ */
+export type ThermalQuoteBadgeState = "live" | "market-closed" | "quote-only" | "offline";
+
+export function thermalQuoteBadge(input: {
+  /** A usable, current-ticker chain with strikes is in hand. */
+  hasChain: boolean;
+  /** Spot resolved but the chain came back empty. */
+  quoteOnly: boolean;
+  /** Cash RTH open, or null when the clock has not been resolved client-side yet. */
+  marketOpen: boolean | null;
+}): { state: ThermalQuoteBadgeState; label: string; tone: "bull" | "sky"; dot: boolean; title: string } {
+  if (input.hasChain) {
+    if (input.marketOpen === true) {
+      return {
+        state: "live",
+        label: "Quote live",
+        tone: "bull",
+        dot: true,
+        title: "Cash session is open — spot is a live quote.",
+      };
+    }
+    // Covers both "not yet known" and "cash session closed". Pre-market and after-hours both land
+    // here on purpose: there may be extended-hours prints, but the number is not a live CASH
+    // quote, and dealer gamma is a cash-session construct.
+    return {
+      state: "market-closed",
+      label: "Market closed",
+      tone: "sky",
+      dot: false,
+      title:
+        "Cash session is closed — spot is the last print, not a live quote. The matrix is still " +
+        "computed from the current options chain.",
+    };
+  }
+  if (input.quoteOnly) {
+    return {
+      state: "quote-only",
+      label: "Quote only",
+      tone: "sky",
+      dot: false,
+      title: "Spot resolved but the options chain is empty — no dealer gamma to show.",
+    };
+  }
+  return {
+    state: "offline",
+    label: "Offline",
+    tone: "sky",
+    dot: false,
+    title: "No matrix available for this ticker right now.",
+  };
+}
+
 export function thermalLayerFreshness(input: {
   nowMs: number;
   matrixAsof?: string | null;

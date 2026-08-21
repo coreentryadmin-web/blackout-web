@@ -18,6 +18,7 @@ import {
   keyLevelsFootnote,
   keyLevelsFootnoteCompact,
   netFlowHeaderTooltip,
+  thermalQuoteBadge,
 } from "./thermal-desk-state.ts";
 
 // PINNED, and deliberately NOT "matches the Indices preset" any more. Its real consumer is
@@ -238,4 +239,54 @@ test("netFlowHeaderTooltip discloses fallback vs scoped repricing", () => {
     usesNearTermFallback: true,
   });
   assert.match(monthly, /NOT re-scoped to monthly OpEx/);
+});
+
+test("thermalQuoteBadge — does not claim a live quote after the close (the 2026-08-21 SPY capture)", () => {
+  // Live 20:41 ET: /heatmap showed SPY 762.60 — exactly its 16:00 close — under a green
+  // pulsing "Quote live". A held chain is not a live quote.
+  const b = thermalQuoteBadge({ hasChain: true, quoteOnly: false, marketOpen: false });
+  assert.notEqual(b.label, "Quote live");
+  assert.equal(b.state, "market-closed");
+  assert.equal(b.label, "Market closed");
+  assert.equal(b.dot, false, "no pulsing dot outside the session");
+  assert.notEqual(b.tone, "bull");
+  assert.match(b.title, /not a live quote/i);
+});
+
+test("thermalQuoteBadge — claims live only when the cash session is open", () => {
+  const b = thermalQuoteBadge({ hasChain: true, quoteOnly: false, marketOpen: true });
+  assert.equal(b.state, "live");
+  assert.equal(b.label, "Quote live");
+  assert.equal(b.tone, "bull");
+  assert.equal(b.dot, true);
+});
+
+test("thermalQuoteBadge — never renders live while the clock is still unknown", () => {
+  // Pre-hydration. Claiming live and correcting a tick later is the failure being fixed.
+  const b = thermalQuoteBadge({ hasChain: true, quoteOnly: false, marketOpen: null });
+  assert.notEqual(b.state, "live");
+  assert.equal(b.dot, false);
+});
+
+test("thermalQuoteBadge — keeps the empty-chain and no-matrix states distinct from the session state", () => {
+  for (const marketOpen of [true, false, null]) {
+    const q = thermalQuoteBadge({ hasChain: false, quoteOnly: true, marketOpen });
+    assert.equal(q.state, "quote-only", "an empty chain reads the same in or out of session");
+    const off = thermalQuoteBadge({ hasChain: false, quoteOnly: false, marketOpen });
+    assert.equal(off.state, "offline");
+  }
+});
+
+test("thermalQuoteBadge — never emits a bull tone or a dot for any non-live state", () => {
+  for (const hasChain of [true, false]) {
+    for (const quoteOnly of [true, false]) {
+      for (const marketOpen of [true, false, null]) {
+        const b = thermalQuoteBadge({ hasChain, quoteOnly, marketOpen });
+        if (b.state !== "live") {
+          assert.notEqual(b.tone, "bull", `${b.state} used a bull tone`);
+          assert.equal(b.dot, false, `${b.state} rendered a pulse dot`);
+        }
+      }
+    }
+  }
 });
