@@ -34,6 +34,7 @@ import { getGexPositioning } from "@/lib/providers/gex-positioning";
 import { enrichFlowsWithGex } from "@/lib/flow-gex-enrichment";
 import { runUwPooled } from "@/lib/providers/uw-rate-limiter";
 import { gexHeatmapForLargo } from "@/lib/largo/gex-heatmap-for-largo";
+import { normalizeUwEarnings } from "@/lib/largo/uw-earnings-normalize";
 import { gexMatrixChangesForLargo } from "@/lib/largo/gex-matrix-changes";
 import { registerVectorUniverseView } from "@/features/vector/lib/vector-universe";
 import { flowAnomalyNearMissesForLargo } from "@/lib/platform/flow-anomaly-near-misses";
@@ -795,19 +796,23 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
           fetchUwEarnings(sym),
           fetchUwEarningsEstimates(sym),
         ]);
-        return {
+        // UW serves this whole surface as STRINGS, with moves/returns as unlabelled fractions
+        // to ~20 decimals — `reaction: "-0.0915"` is -9.15%, not -0.09%. roundFloats is blind
+        // to it (it short-circuits on typeof number). See uw-earnings-normalize.ts.
+        return normalizeUwEarnings({
           ticker: sym,
           source: benzinga.length ? "benzinga" : "unusual_whales",
           benzinga_news: benzinga,
           unusual_whales: uw,
           estimates,
-        };
+        });
       });
     }
     case "get_earnings_history": {
       const sym = uwTicker(ticker);
       const [earnings, estimates] = await Promise.all([fetchUwEarnings(sym), fetchUwEarningsEstimates(sym)]);
-      return { ticker: sym, source: "unusual_whales", earnings, estimates };
+      // Same raw-UW units/precision problem as get_earnings — see uw-earnings-normalize.ts.
+      return normalizeUwEarnings({ ticker: sym, source: "unusual_whales", earnings, estimates });
     }
     case "get_analyst_ratings": {
       const sym = uwTicker(ticker);
@@ -1403,7 +1408,16 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         fetchUwEarningsPremarket(30),
         fetchUwEarningsAfterhours(30),
       ]);
-      return { premarket, afterhours };
+      // `as_of` because the tool description promises "today's" prints and the payload itself
+      // carried no clock — the model had to take the framing on trust. The rows' own
+      // `report_date` is the authority on which session these are; this says when we asked.
+      return normalizeUwEarnings({
+        as_of: new Date().toISOString(),
+        premarket_count: premarket.length,
+        afterhours_count: afterhours.length,
+        premarket,
+        afterhours,
+      });
     }
     case "get_congress_unusual": {
       const sym = input.ticker ? uwTicker(String(input.ticker)) : undefined;
