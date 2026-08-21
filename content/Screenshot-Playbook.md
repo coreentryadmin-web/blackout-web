@@ -282,6 +282,19 @@ Before accepting any frame:
 4. **Does it show something only BLACKOUT has?**
 5. **Is there a more powerful panel elsewhere for this same claim?**
 
+### Reject and re-take — now measured, not judged
+
+```bash
+node scripts/audit/x-intel-frame-quality.mjs frame.png     # exit 1 if it fails
+```
+
+Thresholds: ink < 2% (empty/loading) · dead band > 28% · empty grid regions > 45% ·
+timeline legibility < 0.55 · aspect > 3.2:1 (sliver) or < 0.8 (X crops it) · content into the
+bottom edge > 50% (truncated panel).
+
+Judging a frame at 100% zoom on a desktop is exactly how a capture whose beads cluster at phone
+size gets approved. Run the scorer.
+
 ### Reject and re-take
 
 Huge empty areas · irrelevant panels · unreadable data at timeline size · clutter · awkward
@@ -316,6 +329,43 @@ contrasting product views.
 ## 5. Lessons log
 
 Append-only. Newest first.
+
+### 2026-08-21 — frames are now MEASURED, and the first thing it caught was mine
+
+Built `scripts/audit/x-intel-frame-quality.mjs` + `lib/frame-quality-eval.cjs`: the reject list was
+prose, and prose gets applied by whoever remembers to apply it. Every item on it is a measurable
+property of the PNG.
+
+**The first version passed all nine frames I fed it, which meant the metric was broken, not that
+the frames were perfect.** `timelineLegibility` normalised gradient energy by the scale factor,
+which cancels the signal it was measuring and returns 1.00 for everything. Rewritten as
+downscale → upscale → reconstruction error, measured only over pixels that carry content (a large
+empty canvas otherwise dilutes the error of the one panel a reader needs).
+
+Scored against every frame captured today:
+
+| frame | ink | empty | legibility | aspect | verdict |
+|---|---|---|---|---|---|
+| V-spx-zoom (operator-approved) | 17.7% | 0% | **0.88** | 0.91 | PASS |
+| T-semis2 | 16.5% | 0% | 0.60 | 1.70 | PASS |
+| PKG-thermal-spx | 11.2% | 0% | 0.57 | 1.94 | PASS |
+| M-nvda-report | 7.3% | 10% | 0.57 | 1.64 | PASS |
+| T-depth | 6.1% | 36% | 0.68 | 2.54 | PASS |
+| **M-macro** | 8.3% | 15% | **0.51** | 2.34 | **REJECT** |
+| **SCAN-top14** | 2.3% | 34% | **0.43** | **4.89** | **REJECT** |
+| **M-heatgrid** | 8.6% | 26% | 0.63 | **20.68** | **REJECT** |
+
+**The operator-approved Vector zoom scores highest on legibility (0.88), by a wide margin.** That
+is real evidence the metric tracks their judgement rather than my own — it was not tuned to
+produce that result.
+
+**It rejected a frame I had just praised.** I sent SCAN-top14 describing it as "a genuinely postable
+attachment". At 4.89:1 with legibility 0.43 it is a letterboxed strip whose numbers a reader cannot
+read without tapping. The scanner is a superb story-FINDING tool and a poor standalone attachment —
+those are different jobs, and I had conflated them.
+
+**Rule added:** the scanner and the thin Meridian strips are CONFIRMATION-slot frames or internal
+research, never the lead attachment. If a ranking must be shown, crop to ~6 rows and pair it.
 
 ### 2026-08-21 — the horizon error (caught by the operator)
 

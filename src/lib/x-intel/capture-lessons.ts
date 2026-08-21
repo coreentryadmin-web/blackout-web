@@ -79,6 +79,26 @@ export const CAPTURE_LESSONS: ReadonlyArray<CaptureLesson> = [
       "`.meridian-page-root` measured 14,704px tall; and a Vector `.vector-chart-wrap` crop dropped the toolbar the operator wanted in frame.",
   },
   {
+    id: "scanner-finds-stories-but-is-a-poor-attachment",
+    applies_to: "vector",
+    evidence: "MEASURED",
+    sample_size: 1,
+    lesson:
+      "The Universe Scanner is a story-FINDING tool, not a lead attachment. Finding and showing are different jobs. If a ranking must be shown, crop to ~6 rows and use it as a confirmation slot.",
+    observation:
+      "A 14-row scanner crop measured 4.89:1 with timeline legibility 0.43 — a letterboxed strip whose numbers cannot be read without tapping. I had praised it as postable before measuring it.",
+  },
+  {
+    id: "measure-frames-do-not-judge-them",
+    applies_to: "*",
+    evidence: "MEASURED",
+    sample_size: 10,
+    lesson:
+      "Run `x-intel-frame-quality.mjs` on every candidate frame. A reject list applied by eye is applied by whoever remembers to apply it, and full-resolution review cannot see what collapses at phone size.",
+    observation:
+      "Scored 10 frames captured 2026-08-21: 7 pass, 3 reject. The operator-approved Vector zoom scored highest on timeline legibility (0.88) without the metric being tuned for it; the first version of the metric passed all nine inputs, which meant it was broken rather than lenient.",
+  },
+  {
     id: "judge-at-timeline-size",
     applies_to: "vector.desk",
     evidence: "MEASURED",
