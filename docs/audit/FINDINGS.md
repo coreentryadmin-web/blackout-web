@@ -1312,7 +1312,6 @@ module compares for bit-identity.
 | **Fix** | Six-part bundle on `cursor/spx-matrix-timeout-fix-3d11`: (1) strict cache-reader member route — `loadHeatmapCacheReaderOnly` never awaits cold builds on normal GET; (2) `GET /api/market/gex-heatmap/batch` — one round trip for 3–7 compare columns; (3) `comparePresetWarmTickers()` seeds boot-warm + heatmap-warm; (4) batch prefetch on landing, preset switch, and sector-picker hover; (5) `?compact=1` 0DTE strike-band payload; (6) `?force=1` only on manual ↻ (removed per-column auto stale/blank force + stagger storm). Prior partial: `shouldForceBlankMatrixRefresh`, 12s fetch timeout. |
 | **Blast radius** | All Thermal compare presets (3–7 columns). Warm Redis hits should paint in <1s; cold names show honest empty/retry instead of 55s+ force hangs. |
 
-
 > **kind:** `FINDING`
 
 | Field | Value |
@@ -3402,7 +3401,6 @@ archetype intended-DTE realign. Branch `cursor/swing-cto-audit-3d11`.
 ## 2026-07-29 — [Grid/0DTE] zerodte board HTTP 504 on aged snapshot cold-build
 > **kind:** `FINDING`
 
-
 **Severity.** P0 member path (Night Hawk `/api/market/zerodte/board`).
 
 **Symptoms.** Parallel grid-rth audit burst: `integration:zerodte-board` HTTP **504**;
@@ -3525,7 +3523,6 @@ overlays stay on the static allowlist (2 RPS). CORE SPY/SPX/QQQ still force-refr
 
 ## 2026-07-29 — [Thermal] Triple desk SPY/QQQ not refreshing every 5–10s
 > **kind:** `FINDING`
-
 
 **Severity.** P1 UX — compare desk felt stuck; SPX stayed ~5s while SPY/QQQ asof climbed
 15–25s (live poll 2026-07-29 ~15:58 ET). Browser showed force requests stuck on
@@ -12236,6 +12233,24 @@ against.
 | **Why not caught** | The audit's routing matrix grades off the `tools=` label. **A mislabelled prefetch launders a wrong payload as a right one** — technicals scored *correct* on every routing check precisely because its label was right and only its payload was wrong. A check that reads the label can never catch a bug in what the label describes. |
 | **Fix** | Both branches fetch their own subject. Guarded by `src/lib/largo/desk-scope-prefetch-spx.test.ts` (PR #2385), which asserts the **subject** of each branch (pin fetches a pin source; technicals names EMA/VWAP) rather than a specific reader function — both defects were fixed concurrently with different readers than first proposed, so a test pinned to an import name would have broken on a correct fix. It also asserts every SPX branch both pushes a payload and records a label, and that labels stay **distinct** (with intentional shares declared), so a fallthrough is visible in the trace at all. |
 | **Status** | FIXED — PR #2385. |
+
+## 2026-08-20 — [FINDING, P1 Largo] A dated close was answered off by one full session — bars carry an epoch and nothing else — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Asked **"What did SPX close at on 2026-08-19?"** on 2026-08-20, Largo answered **7,641.16** — which is 2026-08-20's own close. 2026-08-19 closed **7,707.98**. The answer then printed the correct number one sentence later as an aside ("Looking back one bar: 2026-08-19 closed at 7,707.98"), so it led with a wrong price and buried the right one. A member reading the first sentence gets a number that is wrong by 66.82 points. |
+| **Root cause** | Every OHLC bar Largo receives from Polygon is `{ t, o, h, l, c, v }` — `t` is epoch-ms and **nothing in the payload says which session the bar is**. The model has to convert, and it showed its work getting it backwards: *"timestamp 1787202000000 = 2026-08-20 00:00 ET, which is the close of the prior session."* The premise is the trap: a Polygon **daily** bar's `t` is NOT midnight ET. Measured live on `I:SPX`, every daily bar lands at **05:00Z = 01:00 ET**, an hour into the labelled day. A reader who expects midnight sees an off-by-something and corrects it in whichever direction looks plausible — here, the wrong one. The rule is unconditional in both directions: for daily and intraday aggregates alike, the ET calendar date of `t` **is** the bar's session date. |
+| **Evidence** | Live `I:SPX` daily aggregates, captured 2026-08-20 via `api.massive.com`: `2026-08-19T05:00:00Z → c=7707.98`, `2026-08-20T05:00:00Z → c=7641.16`. Both bars format to 01:00 ET, not 00:00. A dedicated five-date probe against prod (`scratch/largo-dated-close-probe.mjs`, ground truth fetched not hard-coded, grading the FIRST SENTENCE) then measured how wide it goes: **1/5 leads carried the correct close.** 08-14 wanted 7785.76 and got **7,420.10**; 08-17 wanted 7745.06 and got **7,520.36**, citing `timestamp 1779858000000` — a bar ~85 days outside the requested range — and calling a Monday a Sunday; 08-18 wanted 7691.76 and got the same 7,520.36; 08-19 was the off-by-one-session case; only 08-20 (today) passed. |
+| **Wider than first scoped** | The five-date probe shows two failure modes, not one. Off-by-one-session is the mild case. The severe case is the model selecting an **entirely unrelated bar** and stamping the requested date on it with a confident parenthetical. Both have the same root cause and the same fix: with no date on the bar the model can only select **by position arithmetic** and label **by assumption**; stamping `session_date` makes selection **by label** possible, which is the only way a dated question can be answered reliably. | |
+| **Blast radius** | **THREE** paths hand the model bare epochs. The first pass found two; the payload-hygiene scanner written alongside the fix found the third, and it turned out to be the one causing the severe mode. (1) `get_polygon` — `readPolygon` (`src/lib/bie/provider-read.ts`) passes the raw aggregates JSON straight through; the path this defect came down. (2) `get_uw_bars` — `src/lib/largo/run-tool.ts` returns `fetchAggBars(...)` output, whose `mapBars` (`polygon-largo.ts:65`) projects to exactly `{t,o,h,l,c,v}`. (3) **`get_technicals`** — `polygon-largo.ts:387` returns `daily_bars: daily.slice(-60)`: **60 bare epochs in a single tool result**, and all 60 `bare_epoch` findings in the entire scan. All three fixed. UW's own OHLC rows were left alone — they carry readable date fields already, so stamping them would add a second, possibly disagreeing, date. |
+| **Why `get_technicals` was the worst one** | The probe's 2026-08-17 answer cited `timestamp 1779858000000`. That decodes to **2026-05-27** — the OLDEST bar in the 60-session `daily_bars` window, i.e. `daily_bars[0]`. Asked for a named past date it had no way to select by, the model took **index 0** and stamped the requested date on it; the same wrong bar came back for 2026-08-18. That is the complete causal chain for the severe mode: **unlabelled bars → select by position → label by assumption.** |
+| **Why not caught** | Historical mode had **zero test or audit coverage** — it is a toolbar toggle (`historical: true` → `timeframe.historical`) that no harness had ever exercised. Every Largo audit to date asked questions about *now*; none asked about a *named past date*, which is the only question shape that can expose a session-labelling error. A live-number check cannot catch this either: the number returned is a real close, just the wrong day's. |
+| **Fix** | PR #2418. New pure module `src/lib/largo/temporal/bar-session-date.ts` stamps the ET anchor onto the data instead of writing the conversion rule into a prompt and hoping. Daily/weekly bars gain `session_date` (`"2026-08-20"`); intraday bars gain `et` (`"2026-08-20 10:30 ET"`) and deliberately **no** `session_date`, because a bar's ET date only equals its trading session for a whole-day bar — claiming otherwise for an extended-hours print would be a new, quieter version of the same bug. Wired into both paths above. |
+| **Deliberately unchanged** | The passthrough must never reshape a response it does not understand, so `stampPolygonAggregatePayload` returns non-aggregates payloads (`/v3/reference/*`, `/v2/aggs/ticker/X/prev`, empty result sets, non-objects) byte-identical. Over a **750-bar** cap the bars go unstamped and a `session_date_note` names the first and last session — a capped response says out loud that it was capped rather than looking like an unstamped one. |
+| **Regression guard** | `src/lib/largo/temporal/bar-session-date.test.ts` (9 tests) pins the two real bars above so the exact wrong answer cannot return, the 01:00-ET detail that caused the misread, the intraday/daily split, byte-identical passthrough of unknown shapes, and the cap note. One of them **caught a second real defect while being written**: `Number(null)` and `Number("")` are both `0`, which is finite and formats as a perfectly plausible `1969-12-31` — a missing timestamp was turning into a real-looking date, the precise failure the module exists to prevent. Coercion is now strict (positive number, or the string form of one; everything else refused). |
+| **Status** | FIXED — PR #2418. |
 
 ## 2026-08-20 — [FINDING, P1 member-visible] Largo's HELIX expiry concentration dropped the 0DTE bucket and handed the model dates with no session — FIXED
 

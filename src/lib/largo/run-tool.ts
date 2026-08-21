@@ -1356,7 +1356,15 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       const from = priorEtYmd(cfg.span === "day" ? 400 : 30);
       const polygonBars = await fetchAggBars(sym, cfg.mult, cfg.span, from, to, "500");
       if (polygonBars.length) {
-        return { ticker: sym, candle_size: size, source: "polygon", bars: polygonBars.slice(-60) };
+        // fetchAggBars returns bare `{t,o,h,l,c,v}` — epoch only. Same stamping as the get_polygon
+        // passthrough, for the same reason: an unlabelled bar makes the reader guess the session.
+        const { stampBars } = await import("@/lib/largo/temporal/bar-session-date");
+        return {
+          ticker: sym,
+          candle_size: size,
+          source: "polygon",
+          bars: stampBars(polygonBars.slice(-60), cfg.span),
+        };
       }
       return {
         ticker: uwTicker(ticker),
