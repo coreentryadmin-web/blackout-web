@@ -1056,9 +1056,14 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
 
     case "get_helix_tape_analytics": {
       const { helixTapeAnalyticsForLargo } = await import("@/lib/largo/product-reads");
+      // `hours` is an accepted alias for since_hours, matching get_flow_tape's own contract —
+      // the model reaches for either, and silently ignoring one answers a "right now" question
+      // with a week of tape.
+      const hours = input.since_hours ?? input.hours;
       return helixTapeAnalyticsForLargo(
         input.ticker ? String(input.ticker) : null,
-        Number(input.limit ?? 200)
+        input.limit != null ? Number(input.limit) : undefined,
+        hours != null ? Number(hours) : undefined
       );
     }
 
@@ -1146,13 +1151,12 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
     }
 
     case "get_vector_full_state": {
-      const [{ fetchVectorFullState }, { normalizeDteHorizon }] = await Promise.all([
-        import("@/lib/bie/vector-full-state"),
-        import("@/features/vector/lib/vector-dte-horizon"),
-      ]);
-      // fetchVectorFullState normalizes the ticker itself (normalizeVectorTicker); pass the raw
-      // string. horizon is validated to one of 0dte/weekly/monthly/all, defaulting to "all".
-      return fetchVectorFullState(ticker, normalizeDteHorizon(input.horizon));
+      const { vectorFullStateForLargo } = await import("@/lib/largo/product-reads");
+      // Normalizes the ticker itself (normalizeVectorTicker) and validates the horizon to one of
+      // 0dte/weekly/monthly/all. Returns the state UNCHANGED when there is one — so
+      // get_ecosystem_context's "the exact same object" promise still holds — and an honest
+      // { available:false, reason } envelope instead of a bare `null` when there is no live spot.
+      return vectorFullStateForLargo(ticker, typeof input.horizon === "string" ? input.horizon : "all");
     }
 
     case "get_hot_tickers": {

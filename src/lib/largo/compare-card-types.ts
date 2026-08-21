@@ -78,6 +78,14 @@ export type HelixThermalSide = {
   gamma_posture?: CompareGammaPosture;
   /** Gamma side only — what that posture does to realized vol. */
   volatility_regime?: CompareVolatilityRegime;
+  /** Flow side only — the lookback the premiums were summed over. The tape defaults to 48h. */
+  window_hours?: number | null;
+  /** Gamma side only — when the underlying matrix was computed (NOT when this card was built). */
+  matrix_asof?: string | null;
+  /** Gamma side only — that matrix time as an ET wall-clock stamp. */
+  matrix_asof_et?: string | null;
+  /** Gamma side only — the ET SESSION that matrix belongs to. Never derive it from a UTC date. */
+  matrix_session_date?: string | null;
   /** How fresh this side's reading is — see CompareFreshness for why age alone is not enough. */
   freshness?: CompareFreshness;
   /**

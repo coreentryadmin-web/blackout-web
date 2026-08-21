@@ -196,3 +196,151 @@ test("expiryConcentration falls back to ET-anchored daysToExpiry when the row ha
 test("empty tape produces no horizons rather than a fabricated bucket", () => {
   assert.deepEqual(expiryHorizonConcentration([]), []);
 });
+
+// ── Tape window coverage guards ──────────────────────────────────────────────
+// Regression cover for reporting a REQUESTED window as if it were the analysed period. Live
+// 2026-08-20 a 168-hour request with limit 500 returned 500 rows spanning 54 minutes.
+
+import { tapeWindowCoverage } from "./helix-tape-analytics";
+
+/** A print with a REAL UW time. `event_at` is what flowEventTimeMs trusts; `alerted_at` alone
+ *  is only trusted when the row is NOT tape_time_estimated. */
+function atPrint(alerted_at: string, premium = 1_000): FlowAlert {
+  return {
+    ticker: "AAA", option_type: "CALL", strike: 1, expiry: "2026-08-20",
+    route: "SWEEP", alert_rule: "Sweep", score: 1, direction: "bullish",
+    premium, alerted_at, event_at: alerted_at || null, dte: 0,
+  } as FlowAlert;
+}
+
+/** A print UW gave no time for — `alerted_at` is INGEST time and the row says so. The desk
+ *  excludes these from freshness; so must we. */
+function ingestStampedPrint(alerted_at: string, premium = 1_000): FlowAlert {
+  return { ...atPrint(alerted_at, premium), event_at: null, tape_time_estimated: true } as FlowAlert;
+}
+
+test("actual_hours is the span of the PRINTS, not the requested window", () => {
+  const rows = [
+    atPrint("2026-08-20T19:55:00Z"),
+    atPrint("2026-08-20T20:49:00Z"),
+  ];
+  const w = tapeWindowCoverage(rows, 168, 500, new Date("2026-08-20T20:50:00Z"));
+  assert.equal(w.requested_hours, 168);
+  assert.equal(w.actual_minutes, 54);
+  assert.ok(Math.abs(w.actual_hours! - 0.9) < 1e-9);
+  assert.notEqual(w.actual_hours, w.requested_hours);
+});
+
+test("limit_reached flags a limit-bound read so the window is not quoted as the period", () => {
+  const rows = Array.from({ length: 500 }, (_, i) =>
+    atPrint(new Date(Date.parse("2026-08-20T20:00:00Z") + i * 1000).toISOString())
+  );
+  assert.equal(tapeWindowCoverage(rows, 168, 500).limit_reached, true);
+  assert.equal(tapeWindowCoverage(rows.slice(0, 499), 168, 500).limit_reached, false);
+});
+
+test("newest_age_minutes exposes an off-hours tape that is complete but stale", () => {
+  const w = tapeWindowCoverage(
+    [atPrint("2026-08-20T20:49:00Z")],
+    168, 500,
+    new Date("2026-08-21T00:49:00Z")
+  );
+  assert.equal(w.newest_age_minutes, 240);
+});
+
+test("timestampless prints are counted out, never silently widening the span", () => {
+  // UW sends some prints with no time; the REST read surfaces '' rather than fabricating one.
+  const w = tapeWindowCoverage(
+    [atPrint("2026-08-20T20:00:00Z"), atPrint(""), atPrint("2026-08-20T20:30:00Z")],
+    168, 500
+  );
+  assert.equal(w.prints, 3);
+  assert.equal(w.undated_prints, 1);
+  assert.equal(w.actual_hours, 0.5);
+});
+
+test("an empty tape reports a null span, not a zero-hour one", () => {
+  const w = tapeWindowCoverage([], 168, 500);
+  assert.equal(w.actual_hours, null);
+  assert.equal(w.oldest_print, null);
+  assert.equal(w.prints, 0);
+  // 0 rows against a 500 limit is genuinely window-bound, not limit-bound.
+  assert.equal(w.limit_reached, false);
+});
+
+test("an ingest-stamped print never dates the tape — it is not a print time", () => {
+  // Live 2026-08-20: 438 of 500 prints were tape_time_estimated. Reading alerted_at made the
+  // tape look 282 minutes old against the desk's 309 — 27 minutes fresher than it was.
+  const w = tapeWindowCoverage(
+    [ingestStampedPrint("2026-08-20T20:49:00Z")],
+    168, 500,
+    new Date("2026-08-21T01:00:00Z")
+  );
+  assert.equal(w.actual_hours, null, "no real print time -> no span");
+  assert.equal(w.newest_print, null);
+  assert.equal(w.prints, 1);
+  assert.equal(w.undated_prints, 1);
+});
+
+test("freshness is measured off the real print time, not the ingest fallback", () => {
+  const w = tapeWindowCoverage(
+    [
+      atPrint("2026-08-20T20:00:00Z"),              // real print, 1h before the ingest row
+      ingestStampedPrint("2026-08-20T20:49:00Z"),   // newer, but ingest-stamped
+    ],
+    168, 500,
+    new Date("2026-08-20T21:00:00Z")
+  );
+  // 60 minutes off the REAL print, not 11 off the ingest stamp.
+  assert.equal(w.newest_age_minutes, 60);
+  assert.equal(w.timed_prints, 1);
+  assert.equal(w.undated_prints, 1);
+  assert.equal(w.prints, 2);
+});
+
+test("timed_prints vs prints exposes how much of the tape cannot be dated", () => {
+  const w = tapeWindowCoverage(
+    [atPrint("2026-08-20T20:00:00Z"), ...Array.from({ length: 9 }, () => ingestStampedPrint("2026-08-20T20:30:00Z"))],
+    168, 500
+  );
+  assert.equal(w.prints, 10);
+  assert.equal(w.timed_prints, 1);
+  assert.equal(w.undated_prints, 9);
+});
+
+test("a SHORT burst never reports zero hours — rounding must not fabricate 'no span'", () => {
+  // Coordinator review of #2428: actual_hours was rounded to 1dp inside the compute path, so any
+  // span under 3 minutes became exactly 0 — and the tool description tells the model to quote
+  // that field as the period analysed, i.e. "over 0 hours" for a 90-second burst of 500 prints.
+  // Reachable at limit:120 (mini-panel, desk-scope-prefetch) and on any "right now" limit.
+  const rows = [atPrint("2026-08-20T20:00:00Z"), atPrint("2026-08-20T20:01:30Z")];
+  const w = tapeWindowCoverage(rows, 168, 2);
+  assert.notEqual(w.actual_hours, 0, "a real 90s span must not read as zero hours");
+  assert.ok(w.actual_hours! > 0);
+  assert.equal(w.actual_minutes, 2);
+});
+
+test("every window field is PRESENT on an empty tape, not absent", () => {
+  // tool-defs instructs the model to read window.newest_age_minutes; dropping the key on the
+  // branch that most needs it makes the instruction unfollowable.
+  const w = tapeWindowCoverage([], 168, 500) as Record<string, unknown>;
+  for (const k of ["requested_hours","actual_hours","actual_minutes","oldest_print","newest_print",
+                   "newest_age_minutes","no_dated_print_reason","prints","timed_prints",
+                   "undated_prints","limit_reached"]) {
+    assert.ok(k in w, `${k} must be present`);
+  }
+  assert.equal(w.newest_age_minutes, null);
+  assert.equal(w.no_dated_print_reason, "no_prints_in_window");
+});
+
+test("prints with no exchange time report WHY there is no span", () => {
+  const w = tapeWindowCoverage(
+    [ingestStampedPrint("2026-08-20T20:00:00Z"), ingestStampedPrint("2026-08-20T20:30:00Z")],
+    168, 500
+  );
+  assert.equal(w.prints, 2);
+  assert.equal(w.timed_prints, 0);
+  assert.equal(w.actual_hours, null);
+  // "all_prints_undated" is a different fact from "no prints at all" and must not read as it.
+  assert.equal(w.no_dated_print_reason, "all_prints_undated");
+});

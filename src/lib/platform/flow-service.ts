@@ -7,12 +7,24 @@ import type { FlowTapeSummary } from "./types";
 
 export { subscribeFlowEvents, publishFlowEvent };
 
-export async function getFlowTape(opts?: { ticker?: string; limit?: number; since_hours?: number }) {
+export async function getFlowTape(opts?: {
+  ticker?: string;
+  limit?: number;
+  since_hours?: number;
+  /**
+   * Row ordering, which decides which prints survive the LIMIT — not merely their sequence.
+   * Left undefined this keeps the historical default (biggest premium first), so every existing
+   * caller is unchanged. Pass "recent" to read the tape the way the /flows desk does: a
+   * premium-ordered LIMIT systematically drops small-but-current prints (0DTE especially, since
+   * those are tiny next to far-dated blocks), which is a different POPULATION, not a different sort.
+   */
+  order?: "premium" | "recent";
+}) {
   return fetchRecentFlows({
     limit: opts?.limit ?? 25,
     ticker: opts?.ticker ? opts.ticker.toUpperCase() : undefined,
     since_hours: opts?.since_hours,
-    order: opts?.since_hours != null && opts.since_hours <= 6 ? "recent" : undefined,
+    order: opts?.order ?? (opts?.since_hours != null && opts.since_hours <= 6 ? "recent" : undefined),
   });
 }
 
@@ -20,6 +32,8 @@ export async function getFlowTapeSummary(opts?: {
   ticker?: string;
   limit?: number;
   since_hours?: number;
+  /** See getFlowTape — additive; omitting it preserves the existing biggest-premium-first read. */
+  order?: "premium" | "recent";
 }): Promise<FlowTapeSummary> {
   const rows = await getFlowTape(opts);
   const byTicker = new Map<string, { premium: number; count: number }>();
