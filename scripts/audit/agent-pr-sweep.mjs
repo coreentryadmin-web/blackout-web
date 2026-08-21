@@ -229,6 +229,72 @@ function chokepoints(rows) {
   return { ranked, unreadable, scanned: rows.length - unreadable };
 }
 
+/**
+ * The set of green drafts that ACTUALLY merge together — established by trial merge, not by
+ * guessing from filenames.
+ *
+ * WHY THIS REPLACED THE FILE-OVERLAP HEURISTIC. `collisionsAmong` blocks any two PRs that touch the
+ * same file. That is sound but far too conservative: two PRs editing distant hunks of a 1154-line
+ * registry do not conflict, and git knows it. Measured 2026-08-21 on 25 green drafts — file-overlap
+ * cleared **1** for release; real trial merges cleared **5**. A 5x throughput difference, and the
+ * heuristic was leaving four finished PRs sitting in the queue for no reason.
+ *
+ * That matters more than it sounds. A guard that is too strict does not look like a bug — the
+ * output is a smaller number, not an error — so it can throttle the pipeline indefinitely while
+ * appearing to work correctly. Over-blocking is as real a defect as under-blocking; it is just
+ * quieter.
+ *
+ * HOW. `git merge-tree --write-tree` (git 2.38+) performs a real merge into a tree object without
+ * touching the working tree or index, and exits non-zero on conflict. We accumulate: start at
+ * `origin/main`, try each candidate against the running result, keep the ones that apply cleanly.
+ * The accumulation is what makes this a RELEASE SET rather than a list of individually-mergeable
+ * PRs — each is tested against the others already in the set, which is the actual question when
+ * they will all land in the same window.
+ *
+ * ORDER IS OLDEST-FIRST and that is deliberate: the oldest PR has waited longest and is most likely
+ * to be rebased away if it keeps losing. Greedy-by-age is fair; greedy-by-size would starve them.
+ *
+ * A candidate whose ref cannot be fetched is reported as UNKNOWN and excluded — never silently
+ * treated as clean, which would recommend releasing something we could not test.
+ */
+function trialMergeSet(rows) {
+  // FETCH FIRST. Without this every `rev-parse origin/<branch>` misses and the whole set reports
+  // "ref not fetched" — which is not a wrong answer, but it is an EMPTY one, and an empty answer
+  // here silently falls back to the conservative heuristic while looking like it ran. One fetch of
+  // all candidate refs at once, quietly; a failure to fetch one branch is handled per-branch below.
+  const refs = rows.map((r) => r.branch).filter(Boolean);
+  if (refs.length) git(["fetch", "-q", "origin", "main", ...refs]);
+
+  const base = git(["rev-parse", "origin/main"]);
+  if (!base) return null;
+  let acc = base;
+  const taken = [];
+  const blocked = [];
+  for (const r of rows) {
+    const head = git(["rev-parse", `origin/${r.branch}`]);
+    if (!head) { blocked.push({ number: r.number, why: "ref not fetched — cannot test, excluded" }); continue; }
+    const tree = git(["merge-tree", "--write-tree", acc, head]);
+    if (tree) {
+      const commit = git(["commit-tree", tree.split("\n")[0], "-p", base, "-m", "trial"]);
+      if (!commit) { blocked.push({ number: r.number, why: "could not stage trial commit" }); continue; }
+      acc = commit;
+      taken.push(r.number);
+    } else {
+      blocked.push({ number: r.number, why: taken.length ? "conflicts with an earlier PR in this set" : "does not merge onto main" });
+    }
+  }
+  return { taken, blocked };
+}
+
+/** Run a git command, returning trimmed stdout, or null if it failed. */
+function git(args) {
+  try {
+    return execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+  } catch {
+    return null;
+  }
+}
+
 function classify(pr, verify, all) {
   if (verify === "failed" || all === "failed") return "CI-FAILED";
 
@@ -361,7 +427,34 @@ function main() {
           for (const pr of pairs) {
             console.log(`   #${pr.a} ∩ #${pr.b}  ${pr.files.slice(0, 3).join(", ")}${pr.files.length > 3 ? ` (+${pr.files.length - 3})` : ""}`);
           }
-          console.log(`\n  SAFE TO RELEASE TOGETHER: ${safe.length ? safe.map((n) => "#" + n).join(", ") : "(none — release one at a time)"}`);
+          // The file-overlap set is a FLOOR. Ask git what actually merges — it is routinely several
+          // times larger, and every PR it frees is finished work that would otherwise sit in the queue.
+          // The trial merge is ALWAYS authoritative when it can run — it asks git instead of guessing.
+          // Shown unconditionally, not only when it beats the heuristic: its most valuable output is
+          // the "does not merge onto main" list, which appears precisely when the set is SMALL and
+          // which the file-overlap heuristic structurally cannot produce.
+          const trial = trialMergeSet(jam);
+          if (trial) {
+            console.log(`\n  SAFE TO RELEASE TOGETHER: ${trial.taken.length ? trial.taken.map((n) => "#" + n).join(", ") : "(none — release one at a time)"}`);
+            if (trial.taken.length !== safe.length) {
+              console.log(`    (file-overlap heuristic said ${safe.length}; trial merge says ${trial.taken.length} — git is the authority)`);
+            }
+            const stuck = trial.blocked.filter((b) => b.why === "does not merge onto main");
+            if (stuck.length) {
+              // A PR can be a GREEN DRAFT and still not merge. CI ran against the PR's own head, not
+              // against the merge result, so these two facts are independent and one does not imply
+              // the other. Without this line such a PR looks releasable forever and quietly is not.
+              console.log(`\n  ⚠ green but will NOT merge onto main — needs a rebase: ${stuck.map((b) => "#" + b.number).join(", ")}`);
+              console.log(`    CI green and mergeable are different facts: CI ran on the PR's head, never on the merge.`);
+            }
+            const unknown = trial.blocked.filter((b) => b.why.startsWith("ref not fetched") || b.why.startsWith("could not stage"));
+            if (unknown.length) {
+              console.log(`\n  ⚠ could not TEST (excluded, not cleared): ${unknown.map((b) => "#" + b.number).join(", ")}`);
+            }
+          } else {
+            console.log(`\n  SAFE TO RELEASE TOGETHER: ${safe.length ? safe.map((n) => "#" + n).join(", ") : "(none — release one at a time)"}`);
+            console.log(`    (trial merge unavailable — falling back to the conservative file-overlap heuristic)`);
+          }
           if (unknown.length) console.log(`  UNKNOWN (file list unreadable, treat as unsafe): ${unknown.map((n) => "#" + n).join(", ")}`);
           console.log(`  Land one of an entangled pair, confirm it is in main, then release the next.\n`);
         }
