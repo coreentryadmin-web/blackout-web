@@ -21,8 +21,25 @@ verified PR into `main` once local checks (tsc/test/build/lint as applicable) an
 (`verify`) are green. Do **not** stop to ask for per-PR merge approval; do **not** wait for a
 human review. Enable GitHub auto-merge (`gh pr merge --auto --squash --delete-branch`) as soon as
 the PR is open and mergeable — the repo's `automerge.yml` does this automatically for `cursor/*`
-branches; agent branches named `fix/*` or `cursor/*` must still be merged by the agent if CI
-passes before the workflow fires. This supersedes any earlier "leave OPEN for end-of-day review"
+and `claude/*` branches; agent branches named `fix/*` must still be merged by the agent if CI
+passes before the workflow fires.
+
+**THE DRAFT DEADLOCK — read this before concluding "the agents are stuck" (2026-08-21).**
+On 2026-08-21 the fleet had **36 open PRs, 28 with `verify` GREEN, and not one could ever merge.**
+Nothing had failed: no red check, no error, no agent complaint. It read like a broken connection to
+the agents. It was not — the agents had finished correctly and handed over exactly as asked. Two
+standing instructions, each sensible alone, formed a deadlock:
+- the agent harness says **"create the pull request as a draft"**, so every agent PR is born a draft;
+- this file says **"do not auto-merge: draft PRs"**, so no agent PR is ever eligible.
+Compounding it, `automerge.yml` matched only `cursor/*`, so even an un-drafted `claude/*` PR was
+ignored. Both conditions failed independently — fixing either alone would have left the jam intact.
+**The draft gate is kept on purpose**: draft is the agent's own "still working" signal, and
+auto-undrafting would merge work the instant CI passed even if the agent had more to push.
+Resolving it is the COORDINATOR'S job, and it is a real review step, not a formality: read the
+green draft, then mark it ready (`PATCH /pulls/{n}` `{"draft":false}` or `gh pr ready`) and the
+workflow takes it from there. **A green draft that nobody marks ready is not "in progress" — it is
+finished work that has fallen out of the pipeline.** Sweep for them by state, never by memory of
+what was launched: `state=open AND draft=true AND verify=pass` is the query that finds the jam. This supersedes any earlier "leave OPEN for end-of-day review"
 language in `FINDINGS.md` or elsewhere. Still exercise judgment on scope/blast-radius per the PR
 write-up policy below, and still keep PRs small/single-issue — the standing authorization is for
 **merging**, not for skipping verification or scope discipline.
