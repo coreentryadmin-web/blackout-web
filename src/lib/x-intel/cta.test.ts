@@ -69,9 +69,11 @@ describe("selectCtaVariant — deterministic rotation", () => {
 });
 
 describe("buildCta", () => {
-  it("places the CTA in the reply, never the post body", () => {
+  it("places the CTA in the post body — operator decision, replacing the sign-off", () => {
+    // Originally built as a reply on reach grounds; the operator asked for a body CTA twice, which
+    // settles it. The field stays so the choice is visible and measurable, not so it can drift.
     for (const cta of previewAllCtas(CYCLE)) {
-      assert.equal(cta.placement, "reply");
+      assert.equal(cta.placement, "body");
     }
   });
 
@@ -101,11 +103,19 @@ describe("buildCta", () => {
     }
   });
 
-  it("SOFT carries no link at all", () => {
-    const soft = previewAllCtas(CYCLE).find((c) => c.variant === "SOFT");
-    assert.ok(soft);
-    assert.equal(soft.url, null);
-    assert.ok(!/https?:\/\//.test(soft.text));
+  it("every variant now carries a link — the CTA replaces the sign-off, so it must lead somewhere", () => {
+    // The operator asked for a link on every post. SOFT was previously the no-link variant; it now
+    // carries the site, so the rotation varies the WORDING and the DESTINATION rather than whether
+    // there is one at all.
+    for (const cta of previewAllCtas(CYCLE)) {
+      assert.ok(cta.url, `${cta.variant} has no link`);
+      assert.match(cta.text, /https?:\/\//, `${cta.variant} text carries no URL`);
+    }
+  });
+
+  it("rotates across at least three distinct destinations", () => {
+    const hosts = new Set(previewAllCtas(CYCLE).map((c) => new URL(c.url!).host));
+    assert.ok(hosts.size >= 3, `only ${hosts.size} destination(s): ${[...hosts].join(", ")}`);
   });
 
   it("carries no hashtags and no @tags other than our own handle", () => {

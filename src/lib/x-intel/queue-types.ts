@@ -102,10 +102,41 @@ export type XIntelAttachment = {
  * C7 — the specific numbers that produced the claim, not a restatement of the claim.
  * "call wall 7700 holds 3.2x the gamma of the next strike", never "strong resistance".
  */
+/**
+ * The horizon a level belongs to.
+ *
+ * ── WHY THIS FIELD EXISTS (2026-08-21, a real error) ───────────────────────────────────────────
+ *
+ * A package was drafted quoting `CALL WALL 7,900` for a post about THAT DAY'S session. The number
+ * was transcribed correctly from the attachment — but the attachment was the ALL-expiry view, where
+ * far-dated OpEx positioning dominates, and the post was about the next six hours.
+ *
+ * The near-dated read of the same ticker at the same minute was not merely a different number, it
+ * was the OPPOSITE STORY:
+ *
+ *   ALL  : SHORT GAMMA · net GEX -$39.2B · call wall 7,900 · vol EXPANDED   · "no gamma flip"
+ *   0DTE : LONG  GAMMA · net GEX -$13.4B · call wall 7,700 · vol SUPPRESSED · flip 7,633
+ *
+ * The draft told readers dealer hedging would AMPLIFY the move into a 09:45 print, on a session
+ * whose 0DTE book says dealers are stabilizing and volatility is suppressed.
+ *
+ * The operator's ALL-filter rule is a CAPTURE rule — it makes the screenshot show the whole book,
+ * and it is correct. The failure was in the COPY: an aggregate across every expiry was narrated as
+ * if it described today. So every cited value now carries the horizon it was read at, and the
+ * validator below refuses a session claim built on a far-dated aggregate.
+ */
+export const X_INTEL_HORIZONS = ["0dte", "near", "monthly", "all", "n/a"] as const;
+export type XIntelHorizon = (typeof X_INTEL_HORIZONS)[number];
+
 export type XIntelEvidence = {
   what: string;
   value: string;
   source: XIntelEvidenceSource;
+  /**
+   * Which expiry scope this value was read at. `n/a` for values with no expiry dimension — a spot
+   * price, a headline, a timestamp. Required on anything derived from an options book.
+   */
+  horizon?: XIntelHorizon;
 };
 
 /** One dated mark on the story's timeline — the "10:34 → 10:51 → 11:18" ladder. */
@@ -157,9 +188,10 @@ export type XIntelOutcome = {
 /**
  * The call to action, rotated per package and carried SEPARATELY from `post_copy`.
  *
- * `placement: "reply"` is the whole design: the intelligence goes in the post, the ask goes one
- * step behind it. See `cta.ts` for why — reach on a cold account, room inside 280 characters, and
- * keeping the post a demonstration rather than an advert.
+ * `placement` is "body" by operator decision (2026-08-21): the CTA is a rotating one-liner plus a
+ * link that REPLACES the `BLACKOUT // <PRODUCTS>` sign-off at the foot of the post. It stays a
+ * field rather than a constant so the choice is visible, reversible, and measurable once there is
+ * engagement data — see `cta.ts` for the reply-placement argument it overrode.
  *
  * `variant` is stored so the learning loop can attribute conversions to a specific CTA. A rotation
  * nobody records is just variety.
@@ -174,13 +206,15 @@ export const X_INTEL_CTA_VARIANTS = [
 
 export type XIntelCtaVariant = (typeof X_INTEL_CTA_VARIANTS)[number];
 
+export type XIntelCtaPlacement = "body" | "reply";
+
 export type XIntelCta = {
   variant: XIntelCtaVariant;
   /** Exactly what gets posted as the reply. */
   text: string;
   /** The tagged destination, or null for a variant that deliberately carries no link. */
   url: string | null;
-  placement: "reply";
+  placement: XIntelCtaPlacement;
 };
 
 /**
@@ -277,6 +311,11 @@ export type XIntelQueueRow = {
   skip_kind: XIntelSkipKind | null;
   /** Surfaces this cycle could not read. Empty means everything was legible, not that nothing was checked. */
   blind_spots: XIntelBlindSpot[];
+  /**
+   * True when the copy makes a claim about how TODAY'S session will or did behave, as opposed to
+   * describing structural positioning. Drives the horizon check in `readyBlockReason`.
+   */
+  session_claim: boolean;
   runners_up: XIntelRunnerUp[];
   /**
    * Filled in by a human after they publish. This is the join key the learning loop needs to get
@@ -310,7 +349,7 @@ export function readyBlockReason(
     XIntelQueueRow,
     "status" | "post_copy" | "attachments" | "chronology" | "underlying_evidence"
   > &
-    Partial<Pick<XIntelQueueRow, "skip_kind" | "blind_spots" | "products_referenced">>,
+    Partial<Pick<XIntelQueueRow, "skip_kind" | "blind_spots" | "products_referenced" | "session_claim">>,
 ): string | null {
   const blind = row.blind_spots ?? [];
 
@@ -359,6 +398,27 @@ export function readyBlockReason(
 
   if (!row.underlying_evidence.length) {
     return "READY requires at least one underlying_evidence entry — a claim with no numbers behind it";
+  }
+
+  // ── HORIZON ────────────────────────────────────────────────────────────────────────────────
+  //
+  // A package about TODAY'S SESSION must not rest on an all-expiry aggregate. See the comment on
+  // XIntelHorizon: the same ticker at the same minute read SHORT GAMMA / call wall 7,900 across
+  // all expiries and LONG GAMMA / call wall 7,700 at 0DTE. Quoting the first while writing about
+  // the next six hours is not a rounding error, it is the opposite claim.
+  const optionsEvidence = row.underlying_evidence.filter(
+    (e) => e.horizon != null && e.horizon !== "n/a",
+  );
+  if (optionsEvidence.length && optionsEvidence.every((e) => e.horizon === "all")) {
+    if (row.session_claim === true) {
+      return "every options-book value is read at the ALL-expiry scope, but the package makes a claim about today's session — far-dated positioning does not describe the next six hours";
+    }
+  }
+  const unlabelled = row.underlying_evidence.filter(
+    (e) => e.horizon == null && /wall|gamma|gex|flip|max pain|magnet|vol/i.test(e.what),
+  );
+  if (unlabelled.length) {
+    return `options-book value "${unlabelled[0]!.what}" carries no horizon — a level with no expiry scope cannot be checked against the claim`;
   }
 
   const chron = row.chronology;
