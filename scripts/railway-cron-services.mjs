@@ -18,6 +18,7 @@ export const CRON_SERVICE_NAMES = {
   "meridian-warm": "Meridian-Warm",
   "desk-warm": "SPX-Desk-Warm",
   "largo-cleanup": "Largo-Chat-CleanUp",
+  "largo-morning-brief": "Largo-Morning-Brief",
   "market-regime-detector": "Market-Regime-Detector",
   "membership-reconcile": "Membership-Reconcile",
   "welcome-sequence": "Welcome-Sequence",

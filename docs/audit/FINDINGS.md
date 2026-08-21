@@ -4,6 +4,18 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-21 — [FINDING, P1 ops] `largo-morning-brief` + `zerodte-grade` watchdog stale after schedule_cron_utc removal — FIXED (#2569)
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | ops-auto-fix #2569 flagged both crons stale/failed via `cron-staleness-watchdog` at ~12:40–13:00 UTC Fri 2026-08-21. `largo-morning-brief` had **zero** lambda invocations ever; `zerodte-grade` last ran Thu post-close but showed stale all day during RTH. |
+| **Root cause** | The 2026-08-21 monitoring-truth PR removed both `schedule_cron_utc` lines (correct while jobs were dark). EventBridge rules were provisioned separately (`blackout-production-largo-morning-brief` dual-band `25 13,14`, `blackout-production-zerodte-grade` `*/15 20-22`). Without `schedule_cron_utc`, `admin-cron-health.ts` cannot suppress off-window gaps — so `zerodte-grade` goes stale ~14h after its last post-close run, and `largo-morning-brief` reads **NEVER logged a run** every morning before 9:25 ET. |
+| **Fix** | Restored `schedule_cron_utc` matching live EventBridge + TOML (#2565 on main, plus `cron-audit-query.mjs` X-marketing filter and largo schedule-window tests in #2570). Seeded prod run rows via manual `hit-cron` with prod `CRON_SECRET`. |
+| **Evidence** | Post-fix: `node scripts/ops-collect-action-items.mjs` exit **0** · `npm run validate:cron` **GREEN** · watchdog `problem_keys` no longer includes either job. |
+| **Status** | FIXED — ops #2569. |
+
 ## 2026-08-21 — [FINDING, P1 Largo/Night Hawk] `get_nighthawk_horizons` manufactured the empty array it then counted — a 0DTE outage published as `open_count: 0` — FIXED
 
 > **kind:** `FINDING`
