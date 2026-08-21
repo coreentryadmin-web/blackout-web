@@ -5,6 +5,7 @@
  * so ledger PnL, intel lines, and Night Hawk dedupe never drift.
  */
 import type { ZeroDteSetupLogRow } from "@/lib/db";
+import { zeroDtePlaysToolEnvelope } from "@/lib/zerodte/feed-envelope";
 import { fetchNighthawkEchoForTickers, type EcosystemNightHawkTake } from "@/lib/bie/ecosystem-context";
 import { etNowParts, isTradingDayEt, nextTradingDayEt, todayEt } from "@/features/nighthawk/lib/session";
 import { fetchBenzingaNews } from "@/lib/providers/polygon";
@@ -1139,12 +1140,33 @@ export async function zeroDtePlaysForLargo(): Promise<Record<string, unknown>> {
           };
         });
 
+  // WHICH EMPTY IS THIS? `plays: []` served two completely different facts — "the scanner ran and
+  // nothing cleared the gates" and "the board could not be built or read" — and this payload
+  // carried nothing to tell them apart. Measured on production 2026-08-21, `get_zerodte_plays`
+  // returned no `available`, no `upstream_ok`, no `degraded`, no `reason` and no `note`, so an
+  // outage reads to the model exactly like a quiet session. That is the defect #2477 closed on the
+  // OTHER Largo surface (`zeroDtePlaysFeed`, the live feed) — this is the tool a member's question
+  // actually routes to, and it was never carrying the distinction.
+  //
+  // `board.upstream_ok` is the board's own degraded flag and already folds in `committedKnown`
+  // (`upstream_ok && committedKnown` at its construction site), so it answers precisely this
+  // question. On the unknown branch the envelope omits `plays` ENTIRELY rather than shipping an
+  // empty array, so nothing downstream can count zero and call it a measurement.
+  const envelope = zeroDtePlaysToolEnvelope({
+    upstreamOk: board.upstream_ok !== false,
+    session_date: board.session.date,
+    playCount: plays.length,
+  });
+  const known = envelope.available !== false;
+
   return {
     source: "0DTE Command (always-on scanner, /grid)",
-    session_date: board.session.date,
-    plays,
-    fresh_finds: fresh,
-    excluded_covered_elsewhere: board.covered_elsewhere,
+    ...envelope,
+    ...(known ? { plays } : {}),
+    // A board that could not be built has no setups either, so there are no fresh finds to
+    // report — and printing an empty list beside an unknown committed set repeats the same
+    // mistake one field over.
+    ...(known ? { fresh_finds: fresh, excluded_covered_elsewhere: board.covered_elsewhere } : {}),
     rules: "0DTE discipline: new directional plays 10:00–15:30 ET; stop -50%, trim +100%, hard exit 15:50 ET.",
   };
 }

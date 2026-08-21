@@ -50,7 +50,15 @@ const has = (n) => args.includes(`--${n}`);
 
 const TOKEN = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
 const REPO = flag("repo", "coreentryadmin-web/blackout-web");
-const PREFIXES = flag("prefix", "claude/,cursor/").split(",").filter(Boolean);
+// `fix/` and `batch/` are the COORDINATOR's own prefixes, and they are in the default set for a
+// reason learned the hard way: on 2026-08-21 this sweep was used all day to find agent PRs that had
+// gone green and stalled, while the coordinator's own #2456 sat green and drafted for six hours —
+// invisible to the tool because it was on `fix/`. The coordinator tracked it from memory ("that one
+// is in flight") instead of by state, which is precisely the failure this script exists to prevent,
+// committed by the person running it.
+//
+// A coordinator's own PRs are the ones NOBODY ELSE is watching. They belong in the sweep most of all.
+const PREFIXES = flag("prefix", "claude/,cursor/,fix/,batch/,docs/").split(",").filter(Boolean);
 const JSON_OUT = has("json");
 const MARK_READY = has("mark-ready");
 const LIMIT = Number(flag("limit", "0")) || 0;
@@ -69,16 +77,52 @@ if (!TOKEN) {
  * token sits nearly untouched. Measured 2026-08-21: MCP exhausted, REST 14,983/15,000 remaining.
  */
 function api(path, { method = "GET", body = null } = {}) {
-  const a = ["-s", "-X", method,
+  // `-w` appends the HTTP status on its own line. WITHOUT IT THIS FUNCTION CANNOT TELL A REAL
+  // ANSWER FROM A REFUSAL: a 403 returns `{"message":"..."}`, which parses as perfectly good JSON.
+  // The old version swallowed every failure into `null`, and `main()` then read a non-array as
+  // "no more pages" and reported **"0 open agent PRs"** — a clean, confident, entirely false
+  // all-clear from the one instrument built to catch silent jams. Found by the x-content lane,
+  // whose token was unauthorized for the whole run while the sweep told it the backlog was empty.
+  const a = ["-s", "-w", "\n%{http_code}", "-X", method,
     "-H", `Authorization: Bearer ${TOKEN}`,
     "-H", "Accept: application/vnd.github+json",
     `https://api.github.com/repos/${REPO}${path}`];
   if (body) a.push("-H", "Content-Type: application/json", "-d", JSON.stringify(body));
+
+  let raw;
   try {
-    return JSON.parse(execFileSync("curl", a, { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 }));
-  } catch {
-    return null;
+    raw = execFileSync("curl", a, { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
+  } catch (e) {
+    return { ok: false, status: 0, data: null, error: `curl failed: ${e.message}` };
   }
+  const nl = raw.lastIndexOf("\n");
+  const status = Number(raw.slice(nl + 1).trim());
+  let data = null;
+  try {
+    data = JSON.parse(raw.slice(0, nl));
+  } catch {
+    /* a non-JSON body is itself reported below via `ok` */
+  }
+  const ok = status >= 200 && status < 300;
+  // The API's own `message` is the most useful thing to show a human — "Bad credentials",
+  // "API rate limit exceeded", "Not Found" each imply a different next move.
+  const error = ok ? null : (data?.message ?? `HTTP ${status}`);
+  return { ok, status, data, error };
+}
+
+/** For calls whose failure must stop the run rather than shrink the answer. */
+function apiOrDie(path, what) {
+  const r = api(path);
+  if (!r.ok) {
+    console.error(`\nagent-pr-sweep: FAILED to ${what}.`);
+    console.error(`  HTTP ${r.status}: ${r.error}`);
+    if (r.status === 401) console.error("  The token is not valid for this repo. Check GITHUB_TOKEN/GH_TOKEN.");
+    if (r.status === 403) console.error("  Authorized but refused — usually a rate limit, or the repo is not in this session's scope.");
+    if (r.status === 404) console.error(`  ${REPO} is not visible to this token (a private repo returns 404, not 403).`);
+    console.error("\nRefusing to print a sweep. An empty roster and an unreachable API must never look the same.\n");
+    process.exit(2);
+  }
+  return r.data;
 }
 
 /** Roll many check runs into one verdict. Unknown must never read as pass. */
@@ -88,6 +132,52 @@ function summarizeChecks(runs) {
   const cc = runs.map((r) => r.conclusion);
   if (cc.some((c) => c === "failure" || c === "timed_out" || c === "cancelled")) return "failed";
   return "pass";
+}
+
+/**
+ * Which releasable PRs touch the same file — the ordering dependencies `automerge.yml` cannot see.
+ *
+ * WHY THIS EXISTS. On 2026-08-21 two individually-green PRs broke `main` when composed: #2482 fixed
+ * a file that #2421's new allowlist still listed as broken, so whichever merged second was wrong.
+ * `automerge.yml` merges by check-completion time, which is effectively random, so releasing both
+ * at once is a coin flip. `CLAUDE.md` now carries the rule; this is the check that makes it
+ * cheap enough to actually follow.
+ *
+ * `docs/` is excluded because `FINDINGS.md` collides between EVERY pair of agent PRs by
+ * construction — every lane appends at the same anchor. Including it would flag all N-choose-2
+ * pairs and the signal would be worth nothing. That collision is real but it is a known,
+ * mechanically-resolved one (`findings-merge-resolve.mjs`), not an ordering dependency.
+ */
+function collisionsAmong(rows) {
+  const files = new Map();
+  for (const r of rows) {
+    const res = api(`/pulls/${r.number}/files?per_page=100`);
+    if (!res.ok || !Array.isArray(res.data)) {
+      // An unreadable file list must not read as "touches nothing", which would report the PR as
+      // safe to release beside anything. Same absence-as-measurement trap as everywhere else.
+      files.set(r.number, null);
+      continue;
+    }
+    files.set(r.number, new Set(
+      res.data.map((f) => f.filename).filter((f) => !f.startsWith("docs/"))
+    ));
+  }
+
+  const pairs = [];
+  const unknown = [];
+  const nums = rows.map((r) => r.number);
+  for (const n of nums) if (files.get(n) === null) unknown.push(n);
+  for (let i = 0; i < nums.length; i += 1) {
+    for (let j = i + 1; j < nums.length; j += 1) {
+      const a = files.get(nums[i]); const b = files.get(nums[j]);
+      if (!a || !b) continue;
+      const shared = [...a].filter((f) => b.has(f));
+      if (shared.length) pairs.push({ a: nums[i], b: nums[j], files: shared.sort() });
+    }
+  }
+  const entangled = new Set(pairs.flatMap((p) => [p.a, p.b]));
+  const safe = nums.filter((n) => !entangled.has(n) && files.get(n) !== null);
+  return { pairs, safe, unknown };
 }
 
 function classify(pr, verify, all) {
@@ -102,17 +192,30 @@ function classify(pr, verify, all) {
 function main() {
   const open = [];
   for (let page = 1; page <= 5; page += 1) {
-    const batch = api(`/pulls?state=open&per_page=100&page=${page}`);
-    if (!Array.isArray(batch) || batch.length === 0) break;
+    const batch = apiOrDie(`/pulls?state=open&per_page=100&page=${page}`, `list open PRs (page ${page})`);
+    if (!Array.isArray(batch)) {
+      console.error(`agent-pr-sweep: page ${page} returned a 200 that is not an array. Refusing to guess.`);
+      process.exit(2);
+    }
+    if (batch.length === 0) break;
     open.push(...batch);
     if (batch.length < 100) break;
   }
   const agents = open.filter((p) => PREFIXES.some((pre) => p.head?.ref?.startsWith(pre)));
 
+  // Per-PR failures degrade a ROW rather than the run, so they must be counted and shown. A PR
+  // whose check-runs call failed lands in OTHER looking exactly like one with no checks — the same
+  // absence-as-measurement mistake as the listing bug above, one level down.
+  const degraded = [];
+
   const rows = agents.map((p) => {
-    const full = api(`/pulls/${p.number}`) ?? p;
-    const cr = api(`/commits/${p.head.sha}/check-runs`);
-    const runs = cr?.check_runs ?? [];
+    const fullRes = api(`/pulls/${p.number}`);
+    const crRes = api(`/commits/${p.head.sha}/check-runs`);
+    if (!fullRes.ok || !crRes.ok) {
+      degraded.push({ number: p.number, error: (fullRes.ok ? crRes : fullRes).error });
+    }
+    const full = fullRes.data ?? p;
+    const runs = crRes.data?.check_runs ?? [];
     const verify = summarizeChecks(runs.filter((r) => r.name.toLowerCase().includes("verify")));
     const all = summarizeChecks(runs);
     return {
@@ -132,21 +235,49 @@ function main() {
   for (const r of rows) (buckets[r.bucket] ??= []).push(r);
 
   if (JSON_OUT) {
-    console.log(JSON.stringify({ repo: REPO, total: rows.length, buckets }, null, 2));
+    console.log(JSON.stringify({ repo: REPO, total: rows.length, degraded, buckets }, null, 2));
   } else {
     console.log(`Agent PR sweep — ${REPO} (${rows.length} open agent PRs)\n`);
+    if (degraded.length) {
+      // Printed FIRST, before the buckets, because it changes how the buckets should be read.
+      console.log(`⚠ ${degraded.length} PR(s) could not be fully read — their bucket is a GUESS, not a verdict:`);
+      for (const d of degraded) console.log(`   #${d.number}  ${d.error}`);
+      console.log();
+    }
     for (const [name, list] of Object.entries(buckets).sort((a, b) => b[1].length - a[1].length)) {
       console.log(`${name}  (${list.length})`);
       for (const r of list) console.log(`  #${r.number}  ${r.title.slice(0, 76)}`);
       console.log();
     }
     const jam = buckets["READY-BUT-DRAFT"] ?? [];
+    const mine = jam.filter((r) => !r.branch.startsWith("claude/") && !r.branch.startsWith("cursor/"));
+    if (mine.length > 0) {
+      console.log(
+        `${mine.length} of these are on a COORDINATOR branch (${mine.map((r) => "#" + r.number).join(", ")}).\n` +
+        `Nobody else is watching those — an agent PR at least has a lane that will notice.\n`
+      );
+    }
     if (jam.length > 0) {
       console.log(
         `THE JAM: ${jam.length} PR(s) have green CI and are still drafts. That is finished work\n` +
         `outside the merge pipeline, not work in progress. Review, then mark ready:\n` +
         `  node scripts/audit/agent-pr-sweep.mjs --mark-ready --limit=5\n`
       );
+      if (jam.length > 1) {
+        const { pairs, safe, unknown } = collisionsAmong(jam);
+        if (pairs.length === 0) {
+          console.log(`No file collisions among them — releasing together is safe.\n`);
+        } else {
+          console.log(`⚠ ORDERING DEPENDENCIES — these pairs touch the same file, so releasing them`);
+          console.log(`  together lets automerge decide the order, and it decides by clock:`);
+          for (const pr of pairs) {
+            console.log(`   #${pr.a} ∩ #${pr.b}  ${pr.files.slice(0, 3).join(", ")}${pr.files.length > 3 ? ` (+${pr.files.length - 3})` : ""}`);
+          }
+          console.log(`\n  SAFE TO RELEASE TOGETHER: ${safe.length ? safe.map((n) => "#" + n).join(", ") : "(none — release one at a time)"}`);
+          if (unknown.length) console.log(`  UNKNOWN (file list unreadable, treat as unsafe): ${unknown.map((n) => "#" + n).join(", ")}`);
+          console.log(`  Land one of an entangled pair, confirm it is in main, then release the next.\n`);
+        }
+      }
     }
   }
 
