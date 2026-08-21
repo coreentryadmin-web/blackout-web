@@ -113,6 +113,20 @@ export type RetrievedChunk = { source: string; kind: string; chunk: string; simi
 // evidence pass yet; re-derive once real precedent queries accumulate.)
 export const DEFAULT_MIN_SIMILARITY = 0.3;
 
+/** How many stored chunks are pulled as ranking candidates. NOT a top-k — the
+ *  whole set is cosine-ranked in Node and only then cut to `k`.
+ *
+ *  This is the bound that governs how large the corpus can usefully get:
+ *  fetchBieKnowledge orders by `created_at DESC`, so anything past it is not
+ *  merely ranked lower, it is never scored. fetchBieKnowledge itself hard-caps
+ *  at 1000, so this cannot be raised past that without a db.ts change, and
+ *  raising it at all only moves the cliff — the real fix is ranking the corpus
+ *  (pgvector, or paging every embedded row) rather than its newest slice. Left
+ *  at the shipped value here deliberately: this PR makes the truncation VISIBLE
+ *  rather than silently re-tuning a number nobody has measured retrieval
+ *  quality against. See docs/audit/FINDINGS.md (2026-08-21, BIE ingestion caps). */
+export const RETRIEVAL_CANDIDATE_LIMIT = 800;
+
 /** `kind` optionally scopes retrieval to one knowledge kind (e.g. "precedent")
  *  instead of ranking across the whole corpus — same embed-and-cosine-rank
  *  logic either way, just a narrower candidate set from fetchBieKnowledge. */
@@ -126,7 +140,18 @@ export async function searchKnowledge(
   try {
     const [qEmb] = await embedTexts([query], "query");
     if (!qEmb) return [];
-    const rows = await fetchBieKnowledge({ limit: 800, kind });
+    const rows = await fetchBieKnowledge({ limit: RETRIEVAL_CANDIDATE_LIMIT, kind });
+    // Same rule as the ingestion caps, one layer down. fetchBieKnowledge is
+    // `ORDER BY created_at DESC LIMIT n`, so this is a RECENCY WINDOW, not the
+    // corpus — once the store exceeds it, the oldest chunks stop being
+    // rankable at all and retrieval silently answers from a subset. Saying so
+    // is the difference between a known bound and an invisible one.
+    if (rows.length >= RETRIEVAL_CANDIDATE_LIMIT) {
+      console.warn(
+        `[bie] retrieval candidate window SATURATED at ${RETRIEVAL_CANDIDATE_LIMIT}` +
+          `${kind ? ` (kind=${kind})` : ""} — older chunks are outside the ranked set`
+      );
+    }
     const scored = rows
       .filter((r): r is BieKnowledgeRow & { embedding: number[] } => Array.isArray(r.embedding))
       .map((r) => ({ source: r.source, kind: r.kind, chunk: r.chunk, similarity: cosine(qEmb, r.embedding) }))
@@ -143,6 +168,41 @@ export async function searchKnowledge(
 const DOC_DIRS = ["docs", "docs/bie", "docs/audit"];
 const ROOT_DOCS = ["AGENTS.md", "CLAUDE.md"];
 
+/** Ingestion bounds. Both are REPORTED, never silent — see SkippedDoc.
+ *
+ *  Why these are NOT simply raised (measured 2026-08-21, at 1.73M-char
+ *  FINDINGS.md): cost is not the binding constraint. A full first ingest of
+ *  FINDINGS.md is 1,799 chunks / 15 batched Voyage calls / ~464k tokens /
+ *  ~$0.028, and hash-dedup makes the recurring daily cost a median ~$0.0004
+ *  (worst observed day $0.0065, measured over 31 days of real history). Dedup
+ *  survives edits at the TOP of the file because chunkDocument resynchronises:
+ *  62.5% of FINDINGS.md's characters sit in paragraphs at or over the 1200-char
+ *  cap (single-line table rows), and each of those forces its own boundary — so
+ *  inserting a new entry does not re-chunk the 13k lines below it.
+ *
+ *  The binding constraint is RETRIEVAL, one layer down: searchKnowledge() ranks
+ *  whatever fetchBieKnowledge() returns, and that is `ORDER BY created_at DESC
+ *  LIMIT <=1000` — a RECENCY WINDOW, not the corpus. Today's ingested corpus is
+ *  ~513 doc chunks and fits. FINDINGS.md alone is 1,799 chunks = >2x the 800
+ *  the unscoped Largo path asks for, so ingesting it whole would evict every
+ *  other doc from retrieval entirely: knowledge would enter the store and leave
+ *  reach in the same run. Lifting either bound (or making the walk recursive —
+ *  137 .md files exist under docs/, only 63 are visible to DOC_DIRS) is blocked
+ *  on retrieval ranking the corpus rather than a recency window. Tracked in
+ *  docs/audit/FINDINGS.md (2026-08-21, BIE ingestion caps).
+ */
+export const MAX_INGEST_FILES = 40;
+export const MAX_DOC_CHARS = 400_000;
+
+/** What a bound DISCARDED, and why. Returned and logged so a cap can never
+ *  again present a truncated corpus as a complete one — the failure that let
+ *  FINDINGS.md sit un-ingested from 2026-07-31 without anything noticing. */
+export type SkippedDoc = {
+  source: string;
+  reason: "file_cap" | "size_cap" | "unreadable" | "store_failed";
+  detail?: string;
+};
+
 /** Hand-maintained on purpose — "is this stage done, is autonomy authorized" is
  *  a judgment call, not a fact grep can extract. Kept small and in one place
  *  (not buried in ARCHITECTURE.md prose) specifically so it stays cheap to
@@ -156,36 +216,85 @@ const BIE_STAGE_STATUS: { stage: string; status: string }[] = [
   { stage: "Stage 6 — using outcome data to calibrate live scoring", status: "NOT STARTED, NOT AUTHORIZED. Every precursor measurement (e.g. confluence outcomes) is read-only and reports numbers; none of it acts on them." },
 ];
 
-/** Ingest the platform's own knowledge: docs, findings, the latest Night Hawk
- *  edition recap. Hash-dedup makes this idempotent — unchanged content is free. */
-export async function ingestBieKnowledge(): Promise<{ stored: number }> {
-  if (!dbConfigured()) return { stored: 0 };
-  let stored = 0;
-
-  // Markdown docs (platform + audit knowledge).
-  const files: string[] = [];
+/** The ordered candidate list the ingest walks, exported so the guard test
+ *  exercises the REAL ordering rather than a copy of it that cannot regress.
+ *
+ *  ROOT_DOCS go FIRST, not last: CLAUDE.md and AGENTS.md define how this
+ *  platform operates, and appending them after the directory walk put them at
+ *  positions 64-65 of 65 — i.e. permanently past MAX_INGEST_FILES, so the two
+ *  most load-bearing documents in the repo were the only two guaranteed never
+ *  to reach the corpus. Nothing about them is optional enough to be tail.
+ *
+ *  Sorted within each dir: readdir(3) order is unspecified by POSIX and Node
+ *  does not sort. It comes back sorted on ext4, but production runs on an
+ *  overlayfs image layer — without this, WHICH files fall past the cap could
+ *  differ between environments, making the drop set irreproducible. */
+export function ingestCandidateDocs(): string[] {
+  const files: string[] = [...ROOT_DOCS];
   for (const dir of DOC_DIRS) {
     try {
-      for (const name of readdirSync(join(process.cwd(), dir))) {
-        if (name.endsWith(".md")) files.push(join(dir, name));
-      }
+      const names = readdirSync(join(process.cwd(), dir))
+        .filter((name) => name.endsWith(".md"))
+        .sort();
+      for (const name of names) files.push(join(dir, name));
     } catch {
       // missing dir in some deploys — fine
     }
   }
-  for (const name of ROOT_DOCS) files.push(name);
-  for (const rel of files.slice(0, 40)) {
+  return files;
+}
+
+/** Ingest the platform's own knowledge: docs, findings, the latest Night Hawk
+ *  edition recap. Hash-dedup makes this idempotent — unchanged content is free. */
+export async function ingestBieKnowledge(): Promise<{ stored: number; skipped: SkippedDoc[] }> {
+  if (!dbConfigured()) return { stored: 0, skipped: [] };
+  let stored = 0;
+  const skipped: SkippedDoc[] = [];
+
+  // Markdown docs (platform + audit knowledge).
+  const files = ingestCandidateDocs();
+  for (const rel of files.slice(MAX_INGEST_FILES)) {
+    skipped.push({ source: rel, reason: "file_cap", detail: `beyond first ${MAX_INGEST_FILES} docs` });
+  }
+  for (const rel of files.slice(0, MAX_INGEST_FILES)) {
+    // Read and store are caught SEPARATELY: a doc that read fine but failed to
+    // embed/insert is a different fact from one that could not be read, and
+    // reporting the second as the first would be exactly the kind of quiet
+    // mislabelling this reporting exists to end.
+    let text: string;
     try {
       // Read-then-bound (no stat-then-read TOCTOU): oversized docs are skipped
       // after the read. These are the repo's OWN markdown docs — a fixed,
       // deploy-time allowlist, never user input — and sending their content to
       // the configured embeddings provider is the documented purpose of this
       // function (docs/bie/ARCHITECTURE.md, Layer 2).
-      const text = readFileSync(join(process.cwd(), rel), "utf8");
-      if (text.length > 400_000) continue;
+      text = readFileSync(join(process.cwd(), rel), "utf8");
+    } catch (err) {
+      skipped.push({
+        source: rel,
+        reason: "unreadable",
+        detail: err instanceof Error ? err.message : String(err),
+      });
+      continue;
+    }
+    if (text.length > MAX_DOC_CHARS) {
+      skipped.push({
+        source: rel,
+        reason: "size_cap",
+        detail: `${text.length} chars > ${MAX_DOC_CHARS}`,
+      });
+      continue;
+    }
+    try {
       stored += await storeKnowledge(rel.includes("audit") ? "finding" : "doc", rel, text);
-    } catch {
-      // unreadable file — skip
+    } catch (err) {
+      // Fail-open per the rest of this function — one bad doc never aborts the
+      // daily ingest — but no longer fail-SILENT.
+      skipped.push({
+        source: rel,
+        reason: "store_failed",
+        detail: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 
@@ -296,5 +405,12 @@ export async function ingestBieKnowledge(): Promise<{ stored: number }> {
     // best-effort
   }
 
-  return { stored };
+  // Announce the truncation. A cap that reports itself is a design decision; a
+  // cap that stays quiet is a bug waiting to be found by accident — which is
+  // exactly how FINDINGS.md (the findings corpus itself) went un-ingested.
+  if (skipped.length > 0) {
+    const bySource = skipped.map((s) => `${s.source} (${s.reason})`).join(", ");
+    console.warn(`[bie] ingest skipped ${skipped.length} doc(s): ${bySource}`);
+  }
+  return { stored, skipped };
 }
