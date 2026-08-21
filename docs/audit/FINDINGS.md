@@ -55,7 +55,7 @@ Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 | **Also cleared in the same run** | The first audit pass reported a P2 console error (`Refused to apply style … MIME type 'text/plain'`) and a P2 deep-link failure. Both were **rollout artifacts**: the HTML being served referenced `_next/static/css/d7380981ce74f4a2.css`, which **404s** — a chunk from a build that had already been replaced. Once three consecutive HTML fetches agreed on the same four CSS hashes (all 200), a re-run showed both gone. Reporting pixel verdicts measured against a partially-unstyled page would have been trap #4 in a new dress, so they are recorded as transient, not as defects. |
 | **Still open, deliberately not in this PR** | Same run, `.mr` (Report) tab: `"Thermal nodes" ∩ "Vector expected move" 9x7px` and 4 clipped panel titles (`Vector expected move`, `Street / analysts`, `News & catalysts`, `Insider activity`), plus sub-24px tap targets on Report/Estimates/Positioning. Different root cause (grid column sizing, not tier geometry); a separate change. |
 | **Gates on Node 20.20.2** | `npx tsc --noEmit` clean · `npm test` **9043 pass / 0 fail** · `npm run build` clean · `npx eslint` clean. |
-| **Status** | FIXED — PR #____ (draft). The fix itself is **not yet live-verified**: it is held by the CSS contract test, and the pixels must be re-measured once it ships. |
+| **Status** | FIXED — PR #2497 (draft). The fix itself is **not yet live-verified**: it is held by the CSS contract test, and the pixels must be re-measured once it ships. |
 
 ## 2026-08-21 — [FINDING, P2 Largo] Rule-7 sweep of the HELIX lane — two more places absence was published as measurement — FIXED
 
