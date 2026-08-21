@@ -38,6 +38,22 @@ export type HelixOutcomeDistribution = {
   /** Graded rows whose outcome is none of continued/flat/reversed — 0 today. Present so an
    *  unrecognised grade can never be silently absorbed into one of the three real buckets. */
   otherCount: number;
+  /**
+   * The fired_at span of the GRADED rows this rate is computed over — oldest and newest, as the
+   * raw ledger timestamp (kept verbatim; the ET-session projection happens at the model boundary,
+   * where the timezone helpers live). NULL when nothing graded carries a parseable time.
+   *
+   * WHY: a rate is a number with no time until it names the window it covers. The follow-through
+   * ledger holds the 50 most-recent rows, and a signal cannot be graded until forward bars exist,
+   * so early in a session EVERY graded row is from a PRIOR session — measured live 2026-08-21 at
+   * 09:40 ET, all 40 graded fires were 2026-08-20 14:00–16:30 ET (17h+ old). The payload stamped
+   * `as_of` = NOW beside "62.5% continuation", so the rate read as current when it was entirely
+   * yesterday's afternoon. The COUNT scope (rows_summarized) was already disclosed; the TIME scope
+   * was not, and the newest 20 shown rows cannot reveal the oldest bound. These two fields make the
+   * rate's window statable: "62.5% over 40 fires between <oldest> and <newest>".
+   */
+  gradedOldestFiredAt: string | null;
+  gradedNewestFiredAt: string | null;
 };
 
 export type HelixSignalOutcomeSummary = HelixOutcomeDistribution & {
@@ -56,6 +72,25 @@ export type HelixSignalOutcomeSummary = HelixOutcomeDistribution & {
   bySignalType: Array<{ signal_type: string } & HelixOutcomeDistribution>;
 };
 
+/** Min/max of a set of ledger timestamps, returned as the ORIGINAL strings (unparsed, so no
+ *  timezone reinterpretation happens here — the model boundary owns the ET projection). Rows whose
+ *  fired_at will not parse are skipped rather than poisoning the span to Invalid Date. */
+function firedAtSpan(rows: HelixSignalOutcomeRow[]): { oldest: string | null; newest: string | null } {
+  let oldest: string | null = null;
+  let newest: string | null = null;
+  let oldestMs = Infinity;
+  let newestMs = -Infinity;
+  for (const r of rows) {
+    const raw = r.fired_at;
+    if (!raw) continue;
+    const ms = Date.parse(raw);
+    if (!Number.isFinite(ms)) continue;
+    if (ms < oldestMs) { oldestMs = ms; oldest = raw; }
+    if (ms > newestMs) { newestMs = ms; newest = raw; }
+  }
+  return { oldest, newest };
+}
+
 /** Distribution + continuation rate over one population. The rate is null below the min sample. */
 function distributionOf(rows: HelixSignalOutcomeRow[]): HelixOutcomeDistribution {
   const graded = rows.filter((r) => r.outcome !== "pending");
@@ -63,6 +98,9 @@ function distributionOf(rows: HelixSignalOutcomeRow[]): HelixOutcomeDistribution
   const flatCount = graded.filter((r) => r.outcome === "flat").length;
   const reversedCount = graded.filter((r) => r.outcome === "reversed").length;
   const gradedCount = graded.length;
+  // The rate describes the GRADED rows, so its window is the graded rows' span — NOT the fetched
+  // set's (whose newest rows are today's still-pending fires that the rate does not include).
+  const span = firedAtSpan(graded);
   return {
     gradedCount,
     pendingCount: rows.length - gradedCount,
@@ -77,6 +115,8 @@ function distributionOf(rows: HelixSignalOutcomeRow[]): HelixOutcomeDistribution
     // Derived by subtraction rather than by a fourth filter, so the four buckets ALWAYS sum to
     // gradedCount even if the grader gains a new outcome value.
     otherCount: gradedCount - continuedCount - flatCount - reversedCount,
+    gradedOldestFiredAt: span.oldest,
+    gradedNewestFiredAt: span.newest,
   };
 }
 
