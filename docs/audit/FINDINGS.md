@@ -2,7 +2,9 @@
 
 (Rebuilt 2026-07-13: the prior log was clobbered to an empty file by a squash-merge
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
-docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /## 2026-08-21 — [FINDING, P2 availability] One bad ticker took down the whole Thermal Discord cron, breach alerts included — FIXED
+docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
+
+## 2026-08-21 — [FINDING, P2 availability] One bad ticker took down the whole Thermal Discord cron, breach alerts included — FIXED
 
 > **kind:** `FINDING`
 
@@ -13,7 +15,9 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Blast radius** | Worse than a missing card: `runThermalBreachAlerts` runs AFTER this call, so one failing ticker also suppressed flip/wall breach alerts for the two HEALTHY tickers, plus the EOD recap. `ThermalCardColumn.heatmap` is already `GexHeatmap \| null` and every consumer filters `heatmap != null`, so the degraded path was designed for and simply unreachable. |
 | **Fix** | #2429 — `Promise.allSettled` per ticker (adopting **desk-warm's** allSettled shape rather than heatmap-warm's try/catch-in-loop, which keeps its core SPY/SPX/QQQ pulls sequential; the three Discord tickers are independent so parallel is strictly better here — one slow ticker no longer delays the others); a rejected ticker degrades to a null column and the healthy ones still post. Mapping extracted to `thermal-discord-columns.ts` (route-local, same pattern as the existing dedup/RTH helpers) with 5 unit tests. Failures are logged, never dropped silently: downstream a null column is indistinguishable from a cold cache, so a silent drop would hide a real upstream fault behind a benign-looking gap. |
 | **Checked and NOT a defect** | `runThermalEodRecap` self-guards on `isThermalEodRecapDue`, so calling it every tick posts nothing outside the 16:00-16:30 ET window. **Correction to my first note, which was too broad:** `thermal-discord-card.ts` (438-442 and 744) does label the card with the real matrix `asof` via `.find(Boolean)` with **no** fallback — but two sibling paths in the same feature DO fall back to `new Date().toISOString()`: `thermal-discord-extras.ts:109` (the `asOf` stamped onto every breach event) and `:218` (the EOD embed `timestamp`). Both require a NON-NULL heatmap that carries no `asof`, so neither is reachable today, and `:218` is Discord embed metadata with the real `asOf` printed beside it in the footer. Left unchanged — but a "checked, nobody re-investigate" note is exactly where that distinction has to be exact. |
-| **Status** | FIXED — tsc clean, 8691 pass / 0 fail on Node 20 (baseline `main` 8686/0, +5 = the new tests), eslint clean. |## 2026-08-21 — [FINDING, P1 Meridian] Prior-OpEx panel: SPX close never resolved, and every row carried TODAY's max pain — FIXED
+| **Status** | FIXED — tsc clean, 8691 pass / 0 fail on Node 20 (baseline `main` 8686/0, +5 = the new tests), eslint clean. |
+
+## 2026-08-21 — [FINDING, P1 Meridian] Prior-OpEx panel: SPX close never resolved, and every row carried TODAY's max pain — FIXED
 
 > **kind:** `FINDING`
 
@@ -29,7 +33,9 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Also fixed, same function** | `loadIntradayReaction` memoized its result in a process-lifetime `Map` **before** checking whether anything was read, so one empty fetch — an upstream blip, a rate-limit, or this very bug — became a permanent "this session has no reaction". It now caches only a real read. Caching a silent empty success is the same mistake the fix removes; storing it would have preserved that mistake past the fix. |
 | **Blast radius checked** | Every `fetchStockDailyBars`/`fetchIndexDailyBars`/`fetchIndexMinuteBars` call site in the repo was reviewed for the bare-root form. Inside Meridian, only `meridian-intraday-reaction.ts` had it (`meridian-reaction.ts` already used `I:SPX`). **Outside my lane, `src/lib/largo/technicals.ts` (lines 54, 160) relies on `fetchIndexDailyBars`'s default `limit="10"` over a 120-day / 40-day window — the fixed-cap-under-variable-window trap, which under `sort=asc` returns the OLDEST 10 sessions. Flagged for the owning lane, not touched here. CORRECTION: I first flagged the bare-root namespace trap there as well; that was wrong. Both sites resolve through `largoSymbol()`, which prefixes `I:` for SPX/VIX, and both index branches gate on `startsWith("I:")` — a bare root can never reach the fetcher. Only the cap trap applies.** |
 | **Regression guard** | `meridian-gex-reads.test.ts` +3 tests: strict refuses a settled expiry, the fallback variant is provably unchanged for the current-event caller, and both reject null heatmap / blank date / non-positive max pain. That last one caught a regression **introduced during this fix** — the refactor initially dropped the blank-date guard ahead of the fallback, which would have answered a dateless query with the book-wide number. `meridian-intraday-symbol.test.ts` (new, 3 tests) pins the `I:` derivation for SPX/VIX/NDX/RUT, `I:`-passthrough, and that an unknown root is never guessed into an index form. |
-| **Status** | FIXED. |## 2026-08-21 — [FINDING, P1 SEO/CWV] Homepage desktop CLS 0.55 — two decorative loops animated `top` instead of `transform` — FIXED
+| **Status** | FIXED. |
+
+## 2026-08-21 — [FINDING, P1 SEO/CWV] Homepage desktop CLS 0.55 — two decorative loops animated `top` instead of `transform` — FIXED
 
 > **kind:** `FINDING`
 
@@ -43,7 +49,9 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Deliberately NOT fixed here** | `@keyframes pipe-scanline` (line ~786) has the identical defect (`top:-1px → 100%`) but is gated behind `.pipe-stage.pipe-lit` and contributed **0** measured shifts in this window. It is left alone because the transform substitution is *not* a one-liner there: `translateY(100%)` resolves against the element's own 1px height, not the parent's, so an exact equivalent needs a different construction. Fixing an unmeasured thing with an inexact substitution is how a visual regression ships. Tracked as follow-up. |
 | **Status** | FIXED — PR `claude/seo-homepage-cls-transform-animations`. Gates on Node 20.20.2: `tsc --noEmit` clean, `npm run lint` clean (only pre-existing warnings in untouched files), `npm test` **8716 pass / 0 fail**, `npm run build` succeeded. `npm run lint:css` reports 6 errors — **identical 6 on `main`**, all pre-existing and none in the changed lines. |
 
-**Not yet verified live.** Deployed is not done — desktop CLS must be re-measured against production after deploy and confirmed at/near 0.## 2026-08-21 — [FINDING, P1 tooling] `largo-payload-hygiene.mjs` documented `--tools=a,b` and never parsed it — a scan you didn't run, reported as one you did — FIXED
+**Not yet verified live.** Deployed is not done — desktop CLS must be re-measured against production after deploy and confirmed at/near 0.
+
+## 2026-08-21 — [FINDING, P1 tooling] `largo-payload-hygiene.mjs` documented `--tools=a,b` and never parsed it — a scan you didn't run, reported as one you did — FIXED
 
 > **kind:** `FINDING`
 
