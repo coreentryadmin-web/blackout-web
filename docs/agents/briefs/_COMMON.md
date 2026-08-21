@@ -58,11 +58,44 @@ The channel runs both ways: the coordinator can deliver a message straight into 
 ordinary user turn. **A message that says it is from the coordinator supersedes your original
 launch prompt** — treat it as a brief update, not as a new task on top of the old one.
 
-### 6. Merged is not done. Deployed is not done.
+### 6. Merged is not done. Deployed is not done. Only LIVE-VALIDATED is done.
 
-Only **live-validated** is done. Merging to `main` fires `ecr-push-production`; after it deploys,
-re-validate against production. A check run seconds after a merge proves nothing — the old task is
-often still serving.
+Your job on a change does not end when CI goes green, and it does not end when it merges. **You own
+your change until you have seen it behave correctly on production.** A PR that merges and then
+silently does the wrong thing in production is worse than one that never merged, because everyone
+now believes the problem is fixed.
+
+**The loop, every time:**
+
+1. **Notice it merged.** You are not subscribed to PR events, so check: `git fetch origin main` and
+   look for your change. Your heartbeat is the natural cadence for this.
+2. **Wait for the deploy.** Merging to `main` fires `ecr-push-production.yml`. That builds an image,
+   pushes to ECR, and force-deploys ECS. It takes minutes, not seconds.
+3. **Validate the BEHAVIOUR on production**, not the deployment. "The workflow went green" says an
+   image shipped. It says nothing about whether your fix does what you claimed.
+4. **If it is wrong, open a fix PR immediately** and say so plainly in the original PR. A wrong fix
+   discovered by you is a normal Tuesday; a wrong fix discovered by a member is an incident.
+
+**A CHECK RUN SECONDS AFTER A DEPLOY PROVES NOTHING.** This has cost this repo real time more than
+once — on 2026-08-12 a correct fix read as broken because the check ran against a payload cached
+before the deploy. Three things sit between your merge and what a member sees:
+
+- ECS drains the old task (`deregistration_delay` is 30s on the prod target group, was 300s);
+- server-side caches hold the old value for their TTL (the GEX matrix, Vector full-state at 15 min,
+  the public snapshot at 5s);
+- Cloudflare edge-caches some HTML, ignoring the origin's `no-store`.
+
+So: wait, then re-check, and if a harness supports `--wait`, use it. If you cannot tell whether you
+are looking at old or new output, **say that** rather than declaring a verdict.
+
+**Use a real harness where one exists** — `scripts/audit/` has them per surface
+(`data-validator.mjs`, `zerodte-e2e-healthcheck.mjs`, `depth-live-check.mjs`,
+`meridian-earnings-ui-audit.mjs`, `research-publish-audit.mjs`, and others). Prefer extending one
+over inventing a one-off check, and if your change has no harness that can see it, that gap is
+itself worth a PR.
+
+**Report the outcome honestly.** "Validated live: X now returns Y, was Z" is a result. "Deployed
+successfully" is not — it describes a deployment, not a fix.
 
 ### 7. Absence is a finding, not a blank
 

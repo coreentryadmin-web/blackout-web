@@ -179,3 +179,30 @@ test("the reconciler is idempotent — a second --apply is a no-op", () => {
     "the reported classification changed between two runs over identical data"
   );
 });
+
+test("entry headings are never glued onto the end of another line", () => {
+  // A merge that drops the newline between two entries produces
+  //   | **Status** | FIXED. |## 2026-08-21 — [FINDING, ...
+  // which is SILENT: `entries()` splits on /\n(?=## )/, so the glued entry stops being an
+  // entry at all — it is absorbed into the one above it, inheriting that entry's `kind` tag
+  // and Status row. Every other test in this file therefore still passes while the finding
+  // has effectively vanished from the index. Four entries were in this state on 2026-08-21,
+  // from three different lanes, all introduced by batch conflict resolution.
+  //
+  // Matching on the full `## <date> — [` entry-heading shape rather than a bare "## " keeps
+  // the prose in "How to read this file" out of it — that section legitimately quotes
+  // `## … — FIXED` inside code spans, mid-line, and is not a heading.
+  const src = readFileSync(FINDINGS, "utf8");
+  const glued: string[] = [];
+  src.split("\n").forEach((line, i) => {
+    const idx = line.indexOf("## 2");
+    if (idx > 0 && /^## \d{4}-\d{2}-\d{2} — \[/.test(line.slice(idx))) {
+      glued.push(`line ${i + 1}: …${line.slice(Math.max(0, idx - 30), idx + 80)}`);
+    }
+  });
+  assert.deepEqual(
+    glued,
+    [],
+    "entry heading glued to the previous line — insert a blank line before it, or the entry is invisible to every other check here"
+  );
+});
