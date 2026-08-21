@@ -78,7 +78,26 @@ const ALL_EXPIRY_RULE =
 
 /** Operator rule 3 — a chart at its default fit is not evidence of a move. */
 const ZOOM_RULE =
-  "Zoom and scroll in until individual candles, gamma beads and wall bands are legible. The default page-load fit is not acceptable.";
+  "Zoom and scroll in until individual candles, gamma beads and wall bands are SEPARATELY legible. " +
+  "The bar is not 'the chart is visible' — it is that a reader can count the beads and read the " +
+  "wall bands without pinching. Beads rendered as a continuous cluster fail this even though the " +
+  "chart technically rendered, and the default page-load fit always fails it.";
+
+/**
+ * Operator rule 6 — vary the chart's own controls per post, not just the ticker.
+ *
+ * Vector carries several independent axes: horizon (0DTE / WEEKLY / MONTHLY), lens (GEX / VEX),
+ * timeframe, indicator set, and node density. The operator's exemplars use different combinations
+ * each time — a WEEKLY + GEX·2S NVDA chart and a 0DTE SPX chart are visibly different pictures of
+ * the same product, which is exactly the variety the feed needs. Holding these constant produces
+ * the same frame with a different ticker in it, which `visualNoveltyPenalty` will score down but
+ * should never have been generated in the first place.
+ */
+const VECTOR_FILTER_RULE =
+  "Vary the controls per post — horizon (0DTE/WEEKLY/MONTHLY), lens (GEX/VEX), timeframe, " +
+  "indicators and node density. Pick the combination that best proves THIS claim; never default " +
+  "to one. The frame should also carry the surrounding intel — GEX ladder rail, signals, wall " +
+  "integrity, confluence — not the bare chart.";
 
 export const X_INTEL_VIEW_CATALOG: ReadonlyArray<XIntelViewDef> = [
   // ── THERMAL — operator exemplars 2026-08-21 ───────────────────────────────────────────────
@@ -123,8 +142,8 @@ export const X_INTEL_VIEW_CATALOG: ReadonlyArray<XIntelViewDef> = [
     path: "/vector", visualization: "desk",
     reach: ["Open with ?ticker=.", "Pick horizon and timeframe.", "Zoom the chart in.", "Move the pointer OFF the chart so the crosshair tooltip clears."],
     verify: "candles rendered, beads settled, and the intel rail populated",
-    frame: "0DTE matrix rail + zoomed chart + right intel rail (Live Helix / scalp read / technicals)",
-    rth_only: false, operator_rule: ZOOM_RULE,
+    frame: "GEX ladder rail + zoomed chart + right intel rail (signals / swing range / technicals / wall integrity / confluence)",
+    rth_only: false, operator_rule: `${ZOOM_RULE} ${VECTOR_FILTER_RULE}`,
   },
   {
     id: "vector.fullscreen", surface: "vector", label: "Vector full-screen chart",
@@ -132,7 +151,7 @@ export const X_INTEL_VIEW_CATALOG: ReadonlyArray<XIntelViewDef> = [
     reach: ["Open with ?ticker=.", "Click FULL SCREEN.", "Zoom to the window the story is about."],
     verify: "the toolbar reads EXIT FULL SCREEN — otherwise full screen did not engage",
     frame: "toolbar + chart + volume pane, edge to edge",
-    rth_only: false, operator_rule: ZOOM_RULE,
+    rth_only: false, operator_rule: `${ZOOM_RULE} ${VECTOR_FILTER_RULE}`,
   },
   {
     id: "vector.compare", surface: "vector", label: "Vector compare — 4 charts",
@@ -218,6 +237,15 @@ export const X_INTEL_VIEW_CATALOG: ReadonlyArray<XIntelViewDef> = [
 
   // ── NIGHT HAWK ────────────────────────────────────────────────────────────────────────────
   {
+    id: "nighthawk.closed_winners", surface: "nighthawk", label: "Night Hawk closed — winning stack",
+    path: "/nighthawk", visualization: "closed_pnl",
+    reach: ["Open the 0DTE board.", "Select the CLOSED tab.", "Frame the winning rows only."],
+    verify: "the session P&L readout is present AND `nightHawkPostGate` passed — never frame this tab without it",
+    frame: "the CLOSED rows above +50%, with the session's total play count stated in the copy",
+    rth_only: false,
+    operator_rule: "Post Night Hawk ONLY for winning plays above 50%, or a green day with strong 0DTE plays — filtered by P&L. The CLOSED tab runs from +97% to -23% in one session, so an unfiltered screenshot of it advertises the losses. Gate lives in `nighthawk-gate.ts`.",
+  },
+  {
     id: "nighthawk.queue", surface: "nighthawk", label: "Night Hawk 0DTE board",
     path: "/nighthawk", visualization: "queue",
     reach: ["Open the 0DTE Command board."],
@@ -225,6 +253,8 @@ export const X_INTEL_VIEW_CATALOG: ReadonlyArray<XIntelViewDef> = [
     frame: "the board with directions and strikes legible", rth_only: true,
   },
   {
+    // Four sub-tabs per play — THESIS / MANAGEMENT / PNL / TIMELINE. Rotate them; four tabs is
+    // four distinct frames of one trade.
     id: "nighthawk.thesis", surface: "nighthawk", label: "Night Hawk thesis",
     path: "/nighthawk", visualization: "thesis",
     reach: ["Open the play for the story ticker, then its Thesis view."],
