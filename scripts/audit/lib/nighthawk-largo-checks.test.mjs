@@ -1,6 +1,7 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
 import {
+  largoAnswerErrored,
   condorDeniedExists,
   condorWinRateHasBreachCompanion,
   claimsMarketOpen,
@@ -8,6 +9,27 @@ import {
   pnlSignFlips,
   statedRatesAreSelfConsistent,
 } from "./nighthawk-largo-checks.mjs";
+
+test("largoAnswerErrored fails the internal-error fallback and passes a real answer (the false-green that hid an outage)", () => {
+  // The exact member-facing fallback runLargoQuery returns on a caught throw — must FAIL.
+  const fallback =
+    "**Verdict** — I hit an internal error before I could finish this answer.\n\n" +
+    "**Data** — The desk tools did not complete cleanly this turn. Retry in a moment, or ask a narrower question (one ticker or one desk).";
+  assert.equal(largoAnswerErrored(fallback).pass, false);
+  // Either half of the signature alone still trips it (wording tolerance).
+  assert.equal(largoAnswerErrored("Sorry, I hit an internal error.").pass, false);
+  assert.equal(largoAnswerErrored("The desk tools did not complete cleanly this turn.").pass, false);
+  // A real answer passes — the guard must not swallow genuine responses.
+  assert.equal(largoAnswerErrored("The iron condor wins ~92% with an ~18.7% intraday breach tail.").pass, true);
+  assert.equal(largoAnswerErrored("").pass, true);
+  // CRITICAL REGRESSION: the content graders pass VACUOUSLY on the fallback, so only this guard
+  // stands between an outage and a green run. Prove the vacuous passes so the guard's necessity
+  // is documented in code, not just prose.
+  assert.equal(condorDeniedExists(fallback).pass, true); // no denial phrase in the fallback
+  assert.equal(pnlSignFlips(fallback, [{ ticker: "X", realized_pnl_pct: 12 }]).pass, true); // no numbers
+  assert.equal(statedRatesAreSelfConsistent(fallback).pass, true); // no rates
+  assert.equal(sessionClaimMatchesPhase(fallback, "RTH").pass, true); // no session claim
+});
 
 test("condorDeniedExists catches the #2519 confabulation and passes an honest answer", () => {
   assert.equal(condorDeniedExists("Night Hawk does not have a dedicated iron condor setup type.").pass, false);

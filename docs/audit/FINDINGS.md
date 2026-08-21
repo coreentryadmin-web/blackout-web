@@ -4,6 +4,21 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-21 — [FINDING, P1 Night Hawk/tooling] The Largo stress harness graded the internal-error fallback as PASS — it reported "ALL PASS · #2519 verified" while live Largo was erroring on 78% of questions — FIXED (harness); live outage escalated separately
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `scripts/audit/nighthawk-largo-stress.mjs` printed `=== ALL PASS ===` (incl. `condor-exists ✅`) during live RTH — while, on the same authenticated member path, `/api/market/largo/query` was returning the internal-error fallback (`"**Verdict** — I hit an internal error… The desk tools did not complete cleanly this turn."`) to **7 of 9 questions across every lane** (condor×3, plays-only, banger control, + 2 in the re-run). The harness's green was a lie: it "verified" a condor fix against an answer that was an error page. |
+| **Root cause** | `runLargoQuery` catches any throw in the tool loop and returns the fixed fallback as a normal **HTTP 200** answer body (`largo-terminal.ts:1134`). The harness's `ask()` only treated `!res.ok` as an error, so the fallback text flowed straight into the content graders — and **every content grader passes vacuously on it**: it contains no denial phrase (`condorDeniedExists` → pass), no win-rate number (`condorWinRateHasBreachCompanion` → pass), no P&L number (`pnlSignFlips` → pass), no session claim (`sessionClaimMatchesPhase` → pass), no rate (`statedRatesAreSelfConsistent` → pass). A verification tool that returns GREEN through the exact outage it exists to catch is worse than none. |
+| **Evidence / reproduction** | Live, 2026-08-21 ~14:20–14:50Z (RTH, market OPEN). 7/9 member-path questions returned the fallback (`~78%`); the 2 successes (banger, gate) prove it is intermittent, not a hard-down, and that auth/session are fine. `/api/market/largo/status` was `200`, all 6 systems `live`, `dataAgeSec 9` — and that endpoint itself calls `zeroDtePlaysForLargo()` successfully, so the **product data readers are healthy**; the fault is isolated to the shared Anthropic-tool-loop path, not any lane's data (and NOT #2519 — the condor descriptor content was independently re-verified honest against the engine constants). |
+| **Blast radius** | Every check in this harness, and by construction any Largo-answer grader that keys off answer CONTENT — a non-answer satisfies a "must NOT contain X" assertion for free. The same vacuous-pass shape would hide an outage in any future content grader added here. |
+| **Fix** | New pure, unit-tested guard `largoAnswerErrored(answer)` in `scripts/audit/lib/nighthawk-largo-checks.mjs` matches the fallback's stable signature (whitespace/markdown-tolerant). The harness loop now runs it FIRST and hard-FAILs the check on a fallback — content graders never see a non-answer. Re-run live immediately after: the harness correctly reported `2 FAIL` on the erroring questions instead of `ALL PASS`. |
+| **Fix rationale** | Detect-and-fail at the harness boundary rather than teach each grader to recognise an error — one guard, one place, covers every current and future content grader. The guard is deliberately narrow (two literal signature phrases) so a real answer is never swallowed; a unit test pins BOTH the guard's verdict and the vacuous passes it defends against, so the blind spot cannot silently reopen. |
+| **Gates on Node 20.20.2** | `node --test scripts/audit/lib/nighthawk-largo-checks.test.mjs` 7/7 (1 new, asserting the fallback fails AND that all four content graders pass vacuously on it); live re-run flipped `ALL PASS` → `2 FAIL`. |
+| **Status** | FIXED (harness) — this PR (draft). **The live Largo intermittent-error outage it uncovered is a SEPARATE, unfixed item, above this lane** (shared query/tool-loop path; root cause needs the server-side `[largo/runLargoQuery] detail:` log). Escalated to the coordinator — not fixed here, and this PR makes no claim to fix it. |
+
 ## 2026-08-21 — [FINDING, P1 Thermal/Largo] `get_positioning` hid a nearer gamma flip — Largo told a member a 1%-fragile regime was a "comfortable 7% cushion" — FIXED
 
 > **kind:** `FINDING`

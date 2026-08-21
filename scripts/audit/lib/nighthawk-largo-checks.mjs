@@ -17,6 +17,37 @@
 
 const lower = (s) => (typeof s === "string" ? s.toLowerCase() : "");
 
+/**
+ * Did Largo return its internal-error FALLBACK instead of a real answer?
+ *
+ * WHY THIS EXISTS — the false-green that hid a total outage (measured live 2026-08-21). When
+ * `runLargoQuery` catches a throw anywhere in the tool loop it returns a fixed member-facing
+ * fallback ("**Verdict** — I hit an internal error… The desk tools did not complete cleanly this
+ * turn.") as a normal HTTP 200 answer body. EVERY content grader below passes VACUOUSLY on that
+ * text: it names no denial phrase, cites no win-rate number, makes no market-open claim, states no
+ * rate — so `condorDeniedExists`, `pnlSignFlips`, `sessionClaimMatchesPhase` and
+ * `statedRatesAreSelfConsistent` all return `{ pass: true }`. The harness then printed "ALL PASS"
+ * while live Largo was returning an internal error to 7 of 7 questions across every lane.
+ *
+ * A grader that passes on a non-answer is worse than no grader: it reports GREEN through the exact
+ * outage it exists to catch. So the harness must detect the fallback FIRST and hard-FAIL the check
+ * — never run a content grader on an answer that isn't one. Matches on the fallback's stable
+ * signature (`largo-terminal.ts`), tolerant of whitespace/markdown, so a wording tweak there does
+ * not silently re-open the blind spot.
+ */
+export function largoAnswerErrored(answer) {
+  const a = lower(answer);
+  const errored =
+    a.includes("i hit an internal error") ||
+    a.includes("desk tools did not complete cleanly");
+  return {
+    pass: !errored,
+    detail: errored
+      ? "Largo returned its internal-error fallback — NOT a real answer (content graders skipped; this is an outage, not a pass)"
+      : "answer is a real response, not the internal-error fallback",
+  };
+}
+
 /** The #2519 signature: denying the iron condor is a real product. */
 export function condorDeniedExists(answer) {
   const a = lower(answer);
