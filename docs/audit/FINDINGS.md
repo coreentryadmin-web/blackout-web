@@ -257,6 +257,23 @@ Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 | **Gates on Node 20.20.2** | `npx tsc --noEmit` clean · `npm test` **9043 pass / 0 fail** · `npm run build` clean · `npx eslint` clean. |
 | **Status** | FIXED — PR #2497 (draft). The fix itself is **not yet live-verified**: it is held by the CSS contract test, and the pixels must be re-measured once it ships. |
 
+## 2026-08-21 — [FINDING, P2 Meridian] "100% beat rate over 16 prints" — on a name with 8 prints. A cohort I added, in the wrong unit — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **How it was found** | Largo-mastery stress test: reading the live `intel.report` pillars for NVDA to check whether the desk can answer *"why does it lean that way"*. It can — 9 pillars with lean, weight and evidence. One of them read: `history bullish w=1 score=1 "100% beat rate over 16 prints"`. **NVDA has 8 prints.** |
+| **Mine, from earlier today** | #2513 made `combined_beat_rate` **pooled** — `(epsBeats + revBeats) / (epsN + revN)` — which is right, and is what makes a 1-print revenue rate stop outweighing an 8-print EPS rate. But `combined_graded` is then a count of **READINGS**, not prints: 8 prints graded on both measures give 16. I passed that number to `beat_rate_graded`, and both consumers render it as `"over N prints"`. |
+| **Why it matters more than a wording slip** | The whole point of #2513 was that a rate without its denominator is not a fact about the company. A rate with the **wrong** denominator is worse — it is a false statement about the sample size, stated confidently, in the one place a reader goes to check the sample size. It also inflates apparent confidence by exactly 2×. |
+| **Fix** | `dualBeatRateFromPrints` now also returns `prints_graded` — distinct prints with at least one gradeable measure — and the intel layer passes that to `beat_rate_graded`. `combined_graded` stays, because it is the honest denominator of the pooled rate; its doc comment now says outright that it is readings and must never be rendered as prints. |
+| **Either, not both** | `prints_graded` counts a print graded on EITHER measure. A print with revenue but no EPS still happened and still informs the revenue rate; requiring both would undercount the sample in the opposite direction. |
+| **Regression guard** | 3 tests in `meridian-benzinga-earnings-core.test.ts`: the live 8-print case reports `combined_graded 16` and `prints_graded 8` with an explicit `notEqual` so conflating them fails; a mixed-grading fixture where 3 of 4 prints contribute something gives `combined_graded 4, prints_graded 3`; and the original 2-print case now asserts both. |
+| **Also confirmed by the same probe — not defects** | `intel.report` carries verdict/score/confidence and 9 weighted pillars; `intel.thermal` carries spot, king strike, call/put wall, gamma flip and max pain; `expected_vs_realized` reads `{expected 7.7%, realized -1.77%, ratio 0.23, verdict "under"}` — and **-1.77 is `reaction_pct`, not `session_change_pct`**, so #2488 flows correctly into the implied-vs-realized comparison. I probed `d.report` and `intel.call_wall` first, found nothing, and nearly filed two phantom findings; both live one level down. Recorded so the next reader uses the right paths. |
+| **Still genuinely absent** | No explicit conflict/dissent field. The pillar leans make disagreement derivable (NVDA: 5 bullish / 0 bearish / 4 neutral), but a consumer has to compute it. Raised, not fixed here. |
+| **Gates on Node 20.20.2** | `npx tsc --noEmit` clean · `npm test` **9300 pass / 0 fail** · `npm run build` clean · `npx eslint` clean. |
+| **Status** | FIXED — PR #____ (draft). |
+
 ## 2026-08-21 — [FINDING, P2 Largo] Rule-7 sweep of the HELIX lane — two more places absence was published as measurement — FIXED
 
 > **kind:** `FINDING`
