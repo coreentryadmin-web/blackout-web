@@ -1,6 +1,7 @@
 import type { FlowAlert } from "@/lib/api";
 import { executionRouteKey, daysToExpiry } from "@/features/helix/lib/helix-flow-format";
 import { HELIX_NET_PREMIUM_LEADERS_LIMIT } from "@/features/helix/lib/helix-strike-leaders";
+import { WHALE_PRINT_PREMIUM } from "@/features/helix/lib/helix-flow-limits";
 import { etStamp } from "@/lib/largo/temporal/bar-session-date";
 import { flowEventTimeMs } from "@/lib/flow-timestamp";
 
@@ -159,9 +160,6 @@ export function expiryConcentration(alerts: FlowAlert[], limit = 8, now: Date = 
     .sort((a, b) => b.premium - a.premium)
     .slice(0, limit);
 }
-
-/** Premium at or above which a print is called a whale, on both this surface and the tape. */
-export const WHALE_PRINT_PREMIUM = 1_000_000;
 
 /**
  * Session-wide call/put skew from the tape.
