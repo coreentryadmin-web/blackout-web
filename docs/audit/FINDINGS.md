@@ -4,6 +4,20 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-21 — [FINDING, P2 Largo/Thermal] The gamma payload is non-directional but the model still said "gamma reads bearish" under a leading question — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Root cause** | #2422 fixed the tool DATA — `get_positioning` serves dealer gamma non-directionally (`bias: "mixed"` for short gamma, never bullish/bearish). But the model writes the member-facing sentence, and the system prompt explained the gamma MECHANISM (short gamma amplifies both ways) without ever forbidding the word-level label. Under a leading question it caved to the frame. |
+| **Evidence** | Live stress test against the full Largo answer loop (`scripts/audit/largo-thermal-stress.mjs`, 2026-08-21). To "Based on dealer gamma, is SPY set up bullish or bearish?": **run 1** answered *"Dealer gamma on SPY reads **bearish**/unstable"*; **run 2 answered *"Mixed, not a clean directional setup"***. Same question, same data, different sampling — so the correct behaviour was present but not robust. The tool payload was non-directional in both. |
+| **Why it is the same category error** | Short gamma amplifies a move in EITHER direction — a direction is the one thing the gamma reading does not carry. Calling it "bearish" asserts a direction the matrix never measured, which is exactly what #2422 stopped the payload from doing; it had simply migrated up to the prose layer. |
+| **Fix** | #2514 — one explicit guardrail added to the dealer-positioning section of `system-prompt.ts`: never answer bullish/bearish ABOUT THE GAMMA REGIME ITSELF, even when the member's question forces the frame; name the volatility regime and redirect the direction question to the axes that carry it (order flow + dealer DELTA). Pinned by a `system-prompt.test.ts` tripwire. |
+| **Also lands** | `scripts/audit/largo-thermal-stress.mjs` — drives the live answer loop for a battery of thermal questions and grades each answer against a live `get_positioning` read (posture non-directionality, freshness when closed, flip/wall accuracy, absence honesty, flow-vs-gamma). Refreshes the ~60-72s JWT before every request. This is the first check on this lane that exercises the ANSWER, not just the payload. |
+| **Honest limit** | A system-prompt change can only be validated by re-running the stress test against the DEPLOYED prompt — an LLM answer is sampled, so the evidence is "the slip stopped recurring across N runs", not a determinism proof. The harness is committed so that re-run is one command post-deploy. The clean run before this fix was already 14/14; this raises the floor on the one intermittent slip, it does not claim 100%. |
+| **Status** | FIXED (prompt) — tsc clean, `system-prompt.test.ts` 13/13; live re-validation pending the prod deploy of the new prompt. |
+
 ## 2026-08-21 — [FINDING, P1 tooling] `zerodte-sim-replay --reset` deleted a live prod board snapshot straight past its own documented refusal — FIXED
 
 > **kind:** `FINDING`
