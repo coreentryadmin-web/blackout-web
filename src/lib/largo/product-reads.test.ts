@@ -70,6 +70,7 @@ mock.module("../banger/positions-db", {
 let bangerBoardForLargo: typeof import("./product-reads").bangerBoardForLargo;
 let nighthawkHorizonsForLargo: typeof import("./product-reads").nighthawkHorizonsForLargo;
 let zerodteRecordForLargo: typeof import("./product-reads").zerodteRecordForLargo;
+let nighthawkOutcomesForLargo: typeof import("./product-reads").nighthawkOutcomesForLargo;
 let thermalCompareRow: typeof import("./product-reads").thermalCompareRow;
 let etSessionNow: typeof import("./product-reads").etSessionNow;
 let ageSecondsFrom: typeof import("./product-reads").ageSecondsFrom;
@@ -79,6 +80,7 @@ before(async () => {
     bangerBoardForLargo,
     nighthawkHorizonsForLargo,
     zerodteRecordForLargo,
+    nighthawkOutcomesForLargo,
     thermalCompareRow,
     etSessionNow,
     ageSecondsFrom,
@@ -219,6 +221,53 @@ describe("zerodteRecordForLargo — empty and ungraded windows", () => {
     assert.equal(rec.graded, 0);
     assert.equal(rec.losses, 0, "an ungraded play is not a loss");
     assert.equal(rec.win_rate_pct, null);
+  });
+});
+
+// Live 2026-08-21, get_nighthawk_outcomes shipped raw 26-column rows and no computed rate.
+// Largo answered the 30-day Night Hawk track record as "5 plays, 2 resolved, 40% win rate"
+// against a real 74 resolved / 50%, deriving the rate as "2 wins / 5 total" — an invented
+// denominator on a member-visible credibility number.
+describe("nighthawkOutcomesForLargo — the record must arrive computed, not derived", () => {
+  it("carries a server-computed rate WITH the denominator it was computed over", async () => {
+    const r = (await nighthawkOutcomesForLargo(30)) as Record<string, unknown>;
+    if (r.available === false) return; // db-less environment
+    for (const key of ["total_resolved", "pending_count", "win_rate", "decided_count", "low_n"]) {
+      assert.ok(key in r, `missing aggregate the model would otherwise have to derive: ${key}`);
+    }
+  });
+
+  it("fits the transport cap, so nothing is left to truncate", async () => {
+    const r = await nighthawkOutcomesForLargo(30);
+    if ((r as Record<string, unknown>).available === false) return;
+    const chars = JSON.stringify(r).length;
+    assert.ok(chars < MAX_TOOL_RESULT_CHARS, `${chars} chars vs cap ${MAX_TOOL_RESULT_CHARS}`);
+  });
+
+  it("states the true total when the row list is a sample", async () => {
+    const r = (await nighthawkOutcomesForLargo(30)) as Record<string, unknown>;
+    if (r.available === false) return;
+    assert.equal(typeof r.plays_total, "number");
+    assert.equal(r.plays_included, (r.plays as unknown[]).length);
+    // The rate must be read off the aggregate, never counted from the sample.
+    assert.match(String(r.plays_note), /never count these rows/i);
+  });
+
+  it("drops the blob columns from the model's copy", async () => {
+    const r = (await nighthawkOutcomesForLargo(30)) as Record<string, unknown>;
+    if (r.available === false) return;
+    for (const p of (r.plays ?? []) as Array<Record<string, unknown>>) {
+      for (const blob of ["publish_context", "morning_verdict", "debrief"]) {
+        assert.ok(!(blob in p), `${blob} must not ride the model's copy`);
+      }
+    }
+  });
+
+  it("degrades honestly when the database is unreachable", async () => {
+    // Not an empty record — an UNKNOWN. Reporting 0 resolved would be a fabricated all-clear.
+    const r = (await nighthawkOutcomesForLargo(-1)) as Record<string, unknown>;
+    assert.ok("available" in r);
+    if (r.available === false) assert.ok(r.degraded === true || typeof r.reason === "string");
   });
 });
 
