@@ -429,3 +429,35 @@ removed) deployed** — so this is the "before" column for tomorrow's comparison
    everyone (~442 samples, 60s median) including SPX — no per-ticker bias there. On 0dte/weekly/
    monthly, SPX sits at 3845-3964 samples / 5s median while every other name is 64-750 with 35-70
    minute holes. That is the viewing-drives-density effect #2322 removes.
+
+## 2026-08-21 — Largo truncation probe, first live run (Night Hawk lane)
+
+New harness `scripts/audit/largo-truncation-probe.mjs`. Asks the LIVE agent whether each tool's
+raw `tool_result` ended with the transport's `…[truncated]` marker — the question no prior Largo
+audit asked, and the only way to answer it from this sandbox (the in-process hygiene scanner
+cannot reach any DB-backed tool here).
+
+```
+CONTROL get_nighthawk_outcomes -> TRUNCATED
+  instrument PROVEN — it detected a real truncation, so COMPLETE below means clean
+
+  ✅ get_zerodte_record         COMPLETE
+  ✅ get_zerodte_plays          COMPLETE
+  ✅ get_nighthawk_edition      COMPLETE
+  ❌ get_nighthawk_outcomes     TRUNCATED
+
+=== 1 TRUNCATED · 3 clean · 0 unverified · 0 indeterminate ===
+```
+
+Two results worth recording:
+
+1. **#2433 and #2436 are confirmed holding in PRODUCTION**, not merely CI-green — `get_zerodte_record`
+   and `get_nighthawk_edition` both come back COMPLETE, and `get_zerodte_record`'s last visible key
+   is `plays`, which is exactly the aggregates-first / sample-last shape #2433 shipped.
+2. **The control fired**, so the three COMPLETEs are trustworthy negatives rather than a run that
+   silently never reached the model. `get_nighthawk_outcomes` is the tool #2480 fixes and is still
+   truncated on the deployed build, as expected.
+
+Swept separately with the same probe and also COMPLETE: `get_nighthawk_dossier` (last key
+`archived`), `get_cortex_decision` (`context`), `get_horizon_outcomes` (`sample`).
+
