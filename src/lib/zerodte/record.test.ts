@@ -496,3 +496,44 @@ test("Fix 4a: a MECHANICAL exact-0 plan pnl is a breakeven too, not a loss", () 
   assert.equal(rec.mechanical.breakeven, 1);
   assert.equal(rec.mechanical.losses, 0);
 });
+
+test("buildZeroDteRecord: condor rows stay OUT of the directional headline and populate their own record", () => {
+    const rec = buildZeroDteRecord(
+      [
+        // Two directional plays: one win, one loss.
+        row({ ticker: "SPY", plan_outcome: "doubled", plan_pnl_pct: 80 }),
+        row({ ticker: "QQQ", plan_outcome: "stopped", plan_pnl_pct: -50 }),
+        // Two condors, tagged by entry_context.play_type — one closed inside, one breached.
+        row({ ticker: "SPX", plan_outcome: "condor_win", plan_pnl_pct: 12, entry_context: { play_type: "CONDOR" } }),
+        row({ ticker: "NDX", plan_outcome: "condor_breach_loss", plan_pnl_pct: -60, entry_context: { play_type: "CONDOR" } }),
+      ],
+      { since: "2026-07-01", through: "2026-07-13", days: 13 },
+    );
+    // The directional headline sees ONLY the two directional plays — the condor breach is NOT a
+    // directional loss, and the condor credit is NOT a directional win.
+    assert.equal(rec.total_flagged, 2, "condors are not in the directional row count");
+    assert.equal(rec.graded, 2);
+    assert.equal(rec.wins, 1);
+    assert.equal(rec.losses, 1);
+    assert.equal(rec.win_rate_pct, 50);
+    // No condor outcome leaked into the directional by_outcome buckets.
+    const labels = rec.by_outcome.map((b) => b.label);
+    assert.ok(!labels.some((l) => /condor/i.test(l)), `condor leaked into directional buckets: ${labels}`);
+    // The condor lane carries its own realized record.
+    assert.equal(rec.condor.committed, 2);
+    assert.equal(rec.condor.graded, 2);
+    assert.equal(rec.condor.wins, 1);
+    assert.equal(rec.condor.breach_losses, 1);
+    assert.equal(rec.condor.win_rate_pct, 50);
+    assert.equal(rec.condor.breach_rate_pct, 50);
+  });
+
+test("buildZeroDteRecord: an all-directional window reports an empty condor lane with no live record", () => {
+    const rec = buildZeroDteRecord(
+      [row({ ticker: "SPY", plan_outcome: "doubled", plan_pnl_pct: 80 })],
+      { since: "2026-07-01", through: "2026-07-13", days: 13 },
+    );
+    assert.equal(rec.total_flagged, 1, "the directional numbers are untouched by the condor lane");
+    assert.equal(rec.condor.committed, 0);
+    assert.equal(rec.condor.no_live_record, true);
+  });
