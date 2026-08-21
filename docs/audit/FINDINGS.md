@@ -4,6 +4,21 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-21 — [FINDING, P1 Largo/core] Largo declines dealer-positioning questions post-close although the cached matrix is warm — the tool is never called — REPRODUCED (fix is Largo-core, flagged for coordinator)
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | ~13:17–13:25 ET (17–25 min after the cash close), `POST /api/market/largo/query` answers every dealer-positioning question with **"I couldn't pull enough live data to answer that — try naming a ticker or asking about SPX structure"**, on 3/3 retries, using only the `live_feed_capture` / `platform_vitals_prefetch` prefetch steps and **never calling `get_positioning`**. It is not thermal-specific: a Night Hawk question returned "internal error … desk tools did not complete cleanly", and "What is SPX structure?" — the decline message's OWN suggestion — also declined. |
+| **Proof the data was there** | At the same minute, `GET /api/market/gex-positioning?ticker=SPY` returned `available:true, spot 766.27, gamma_posture "short", net_gex, net_vex +$332B, vanna_posture "positive"`, fresh `asof` — and `?ticker=QQQ` returned `call_wall 735`. The matrix cache is warm; `get_positioning` (which reads it) answers directly. So the decline is **false absence**: the data is one tool call away and Largo does not make it. |
+| **Why it matters** | Members use Largo overnight, pre-market, and on weekends — most of the clock. In that window Largo is currently unable to answer questions its own tools can answer, and worse, the decline message advises the user to "ask about SPX structure", which then also declines (the exact self-contradiction `empty-answer-fallback.test.ts` was written to prevent, recurring through a different path). A Night Hawk turn returns a bare "internal error", which is a harder failure than a decline. |
+| **Scope / root cause (not yet pinned)** | CROSS-CUTTING, not the thermal surface. The thermal tools + data are healthy (verified: `get_positioning`, `get_gex_heatmap`, `/heatmap` all serve full data post-close). The failure is upstream in the Largo QUERY PIPELINE — the model returns an empty answer (→ `empty-answer-fallback.ts`) without exercising its tool loop, or a prefetch step (`live_feed_capture`) errors/returns thin and short-circuits the turn. Likely `src/lib/largo/core/*` (plan/prefetch) + `largo-live-feed.ts`, not `get_thermal_compare`/`helix-thermal-compare`. |
+| **Reproduction** | `scripts/audit/largo-availability-probe.mjs` (added here) pairs each question with an independent `get_positioning` availability check and flags `DECLINED_WITH_DATA` — a decline while the answering tool reports the data present. Pure verdict logic in `lib/availability-verdict.mjs` (5 unit tests). Live run 2026-08-21 13:25 ET: **3/3 DECLINED_WITH_DATA**, exit 1. `INDETERMINATE` is returned when the data is not independently confirmed, so honest absence is never graded as a defect. |
+| **Deliberately NOT fixed here** | The fix is in the Largo core query pipeline (out of the thermal-surface lane) and has broad blast radius across every desk. This PR adds the reproduction harness and this record so the owning lane can route it; it changes no product code. **Flagged for the coordinator.** |
+| **Gates** | Node 20.20.2 · `availability-verdict.test.mjs` 5/5 · `node --check` + eslint clean on all three files · live probe reproduces (exit 1). |
+| **Status** | OPEN — reproduced + harnessed; product fix belongs to Largo-core and is flagged for the coordinator, not attempted in this thermal-lane PR. |
+
 ## 2026-08-21 — [FINDING, P2 audit-tooling] The GEX wall verifier still asserted the pre-#2417 unconstrained argmin — a confident FAIL on healthy data on 16 of 26 open-session passes — FIXED
 
 > **kind:** `FINDING`
