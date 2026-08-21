@@ -4,12 +4,25 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-21 — [FINDING, P0 correctness] SPX 0DTE net-GEX sign false-flagged vs UW when overlay timed out at 2s — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Severity** | P0 data-correctness (ops-auto-fix #2503, fingerprint `ee994b4b2bf8`). |
+| **Root cause** | Three coupled defects. (1) `finalizeHeatmapForServe` raced the UW overlay against a **2s** cap and returned the **un-overlaid Polygon book** on timeout with **no** `odte_overlay` marker — Polygon 0DTE net sign routinely disagrees with UW `spot-exposures/expiry-strike`. (2) `heatmap-verifier` INV-3 compared served side-constrained call/put walls (#2417) to an **unconstrained** `deriveWalls`, false-flagging SPY/SPX (e.g. put 7600 vs 7650). (3) Cross-provider oracle compared UW to Polygon whenever overlay silently skipped. |
+| **Evidence** | Live ops-collect 2026-08-21 13:07Z: intermittent flags `[cross-provider/net_gex] SPX 0DTE net-GEX sign (positive) CONTRADICTS UW (… negative)` plus `[invariant/call_wall]` / `[invariant/put_wall]` side-constraint mismatches; 3/3 probe runs showed flags on 2/3. |
+| **Fix** | Overlay default cap **2s → 8s**; timeout now stamps `odte_overlay: { applied: false, reason: "overlay_timeout" }`; SPX matrix **build** applies overlay before cache write; cross-provider skips when overlay did not apply; INV-3 passes `spot` into side-constrained `deriveWalls`. |
+| **Status** | FIXED — tsc clean, run-tests green on Node 20. |
+
 ## 2026-08-21 — [FINDING, P1 Thermal/Largo] `get_positioning` hid a nearer gamma flip — Largo told a member a 1%-fragile regime was a "comfortable 7% cushion" — FIXED
 
 > **kind:** `FINDING`
 
 | Field | Detail |
 |---|---|
+<<<<<<< HEAD
 | **Symptom** | Asked live "Is MSFT's dealer gamma regime stable or fragile? How close is the nearest gamma flip to spot?", production Largo answered with confidence: *"7%+ above the flip… this isn't a name teetering on a regime change today,"* *"the flip at 448.06 is still the deep floor before the regime itself would flip short-gamma,"* and called the flip *"too far to matter intraday."* All three are false. On the same live matrix, cumulative net dealer gamma re-crosses zero at **477.86 — 1.0% below spot 482.5**. The regime flips short-gamma ~1% down, not 7%. |
 | **Root cause** | The served `flip` is the deliberately STABLE lowest-plausible zero-crossing (`cumulativeGammaFlipDetail` picks the lowest crossing within ±12% of spot so the level does not jitter as spot moves — see the documented SPX-migration rationale in `gex-cross-validation-core.ts:281`). That selection is CORRECT and was left unchanged. But when a book crosses zero more than once, the stable pick can sit far from spot while a nearer crossing sits close. `cumulativeGammaFlipDetail` already computes that nearer crossing (`nearestCrossing`) and the crossing count — the comment at `gex-cross-validation-core.ts:194` even says it is "retained… so the far-crossing case can be inspected" — but **nothing surfaced it**. `get_positioning` returned only `flip` + `distance_to_flip_pct`, so the model had no way to know a nearer crossing existed and read the single stable number as the whole story. |
 | **Evidence / reproduction** | `probe-flip-basket.mjs` over 12 live tickers: only MSFT has multiple in-window crossings (served 448.2 / −7.2%, nearest 477.86 / −1.0%, 3 crossings); every single-crossing ticker has `nearest == served` (no divergence). So the defect is rare (multi-crossing books only) but, when present, large — and it is invisible to any check that only reads the one flip number. Two live Largo transcripts (before this change) captured the false "comfortable cushion" answer verbatim. |

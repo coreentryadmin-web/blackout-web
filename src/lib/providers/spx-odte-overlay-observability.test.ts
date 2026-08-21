@@ -61,7 +61,7 @@ test("the reasons are DISTINCT — a no-op is not a failure", () => {
   // `no_odte_expiry` is the normal post-close state and must never read as a fault; a monitor that
   // alerts every evening gets muted, and then it is not a monitor. `ladder_unavailable` is the one
   // that means two books are in circulation.
-  assert.match(TYPES, /"applied" \| "not_applicable" \| "no_odte_expiry" \| "ladder_unavailable"/);
+  assert.match(TYPES, /"applied" \| "not_applicable" \| "no_odte_expiry" \| "ladder_unavailable" \| "overlay_timeout"/);
 });
 
 test("the failure that matters logs itself", () => {
