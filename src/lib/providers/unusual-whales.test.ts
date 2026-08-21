@@ -1,6 +1,18 @@
 import test, { mock } from "node:test";
 import assert from "node:assert/strict";
-import { isLiveOdteSession, safeTicker, safePathSegment, safeDateSegment, sym, optionTradePrintToFlowRaw, fetchUwIvRank } from "./unusual-whales";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import {
+  isLiveOdteSession,
+  safeTicker,
+  safePathSegment,
+  safeDateSegment,
+  sym,
+  optionTradePrintToFlowRaw,
+  fetchUwIvRank,
+  emptyDarkPoolSnapshot,
+} from "./unusual-whales";
+import { shapeMeridianDarkPool } from "../meridian/meridian-earnings-intel-core";
 import { UW_REST_SECTIONS } from "../uw-docs-catalog";
 
 // 2026-07-03 is a US market holiday (July 4th observed) per nighthawk/session.ts's calendar.
@@ -152,4 +164,62 @@ test("fetchUwIvRank caches within TTL: two sequential calls → ONE underlying f
     if (prevRedis === undefined) delete process.env.REDIS_URL; else process.env.REDIS_URL = prevRedis;
     if (prevTtl === undefined) delete process.env.UW_IV_RANK_CACHE_SEC; else process.env.UW_IV_RANK_CACHE_SEC = prevTtl;
   }
+});
+
+/* ── dark pool: a claim about the day requires that the day was looked at ──────────────── */
+
+test("emptyDarkPoolSnapshot makes a definite claim — so it must be reserved for a real answer", () => {
+  // The sentence asserts something about the whole trading day. Pinned here so it cannot be
+  // reworded into something vaguer and quietly reused for the unknown case, which is exactly
+  // the shape of the defect: the claim was reachable when nothing had been looked at.
+  const s = emptyDarkPoolSnapshot();
+  assert.equal(s.detail, "No large dark pool prints today");
+  assert.deepEqual(s.prints, []);
+  assert.equal(s.total_premium, 0);
+  assert.equal(s.bias, "neutral");
+  assert.equal(s.pcr, null);
+});
+
+test("fetchUwDarkPool returns null when the upstream never answered — it does not claim 'none today'", () => {
+  // A SOURCE guard, because the decision lives inside a network- and Redis-bound closure that
+  // cannot be exercised here. `uwGetSafe` never throws: it returns null when UW is unconfigured,
+  // when the circuit is open with no stale cache, on a 403, and when retries are exhausted.
+  // `extractRows(null)` is [], so without this guard "no answer" and "answered: none" were the
+  // same object — and that object carries a positive claim about the day, which then gets cached.
+  //
+  // Measured on prod 2026-08-21: BEKE served `9 print(s) | $2.19M` at ~11:33 and ~11:53 ET, then
+  // "No large dark pool prints today" from 12:25, stable across three reads. Executed prints do
+  // not leave a session's tape, so 9 -> 0 cannot be true of the day.
+  const src = readFileSync(join(process.cwd(), "src/lib/providers/unusual-whales.ts"), "utf8");
+  const body = /export async function fetchUwDarkPool\(([\s\S]*?)\n}/.exec(src)?.[0] ?? "";
+  assert.ok(body, "fetchUwDarkPool must exist");
+
+  const guardAt = body.indexOf("if (data == null) return null;");
+  const rowsAt = body.indexOf("extractRows(data)");
+  assert.ok(guardAt > -1, "fetchUwDarkPool must return null when the upstream did not answer");
+  assert.ok(rowsAt > -1, "fetchUwDarkPool must still parse rows when it did answer");
+  assert.ok(
+    guardAt < rowsAt,
+    "the did-it-answer guard must come BEFORE extractRows — after it, null has already " +
+      "collapsed into an empty array and the two cases are indistinguishable again"
+  );
+  // The claim must be reached only through the shared helper, never rebuilt inline next to a
+  // path that can be entered without an answer.
+  assert.match(body, /if \(!rows\.length\) return emptyDarkPoolSnapshot\(\);/);
+  assert.doesNotMatch(body, /detail: "No large dark pool prints today"/, "the claim must have one home");
+});
+
+test("the Meridian shaper makes no claim when handed an unknown", () => {
+  // The other half of the contract: the provider now returns null for "did not answer", and the
+  // consumer must render that as silence rather than as a fact. It already did — the provider was
+  // simply never giving it the chance.
+  const unknown = shapeMeridianDarkPool(null);
+  assert.equal(unknown.available, false);
+  assert.equal(unknown.detail, null, "an unknown must not be described as an empty day");
+  assert.deepEqual(unknown.top_prints, []);
+
+  // ...and a genuine empty answer DOES carry the sentence through.
+  const answered = shapeMeridianDarkPool(emptyDarkPoolSnapshot());
+  assert.equal(answered.available, false);
+  assert.equal(answered.detail, "No large dark pool prints today");
 });

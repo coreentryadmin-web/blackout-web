@@ -1,5 +1,25 @@
-import test from "node:test";
+import test, { mock } from "node:test";
 import assert from "node:assert/strict";
+
+// `evidence-reads` pulls `server-only`, which throws outside a Server Component. Stubbing it is
+// what makes the UNAVAILABLE branches reachable from a unit test at all — and those are the
+// branches that were fabricating zeros.
+mock.module("server-only", { namedExports: {} });
+
+// Deterministic UNAVAILABLE. Without this the tests below depend on whether a DATABASE_URL happens
+// to resolve in the runner — which both makes them environment-dependent and, when it points at an
+// unreachable host, spends ten seconds per test waiting for a connection timeout.
+mock.module("../db", {
+  namedExports: {
+    dbConfigured: () => false,
+    fetchZeroDteSetupLogRange: async () => {
+      throw new Error("db unreachable");
+    },
+    fetchNighthawkPublishGateRejections: async () => {
+      throw new Error("db unreachable");
+    },
+  },
+});
 import { readFileSync } from "node:fs";
 import { compareGraderLanes } from "./evidence-eval";
 import { LARGO_TOOL_DEFS } from "./tool-defs";
@@ -116,4 +136,52 @@ test("zero comparable rows yields a null rate, never a fabricated 100%", () => {
   const r = compareGraderLanes([row({ plan_pnl_pct: null })]);
   assert.equal(r.comparable, 0);
   assert.equal(r.agreement_pct, null, "no comparison made means no rate, not a perfect score");
+});
+
+/**
+ * A COUNT IS A MEASUREMENT. Both evidence tools used to fill every count with 0 on a failed read,
+ * while `agreement_pct` in the very same object was correctly `null`. The rate knew it had not
+ * been measured; the counts did not.
+ *
+ * These run without a database, which is the point — the unavailable branches are the ones that
+ * were lying, and they are reachable here exactly because there is nothing to read.
+ */
+test("a failed grader-agreement read reports NO counts, not zero ones", async () => {
+  const { graderAgreementForLargo } = await import("./evidence-reads");
+  const r = await graderAgreementForLargo(90);
+  assert.equal(r.available, false, "the db is mocked unavailable — this branch must be the one under test");
+  assert.equal(r.total_plays, null, "0 plays would claim a window was looked at");
+  assert.equal(r.comparable, null);
+  assert.equal(r.agreed, null);
+  assert.equal(r.agreement_pct, null);
+  assert.equal("disagreements" in r, false, "an empty list invites '0 disagreements'");
+  assert.match(String(r.note), /is a measurement|database_unavailable/);
+});
+
+test("a failed gate-value read reports NO totals — 'the gate blocked nothing' is the worst possible lie here", async () => {
+  const { gateBlockedValueForLargo } = await import("./evidence-reads");
+  const r = await gateBlockedValueForLargo(30);
+  assert.equal(r.available, false, "the db is mocked unavailable — this branch must be the one under test");
+  assert.equal(r.blocked_total, null, "the gate's whole value proposition is this count");
+  assert.equal(r.graded_total, null);
+  assert.equal(r.would_have_won_total, null);
+  assert.equal(r.would_have_lost_total, null);
+  assert.equal(r.unfilled_total, null);
+  assert.equal("by_gate" in r, false);
+  assert.match(String(r.note), /is a measurement/);
+});
+
+test("the window is still stated when nothing could be read — an unknown is still about something", async () => {
+  const { gateBlockedValueForLargo, graderAgreementForLargo } = await import("./evidence-reads");
+  assert.equal((await gateBlockedValueForLargo(45)).window_days, 45);
+  assert.equal((await graderAgreementForLargo(45)).window_days, 45);
+});
+
+test("compareGraderLanes still yields real zeros for a genuinely empty comparison", () => {
+  // The measured case must keep its numbers — this is the half that is NOT an unknown, and
+  // nulling it would trade one lie for another.
+  const cmp = compareGraderLanes([]);
+  assert.equal(cmp.total_plays, 0, "a measured window of no rows really is 0 plays");
+  assert.equal(cmp.comparable, 0);
+  assert.equal(cmp.agreement_pct, null, "but the RATE over 0 comparable rows is unknowable");
 });
