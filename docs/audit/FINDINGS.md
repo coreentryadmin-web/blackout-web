@@ -4,6 +4,24 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-21 — [FINDING, P1 Largo/Night Hawk] Largo cited a 40% Night Hawk win rate over 5 plays; the real window was 74 resolved at 50% — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Asked "over the last 30 days, how many Night Hawk plays resolved, how many are pending, and what is the win rate?", live Largo answered: **"5 plays. 2 resolved. 3 remain open. Win rate: 40% (2 wins / 5 total)."** Ground truth from `/api/market/nighthawk/analytics?window=30` minutes earlier: **74 resolved, `win_rate` 0.5**. Every figure a member would quote as the product's credibility was wrong. |
+| **How it was found** | Not by reading code. I could not size `get_nighthawk_outcomes` from this sandbox (no DB reach, and no HTTP surface exposes its raw rows), so I tested it **end-to-end through the live product** — which is better evidence than a byte count, because it measures what the member actually receives. |
+| **Root cause — the measured half** | The tool shipped `fetchNighthawkOutcomeAnalytics`'s **raw rows and no computed rate**, while its own description says *"use to cite credibility (e.g. hit-rate over 30d)"*. So the model derived the rate itself and got both the numerator and the **denominator** wrong — "2 wins / 5 total" where the decided set was 2. This repo already carries the rule it broke: `get_spx_vs_nighthawk_comparison` exists expressly so *"the model never subtracts two other tools' numbers itself"*. |
+| **Root cause — the truncation half, CONFIRMED** | Asked to report the tool's own `analytics.rows.length`, Largo said **5** at `window_days=30` (true 74) and **78** at 90 (true 108). Two plausible wrong numbers is the signature of reading a partial payload. **Since confirmed directly**: asked whether its raw tool result ended with the transport's literal `…[truncated]` marker, the model answered **TRUNCATED** and named `analytics` as the last top-level key it could see — so the cut lands inside `analytics`, and neither `pending_count` nor the sibling `pending` list ever arrived. The same probe answers **COMPLETE** for the already-fixed `get_zerodte_record` (last key `plays`), so it discriminates rather than always saying truncated. |
+| **Both mechanisms closed by one change** | Both are closed by the same change: the aggregate is now computed **server-side** (no arithmetic left to the model) **and** the row list is bounded and lean (nothing left to truncate). |
+| **Fix** | `nighthawkOutcomesForLargo` returns the **same `getNighthawkMetrics(windowDays)`** that backs `/api/market/nighthawk/record`, so the number Largo cites and the number the member's own record page shows cannot drift apart. That metric is already rule-7 correct — `win_rate` is **null, never a fabricated 0**, `decided_count` is the denominator the rate must be printed with, and `low_n` marks a sample too small to read as a record. Aggregates first; a bounded lean sample (≤40 rows, `fitRowsToBudget`) last; blob columns dropped; `plays_note` says outright to quote `win_rate`/`decided_count` and **never count the rows**. |
+| **Blast radius** | `run-tool.ts`'s `get_nighthawk_outcomes` case only (my lane's tool); the `pending` list from `fetchPendingNighthawkOutcomes(7)` is preserved. `/api/market/nighthawk/record` and `/api/admin/nighthawk/analytics` are untouched — this makes the tool agree with them rather than changing them. Third instance of the truncation class in this lane after `get_zerodte_record` and `get_nighthawk_edition`; the two earlier fixes' shared helper is what this reuses. |
+| **Regression guard** | `src/lib/largo/product-reads.test.ts` (+5): the result carries `total_resolved`/`pending_count`/`win_rate`/`decided_count`/`low_n` (the aggregates the model would otherwise derive); it fits `MAX_TOOL_RESULT_CHARS`; a sampled row list states its true total and tells the reader not to count rows; the blob columns are absent; and a DB-less call degrades to an explicit unknown rather than reporting 0 resolved. |
+| **Not a trading-behaviour change** | No gate, rail, sizing, exit rule or grading function is touched — the grading is unchanged, only its *reporting*. No `sim:0dte` before/after is owed. |
+| **Gates** | `npx tsc --noEmit` clean · `npm test` **8857 pass / 0 fail** (Node 20.20.2) · `npm run build` clean · `npx eslint` clean. |
+| **Status** | FIXED — PR #2480. |
+
 ## 2026-08-21 — [FINDING, P2 Helix] The signal follow-through rate carried a read-time as_of but no DATA-time scope — a rate with no window — FIXED
 
 > **kind:** `FINDING`
