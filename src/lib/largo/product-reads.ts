@@ -390,13 +390,15 @@ export async function spxPulseForLargo() {
   }
 }
 
-export async function cortexDecisionForLargo(ticker: string | null, question: string) {
+export async function cortexDecisionForLargo(ticker: string | null, question: string, sessionDate?: string) {
   try {
-    const composed = await composeCortexRead(ticker, question);
+    const composed = await composeCortexRead(ticker, question, sessionDate);
     const env = composed.envelope;
     return roundFloats({
       available: true,
       ticker: ticker?.toUpperCase() ?? null,
+      // Echo the requested session so the model dates the evidence by the play, not by "now".
+      requested_session_date: sessionDate ?? null,
       answer: composed.answer,
       headline: env?.headline ?? null,
       bias: env?.bias ?? null,

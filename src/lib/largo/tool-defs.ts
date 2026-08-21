@@ -306,8 +306,8 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
   ),
   t(
     "get_cortex_decision",
-    "Cortex commit/skip/exit evidence for a 0DTE-relevant ticker — pinned ledger truth when a play exists this session, otherwise live 'what would Cortex say now'. Pass `ticker` and optional `question` for direction hints. Use for 'why did we commit/skip X', Cortex veto, or gate evidence — NOT SPX Slayer play-engine gates (get_spx_play / get_spx_engine_snapshots).",
-    { ticker: { type: "string" }, question: { type: "string" } }
+    "Cortex commit/skip/exit evidence for a 0DTE-relevant ticker — pinned ledger truth when a play of record exists, otherwise live 'what would Cortex say now'. Pass `ticker`, optional `question` for direction hints, and optional `date` (YYYY-MM-DD) to explain a SPECIFIC PAST session's play — the frozen entry_context.cortex, the WHY OF RECORD exactly as the gate stack saw it when it committed. Without `date` it reads today; WITH `date` it returns that session's pinned evidence, or says plainly there was no play of record that day (it will NOT answer a dated question with a live read, which would describe now, not then). Use for 'why did we commit/skip X [on DATE]', Cortex veto, or gate evidence — NOT SPX Slayer play-engine gates (get_spx_play / get_spx_engine_snapshots).",
+    { ticker: { type: "string" }, question: { type: "string" }, date: { type: "string" } }
   ),
   t(
     "get_nighthawk_edition",
