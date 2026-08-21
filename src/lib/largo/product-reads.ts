@@ -671,11 +671,13 @@ export async function helixTapeAnalyticsForLargo(
       window: coverage,
       ...tapeFreshness(coverage.newest_age_minutes),
       ordered_by: "recent",
-      /** The member's /flows panels hide prints under $200k (FlowFeed.tsx FLOOR_PREMIUM). This
+      /** `false`, not null: C3 asks that null never stand for a known state, and "no floor was
+       *  applied" is a known state — a reader seeing null could reasonably take it as "unknown".
+       *  The member's /flows panels hide prints under $200k (FlowFeed.tsx FLOOR_PREMIUM). This
        *  tool deliberately does NOT apply that floor — it is a rendering choice, and 16 of the 17
        *  0DTE prints on the live tape sit below it. Disclosed so a small divergence from the
        *  member's on-screen numbers can be explained rather than looking like a data fault. */
-      premium_floor_applied: null,
+      premium_floor_applied: false,
       member_panel_premium_floor: HELIX_MEMBER_PANEL_PREMIUM_FLOOR,
       session: sessionSkew,
       /** C5. OMITTED, not "neutral", when the skew is unmeasurable — neutral is a measurement. */
