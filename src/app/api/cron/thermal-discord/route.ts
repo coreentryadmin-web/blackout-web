@@ -45,6 +45,7 @@ import {
   thermalDiscordBypassesDedup,
 } from "./thermal-discord-dedup";
 import { thermalDiscordRthOnly } from "./thermal-discord-rth";
+import { thermalColumnsFromSettled } from "./thermal-discord-columns";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,13 +55,17 @@ function thermalWebhook(): string | null {
   return process.env.DISCORD_THERMAL_WEBHOOK_URL?.trim() || null;
 }
 
+/**
+ * Fetch one matrix per Discord ticker, FAULT-ISOLATED per ticker — see
+ * `thermalColumnsFromSettled` for why a rejection must not abort the whole run.
+ */
 async function fetchThermalColumns(): Promise<ThermalCardColumn[]> {
-  const columns: ThermalCardColumn[] = [];
-  for (const ticker of THERMAL_DISCORD_TICKERS) {
-    const heatmap = await fetchGexHeatmap(ticker);
-    columns.push({ ticker, heatmap });
-  }
-  return columns;
+  const settled = await Promise.allSettled(
+    THERMAL_DISCORD_TICKERS.map((ticker) => fetchGexHeatmap(ticker))
+  );
+  return thermalColumnsFromSettled(THERMAL_DISCORD_TICKERS, settled, (ticker, reason) => {
+    console.warn(`[cron/thermal-discord] fetchGexHeatmap(${ticker}) failed:`, reason);
+  });
 }
 
 export async function GET(req: NextRequest) {
