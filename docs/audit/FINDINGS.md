@@ -4,6 +4,24 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-21 — [FINDING, P2 Meridian] The earnings report printed raw HTML entities — "Will S&amp;P 500", "Wall Street&#39;s" — while Largo showed the same headline clean — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Measured on prod during RTH, the BEKE earnings report rendered **`Stock Market: Will S&amp;P 500 Open Up or Down Today?`** as its analyst-cluster headline and **`…Forecast Changes From Wall Street&#39;s Most Accurate Analysts`** in CATALYST BRIEFS — entity and all, on a member's screen. |
+| **Scope, measured at the API** | `/api/market/meridian/event?id=earnings:BEKE:2026-08-21` served **9 strings carrying raw entities across 6 fields**: `catalysts[].title`, `earnings_headlines[].title` (×3), `analyst_revisions[].title` (×2), `price_targets[].summary`, `catalyst_briefs[].title`. Two entity forms in play — named (`&amp;`) and numeric (`&#39;`). Every Benzinga-sourced free-text field on the desk was affected; this is not one bad headline. |
+| **Root cause — the repo already had the fix** | `sanitizeFeedText` / `decodeHtmlEntities` in `src/lib/largo/sanitize-feed-text.ts` has decoded exactly these since the LARGO-6 hardening work. Meridian's enrichment shapers never called it: `shapeHeadlines` did `String(r.title).trim()`, `shapeAnalyst` did `String(r.title ?? "").trim()`, and the catalyst-brief and price-target shapers passed the provider string straight through. So **the same Benzinga headline read clean through Largo and raw through the desk** — one product, two answers. |
+| **Not merely cosmetic** | `shapeAnalyst` derives the **firm** from the title (`/^([^:]+):/`) and the **action** from keyword tests; `loadPriceTargetRows` parses a **price target number** out of title+teaser+body. Parsing encoded text puts entities inside a derived `firm` value the desk displays, and lets a numeric entity hide a character the parser is looking for. The fix decodes **before** those parses, and two tests pin that ordering by source position — reversing it is the easy regression. |
+| **A second defect the test found** | `sanitizeFeedText` does `String(s ?? "")`, so a feed row whose `title` arrived as an object yields the literal text **`[object Object]`** — a string a panel would render as a headline. Found by the totality test, not by reading the code. `meridianFeedText` drops non-strings instead. The same hole exists on the Largo side of `sanitizeFeedText`; **flagged, not edited from this lane.** |
+| **Fix** | New pure `src/lib/meridian/meridian-feed-text.ts` — `meridianFeedText` (decode + de-markup, non-strings dropped) and `meridianFeedTextOrNull` (absence stays absence: an empty headline is `null`, not an empty string to render). It **delegates** to `sanitizeFeedText` rather than copying its entity table, because two tables drift and then the same headline reads differently on two surfaces — which is this bug, in reverse. Wired into all four shaping sites. |
+| **Blast radius** | `meridian-earnings-enrich.ts` (`shapeHeadlines`) and `meridian-catalyst-enrich.ts` (`shapeAnalyst`, `loadPriceTargetRows`, `shapeCatalystBriefs`). Display/normalization only — no number, gate, score, ranking or verdict changes. `channel` keeps its old precedence (`channel` then `type` then null) with the same empty-string-is-absent behaviour. |
+| **Regression guard** | `src/lib/meridian/meridian-feed-text.test.ts` (+13), driven by the **exact strings copied from the live response**: `&amp;` and `&#39;` decode; genuine smart quotes around ‘Neutral’ survive undamaged; no live string still holds an entity; nullish/non-string inputs never produce `[object Object]`; `&nbsp;`-only is absent, not blank; markup cannot survive; **`&amp;amp;` decodes exactly one level** (over-decoding is its own defect); all four shapers are wired; the decode precedes both the firm parse and the price-target parse; and Meridian carries no second entity table. |
+| **Non-vacuity** | Five mutants, all caught: non-strings stringified again (1 fail); `shapeAnalyst` back to a raw trim (3); headlines back to a raw trim (2); the price-target summary un-decoded (1); Meridian growing its own local decoder (3). Restored: 13/13 pass. |
+| **Gates on Node 20.20.2** | `npx tsc --noEmit` clean · `npm test` **9491 pass / 0 fail / 1 skipped** · `npm run build` clean · `npx eslint` clean on all four changed files. |
+| **Status** | FIXED — this PR. Not yet live-verified; the proof owed is a re-read of the same event id showing 0 entity-bearing strings where 9 were measured. |
+
 ## 2026-08-21 — [FINDING, P1 Largo/Meridian] Meridian was not reachable from Largo at all, and the system prompt documented three routes that are all DENIED — FIXED
 
 > **kind:** `FINDING`
