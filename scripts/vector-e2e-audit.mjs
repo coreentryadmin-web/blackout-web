@@ -21,6 +21,7 @@ import { mintIosPlaywrightSession, onboardingInitScript } from "./audit/lib/ios-
 import { generateDefaultAuditPhone } from "./audit/lib/audit-phone.mjs";
 import { createOrAdoptAuditUserViaCurl } from "./audit/lib/clerk-audit-user.mjs";
 
+import { subprocessErrorMessage } from "./audit/lib/redact.mjs";
 const baseArg = process.argv.find((a) => a.startsWith("--base="));
 const BASE = (baseArg ? baseArg.slice("--base=".length) : "https://blackouttrades.com").replace(
   /\/$/,
@@ -73,7 +74,7 @@ function curl({ method = "GET", url, headers = {}, form, urlencodeForm, json, ja
     const s = Number(execFileSync("curl", args, { encoding: "utf8", maxBuffer: 80 * 1024 * 1024 }).trim());
     return { s, b: existsSync(bf) ? readFileSync(bf, "utf8") : "" };
   } catch (e) {
-    return { s: 0, b: "", err: String(e.message || e).split("\n")[0] };
+    return { s: 0, b: "", err: subprocessErrorMessage(e) };
   }
 }
 const J = (r) => {
