@@ -32,6 +32,8 @@ export type PrintHistoryInput = {
   session_change_pct?: number | null;
   next_day_change_pct?: number | null;
   reaction_basis?: "bmo_session" | "amc_next_session" | "assumed_report_session" | null;
+  reaction_pct?: number | null;
+  reaction_measure?: "session_open_to_close" | "prior_close_to_close" | null;
 };
 
 export type PreEarningsHistoryRow = {
@@ -39,11 +41,22 @@ export type PreEarningsHistoryRow = {
   surprise_pct: number | null;
   beat: boolean | null;
   expected_move_pct: number | null;
-  /** How the stock actually traded the print, open→close on the ANCHORING session. */
+  /**
+   * THE reaction to the print, and the read that produced it. For a post-close print the market
+   * prices the news overnight, so this runs from the last close BEFORE the print to the anchoring
+   * session's close; `session_change_pct` below cannot contain that gap and is not a substitute.
+   */
+  reaction_pct: number | null;
+  reaction_measure: "session_open_to_close" | "prior_close_to_close" | null;
+  /**
+   * The ANCHORING session's own open→close. Equal to `reaction_pct` for a pre-open print. For a
+   * post-close print it is the intraday drift AFTER the gap — a real quantity, but not the
+   * reaction, and it carried the opposite sign on 65 of 206 measured post-close prints.
+   */
   session_change_pct: number | null;
   next_day_change_pct: number | null;
   /**
-   * Which session `session_change_pct` was measured on:
+   * Which session the reaction was measured on:
    *   bmo_session            — pre-open print; the report date's own session IS the reaction
    *   amc_next_session       — post-close print; the reaction is the FOLLOWING session
    *   assumed_report_session — timing unknown, report date assumed. For an AMC reporter this is
@@ -59,7 +72,7 @@ export type PreEarningsHistoryRow = {
    */
   report_weekday: string | null;
   /**
-   * True when `session_change_pct` rests on an ASSUMPTION about report timing rather than a known
+   * True when `reaction_pct` rests on an ASSUMPTION about report timing rather than a known
    * BMO/AMC stamp. Derived rather than left implicit: the model should not have to know that one
    * particular enum value out of three carries a caveat. Mirrors the "~" the Meridian UI paints.
    */
@@ -82,6 +95,8 @@ export function toPreEarningsHistoryRows(
     surprise_pct: p.surprise_pct ?? null,
     beat: p.beat ?? null,
     expected_move_pct: p.expected_move_pct ?? null,
+    reaction_pct: p.reaction_pct ?? null,
+    reaction_measure: p.reaction_measure ?? null,
     session_change_pct: p.session_change_pct ?? null,
     next_day_change_pct: p.next_day_change_pct ?? null,
     reaction_basis: p.reaction_basis ?? null,
@@ -90,6 +105,7 @@ export function toPreEarningsHistoryRows(
     // was measured at all, and flagging THAT as assumed would invent a caveat about a value that
     // does not exist.
     reaction_assumed:
-      p.reaction_basis === "assumed_report_session" && p.session_change_pct != null,
+      p.reaction_basis === "assumed_report_session" &&
+      (p.reaction_pct ?? p.session_change_pct) != null,
   }));
 }
