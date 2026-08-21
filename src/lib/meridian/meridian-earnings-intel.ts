@@ -189,6 +189,10 @@ export async function loadMeridianEarningsIntel(input: {
     call_wall: walls.call_wall,
     put_wall: walls.put_wall,
     king_strike: thermal?.gex_king_strike ?? null,
+    // The same post-print signal the report core reads. "inline" counts as printed — a mixed
+    // print is still a print — so this is `!== "unknown"` rather than the beat/miss pair.
+    printed:
+      input.enrichment.post_print != null && input.enrichment.post_print.lean !== "unknown",
   });
 
   const vector_move_pct =
