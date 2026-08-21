@@ -34,6 +34,7 @@ import {
   type MeridianEarningsTabId,
 } from "@/lib/meridian/meridian-earnings-tab-nav-core";
 import { MeridianHalo3D, MeridianOrbital } from "./meridian-spatial";
+import { orbitalGeometry } from "@/lib/meridian/meridian-spatial-core";
 import {
   MeridianBeatHistory,
   MeridianCountdown,
@@ -197,7 +198,17 @@ export function MeridianEarningsReportPanel({ ticker, intel, enrichment, eventAt
       )}
 
       {/* ── L2/L3 · ANALYTICS GRID ─────────────────────────────────────────────────── */}
-      <div className="mr-grid">
+      {/*
+        The grid is told how wide the orbital's box ACTUALLY is, from the shipping geometry
+        rather than from the `size` prop — `orbitalGeometry` clamps to MIN_ORBITAL_SIZE, so the
+        prop is a request and `geo.size` is the answer. Measured on prod 2026-08-21: a 310 request
+        became a 376 box inside a 303px panel, and three rim labels painted INSIDE the next panel.
+        A track that cannot hold the diagram is the defect; see .mr-grid-orbital.
+      */}
+      <div
+        className="mr-grid mr-grid-orbital"
+        style={{ ["--mr-orbital-box" as string]: `${orbitalGeometry(showOrbital ? 400 : 310).size}px` }}
+      >
         <div className="mr-panel mr-panel-wide">
           <MeridianMoveRail
             band={intel.expected_move_band}
