@@ -667,6 +667,20 @@ export type MeridianOpexHistoryRow = {
   max_pain: number | null;
   spx_close: number | null;
   pin_held: boolean | null;
+  /**
+   * WHERE `max_pain` came from — or, when null, WHY there is nothing.
+   *
+   * A bare null here is indistinguishable from "there was no pin", which is a different claim
+   * entirely. For a SETTLED expiry the live chain carries no open interest at all (it prunes
+   * settled expiries by design), and historical max pain is not stored anywhere — so this is a
+   * permanent, non-retryable absence, not a transient miss.
+   */
+  max_pain_basis: "expiry_open_interest" | null;
+  max_pain_unavailable: {
+    reason: string;
+    what_is_missing: string;
+    retryable: boolean;
+  } | null;
 };
 
 export type MeridianFdaDetail = {
