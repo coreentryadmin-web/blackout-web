@@ -38,11 +38,6 @@ const MIN_REDACTABLE_LENGTH = 8;
 
 export const REDACTED = "[REDACTED]";
 
-/** Literal-safe regex escape. */
-function esc(s) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 /**
  * Secret-shaped patterns, redacted by SHAPE so a value that never reached this process's env
  * (a ticket minted at runtime, a key read from AWS) is still caught.

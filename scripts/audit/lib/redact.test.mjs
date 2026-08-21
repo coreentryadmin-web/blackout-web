@@ -79,7 +79,9 @@ test("redactSecrets removes env values under secret-shaped names", () => {
   assert.ok(!out.includes(env.CLERK_SECRET_KEY));
   assert.ok(!out.includes(env.SOME_API_TOKEN));
   // A non-secret env value must survive — over-redaction destroys the diagnostic.
-  assert.match(out, /https:\/\/blackouttrades\.com/);
+  // Substring, not a regex: an unanchored host pattern is a CodeQL high-severity finding, and a
+  // literal containment check is what this assertion actually means anyway.
+  assert.ok(out.includes("https://blackouttrades.com"), `non-secret value was redacted: ${out}`);
 });
 
 test("redactSecrets catches secret SHAPES never present in env", () => {
