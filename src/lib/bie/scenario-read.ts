@@ -27,6 +27,7 @@ import {
   type BieLevel,
   type BieProvenance,
   type BieSection,
+  freshnessFromAgeMs,
 } from "@/lib/bie/answer-envelope";
 import type { BieComposed } from "@/lib/bie/composers-shared";
 
@@ -278,7 +279,14 @@ export function buildScenarioEnvelope(
 ): BieAnswerEnvelope {
   const ticker = state.ticker ?? "SPX";
   const horizonLabel = (opts?.horizon ?? state.horizon ?? "all").toUpperCase();
-  const prov: BieProvenance = { source: `Vector ${ticker} ${horizonLabel}`, asOf: state.asOf, freshness: "recent" };
+  // Freshness is MEASURED, never asserted. This was hardcoded `"recent"` on a state served from a
+  // cache that can be 15 minutes old — i.e. `stale` by the very classifier this repo already had.
+  // A constant here is a claim about data age that nothing checked.
+  const prov: BieProvenance = {
+    source: `Vector ${ticker} ${horizonLabel}`,
+    asOf: state.asOf,
+    freshness: freshnessFromAgeMs(Date.now() - (Date.parse(state.asOf ?? "") || Number.NaN)),
+  };
 
   if (spec == null) return cannotScopeEnvelope(ticker, "I couldn't read a price move in that.");
 

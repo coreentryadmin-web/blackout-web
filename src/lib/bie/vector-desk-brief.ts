@@ -7,6 +7,7 @@
 // SETUP / RISK / NEXT. Every number traces back to the state; no LLM, no network.
 
 import type { VectorFullState } from "@/lib/bie/vector-full-state";
+import { describeVectorFreshness, type VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
 import type { VectorPlayBias } from "@/features/vector/lib/vector-play-engine";
 import {
   regimeBriefLine,
@@ -28,7 +29,20 @@ export type VectorDeskBriefResult = {
   body: string;
   /** The "watch this NOW" set — the play's starred items (headline first). */
   watch: string[];
-  as_of: string;
+  /**
+   * When the underlying Vector state was MEASURED — `state.asOf`, never "now".
+   *
+   * NULL when the state carries no readable measurement time. It used to fall back to
+   * `new Date().toISOString()`, which FABRICATED the anchor: it asserted the brief's numbers were
+   * measured at the instant the brief was assembled, when the truth was that their age was
+   * unknown. On a snapshot-and-diff product that inversion is the difference between "this just
+   * changed" and "this has always been so", and the state is served from a cache that can be up to
+   * 15 minutes old — so "now" was not merely imprecise, it was the one answer guaranteed wrong.
+   * A null the caller must handle is honest; a confident wrong timestamp is not.
+   */
+  as_of: string | null;
+  /** Read-time freshness for `as_of` — age, verdict and disclosure wording. */
+  freshness: VectorFreshnessBlock;
 };
 
 function num(v: number | null | undefined): number | null {
@@ -122,6 +136,11 @@ export function composeVectorDeskBrief(
     bias,
     body: lines.join("\n"),
     watch,
-    as_of: state.asOf ?? new Date().toISOString(),
+    // NEVER `?? new Date()` — see the type doc. An unreadable measurement time is reported as
+    // null and described as `unknown` by the freshness block, not replaced with the reader's own
+    // clock. `describeVectorFreshness` takes the REAL now as its second argument precisely so the
+    // age is measured against the read, not re-derived from the (possibly stale) stamp itself.
+    as_of: typeof state.asOf === "string" && state.asOf ? state.asOf : null,
+    freshness: describeVectorFreshness(state.asOf, Date.now()),
   };
 }
