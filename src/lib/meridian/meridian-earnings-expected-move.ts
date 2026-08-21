@@ -7,9 +7,17 @@ import { normalizeVectorTicker } from "@/features/vector/lib/vector-ticker";
 import { loadCurrentChainContracts } from "@/features/vector/lib/vector-gex-reconstruct-server";
 import { deriveExpectedMoveInputsForEarningsDate } from "@/features/vector/lib/vector-expected-move-atm";
 import { computeExpectedMove, type ExpectedMove } from "@/features/vector/lib/vector-expected-move";
+import {
+  describeEmCoverage,
+  rankEarningsForExpectedMove,
+  type EmCandidate,
+  type EmCoverage,
+} from "@/lib/meridian/meridian-em-priority";
 
 const EM_CACHE_MS = 10 * 60 * 1000;
 const BATCH_CAP = 36;
+/** In-flight chain pulls. Small on purpose — see the note in batchLoadEarningsExpectedMovePct. */
+const EM_CONCURRENCY = 6;
 
 export type EarningsExpectedMove = ExpectedMove & { expiry: string };
 
@@ -66,25 +74,42 @@ export async function loadEarningsExpectedMovePct(
   return Number((em.movePct * 100).toFixed(1));
 }
 
-/** Batch chain-IV expected moves for timeline rows — one upstream pull per ticker (cached). */
+/**
+ * Batch chain-IV expected moves for timeline rows — one upstream pull per ticker (cached).
+ *
+ * RANKED, THEN CAPPED. This used to `.slice(0, BATCH_CAP)` a Map in insertion order, so the 36
+ * available pulls went to whichever names happened to sort first rather than to the ones anyone
+ * is watching. Measured live on a 21-day timeline (154 prints): the 7 names that ended up with an
+ * implied move all sat at positions 2-33, and six high-impact names sampled beyond the cap —
+ * VEEV, SJM, **NVDA**, NTNX, HPQ, DCI — every one had a chain and returned a value when asked
+ * directly. NVDA showed nothing on the busiest print of the window purely because of ordering.
+ *
+ * See `meridian-em-priority.ts`. The cap stays: 154 chain pulls per load is not affordable, and
+ * raising it would trade a visible gap for a latency one.
+ */
 export async function batchLoadEarningsExpectedMovePct(
-  items: Array<{ ticker: string; report_date: string }>
-): Promise<Map<string, number | null>> {
-  const byTicker = new Map<string, string>();
-  for (const row of items) {
-    const t = row.ticker.trim().toUpperCase();
-    const d = row.report_date?.slice(0, 10);
-    if (!t || !d) continue;
-    if (!byTicker.has(t)) byTicker.set(t, d);
-  }
+  items: Array<EmCandidate>
+): Promise<{ byTicker: Map<string, number | null>; coverage: EmCoverage }> {
+  const { attempt, requested } = rankEarningsForExpectedMove(items, BATCH_CAP);
 
+  // BOUNDED CONCURRENCY. Each pull is a GEX positioning read plus a full chain fetch, and this
+  // runs while the timeline load is already saturating the same Polygon limiter with its own
+  // per-ticker GEX work. Firing all 36 at once measured 2/36 resolved end-to-end, while the same
+  // names asked in a quieter process resolved 9/12 — the names have chains; the burst does not
+  // get them. A small pool trades a little wall-clock for answers that actually arrive.
   const out = new Map<string, number | null>();
-  const entries = [...byTicker.entries()].slice(0, BATCH_CAP);
+  let cursor = 0;
   await Promise.all(
-    entries.map(async ([ticker, report_date]) => {
-      const pct = await loadEarningsExpectedMovePct(ticker, report_date);
-      out.set(ticker, pct);
+    Array.from({ length: Math.min(EM_CONCURRENCY, attempt.length) }, async () => {
+      while (cursor < attempt.length) {
+        const c = attempt[cursor++]!;
+        out.set(c.ticker, await loadEarningsExpectedMovePct(c.ticker, c.report_date));
+      }
     })
   );
-  return out;
+  // `resolved` counts names that came back with a NUMBER. The difference between attempted and
+  // resolved is the honest "we looked and there was no chain" population — which is a fact about
+  // those names, unlike the skipped ones, which is a fact about our budget.
+  const resolved = [...out.values()].filter((v) => v != null).length;
+  return { byTicker: out, coverage: describeEmCoverage(requested, attempt.length, resolved) };
 }
