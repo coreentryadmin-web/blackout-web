@@ -544,3 +544,40 @@ test("a real share is still reported as a number", () => {
   const sweep = rows.find((r) => r.route === "SWEEP");
   assert.equal(sweep?.pct, 75);
 });
+
+// ── Skew authority: a pull's skew is computed once, not hand-summed ──────────
+// Found by stress-testing Largo on prod: "call/put skew this session" returned 34% / 60% / 83%
+// across tools because the model summed whatever capped print slice it happened to fetch.
+// sessionFlowSkew is now the single computation, and it accepts a minimal {option_type, premium}
+// shape so flow-service can hand the same number back instead of leaving the model to sum.
+
+test("sessionFlowSkew accepts a minimal print shape, not just FlowAlert", () => {
+  // FlowRow / a raw print carries only option_type + premium for this purpose — the widened
+  // signature must accept it without a cast.
+  const rows = [
+    { option_type: "CALL", premium: 6_000_000 },
+    { option_type: "PUT", premium: 4_000_000 },
+  ];
+  const s = sessionFlowSkew(rows);
+  assert.equal(s.call_pct, 60);
+  assert.equal(s.call_premium, 6_000_000);
+  assert.equal(s.put_premium, 4_000_000);
+});
+
+test("the same rows always yield the same skew — no order or slice dependence", () => {
+  const rows = [
+    { option_type: "PUT", premium: 1_000_000 },
+    { option_type: "CALL", premium: 3_000_000 },
+    { option_type: "CALL", premium: 1_000_000 },
+  ];
+  const a = sessionFlowSkew(rows).call_pct;
+  const b = sessionFlowSkew([...rows].reverse()).call_pct;
+  assert.equal(a, b);
+  assert.equal(a, 80); // 4M call / 5M total
+});
+
+test("an all-typeless pull reports call_pct null, never a fabricated balance", () => {
+  const s = sessionFlowSkew([{ option_type: "UNKNOWN", premium: 5_000_000 }]);
+  assert.equal(s.call_pct, null);
+  assert.equal(s.total_premium, 0);
+});
