@@ -66,6 +66,37 @@ describe("a quote may only be published when its expiry spans the print", () => 
   });
 });
 
+describe("the SIGNAL the report publishes is gated by the same rule", () => {
+  // buildMeridianEarningsReport renders this as a "Vector expected move" pillar reading
+  // `Chain IV ~<n>% · <expiry>`. It prints the expiry beside the number, so a non-covering quote
+  // makes the panel display its own contradiction:
+  //   PDD, printing 2026-08-24  ->  "Chain IV ~0.1% · 2026-08-21"   (measured on prod 22:10Z)
+  const REPORT_CORE = readFileSync(
+    join(process.cwd(), "src/lib/meridian/meridian-earnings-report-core.ts"),
+    "utf8"
+  );
+
+  test("the pillar still prints its expiry next to the number — that is what makes it checkable", () => {
+    assert.match(REPORT_CORE, /Chain IV ~\$\{input\.vector_move_pct\}%/);
+    assert.match(REPORT_CORE, /input\.vector_expiry/);
+    // …and it is still suppressed entirely when there is no quote, which is the behaviour the
+    // gate reuses rather than inventing a new "unavailable" state.
+    assert.match(REPORT_CORE, /if \(input\.vector_move_pct != null\)/);
+  });
+
+  test("a non-covering quote is not handed to the report at all", () => {
+    assert.match(INTEL, /vectorCoversPrint && vectorEm\?\.movePct != null/);
+  });
+
+  test("the ungated signal value is gone", () => {
+    assert.equal(
+      INTEL.includes("const vector_move_pct =\n    vectorEm?.movePct != null ? Number((vectorEm.movePct * 100).toFixed(1)) : null;"),
+      false,
+      "the pillar must not be able to quote an expiry that cannot describe this print"
+    );
+  });
+});
+
 describe("the resolver is wired to the guard, and stops claiming chain_iv when it is not", () => {
   test("the vector fallback is gated on covering the print", () => {
     assert.match(INTEL, /expiryCoversPrint\(vectorEm\.expiry, input\.pack\.earnings_date\)/);

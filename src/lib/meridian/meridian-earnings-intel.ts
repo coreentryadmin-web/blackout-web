@@ -214,8 +214,23 @@ export async function loadMeridianEarningsIntel(input: {
       input.enrichment.post_print != null && input.enrichment.post_print.lean !== "unknown",
   });
 
+  /**
+   * The same expiry rule, applied to the SIGNAL the report publishes.
+   *
+   * `buildMeridianEarningsReport` renders this as a "Vector expected move" pillar reading
+   * `Chain IV ~<n>% · <expiry>` — and it prints the expiry beside the number, so on a
+   * non-covering quote the panel displays its own contradiction. Measured on prod 2026-08-21
+   * 22:10Z: PDD (printing 2026-08-24), XPEV (08-24) and SMTC (08-25) each carried a Vector quote
+   * from **2026-08-21**, the series that expired that afternoon.
+   *
+   * Suppressed rather than relabelled: the row is already absent when there is no quote at all
+   * (`if (input.vector_move_pct != null)`), it carries `weight: 0, score: 0` so nothing downstream
+   * moves, and a quote that cannot describe this print is not evidence about this print.
+   */
   const vector_move_pct =
-    vectorEm?.movePct != null ? Number((vectorEm.movePct * 100).toFixed(1)) : null;
+    vectorCoversPrint && vectorEm?.movePct != null
+      ? Number((vectorEm.movePct * 100).toFixed(1))
+      : null;
 
   const report = buildMeridianEarningsReport({
     ticker: sym,
