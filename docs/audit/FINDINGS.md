@@ -54,6 +54,25 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-08-21 — [FINDING, P2 Meridian] The expected-move rail stacked labels closer together than a label is tall — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Why this exists** | Post-deploy live validation of #2457 (the ladder overlap). The ladder came back **clean** — but `meridian-interaction-audit.mjs` still reported `"17.00" ∩ "17.00" 33x2px` on both the Report and Positioning tabs, so I went looking for which two nodes those actually were instead of assuming the remaining hit was the component I had just fixed. |
+| **#2457 confirmed live** | Measured on prod (desktop 1440, BEKE Positioning): ladder 132px, `--mv-ladder-row-h` 20px, **every** adjacent pair at a 20.0px centre gap with **5px of text clearance** — Gamma flip→Max pain→Spot→Call wall→King node all exactly 20px, King node→Put wall 37.9px. Zero overlaps. The pre-fix state was 16px gaps against 20.5px rows with every pair overlapping. |
+| **The remaining overlap was a different component** | `div.mv-rail > div.mv-rail-track > div.mv-rail-marker-**wall** > span.mv-rail-marker-label > b.mv-rail-marker-num` against the same path under `mv-rail-marker-**level**` — the call wall and the king node, both at 17.00, on the **expected-move rail**, not the ladder. |
+| **Root cause** | `layoutRailLabels` was working: it put the two on different tiers. CSS then stacked those tiers **closer together than a label is tall**. Tier step `0.62rem` = **9.92px**; label box **12px**; label tops 438.17 and 448.09, exactly 9.92px apart → **2.08px overlap, 33px wide**. Tiering that does not separate is not tiering. |
+| **Same bug as #2457, one component over** | A stacking constant that nothing ever compared against a rendered height. #2457 pinned the ladder's row height for exactly this reason; the rail was left on a literal. |
+| **A second, quieter half** | The literal `0.62rem` appeared **twice** in the stylesheet — the label's `top` and `.mv-rail-track`'s `margin-top` headroom — with nothing tying them together, so changing one would silently mis-size the other and push a second tier over the panel title. |
+| **Fix** | `MV_RAIL_TIER_PX` (16) and `MV_RAIL_LABEL_PX` (14) in `meridian-viz-core.ts`, mirrored as `--mv-rail-tier-h` / `--mv-rail-label-h` on `.mv-rail`. Both consumers read the same property. The label's `line-height` is now **pinned** to `--mv-rail-label-h` as well: the `<b class="mv-rail-marker-num">` inside carries a different font stack (`--mv-value`), so an unpinned line box made the label's height a property of font fallback rather than of the stylesheet. |
+| **Regression guard** | 2 tests in `meridian-viz-core.test.ts`: the tier step must exceed the label height, the stylesheet must agree with both constants, the line-height must be pinned, and **both** consumers must derive from the same property; plus a behavioural test that two labels on the identical price land on different tiers *and* end up at least one label-height apart. Verified non-vacuous — setting the tier step back to 10px fails the first test. |
+| **Also cleared in the same run** | The first audit pass reported a P2 console error (`Refused to apply style … MIME type 'text/plain'`) and a P2 deep-link failure. Both were **rollout artifacts**: the HTML being served referenced `_next/static/css/d7380981ce74f4a2.css`, which **404s** — a chunk from a build that had already been replaced. Once three consecutive HTML fetches agreed on the same four CSS hashes (all 200), a re-run showed both gone. Reporting pixel verdicts measured against a partially-unstyled page would have been trap #4 in a new dress, so they are recorded as transient, not as defects. |
+| **Still open, deliberately not in this PR** | Same run, `.mr` (Report) tab: `"Thermal nodes" ∩ "Vector expected move" 9x7px` and 4 clipped panel titles (`Vector expected move`, `Street / analysts`, `News & catalysts`, `Insider activity`), plus sub-24px tap targets on Report/Estimates/Positioning. Different root cause (grid column sizing, not tier geometry); a separate change. |
+| **Gates on Node 20.20.2** | `npx tsc --noEmit` clean · `npm test` **9043 pass / 0 fail** · `npm run build` clean · `npx eslint` clean. |
+| **Status** | FIXED — PR #2497 (draft). The fix itself is **not yet live-verified**: it is held by the CSS contract test, and the pixels must be re-measured once it ships. |
+
 ## 2026-08-21 — [FINDING, P2 Largo] Rule-7 sweep of the HELIX lane — two more places absence was published as measurement — FIXED
 
 > **kind:** `FINDING`
