@@ -4,6 +4,22 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-21 — [FINDING, P1 tooling] `zerodte-sim-replay --reset` deleted a live prod board snapshot straight past its own documented refusal — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `node scripts/audit/zerodte-sim-replay.mjs --reset --redis=<prod>` deleted `blackout:zerodte:board:snapshot:v1`, the sim marker and **every** `nw:optmark:*` key under the prefix, with no refusal and without `--force` — while the file header claimed (L31-35) "It REFUSES to run against a Redis that already holds a live-looking board snapshot NOT written by this tool (no sim marker) unless `--force`." |
+| **Root cause** | The guard was never missing: `assertSafeTarget()` exists at L646 and is correct. It was wired to **one** call site — the publish path at L790. The `--reset` branch (L713-720) went `connectRedis()` -> `resetKeys()` with nothing in between. The refusal covered the *recoverable* mode (overwrite, which the app rebuilds on its next tick) and left the *destructive* one open. |
+| **Why it wasn't caught earlier** | Nothing tested the wiring, and the header read as evidence that it was wired — the guard is real and greppable, so a reader checking "does this tool have a prod safety check?" finds `assertSafeTarget`, sees a correct implementation, and stops. The absent thing was the call, not the function. Same shape as #2500: a mechanism that exists in prose and in a helper, but not on the path that needs it. |
+| **Blast radius** | The live 0DTE board for however long the snapshot takes to rebuild, plus every cached option mark. Not permanent data loss — the keys are TTL-backed and regenerate — but a member-visible outage of the Night Hawk board, triggered by the exact operator mistake the refusal names in its own error text ("This looks like a real/prod Redis"). |
+| **Fix** | `--reset` now calls `assertSafeTarget(client, args.keyPrefix, args.force)` before `resetKeys()`, with the same try/catch and `exit 3` the publish path uses. `assertSafeTarget` is exported so it can be tested. Header and `--help` now state that the refusal covers reset. The documented behaviour was correct, so it was implemented — not deleted. |
+| **Regression guard** | 4 tests in `zerodte-sim-replay.test.mjs`: the refusal fires on a live-looking foreign snapshot; it stays quiet for our own marked snapshot, an empty target and `--force`; an unparseable-but-present snapshot is treated as foreign; and — the one that matters — a source-level assertion that the `--reset` branch calls `assertSafeTarget` before `resetKeys()`. Verified non-vacuous: removing the call takes the suite to 9 pass / 1 fail. |
+| **Caveat on the guard** | These tests live under `scripts/`, which `npm test` does not collect — see the sibling P2 finding from this sweep. Until that is wired, this guard is pinned but not gated. |
+| **Status** | FIXED — this PR. Found by the documented-but-unwired ("phantom guards") sweep. |
+
+
 ## 2026-08-21 — [FINDING, P1 X marketing] `X_MARKETING_POSTS_PAUSED` did not stop all posting — a second publisher bypassed every gate — FIXED
 
 > **kind:** `FINDING`
