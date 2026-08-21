@@ -512,7 +512,7 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
 
   t(
     "get_thermal_compare",
-    "BlackOut Thermal compare strip — side-by-side SPY/SPX/QQQ (or custom tickers) spot, change, flip, call/put walls, net GEX, gamma regime read, and cross_validation divergence. Same preset universe as the /heatmap compare cards.",
+    "BlackOut Thermal compare strip — side-by-side SPY/SPX/QQQ (or custom tickers) spot, change, flip, call/put walls, net GEX, gamma regime read, and cross_validation divergence. Same preset universe as the /heatmap compare cards. TIMING — read these before quoting a price: `market_session` (OPEN / PRE-MARKET / AFTER-HOURS / CLOSED) and `et_time` describe the wall clock, and each ticker carries `matrix_asof` + `matrix_age_sec` for WHEN that ticker's matrix was computed. `as_of` is only when this payload was generated. Outside OPEN, `spot` is the prior session's close or an extended-hours print, NOT a live quote — say which session a price belongs to rather than presenting it as current.",
     {
       tickers: {
         type: "array",
