@@ -100,6 +100,23 @@ export type GexPositioning = {
   /** Intraday gamma-migration one-liner when a real diff exists, else null. */
   shift_summary: string | null;
   /**
+   * The EXPIRY SCOPE every field above was summed over — the matrix's near-term set.
+   *
+   * WHY THIS IS ON THE CONTRACT. Every number here is a MULTI-EXPIRY AGGREGATE, and without the
+   * scope a consumer cannot tell that. Measured live 2026-08-21: at the same minute, `/heatmap`
+   * scoped to one expiry reported SPY **LONG GAMMA, flip 756, net GEX -$3.7B** while this contract
+   * (near-term aggregate) reported **gamma_posture "short", flip null, net GEX -$10.98B** — "no
+   * gamma flip, dealers net short at EVERY strike". Both are right for their scope, and a reader
+   * holding only one of them has no way to know the other exists, so the two surfaces simply
+   * contradict each other.
+   *
+   * `gex-heatmap-for-largo.ts` already solved exactly this for `get_gex_heatmap` ("carried so an
+   * answer can NAME the scope it is quoting instead of implying a single wall exists"); the scope
+   * was resolved here too, for the WS wall override and the cross-validation oracle, and then
+   * thrown away instead of published. Undefined only on a matrix that carries no expiry list.
+   */
+  near_term_expiries?: string[];
+  /**
    * 0DTE / FRONT-EXPIRY INTRADAY-ADJUSTED view (OI + volume model) — an ESTIMATE that ADDS today's
    * not-yet-settled front-expiry net dealer positioning (signed buy-vs-sell from the trade tape) on
    * top of the canonical OI base above. ADDITIVE + clearly LABELED — the canonical OI fields
@@ -269,6 +286,11 @@ export function gexPositioningFromHeatmap(
 
   const shift_summary = hm.shift?.available ? hm.shift.summary ?? null : null;
 
+  // Resolved by the SAME helper the WS override and the cross-validation oracle use, so the
+  // published scope is exactly the scope the numbers were summed over — not a second derivation
+  // that could drift from it.
+  const nearTermExpiries = resolveNearTermExpiriesForCrossValidation(hm);
+
   return {
     ticker: root,
     spot,
@@ -294,6 +316,7 @@ export function gexPositioningFromHeatmap(
     nearest_wall: nearest,
     distance_to_flip_pct,
     shift_summary,
+    near_term_expiries: nearTermExpiries,
     source: "polygon",
   };
 }

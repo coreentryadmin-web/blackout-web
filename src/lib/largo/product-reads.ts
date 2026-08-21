@@ -891,7 +891,19 @@ export type ThermalComparePositioning = {
   net_gex: number;
   gamma_regime_read: string;
   gex_cross_validation?: unknown;
+  near_term_expiries?: string[];
 } | null;
+
+/**
+ * Compact expiry scope: how many expiries the aggregate covers and the range it spans. The full
+ * list runs to fifteen dates on SPX — a count plus first/last says everything an answer needs to
+ * NAME its scope without spending fifteen leaves per ticker on it.
+ */
+function expiryScopeOf(expiries: string[] | undefined) {
+  if (!expiries?.length) return null;
+  const sorted = [...expiries].sort();
+  return { count: sorted.length, first: sorted[0], last: sorted[sorted.length - 1] };
+}
 
 /**
  * PURE: one compare-strip row from one positioning snapshot.
@@ -921,6 +933,7 @@ export function thermalCompareRow(ticker: string, pos: ThermalComparePositioning
       freshness: null,
       // A cold row says WHY, rather than serving a wall of nulls a reader has to guess at.
       unavailable: { reason: "GEX matrix cold for this ticker", retryable: true },
+      expiry_scope: null,
     };
   }
   return {
@@ -950,6 +963,12 @@ export function thermalCompareRow(ticker: string, pos: ThermalComparePositioning
     // matrix_age_sec ~300 over a print that had settled 4.5 hours earlier.
     freshness: "cached" as const,
     unavailable: null,
+    // WHICH EXPIRIES these numbers were summed over. Every field on this row is a multi-expiry
+    // aggregate; without the scope a reader cannot tell that, and /heatmap scoped to a single
+    // expiry can report the OPPOSITE gamma posture at the same instant (measured 2026-08-21:
+    // UI "LONG GAMMA, flip 756" vs this aggregate "short, flip null"). Both correct, mutually
+    // unreconcilable unless the scope travels with the numbers.
+    expiry_scope: expiryScopeOf(pos.near_term_expiries),
   };
 }
 
