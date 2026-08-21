@@ -344,6 +344,23 @@ test("buildExitContext: floor breach honors the floor mark — never persists a 
   assert.equal(ctx.mark, 4.0, "breakeven floor honored even when mark gapped through");
   assert.equal(ctx.pnl_pct, 0);
   assert.equal(ctx.peak_pnl_pct, 20);
+  // Provenance: the persisted mark (4.0) is a floor-HONORED inference, not the observed 3.48 print.
+  assert.equal(ctx.mark_observed, 3.48, "the raw observed mark is kept, not discarded");
+  assert.equal(ctx.mark_honored, true, "a floor-honored fill is flagged as inferred, not observed");
+});
+
+test("buildExitContext: a thesis exit uses the observed mark verbatim — mark_honored is false", () => {
+  const decision = evaluateExitState(
+    input({
+      currentMark: 3.2,
+      peakPremium: 4.1,
+      cortexEvidence: evidence([{ stance: "veto", source: "wall-trend" }]),
+    })
+  );
+  const ctx = buildExitContext(decision, ENTRY, 3.2, 4.1, Date.UTC(2026, 6, 14, 15, 0, 0));
+  assert.equal(ctx.mark, 3.2, "thesis exit takes the observed mark, no floor honoring");
+  assert.equal(ctx.mark_observed, 3.2);
+  assert.equal(ctx.mark_honored, false, "an observed fill is NOT flagged as inferred");
 });
 
 test("resolveExitMark: ratchet floor caps at floor premium; thesis uses observed", () => {
@@ -660,6 +677,9 @@ test("buildExitContext: a null entry premium yields null pnl/peak fields (never 
   assert.equal(ctx.pnl_pct, null);
   assert.equal(ctx.peak_pnl_pct, null);
   assert.equal(ctx.mark, 3.9);
+  // With no entry premium there is no floor to honor: the observed mark is used and flagged as such.
+  assert.equal(ctx.mark_observed, 3.9);
+  assert.equal(ctx.mark_honored, false);
   assert.equal(ctx.reason, "no_entry_premium");
 });
 
