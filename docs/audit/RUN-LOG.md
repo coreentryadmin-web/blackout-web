@@ -567,3 +567,69 @@ phase and a consistent denominator); #2525 and #2523 make them robust rather tha
 
 NOT a CI gate: it hits live prod, whose current state legitimately carries pending-deploy defects.
 It is a manual / scheduled post-close QA tool, like the truncation probe.
+
+## 2026-08-21 — Night Hawk RTH live-validation session (market open, ~10:16–13:07 ET)
+
+A full RTH pass over the live 0DTE board and Largo, per the charter's RTH mode ("live production
+truth/quality on the deployed product"). Outcome: one tooling defect fixed, one platform outage
+escalated, the board's money-adjacent numbers validated clean, and two suspected flattering-direction
+defects run to ground as working-as-designed.
+
+**Board integrity — GREEN.** Session produced normally: 12 committed plays across the window (top
+gate rotated `opening_window` → `score_floor` after 10:00 ET, as designed). Every committed row's
+displayed `live_pnl_pct` matched an independent recompute from `(last_mark − entry)/entry`, and every
+loss rendered negative (no #2452-class sign flip). QQQ closed a coherent **+24%** winner; the losers
+(RIVN −22.2%, TSLA −7.6%) and breakevens (HOOD/MRNA/HIMS/COIN 0%) all self-consistent.
+
+```
+  ok MRNA CLOSED  0      recompute 0.0   exit 0
+  ok TSLA CLOSED  -7.61  recompute -7.6  exit -7.61
+  ok QQQ  CLOSED  24.12  recompute 24.1  exit 23.79
+  ok TEM  CLOSED  -50    recompute -52.6 exit -50     [stop-pin, documented]
+  ok TGTX CLOSED  -50    recompute -52.0 exit -52.02  [stop-pin, documented]
+  ... (12 rows, no flattering-direction divergence outside documented stop-pin/condor cases)
+```
+
+**#2443 / #2440 — validated on a live OPEN play (TGTX, HOLD).** `mark_as_of` present and RTH-fresh
+(~89s before the board snapshot), `mark_source: "mid"` (a sourced NBBO mid, not a stale after-hours
+print). Cross-checked the displayed `1.43` mid against Polygon minute bars at that timestamp: TGTX 55C
+traded **1.43–1.75** around 14:40Z (a literal 1.43 print at 14:37:40Z), so the board mark sits squarely
+in the real traded range. P&L −17.34% self-consistent. (`last_bar_et` in the old puller was a
+non-existent field — a script artifact, not a product gap; the real timestamp is `mark_as_of`.)
+
+**Two suspected flattering-direction defects → CLEARED (working-as-designed, disclosed, record honest).**
+- *Ratchet-floor mark-honoring* (`resolveExitMark` returns `max(observed, floorMark)` for ratchet/
+  runner-floor exits). HOOD showed 0% with an observed −1.63% mark; investigated to the documented
+  "a gap-through between poll ticks cannot finish red when breakeven was armed" convention. Consistent
+  across rows (the HOOD/SERV apparent divergence was penny-rounding on a thin option), and the observed
+  mark is disclosed in `exit_detail`. Not a defect.
+- *−50% stop-pin* (TEM/TGTX closed at the −50% hard stop while their observed marks were −52%). This is
+  `directionalClosedDisplayPnlPct`'s documented "D-1 hold-to-stop comparison grade". Critically, the
+  win-rate RECORD does NOT use it: `managedGradeView` grades the AS-MANAGED exit from
+  `entry_context.exit` (TGTX = the honest **−52.02%**), with the −50% pin surfaced only as a labeled
+  mechanical comparison. Record is honest; not a defect.
+
+**Largo — a live platform outage, escalated (issue #2582).** Stress-testing Largo surfaced that
+`POST /api/market/largo/query` returns its internal-error fallback on the majority of member questions
+across ALL lanes (measured ~7/9 ≈ 78%, sustained ~2h45m through the whole RTH window, still failing at
+13:07 ET). Localized to the shared Anthropic-tool-loop path, NOT any product's data: `/status` stayed
+`200`/all-live throughout, and that endpoint itself calls `zeroDtePlaysForLargo()` successfully. Root
+cause needs the server-side `[largo/runLargoQuery] detail:` log line, which is not reachable from this
+sandbox. This BLOCKS the #2519 condor live-verification (Largo cannot answer any condor question while
+down) — deferred until recovery. (#2519's condor descriptor CONTENT was independently re-verified honest
+against the engine constants: ±0.6%→77, ±0.8%→92, breach 18.7, cap 100→97.)
+
+**Tooling defect FIXED (PR #2581).** The stress harness reported "ALL PASS · condor verified" while
+Largo was actually erroring — because every content grader passes *vacuously* on the internal-error
+fallback (no denial phrase, no numbers, no session claim → all "pass"). A verifier that reports GREEN
+through the exact outage it exists to catch. Fixed with a unit-tested `largoAnswerErrored()` guard that
+hard-fails the fallback before any content grader runs; the live re-run correctly flipped `ALL PASS` →
+`2 FAIL`.
+
+**Tracked for a measured post-close fix (issue #2587, P3, record-safe).** A CLOSED trim-scale play's
+board card surfaces three P&L numbers, none its true blended realized: the headline shows the labeled
+peak (SPXW +30.27% "Peak excursion"), the tooltip's "realized" is `live_pnl_pct` which *drifts with
+post-exit marks* (+1.53% vs an actual ~+6.7% blend), and `closedPnlDisplay`'s `isPeak` guard keys on
+`trimScaleTranchesArmed(peak)` rather than the actual exit policy + fired tranches (latent flattering for
+a ratchet-mode row with a high peak). The RECORD is unaffected (grades via `managedGradeView`); scope is
+board display only, and any fix must be measured with `npm run sim:0dte` per OUTCOME-GRADING-SPEC.md.
