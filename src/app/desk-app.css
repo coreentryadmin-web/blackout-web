@@ -2523,15 +2523,42 @@ html.nav-locked body { overflow: hidden; }
 .meridian-kv-value.mv-bear { color: var(--mv-bear, #fb7185); }
 
 /* Banner value pulled to the right edge — these ran a short line down the left and left two
-   thirds of the row empty. */
-.meridian-analytics-banner { align-items: center; }
-.meridian-analytics-banner-body { flex: 1 1 auto; min-width: 0; }
+   thirds of the row empty.
+
+   THE SUB IS TWO DIFFERENT KINDS OF CONTENT, and the old rule only worked for one of them.
+   `MeridianAnalyticsBanner`'s `sub` is a short VALUE readout on the Expected-move banner
+   ("126.39 - 134.21 (chain_iv)", 24 chars) and a full SENTENCE on the Play-read banner
+   ("If playing directionally, keep risk inside the ~3% options-implied band · king node…",
+   86 chars). It was `flex: none` (cannot shrink) plus `white-space: nowrap` (cannot wrap), so a
+   long sub stayed rigid at its max-content width and the BODY absorbed every pixel of shrinkage.
+   Measured live on prod 2026-08-21, desktop 1440, Positioning tab:
+
+     Play read      bannerW 1005  bodyW    0  headlineLines 7  sub 1031px  -> 96px past the box
+     Expected move  bannerW 1005  bodyW  640  headlineLines 1  sub  294px  -> fits
+
+   `bodyW: 0` is the label and headline squeezed out of existence, which is why "PLAY READ" and
+   "Imminent print" printed one word per line down a sliver, and the sentence itself ran under
+   `overflow: hidden` and was cut mid-word.
+
+   The 640px media query below already described this exact failure — "the value wraps under
+   rather than squeezing the headline to nothing" — but gated the cure on VIEWPORT WIDTH. The
+   trigger is not the viewport; it is the sub being longer than the room left beside the headline,
+   which happens at 1440px too. So the wrap is now unconditional and the sub may wrap its own text.
+   `white-space: normal` breaks at SPACES only (no `overflow-wrap: anywhere`), so a numeric readout
+   like "126.39 - 134.21" still never splits inside a number. */
+.meridian-analytics-banner { align-items: center; flex-wrap: wrap; }
+/* A basis, not just `auto`: it is the floor that stops the label/headline collapsing to nothing. */
+.meridian-analytics-banner-body { flex: 1 1 12rem; min-width: 0; }
 .meridian-analytics-banner-sub {
-  margin: 0; flex: none; text-align: right; font-size: 1.02rem; white-space: nowrap;
+  margin: 0;
+  /* Shrinkable and wrappable — the two properties whose absence caused the overflow. */
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  text-align: right; font-size: 1.02rem; white-space: normal;
 }
 @media (max-width: 640px) {
-  /* On a phone the value wraps under rather than squeezing the headline to nothing. */
-  .meridian-analytics-banner { flex-wrap: wrap; }
+  /* Left-align once the value has a row of its own; the wrap itself is now unconditional. */
   .meridian-analytics-banner-sub { text-align: left; font-size: 0.92rem; }
 }
 
