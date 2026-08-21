@@ -93,7 +93,8 @@ export function magnetBriefLine(state: VectorFullState): string | null {
   const m = state.magnet;
   if (!m) return null;
   const lead = m.pull === "at" ? "pinned at" : `pull ${m.pull} toward`;
-  return `MAGNET  ${lead} ${n(m.strike)} (${signedPct(m.distancePct * 100)}%) — ${m.callout.slice(0, 80)}`;
+  // m.distancePct is a PERCENT (same convention as proximity.distancePct) — no *100 rescale.
+  return `MAGNET  ${lead} ${n(m.strike)} (${signedPct(m.distancePct)}%) — ${m.callout.slice(0, 80)}`;
 }
 
 /** MAX PAIN — the max-pain strike and its signed distance from spot. */
@@ -256,10 +257,12 @@ export function knownVectorNumbers(state: VectorFullState): number[] {
   if (mp != null && spot != null) add(mp - spot);
 
   // Magnet strike + its percent (raw + rounded int, since the callout embeds the rounded level).
+  // distancePct is already a percent — grounding must allowlist the SERVED number, not a rescale
+  // of it, or the value the brief prints is absent from the allowlist.
   if (state.magnet) {
     add(state.magnet.strike);
     add(Math.round(state.magnet.strike));
-    add(state.magnet.distancePct * 100);
+    add(state.magnet.distancePct);
   }
 
   // Proximity level + percent.
