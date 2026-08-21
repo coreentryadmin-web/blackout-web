@@ -3,6 +3,7 @@ import "server-only";
 import { daysUntilEt } from "@/features/meridian/lib/meridian-timeline";
 import type { EarningsTimelineInput, FdaTimelineInput } from "@/features/meridian/lib/meridian-timeline";
 import { serverCache } from "@/lib/server-cache";
+import type { EmCoverage } from "@/lib/meridian/meridian-em-priority";
 import {
   benzingaRowsToTimelineInputs,
   overlayTimelineExpectedMoves,
@@ -92,6 +93,12 @@ export type MeridianEarningsTimelineResult = {
   calendar_entitled: boolean;
   /** How many prints were hidden because the name has no listed options. */
   non_optionable_hidden: number;
+  /**
+   * How far the options-implied move actually got. The chain budget is capped, so a null
+   * `expected_move_pct` means either "no chain" or "not queried" — different facts, and this is
+   * what tells them apart.
+   */
+  expected_move_coverage: EmCoverage;
   /** False when the optionable universe was unavailable, so NOTHING was filtered. */
   optionable_filter_applied: boolean;
   /** How many lane rows carry a sector cohort key, and how many do not. Coverage, stated. */
@@ -129,9 +136,18 @@ export async function loadMeridianEarningsTimeline(
   const split = partitionOptionable(rows, buildOptionableIndex(optionableList), (r) => r.ticker);
   rows = split.kept;
 
-  const emByTicker = await batchLoadEarningsExpectedMovePct(
-    rows.map((r) => ({ ticker: r.ticker, report_date: r.report_date }))
+  // Hand the ranker what it needs to spend the chain budget on names anyone is watching:
+  // importance and proximity, not Map insertion order. See meridian-em-priority.ts.
+  const em = await batchLoadEarningsExpectedMovePct(
+    rows.map((r) => ({
+      ticker: r.ticker,
+      report_date: r.report_date,
+      importance: r.importance ?? null,
+      days_until: r.report_date ? daysUntilEt(r.report_date, todayYmd) : null,
+    }))
   );
+  const emByTicker = em.byTicker;
+  const expectedMoveCoverage = em.coverage;
   rows = overlayTimelineExpectedMoves(rows, emByTicker);
 
   // Sector cohort key, so the lane can group and the detail panel can rank a name against the
@@ -176,6 +192,7 @@ export async function loadMeridianEarningsTimeline(
     after_hours_movers: bundle.after_hours_movers,
     calendar_entitled: bundle.entitled && boardRes.entitled,
     non_optionable_hidden: split.hidden.length,
+    expected_move_coverage: expectedMoveCoverage,
     optionable_filter_applied: split.applied,
   };
 }
