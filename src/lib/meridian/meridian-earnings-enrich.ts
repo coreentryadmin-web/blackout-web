@@ -47,7 +47,8 @@ export async function loadMeridianEarningsEnrichment(
       fetchBenzingaEarnings(sym, 6).catch(() => []),
       loadMeridianEarningsPrintHistory(sym, 8, eventDate),
       loadMeridianCatalystBundle(sym),
-      loadBenzingaTickerEarnings(sym, eventDate ?? null),
+      // 8 to match the print-history call above, so both read the same window.
+      loadBenzingaTickerEarnings(sym, eventDate ?? null, 8),
       loadBenzingaTickerGuidance(sym),
     ]);
 
