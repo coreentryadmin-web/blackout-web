@@ -62,3 +62,13 @@ export const glossaryGuide: LearnGuide = {
 };
 
 export { CATEGORIES as GLOSSARY_CATEGORIES };
+
+/**
+ * Flattened {term, def} list for structured data (DefinedTermSet). Pulled from the SAME CATEGORIES
+ * the page renders, so the JSON-LD can never drift from the visible glossary — a DefinedTerm that
+ * describes a definition users cannot see is exactly the kind of schema/markup mismatch Google
+ * penalizes.
+ */
+export function glossaryTermsFlat(): { term: string; def: string }[] {
+  return CATEGORIES.flatMap((c) => c.terms);
+}

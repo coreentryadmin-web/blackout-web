@@ -224,6 +224,9 @@ export type PrintLike = {
   surprise_pct?: number | null;
   beat?: boolean | null;
   session_change_pct?: number | null;
+  /** The gap-inclusive reaction. Falls back to `session_change_pct` only for pre-#2483 payloads,
+   *  where the two agree for pre-open prints and the anchor session's open→close is all there is. */
+  reaction_pct?: number | null;
   reaction_basis?: string | null;
 };
 
@@ -252,7 +255,7 @@ export function beatSeries(prints: readonly PrintLike[] | null | undefined): Bea
       // Prefer the explicit flag; fall back to the surprise sign, but never invent a verdict
       // from a missing number.
       beat: p.beat ?? (s === null ? null : s >= 0),
-      reactionPct: num(p.session_change_pct),
+      reactionPct: num(p.reaction_pct ?? p.session_change_pct),
       reactionAssumed: p.reaction_basis === "assumed_report_session",
       magnitude: s === null || peak <= 0 ? 0 : clamp(Math.abs(s) / peak, 0, 1),
     };

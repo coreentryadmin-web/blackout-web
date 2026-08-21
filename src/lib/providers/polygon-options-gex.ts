@@ -17,7 +17,7 @@ import { persistGexRegimeEvents } from "./gex-regime-events";
 import {
   zeroGammaFlip as computeZeroGammaFlip,
   cumulativeGammaFlipDetail,
-  gexWallsFromStrikeTotals,
+  wallsFromStrikeTotals,
   wallsByHorizon,
   type GammaFlipReason,
   type HorizonWalls,
@@ -973,9 +973,17 @@ function computeGexRegime(
   maxPain: number | null,
   flipReason?: GammaFlipReason
 ): { callWall: number | null; putWall: number | null; regime: GexRegime } {
-  // Shared with Thermal's per-expiry Key Levels — see gexWallsFromStrikeTotals. Two copies of the
-  // wall scan could drift; one cannot.
-  const { callWall, putWall } = gexWallsFromStrikeTotals(strikeTotals);
+  // SIDE-CONSTRAINED against spot — a call wall must sit at/above spot (resistance) and a put wall
+  // at/below it (support). #2417 established this ("a call wall below spot is not a call wall, it is
+  // inverted") and wired the OVERLAY producers (WS override, cross-val, horizons) through the
+  // constrained `wallsFromStrikeTotals`, but the BASE matrix scan here was left on the unconstrained
+  // `gexWallsFromStrikeTotals`. So off-hours (WS idle) and for every non-WS single name (all the
+  // time), `gex.call_wall`/`gex.put_wall` could still serve an inverted level. Measured live
+  // 2026-08-21: MSFT spot 481.97 served call_wall 480 (resistance $2 BELOW price) while the real
+  // overhead wall was 500; AMZN spot 261.64 served 260 vs the real 270. All three callers pass a
+  // real spot, so the constraint always applies. `null` is the honest answer when no positive-gamma
+  // strike sits above spot — never a wall on the wrong side. This is the fifth producer #2417 missed.
+  const { callWall, putWall } = wallsFromStrikeTotals(strikeTotals, spot);
 
   // Posture + read DELEGATE to the pure builder in gex-cross-validation-core. That module has zero
   // imports, which is what lets `spx-odte-gex-uw-overlay.ts` reuse the identical logic — it cannot

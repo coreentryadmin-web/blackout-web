@@ -113,11 +113,26 @@ test("an edition with nothing omitted says so with null, not an empty sentence",
   assert.equal(out.market_recap_omitted_note, null);
 });
 
-test("a missing edition degrades to the same shape the tool always returned", () => {
+// This test used to assert `plays: []` and `play_count: 0` on the missing-edition branch, under
+// the title "degrades to the same shape the tool always returned" — preserving a shape without
+// asking whether the shape was right. It was not: "no edition exists" and "the edition had no
+// plays" are different answers, and only the second one has a count.
+test("a missing edition reports that NO edition exists — not an edition with zero plays", () => {
   const out = compactNightHawkEditionForModel(null);
   assert.equal(out.available, false);
+  assert.equal(out.reason, "no_edition_published");
+  assert.equal("plays" in out, false, "an empty list is countable and invites 'no plays tonight'");
+  assert.equal("play_count" in out, false);
+  assert.match(String(out.note), /not report one/i);
+});
+
+test("an edition that published with no surviving plays KEEPS its zero — that one is measured", () => {
+  const out = compactNightHawkEditionForModel({
+    available: true, plays: [], recap_only: true, recap_only_reason: "no_plays_survived_funnel",
+  });
+  assert.equal(out.available, true);
+  assert.equal(out.play_count, 0, "the funnel ran and nothing survived — a real result");
   assert.deepEqual(out.plays, []);
-  assert.equal(out.play_count, 0);
 });
 
 test("a recap-only edition keeps its recap_only flags", () => {

@@ -72,7 +72,6 @@ const KNOWN_GAPS: Record<string, string> = {
   "src/lib/bie/vector-full-state.ts": "vector lane",
   "src/lib/largo/slash-prompts.ts": "coordinator",
   "src/lib/largo/social-content-pack.ts": "coordinator — member-visible copy",
-  "src/lib/largo/vector-analytics.ts": "vector lane",
 };
 
 function walk(dir: string, out: string[] = []): string[] {
