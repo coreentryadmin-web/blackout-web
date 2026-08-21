@@ -22,8 +22,35 @@
  * from here.
  */
 
+/**
+ * Dealer gamma posture, mirrored verbatim from `GexPositioning.gamma_posture`.
+ * Carried as its OWN typed field rather than folded into `bias` because it does not
+ * live on a directional axis — see `volatility_regime` below.
+ */
+export type CompareGammaPosture = "long" | "short" | null;
+
+/**
+ * What dealer hedging does to REALIZED VOLATILITY — the axis dealer gamma actually
+ * lives on. Long gamma means dealers sell rallies and buy dips, damping moves toward
+ * heavy strikes ("suppressing"); short gamma means they hedge WITH the move, so a push
+ * in EITHER direction is amplified ("amplifying").
+ *
+ * This exists because the previous code projected gamma onto the same bullish/bearish
+ * axis as order flow, which is a category error: "short gamma" is not bearish, it is
+ * direction-agnostic vol expansion. Publishing it as `bearish` made the card assert a
+ * direction the matrix never measured.
+ */
+export type CompareVolatilityRegime = "suppressing" | "amplifying" | null;
+
 export type HelixThermalSide = {
   available: boolean;
+  /**
+   * DIRECTIONAL read, and only ever set from a genuinely directional measurement.
+   * The FLOW side derives it from signed call-vs-put premium. The GAMMA side never
+   * reports "bullish"/"bearish" — dealer gamma has no direction — so it reports
+   * "neutral" (long gamma: mean-reverting), "mixed" (short gamma: amplifies both
+   * ways) or "unknown". See `volatility_regime` for the gamma side's real axis.
+   */
   bias: "bullish" | "bearish" | "neutral" | "mixed" | "unknown";
   summary: string;
   net_premium?: number | null;
@@ -35,6 +62,10 @@ export type HelixThermalSide = {
   spot?: number | null;
   gamma_regime?: string | null;
   print_count?: number | null;
+  /** Gamma side only — the typed posture straight off the positioning contract. */
+  gamma_posture?: CompareGammaPosture;
+  /** Gamma side only — what that posture does to realized vol. */
+  volatility_regime?: CompareVolatilityRegime;
 };
 
 export type HelixThermalCompareCard = {
@@ -43,7 +74,12 @@ export type HelixThermalCompareCard = {
   as_of: string;
   helix: HelixThermalSide;
   thermal: HelixThermalSide;
-  /** True when flow bias and gamma regime point different directions. */
+  /**
+   * True ONLY when both sides produced a real, directional reading and those readings
+   * oppose. Two absent sides are NOT agreement: when either side is unknown this is
+   * `false` and `conflict_note` explains that nothing was compared, so a reader can
+   * tell "we checked and they agree" from "we could not check".
+   */
   conflict: boolean;
   conflict_note: string | null;
 };
@@ -52,7 +88,7 @@ export type PeerTickerRow = {
   ticker: string;
   flow: HelixThermalSide;
   gamma: HelixThermalSide;
-  /** True when flow bias and gamma regime disagree for this ticker. */
+  /** True only when BOTH sides are known and directionally oppose — see HelixThermalCompareCard.conflict. */
   conflict: boolean;
   conflict_note: string | null;
 };
@@ -62,7 +98,11 @@ export type PeerTickerCompareCard = {
   tickers: string[];
   as_of: string;
   rows: PeerTickerRow[];
-  /** True when flow biases diverge across peers (not all same direction). */
+  /**
+   * True when peers with a KNOWN flow bias point in opposite directions. Requires at
+   * least two peers to have produced a directional reading — one lone bullish name
+   * beside two unknowns is not divergence, it is one data point.
+   */
   peer_divergence: boolean;
   peer_divergence_note: string | null;
 };
