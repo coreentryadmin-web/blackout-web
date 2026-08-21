@@ -315,17 +315,19 @@ export function ArticleJsonLd({
         image: image ?? `${SITE.url}${IMAGES.ogImage}`,
         ...(datePublished && { datePublished }),
         ...(dateModified && { dateModified }),
-        author: {
-          "@type": "Organization",
-          name: authorName,
-          url: SITE.url,
-        },
-        publisher: {
-          "@type": "Organization",
-          name: SITE.name,
-          url: SITE.url,
-          logo: { "@type": "ImageObject", url: `${SITE.url}${IMAGES.ogImage}` },
-        },
+        // author + publisher REFERENCE the Organization entity node (@id) rather than inlining a
+        // bare Organization. That binds every article to the one entity that carries knowsAbout /
+        // sameAs / slogan — so each article inherits the brand's topical authority instead of
+        // asserting a thin, unlinked Organization on its own. For a YMYL (finance) site this
+        // author↔entity link is exactly the expertise signal Google's E-E-A-T guidance rewards.
+        // (A NAMED expert author is a stronger signal still, but must be a real person with real
+        // credentials — see docs/audit/SEO-GROWTH-STRATEGY.md; never fabricate one.)
+        author: authorName === "BlackOut Trades" ? { "@id": ORG_ID } : { "@type": "Organization", name: authorName, url: SITE.url },
+        publisher: { "@id": ORG_ID },
+        // isPartOf ties the article into the WebSite node, completing the graph
+        // (Organization ← WebSite ← Article) Google and the AI engines walk to resolve the entity.
+        isPartOf: { "@id": WEBSITE_ID },
+        inLanguage: "en-US",
         mainEntityOfPage: { "@type": "WebPage", "@id": `${SITE.url}${path}` },
       }}
     />
