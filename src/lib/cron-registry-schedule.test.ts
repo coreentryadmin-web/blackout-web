@@ -60,10 +60,7 @@ const NO_BACKING_TOML: Record<string, string> = {
  * SKIPPED with a `console.warn` and never reaches the manifest — the job simply never runs, and
  * nothing downstream says so.
  */
-const UNPARSEABLE_TOML_SPELLING: Record<string, string> = {
-  "largo-morning-brief":
-    "Declares `[[cron]] schedule = \"25 13 * * 1-5\"`, which sync-cron-schedules.mjs skips, so this job has never been scheduled. NOT corrected here on purpose: rewriting the spelling would cause the next sync to switch on a member-facing pre-open push cron as a side effect of a metadata fix. Whether to run it at all is a product decision for the coordinator — either schedule it deliberately or delete the TOML.",
-};
+const UNPARSEABLE_TOML_SPELLING: Record<string, string> = {};
 
 /** `cronSchedule = "..."` — the only spelling blackout-infra's generator parses. */
 function parseableCron(toml: string): string | null {
