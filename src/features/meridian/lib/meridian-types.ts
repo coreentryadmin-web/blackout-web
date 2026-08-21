@@ -266,6 +266,9 @@ export type MeridianEarningsWeekAnalytics = {
   printed_this_week: number;
   eps_beat_rate: number | null;
   revenue_beat_rate: number | null;
+  /** Prints each universe rate was computed from. `0` means the rate beside it is null. */
+  eps_graded?: number;
+  revenue_graded?: number;
   avg_surprise_pct: number | null;
   median_surprise_pct: number | null;
   headline: string;
@@ -364,6 +367,12 @@ export type MeridianEarningsEnrichment = {
     eps_beat_rate: number | null;
     revenue_beat_rate: number | null;
     combined_beat_rate: number | null;
+    /** How many graded prints each rate came from — a rate without its cohort is not a fact
+     *  about the company. `combined_graded` is the POOLED denominator (eps + revenue), which is
+     *  what `combined_beat_rate` is now pooled over rather than averaged across. */
+    eps_graded?: number;
+    revenue_graded?: number;
+    combined_graded?: number;
   } | null;
   analyst_revisions: MeridianAnalystRevision[];
   price_targets: MeridianPriceTargetRow[];
@@ -388,6 +397,14 @@ export type MeridianEarningsPrint = {
    * Null when no move could be measured at all.
    */
   reaction_basis?: "bmo_session" | "amc_next_session" | "assumed_report_session" | null;
+  /**
+   * THE reaction to the print. Prefer this over `session_change_pct` anywhere the number is
+   * presented as a reaction: for a post-close print the reaction is priced overnight, so this
+   * is read from the last close BEFORE the print, and the two routinely differ in SIGN.
+   * `reaction_measure` says which read produced it.
+   */
+  reaction_pct?: number | null;
+  reaction_measure?: "session_open_to_close" | "prior_close_to_close" | null;
   eps_estimate: number | null;
   eps_actual: number | null;
   revenue_estimate?: number | null;

@@ -59,6 +59,29 @@ function fmtPct(n: number | null | undefined): string {
   return `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`;
 }
 
+/**
+ * "12/40 printed · rev beat 62% of 96 prints".
+ *
+ * The two numbers used to sit adjacent as `12/40 printed · rev beat 62%`, and 40 is NOT the
+ * denominator of 62% — the rate is a share of the historical prints the universe lookback could
+ * GRADE, which is a different and usually much larger set. A rate printed beside an unrelated
+ * denominator is worse than one printed with none, because the reader is handed a plausible
+ * wrong cohort instead of an obvious gap.
+ */
+function weekAnalyticsSub(a: {
+  printed_this_week: number;
+  names_count: number;
+  eps_beat_rate: number | null;
+  revenue_beat_rate: number | null;
+  revenue_graded?: number;
+}): string {
+  const printed = `${a.printed_this_week}/${a.names_count} printed`;
+  if (a.eps_beat_rate == null) return printed;
+  if (a.revenue_beat_rate == null) return `${printed} · rev beat —`;
+  const of = a.revenue_graded && a.revenue_graded > 0 ? ` of ${a.revenue_graded} prints` : "";
+  return `${printed} · rev beat ${Math.round(a.revenue_beat_rate * 100)}%${of}`;
+}
+
 export function MeridianDesk() {
   const { data, error, isLoading, mutate } = useSWR<MeridianTimelinePayload>(
     "/api/market/meridian/timeline?days=21",
@@ -437,11 +460,7 @@ export function MeridianDesk() {
                 <MeridianAnalyticsBanner
                   label="Universe analytics"
                   headline={data.earnings_week_analytics.headline}
-                  sub={
-                    data.earnings_week_analytics.eps_beat_rate != null
-                      ? `${data.earnings_week_analytics.printed_this_week}/${data.earnings_week_analytics.names_count} printed · rev beat ${data.earnings_week_analytics.revenue_beat_rate != null ? Math.round(data.earnings_week_analytics.revenue_beat_rate * 100) : "—"}%`
-                      : `${data.earnings_week_analytics.printed_this_week}/${data.earnings_week_analytics.names_count} printed`
-                  }
+                  sub={weekAnalyticsSub(data.earnings_week_analytics)}
                   tone="earnings"
                   icon="▣"
                 />

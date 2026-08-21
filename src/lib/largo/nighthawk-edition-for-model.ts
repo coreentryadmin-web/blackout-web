@@ -54,7 +54,21 @@ type EditionLike = {
  * without a database or a published edition.
  */
 export function compactNightHawkEditionForModel(edition: EditionLike | null): ModelEdition {
-  if (!edition) return { available: false, play_count: 0, plays: [] };
+  if (!edition) {
+    // NO EDITION IS NOT AN EDITION WITH NO PLAYS. This used to return
+    // `{ available: false, play_count: 0, plays: [] }`, which says both "there is nothing here"
+    // and "here is the count, and it is zero" in one payload — and a model reads the number. The
+    // two states are genuinely different: an edition published with no surviving plays is a
+    // measured funnel result (and keeps its `recap_only_reason` below), while no edition at all
+    // means nothing was published for this date. Only the second one has no count to give.
+    return {
+      available: false,
+      reason: "no_edition_published",
+      note:
+        "No Night Hawk edition has been published for this date. This is NOT an edition with " +
+        "zero plays — there is deliberately no play count here, so do not report one.",
+    };
+  }
 
   const recap = edition.market_recap ?? {};
   const omitted: string[] = [];

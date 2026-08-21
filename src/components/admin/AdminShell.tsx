@@ -11,7 +11,8 @@ export type AdminTabId =
   | "spx"
   | "nighthawk"
   | "track-record"
-  | "bie";
+  | "bie"
+  | "x-intel";
 
 type NavItem = { id: AdminTabId; label: string };
 
@@ -23,6 +24,7 @@ const NAV_GROUPS: Array<{ title: string; items: NavItem[] }> = [
       { id: "apis", label: "API telemetry" },
       { id: "crons", label: "Crons" },
       { id: "bie", label: "Intelligence" },
+      { id: "x-intel", label: "X intel queue" },
     ],
   },
   {

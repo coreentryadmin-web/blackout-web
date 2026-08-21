@@ -45,6 +45,12 @@ name: Release green agent drafts
 # spending the same budget on listing and check lookup let the workflow starve itself out of its
 # own purpose. Both are REST now; see the comments at each call site.
 #
+# That alone was not enough. The PAT's REST budget is ALSO shared per-user, and three consecutive
+# runs then no-opped on it without ever reaching a PR. The fix that actually works is a TOKEN
+# SPLIT: `GITHUB_TOKEN` does every read, and the PAT is spent on nothing but the one mutation it
+# is uniquely able to perform. At a cap of 3 releases per run that is 12 PAT calls an hour — a
+# budget no amount of fleet activity can exhaust. See the `env:` block.
+#
 # The coordinator can still release by hand when needed — the GitHub MCP `update_pull_request` tool
 # sets `draft: false` (verified on #2458, #2424, #2423, #2422) — but it is no longer the only path.
 #
@@ -96,9 +102,24 @@ jobs:
     steps:
       - name: Mark green agent drafts ready for review
         env:
-          # Prefer the release PAT; fall back to GITHUB_TOKEN, which can READ everything this job
-          # needs but cannot perform the undraft itself.
-          GH_TOKEN: ${{ secrets.AGENT_RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          # TWO TOKENS, SPLIT BY JOB — this is the whole reason the workflow now works.
+          #
+          # `GITHUB_TOKEN` does every READ: listing PRs and reading check runs. It can do both, its
+          # budget is per-repo-per-run and effectively free here, and it is refreshed every run.
+          #
+          # The PAT is used for EXACTLY ONE THING: `gh pr ready`, the markPullRequestReadyForReview
+          # mutation, which is the only call `GITHUB_TOKEN` is refused
+          # ("Resource not accessible by integration", measured run 32447301837).
+          #
+          # WHY THE SPLIT MATTERS. A user PAT gets 5000/hr shared across ALL of that user's tokens,
+          # and this one lives on the account the agent fleet also works from — so its budget is
+          # drained precisely when the fleet is busy, which is exactly when there is a backlog to
+          # release. Runs 32459351655, 32460029586 and 32461784083 all died or no-opped on that,
+          # never once reaching a PR. Spending it on the listing was the mistake: at a cap of 3
+          # releases per run this now costs the PAT **12 calls an hour**, which no amount of fleet
+          # activity can exhaust.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TOKEN: ${{ secrets.AGENT_RELEASE_TOKEN }}
           HAVE_RELEASE_TOKEN: ${{ secrets.AGENT_RELEASE_TOKEN != '' }}
           REPO: ${{ github.repository }}
           DRY_RUN: ${{ inputs.dry_run }}
@@ -121,16 +142,48 @@ jobs:
           #
           # Two pages of 100 rather than one call of 200: REST caps per_page at 100, and the jam
           # this sweeps has been over 100 PRs in living memory.
+          # A RATE LIMIT IS NOT AN INCIDENT — it is "come back in a few minutes", and this job
+          # already comes back in a few minutes. Measured on run 32459351655: the REST listing
+          # returned HTTP 403 "API rate limit exceeded for user ID ..." and the job went RED, which
+          # is the wrong signal entirely. The token was valid (a bad one returns 401 Bad
+          # Credentials); the account's hourly budget was simply spent, shared with the agent
+          # sessions working the same repo.
+          #
+          # A workflow that goes red every fifteen minutes is a workflow nobody reads — the same
+          # reasoning already written into the NOT-ARMED path above. So a rate limit reports itself
+          # in the summary and exits 0. Anything ELSE still fails loudly: an auth error, a deleted
+          # repo or a malformed request are real problems and must not be swallowed alongside it.
+          rate_limited() {
+            grep -qiE "rate limit|secondary rate|abuse detection" "$1"
+          }
+
           for page in 1 2; do
-            gh api --method GET "repos/$REPO/pulls" \
-              -f state=open -f per_page=100 -F page="$page" -f sort=created -f direction=asc \
-              > "/tmp/prs-$page.json"
+            if ! gh api --method GET "repos/$REPO/pulls" \
+                 -f state=open -f per_page=100 -F page="$page" -f sort=created -f direction=asc \
+                 > "/tmp/prs-$page.json" 2>/tmp/gh-err.txt; then
+              if rate_limited /tmp/gh-err.txt; then
+                {
+                  echo "### Agent PR release — RATE LIMITED, nothing changed"
+                  echo ""
+                  echo "The GitHub API budget for the release token's account is spent. The next"
+                  echo "scheduled run (every 15 minutes) picks up where this one stopped; no PR was"
+                  echo "read, released or merged."
+                } >> "$GITHUB_STEP_SUMMARY"
+                echo "RATE LIMITED while listing PRs — exiting 0, next run retries."
+                exit 0
+              fi
+              echo "Listing PRs failed for a reason that is NOT a rate limit:" >&2
+              cat /tmp/gh-err.txt >&2
+              exit 1
+            fi
           done
           jq -s 'add' /tmp/prs-1.json /tmp/prs-2.json > /tmp/prs.json
 
           released=0
           skipped=0
           max=${MAX_RELEASE:-3}
+          # PR numbers released so far THIS RUN, for the ordering-dependency guard below.
+          claimed=""
 
           # IFS=TAB, not the default whitespace split.
           #
@@ -176,20 +229,120 @@ jobs:
             # from a previous SHA has caused a bad merge here twice.
             head_sha=$(jq -r --argjson n "$num" \
               '.[] | select(.number == $n) | .head.sha' /tmp/prs.json)
-            conclusion=$(gh api "repos/$REPO/commits/$head_sha/check-runs" \
-                    --jq '[.check_runs[] | select(.name=="verify")] | first | .conclusion' \
-                    2>/dev/null || echo "")
+            #
+            # A rate limit here must NOT read as "verify has not passed". Swallowing the error into
+            # an empty string would print `wait #N verify=none` — indistinguishable from a PR whose
+            # CI genuinely has not run, which is absence reported as measurement. Stop the run
+            # instead and let the next one re-read it.
+            if ! gh api "repos/$REPO/commits/$head_sha/check-runs" \
+                 > /tmp/checks.json 2>/tmp/gh-err.txt; then
+              if rate_limited /tmp/gh-err.txt; then
+                echo "RATE LIMITED while reading checks for #$num — exiting 0, next run retries."
+                echo "### Agent PR release — RATE LIMITED mid-sweep (released $released before stopping)" \
+                  >> "$GITHUB_STEP_SUMMARY"
+                exit 0
+              fi
+              echo "Check lookup for #$num failed for a reason that is NOT a rate limit:" >&2
+              cat /tmp/gh-err.txt >&2
+              exit 1
+            fi
+            conclusion=$(jq -r \
+              '[.check_runs[] | select(.name=="verify")] | first | .conclusion // ""' /tmp/checks.json)
             if [ "$conclusion" != "success" ]; then
               echo "wait  #$num  verify=${conclusion:-none} (head $head_sha)"
               skipped=$((skipped+1)); continue
             fi
 
+            # ORDERING DEPENDENCY GUARD — do not release two PRs that touch the same file.
+            #
+            # This workflow releases by check-completion order and `automerge.yml` then merges by
+            # the same clock, so two PRs touching one file merge in an effectively random order.
+            # On 2026-08-21 that broke `main`: #2482 fixed a file that #2421's new allowlist still
+            # listed as broken, so whichever landed second was wrong, and three uninvolved PRs went
+            # red on it. `CLAUDE.md` carries the rule; this enforces it.
+            #
+            # Measured need, not a hypothetical: the first working dry run of this job would have
+            # released #2427 and #2435 together, and those two collide on `vector-full-state.ts`
+            # AND `tool-defs.ts`. Without this guard, arming the schedule would have reproduced
+            # that morning's failure three PRs at a time, every fifteen minutes.
+            #
+            # `docs/` is excluded because `FINDINGS.md` collides between EVERY pair of agent PRs by
+            # construction — every lane appends at the same anchor. Counting it would make every
+            # run release exactly one PR and the guard would read as broken.
+            if ! gh api "repos/$REPO/pulls/$num/files?per_page=100" \
+                 --jq '.[].filename' > /tmp/files-$num.txt 2>/tmp/gh-err.txt; then
+              if rate_limited /tmp/gh-err.txt; then
+                echo "RATE LIMITED reading files for #$num — exiting 0 after $released release(s)."
+                exit 0
+              fi
+              # An unreadable file list must not read as "touches nothing", which would let this PR
+              # out alongside anything. Skip it; the next run re-reads it.
+              echo "skip  #$num  file list unreadable, cannot prove it is safe to release"
+              skipped=$((skipped+1)); continue
+            fi
+            grep -v '^docs/' "/tmp/files-$num.txt" | sort -u > "/tmp/f-$num.txt" || true
+
+            collision=""
+            for prev in $claimed; do
+              if [ -n "$(comm -12 "/tmp/f-$num.txt" "/tmp/f-$prev.txt")" ]; then collision="$prev"; break; fi
+            done
+            if [ -n "$collision" ]; then
+              echo "defer #$num  shares a file with #$collision released this run — next run takes it"
+              skipped=$((skipped+1)); continue
+            fi
+            claimed="$claimed $num"
+
             if [ "${DRY_RUN:-false}" = "true" ] || [ "${HAVE_RELEASE_TOKEN}" != "true" ]; then
               echo "would release  #$num  $branch"
             else
               # `gh pr ready` issues markPullRequestReadyForReview. Requires AGENT_RELEASE_TOKEN —
-              # GITHUB_TOKEN is refused ("Resource not accessible by integration").
-              gh pr ready "$num" --repo "$REPO"
+              # GITHUB_TOKEN is refused ("Resource not accessible by integration"). This is the one
+              # GraphQL call in the job, and the only one that changes anything.
+              # The ONLY call that uses the PAT. Everything above ran on GITHUB_TOKEN.
+              if ! GH_TOKEN="$RELEASE_TOKEN" gh pr ready "$num" --repo "$REPO" 2>/tmp/gh-err.txt; then
+                if rate_limited /tmp/gh-err.txt; then
+                  echo "RATE LIMITED releasing #$num — exiting 0 after $released release(s)."
+                  echo "### Agent PR release — RATE LIMITED after releasing $released" \
+                    >> "$GITHUB_STEP_SUMMARY"
+                  exit 0
+                fi
+                # A PERMISSION REFUSAL IS A STANDING CONFIG GAP, NOT AN INCIDENT — same class as
+                # NOT ARMED, and it gets the same treatment for the same reason.
+                #
+                # Measured on the first armed run (32464976418):
+                #   GraphQL: Resource not accessible by personal access token
+                #   (markPullRequestReadyForReview)
+                #
+                # Failing loudly was RIGHT the first time: the error was novel, and going red is
+                # how it got found at all. But it is now a known missing checkbox, and a workflow
+                # that goes red every fifteen minutes over a known missing checkbox is one nobody
+                # reads — which is the failure this file already warns about twice. Classifying it
+                # correctly is not swallowing it: the summary below names the exact permission and
+                # the exact setting, every run, until it is fixed.
+                if grep -qiE "not accessible by (personal access token|integration)" /tmp/gh-err.txt; then
+                  {
+                    echo "### Agent PR release — TOKEN LACKS PULL-REQUEST WRITE"
+                    echo ""
+                    echo "\`AGENT_RELEASE_TOKEN\` authenticated but was refused"
+                    echo "\`markPullRequestReadyForReview\`. It is present and valid — it simply"
+                    echo "cannot perform this operation."
+                    echo ""
+                    echo "Fix one of:"
+                    echo "- Fine-grained PAT → Repository permissions → **Pull requests: Read and write**"
+                    echo "  (\"Read\" is not enough; the default permission set grants no PR access at all)"
+                    echo "- Classic PAT → the full \`repo\` scope"
+                    echo "- If the owner is an ORGANISATION, an org admin must also approve the token:"
+                    echo "  Settings → Personal access tokens → pending requests"
+                    echo ""
+                    echo "Released this run: **$released**  ·  candidate that failed: #$num"
+                  } >> "$GITHUB_STEP_SUMMARY"
+                  echo "TOKEN LACKS PULL-REQUEST WRITE — cannot undraft #$num. See the run summary."
+                  exit 0
+                fi
+                echo "Release of #$num failed for a reason that is NOT a rate limit:" >&2
+                cat /tmp/gh-err.txt >&2
+                exit 1
+              fi
               echo "released  #$num  $branch"
             fi
             released=$((released+1))
