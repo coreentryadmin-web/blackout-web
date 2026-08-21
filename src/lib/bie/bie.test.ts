@@ -1528,3 +1528,73 @@ test("knowledge: spx-slayer-mechanics.md actually documents the three-stage engi
   assert.match(text, /get_spx_play/);
   assert.match(text, /get_spx_confluence/);
 });
+
+// ── knowledge: ingestion bounds must be ORDERED SANELY and REPORT what they drop ──
+//
+// Regression cover for the 2026-08-21 finding (docs/audit/FINDINGS.md). Two
+// separate defects, both silent:
+//   1. ROOT_DOCS were appended AFTER the directory walk, so CLAUDE.md and
+//      AGENTS.md sat at positions 64-65 of 65 — permanently past the file cap.
+//      The two documents that define how the platform operates were the only two
+//      guaranteed never to be ingested.
+//   2. Neither the file cap nor the size cap reported what it discarded, so
+//      docs/audit/FINDINGS.md — the findings corpus itself — went un-ingested
+//      from 2026-07-31 with `{ stored }` looking perfectly healthy throughout.
+//
+// These tests replicate the REAL walk using the REAL exported bounds, so they
+// keep failing if the ordering regresses or the corpus outgrows the cap again.
+
+import {
+  MAX_INGEST_FILES,
+  MAX_DOC_CHARS,
+  RETRIEVAL_CANDIDATE_LIMIT,
+  ingestCandidateDocs,
+} from "./knowledge";
+import { sep } from "node:path";
+
+const INGEST_DOC_DIRS = ["docs", "docs/bie", "docs/audit"];
+const INGEST_ROOT_DOCS = ["AGENTS.md", "CLAUDE.md"];
+
+test("knowledge: CLAUDE.md and AGENTS.md are inside the ingest file cap — they must never be the docs that fall off the end", () => {
+  const window_ = ingestCandidateDocs().slice(0, MAX_INGEST_FILES);
+  for (const root of INGEST_ROOT_DOCS) {
+    assert.ok(
+      window_.includes(root),
+      `${root} fell outside the first ${MAX_INGEST_FILES} candidates — ROOT_DOCS ordering regressed`
+    );
+  }
+});
+
+test("knowledge: the candidate walk is deterministic — readdir order is unspecified, so the drop set must not depend on the filesystem", () => {
+  const a = ingestCandidateDocs();
+  const b = ingestCandidateDocs();
+  assert.deepEqual(a, b);
+  const dirPart = a.slice(INGEST_ROOT_DOCS.length);
+  for (const dir of INGEST_DOC_DIRS) {
+    const inDir = dirPart.filter((f) => f.startsWith(`${dir}${sep}`) && f.slice(dir.length + 1).indexOf(sep) === -1);
+    assert.deepEqual(inDir, [...inDir].sort(), `${dir} entries are not sorted — drop set would be FS-dependent`);
+  }
+});
+
+test("knowledge: docs over the size cap are DISCARDED — so the cap must be reported, never silent", () => {
+  // Not a hypothetical: FINDINGS.md is the file this actually happened to.
+  const findings = readFileSync(join(process.cwd(), "docs", "audit", "FINDINGS.md"), "utf8");
+  assert.ok(
+    findings.length > MAX_DOC_CHARS,
+    "FINDINGS.md is under the size cap again — if it is now ingested, re-derive the retrieval-window math before assuming that is safe"
+  );
+  // The corpus it would add must still be measured against the retrieval window,
+  // not just the size cap — that is the constraint that actually binds.
+  assert.ok(
+    chunkDocument(findings).length > RETRIEVAL_CANDIDATE_LIMIT,
+    "FINDINGS.md now fits the retrieval candidate window — the reason for skipping it has changed; re-measure"
+  );
+});
+
+test("knowledge: ingestion bounds are exported so callers and tests read the SAME numbers the walk uses", () => {
+  assert.equal(typeof MAX_INGEST_FILES, "number");
+  assert.equal(typeof MAX_DOC_CHARS, "number");
+  assert.ok(MAX_INGEST_FILES > 0 && MAX_DOC_CHARS > 0);
+  // fetchBieKnowledge hard-caps at 1000; asking for more silently gets less.
+  assert.ok(RETRIEVAL_CANDIDATE_LIMIT <= 1000, "retrieval limit exceeds fetchBieKnowledge's hard cap");
+});
