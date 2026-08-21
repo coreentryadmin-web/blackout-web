@@ -30,10 +30,23 @@ name: Release green agent drafts
 # WITHOUT THAT SECRET THIS JOB SKIPS CLEANLY rather than failing. A workflow that goes red every
 # 15 minutes trains everyone to ignore it, and the thing it would be reporting — "I still cannot
 # undraft" — is a standing configuration fact, not an incident. It reports the gap once, in the
-# summary, and exits 0.
+# summary, and exits 0. That path is now dormant but deliberately kept: a PAT expires, and when it
+# does this workflow must degrade to reporting rather than start failing every quarter-hour.
 #
-# Until the secret exists, the coordinator releases PRs manually (the GitHub MCP
-# `update_pull_request` tool CAN set `draft: false` — verified on #2458, #2424, #2423, #2422).
+# ── ARMED 2026-08-21 ────────────────────────────────────────────────────────────────────────
+#
+# The secret exists and is readable (`HAVE_RELEASE_TOKEN: true`, run 32458472830). The first armed
+# run still FAILED, and for a reason worth keeping written down: `GraphQL: API rate limit already
+# exceeded`. It never reached the undraft — `gh pr list --json` had already spent the budget.
+#
+# GraphQL and REST are SEPARATE pools on the same user. At that moment REST was 14999/15000 and
+# GraphQL was 53/5000, drained by the agent sessions sharing the account. Exactly one call in this
+# job genuinely needs GraphQL (`gh pr ready` — markPullRequestReadyForReview has no REST form), so
+# spending the same budget on listing and check lookup let the workflow starve itself out of its
+# own purpose. Both are REST now; see the comments at each call site.
+#
+# The coordinator can still release by hand when needed — the GitHub MCP `update_pull_request` tool
+# sets `draft: false` (verified on #2458, #2424, #2423, #2422) — but it is no longer the only path.
 #
 # ── WHAT IT DOES ────────────────────────────────────────────────────────────────────────────
 #
@@ -93,11 +106,27 @@ jobs:
         run: |
           set -euo pipefail
 
-          # `--json` over `gh pr list` rather than a REST loop: one call, and it already carries the
-          # draft flag and head branch that the filter needs.
-          gh pr list --repo "$REPO" --state open --limit 200 \
-            --json number,title,isDraft,headRefName,labels \
-            > /tmp/prs.json
+          # REST, not `gh pr list --json`.
+          #
+          # GRAPHQL IS THE SCARCE RESOURCE HERE, and `gh pr list --json` spends it. Measured on the
+          # very first armed run (32458472830): the job died before doing any work with
+          # `GraphQL: API rate limit already exceeded` while REST sat at 14999/15000 and GraphQL at
+          # 53/5000. The two budgets are separate pools on the same user, and the agent sessions
+          # sharing that user drain GraphQL, not REST.
+          #
+          # Only ONE call in this job actually REQUIRES GraphQL: `gh pr ready`, which is the
+          # markPullRequestReadyForReview mutation and has no REST equivalent. Spending the same
+          # budget on the listing and the check lookup meant the workflow could starve itself out
+          # of the one operation it exists to perform. Both are now REST.
+          #
+          # Two pages of 100 rather than one call of 200: REST caps per_page at 100, and the jam
+          # this sweeps has been over 100 PRs in living memory.
+          for page in 1 2; do
+            gh api --method GET "repos/$REPO/pulls" \
+              -f state=open -f per_page=100 -F page="$page" -f sort=created -f direction=asc \
+              > "/tmp/prs-$page.json"
+          done
+          jq -s 'add' /tmp/prs-1.json /tmp/prs-2.json > /tmp/prs.json
 
           released=0
           skipped=0
@@ -141,10 +170,17 @@ jobs:
 
             # `verify` is the required check. A PR whose verify has not COMPLETED SUCCESSFULLY is
             # not finished work, whatever its draft flag says.
-            state=$(gh pr checks "$num" --repo "$REPO" --json name,state \
-                    --jq '[.[] | select(.name=="verify")] | first | .state' 2>/dev/null || echo "")
-            if [ "$state" != "SUCCESS" ]; then
-              echo "wait  #$num  verify=${state:-none}"
+            # REST check-runs on the PR's CURRENT head SHA, for the same GraphQL-budget reason as
+            # the listing above — and for a correctness one: reading checks by head SHA makes it
+            # impossible to release a PR on a green result from an EARLIER commit. A stale green
+            # from a previous SHA has caused a bad merge here twice.
+            head_sha=$(jq -r --argjson n "$num" \
+              '.[] | select(.number == $n) | .head.sha' /tmp/prs.json)
+            conclusion=$(gh api "repos/$REPO/commits/$head_sha/check-runs" \
+                    --jq '[.check_runs[] | select(.name=="verify")] | first | .conclusion' \
+                    2>/dev/null || echo "")
+            if [ "$conclusion" != "success" ]; then
+              echo "wait  #$num  verify=${conclusion:-none} (head $head_sha)"
               skipped=$((skipped+1)); continue
             fi
 
@@ -159,9 +195,9 @@ jobs:
             released=$((released+1))
           done < <(jq -r '
             .[]
-            | select(.isDraft == true)
-            | select(.headRefName | startswith("claude/") or startswith("cursor/"))
-            | [.number, .title, .headRefName, ([.labels[].name] | join(","))]
+            | select(.draft == true)
+            | select(.head.ref | startswith("claude/") or startswith("cursor/"))
+            | [.number, .title, .head.ref, ([.labels[].name] | join(","))]
             | @tsv' /tmp/prs.json)
 
           echo "---"
