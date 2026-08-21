@@ -150,6 +150,17 @@ export type ZeroDteBoardLedgerRow = {
   exit_at: string | null;
   /** Realized P&L % at the engine exit stamp — null without a pinned exit. */
   exit_pnl_pct: number | null;
+  /** PROVENANCE of the frozen exit mark (`last_mark` on a closed engine-exit row). `true` when the
+   *  mark was raised to honor a protective floor/stop — i.e. it is an INFERRED fill at the armed
+   *  level, not the observed print, and `exit_detail` states the lower observed mark. `false` on a
+   *  thesis/plan/flat exit (observed mark used verbatim). `null` on a live row or a legacy row
+   *  stamped before this flag — absence must not read as "definitely observed". Pairs with
+   *  `exit_mark_observed` so a consumer never presents a floor-honored inference as an observed
+   *  quote. */
+  exit_mark_honored: boolean | null;
+  /** The RAW observed mark at the exit tick, before floor/stop honoring — null when unknown
+   *  (live/legacy row). Equals `last_mark` whenever `exit_mark_honored` is false. */
+  exit_mark_observed: number | null;
   /** WS-11 reconstructed trim legs (post-session) — each carries an honest at_et. */
   timeline_tranches: PlayTimelineTranche[] | null;
   /** ISO instant of the quote behind last_mark, when the live-marks lane served
@@ -470,6 +481,8 @@ function mapLedgerRow(
     exit_detail: pinnedExit.detail,
     exit_at: exitStamp.at,
     exit_pnl_pct: exitStamp.pnl_pct,
+    exit_mark_honored: exitStamp.mark_honored,
+    exit_mark_observed: exitStamp.mark_observed,
     timeline_tranches: readTimelineTranchesFromEntryContext(r.entry_context),
     mark_as_of: liveMark?.mark_as_of ?? null,
     mark_source: liveMark?.mark_source ?? null,
