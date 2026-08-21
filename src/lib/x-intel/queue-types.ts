@@ -196,12 +196,31 @@ export type XIntelOutcome = {
  * `variant` is stored so the learning loop can attribute conversions to a specific CTA. A rotation
  * nobody records is just variety.
  */
+/**
+ * WHAT ROTATES IS THE EDGE, NOT THE OFFER (operator decision, 2026-08-21).
+ *
+ * The first cut rotated whether a post asked for anything at all — SOFT and DISCORD carried no
+ * offer, PRICING and WHOP_OFFER did. The operator wants every post to carry the full set: cashtags,
+ * the free Discord, the site, Whop, and the price. So the offer is now constant and the VARIANT
+ * names which capability the post leads the ask with.
+ *
+ * That keeps the reason rotation existed in the first place. The variant lands on the queue row, so
+ * once there is funnel data it answers a sharper question than "does a CTA work" — it answers WHICH
+ * CLAIM ABOUT THE PLATFORM converts, which is the one worth knowing.
+ *
+ * Every line below has to be true and specific. A generic "powerful analytics" line is worth less
+ * than nothing here: the post above it is a measured screenshot, and a vague claim underneath one
+ * reads as the part that was made up.
+ */
 export const X_INTEL_CTA_VARIANTS = [
-  "SOFT",
-  "DISCORD",
-  "SITE",
-  "PRICING",
-  "WHOP_OFFER",
+  "SCANNER",
+  "FLIP_ALERTS",
+  "EXPIRY_MATRIX",
+  "BEAD_RAILS",
+  "EARNINGS_BASE_RATES",
+  "TAPE",
+  "OPEX_HISTORY",
+  "NIGHT_HAWK",
 ] as const;
 
 export type XIntelCtaVariant = (typeof X_INTEL_CTA_VARIANTS)[number];

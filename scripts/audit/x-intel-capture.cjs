@@ -452,6 +452,11 @@ async function helix(page, o, log) {
 
 
 async function vector(page, o, log) {
+  // Vector-only defaults — see the recipe note on the option block. Applied here rather than in the
+  // shared arg parsing so a Thermal or Meridian run is unaffected by a chart-framing decision.
+  if (!o.zoom || o.zoom === '6') o.zoom = '11';
+  if (!o.zoomAnchor) o.zoomAnchor = '0.99';
+  if (!o.priceZoom) o.priceZoom = '-1';
   const url = `https://blackouttrades.com/vector?ticker=${encodeURIComponent(o.ticker)}`;
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
   await settle(page, 12000, log);
@@ -620,7 +625,16 @@ async function vector(page, o, log) {
     // pair of runs with and without it produced the same 212.50-220.00 axis. This scale responds to
     // a vertical drag on it, so that is what this does — and it reads the axis span before and
     // after so the step log reports what CHANGED rather than what was requested.
+    // SIGN MATTERS, and I had it backwards. A NEGATIVE value EXPANDS the price range.
+    //
+    // The operator's annotated reference wants six bead levels in frame (223 / 220 / 218 / 215 /
+    // 213 / 210 on NVDA) against a candle range of roughly 214.5-218.5. That needs the axis pushed
+    // WIDER than the candles, not tighter — the levels above and below the day's range are the
+    // whole point, because they are where price is being pulled to. My first cut only tightened,
+    // which is why it kept pushing the 220 wall off frame.
     const px = pbox.x + pbox.width * 0.985;
+    const steps = Math.abs(Number(o.priceZoom));
+    const expand = Number(o.priceZoom) < 0;
     const spanOf = () =>
       page.evaluate(() => {
         const t = Array.from(document.querySelectorAll('text, div'))
@@ -629,17 +643,19 @@ async function vector(page, o, log) {
         return t.length ? Math.max(...t) - Math.min(...t) : null;
       });
     const before = await spanOf();
-    for (let i = 0; i < Number(o.priceZoom); i += 1) {
-      await page.mouse.move(px, pbox.y + pbox.height * 0.35);
+    for (let i = 0; i < steps; i += 1) {
+      const from = pbox.y + pbox.height * (expand ? 0.15 : 0.35);
+      const to = pbox.y + pbox.height * (expand ? 0.35 : 0.15);
+      await page.mouse.move(px, from);
       await page.mouse.down();
-      await page.mouse.move(px, pbox.y + pbox.height * 0.15, { steps: 12 });
+      await page.mouse.move(px, to, { steps: 12 });
       await page.mouse.up();
       await page.waitForTimeout(700);
     }
     await page.mouse.move(4, 4);
     await page.waitForTimeout(2500);
     const after = await spanOf();
-    log.push(`price-zoom→${o.priceZoom}${before && after && before === after ? ' (NO CHANGE)' : ''}`);
+    log.push(`price-${expand ? 'expand' : 'tighten'}→${steps}${before && after && before === after ? ' (NO CHANGE)' : ''}`);
   }
   return chart;
 }
@@ -649,9 +665,24 @@ async function vector(page, o, log) {
     surface: arg('surface','thermal'), ticker: arg('ticker','SPY').toUpperCase(),
     view: arg('view','matrix'), lens: arg('lens','GEX').toUpperCase(),
     sector: arg('sector',''), panel: arg('panel',''), out: arg('out','/tmp/shots/out.png'),
-    tf: arg('tf',''), horizon: arg('horizon',''), zoom: arg('zoom','6'),
+    // VECTOR REFERENCE FRAME AS THE DEFAULT.
+    //
+    // These six values are what separate a frame that matches the operator's annotated reference
+    // from one that does not, and nobody should have to remember six flags to get the standard
+    // shot. Each is overridable; together they are the recipe:
+    //
+    //   tf 3          3-minute candles fill the session instead of leaving gaps
+    //   nodes 20      AUTO resolves to 11 rows, at which beads are a dotted scatter, not rails
+    //   zoom 11       compresses the overnight session off the left so RTH carries the frame
+    //   anchor 0.99   zoom is about the cursor, so anchoring right keeps the newest bars
+    //   price -1      EXPANDS the price axis to reveal the levels ABOVE and BELOW the day's range
+    //   1500x1440     near-square, like the reference; an ultrawide frame shrinks every candle
+    //
+    // The operator's rule the recipe is built to satisfy: at least six bead levels in frame, with
+    // candles, beads and walls all separately legible.
+    tf: arg('tf', '3'), horizon: arg('horizon',''), zoom: arg('zoom','6'),
     mode: arg('mode',''), preset: arg('preset',''), indicators: arg('indicators',''),
-    zoomAnchor: arg('zoom-anchor',''), pageZoom: arg('page-zoom',''), nodes: arg('nodes',''), priceZoom: arg('price-zoom',''),
+    zoomAnchor: arg('zoom-anchor',''), pageZoom: arg('page-zoom',''), nodes: arg('nodes','20'), priceZoom: arg('price-zoom',''),
     expiry: arg('expiry',''), rows: arg('rows',''), panelLabel: arg('panel-label',''), eventClass: arg('class',''),
   };
   /**
@@ -684,7 +715,7 @@ async function vector(page, o, log) {
   const { browser, ctx, counts } = await createTunneledContext({
     url: 'https://blackouttrades.com/',
     cookie: explicitCookie || session.cookieHeader,
-    viewport: arg('viewport','2560x1440'), desktop: true,
+    viewport: arg('viewport', arg('surface','thermal') === 'vector' ? '1500x1440' : '2560x1440'), desktop: true,
   });
   // 45s: comfortably inside a ~60s token, and short enough that a refresh failure shows up in the
   // step log while there is still a live token to finish the frame on.
