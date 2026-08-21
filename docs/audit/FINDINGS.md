@@ -39,7 +39,6 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
 ## 2026-08-21 — [FINDING, P0 member-visible] Vector's fraction fields reached Largo as literal `0` — the BIE boundary never adopted the rounding map built to prevent exactly this — FIXED
-
 > **kind:** `FINDING`
 
 | Field | Detail |
@@ -58,6 +57,22 @@ Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 | **Status** | FIXED — unit rescaled at source, boundary adopts `VECTOR_FRACTION_DP`, cache key versioned to v2. Gates on Node 20: `tsc --noEmit` clean, 8696 pass / 0 fail, `npm run build` clean, eslint clean. |
 
 **Lesson worth keeping.** A centralized fix is not adopted until every call site imports it. `VECTOR_FRACTION_DP` was created *specifically* so this class could not recur, documented that intent in its own header, and still left the highest-leverage consumer — the one feeding the model, not the chart — on the broken default for two weeks. When a shared helper exists to prevent a defect class, grep its importers against the full list of call sites that serve the same numbers; the map existing is not evidence that it is used.
+
+## 2026-08-21 — [FINDING, P2 member-visible] `get_vector_full_state` handed the model a bare `null`, while the BIE path answered the same condition honestly — FIXED
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Root cause** | `run-tool.ts`'s `get_vector_full_state` case returned `fetchVectorFullState(...)` **directly**, and that function is `null` when there is no live spot. So the model received the literal value `null`: no ticker, no reason, no `available` flag. |
+| **Why it matters** | Three genuinely different situations produce that `null` and each needs a different answer: the market is closed, the symbol is not optionable (or a typo), or the shared GEX matrix is cold for a name that is otherwise fine. A bare `null` collapses all three, and the most natural narration of it — "there's no Vector data for X" — reads as a claim about the TICKER when the truth is a claim about the READ. |
+| **The asymmetry that makes it a defect rather than a gap** | The BIE composer path has answered this condition honestly for months: `composeVectorRead` returns `noLiveVectorStateMessage(ticker)` plus a `context.reason = "no_live_state"` discriminator and calls `recordBieGap`. `vectorPulseForLargo` likewise returns `{ available:false, reason:"no_live_vector_state" }`. **The same question got a good answer through one door and an uninterpretable `null` through the other**, decided entirely by which surface the member's question happened to route to. |
+| **Fix** | New `vectorFullStateForLargo` in `product-reads.ts` — deliberately the SAME `{ available:false, reason }` shape `vectorPulseForLargo` already uses, rather than a second convention for one idea. It also separates a THROW (`reason:"vector_full_state_failed"`) from a genuine no-spot, because "it broke" and "there is nothing there" are not the same answer. The tool description now states what the envelope means and instructs the model to say the desk cannot read it rather than that the ticker has no levels. |
+| **The success path is deliberately untouched** | The populated state is returned exactly as `fetchVectorFullState` produces it. `get_ecosystem_context.vector_full_state` is documented as "the exact same object get_vector_full_state returns", and wrapping the populated case would have made that promise false — only the `null` is replaced. |
+| **Blast radius** | `get_vector_full_state` only. Every other consumer of `fetchVectorFullState` reads it internally and correctly branches on `if (!state)`; `null` is the right contract for them and is unchanged. |
+| **Regression guard** | `vector-analytics-wiring.test.ts` — asserts the case routes through the enveloped reader, that `return fetchVectorFullState(` is **absent** from the case body (the exact shape of the regression), that both reasons exist, that the success path returns the state unwrapped, and that the description teaches the distinction. **Both new tests fail against the pre-fix source and pass after.** |
+| **Status** | FIXED — honest envelope on the no-live-state path. Gates on Node 20 (branched off `main` @ 507fb36): `tsc --noEmit` clean, 8718 pass / 0 fail, `npm run build` clean, eslint clean. |
+
+**Lesson worth keeping.** Two doors onto the same data will drift, and the one with the better answer hides the one with the worse. This condition was handled well in `composers.ts` — honest message, machine-readable reason, recorded gap — which is exactly why nobody noticed the tool path returning `null`: any spot-check through the composer looked fine. When a product exposes the same read through a composer AND a tool, the failure paths have to be compared against each other, not each judged alone.
 
 ## 2026-08-19 — [FINDING, P0 correctness] `main` went red with every PR green — #2365 and #2366 collided on the 0DTE expiry resolver — FIXED
 

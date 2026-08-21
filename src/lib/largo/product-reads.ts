@@ -287,6 +287,57 @@ export async function horizonOutcomesForLargo(days = 30) {
  * against an ever-older snapshot and inflate the signal count. Writing keeps Largo's view aligned
  * with the panel's rather than forking it.
  */
+/**
+ * VECTOR FULL STATE for Largo — `fetchVectorFullState` with an honest UNAVAILABLE envelope.
+ *
+ * WHY THIS EXISTS. The tool used to return `fetchVectorFullState(...)` directly, which is `null`
+ * when there is no live spot. A bare `null` reaching the model carries no ticker, no reason, and
+ * no way to tell apart the three very different situations that produce it: the market is closed,
+ * the symbol is not optionable/typo'd, or the shared GEX matrix is cold for a name that is fine.
+ * The BIE composer path has answered this honestly for months — `noLiveVectorStateMessage` plus a
+ * `context.reason` discriminator and a recorded gap — so the SAME question got a good answer
+ * through one door and an uninterpretable `null` through the other.
+ *
+ * Deliberately mirrors `vectorPulseForLargo`'s existing `{ available:false, reason }` shape rather
+ * than inventing a second convention for the same idea.
+ *
+ * THE SUCCESS PATH IS UNCHANGED — the state is returned exactly as `fetchVectorFullState` produces
+ * it, freshness/absence blocks included. That matters: `get_ecosystem_context.vector_full_state`
+ * is documented as "the exact same object get_vector_full_state returns", and wrapping the
+ * populated case would have made that promise false. Only the `null` is replaced.
+ */
+export async function vectorFullStateForLargo(ticker: string, horizon = "all") {
+  try {
+    const [{ fetchVectorFullState }, { normalizeDteHorizon }] = await Promise.all([
+      import("@/lib/bie/vector-full-state"),
+      import("@/features/vector/lib/vector-dte-horizon"),
+    ]);
+    const h = normalizeDteHorizon(horizon);
+    const state = await fetchVectorFullState(ticker, h);
+    if (state) return state;
+
+    return {
+      available: false,
+      reason: "no_live_vector_state",
+      ticker: String(ticker ?? "").toUpperCase().trim() || null,
+      horizon: h,
+      /** Spelled out because the three causes need different answers from the model. */
+      detail:
+        "No live spot for this ticker right now, so there is no Vector state to read. That can mean " +
+        "the market is closed, the symbol is not optionable, or the shared GEX matrix is cold for it — " +
+        "this read cannot tell those apart. Say the desk cannot read it, not that the ticker has no levels.",
+    };
+  } catch (e) {
+    // A throw is a THIRD state, distinct from "no live spot": something broke rather than being absent.
+    return {
+      available: false,
+      reason: "vector_full_state_failed",
+      ticker: String(ticker ?? "").toUpperCase().trim() || null,
+      error: e instanceof Error ? e.message : "vector_full_state_failed",
+    };
+  }
+}
+
 export async function vectorPulseForLargo(ticker: string, horizon = "all") {
   try {
     const [{ fetchVectorFullState }, { normalizeDteHorizon }, { buildPulseSignalsForState }, cache] =
