@@ -185,16 +185,25 @@ describe("normalizeUwEarnings: units — and ONLY units", () => {
 test("a payload key colliding with Object.prototype is not treated as a fraction field", () => {
   // The rename table is consulted with arbitrary keys off UW's wire. A bare object lookup
   // would resolve `constructor` to a truthy FUNCTION and use it as the output key name.
-  const out = normalizeUwEarnings({
-    constructor: "0.5",
-    toString: "1.25",
-    __proto__: "9",
-    hasOwnProperty: "3",
-  }) as Record<string, unknown>;
+  //
+  // Built with JSON.parse rather than an object literal because that is how these payloads
+  // ACTUALLY arrive (`res.json()`), and because the two differ exactly where it matters: in a
+  // literal, `__proto__:` is a prototype SETTER and creates no own property at all, so the
+  // literal form would quietly not test the case it appears to.
+  const raw = JSON.parse(
+    '{"constructor":"0.5","toString":"1.25","__proto__":"9","hasOwnProperty":"3"}'
+  );
+  const out = normalizeUwEarnings(raw) as Record<string, unknown>;
 
+  assert.ok(
+    Object.prototype.hasOwnProperty.call(raw, "__proto__"),
+    "fixture must carry a real own __proto__ key, else this asserts nothing"
+  );
   assert.equal(out.constructor, "0.5", "passed through as an ordinary field, not renamed");
   assert.equal(out.toString, "1.25");
   assert.equal(out.hasOwnProperty, "3");
+  assert.equal(Object.getOwnPropertyDescriptor(out, "__proto__")?.value, "9");
+  assert.equal(Object.getPrototypeOf(out), Object.prototype, "prototype must not be polluted");
   for (const k of Object.keys(out)) {
     assert.equal(typeof k, "string");
     assert.ok(!k.includes("function"), `${k} looks like a stringified function`);

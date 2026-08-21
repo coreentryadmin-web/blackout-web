@@ -140,19 +140,25 @@ export function normalizeUwEarnings<T>(value: T): T {
   const walk = (v: unknown, key: string): unknown => {
     if (Array.isArray(v)) return v.map((el) => walk(el, key));
     if (v !== null && typeof v === "object") {
-      const out: Record<string, unknown> = {};
+      // Collect ENTRIES and rebuild with Object.fromEntries rather than assigning `out[k] = …`.
+      // A plain assignment where `k` is "__proto__" sets the object's PROTOTYPE instead of
+      // creating an own property — so that field would be silently DROPPED from the payload
+      // (caught by the prototype-collision test, which only exposes it when the fixture is
+      // built with JSON.parse, the way these payloads really arrive). fromEntries creates a
+      // genuine own property for every key, and is also not a dynamic-property-assignment sink.
+      const entries: Array<[string, unknown]> = [];
       for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
         const pctName = FRACTION_TO_PCT.get(k);
         if (pctName) {
           const n = asNumber(val);
           // A null/absent fraction stays null under the NEW name — dropping the key entirely
           // would make "UW has no reading" indistinguishable from "this field does not exist".
-          out[pctName] = n == null ? null : round(n * 100, PCT_DP);
+          entries.push([pctName, n == null ? null : round(n * 100, PCT_DP)]);
           continue;
         }
-        out[k] = walk(val, k);
+        entries.push([k, walk(val, k)]);
       }
-      return out;
+      return Object.fromEntries(entries);
     }
     // Every non-fraction leaf passes through UNCHANGED — including numeric strings. Rounding and
     // type are #2419's job at the tool boundary, and it preserves provider string shape on purpose.
