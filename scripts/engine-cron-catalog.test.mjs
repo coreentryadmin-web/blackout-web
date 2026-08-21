@@ -13,10 +13,9 @@ import { CRON_SERVICE_NAMES } from "./railway-cron-services.mjs";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 const ENGINE_CRONS = [
-  // scheduleCronUtc: false — see DELIBERATELY_UNSCHEDULED in scheduled-cron-catalog.test.mjs.
-  // The toml still declares a cadence; blackout-infra never generated the job, so the registry
-  // deliberately does not mirror it. The toml/CRON_SERVICE_NAMES wiring below is still asserted.
-  { key: "zerodte-grade", scheduleHint: "*/15" },
+  // zerodte-grade is scheduled again (blackout-infra now generates it), so the registry mirrors
+  // its toml once more and scheduled-cron-catalog.test.mjs asserts the two agree.
+  { key: "zerodte-grade", scheduleHint: "*/15", scheduleCronUtc: true },
   { key: "swing-discovery", scheduleHint: null },
   { key: "swing-active-refresh", scheduleHint: "*/15" },
 ];

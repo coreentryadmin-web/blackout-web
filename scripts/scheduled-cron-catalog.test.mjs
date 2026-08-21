@@ -3,70 +3,70 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const registry = readFileSync(join(ROOT, "src/lib/cron-registry.ts"), "utf8");
 
-const SCHEDULED_CRONS = [
-  "gex-eod-snapshot",
-  "nighthawk-morning-confirm",
-  "nighthawk-outcomes",
-  "spx-signal-weight-optimize",
-];
-
 /**
- * Keys that DELIBERATELY carry no `schedule_cron_utc`, and must keep carrying none.
+ * Every registry entry that DECLARES `schedule_cron_utc` must match its `railway.<key>.toml`.
  *
- * `zerodte-grade` and `largo-morning-brief` used to mirror their railway toml here. Both jobs are
- * absent from blackout-infra's generated cron-jobs.json, so the mirror advertised a schedule that
- * does not exist — admin-cron-health then suppressed staleness alerts for a window in which
- * nothing was ever going to fire. The field was removed on purpose (see the long comment on each
- * registry entry).
+ * Derived from the registry rather than hand-listed. The previous version kept two literal arrays
+ * — one of scheduled keys, one of deliberately-unscheduled ones — and both went stale the moment
+ * `zerodte-grade` and `largo-morning-brief` were genuinely scheduled (dual-band, as the original
+ * removal comment recommended). A list a human must remember to update is the same defect this
+ * file exists to catch, one level up, so there is no longer a list.
  *
- * This assertion is INVERTED rather than deleted. Dropping the key from SCHEDULED_CRONS would
- * silently stop guarding it, and a re-added phantom schedule would sail straight back in — which
- * is the exact failure mode the removal was fixing. So: assert the field is absent AND that the
- * entry still explains why, so the reasoning cannot be quietly dropped either.
+ * History worth keeping: both keys once mirrored a toml while blackout-infra had never generated
+ * the job, so the registry advertised a cadence nothing fired and `admin-cron-health` suppressed
+ * the staleness alert that would have revealed it. Neither this test nor any other in this repo
+ * can see blackout-infra, so "the job really exists" is not checkable here — what IS checkable is
+ * that the two schedules we do control never silently disagree.
  */
-const DELIBERATELY_UNSCHEDULED = ["zerodte-grade", "largo-morning-brief"];
-
-for (const key of DELIBERATELY_UNSCHEDULED) {
-  test(`cron "${key}" must NOT advertise a schedule it does not have`, () => {
-    const entry = registry.match(new RegExp(`key: "${key}"[\\s\\S]*?(?=\\n    key: "|\\n\\];)`));
-    assert.ok(entry, `cron-registry.ts is missing key "${key}"`);
-    assert.doesNotMatch(
-      entry[0],
-      /schedule_cron_utc:/,
-      `cron-registry.ts key "${key}" must NOT set schedule_cron_utc — the job is absent from ` +
-        `blackout-infra's cron-jobs.json, so a mirrored schedule advertises a cadence nothing fires ` +
-        `and suppresses the staleness alert that would reveal it. If it has since been scheduled ` +
-        `for real, move it back into SCHEDULED_CRONS in the same PR.`,
-    );
-    assert.match(
-      entry[0],
-      /NOT CURRENTLY SCHEDULED/,
-      `cron-registry.ts key "${key}" must keep saying it is not scheduled, so the absence reads as ` +
-        `deliberate rather than as an oversight.`,
-    );
-  });
+function registryEntries(src) {
+  const out = new Map();
+  const re = /key: "([a-z0-9-]+)"/g;
+  const starts = [...src.matchAll(re)];
+  for (let i = 0; i < starts.length; i++) {
+    const from = starts[i].index;
+    const to = i + 1 < starts.length ? starts[i + 1].index : src.length;
+    out.set(starts[i][1], src.slice(from, to));
+  }
+  return out;
 }
 
-for (const key of SCHEDULED_CRONS) {
+const entries = registryEntries(registry);
+const declaring = [];
+for (const [key, entry] of entries) {
+  const tomlPath = join(ROOT, `railway.${key}.toml`);
+  if (!existsSync(tomlPath)) continue;
+  const m = entry.match(/schedule_cron_utc:\s*"([^"]+)"/);
+  if (m) declaring.push({ key, declared: m[1], tomlPath });
+}
+
+test("the scan actually found scheduled crons (a vacuous pass is not a pass)", () => {
+  // Without this, a change to the registry's shape would make every assertion below disappear and
+  // the file would report green while checking nothing.
+  assert.ok(
+    declaring.length >= 5,
+    `expected at least 5 registry entries declaring schedule_cron_utc, found ${declaring.length} — ` +
+      `the parser has probably drifted from cron-registry.ts's shape`,
+  );
+});
+
+for (const { key, declared, tomlPath } of declaring) {
   test(`scheduled cron "${key}" schedule_cron_utc matches railway.${key}.toml`, () => {
-    const toml = readFileSync(join(ROOT, `railway.${key}.toml`), "utf8");
+    const toml = readFileSync(tomlPath, "utf8");
     const match = toml.match(/cronSchedule = "([^"]+)"/);
     assert.ok(match, `railway.${key}.toml must declare cronSchedule`);
-    const cronExpr = match[1];
-    const re = new RegExp(
-      `key: "${key}"[\\s\\S]*?schedule_cron_utc:\\s*"${cronExpr.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`,
-    );
-    assert.match(
-      registry,
-      re,
-      `cron-registry.ts key "${key}" must set schedule_cron_utc to match railway.${key}.toml (${cronExpr})`,
+    assert.equal(
+      declared,
+      match[1],
+      `cron-registry.ts key "${key}" declares schedule_cron_utc "${declared}" but ` +
+        `railway.${key}.toml says "${match[1]}" — admin-cron-health suppresses staleness against ` +
+        `the registry value, so a disagreement silences alerts for a window the job does not run in.`,
     );
   });
 }
