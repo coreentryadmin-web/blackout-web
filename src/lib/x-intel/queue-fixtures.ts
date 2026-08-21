@@ -289,7 +289,7 @@ export const X_INTEL_QUEUE_FIXTURES: XIntelQueueRow[] = [
     session_claim: true,
     // Helix was read fine here; the package simply had only two distinct surfaces worth showing.
     blind_spots: [],
-    cta: buildCta("2026-08-21T10", ["SOFT"]),
+    cta: buildCta("2026-08-21T10", ["SCANNER"]),
     posted_tweet_id: null,
   },
 
@@ -424,7 +424,7 @@ export const X_INTEL_QUEUE_FIXTURES: XIntelQueueRow[] = [
     skip_kind: null,
     session_claim: true,
     blind_spots: [],
-    cta: buildCta("2026-08-21T12", ["DISCORD", "SOFT"]),
+    cta: buildCta("2026-08-21T12", ["FLIP_ALERTS", "SCANNER"]),
     posted_tweet_id: null,
   },
 ];

@@ -4,6 +4,9 @@ import { describe, it } from "node:test";
 import {
   buildCta,
   CTA_CHAR_LIMIT,
+  CASHTAG_LIMIT,
+  cashtags,
+  xWeightedLength,
   previewAllCtas,
   selectCtaVariant,
 } from "@/lib/x-intel/cta";
@@ -77,13 +80,21 @@ describe("buildCta", () => {
     }
   });
 
-  it("fits inside X's character limit", () => {
+  it("fits its attention budget, measured the way X measures", () => {
+    // Raw .length reported 586 for a block X sees as roughly half that, because each tagged link
+    // is ~120 characters of mostly UTM and X counts every URL as 23. Budgeting against the raw
+    // number would mean stripping the tracking the learning loop runs on to fix a limit that was
+    // never being exceeded.
     for (const cta of previewAllCtas(CYCLE)) {
-      assert.ok(
-        cta.text.length <= CTA_CHAR_LIMIT,
-        `${cta.variant} is ${cta.text.length} chars`,
-      );
+      const n = xWeightedLength(cta.text);
+      assert.ok(n <= CTA_CHAR_LIMIT, `${cta.variant} is ${n} weighted chars`);
     }
+  });
+
+  it("counts a URL as 23 regardless of how long it really is", () => {
+    const short = xWeightedLength("a https://x.com b");
+    const long = xWeightedLength(`a https://x.com/${"q".repeat(200)} b`);
+    assert.equal(short, long);
   });
 
   it("tags every link with the cycle key so a click traces to its package", () => {
@@ -113,9 +124,14 @@ describe("buildCta", () => {
     }
   });
 
-  it("rotates across at least three distinct destinations", () => {
-    const hosts = new Set(previewAllCtas(CYCLE).map((c) => new URL(c.url!).host));
-    assert.ok(hosts.size >= 3, `only ${hosts.size} destination(s): ${[...hosts].join(", ")}`);
+  it("puts every destination in every post, not one per post", () => {
+    // The operator's call: the links are how a lead arrives, so a post missing them cannot convert.
+    // What rotates is the CLAIM above them, not whether the ask is present.
+    for (const cta of previewAllCtas(CYCLE)) {
+      for (const host of ["discord.gg", "whop.com", "blackouttrades.com"]) {
+        assert.ok(cta.text.includes(host), `${cta.variant} omits ${host}`);
+      }
+    }
   });
 
   it("carries no hashtags and no @tags other than our own handle", () => {
@@ -133,14 +149,35 @@ describe("buildCta", () => {
     assert.notEqual(cta.variant, "SOFT");
   });
 
-  it("states the desk prices consistently with the pricing rules", () => {
-    const paid = previewAllCtas(CYCLE).filter(
-      (c) => c.variant === "PRICING" || c.variant === "WHOP_OFFER",
-    );
-    assert.equal(paid.length, 2);
-    for (const c of paid) {
+  it("states both desk prices and the promo code on every post", () => {
+    for (const c of previewAllCtas(CYCLE)) {
       assert.ok(c.text.includes("$199/mo"), `${c.variant} omits the full-desk price`);
       assert.ok(c.text.includes("$49/mo"), `${c.variant} omits the SPX price`);
+      assert.ok(c.text.includes("BLACK50"), `${c.variant} omits the promo code`);
     }
+  });
+
+  it("leads every post with a claim, and never the same one twice running", () => {
+    const lines = previewAllCtas(CYCLE).map((c) => c.text.split("\n")[0]!);
+    assert.equal(new Set(lines).size, lines.length, "two variants share a claim line");
+    for (const l of lines) assert.ok(l.length > 40, `claim too thin to be specific: "${l}"`);
+  });
+});
+
+describe("cashtags — the one distribution channel a cold account still has", () => {
+  it("prefixes and upper-cases, and drops duplicates keeping the lead ticker first", () => {
+    assert.equal(cashtags(["bac", "NVDA", "bac"]), "$BAC $NVDA");
+  });
+
+  it("caps the list — a wall of tickers reads as spam to a reader and to the ranker", () => {
+    assert.equal(cashtags(["A", "B", "C", "D", "E", "F"]).split(" ").length, CASHTAG_LIMIT);
+  });
+
+  it("refuses things that are not symbols rather than emitting a bare $", () => {
+    assert.equal(cashtags(["", "  ", "TOOLONGSYM"]), "");
+  });
+
+  it("accepts an already-prefixed ticker without doubling the $", () => {
+    assert.equal(cashtags(["$SPY"]), "$SPY");
   });
 });

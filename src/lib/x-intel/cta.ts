@@ -98,81 +98,115 @@ function tagged(url: string, cycleKey: string, variant: XIntelCtaVariant): strin
   return u.toString();
 }
 
-type Builder = (cycleKey: string) => { text: string; url: string | null };
-
-const BUILDERS: Record<XIntelCtaVariant, Builder> = {
-  SOFT: (cycle) => {
-    const url = tagged(LINKS.site, cycle, "SOFT");
-    return { text: `Every read on this desk is live — ${url}`, url };
-  },
-
-  DISCORD: (cycle) => {
-    const url = tagged(LINKS.discord, cycle, "DISCORD");
-    return {
-      text: `We break these down live in the free Discord — ${url}`,
-      url,
-    };
-  },
-
-  SITE: (cycle) => {
-    const url = tagged(LINKS.site, cycle, "SITE");
-    return {
-      text: `Every surface in this post is live on the desk — ${url}`,
-      url,
-    };
-  },
-
-  PRICING: (cycle) => {
-    const url = tagged(LINKS.site, cycle, "PRICING");
-    return {
-      text: `The full BLACKOUT desk is ${PRICING.full}. SPX Slayer alone is ${PRICING.spx}. ${url}`,
-      url,
-    };
-  },
-
-  WHOP_OFFER: (cycle) => {
-    const url = tagged(LINKS.whop, cycle, "WHOP_OFFER");
-    return {
-      text: `${PROMO_CODE} takes 50% off your first month — full desk ${PRICING.full}, SPX ${PRICING.spx}. ${url}`,
-      url,
-    };
-  },
-};
-
-/** Variants that ask for money. Never two in a row — see `selectCtaVariant`. */
-const PAID_VARIANTS: ReadonlySet<XIntelCtaVariant> = new Set<XIntelCtaVariant>([
-  "PRICING",
-  "WHOP_OFFER",
-]);
+type EdgeLine = { readonly variant: XIntelCtaVariant; readonly line: string };
 
 /**
- * Pick the next variant: least recently used, never a paid ask immediately after another one.
+ * ONE TRUE, SPECIFIC CLAIM PER POST.
+ *
+ * Every line here names something the desk actually does, in the terms a trader would check. That
+ * constraint is not style — the post above this block is a measured screenshot, so a vague claim
+ * underneath one ("powerful analytics", "institutional-grade data") reads as the part that was made
+ * up, and costs the evidence its credibility. Each of these was observed on the live platform.
+ */
+const EDGES: ReadonlyArray<EdgeLine> = [
+  {
+    variant: "SCANNER",
+    line: "The Universe Scanner ranks the whole board by distance to its gamma flip — you see who is about to matter before it moves.",
+  },
+  {
+    variant: "FLIP_ALERTS",
+    line: "Positioning alerts fire the moment spot crosses the flip — regime change, timestamped, not noticed twenty minutes later.",
+  },
+  {
+    variant: "EXPIRY_MATRIX",
+    line: "Every strike against every expiry, with net GEX, walls, flip and max pain — and you can read 0DTE and all-expiry separately, because they often disagree.",
+  },
+  {
+    variant: "BEAD_RAILS",
+    line: "Gamma drawn on the chart itself — every strike's beads and wall bands sitting on the candles, not in a table you have to translate.",
+  },
+  {
+    variant: "EARNINGS_BASE_RATES",
+    line: "Earnings scored against this name's own base rate with the sample size shown — and it says \"insufficient history\" rather than inventing a number.",
+  },
+  {
+    variant: "TAPE",
+    line: "The tape with the size that matters: net premium, repeat strikes, dark-pool blocks, and which side actually paid up.",
+  },
+  {
+    variant: "OPEX_HISTORY",
+    line: "OpEx and macro days graded against every prior session on record — cross-market, with the pin-versus-close history attached.",
+  },
+  {
+    variant: "NIGHT_HAWK",
+    line: "Every play on the board with its P&L, closed and graded — the losers stay on the page.",
+  },
+];
+
+/**
+ * THE OFFER IS CONSTANT (operator decision, 2026-08-21).
+ *
+ * Cashtags, the free Discord, the site, Whop and the price go on EVERY post. The earlier design
+ * rotated whether a post asked for anything at all, on the reasoning that an account asking for a
+ * sale every time stops being one traders open. The operator's call is that the links are how the
+ * lead arrives and a post without them is a post that cannot convert — and they are the one who can
+ * see the funnel. What rotates instead is the CLAIM, which keeps the rotation measurable.
+ */
+function offerBlock(cycleKey: string, variant: XIntelCtaVariant): string {
+  return [
+    `Free Discord — ${tagged(LINKS.discord, cycleKey, variant)}`,
+    `The desk — ${tagged(LINKS.site, cycleKey, variant)}`,
+    `Full desk ${PRICING.full} · SPX Slayer ${PRICING.spx} · ${PROMO_CODE} takes 50% off month one`,
+    tagged(LINKS.whop, cycleKey, variant),
+  ].join("\n");
+}
+
+/**
+ * CASHTAGS.
+ *
+ * X indexes `$TICKER` and surfaces posts on the symbol's own page, which is the one distribution
+ * channel available to a cold account that does not depend on followers. A package about BAC that
+ * writes "BAC" is invisible to everyone browsing $BAC.
+ *
+ * Deduplicated and order-preserving so the lead ticker stays first, and capped — a wall of tickers
+ * reads as spam to a reader and as spam to the ranker.
+ */
+export const CASHTAG_LIMIT = 4;
+
+export function cashtags(tickers: ReadonlyArray<string>): string {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const t of tickers) {
+    const sym = t.trim().toUpperCase().replace(/^\$/, "");
+    // Index tickers like SPX carry no cashtag on X; a $ in front of a non-symbol is just noise.
+    if (!/^[A-Z][A-Z.]{0,5}$/.test(sym) || seen.has(sym)) continue;
+    seen.add(sym);
+    out.push(`$${sym}`);
+    if (out.length >= CASHTAG_LIMIT) break;
+  }
+  return out.join(" ");
+}
+
+/**
+ * Pick the next claim: least recently used.
  *
  * PURE and total. `recent` is newest-first, exactly as `recentCtaVariants()` returns it. With no
  * history it returns the head of the canonical order, so a cold start is deterministic rather than
  * arbitrary — a fresh database and a replayed one choose the same thing, which is what makes the
  * rotation reproducible in a test.
+ *
+ * The earlier version also refused two paid asks in a row. Every post now carries the same offer,
+ * so there is no longer any such thing as a paid variant and that guard had nothing left to guard.
  */
 export function selectCtaVariant(
   recent: ReadonlyArray<XIntelCtaVariant>,
 ): XIntelCtaVariant {
-  const lastWasPaid = recent.length > 0 && PAID_VARIANTS.has(recent[0]!);
-
-  // Rank by how long ago each variant was last used; never-used sorts first.
+  // Rank by how long ago each was last used; never-used sorts first.
   const lastUsedIndex = (v: XIntelCtaVariant): number => {
     const i = recent.indexOf(v);
     return i === -1 ? Number.POSITIVE_INFINITY : i;
   };
-
-  const eligible = X_INTEL_CTA_VARIANTS.filter(
-    (v) => !(lastWasPaid && PAID_VARIANTS.has(v)),
-  );
-
-  // `eligible` can never be empty: SOFT, DISCORD and SITE are all unpaid, so the back-to-back
-  // guard can never exclude everything. The fallback is defensive, not reachable.
-  const pool = eligible.length ? eligible : X_INTEL_CTA_VARIANTS;
-
-  return [...pool].sort((a, b) => {
+  return [...X_INTEL_CTA_VARIANTS].sort((a, b) => {
     const d = lastUsedIndex(b) - lastUsedIndex(a);
     if (d !== 0) return d;
     // Stable tie-break on canonical order so two never-used variants resolve deterministically.
@@ -180,8 +214,31 @@ export function selectCtaVariant(
   })[0]!;
 }
 
-/** X's limit applies to the reply too. */
-export const CTA_CHAR_LIMIT = 280;
+/**
+ * MEASURE LENGTH THE WAY X DOES.
+ *
+ * X replaces every URL with a t.co shortlink and counts it as a fixed 23 characters no matter how
+ * long the original is. That matters enormously here: each tagged link runs ~120 raw characters,
+ * almost all of it UTM, so a raw `.length` check reported this block at 586 when X sees roughly
+ * half that. Budgeting against the raw number would have driven me to strip the very tracking the
+ * learning loop is built on, to fix a limit that was never being exceeded.
+ */
+export const T_CO_LENGTH = 23;
+
+export function xWeightedLength(text: string): number {
+  const urls = text.match(/https?:\/\/\S+/g) ?? [];
+  const raw = urls.reduce((n, u) => n + u.length, 0);
+  return text.length - raw + urls.length * T_CO_LENGTH;
+}
+
+/**
+ * Budget for the CTA BLOCK, measured X's way.
+ *
+ * Not 280: the CTA is no longer a standalone reply that has to fit a post on its own, it is the
+ * foot of a long-form body. This is a budget for how much of the reader's attention the ask may
+ * take from the evidence above it, which is a different question from what the platform allows.
+ */
+export const CTA_CHAR_LIMIT = 400;
 
 /**
  * Build the CTA reply for one package.
@@ -194,14 +251,25 @@ export function buildCta(
   recent: ReadonlyArray<XIntelCtaVariant> = [],
 ): XIntelCta {
   const variant = selectCtaVariant(recent);
-  const { text, url } = BUILDERS[variant](cycleKey);
-  return { variant, text, url, placement: "body" };
+  const edge = EDGES.find((e) => e.variant === variant) ?? EDGES[0]!;
+  const url = tagged(LINKS.site, cycleKey, variant);
+  return {
+    variant,
+    text: `${edge.line}\n\n${offerBlock(cycleKey, variant)}`,
+    url,
+    placement: "body",
+  };
 }
 
 /** Every variant's copy, for the admin page's preview and for tests. */
 export function previewAllCtas(cycleKey: string): XIntelCta[] {
   return X_INTEL_CTA_VARIANTS.map((variant) => {
-    const { text, url } = BUILDERS[variant](cycleKey);
-    return { variant, text, url, placement: "body" as const };
+    const edge = EDGES.find((e) => e.variant === variant) ?? EDGES[0]!;
+    return {
+      variant,
+      text: `${edge.line}\n\n${offerBlock(cycleKey, variant)}`,
+      url: tagged(LINKS.site, cycleKey, variant),
+      placement: "body" as const,
+    };
   });
 }
