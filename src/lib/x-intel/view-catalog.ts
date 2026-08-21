@@ -253,34 +253,133 @@ export const X_INTEL_VIEW_CATALOG: ReadonlyArray<XIntelViewDef> = [
     frame: "fire time through current state", rth_only: false,
   },
 
-  // ── MERIDIAN ──────────────────────────────────────────────────────────────────────────────
+  // ── MERIDIAN — operator exemplars 2026-08-21 ──────────────────────────────────────────────
+  //
+  // Two desk views (Timeline / Analytics grid) and, on an opened event, five brief tabs. Meridian
+  // labels every data panel semantically, so a capture targets `[aria-label="..."]` rather than a
+  // layout class. That matters more here than elsewhere: `.meridian-page-root` measured 14,704px
+  // tall on the analytics view — framing the page produces a screenshot of a spreadsheet, not an
+  // attachment.
+  //
+  // MEASURED 2026-08-21: the ANALYTICS-GRID panels are wide, thin strips (~100px tall). They are
+  // honest and legible but weak as standalone attachments. The rich frames are the per-event
+  // tabs, which need an event opened first. Prefer those for a story about one name; use the
+  // strips as a CONFIRMATION slot where a calendar or catalyst count is the supporting fact.
   {
-    id: "meridian.earnings", surface: "meridian", label: "Meridian earnings detail",
-    path: "/meridian", visualization: "earnings",
-    reach: ["Search the ticker; open its EARNINGS row specifically — the timeline mixes macro/FDA/OpEx rows."],
-    verify: "the detail matches the searched ticker and the hero has populated",
-    frame: "verdict and the cited numbers together", rth_only: false,
+    id: "meridian.timeline", surface: "meridian", label: "Meridian catalyst timeline",
+    path: "/meridian", visualization: "timeline",
+    reach: ["Open the Timeline desk view.", "Filter catalysts to the class the story is about."],
+    verify: "rows carry dates and impact marks",
+    frame: '[aria-label="Catalyst timeline"]', rth_only: false,
   },
   {
-    id: "meridian.estimates", surface: "meridian", label: "Meridian estimates",
-    path: "/meridian", visualization: "estimates",
-    reach: ["Open Estimates on the event."],
-    verify: "estimate values present, not dashes",
-    frame: "the estimate and its history", rth_only: false,
+    id: "meridian.high_impact_grid", surface: "meridian", label: "Meridian high-impact catalysts",
+    path: "/meridian", visualization: "high_impact_grid",
+    reach: ["Open the Analytics grid desk view."],
+    verify: "cards name real events with dates — an empty grid means no catalysts, and says so",
+    frame: '[aria-label="High impact catalyst grid"] — a wide strip; pair it, do not lead with it',
+    rth_only: false,
   },
   {
-    id: "meridian.positioning", surface: "meridian", label: "Meridian positioning",
-    path: "/meridian", visualization: "positioning",
-    reach: ["Open the positioning pillars."],
-    verify: "flow, thermal and dark pool pillars populated — an unfilled pillar must not read as neutral",
+    id: "meridian.calendar_heat", surface: "meridian", label: "Meridian earnings calendar heat grid",
+    path: "/meridian", visualization: "calendar_heat",
+    reach: ["Open the Analytics grid desk view."],
+    verify: "per-day counts rendered with their high-impact star counts",
+    frame: '[aria-label="Earnings calendar heat grid"]', rth_only: false,
+  },
+  {
+    id: "meridian.megacap_week", surface: "meridian", label: "Meridian mega-cap earnings week",
+    path: "/meridian", visualization: "megacap_week",
+    reach: ["Open the Analytics grid desk view."],
+    verify: "named mega-cap prints listed with their sessions",
+    frame: '[aria-label="Mega-cap earnings week"]', rth_only: false,
+  },
+  {
+    id: "meridian.next_24h", surface: "meridian", label: "Meridian prints in the next 24 hours",
+    path: "/meridian", visualization: "next_24h",
+    reach: ["Open the Analytics grid desk view."],
+    verify: "prints listed with BMO/AMC timing — timing is the whole point of this panel",
+    frame: '[aria-label="Prints in the next 24 hours"]', rth_only: false,
+  },
+  {
+    id: "meridian.surprise_scatter", surface: "meridian", label: "Meridian EPS vs revenue surprise",
+    path: "/meridian", visualization: "surprise_scatter",
+    reach: ["Open the Analytics grid desk view."],
+    verify: "points plotted with both axes labelled",
+    frame: '[aria-label="EPS surprise versus revenue surprise scatter"]', rth_only: false,
+  },
+  {
+    id: "meridian.revision_timeline", surface: "meridian", label: "Meridian estimate revisions",
+    path: "/meridian", visualization: "revision_timeline",
+    reach: ["Open the Analytics grid desk view."],
+    verify: "revisions carry dates and direction",
+    frame: '[aria-label="Estimate revision timeline"]', rth_only: false,
+  },
+  {
+    id: "meridian.opex_cross_market", surface: "meridian", label: "Meridian OpEx cross-market history",
+    path: "/meridian", visualization: "opex_history",
+    reach: ["Open the Analytics grid desk view."],
+    verify: "prior OpEx sessions listed with their outcomes",
+    frame: '[aria-label="OpEx cross-market history"]', rth_only: false,
+    operator_rule: "The natural pairing for a monthly-OpEx story — history first, then today's positioning.",
+  },
+  {
+    id: "meridian.after_hours", surface: "meridian", label: "Meridian after-hours movers",
+    path: "/meridian", visualization: "after_hours",
+    reach: ["Open the Analytics grid desk view."],
+    verify: "movers listed with their moves",
+    frame: '[aria-label="After-hours movers"]', rth_only: false,
+  },
+  {
+    id: "meridian.event_summary", surface: "meridian", label: "Meridian event — Summary",
+    path: "/meridian", visualization: "event_summary",
+    reach: ["Search the ticker.", "Open its EARNINGS row (the timeline mixes macro/FDA/OpEx).", "Summary tab."],
+    verify: "the tab reads aria-selected=true and the summary answers what to do, not just what happened",
+    frame: '[aria-label="Summary"]', rth_only: false,
+  },
+  {
+    id: "meridian.event_report", surface: "meridian", label: "Meridian event — Report",
+    path: "/meridian", visualization: "event_report",
+    reach: ["Open the event, then the Report tab."],
+    verify: "reported figures present, not dashes",
+    frame: "the report card with EPS / revenue and their surprises", rth_only: false,
+  },
+  {
+    id: "meridian.event_estimates", surface: "meridian", label: "Meridian event — Estimates",
+    path: "/meridian", visualization: "event_estimates",
+    reach: ["Open the event, then the Estimates tab."],
+    verify: "estimate values and the analyst cluster rendered",
+    frame: "estimates with their revision history", rth_only: false,
+  },
+  {
+    id: "meridian.event_positioning", surface: "meridian", label: "Meridian event — Positioning",
+    path: "/meridian", visualization: "event_positioning",
+    reach: ["Open the event, then the Positioning tab."],
+    verify: "flow, thermal and dark-pool pillars populated — an unfilled pillar must NOT read as neutral",
     frame: "the pillars with the expected move", rth_only: false,
+    operator_rule: "The strongest EARNINGS WAR ROOM frame — expected move plus who is positioned where.",
   },
   {
-    id: "meridian.history", surface: "meridian", label: "Meridian reaction history",
-    path: "/meridian", visualization: "history",
-    reach: ["Open historical reactions."],
-    verify: "prior reactions listed with dates and basis — a reaction with no basis label is not citable",
-    frame: "the history rows with dates", rth_only: false,
+    id: "meridian.event_history", surface: "meridian", label: "Meridian event — History",
+    path: "/meridian", visualization: "event_history",
+    reach: ["Open the event, then the History tab."],
+    verify: "prior reactions carry dates AND their basis — a reaction with no basis label is not citable",
+    frame: "the reaction rows", rth_only: false,
+    operator_rule: "Pairs with Positioning for the expected-vs-actual follow-up post.",
+  },
+  {
+    id: "meridian.peer_cohort", surface: "meridian", label: "Meridian sector peers",
+    path: "/meridian", visualization: "peer_cohort",
+    reach: ["Open the event, then the sector peers panel."],
+    verify: "peers listed with their own prints or estimates",
+    frame: '[aria-label="Sector peers"]', rth_only: false,
+  },
+  {
+    id: "meridian.signal_dimensions", surface: "meridian", label: "Meridian signal dimensions",
+    path: "/meridian", visualization: "signal_dimensions",
+    reach: ["Open the event's signal dimensions panel."],
+    verify: "each dimension carries a value; a missing dimension reads as unavailable, never as zero",
+    frame: '[aria-label="Signal dimensions"]', rth_only: false,
   },
 
   // ── LARGO ─────────────────────────────────────────────────────────────────────────────────

@@ -69,12 +69,80 @@ async function hideMarketingChrome(page) {
       const txt = (el.textContent || '').trim().slice(0, 200);
       if (!MARKETING.test(txt)) continue;
       // A desk panel can be sticky too — never hide anything the desk owns.
-      if (el.closest('.gex-heatmap-desk, .vector-chart-wrap, .helix-desk-terminal')) continue;
+      if (el.closest('.gex-heatmap-desk, .vector-chart-wrap, .helix-desk-terminal, .meridian-page-root')) continue;
       el.style.setProperty('display', 'none', 'important');
       hidden.push(`${el.tagName.toLowerCase()}.${(el.className || '').toString().slice(0, 40)}`);
     }
     return hidden;
   });
+}
+
+
+/**
+ * MERIDIAN. Two desk views (Timeline / Analytics grid) and, on an opened event, five brief tabs
+ * (Summary / Report / Estimates / Positioning / History).
+ *
+ * The timeline mixes earnings, macro, FDA and OpEx rows, so an event is selected by its THEME
+ * class rather than by position — clicking "the first row" lands on whatever catalyst happens to
+ * be nearest in time, which for an earnings post is usually a macro print with no earnings tabs
+ * at all. That trap is already recorded in `meridian-earnings-ui-audit.mjs`; it is re-encoded here
+ * rather than re-learned.
+ */
+async function meridian(page, o, log) {
+  await page.goto('https://blackouttrades.com/meridian', { waitUntil: 'domcontentloaded', timeout: 45000 });
+  await page.waitForTimeout(12000);
+
+  if (o.view === 'analytics') {
+    const t = page.locator('[role="tab"]', { hasText: /^Analytics grid$/i }).first();
+    if (await t.count()) { await t.click(); await page.waitForTimeout(8000); log.push('view→analytics grid'); }
+  }
+
+  if (o.ticker && o.ticker !== 'SPY') {
+    const search = page.locator('.meridian-search-input').first();
+    if (await search.count()) {
+      await search.fill(o.ticker); await page.waitForTimeout(3500); log.push(`search→${o.ticker}`);
+    }
+    // Select an EARNINGS row specifically — see the header note.
+    const row = page.locator('.meridian-theme-earnings').filter({ hasText: o.ticker }).first();
+    if (await row.count()) {
+      await row.click(); await page.waitForTimeout(9000); log.push('event→opened');
+    } else {
+      log.push(`event→none for ${o.ticker} (captured honestly)`);
+    }
+  }
+
+  if (o.panel) {
+    const tab = page.locator('[role="tab"]', { hasText: new RegExp(`^${o.panel}$`, 'i') }).first();
+    if (await tab.count()) {
+      await tab.click(); await page.waitForTimeout(6000);
+      if (await tab.getAttribute('aria-selected') !== 'true') throw new Error(`tab ${o.panel} did not select`);
+      log.push(`tab→${o.panel} ✓`);
+    } else throw new Error(`tab ${o.panel} not present — open an event first`);
+  }
+
+  // FRAME A DATA PANEL, NOT THE PAGE.
+  //
+  // `.meridian-page-root` is the whole scrollable desk — measured at 14,704px tall on the
+  // analytics view, which is not an attachment, it is a screenshot of a spreadsheet. The operator's
+  // rule is "only the data panels", and Meridian labels every one of them semantically, so the
+  // panel is selected by its aria-label rather than by a layout class a redesign will rename.
+  //
+  //   After-hours movers · Catalyst timeline · Earnings calendar heat grid · Earnings window
+  //   summary · EPS surprise versus revenue surprise scatter · Estimate revision timeline ·
+  //   Event structure brief · High impact catalyst grid · Mega-cap earnings week · OpEx
+  //   cross-market history · Prints in the next 24 hours · Recent calendar revisions ·
+  //   Sector peers · Signal dimensions · Timeline summary
+  //
+  // Fifteen named panels is fifteen distinct frames before a ticker or a tab is even chosen.
+  if (o.panelLabel) {
+    const panel = page.locator(`[aria-label="${o.panelLabel}"]`).first();
+    if (!(await panel.count())) throw new Error(`panel "${o.panelLabel}" not on this view — wrong desk view or no event open`);
+    await panel.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(2500);
+    log.push(`panel→${o.panelLabel}`);
+    return panel;
+  }
+  return page.locator('.meridian-page-root').first();
 }
 
 const VIEW_TABS = { matrix: /^MATRIX$/i, profile: /GAMMA PROFILE/i, depth: /FORCED FLOW/i };
@@ -211,7 +279,7 @@ async function vector(page, o, log) {
     view: arg('view','matrix'), lens: arg('lens','GEX').toUpperCase(),
     sector: arg('sector',''), panel: arg('panel',''), out: arg('out','/tmp/shots/out.png'),
     tf: arg('tf',''), horizon: arg('horizon',''), zoom: arg('zoom','6'),
-    mode: arg('mode',''), preset: arg('preset',''),
+    mode: arg('mode',''), preset: arg('preset',''), panelLabel: arg('panel-label',''),
   };
   const { browser, ctx, counts } = await createTunneledContext({
     url: 'https://blackouttrades.com/', cookie: arg('cookie',''), viewport: arg('viewport','2560x1440'), desktop: true,
@@ -220,6 +288,7 @@ async function vector(page, o, log) {
   try {
     const target = o.surface === 'helix' ? await helix(page, o, log)
       : o.surface === 'vector' ? await vector(page, o, log)
+      : o.surface === 'meridian' ? await meridian(page, o, log)
       : await thermal(page, o, log);
     const hid = await hideMarketingChrome(page);
     if (hid.length) log.push(`chrome hidden→${hid.length}`);
