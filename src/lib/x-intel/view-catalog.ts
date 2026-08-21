@@ -3,37 +3,33 @@ import type { XIntelSurface } from "@/lib/x-intel/queue-types";
 /**
  * THE SURFACE VIEW CATALOG — every distinct thing on the platform worth photographing.
  *
- * ⚠️ PROVISIONAL. The operator is supplying worked capture exemplars per product, and those will
- * be matched EXACTLY — same surface, same framing, same crop, same state. Until they land, every
- * framing decision below is a placeholder. Conforming later must be an edit to THIS TABLE, not a
- * rewrite of the pipeline; if matching an exemplar ever requires changing pipeline code, the table
- * is in the wrong place and that is the bug to fix first.
+ * ⚠️ Framing notes below are PROVISIONAL where the operator has not yet ruled. Where they HAVE
+ * ruled (Thermal, Helix, Vector, SPX Slayer — 2026-08-21) the rule is recorded verbatim in
+ * `operator_rule` and must be matched exactly, not approximately.
  *
- * ── WHY THIS IS A CATALOG OF VIEWS, NOT A RECIPE PER PRODUCT ───────────────────────────────────
+ * ── THE FIVE STANDING RULES FROM THE OPERATOR'S EXEMPLARS (2026-08-21) ─────────────────────────
  *
- * The obvious design — one entry per product, one canonical shot each — is the design the content
- * spec explicitly forbids:
+ * 1. PRODUCT INTERFACE ONLY. No marketing header — no "Open desk" CTA, no Features/FAQ/Learn nav.
+ *    Frame on the desk container, never the page.
  *
- * > "Do not use the same predefined screenshots repeatedly."
- * > "Browse BLACKOUT like a curious expert human, not a screenshot automation script."
+ * 2. THERMAL IS ALWAYS THE **ALL** EXPIRY FILTER. Lens is free (GEX/VEX/DEX/CHARM); the expiry
+ *    scope is not. This is a CORRECTNESS rule, not a framing preference: `GexHeatmap.tsx` defaults
+ *    the scope to the FRONT expiry (`scopeResolvedRef` → `expiries[0]`), and the front expiry
+ *    reads a different regime from the whole book. Measured on 2026-08-21: AUG 21 alone showed
+ *    `LONG GAMMA · NET GEX -$1.8B`, while ALL showed `SHORT GAMMA at EVERY strike · NET GEX
+ *    -$7.6B`. A post built on the default would have told readers dealers were dampening
+ *    volatility on a day the book says they amplify it.
  *
- * A per-product recipe produces a feed of seven images on rotation, and a reader learns nothing
- * about the platform's depth. So the granularity here is the VIEW — Thermal Matrix and Thermal
- * Profile and Thermal Shift are three entries, not one — and the pipeline SELECTS among them per
- * story, penalising anything used recently (see `visual-memory.ts`).
+ * 3. CHARTS MUST BE ZOOMED AND SCROLLED IN. Individual candles, gamma beads and wall bands have to
+ *    be legible. The default page-load fit is "how the page loads", not evidence of a move.
  *
- * The table therefore holds what is STABLE (which views exist, where they live, how to reach one,
- * what must be true before the shutter fires) and leaves what is PER-STORY (which view best proves
- * THIS claim) to selection. That is the reconciliation between "keep framing in one config table"
- * and "explore like a human": the table is the map, not the itinerary.
+ * 4. USE THE BIG MODES. Full screen and compare/grid are first-class captures, not fallbacks —
+ *    Vector COMPARE (4 charts, MAG 7 / INDICES / SEMIS / MOMENTUM) and Thermal GRID (ten sector
+ *    presets) are among the strongest frames the platform can produce.
  *
- * ── EVERY ENTRY MUST BE REACHABLE AND VERIFIABLE ───────────────────────────────────────────────
- *
- * `verify` is the precondition that must hold before capturing — the property that distinguishes
- * "the panel rendered with this story's data" from "the panel rendered". Without it a harness
- * screenshots loading skeletons, stale states and empty tables and reports success, which is the
- * exact list of rejects the content spec calls out. An entry with no meaningful `verify` is an
- * entry that will eventually publish a blank.
+ * 5. ALWAYS UNIQUE. Different tabs, panels, filters and sectors per post. The feed must show as
+ *    much of the platform as possible over time — enforced by `visual-memory.ts`, which is the
+ *    machinery behind this rule rather than a restatement of it.
  */
 
 export type XIntelViewId = string;
@@ -61,6 +57,11 @@ export type XIntelViewDef = {
   rth_only: boolean;
   /** True when the view is SPX-only and must not be selected for a single-name story. */
   spx_only?: boolean;
+  /**
+   * A rule the operator stated directly about this view. Where present it is binding and must be
+   * matched exactly — "close enough" on a house style is a decision they did not make.
+   */
+  operator_rule?: string;
 };
 
 /**
@@ -71,285 +72,224 @@ export type XIntelViewDef = {
  * a hand-duplicated set across a `.ts` and a `.mjs`, which is a drift bug waiting for a UI change.
  * Unifying all three into this table is step 3 of the lane build order.
  */
-export const X_INTEL_VIEW_CATALOG: ReadonlyArray<XIntelViewDef> = [
-  // ── HELIX ──────────────────────────────────────────────────────────────────────────────────
-  {
-    id: "helix.live_flow",
-    surface: "helix",
-    label: "Helix live flow tape",
-    path: "/flows",
-    visualization: "tape",
-    reach: [
-      "Dismiss any onboarding overlay.",
-      "Set Symbol via #helix-ticker-search to the story ticker (uppercase), then blur.",
-      "Scroll so 3–8 recent prints are visible with premiums and strikes.",
-    ],
-    verify: "every visible row's symbol matches the story ticker; an empty state is captured honestly, never as a full tape",
-    frame: "the flow tape panel only — premiums and strikes legible at timeline size",
-    rth_only: true,
-  },
-  {
-    id: "helix.contract_detail",
-    surface: "helix",
-    label: "Helix contract detail",
-    path: "/flows",
-    visualization: "contract_detail",
-    reach: ["Open the specific contract the story is about from the tape."],
-    verify: "the detail panel names the exact contract cited in the post copy",
-    frame: "contract identity, premium and fill history together in one frame",
-    rth_only: true,
-  },
-  {
-    id: "helix.sector_rotation",
-    surface: "helix",
-    label: "Helix sector rotation",
-    path: "/flows",
-    visualization: "sector_rotation",
-    reach: ["Open the sector rotation view."],
-    verify: "sector rows populated with non-zero premium",
-    frame: "the rotation ranking — leaders and laggards visible together",
-    rth_only: true,
-  },
-  {
-    id: "helix.dark_pool",
-    surface: "helix",
-    label: "Helix dark pool",
-    path: "/flows",
-    visualization: "dark_pool",
-    reach: ["Open the dark pool view and filter to the story ticker."],
-    verify: "prints listed for the story ticker",
-    frame: "the dark pool prints with size and level",
-    rth_only: true,
-  },
+/** Operator rule 2 — the expiry scope is a correctness constraint, not a framing preference. */
+const ALL_EXPIRY_RULE =
+  "EXPIRY = ALL, always. Set it on the MATRIX view BEFORE switching tabs — FORCED FLOW renders no expiry bar at all. Lens is free (GEX/VEX/DEX/CHARM); expiry scope is not.";
 
-  // ── THERMAL ────────────────────────────────────────────────────────────────────────────────
+/** Operator rule 3 — a chart at its default fit is not evidence of a move. */
+const ZOOM_RULE =
+  "Zoom and scroll in until individual candles, gamma beads and wall bands are legible. The default page-load fit is not acceptable.";
+
+export const X_INTEL_VIEW_CATALOG: ReadonlyArray<XIntelViewDef> = [
+  // ── THERMAL — operator exemplars 2026-08-21 ───────────────────────────────────────────────
   {
-    id: "thermal.matrix",
-    surface: "thermal",
-    label: "Thermal GEX matrix",
-    path: "/heatmap",
-    visualization: "matrix",
-    reach: [
-      "Change ticker via the combobox to the story ticker.",
-      "Select the GEX lens (default).",
-    ],
-    verify: "matrix cells populated — no NO OPTIONS CHAIN state; spot row, flip line and at least one wall label visible",
-    frame: "the full matrix plus the key-levels rail",
+    id: "thermal.matrix", surface: "thermal", label: "Thermal dealer-gamma matrix",
+    path: "/heatmap", visualization: "matrix",
+    reach: ["Set the story ticker.", "Click EXPIRY **All**.", "Pick the lens (GEX default).", "Frame `.gex-heatmap-desk`."],
+    verify: "the All chip reads aria-pressed=true AND the THERMAL STATE strip rendered — assert both, never assume",
+    frame: "ticker/spot bar → THERMAL STATE strip → full multi-expiry matrix. No marketing nav.",
+    rth_only: false, operator_rule: ALL_EXPIRY_RULE,
+  },
+  {
+    id: "thermal.gamma_profile", surface: "thermal", label: "Thermal gamma profile + curve + shift",
+    path: "/heatmap", visualization: "profile_curve_shift",
+    reach: ["Set EXPIRY **All** on MATRIX first.", "Then open GAMMA PROFILE + CURVE + SHIFT."],
+    verify: "gamma intensity rail populated and the cumulative curve has drawn its zero-crossing",
+    frame: "intensity rail + cumulative curve + intraday shift panel together",
+    rth_only: false, operator_rule: ALL_EXPIRY_RULE,
+  },
+  {
+    id: "thermal.forced_flow", surface: "thermal", label: "Thermal forced dealer flow (depth)",
+    path: "/heatmap", visualization: "forced_flow",
+    reach: ["Set EXPIRY **All** on MATRIX first.", "Then open FORCED FLOW (DEPTH)."],
+    verify: "the SPOT divider is drawn with bars on both sides and the CALL WALL / PUT WALL annotations placed",
+    frame: "THERMAL STATE strip + the full ladder including the buy/sell legend and the modelled-flip caption",
     rth_only: false,
+    operator_rule: "No expiry bar exists on this view — it is inherently near-term. Set ALL on MATRIX first; do not look for the chip here.",
   },
   {
-    id: "thermal.profile",
-    surface: "thermal",
-    label: "Thermal gamma profile",
-    path: "/heatmap",
-    visualization: "profile",
-    reach: ["Switch to the Profile view for the story ticker."],
-    verify: "the profile curve renders with the spot marker placed",
-    frame: "the curve with the level the story is about labelled",
-    rth_only: false,
-  },
-  {
-    id: "thermal.shift",
-    surface: "thermal",
-    label: "Thermal positioning shift",
-    path: "/heatmap",
-    visualization: "shift",
-    reach: ["Switch to the Shift view for the story ticker."],
-    verify: "a from/to comparison is rendered — a shift view with one state is not a shift",
-    frame: "the change itself, both states legible",
-    rth_only: true,
-  },
-  {
-    id: "thermal.dealer_positioning",
-    surface: "thermal",
-    label: "Thermal dealer positioning",
-    path: "/heatmap",
-    visualization: "dealer",
-    reach: ["Select the VEX or DEX lens as the story requires."],
-    verify: "the selected lens is reflected in the active chip, not assumed",
-    frame: "dealer exposure across strikes with the story's level in frame",
-    rth_only: false,
-  },
-  {
-    id: "thermal.compare_grid",
-    surface: "thermal",
-    label: "Thermal compare grid",
-    path: "/heatmap",
-    visualization: "compare_grid",
-    reach: ["Enable Grid, then pick the sector preset the story is about."],
-    verify: "every column in the preset has finished loading — a half-loaded grid is a stale frame",
+    id: "thermal.sector_grid", surface: "thermal", label: "Thermal sector compare grid",
+    path: "/heatmap", visualization: "compare_grid",
+    reach: ["Toggle GRID on.", "Pick a sector preset.", "Wait for EVERY column to finish loading."],
+    verify: "every ticker column has cells — a half-loaded grid is a stale frame, not a fast one",
     frame: "all columns in one frame",
     rth_only: false,
+    operator_rule: "Rotate the preset: Indices · Macro · Semis · AI · Space · Mag 7 · Crypto · Energy · Financials · Healthcare. Ten presets is ten distinct frames — do not keep returning to one.",
   },
 
-  // ── VECTOR ─────────────────────────────────────────────────────────────────────────────────
+  // ── VECTOR — operator exemplars 2026-08-21 ────────────────────────────────────────────────
   {
-    id: "vector.chart",
-    surface: "vector",
-    label: "Vector structure chart",
-    path: "/vector",
-    visualization: "chart",
-    reach: [
-      "Open with ?ticker= the story ticker.",
-      "Select the horizon and timeframe that make the move legible — the timeframe is a per-story choice, not a fixed default.",
-    ],
-    verify: "candles rendered, active ticker matches, wall beads and the flip line settled",
-    frame: "the chart wrap only — the move and the level in the same frame",
-    rth_only: false,
+    id: "vector.desk", surface: "vector", label: "Vector desk — matrix rail + chart + intel rail",
+    path: "/vector", visualization: "desk",
+    reach: ["Open with ?ticker=.", "Pick horizon and timeframe.", "Zoom the chart in.", "Move the pointer OFF the chart so the crosshair tooltip clears."],
+    verify: "candles rendered, beads settled, and the intel rail populated",
+    frame: "0DTE matrix rail + zoomed chart + right intel rail (Live Helix / scalp read / technicals)",
+    rth_only: false, operator_rule: ZOOM_RULE,
   },
   {
-    id: "vector.levels",
-    surface: "vector",
-    label: "Vector levels rail",
-    path: "/vector",
-    visualization: "levels",
-    reach: ["Open the levels rail for the story ticker."],
-    verify: "levels listed with values, not placeholders",
-    frame: "the level the story cites, in context with its neighbours",
-    rth_only: false,
+    id: "vector.fullscreen", surface: "vector", label: "Vector full-screen chart",
+    path: "/vector", visualization: "fullscreen_chart",
+    reach: ["Open with ?ticker=.", "Click FULL SCREEN.", "Zoom to the window the story is about."],
+    verify: "the toolbar reads EXIT FULL SCREEN — otherwise full screen did not engage",
+    frame: "toolbar + chart + volume pane, edge to edge",
+    rth_only: false, operator_rule: ZOOM_RULE,
   },
   {
-    id: "vector.overlays",
-    surface: "vector",
-    label: "Vector chart with overlays",
-    path: "/vector",
-    visualization: "overlays",
-    reach: ["Enable the overlay the story depends on."],
-    verify: "the overlay is visibly drawn, not merely toggled on",
-    frame: "overlay and price together — an overlay with no price context proves nothing",
+    id: "vector.compare", surface: "vector", label: "Vector compare — 4 charts",
+    path: "/vector", visualization: "compare_4up",
+    reach: ["Click COMPARE.", "Pick a preset: MAG 7 / INDICES / SEMIS / MOMENTUM.", "Let all four panes load."],
+    verify: "all four panes have candles — one empty pane makes the frame read as broken",
+    frame: "the 2x2 grid with each pane's ticker and last price legible",
     rth_only: false,
+    operator_rule: "Compare is a first-class capture, not a fallback. Rotate the preset per post.",
   },
 
-  // ── SPX SLAYER ─────────────────────────────────────────────────────────────────────────────
+  // ── HELIX — operator exemplars 2026-08-21 ─────────────────────────────────────────────────
   {
-    id: "spx_slayer.desk",
-    surface: "spx_slayer",
-    label: "SPX Slayer desk",
-    path: "/dashboard",
-    visualization: "desk",
-    reach: ["Wait for the play engine and the SPX GEX matrix rail."],
-    verify: "phase, grade and gates rendered, and the live SPX spot row visible in the ladder",
-    frame: "matrix rail and play engine in one frame",
+    id: "helix.tape", surface: "helix", label: "Helix flow tape",
+    path: "/flows", visualization: "tape",
+    reach: ["Set SYMBOL to the story ticker.", "Choose FLOOR / SIDE / DTE to suit the story.", "Scroll so the cited prints are in frame."],
+    verify: "every visible row's SYM matches the story ticker; an empty tape is captured honestly as empty",
+    frame: "HELIX header + filter row + print table through the INTEL column",
     rth_only: true,
-    spx_only: true,
+    operator_rule: "Vary the filters per post — FLOOR $200K/$500K/$1M/$20M, SIDE ALL/CALL/PUT, DTE ALL/0DTE/≤7D/>7D, QUICK WHALES/0DTE/INDICES. The filter row is visible in frame, so it is part of the evidence.",
+  },
+  {
+    id: "helix.top_prints", surface: "helix", label: "Helix conviction — top prints",
+    path: "/flows", visualization: "top_prints",
+    reach: ["Open ANALYTICS → TOP PRINTS."],
+    verify: "scored print cards rendered with premium and aggressor per row",
+    frame: "the scored card stack",
+    rth_only: true,
+  },
+  {
+    id: "helix.top_strikes", surface: "helix", label: "Helix top strikes — repeated flow",
+    path: "/flows", visualization: "top_strikes",
+    reach: ["Open ANALYTICS → TOP STRIKES (same contract, rolling window)."],
+    verify: "cards show REPEAT + STACK with a window total and a tape count",
+    frame: "the strike cards with side, expiry and window notional",
+    rth_only: true,
+    operator_rule: "This is the strongest WHALE WATCH evidence — repetition and direction, not one sweep.",
+  },
+  {
+    id: "helix.analytics_panels", surface: "helix", label: "Helix all analytics panels",
+    path: "/flows", visualization: "analytics_panels",
+    reach: ["Open ANALYTICS → MORE PANELS."],
+    verify: "the panel modal is open with its cards populated; an unfilled panel must read as unavailable, not as zero",
+    frame: "the modal — Hawk conviction, split-flow radar, route breakdown, signal outcomes",
+    rth_only: true,
+  },
+  {
+    id: "helix.contract_drilldown", surface: "helix", label: "Helix contract drilldown",
+    path: "/flows", visualization: "contract_drilldown",
+    reach: ["Click the specific print the story cites to open CONTRACT DRILLDOWN."],
+    verify: "the drilldown names the exact contract quoted in the post copy",
+    frame: "THIS PRINT stats + contract activity + intraday volume chart",
+    rth_only: true,
   },
 
-  // ── NIGHT HAWK ─────────────────────────────────────────────────────────────────────────────
+  // ── SPX SLAYER — operator exemplars 2026-08-21 ────────────────────────────────────────────
   {
-    id: "nighthawk.queue",
-    surface: "nighthawk",
-    label: "Night Hawk queue",
-    path: "/nighthawk",
-    visualization: "queue",
+    id: "spx_slayer.desk", surface: "spx_slayer", label: "SPX Slayer desk",
+    path: "/dashboard", visualization: "desk",
+    reach: ["Wait for the header stat row, the dealer gamma map and the pin forecaster."],
+    verify: "the header stats row carries live values (SPX, VIX, VWAP, GEX, FLIP, MAX PAIN, IV RANK) — a dash row means it has not hydrated",
+    frame: "header stats + PULSE + gamma map + pin forecaster + chart",
+    rth_only: true, spx_only: true,
+  },
+  {
+    id: "spx_slayer.pin_forecaster", surface: "spx_slayer", label: "EOD pin forecaster",
+    path: "/dashboard", visualization: "pin_forecaster",
+    reach: ["Open the EOD PIN FORECASTER.", "Click **Why this pin? →** so the reasoning is in frame."],
+    verify: "projected close, pin confidence and dominant magnet all carry values",
+    frame: "the drift cone + projected close + confidence + WHY THIS PIN reasoning",
+    rth_only: true, spx_only: true,
+    operator_rule: "Expand WHY THIS PIN — the reasoning is the evidence, not the cone.",
+  },
+  {
+    id: "spx_slayer.largo_read", surface: "spx_slayer", label: "Largo live commentary",
+    path: "/dashboard", visualization: "largo_commentary",
+    reach: ["Open the LARGO tab on the left rail."],
+    verify: "the commentary carries a timestamp and a stance; a NEUTRAL/WAIT read is captured as-is",
+    frame: "stance + triggers + levels to watch",
+    rth_only: true, spx_only: true,
+    operator_rule: "A NEUTRAL / WAIT read is publishable content, not a failed capture — see the contrarian exemplar.",
+  },
+
+  // ── NIGHT HAWK ────────────────────────────────────────────────────────────────────────────
+  {
+    id: "nighthawk.queue", surface: "nighthawk", label: "Night Hawk 0DTE board",
+    path: "/nighthawk", visualization: "queue",
     reach: ["Open the 0DTE Command board."],
-    verify: "play cards loaded, or the empty state captured honestly as an empty state",
-    frame: "the queue with directions and strikes legible",
-    rth_only: true,
+    verify: "play cards loaded, or the empty state captured honestly as empty",
+    frame: "the board with directions and strikes legible", rth_only: true,
   },
   {
-    id: "nighthawk.thesis",
-    surface: "nighthawk",
-    label: "Night Hawk thesis",
-    path: "/nighthawk",
-    visualization: "thesis",
-    reach: ["Open the play for the story ticker and its Thesis view."],
-    verify: "the thesis text belongs to the cited play, not a neighbouring card",
-    frame: "the reasoning, readable without zooming",
-    rth_only: false,
+    id: "nighthawk.thesis", surface: "nighthawk", label: "Night Hawk thesis",
+    path: "/nighthawk", visualization: "thesis",
+    reach: ["Open the play for the story ticker, then its Thesis view."],
+    verify: "the thesis belongs to the cited play, not a neighbouring card",
+    frame: "the reasoning, readable without zooming", rth_only: false,
   },
   {
-    id: "nighthawk.management",
-    surface: "nighthawk",
-    label: "Night Hawk management",
-    path: "/nighthawk",
-    visualization: "management",
+    id: "nighthawk.management", surface: "nighthawk", label: "Night Hawk management",
+    path: "/nighthawk", visualization: "management",
     reach: ["Open the play's Management view."],
     verify: "management state matches the status claimed in the post",
-    frame: "trims, stops and current state together",
-    rth_only: true,
+    frame: "trims, stops and current state together", rth_only: true,
   },
   {
-    id: "nighthawk.pnl",
-    surface: "nighthawk",
-    label: "Night Hawk P&L",
-    path: "/nighthawk",
-    visualization: "pnl",
-    reach: ["Expand the play row so entry, direction and live P&L are visible."],
-    verify: "the P&L shown is the one quoted in the post copy — a moving number must be captured and quoted from the same instant",
-    frame: "the single play card, not the whole board",
-    rth_only: true,
+    id: "nighthawk.pnl", surface: "nighthawk", label: "Night Hawk P&L",
+    path: "/nighthawk", visualization: "pnl",
+    reach: ["Expand the play row so entry, direction and live P&L show."],
+    verify: "the P&L shown is the one quoted in the post — a moving number must be captured and quoted from the same instant",
+    frame: "the single play card, not the whole board", rth_only: true,
   },
   {
-    id: "nighthawk.timeline",
-    surface: "nighthawk",
-    label: "Night Hawk timeline",
-    path: "/nighthawk",
-    visualization: "timeline",
+    id: "nighthawk.timeline", surface: "nighthawk", label: "Night Hawk timeline",
+    path: "/nighthawk", visualization: "timeline",
     reach: ["Open the play's Timeline view."],
-    verify: "timestamps rendered — the timeline is the evidence, so a timeline with no times is worthless",
-    frame: "fire time through current state, timestamps legible",
-    rth_only: false,
+    verify: "timestamps rendered — a timeline with no times is worthless as evidence",
+    frame: "fire time through current state", rth_only: false,
   },
 
-  // ── MERIDIAN ───────────────────────────────────────────────────────────────────────────────
+  // ── MERIDIAN ──────────────────────────────────────────────────────────────────────────────
   {
-    id: "meridian.earnings",
-    surface: "meridian",
-    label: "Meridian earnings detail",
-    path: "/meridian",
-    visualization: "earnings",
-    reach: [
-      "Search the story ticker and open its event row — the timeline mixes macro/FDA/OpEx rows, so select by the earnings row specifically.",
-    ],
-    verify: "the event detail matches the searched ticker and the hero has populated",
-    frame: "verdict and the cited numbers together",
-    rth_only: false,
+    id: "meridian.earnings", surface: "meridian", label: "Meridian earnings detail",
+    path: "/meridian", visualization: "earnings",
+    reach: ["Search the ticker; open its EARNINGS row specifically — the timeline mixes macro/FDA/OpEx rows."],
+    verify: "the detail matches the searched ticker and the hero has populated",
+    frame: "verdict and the cited numbers together", rth_only: false,
   },
   {
-    id: "meridian.estimates",
-    surface: "meridian",
-    label: "Meridian estimates",
-    path: "/meridian",
-    visualization: "estimates",
-    reach: ["Open the Estimates view on the event."],
+    id: "meridian.estimates", surface: "meridian", label: "Meridian estimates",
+    path: "/meridian", visualization: "estimates",
+    reach: ["Open Estimates on the event."],
     verify: "estimate values present, not dashes",
-    frame: "the estimate and its history",
-    rth_only: false,
+    frame: "the estimate and its history", rth_only: false,
   },
   {
-    id: "meridian.positioning",
-    surface: "meridian",
-    label: "Meridian positioning",
-    path: "/meridian",
-    visualization: "positioning",
-    reach: ["Open the positioning pillars on the event."],
-    verify: "flow, thermal and dark pool pillars populated — an unfilled pillar must not read as a neutral one",
-    frame: "the pillars together with the expected move",
-    rth_only: false,
+    id: "meridian.positioning", surface: "meridian", label: "Meridian positioning",
+    path: "/meridian", visualization: "positioning",
+    reach: ["Open the positioning pillars."],
+    verify: "flow, thermal and dark pool pillars populated — an unfilled pillar must not read as neutral",
+    frame: "the pillars with the expected move", rth_only: false,
   },
   {
-    id: "meridian.history",
-    surface: "meridian",
-    label: "Meridian reaction history",
-    path: "/meridian",
-    visualization: "history",
-    reach: ["Open the historical reactions for the ticker."],
-    verify: "prior reactions listed with dates and their basis — a reaction with no basis label is not citable",
-    frame: "the history rows with their dates",
-    rth_only: false,
+    id: "meridian.history", surface: "meridian", label: "Meridian reaction history",
+    path: "/meridian", visualization: "history",
+    reach: ["Open historical reactions."],
+    verify: "prior reactions listed with dates and basis — a reaction with no basis label is not citable",
+    frame: "the history rows with dates", rth_only: false,
   },
 
-  // ── LARGO ──────────────────────────────────────────────────────────────────────────────────
+  // ── LARGO ─────────────────────────────────────────────────────────────────────────────────
   {
-    id: "largo.answer",
-    surface: "largo",
-    label: "Largo cross-product answer",
-    path: "/terminal",
-    visualization: "answer",
-    reach: ["Ask the question the story is about and wait for the full answer."],
+    id: "largo.answer", surface: "largo", label: "Largo cross-product answer",
+    path: "/terminal", visualization: "answer",
+    reach: ["Ask the question the story is about; wait for the full answer."],
     verify: "the assistant turn is COMPLETE, not mid-stream",
-    frame: "the answer card including its levels rail",
-    rth_only: false,
+    frame: "the answer card including its levels rail", rth_only: false,
   },
 ];
 
