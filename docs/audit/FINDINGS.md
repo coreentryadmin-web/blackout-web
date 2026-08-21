@@ -12390,3 +12390,18 @@ against.
 | **Tool description** | `tool-defs.ts` now tells the model how to read `available`/`configured` before concluding anything from an empty result — the payload distinguishes the three states, but nothing had told the model they differ. |
 | **Regression guard** | `src/lib/largo/earnings-calendar-for-largo.test.ts` (10 tests) pins the found-date path (the actual regression), the envelope's *absence* of a top-level `earnings` key, all three empty states as distinct, the `configured` default, transport-leak on the unfiltered branch, and an `Object.prototype`-colliding symbol resolving to no date rather than to a function. |
 | **Status** | FIXED. |
+
+## 2026-08-21 — [FINDING, P3 Meridian] Earnings print history was capped by a fixed 420-day lookback, so "last 8 prints" was never 8 — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `loadMeridianEarningsPrintHistory(sym, 8)` returned 4-5 prints. `preEarningsPackForLargo` asks for 6 and got 4-5. Every beat rate, dual-beat rate and average-session-move on the earnings surface was computed over a smaller sample than the caller requested. |
+| **Root cause** | `loadBenzingaTickerEarnings` pinned its lookback at `addDaysYmd(anchor, -420)`. 420 days is ~4.6 quarterly prints, so a caller asking for 6 or 8 could not be satisfied no matter what it passed — the count is applied by `benzingaRowsToPrintHistory` AFTER the fetch, and the fetch had already bounded the pool. Same family as the `barLimitForWindow` trap: **a fixed constant governing a variable request.** |
+| **Not a wrong number** | `print_history_summary` states its real n — *"4/4 EPS beats over last 4 prints"* — so no member was told a false count. This is silent UNDER-DELIVERY, which is why it survived: every value present was correct, and only the sample size was short. |
+| **Evidence** | Live 2026-08-21, old window (420d, limit 16) vs derived: usable past prints per ticker — **NVDA 4→8, WMT 5→9, AAPL 5→9, BABA 5→9** at a requested count of 8; BABA **5→7** at 6. Every ticker now meets its request; none did before. Note the `limit: 16` was NOT the binding constraint (responses carried 8-9 rows); the DATE window was. |
+| **Second-order cause the cap still had to cover** | The response is sorted `date.desc` over a window spanning past AND future, and Benzinga projects ~4-8 quarters ahead. Those projected rows sit at the TOP of a desc sort and are consumed before any past print is reached, so a row cap equal to the print count could never reach the prints. The derived cap adds a +12 tail for exactly this. |
+| **Fix** | `benzingaTickerWindow(prints)` in `meridian-benzinga-earnings-core.ts` (pure, unit-tested) derives `lookbackDays = prints × 95 + 60` and a row cap that clears the projected tail. `loadBenzingaTickerEarnings` takes the count and sizes its own window; the cache key carries it, so two callers wanting different depths cannot share one entry and let whichever arrived first decide the sample size for both. All four call sites pass what they actually need: print history forwards its `limit`, enrich passes 8, the pre-earnings card passes 6, and `loadNextEarningsFromBenzinga` passes 2 — it only reads the next FUTURE row, so a wide past window was wasted work. |
+| **Regression guard** | `meridian-benzinga-earnings-core.test.ts` +3 tests: the lookback exceeds the old fixed 420 for a 6-print request, grows with the count, clears ~91 days per print, the cap leaves room for the projected tail, and a nonsense count clamps rather than requesting the world. |
+| **Status** | FIXED. |
