@@ -249,6 +249,21 @@ Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 | **Also removed** | A 4-char ticker-prefix re-filter that was a no-op: `fetchRecentFlows` (`db.ts:2543`) already applies exact `ticker = $1`, so it only ever re-matched rows that were already exact, and its `scoped.length ? scoped : recent` fallback was unreachable. Behaviour-preserving deletion. |
 | **Status** | FIXED — tsc clean, 8695 pass / 0 fail on Node 20 (baseline `main` 8686/0, +9 = the new tests), `npm run build` green, eslint clean. |
 
+## 2026-08-21 — [FINDING, P1 correctness] Three more positioning reads reached the model with no matrix time — and one asked it to narrate a change that could not exist — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Root cause** | The same two-part defect fixed in #2425 for `thermalCompareForLargo`: a payload stamped with the TOOL-RUN time while `GexPositioning.asof` — the time the matrix was actually computed — is dropped. Found in review of #2425 after my own blast-radius claim ("confined to `thermalCompareForLargo`") turned out to be wrong; I had scoped the grep to my own files and reported it as lane-wide. Real count in `src/lib/largo`: **15 sites across 11 files**. |
+| **Site 1 — `largo-live-feed.ts:472-497`** | The positioning object arrives intact at line 113, but `formatLargoLiveFeed` is what the MODEL reads, and it emitted `Gamma flip / Call wall / Put wall / SPX spot (matrix)` with **no timestamp line at all**. The block's own comment says it "renders even when spx_structure is stale/missing (e.g. after-hours)" — so an after-hours matrix spot reached the model permanently unlabelled, always on. |
+| **Site 2 — `mini-panel.ts:46` + `case "thermal"` (255-281)** | `const as_of = new Date().toISOString()` (a `const` binding, which is also why it escapes an `as_of\s*:` guard regex), then member-visible Spot / Flip / Call wall / Put wall / Net GEX rows read off `getGexPositioning` with `pos.asof` discarded — leaving the panel's own build stamp as the payload's only date. |
+| **Site 3 — `desk-scope-prefetch.ts:243-252`, and this is the sharp one** | `buildTurnSnapshot` copies spot/flip/walls under a tool-run `as_of` with no `pos.asof`. Those levels come from a CACHED matrix, so two turns 90 seconds apart routinely read the SAME matrix and are byte-identical **by construction** — yet `formatDiffBlock` (`desk-scope.ts:412-421`) renders "Session diff (since last turn @ {prev.as_of})" and then instructs **"Describe what CHANGED"**. Asked to describe a change that does not exist, a model invents one. |
+| **Fix** | #PENDING — all three anchored with the shared `etStamp`/`etSessionDate` (ET, not UTC: a UTC calendar date rolls at 20:00 ET, which for site 1 is precisely the window it is documented to keep rendering in). Site 1 gains a "Matrix computed: … — these levels are a SNAPSHOT from that moment, not a live quote" line. Site 2 gains `source_asof` / `source_asof_et` / `source_session_date` / `freshness: "cached"`. Site 3 gains `matrix_asof` on the snapshot plus a **same-matrix guard** in `formatDiffBlock`: when both turns share a matrix it drops the "describe what changed" instruction and says the positioning CANNOT have moved and only the flow tape can differ. Removing the premise beats hoping the model notices the numbers match. |
+| **Deliberately conservative** | The guard requires BOTH matrix times to be known and equal. A missing time falls back to the ordinary diff instruction rather than claiming "unchanged" — asserting no-change from absent evidence is the same fabrication in reverse. Test pins that branch. |
+| **Not fixed here** | The other `new Date().toISOString()` sites in `src/lib/largo` (13 remain) are not positioning consumers — `largo-store`, `morning-brief`, `gate-rules`, `play-similarity`, `pre-earnings-pack`, `slash-prompts`, `social-content-pack`. Same stamp shape, different owners and different payload contracts; listed here so the count is on the record rather than rediscovered. |
+| **Status** | FIXED — tsc clean, 8720 pass / 0 fail on Node 20, `npm run build` green, eslint clean. |
+
 ## 2026-08-19 — [FINDING, P0 correctness] `main` went red with every PR green — #2365 and #2366 collided on the 0DTE expiry resolver — FIXED
 
 > **kind:** `FINDING`
