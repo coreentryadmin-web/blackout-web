@@ -306,6 +306,39 @@ jobs:
                     >> "$GITHUB_STEP_SUMMARY"
                   exit 0
                 fi
+                # A PERMISSION REFUSAL IS A STANDING CONFIG GAP, NOT AN INCIDENT — same class as
+                # NOT ARMED, and it gets the same treatment for the same reason.
+                #
+                # Measured on the first armed run (32464976418):
+                #   GraphQL: Resource not accessible by personal access token
+                #   (markPullRequestReadyForReview)
+                #
+                # Failing loudly was RIGHT the first time: the error was novel, and going red is
+                # how it got found at all. But it is now a known missing checkbox, and a workflow
+                # that goes red every fifteen minutes over a known missing checkbox is one nobody
+                # reads — which is the failure this file already warns about twice. Classifying it
+                # correctly is not swallowing it: the summary below names the exact permission and
+                # the exact setting, every run, until it is fixed.
+                if grep -qiE "not accessible by (personal access token|integration)" /tmp/gh-err.txt; then
+                  {
+                    echo "### Agent PR release — TOKEN LACKS PULL-REQUEST WRITE"
+                    echo ""
+                    echo "\`AGENT_RELEASE_TOKEN\` authenticated but was refused"
+                    echo "\`markPullRequestReadyForReview\`. It is present and valid — it simply"
+                    echo "cannot perform this operation."
+                    echo ""
+                    echo "Fix one of:"
+                    echo "- Fine-grained PAT → Repository permissions → **Pull requests: Read and write**"
+                    echo "  (\"Read\" is not enough; the default permission set grants no PR access at all)"
+                    echo "- Classic PAT → the full \`repo\` scope"
+                    echo "- If the owner is an ORGANISATION, an org admin must also approve the token:"
+                    echo "  Settings → Personal access tokens → pending requests"
+                    echo ""
+                    echo "Released this run: **$released**  ·  candidate that failed: #$num"
+                  } >> "$GITHUB_STEP_SUMMARY"
+                  echo "TOKEN LACKS PULL-REQUEST WRITE — cannot undraft #$num. See the run summary."
+                  exit 0
+                fi
                 echo "Release of #$num failed for a reason that is NOT a rate limit:" >&2
                 cat /tmp/gh-err.txt >&2
                 exit 1

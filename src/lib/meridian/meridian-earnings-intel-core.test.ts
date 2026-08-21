@@ -4,6 +4,7 @@ import {
   beatArrow,
   beatRateFromPrints,
   buildErPlayRead,
+  beatRateWithCohort,
   coerceMeridianWallLevels,
   flowWindowHours,
   moveArrow,
@@ -173,4 +174,74 @@ test("buildMeridianFinancialsContext maps fundamentals bundle", () => {
   assert.match(ctx?.headline ?? "", /P\/E 28\.5/);
   assert.match(ctx?.headline ?? "", /Rev \+18% YoY/);
   assert.equal(ctx?.price_target, 550);
+});
+
+test("the play-read rationale states the beat rate's COHORT, not just the rate", () => {
+  // "Historical beat rate 100% over recent prints" is a string this surface really produces off
+  // a sample of ONE — measured live, 10.2% of names that get a beat rate at all get it from one
+  // or two graded prints, and 1.0 clears the 0.65 bullish threshold outright. The rate is not
+  // the problem; the rate arriving without a denominator is.
+  const base = {
+    flow_bias: "bullish" as const,
+    gamma_regime: "positive gamma support",
+    expected_move_pct: 6,
+    days_until: 5,
+    spot: 100,
+    call_wall: 105,
+    put_wall: 95,
+    king_strike: 100,
+  };
+
+  const thin = buildErPlayRead({ ...base, beat_rate: 1, beat_rate_graded: 1 });
+  assert.ok(
+    thin.rationale.some((r) => /beat rate 100% over 1 print\b/.test(r)),
+    `expected a singular one-print cohort, got: ${JSON.stringify(thin.rationale)}`
+  );
+
+  const thick = buildErPlayRead({ ...base, beat_rate: 1, beat_rate_graded: 8 });
+  assert.ok(
+    thick.rationale.some((r) => /beat rate 100% over 8 prints/.test(r)),
+    `expected an eight-print cohort, got: ${JSON.stringify(thick.rationale)}`
+  );
+
+  // The MISS branch carries it too — a 0% beat rate off one print is the same defect mirrored.
+  const missy = buildErPlayRead({ ...base, flow_bias: "bearish", beat_rate: 0, beat_rate_graded: 2 });
+  assert.ok(
+    missy.rationale.some((r) => /0% beat rate over 2 prints/.test(r)),
+    `expected the miss branch to carry its cohort, got: ${JSON.stringify(missy.rationale)}`
+  );
+});
+
+test("an UNKNOWN cohort says nothing rather than inventing one", () => {
+  // A caller that hands over a rate with no count is not told "over 0 prints" beside a real
+  // percentage — a fabricated denominator reads as a measurement. The suffix is simply absent.
+  const read = buildErPlayRead({
+    flow_bias: "bullish",
+    gamma_regime: "positive gamma support",
+    expected_move_pct: 6,
+    days_until: 5,
+    beat_rate: 0.9,
+    spot: 100,
+    call_wall: 105,
+    put_wall: 95,
+    king_strike: 100,
+  });
+  const line = read.rationale.find((r) => /beat rate/.test(r));
+  assert.ok(line, "the rate should still be reported");
+  assert.doesNotMatch(line!, /over 0 print/);
+  assert.doesNotMatch(line!, /NaN|undefined|null/);
+});
+
+test("beatRateWithCohort: the rate and its denominator, or null and zero", () => {
+  const some = beatRateWithCohort([
+    { report_date: "2026-05-01", beat: true } as never,
+    { report_date: "2026-02-01", beat: false } as never,
+    { report_date: "2025-11-01", beat: null } as never,
+  ]);
+  assert.equal(some.rate, 0.5);
+  assert.equal(some.graded, 2, "the ungraded print is excluded from BOTH halves");
+
+  const none = beatRateWithCohort([{ report_date: "2026-05-01", beat: null } as never]);
+  assert.equal(none.rate, null);
+  assert.equal(none.graded, 0);
 });
