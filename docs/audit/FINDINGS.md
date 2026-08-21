@@ -12468,8 +12468,6 @@ against.
 
 ## 2026-08-21 — [FINDING, P1 Largo/Meridian] `get_earnings_calendar` answered "No upcoming date" for all 1,656 tickers — FIXED
 
-## 2026-08-21 — [FINDING, P1 Largo] UW earnings numbers reached the model as unlabelled string fractions — a 100x misread on the print reaction — FIXED
-
 > **kind:** `FINDING`
 
 | Field | Detail |
@@ -12482,7 +12480,14 @@ against.
 | **Fix** | The envelope→payload decision moves to a new pure module, `src/lib/largo/earnings-calendar-for-largo.ts` (`shapeEarningsCalendarRead`), which has no transport and no `server-only` and is therefore directly unit-testable; `run-tool.ts` keeps only the fetch. The three states are now named in the payload rather than collapsed: `available:false` (could not read), `configured:false` (empty for every ticker), and `available:true + configured:true + next_report_date:null` (genuinely no date). A missing `configured` flag defaults to **false**, not true — "we did not learn it is configured" should make the caller say so. The unfiltered branch returns the calendar instead of the raw envelope, which previously handed the model `path`/`area`/`ok` as if they were market data. |
 | **Tool description** | `tool-defs.ts` now tells the model how to read `available`/`configured` before concluding anything from an empty result — the payload distinguishes the three states, but nothing had told the model they differ. |
 | **Regression guard** | `src/lib/largo/earnings-calendar-for-largo.test.ts` (10 tests) pins the found-date path (the actual regression), the envelope's *absence* of a top-level `earnings` key, all three empty states as distinct, the `configured` default, transport-leak on the unfiltered branch, and an `Object.prototype`-colliding symbol resolving to no date rather than to a function. |
+| **Status** | FIXED. |
 
+## 2026-08-21 — [FINDING, P1 Largo] UW earnings numbers reached the model as unlabelled string fractions — a 100x misread on the print reaction — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
 | **Symptom** | `get_earnings`, `get_earnings_history` and `get_earnings_market` served Unusual Whales rows **verbatim**. A model asked "how did WMT react to its print?" saw `reaction: "-0.0915"` sitting beside `expected_move: "11.56"` (dollars) and `street_mean_est: "2.09"` (dollars). Read as a percent — the only reading the payload supports — that says WMT slipped **0.09%**. It fell **9.15%**. A 100x error, delivered as a confident answer, on the number members ask for most. |
 | **Root cause** | UW serves its entire earnings surface as **strings**, with every move/return as an unlabelled **fraction of price**. Nothing in these three tool cases converted units, coerced types or bounded precision. `roundFloats` — the repo's response-shaping helper — is structurally **blind** to it: it short-circuits on `typeof v === "number"`, and all of these values are strings. The repo's own 0DTE surface (`src/lib/zerodte/earnings.ts:69`) has always done `Number(emRaw) * 100` on `expected_move_perc`; the Largo tools contradicted it. |
 | **Scale, measured** | Live scan 2026-08-21 across `/api/earnings/{ticker}`, `/api/earnings/premarket`, `/api/earnings/afterhours`: **32 of 32 fields string-typed; 13 with more than 4 decimal places, up to 24.** `"expected_move_perc":"0.05330873875951118285"` (NVDA), `"pre_earnings_move_2w":"0.07525381321272193620"`. 20 significant decimals on a quantity derived from two 2-decimal closes is false precision — it implies a measurement nobody made. |
