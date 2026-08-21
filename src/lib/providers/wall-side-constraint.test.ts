@@ -88,6 +88,34 @@ test("all FIVE producers pass spot — including the base matrix scan #2417 miss
   assert.doesNotMatch(matrix, /^import[^;]*gexWallsFromStrikeTotals/m, "and must not import it");
 });
 
+test("the AUDIT-side verifier tracks the same contract as the producers", () => {
+  // The producer list above is not the whole contract. `scripts/audit/lib/gex-wall-invariants.mjs`
+  // re-derives the expected wall independently so data-validator can check what prod SERVED, and
+  // it was left on the pre-#2417 unconstrained argmin — #2566 aligned the in-app verifier
+  // (heatmap-verifier INV-3) and missed this second one.
+  //
+  // Measured cost, live on SPY across the 2026-08-21 09:30 ET open: the stale verifier called
+  // healthy data a FAIL on 3 of 6 passes, flipping purely on spot ticking across the 765 strike
+  // (spot 765.05 pass / 764.87 fail / 765.14 pass) — a 13-cent margin, reported as a confident
+  // product defect. A verifier that derives the expected value by a DIFFERENT rule than the code
+  // under test is not a check; the disagreement it reports is its own.
+  const root = process.cwd();
+  const audit = readFileSync(join(root, "scripts/audit/lib/gex-wall-invariants.mjs"), "utf8");
+  const validator = readFileSync(join(root, "scripts/audit/data-validator.mjs"), "utf8");
+  // the audit derivation must apply the same side constraint as production
+  assert.match(audit, /strike > s/, "audit verifier must constrain the call wall above spot");
+  assert.match(audit, /strike < s/, "audit verifier must constrain the put wall below spot");
+  // …and must refuse to judge rather than silently fall back to the unconstrained rule
+  assert.match(audit, /definitional:\s*"skip"/, "a missing spot must SKIP, not assert the old rule");
+  // the validator must derive expectations from ONE payload: the heatmap's own totals AND its own
+  // spot. Constraining one endpoint's totals with another endpoint's spot reintroduces the race.
+  assert.match(
+    validator,
+    /strikeTotals:\s*heatGex\?\.strike_totals,\s*\n\s*spot:\s*heatSpot,/,
+    "validator must pair heatmap strike_totals with the heatmap's OWN spot",
+  );
+});
+
 test("the inverted-wall cases measured live on 2026-08-21 resolve to the correct side", () => {
   // MSFT spot 481.97: heaviest +gamma is 480 (below spot) but the served resistance must be the
   // heaviest +gamma ABOVE spot, 500. AMZN spot 261.64: 260 below vs the real 270 above.
