@@ -21,6 +21,7 @@
 // STRESS-TEST live Largo on thermal questions, cross-checking each answer against ground truth.
 // Drives POST /api/market/largo/query (the full model answer loop) with an admin+premium session,
 // then fetches gex-positioning independently and grades the natural-language answer.
+import { randomUUID } from "node:crypto";
 import { mintClerkPremiumSession } from "./lib/prod-clerk-session.mjs";
 
 const BASE = "https://blackouttrades.com";
@@ -41,7 +42,9 @@ async function ask(question) {
   const r = await fetch(`${BASE}/api/market/largo/query`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Cookie: await freshCookie() },
-    body: JSON.stringify({ question, session_id: `stress-${Date.now()}-${Math.round(Math.random()*1e6)}` }),
+    // randomUUID (not Math.random) so CodeQL does not flag the session id as insecure randomness —
+    // it is only a per-request correlation id for the stress run, but a crypto-secure source is free.
+    body: JSON.stringify({ question, session_id: `stress-${Date.now()}-${randomUUID()}` }),
   });
   if (!r.ok) return { error: `HTTP ${r.status}`, body: (await r.text()).slice(0,200) };
   return r.json();
@@ -67,7 +70,7 @@ const has = (s, re) => re.test(String(s));
 
 try {
   console.log(`Largo thermal stress test — ${et()} ET, ${new Date().toISOString()}`);
-  const spy = await truth("SPY"), qqq = await truth("QQQ"), spx = await truth("SPX");
+  const spy = await truth("SPY"), qqq = await truth("QQQ");
   console.log(`ground truth SPY: posture=${spy.gamma_posture} flip=${spy.flip} callWall=${spy.call_wall} putWall=${spy.put_wall} spot=${spy.spot}`);
 
   // Q1 — THE P0: gamma posture must not be miscalled as a bullish/bearish DIRECTION
