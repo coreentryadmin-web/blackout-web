@@ -15,9 +15,11 @@ import {
   fetchLatestSwingSnapshotEvents,
   fetchOpenSwingPositions,
   fetchRecentHelixSignalOutcomes,
+  fetchTrailingSessionSkew,
   fetchZeroDteSetupLogRange,
   dbConfigured,
 } from "@/lib/db";
+import { trailingSkewBaseline } from "@/features/helix/lib/helix-skew-baseline";
 import {
   discoverSwingFromPersisted,
   getSwingServingLane,
@@ -1005,6 +1007,36 @@ export async function helixTapeAnalyticsForLargo(
     const coverage = tapeWindowCoverage(alerts, windowHours, rowLimit, now);
     const sessionSkew = sessionFlowSkew(alerts);
     const sessionDirection = tapeDirection(sessionSkew.call_pct);
+
+    // C10 — place today's skew against this ticker's recent NORM. `session.call_pct` alone has no
+    // reference frame ("SPX 78% call" is only meaningful vs what SPX usually is), so a member asking
+    // "is today's skew unusual?" could only be told we didn't know. The baseline is a whole-session
+    // aggregation of flow_alerts grouped by ET date; today is the most-recent session, placed against
+    // the prior ones by the pure `trailingSkewBaseline`. Wrapped so a slow/failed baseline query never
+    // fails the primary tape read — the baseline is additive context, not the answer.
+    //
+    // today's comparison value is the full-SESSION call_pct (the today row of the same series), NOT
+    // the capped-tape `session.call_pct`, so today is compared like-for-like against full prior
+    // sessions rather than a capped-vs-full mix.
+    let sessionSkewBaseline:
+      | ReturnType<typeof trailingSkewBaseline>
+      | { available: false; reason: "baseline_unavailable" } = {
+      available: false,
+      reason: "baseline_unavailable",
+    };
+    try {
+      const skewSeries = await fetchTrailingSessionSkew({ ticker, sessions: 22 });
+      const todaySession = etSessionDate(nowMs);
+      const todayRow = skewSeries.find((s) => s.session_date === todaySession);
+      const priorRows = skewSeries.filter((s) => s.session_date !== todaySession);
+      sessionSkewBaseline = trailingSkewBaseline(
+        priorRows.map((s) => s.call_pct),
+        todayRow?.call_pct ?? null
+      );
+    } catch {
+      // Keep the placeholder — an unreadable baseline is disclosed, never presented as "typical".
+      sessionSkewBaseline = { available: false, reason: "baseline_unavailable" };
+    }
     const distinctExpiries = new Set(
       alerts.map((a) => String(a.expiry ?? "unknown").slice(0, 10))
     ).size;
@@ -1034,6 +1066,16 @@ export async function helixTapeAnalyticsForLargo(
       premium_floor_applied: false,
       member_panel_premium_floor: HELIX_MEMBER_PANEL_PREMIUM_FLOOR,
       session: sessionSkew,
+      /**
+       * C10 (historical context). Today's session skew placed against this ticker's recent NORM —
+       * the median / interquartile band of daily call_pct over the trailing sessions, plus where
+       * today sits (`placement`: typical / above_normal / below_normal / unusually_high|low) and
+       * whether it is beyond the 1.5×IQR fence (`unusual`). `available:false` with
+       * `insufficient_history` when fewer than `min_sessions` measured prior sessions exist —
+       * never a norm invented from a handful. `today_call_pct` here is the FULL-session skew (see
+       * fetchTrailingSessionSkew), which can differ slightly from the capped `session.call_pct`.
+       */
+      session_skew_baseline: sessionSkewBaseline,
       /** C5. OMITTED, not "neutral", when the skew is unmeasurable — neutral is a measurement. */
       ...(sessionDirection ? { direction: sessionDirection } : {}),
       net_premium_leaders: netPremiumLeaders(alerts),

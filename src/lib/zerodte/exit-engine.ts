@@ -608,6 +608,17 @@ export type ZeroDteExitContext = {
   detail: string;
   /** The mark the engine exited at (becomes the row's frozen last_mark). */
   mark: number;
+  /** The RAW mark actually OBSERVED at the exit tick, BEFORE any protective-floor/stop honoring.
+   *  On a ratchet/runner-floor exit `mark` is `max(observed, floorMark)` — the modeled fill at the
+   *  armed floor, which can be BETTER than what the tick printed (see resolveExitMark). Keeping the
+   *  observed value means a consumer never has to reverse-engineer it out of the exit_detail prose. */
+  mark_observed: number;
+  /** True when `mark` was raised to honor a protective floor/stop, i.e. `mark !== mark_observed`.
+   *  The persisted exit is then an INFERENCE (a resting stop/floor is assumed to fill at its level),
+   *  not the observed print. Surfaced so "inference is never presented as fact" holds at the field
+   *  level, not only in the human-readable exit_detail. `false` on a thesis/plan/flat exit, which
+   *  uses the observed mark verbatim. */
+  mark_honored: boolean;
   pnl_pct: number | null;
   peak_pnl_pct: number | null;
   /** ISO instant of the decision. */
@@ -622,14 +633,20 @@ export function buildExitContext(
   peakPremium: number | null,
   nowMs: number
 ): ZeroDteExitContext {
+  const markObserved = round2(observedMark);
   const mark =
     entryPremium != null && entryPremium > 0
       ? resolveExitMark(decision, entryPremium, observedMark)
-      : round2(observedMark);
+      : markObserved;
   return {
     reason: decision.reason,
     detail: decision.detail,
     mark,
+    // Provenance: `mark` differs from the observed print ONLY when resolveExitMark honored a
+    // protective floor/stop. Compare the two resolved values directly rather than re-deriving the
+    // floor condition, so this flag cannot drift from what resolveExitMark actually did.
+    mark_observed: markObserved,
+    mark_honored: mark !== markObserved,
     pnl_pct: pinnedLivePnlPct(entryPremium, mark),
     peak_pnl_pct: pinnedLivePnlPct(entryPremium, peakPremium),
     at: new Date(nowMs).toISOString(),
