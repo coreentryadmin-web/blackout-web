@@ -110,6 +110,15 @@ const TOOLS = [
   ["get_lotto_live", {}],
   ["get_spx_play", {}],
   ["get_open_plays", {}],
+  // Earnings surface. Scoped to a LARGE-CAP ticker on purpose: sampling earnings by date returns
+  // micro-caps with no options market, against which the options-derived fields read as empty and
+  // a reader would wrongly conclude the datasets are dead (the cohort trap
+  // meridian-earnings-data-inventory.mjs carries a guard for). NVDA is optionable and liquid, so
+  // an empty field here is a real finding rather than an artifact of the cohort.
+  ["get_earnings", { ticker: "NVDA" }],
+  ["get_earnings_history", { ticker: "NVDA" }],
+  ["get_earnings_market", {}],
+  ["get_earnings_calendar", { ticker: "NVDA" }],
 ];
 
 // tsx's CJS interop puts the exports under `default` on some resolution paths and at the top level

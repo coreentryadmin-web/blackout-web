@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import type { BenzingaStructuredEarnings } from "@/lib/providers/polygon";
 import {
   benzingaSurpriseToDisplayPct,
+  benzingaTickerWindow,
   dedupeEarningsRowsByEvent,
   buildRecentEarningsRevisions,
   computeEarningsYoY,
@@ -260,4 +261,46 @@ test("dedupeEarningsRowsByEvent tolerates empty and nullish input", () => {
   assert.deepEqual(dedupeEarningsRowsByEvent([]), []);
   assert.deepEqual(dedupeEarningsRowsByEvent(null), []);
   assert.deepEqual(dedupeEarningsRowsByEvent(undefined), []);
+});
+
+test("benzingaTickerWindow: the lookback is DERIVED from the print count, never fixed", () => {
+  // THE REGRESSION. The window was pinned at 420 days — about 4.6 quarters — while callers asked
+  // for 6 (the pre-earnings card) and 8 (print history). Measured live 2026-08-21 against the old
+  // window: NVDA returned 4 usable past prints, WMT 5, AAPL 5, BABA 5. Never the count requested.
+  // Not a WRONG number — the summary states its real n — but a silently smaller sample, which
+  // weakens every beat rate and average move computed over it.
+  assert.ok(
+    benzingaTickerWindow(6).lookbackDays > 420,
+    "6 prints needs more than the old fixed 420-day window"
+  );
+  assert.ok(benzingaTickerWindow(8).lookbackDays > benzingaTickerWindow(6).lookbackDays);
+  // ~91 days between quarterly prints; the window must clear that per print with slack.
+  for (const n of [1, 4, 6, 8, 12]) {
+    assert.ok(
+      benzingaTickerWindow(n).lookbackDays >= n * 91,
+      `${n} prints needs at least ${n * 91} days, got ${benzingaTickerWindow(n).lookbackDays}`
+    );
+  }
+});
+
+test("benzingaTickerWindow: the row cap covers the projected future tail, not just the prints", () => {
+  // The response is sorted date.desc over a window spanning past AND future, and Benzinga
+  // projects ~4-8 quarters ahead — those rows sit at the TOP of a desc sort and are consumed
+  // before any past print is reached. A cap equal to the print count could never reach them.
+  for (const n of [1, 6, 8]) {
+    assert.ok(
+      benzingaTickerWindow(n).limit >= n + 8,
+      `cap ${benzingaTickerWindow(n).limit} leaves no room for the projected tail at n=${n}`
+    );
+  }
+});
+
+test("benzingaTickerWindow: clamps a nonsense count instead of requesting the world", () => {
+  for (const bad of [0, -5, Number.NaN]) {
+    const w = benzingaTickerWindow(bad as number);
+    assert.ok(w.lookbackDays > 0 && Number.isFinite(w.lookbackDays));
+    assert.ok(w.limit > 0);
+  }
+  assert.ok(benzingaTickerWindow(9999).limit <= 200, "cap must stay inside Benzinga's own ceiling");
+  assert.ok(benzingaTickerWindow(9999).lookbackDays <= 24 * 95 + 60);
 });

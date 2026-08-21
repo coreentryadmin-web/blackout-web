@@ -9,10 +9,24 @@
  * (the desk shell + the earnings tab bar), and a missing gate is reported as HARNESS, never as
  * a UI failure. Same reason `depth-ladder-ui-audit.mjs` requires the long-shipped Matrix tab.
  *
+ * COHORT GUARD (added 2026-08-21 after this harness produced three false REDs). It used to click
+ * the FIRST earnings row on the timeline — whichever ticker happened to be next by date. Live, that
+ * was `TP`: a low-impact micro-cap with `thermal.available: false`, no options market, and
+ * therefore no expected move at all. `MeridianMoveRail` correctly renders NOTHING without a move
+ * band, so `.mv-rail-track` was absent and the Positioning tab was reported RED on all three
+ * viewports — for a panel behaving exactly as designed. On BABA (high impact, same session)
+ * `expected_move_band` is `{spot 130.3, up 134.21, down 126.39}` and the rail paints.
+ *
+ * This is the same trap `meridian-earnings-data-inventory.mjs` carries `--min-importance` for:
+ * a fill rate — or a painted/not-painted verdict — without its cohort is not a fact about the
+ * field. So this harness now selects a HIGH-IMPACT earnings row, reports the ticker it judged in
+ * every result line, and treats "no qualifying row visible" as HARNESS rather than as RED.
+ *
  * Read-only. One temp Clerk user, released in a finally. Never prints secrets.
  *
  * Run from the REPO ROOT with NODE_USE_ENV_PROXY=1:
  *   node scripts/audit/meridian-earnings-ui-audit.mjs [--base=https://blackouttrades.com] [--out=DIR]
+ *     [--min-impact=high|medium|low] [--viewport=desktop|tablet|mobile]
  */
 import path from "node:path";
 import fs from "node:fs";
@@ -20,6 +34,12 @@ import { createRequire } from "node:module";
 // proxy-tunnel-context is CJS; an .mjs harness needs createRequire to load it.
 const require = createRequire(import.meta.url);
 const { createTunneledContext } = require("./lib/proxy-tunnel-context.cjs");
+import {
+  EARNINGS_ROW_BASE as ROW_BASE,
+  describeCohort,
+  earningsRowSelector,
+  normalizeMinImpact,
+} from "./lib/meridian-earnings-cohort.mjs";
 
 const args = new Map(
   process.argv.slice(2).map((a) => {
@@ -29,17 +49,32 @@ const args = new Map(
 );
 const BASE = args.get("base") ?? "https://blackouttrades.com";
 const OUT = args.get("out") ?? "/tmp/meridian-ui";
+// Which cohort the run judges. `high` is the default because the options-derived panels are only
+// populated for names with a real options market — see the cohort note in the header.
+const MIN_IMPACT = normalizeMinImpact(args.get("min-impact"));
+const ROW_SELECTOR = earningsRowSelector(MIN_IMPACT);
+const COHORT = describeCohort(MIN_IMPACT);
 // createTunneledContext takes a "WxH" STRING and a `desktop` flag, not a {width,height}.
+// `--viewport=desktop` isolates one pass. Parity with meridian-interaction-audit.mjs, and the
+// thing you actually want mid-rollout: a draining replica fails one viewport and re-running all
+// three to re-check one is three more chances to hit the drain.
+const ONLY = args.get("viewport") ?? null;
 const VIEWPORTS = [
   { name: "desktop", viewport: "1440x1000", desktop: true },
   { name: "tablet", viewport: "1024x1100", desktop: true },
   { name: "mobile", viewport: "430x932", desktop: false },
-];
+].filter((v) => !ONLY || v.name === ONLY);
 
+// Selectors are SCOPED to their own panel, and the two rails are distinguished.
+// `.mv-rail-track` is rendered by BOTH MeridianMoveRail (inside `.mv-rail`) and MeridianTargetRail
+// (inside `.mv-targets`), so a bare `.mv-rail-track` can be satisfied by whichever one happens to
+// paint — the Report tab was passing on a TARGET rail while the assertion read as though it proved
+// the move rail. An assertion that cannot say which component satisfied it cannot catch that
+// component going missing.
 const TABS = [
-  { id: "report", label: "Report", must: [".mr", ".ms-halo, .mv-halo", ".mv-rail-track"] },
+  { id: "report", label: "Report", must: [".mr", ".ms-halo, .mv-halo", ".mr .mv-rail-track"] },
   { id: "estimates", label: "Estimates", must: [".me", ".mv-traj-rows"] },
-  { id: "positioning", label: "Positioning", must: [".mp", ".mv-rail-track"] },
+  { id: "positioning", label: "Positioning", must: [".mp", ".mp .mv-rail .mv-rail-track"] },
   { id: "history", label: "History", must: [".mh"] },
 ];
 
@@ -108,13 +143,37 @@ async function main() {
         // clicking the first row lands on whichever kind happens to be next by date — a macro
         // print has no earnings tabs at all, so the run reported "tab bar absent" while the page
         // was perfectly healthy. The theme class is how a row declares its kind.
-        const row = await page
-          .waitForSelector(".meridian-timeline-row.meridian-theme-earnings", { timeout: 30_000 })
-          .catch(() => null);
-        if (!row) {
-          results.push({ viewport: vp.name, verdict: "HARNESS", reason: "no earnings row on the visible timeline" });
+        //
+        // ...and the IMPACT class is how it declares its cohort. Without that filter this picked
+        // the next micro-cap by date and judged the options-derived panels against a name with no
+        // options market — see the cohort note in the header.
+        // Wait for the timeline to exist at all, THEN for the cohort row specifically. Querying
+        // the cohort the instant the first earnings row appears races the list's staggered mount
+        // (MeridianTimelineRow sets animationDelay index*40ms up to 400ms), so a high-impact row
+        // a few hundred milliseconds behind the first one reads as "cohort absent". Caught live:
+        // the API carried 61 high-impact earnings while this reported none.
+        //
+        // The two waits are separate on purpose — a missing TIMELINE and a missing COHORT are
+        // different harness conditions and the reason line should say which.
+        const timelineUp = await page.waitForSelector(ROW_BASE, { timeout: 30_000 }).catch(() => null);
+        if (!timelineUp) {
+          results.push({ viewport: vp.name, verdict: "HARNESS", reason: "no earnings row on the timeline at all" });
           continue;
         }
+        const row = await page.waitForSelector(ROW_SELECTOR, { timeout: 20_000 }).catch(() => null);
+        if (!row) {
+          // A cohort we cannot sample is an UNKNOWN, not a pass and not a product failure.
+          results.push({
+            viewport: vp.name,
+            verdict: "HARNESS",
+            reason: `no ${MIN_IMPACT}-impact earnings row on the visible timeline — cohort not sampled`,
+          });
+          continue;
+        }
+        // Report WHICH name was judged. A verdict without its cohort is not a fact about the panel.
+        const subject = await row
+          .$eval(".meridian-timeline-title", (el) => el.textContent?.trim() ?? "")
+          .catch(() => "");
         await row.click().catch(() => {});
         const tabBar = await page.waitForSelector(".meridian-earnings-tab", { timeout: 30_000 }).catch(() => null);
         if (!tabBar) {
@@ -141,6 +200,8 @@ async function main() {
           results.push({
             viewport: vp.name,
             tab: tab.id,
+            subject,
+            cohort: COHORT,
             verdict: missing.length === 0 && !overflow ? "GREEN" : "RED",
             missing,
             overflow,
@@ -164,7 +225,9 @@ async function main() {
   const reds = results.filter((r) => r.verdict === "RED");
   const harness = results.filter((r) => r.verdict === "HARNESS");
   log(`\n${reds.length} RED · ${harness.length} HARNESS · screenshots in ${OUT}`);
-  if (harness.length) log("HARNESS failures are NOT product verdicts — the page did not load.");
+  if (harness.length)
+    log("HARNESS failures are NOT product verdicts — the page did not load, or the cohort was unsampled.");
+  log(`cohort judged: ${COHORT} (a verdict without its cohort is not a fact about the panel)`);
   process.exitCode = reds.length > 0 ? 1 : 0;
 }
 

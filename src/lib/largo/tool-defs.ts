@@ -164,9 +164,9 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
 
   t("get_financials", "UW financial statements.", T, ["ticker"]),
 
-  t("get_earnings", "Benzinga earnings channel + UW earnings/estimates.", T, ["ticker"]),
+  t("get_earnings", "Per-ticker earnings: Benzinga STRUCTURED calendar primary — `next_report` (date, BMO/AMC time, confirmed vs projected) and `print_history` (actual vs estimated EPS and revenue, with each print's reaction anchored to its report timing) — plus UW earnings/estimates. `related_news` is news MENTIONING this ticker in the earnings channel, NOT its own results — never quote it as this company's earnings. A non-null `calendar_error` means the calendar could not be READ, which is not evidence the company has no scheduled report. Move/return fields are PERCENTS under `_pct` names; `expected_move` (no suffix) is a DOLLAR amount. Neither is to be rescaled.", T, ["ticker"]),
 
-  t("get_earnings_history", "UW earnings history and estimates.", T, ["ticker"]),
+  t("get_earnings_history", "UW earnings history and estimates — one row per past print. Move/return fields are PERCENTS under `_pct` names (reaction_pct is the print reaction, (post_close-pre_close)/pre_close x100); `expected_move` is a DOLLAR amount. Do not rescale either.", T, ["ticker"]),
 
   t("get_analyst_ratings", "Benzinga analyst-ratings channel primary; UW screener fallback.", T, ["ticker"]),
 
@@ -436,7 +436,7 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
 
   }, ["ticker", "indicator"]),
 
-  t("get_earnings_market", "UW ONLY — today's premarket/afterhours earnings.", {}),
+  t("get_earnings_market", "UW ONLY — the current ET session's premarket/afterhours earnings. Trust each row's own `report_date` for which session it belongs to, and `as_of` for when it was read. Move/return fields are PERCENTS under `_pct` names; `expected_move` is a DOLLAR amount.", {}),
 
   t(
     "get_earnings_calendar",
