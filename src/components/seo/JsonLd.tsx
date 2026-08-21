@@ -331,3 +331,41 @@ export function ArticleJsonLd({
     />
   );
 }
+
+
+/**
+ * DefinedTermSet for the glossary — the canonical schema for a glossary, and a direct GEO lever:
+ * it hands Google's definition boxes and the AI answer engines a machine-extractable, attributable
+ * definition for each term instead of leaving them to scrape prose. Every DefinedTerm is bound to
+ * the set (`inDefinedTermSet`) and the set is `about` the Organization entity, so the definitions
+ * inherit the brand's topical authority rather than floating unattached.
+ */
+export function DefinedTermSetJsonLd({
+  path,
+  name,
+  terms,
+}: {
+  path: string;
+  name: string;
+  terms: { term: string; def: string }[];
+}) {
+  const setId = `${SITE.url}${path}#definedtermset`;
+  return (
+    <JsonLdScript
+      data={{
+        "@context": "https://schema.org",
+        "@type": "DefinedTermSet",
+        "@id": setId,
+        name,
+        url: `${SITE.url}${path}`,
+        about: { "@id": `${SITE.url}/#organization` },
+        hasDefinedTerm: terms.map((t) => ({
+          "@type": "DefinedTerm",
+          name: t.term,
+          description: t.def,
+          inDefinedTermSet: setId,
+        })),
+      }}
+    />
+  );
+}
