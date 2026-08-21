@@ -97,7 +97,20 @@ async function meridian(page, o, log) {
     if (await t.count()) { await t.click(); await page.waitForTimeout(8000); log.push('view→analytics grid'); }
   }
 
-  if (o.ticker && o.ticker !== 'SPY') {
+  // MACRO events (CPI / FOMC / NFP) live in the same catalyst lane as earnings, behind the class
+  // filter. `--class macro` selects that filter and opens the event by its own theme, which is how
+  // an event-day post gets the macro report panel rather than whatever earnings row was nearest.
+  if (o.eventClass) {
+    const chip = page.locator('[aria-label="Filter catalysts"] button, .meridian-filter-chip', {
+      hasText: new RegExp(`^${o.eventClass}`, 'i'),
+    }).first();
+    if (await chip.count()) { await chip.click(); await page.waitForTimeout(4000); log.push(`class→${o.eventClass}`); }
+    const row = page.locator(`.meridian-theme-${o.eventClass.toLowerCase()}`).first();
+    if (await row.count()) { await row.click(); await page.waitForTimeout(9000); log.push('event→opened'); }
+    else log.push(`event→no ${o.eventClass} event listed (captured honestly)`);
+  }
+
+  if (o.ticker && o.ticker !== 'SPY' && !o.eventClass) {
     const search = page.locator('.meridian-search-input').first();
     if (await search.count()) {
       await search.fill(o.ticker); await page.waitForTimeout(3500); log.push(`search→${o.ticker}`);
@@ -142,6 +155,12 @@ async function meridian(page, o, log) {
     log.push(`panel→${o.panelLabel}`);
     return panel;
   }
+  // An OPENED EVENT frames on `.meridian-detail` — the header row (kicker · title · date · tab
+  // pills) plus the tab body, and nothing else. Not `.meridian-page-root`, which is the whole
+  // scrollable desk (measured 14,704px), and not the catalyst lane, which is navigation rather
+  // than evidence.
+  const detail = page.locator('.meridian-detail').first();
+  if (await detail.count()) return detail;
   return page.locator('.meridian-page-root').first();
 }
 
@@ -279,7 +298,7 @@ async function vector(page, o, log) {
     view: arg('view','matrix'), lens: arg('lens','GEX').toUpperCase(),
     sector: arg('sector',''), panel: arg('panel',''), out: arg('out','/tmp/shots/out.png'),
     tf: arg('tf',''), horizon: arg('horizon',''), zoom: arg('zoom','6'),
-    mode: arg('mode',''), preset: arg('preset',''), panelLabel: arg('panel-label',''),
+    mode: arg('mode',''), preset: arg('preset',''), panelLabel: arg('panel-label',''), eventClass: arg('class',''),
   };
   const { browser, ctx, counts } = await createTunneledContext({
     url: 'https://blackouttrades.com/', cookie: arg('cookie',''), viewport: arg('viewport','2560x1440'), desktop: true,

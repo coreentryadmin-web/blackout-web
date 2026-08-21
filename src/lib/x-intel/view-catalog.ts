@@ -266,6 +266,15 @@ export const X_INTEL_VIEW_CATALOG: ReadonlyArray<XIntelViewDef> = [
   // tabs, which need an event opened first. Prefer those for a story about one name; use the
   // strips as a CONFIRMATION slot where a calendar or catalyst count is the supporting fact.
   {
+    id: "meridian.macro_report", surface: "meridian", label: "Meridian macro event report",
+    path: "/meridian", visualization: "macro_report",
+    reach: ["Filter the catalyst lane to MACRO.", "Open the event (CPI / FOMC / NFP / PMI)."],
+    verify: "the report carries a release clock, a consensus and an SPX positioning read — a macro card with no consensus is not citable",
+    frame: "the macro report: stance, warnings, what to watch, beat/miss scenarios, SPX positioning, flow skew",
+    rth_only: false,
+    operator_rule: "On event days — CPI, FOMC, NFP — capture this the same way as an earnings event. It is the ☀️ BEFORE THE BELL / 🌎 MARKET PULSE frame for a macro session.",
+  },
+  {
     id: "meridian.timeline", surface: "meridian", label: "Meridian catalyst timeline",
     path: "/meridian", visualization: "timeline",
     reach: ["Open the Timeline desk view.", "Filter catalysts to the class the story is about."],
@@ -332,6 +341,12 @@ export const X_INTEL_VIEW_CATALOG: ReadonlyArray<XIntelViewDef> = [
   },
   {
     id: "meridian.event_summary", surface: "meridian", label: "Meridian event — Summary",
+    // ROTATE THE TAB. Five tabs on every event is five distinct frames of the same story, and the
+    // operator's rule is a different tab or panel every time. Summary answers "so what do I do",
+    // Report carries the conviction ring and expected move, Estimates the trajectories, Positioning
+    // the dealer structure and flow into the print, History the prior reactions. Never default to
+    // one — `visualNoveltyPenalty` scores a repeat down, but the chooser should be picking the tab
+    // that proves THIS claim in the first place.
     path: "/meridian", visualization: "event_summary",
     reach: ["Search the ticker.", "Open its EARNINGS row (the timeline mixes macro/FDA/OpEx).", "Summary tab."],
     verify: "the tab reads aria-selected=true and the summary answers what to do, not just what happened",
