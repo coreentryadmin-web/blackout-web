@@ -12376,7 +12376,6 @@ against.
 | **Status** | FIXED — PR #2418. |
 
 ## 2026-08-21 — [FINDING, P1 Largo/Meridian] `get_earnings_calendar` answered "No upcoming date" for all 1,656 tickers — FIXED
-## 2026-08-21 — [FINDING, P2 0DTE] The intraday read's only time anchor was a bare epoch — on a risk gate's freshness field — FIXED
 
 > **kind:** `FINDING`
 
@@ -12391,6 +12390,13 @@ against.
 | **Tool description** | `tool-defs.ts` now tells the model how to read `available`/`configured` before concluding anything from an empty result — the payload distinguishes the three states, but nothing had told the model they differ. |
 | **Regression guard** | `src/lib/largo/earnings-calendar-for-largo.test.ts` (10 tests) pins the found-date path (the actual regression), the envelope's *absence* of a top-level `earnings` key, all three empty states as distinct, the `configured` default, transport-leak on the unfiltered branch, and an `Object.prototype`-colliding symbol resolving to no date rather than to a function. |
 | **Status** | FIXED. |
+
+## 2026-08-21 — [FINDING, P2 0DTE] The intraday read's only time anchor was a bare epoch — on a risk gate's freshness field — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
 | **Symptom** | `setups[N].intraday` carries every number a member acts on intraday — session VWAP, `vwap_dist_pct`, opening-range high/low and break side, 5m trend, `last`, day high/low — and its **only** time anchor was `last_bar_ms`, a bare epoch-ms with no readable date anywhere on the object. Live board 2026-08-20: **9 flagged leaves, all `bare_epoch`**, one per setup. |
 | **Why it matters here specifically** | That field is not decoration. Its own doc comment: *"how FRESH this read actually is. The G-1 tape-alignment gate fails closed on a stale SPY read: a bias computed from bars that stopped arriving isn't a bias, it's a memory."* It is the **freshness anchor for a risk gate**. On 2026-08-20 the value was `1787256240000`, which reads as **20:04** if taken as UTC and is actually **16:04 ET** — a four-hour misread of how current the tape is. Same class as PR #2418's dated-close-off-by-a-full-session defect: the value was right and the presentation made it unusable. |
 | **Fix** | `IntradayRead` gains `last_bar_et: string \| null` — "YYYY-MM-DD HH:mm ET" for the SAME instant — stamped with the **shared** `etStamp` from `src/lib/largo/temporal/bar-session-date.ts` (#2418). **Corrected mid-review:** this first shipped a local `etStampFromMs` in `src/features/nighthawk/lib/session.ts`, on the reasoning that another lane owns `temporal/` and a cross-lane import was an unwanted coupling. That was wrong — **Largo product contract C1** (established by #2420) requires ET stamps to come from the shared helper precisely so two tools can never disagree about what session it is, and a second local definition is the thing C1 exists to prevent. The duplicate and its test were removed. |
