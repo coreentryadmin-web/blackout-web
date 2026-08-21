@@ -226,7 +226,8 @@ test("actual_hours is the span of the PRINTS, not the requested window", () => {
   ];
   const w = tapeWindowCoverage(rows, 168, 500, new Date("2026-08-20T20:50:00Z"));
   assert.equal(w.requested_hours, 168);
-  assert.equal(w.actual_hours, 0.9); // 54 minutes
+  assert.equal(w.actual_minutes, 54);
+  assert.ok(Math.abs(w.actual_hours! - 0.9) < 1e-9);
   assert.notEqual(w.actual_hours, w.requested_hours);
 });
 
@@ -441,4 +442,52 @@ test("an already-expired expiry keeps its negative dte rather than being recompu
   const out = expiryConcentration(rows, 8);
   assert.equal(out[0]?.dte, -2);
   assert.equal(out[0]?.horizon, "0DTE");
+});
+
+test("a SHORT burst never reports zero hours — rounding must not fabricate 'no span'", () => {
+  // Coordinator review of #2428: actual_hours was rounded to 1dp inside the compute path, so any
+  // span under 3 minutes became exactly 0 — and the tool description tells the model to quote
+  // that field as the period analysed, i.e. "over 0 hours" for a 90-second burst of 500 prints.
+  // Reachable at limit:120 (mini-panel, desk-scope-prefetch) and on any "right now" limit.
+  const rows = [atPrint("2026-08-20T20:00:00Z"), atPrint("2026-08-20T20:01:30Z")];
+  const w = tapeWindowCoverage(rows, 168, 2);
+  assert.notEqual(w.actual_hours, 0, "a real 90s span must not read as zero hours");
+  assert.ok(w.actual_hours! > 0);
+  assert.equal(w.actual_minutes, 2);
+});
+
+test("every window field is PRESENT on an empty tape, not absent", () => {
+  // tool-defs instructs the model to read window.newest_age_minutes; dropping the key on the
+  // branch that most needs it makes the instruction unfollowable.
+  const w = tapeWindowCoverage([], 168, 500) as Record<string, unknown>;
+  for (const k of ["requested_hours","actual_hours","actual_minutes","oldest_print","newest_print",
+                   "newest_age_minutes","no_dated_print_reason","prints","timed_prints",
+                   "undated_prints","limit_reached"]) {
+    assert.ok(k in w, `${k} must be present`);
+  }
+  assert.equal(w.newest_age_minutes, null);
+  assert.equal(w.no_dated_print_reason, "no_prints_in_window");
+});
+
+test("prints with no exchange time report WHY there is no span", () => {
+  const w = tapeWindowCoverage(
+    [ingestStampedPrint("2026-08-20T20:00:00Z"), ingestStampedPrint("2026-08-20T20:30:00Z")],
+    168, 500
+  );
+  assert.equal(w.prints, 2);
+  assert.equal(w.timed_prints, 0);
+  assert.equal(w.actual_hours, null);
+  // "all_prints_undated" is a different fact from "no prints at all" and must not read as it.
+  assert.equal(w.no_dated_print_reason, "all_prints_undated");
+});
+
+test("a non-numeric limit is clamped, never forwarded as LIMIT NaN", () => {
+  // Math.floor(NaN) is NaN; unguarded it reaches Postgres as `LIMIT NaN`, which throws and
+  // surfaces to the model as available:false — a healthy tool reported as broken.
+  const L = { maxLimit: 5000, defaultSinceHours: 168, maxSinceHours: 720 };
+  for (const bad of [Number.NaN, Infinity, -Infinity]) {
+    const o = helixTapeFetchOptions({ limit: bad as number, ...L });
+    assert.ok(Number.isFinite(o.limit), `limit must be finite, got ${o.limit}`);
+    assert.ok(o.limit >= 1 && o.limit <= 5000);
+  }
 });

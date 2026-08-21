@@ -1,6 +1,7 @@
 import type { FlowAlert } from "@/lib/api";
 import { executionRouteKey, daysToExpiry } from "@/features/helix/lib/helix-flow-format";
 import { HELIX_NET_PREMIUM_LEADERS_LIMIT } from "@/features/helix/lib/helix-strike-leaders";
+import { WHALE_PRINT_PREMIUM } from "@/features/helix/lib/helix-flow-limits";
 import { etStamp } from "@/lib/largo/temporal/bar-session-date";
 import { flowEventTimeMs } from "@/lib/flow-timestamp";
 
@@ -169,9 +170,6 @@ export function expiryConcentration(alerts: FlowAlert[], limit = 8, now: Date = 
     .slice(0, limit);
 }
 
-/** Premium at or above which a print is called a whale, on both this surface and the tape. */
-export const WHALE_PRINT_PREMIUM = 1_000_000;
-
 /**
  * Session-wide call/put skew from the tape.
  *
@@ -246,8 +244,15 @@ export function tapeWindowCoverage(
     return {
       requested_hours: requestedHours,
       actual_hours: null,
+      actual_minutes: null,
       oldest_print: null,
       newest_print: null,
+      // Present-and-null, never ABSENT: the tool description instructs the model to read this
+      // field, so dropping the key on the branch that most needs it makes the instruction
+      // unfollowable. `no_dated_print_reason` distinguishes which of the two nulls this is.
+      newest_age_minutes: null,
+      no_dated_print_reason: alerts.length === 0 ? "no_prints_in_window" : "all_prints_undated",
+      timed_prints: 0,
       prints: alerts.length,
       /** Prints with no REAL print time — UW sent none, so the row is ingest-stamped
        *  (`tape_time_estimated`) and is excluded from the span, exactly as the desk excludes it
@@ -260,8 +265,22 @@ export function tapeWindowCoverage(
   const newest = ts[ts.length - 1];
   return {
     requested_hours: requestedHours,
-    /** Span of the prints themselves — oldest to newest, NOT oldest-to-now. */
-    actual_hours: Math.round(((newest - oldest) / 3_600_000) * 10) / 10,
+    /**
+     * Span of the prints themselves — oldest to newest, NOT oldest-to-now.
+     *
+     * NOT rounded here. Rounding inside a compute path is what C9 forbids, and the harm is
+     * immediate: at 1dp any span under 3 minutes becomes exactly `0`, and the tool description
+     * tells the model to quote this field as the period analysed — so a 90-second burst of 500
+     * SPX prints would be reported as "over 0 hours". That is the same zero-hour fabrication this
+     * module's own empty-tape test forbids, re-entering through the rounding. Reachable today at
+     * `limit: 120` (mini-panel, desk-scope-prefetch) and on any small limit a "right now" question
+     * passes. roundFloats already rounds this payload once at the model's boundary.
+     */
+    actual_hours: (newest - oldest) / 3_600_000,
+    /** The same span in whole minutes — a short burst is a real measurement, and at hour scale it
+     *  would round away to a zero that reads as "no span at all". */
+    actual_minutes: Math.round((newest - oldest) / 60_000),
+    no_dated_print_reason: null,
     oldest_print: etStamp(oldest),
     newest_print: etStamp(newest),
     /** How stale the freshest print is — an off-hours read can be current AND hours old. */
@@ -304,7 +323,10 @@ export function helixTapeFetchOptions(opts: {
     ? Math.floor(sinceHours as number)
     : defaultSinceHours;
   return {
-    limit: Math.min(maxLimit, Math.max(1, Math.floor(limit))),
+    // Guarded the same way as the window. Math.floor(NaN) is NaN, and an unguarded NaN reaches
+    // Postgres as `LIMIT NaN`, which throws and surfaces to the model as available:false — a
+    // healthy tool reported as broken because one argument was bad.
+    limit: Math.min(maxLimit, Math.max(1, Number.isFinite(limit) ? Math.floor(limit) : maxLimit)),
     ticker: ticker ? ticker.toUpperCase() : undefined,
     since_hours: Math.min(maxSinceHours, Math.max(1, hours)),
     order: "recent" as const,
