@@ -4,6 +4,7 @@
  */
 
 import type { DeskScopeKey, TurnSnapshot } from "@/lib/largo/desk-scope";
+import { etSessionDate, etStamp } from "@/lib/largo/temporal/bar-session-date";
 import { resolveSubmodule } from "@/lib/largo/slash-submodules";
 
 export async function prefetchDeskScopeBlock(
@@ -240,8 +241,17 @@ export async function buildTurnSnapshot(input: {
     else if (p.option_type === "PUT") net -= prem;
   }
 
+  const nowMs = Date.now();
   return {
-    as_of: new Date().toISOString(),
+    // ET-anchored: formatDiffBlock renders this straight into the prompt, and a UTC calendar date
+    // rolls at 20:00 ET — so the last four hours of every session would be narrated under
+    // tomorrow's date.
+    as_of: etStamp(nowMs) ?? new Date(nowMs).toISOString(),
+    session_date: etSessionDate(nowMs),
+    // WHICH MATRIX the levels below came from. Without it two turns 90 seconds apart can hold
+    // byte-identical positioning off ONE cached matrix while the diff block presents them as a
+    // before/after across a real interval — see formatDiffBlock.
+    matrix_asof: pos?.asof ?? null,
     ticker: t,
     desk_scope: input.deskScope ?? null,
     spot: pos?.spot ?? null,

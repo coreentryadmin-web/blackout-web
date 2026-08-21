@@ -7,7 +7,7 @@ real, untouched board. Members can never see sim data.
 ## Watch URL
 
 ```
-https://blackouttrades.com/night-hawk?sim=1
+https://blackouttrades.com/nighthawk?sim=1
 ```
 
 Open it while signed in **as an admin** (Clerk `publicMetadata.role === "admin"` or an

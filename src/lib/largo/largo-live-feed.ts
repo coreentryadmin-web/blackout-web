@@ -1,4 +1,5 @@
 import { runLargoTool } from "@/lib/largo/run-tool";
+import { etSessionDate, etStamp } from "@/lib/largo/temporal/bar-session-date";
 import type { LargoQuestionIntent } from "@/lib/largo/question-intent";
 import { summarizeGreekExposureByExpiry } from "@/lib/greek-exposure-summary";
 import {
@@ -495,6 +496,24 @@ export function formatLargoLiveFeed(rawFeed: LargoLiveFeed, ticker: string): str
     if (gexReg.call_wall != null) lines.push(`Call wall: ${gexReg.call_wall}`);
     if (gexReg.put_wall != null) lines.push(`Put wall: ${gexReg.put_wall}`);
     if (gexReg.spot != null) lines.push(`SPX spot (matrix): ${gexReg.spot}`);
+    // WHEN the matrix behind every level above was computed.
+    //
+    // The positioning object arrives intact (it is fed straight from getGexPositioning), but this
+    // renderer is what the MODEL actually reads — and it emitted flip / walls / spot with no time
+    // at all. The block's own comment notes it "renders even when spx_structure is stale/missing
+    // (e.g. after-hours)", so an after-hours matrix spot was reaching the model permanently
+    // unlabelled. An ET anchor, not a UTC ISO: a UTC calendar date rolls at 20:00 ET, which is
+    // exactly the window this block is documented to keep rendering in.
+    if (typeof gexReg.asof === "string") {
+      const et = etStamp(Date.parse(gexReg.asof));
+      const session = etSessionDate(Date.parse(gexReg.asof));
+      if (et) {
+        lines.push(
+          `Matrix computed: ${et}${session ? ` (session ${session})` : ""} — these levels are a ` +
+            `SNAPSHOT from that moment, not a live quote.`
+        );
+      }
+    }
     const nw = asObj(gexReg.nearest_wall);
     if (nw) {
       lines.push(`Nearest wall: ${nw.strike} (${nw.kind}, ${nw.distance_pts} pts away)`);
