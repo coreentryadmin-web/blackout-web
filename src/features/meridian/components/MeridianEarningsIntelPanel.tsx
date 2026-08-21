@@ -107,13 +107,13 @@ export function MeridianEarningsIntelPanel({ intel, printHistory, tickerExpected
                   {row.expected_move_pct != null && (
                     <span className="meridian-card-muted"> · implied {row.expected_move_pct}%</span>
                   )}
-                  {row.session_change_pct != null && (
+                  {(row.reaction_pct ?? row.session_change_pct) != null && (
                     <span className="meridian-history-move">
                       {" "}
-                      · {fmtPct(row.session_change_pct)} session
-                      <span className={`meridian-print-arrow meridian-print-arrow-${moveArrow(row.session_change_pct)}`}>
+                      · {fmtPct(row.reaction_pct ?? row.session_change_pct)} reaction
+                      <span className={`meridian-print-arrow meridian-print-arrow-${moveArrow(row.reaction_pct ?? row.session_change_pct)}`}>
                         {" "}
-                        {moveArrow(row.session_change_pct)}
+                        {moveArrow(row.reaction_pct ?? row.session_change_pct)}
                       </span>
                     </span>
                   )}

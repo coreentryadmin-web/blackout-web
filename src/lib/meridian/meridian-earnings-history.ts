@@ -15,10 +15,14 @@ function printHistorySummary(rows: MeridianEarningsPrint[]): string | null {
   if (!graded.length) return null;
   const beats = graded.filter((r) => r.beat).length;
   const rates = dualBeatRateFromPrints(rows);
-  const withMove = rows.filter((r) => r.session_change_pct != null);
+  // `reaction_pct`, not `session_change_pct`: on a post-close print the latter is the anchor
+  // session's open→close, which excludes the overnight gap that IS the reaction. Averaging it
+  // produced a headline "avg session move" that disagreed in sign with the market on ~a third
+  // of post-close prints.
+  const withMove = rows.filter((r) => r.reaction_pct != null);
   const avgMove =
     withMove.length > 0
-      ? withMove.reduce((s, r) => s + (r.session_change_pct ?? 0), 0) / withMove.length
+      ? withMove.reduce((s, r) => s + (r.reaction_pct ?? 0), 0) / withMove.length
       : null;
   const base = `${beats}/${graded.length} EPS beats over last ${graded.length} prints`;
   // The EPS half of this sentence carries its denominator and the revenue half did not, in the
@@ -30,7 +34,7 @@ function printHistorySummary(rows: MeridianEarningsPrint[]): string | null {
       ? ` · ${Math.round(rates.revenue_beat_rate * 100)}% rev beats of ${rates.revenue_graded}`
       : "";
   if (avgMove == null) return base + rev;
-  return `${base}${rev} · avg session move ${avgMove >= 0 ? "+" : ""}${avgMove.toFixed(1)}%`;
+  return `${base}${rev} · avg reaction ${avgMove >= 0 ? "+" : ""}${avgMove.toFixed(1)}%`;
 }
 
 /** Past earnings prints — Benzinga calendar primary (no UW earnings REST). */
@@ -65,6 +69,8 @@ export async function loadMeridianEarningsPrintHistory(
       session_change_pct: rx?.session_change_pct ?? null,
       next_day_change_pct: rx?.next_day_change_pct ?? null,
       reaction_basis: rx?.reaction_basis ?? null,
+      reaction_pct: rx?.reaction_pct ?? null,
+      reaction_measure: rx?.reaction_measure ?? null,
     };
   });
 

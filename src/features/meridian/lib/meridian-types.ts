@@ -397,6 +397,14 @@ export type MeridianEarningsPrint = {
    * Null when no move could be measured at all.
    */
   reaction_basis?: "bmo_session" | "amc_next_session" | "assumed_report_session" | null;
+  /**
+   * THE reaction to the print. Prefer this over `session_change_pct` anywhere the number is
+   * presented as a reaction: for a post-close print the reaction is priced overnight, so this
+   * is read from the last close BEFORE the print, and the two routinely differ in SIGN.
+   * `reaction_measure` says which read produced it.
+   */
+  reaction_pct?: number | null;
+  reaction_measure?: "session_open_to_close" | "prior_close_to_close" | null;
   eps_estimate: number | null;
   eps_actual: number | null;
   revenue_estimate?: number | null;
