@@ -4,6 +4,22 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-21 — [FINDING, P1 tooling] "Never prints secrets" was enforced by nothing, and 17 harnesses assembled the Clerk secret key into a returned error string — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | 22 audit harnesses carry the header claim "Never prints secrets." There is no redaction anywhere in `scripts/audit/`. The shared `curl()` helper — copied into 17 files — did `err: String(e.message \|\| e).split("\n")[0]` in its catch. Node's first error line is `Command failed: <full argv>`, and the argv carries `-H Authorization: Bearer $CLERK_SECRET_KEY` plus the FAPI sign-in `ticket` (`data-validator.mjs:360`). Reproduced under Node 20.20.2: the captured string contains the full key. |
+| **Scope, stated precisely** | This was a **loaded landmine, not an active leak**. Every `.err` that is currently printed comes from the sibling `aws()` helper, which deliberately takes `String(e.stderr \|\| ...).split("\n").slice(-1)[0]` — the LAST line, skipping the argv. `curl()`'s `.err` was captured in 17 files and printed in none. So the claim held by accident, with zero enforcement: the same codebase demonstrably knew the hazard and defused it in one helper while leaving the other returning a secret-bearing string that any future `console.log(r.err)` would detonate. `NOT FOUND` and `NOT IMPLEMENTED` are different findings; this is the second. |
+| **Root cause** | The property "never prints secrets" was held by construction rather than by a mechanism, and the construction was copied 17 times by hand. The 17th copy (`gex-wall-snapshot-poll.mjs:112`) used `e?.message` and was missed by a literal grep — it was caught only by the pattern test added here, which is the argument for the test existing. |
+| **Fix** | New `scripts/audit/lib/redact.mjs`, two layers on purpose. (1) `subprocessErrorMessage(e)` prefers the child's own stderr and **never** returns the `Command failed:` argv line — this is the `aws()` behaviour promoted from a habit in two files to a shared, tested function. (2) `redactSecrets(text)` scrubs by exact env value (any var whose name contains SECRET/TOKEN/PASSWORD/CREDENTIAL/API_KEY, min 8 chars) and by shape (`sk_/rk_live/test`, `Authorization:` headers of every scheme, `ticket=`/`token=`/`jwt=` form fields, `AKIA/ASIA` ids, bare JWTs). Layer 2 alone would be a filter over a leak; layer 1 alone breaks the moment a caller reaches for `e.message` directly. All 17 call sites migrated, plus 3 lower-risk captures in `firewall-rth-replay.mjs`. |
+| **Side benefit** | The diagnostic got *better*: callers now surface `curl: (7) Failed to connect to 127.0.0.1 port 9` instead of a 300-character argv dump. |
+| **Regression guard** | 9 tests in `redact.test.mjs`. The first is a live REPRODUCTION — it runs a real failing `execFileSync` with a fake secret in the argv, asserts the legacy one-liner leaks it (so the test fails loudly if Node ever changes that message shape and the module's premise expires), and asserts the new helper does not. The last is a **repo-wide scan** that fails if any file under `scripts/` reintroduces the first-line capture; that is the test that makes the 18th copy impossible, and it is what found the 17th. Over-redaction is pinned too: a non-secret env value and a short value must survive, so the diagnostic is not destroyed. |
+| **NOT changed** | The argv itself still carries the secret, so it remains visible in `/proc/<pid>/cmdline` to a local user for the life of the call. Moving Clerk auth to `--config`/stdin is a larger change across 17 harnesses and is raised for the coordinator rather than done here. The documented claim was about *printing*, and that is what is now enforced. |
+| **Caveat on the guard** | `redact.test.mjs` lives under `scripts/`, which `npm test` does not collect — see the sibling P2 finding. Until that lands this is pinned but not gated. |
+| **Status** | FIXED — this PR. Found by the documented-but-unwired ("phantom guards") sweep. |
+
 ## 2026-08-21 — [FINDING, P1 Banger] `banger-discovery` committed positions from an UNSETTLED session for four months a year — the cron is UTC, the close is ET — FIXED
 
 > **kind:** `FINDING`

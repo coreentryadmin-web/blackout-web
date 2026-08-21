@@ -26,6 +26,7 @@ import { randomInt } from "node:crypto";
 
 import { createOrAdoptAuditUserViaCurl } from "./lib/clerk-audit-user.mjs";
 
+import { subprocessErrorMessage } from "./lib/redact.mjs";
 const SECRET = process.env.CLERK_SECRET_KEY?.trim();
 if (!SECRET) { console.error("CLERK_SECRET_KEY is required"); process.exit(1); }
 
@@ -61,7 +62,7 @@ function curl({ method = "GET", url, headers = {}, form, urlencodeForm, json, ja
     const hdrs = existsSync(hf) ? readFileSync(hf, "utf8") : "";
     return { s, b, hdrs };
   } catch (e) {
-    return { s: 0, b: "", hdrs: "", err: String(e.message || e).split("\n")[0] };
+    return { s: 0, b: "", hdrs: "", err: subprocessErrorMessage(e) };
   }
 }
 

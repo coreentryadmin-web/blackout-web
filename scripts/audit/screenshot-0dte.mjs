@@ -13,6 +13,7 @@ import http from 'http';
 import { generateDefaultAuditPhone } from './lib/audit-phone.mjs';
 import { createOrAdoptAuditUserViaCurl } from './lib/clerk-audit-user.mjs';
 
+import { subprocessErrorMessage } from "./lib/redact.mjs";
 const SECRET = process.env.CLERK_SECRET_KEY;
 const PUB = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || '';
 const APP = 'https://blackouttrades.com';
@@ -52,7 +53,7 @@ function curl({ method = 'GET', url, headers = {}, form, urlencodeForm, json, ja
   try {
     const s = Number(execFileSync('curl', args, { encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 }).trim());
     return { s, b: existsSync(bf) ? readFileSync(bf, 'utf8') : '' };
-  } catch (e) { return { s: 0, b: '', err: String(e.message || e).split('\n')[0] }; }
+  } catch (e) { return { s: 0, b: '', err: subprocessErrorMessage(e) }; }
 }
 const J = (r) => { try { return JSON.parse(r.b); } catch { return null; } };
 const backend = (m, p, j) => curl({ method: m, url: `${API}${p}`, headers: { Authorization: `Bearer ${SECRET}` }, json: j });
