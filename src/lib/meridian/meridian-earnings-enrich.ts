@@ -1,11 +1,23 @@
 import "server-only";
 
 import { fetchBenzingaCatalysts, fetchBenzingaEarnings } from "@/lib/providers/polygon";
-import { fetchUwEarningsEstimates } from "@/lib/providers/unusual-whales";
 import { roundFloats } from "@/lib/round-floats";
 import { loadMeridianEarningsPrintHistory } from "@/lib/meridian/meridian-earnings-history";
 import { loadMeridianCatalystBundle } from "@/lib/meridian/meridian-catalyst-enrich";
 import { buildExpectedVsRealized } from "@/lib/meridian/meridian-analytics-core";
+import {
+  computeEarningsYoY,
+  dualBeatRateFromPrints,
+  guidanceToMeridianRow,
+  mergeStreetEstimates,
+  pickEarningsCalendarRow,
+  postPrintSurpriseLean,
+} from "@/lib/meridian/meridian-benzinga-earnings-core";
+import {
+  loadBenzingaTickerEarnings,
+  loadBenzingaTickerGuidance,
+  loadTickerEstimateRevisions,
+} from "@/lib/meridian/meridian-benzinga-earnings";
 import type { MeridianEarningsEnrichment } from "@/features/meridian/lib/meridian-types";
 
 function shapeHeadlines(
@@ -21,39 +33,40 @@ function shapeHeadlines(
     }));
 }
 
-function shapeEstimates(rows: Record<string, unknown>[]): MeridianEarningsEnrichment["street_estimates"] {
-  return rows.slice(0, 4).map((r) => {
-    const eps = r.eps_estimate ?? r.estimated_eps ?? r.street_mean_est ?? r.eps ?? null;
-    const rev = r.revenue_estimate ?? r.estimated_revenue ?? r.revenue ?? null;
-    const period = String(r.fiscal_date ?? r.period ?? r.quarter ?? r.report_date ?? "").trim() || null;
-    return {
-      period,
-      eps_estimate: eps != null && Number.isFinite(Number(eps)) ? Number(Number(eps).toFixed(2)) : null,
-      revenue_estimate:
-        rev != null && Number.isFinite(Number(rev)) ? Number(Number(rev).toFixed(0)) : null,
-    };
-  });
-}
 
-/** Benzinga catalysts + earnings headlines + street estimates + print history for an earnings row. */
+/** Benzinga calendar + headlines + street estimates + print history for an earnings row. */
 export async function loadMeridianEarningsEnrichment(
   ticker: string,
-  expectedMovePct?: number | null
+  expectedMovePct?: number | null,
+  eventDate?: string | null
 ): Promise<MeridianEarningsEnrichment> {
   const sym = ticker.trim().toUpperCase();
-  const [catalysts, earningsNews, estimateRows, history, catalystBundle] = await Promise.all([
-    fetchBenzingaCatalysts(sym, 6).catch(() => []),
-    fetchBenzingaEarnings(sym, 6).catch(() => []),
-    fetchUwEarningsEstimates(sym).catch(() => [] as Record<string, unknown>[]),
-    loadMeridianEarningsPrintHistory(sym, 6),
-    loadMeridianCatalystBundle(sym),
-  ]);
+  const [catalysts, earningsNews, history, catalystBundle, benzingaRes, guidanceRes] =
+    await Promise.all([
+      fetchBenzingaCatalysts(sym, 6).catch(() => []),
+      fetchBenzingaEarnings(sym, 6).catch(() => []),
+      loadMeridianEarningsPrintHistory(sym, 8, eventDate),
+      loadMeridianCatalystBundle(sym),
+      // 8 to match the print-history call above, so both read the same window.
+      loadBenzingaTickerEarnings(sym, eventDate ?? null, 8),
+      loadBenzingaTickerGuidance(sym),
+    ]);
+
+  const benzingaRows = benzingaRes.rows;
+  const street_estimates = mergeStreetEstimates(benzingaRows, []);
+  const earnings_calendar = pickEarningsCalendarRow(benzingaRows, eventDate);
+  const earnings_yoy = earnings_calendar ? computeEarningsYoY(earnings_calendar) : null;
+  const post_print = postPrintSurpriseLean(earnings_calendar);
+  const beat_rates = dualBeatRateFromPrints(history.print_history);
 
   const lastPrint = history.print_history[0];
   const expected_vs_realized = buildExpectedVsRealized(
     expectedMovePct ?? null,
     lastPrint?.session_change_pct ?? null
   );
+
+  const guidanceRow = guidanceRes.rows[0] ? guidanceToMeridianRow(guidanceRes.rows[0]) : null;
+  const estimate_revisions = await loadTickerEstimateRevisions(sym, benzingaRows);
 
   return roundFloats({
     catalysts: shapeHeadlines(
@@ -71,10 +84,25 @@ export async function loadMeridianEarningsEnrichment(
         published: c.published,
       }))
     ),
-    street_estimates: shapeEstimates(estimateRows),
+    street_estimates,
+    earnings_calendar,
+    earnings_yoy,
+    corporate_guidance: guidanceRow,
+    guidance_entitled: guidanceRes.entitled,
+    guidance_on_file: guidanceRow != null,
+    post_print: post_print.headline ? post_print : null,
     print_history: history.print_history,
     print_history_summary: history.print_history_summary,
+    // An outage must be distinguishable from an empty company. Without this, every panel fed
+    // from the Benzinga calendar renders blank and the reader concludes the data does not
+    // exist — measured on 8/8 mega-caps on 2026-08-18.
+    calendar_error: history.history_error ?? (benzingaRes as { error?: string | null }).error ?? null,
+    beat_rates,
     analyst_revisions: catalystBundle.analyst_revisions,
+    price_targets: catalystBundle.price_targets,
+    street_skew: catalystBundle.street_skew,
+    estimate_revisions,
+    catalyst_briefs: catalystBundle.catalyst_briefs,
     insider_activity: catalystBundle.insider_activity,
     congress_trades: catalystBundle.congress_trades,
     expected_vs_realized,

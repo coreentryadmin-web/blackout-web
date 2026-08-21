@@ -32,3 +32,9 @@ test("userCanAccessTool accepts sessionClaims for JWT admin short-circuit", () =
   );
   assert.match(src, /isAdminUser\(userId, sessionClaims\)/);
 });
+
+test("userCanAccessTool JWT fast path skips getUser for launched tools when tier/role in token", () => {
+  const src = readFileSync(join(root, "tool-access-server.ts"), "utf8");
+  assert.match(src, /sessionClaimsHaveAuthFields/);
+  assert.match(src, /toolAccessModeFromSessionClaims/);
+});

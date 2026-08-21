@@ -22,7 +22,13 @@ function row(
 ): ChainStrikeRow {
   const oi = opts.oi ?? 5_000;
   return {
-    expiry: opts.expiry ?? "2026-12-18",
+    // Relative, not a literal. This defaulted to "2026-12-18" — a fixed date that was ~4 months
+    // out when written and becomes 0-DTE and then EXPIRED as the calendar advances. Contract
+    // selection here filters on DTE computed against the REAL clock, so every test relying on this
+    // default silently turns into a countdown: the date-bomb scan (scripts/audit/test-date-bomb-scan.mjs)
+    // showed three of them failing at +120d and four more at +400d. `ymdPlus(120)` reproduces the
+    // original intent — comfortably far-dated — at any run date.
+    expiry: opts.expiry ?? ymdPlus(120),
     strike,
     call_bid: opts.callBid ?? null,
     call_ask: opts.callAsk ?? null,

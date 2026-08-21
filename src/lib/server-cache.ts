@@ -93,6 +93,12 @@ type CacheOpts = {
   maxBlockMs?: number;
   /** Served when maxBlockMs fires or staleOnInflight finds no stale/Redis copy. */
   fallback?: () => Promise<unknown>;
+  /**
+   * When provided, a loader result that returns false is served but NOT written to the
+   * in-memory / Redis cache. Use for payloads that must not poison SWR (e.g. Night Hawk
+   * pre-publish empty shells with available:false).
+   */
+  shouldCache?: (value: unknown) => boolean;
 };
 
 /**
@@ -141,6 +147,7 @@ export async function withServerCache<T>(
 ): Promise<T> {
   const swr = opts.staleWhileRevalidate !== false;
   const localOnly = opts.localOnly === true;
+  const shouldCache = opts.shouldCache;
   if (ttlMs <= 0) return loader();
 
   const now = Date.now();
@@ -172,10 +179,10 @@ export async function withServerCache<T>(
     const maxBlock = opts.maxBlockMs;
     if (maxBlock != null && Number.isFinite(maxBlock) && maxBlock > 0) {
       // Expired fast lane with a stale copy: never block member polls on rebuild.
-      scheduleBackgroundRefresh(key, ttlMs, loader, localOnly);
+      scheduleBackgroundRefresh(key, ttlMs, loader, localOnly, shouldCache);
       return hit.value;
     }
-    return refreshCache(key, ttlMs, loader, localOnly);
+    return refreshCache(key, ttlMs, loader, localOnly, shouldCache);
   }
 
   // Cache expired but we have data — return stale immediately, refresh in background.
@@ -190,21 +197,21 @@ export async function withServerCache<T>(
       // Return the stale entry and kick off a non-blocking refresh attempt instead.
       if (degradedKeys.has(key) && hit) {
         console.warn(`[server-cache] ${key}: degraded upstream, serving stale (age ${Math.round(staleAge / 1000)}s) instead of blocking refresh`);
-        refreshCacheInBackground(key, ttlMs, loader, localOnly);
+        refreshCacheInBackground(key, ttlMs, loader, localOnly, shouldCache);
         return hit.value;
       }
-      return refreshCache(key, ttlMs, loader, localOnly);
+      return refreshCache(key, ttlMs, loader, localOnly, shouldCache);
     }
     if (!localOnly) {
       const redisHit = await readRedisCache<T>(key);
       if (redisHit != null) {
         const remainingMs = redisHit.remainingTtlSec * 1000;
         setStoreEntry(key, { value: redisHit.value, expiresAt: now + remainingMs, refreshedAt: now });
-        refreshCacheInBackground(key, ttlMs, loader, localOnly);
+        refreshCacheInBackground(key, ttlMs, loader, localOnly, shouldCache);
         return redisHit.value;
       }
     }
-    refreshCacheInBackground(key, ttlMs, loader, localOnly);
+    refreshCacheInBackground(key, ttlMs, loader, localOnly, shouldCache);
     return hit.value;
   }
 
@@ -231,7 +238,7 @@ export async function withServerCache<T>(
 
   const maxBlock = opts.maxBlockMs;
   if (maxBlock != null && Number.isFinite(maxBlock) && maxBlock > 0) {
-    const refresh = refreshCache(key, ttlMs, loader, localOnly);
+    const refresh = refreshCache(key, ttlMs, loader, localOnly, shouldCache);
     const raced = await Promise.race([
       refresh,
       new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), maxBlock)),
@@ -240,7 +247,7 @@ export async function withServerCache<T>(
     if (opts.fallback) return opts.fallback() as Promise<T>;
     if (hit) return hit.value;
     // Never await the slow cold build after the cap — keep refreshing in background.
-    refreshCacheInBackground(key, ttlMs, loader, localOnly);
+    refreshCacheInBackground(key, ttlMs, loader, localOnly, shouldCache);
     const pending = inflight.get(key) as Promise<T> | undefined;
     if (pending) {
       const racedPending = await Promise.race([
@@ -252,7 +259,7 @@ export async function withServerCache<T>(
     throw new Error(`[server-cache] ${key}: cold miss exceeded maxBlockMs`);
   }
 
-  return refreshCache(key, ttlMs, loader, localOnly);
+  return refreshCache(key, ttlMs, loader, localOnly, shouldCache);
 }
 
 // ---------------------------------------------------------------------------
@@ -309,9 +316,10 @@ function refreshCacheInBackground<T>(
   key: string,
   ttlMs: number,
   loader: () => Promise<T>,
-  localOnly = false
+  localOnly = false,
+  shouldCache?: (value: unknown) => boolean
 ): void {
-  void refreshCache(key, ttlMs, loader, localOnly).catch(() => undefined);
+  void refreshCache(key, ttlMs, loader, localOnly, shouldCache).catch(() => undefined);
 }
 
 /** Defer background refresh so fast-lane callers return stale before the loader runs. */
@@ -319,11 +327,12 @@ function scheduleBackgroundRefresh<T>(
   key: string,
   ttlMs: number,
   loader: () => Promise<T>,
-  localOnly = false
+  localOnly = false,
+  shouldCache?: (value: unknown) => boolean
 ): void {
   queueMicrotask(() => {
     if (inflight.has(key)) return;
-    refreshCacheInBackground(key, ttlMs, loader, localOnly);
+    refreshCacheInBackground(key, ttlMs, loader, localOnly, shouldCache);
   });
 }
 
@@ -331,7 +340,8 @@ async function refreshCache<T>(
   key: string,
   ttlMs: number,
   loader: () => Promise<T>,
-  localOnly = false
+  localOnly = false,
+  shouldCache?: (value: unknown) => boolean
 ): Promise<T> {
   const existing = inflight.get(key) as Promise<T> | undefined;
   if (existing) return existing;
@@ -339,9 +349,11 @@ async function refreshCache<T>(
   const promise = loader()
     .then((value) => {
       const refreshedAt = Date.now();
-      setStoreEntry(key, { value, expiresAt: refreshedAt + ttlMs, refreshedAt });
-      // localOnly keys never propagate to Redis (replica-local, ephemeral, high-cardinality).
-      if (!localOnly) void writeRedisCache(key, value, ttlMs);
+      if (!shouldCache || shouldCache(value)) {
+        setStoreEntry(key, { value, expiresAt: refreshedAt + ttlMs, refreshedAt });
+        // localOnly keys never propagate to Redis (replica-local, ephemeral, high-cardinality).
+        if (!localOnly) void writeRedisCache(key, value, ttlMs);
+      }
       // FIX 5b: Successful refresh — reset failure tracking for this key.
       failureCount.delete(key);
       degradedKeys.delete(key);

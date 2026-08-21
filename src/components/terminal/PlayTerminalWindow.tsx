@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { clsx } from "clsx";
 import type { PlayTerminalIcon, PlayTerminalLine } from "@/features/spx/lib/spx-play-terminal-lines";
 import { renderEmphasis } from "@/features/spx/lib/spx-emphasis";
+import { etClock } from "@/lib/et-clock";
 
 const ICON_GLYPH: Record<PlayTerminalIcon, string> = {
   prompt: "❯",
@@ -80,9 +81,8 @@ export function PlayTerminalWindow({
     el.scrollTop = el.scrollHeight;
   }, [lines, asOf, tabs?.find((t) => t.selected)?.id]);
 
-  const timeLabel = asOf
-    ? new Date(asOf).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit" })
-    : null;
+  // ET — the desk quotes one clock, and this omitted `timeZone`.
+  const timeLabel = etClock(asOf, { seconds: true });
 
   return (
     <div className={clsx("spx-play-terminal-window", className)} role="region" aria-label={ariaLabel}>

@@ -74,3 +74,80 @@ test("fmtCompareSpot via compare-format: formats finite spot", async () => {
   assert.equal(fmtCompareSpot(123.456, "NVDA"), "123.46");
   assert.match(fmtCompareSpot(5432.1, "SPX"), /5,432\.10/);
 });
+
+test("resolveCompareRaw: URL is the only source of truth for compare state", async () => {
+  const { resolveCompareRaw, isCompareMode } = await import("./vector-compare");
+
+  // In compare mode: the URL carries the param.
+  assert.equal(resolveCompareRaw("SPX,NVDA"), "SPX,NVDA");
+  assert.equal(isCompareMode(resolveCompareRaw("SPX,NVDA")), true);
+
+  // Exit compare pushes `/vector` — the param is GONE, and that must win over whatever the page
+  // was loaded with. This is the regression: a `?? initialCompareRaw` fallback here made the Exit
+  // button (and every same-route nav out of compare) a no-op.
+  assert.equal(resolveCompareRaw(null), null);
+  assert.equal(isCompareMode(resolveCompareRaw(null)), false);
+  assert.equal(resolveCompareRaw(undefined), null);
+  assert.equal(isCompareMode(resolveCompareRaw(undefined)), false);
+
+  // An explicitly empty param is also "not compare" — buildCompareSearch never emits one, but a
+  // hand-typed `?compare=` must not trap the member either.
+  assert.equal(isCompareMode(resolveCompareRaw("")), false);
+});
+
+test("loadCompareSeedsBounded: ONE failing ticker must not sink the batch", async () => {
+  const { loadCompareSeedsBounded } = await import("./vector-compare");
+  // THE BUG (member-visible). A rejection used to propagate out of the worker, reject Promise.all,
+  // and throw out of the caller's void-ed async effect — so setCompareSeeds was never called and
+  // the grid sat on "Loading Vector Compare…" forever, with no error state and no retry. Asking for
+  // four names and having one fail lost ALL four, including the primary already in hand.
+  const loaded = await loadCompareSeedsBounded(
+    ["NVDA", "META", "AMD", "TSLA"],
+    async (t) => {
+      if (t === "AMD") throw new Error("502 from upstream");
+      return t;
+    },
+    2
+  );
+  assert.equal(loaded.length, 4, "every requested slot is still represented");
+  assert.deepEqual(loaded, ["NVDA", "META", null, "TSLA"]);
+  assert.equal(
+    loaded.filter(Boolean).length,
+    3,
+    "the three healthy panes survive so the member sees a partial grid, not a spinner"
+  );
+});
+
+test("loadCompareSeedsBounded: ALL failing still resolves — never rejects", async () => {
+  const { loadCompareSeedsBounded } = await import("./vector-compare");
+  const loaded = await loadCompareSeedsBounded(
+    ["NVDA", "META"],
+    async () => {
+      throw new Error("everything is down");
+    },
+    2
+  );
+  // Resolving with all-nulls lets the caller fall back to the primary seed it already holds.
+  // Rejecting here is what stranded the UI, so the loader must never do it.
+  assert.deepEqual(loaded, [null, null]);
+});
+
+test("loadCompareSeedsBounded: a failure does not stall the concurrency window", async () => {
+  const { loadCompareSeedsBounded } = await import("./vector-compare");
+  let active = 0;
+  let peak = 0;
+  const loaded = await loadCompareSeedsBounded(
+    ["NVDA", "META", "AMD", "TSLA"],
+    async (t) => {
+      active++;
+      peak = Math.max(peak, active);
+      await new Promise((r) => setTimeout(r, 5));
+      active--;
+      if (t === "META") throw new Error("boom");
+      return t;
+    },
+    2
+  );
+  assert.deepEqual(loaded, ["NVDA", null, "AMD", "TSLA"]);
+  assert.ok(peak <= 2, `peak concurrency ${peak} should stay capped even with a thrower`);
+});

@@ -1,14 +1,21 @@
 "use client";
 
 import { FreshnessChip } from "@/components/ui";
+import { etClock } from "@/lib/et-clock";
 
+/**
+ * Compact desk header. Deliberately carries NO metrics: `catalystCount` and `next24h` used to
+ * render here as a "Window / Next 24h" pair, but `meridian-stats-strip` prints the identical two
+ * numbers in the row immediately below it. Two readings of one value, ~10px apart, is a source of
+ * doubt rather than information — if they ever disagreed (different render pass, different
+ * rounding) a member has no way to tell which one is the board. The strip is the single place
+ * those counts live now.
+ */
 type Props = {
-  catalystCount?: number;
-  next24h?: number;
   asOf?: string;
 };
 
-export function MeridianHero({ catalystCount, next24h, asOf }: Props) {
+export function MeridianHero({ asOf }: Props) {
   return (
     <header className="meridian-hero">
       <div className="meridian-hero-mesh" aria-hidden="true">
@@ -40,25 +47,12 @@ export function MeridianHero({ catalystCount, next24h, asOf }: Props) {
             </span>
             <FreshnessChip status="live" label="Live structure" />
           </div>
-          {(catalystCount != null || next24h != null) && (
-            <dl className="meridian-hero-metrics">
-              {catalystCount != null && (
-                <div className="meridian-hero-metric">
-                  <dt>Window</dt>
-                  <dd>{catalystCount} catalysts</dd>
-                </div>
-              )}
-              {next24h != null && (
-                <div className="meridian-hero-metric meridian-hero-metric-urgent">
-                  <dt>Next 24h</dt>
-                  <dd>{next24h}</dd>
-                </div>
-              )}
-            </dl>
-          )}
           {asOf && (
             <p className="meridian-hero-asof">
-              As of {new Date(asOf).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })} ET
+              {/* The " ET" below is a literal, so the time beside it MUST be Eastern. It was not:
+                  the formatter omitted `timeZone`, so this line asserted a zone it was not rendering
+                  in — "As of 07:30 PM ET" for a London member at 2:30 PM ET. */}
+              As of {etClock(asOf, { pad: true }) ?? "—"} ET
             </p>
           )}
         </div>

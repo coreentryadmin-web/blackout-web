@@ -64,3 +64,29 @@ test("the snapshot carries every gate a loss could plausibly be blamed on", () =
   assert.equal(typeof r.buy_cooldown_a_plus_bypass, "boolean");
   assert.ok(Date.parse(r.as_of) > 0);
 });
+
+// The 20:00-ET-to-midnight window is where a bare UTC stamp becomes a wrong session.
+// These rules are read to answer "why was X blocked in TODAY'S session", so the session
+// they belong to has to be stated, not inferred. The same shape had largo-live-feed.ts
+// date a live SPX figure to the next day and fabricate a close for it.
+test("the snapshot states its ET session, not just a UTC instant", () => {
+  const r = gateRulesForLargo();
+  assert.match(r.as_of, /^\d{4}-\d{2}-\d{2}T.*Z$/, "as_of stays a UTC ISO instant");
+  assert.match(String(r.session_date), /^\d{4}-\d{2}-\d{2}$/, "session_date must be an ET calendar date");
+  assert.match(String(r.as_of_et), /^\d{4}-\d{2}-\d{2} \d{2}:\d{2} ET$/);
+});
+
+test("the ET stamp and the session date describe the SAME instant as as_of", () => {
+  const r = gateRulesForLargo();
+  // Same source instant, so the ET stamp's date half must equal session_date.
+  assert.equal(String(r.as_of_et).slice(0, 10), r.session_date);
+});
+
+test("the payload TELLS the model to date by session, not by as_of", () => {
+  // Carrying the field is not enough — a model that never learns which field means
+  // "today" will still reach for the ISO one, which is how this class of bug survives.
+  const joined = gateRulesForLargo().interpretation.join(" ");
+  assert.match(joined, /session_date/);
+  assert.match(joined, /as_of/);
+  assert.match(joined, /20:00 ET|next calendar day/i);
+});

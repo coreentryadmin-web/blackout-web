@@ -9,6 +9,52 @@ already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
 
+## 2026-08-20 — [UI] Post-deploy live validation of #2368 (ET clocks) — PASS; #2372 SKIPPED off-hours
+
+**Severity.** — (no product defect found)
+
+**Why it ran.** Seven member-visible fixes shipped 2026-08-19/20 verified by unit test and root
+cause; none had been observed in a browser against production. The replay-beads fix got its own
+pixel probe. This closes the gap for the two remaining fixes that are observable OFF-HOURS.
+
+**#2368 — ET clock pinning: PASS.** Ten formatters called `toLocaleTimeString`/`toLocaleDateString`
+with no `timeZone`, so they rendered in the VIEWER's zone. Measured live on `/nighthawk` from a
+browser pinned to **Asia/Tokyo** (UTC+9), confirmed via `Intl.DateTimeFormat().resolvedOptions()`:
+
+| metric | value |
+|---|---|
+| clock strings rendered | 54 |
+| parsed to a time | 40 |
+| inside the ET session window (04:00–20:00) | **40 / 40** |
+| overnight-shifted (>=21:00 or <=03:00) | **0** |
+| observed range | 10:02 – 14:33 |
+| tunnel routing | 138 ok / 0 fail |
+
+Unpinned, a UTC+9 browser renders those ET instants ~13h later — clustered in 22:00–06:00. The
+observed range is the ET session itself, and the two windows do not overlap, so one load settles it.
+
+**#2372 — Expiry Concentration bars: SKIPPED, not passed.** The panel hides below a $50k premium
+floor and the tape is frozen off-hours, so zero buckets rendered. Nothing to measure. Re-run during
+RTH; the harness reports SKIP rather than inventing a verdict.
+
+**A harness correction worth recording.** The first version of the clock check rendered the page in
+two zones and required the clock sets to match byte-for-byte. It reported **FAIL** — with an
+ASYMMETRIC diff: 8 strings only in the Tokyo load, ZERO only in the Los Angeles load. A timezone
+fault differs on BOTH sides by construction, so a one-sided difference is **live-data drift** on a
+board whose timestamps legitimately move between two loads minutes apart. Reporting it would have
+been a false alarm on a working fix. The check is now a single-load window test, which is immune to
+drift; the cross-zone comparison is retained as context and never gates the verdict.
+
+**Also:** `ERR_CONNECTION_RESET` hit mid-run while the `fab8a26f` deploy was still rolling — a
+draining ECS replica, not the sandbox egress block. The harness now retries navigation 3x with
+backoff, the same trap `meridian-earnings-ui-audit.mjs` already documents.
+
+**Tooling:** `scripts/audit/post-deploy-ui-validate.cjs` (new); `timezoneId` threaded through
+`scripts/audit/lib/proxy-tunnel-context.cjs` — without it this fix cannot be validated at all, since
+a runner already in ET sees both readings agree and a pass proves nothing.
+
+---
+
 ## 2026-08-14 — [Thermal/GEX] Force-rebuild timing baseline — overnight, 20/20 clean, an order of magnitude under the cap
 
 **Severity.** — (no product defect found; this is a measurement, and it did NOT justify the config change it was run to justify)
@@ -344,3 +390,180 @@ First orchestrator attempt failed on missing `node_modules` (tsx/playwright/pg/r
 - 1k concurrent: likely OK on cache hits; 10k+: UW/Redis hot-path saturation; 50k–100k: upstream provider ceiling before horizontal web scale helps
 
 **Status.** GREEN required gates; optional latency flaky during deploy — re-run RTH for paint baselines.
+
+## 2026-08-19 — Vector rail validation, PRE-DEPLOY baseline (all tickers x all horizons)
+
+New tool: `scripts/audit/vector-rail-validate.mjs`. One command, per ticker x horizon: samples,
+median/max gap, rows drawn per side, beads-per-row, and wall BIRTHS/DEATHS.
+
+Captured against prod on ET session 2026-08-18, **before #2322 (append-only rails + rationing
+removed) deployed** — so this is the "before" column for tomorrow's comparison.
+
+| ticker | horizon | verdict | samples | medGap | maxGap | rows c/p | beads/row | born | died | static |
+|---|---|---|---|---|---|---|---|---|---|---|
+| SPX | all | GREEN | 649 | 60 | 245 | 8/8 | 217 | 22 | 20 | 10 |
+| SPX | 0dte | GREEN | 3964 | 5 | 435 | 8/8 | 1035 | 31 | 25 | 7 |
+| SPX | weekly | GREEN | 3845 | 5 | 435 | 8/8 | 1207 | 21 | 24 | 5 |
+| SPX | monthly | GREEN | 3845 | 5 | 435 | 8/8 | 1353 | 17 | 20 | 8 |
+| NVDA | all | GREEN | 442 | 60 | 600 | 6/8 | 307 | 7 | 6 | 10 |
+| NVDA | 0dte | RED | 546 | 5 | 3570 | 8/8 | 298 | 10 | 11 | 11 |
+| NVDA | weekly | RED | 100 | 70 | 3275 | 7/8 | 80 | 5 | 4 | 12 |
+| NVDA | monthly | RED | 98 | 70 | 4205 | 7/8 | 84 | 4 | 3 | 10 |
+| TSLA | 0dte | RED | 750 | 5 | 2105 | 8/8 | 523 | 8 | 6 | 13 |
+| TSLA | weekly | RED | 591 | 5 | 2105 | 8/8 | 332 | 10 | 9 | 10 |
+| AAPL | weekly | RED | 70 | 300 | 4205 | 8/8 | 53 | 7 | 6 | 12 |
+| SPY | weekly | RED | 64 | 300 | 3305 | 8/8 | 31 | 15 | 15 | 11 |
+| QQQ | weekly | RED | 97 | 70 | 3905 | 8/8 | 41 | 19 | 18 | 9 |
+
+(Full 24-row output in the PR; the rows above are the ones that carry the argument.)
+
+**Three things this settles.**
+
+1. **Row selection was never broken.** Every ticker draws 6-8 rows per side on every horizon,
+   identical to SPX. The "NVDA has one level, SPX has ten" report is entirely beads-per-row:
+   SPX weekly 1207 beads/row against NVDA 80, AAPL 53, SPY 31.
+2. **Births and deaths WORK.** Every rail shows staggered births and deaths (SPX 0dte 31 born /
+   25 died; QQQ 0dte 27/33; NVDA weekly 5/4). No rail is a static ladder, so the "same walls all
+   day" failure mode is NOT present. This was an open question and the answer is positive.
+3. **The discrimination is on the NARROWED horizons only.** The blended "all" rail is coarse for
+   everyone (~442 samples, 60s median) including SPX — no per-ticker bias there. On 0dte/weekly/
+   monthly, SPX sits at 3845-3964 samples / 5s median while every other name is 64-750 with 35-70
+   minute holes. That is the viewing-drives-density effect #2322 removes.
+
+## 2026-08-21 — Largo payload hygiene: both systemic classes measured to ZERO
+
+`scripts/audit/largo-payload-hygiene.mjs`, 28 tools, live upstream data, run through the REAL
+model-facing path (`roundResultForReading`, as `makeGuardedToolRunner` applies it).
+
+| class | before | after | fixed by |
+|---|---|---|---|
+| `bare_epoch` (a timestamp with no readable date on the same object) | 60 | **0** | #2418 |
+| `unrounded_float` (more decimals than any real measurement) | 547 | **0** | #2419 |
+
+`21/21 SCANNED tools clean · 0 flagged leaves · 7 EMPTY · 0 ERRORED`. The 7 EMPTY are off-hours
+tools with genuinely no data (post-close); they are reported as UNKNOWN and are NOT counted as
+passes — an empty payload scans clean by construction, which is the failure this harness exists to
+catch and once committed itself.
+
+**Scope of the claim.** This runs the real code path against live upstreams, so it proves the fixes
+work. It does not prove members are receiving them — that is the deploy, which was still rolling ECS
+when this ran. The separate answer-level check (`scratch/largo-dated-close-probe.mjs`, baseline
+**1/5** dated closes correct) hits the live site and is still outstanding.
+
+**Harness correction made in the same run.** The scanner previously called `runLargoTool` directly,
+which bypasses the guarded runner — so it was measuring a payload no model ever sees. It would have
+kept reporting hundreds of already-rounded floats as violations, and could not have verified #2419
+at all. It now mirrors the real path and refuses to run if it cannot resolve the rounding function,
+rather than silently scanning the raw surface again.
+
+## 2026-08-21 — Largo truncation probe, first live run (Night Hawk lane)
+
+New harness `scripts/audit/largo-truncation-probe.mjs`. Asks the LIVE agent whether each tool's
+raw `tool_result` ended with the transport's `…[truncated]` marker — the question no prior Largo
+audit asked, and the only way to answer it from this sandbox (the in-process hygiene scanner
+cannot reach any DB-backed tool here).
+
+```
+CONTROL get_nighthawk_outcomes -> TRUNCATED
+  instrument PROVEN — it detected a real truncation, so COMPLETE below means clean
+
+  ✅ get_zerodte_record         COMPLETE
+  ✅ get_zerodte_plays          COMPLETE
+  ✅ get_nighthawk_edition      COMPLETE
+  ❌ get_nighthawk_outcomes     TRUNCATED
+
+=== 1 TRUNCATED · 3 clean · 0 unverified · 0 indeterminate ===
+```
+
+Two results worth recording:
+
+1. **#2433 and #2436 are confirmed holding in PRODUCTION**, not merely CI-green — `get_zerodte_record`
+   and `get_nighthawk_edition` both come back COMPLETE, and `get_zerodte_record`'s last visible key
+   is `plays`, which is exactly the aggregates-first / sample-last shape #2433 shipped.
+2. **The control fired**, so the three COMPLETEs are trustworthy negatives rather than a run that
+   silently never reached the model. `get_nighthawk_outcomes` is the tool #2480 fixes and is still
+   truncated on the deployed build, as expected.
+
+Swept separately with the same probe and also COMPLETE: `get_nighthawk_dossier` (last key
+`archived`), `get_cortex_decision` (`context`), `get_horizon_outcomes` (`sample`).
+
+
+## 2026-08-21 — Largo truncation probe, full lane sweep (Night Hawk)
+
+Second live run, now over all 13 lane tools rather than 3-4 at a time. Two things came out of it —
+one a validation, one a defect in the harness itself.
+
+```
+CONTROL get_nighthawk_outcomes -> TRUNCATED
+  instrument PROVEN — it detected a real truncation, so COMPLETE below means clean
+
+  ✅ get_zerodte_record       ✅ get_zerodte_plays      ✅ get_zerodte_rejections
+  ✅ get_nighthawk_edition    ❌ get_nighthawk_outcomes ✅ get_nighthawk_horizons
+  ✅ get_nighthawk_dossier    ✅ get_horizon_outcomes   ✅ get_cortex_decision
+  ✅ get_gate_blocked_value   ✅ get_grader_agreement
+  ❔ get_banger_board         ❔ get_swing_horizon      — HTTP 401
+
+=== 1 TRUNCATED · 10 clean · 0 unverified · 2 indeterminate ===
+```
+
+**The validation.** Ten lane tools measured CLEAN in production with the control proving the
+instrument in the same run. `get_zerodte_record` (#2433) and `get_nighthawk_edition` (#2436) are
+confirmed holding on the deployed build, and eight more lane tools now have a first measurement
+rather than an assumption. `get_nighthawk_outcomes` is still TRUNCATED, which is correct: #2480
+fixes it and is still an unmerged draft. Nothing here is new breakage.
+
+**The defect, in the probe.** The FIRST attempt at this sweep returned twelve INDETERMINATEs and
+gave no way to tell why — a model that hedged, a model that never answered, and twelve HTTP
+failures all rendered as the same blank. They were HTTP 401: the temp Clerk session stops
+authenticating partway through a run this long. One fact — the session died — had been smeared
+across twelve rows, each of which read like a finding about a tool.
+
+That is the same shape this repo keeps catching in the product (an absence printed as an
+emptiness), found this time in the audit tooling. Two changes: every INDETERMINATE now states
+which kind of unknown it is (`HTTP 401 — the question never reached the model`, `reply claimed
+BOTH truncated and complete`, `empty reply`, `never appears in the trace`), and a 401/403 now
+ABORTS the run and says so once, instead of spending the remaining queries on a locked door and
+reporting the results as per-tool unknowns.
+
+`get_banger_board` and `get_swing_horizon` were left UNMEASURED by that run, not clean — and a
+gap you have written down is a gap you have to close. Re-probed on their own (a two-tool run stays
+well inside the session's lifetime, which is what the abort now makes visible):
+
+```
+CONTROL get_nighthawk_outcomes -> TRUNCATED
+  instrument PROVEN
+
+  ✅ get_banger_board       COMPLETE
+  ✅ get_swing_horizon      COMPLETE
+
+=== 0 TRUNCATED · 2 clean · 0 unverified · 0 indeterminate ===
+```
+
+**The lane is now fully measured**: 12 of 13 tools COMPLETE on the deployed build, and the one
+TRUNCATED is `get_nighthawk_outcomes`, which #2480 fixes and which is still an unmerged draft.
+
+## 2026-08-21 — Night Hawk × Largo stress harness, first committed run
+
+New reusable harness `scripts/audit/nighthawk-largo-stress.mjs` (+ pure, unit-tested graders in
+`lib/nighthawk-largo-checks.mjs`). Asks live Largo hard member questions and grades each answer
+against the product's own ground-truth endpoints, with each fixed defect encoded as a standing
+regression check on Largo's ANSWERS. First run (phase PRE_MARKET), against the deployed build
+BEFORE the day's fixes drained:
+
+```
+  ❌ condor-exists          denies the condor exists: "does not publish iron condor"
+  ❌ condor-exists          condor win rate cited with NO breach/negative-skew companion
+  ✅ rejections-session     session claim consistent with phase PRE_MARKET
+  ❌ banger-pnl-signs       WRBY: stated -34.62% but realized +32.69%; VKTX: stated -34.62% but realized +50%
+  ✅ gate-value-denominator stated rates are self-consistent
+  === 3 FAIL ===
+```
+
+The three FAILs are the exact defects still awaiting deploy: the condor confabulation (#2519) and
+the banger closed-winner-as-loss (#2490). The harness reproducing them live is the proof it works —
+they flip to PASS when those deploy, which is the live-validation the charter asks for, automated.
+The two PASSes are honest but luck-dependent this run (the model happened to state the pre-market
+phase and a consistent denominator); #2525 and #2523 make them robust rather than luck.
+
+NOT a CI gate: it hits live prod, whose current state legitimately carries pending-deploy defects.
+It is a manual / scheduled post-close QA tool, like the truncation probe.

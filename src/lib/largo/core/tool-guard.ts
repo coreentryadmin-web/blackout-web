@@ -36,6 +36,7 @@ import {
   type Entitlement,
   type LargoCapability,
 } from "@/lib/largo/registry/capability-registry";
+import { roundResultForReading } from "./round-for-reading";
 
 export type ToolCallDiagnostic = {
   tool: string;
@@ -133,7 +134,13 @@ export function makeGuardedToolRunner(opts: GuardedRunnerOptions) {
 
     opts.toolsUsed.push(name);
     try {
-      const result = await opts.execute(name, input, opts.viewer.userId);
+      // Round at the boundary where the data stops being COMPUTED WITH and starts being READ.
+      // A live scan found 547 numbers carrying more decimals than any real measurement has
+      // (`total_premium = 4276339.059400001`, `delta = 0.9160819881475173`). This is the only
+      // place it is safe to do: every OTHER runLargoTool caller — full-platform-snapshot,
+      // platform-context, helix-read — bypasses this runner and keeps full precision, and the
+      // provider functions that feed compute paths are untouched. See round-for-reading.ts.
+      const result = roundResultForReading(await opts.execute(name, input, opts.viewer.userId));
       opts.capturedResults.push(result);
       opts.diagnostics.push({
         tool: name,

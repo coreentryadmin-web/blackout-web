@@ -17,6 +17,24 @@ export type MeridianTimelineItem = {
   impact: MeridianImpact;
   days_until: number;
   ticker: string | null;
+  /** Earnings-only: confirmed/projected date status from calendar feed. */
+  date_status?: string | null;
+  /** Earnings-only: Benzinga importance 0–5. */
+  importance?: number | null;
+  /** Earnings-only: true when actual EPS/revenue landed. */
+  is_printed?: boolean;
+  /**
+   * Earnings-only: the implied move, as a NUMBER.
+   *
+   * It was already in the subtitle string, but a sentence is not a datum — anything that wants
+   * to rank, compare or chart it had to parse prose back into a float. Carried explicitly so the
+   * sector cohort can be computed from the lane the reader is already looking at.
+   */
+  expected_move_pct?: number | null;
+  /** Earnings-only: 2-digit SIC major group — the sector-cohort key. */
+  sic_major_group?: string | null;
+  /** Earnings-only: display name of that cohort, e.g. "Semis & Electronics". */
+  sector_label?: string | null;
 };
 
 export type MeridianSpxPositioning = {
@@ -61,6 +79,8 @@ export type MeridianMacroBrief = {
   correlation_rail: MeridianCorrelationRail;
   surprise: MeridianMacroSurprise | null;
   related_headlines: MeridianCatalystHeadline[];
+  /** Lead economics narrative from Benzinga (prose — not a substitute for indicator actuals). */
+  economics_narrative: string | null;
   spx_positioning: MeridianSpxPositioning;
   flow: MeridianFlowSkew;
   report: MeridianMacroReport;
@@ -164,15 +184,201 @@ export type MeridianStreetEstimate = {
   period: string | null;
   eps_estimate: number | null;
   revenue_estimate: number | null;
+  source?: "earnings_calendar" | "uw" | null;
+};
+
+/** Structured earnings print row from the earnings calendar feed. */
+export type MeridianEarningsCalendarRow = {
+  benzinga_id: string | null;
+  date: string;
+  time: string | null;
+  report_time_et: string | null;
+  date_status: string | null;
+  fiscal_period: string | null;
+  fiscal_year: number | null;
+  importance: number | null;
+  currency: string | null;
+  estimated_eps: number | null;
+  actual_eps: number | null;
+  eps_surprise: number | null;
+  eps_surprise_pct: number | null;
+  estimated_revenue: number | null;
+  actual_revenue: number | null;
+  revenue_surprise: number | null;
+  revenue_surprise_pct: number | null;
+  previous_eps: number | null;
+  previous_revenue: number | null;
+  eps_method: string | null;
+  revenue_method: string | null;
+  notes: string | null;
+  last_updated: string | null;
+  is_printed: boolean;
+};
+
+export type MeridianEarningsYoY = {
+  eps_yoy_pct: number | null;
+  revenue_yoy_pct: number | null;
+};
+
+export type MeridianEarningsGuidanceRow = {
+  date: string;
+  fiscal_period: string | null;
+  fiscal_year: number | null;
+  release_type: string | null;
+  min_eps: number | null;
+  max_eps: number | null;
+  min_revenue: number | null;
+  max_revenue: number | null;
+  street_eps: number | null;
+  street_revenue: number | null;
+  eps_method: string | null;
+  revenue_method: string | null;
+  notes: string | null;
+  last_updated: string | null;
+};
+
+export type MeridianEarningsRevision = {
+  ticker: string;
+  date: string;
+  company_name: string | null;
+  last_updated: string | null;
+  date_status: string | null;
+  importance: number | null;
+  headline: string;
+};
+
+/** Estimate revision with EPS/revenue deltas (Redis snapshot diff). */
+export type MeridianEstimateRevisionEntry = {
+  ticker: string;
+  company_name: string | null;
+  date: string;
+  last_updated: string;
+  change_kind: "eps" | "revenue" | "date_status" | "print" | "calendar";
+  eps_delta: number | null;
+  revenue_delta_pct: number | null;
+  estimated_eps: number | null;
+  estimated_revenue: number | null;
+  headline: string;
+};
+
+export type MeridianEarningsWeekAnalytics = {
+  names_count: number;
+  printed_this_week: number;
+  eps_beat_rate: number | null;
+  revenue_beat_rate: number | null;
+  /** Prints each universe rate was computed from. `0` means the rate beside it is null. */
+  eps_graded?: number;
+  revenue_graded?: number;
+  avg_surprise_pct: number | null;
+  median_surprise_pct: number | null;
+  headline: string;
+};
+
+export type MeridianStreetSkew = {
+  skew: "bullish" | "bearish" | "neutral";
+  raised_count: number;
+  lowered_count: number;
+  initiated_count: number;
+  sample_size: number;
+  headline: string;
+  latest_target: number | null;
+  latest_firm: string | null;
+};
+
+export type MeridianPriceTargetRow = {
+  price_target: number;
+  firm: string | null;
+  action: string | null;
+  summary: string;
+  published: string | null;
+};
+
+export type MeridianAfterHoursMover = {
+  title: string;
+  channel: string | null;
+  published: string | null;
+};
+
+export type MeridianCatalystBrief = {
+  type: string;
+  title: string;
+  published: string | null;
+};
+
+export type MeridianEarningsWeekRow = {
+  ticker: string;
+  company_name: string | null;
+  date: string;
+  time_et: string | null;
+  importance: number | null;
+  date_status: string | null;
+  estimated_eps: number | null;
+  is_printed: boolean;
+};
+
+/**
+ * The FULL earnings window the analytics panels read — deliberately separate from
+ * `earnings_week`.
+ *
+ * `earnings_week` is a curated grid: importance >=4, capped at 24 rows. That curation is right for
+ * a "mega-cap week" strip and wrong for analytics — a beat rate computed over only the biggest 24
+ * names is not the week's beat rate, and a calendar built from them shows a fraction of the day's
+ * prints. So the analytics window carries every row in range with the surprise/actual fields the
+ * curated projection drops, rather than widening (and thereby changing) the existing grid.
+ *
+ * Structurally satisfies `EarningsAnalyticsRow` in meridian-earnings-analytics-core.
+ */
+export type MeridianEarningsAnalyticsRow = {
+  ticker: string;
+  company_name: string | null;
+  date: string;
+  time: string | null;
+  date_status: string | null;
+  importance: number | null;
+  fiscal_period: string | null;
+  fiscal_year: number | null;
+  estimated_eps: number | null;
+  actual_eps: number | null;
+  estimated_revenue: number | null;
+  actual_revenue: number | null;
+  eps_surprise_pct: number | null;
+  revenue_surprise_pct: number | null;
 };
 
 export type MeridianEarningsEnrichment = {
   catalysts: MeridianCatalystHeadline[];
   earnings_headlines: MeridianCatalystHeadline[];
   street_estimates: MeridianStreetEstimate[];
+  earnings_calendar: MeridianEarningsCalendarRow | null;
+  earnings_yoy: MeridianEarningsYoY | null;
+  corporate_guidance: MeridianEarningsGuidanceRow | null;
+  guidance_entitled: boolean;
+  /** True when a corporate guidance row exists for this ticker (distinct from SKU entitlement). */
+  guidance_on_file?: boolean;
+  post_print: {
+    lean: "beat" | "miss" | "inline" | "unknown";
+    headline: string | null;
+  } | null;
   print_history: MeridianEarningsPrint[];
   print_history_summary: string | null;
+  /** Non-null when the earnings-calendar fetch failed — empty panels must say WHY. */
+  calendar_error?: string | null;
+  beat_rates: {
+    eps_beat_rate: number | null;
+    revenue_beat_rate: number | null;
+    combined_beat_rate: number | null;
+    /** How many graded prints each rate came from — a rate without its cohort is not a fact
+     *  about the company. `combined_graded` is the POOLED denominator (eps + revenue), which is
+     *  what `combined_beat_rate` is now pooled over rather than averaged across. */
+    eps_graded?: number;
+    revenue_graded?: number;
+    combined_graded?: number;
+  } | null;
   analyst_revisions: MeridianAnalystRevision[];
+  price_targets: MeridianPriceTargetRow[];
+  street_skew: MeridianStreetSkew | null;
+  estimate_revisions: MeridianEstimateRevisionEntry[];
+  catalyst_briefs: MeridianCatalystBrief[];
   insider_activity: MeridianInsiderActivity[];
   congress_trades: MeridianCongressActivity[];
   expected_vs_realized: MeridianExpectedVsRealized | null;
@@ -180,10 +386,35 @@ export type MeridianEarningsEnrichment = {
 
 export type MeridianEarningsPrint = {
   report_date: string | null;
+  /** Benzinga report time (ET). Drives BMO/AMC reaction anchoring — see meridian-reaction-core. */
+  report_time_et?: string | null;
+  /**
+   * Which session `session_change_pct` was measured on:
+   *   bmo_session            — pre-open print, report date's own session
+   *   amc_next_session       — post-close print, the FOLLOWING session
+   *   assumed_report_session — timing unknown; report date assumed. Mark these in the UI:
+   *                            for an AMC reporter this value is pre-print drift, not a reaction.
+   * Null when no move could be measured at all.
+   */
+  reaction_basis?: "bmo_session" | "amc_next_session" | "assumed_report_session" | null;
+  /**
+   * THE reaction to the print. Prefer this over `session_change_pct` anywhere the number is
+   * presented as a reaction: for a post-close print the reaction is priced overnight, so this
+   * is read from the last close BEFORE the print, and the two routinely differ in SIGN.
+   * `reaction_measure` says which read produced it.
+   */
+  reaction_pct?: number | null;
+  reaction_measure?: "session_open_to_close" | "prior_close_to_close" | null;
   eps_estimate: number | null;
   eps_actual: number | null;
+  revenue_estimate?: number | null;
+  revenue_actual?: number | null;
+  revenue_surprise_pct?: number | null;
   surprise_pct: number | null;
   beat: boolean | null;
+  eps_method?: string | null;
+  revenue_method?: string | null;
+  source?: "earnings_calendar" | "uw" | null;
   /** Options-implied move into that print when UW carries it. */
   expected_move_pct: number | null;
   session_change_pct: number | null;
@@ -241,12 +472,29 @@ export type MeridianEarningsThermalRead = {
   gex_king_strike: number | null;
   call_wall: number | null;
   put_wall: number | null;
+  /** Raw gamma argmax strike when display walls were coerced for band ordering. */
+  gamma_call_wall?: number | null;
+  /** Raw gamma argmin strike when display walls were coerced for band ordering. */
+  gamma_put_wall?: number | null;
+  /** True when gamma call/put ordering inverted before display coercion. */
+  walls_inverted?: boolean;
   flip: number | null;
   max_pain: number | null;
   net_gex_label: string | null;
   gamma_regime: string | null;
   top_strikes: Array<{ strike: number; net_label: string; pct_of_total: number }>;
   nearest_wall: { strike: number; kind: "resistance" | "support"; distance_pts: number } | null;
+  /**
+   * Which chain the levels above describe. "event_expiry" = the first expiry on or after the
+   * print, i.e. the contract that actually prices it. "aggregate" = the whole-book near-term
+   * sum, which mixes expiries that may die before the company reports. They render identically,
+   * so the scope has to be stated.
+   */
+  expiry_scope?: "event_expiry" | "aggregate";
+  expiry_used?: string | null;
+  expiry_days_from_event?: number | null;
+  expiry_label?: string | null;
+  aggregate_expiry_count?: number;
 };
 
 export type MeridianEarningsDarkPoolPrint = {
@@ -278,7 +526,18 @@ export type MeridianEarningsVectorRead = {
 };
 
 export type MeridianEarningsReportSignal = {
-  pillar: "flow" | "dark_pool" | "thermal" | "vector" | "history" | "fundamentals" | "analyst" | "news" | "insider";
+  pillar:
+    | "flow"
+    | "dark_pool"
+    | "thermal"
+    | "vector"
+    | "history"
+    | "fundamentals"
+    | "analyst"
+    | "news"
+    | "insider"
+    | "surprise"
+    | "yoy";
   label: string;
   lean: "bullish" | "bearish" | "neutral";
   weight: number;
@@ -326,6 +585,14 @@ export type MeridianEarningsIntel = {
 
 export type MeridianEarningsDetail = {
   kind: "earnings";
+  /** Day series of past reads for this event, oldest first. Empty until a second day exists. */
+  drift_snapshots?: Array<{
+    day: string;
+    score: number | null;
+    verdict: "bullish" | "bearish" | "neutral" | null;
+    confidence: string | null;
+    pillars: Record<string, string> | null;
+  }>;
   pack: PreEarningsPackCard;
   enrichment: MeridianEarningsEnrichment;
   intel: MeridianEarningsIntel;
@@ -417,6 +684,20 @@ export type MeridianOpexHistoryRow = {
   max_pain: number | null;
   spx_close: number | null;
   pin_held: boolean | null;
+  /**
+   * WHERE `max_pain` came from — or, when null, WHY there is nothing.
+   *
+   * A bare null here is indistinguishable from "there was no pin", which is a different claim
+   * entirely. For a SETTLED expiry the live chain carries no open interest at all (it prunes
+   * settled expiries by design), and historical max pain is not stored anywhere — so this is a
+   * permanent, non-retryable absence, not a transient miss.
+   */
+  max_pain_basis: "expiry_open_interest" | null;
+  max_pain_unavailable: {
+    reason: string;
+    what_is_missing: string;
+    retryable: boolean;
+  } | null;
 };
 
 export type MeridianFdaDetail = {
@@ -427,6 +708,7 @@ export type MeridianFdaDetail = {
   drug: string | null;
   indication: string | null;
   catalysts: MeridianCatalystHeadline[];
+  catalyst_briefs: MeridianCatalystBrief[];
   insider_activity: MeridianInsiderActivity[];
   congress_trades: MeridianCongressActivity[];
   prior_decisions: MeridianFdaPriorDecision[];
@@ -457,6 +739,7 @@ export type MeridianTimelineStats = {
   opex: number;
   high_impact: number;
   next_24h: number;
+  earnings_mega_cap: number;
 };
 
 export type MeridianTickerLookup = {
@@ -485,4 +768,28 @@ export type MeridianTimelinePayload = {
   items: MeridianTimelineItem[];
   stats: MeridianTimelineStats;
   board_tickers: string[];
+  earnings_week: MeridianEarningsWeekRow[];
+  earnings_week_analytics: MeridianEarningsWeekAnalytics | null;
+  earnings_analytics_rows: MeridianEarningsAnalyticsRow[];
+  recent_earnings_revisions: MeridianEarningsRevision[];
+  estimate_revision_timeline: MeridianEstimateRevisionEntry[];
+  after_hours_movers: MeridianAfterHoursMover[];
+  earnings_calendar_entitled: boolean;
+  /** Prints hidden because the name has no listed options. */
+  non_optionable_hidden?: number;
+  /** How far the options-implied move got — requested / attempted / skipped / resolved, and a
+   *  note when anything was skipped. A null `expected_move_pct` on a SKIPPED name is not evidence
+   *  the name lacks an options market. */
+  expected_move_coverage?: {
+    requested: number;
+    attempted: number;
+    skipped: number;
+    resolved: number;
+    note: string | null;
+  };
+  /** False when the optionable universe was unavailable, so NOTHING was filtered. */
+  optionable_filter_applied?: boolean;
+  /** How many lane rows carry a sector cohort key, and how many do not. Coverage, stated. */
+  sectors_classified?: number;
+  sectors_unclassified?: number;
 };

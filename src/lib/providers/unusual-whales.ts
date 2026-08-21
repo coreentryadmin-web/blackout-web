@@ -3,7 +3,7 @@ import { isUwUpstream5xx } from "@/lib/uw-upstream-5xx";
 import { isUwTransientNetwork } from "@/lib/uw-transient-network";
 import { isSpxEngineCronWindow } from "@/features/spx/lib/spx-play-session-guards";
 import { isTradingDayEt, formatEtDate } from "@/features/nighthawk/lib/session";
-import { todayEt } from "@/lib/et-date";
+import { execAtEtYmd, todayEt } from "@/lib/et-date";
 import {
   buildUwRequestKey,
   isUwCircuitOpen,
@@ -432,8 +432,11 @@ function analyzeStrikeGex(rows: Record<string, unknown>[]) {
 }
 
 /** 0DTE strike GEX ladder — same expiry-strike feed, strike-level rows for gamma walls. */
-export async function fetchUwOdteSpotExposuresByStrike(ticker = "SPX", limit = 500) {
-  const expiry = todayEt();
+export async function fetchUwOdteSpotExposuresByStrike(
+  ticker = "SPX",
+  expiry: string = todayEt(),
+  limit = 500
+) {
   const data = await uwGetSafe<unknown>(`/api/stock/${safeTicker(ticker)}/spot-exposures/expiry-strike`, {
     "expirations[]": expiry,
     limit,
@@ -911,7 +914,8 @@ export async function fetchUwDarkPool(
       // — fabricating the current time sorted undated prints into the live tape as
       // just-executed. No trustworthy timestamp → not on the tape.
       if (!execAt) continue;
-      if (!execAt.startsWith(today)) continue;
+      const execDay = execAtEtYmd(execAt);
+      if (execDay !== today) continue;
 
       const premium = Number(row.premium ?? row.size ?? row.notional ?? 0);
       if (premium <= 0) continue;
@@ -967,7 +971,8 @@ export async function fetchUwDarkPoolMarketWide(
 
   for (const row of rows) {
     const execAt = String(row.executed_at ?? row.date ?? "");
-    if (!execAt || !execAt.startsWith(today)) continue;
+    const execDay = execAtEtYmd(execAt);
+    if (!execDay || execDay !== today) continue;
     const premium = Number(row.premium ?? row.size ?? row.notional ?? 0);
     if (premium <= 0 || (minPremium > 0 && premium < minPremium)) continue;
     const strikeRaw = Number(row.strike ?? row.price ?? row.ref_price ?? 0);
@@ -2418,4 +2423,38 @@ export async function fetchUwGlobalFlowAlerts(
   return extractRows(data)
     .map((raw) => parseUwFlowAlert(raw))
     .slice(0, limit);
+}
+
+/**
+ * The universe of tickers with LISTED OPTIONS (~6.3k names, probed live 2026-08-18).
+ *
+ * Cached for 12h because the listed-options universe changes at most daily, and because the
+ * consumer (Meridian's earnings lane) would otherwise pull it on every timeline build.
+ *
+ * Returns `null` — never `[]` — when the list cannot be fetched, so callers can distinguish
+ * "no options universe available" from "the universe is empty". Consumers of this list FAIL
+ * OPEN: filtering a lane against an empty set would blank it, which reads to a member as
+ * "there are no earnings", a lie an infrastructure error should never be allowed to tell.
+ */
+export async function fetchUwOptionableTickers(): Promise<string[] | null> {
+  if (!uwConfigured()) return null;
+  try {
+    const redis = await getUwCacheRedis();
+    const rows = await uwCacheGet(redis, UW_KEYS.optionableTickers(), UW_CACHE_TTL.optionableTickers, async () => {
+      const data = await uwGetSafe<unknown>("/api/option-trades/optionable-tickers", {});
+      // The live shape is a bare array of strings under `data`; tolerate object rows in case
+      // the provider enriches it, rather than silently returning nothing if it ever does.
+      const list = Array.isArray(data)
+        ? data
+        : Array.isArray((data as { data?: unknown })?.data)
+          ? ((data as { data: unknown[] }).data)
+          : [];
+      return list
+        .map((x) => (typeof x === "string" ? x : ((x as { ticker?: string; symbol?: string })?.ticker ?? (x as { symbol?: string })?.symbol)))
+        .filter((x): x is string => typeof x === "string" && x.length > 0);
+    });
+    return Array.isArray(rows) && rows.length > 0 ? (rows as string[]) : null;
+  } catch {
+    return null;
+  }
 }

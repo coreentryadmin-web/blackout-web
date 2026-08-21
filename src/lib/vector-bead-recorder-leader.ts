@@ -68,12 +68,33 @@ let tickTimer: ReturnType<typeof setInterval> | null = null;
 let activeTickTimer: ReturnType<typeof setInterval> | null = null;
 let leaderRefreshTimer: ReturnType<typeof setInterval> | null = null;
 let recordInFlight = false;
+/**
+ * Sweeps allowed to overlap. Two is enough to stop a single slow sweep stalling the next tick
+ * while still refusing to stack work without bound — if two are already running, the system is
+ * genuinely saturated and starting a third would make it worse, not faster.
+ */
+const MAX_CONCURRENT_SWEEPS = 2;
+let concurrentSweeps = 0;
 /** Per-ticker consecutive-failure streaks across sweeps. Bounded by the number of CURRENTLY
  *  failing tickers (successes are deleted), not by universe size. */
 const tickerFailureStreaks = new Map<string, number>();
 /** Rate-limit state for the sweep-overrun alarm — see evaluateSweepBudget. */
 const sweepBudget: SweepBudgetState = { lastLoggedAt: 0 };
 let activeRecordInFlight = false;
+/**
+ * Overlap bound for the ACTIVE (viewer-driven, 15s) lane — the same rule as the universe sweep.
+ *
+ * `activeRecordInFlight` alone used to DROP the whole lane whenever the previous pass was still
+ * running, so one slow viewer ticker cost every other viewer their 15s sample. Two passes may now
+ * overlap; a third means the lane is genuinely saturated and starting it would make things worse.
+ */
+const MAX_CONCURRENT_ACTIVE_SWEEPS = 2;
+let concurrentActiveSweeps = 0;
+/** Failure streaks for the active lane, kept SEPARATE from the universe map so the two lanes'
+ *  cadences (5s vs 15s) can be reported honestly in their own log lines. */
+const activeTickerFailureStreaks = new Map<string, number>();
+/** Rate-limit state for the active lane's overrun alarm. */
+const activeSweepBudget: SweepBudgetState = { lastLoggedAt: 0 };
 let lastHeartbeatAt = 0;
 let heartbeatInFlight = false;
 
@@ -200,7 +221,19 @@ async function maybeLogLeaderHeartbeat(): Promise<void> {
 
 async function tick(): Promise<void> {
   if (!isEtCashRth()) return;
-  if (recordInFlight) return;
+  // NO sweep-level in-flight guard any more.
+  //
+  // This used to be `if (recordInFlight) return`, which dropped the ENTIRE tick — all ~122 tickers
+  // — whenever the previous sweep was still running. The achieved cadence became
+  // `ceil(sweepMs / 5s) x 5s`, which is exactly what `evaluateSweepBudget` computes and logs: the
+  // system already knew it was degrading and had no way to stop. Measured live 2026-08-18: 60s
+  // median gaps on TSLA/META/AAPL/AMD against a 5s spec, with holes of 1080s and 1190s.
+  //
+  // The guard now lives PER TICKER inside the recorder, so a slow name throttles only itself.
+  // `recordInFlight` is kept solely to bound overlap: a sweep may overlap the previous one, but we
+  // do not stack them without limit, and the per-ticker set plus the shared concurrency ceiling
+  // cap the real work either way.
+  if (concurrentSweeps >= MAX_CONCURRENT_SWEEPS) return;
 
   if (!isLeader) {
     isLeader = await tryAcquireLead();
@@ -211,6 +244,7 @@ async function tick(): Promise<void> {
     );
   }
 
+  concurrentSweeps += 1;
   recordInFlight = true;
   try {
     // Sweep OUR shards only, so every replica contributes instead of one doing all 122 while its
@@ -240,7 +274,8 @@ async function tick(): Promise<void> {
         `[vector-bead-recorder] SWEEP OVER BUDGET — universe is recording every ` +
           `${budget.effectiveCadenceMs / 1000}s, not the designed ${budget.budgetMs / 1000}s ` +
           `(sweep ${budget.elapsedMs}ms for ${budget.recorded}/${budget.total} tickers). ` +
-          `Every tick landing inside a running sweep is dropped, so bead rails are this much thinner.`
+          `Ticks are no longer dropped wholesale (the guard is per-ticker), but a sweep this slow ` +
+          `still means individual tickers skip their turn — check the busy/deferred counts.`
       );
     }
     // PER-TICKER visibility. The whole-pass warning above only fires when EVERY ticker fails, so a
@@ -266,13 +301,21 @@ async function tick(): Promise<void> {
     );
   } finally {
     recordInFlight = false;
+    concurrentSweeps = Math.max(0, concurrentSweeps - 1);
   }
 }
 
 async function activeTick(): Promise<void> {
   if (!isEtCashRth()) return;
-  if (activeRecordInFlight || !isLeader) return;
+  if (!isLeader) return;
+  // Same correction as the universe sweep above, one lane later. This was
+  // `if (activeRecordInFlight) return`, i.e. one slow viewer ticker dropped the ENTIRE lane and
+  // cost every other viewer their 15s sample — a bigger hole per drop than the universe lane's,
+  // on names nobody else is recording. The guard now lives per ticker inside the recorder;
+  // `activeRecordInFlight` is kept only so external readers of leader state keep working.
+  if (concurrentActiveSweeps >= MAX_CONCURRENT_ACTIVE_SWEEPS) return;
 
+  concurrentActiveSweeps += 1;
   activeRecordInFlight = true;
   try {
     const result = await recordActiveNonUniverseWallSamples();
@@ -281,6 +324,39 @@ async function activeTick(): Promise<void> {
         `[vector-bead-recorder] active non-universe: zero samples (${result.failed}/${result.total} failed, ${result.elapsedMs}ms)`
       );
     }
+    const budget = evaluateSweepBudget(
+      result.elapsedMs,
+      VECTOR_BEAD_RECORD_ACTIVE_TICK_MS,
+      result.recorded,
+      result.total,
+      Date.now(),
+      activeSweepBudget
+    );
+    if (budget.kind === "overrun") {
+      console.warn(
+        `[vector-bead-recorder] ACTIVE LANE OVER BUDGET — viewer tickers are recording every ` +
+          `${budget.effectiveCadenceMs / 1000}s, not the designed ${budget.budgetMs / 1000}s ` +
+          `(pass ${budget.elapsedMs}ms for ${budget.recorded}/${budget.total} tickers).`
+      );
+    }
+    // Per-ticker visibility, same reasoning as the universe lane: the whole-pass warning above
+    // only fires when EVERY viewer ticker fails, so one name going dark logged nothing at all.
+    for (const ev of trackTickerFailures(
+      activeTickerFailureStreaks,
+      result.attempted,
+      result.failedTickers
+    )) {
+      const seconds = (ev.consecutive * VECTOR_BEAD_RECORD_ACTIVE_TICK_MS) / 1000;
+      if (ev.kind === "dark") {
+        console.warn(
+          `[vector-bead-recorder] active ticker DARK: ${ev.ticker} — ${ev.consecutive} consecutive failed passes (~${seconds}s of missing beads)`
+        );
+      } else {
+        console.log(
+          `[vector-bead-recorder] active ticker RECOVERED: ${ev.ticker} — after ${ev.consecutive} consecutive failed passes (~${seconds}s dark)`
+        );
+      }
+    }
   } catch (err) {
     console.error(
       "[vector-bead-recorder] active tick error:",
@@ -288,6 +364,7 @@ async function activeTick(): Promise<void> {
     );
   } finally {
     activeRecordInFlight = false;
+    concurrentActiveSweeps = Math.max(0, concurrentActiveSweeps - 1);
   }
 }
 

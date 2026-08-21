@@ -139,3 +139,15 @@ test("naming a tool instead of calling it is banned", () => {
   // Clarification is still allowed where it is genuinely needed — the rule targets deflection.
   assert.match(p, /Ask only when the\s+question is genuinely ambiguous/);
 });
+
+test("dealer-gamma: the regime is never labelled bullish/bearish, even under a leading question", () => {
+  // Found by a live stress test 2026-08-21: with the tool payload correctly non-directional
+  // (#2422), the MODEL still occasionally answered "dealer gamma reads bearish" when a member
+  // asked "bullish or bearish?". Short gamma amplifies BOTH ways — a direction is the one thing
+  // the gamma reading does not carry. The guardrail below makes the correct behaviour explicit at
+  // the word level, not just as mechanism; this is its tripwire.
+  const p = LARGO_SYSTEM_PROMPT;
+  assert.match(p, /Never answer "bullish" or "bearish" ABOUT THE GAMMA REGIME ITSELF/);
+  // and it must point the direction question at the axes that actually carry it
+  assert.match(p, /order flow \(Helix\) and dealer DELTA/);
+});

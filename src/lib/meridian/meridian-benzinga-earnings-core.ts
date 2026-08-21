@@ -1,0 +1,557 @@
+import type {
+  BenzingaCorporateGuidance,
+  BenzingaStructuredEarnings,
+} from "@/lib/providers/polygon";
+import { daysBetweenYmd, type NextEarnings } from "@/lib/providers/uw-earnings";
+import type {
+  MeridianEarningsCalendarRow,
+  MeridianEarningsGuidanceRow,
+  MeridianEarningsPrint,
+  MeridianEarningsRevision,
+  MeridianEarningsWeekRow,
+  MeridianEarningsAnalyticsRow,
+  MeridianEarningsYoY,
+  MeridianImpact,
+  MeridianStreetEstimate,
+} from "@/features/meridian/lib/meridian-types";
+import type { EarningsTimelineInput } from "@/features/meridian/lib/meridian-timeline";
+
+/** Benzinga surprise fields are ratios (0.0625 = 6.25%). Normalize to display percent. */
+export function benzingaSurpriseToDisplayPct(raw: number | null | undefined): number | null {
+  if (raw == null || !Number.isFinite(raw)) return null;
+  const n = Number(raw);
+  if (Math.abs(n) <= 1.5) return Number((n * 100).toFixed(1));
+  return Number(n.toFixed(1));
+}
+
+/** Map Benzinga HH:MM:SS → premarket / afterhours bucket for timeline chips. */
+export function earningsWhenFromTime(time: string | null): "premarket" | "afterhours" | null {
+  if (!time) return null;
+  const hour = Number(time.slice(0, 2));
+  if (!Number.isFinite(hour)) return null;
+  return hour < 12 ? "premarket" : "afterhours";
+}
+
+/** Precise ET clock for timeline rows — HH:mm from Benzinga time field. */
+export function earningsReportTimeEt(time: string | null): string | null {
+  if (!time) return null;
+  const parts = time.split(":");
+  if (parts.length < 2) return null;
+  return `${parts[0]!.padStart(2, "0")}:${parts[1]!.padStart(2, "0")}`;
+}
+
+export function impactFromEarningsImportance(importance: number | null | undefined): MeridianImpact {
+  if (importance == null || !Number.isFinite(importance)) return "high";
+  if (importance >= 4) return "high";
+  if (importance >= 2) return "medium";
+  return "low";
+}
+
+export function benzingaToCalendarRow(row: BenzingaStructuredEarnings): MeridianEarningsCalendarRow {
+  return {
+    benzinga_id: row.benzinga_id,
+    date: row.date,
+    time: row.time,
+    report_time_et: earningsReportTimeEt(row.time),
+    date_status: row.date_status,
+    fiscal_period: row.fiscal_period,
+    fiscal_year: row.fiscal_year,
+    importance: row.importance,
+    currency: row.currency,
+    estimated_eps: row.estimated_eps,
+    actual_eps: row.actual_eps,
+    eps_surprise: row.eps_surprise,
+    eps_surprise_pct: benzingaSurpriseToDisplayPct(row.eps_surprise_pct),
+    estimated_revenue: row.estimated_revenue,
+    actual_revenue: row.actual_revenue,
+    revenue_surprise: row.revenue_surprise,
+    revenue_surprise_pct: benzingaSurpriseToDisplayPct(row.revenue_surprise_pct),
+    previous_eps: row.previous_eps,
+    previous_revenue: row.previous_revenue,
+    eps_method: row.eps_method,
+    revenue_method: row.revenue_method,
+    notes: row.notes,
+    last_updated: row.last_updated,
+    is_printed: row.actual_eps != null || row.actual_revenue != null,
+  };
+}
+
+export function benzingaToStreetEstimate(row: BenzingaStructuredEarnings): MeridianStreetEstimate {
+  const period =
+    row.fiscal_period && row.fiscal_year != null
+      ? `${row.fiscal_period} FY${String(row.fiscal_year).slice(-2)}`
+      : row.fiscal_period ?? row.date;
+  return {
+    period,
+    eps_estimate: row.estimated_eps,
+    revenue_estimate: row.estimated_revenue,
+    source: "earnings_calendar",
+  };
+}
+
+export function computeEarningsYoY(row: BenzingaStructuredEarnings | MeridianEarningsCalendarRow): MeridianEarningsYoY | null {
+  const est = row.estimated_eps;
+  const prev = row.previous_eps;
+  const rev = row.estimated_revenue;
+  const prevRev = row.previous_revenue;
+  const eps_yoy_pct =
+    est != null && prev != null && prev !== 0 ? Number((((est - prev) / Math.abs(prev)) * 100).toFixed(1)) : null;
+  const revenue_yoy_pct =
+    rev != null && prevRev != null && prevRev !== 0
+      ? Number((((rev - prevRev) / Math.abs(prevRev)) * 100).toFixed(1))
+      : null;
+  if (eps_yoy_pct == null && revenue_yoy_pct == null) return null;
+  return { eps_yoy_pct, revenue_yoy_pct };
+}
+
+export function benzingaRowToTimelineInput(row: BenzingaStructuredEarnings): EarningsTimelineInput {
+  const when = earningsWhenFromTime(row.time);
+  return {
+    ticker: row.ticker,
+    name: row.company_name?.trim() || row.ticker,
+    report_date: row.date,
+    when: when ?? "afterhours",
+    report_time: earningsReportTimeEt(row.time),
+    date_status: row.date_status,
+    importance: row.importance,
+    expected_move_pct: null,
+    is_printed: row.actual_eps != null || row.actual_revenue != null,
+    eps_method: row.eps_method,
+    revenue_method: row.revenue_method,
+    estimated_eps: row.estimated_eps,
+    source: "earnings_calendar",
+  };
+}
+
+function earningsTimelineKey(ticker: string, date: string): string {
+  return `${ticker.toUpperCase()}:${date.slice(0, 10)}`;
+}
+
+/**
+ * Benzinga calendar rows → timeline inputs (sorted by report date).
+ */
+export function benzingaRowsToTimelineInputs(
+  benzingaRows: BenzingaStructuredEarnings[]
+): EarningsTimelineInput[] {
+  return benzingaRows
+    .map(benzingaRowToTimelineInput)
+    .sort((a, b) => (a.report_date ?? "").localeCompare(b.report_date ?? ""));
+}
+
+/** Overlay Polygon chain-IV expected move onto timeline rows (keyed by ticker). */
+export function overlayTimelineExpectedMoves(
+  rows: EarningsTimelineInput[],
+  emByTicker: Map<string, number | null>
+): EarningsTimelineInput[] {
+  return rows.map((row) => {
+    const em = emByTicker.get(row.ticker.trim().toUpperCase());
+    if (em == null) return row;
+    return { ...row, expected_move_pct: em, source: row.source ?? "earnings_calendar" };
+  });
+}
+
+/** Next upcoming print from Benzinga structured earnings (Meridian/Largo — no UW REST). */
+export function parseNextEarningsFromBenzinga(
+  ticker: string,
+  rows: BenzingaStructuredEarnings[],
+  todayYmd: string
+): NextEarnings | null {
+  const sym = ticker.trim().toUpperCase();
+  const upcoming = rows
+    .filter((r) => r.date >= todayYmd)
+    .sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? "").localeCompare(b.time ?? ""));
+  const row = upcoming[0];
+  if (!row) return null;
+  const days = daysBetweenYmd(todayYmd, row.date);
+  if (days == null || days < 0) return null;
+  const when = earningsWhenFromTime(row.time);
+  return {
+    ticker: sym,
+    earnings_date: row.date,
+    days_until: days,
+    report_time: when ?? null,
+    is_confirmed:
+      row.date_status === "confirmed" ? true : row.date_status === "projected" ? false : null,
+  };
+}
+
+/**
+ * @deprecated UW grid removed — use benzingaRowsToTimelineInputs + overlayTimelineExpectedMoves.
+ * Kept for tests migrating off the old merge shape.
+ */
+export function mergeEarningsTimelineSources(
+  benzingaRows: BenzingaStructuredEarnings[],
+  gridRows: EarningsTimelineInput[]
+): EarningsTimelineInput[] {
+  const byKey = new Map<string, EarningsTimelineInput>();
+  const benzingaByTicker = new Map<string, BenzingaStructuredEarnings>();
+
+  for (const row of benzingaRows) {
+    byKey.set(earningsTimelineKey(row.ticker, row.date), benzingaRowToTimelineInput(row));
+    const prev = benzingaByTicker.get(row.ticker);
+    if (!prev || row.date < prev.date) benzingaByTicker.set(row.ticker, row);
+  }
+
+  for (const grid of gridRows) {
+    const ticker = grid.ticker.trim().toUpperCase();
+    const date = grid.report_date?.slice(0, 10);
+    if (!ticker || !date) continue;
+    const key = earningsTimelineKey(ticker, date);
+    const existing = byKey.get(key);
+    if (existing) {
+      byKey.set(key, {
+        ...existing,
+        expected_move_pct: grid.expected_move_pct ?? existing.expected_move_pct,
+        when: existing.when ?? grid.when,
+        source: existing.source ?? "earnings_calendar",
+      });
+      continue;
+    }
+
+    const bz = benzingaByTicker.get(ticker);
+    if (bz && bz.date !== date && bz.date_status === "confirmed") {
+      continue;
+    }
+    byKey.set(key, {
+      ...grid,
+      ticker,
+      report_date: date,
+      source: "chain_iv",
+    });
+  }
+
+  return [...byKey.values()].sort((a, b) => (a.report_date ?? "").localeCompare(b.report_date ?? ""));
+}
+
+/** @deprecated Use mergeEarningsTimelineSources */
+export function mergeBenzingaTimelineRows(
+  existing: Map<string, EarningsTimelineInput>,
+  benzingaRows: BenzingaStructuredEarnings[]
+): Map<string, EarningsTimelineInput> {
+  const grid = [...existing.values()];
+  const merged = mergeEarningsTimelineSources(benzingaRows, grid);
+  const out = new Map<string, EarningsTimelineInput>();
+  for (const row of merged) out.set(row.ticker.toUpperCase(), row);
+  return out;
+}
+
+export function mergeStreetEstimates(
+  benzingaRows: BenzingaStructuredEarnings[],
+  uwRows: MeridianStreetEstimate[]
+): MeridianStreetEstimate[] {
+  const upcoming = benzingaRows
+    .filter((r) => r.actual_eps == null && (r.estimated_eps != null || r.estimated_revenue != null))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const fromBenzinga = upcoming.slice(0, 4).map(benzingaToStreetEstimate);
+  if (!fromBenzinga.length) return uwRows.slice(0, 4);
+  const periods = new Set(fromBenzinga.map((r) => r.period));
+  const tail = uwRows.filter((r) => r.period && !periods.has(r.period)).slice(0, 2);
+  return [...fromBenzinga, ...tail].slice(0, 6);
+}
+
+export function pickEarningsCalendarRow(
+  rows: BenzingaStructuredEarnings[],
+  eventDate: string | null | undefined
+): MeridianEarningsCalendarRow | null {
+  if (!eventDate) return null;
+  const match = rows.find((r) => r.date === eventDate) ?? rows[0] ?? null;
+  return match ? benzingaToCalendarRow(match) : null;
+}
+
+export function benzingaRowsToPrintHistory(
+  rows: BenzingaStructuredEarnings[],
+  limit = 8
+): MeridianEarningsPrint[] {
+  return rows
+    .filter((r) => r.actual_eps != null || r.actual_revenue != null)
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, limit)
+    .map((r) => {
+      const surprise_pct = benzingaSurpriseToDisplayPct(r.eps_surprise_pct);
+      let beat: boolean | null = null;
+      if (r.eps_surprise != null) beat = r.eps_surprise >= 0;
+      else if (surprise_pct != null) beat = surprise_pct >= 0;
+      return {
+        report_date: r.date,
+        // Carried so the reaction can be anchored to the session that could trade the news:
+        // an AMC print's reaction is the NEXT session, not the report date's. Without this
+        // the history chart attributes pre-print drift to the print itself.
+        report_time_et: r.time,
+        eps_estimate: r.estimated_eps,
+        eps_actual: r.actual_eps,
+        revenue_estimate: r.estimated_revenue,
+        revenue_actual: r.actual_revenue,
+        revenue_surprise_pct: benzingaSurpriseToDisplayPct(r.revenue_surprise_pct),
+        surprise_pct,
+        beat,
+        eps_method: r.eps_method,
+        revenue_method: r.revenue_method,
+        expected_move_pct: null,
+        session_change_pct: null,
+        next_day_change_pct: null,
+        source: "earnings_calendar" as const,
+      };
+    });
+}
+
+/**
+ * Beat rates, each with THE COHORT IT CAME FROM.
+ *
+ * A rate without its denominator is not a fact about the company. "100% beat rate" off ONE
+ * graded print and off eight are the same string, and the second is evidence while the first is
+ * barely an observation — but both drive a bullish pillar lean at the 0.65 threshold and both
+ * render as a confident percentage.
+ *
+ * Measured over 40,000 live Benzinga prints, 2024-08 → 2026-08, 6,065 tickers, taking the newest
+ * 8 prints per ticker the way `benzingaRowsToPrintHistory` does:
+ *
+ *   EPS      10.2% of names that get a rate at all get it from 1-2 graded prints
+ *   REVENUE  11.0%  (and 20-25% of names get no rate at all, correctly null)
+ *
+ * So roughly one name in ten publishes a beat rate off a one- or two-print sample.
+ *
+ * COMBINED IS NOW POOLED, NOT AVERAGED. `(eps_rate + revenue_rate) / 2` weights a rate built on
+ * one print exactly as heavily as one built on eight. Of 4,484 names carrying both rates, 140
+ * (3.1%) have denominators differing by 3+ prints and 52 (1.2%) have one side at ≤2 while the
+ * other is ≥6. Pooling the numerators over the pooled denominator is the same number when the
+ * cohorts match and the honest one when they do not.
+ */
+export function dualBeatRateFromPrints(prints: MeridianEarningsPrint[]): {
+  eps_beat_rate: number | null;
+  revenue_beat_rate: number | null;
+  combined_beat_rate: number | null;
+  /** How many prints each rate was computed FROM. Zero means the rate beside it is null. */
+  eps_graded: number;
+  revenue_graded: number;
+  combined_graded: number;
+} {
+  const epsGraded = prints.filter((p) => p.beat != null);
+  const revGraded = prints.filter((p) => p.revenue_surprise_pct != null);
+  const epsBeats = epsGraded.filter((p) => p.beat).length;
+  const revBeats = revGraded.filter((p) => (p.revenue_surprise_pct ?? 0) >= 0).length;
+  const eps_beat_rate = epsGraded.length > 0 ? epsBeats / epsGraded.length : null;
+  const revenue_beat_rate = revGraded.length > 0 ? revBeats / revGraded.length : null;
+  const pooledN = epsGraded.length + revGraded.length;
+  const combined = pooledN > 0 ? (epsBeats + revBeats) / pooledN : null;
+  return {
+    eps_beat_rate,
+    revenue_beat_rate,
+    combined_beat_rate: combined,
+    eps_graded: epsGraded.length,
+    revenue_graded: revGraded.length,
+    combined_graded: pooledN,
+  };
+}
+
+export function buildEarningsWeekRows(
+  rows: BenzingaStructuredEarnings[],
+  todayYmd: string,
+  daysAhead: number
+): MeridianEarningsWeekRow[] {
+  const end = addDaysYmd(todayYmd, daysAhead);
+  return rows
+    .filter((r) => r.date >= todayYmd && r.date <= end && (r.importance ?? 0) >= 4)
+    .sort((a, b) => a.date.localeCompare(b.date) || (b.importance ?? 0) - (a.importance ?? 0))
+    .slice(0, 24)
+    .map((r) => ({
+      ticker: r.ticker,
+      company_name: r.company_name,
+      date: r.date,
+      time_et: earningsReportTimeEt(r.time),
+      importance: r.importance,
+      date_status: r.date_status,
+      estimated_eps: r.estimated_eps,
+      is_printed: r.actual_eps != null,
+    }));
+}
+
+/**
+ * Project the full window onto the analytics row shape.
+ *
+ * Deliberately NOT `buildEarningsWeekRows`: that one curates (importance >=4, capped at 24) for the
+ * mega-cap strip. Analytics needs the whole window — a beat rate over the biggest 24 names is not
+ * the week's beat rate, and a calendar built from them shows a fraction of each day's prints. The
+ * projection drops only provider bookkeeping (benzinga_id, notes, methods) to keep the payload lean.
+ */
+export function buildEarningsAnalyticsRows(
+  rows: BenzingaStructuredEarnings[],
+  todayYmd: string,
+  daysAhead: number
+): MeridianEarningsAnalyticsRow[] {
+  const end = addDaysYmd(todayYmd, daysAhead);
+  // Include a short lookback so already-printed names stay in the surprise scatter and beat rate;
+  // a window that starts at today would show an empty scatter every morning.
+  const start = addDaysYmd(todayYmd, -14);
+  return rows
+    .filter((r) => r.date >= start && r.date <= end)
+    .sort((a, b) => a.date.localeCompare(b.date) || (b.importance ?? 0) - (a.importance ?? 0))
+    .map((r) => ({
+      ticker: r.ticker,
+      company_name: r.company_name,
+      date: r.date,
+      time: r.time,
+      date_status: r.date_status,
+      importance: r.importance,
+      fiscal_period: r.fiscal_period,
+      fiscal_year: r.fiscal_year,
+      estimated_eps: r.estimated_eps,
+      actual_eps: r.actual_eps,
+      estimated_revenue: r.estimated_revenue,
+      actual_revenue: r.actual_revenue,
+      eps_surprise_pct: r.eps_surprise_pct,
+      revenue_surprise_pct: r.revenue_surprise_pct,
+    }));
+}
+
+export function buildRecentEarningsRevisions(
+  rows: BenzingaStructuredEarnings[],
+  sinceIso: string
+): MeridianEarningsRevision[] {
+  const sinceMs = Date.parse(sinceIso);
+  if (!Number.isFinite(sinceMs)) return [];
+  return rows
+    .filter((r) => r.last_updated && Date.parse(r.last_updated) >= sinceMs)
+    .sort((a, b) => (b.last_updated ?? "").localeCompare(a.last_updated ?? ""))
+    .slice(0, 12)
+    .map((r) => ({
+      ticker: r.ticker,
+      date: r.date,
+      company_name: r.company_name,
+      last_updated: r.last_updated,
+      date_status: r.date_status,
+      importance: r.importance,
+      headline: revisionHeadline(r),
+    }));
+}
+
+export function revisionHeadline(row: BenzingaStructuredEarnings): string {
+  if (row.actual_eps != null) {
+    const surp = benzingaSurpriseToDisplayPct(row.eps_surprise_pct);
+    return surp != null
+      ? `${row.ticker} printed EPS ${row.actual_eps} (${surp >= 0 ? "+" : ""}${surp}% vs est)`
+      : `${row.ticker} printed EPS ${row.actual_eps}`;
+  }
+  if (row.date_status === "confirmed") return `${row.ticker} date confirmed · ${row.date}`;
+  if (row.estimated_eps != null) return `${row.ticker} estimate updated · EPS ${row.estimated_eps}`;
+  return `${row.ticker} calendar updated · ${row.date}`;
+}
+
+export function guidanceToMeridianRow(row: BenzingaCorporateGuidance): MeridianEarningsGuidanceRow {
+  return {
+    date: row.date,
+    fiscal_period: row.fiscal_period,
+    fiscal_year: row.fiscal_year,
+    release_type: row.release_type,
+    min_eps: row.min_eps_guidance,
+    max_eps: row.max_eps_guidance,
+    min_revenue: row.min_revenue_guidance,
+    max_revenue: row.max_revenue_guidance,
+    street_eps: row.estimated_eps_guidance,
+    street_revenue: row.estimated_revenue_guidance,
+    eps_method: row.eps_method,
+    revenue_method: row.revenue_method,
+    notes: row.notes,
+    last_updated: row.last_updated,
+  };
+}
+
+export function postPrintSurpriseLean(
+  cal: MeridianEarningsCalendarRow | null
+): { lean: "beat" | "miss" | "inline" | "unknown"; headline: string | null; score: number } {
+  if (!cal?.is_printed) return { lean: "unknown", headline: null, score: 0 };
+  const eps = cal.eps_surprise_pct;
+  const rev = cal.revenue_surprise_pct;
+  if (eps == null && rev == null) return { lean: "unknown", headline: "Print landed — surprise pending", score: 0 };
+  const epsBeat = eps != null ? eps >= 0 : null;
+  const revBeat = rev != null ? rev >= 0 : null;
+  if (epsBeat === true && (revBeat === true || revBeat === null)) {
+    return {
+      lean: "beat",
+      headline: `Beat · EPS ${eps != null ? `${eps >= 0 ? "+" : ""}${eps}%` : "—"}${rev != null ? ` · Rev ${rev >= 0 ? "+" : ""}${rev}%` : ""}`,
+      score: 2,
+    };
+  }
+  if (epsBeat === false && (revBeat === false || revBeat === null)) {
+    return {
+      lean: "miss",
+      headline: `Miss · EPS ${eps != null ? `${eps}%` : "—"}${rev != null ? ` · Rev ${rev}%` : ""}`,
+      score: -2,
+    };
+  }
+  return { lean: "inline", headline: "Mixed print vs street", score: 0 };
+}
+
+function addDaysYmd(ymd: string, days: number): string {
+  const [y, m, d] = ymd.split("-").map(Number) as [number, number, number];
+  const dt = new Date(Date.UTC(y, m - 1, d + days));
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`;
+}
+
+/**
+ * Collapse earnings rows to one per (ticker, report date), keeping the freshest observation.
+ *
+ * The estimate-revision diff keys its stored snapshot on exactly this pair. Feeding it the same
+ * key twice in one pass makes the second copy diff against the snapshot the first copy just
+ * wrote — so two upstream copies that disagree produce a revision AND its mirror image, which
+ * reads as the street changing its mind twice in minutes.
+ *
+ * Ties on `last_updated` keep the row seen FIRST. Preferring either copy is arbitrary when their
+ * timestamps match, and "first wins" at least makes the output deterministic for a given input
+ * order rather than depending on which upstream query happened to be concatenated last.
+ */
+export function dedupeEarningsRowsByEvent<T extends { ticker?: string | null; date?: string | null; last_updated?: string | null }>(
+  rows: readonly T[] | null | undefined
+): T[] {
+  const best = new Map<string, T>();
+  for (const row of rows ?? []) {
+    const ticker = String(row?.ticker ?? "").trim().toUpperCase();
+    const date = String(row?.date ?? "").slice(0, 10);
+    // A row we cannot key is passed through untouched rather than dropped — it cannot collide
+    // with anything, and silently discarding a row here would quietly shrink the diff input.
+    if (!ticker || !date) continue;
+    const key = `${ticker}:${date}`;
+    const prev = best.get(key);
+    if (!prev) {
+      best.set(key, row);
+      continue;
+    }
+    const a = Date.parse(String(prev.last_updated ?? ""));
+    const b = Date.parse(String(row.last_updated ?? ""));
+    // Strictly-greater keeps the first row on a tie, and an unparseable timestamp never wins.
+    if (Number.isFinite(b) && (!Number.isFinite(a) || b > a)) best.set(key, row);
+  }
+  const keyed = [...best.values()];
+  const unkeyable = (rows ?? []).filter(
+    (r) => !String(r?.ticker ?? "").trim() || !String(r?.date ?? "").slice(0, 10)
+  );
+  return [...keyed, ...unkeyable];
+}
+
+/**
+ * How far back to look, and how many rows to ask for, to actually GET `prints` past prints.
+ *
+ * The lookback MUST be derived from the number of prints wanted, never fixed — the same lesson
+ * `barLimitForWindow` cost us on the Polygon aggregates. This was pinned at 420 days, which is
+ * ~4.6 quarters, so a caller asking for 6 prints could never receive 6. Measured live 2026-08-21
+ * against the 420-day window: NVDA returned 4 usable past prints, WMT 5, AAPL 5 — every one short
+ * of the 6 the pre-earnings pack requests and the 8 `loadMeridianEarningsPrintHistory` defaults to.
+ *
+ * It is not a WRONG number — `print_history_summary` states its real n ("4/4 EPS beats over last 4
+ * prints"), so nobody is misled about the sample. It is a silently SMALLER sample than asked for,
+ * which quietly weakens every beat-rate and average-move statistic computed over it.
+ *
+ * ~91 days between quarterly prints; 95 gives slack for a shifted report date, plus a 60-day
+ * cushion so a company that reports slightly late still yields the full count.
+ */
+const DAYS_PER_QUARTERLY_PRINT = 95;
+export function benzingaTickerWindow(prints: number): { lookbackDays: number; limit: number } {
+  const wanted = Math.min(24, Math.max(1, Math.trunc(prints) || 1));
+  return {
+    lookbackDays: wanted * DAYS_PER_QUARTERLY_PRINT + 60,
+    // The response is sorted `date.desc` over a window spanning past AND future, and Benzinga
+    // projects ~4-8 quarters ahead — those future rows sit at the TOP of a desc sort and consume
+    // the budget before any past print is reached. So the cap has to cover both ends, not just
+    // the prints being asked for. +12 covers the projected tail with room.
+    limit: Math.min(200, wanted + 12),
+  };
+}

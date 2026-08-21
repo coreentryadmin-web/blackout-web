@@ -26,18 +26,18 @@ export async function GET(req: NextRequest) {
   const acquired = await tryAdvisoryLock(WELCOME_SEQUENCE_LOCK);
   if (!acquired) {
     const payload = { ok: true, skipped: true, reason: "locked" };
-    await logCronRun("welcome-sequence-send", started, payload);
+    await logCronRun("welcome-sequence", started, payload);
     return NextResponse.json(payload);
   }
 
   try {
     const result = await processDueWelcomeSequenceSteps();
-    await logCronRun("welcome-sequence-send", started, { ok: true, ...result });
+    await logCronRun("welcome-sequence", started, { ok: true, ...result });
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     console.error("[cron/welcome-sequence]", error);
-    await logCronRun("welcome-sequence-send", started, { ok: false, error: detail });
+    await logCronRun("welcome-sequence", started, { ok: false, error: detail });
     return NextResponse.json({ ok: false, error: "Welcome sequence send failed" }, { status: 500 });
   } finally {
     await releaseAdvisoryLock(WELCOME_SEQUENCE_LOCK);

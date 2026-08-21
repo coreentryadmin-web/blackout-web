@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { deriveExpectedMoveInputs } from "./vector-expected-move-atm";
+import { deriveExpectedMoveInputs, deriveExpectedMoveInputsForEarningsDate } from "./vector-expected-move-atm";
 import type { ReconstructContract } from "./vector-gex-reconstruct";
 
 const TODAY = "2026-07-13"; // a Monday
@@ -52,4 +52,16 @@ test("deriveExpectedMoveInputs: skips strikes with no usable IV; null when none 
 test("deriveExpectedMoveInputs: guards — no spot / empty chain → null", () => {
   assert.equal(deriveExpectedMoveInputs([], 7500, "weekly", TODAY), null, "empty chain");
   assert.equal(deriveExpectedMoveInputs([c({})], 0, "weekly", TODAY), null, "no spot");
+});
+
+test("deriveExpectedMoveInputsForEarningsDate: picks expiry on or after the print date", () => {
+  const chain: ReconstructContract[] = [
+    c({ strike: 7500, expiry: "2026-07-17", type: "call", iv: 0.16 }),
+    c({ strike: 7500, expiry: "2026-07-24", type: "call", iv: 0.22 }),
+    c({ strike: 7500, expiry: "2026-08-21", type: "call", iv: 0.30 }),
+  ];
+  const res = deriveExpectedMoveInputsForEarningsDate(chain, 7500, "2026-07-20", TODAY);
+  assert.ok(res);
+  assert.equal(res!.expiry, "2026-07-24", "first expiry on/after earnings date");
+  assert.ok(Math.abs(res!.atmIv - 0.22) < 1e-9);
 });

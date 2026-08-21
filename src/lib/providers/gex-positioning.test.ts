@@ -2,6 +2,7 @@ import { before, test, mock } from "node:test";
 import assert from "node:assert/strict";
 import type { GexHeatmap } from "./polygon-options-gex";
 import { ladderFromGexStrikeExpiryCells } from "./gex-strike-expiry-ladder";
+import { cumulativeGammaFlipDetail } from "./gex-cross-validation-core";
 import type { UwGexStrikeExpiryRow } from "./unusual-whales";
 
 // LARGO-126 / task #126 — the canonical GexPositioning contract never computed a "king"
@@ -136,6 +137,67 @@ test("gexPositioningFromHeatmap: non-finite strike keys/values are skipped", () 
   );
   assert.ok(p);
   assert.equal(p!.gex_king_strike, 100);
+});
+
+// ---------------------------------------------------------------------------
+// REGIME FRAGILITY: `flip` is the STABLE lowest-plausible zero-crossing (chosen so it does not
+// jitter as spot moves). When the book crosses zero more than once, that stability HIDES a nearer
+// crossing that sits far closer to spot — and the regime actually flips THERE first. get_positioning
+// returned only the single stable flip, so Largo told a member MSFT was a "comfortable 7% above the
+// flip" when net gamma re-crossed zero ~1% below spot. These tests prove the mapper now surfaces the
+// nearest crossing + the crossing count so that answer can be honest.
+
+test("gexPositioningFromHeatmap: single zero-crossing → flip_nearest equals the flip, crossings=1", () => {
+  // One up-crossing between 90 (short) and 110 (long): cum -5 → +3 crosses at 102.5.
+  const st = { "90": -5, "110": 8 };
+  const p = gexPositioningFromHeatmap("TEST", makeHeatmap(st, 100));
+  assert.ok(p);
+  const detail = cumulativeGammaFlipDetail(st, 100);
+  assert.equal(p!.flip_crossings, 1);
+  assert.equal(p!.flip_nearest, detail.nearestCrossing);
+  // Single crossing → the stable flip and the nearest crossing are the same level.
+  assert.equal(detail.flip, detail.nearestCrossing);
+  assert.equal(p!.distance_to_nearest_flip_pct, Number((((100 - p!.flip_nearest!) / 100) * 100).toFixed(2)));
+});
+
+test("gexPositioningFromHeatmap: multiple crossings → flip_nearest is the NEARER one, distinct from the stable flip", () => {
+  // Three up-crossings, all inside the ±12% plausibility window around spot=100:
+  //   85(-8)→92(+10) crosses ~90.6 ; 96(-5)→98(+6) crosses 97 ; 100.5(-5)→102(+5) crosses ~101.1
+  // The stable flip is the LOWEST (≈90.6, ~9% away); the nearest crossing is ≈101.1 (~1% away).
+  const st = { "85": -8, "92": 10, "96": -5, "98": 6, "100.5": -5, "102": 5 };
+  const spot = 100;
+  const p = gexPositioningFromHeatmap("TEST", makeHeatmap(st, spot));
+  assert.ok(p);
+  const detail = cumulativeGammaFlipDetail(st, spot);
+  assert.equal(detail.crossings, 3, "fixture must produce three zero-crossings");
+  // The whole point: the stable flip and the nearest crossing DIVERGE here.
+  assert.notEqual(detail.flip, detail.nearestCrossing);
+  assert.ok(
+    Math.abs(detail.nearestCrossing! - spot) < Math.abs(detail.flip! - spot),
+    "nearest crossing must sit closer to spot than the stable (lowest) flip"
+  );
+  // Mapper surfaces the nearer crossing + the count, verbatim from the core detail.
+  assert.equal(p!.flip_crossings, 3);
+  assert.equal(p!.flip_nearest, detail.nearestCrossing);
+  assert.equal(
+    p!.distance_to_nearest_flip_pct,
+    Number((((spot - detail.nearestCrossing!) / spot) * 100).toFixed(2))
+  );
+  // …and that nearer distance is materially smaller in magnitude than the stable-flip distance,
+  // which is the misleading gap the field exists to close.
+  const nearDist = Math.abs(p!.distance_to_nearest_flip_pct!);
+  const stableDist = Math.abs(((spot - detail.flip!) / spot) * 100);
+  assert.ok(nearDist + 1 < stableDist, "nearest-flip distance must be materially closer than the stable flip");
+});
+
+test("gexPositioningFromHeatmap: never-crosses-zero book → flip_nearest null, crossings 0", () => {
+  // Net short across the whole book: cumulative never turns positive.
+  const st = { "90": -5, "110": -3 };
+  const p = gexPositioningFromHeatmap("TEST", makeHeatmap(st, 100));
+  assert.ok(p);
+  assert.equal(p!.flip_crossings, 0);
+  assert.equal(p!.flip_nearest, null);
+  assert.equal(p!.distance_to_nearest_flip_pct, null);
 });
 
 // ---------------------------------------------------------------------------

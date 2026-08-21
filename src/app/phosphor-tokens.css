@@ -120,7 +120,7 @@
    text); the CSS just carries the settle glow. A live tick reuses .phosphor-flash. */
 .honest-tick {
   font-variant-numeric: tabular-nums;
-  font-family: var(--font-jetbrains), monospace;
+  font-family: var(--font-jetbrains, monospace);
   transition: color var(--dur-persist) var(--ease-persist),
               text-shadow var(--dur-persist) var(--ease-persist);
 }

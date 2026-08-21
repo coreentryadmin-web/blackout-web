@@ -38,3 +38,25 @@ test("vector-bead-recorder-leader logs cron_job_runs heartbeat for observability
   assert.match(leaderSrc, /HEARTBEAT_INTERVAL_MS/);
   assert.match(leaderSrc, /maybeLogLeaderHeartbeat/);
 });
+
+test("leader guards the active lane PER TICKER, not by dropping the whole lane", () => {
+  // The universe sweep lost this guard in #2303; the viewer lane kept it. `activeRecordInFlight`
+  // alone meant one slow viewer ticker cost EVERY other viewer their 15s sample — a bigger hole
+  // per drop than the universe lane's 5s, on names no other lane records.
+  assert.doesNotMatch(
+    leaderSrc,
+    /if\s*\(\s*activeRecordInFlight\s*\|\|/,
+    "the whole-lane drop guard must not come back"
+  );
+  assert.match(leaderSrc, /MAX_CONCURRENT_ACTIVE_SWEEPS/, "overlap is bounded, not forbidden");
+  assert.match(
+    leaderSrc,
+    /activeSweepBudget/,
+    "the active lane reports its own overrun against its own 15s budget"
+  );
+  assert.match(
+    leaderSrc,
+    /activeTickerFailureStreaks/,
+    "one viewer ticker going dark must be named, not hidden behind a whole-pass warning"
+  );
+});

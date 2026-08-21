@@ -1,4 +1,5 @@
 import type { GexWalls } from "@/lib/providers/gex-wall-levels";
+import { DEFAULT_WALL_MEMBERSHIP, resolveWallMembership } from "./vector-wall-membership";
 import type { VectorTimeframeMinutes } from "./vector-bar-timeframes";
 import type { VectorDteHorizon } from "./vector-dte-horizon";
 
@@ -264,17 +265,31 @@ export function trailsByStrike(
   dominantPerBucket: number = DOMINANT_WALLS_PER_BUCKET
 ): Map<number, StrikeTrailPoint[]> {
   const map = new Map<number, StrikeTrailPoint[]>();
-  for (const sample of history) {
-    const walls = wallsForLens(sample, lens);
+
+  // Row membership is a LIFECYCLE, not a per-bucket ranking — see vector-wall-membership.ts. The
+  // old code re-picked each bucket's top-N from scratch, so a strike sitting near the cut left and
+  // re-entered on nearly every tick and its row rendered as a dotted line (measured live: SPX mean
+  // row fill 0.35 — two-thirds of every row was holes, with nothing missing from the payload).
+  // A strike must rank strongly to be BORN and only stay ordinarily relevant to SURVIVE, so strong
+  // walls get continuous rows while weak ones still die.
+  //
+  // `dominantPerBucket` is now the ENTER rank. 0/negative keeps its old meaning — no selection at
+  // all, every recorded level draws — so existing callers that opt out are unaffected.
+  const wallsPerBucket = history.map((sample) => wallsForLens(sample, lens));
+  const membership =
+    dominantPerBucket > 0
+      ? resolveWallMembership(wallsPerBucket, side, {
+          ...DEFAULT_WALL_MEMBERSHIP,
+          enterRank: dominantPerBucket,
+        })
+      : null;
+
+  for (let i = 0; i < history.length; i++) {
+    const sample = history[i]!;
+    const walls = wallsPerBucket[i];
     if (!walls) continue;
-    // Only this bucket's DOMINANT walls earn a bead — see DOMINANT_WALLS_PER_BUCKET. Sorting by
-    // |pct| here (the recorded ladder is stored strike-ordered, not strength-ordered) and slicing
-    // to top-N is what gives each wall an HONEST birth: a strike enters its trail at the first
-    // bucket it ranks among the strongest, not at the open just because it sat in the wide ladder.
-    const dominant =
-      dominantPerBucket > 0 && walls[side].length > dominantPerBucket
-        ? [...walls[side]].sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct)).slice(0, dominantPerBucket)
-        : walls[side];
+    const members = membership?.[i];
+    const dominant = members ? walls[side].filter((l) => members.has(Math.round(l.strike))) : walls[side];
     for (const level of dominant) {
       const strike = Math.round(level.strike);
       if (!Number.isFinite(strike)) continue;
@@ -467,7 +482,7 @@ export function trimHistoryForLiveTrails(
 export type BucketWallHistoryOpts = {
   /** Floor bucket size for live display — e.g. 5 keeps 5s bead density on 1m charts. */
   minBucketSec?: number;
-  /** When true, use minBucketSec instead of collapsing to candle width. */
+  /** When true, minBucketSec is the FLOOR rather than collapsing to candle width. */
   liveBeads?: boolean;
 };
 
@@ -497,8 +512,51 @@ export function alignWallHistoryToBarTimes(
 }
 
 /**
- * Resample wall-history for chart beads. Live mode keeps the trail sample cadence (5s);
- * replay / higher-TF views collapse to candle buckets.
+ * How many seconds one bead should cover.
+ *
+ * ── WHAT THIS USED TO DO, AND WHY IT WAS WRONG (reverted 2026-08-19) ─────────────────
+ * #2321 made this bucket by PIXELS: one bead per `BEAD_STRIDE_PX` (11px) of chart, on the theory
+ * that a row which fuses into a continuous ribbon has lost its per-moment read. That theory is
+ * wrong for this product, and the member said so twice — first as a description of correct
+ * behaviour ("it's painting a bead every 5 seconds which is correct .. at the end of the day it
+ * looks like a bar"), then as a bug report against the shipped result, alongside the reference
+ * product: a screenshot of ~1 bead per 15 candles next to a competitor whose rows are dense,
+ * touching ribbons of every recorded sample.
+ *
+ * The ribbon IS the render. A 5s cadence under a 3-minute candle is 36 samples per bar, and a rail
+ * that draws all of them is showing the member every moment the wall existed. Spacing them out
+ * does not make the rail more legible, it throws away 34 of every 36 samples the recorder worked
+ * to capture — and it does so silently, which is why it read as "the recorder is broken" rather
+ * than as a paint decision.
+ *
+ * ── THE RULE ─────────────────────────────────────────────────────────────────────────
+ * Draw what was recorded. During a live session the bucket is the recorder's own cadence
+ * (`minBucketSec`, 5s), floored by the candle width; replay/historical frames collapse to candles.
+ * No pixel term, no zoom term — those are the inputs that let a paint heuristic quietly discard
+ * data.
+ *
+ * Bead SIZE, not bead COUNT, is the channel that adapts to available room: `clampTuningToSpacing`
+ * in vector-wall-rail-core.ts already shrinks the radius against bar spacing and row gap, with a
+ * measured floor so beads never collapse into the invisible specks of #2310.
+ */
+export function displayBucketSec(input: {
+  candleSec: number;
+  minBucketSec: number;
+  /** Live session keeps the recorder's fine cadence; replay/historical collapse to candles. */
+  liveBeads: boolean;
+}): number {
+  const { candleSec, minBucketSec, liveBeads } = input;
+  if (!Number.isFinite(candleSec) || candleSec <= 0) {
+    return minBucketSec > 0 ? minBucketSec : 1;
+  }
+  return liveBeads && minBucketSec > 0 ? Math.min(candleSec, minBucketSec) : candleSec;
+}
+
+/**
+ * Resample wall-history for chart beads.
+ *
+ * Bucket size comes from `displayBucketSec` — the recorder's own cadence during a live session; see that
+ * function for why a constant bucket paints a bar instead of beads.
  */
 export function bucketWallHistoryForInterval(
   history: WallHistorySample[],
@@ -507,10 +565,11 @@ export function bucketWallHistoryForInterval(
 ): WallHistorySample[] {
   if (!history.length) return history;
   const candleSec = intervalMinutes * 60;
-  const bucketSec =
-    opts?.liveBeads && opts.minBucketSec != null && opts.minBucketSec > 0
-      ? Math.min(candleSec, opts.minBucketSec)
-      : candleSec;
+  const bucketSec = displayBucketSec({
+    candleSec,
+    minBucketSec: opts?.minBucketSec ?? 0,
+    liveBeads: Boolean(opts?.liveBeads),
+  });
   const map = new Map<number, WallHistorySample>();
 
   for (const sample of history) {

@@ -1,3 +1,4 @@
+import { stripEmbeddedLevel } from "@/lib/largo/strip-embedded-level";
 import "server-only";
 
 import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
@@ -19,12 +20,50 @@ export type GexHeatmapForLargo = {
   top_strikes: Array<{ strike: number; net: number; pct_of_total: number }>;
   /** Canonical summary scalars — same contract as get_positioning / Thermal UI. */
   flip: number | null;
+  /**
+   * MULTI-EXPIRY AGGREGATE — summed over `near_term_expiries`, which on SPX is currently FIFTEEN
+   * expiries running three weeks out. Real, but NOT the near-dated wall, and the model had no way
+   * to know that: measured 2026-08-20 at spot 7641.16 the aggregate read 7800 (+158.8) while the
+   * front expiry alone read 7700 (+58.8). `walls_by_horizon` is what answers a DTE-specific
+   * question.
+   */
   call_wall: number | null;
   put_wall: number | null;
+  /**
+   * Walls cut by DTE horizon, cumulative (0DTE subset of 3DTE subset of 7DTE), gamma lens.
+   *
+   * Carried so an answer can NAME the scope it is quoting instead of implying a single wall
+   * exists. A bucket with `expiries: 0` means no expiry in range — the live post-close state of
+   * 0DTE — and must be reported as that, never as a missing wall.
+   */
+  walls_by_horizon: Array<{
+    label: string;
+    expiries: number;
+    call_wall: number | null;
+    put_wall: number | null;
+    call_wall_pts: number | null;
+    put_wall_pts: number | null;
+  }> | null;
   max_pain: number | null;
   gex_king_strike: number | null;
   net_gex: number | null;
   net_vex: number | null;
+  /**
+   * VANNA WALLS — the vex analogue of call_wall/put_wall.
+   *
+   * These were the one summary scalar family the projection dropped, and the omission was not
+   * harmless. Asked "Where are SPX vanna walls?" on prod (2026-08-20) Largo answered that vanna
+   * walls "don't appear as discrete strikes in the live feed the way gamma walls do; vanna is a
+   * distributed effect across the matrix rather than a concentrated barrier at one level" — a
+   * confident structural claim, stated as market fact, about data the heatmap was publishing at
+   * that exact moment (pos_wall 7900, neg_wall 7625).
+   *
+   * That is worse than an "I don't have that": a member reads it as "the platform does not compute
+   * this", when it does and it is on their heatmap. Missing input became a fabricated NEGATIVE.
+   */
+  vex_pos_wall: number | null;
+  vex_neg_wall: number | null;
+  vex_flip: number | null;
   net_dex: number | null;
   net_charm: number | null;
   gamma_regime_read: string | null;
@@ -43,6 +82,8 @@ export type GexHeatmapForLargo = {
   } | null;
   source: "polygon";
 };
+
+
 
 function topStrikesFromTotals(
   totals: Record<string, number>,
@@ -63,16 +104,21 @@ function topStrikesFromTotals(
     .slice(0, limit);
 }
 
+type GexHeatmapFetch = Awaited<ReturnType<typeof fetchGexHeatmap>>;
+
 /** Compact Thermal matrix read for Largo — canonical cache, not a second upstream. */
 export async function gexHeatmapForLargo(
   ticker: string,
-  opts?: { lens?: GexHeatmapLargoLens; top_strikes?: number }
+  opts?: { lens?: GexHeatmapLargoLens; top_strikes?: number; heatmap?: GexHeatmapFetch | null }
 ): Promise<GexHeatmapForLargo> {
   const sym = String(ticker ?? "").trim().toUpperCase();
   const lens = opts?.lens ?? "gex";
   const topN = Math.min(24, Math.max(4, opts?.top_strikes ?? 12));
 
-  const hm = await fetchGexHeatmap(sym).catch(() => null);
+  const hm =
+    opts && "heatmap" in opts
+      ? (opts.heatmap ?? null)
+      : await fetchGexHeatmap(sym).catch(() => null);
   const pos = hm ? await getGexPositioning(sym).catch(() => null) : null;
   if (!hm || !hm.spot || !hm.strikes?.length) {
     return {
@@ -87,11 +133,15 @@ export async function gexHeatmapForLargo(
       top_strikes: [],
       flip: null,
       call_wall: null,
+      walls_by_horizon: null,
       put_wall: null,
       max_pain: null,
       gex_king_strike: null,
       net_gex: null,
       net_vex: null,
+      vex_pos_wall: null,
+      vex_neg_wall: null,
+      vex_flip: null,
       net_dex: null,
       net_charm: null,
       gamma_regime_read: null,
@@ -137,13 +187,25 @@ export async function gexHeatmapForLargo(
     flip: pos?.flip ?? hm.gex?.flip ?? null,
     call_wall: pos?.call_wall ?? hm.gex?.call_wall ?? null,
     put_wall: pos?.put_wall ?? hm.gex?.put_wall ?? null,
+    walls_by_horizon:
+      hm.gex?.walls_by_horizon?.map((h) => ({
+        label: h.label,
+        expiries: h.expiries.length,
+        call_wall: h.callWall,
+        put_wall: h.putWall,
+        call_wall_pts: h.callWallPts,
+        put_wall_pts: h.putWallPts,
+      })) ?? null,
     max_pain: pos?.max_pain ?? hm.max_pain ?? null,
     gex_king_strike: pos?.gex_king_strike ?? null,
     net_gex: pos?.net_gex ?? hm.gex?.total ?? null,
     net_vex: pos?.net_vex ?? hm.vex?.total ?? null,
+    vex_pos_wall: hm.vex?.pos_wall ?? null,
+    vex_neg_wall: hm.vex?.neg_wall ?? null,
+    vex_flip: hm.vex?.flip ?? null,
     net_dex: pos?.net_dex ?? hm.dex?.total ?? null,
     net_charm: pos?.net_charm ?? hm.charm?.total ?? null,
-    gamma_regime_read: pos?.gamma_regime_read ?? hm.gex?.regime?.read ?? null,
+    gamma_regime_read: stripEmbeddedLevel(pos?.gamma_regime_read ?? hm.gex?.regime?.read),
     vanna_regime_read: pos?.vanna_regime_read ?? hm.vex?.regime?.read ?? null,
     dex_regime_read: pos?.dex_regime_read ?? hm.dex?.regime?.read ?? null,
     charm_regime_read: pos?.charm_regime_read ?? hm.charm?.regime?.read ?? null,

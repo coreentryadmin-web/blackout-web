@@ -34,7 +34,14 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
+      # FULL HISTORY, ON PURPOSE. `src/findings-no-loss.test.ts` asserts that no FINDINGS entry
+      # present in the merge base has been deleted, and it can only do that if the base commit is
+      # in the local object store. The default fetch-depth of 1 leaves it unresolvable, at which
+      # point the guard SKIPS — and a guard that silently skips is the exact failure it exists to
+      # catch (PR #2552 dropped five findings past a hygiene suite that passed 8/8).
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v7
         with:
           node-version: 20
@@ -46,6 +53,12 @@ jobs:
         run: node scripts/verify-api-auth-guards.mjs
       - name: Tailwind @apply opacity guard (recurring build breaker)
         run: node scripts/check-tailwind-apply-opacity.mjs
+      - name: Client/server boundary guard (recurring build breaker)
+        # Sits BEFORE the tests on purpose. A "use client" module that reaches `import "server-only"`
+        # fails `next build` and nothing else — tsc is clean and the unit suite passes — so without
+        # this the feedback only arrives at the LAST step, ~4 minutes in. Same placement rationale
+        # as the tailwind guard directly above.
+        run: node scripts/audit/client-server-boundary.mjs
       - name: Unit tests
         # Same entrypoint a developer runs (`npm test`), so a local pass means this pass. The glob
         # is expanded inside the script rather than by the shell — Node 20 does not expand globs in

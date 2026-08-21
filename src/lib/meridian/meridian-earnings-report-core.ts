@@ -21,6 +21,10 @@ type ReportInput = {
   put_wall: number | null;
   expected_move_pct: number | null;
   beat_rate: number | null;
+  /** How many graded prints `beat_rate` came from — see dualBeatRateFromPrints. */
+  beat_rate_graded?: number | null;
+  post_print: { lean: "beat" | "miss" | "inline" | "unknown"; headline: string | null } | null;
+  earnings_yoy: { eps_yoy_pct: number | null; revenue_yoy_pct: number | null } | null;
   financials: MeridianFinancialsContext | null;
   analyst_revisions: AnalystRow[];
   earnings_headlines: MeridianCatalystHeadline[];
@@ -180,6 +184,33 @@ function bestPlayHint(
  * BlackOut earnings report — composite verdict from live pillars.
  * Advisory context only; never a trade recommendation.
  */
+/**
+ * The label every pillar carries into the orbital diagram — ONE canonical list.
+ *
+ * These used to be eleven string literals scattered through `buildMeridianEarningsReport`, and
+ * `meridian-spatial-core.test.ts` — the guard whose whole job is to prove the orbital labels do
+ * not collide — carried its OWN shorter copies ("Vector" for "Vector expected move", "Thermal"
+ * for "Thermal nodes"). The guard therefore laid out labels roughly HALF the width of the ones
+ * that ship, found no collision, and passed while the live render overlapped. Measured on prod
+ * 2026-08-21: `"Thermal nodes" ∩ "Vector expected move" 8.79x6.71px`.
+ *
+ * Exported so the guard consumes the shipping strings. A test that invents its own fixture for
+ * the very values under test can only ever prove something about the fixture.
+ */
+export const REPORT_PILLAR_LABELS = {
+  flow: "HELIX flow",
+  dark_pool: "Dark pool",
+  thermal: "Thermal nodes",
+  history: "Print history",
+  surprise: "Latest print",
+  yoy: "YoY trajectory",
+  fundamentals: "Fundamentals",
+  analyst: "Street / analysts",
+  news: "News & catalysts",
+  vector: "Vector expected move",
+  insider: "Insider activity",
+} as const satisfies Record<string, string>;
+
 export function buildMeridianEarningsReport(input: ReportInput): MeridianEarningsReport {
   const signals: MeridianEarningsReportSignal[] = [];
   let total = 0;
@@ -187,7 +218,7 @@ export function buildMeridianEarningsReport(input: ReportInput): MeridianEarning
   const flowScore = biasScore(input.flow_bias);
   pushSignal(signals, {
     pillar: "flow",
-    label: "HELIX flow",
+    label: REPORT_PILLAR_LABELS.flow,
     lean: flowScore > 0 ? "bullish" : flowScore < 0 ? "bearish" : "neutral",
     weight: 2,
     detail: `Tape skew ${input.flow_bias}`,
@@ -199,7 +230,7 @@ export function buildMeridianEarningsReport(input: ReportInput): MeridianEarning
     const dpScore = biasScore(input.dark_pool_bias);
     pushSignal(signals, {
       pillar: "dark_pool",
-      label: "Dark pool",
+      label: REPORT_PILLAR_LABELS.dark_pool,
       lean: dpScore > 0 ? "bullish" : dpScore < 0 ? "bearish" : "neutral",
       weight: 1,
       detail: `Institutional prints ${input.dark_pool_bias ?? "mixed"}`,
@@ -211,7 +242,7 @@ export function buildMeridianEarningsReport(input: ReportInput): MeridianEarning
   const thermal = thermalLean(input);
   pushSignal(signals, {
     pillar: "thermal",
-    label: "Thermal nodes",
+    label: REPORT_PILLAR_LABELS.thermal,
     lean: thermal.lean,
     weight: 2,
     detail: thermal.detail,
@@ -231,19 +262,61 @@ export function buildMeridianEarningsReport(input: ReportInput): MeridianEarning
     }
     pushSignal(signals, {
       pillar: "history",
-      label: "Print history",
+      label: REPORT_PILLAR_LABELS.history,
       lean,
       weight: 1,
-      detail: `${Math.round(input.beat_rate * 100)}% beat rate on recent prints`,
+      // The cohort travels with the rate. "100% beat rate" off ONE graded print and off eight
+      // are the same string, and both clear the 0.65 bullish threshold — measured live, 10.2%
+      // of names that get a beat rate at all get it from one or two prints.
+      detail:
+        input.beat_rate_graded != null && input.beat_rate_graded > 0
+          ? `${Math.round(input.beat_rate * 100)}% beat rate over ${input.beat_rate_graded} print${input.beat_rate_graded === 1 ? "" : "s"}`
+          : `${Math.round(input.beat_rate * 100)}% beat rate on recent prints`,
       score,
     });
     total += score;
   }
 
+  if (input.post_print?.headline && input.post_print.lean !== "unknown") {
+    const ppScore =
+      input.post_print.lean === "beat" ? 2 : input.post_print.lean === "miss" ? -2 : 0;
+    pushSignal(signals, {
+      pillar: "surprise",
+      label: REPORT_PILLAR_LABELS.surprise,
+      lean: input.post_print.lean === "beat" ? "bullish" : input.post_print.lean === "miss" ? "bearish" : "neutral",
+      weight: 2,
+      detail: input.post_print.headline,
+      score: ppScore,
+    });
+    total += ppScore;
+  }
+
+  if (input.earnings_yoy?.eps_yoy_pct != null || input.earnings_yoy?.revenue_yoy_pct != null) {
+    const eps = input.earnings_yoy.eps_yoy_pct;
+    const rev = input.earnings_yoy.revenue_yoy_pct;
+    let score = 0;
+    if (eps != null && eps >= 15) score += 1;
+    else if (eps != null && eps < 0) score -= 1;
+    if (rev != null && rev >= 10) score += 1;
+    else if (rev != null && rev < 0) score -= 1;
+    const parts: string[] = [];
+    if (eps != null) parts.push(`EPS est ${eps >= 0 ? "+" : ""}${eps}% YoY`);
+    if (rev != null) parts.push(`Rev est ${rev >= 0 ? "+" : ""}${rev}% YoY`);
+    pushSignal(signals, {
+      pillar: "yoy",
+      label: REPORT_PILLAR_LABELS.yoy,
+      lean: score >= 1 ? "bullish" : score <= -1 ? "bearish" : "neutral",
+      weight: 1,
+      detail: parts.join(" · ") || "YoY estimates loaded",
+      score: Math.max(-2, Math.min(2, score)),
+    });
+    total += Math.max(-2, Math.min(2, score));
+  }
+
   const fund = fundamentalsLean(input.financials);
   pushSignal(signals, {
     pillar: "fundamentals",
-    label: "Fundamentals",
+    label: REPORT_PILLAR_LABELS.fundamentals,
     lean: fund.lean,
     weight: 2,
     detail: fund.detail,
@@ -254,7 +327,7 @@ export function buildMeridianEarningsReport(input: ReportInput): MeridianEarning
   const analyst = analystLean(input.analyst_revisions);
   pushSignal(signals, {
     pillar: "analyst",
-    label: "Street / analysts",
+    label: REPORT_PILLAR_LABELS.analyst,
     lean: analyst.lean,
     weight: 1,
     detail: analyst.detail,
@@ -265,7 +338,7 @@ export function buildMeridianEarningsReport(input: ReportInput): MeridianEarning
   const newsCount = input.earnings_headlines.length + input.catalysts.length;
   pushSignal(signals, {
     pillar: "news",
-    label: "News & catalysts",
+    label: REPORT_PILLAR_LABELS.news,
     lean: "neutral",
     weight: 0,
     detail: newsCount
@@ -277,7 +350,7 @@ export function buildMeridianEarningsReport(input: ReportInput): MeridianEarning
   if (input.vector_move_pct != null) {
     pushSignal(signals, {
       pillar: "vector",
-      label: "Vector expected move",
+      label: REPORT_PILLAR_LABELS.vector,
       lean: "neutral",
       weight: 0,
       detail: `Chain IV ~${input.vector_move_pct}%${input.vector_expiry ? ` · ${input.vector_expiry}` : ""}`,
@@ -288,7 +361,7 @@ export function buildMeridianEarningsReport(input: ReportInput): MeridianEarning
   if (input.insider_activity_count > 0) {
     pushSignal(signals, {
       pillar: "insider",
-      label: "Insider activity",
+      label: REPORT_PILLAR_LABELS.insider,
       lean: "neutral",
       weight: 0,
       detail: `${input.insider_activity_count} recent insider filing(s) — review titles`,
@@ -297,8 +370,16 @@ export function buildMeridianEarningsReport(input: ReportInput): MeridianEarning
   }
 
   const imminent = input.days_until != null && input.days_until <= 1;
+  const hasFreshPrint = input.post_print?.lean === "beat" || input.post_print?.lean === "miss";
   let verdict: MeridianEarningsReport["verdict"] = "neutral";
-  if (!imminent) {
+  if (hasFreshPrint) {
+    verdict =
+      input.post_print!.lean === "beat"
+        ? "bullish"
+        : input.post_print!.lean === "miss"
+          ? "bearish"
+          : "neutral";
+  } else if (!imminent) {
     if (total >= 3) verdict = "bullish";
     else if (total <= -3) verdict = "bearish";
   }

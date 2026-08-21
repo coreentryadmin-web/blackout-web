@@ -238,3 +238,96 @@ test("detectFlowAnomalies: fetchRecentFlows throws — caught internally, return
   assert.deepEqual(anomalies, []);
   assert.equal(nearMisses.length, 0);
 });
+
+// ---------------------------------------------------------------------------
+// A SENTINEL MUST NEVER BE RENDERED AS A MEASUREMENT.
+//
+// When one side of the tape has zero premium the skew ratio is undefined, and the code substitutes
+// ONE_SIDED_RATIO (99) so the anomaly still clears the 10:1 threshold. That substitution is fine.
+// Printing it was not: the detail string rendered `${ratio.toFixed(0)}:1` unconditionally, so every
+// one-sided ticker announced the identical "99:1" regardless of size. On the live /flows board on
+// 2026-08-19 that produced thirteen consecutive rows reading 99:1 against premiums from $0.5M to
+// $3.8M, each paired with "vs $0.0M" — which a member reads as a measured ninety-nine-to-one
+// imbalance rather than "nothing traded on the other side".
+// ---------------------------------------------------------------------------
+
+test("one-sided flow is described as one-sided — never as the 99:1 sentinel", async () => {
+  const { detectFlowAnomalies } = await mod();
+  resetState();
+  // Calls only. No put row at all, so putPrem === 0 and the ratio is undefined.
+  state.rows = [
+    row({ ticker: "GEV", premium: 600_000, option_type: "call" }),
+    row({ ticker: "GEV", premium: 500_000, option_type: "call" }),
+  ];
+
+  const anomalies = await detectFlowAnomalies();
+  const skew = anomalies.find((a) => a.type === "DIRECTIONAL_FLOW_SKEW");
+  assert.ok(skew, "a one-sided book still fires the skew anomaly — gating is unchanged");
+  assert.doesNotMatch(skew!.detail, /\b99:1\b/, "the sentinel must not reach the member as a ratio");
+  assert.match(skew!.detail, /one-sided call flow/);
+  assert.match(skew!.detail, /no put premium/);
+  // The size is still reported — replacing a fake ratio must not cost real information.
+  assert.match(skew!.detail, /\$1\.1M calls/);
+});
+
+test("one-sided PUT flow reads symmetrically", async () => {
+  const { detectFlowAnomalies } = await mod();
+  resetState();
+  state.rows = [
+    row({ ticker: "MU", premium: 2_000_000, option_type: "put", direction: "bearish" }),
+    row({ ticker: "MU", premium: 1_800_000, option_type: "put", direction: "bearish" }),
+  ];
+
+  const anomalies = await detectFlowAnomalies();
+  const skew = anomalies.find((a) => a.type === "DIRECTIONAL_FLOW_SKEW");
+  assert.ok(skew);
+  assert.doesNotMatch(skew!.detail, /\b99:1\b/);
+  assert.match(skew!.detail, /one-sided put flow/);
+  assert.match(skew!.detail, /no call premium/);
+});
+
+test("a genuinely measured ratio is still printed as a ratio", async () => {
+  const { detectFlowAnomalies } = await mod();
+  resetState();
+  // Both sides have premium, so the ratio is real (12:1) and must survive unchanged.
+  state.rows = [
+    row({ ticker: "AMD", premium: 1_200_000, option_type: "call" }),
+    row({ ticker: "AMD", premium: 100_000, option_type: "put" }),
+  ];
+
+  const anomalies = await detectFlowAnomalies();
+  const skew = anomalies.find((a) => a.type === "DIRECTIONAL_FLOW_SKEW");
+  assert.ok(skew);
+  assert.match(skew!.detail, /extreme call skew \(12:1 call\/put\)/);
+});
+
+test("a non-zero premium that rounds to $0.0M is shown as <$0.1M, not as zero", async () => {
+  const { detectFlowAnomalies } = await mod();
+  resetState();
+  // $40k of puts is real money and a real denominator — the ratio is measured, not one-sided —
+  // but `.toFixed(1)` on millions renders it "$0.0M", which reads as "no puts at all" and makes
+  // the accompanying ratio look invented.
+  state.rows = [
+    row({ ticker: "STX", premium: 1_000_000, option_type: "call" }),
+    row({ ticker: "STX", premium: 40_000, option_type: "put" }),
+  ];
+
+  const anomalies = await detectFlowAnomalies();
+  const skew = anomalies.find((a) => a.type === "DIRECTIONAL_FLOW_SKEW");
+  assert.ok(skew);
+  assert.match(skew!.detail, /<\$0\.1M puts/);
+  assert.doesNotMatch(skew!.detail, /\$0\.0M/);
+});
+
+test("REGRESSION: gating and metric_value are untouched by the wording change", async () => {
+  const { detectFlowAnomalies, ONE_SIDED_RATIO } = await mod();
+  resetState();
+  state.rows = [row({ ticker: "BE", premium: 2_000_000, option_type: "put", direction: "bearish" })];
+
+  const anomalies = await detectFlowAnomalies();
+  const skew = anomalies.find((a) => a.type === "DIRECTIONAL_FLOW_SKEW");
+  assert.ok(skew, "one-sided books must still fire — this PR changes wording, not behaviour");
+  assert.equal(skew!.metric_value, ONE_SIDED_RATIO, "the persisted metric is deliberately unchanged");
+  assert.equal(skew!.severity, "HIGH");
+  assert.equal(skew!.direction, "bearish");
+});

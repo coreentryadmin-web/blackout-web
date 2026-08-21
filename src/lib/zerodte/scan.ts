@@ -155,6 +155,7 @@ import {
 } from "./plan";
 import {
   executionTaxBps,
+  latchPremiumBounds,
   zeroDteHalfSpreadFrac,
   ZERODTE_DEFAULT_HALF_SPREAD_FRAC,
 } from "./marks-math";
@@ -1726,9 +1727,34 @@ export async function syncLedgerLiveState(rows: ZeroDteSetupLogRow[]): Promise<Z
       if (r.status === "CLOSED") return r;
       const occ = typeof r.plan_json?.occ === "string" ? (r.plan_json.occ as string) : null;
       const mark = occ ? (snaps.get(occ)?.mark ?? null) : null;
-      const entryRef = r.entry_premium ?? 0;
-      const peak = Math.max(r.peak_premium ?? entryRef, mark ?? 0);
-      const trough = Math.min(r.trough_premium ?? (r.entry_premium ?? Number.MAX_VALUE), mark ?? Number.MAX_VALUE);
+      // LATCH ONLY WHAT IS ACTUALLY KNOWN — an absent premium must stay absent.
+      //
+      // The trough used to read
+      //   Math.min(r.trough_premium ?? (r.entry_premium ?? Number.MAX_VALUE), mark ?? Number.MAX_VALUE)
+      // so a row with no prior trough, no entry premium and no fresh mark latched
+      // Number.MAX_VALUE — 1.7976931348623157e308 — and persisted/served it as `trough_premium`.
+      // Iron condors are the population that hits it: a credit structure carries no single entry
+      // premium, so the first `??` falls through, and any tick without a quote supplies the second.
+      //
+      // Nothing downstream caught it because `Number.isFinite(1.79e308)` is TRUE: the response
+      // sanitizer, the audit suite's `scanFinite` sweep and the malformed-value scan all pass it
+      // through as a perfectly good number. Only reading the payload finds it.
+      //
+      // `derivePlayStatus` already takes `peak: number | null` and `trough: number | null`, so the
+      // sentinel bought nothing in the first place — null was always the supported way to say
+      // "not known yet".
+      //
+      // The peak had the same shape with the opposite failure: `?? 0` made an unknown peak read as
+      // ZERO, which understates rather than absurdly overstates, so it was invisible. Both now
+      // latch across the finite candidates and stay null when there are none.
+      // ONE latch, shared with the 1s marks lane (marks-math.advancePlayLatch). This used to be an
+      // inline Math.min/Math.max pair with a Number.MAX_VALUE sentinel, which is how the two lanes
+      // came to disagree — see latchPremiumBounds for the full account.
+      const { peak, trough } = latchPremiumBounds(
+        r.peak_premium ?? r.entry_premium,
+        r.trough_premium ?? r.entry_premium,
+        mark
+      );
       // Exit engine FIRST with plan-stop deferred — a latched trough at −50% must not
       // skip the ratchet floor when peak had armed breakeven (FINDINGS 2026-08-04).
       const preStop = derivePlayStatus({
@@ -1770,8 +1796,13 @@ export async function syncLedgerLiveState(rows: ZeroDteSetupLogRow[]): Promise<Z
       }
       // Widen the returned latches with the exit mark too (the lane mark can sit
       // outside the snapshot mark) — mirrors the DB write's GREATEST/LEAST.
-      const peakOut = finalMark != null ? Math.max(peak, finalMark) : peak;
-      const troughOut = finalMark != null ? Math.min(trough, finalMark) : trough;
+      // Null-safe widening. `Math.max(null, x)` coerces null to 0, so the old form would have
+      // silently latched a 0 peak the moment `peak` became nullable — the same class of bug one
+      // level down.
+      const peakOut =
+        finalMark != null ? (peak != null ? Math.max(peak, finalMark) : finalMark) : peak;
+      const troughOut =
+        finalMark != null ? (trough != null ? Math.min(trough, finalMark) : finalMark) : trough;
       return { ...r, status, last_mark: finalMark ?? r.last_mark, peak_premium: peakOut, trough_premium: troughOut };
     })
   );
@@ -1812,13 +1843,40 @@ export async function syncLedgerLiveState(rows: ZeroDteSetupLogRow[]): Promise<Z
  *  heavier full-board rebuild: this ambient block only ever surfaces already-
  *  flagged ledger rows (never `setups`/`fresh_finds`), and importing
  *  zerodte-service.ts here would be circular (it imports FROM this module). */
+
+// The two empty states live in a pure leaf module so `get_zerodte_plays` (built from the board
+// payload, in platform/zerodte-service.ts) shares them rather than inventing a second meaning for
+// the same silence. Re-exported here because this is where callers and tests already look.
+import { zeroDteFeedEmptyEnvelope } from "./feed-envelope";
+export { zeroDteFeedEmptyEnvelope };
+
 export async function zeroDtePlaysFeed(): Promise<Record<string, unknown>> {
-  const raw = await readZeroDteLedger();
-  if (raw.length === 0) return { available: false, note: "no 0DTE plays flagged this session" };
-  const rows = await syncLedgerLiveState(raw).catch(() => raw);
+  // ABSENCE IS NOT EMPTINESS (Largo product contract C3).
+  //
+  // This used to call readZeroDteLedger() — the wrapper that DISCARDS `committed_known` —
+  // and then collapse two completely different states into one `available: false`:
+  //   (a) the scanner ran and nothing cleared the commit gates (a MEASURED result), and
+  //   (b) the ledger read failed and this replica has never seen today's rows (an UNKNOWN).
+  // `readZeroDteLedgerChecked` already computes exactly the fact that separates them, and its
+  // own doc comment says it exists to say so "instead of lying 'empty'". The fact was there;
+  // this reader simply was not wired to it.
+  //
+  // Both halves matter, and (b) is the money-relevant one. Largo's system prompt treats this
+  // block as the AUTHORITATIVE source for the turn, so during a ledger outage a member asking
+  // "any 0DTE plays today?" was told a confident "no plays flagged this session" when the
+  // truth is "we cannot see the ledger". And on a healthy quiet session — pre-market, or a
+  // session the fail-closed firewall held entirely — `available: false` reads as "this tool is
+  // broken" and invites the model to fall back to guessing, while the member's own desk is
+  // simultaneously showing `available: true`. Measured live 2026-08-21 pre-market: board
+  // available=true / upstream_ok=true / 0 setups / 0 ledger, feed available=false. Same fact,
+  // two answers.
+  const read = await readZeroDteLedgerChecked();
+  const session_date = todayEt();
+  if (read.rows.length === 0) return zeroDteFeedEmptyEnvelope(read.committed_known, session_date);
+  const rows = await syncLedgerLiveState(read.rows).catch(() => read.rows);
   return {
     available: true,
-    session_date: todayEt(),
+    session_date,
     plays: rows.map((r) => ({
       ticker: r.ticker,
       contract: `${r.top_strike ?? "?"}${r.direction === "long" ? "c" : "p"}`,

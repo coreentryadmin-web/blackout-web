@@ -1,9 +1,19 @@
 import "server-only";
 
-import { fetchBenzingaAnalystRatings, fetchBenzingaCatalysts } from "@/lib/providers/polygon";
+import {
+  fetchBenzingaCatalysts,
+  fetchBenzingaNews,
+  parsePriceTargetFromText,
+} from "@/lib/providers/polygon";
 import { fetchUwCongressTrades, fetchUwInsiderFlow } from "@/lib/providers/unusual-whales";
 import { roundFloats } from "@/lib/round-floats";
-import type { MeridianCatalystHeadline } from "@/features/meridian/lib/meridian-types";
+import { buildStreetSkewFromPriceTargets } from "@/lib/meridian/meridian-benzinga-analytics";
+import type {
+  MeridianCatalystBrief,
+  MeridianCatalystHeadline,
+  MeridianPriceTargetRow,
+  MeridianStreetSkew,
+} from "@/features/meridian/lib/meridian-types";
 
 export type MeridianAnalystRevision = {
   title: string;
@@ -15,6 +25,7 @@ export type MeridianAnalystRevision = {
 export type MeridianInsiderActivity = {
   title: string;
   published: string | null;
+  source?: "benzinga" | "uw" | null;
 };
 
 export type MeridianCongressActivity = {
@@ -26,19 +37,25 @@ export type MeridianCongressActivity = {
 
 export type MeridianCatalystBundle = {
   analyst_revisions: MeridianAnalystRevision[];
+  price_targets: MeridianPriceTargetRow[];
+  street_skew: MeridianStreetSkew | null;
+  catalyst_briefs: MeridianCatalystBrief[];
   insider_activity: MeridianInsiderActivity[];
   congress_trades: MeridianCongressActivity[];
 };
 
+const ANALYST_CHANNELS =
+  "analyst ratings,price target,upgrades,downgrades,analyst color";
+
 function shapeAnalyst(rows: Array<{ title?: string; published?: string; channels?: string[] }>): MeridianAnalystRevision[] {
-  return rows.slice(0, 8).map((r) => {
+  return rows.slice(0, 10).map((r) => {
     const title = String(r.title ?? "").trim();
-    const lower = title.toLowerCase();
     let action: string | null = null;
     if (/upgrade|raises|lift/i.test(title)) action = "upgrade";
     else if (/downgrade|cut|lower/i.test(title)) action = "downgrade";
     else if (/initiat/i.test(title)) action = "initiation";
     else if (/price target|pt /i.test(title)) action = "target";
+    else if (/reiterat|maintain|affirm/i.test(title)) action = "reiterate";
     let firm: string | null = null;
     const m = title.match(/^([^:]+):/);
     if (m?.[1]) firm = m[1].trim();
@@ -49,6 +66,43 @@ function shapeAnalyst(rows: Array<{ title?: string; published?: string; channels
       published: r.published?.trim() || null,
     };
   });
+}
+
+async function loadPriceTargetRows(ticker: string): Promise<MeridianPriceTargetRow[]> {
+  const sym = ticker.toUpperCase();
+  try {
+    const articles = await fetchBenzingaNews(12, { ticker: sym, channels: "price target" });
+    const out: MeridianPriceTargetRow[] = [];
+    for (const a of articles) {
+      const text = `${a.title} ${a.teaser} ${a.body}`;
+      const parsed = parsePriceTargetFromText(text);
+      if (!parsed) continue;
+      out.push({
+        price_target: parsed.value,
+        firm: parsed.firm,
+        action: parsed.action,
+        summary: (a.title || a.teaser || "").slice(0, 200),
+        published: a.published || null,
+      });
+      if (out.length >= 6) break;
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+function shapeCatalystBriefs(
+  catalysts: Awaited<ReturnType<typeof fetchBenzingaCatalysts>>
+): MeridianCatalystBrief[] {
+  return catalysts
+    .filter((c) => ["m&a", "guidance", "buyback", "offering", "binary", "insider"].includes(c.type))
+    .slice(0, 8)
+    .map((c) => ({
+      type: c.type,
+      title: c.title,
+      published: c.published || null,
+    }));
 }
 
 function extractRows(data: unknown): Record<string, unknown>[] {
@@ -70,6 +124,7 @@ function shapeInsider(rows: Record<string, unknown>[]): MeridianInsiderActivity[
         `${r.insider_name ?? r.name ?? "Insider"} ${r.transaction_type ?? r.type ?? "activity"}`
     ).trim(),
     published: String(r.date ?? r.filing_date ?? r.transaction_date ?? "").slice(0, 10) || null,
+    source: "uw" as const,
   }));
 }
 
@@ -82,12 +137,25 @@ function shapeCongress(rows: Record<string, unknown>[]): MeridianCongressActivit
   }));
 }
 
-/** Analyst revisions + insider + congress for earnings/FDA names. */
+function dedupeInsider(rows: MeridianInsiderActivity[]): MeridianInsiderActivity[] {
+  const seen = new Set<string>();
+  const out: MeridianInsiderActivity[] = [];
+  for (const row of rows) {
+    const key = row.title.slice(0, 80);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(row);
+  }
+  return out.slice(0, 8);
+}
+
+/** Analyst + price targets + catalyst briefs + merged insider/congress. */
 export async function loadMeridianCatalystBundle(ticker: string): Promise<MeridianCatalystBundle> {
   const sym = ticker.trim().toUpperCase();
-  const [analyst, catalysts, insiderRaw, congressRaw] = await Promise.all([
-    fetchBenzingaAnalystRatings(sym, 12).catch(() => []),
-    fetchBenzingaCatalysts(sym, 8).catch(() => []),
+  const [analystNews, catalysts, price_targets, insiderRaw, congressRaw] = await Promise.all([
+    fetchBenzingaNews(14, { ticker: sym, channels: ANALYST_CHANNELS }).catch(() => []),
+    fetchBenzingaCatalysts(sym, 10).catch(() => []),
+    loadPriceTargetRows(sym),
     fetchUwInsiderFlow(sym).catch(() => null),
     fetchUwCongressTrades(sym, 12).catch(() => null),
   ]);
@@ -97,14 +165,23 @@ export async function loadMeridianCatalystBundle(ticker: string): Promise<Meridi
 
   const insiderFromBenzinga: MeridianInsiderActivity[] = catalysts
     .filter((c) => c.type === "insider")
-    .map((c) => ({ title: c.title, published: c.published || null }));
+    .map((c) => ({ title: c.title, published: c.published || null, source: "benzinga" as const }));
+
+  const ptForSkew = price_targets.map((p) => ({
+    price_target: p.price_target,
+    firm: p.firm,
+    action: p.action as "raised" | "lowered" | "initiated" | "reiterated" | "maintained" | "set" | null,
+    summary: p.summary,
+    published: p.published ?? "",
+    url: "",
+  }));
 
   return roundFloats({
-    analyst_revisions: shapeAnalyst(analyst),
-    insider_activity: [
-      ...insiderFromBenzinga,
-      ...shapeInsider(insiderRows),
-    ].slice(0, 8),
+    analyst_revisions: shapeAnalyst(analystNews),
+    price_targets,
+    street_skew: buildStreetSkewFromPriceTargets(ptForSkew),
+    catalyst_briefs: shapeCatalystBriefs(catalysts),
+    insider_activity: dedupeInsider([...insiderFromBenzinga, ...shapeInsider(insiderRows)]),
     congress_trades: shapeCongress(congressRows),
   });
 }

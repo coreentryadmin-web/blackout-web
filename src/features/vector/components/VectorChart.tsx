@@ -70,6 +70,9 @@ import {
   SESSION_OVERVIEW_MAX_SPAN_PCT,
   filterStrikesNearSpot,
   clampPriceRangeSpan,
+  beadExtensionAllowed,
+  rowAwareSpanPct,
+  candleShareSpanCapPct,
 } from "@/features/vector/lib/vector-price-range";
 import {
   scoreTopWalls,
@@ -171,6 +174,18 @@ import {
   VECTOR_WALL_NODES_PER_SIDE,
   type VectorTimeframeMinutes,
 } from "@/features/vector/lib/vector-bar-timeframes";
+import {
+  resolveNodeCount,
+  loadNodeDensity,
+  saveNodeDensity,
+  VECTOR_DEFAULT_NODE_DENSITY,
+  type VectorNodeDensity,
+} from "@/features/vector/lib/vector-node-density";
+import {
+  candleRangeFromBars,
+  resolveEffectiveNodeCount,
+  strikesForAdaptiveMeasure,
+} from "@/features/vector/lib/vector-adaptive-nodes";
 import { mergeSpyVolumeRows } from "@/features/vector/lib/vector-spy-volume-merge";
 import {
   createRenderThrottle,
@@ -406,6 +421,9 @@ type Props = {
   linkedReplay?: VectorLinkedReplayBind | null;
   /** Compare linked replay — hide per-pane replay controls when the command bar owns transport. */
   hideReplayControls?: boolean;
+  /** Initial NODES pick for this chart. Compare panes default lower than the full-size desk and
+   *  deliberately ignore the desk-wide saved preference — see the hydrate effect. */
+  defaultNodeDensity?: VectorNodeDensity;
   /** Compare 4-up grid is live — apply a light baseline overlay dim on every pane. */
   compareFourUp?: boolean;
   /** Compare 4-up unfocused pane — slower overlay polls + stronger dim + throttled repaints. */
@@ -1218,7 +1236,11 @@ function feedWallRail(
   showIntegrityRings = false,
   showEventGlyphs = false,
   wallEvents: readonly VectorWallEvent[] = [],
-  eventCursorTime?: number
+  eventCursorTime?: number,
+  /** The candle grid the rail projects buckets against — without it the rail can draw at most one
+   *  bead per candle regardless of the recorder's cadence (see vector-bead-x-projection). */
+  barTimes: readonly number[] = [],
+  intervalSec = 0
 ): void {
   if (!rail) return;
   let maxPct = 0;
@@ -1240,6 +1262,8 @@ function feedWallRail(
       wallEvents,
       eventLens: activeLens,
       eventCursorTime,
+      barTimes,
+      intervalSec,
     },
     visible && maxPct > 0
   );
@@ -1320,6 +1344,7 @@ export function VectorChart({
   onCompareVisibleRange,
   linkedReplay = null,
   hideReplayControls = false,
+  defaultNodeDensity = VECTOR_DEFAULT_NODE_DENSITY,
   compareFourUp = false,
   compareFourUpBackground = false,
   comparePane = false,
@@ -1717,6 +1742,33 @@ export function VectorChart({
   // 1m is the seed resolution; host desks may open on a coarser preset (defaultTimeframe — 3m default).
   // Aggregation is client-side from the same 1m bars.
   const [timeframe, setTimeframeState] = useState<VectorTimeframeMinutes>(initialTimeframe);
+  // NODES — member override for wall/bead rows per side. Default "auto" reproduces the timeframe
+  // heuristic exactly, so a member who never touches this control sees the chart unchanged. The ref
+  // mirror is what the imperative repaint paths (refreshTrails/refreshOverlays/replay applyFrame)
+  // read: they are useCallbacks with pinned deps, so reading state there would capture a stale
+  // value the same way timeframeRef exists to avoid.
+  const [nodeDensity, setNodeDensityState] = useState<VectorNodeDensity>(defaultNodeDensity);
+  const nodeDensityRef = useRef<VectorNodeDensity>(defaultNodeDensity);
+  /** AUTO: timeframe cap on dense ladders (SPX); self-limits on coarse ladders (NVDA) — see vector-adaptive-nodes. */
+  const effectiveNodeCount = useCallback((tfAutoCount: number): number => {
+    const density = nodeDensityRef.current;
+    if (density !== "auto") return resolveNodeCount(density, tfAutoCount);
+    const spot = spotRef.current;
+    const candle = candleRangeFromBars(minuteBarsRef.current);
+    if (spot == null || !(spot > 0) || candle == null) {
+      return resolveNodeCount("auto", tfAutoCount);
+    }
+    const strikes = strikesForAdaptiveMeasure(
+      rangeWallsRef.current.call,
+      rangeWallsRef.current.put
+    );
+    return resolveEffectiveNodeCount("auto", tfAutoCount, {
+      spot,
+      strikes,
+      candleRange: candle,
+      tfAutoCount,
+    });
+  }, []);
   const timeframeUserLockedRef = useRef(false);
   const autoCoarsenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const overlayDimRef = useRef(1);
@@ -2220,7 +2272,9 @@ export function VectorChart({
     // before (member finding "select 0DTE, still shows All's walls" is still fixed either way).
     const lastBarTime = minuteBarsRef.current[minuteBarsRef.current.length - 1]?.time ?? 0;
     const horizon = dteHorizonRef.current;
-    const beadRowCap = wallCountForHorizon(timeframeRef.current, horizon);
+    const beadRowCap = effectiveNodeCount(
+      wallCountForHorizon(timeframeRef.current, horizon)
+    );
     const currentColumn = narrowedHorizonTrail(
       horizon,
       activeLens,
@@ -2263,7 +2317,8 @@ export function VectorChart({
       pinLiveAnchorBeads,
       trailBucketSec,
       spotRef.current,
-      compareCompactBeadsRef.current
+      compareCompactBeadsRef.current,
+      undefined
     );
     const put = applyWallBeadMarkers(
       putBeadsRef.current,
@@ -2278,7 +2333,8 @@ export function VectorChart({
       pinLiveAnchorBeads,
       trailBucketSec,
       spotRef.current,
-      compareCompactBeadsRef.current
+      compareCompactBeadsRef.current,
+      undefined
     );
     // Feed the ribbon rail the SAME composed call+put trails (both sides share one frame reference).
     const enabled = indicatorsRef.current;
@@ -2297,7 +2353,11 @@ export function VectorChart({
       enabled.has("bead-integrity-rings"),
       enabled.has("bead-event-glyphs"),
       wallEventsRef.current,
-      eventCursorTime
+      eventCursorTime,
+      // The candle grid the rail interpolates buckets against. `displayBarsFromMinute` is the same
+      // transform the series itself was fed, so bucket x lands inside the right candle.
+      displayBarsFromMinute(minuteBarsRef.current, timeframeRef.current).map((b) => b.time),
+      timeframeRef.current * 60
     );
     // Record what was actually drawn so the autoscale provider widens to reveal these exact beads
     // at every zoom level, then nudge a rescale (off-hours there is no tick to trigger it).
@@ -2329,7 +2389,9 @@ export function VectorChart({
       // How many wall guides/beads THIS timeframe shows (1m→6 … 15m→12). Higher timeframe →
       // more, further-out walls drawn → wider axis (extendRangeForWalls keys off these SHOWN
       // strikes below, so 1m stays tight while 15m widens).
-      const maxGuides = wallCountForHorizon(timeframeRef.current, dteHorizonRef.current);
+      const maxGuides = effectiveNodeCount(
+        wallCountForHorizon(timeframeRef.current, dteHorizonRef.current)
+      );
       // Walls are shown ONLY as strength-scaled beads now (the Skylit-clean look) — clear any
       // wall guide price-lines rather than drawing them, so the price axis is not stacked with
       // "Call/Put wall — %" labels. The gamma-flip line stays (member kept it); dark-pool level
@@ -2884,7 +2946,7 @@ export function VectorChart({
         timeframeRef.current,
         cursorTime,
         true,
-        wallCountForTimeframe(timeframeRef.current),
+        effectiveNodeCount(wallCountForTimeframe(timeframeRef.current)),
         true,
         trailBucketSec,
         spotRef.current,
@@ -2900,7 +2962,7 @@ export function VectorChart({
         timeframeRef.current,
         cursorTime,
         true,
-        wallCountForTimeframe(timeframeRef.current),
+        effectiveNodeCount(wallCountForTimeframe(timeframeRef.current)),
         true,
         trailBucketSec,
         spotRef.current,
@@ -2922,7 +2984,9 @@ export function VectorChart({
         enabled.has("bead-integrity-rings"),
         enabled.has("bead-event-glyphs"),
         wallEventsRef.current,
-        cursorTime
+        cursorTime,
+        barTimes,
+        timeframeRef.current * 60
       );
       // Same zoom-stability guarantee in replay: widen the axis for the beads this frame drew.
       beadStrikesRef.current = { call: call.strikes, put: put.strikes };
@@ -3818,7 +3882,14 @@ export function VectorChart({
         // During a wheel-zoom cooldown, return the raw candle range WITHOUT extending
         // for walls/beads — this lets the member's scroll-zoom hold tight to the visible
         // candles instead of snapping back to the wide wall-inclusive band on every tick.
-        if (memberViewportLocked(chartUserPannedRef.current, wheelZoomCooldownRef.current)) {
+        //
+        // Gated on the WHEEL stamp alone, deliberately — NOT on memberViewportLocked, which also
+        // reads `chartUserPanned`. The intraday zoom presets set that flag programmatically and
+        // nothing clears it until a Session reset, so pressing STRUCTURE or LIVE used to disable
+        // this widening for the rest of the session: the axis collapsed to the candle band and
+        // every bead row outside it clipped. See beadExtensionAllowed for the measured before/after
+        // and for why the same collapse reads as "NVDA has one level, SPX has ten".
+        if (!beadExtensionAllowed(wheelZoomCooldownRef.current)) {
           return res;
         }
         const preset = intradayZoomPresetRef.current;
@@ -3826,9 +3897,47 @@ export function VectorChart({
           (preset === "session" ||
             (preset == null && defaultChartViewportRef.current === "session")) &&
           !liveFollowEnabledRef.current;
-        const wallViewPct = sessionOverviewFrame
-          ? SESSION_OVERVIEW_BEAD_VIEW_MAX_PCT
-          : WALL_VIEW_MAX_PCT;
+        // The session-overview caps are PERCENTAGES OF PRICE, which is the wrong unit for "how many
+        // strike rows fit" — a 5-pt SPX strike is 0.065% of price and a $2.50 NVDA strike is 1.14%,
+        // so one constant spans ~37 rows on the index and ~2 on the single name. Size the window
+        // off the ticker's own strike step instead, with the old constant kept as the FLOOR (SPX,
+        // which already had room for far more rows than any cap, is unchanged) and a hard ceiling
+        // so a pathological ladder still cannot squash the candles. See rowAwareSpanPct.
+        const sessionRows = effectiveNodeCount(
+          wallCountForTimeframe(timeframeRef.current)
+        );
+        const sessionBeadStrikes = [
+          ...beadStrikesRef.current.call,
+          ...beadStrikesRef.current.put,
+        ];
+        // The candles get a guaranteed share of the pane and the ladder gets the remainder — the
+        // inverse of sizing for rows and letting the candles have what is left. `res.priceRange` is
+        // the autoscale band over the visible candles, i.e. the thing being protected, read BEFORE
+        // any wall widening is applied. Null when there is no measurable range, and then the
+        // row-derived span stands unchanged. See candleShareSpanCapPct.
+        const candleCapPct = candleShareSpanCapPct(res.priceRange, spotRef.current ?? 0);
+        // Compose by taking the SMALLER: this only ever tightens a window the ladder wanted wider.
+        const withCandleFloor = (pct: number) =>
+          candleCapPct == null ? pct : Math.min(pct, candleCapPct);
+        const sessionBeadViewPct = withCandleFloor(
+          rowAwareSpanPct(
+            spotRef.current ?? 0,
+            sessionBeadStrikes,
+            sessionRows,
+            SESSION_OVERVIEW_BEAD_VIEW_MAX_PCT,
+            BEAD_VIEW_MAX_PCT
+          )
+        );
+        const sessionSpanPct = withCandleFloor(
+          rowAwareSpanPct(
+            spotRef.current ?? 0,
+            sessionBeadStrikes,
+            sessionRows,
+            SESSION_OVERVIEW_MAX_SPAN_PCT,
+            BEAD_VIEW_MAX_PCT
+          )
+        );
+        const wallViewPct = sessionOverviewFrame ? sessionBeadViewPct : WALL_VIEW_MAX_PCT;
         // Two composed widenings (each only ever WIDENS, never narrows the candle band):
         // 1) the current live ladder (rangeWallsRef) within the tight ±WALL_VIEW_MAX_PCT window;
         // 2) the strikes ACTUALLY drawn as beads (beadStrikesRef) within the wider BEAD_VIEW_MAX_PCT.
@@ -3842,10 +3951,10 @@ export function VectorChart({
           rangeWallsRef.current.call,
           rangeWallsRef.current.put,
           wallViewPct,
-          sessionOverviewFrame ? SESSION_OVERVIEW_BEAD_VIEW_MAX_PCT : undefined
+          sessionOverviewFrame ? sessionBeadViewPct : undefined
         );
         let beadViewPct = compareCompactBeadsRef.current ? COMPARE_BEAD_VIEW_MAX_PCT : BEAD_VIEW_MAX_PCT;
-        if (sessionOverviewFrame) beadViewPct = SESSION_OVERVIEW_BEAD_VIEW_MAX_PCT;
+        if (sessionOverviewFrame) beadViewPct = sessionBeadViewPct;
         const beadCalls = sessionOverviewFrame
           ? filterStrikesNearSpot(beadStrikesRef.current.call, spotRef.current ?? 0, beadViewPct)
           : beadStrikesRef.current.call;
@@ -3864,7 +3973,7 @@ export function VectorChart({
           priceRange = clampPriceRangeSpan(
             priceRange,
             spotRef.current,
-            SESSION_OVERVIEW_MAX_SPAN_PCT,
+            sessionSpanPct,
             res.priceRange
           );
         }
@@ -4710,6 +4819,44 @@ export function VectorChart({
     ]
   );
 
+  // Hydrate the member's saved NODES pick after mount (localStorage is client-only). Setting state
+  // here runs the repaint effect below exactly once, so the first paint is AUTO and then converges
+  // to the member's preference — rather than SSR-mismatching on a value the server cannot know.
+  useEffect(() => {
+    // A pane with its own default (Compare) does NOT adopt the desk-wide saved pick — otherwise a
+    // member who pinned 20 rows on the full-size chart would get 20 rows in each quarter-height
+    // compare pane, which is the layout that needs fewer rows, not more.
+    if (defaultNodeDensity !== VECTOR_DEFAULT_NODE_DENSITY) return;
+    const saved = loadNodeDensity();
+    if (saved === VECTOR_DEFAULT_NODE_DENSITY) return;
+    nodeDensityRef.current = saved;
+    setNodeDensityState(saved);
+  }, [defaultNodeDensity]);
+
+  const handleNodeDensity = useCallback(
+    (next: VectorNodeDensity) => {
+      nodeDensityRef.current = next;
+      setNodeDensityState(next);
+      saveNodeDensity(next);
+    },
+    []
+  );
+
+  // Repaint on a density change. Beads AND guides both key off the resolved row count, and the
+  // price axis widens off the drawn strikes (rangeWallsRef/beadStrikesRef), so repainting only the
+  // beads would leave the axis sized for the old count and clip the new outer rows.
+  useEffect(() => {
+    refreshTrails(lensRef.current);
+    refreshOverlays(
+      lensRef.current,
+      liveGexWalls(),
+      vexWallsRef.current,
+      liveGammaFlip(),
+      vexFlipRef.current,
+      darkPoolRef.current
+    );
+  }, [nodeDensity, refreshTrails, refreshOverlays, liveGexWalls, liveGammaFlip]);
+
   const toolbar = (
     <VectorToolbar
       interval={timeframe}
@@ -4753,6 +4900,9 @@ export function VectorChart({
       comparePane={toolbarHideLinkedControls}
       hideReplayControls={hideReplayControls}
       drawTools={drawToolsProps}
+      nodeDensity={nodeDensity}
+      onNodeDensity={handleNodeDensity}
+      nodeAutoCount={effectiveNodeCount(wallCountForHorizon(timeframe, dteHorizon))}
     />
   );
 
@@ -4766,12 +4916,12 @@ export function VectorChart({
 
       {toolbarPortalEl ? createPortal(toolbar, toolbarPortalEl) : toolbar}
 
-      <VectorIntradayZoomControls
-        active={intradayZoomPreset}
-        disabled={replayMode}
-        comparePane={comparePane}
-        onZoom={handleIntradayZoom}
-      />
+      {/* SESSION / STRUCTURE / LIVE removed 2026-08-19 (member: "nobody uses it"). The chart's own
+          default viewport plus scroll/drag covers the same ground, and each preset also set the
+          pan flag, which used to disable the price-axis widening for the rest of the session (see
+          beadExtensionAllowed). `handleIntradayZoom` and the preset state stay — Compare's
+          sync-zoom bar still drives them to align panes with each other, which is a different job
+          from a per-chart zoom shortcut. */}
 
       {/* Regime banner sits directly above the canvas (passed in from the shell) so it still leads
           the chart, without a tall page-level header block eating chart height. */}

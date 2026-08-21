@@ -1,7 +1,8 @@
 "use client";
 
-import type { MeridianEventDetail, MeridianTimelineItem } from "@/features/meridian/lib/meridian-types";
-import { LargoPreEarningsPackCard } from "@/features/largo/components/LargoPreEarningsPackCard";
+import { useEffect, useRef, useState } from "react";
+
+import type { MeridianEventDetail, MeridianTimelineItem, MeridianEarningsAnalyticsRow } from "@/features/meridian/lib/meridian-types";
 import { FreshnessChip } from "@/components/ui";
 import { fmtPct } from "./MeridianDesk";
 import {
@@ -12,8 +13,11 @@ import {
   MeridianShimmer,
   kindTheme,
 } from "./meridian-ui";
-import { MeridianEarningsIntelPanel } from "./MeridianEarningsIntelPanel";
-import { MeridianEarningsReportPanel } from "./MeridianEarningsReportPanel";
+import {
+  MeridianEarningsTabs,
+  MeridianEarningsTablist,
+  type EarningsTab,
+} from "./MeridianEarningsTabs";
 import { MeridianMacroReportPanel } from "./MeridianMacroReportPanel";
 import { MeridianOpexCrossMarketPanel } from "./MeridianOpexCrossMarketPanel";
 
@@ -30,6 +34,10 @@ type Props = {
   loading: boolean;
   error: string | null;
   boardTickers?: string[];
+  /** The full lane, for panels that compare this event against the others on screen. */
+  allItems?: readonly MeridianTimelineItem[];
+  earningsAnalyticsRows?: readonly MeridianEarningsAnalyticsRow[];
+  onSelectEarningsTicker?: (ticker: string) => void;
 };
 
 function HeadlineList({
@@ -58,8 +66,38 @@ export function MeridianEventDetailPanel({
   loading,
   error,
   boardTickers = [],
+  allItems = [],
+  earningsAnalyticsRows = [],
+  onSelectEarningsTicker,
 }: Props) {
   const theme = kindTheme(item.kind);
+
+  /**
+   * Which earnings section is showing. Lifted out of MeridianEarningsTabs so the tab strip can
+   * live in the HEADER BAR while the panels it switches stay below — the control belongs with
+   * the chrome, not stacked on top of the content a second time.
+   *
+   * The two auto-switch rules moved up with it: when a print lands mid-session the reader wants
+   * the numbers, not the pre-print read, so the view follows the event rather than making them
+   * notice and click.
+   */
+  const earnings = detail?.kind === "earnings" ? detail : null;
+  const hasPostPrint = Boolean(earnings?.enrichment.post_print?.headline);
+  const hasActual = earnings?.enrichment.earnings_calendar?.actual_eps != null;
+  const [earningsTab, setEarningsTab] = useState<EarningsTab>("summary");
+  const hadActualRef = useRef(hasActual);
+  useEffect(() => {
+    if (hasActual && !hadActualRef.current) setEarningsTab("estimates");
+    hadActualRef.current = hasActual;
+  }, [hasActual]);
+  useEffect(() => {
+    if (hasPostPrint) setEarningsTab("estimates");
+  }, [hasPostPrint]);
+  // A different event starts on REPORT again — carrying the previous name's tab across is a
+  // state leak the reader reads as the page opening on the wrong section.
+  useEffect(() => {
+    setEarningsTab("summary");
+  }, [item.id]);
 
   return (
     <article
@@ -68,18 +106,28 @@ export function MeridianEventDetailPanel({
       aria-label="Event structure brief"
     >
       <header className="meridian-detail-head-v2">
+        {/* One line, not three. The reader picked this event from the lane a second ago — the
+            header's job is to confirm which one, not to re-announce it. Kind, title and timing
+            sit inline so the vertical space goes to the analysis instead. */}
         <div className="meridian-detail-head-main">
-          <p className="meridian-detail-kicker">
-            {theme.label} · {item.impact === "high" ? "High impact" : item.impact === "medium" ? "Medium" : "Scheduled"}
-          </p>
-          <h2 className="meridian-detail-title-v2">{item.title}</h2>
-          <p className="meridian-detail-meta">
-            {item.date}
-            {item.time ? ` · ${item.time} ET` : ""}
-            {item.days_until === 0 ? " · today" : item.days_until === 1 ? " · tomorrow" : ` · ${item.days_until}d`}
-          </p>
+          <h2 className="meridian-detail-title-v2">
+            <span className="meridian-detail-kicker">
+              {theme.label} · {item.impact === "high" ? "High impact" : item.impact === "medium" ? "Medium" : "Scheduled"}
+            </span>
+            {item.title}
+            <span className="meridian-detail-meta">
+              {item.date}
+              {item.time ? ` · ${item.time} ET` : ""}
+              {item.days_until === 0 ? " · today" : item.days_until === 1 ? " · tomorrow" : ` · ${item.days_until}d`}
+            </span>
+          </h2>
         </div>
-        <FreshnessChip status={loading ? "stale" : "live"} label={loading ? "Loading" : "Structure"} />
+        {/* The section switcher lives HERE, in the chrome, rather than as a second bar above
+            the content. The old "Structure" freshness chip that sat in this slot said nothing
+            the header did not already say. */}
+        {detail?.kind === "earnings" && !loading && !error && (
+          <MeridianEarningsTablist tab={earningsTab} onTabChange={setEarningsTab} />
+        )}
       </header>
 
       {loading && (
@@ -94,6 +142,14 @@ export function MeridianEventDetailPanel({
           <MeridianMacroReportPanel detail={detail} />
 
           <div className="meridian-banner-stack">
+            {detail.economics_narrative && (
+              <MeridianAnalyticsBanner
+                label="Economics narrative"
+                headline={detail.economics_narrative}
+                tone="macro"
+                icon="◈"
+              />
+            )}
             <MeridianAnalyticsBanner
               label="Correlation rail"
               headline={detail.correlation_rail.headline}
@@ -281,79 +337,31 @@ export function MeridianEventDetailPanel({
           <MeridianDataCard label="Catalyst headlines" wide tone="fda" delay={240}>
             <HeadlineList items={detail.catalysts} empty="No recent catalyst headlines." />
           </MeridianDataCard>
+
+          {detail.catalyst_briefs.length > 0 && (
+            <MeridianDataCard label="Event briefs" wide tone="fda" delay={320}>
+              <ul className="meridian-card-list">
+                {detail.catalyst_briefs.map((c) => (
+                  <li key={`${c.type}-${c.title}`}>
+                    {c.type.toUpperCase()} · {c.title}
+                  </li>
+                ))}
+              </ul>
+            </MeridianDataCard>
+          )}
         </div>
       )}
 
       {!loading && !error && detail?.kind === "earnings" && (
-        <>
-          <MeridianEarningsReportPanel
-            ticker={detail.pack.ticker}
-            intel={detail.intel}
-            enrichment={{
-              earnings_headlines: detail.enrichment.earnings_headlines,
-              catalysts: detail.enrichment.catalysts,
-              analyst_revisions: detail.enrichment.analyst_revisions,
-              insider_activity: detail.enrichment.insider_activity,
-            }}
-          />
-
-          <div className="meridian-banner-stack">
-            {detail.enrichment.expected_vs_realized?.headline && (
-              <MeridianAnalyticsBanner
-                label="Expected vs realized"
-                headline={detail.enrichment.expected_vs_realized.headline}
-                sub={
-                  detail.pack.expected_move_pct != null
-                    ? `Implied ~${detail.pack.expected_move_pct}% into print`
-                    : null
-                }
-                tone="earnings"
-                icon="◆"
-              />
-            )}
-            {detail.enrichment.analyst_revisions.length > 0 && (
-              <MeridianAnalyticsBanner
-                label="Analyst cluster"
-                headline={`${detail.enrichment.analyst_revisions.length} recent revisions`}
-                sub={detail.enrichment.analyst_revisions[0]?.title.slice(0, 90) ?? null}
-                tone="earnings"
-                icon="✦"
-              />
-            )}
-          </div>
-
-          <MeridianEarningsIntelPanel
-            intel={detail.intel}
-            printHistory={detail.enrichment.print_history}
-            tickerExpectedMovePct={detail.pack.expected_move_pct}
-          />
-
-          <div className="meridian-detail-grid-v2 meridian-earn-enrich">
-            {detail.enrichment.print_history_summary && (
-              <MeridianDataCard label="Track record" wide tone="earnings" delay={0}>
-                <p className="meridian-card-value">{detail.enrichment.print_history_summary}</p>
-              </MeridianDataCard>
-            )}
-            {detail.enrichment.street_estimates.length > 0 && (
-              <MeridianDataCard label="Street estimates" wide tone="earnings" delay={80}>
-                <ul className="meridian-card-list">
-                  {detail.enrichment.street_estimates.map((row) => (
-                    <li key={row.period ?? "unknown"}>
-                      {row.period ?? "Next"}
-                      {row.eps_estimate != null ? ` · EPS est ${row.eps_estimate}` : ""}
-                      {row.revenue_estimate != null
-                        ? ` · Rev est $${(row.revenue_estimate / 1_000_000).toFixed(0)}M`
-                        : ""}
-                    </li>
-                  ))}
-                </ul>
-              </MeridianDataCard>
-            )}
-          </div>
-          <div className="meridian-earn-wrap">
-            <LargoPreEarningsPackCard card={detail.pack} />
-          </div>
-        </>
+        <MeridianEarningsTabs
+          detail={detail}
+          tab={earningsTab}
+          onTabChange={setEarningsTab}
+          item={item}
+          allItems={allItems}
+          analyticsRows={earningsAnalyticsRows}
+          onSelectTicker={onSelectEarningsTicker}
+        />
       )}
 
       <MeridianActionDock item={item} boardTickers={boardTickers} />

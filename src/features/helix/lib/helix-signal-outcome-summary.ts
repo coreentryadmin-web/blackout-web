@@ -14,25 +14,84 @@ import type { HelixSignalOutcomeRow } from "@/lib/db";
  */
 export const MIN_GRADED_SAMPLE_FOR_WIN_RATE = 10;
 
-export type HelixSignalOutcomeSummary = {
+/**
+ * The graded distribution of ONE population of firings — the whole ledger, or one signal type.
+ * Shared so the aggregate and every per-type row are computed by the identical code and can never
+ * disagree about how a rate or a bucket is derived.
+ */
+export type HelixOutcomeDistribution = {
   gradedCount: number;
   pendingCount: number;
+  /** Firings that CONTINUED in the signal's own direction. Kept under this name because the
+   *  existing tracker panel reads it; it is a continuation count, not a P&L "win". */
   winCount: number;
   /** null when gradedCount < MIN_GRADED_SAMPLE_FOR_WIN_RATE — never a fabricated 0%. */
   winRatePct: number | null;
+  /** The full graded distribution. `winRatePct` alone cannot express it, and the missing half
+   *  changes the read: live 2026-08-20, 40 graded split 25 continued / 12 flat / 3 reversed, so
+   *  "62.5%" implied 37.5% went wrong when only 7.5% actually reversed and 30% went nowhere.
+   *  A signal that rarely reverses but often stalls is a different instrument from one that is
+   *  wrong a third of the time, and the two were indistinguishable in the payload. */
+  continuedCount: number;
+  flatCount: number;
+  reversedCount: number;
+  /** Graded rows whose outcome is none of continued/flat/reversed — 0 today. Present so an
+   *  unrecognised grade can never be silently absorbed into one of the three real buckets. */
+  otherCount: number;
 };
 
-export function summarizeHelixSignalOutcomes(rows: HelixSignalOutcomeRow[]): HelixSignalOutcomeSummary {
+export type HelixSignalOutcomeSummary = HelixOutcomeDistribution & {
+  /**
+   * The same follow-through math, computed PER SIGNAL TYPE (split_flow / velocity_spike / …).
+   *
+   * WHY THIS EXISTS. The aggregate answers "how reliable is HELIX", but a member asks "which HELIX
+   * signal do I trust — split_flow or velocity_spike?", and that was unanswerable from the payload:
+   * the aggregate blends the types, and the row list the model also receives is capped (20 of up to
+   * 50), so hand-counting it is the capped-slice trap that inverted the compare card. Each type here
+   * carries its OWN denominator and its OWN sub-threshold null — a type with fewer than
+   * MIN_GRADED_SAMPLE_FOR_WIN_RATE graded fires reports `winRatePct: null`, never a rate manufactured
+   * off two samples, exactly as the aggregate does. Sorted most-graded-first (the type with the most
+   * evidence leads), then by name for a stable order.
+   */
+  bySignalType: Array<{ signal_type: string } & HelixOutcomeDistribution>;
+};
+
+/** Distribution + continuation rate over one population. The rate is null below the min sample. */
+function distributionOf(rows: HelixSignalOutcomeRow[]): HelixOutcomeDistribution {
   const graded = rows.filter((r) => r.outcome !== "pending");
-  const wins = graded.filter((r) => r.outcome === "continued").length;
+  const continuedCount = graded.filter((r) => r.outcome === "continued").length;
+  const flatCount = graded.filter((r) => r.outcome === "flat").length;
+  const reversedCount = graded.filter((r) => r.outcome === "reversed").length;
   const gradedCount = graded.length;
   return {
     gradedCount,
     pendingCount: rows.length - gradedCount,
-    winCount: wins,
+    winCount: continuedCount,
     winRatePct:
       gradedCount >= MIN_GRADED_SAMPLE_FOR_WIN_RATE
-        ? Math.round((wins / gradedCount) * 1000) / 10
+        ? Math.round((continuedCount / gradedCount) * 1000) / 10
         : null,
+    continuedCount,
+    flatCount,
+    reversedCount,
+    // Derived by subtraction rather than by a fourth filter, so the four buckets ALWAYS sum to
+    // gradedCount even if the grader gains a new outcome value.
+    otherCount: gradedCount - continuedCount - flatCount - reversedCount,
   };
+}
+
+export function summarizeHelixSignalOutcomes(rows: HelixSignalOutcomeRow[]): HelixSignalOutcomeSummary {
+  const byType = new Map<string, HelixSignalOutcomeRow[]>();
+  for (const r of rows) {
+    // An empty/undefined signal_type becomes "unknown" rather than vanishing — a type we cannot
+    // name is still a graded fire and must reconcile into the total, same principle as otherCount.
+    const key = r.signal_type || "unknown";
+    const bucket = byType.get(key);
+    if (bucket) bucket.push(r);
+    else byType.set(key, [r]);
+  }
+  const bySignalType = [...byType.entries()]
+    .map(([signal_type, typeRows]) => ({ signal_type, ...distributionOf(typeRows) }))
+    .sort((a, b) => b.gradedCount - a.gradedCount || a.signal_type.localeCompare(b.signal_type));
+  return { ...distributionOf(rows), bySignalType };
 }

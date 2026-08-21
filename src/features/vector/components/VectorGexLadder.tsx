@@ -115,13 +115,21 @@ export function VectorGexLadder({
   // Guard against a slow response for a PREVIOUS ticker landing after a switch and overwriting the
   // new ticker's ladder (same staleness class the chart's fetches guard with a ref check).
   const tickerRef = useRef(ticker);
-  // Track last successful ladder fetch to avoid re-fetching on every spot tick.
-  const lastFetchTimeRef = useRef<number>(0);
   // Pending retry timers, cleared on teardown so a ticker/horizon switch cannot land a stale retry.
   const retryTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  /**
+   * `liveSpot` READ BY the fetch effect, never DEPENDED ON by it.
+   *
+   * The fetch effect needs to know whether a live spot exists (it only adopts the response's own
+   * spot when one does not). Naming `liveSpot` in its dep array to keep that read fresh is what
+   * made the ladder re-fetch at SSE rate — so the value comes through a ref instead: current at
+   * read time, invisible to the dependency comparison.
+   */
+  const liveSpotRef = useRef<number | null>(liveSpot);
 
   // Live spot from chart SSE updates the display without re-fetching the ladder.
   useEffect(() => {
+    liveSpotRef.current = liveSpot;
     if (liveSpot != null) {
       setSpot(liveSpot);
     }
@@ -179,32 +187,38 @@ export function VectorGexLadder({
         const anchor = data.depthSpot ?? data.spot;
         setDepth(data.depth && anchor != null && anchor > 0 ? { ...data.depth, spot: anchor } : null);
         // Only update spot from fetch if liveSpot is not available (off-hours or initial load).
-        if (!liveSpot) {
+        // Read through the ref — see liveSpotRef: depending on the prop is what caused the storm.
+        if (!liveSpotRef.current) {
           setSpot(data.spot ?? null);
         }
         setAsOf(data.asOf ?? null);
         setState("ready");
-        lastFetchTimeRef.current = Date.now();
       } catch {
         failed(attempt);
       }
     };
 
     void load();
-    // Live: refresh ladder structure every 15s. Spot updates come from chart SSE every tick.
+    // Live: refresh ladder structure on the scoped poll cadence (5s oracle / 15s on-demand).
+    // Spot updates come from chart SSE every tick and never touch this effect.
     // Off-hours: one fetch — the ladder is static. Pre-warm on ticker/horizon change for faster navigation.
+    //
+    // The interval used to be gated on `Date.now() - lastFetchTimeRef.current > 10_000`. That guard
+    // existed only to blunt the tick storm below, and with the storm gone it does active harm: on a
+    // ticker switch less than 10s after the previous ticker's fetch it creates NO interval, and
+    // since the effect does not re-run again the ladder then never refreshes for the rest of the
+    // session. Removing the cause lets the guard go with it.
     const pollMs = wallsPollMs ?? vectorWallsScopePollMs(ticker);
-    const id =
-      liveSession && (Date.now() - lastFetchTimeRef.current > 10_000)
-        ? setInterval(load, pollMs)
-        : null;
+    const id = liveSession ? setInterval(load, pollMs) : null;
     return () => {
       cancelled = true;
       if (id) clearInterval(id);
       for (const t of retryTimers.current) clearTimeout(t);
       retryTimers.current = [];
     };
-  }, [ticker, liveSession, dteHorizon, liveSpot, wallsPollMs]);
+    // `liveSpot` is deliberately ABSENT — it ticks ~1Hz off the chart's SSE stream, and listing it
+    // here tore this effect down and re-ran it (fetch included) on every tick. See liveSpotRef.
+  }, [ticker, liveSession, dteHorizon, wallsPollMs]);
 
   // Scope to the chart's visible band. Falls through to the full rail when no band is known or the
   // band excludes everything — a narrower rail is an improvement, a blank one is a regression.
@@ -356,8 +370,14 @@ export function VectorGexLadder({
 // PARENT (VectorGexLadder), so every tick re-rendered every row in this list — 30-60+ <li>s just
 // to update the ONE row showing the live spot marker/price. memo() + only feeding a changing
 // `spot` prop to that one row (see the map() call site above) means every other row's props are
-// referentially stable between ticks (same `row` object — `rows` only changes on the 15s ladder
-// poll — and a constant `spot={null}`), so React skips re-rendering them entirely.
+// referentially stable between ticks (same `row` object — `rows` only changes on the ladder poll,
+// 5s oracle / 15s on-demand — and a constant `spot={null}`), so React skips re-rendering them.
+//
+// That premise was false in shipped code until 2026-08-19. The fetch effect above listed `liveSpot`
+// in its deps, so it re-fetched on every tick and `setLadder`'d a freshly-parsed payload — new row
+// OBJECTS every second. memo()'s referential comparison failed on all of them and every row
+// re-rendered anyway, which is precisely what this optimisation was written to prevent. Keep
+// `liveSpot` out of that dep array or this memo silently becomes decoration again.
 const LadderRow = memo(function LadderRow({
   row,
   showSpotAbove,

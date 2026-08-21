@@ -225,6 +225,24 @@ async function createTunneledContext({
   viewport = "430x932",
   desktop = false,
   seedStorage = null,
+  /**
+   * Per-request tunnel deadline for NON-streaming requests. Default (undefined) keeps proxyFetch's
+   * own 20s, which every existing caller was written against.
+   *
+   * Raise it for harnesses that drive pages whose upstreams are legitimately slow: a forced GEX
+   * matrix rebuild has been measured at 5-7s p95 with a 56s tail, so a 20s deadline turns "this
+   * ticker's matrix is slow today" into "this ticker's panel is missing" — a latency observation
+   * reported as a rendering defect. The right fix is a deadline the harness chose on purpose, not
+   * a silently-truncated page.
+   */
+  requestTimeoutMs = undefined,
+  /**
+   * Browser timezone (IANA id, e.g. "Asia/Tokyo"). Needed to validate that member-facing clocks
+   * render in MARKET time rather than the viewer's — the #2368 defect is invisible from a browser
+   * already sitting in ET, because both readings agree there and a passing check proves nothing.
+   * Unset by default, i.e. the runner's own zone, so no existing caller changes behaviour.
+   */
+  timezoneId = null,
 } = {}) {
   const [vw, vh] = String(viewport).split("x").map(Number);
 
@@ -239,6 +257,7 @@ async function createTunneledContext({
     userAgent: desktop ? DESKTOP_UA : IPHONE_UA,
     deviceScaleFactor: desktop ? 1 : 3,
     isMobile: !desktop,
+    ...(timezoneId ? { timezoneId } : {}),
   });
 
   if (seedStorage) {
@@ -254,33 +273,7 @@ async function createTunneledContext({
     }, seedStorage);
   }
 
-  if (cookie) {
-    const dom = new URL(url).hostname;
-    await ctx.addCookies(
-      cookie
-        .split(";")
-        .map((s) => s.trim())
-        .filter(Boolean)
-        .map((p) => {
-          const [n, ...r] = p.split("=");
-          const name = n.trim();
-          // httpOnly ONLY for __session. Clerk deliberately leaves __client_uat readable by JS —
-          // Nav.tsx's readClientSignedIn() uses it to resolve signed-in state before Clerk's client
-          // loads. Marking it httpOnly hides it from document.cookie and makes every authenticated
-          // capture render "Sign In / Get access →" over live premium content. That artifact has
-          // been mistaken for a Cloudflare cache bug more than once; it is not one.
-          return {
-            name,
-            value: r.join("=").trim(),
-            domain: dom,
-            path: "/",
-            httpOnly: name === "__session",
-            secure: true,
-            sameSite: "Lax",
-          };
-        })
-    );
-  }
+  if (cookie) await applyCookieToContext(ctx, cookie, url);
 
   const counts = { ok: 0, fail: 0, streamsBuffered: 0, streamsHeldOpen: 0 };
 
@@ -309,7 +302,7 @@ async function createTunneledContext({
         req.method(),
         req.headers(),
         req.postDataBuffer(),
-        streaming ? STREAM_TIMEOUT_MS : undefined
+        streaming ? STREAM_TIMEOUT_MS : requestTimeoutMs
       );
       counts.ok++;
       await route.fulfill({ status: r.status, headers: r.headers, body: r.body });
@@ -337,8 +330,49 @@ async function createTunneledContext({
   return { browser, ctx, counts };
 }
 
+/**
+ * Put a Clerk cookie header onto a context, replacing any same-named cookie already there.
+ *
+ * Extracted so a long run can RE-APPLY a refreshed `__session` without restating the httpOnly
+ * subtlety below. A Clerk session JWT is short-lived, and a harness that authenticates once and
+ * then drives the desk for several minutes outlives it: the app starts bouncing the request back
+ * through sign-in, and because the tunnel gives the page no working Clerk client to complete that
+ * bounce, the navigation dies as ERR_TOO_MANY_REDIRECTS. That failure names neither auth nor
+ * expiry, so it reads as "this ticker's page is broken" — it killed the 4th ticker of two
+ * consecutive capture runs before anyone connected it to the clock. Pair this with the session
+ * helper's `refresh()` on any run that lasts more than a couple of minutes.
+ */
+async function applyCookieToContext(ctx, cookie, url) {
+  const dom = new URL(url).hostname;
+  await ctx.addCookies(
+    cookie
+      .split(";")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((p) => {
+        const [n, ...r] = p.split("=");
+        const name = n.trim();
+        // httpOnly ONLY for __session. Clerk deliberately leaves __client_uat readable by JS —
+        // Nav.tsx's readClientSignedIn() uses it to resolve signed-in state before Clerk's client
+        // loads. Marking it httpOnly hides it from document.cookie and makes every authenticated
+        // capture render "Sign In / Get access →" over live premium content. That artifact has
+        // been mistaken for a Cloudflare cache bug more than once; it is not one.
+        return {
+          name,
+          value: r.join("=").trim(),
+          domain: dom,
+          path: "/",
+          httpOnly: name === "__session",
+          secure: true,
+          sameSite: "Lax",
+        };
+      })
+  );
+}
+
 module.exports = {
   createTunneledContext,
+  applyCookieToContext,
   proxyFetch,
   proxyFetchFollow,
   IPHONE_UA,

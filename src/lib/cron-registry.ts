@@ -64,7 +64,8 @@ export const CRON_JOBS: CronJobDefinition[] = [
     kind: "http",
     path: "/api/cron/largo-morning-brief",
     schedule_label: "9:25 AM ET weekdays",
-    schedule_cron_utc: "25 13 * * 1-5",
+    // Mirrors railway.largo-morning-brief.toml dual-band — off-window stale suppression (ops #2565, #2569).
+    schedule_cron_utc: "25 13,14 * * 1-5",
     stale_after_min: 24 * 60,
     weekdays_only: true,
     description: "Pre-open Largo summary push for opted-in members",
@@ -189,8 +190,8 @@ export const CRON_JOBS: CronJobDefinition[] = [
     name: "0DTE Ledger Grade",
     kind: "http",
     path: "/api/cron/zerodte-grade",
-    schedule_label: "Every 15 min post-close (16:00–18:00 ET band)",
-    // Mirrors railway.zerodte-grade.toml — off-window stale suppression (ops #1331).
+    schedule_label: "Every 15 min post-close (16:00-18:00 ET band)",
+    // Mirrors railway.zerodte-grade.toml — off-window stale suppression (ops #1331, #2565, #2569).
     schedule_cron_utc: "*/15 20-22 * * 1-5",
     stale_after_min: 6 * 60,
     weekdays_only: true,
@@ -491,6 +492,103 @@ export const CRON_JOBS: CronJobDefinition[] = [
     description:
       "Write SPX coaching alerts (VWAP / gamma walls / posture) to coaching_alerts — replaces the never-shipped position-coaching-monitor cron",
     produces_member_alert: true,
+  },
+  // ---------------------------------------------------------------------------
+  // SIX JOBS THAT RUN AND LOG BUT HAD NO HEALTH ENTRY (added 2026-08-19).
+  //
+  // Each of these calls `logCronRun(<key>)` on every invocation and each has a real schedule in
+  // blackout-infra's `terraform/modules/crons/cron-jobs.json` — they were simply never added here,
+  // so `buildCronHealthSnapshot` never looked their run rows up and the board covered 40 of the 50
+  // cron routes. A job absent from this list cannot be reported stale, failed, or dark: it is not
+  // "healthy", it is unwatched. `banger-live-sync` marks the live banger board every 5 minutes
+  // during the session and was among them.
+  //
+  // Every cadence and `schedule_cron_utc` below is copied from that infra file rather than inferred,
+  // so the stale window matches the schedule that actually fires. `stale_after_min` is set to a few
+  // times the interval, matching how the neighbouring entries are tuned — long enough that one
+  // missed tick is not an alert, short enough that a dead job is caught the same session.
+  //
+  // The four `x-*` jobs already had pause handling in admin-cron-health.ts via
+  // `X_MARKETING_CRON_KEYS` (exactly these four), which only makes sense for registry jobs — more
+  // evidence they were meant to be here. When marketing is paused they relabel to
+  // "Paused (X marketing env)" rather than going stale.
+  // ---------------------------------------------------------------------------
+  {
+    key: "banger-discovery",
+    name: "Banger Discovery",
+    kind: "http",
+    path: "/api/cron/banger-discovery",
+    schedule_label: "4:15 PM ET weekdays (post-close)",
+    // Daily job: a full day plus slack, so one missed evening is caught the next morning and a
+    // weekend does not alert.
+    stale_after_min: 1800,
+    // TWO UTC hours: 20:15 is 16:15 ET under EDT, 21:15 is 16:15 ET under EST, so one fire always
+    // lands after the 16:00 ET close. The route's inEtWindow guard skips the off-band fire (before
+    // claiming the day, so the skip cannot lock out the good fire). Was `15 20 * * 1-5`, which ran
+    // 45 min BEFORE the close all winter and committed positions off an unsettled tape.
+    schedule_cron_utc: "15 20,21 * * 1-5",
+    weekdays_only: true,
+    description: "Whole-market banger scan → next-session candidates",
+  },
+  {
+    key: "banger-live-sync",
+    name: "Banger Live Sync",
+    kind: "http",
+    path: "/api/cron/banger-live-sync",
+    schedule_label: "~Every 5 min (market hours)",
+    stale_after_min: 20,
+    schedule_cron_utc: "*/5 11-21 * * 1-5",
+    weekdays_only: true,
+    market_hours_only: true,
+    description: "Live marks + outcome sync for the banger board",
+    produces_member_alert: true,
+  },
+  {
+    key: "x-autopost",
+    name: "X Autopost",
+    kind: "http",
+    path: "/api/cron/x-autopost",
+    schedule_label: "Every 2h",
+    stale_after_min: 240,
+    schedule_cron_utc: "0 12,14,16,18,20,22,0 * * *",
+    description: "Scheduled X posts (paused via X marketing env)",
+  },
+  {
+    key: "x-growth",
+    name: "X Growth",
+    kind: "http",
+    path: "/api/cron/x-growth",
+    // Label states UTC, not ET, DELIBERATELY. 13:00-22:00 UTC is 9AM-6PM ET under EDT but
+    // 8AM-5PM ET under EST — a fixed-UTC band cannot hold an ET clock year-round, so an ET label here
+    // would be true for only half the year. Following spx-signal-weight-optimize's honest UTC label.
+    schedule_label: "Hourly 13:00–22:00 UTC weekdays (9AM–6PM ET in EDT, 8AM–5PM ET in EST)",
+    stale_after_min: 150,
+    schedule_cron_utc: "0 13-22 * * 1-5",
+    weekdays_only: true,
+    description: "X growth pass — likes/follows/RT (paused via X marketing env)",
+  },
+  {
+    key: "x-replies",
+    name: "X Replies",
+    kind: "http",
+    path: "/api/cron/x-replies",
+    // See x-growth: UTC label, because the ET equivalent moves with daylight saving.
+    schedule_label: "Hourly :20 past, 13:00–22:00 UTC weekdays (9:20AM–6:20PM ET in EDT, an hour earlier in EST)",
+    stale_after_min: 150,
+    schedule_cron_utc: "20 13-22 * * 1-5",
+    weekdays_only: true,
+    description: "Reply to X mentions (paused via X marketing env)",
+  },
+  {
+    key: "x-analytics",
+    name: "X Analytics",
+    kind: "http",
+    path: "/api/cron/x-analytics",
+    // See x-growth: UTC label. 23:30 UTC is 7:30 PM ET under EDT and 6:30 PM ET under EST.
+    schedule_label: "Daily 23:30 UTC (7:30 PM ET in EDT, 6:30 PM ET in EST)",
+    stale_after_min: 1800,
+    schedule_cron_utc: "30 23 * * *",
+    description: "Pull X post/profile metrics into analytics",
   },
 ];
 

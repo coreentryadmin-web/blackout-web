@@ -36,6 +36,7 @@ import { fetchIndexSnapshot, fetchStockSnapshot } from "./polygon";
 import { todayEtYmd } from "./spx-session";
 import { serverCache, TTL } from "@/lib/server-cache";
 import { classifyTradeSide } from "./gex-intraday-adjust-core";
+import { shouldStopContractScan } from "./option-trades-scan-budget";
 
 // ── Bounds (all env-tunable; defaults are conservative) ────────────────────────
 function envInt(name: string, fallback: number): number {
@@ -460,10 +461,63 @@ export async function fetchOptionTrades(
 // the two never collide. Never throws; returns null only when not configured / no spot.
 // ---------------------------------------------------------------------------
 
-/** Default premium floor for a print to count as "large" (env: OPTION_TRADES_LARGE_MIN_PREMIUM). */
-const LARGE_MIN_PREMIUM = envInt("OPTION_TRADES_LARGE_MIN_PREMIUM", 250_000);
+/**
+ * NOISE FLOOR for a single print — not the selection rule (env: OPTION_TRADES_LARGE_MIN_PREMIUM).
+ *
+ * ── WHY 250k WAS WRONG ───────────────────────────────────────────────────────────────
+ * This defaulted to $250,000, which is a sensible "large" cutoff for AGGREGATE flow (a whole
+ * sweep, a day's premium at a strike) and is off by more than an order of magnitude for a SINGLE
+ * print, which is what this function returns. Measured live 2026-08-18 during RTH, SPY 0DTE, 8
+ * near-ATM contracts, 60-minute window, straight off Polygon:
+ *
+ *   n=1210 prints · p50 $348 · p90 $2,380 · p99 $10,452 · max $37,410
+ *   prints >= $250,000: ZERO. prints >= $50,000: ZERO. prints >= $25,000: 3.
+ *
+ * The largest print in the whole hour was ~7x BELOW the floor, so the Vector flow overlay returned
+ * `largeFound: 0` on every single successful call — an empty overlay by construction, on the
+ * busiest option chain in the market. Confirmed end-to-end the same day: SPY/QQQ/NVDA/TSLA/META
+ * all answered 200 with `available:true, largeFound:0`.
+ *
+ * ── WHY A FLOOR AND NOT A THRESHOLD ──────────────────────────────────────────────────
+ * Selection is already `sort by premium desc → slice(0, maxPrints)` a few lines below, which is
+ * self-calibrating: on a busy 0DTE chain the effective cut is whatever the 50th-largest print is,
+ * and on a quiet single-name monthly it drops to whatever actually traded. That is the honest
+ * reading of "show the notable trades". This constant only has to keep sub-$5k noise out of the
+ * candidate set, so it is set just above the measured p90 rather than at a guessed "big number".
+ *
+ * It also feeds `flowMarkerSize`, which scales marker radius across [floor, 50x floor] = $5k-$250k
+ * here — a range the measured distribution actually spans, so markers differ in size instead of
+ * all pinning to one end.
+ */
+const LARGE_MIN_PREMIUM = envInt("OPTION_TRADES_LARGE_MIN_PREMIUM", 5_000);
 /** Default hard cap on prints returned (top-N by premium). Keeps payload + chart readable. */
 const LARGE_MAX_PRINTS = envInt("OPTION_TRADES_LARGE_MAX_PRINTS", 50);
+
+/**
+ * Wall-clock budget for the per-contract fan-out (env: OPTION_TRADES_LARGE_MAX_BLOCK_MS).
+ *
+ * ── WHY THE FAN-OUT NEEDS ITS OWN DEADLINE ───────────────────────────────────────────
+ * The scan is SEQUENTIAL by design (each call awaits a rate-limiter slot, so it is naturally
+ * paced and never bursts the shared Massive funnel). Its cost is therefore
+ * MAX_CONTRACTS x MAX_PAGES_PER_CONTRACT serialized round trips — up to 80 — and that cost is
+ * paid in full precisely when the chain is BUSY, because a busy contract fills both pages.
+ *
+ * Measured live 2026-08-18 through the served endpoint: every ticker with a real 0DTE expiry
+ * breached the caller's 25s deadline — SPY, QQQ, NVDA, META, AMD all `timed out after 25000ms` —
+ * while TSLA, which has no 0DTE expiry and falls back to a quiet one, answered in 2.4s. The
+ * inversion is the proof: the overlay failed on exactly the chains with the most flow to show.
+ *
+ * The caller's deadline is all-or-nothing — it races the whole build and returns an EMPTY payload,
+ * discarding every contract already scanned. A budget INSIDE the loop instead stops scanning and
+ * returns what it has. Contracts are ordered closest-to-spot first, so a truncated scan keeps the
+ * most-traded ATM band and drops the quiet wings — the right half to lose, and reported
+ * (`contractsScanned` < `contractsRequested`, `partial: true`) rather than implied.
+ *
+ * Default is set below the 25s route deadline with room for spot resolution + chain discovery, so
+ * this fires first and the member gets prints instead of nothing.
+ */
+const LARGE_MAX_BLOCK_MS = envInt("OPTION_TRADES_LARGE_MAX_BLOCK_MS", 15_000);
+
 
 /** One large, single-leg option print (strike + side + premium + size + time + aggressor). */
 export type LargeOptionPrint = {
@@ -491,14 +545,23 @@ export type LargeOptionPrintsResult = {
   meta: {
     minPremium: number;
     contractsRequested: number;
+    /**
+     * Contracts the fan-out actually reached before its budget ran out. Equal to
+     * `contractsRequested` on a complete scan; lower when the deadline stopped it early. Separate
+     * from `contractsRequested` so "we asked for 40" and "we saw 12" can never read as the same
+     * number — a truncated scan that reported only the request would look complete.
+     */
+    contractsScanned: number;
     contractsWithTrades: number;
     contractsCapped: boolean;
     /** Total large prints found before the top-N cap. */
     largeFound: number;
     /** True when largeFound > prints.length — some large prints were dropped by the cap (annotate). */
     truncated: boolean;
-    /** True when at least one upstream contract pull failed (partial result). */
+    /** True when at least one upstream contract pull failed OR the scan hit its time budget. */
     partial: boolean;
+    /** True when the fan-out stopped on its own wall-clock budget rather than finishing. */
+    deadlineHit: boolean;
   };
 };
 
@@ -510,7 +573,14 @@ export type LargeOptionPrintsResult = {
  */
 export async function fetchLargeOptionPrints(
   ticker: string,
-  opts: { windowMin?: number; expiry?: string; minPremium?: number; maxPrints?: number } = {}
+  opts: {
+    windowMin?: number;
+    expiry?: string;
+    minPremium?: number;
+    maxPrints?: number;
+    /** Wall-clock budget for the per-contract fan-out. See LARGE_MAX_BLOCK_MS. */
+    maxBlockMs?: number;
+  } = {}
 ): Promise<LargeOptionPrintsResult | null> {
   if (!polygonConfigured()) return null;
   const { root, optionsRoot } = resolveOptionsRoot(ticker);
@@ -518,7 +588,12 @@ export async function fetchLargeOptionPrints(
   const expiry = opts.expiry ?? todayEtYmd();
   const minPremium = opts.minPremium != null && opts.minPremium > 0 ? opts.minPremium : LARGE_MIN_PREMIUM;
   const maxPrints = opts.maxPrints != null && opts.maxPrints > 0 ? Math.floor(opts.maxPrints) : LARGE_MAX_PRINTS;
-  const cacheKey = `large-option-prints:${optionsRoot}:${expiry}:${win}m:${minPremium}:${maxPrints}`;
+  const maxBlockMs =
+    opts.maxBlockMs != null && opts.maxBlockMs > 0 ? Math.floor(opts.maxBlockMs) : LARGE_MAX_BLOCK_MS;
+  // The budget is part of the key: a result truncated under a 5s budget is NOT the same answer as
+  // one scanned under 15s, and serving the narrow one to a caller that allowed more time would
+  // silently hand back less coverage than it paid for.
+  const cacheKey = `large-option-prints:${optionsRoot}:${expiry}:${win}m:${minPremium}:${maxPrints}:${maxBlockMs}`;
 
   return serverCache(cacheKey, RECON_TTL_MS, async () => {
     const now = Date.now();
@@ -534,11 +609,13 @@ export async function fetchLargeOptionPrints(
       meta: {
         minPremium,
         contractsRequested: 0,
+        contractsScanned: 0,
         contractsWithTrades: 0,
         contractsCapped: false,
         largeFound: 0,
         truncated: false,
         partial: false,
+        deadlineHit: false,
         ...metaOverride,
       },
     });
@@ -556,7 +633,21 @@ export async function fetchLargeOptionPrints(
 
     // SEQUENTIAL fan-out (same as fetchOptionTrades): each call awaits a rate-limiter slot, so this
     // is naturally paced and bounded by MAX_CONTRACTS — no unbounded Promise.all burst.
+    //
+    // BUDGETED, though — see LARGE_MAX_BLOCK_MS. Bounded-by-count is not bounded-by-time: 40
+    // contracts x 2 pages is 80 serialized round trips, and the busiest chains (every live 0DTE)
+    // are exactly the ones that pay for all of them, which is how the overlay came to fail on the
+    // tickers with the most flow to show. Checked BEFORE each contract, never mid-contract, so a
+    // contract is either fully scanned or not scanned at all and no print set is half-counted.
+    const scanStarted = Date.now();
+    let contractsScanned = 0;
+    let deadlineHit = false;
     for (const c of contracts) {
+      if (shouldStopContractScan(contractsScanned, Date.now() - scanStarted, maxBlockMs)) {
+        deadlineHit = true;
+        break;
+      }
+      contractsScanned += 1;
       const { trades, ok } = await fetchTradesForContract(c.occ, windowStartNs);
       if (!ok) {
         partial = true;
@@ -603,11 +694,16 @@ export async function fetchLargeOptionPrints(
       meta: {
         minPremium,
         contractsRequested: contracts.length,
+        contractsScanned,
         contractsWithTrades,
         contractsCapped: capped,
         largeFound,
         truncated: largeFound > prints.length,
-        partial,
+        // A deadline-truncated scan IS a partial result — the flag already means "you are not
+        // looking at everything", and a caller that only reads `partial` must not be told a
+        // 12-of-40 scan was complete.
+        partial: partial || deadlineHit,
+        deadlineHit,
       },
     } satisfies LargeOptionPrintsResult;
   });

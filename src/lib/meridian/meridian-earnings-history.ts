@@ -1,87 +1,82 @@
 import "server-only";
 
-import { fetchUwTickerEarningsHistory } from "@/lib/providers/unusual-whales";
 import { roundFloats } from "@/lib/round-floats";
-import { stockReactionsForDates } from "@/lib/meridian/meridian-reaction";
+import { stockReactionsForPrints } from "@/lib/meridian/meridian-reaction";
+import { classifyPrintTiming } from "@/lib/meridian/meridian-reaction-core";
+import {
+  benzingaRowsToPrintHistory,
+  dualBeatRateFromPrints,
+} from "@/lib/meridian/meridian-benzinga-earnings-core";
+import { loadBenzingaTickerEarnings } from "@/lib/meridian/meridian-benzinga-earnings";
 import type { MeridianEarningsPrint } from "@/features/meridian/lib/meridian-types";
-
-function parseExpectedMovePct(row: Record<string, unknown>): number | null {
-  const emRaw = row.expected_move_perc ?? row.expected_move_pct ?? null;
-  if (emRaw == null || !Number.isFinite(Number(emRaw))) return null;
-  const n = Number(emRaw);
-  return Number((n * (n <= 1 ? 100 : 1)).toFixed(1));
-}
-
-function parseEarningsPrint(row: Record<string, unknown>): Omit<
-  MeridianEarningsPrint,
-  "session_change_pct" | "next_day_change_pct"
-> {
-  const est = row.street_mean_est ?? row.eps_estimate ?? row.estimate ?? null;
-  const act = row.actual_eps ?? row.eps_actual ?? row.actual ?? null;
-  const estN = est != null ? Number(est) : null;
-  const actN = act != null ? Number(act) : null;
-  let surprise_pct: number | null = null;
-  let beat: boolean | null = null;
-  if (estN != null && actN != null && estN !== 0) {
-    surprise_pct = Number((((actN - estN) / Math.abs(estN)) * 100).toFixed(1));
-    beat = actN >= estN;
-  } else if (row.surprise_pct != null && Number.isFinite(Number(row.surprise_pct))) {
-    surprise_pct = Number(row.surprise_pct);
-    beat = surprise_pct >= 0;
-  }
-  const report_date =
-    String(row.report_date ?? row.earnings_date ?? row.date ?? "").slice(0, 10) || null;
-  return {
-    report_date,
-    eps_estimate: estN != null && Number.isFinite(estN) ? Number(estN.toFixed(2)) : null,
-    eps_actual: actN != null && Number.isFinite(actN) ? Number(actN.toFixed(2)) : null,
-    surprise_pct,
-    beat,
-    expected_move_pct: parseExpectedMovePct(row),
-  };
-}
 
 function printHistorySummary(rows: MeridianEarningsPrint[]): string | null {
   const graded = rows.filter((r) => r.beat != null);
   if (!graded.length) return null;
   const beats = graded.filter((r) => r.beat).length;
-  const withMove = rows.filter((r) => r.session_change_pct != null);
+  const rates = dualBeatRateFromPrints(rows);
+  // `reaction_pct`, not `session_change_pct`: on a post-close print the latter is the anchor
+  // session's open→close, which excludes the overnight gap that IS the reaction. Averaging it
+  // produced a headline "avg session move" that disagreed in sign with the market on ~a third
+  // of post-close prints.
+  const withMove = rows.filter((r) => r.reaction_pct != null);
   const avgMove =
     withMove.length > 0
-      ? withMove.reduce((s, r) => s + (r.session_change_pct ?? 0), 0) / withMove.length
+      ? withMove.reduce((s, r) => s + (r.reaction_pct ?? 0), 0) / withMove.length
       : null;
-  const base = `${beats}/${graded.length} beats over last ${graded.length} prints`;
-  if (avgMove == null) return base;
-  return `${base} · avg session move ${avgMove >= 0 ? "+" : ""}${avgMove.toFixed(1)}%`;
+  const base = `${beats}/${graded.length} EPS beats over last ${graded.length} prints`;
+  // The EPS half of this sentence carries its denominator and the revenue half did not, in the
+  // SAME string — "5/8 EPS beats · 62% rev beats", where the 62% could be 5 of 8 or 1 of 1.
+  // Revenue is graded on a different subset (measured live: the two denominators differ by 3+
+  // prints on 3.1% of names, and one side is ≤2 while the other is ≥6 on 1.2%).
+  const rev =
+    rates.revenue_beat_rate != null && rates.revenue_graded > 0
+      ? ` · ${Math.round(rates.revenue_beat_rate * 100)}% rev beats of ${rates.revenue_graded}`
+      : "";
+  if (avgMove == null) return base + rev;
+  return `${base}${rev} · avg reaction ${avgMove >= 0 ? "+" : ""}${avgMove.toFixed(1)}%`;
 }
 
-/** Past earnings prints with estimate vs actual and stock session reaction. */
+/** Past earnings prints — Benzinga calendar primary (no UW earnings REST). */
 export async function loadMeridianEarningsPrintHistory(
   ticker: string,
-  limit = 6
-): Promise<{ print_history: MeridianEarningsPrint[]; print_history_summary: string | null }> {
+  limit = 8,
+  eventDate?: string | null
+): Promise<{
+  print_history: MeridianEarningsPrint[];
+  print_history_summary: string | null;
+  /** Non-null when the calendar fetch FAILED. Empty history + a null error means the company
+   *  genuinely has no prints on file; empty history + an error means we could not look. */
+  history_error: string | null;
+}> {
   const sym = ticker.trim().toUpperCase();
-  const rows = await fetchUwTickerEarningsHistory(sym, limit + 2).catch(() => []);
-  const parsed = rows
-    .map((r) => parseEarningsPrint(r as Record<string, unknown>))
-    .filter((r) => r.report_date)
-    .sort((a, b) => (b.report_date ?? "").localeCompare(a.report_date ?? ""))
-    .slice(0, limit);
+  // Forward the count we actually need: the loader derives its LOOKBACK WINDOW from it. Pinned at
+  // 420 days, the window was ~4.6 quarters, so asking for 8 prints returned 4-5 (measured live).
+  const benzingaRes = await loadBenzingaTickerEarnings(sym, eventDate ?? null, limit);
 
-  const dates = parsed.map((p) => p.report_date!).filter(Boolean);
-  const reactions = await stockReactionsForDates(sym, dates);
+  const print_history = benzingaRowsToPrintHistory(benzingaRes.rows, limit);
 
-  const print_history: MeridianEarningsPrint[] = parsed.map((p) => {
+  // Timing-aware: an AMC print's reaction is the NEXT session, not the report date's own.
+  const printKeys = print_history
+    .filter((p) => p.report_date)
+    .map((p) => ({ ymd: p.report_date!, timing: classifyPrintTiming(p.report_time_et) }));
+  const reactions = await stockReactionsForPrints(sym, printKeys);
+
+  const enriched = print_history.map((p) => {
     const rx = p.report_date ? reactions.get(p.report_date) : undefined;
     return {
       ...p,
       session_change_pct: rx?.session_change_pct ?? null,
       next_day_change_pct: rx?.next_day_change_pct ?? null,
+      reaction_basis: rx?.reaction_basis ?? null,
+      reaction_pct: rx?.reaction_pct ?? null,
+      reaction_measure: rx?.reaction_measure ?? null,
     };
   });
 
   return roundFloats({
-    print_history,
-    print_history_summary: printHistorySummary(print_history),
+    print_history: enriched,
+    print_history_summary: printHistorySummary(enriched),
+    history_error: (benzingaRes as { error?: string | null }).error ?? null,
   });
 }

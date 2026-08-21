@@ -21,6 +21,7 @@ import { vectorWallsScopePollMs } from "@/features/vector/lib/vector-cadence";
 import { buildOdteMatrixRows, type OdteMatrixRow } from "@/features/vector/lib/vector-odte-matrix-rows";
 import { scrollOffsetForSpot } from "@/features/vector/lib/vector-ladder-align";
 import type { VectorDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
+import { etClock } from "@/lib/et-clock";
 
 type MetricBlock = {
   cells: Record<string, Record<string, number>>;
@@ -54,12 +55,7 @@ function fmtAsof(iso: string | undefined): string | null {
   if (!iso) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-    timeZone: "America/New_York",
-  });
+  return etClock(d, { seconds: true });
 }
 
 type Props = {

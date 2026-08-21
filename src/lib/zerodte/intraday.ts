@@ -6,6 +6,10 @@
 // Pure functions only; the scan does the fetching.
 
 import { etMinutesOf, NEW_PLAY_CUTOFF_ET_MINUTES } from "./plan";
+// Largo product contract C1: ET stamps come from the SHARED helper (bar-session-date.ts,
+// #2418), never a local Intl call — one definition of "what session is it" across every
+// lane, so two tools can never disagree about today.
+import { etStamp } from "@/lib/largo/temporal/bar-session-date";
 
 export type IntradayBar = { t: number; h: number; l: number; c: number; v?: number };
 
@@ -26,18 +30,49 @@ export type IntradayRead = {
   day_low: number | null;
   /** Epoch-ms of the newest RTH bar in the read — how FRESH this read actually is.
    *  The G-1 tape-alignment gate (./gates.ts) fails closed on a stale SPY read: a
-   *  bias computed from bars that stopped arriving isn't a bias, it's a memory. */
+   *  bias computed from bars that stopped arriving isn't a bias, it's a memory.
+   *  COMPUTE PATH — gates read this. Never round it, never replace it. */
   last_bar_ms: number | null;
+  /** The SAME instant as `last_bar_ms`, readable: "YYYY-MM-DD HH:mm ET".
+   *
+   *  WHY BOTH. `last_bar_ms` was the ONLY time anchor on this object, and this object
+   *  carries every intraday number a member acts on — session VWAP, the opening range,
+   *  the 5m trend, day high/low. A reader handed a bare epoch has to guess the session
+   *  convention, and guessing wrong misdates the whole read: on 2026-08-20 the value was
+   *  1787256240000, which reads as "20:04" in UTC and is actually 16:04 ET, one minute
+   *  past the close. That is the freshness anchor for a risk gate being misread by four
+   *  hours. Same class as PR #2418's dated-close-off-by-a-session defect.
+   *
+   *  This is ADDITIVE and display-only — the epoch above is untouched, so no gate,
+   *  staleness bound or calculation changes. Null exactly when `last_bar_ms` is null. */
+  last_bar_et: string | null;
 };
 
 const RTH_OPEN = 9 * 60 + 30;
+/** 16:00 ET — the close, EXCLUSIVE.
+ *
+ *  Polygon minute aggregates are START-stamped, so the last bar of the regular session
+ *  is stamped 15:59 (it covers 15:59:00-15:59:59). A bar stamped 16:00 is the first
+ *  after-hours minute, so the bound is `<`, not `<=`.
+ *
+ *  WHY THIS CONSTANT DID NOT EXIST. The filter below bounded only the OPEN, while the
+ *  function's own doc promised "non-RTH bars are ignored". Polygon serves extended-hours
+ *  minutes by default, so pre-market was correctly dropped and post-market silently was
+ *  not — after 16:00 ET the session VWAP, day high/low, `last` and `trend_5m` all folded
+ *  in after-hours prints, on an object named `rth`. */
+const RTH_CLOSE = 16 * 60;
 const OR_END = 10 * 60; // opening range = first 30 minutes
 
-/** Compute the intraday read from a session's minute bars (any order; non-RTH
- *  bars are ignored). Empty/absent RTH data → nulls, never a guess. */
+/** Compute the intraday read from a session's minute bars (any order; non-RTH bars —
+ *  pre-market AND after-hours — are ignored). Empty/absent RTH data → nulls, never a
+ *  guess. */
 export function computeIntradayRead(bars: IntradayBar[]): IntradayRead {
   const rth = bars
-    .filter((b) => Number.isFinite(b.t) && etMinutesOf(b.t) >= RTH_OPEN)
+    .filter((b) => {
+      if (!Number.isFinite(b.t)) return false;
+      const m = etMinutesOf(b.t);
+      return m >= RTH_OPEN && m < RTH_CLOSE;
+    })
     .sort((a, b) => a.t - b.t);
   if (rth.length === 0) {
     return {
@@ -51,6 +86,7 @@ export function computeIntradayRead(bars: IntradayBar[]): IntradayRead {
       day_high: null,
       day_low: null,
       last_bar_ms: null,
+      last_bar_et: null,
     };
   }
 
@@ -100,6 +136,7 @@ export function computeIntradayRead(bars: IntradayBar[]): IntradayRead {
     day_high: Number.isFinite(dayHigh) ? Math.round(dayHigh * 100) / 100 : null,
     day_low: Number.isFinite(dayLow) ? Math.round(dayLow * 100) / 100 : null,
     last_bar_ms: rth[rth.length - 1]!.t,
+    last_bar_et: etStamp(rth[rth.length - 1]!.t),
   };
 }
 

@@ -14,8 +14,16 @@ import { isHeatmapPreset } from "../heatmap-allowlist";
 import { isLiveOdteSession } from "./unusual-whales";
 import { fmtPremium } from "@/lib/fmt-money";
 import { persistGexRegimeEvents } from "./gex-regime-events";
-import { zeroGammaFlip as computeZeroGammaFlip, cumulativeGammaFlip, gexWallsFromStrikeTotals } from "@/lib/providers/gex-cross-validation-core";
+import {
+  zeroGammaFlip as computeZeroGammaFlip,
+  cumulativeGammaFlipDetail,
+  wallsFromStrikeTotals,
+  wallsByHorizon,
+  type GammaFlipReason,
+  type HorizonWalls,
+} from "@/lib/providers/gex-cross-validation-core";
 import { applySpxOdteGexUwOverlay } from "@/lib/providers/spx-odte-gex-uw-overlay";
+import { buildGexRegime } from "@/lib/providers/gex-cross-validation-core";
 export { zeroGammaFlip as computeZeroGammaFlip, cumulativeGammaFlip } from "@/lib/providers/gex-cross-validation-core";
 
 const BASE = (process.env.POLYGON_API_BASE ?? "https://api.massive.com").replace(/\/$/, "");
@@ -272,16 +280,54 @@ export type GexMetricBlock = {
   cells: Record<string, Record<string, number>>;
   /** Net dealer dollar-gamma summed across all expiries, per strike. */
   strike_totals: Record<string, number>;
-  /** Strike with the LARGEST POSITIVE net dealer gamma (dealer long-gamma → resistance/pin), or null. */
+  /**
+   * Strike with the LARGEST POSITIVE net dealer gamma ABOVE SPOT (resistance/pin), or null.
+   *
+   * SUMMED OVER `near_term_expiries` — on SPX currently FIFTEEN expiries running three weeks out.
+   * That is a real quantity and it is NOT the near-dated wall: measured 2026-08-20 at spot 7641.16
+   * the aggregate read 7800 (+158.8) while the front expiry alone read 7700 (+58.8). Use
+   * `walls_by_horizon` when the question is about a specific DTE.
+   */
   call_wall: number | null;
-  /** Strike with the LARGEST NEGATIVE net dealer gamma (support), or null. */
+  /** Strike with the LARGEST NEGATIVE net dealer gamma BELOW SPOT (support), or null. Same
+   *  multi-expiry scope caveat as `call_wall`. */
   put_wall: number | null;
+  /**
+   * The same walls, cut by DTE horizon (0DTE / 3DTE / 7DTE), cumulative.
+   *
+   * Exists because one number called "the call wall" is not one thing, and the aggregate above
+   * cannot answer "where is the wall for the trade I am putting on today". OPTIONAL + additive:
+   * older cached payloads omit it. An empty bucket carries `expiries: []` and null walls, which
+   * means NO EXPIRY IN RANGE — the live post-close state of 0DTE — never "no wall".
+   */
+  walls_by_horizon?: HorizonWalls[];
   /** Total net dealer dollar-gamma across the whole matrix. */
   total: number;
   /** Linear-interpolated zero-gamma flip strike, or null when undetermined. */
   flip: number | null;
+  /**
+   * WHY `flip` is null — see GammaFlipReason. A null flip has three distinct causes and they are
+   * not interchangeable: `net_short_everywhere` is an honest structural read (no long-gamma region
+   * exists), while `insufficient_strikes` is a data outage. Without this, every one presents to an
+   * operator as the same blank field, and `regime` reports "unknown" for all of them.
+   * Optional/additive — snapshots written before this field simply omit it.
+   */
+  flip_reason?: GammaFlipReason;
   /** Regime read derived from spot vs the gamma flip. */
   regime: GexRegime;
+  /**
+   * Did the SPX 0DTE UW overlay run for THIS payload? Absent on non-SPX and on snapshots written
+   * before this field existed. `applied: false, reason: "ladder_unavailable"` means the served
+   * matrix is the raw Polygon book while a neighbouring request may carry the UW-overlaid one —
+   * the two disagree on strike count, net total and both walls.
+   */
+  odte_overlay?: SpxOdteOverlayState;
+};
+
+/** Whether the SPX 0DTE UW overlay applied, and why not when it did not. */
+export type SpxOdteOverlayState = {
+  applied: boolean;
+  reason: "applied" | "not_applicable" | "no_odte_expiry" | "ladder_unavailable" | "overlay_timeout";
 };
 
 /**
@@ -924,37 +970,32 @@ function computeGexRegime(
   strikeTotals: Record<string, number>,
   spot: number,
   flip: number | null,
-  maxPain: number | null
+  maxPain: number | null,
+  flipReason?: GammaFlipReason
 ): { callWall: number | null; putWall: number | null; regime: GexRegime } {
-  // Shared with Thermal's per-expiry Key Levels — see gexWallsFromStrikeTotals. Two copies of the
-  // wall scan could drift; one cannot.
-  const { callWall, putWall } = gexWallsFromStrikeTotals(strikeTotals);
+  // SIDE-CONSTRAINED against spot — a call wall must sit at/above spot (resistance) and a put wall
+  // at/below it (support). #2417 established this ("a call wall below spot is not a call wall, it is
+  // inverted") and wired the OVERLAY producers (WS override, cross-val, horizons) through the
+  // constrained `wallsFromStrikeTotals`, but the BASE matrix scan here was left on the unconstrained
+  // `gexWallsFromStrikeTotals`. So off-hours (WS idle) and for every non-WS single name (all the
+  // time), `gex.call_wall`/`gex.put_wall` could still serve an inverted level. Measured live
+  // 2026-08-21: MSFT spot 481.97 served call_wall 480 (resistance $2 BELOW price) while the real
+  // overhead wall was 500; AMZN spot 261.64 served 260 vs the real 270. All three callers pass a
+  // real spot, so the constraint always applies. `null` is the honest answer when no positive-gamma
+  // strike sits above spot — never a wall on the wrong side. This is the fifth producer #2417 missed.
+  const { callWall, putWall } = wallsFromStrikeTotals(strikeTotals, spot);
 
-  const posture: "long" | "short" | null =
-    flip != null && spot > 0 ? (spot >= flip ? "long" : "short") : null;
-
-  const fmt = (n: number) =>
-    n.toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 0 });
-
-  let read: string;
-  if (posture == null || flip == null || !(spot > 0)) {
-    read = "Gamma flip undetermined — regime read unavailable until the chain prints a clean dealer-gamma profile.";
-  } else if (posture === "long") {
-    const resistance = callWall != null ? ` Resistance ${fmt(callWall)}` : "";
-    const support = putWall != null ? `${resistance ? "," : ""} support ${fmt(putWall)}` : "";
-    const tail = resistance || support ? `.${resistance}${support}.` : ".";
-    read = `Spot ${fmt(spot)} is above the gamma flip (${fmt(flip)}) → long gamma: range-bound, fade extremes${tail}`;
-  } else {
-    const resistance = callWall != null ? ` Resistance ${fmt(callWall)}` : "";
-    const support = putWall != null ? `${resistance ? "," : ""} support ${fmt(putWall)}` : "";
-    const tail = resistance || support ? `.${resistance}${support}.` : ".";
-    read = `Spot ${fmt(spot)} is below the gamma flip (${fmt(flip)}) → short gamma: momentum / vol expansion, moves accelerate${tail}`;
-  }
+  // Posture + read DELEGATE to the pure builder in gex-cross-validation-core. That module has zero
+  // imports, which is what lets `spx-odte-gex-uw-overlay.ts` reuse the identical logic — it cannot
+  // import from HERE, because this file imports IT (line 18). Before the split, the overlay
+  // recomputed `gex.flip` after replacing the 0DTE column and had no reachable way to rebuild the
+  // regime, so it left one describing the pre-overlay book.
+  const regime = buildGexRegime({ spot, flip, callWall, putWall, flipReason });
 
   // Note: maxPain is surfaced as its own field; intentionally not folded into `read`.
   void maxPain;
 
-  return { callWall, putWall, regime: { flip, posture, read } };
+  return { callWall, putWall, regime };
 }
 
 /**
@@ -1351,12 +1392,14 @@ export function prunePastExpiriesFromHeatmap(hm: GexHeatmap, todayYmd: string): 
   const dexPruned = hm.dex ? pruneMetricCells(hm.dex.cells) : null;
   const charmPruned = hm.charm ? pruneMetricCells(hm.charm.cells) : null;
 
-  const gexFlip = cumulativeGammaFlip(gexPruned.strikeTotals, hm.spot);
+  const gexFlipDetail = cumulativeGammaFlipDetail(gexPruned.strikeTotals, hm.spot);
+  const gexFlip = gexFlipDetail.flip;
   const { callWall, putWall, regime: gexRegime } = computeGexRegime(
     gexPruned.strikeTotals,
     hm.spot,
     gexFlip,
-    hm.max_pain
+    hm.max_pain,
+    gexFlipDetail.reason
   );
 
   const vexFlip = computeZeroGammaFlip(vexPruned.strikeTotals, hm.spot);
@@ -1408,8 +1451,13 @@ export function prunePastExpiriesFromHeatmap(hm: GexHeatmap, todayYmd: string): 
       strike_totals: gexPruned.strikeTotals,
       total: gexPruned.total,
       flip: gexFlip,
+      flip_reason: gexFlipDetail.reason,
       call_wall: callWall,
       put_wall: putWall,
+      // Built from the PRUNED cells the payload actually ships, so the horizons can never describe
+      // a book the member is not being served. `todayEtYmd()` is the session the DTE is counted
+      // from — a horizon is meaningless without the day it is relative to.
+      walls_by_horizon: wallsByHorizon(gexPruned.cells, todayEtYmd(), hm.spot),
       regime: gexRegime,
     },
     vex: {
@@ -1476,7 +1524,18 @@ async function readHeatmapRedisEntry(
   }
 }
 
-/** Prune + SPX 0DTE UW overlay so served King matches the cross-provider oracle. */
+/** Stamp overlay failure on a matrix copy — never return an unmarked un-overlaid SPX book. */
+function markSpxOdteOverlayFailed(hm: GexHeatmap, reason: SpxOdteOverlayState["reason"]): GexHeatmap {
+  return {
+    ...hm,
+    gex: {
+      ...hm.gex,
+      odte_overlay: { applied: false, reason },
+    },
+  };
+}
+
+/** Prune + SPX 0DTE UW overlay so served King/net sign matches the cross-provider oracle. */
 async function finalizeHeatmapForServe(
   cacheKey: string,
   data: GexHeatmap | null
@@ -1488,11 +1547,11 @@ async function finalizeHeatmapForServe(
     return await Promise.race([
       applySpxOdteGexUwOverlay(pruned),
       new Promise<GexHeatmap>((resolve) => {
-        setTimeout(() => resolve(pruned), overlayMs);
+        setTimeout(() => resolve(markSpxOdteOverlayFailed(pruned, "overlay_timeout")), overlayMs);
       }),
     ]);
   } catch {
-    return pruned;
+    return markSpxOdteOverlayFailed(pruned, "ladder_unavailable");
   }
 }
 
@@ -3314,12 +3373,14 @@ async function buildGexHeatmapUncached(
   // GEX levels + regime. Gamma flip = CUMULATIVE zero-gamma boundary (SpotGamma-standard), the
   // aggregate net-short→net-long crossing — NOT the per-strike sign flip (VEX/DEX/CHARM below still
   // use that generic per-strike helper). See cumulativeGammaFlip / docs/audit/FINDINGS.md 2026-07-21.
-  const gexFlip = cumulativeGammaFlip(gexBuilt.strikeTotals, spot);
+  const gexFlipDetail = cumulativeGammaFlipDetail(gexBuilt.strikeTotals, spot);
+  const gexFlip = gexFlipDetail.flip;
   const { callWall, putWall, regime: gexRegime } = computeGexRegime(
     gexBuilt.strikeTotals,
     spot,
     gexFlip,
-    maxPain
+    maxPain,
+    gexFlipDetail.reason
   );
 
   // ── SYNTHETIC ORDER BOOK — forced hedging flow per price level ───────────────────────────
@@ -3539,6 +3600,7 @@ async function buildGexHeatmapUncached(
       put_wall: putWall,
       total: gexBuilt.total ?? totalGamma,
       flip: gexFlip,
+      flip_reason: gexFlipDetail.reason,
       regime: gexRegime,
     },
     vex: {
@@ -3570,13 +3632,23 @@ async function buildGexHeatmapUncached(
   };
 
   // Cache once for everyone: in-memory + Redis. 500 users → one matrix, zero per-user fetch.
-  const entry = { at: now, data: heatmap };
+  // SPX: apply the UW 0DTE overlay at WRITE time (no read-path timeout race) so cached copies
+  // already carry the oracle-aligned 0DTE column (ops-auto-fix #2503).
+  let toCache = heatmap;
+  if (root === "SPX") {
+    try {
+      toCache = await applySpxOdteGexUwOverlay(heatmap);
+    } catch {
+      toCache = markSpxOdteOverlayFailed(heatmap, "ladder_unavailable");
+    }
+  }
+  const entry = { at: now, data: toCache };
   setCachedHeatmap(cacheKey, entry);
   void import("../shared-cache").then(({ sharedCacheSet }) =>
     sharedCacheSet(cacheKey, entry, gexHeatmapRedisTtlSec())
   );
 
-  return heatmap;
+  return toCache;
 }
 
 /**

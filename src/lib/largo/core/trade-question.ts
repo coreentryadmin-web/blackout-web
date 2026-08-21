@@ -4,8 +4,19 @@
  * PURE AND TOTAL: no IO, no throw.
  */
 
+// The qualifier and the noun are allowed up to two SHORT words between them.
+//
+// This used to require them adjacent — `(good|best|what|…)\s+(?:options?\s+)?(play|trade|…)` — so
+// "what's the best SPX play today?" did not match, because "SPX" sits in the gap. That is the most
+// natural way a member asks the question, and it meant `formatTradeAnswerBlock` was never injected
+// for it: no contract contract, no probability rule, no empty-board handling. The desk answered a
+// play question without knowing it was one.
+//
+// The gap is bounded at two tokens of ≤6 characters, non-greedy, rather than `.*`, so ordinary
+// prose cannot bridge it: "what happened to my trade" still does not match ("happened" is 8), and
+// an unbounded gap would make almost any sentence containing "trade" a recommendation request.
 const TRADE_RE =
-  /\b(?:(?:good|best|what|any|which)\s+(?:options?\s+)?(?:play|trade|setup|entry)|(?:should i|can i)\s+(?:take|buy|play|trade)|options?\s+play\s+(?:on|for|to)|(?:call|put)\s+(?:to\s+)?(?:take|buy|play)|what(?:'s| is)\s+(?:the\s+)?(?:play|trade|setup))\b/i;
+  /\b(?:(?:good|best|what|any|which)\s+(?:[a-z0-9]{1,6}\s+){0,2}?(?:options?\s+)?(?:play|trade|setup|entry)|(?:should i|can i)\s+(?:take|buy|play|trade)|options?\s+play\s+(?:on|for|to)|(?:call|put)\s+(?:to\s+)?(?:take|buy|play)|what(?:'s| is)\s+(?:the\s+)?(?:play|trade|setup))\b/i;
 
 const ZERODTE_TRADE_RE =
   /\b(?:0\s*dte|0dte|same.?day|today'?s?\s+(?:expir|0dte)|intraday\s+(?:play|option))\b/i;
@@ -52,9 +63,27 @@ export function formatTradeAnswerBlock(ticker: string | null): string {
     `- Classify horizons correctly (Aug 24 on today's session is SWING, not 0DTE)\n` +
     `- Evening edition ≠ 0DTE Command open plays — name which product\n` +
     `- If spot sources disagree >1%, withhold precise entry/stop/target\n\n` +
-    `**When 0DTE Command has NO open play for ${tk}:** you may discuss what *could* play out from ` +
-    `flow/GEX/structure, but label it clearly as **not on the board** / conditional — never as a ` +
-    `committed scanner play. The UI will add an integrity badge; your job is the honest read.\n`
+    `**When 0DTE Command has NO open play for ${tk} — you STILL answer the question.**\n` +
+    `"The board has no committed play" is an inventory status, not an answer. The member asked what ` +
+    `to trade. An empty board changes the CONFIDENCE and the LABEL of your answer; it does not ` +
+    `entitle you to withhold one. Never end on "wait for the open" alone when you hold spot, the ` +
+    `walls, the flip and the flow — those are the inputs to a read, and you have them.\n` +
+    `So name the actual contract:\n` +
+    `- **Strike, right and expiry** — "SPX 7800C 08/21", not "a call above the wall". Pick the ` +
+    `expiry off the trading-session list in this turn's calendar block; never name a date that is ` +
+    `not a session.\n` +
+    `- **Why that strike** — tie it to a real level (call wall, put wall, flip, max pain) with the ` +
+    `distance from spot.\n` +
+    `- **A probability, honestly sourced.** Call \`get_options_chain\`/\`get_greeks\` and use the ` +
+    `contract's own **delta** as the probability it finishes in the money — that is what delta ` +
+    `approximates, and it is a real number off the live chain. Say which it is: "≈32% to finish ITM ` +
+    `(0.32 delta)". Two rules you must not break: P(ITM) is NOT probability of profit — a long ` +
+    `option also has to clear the premium, so give the breakeven alongside it; and if you could not ` +
+    `read a delta this turn, say the probability is unavailable. **Never invent a percentage.** A ` +
+    `fabricated 68% is a worse failure than no number, because the member cannot check it.\n` +
+    `- **Invalidation** — the level that kills the thesis.\n` +
+    `Label it as **your read, not on the board** / conditional — never as a committed scanner play. ` +
+    `The UI adds an integrity badge. Honest and specific, not vague and safe.\n`
   );
 }
 

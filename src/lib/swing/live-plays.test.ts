@@ -8,6 +8,28 @@ import {
 } from "./live-plays.ts";
 import type { SwingPositionRow } from "../db.ts";
 
+/**
+ * An expiry N days out from the REAL ET date.
+ *
+ * `livePlayFromSwingPosition` computes DTE against today via `calendarDte(etYmd(), …)`, so any
+ * hardcoded expiry in this fixture is a countdown rather than a fixture. It has already gone off
+ * once: the DTE assertion below went red on the fixture's own expiry day, was "fixed" by pushing
+ * the literal two days out under a comment claiming that made it safe "regardless of run date",
+ * and was thereby re-armed to fire again on 2026-08-22. Relative is the only form that is actually
+ * date-independent — a later literal only moves the fuse.
+ */
+function etYmdPlus(days: number): string {
+  const etToday = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const d = new Date(`${etToday}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 function row(over: Partial<SwingPositionRow> = {}): SwingPositionRow {
   return {
     id: 1,
@@ -22,7 +44,7 @@ function row(over: Partial<SwingPositionRow> = {}): SwingPositionRow {
     archetype: "BREAKOUT",
     top_flow_strike: null,
     contract_strike: 180,
-    contract_expiry: "2026-08-14",
+    contract_expiry: etYmdPlus(30),
     contract_type: "call",
     contract_occ: null,
     contract_delta: 0.6,
@@ -91,8 +113,7 @@ test("livePlayFromSwingPosition: latest manage snapshot overrides spot-only inta
 });
 
 test("livePlayFromSwingPosition: stamps real DTE, entry, and live P&L from ledger row", () => {
-  // Future expiry so DTE stays >0 regardless of run date (0DTE on expiry day fails notEqual).
-  const play = livePlayFromSwingPosition(row({ contract_expiry: "2026-08-21" }), 178)!;
+  const play = livePlayFromSwingPosition(row(), 178)!;
   assert.ok(play.contract.dte >= 0);
   assert.notEqual(play.contract.dte, 0);
   assert.equal(play.entryPremium, 5.1);

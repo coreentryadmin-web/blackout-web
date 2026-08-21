@@ -1,7 +1,7 @@
 /** Shared intent keyword patterns for Largo tool routing and question analysis. */
 
 export const SPX_DESK_RE =
-  /\b(spx|s&p 500|s&p|0dte|sniper|gamma flip|gex|dealer|max pain|vwap|hod|lod|pdh|pdl|internals|tick|trin|greek flow|dealer gamma|mag7|mag 7|mega.?cap)\b/;
+  /\b(spx|s&p 500|s&p|0dte|sniper|gamma flip|gex|vex|vanna|dealer|max pain|vwap|hod|lod|pdh|pdl|internals|tick|trin|greek flow|dealer gamma|mag7|mag 7|mega.?cap)\b/;
 
 export const SPX_DESK_TOOLS_RE = /\b(spx|s&p|play|signal|0dte|sniper|gamma|gex|dealer|greek flow|mag7|mag 7)\b/;
 
@@ -21,7 +21,15 @@ export const FLOW_RE =
 export const FLOW_TOOLS_RE = /\b(flow|flows|flowing|tape|sweep|whale|dark pool|premium|unusual)\b/;
 
 export const PLAY_STATE_RE =
-  /\b(spx|s&p|0dte|sniper|lotto)\b.*\b(buy|sell|hold|trim|play|setup|signal)\b|\b(play state|open play|desk play)\b/i;
+  /\b(spx|s&p|0dte|sniper|lotto)\b.*\b(buy|sell|hold|trim|play|setup|signal)\b|\b(play|setup|signal)\b.*\b(spx|s&p|0dte|sniper|lotto)\b|\b(play state|open play|desk play|best play|best setup)\b/i;
+
+/** "Best play for SPX" — play token often precedes the ticker (task: SPX Largo audit). */
+export const BEST_PLAY_RE =
+  /\b(best play|best setup|what(?:'s| is) the play|what should i (?:buy|trade)|top play)\b/i;
+
+/** Multi-day SPX horizon — lotto runner vs pure 0DTE engine (3DTE/7DTE/weekly). */
+export const SPX_DTE_HORIZON_RE =
+  /\b(3\s*dte|3dte|7\s*dte|7dte|weekly|next week|swing dte|multi.?day dte)\b/i;
 
 export const NEWS_RE = /\b(news|headline|catalyst|earnings|cpi|fomc|macro|calendar|gdp|unemployment|inflation)\b/;
 
@@ -283,7 +291,31 @@ export const SWING_RE =
 
 /** SPX EOD pin forecaster (distinct from gamma magnet / max pain). */
 export const SPX_PIN_RE =
-  /\b(pin forecast|eod pin|pin strike|where.*pin|close.*pin|spx pin)\b/i;
+  /\b(pin forecast|eod pin|pin strike|where.*pin|close.*pin|spx pin|pin cone|projected close)\b/i;
+
+/** SPX pulse rail — structural transitions on the desk. */
+export const SPX_PULSE_RE =
+  /\b(pulse rail|desk pulse|spx pulse|flip cross|magnet shift|wall build|macro phase)\b/i;
+
+/** SPX lotto runner — multi-day horizon distinct from 0DTE engine. */
+export const SPX_LOTTO_RE =
+  /\b(lotto runner|lotto live|lotto play|multi.?day lotto|lotto state)\b/i;
+
+/** SPX Power Hour play (2:45–3:15 PM ET). */
+export const SPX_POWER_HOUR_RE =
+  /\b(power hour|powerhour|2:45|3:15|close play|ph play)\b/i;
+
+/** Committed SPX signal log — BUY/SELL/TRIM only. */
+export const SPX_SIGNAL_LOG_RE =
+  /\b(signal log|signals log|last signal|committed signal|spx signal history)\b/i;
+
+/** SPX engine snapshot history — rejections, scanning, gate blocks over time. */
+export const SPX_ENGINE_HISTORY_RE =
+  /\b(engine snapshot|engine history|scanning history|why blocked|why was .{0,20} blocked|rejection log|what was the engine doing)\b|\b(at|around)\s+\d{1,2}:\d{2}\b.*\b(block|reject|gate|engine)\b|\b(block|reject|gate|engine)\b.*\b(at|around)\s+\d{1,2}:\d{2}\b/i;
+
+/** NYSE breadth internals on the SPX desk. */
+export const SPX_INTERNALS_RE =
+  /\b(tick|trin|add|market internals|breadth|advance.?decline)\b/i;
 
 /** Public track record / graded performance stats. */
 export const RECORD_READ_RE =

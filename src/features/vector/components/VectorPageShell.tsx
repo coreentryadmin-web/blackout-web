@@ -1,5 +1,6 @@
 "use client";
 
+import type { VectorNodeDensity } from "@/features/vector/lib/vector-node-density";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -38,6 +39,12 @@ import type { VectorTimeframeMinutes } from "@/features/vector/lib/vector-bar-ti
 import type { TechnicalsLine } from "@/features/vector/lib/vector-technicals";
 import { VectorTickerSelect } from "@/features/vector/components/VectorTickerSelect";
 import { VectorScanner } from "@/features/vector/components/VectorScanner";
+import {
+  vectorPanelVisibility,
+  shouldExitFocusMode,
+  focusModeAvailable,
+  focusModeContentClass,
+} from "@/features/vector/lib/vector-focus-mode";
 import { VECTOR_DEFAULT_TICKER } from "@/features/vector/lib/vector-ticker";
 
 const VectorChart = dynamic(
@@ -128,6 +135,8 @@ type Props = {
   onCompareVisibleRange?: (paneId: string, fromSec: number, toSec: number) => void;
   linkedReplay?: import("@/features/vector/lib/vector-compare-replay").VectorLinkedReplayBind | null;
   hideReplayControls?: boolean;
+  /** Initial NODES pick, threaded to the chart. Compare panes pass a lower count than the desk. */
+  defaultNodeDensity?: VectorNodeDensity;
   onReplayTimeline?: (timeline: number[]) => void;
   compareFourUp?: boolean;
   compareFourUpBackground?: boolean;
@@ -194,6 +203,7 @@ export function VectorPageShell({
   onCompareVisibleRange,
   linkedReplay = null,
   hideReplayControls = false,
+  defaultNodeDensity,
   onReplayTimeline,
   compareFourUp = false,
   compareFourUpBackground = false,
@@ -262,6 +272,12 @@ export function VectorPageShell({
     [pushHelixChartFocus]
   );
   const [scannerOpen, setScannerOpen] = useState(false);
+  // FOCUS MODE (member ask 2026-08-18): chart fills the viewport, every side rail UNMOUNTS. See
+  // vector-focus-mode.ts for why unmounting (not CSS-hiding) is the rule — the rails poll and
+  // subscribe, and leaving them alive behind a fullscreen chart spends frame budget on panels
+  // nobody can see.
+  const [focusMode, setFocusMode] = useState(false);
+  const panels = vectorPanelVisibility(focusMode);
   const activeTicker = ticker || VECTOR_DEFAULT_TICKER;
   const navigateTicker = useCallback(
     (t: string) => {
@@ -396,6 +412,24 @@ export function VectorPageShell({
     return () => clearTimeout(id);
   }, [toast]);
 
+  // Escape leaves focus mode. Bound only while focus mode is ON, so the desk adds no global key
+  // listener in its normal state (and can't shadow Escape for a dialog/menu that wants it).
+  const canFocusMode = focusModeAvailable({ chartOnly, nativeShell });
+  useEffect(() => {
+    if (!focusMode) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (shouldExitFocusMode(e)) setFocusMode(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [focusMode]);
+
+  // Never strand a member in a fullscreen chart with no exit: if the surface stops offering focus
+  // mode under them (iOS shell hydrates, or the desk re-renders as an embed), drop out of it.
+  useEffect(() => {
+    if (!canFocusMode && focusMode) setFocusMode(false);
+  }, [canFocusMode, focusMode]);
+
   // Hydrate the OS-notification opt-in + live browser permission after mount (localStorage/Notification
   // are client-only). If the member had opted in but later revoked permission in the browser, the
   // panel reflects that mismatch rather than silently pretending alerts will ring.
@@ -513,6 +547,18 @@ export function VectorPageShell({
             Compare
           </button>
         ) : null}
+        {canFocusMode ? (
+          <button
+            type="button"
+            className="vector-focus-enter-btn"
+            onClick={() => setFocusMode((v) => !v)}
+            data-testid="vector-focus-toggle"
+            aria-pressed={focusMode}
+            title={focusMode ? "Exit fullscreen chart (Esc)" : "Fullscreen chart — hides every side panel"}
+          >
+            {focusMode ? "Exit full screen" : "Full screen"}
+          </button>
+        ) : null}
       </div>
     );
   const chartFreshness =
@@ -587,6 +633,7 @@ export function VectorPageShell({
           onCompareVisibleRange={onCompareVisibleRange}
           linkedReplay={linkedReplay}
           hideReplayControls={hideReplayControls}
+          defaultNodeDensity={defaultNodeDensity}
           onReplayTimeline={onReplayTimeline}
           compareFourUp={compareFourUp}
           compareFourUpBackground={compareFourUpBackground}
@@ -718,11 +765,21 @@ export function VectorPageShell({
         "vector-page-shell ios-native-page ios-native-page-vector",
         nativeShell && "vector-page-shell-native"
       )}
-      contentClassName={clsx("vector-page-content !py-0", nativeShell && "vector-page-content-native")}
+      contentClassName={clsx(
+        "vector-page-content !py-0",
+        // PageShell's wrapper is `relative z-10`, which is a STACKING CONTEXT — without lifting it
+        // too, the fullscreen surface's z-110 can never beat the nav's z-100. See
+        // focusModeContentClass() for the full reasoning.
+        focusModeContentClass(focusMode),
+        nativeShell && "vector-page-content-native"
+      )}
     >
       <div
         className={clsx(
-          nativeShell ? "vector-page-inner-native px-2 pt-0 sm:px-3" : "px-2 pt-0 sm:px-4 xl:px-6"
+          nativeShell ? "vector-page-inner-native px-2 pt-0 sm:px-3" : "px-2 pt-0 sm:px-4 xl:px-6",
+          // Focus mode fullscreens THIS wrapper — not the grid — so the chart toolbar (which is
+          // portalled above the grid and carries the way out) stays on screen above the chart.
+          focusMode && "vector-page-inner-focus"
         )}
       >
         {compactPanels && nativeShell ? (
@@ -749,11 +806,21 @@ export function VectorPageShell({
           className={clsx(
             "vector-chart-terminal-grid",
             compactPanels && nativeShell && "vector-chart-terminal-grid-native",
-            compactPanels && nativeShell && iosPanel === "chart" && "vector-ios-chart-focus"
+            compactPanels && nativeShell && iosPanel === "chart" && "vector-ios-chart-focus",
+            focusMode && "vector-chart-terminal-grid-focus"
           )}
           data-ios-panel={compactPanels && nativeShell ? iosPanel : undefined}
+          data-focus-mode={focusMode ? "on" : undefined}
         >
+          {/*
+            Every grid child is KEYED. Focus mode removes siblings, and without keys React would
+            reconcile the remaining children by index — handing the chart the slot the ladder rail
+            just vacated and remounting VectorChart, which would drop the lightweight-charts
+            instance, the SSE stream and the member's zoom on every toggle.
+          */}
+          {panels.ladder ? (
           <div
+            key="ladder"
             className={clsx(
               "vector-ladder-rail",
               compactPanels && nativeShell && iosPanel !== "ladder" && "ios-native-panel-hidden"
@@ -772,8 +839,10 @@ export function VectorPageShell({
               priceBand={priceBand}
             />
           </div>
+          ) : null}
 
           <div
+            key="chart"
             className={clsx(
               "vector-chart-terminal-chart min-w-0",
               compactPanels && nativeShell && iosPanel !== "chart" && "ios-native-panel-hidden"
@@ -791,7 +860,9 @@ export function VectorPageShell({
             )}
           </div>
 
+          {panels.terminal ? (
           <div
+            key="terminal"
             className={clsx(
               "vector-terminal-rail",
               compactPanels && nativeShell && iosPanel !== "pulse" && "ios-native-panel-hidden"
@@ -799,6 +870,7 @@ export function VectorPageShell({
           >
             {helixRail}
           </div>
+          ) : null}
 
           {/*
             Desktop 4th "action" column (member request, 2026-08-05): Play card + Technicals +
@@ -808,14 +880,14 @@ export function VectorPageShell({
             in scope for this change; on ordinary responsive web (non-native, narrow viewport) the
             CSS below still stacks it as a full-width row rather than hiding it.
           */}
-          {!(compactPanels && nativeShell) && (
-            <div className="vector-action-rail">{actionRail}</div>
+          {panels.action && !(compactPanels && nativeShell) && (
+            <div key="action" className="vector-action-rail">{actionRail}</div>
           )}
         </div>
 
         {alertToast}
 
-        {compactPanels && nativeShell ? (
+        {!panels.scanner ? null : compactPanels && nativeShell ? (
           <div
             className={clsx(
               "vector-scanner-native",

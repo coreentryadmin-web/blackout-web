@@ -1,23 +1,27 @@
 /**
  * Pre-earnings desk pack — one intent bundles positioning, flow, history, board exposure.
+ * Calendar/history from Benzinga; expected move from Polygon chain IV (no UW earnings REST).
  */
 
 import "server-only";
 
 import { roundFloats } from "@/lib/round-floats";
 import { todayEtYmd } from "@/lib/providers/spx-session";
-import { fetchNextEarningsDate } from "@/lib/providers/uw-earnings";
-import { fetchUwTickerEarningsHistory } from "@/lib/providers/unusual-whales";
-import { readGridEarnings } from "@/lib/zerodte/earnings";
-import { matchEarnings } from "@/lib/zerodte/board";
-import { nextTradingDayEt } from "@/features/nighthawk/lib/session";
+import { etStamp } from "@/lib/largo/temporal/bar-session-date";
+import { weekdayEt } from "@/lib/largo/temporal/session-calendar";
+import { loadMeridianEarningsPrintHistory } from "@/lib/meridian/meridian-earnings-history";
+import { loadEarningsExpectedMovePct } from "@/lib/meridian/meridian-earnings-expected-move";
+import {
+  loadBenzingaTickerEarnings,
+  loadNextEarningsFromBenzinga,
+} from "@/lib/meridian/meridian-benzinga-earnings";
+import { parseNextEarningsFromBenzinga } from "@/lib/meridian/meridian-benzinga-earnings-core";
+import {
+  toPreEarningsHistoryRows,
+  type PreEarningsHistoryRow,
+} from "@/lib/largo/pre-earnings-history-rows";
 
-export type PreEarningsHistoryRow = {
-  report_date: string | null;
-  surprise_pct: number | null;
-  beat: boolean | null;
-  expected_move_pct: number | null;
-};
+export type { PreEarningsHistoryRow };
 
 export type PreEarningsExposure = {
   on_board: boolean;
@@ -51,51 +55,39 @@ export type PreEarningsPackCard = {
   };
   history: PreEarningsHistoryRow[];
   history_summary: string | null;
+  /**
+   * Non-null when the earnings-calendar fetch FAILED. An empty `history` with a null error means
+   * the company genuinely has no prints on file; an empty `history` WITH an error means we could
+   * not look. Collapsing those two into one empty array is how "we don't know" gets reported as
+   * "there is nothing".
+   */
+  history_error: string | null;
   zerodte: PreEarningsExposure | null;
-  nighthawk: PreEarningsExposure | null;
+  /**
+   * ET-ANCHORED, not a bare UTC instant. Every date on this card is an ET SESSION — the report
+   * date, the print timing, the reaction window — and all of them are read against "today". A
+   * reader handed `2026-08-21T03:12:00.000Z` at 23:12 ET on 2026-08-20 has to INFER which session
+   * that is, and in production a model did exactly that inference and landed a full session out.
+   */
   as_of: string;
+  /**
+   * The ET session date this card was built on, and its weekday. The weekday is not decoration:
+   * BMO/AMC reasoning is weekday reasoning — "the next session" after a Friday AMC print is
+   * Monday, not Saturday — and a model got a weekday wrong in production on this very surface.
+   */
+  as_of_session: string;
+  as_of_weekday: string;
 };
-
-function parseSurprise(row: Record<string, unknown>): PreEarningsHistoryRow {
-  const est = row.street_mean_est ?? row.eps_estimate ?? row.estimate ?? null;
-  const act = row.actual_eps ?? row.eps_actual ?? row.actual ?? null;
-  const estN = est != null ? Number(est) : null;
-  const actN = act != null ? Number(act) : null;
-  let surprise: number | null = null;
-  let beat: boolean | null = null;
-  if (estN != null && actN != null && estN !== 0) {
-    surprise = Number((((actN - estN) / Math.abs(estN)) * 100).toFixed(1));
-    beat = actN >= estN;
-  } else if (row.surprise_pct != null && Number.isFinite(Number(row.surprise_pct))) {
-    surprise = Number(row.surprise_pct);
-    beat = surprise >= 0;
-  }
-  const emRaw = row.expected_move_perc ?? row.expected_move_pct ?? null;
-  const emPct =
-    emRaw != null && Number.isFinite(Number(emRaw))
-      ? Number((Number(emRaw) * (Number(emRaw) <= 1 ? 100 : 1)).toFixed(1))
-      : null;
-  const reportDate = String(row.report_date ?? row.earnings_date ?? row.date ?? "").slice(0, 10) || null;
-  return {
-    report_date: reportDate,
-    surprise_pct: surprise,
-    beat,
-    expected_move_pct: emPct,
-  };
-}
 
 function historySummary(rows: PreEarningsHistoryRow[]): string | null {
   const graded = rows.filter((r) => r.beat != null);
   if (!graded.length) return null;
   const beats = graded.filter((r) => r.beat).length;
-  const avgSurprise =
-    graded
-      .map((r) => r.surprise_pct)
-      .filter((v): v is number => v != null && Number.isFinite(v));
+  const avgSurprise = graded
+    .map((r) => r.surprise_pct)
+    .filter((v): v is number => v != null && Number.isFinite(v));
   const avg =
-    avgSurprise.length > 0
-      ? avgSurprise.reduce((a, b) => a + b, 0) / avgSurprise.length
-      : null;
+    avgSurprise.length > 0 ? avgSurprise.reduce((a, b) => a + b, 0) / avgSurprise.length : null;
   return `${beats}/${graded.length} beats in last ${graded.length} prints${
     avg != null ? ` · avg surprise ${avg >= 0 ? "+" : ""}${avg.toFixed(1)}%` : ""
   }`;
@@ -128,7 +120,7 @@ async function boardExposure(ticker: string): Promise<PreEarningsExposure | null
   return { on_board: false, status: null, direction: null, pnl_pct: null, headline: null };
 }
 
-/** Bundle pre-earnings desk pack for Largo prefetch. */
+/** Bundle pre-earnings desk pack for Largo / Meridian prefetch. */
 export async function preEarningsPackForLargo(
   ticker: string,
   earningsDate?: string | null
@@ -137,29 +129,24 @@ export async function preEarningsPackForLargo(
   if (!t) return null;
 
   const today = todayEtYmd();
-  const [{ getGexPositioning }, { marketPlatform }, nextEarnings, historyRows, earningsSnap, zerodte] =
+  const [{ getGexPositioning }, { marketPlatform }, benzingaRes, nextEarnings, zerodte] =
     await Promise.all([
       import("@/lib/providers/gex-positioning"),
       import("@/lib/platform"),
-      fetchNextEarningsDate(t).catch(() => null),
-      fetchUwTickerEarningsHistory(t, 6).catch(() => [] as Record<string, unknown>[]),
-      readGridEarnings().catch(() => null),
+      // 6 — the number of history rows this card shows. The loader sizes its window from it.
+      loadBenzingaTickerEarnings(t, earningsDate ?? null, 6),
+      loadNextEarningsFromBenzinga(t).catch(() => null),
       boardExposure(t),
     ]);
 
+  const parsedNext = parseNextEarningsFromBenzinga(t, benzingaRes.rows, today);
+  const next = parsedNext ?? nextEarnings;
   const resolvedDate =
-    earningsDate?.slice(0, 10) ??
-    nextEarnings?.earnings_date ??
-    matchEarnings(earningsSnap?.items ?? [], { today, nextDay: nextTradingDayEt(today) }).get(t)
-      ?.report_date ??
-    null;
+    earningsDate?.slice(0, 10) ?? next?.earnings_date ?? null;
 
-  const calendarItem = (earningsSnap?.items ?? []).find((i) => i.ticker === t);
-  const expectedMove =
-    calendarItem?.expected_move_pct ??
-    (historyRows[0] ? parseSurprise(historyRows[0]).expected_move_pct : null);
-
-  const [pos, flowRes] = await Promise.all([
+  const [historyRes, expected_move_pct, pos, flowRes] = await Promise.all([
+    loadMeridianEarningsPrintHistory(t, 6, resolvedDate),
+    loadEarningsExpectedMovePct(t, resolvedDate),
     getGexPositioning(t).catch(() => null),
     marketPlatform.flows.getFlowTapeSummary({ limit: 40, ticker: t }).catch(() => null),
   ]);
@@ -186,16 +173,18 @@ export async function preEarningsPackForLargo(
           ? "Balanced flow ahead of earnings"
           : "Insufficient flow in window";
 
-  const history = historyRows.map((r) => parseSurprise(r));
+  // Carry the REACTION and its BASIS through — see pre-earnings-history-rows.ts for why this
+  // projection is a separate, tested module rather than an inline .map().
+  const history = toPreEarningsHistoryRows(historyRes.print_history, 6);
 
   return roundFloats({
     kind: "pre_earnings",
     ticker: t,
     earnings_date: resolvedDate,
-    days_until: nextEarnings?.days_until ?? null,
-    report_time: nextEarnings?.report_time ?? calendarItem?.when ?? null,
-    is_confirmed: nextEarnings?.is_confirmed ?? null,
-    expected_move_pct: expectedMove,
+    days_until: next?.days_until ?? null,
+    report_time: next?.report_time ?? null,
+    is_confirmed: next?.is_confirmed ?? null,
+    expected_move_pct,
     positioning: {
       available: pos != null,
       flip: pos?.flip ?? null,
@@ -210,10 +199,16 @@ export async function preEarningsPackForLargo(
       summary: flowSummary,
       net_premium: total >= 1 ? net : null,
     },
-    history: history.slice(0, 6),
-    history_summary: historySummary(history),
+    history,
+    history_summary: historyRes.print_history_summary ?? historySummary(history),
+    history_error: historyRes.history_error ?? null,
     zerodte,
-    nighthawk: null,
-    as_of: new Date().toISOString(),
+    // `nighthawk` is deliberately GONE rather than hardcoded to null. It was declared, never
+    // populated, and never read by any consumer — so its only effect was to tell a model that
+    // Night Hawk exposure had been checked and found absent, when it had never been looked up.
+    // A field that implies a measurement nobody took is worse than no field.
+    as_of: etStamp(Date.now()) ?? new Date().toISOString(),
+    as_of_session: today,
+    as_of_weekday: weekdayEt(today),
   });
 }

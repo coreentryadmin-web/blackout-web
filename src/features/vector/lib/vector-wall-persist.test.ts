@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {
   appendSessionWallSample,
   loadSessionWallHistory,
+  railMemoNeedsResync,
+  nextRailMemoAt,
 } from "./vector-wall-persist";
 import type { GexWalls } from "@/lib/providers/gex-wall-levels";
 
@@ -186,4 +188,133 @@ test("loadSessionWallTail: empty session id and unrecorded rails return [] rathe
   const { loadSessionWallTail } = await import("./vector-wall-persist");
   assert.deepEqual(await loadSessionWallTail("", "TAIL4"), []);
   assert.deepEqual(await loadSessionWallTail("2099-03-09", "NEVER-RECORDED"), []);
+});
+
+// ── RAIL MEMO RESYNC CLOCK (2026-08-18) ──────────────────────────────────────────────────────
+// The memo exists to remove ~488 whole-rail Redis GET + JSON.parse round trips per 5s sweep — the
+// measured compute bottleneck behind the sweep degrading from 5s near the open to ~30s by midday.
+// Its clock was `at: memo?.at ?? Date.now()`, which refreshes only when there is NO memo, i.e.
+// exactly once per rail. Every later resync re-read Redis and wrote the ORIGINAL timestamp back,
+// so from ~60s into a rail's life the memo was permanently expired and every append paid the full
+// O(rail length) cost again. These pin the clock so that cannot silently return.
+
+test("a fresh memo is trusted; an expired one resyncs", () => {
+  const t0 = 1_000_000;
+  assert.equal(railMemoNeedsResync(t0, t0 + 59_000, 60_000), false);
+  assert.equal(railMemoNeedsResync(t0, t0 + 60_000, 60_000), true, "at the window = expired");
+  assert.equal(railMemoNeedsResync(undefined, t0, 60_000), true, "no memo must read Redis");
+  assert.equal(railMemoNeedsResync(Number.NaN, t0, 60_000), true, "an unusable stamp must resync");
+});
+
+test("THE BUG: the clock advances on every resync, not just the first", () => {
+  const t0 = 1_000_000;
+  // Resync at t0+60s → the stored stamp must become t0+60s, not stay at t0.
+  assert.equal(nextRailMemoAt(t0, true, t0 + 60_000), t0 + 60_000);
+  // Within the window nothing changed, so the stamp must NOT move — the window is measured from
+  // the last authoritative read, not the last write.
+  assert.equal(nextRailMemoAt(t0, false, t0 + 5_000), t0);
+  // First-ever append (no prior stamp) starts the clock.
+  assert.equal(nextRailMemoAt(undefined, false, t0), t0);
+});
+
+test("over a session the memo resyncs ONCE per window, not on every append", () => {
+  // The regression, made countable: 5s appends across 30 minutes with a 60s window is 360 appends
+  // and should be ~30 Redis reads. The old formula produced one per append after the first minute.
+  const WINDOW = 60_000;
+  const TICK = 5_000;
+  const APPENDS = 360;
+  const t0 = 1_000_000;
+
+  let at: number | undefined;
+  let fixedReads = 0;
+  let oldReads = 0;
+  let oldAt: number | undefined;
+
+  for (let i = 0; i < APPENDS; i++) {
+    const now = t0 + i * TICK;
+
+    const resync = railMemoNeedsResync(at, now, WINDOW);
+    if (resync) fixedReads += 1;
+    at = nextRailMemoAt(at, resync, now);
+
+    // The shipped-before behaviour, reproduced exactly: `at: memo?.at ?? Date.now()`.
+    const oldResync = oldAt == null || now - oldAt >= WINDOW;
+    if (oldResync) oldReads += 1;
+    oldAt = oldAt ?? now;
+  }
+
+  const expected = Math.ceil((APPENDS * TICK) / WINDOW);
+  assert.equal(fixedReads, expected, `expected ~${expected} resyncs, got ${fixedReads}`);
+  assert.ok(
+    oldReads > fixedReads * 10,
+    `the old clock should read far more often (old ${oldReads} vs fixed ${fixedReads})`
+  );
+  // The old clock read once on the very first append (no memo yet), then on EVERY append from the
+  // moment the window first elapsed — the memo bought exactly one window of benefit per rail.
+  const appendsInsideFirstWindow = WINDOW / TICK;
+  assert.equal(
+    oldReads,
+    1 + (APPENDS - appendsInsideFirstWindow),
+    "old clock: every append past the first window re-read"
+  );
+});
+
+test("the resync window is never skipped entirely — staleness stays bounded", () => {
+  // The opposite failure would be worse than the one being fixed: a memo that never resyncs can
+  // hold a divergent rail for the whole session, and this process would keep writing from it.
+  const WINDOW = 60_000;
+  const t0 = 1_000_000;
+  let at: number | undefined = t0;
+  for (let elapsed = 0; elapsed <= 10 * 60_000; elapsed += 5_000) {
+    const now = t0 + elapsed;
+    const resync = railMemoNeedsResync(at, now, WINDOW);
+    at = nextRailMemoAt(at, resync, now);
+    assert.ok(now - (at ?? now) < WINDOW, `stamp went stale at ${elapsed}ms`);
+  }
+});
+
+// ── APPEND-ONLY RAIL (2026-08-19) ────────────────────────────────────────────────────
+//
+// The rail is written as a Redis list now: one RPUSH per sample, O(1), payload independent of how
+// long the session already is. The blob form made every append a whole-rail rewrite, which is what
+// capped the recorder — #2273 put four rails per ticker on the 5s sweep, the sweep blew its budget,
+// and #2274 reverted it the same day.
+
+test("a long rail costs a constant-size append, not a whole-rail rewrite", async () => {
+  const session = "2099-03-01";
+  for (let i = 0; i < 400; i++) {
+    await appendSessionWallSample(session, { time: 1000 + i * 5, walls: walls(100 + i, 90) }, "AMD");
+  }
+  const loaded = await loadSessionWallHistory(session, "AMD");
+  assert.equal(loaded.length, 400, "every appended bucket must be readable");
+  assert.equal(loaded[0]!.time, 1000, "oldest bucket kept");
+  assert.equal(loaded[loaded.length - 1]!.time, 1000 + 399 * 5, "newest bucket kept");
+  // Order is the property the chart depends on — beads are drawn along this axis.
+  for (let i = 1; i < loaded.length; i++) {
+    assert.ok(loaded[i]!.time > loaded[i - 1]!.time, `rail out of order at ${i}`);
+  }
+});
+
+test("a refreshed bucket collapses last-wins instead of rendering twice", async () => {
+  const session = "2099-03-02";
+  await appendSessionWallSample(session, { time: 300, walls: walls(10, 5) }, "TSLA");
+  await appendSessionWallSample(session, { time: 300, walls: walls(11, 5) }, "TSLA");
+  await appendSessionWallSample(session, { time: 300, walls: walls(12, 5) }, "TSLA");
+  const loaded = await loadSessionWallHistory(session, "TSLA");
+  assert.equal(loaded.length, 1, "one bucket, however many times it was refreshed");
+  assert.equal(loaded[0]!.walls.callWalls[0]!.strike, 12, "newest reading wins");
+});
+
+test("every horizon records independently at full cadence", async () => {
+  // The point of the whole change: weekly/monthly are no longer rationed against a write budget.
+  const session = "2099-03-03";
+  for (const horizon of ["all", "0dte", "weekly", "monthly"] as const) {
+    for (let i = 0; i < 5; i++) {
+      await appendSessionWallSample(session, { time: 700 + i * 5, walls: walls(50 + i, 40) }, "NVDA", horizon);
+    }
+  }
+  for (const horizon of ["all", "0dte", "weekly", "monthly"] as const) {
+    const rail = await loadSessionWallHistory(session, "NVDA", horizon);
+    assert.equal(rail.length, 5, `${horizon} rail should hold every sample`);
+  }
 });

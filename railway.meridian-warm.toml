@@ -4,6 +4,9 @@
 [build]
 builder = "nixpacks"
 buildCommand = "echo 'cron trigger service: no app build needed'"
+# Only redeploy this trigger service when its OWN driver/config changes — NOT on docs/src/
+# log commits. Without this, EVERY repo commit redeployed all cron trigger services, stalling
+# warm writers ~15-21 min mid-RTH and tripping the cron-staleness watchdog.
 watchPatterns = [
   "scripts/hit-cron.mjs",
   "railway.meridian-warm.toml",
@@ -12,7 +15,8 @@ watchPatterns = [
 
 [deploy]
 startCommand = "node scripts/hit-cron.mjs /api/cron/meridian-warm"
-# Every 5 minutes during market hours — keeps Meridian timeline + SPX GEX + desk enrichment hot
-cronSchedule = "*/5 * * * *"
+# Every 5 minutes during the UTC band that covers RTH in both EDT and EST.
+# Route applies shouldRunCacheWarmer() off-hours gate — fires in band are cheap no-ops after close.
+cronSchedule = "*/5 11-21 * * 1-5"
 restartPolicyType = "ON_FAILURE"
 numReplicas = 1

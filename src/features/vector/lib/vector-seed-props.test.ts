@@ -4,15 +4,22 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 /**
- * Drift guard: /vector SSR-loads loadVectorSeedProps. The SPX dashboard uses SpxVectorEmbed
- * (client-hydrated) so HTML is not blocked on cold Polygon reconstruct — chart data still flows
- * through the same /api/market/vector/* paths VectorChart already polls.
+ * Drift guard: /vector and /dashboard both client-bootstrap Vector — no SSR seed blocking HTML.
+ * loadVectorSeedProps remains the server pipeline for API/cron paths; pages must not await it.
  */
-test("Vector seed pipeline: /vector SSR-loads; dashboard client-embeds without inline internals", () => {
+test("Vector seed pipeline: pages client-bootstrap; loadVectorSeedProps stays server-only", () => {
   const vectorPage = readFileSync(join(process.cwd(), "src/app/(site)/vector/page.tsx"), "utf8");
   const dashboardPage = readFileSync(join(process.cwd(), "src/app/(site)/dashboard/page.tsx"), "utf8");
+  const vectorClient = readFileSync(
+    join(process.cwd(), "src/features/vector/components/VectorPageClient.tsx"),
+    "utf8"
+  );
 
-  assert.match(vectorPage, /loadVectorSeedProps/);
+  assert.doesNotMatch(vectorPage, /await loadVectorSeedProps/);
+  assert.match(vectorPage, /VectorPageClient/);
+  assert.match(vectorClient, /fetchVectorEmbedFastSeed/);
+  assert.match(vectorClient, /fetchVectorClientSeed/);
+
   assert.match(dashboardPage, /SpxVectorEmbed/);
   assert.doesNotMatch(dashboardPage, /await loadVectorSeedProps/);
 
@@ -27,12 +34,12 @@ test("Vector seed pipeline: /vector SSR-loads; dashboard client-embeds without i
     assert.equal(
       vectorPage.includes(token),
       false,
-      `/vector page must not inline seed internals (${token}) — use loadVectorSeedProps`
+      `/vector page must not inline seed internals (${token})`
     );
     assert.equal(
       dashboardPage.includes(token),
       false,
-      `/dashboard page must not inline seed internals (${token}) — use SpxVectorEmbed`
+      `/dashboard page must not inline seed internals (${token})`
     );
   }
 

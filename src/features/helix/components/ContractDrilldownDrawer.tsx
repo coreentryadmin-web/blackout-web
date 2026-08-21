@@ -31,6 +31,7 @@ import {
   gexProximityLabel,
   printBias,
 } from "@/features/helix/lib/helix-print-detail";
+import { etClock } from "@/lib/et-clock";
 
 /** Kept for callers that only need the contract identity (ticker/strike/expiry/type). */
 export type ContractPick = Pick<FlowAlert, "ticker" | "strike" | "expiry" | "option_type">;
@@ -45,7 +46,7 @@ function timeLabel(iso: string): string {
   if (!iso) return "—";
   const t = new Date(iso).getTime();
   if (!Number.isFinite(t)) return iso.slice(11, 16) || "—";
-  return new Date(t).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+  return etClock(t, { pad: true, hour12: false }) ?? "—";
 }
 
 /** Compact notional ($6.0M / $430K) — same thresholds as fmtPremium but without the sign path. */
@@ -338,7 +339,13 @@ export function ContractDrilldownDrawer({
                   <div className="h-[160px]">
                     <ResponsiveContainer width="100%" height="100%">
                       <ComposedChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                        <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
+                        {/* yAxisId is REQUIRED from recharts 3: the grid binds to an axis to source
+                            its tick positions, and defaults to yAxisId={0} — an id no axis in this
+                            chart declares (they are "vol" and "price"). Recharts 2 fell back to the
+                            first axis; recharts 3 does not, and silently drops every interior line,
+                            leaving only the plot boundary. Bind it to "vol" — the left/volume axis
+                            whose ticks the horizontal lines lined up with before the bump. */}
+                        <CartesianGrid yAxisId="vol" stroke="rgba(255,255,255,0.06)" vertical={false} />
                         <XAxis dataKey="label" tick={{ fill: "#7dd3fc", fontSize: 9 }} interval="preserveStartEnd" />
                         <YAxis
                           yAxisId="vol"

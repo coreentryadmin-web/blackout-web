@@ -9,6 +9,7 @@ import { NextRequest } from "next/server";
 import { GET as flowIngestGet } from "@/app/api/cron/flow-ingest/route";
 import { GET as uwCacheRefreshGet } from "@/app/api/cron/uw-cache-refresh/route";
 import { GET as heatmapWarmGet } from "@/app/api/cron/heatmap-warm/route";
+import { GET as meridianWarmGet } from "@/app/api/cron/meridian-warm/route";
 import { GET as deskWarmGet } from "@/app/api/cron/desk-warm/route";
 import { GET as zerodteWarmGet } from "@/app/api/cron/zerodte-warm/route";
 import { GET as spxEvaluateGet } from "@/app/api/cron/spx-evaluate/route";
@@ -41,6 +42,7 @@ export const CRON_DISPATCH: Record<string, { handler: CronHandler; force: boolea
   "flow-ingest": { handler: flowIngestGet, force: false },
   "uw-cache-refresh": { handler: uwCacheRefreshGet, force: false },
   "heatmap-warm": { handler: heatmapWarmGet, force: true },
+  "meridian-warm": { handler: meridianWarmGet, force: true },
   "desk-warm": { handler: deskWarmGet, force: true },
   "zerodte-warm": { handler: zerodteWarmGet, force: true },
   // RTH-critical crons — safe to re-trigger during an incident (idempotent read+evaluate)

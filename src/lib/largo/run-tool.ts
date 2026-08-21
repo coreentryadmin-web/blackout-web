@@ -34,6 +34,9 @@ import { getGexPositioning } from "@/lib/providers/gex-positioning";
 import { enrichFlowsWithGex } from "@/lib/flow-gex-enrichment";
 import { runUwPooled } from "@/lib/providers/uw-rate-limiter";
 import { gexHeatmapForLargo } from "@/lib/largo/gex-heatmap-for-largo";
+import { normalizeUwEarnings } from "@/lib/largo/uw-earnings-normalize";
+import { etStamp } from "@/lib/largo/temporal/bar-session-date";
+import { weekdayEt } from "@/lib/largo/temporal/session-calendar";
 import { gexMatrixChangesForLargo } from "@/lib/largo/gex-matrix-changes";
 import { registerVectorUniverseView } from "@/features/vector/lib/vector-universe";
 import { flowAnomalyNearMissesForLargo } from "@/lib/platform/flow-anomaly-near-misses";
@@ -788,26 +791,64 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
     case "get_earnings": {
       const sym = uwTicker(ticker);
       return serverCache(`earnings:${sym}`, TTL.EARNINGS, async () => {
-        // PRIMARY: Benzinga earnings news via Polygon (unlimited calls, no rate limit).
-        // SUPPLEMENTAL: UW earnings history and estimates (rate-limited; used only when Benzinga lacks data).
-        const benzinga = await fetchBenzingaEarnings(sym, 15);
-        const [uw, estimates] = await Promise.all([
+        // WHY THE STRUCTURED FEED IS PRIMARY AND THE NEWS CHANNEL IS NOT (don't reorder this):
+        //
+        // `fetchBenzingaEarnings` is `fetchBenzingaNews(channels: "earnings")` — the news channel
+        // filtered to stories that MENTION this ticker in an earnings context. It is not this
+        // company's earnings. Probed live 2026-08-21, `get_earnings("NVDA")` returned headlines
+        // about Fabrinet, Anthropic and Cerebras: no EPS, no revenue, no report date, no BMO/AMC
+        // time, no confirmed-vs-projected status. Asked "when does NVDA report and what's
+        // expected", that is all the model had.
+        //
+        // Benzinga's STRUCTURED earnings feed carries exactly those facts and the rest of Meridian
+        // has been reading it all along (`meridian-benzinga-earnings.ts`, `meridian-ticker-lookup`,
+        // the timeline). Same Polygon key, same entitlement — the tool simply never asked for it.
+        //
+        // Reused, not re-derived: `loadBenzingaTickerEarnings` already carries the
+        // don't-cache-a-failure fix (FINDINGS 2026-08-18 — a failed fetch cached as `{rows: []}`
+        // rendered as "this company has no earnings history" for ten minutes), and
+        // `loadMeridianEarningsPrintHistory` already anchors each print's reaction to its BMO/AMC
+        // timing and carries `reaction_basis`.
+        const [{ loadBenzingaTickerEarnings }, { parseNextEarningsFromBenzinga }, { loadMeridianEarningsPrintHistory }] =
+          await Promise.all([
+            import("@/lib/meridian/meridian-benzinga-earnings"),
+            import("@/lib/meridian/meridian-benzinga-earnings-core"),
+            import("@/lib/meridian/meridian-earnings-history"),
+          ]);
+        const [related, calendar, history, uw, estimates] = await Promise.all([
+          fetchBenzingaEarnings(sym, 15),
+          loadBenzingaTickerEarnings(sym, null),
+          loadMeridianEarningsPrintHistory(sym, 6),
           fetchUwEarnings(sym),
           fetchUwEarningsEstimates(sym),
         ]);
-        return {
+        const next_report = parseNextEarningsFromBenzinga(sym, calendar.rows, todayEtYmd());
+        const calendar_error = (calendar as { error?: string | null }).error ?? null;
+        // UW serves its side of this payload as STRINGS, with moves/returns as unlabelled
+        // fractions — `reaction: "-0.0915"` is -9.15%, not -0.09%. See uw-earnings-normalize.ts.
+        return normalizeUwEarnings({
           ticker: sym,
-          source: benzinga.length ? "benzinga" : "unusual_whales",
-          benzinga_news: benzinga,
+          source: calendar.rows.length ? "benzinga_structured" : related.length ? "benzinga_news" : "unusual_whales",
+          // The single most-asked fact, and the one the news channel could never answer.
+          next_report,
+          print_history: history.print_history,
+          print_history_summary: history.print_history_summary,
+          // Absence of a lookup is not absence of a report date — a non-null error means the
+          // calendar could not be READ, not that this company has nothing scheduled.
+          calendar_error: calendar_error ?? history.history_error ?? null,
+          // Renamed from `benzinga_news`: these are stories mentioning this ticker in the earnings
+          // channel, NOT its own results. The old name invited exactly the wrong reading.
+          related_news: related,
           unusual_whales: uw,
           estimates,
-        };
+        });
       });
     }
     case "get_earnings_history": {
       const sym = uwTicker(ticker);
       const [earnings, estimates] = await Promise.all([fetchUwEarnings(sym), fetchUwEarningsEstimates(sym)]);
-      return { ticker: sym, source: "unusual_whales", earnings, estimates };
+      // Same raw-UW units/precision problem as get_earnings — see uw-earnings-normalize.ts.
+      return normalizeUwEarnings({ ticker: sym, source: "unusual_whales", earnings, estimates });
     }
     case "get_analyst_ratings": {
       const sym = uwTicker(ticker);
@@ -1010,9 +1051,13 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
     }
     case "get_cortex_decision": {
       const { cortexDecisionForLargo } = await import("@/lib/largo/product-reads");
+      // `date`/`session_date` (YYYY-MM-DD) explains a SPECIFIC past play's frozen commit evidence,
+      // not just today's. Absent → today, the prior behaviour.
+      const cortexDate = input.date ?? input.session_date;
       return cortexDecisionForLargo(
         input.ticker ? String(input.ticker) : null,
-        input.question ? String(input.question) : ""
+        input.question ? String(input.question) : "",
+        cortexDate ? String(cortexDate) : undefined
       );
     }
     case "get_horizon_outcomes": {
@@ -1030,14 +1075,24 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       const edition = date
         ? await marketPlatform.nighthawk.getNightHawkEditionForDate(date)
         : await marketPlatform.nighthawk.getLatestNightHawkEdition();
-      return edition ?? { available: false, plays: [] };
+      // The RAW edition puts market_recap (41KB on a live edition) ahead of plays
+      // (5KB), and the answer loop tail-truncates at MAX_TOOL_RESULT_CHARS — so every
+      // play was being cut off. compactNightHawkEditionForModel emits the plays first
+      // and names the two delegated recap blobs it drops. The member route
+      // (/api/market/nighthawk/edition) and the desk UI still get the full object.
+      const { compactNightHawkEditionForModel } = await import(
+        "@/lib/largo/nighthawk-edition-for-model"
+      );
+      return compactNightHawkEditionForModel(edition);
     }
 
     case "get_helix_derived": {
       const { helixDerivedForLargo } = await import("@/lib/largo/product-reads");
+      const derivedHours = input.since_hours ?? input.hours;
       return helixDerivedForLargo(
         input.ticker ? String(input.ticker) : null,
-        Number(input.limit ?? 400)
+        Number(input.limit ?? 400),
+        derivedHours != null ? Number(derivedHours) : undefined
       );
     }
 
@@ -1048,9 +1103,14 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
 
     case "get_helix_tape_analytics": {
       const { helixTapeAnalyticsForLargo } = await import("@/lib/largo/product-reads");
+      // `hours` is an accepted alias for since_hours, matching get_flow_tape's own contract —
+      // the model reaches for either, and silently ignoring one answers a "right now" question
+      // with a week of tape.
+      const hours = input.since_hours ?? input.hours;
       return helixTapeAnalyticsForLargo(
         input.ticker ? String(input.ticker) : null,
-        Number(input.limit ?? 200)
+        input.limit != null ? Number(input.limit) : undefined,
+        hours != null ? Number(hours) : undefined
       );
     }
 
@@ -1132,19 +1192,25 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       return readPolygon(String(input.endpoint ?? ""), p);
     }
 
+    case "get_cross_product_read": {
+      // Injected executor rather than a direct import: the contract module would otherwise import
+      // this file back (cycle), and injection lets the fan-out be tested with no providers.
+      const { crossProductRead } = await import("@/lib/largo/contract/cross-product-read");
+      return crossProductRead(ticker, (name, toolInput) => runLargoTool(name, toolInput, userId));
+    }
+
     case "get_vector_pulse": {
       const { vectorPulseForLargo } = await import("@/lib/largo/product-reads");
       return vectorPulseForLargo(ticker, typeof input.horizon === "string" ? input.horizon : "all");
     }
 
     case "get_vector_full_state": {
-      const [{ fetchVectorFullState }, { normalizeDteHorizon }] = await Promise.all([
-        import("@/lib/bie/vector-full-state"),
-        import("@/features/vector/lib/vector-dte-horizon"),
-      ]);
-      // fetchVectorFullState normalizes the ticker itself (normalizeVectorTicker); pass the raw
-      // string. horizon is validated to one of 0dte/weekly/monthly/all, defaulting to "all".
-      return fetchVectorFullState(ticker, normalizeDteHorizon(input.horizon));
+      const { vectorFullStateForLargo } = await import("@/lib/largo/product-reads");
+      // Normalizes the ticker itself (normalizeVectorTicker) and validates the horizon to one of
+      // 0dte/weekly/monthly/all. Returns the state UNCHANGED when there is one — so
+      // get_ecosystem_context's "the exact same object" promise still holds — and an honest
+      // { available:false, reason } envelope instead of a bare `null` when there is no live spot.
+      return vectorFullStateForLargo(ticker, typeof input.horizon === "string" ? input.horizon : "all");
     }
 
     case "get_hot_tickers": {
@@ -1356,7 +1422,15 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       const from = priorEtYmd(cfg.span === "day" ? 400 : 30);
       const polygonBars = await fetchAggBars(sym, cfg.mult, cfg.span, from, to, "500");
       if (polygonBars.length) {
-        return { ticker: sym, candle_size: size, source: "polygon", bars: polygonBars.slice(-60) };
+        // fetchAggBars returns bare `{t,o,h,l,c,v}` — epoch only. Same stamping as the get_polygon
+        // passthrough, for the same reason: an unlabelled bar makes the reader guess the session.
+        const { stampBars } = await import("@/lib/largo/temporal/bar-session-date");
+        return {
+          ticker: sym,
+          candle_size: size,
+          source: "polygon",
+          bars: stampBars(polygonBars.slice(-60), cfg.span),
+        };
       }
       return {
         ticker: uwTicker(ticker),
@@ -1387,7 +1461,25 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         fetchUwEarningsPremarket(30),
         fetchUwEarningsAfterhours(30),
       ]);
-      return { premarket, afterhours };
+      // `as_of` because the tool description promises "today's" prints and the payload itself
+      // carried no clock — the model had to take the framing on trust. The rows' own
+      // `report_date` is the authority on which session these are; this says when we asked.
+      //
+      // ET-ANCHORED, not a bare UTC instant. "Today's premarket/afterhours earnings" is a claim
+      // about an ET SESSION, and at 23:12 ET the UTC date is already tomorrow — a reader handed
+      // `2026-08-21T03:12:00.000Z` has to infer which session that is. `as_of_session` and
+      // `as_of_weekday` remove the inference: premarket-vs-afterhours reasoning is session
+      // reasoning, and the session after a Friday close is Monday.
+      const asOfSession = todayEtYmd();
+      return normalizeUwEarnings({
+        as_of: etStamp(Date.now()) ?? new Date().toISOString(),
+        as_of_session: asOfSession,
+        as_of_weekday: weekdayEt(asOfSession),
+        premarket_count: premarket.length,
+        afterhours_count: afterhours.length,
+        premarket,
+        afterhours,
+      });
     }
     case "get_congress_unusual": {
       const sym = input.ticker ? uwTicker(String(input.ticker)) : undefined;
@@ -1505,17 +1597,12 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
     }
     case "get_earnings_calendar": {
       const { callInternalApiRead } = await import("@/lib/bie/internal-api");
+      const { shapeEarningsCalendarRead } = await import("@/lib/largo/earnings-calendar-for-largo");
       const filter = input.ticker ? uwTicker(String(input.ticker)) : null;
+      // callInternalApiRead returns a transport ENVELOPE, not the route body — reading it as
+      // the body is the bug shapeEarningsCalendarRead documents and is unit-tested against.
       const res = await callInternalApiRead("/api/market/earnings-calendar");
-      const earnings =
-        res && typeof res === "object" && "earnings" in res
-          ? (res as { earnings: Record<string, string> }).earnings
-          : {};
-      if (filter && earnings[filter]) {
-        return { configured: true, earnings: { [filter]: earnings[filter] } };
-      }
-      if (filter) return { configured: true, earnings: {}, note: `No upcoming date for ${filter}` };
-      return res;
+      return shapeEarningsCalendarRead(res, filter);
     }
     case "get_gex_regime_events":
       return gexRegimeEventsForLargo(

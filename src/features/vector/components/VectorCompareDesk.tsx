@@ -19,6 +19,7 @@ import {
 } from "@/features/vector/lib/vector-compare";
 import type { VectorClientSeed } from "@/features/vector/lib/vector-client-seed";
 import { VECTOR_DEFAULT_TIMEFRAME } from "@/features/vector/lib/vector-bar-timeframes";
+import { VECTOR_COMPARE_DEFAULT_TIMEFRAME } from "@/features/vector/lib/vector-cadence";
 import { VECTOR_DEFAULT_DTE_HORIZON, type VectorDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
 import type { VectorTimeframeMinutes } from "@/features/vector/lib/vector-bar-timeframes";
 import type { VectorWallLens } from "@/features/vector/lib/vector-wall-history";
@@ -48,7 +49,10 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
   const [linked, setLinked] = useState(true);
   const [linkedZoom, setLinkedZoom] = useState(true);
   const [syncEpoch, setSyncEpoch] = useState(0);
-  const [timeframe, setTimeframe] = useState<VectorTimeframeMinutes>(VECTOR_DEFAULT_TIMEFRAME);
+  // Compare opens on 5m, not the desk's default — see VECTOR_COMPARE_DEFAULT_TIMEFRAME.
+  const [timeframe, setTimeframe] = useState<VectorTimeframeMinutes>(
+    VECTOR_COMPARE_DEFAULT_TIMEFRAME as VectorTimeframeMinutes
+  );
   const [dteHorizon, setDteHorizon] = useState<VectorDteHorizon>(
     defaultDteHorizon ?? VECTOR_DEFAULT_DTE_HORIZON
   );
@@ -224,6 +228,33 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
     [compareSyncBind]
   );
 
+  /**
+   * Leave compare mode, back to the desk for the ticker the member came in on.
+   *
+   * A FULL navigation, not `router.push`. Measured live on prod 2026-08-19 with the exit button
+   * instrumented: the click event dispatches (native listener saw it), the button is the topmost
+   * element at its own centre (no overlay), nothing throws — and the URL never changes, at +200ms
+   * through +8s. `router.push` INTO compare works from the same app, and a manual
+   * `history.pushState` to the very same target changes the URL fine, so the swallowed navigation
+   * is specific to pushing out of compare — the target differs from the current URL only by
+   * REMOVING the `compare` param, and App Router declines to move.
+   *
+   * A hard navigation costs one SSR round trip on an explicit "leave this mode" action, which is
+   * the right trade for a control that currently does nothing at all. It also tears the compare
+   * grid's SSE streams down cleanly rather than relying on unmount ordering across four panes.
+   *
+   * `seeds[0]` IS the origin ticker: VectorPageClient builds the compare list primary-first from
+   * the page's own seed, so this returns to the desk the member pressed Compare on.
+   */
+  const exitCompareTo = useCallback((ticker: string) => {
+    const target = deskPath(ticker);
+    if (typeof window === "undefined") {
+      router.push(target);
+      return;
+    }
+    window.location.assign(target);
+  }, [router]);
+
   const exclude = useMemo(() => new Set(seeds.map((s) => s.ticker)), [seeds]);
   const liveSession = seeds.some((s) => s.liveSession) || todayEtYmd() === seeds[0]?.sessionYmd;
   /** Grid holds live charts only — add-symbol lives in the command bar. */
@@ -321,9 +352,15 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
           (t) => fetchVectorClientSeed(t),
           2
         );
-        setSeeds(loaded);
-        syncUrl(loaded);
-        setFocusedTicker(loaded[0]?.ticker ?? null);
+        // Drop panes that failed to load rather than letting one bad ticker sink the preset.
+        // Applying "Mag 7" and getting nothing because a single name 502'd is worse than getting
+        // the three that loaded; the loader returns a null slot per failure precisely so this
+        // choice is available here.
+        const ok = loaded.filter(Boolean) as VectorClientSeed[];
+        if (!ok.length) return; // keep the existing grid — never blank the desk on a failed preset
+        setSeeds(ok);
+        syncUrl(ok);
+        setFocusedTicker(ok[0]?.ticker ?? null);
         bumpSync();
       } finally {
         setLoadingTickers(new Set());
@@ -482,7 +519,7 @@ export function VectorCompareDesk({ initialSeeds, defaultDteHorizon }: Props) {
           onDteHorizon={onDte}
           lens={lens}
           onLens={onLens}
-          onExitCompare={() => router.push(deskPath(seeds[0]?.ticker ?? "SPX"))}
+          onExitCompare={() => exitCompareTo(seeds[0]?.ticker ?? "SPX")}
           onApplyPreset={applyPreset}
           liveSession={liveSession}
           canAddSymbol={canAddSymbol}

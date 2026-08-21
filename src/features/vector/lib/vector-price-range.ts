@@ -134,3 +134,166 @@ export function extendRangeForWalls(
   }
   return { minValue, maxValue };
 }
+
+/**
+ * How long after a member's own scroll-zoom the price axis stops widening for walls/beads.
+ *
+ * Mirrors the chart's wheel cooldown: during an active zoom gesture the axis must hold exactly
+ * where the member put it, or the next SSE tick (~1/s in RTH) re-runs autoscale and snaps the view
+ * back to the wide wall-inclusive band mid-gesture.
+ */
+export const BEAD_EXTENSION_WHEEL_COOLDOWN_MS = 8_000;
+
+/**
+ * May the price axis widen to include the drawn wall/bead rows right now?
+ *
+ * ── THE BUG THIS SEPARATES OUT (2026-08-19) ──────────────────────────────────────────
+ * The candle series' `autoscaleInfoProvider` used to skip its wall/bead widening whenever
+ * `memberViewportLocked(chartUserPanned, wheelZoomAt)` was true. That predicate is correct for what
+ * it was built for — suppressing programmatic TIME-axis refits and auto-coarsen once the member has
+ * taken control — but `chartUserPanned` is also set PROGRAMMATICALLY by the intraday zoom presets:
+ * `handleIntradayZoom` sets it for `structure` and `live` so the preset's own range is not
+ * immediately refitted away. Nothing clears it until a `session` reset.
+ *
+ * So pressing STRUCTURE or LIVE permanently disabled the price-axis widening, and the axis
+ * collapsed to the candle range for the rest of the session. Measured on prod at the `structure`
+ * preset:
+ *
+ *     SPX   axis 7680.00 - 7772.00   span 1.20% of spot   ~14 bead rows visible
+ *     NVDA  axis  218.70 -  220.90   span 1.00% of spot     1 bead row visible
+ *
+ * Both rails are healthy underneath — the real client pipeline (bucket -> lifecycle ->
+ * pickActiveStrikes) yields 7-10 rows per side for NVDA off the very same payload. The rows are
+ * produced and then clipped, because a STRIKE STEP is ~0.065% of price on SPX and ~1.14% on NVDA:
+ * a candle-only band holds a dozen SPX strikes and less than one NVDA strike. That is why the
+ * defect reads as "NVDA only has one level while SPX has ten" and looks ticker-specific when the
+ * cause is a shared flag with two meanings.
+ *
+ * ── THE RULE ─────────────────────────────────────────────────────────────────────────
+ * Only a member's OWN recent zoom gesture suppresses the widening. A time-axis preset is not a
+ * statement about the price axis. Drag-panning is not either — and it does not need to be covered
+ * here, because a member who drags the price scale turns `autoScale` off outright, at which point
+ * lightweight-charts stops consulting the provider at all.
+ */
+export function beadExtensionAllowed(
+  wheelZoomAtMs: number,
+  nowMs: number = Date.now(),
+  cooldownMs: number = BEAD_EXTENSION_WHEEL_COOLDOWN_MS
+): boolean {
+  if (!Number.isFinite(wheelZoomAtMs) || wheelZoomAtMs <= 0) return true;
+  return !(nowMs - wheelZoomAtMs < cooldownMs);
+}
+
+/**
+ * Turn "show N bead rows" into a price-span percentage, using the ticker's OWN strike geometry.
+ *
+ * ── WHY A PERCENTAGE CANNOT BE THE SPEC (2026-08-19) ─────────────────────────────────
+ * `SESSION_OVERVIEW_BEAD_VIEW_MAX_PCT` (3%) and `SESSION_OVERVIEW_MAX_SPAN_PCT` (2.4%) were both
+ * tuned against a member reference screenshot — of SPX. A percentage of price is a fine unit for
+ * "how much chart to show" and a useless one for "how many strike rows fit", because the strike
+ * LADDER is not proportional to price:
+ *
+ *     SPX   5-pt strikes at ~7690  ->  0.065% per step  ->  2.4% spans ~37 rows
+ *     NVDA  $2.50 strikes at ~219  ->  1.14%  per step  ->  2.4% spans  ~2 rows
+ *
+ * Same constant, same code, a 18x difference in how much of the rail a member is allowed to see.
+ * That is the second half of "why does NVDA have only one level while SPX has ten" — the first half
+ * being the viewport-lock bug fixed alongside this. Neither is a recorder, roster or row-selection
+ * problem: both rails are fully recorded and 7-10 rows per side are selected for drawing.
+ *
+ * ── THE RULE ─────────────────────────────────────────────────────────────────────────
+ * Ask the strikes how wide a row is, and size the window to hold `rows` of them. The percentage
+ * survives as a FLOOR (never shrink a view that was already fine — SPX is unaffected, since 37 rows
+ * of room already exceeds any row cap) and a separate hard cap survives as the ceiling, so a
+ * pathological ladder still cannot squash the candles to a sliver.
+ *
+ * Falls back to `basePct` whenever the geometry cannot be measured — fewer than two strikes, a
+ * missing spot, a degenerate step. An unmeasurable ladder must degrade to today's behaviour, never
+ * to an invented window.
+ */
+/**
+ * Minimum share of the price pane the session's own candles are guaranteed.
+ *
+ * Member report (2026-08-19), NVDA: "I feel like somehow the candles are too small". Measured off
+ * that exact frame — axis 210-238 ($28 of pane), candle band ~217.3-222.1 ($4.8) — the candles held
+ * **17%** and the wall ladder took the other 83%.
+ *
+ * Nothing was misbehaving: NVDA moved $4.80 that session while its wall ladder legitimately wanted
+ * $22 (213 to 235). The defect is that the window is sized from a ROW COUNT and the candles get
+ * whatever is left over, so the share they end up with is an accident of how far apart that
+ * ticker's walls happen to sit. No row count reconciles the two — a quiet session gets flat candles
+ * and a trending one gets a cramped ladder.
+ *
+ * So the candles get a floor and the ladder gets the remainder, which is the inverse of today.
+ * 0.35 keeps the near structure that price is actually trading against (for that NVDA frame: the
+ * gamma flip at 222.06, the 220 magnet, the 225 wall) and drops the far 230/235 rows that were
+ * consuming half the pane for levels price never approached.
+ */
+export const MIN_CANDLE_SHARE_OF_PANE = 0.35;
+
+/**
+ * Widest span (as a % of spot) that still leaves the candles `minShare` of the pane.
+ *
+ * Composed with the row-derived span by taking the SMALLER of the two, so this only ever tightens a
+ * window the ladder wanted wider — it never widens one, and it never overrides the hard ceiling.
+ *
+ * Returns `null` when there is nothing to protect, and the caller then keeps the row-derived span
+ * unchanged. That guard is the whole safety of this function: a session whose candles have
+ * essentially no range (a halted name, a pre-open frame with one bar, a synthetic fixture) would
+ * otherwise divide a ~0 candle span by the share and collapse the entire axis onto a single price.
+ * "Unmeasurable" has to degrade to today's behaviour, never to an invented window.
+ */
+export function candleShareSpanCapPct(
+  candleRange: PriceRange,
+  spot: number,
+  minShare: number = MIN_CANDLE_SHARE_OF_PANE
+): number | null {
+  if (!(typeof spot === "number" && Number.isFinite(spot) && spot > 0)) return null;
+  if (!(Number.isFinite(minShare) && minShare > 0 && minShare < 1)) return null;
+
+  const span = candleRange.maxValue - candleRange.minValue;
+  if (!Number.isFinite(span) || span <= 0) return null;
+
+  // Below this the "candle band" is noise, not a range worth reserving a third of the pane for.
+  // 0.05% of spot is ~$0.11 on NVDA and ~$3.85 on SPX — under a single strike step either way.
+  const candleSharePct = span / spot;
+  if (candleSharePct < 0.0005) return null;
+
+  return candleSharePct / minShare;
+}
+
+export function rowAwareSpanPct(
+  spot: number,
+  strikes: readonly number[],
+  rows: number,
+  basePct: number,
+  hardCapPct: number
+): number {
+  const base = Number.isFinite(basePct) && basePct > 0 ? basePct : 0;
+  const cap = Number.isFinite(hardCapPct) && hardCapPct > 0 ? hardCapPct : base;
+  if (!(typeof spot === "number" && Number.isFinite(spot) && spot > 0)) return base;
+  if (!(Number.isFinite(rows) && rows >= 1)) return base;
+
+  const sorted = [...new Set(strikes.filter((s) => Number.isFinite(s) && s > 0))].sort((a, b) => a - b);
+  if (sorted.length < 2) return base;
+
+  // MEDIAN adjacent gap, not mean: a ladder mixes a dense near-spot region with sparse far wings
+  // (SPX lists 5-pt strikes near spot and 25-pt strikes far out), and a mean would be dragged by
+  // the wings into a window far wider than the rows a member actually reads.
+  const gaps: number[] = [];
+  for (let i = 1; i < sorted.length; i++) {
+    const g = sorted[i]! - sorted[i - 1]!;
+    if (g > 0) gaps.push(g);
+  }
+  if (!gaps.length) return base;
+  gaps.sort((a, b) => a - b);
+  const step = gaps[Math.floor(gaps.length / 2)]!;
+
+  // `rows` counts rows across the whole window, so the span is (rows - 1) steps plus half a step of
+  // padding at each end — otherwise the outermost row sits exactly on the frame edge and reads as
+  // clipped even though it was included.
+  const neededSpan = step * rows;
+  const pct = neededSpan / spot;
+  if (!Number.isFinite(pct) || pct <= 0) return base;
+  return Math.min(cap, Math.max(base, pct));
+}

@@ -6,7 +6,9 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import {
+  assertSafeTarget,
   assertValidBoardPayload,
   buildSyntheticBoard,
   syntheticPlays,
@@ -98,4 +100,64 @@ test("assertValidBoardPayload rejects a malformed payload", () => {
   const bad2 = JSON.parse(JSON.stringify(good));
   delete bad2.setups;
   assert.ok(assertValidBoardPayload(bad2).length > 0, "missing setups[] is caught");
+});
+
+// ── The safety refusal ───────────────────────────────────────────────────────────────
+// Regression cover for the phantom-guard sweep (2026-08-21): the documented refusal
+// ("REFUSES to run against a Redis that already holds a live-looking board snapshot NOT
+// written by this tool") existed as assertSafeTarget() but was wired to the PUBLISH path
+// only. `--reset --redis=<prod>` therefore deleted the live board snapshot and every
+// nw:optmark:* key with no refusal and no --force. These tests pin the guard's behaviour
+// AND the fact that the reset path is routed through it.
+
+/** Minimal ioredis stand-in: only .get() is reached by assertSafeTarget. */
+function fakeRedis(map) {
+  return { get: async (k) => (k in map ? map[k] : null) };
+}
+const PREFIX = "blackout:";
+const BOARD = `${PREFIX}zerodte:board:snapshot:v1`;
+const MARKER = `${PREFIX}zerodte:sim:marker:v1`;
+const liveSnap = JSON.stringify({
+  available: true,
+  as_of: new Date().toISOString(),
+  ledger: [{ ticker: "SPX" }],
+  setups: [],
+});
+
+test("assertSafeTarget refuses a live-looking foreign snapshot", async () => {
+  await assert.rejects(
+    () => assertSafeTarget(fakeRedis({ [BOARD]: liveSnap }), PREFIX, false),
+    /REFUSING/,
+    "a live-looking snapshot with no sim marker must be refused"
+  );
+});
+
+test("assertSafeTarget allows our own marked snapshot, an empty target, and --force", async () => {
+  // our own sim snapshot — the marker proves we wrote it
+  await assertSafeTarget(fakeRedis({ [BOARD]: liveSnap, [MARKER]: '{"sim":true}' }), PREFIX, false);
+  // nothing there at all
+  await assertSafeTarget(fakeRedis({}), PREFIX, false);
+  // explicit operator override
+  await assertSafeTarget(fakeRedis({ [BOARD]: liveSnap }), PREFIX, true);
+});
+
+test("assertSafeTarget treats an unparseable present snapshot as foreign", async () => {
+  await assert.rejects(
+    () => assertSafeTarget(fakeRedis({ [BOARD]: "{not json" }), PREFIX, false),
+    /REFUSING/,
+    "unparseable-but-present must be conservative, not permissive"
+  );
+});
+
+test("the --reset path is routed through assertSafeTarget", async () => {
+  // Source-level assertion: the guard is only useful if the destructive branch calls it.
+  // A behavioural test would need a live Redis; this pins the wiring that was missing.
+  const src = await readFile(new URL("./zerodte-sim-replay.mjs", import.meta.url), "utf8");
+  const resetBlock = src.slice(src.indexOf("if (args.reset) {"), src.indexOf("const n = await resetKeys("));
+  assert.match(
+    resetBlock,
+    /assertSafeTarget\(client, args\.keyPrefix, args\.force\)/,
+    "--reset must call assertSafeTarget BEFORE resetKeys(); without it, pointing --reset at a " +
+      "prod Redis silently deletes the live board snapshot"
+  );
 });

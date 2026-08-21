@@ -24,7 +24,7 @@ import {
 import { auditSecret } from "./audit/lib/prod-secrets.mjs";
 import { probeDataCorrectness } from "./audit/lib/data-correctness-probe.mjs";
 import { isXMarketingCronSuppressed } from "./audit/lib/x-marketing-paused.mjs";
-import { shouldRetryWatchdogFetch, watchdogHttpPriority } from "./audit/lib/ops-collect-scope.mjs";
+import { shouldRetryWatchdogFetch, watchdogHttpPriority, shouldPageNighthawkZeroPlays } from "./audit/lib/ops-collect-scope.mjs";
 
 const pretty = process.argv.includes("--pretty");
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
@@ -252,7 +252,12 @@ async function httpItems() {
     if (nh.status === 200 && nj.edition_for) {
       const ed = await fetch(`${BASE}/api/market/nighthawk/edition?date=${nj.edition_for}`, { headers: H });
       const ej = await ed.json().catch(() => ({}));
-      const playCount = Array.isArray(ej.plays) ? ej.plays.length : 0;
+      const playCount =
+        typeof nj.play_count === "number"
+          ? nj.play_count
+          : Array.isArray(ej.plays)
+            ? ej.plays.length
+            : 0;
       const inWindow = inEtEditionCatchup();
       if (inWindow && nj.job_status !== "published") {
         // Self-heal: nudge the checkpointed builder to resume before paging. The cron route
@@ -285,13 +290,21 @@ async function httpItems() {
             `job_status=${lj.job_status ?? nj.job_status ?? "?"} stage=${lj.current_stage ?? nj.current_stage ?? "?"} error=${lj.error ?? nj.error ?? "none"} (self-heal nudged)`
           );
         }
-      } else if (inWindow && nj.job_status === "published" && playCount === 0 && !ej.recap_only) {
+      } else if (
+        shouldPageNighthawkZeroPlays({
+          inWindow,
+          jobStatus: nj.job_status,
+          editionPresent: nj.edition_present === true,
+          playCount: typeof nj.play_count === "number" ? nj.play_count : null,
+          recapOnly: nj.recap_only === true,
+        })
+      ) {
         add(
           "P1",
           "nighthawk",
           `nighthawk:zero-plays:${nj.edition_for}`,
           `Night Hawk published with zero plays: ${nj.edition_for}`,
-          "Edition row exists but plays=[] without recap_only — investigate funnel collapse."
+          "Edition row exists in Postgres but plays=[] without recap_only — investigate funnel collapse."
         );
       } else if (inWindow && nj.job_status === "published" && playCount > 0 && playCount < 3) {
         const funnel = ej.meta?.funnel ?? {};

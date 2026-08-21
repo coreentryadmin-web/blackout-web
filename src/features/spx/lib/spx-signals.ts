@@ -207,6 +207,40 @@ const NEWS_BULL_RE =
  * Scan up to 10 desk news headlines for macro-shock keywords.
  * Returns a score modifier in [−6, +3] and pushes a factor when non-zero.
  */
+/**
+ * Which session window we are in, and how much CONFIDENCE it is worth (not direction).
+ *
+ * 0DTE win rate varies sharply by time of day: the morning ORB window and power hour are the
+ * highest-quality windows, lunch chop the lowest. Pure and clock-injected so the rule can be tested
+ * without waiting for 11:31 ET.
+ */
+export function sessionWindowQuality(nowEtMins: number): { weight: number; label: string } {
+  const at = (h: number, m: number) => h * 60 + m;
+  if (nowEtMins >= at(9, 50) && nowEtMins < at(11, 30)) {
+    return { weight: 6, label: "Morning ORB window" };
+  }
+  if (nowEtMins >= at(11, 30) && nowEtMins < at(13, 0)) {
+    return { weight: -8, label: "Lunch chop — low quality window" };
+  }
+  if (nowEtMins >= at(15, 0) && nowEtMins < at(15, 30)) {
+    return { weight: 6, label: "Power hour prime window" };
+  }
+  return { weight: 0, label: "" };
+}
+
+/**
+ * Apply a session-quality modifier to a SIGNED confluence score.
+ *
+ * The signed score encodes direction (positive long, negative short) AND conviction in one number,
+ * so a confidence modifier has to be applied along the current sign or it inverts for one side. See
+ * the call site for the four-case table this exists to fix. Returns the DELTA to add, so the caller
+ * can record the same value it applied.
+ */
+export function sessionQualityDelta(score: number, weight: number): number {
+  if (weight === 0 || score === 0) return 0;
+  return score > 0 ? weight : -weight;
+}
+
 function scoreNewsRisk(
   headlines: SpxDeskPayload["news_headlines"],
   factors: SpxSignalFactor[],
@@ -587,19 +621,38 @@ export function computeSpxConfluence(desk: SpxDeskPayload): SpxConfluence | null
     const m = parseInt(parts.find(p => p.type === "minute")?.value ?? "0", 10);
     return h * 60 + m;
   })();
-  const etCk = (h: number, m: number) => h * 60 + m;
-  let sessionW = 0;
-  let sessionLabel = "";
-  if (nowEtMins >= etCk(9, 50) && nowEtMins < etCk(11, 30)) {
-    sessionW = 6; sessionLabel = "Morning ORB window";
-  } else if (nowEtMins >= etCk(11, 30) && nowEtMins < etCk(13, 0)) {
-    sessionW = -8; sessionLabel = "Lunch chop — low quality window";
-  } else if (nowEtMins >= etCk(15, 0) && nowEtMins < etCk(15, 30)) {
-    sessionW = 6; sessionLabel = "Power hour prime window";
-  }
-  if (sessionW !== 0) {
-    score += sessionW;
-    factors.push({ label: "Session window", weight: sessionW, detail: sessionLabel });
+  const { weight: sessionW, label: sessionLabel } = sessionWindowQuality(nowEtMins);
+  // SESSION QUALITY IS A MAGNITUDE ADJUSTMENT, NOT A DIRECTIONAL ONE.
+  //
+  // `score` here is SIGNED — positive means long, negative means short, as the `provisionalDir`
+  // derivation a few lines below states outright. Adding `sessionW` straight onto it therefore does
+  // the OPPOSITE of what it says for every short setup:
+  //
+  //   lunch chop (-8):  long  +70 -> +62  weaker (intended)
+  //                     short -70 -> -78  STRONGER — the "low quality window" penalty UPGRADES it
+  //   ORB / power (+6): long  +70 -> +76  stronger (intended)
+  //                     short -70 -> -64  WEAKER — the "high quality window" bonus DOWNGRADES it
+  //
+  // So during 11:30-13:00 ET — the window this code itself calls the lowest quality of the day — a
+  // bearish SPX read gained conviction, and during the two windows it rates highest a bearish read
+  // lost it. Both directions inverted, on a modifier whose whole purpose is to raise the bar when
+  // the tape is choppy.
+  //
+  // Applying it along the current sign keeps the intent for both directions: a penalty always moves
+  // the score toward neutral, a bonus always moves it away. Contrast `scoreNewsRisk` immediately
+  // below, which IS directional (bullish headlines +3, bearish -6) and is correctly added signed —
+  // the distinction is whether the factor speaks to DIRECTION or to CONFIDENCE.
+  //
+  // A score of exactly 0 has no direction to preserve, so the modifier is skipped rather than
+  // guessing one; a session-quality adjustment on a directionless read means nothing.
+  const sessionApplied = sessionQualityDelta(score, sessionW);
+  if (sessionApplied !== 0) {
+    const applied = sessionApplied;
+    score += applied;
+    // The APPLIED delta is recorded, not the raw modifier, so the factor list still reconciles with
+    // the score it explains. `detail` carries the quality reading ("low quality window"), so a +8 on
+    // a short is legible as "weakened the short by 8".
+    factors.push({ label: "Session window", weight: applied, detail: sessionLabel });
   }
 
   score += scoreHelixFlowAlignment(desk, factors);

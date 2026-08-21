@@ -2,14 +2,22 @@ import "server-only";
 
 import { fetchTickerFundamentalsBundle } from "@/lib/bie/ticker-fundamentals";
 import { gexHeatmapForLargo } from "@/lib/largo/gex-heatmap-for-largo";
+import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
+import {
+  scopeStructureToExpiry,
+  describeEventExpiry,
+} from "@/lib/meridian/meridian-event-expiry-core";
 import { getVectorExpectedMove } from "@/features/vector/lib/vector-expected-move-server";
+import { loadEarningsExpectedMovePct } from "@/lib/meridian/meridian-earnings-expected-move";
 import { marketPlatform } from "@/lib/platform";
 import { roundFloats } from "@/lib/round-floats";
 import { buildMeridianFinancialsContext } from "@/lib/meridian/meridian-financials-context";
 import { fetchUwDarkPool } from "@/lib/providers/unusual-whales";
 import {
   beatRateFromPrints,
+  beatRateWithCohort,
   buildErPlayRead,
+  coerceMeridianWallLevels,
   flowWindowHours,
   shapeMeridianDarkPool,
 } from "@/lib/meridian/meridian-earnings-intel-core";
@@ -20,6 +28,14 @@ import type {
   MeridianEarningsIntel,
   MeridianEarningsPrint,
 } from "@/features/meridian/lib/meridian-types";
+
+export type MeridianEarningsIntelPrefetch = {
+  fundamentals: Awaited<ReturnType<typeof fetchTickerFundamentalsBundle>> | null;
+  vectorEm: Awaited<ReturnType<typeof getVectorExpectedMove>> | null;
+  darkPoolRaw: Awaited<ReturnType<typeof fetchUwDarkPool>> | null;
+  rawHeatmap: Awaited<ReturnType<typeof fetchGexHeatmap>> | null;
+  windowHours?: number;
+};
 
 function fmtPrem(n: number): string {
   const abs = Math.abs(n);
@@ -33,35 +49,81 @@ export async function loadMeridianEarningsIntel(input: {
   ticker: string;
   pack: PreEarningsPackCard;
   print_history: MeridianEarningsPrint[];
-  enrichment: Pick<
-    MeridianEarningsEnrichment,
-    "analyst_revisions" | "earnings_headlines" | "catalysts" | "insider_activity"
-  >;
+  enrichment: MeridianEarningsEnrichment;
+  /** When provided, skips redundant upstream fetches (Meridian event parallel loader). */
+  prefetch?: MeridianEarningsIntelPrefetch;
 }): Promise<MeridianEarningsIntel> {
   const sym = input.ticker.trim().toUpperCase();
-  const windowHours = flowWindowHours(input.pack.days_until);
+  const windowHours =
+    input.prefetch?.windowHours ?? flowWindowHours(input.pack.days_until);
+  const pf = input.prefetch;
 
-  const [fundamentals, thermal, vectorEm, flowSummary, darkPoolRaw] = await Promise.all([
-    fetchTickerFundamentalsBundle(sym).catch(() => null),
-    gexHeatmapForLargo(sym, { lens: "gex", top_strikes: 8 }).catch(() => null),
-    getVectorExpectedMove(sym, "weekly").catch(() => null),
-    marketPlatform.flows
-      .getFlowTapeSummary({ ticker: sym, limit: 30, since_hours: windowHours })
-      .catch(() => null),
-    fetchUwDarkPool(sym, { limit: 20 }).catch(() => null),
-  ]);
+  const rawHeatmapPromise =
+    pf != null
+      ? Promise.resolve(pf.rawHeatmap)
+      : fetchGexHeatmap(sym).catch(() => null);
+
+  const [fundamentals, rawHeatmap, earningsEm, vectorEm, flowSummary, darkPoolRaw] =
+    await Promise.all([
+      pf != null
+        ? Promise.resolve(pf.fundamentals)
+        : fetchTickerFundamentalsBundle(sym).catch(() => null),
+      rawHeatmapPromise,
+      input.pack.expected_move_pct != null
+        ? Promise.resolve(input.pack.expected_move_pct)
+        : loadEarningsExpectedMovePct(sym, input.pack.earnings_date).catch(() => null),
+      pf != null
+        ? Promise.resolve(pf.vectorEm)
+        : getVectorExpectedMove(sym, "weekly").catch(() => null),
+      marketPlatform.flows
+        .getFlowTapeSummary({ ticker: sym, limit: 30, since_hours: windowHours })
+        .catch(() => null),
+      pf != null
+        ? Promise.resolve(pf.darkPoolRaw)
+        : fetchUwDarkPool(sym, { limit: 20 }).catch(() => null),
+    ]);
+
+  const thermal = await gexHeatmapForLargo(sym, {
+    lens: "gex",
+    top_strikes: 8,
+    heatmap: rawHeatmap,
+  }).catch(() => null);
+
+  /**
+   * Dealer structure scoped to the expiry that COVERS THE PRINT.
+   *
+   * The aggregate the matrix publishes sums walls and flip over the ~8 nearest expiries and
+   * scopes max pain to the FRONT one. For a report ten days out that is wrong twice: the front
+   * expiry can die before the company speaks, and the near-term sum is dominated by whichever
+   * weekly carries the most open interest rather than the one spanning the event. The matrix's
+   * own comment tells panels to re-scope from `cells` instead of "showing an aggregate flip
+   * beside a single-expiry max pain" — which is exactly what this desk was doing.
+   *
+   * Falls back to the aggregate when the scoped column carries no data, and records WHICH it
+   * used, because the two look identical on screen and only one answers "what is positioned
+   * around this print".
+   */
+  const scoped = scopeStructureToExpiry({
+    cells: rawHeatmap?.gex?.cells ?? null,
+    expiries: rawHeatmap?.expiries ?? null,
+    maxPainByExpiry: rawHeatmap?.max_pain_by_expiry ?? null,
+    eventYmd: input.pack.earnings_date ?? null,
+    aggregateExpiries: rawHeatmap?.near_term_expiries ?? rawHeatmap?.expiries ?? null,
+  });
+  const scopeUsable = scoped.expiryUsed != null && Object.keys(scoped.strikeTotals).length > 0;
 
   const dark_pool = shapeMeridianDarkPool(darkPoolRaw);
 
   const expected_move_pct =
-    input.pack.expected_move_pct ??
-    (vectorEm?.movePct != null ? Number((vectorEm.movePct * 100).toFixed(1)) : null);
+    earningsEm ??
+    (vectorEm?.movePct != null ? Number((vectorEm.movePct * 100).toFixed(1)) : null) ??
+    input.pack.expected_move_pct;
 
   const expected_move_source =
-    input.pack.expected_move_pct != null
-      ? "calendar"
-      : vectorEm?.movePct != null
-        ? "chain_iv"
+    earningsEm != null || vectorEm?.movePct != null
+      ? "chain_iv"
+      : input.pack.expected_move_pct != null
+        ? "calendar"
         : null;
 
   const top_flows = (flowSummary?.recent ?? [])
@@ -88,16 +150,41 @@ export async function loadMeridianEarningsIntel(input: {
   const gamma_regime =
     thermal?.gamma_regime_read ?? input.pack.positioning.gamma_regime ?? null;
 
+  const rawCallWall =
+    (scopeUsable ? (scoped.callWall ?? thermal?.call_wall) : thermal?.call_wall) ??
+    input.pack.positioning.call_wall ??
+    null;
+  const rawPutWall =
+    (scopeUsable ? (scoped.putWall ?? thermal?.put_wall) : thermal?.put_wall) ??
+    input.pack.positioning.put_wall ??
+    null;
+  const walls = coerceMeridianWallLevels({
+    call_wall: rawCallWall,
+    put_wall: rawPutWall,
+    spot,
+  });
+
+  // ONE resolution of the rate and its cohort, used by both consumers below. Resolving it twice
+  // invited them to disagree, and a rate that reaches two readers with two different denominators
+  // is the defect this carries the cohort to prevent.
+  const beatFromPrints = beatRateWithCohort(input.print_history);
+  const beat_rate = input.enrichment.beat_rates?.combined_beat_rate ?? beatFromPrints.rate;
+  const beat_rate_graded =
+    input.enrichment.beat_rates?.combined_beat_rate != null
+      ? (input.enrichment.beat_rates?.combined_graded ?? null)
+      : beatFromPrints.graded;
+
   const play_read = buildErPlayRead({
     flow_bias: input.pack.flow.bias,
     dark_pool_bias: dark_pool.available ? dark_pool.bias : null,
     gamma_regime,
     expected_move_pct,
     days_until: input.pack.days_until,
-    beat_rate: beatRateFromPrints(input.print_history),
+    beat_rate,
+    beat_rate_graded,
     spot,
-    call_wall: input.pack.positioning.call_wall ?? thermal?.call_wall ?? null,
-    put_wall: input.pack.positioning.put_wall ?? thermal?.put_wall ?? null,
+    call_wall: walls.call_wall,
+    put_wall: walls.put_wall,
     king_strike: thermal?.gex_king_strike ?? null,
   });
 
@@ -114,10 +201,13 @@ export async function loadMeridianEarningsIntel(input: {
     thermal_available: thermal?.available ?? false,
     spot,
     king_strike: thermal?.gex_king_strike ?? null,
-    call_wall: input.pack.positioning.call_wall ?? thermal?.call_wall ?? null,
-    put_wall: input.pack.positioning.put_wall ?? thermal?.put_wall ?? null,
+    call_wall: walls.call_wall,
+    put_wall: walls.put_wall,
     expected_move_pct,
-    beat_rate: beatRateFromPrints(input.print_history),
+    beat_rate,
+    beat_rate_graded,
+    post_print: input.enrichment.post_print,
+    earnings_yoy: input.enrichment.earnings_yoy,
     financials: buildMeridianFinancialsContext(fundamentals),
     analyst_revisions: input.enrichment.analyst_revisions,
     earnings_headlines: input.enrichment.earnings_headlines,
@@ -159,10 +249,24 @@ export async function loadMeridianEarningsIntel(input: {
           available: true,
           spot: thermal.spot,
           gex_king_strike: thermal.gex_king_strike,
-          call_wall: thermal.call_wall,
-          put_wall: thermal.put_wall,
+          call_wall: walls.call_wall,
+          put_wall: walls.put_wall,
+          gamma_call_wall: walls.gamma_call_wall,
+          gamma_put_wall: walls.gamma_put_wall,
+          walls_inverted: walls.walls_inverted,
           flip: thermal.flip,
-          max_pain: thermal.max_pain,
+          max_pain: scopeUsable ? (scoped.maxPain ?? thermal.max_pain) : thermal.max_pain,
+          // Which chain these levels describe. Named so a reader can tell an event-scoped wall
+          // from a whole-book one — they render identically otherwise.
+          expiry_scope: scopeUsable ? "event_expiry" : "aggregate",
+          expiry_used: scoped.expiryUsed,
+          expiry_days_from_event: scoped.daysFromEvent,
+          expiry_label: scopeUsable
+            ? describeEventExpiry(scoped)
+            : scoped.noCoveringExpiry
+              ? "no listed expiry covers this print"
+              : `aggregate of ${scoped.aggregateExpiryCount} near-term expiries`,
+          aggregate_expiry_count: scoped.aggregateExpiryCount,
           net_gex_label:
             thermal.net_gex != null ? fmtPrem(thermal.net_gex) : null,
           gamma_regime: thermal.gamma_regime_read,
@@ -173,19 +277,29 @@ export async function loadMeridianEarningsIntel(input: {
           })),
           nearest_wall: thermal.nearest_wall,
         }
-      : {
+      : (() => {
+          const fallbackWalls = coerceMeridianWallLevels({
+            call_wall: input.pack.positioning.call_wall,
+            put_wall: input.pack.positioning.put_wall,
+            spot: input.pack.positioning.spot,
+          });
+          return {
           available: false,
           spot: input.pack.positioning.spot,
           gex_king_strike: null,
-          call_wall: input.pack.positioning.call_wall,
-          put_wall: input.pack.positioning.put_wall,
+          call_wall: fallbackWalls.call_wall,
+          put_wall: fallbackWalls.put_wall,
+          gamma_call_wall: fallbackWalls.gamma_call_wall,
+          gamma_put_wall: fallbackWalls.gamma_put_wall,
+          walls_inverted: fallbackWalls.walls_inverted,
           flip: input.pack.positioning.flip ?? null,
           max_pain: null,
           net_gex_label: null,
           gamma_regime: input.pack.positioning.gamma_regime,
           top_strikes: [],
           nearest_wall: null,
-        },
+        };
+        })(),
     vector: vectorEm
       ? {
           available: true,

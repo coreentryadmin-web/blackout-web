@@ -112,7 +112,34 @@ export async function buildLargoTechnicals(ticker: string) {
   };
 }
 
+/**
+ * The relative-strength verdict, or null when either side has no 10-day return to compare.
+ *
+ * Exported so the "missing data must not become a verdict" rule is testable without Polygon.
+ * The previous form was `(stockD10 ?? 0) > (peerD10 ?? 0) ? "outperforming" : "lagging"`, which
+ * substitutes 0% for an ABSENT return and then reports the comparison as if it were measured —
+ * so a symbol we have no bars for is declared "lagging" whenever the peer is up, and
+ * "outperforming" whenever the peer is down. Both are fabrications, and neither is distinguishable
+ * from a real read by anyone reading the answer.
+ */
+export function relativeStrengthLeader(
+  stockD10: number | null,
+  peerD10: number | null
+): "outperforming" | "lagging" | null {
+  if (stockD10 == null || peerD10 == null) return null;
+  return stockD10 > peerD10 ? "outperforming" : "lagging";
+}
+
 export async function buildPeerRelativeStrength(ticker: string) {
+  // INDEX ROOTS ARE NOT IN THE EQUITY AGGREGATES NAMESPACE. `stockSymbol()` deliberately strips
+  // the `I:` prefix, so SPX/VIX arrived here as bare symbols and went to /v2/aggs/ticker/SPX/...,
+  // which Polygon answers with HTTP 200, status "OK" and ZERO results — a silent empty success,
+  // not an error. Verified live 2026-08-19 against both api.massive.com and api.polygon.io:
+  //   SPY 6 bars | SPX 0 bars | VIX 0 bars | I:SPX 6 bars | I:VIX 6 bars
+  // buildLargoTechnicals (above) already branches on this; only this function did not. Same root
+  // cause as the Helix index-signal grading fix (#2371).
+  const resolved = largoSymbol(ticker); // "I:SPX" for an index, the bare symbol otherwise
+  const isIndex = resolved.startsWith("I:");
   const sym = stockSymbol(ticker);
   const from = priorEtYmd(40);
   const to = todayEtYmd();
@@ -125,20 +152,26 @@ export async function buildPeerRelativeStrength(ticker: string) {
     TSLA: "XLY",
     AMZN: "XLY",
   };
+  // The peer is always a tradeable ETF, so it stays on the equity path even for an index subject.
   const peer = sectorMap[sym] ?? "SPY";
 
   const [stockBars, peerBars] = await Promise.all([
-    fetchStockDailyBars(sym, from, to),
-    fetchStockDailyBars(peer, from, to),
+    (isIndex
+      ? fetchIndexDailyBars(resolved, from, to)
+      : fetchStockDailyBars(sym, from, to)
+    ).catch(() => [] as Bar[]),
+    fetchStockDailyBars(peer, from, to).catch(() => [] as Bar[]),
   ]);
+
+  const stockD10 = returnPct(stockBars, 10);
+  const peerD10 = returnPct(peerBars, 10);
 
   return {
     ticker: sym,
     peer_etf: peer,
-    stock: { d5: returnPct(stockBars, 5), d10: returnPct(stockBars, 10), d20: returnPct(stockBars, 20) },
-    peer: { d5: returnPct(peerBars, 5), d10: returnPct(peerBars, 10), d20: returnPct(peerBars, 20) },
-    leading:
-      (returnPct(stockBars, 10) ?? 0) > (returnPct(peerBars, 10) ?? 0) ? "outperforming" : "lagging",
+    stock: { d5: returnPct(stockBars, 5), d10: stockD10, d20: returnPct(stockBars, 20) },
+    peer: { d5: returnPct(peerBars, 5), d10: peerD10, d20: returnPct(peerBars, 20) },
+    leading: relativeStrengthLeader(stockD10, peerD10),
   };
 }
 

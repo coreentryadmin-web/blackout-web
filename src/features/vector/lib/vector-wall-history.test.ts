@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  displayBucketSec,
+  bucketWallHistoryForInterval,
   DOMINANT_WALLS_PER_BUCKET,
   trailsByStrike,
   backfillRailPrefix,
@@ -11,7 +13,6 @@ import {
   decimateSeedHistory,
   SEED_FULL_RESOLUTION_SEC,
   SEED_TAIL_BUCKET_SEC,
-  bucketWallHistoryForInterval,
   alignWallHistoryToBarTimes,
   composeHorizonTrail,
   liveTrailAnchorSec,
@@ -967,4 +968,60 @@ test("raising N is strictly additive — it can never REMOVE a row that N=3 drew
   for (const strike of at3) assert.ok(at5.has(strike), `strike ${strike} vanished when N rose`);
   assert.equal(at3.size, 3);
   assert.equal(at5.size, 5);
+});
+
+// ── BEAD BUCKETING BY PIXELS, NOT BY CLOCK (2026-08-19) ──────────────────────────────
+//
+// The bucket was a CONSTANT: during a live session `min(candleSec, minBucketSec)` = 5s, whatever
+// the timeframe or the zoom. A 3-minute candle occupies ~5.4px at ordinary zoom, so 5s buckets ask
+// for 36 beads inside 5.4px — they cannot be anything but a smear. Measured on prod: the rail
+// painted continuous ribbons at the `structure` zoom (~75 min), where a member expects to resolve
+// individual beads.
+//
+// The member's own words are the spec: a bead every 5s is correct, and at session width "it looks
+// like a bar" — because there it should. The defect was that it still looked like a bar zoomed IN.
+
+test("displayBucketSec: a live session draws the recorder's own cadence, at every zoom", () => {
+  // REPLACES #2321's pixel-stride tests, which pinned the defect as the spec. Those asserted that a
+  // 3m candle at ~5.4px should coarsen to a ~367s bucket — i.e. throw away 34 of every 36 recorded
+  // samples — and they passed the entire time the member was looking at one bead per 15 candles.
+  for (const candleSec of [60, 180, 300, 900]) {
+    assert.equal(
+      displayBucketSec({ candleSec, minBucketSec: 5, liveBeads: true }),
+      5,
+      `live beads must keep the 5s cadence on a ${candleSec}s candle`
+    );
+  }
+});
+
+test("displayBucketSec: the candle is the FLOOR, so a sub-cadence candle cannot over-sample", () => {
+  // A 1s candle (never shipped, but the bound must hold) must not ask for beads finer than the bar.
+  assert.equal(displayBucketSec({ candleSec: 1, minBucketSec: 5, liveBeads: true }), 1);
+});
+
+test("displayBucketSec: replay/historical frames collapse to the candle", () => {
+  assert.equal(displayBucketSec({ candleSec: 180, minBucketSec: 5, liveBeads: false }), 180);
+  assert.equal(displayBucketSec({ candleSec: 60, minBucketSec: 0, liveBeads: true }), 60,
+    "no recorded cadence to honour — fall back to the candle");
+});
+
+test("displayBucketSec: a nonsense candle still yields a usable bucket", () => {
+  for (const bad of [Number.NaN, 0, -12]) {
+    assert.equal(displayBucketSec({ candleSec: bad, minBucketSec: 5, liveBeads: true }), 5);
+  }
+});
+
+test("bucketWallHistoryForInterval: every recorded sample paints — the ribbon IS the render", () => {
+  // One session-hour of 5s samples on one strike. #2321 collapsed this to <20 beads on the theory
+  // that a continuous row is illegible; the member's reference product draws all 720, and a 5s
+  // cadence under a 3m candle is 36 samples per bar BY DESIGN. Bead SIZE adapts to available room
+  // (clampTuningToSpacing); bead COUNT is the data and is not a rendering knob.
+  const history = Array.from({ length: 720 }, (_, i) =>
+    ({ time: 1_700_000_000 + i * 5, walls: { callWalls: [{ strike: 100, pct: 5 }], putWalls: [] } }) as never
+  );
+  const live = bucketWallHistoryForInterval(history, 3, { minBucketSec: 5, liveBeads: true });
+  assert.equal(live.length, 720, "a live rail keeps every recorded sample");
+  const historical = bucketWallHistoryForInterval(history, 3, { minBucketSec: 5, liveBeads: false });
+  // 3595s of tape crosses 21 three-minute bucket boundaries (the first and last are partial).
+  assert.equal(historical.length, 21, "a historical frame collapses to one bead per 3m candle");
 });

@@ -5,6 +5,9 @@
  * so ledger PnL, intel lines, and Night Hawk dedupe never drift.
  */
 import type { ZeroDteSetupLogRow } from "@/lib/db";
+import { zeroDtePlaysToolEnvelope } from "@/lib/zerodte/feed-envelope";
+import { condorFlagEnabled } from "@/lib/zerodte/condor";
+import { ironCondorProductForLargo, liveCondorForLargo } from "@/lib/largo/zerodte-condor-for-largo";
 import { fetchNighthawkEchoForTickers, type EcosystemNightHawkTake } from "@/lib/bie/ecosystem-context";
 import { etNowParts, isTradingDayEt, nextTradingDayEt, todayEt } from "@/features/nighthawk/lib/session";
 import { fetchBenzingaNews } from "@/lib/providers/polygon";
@@ -110,6 +113,14 @@ export type ZeroDteBoardLedgerRow = {
   trough_premium: number | null;
   /** Latched peak excursion vs pinned entry — the high-water mark for closed-card display. */
   peak_pnl_pct: number | null;
+  /**
+   * The exit policy this row was COMMITTED under (entry_context.exit_policy_at_commit, Q13), or
+   * null for a legacy row that predates the pin. Carried on the payload because `live_pnl_pct` is
+   * derived TWICE — once here and once in the post-roundFloats re-price — and both derivations
+   * must agree on which policy managed the row. Only "trim_scale" may be credited with banked
+   * trim tranches on a stopped close.
+   */
+  exit_policy_at_commit: "ratchet" | "trim_scale" | null;
   live_pnl_pct: number | null;
   /** Why a CLOSED play closed — now DISTINGUISHES the exit type (pre-this-change a
    *  ratchet exit and a target trim were both null, indistinguishable). "stopped" uses
@@ -438,6 +449,11 @@ function mapLedgerRow(
     peak_pnl_pct: peakPnlPct(r.entry_premium, r.peak_premium),
     // Structure-aware: seller-framed for a credit condor; directional stopped closes use
     // trim-scale AS-MANAGED when peak armed tranches — the ONE derivation both build sites share.
+    // The row's FROZEN exit policy, carried on the payload so the post-roundFloats re-price below
+    // derives the same number from the same policy. resolveExitLadder already refuses to render a
+    // trim ladder for a row that never committed to one; the P&L had no such guard, and credited
+    // trim tranches to ratchet-committed rows.
+    exit_policy_at_commit: readFrozenExitMode(r.entry_context),
     live_pnl_pct: reconcileLedgerLivePnlPct({
       is_condor: isCondor,
       closed_reason: closedReason === "stopped" ? "stopped" : null,
@@ -446,6 +462,7 @@ function mapLedgerRow(
       peak_premium: r.peak_premium,
       trough_premium: r.trough_premium,
       status: r.status,
+      exit_policy_at_commit: readFrozenExitMode(r.entry_context),
     }),
     closed_reason: boardClosedReason,
     floor_pnl_pct: floorPnlPct,
@@ -728,8 +745,39 @@ export async function buildZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
 /** A shared snapshot read + its age (ms since the payload's own `as_of`). */
 type SharedBoardRead = { value: ZeroDteBoardPayload; ageMs: number };
 
-/** Per-replica last good board — served on never-block timeout when Redis is cold. */
+/**
+ * Per-replica last good board — served on never-block timeout when Redis is cold.
+ *
+ * Bounded by age on READ (see readLastGoodBoardLocal). It carried no age check at all, which
+ * made it a second, independent source of the `as_of` regression above: a replica whose Redis
+ * read failed served whatever board it happened to build last — minutes or hours earlier, with
+ * a completely different setup roster — and the member's next poll walked backwards in time.
+ * A stale board is a reasonable last resort; an UNBOUNDEDLY stale one presented as current is
+ * not, which is exactly the distinction every other lane in this file already draws.
+ */
 let lastGoodBoardLocal: ZeroDteBoardPayload | null = null;
+
+/** Read the per-replica fallback, but only while it is inside the same staleness ceiling the
+ *  shared-snapshot path uses. Past that, return null so the caller falls through to the
+ *  structurally-valid empty board (`upstream_ok: false`), which tells the truth — "no current
+ *  board" — instead of quietly serving an old session's plays as live. */
+function readLastGoodBoardLocal(): ZeroDteBoardPayload | null {
+  if (!lastGoodBoardLocal) return null;
+  return localBoardIsServable(lastGoodBoardLocal.as_of, Date.now()) ? lastGoodBoardLocal : null;
+}
+
+/** Is a per-replica fallback board still inside the staleness ceiling? Pure + exported so the
+ *  bound is testable directly — the module-level `lastGoodBoardLocal` has no setter, and a guard
+ *  that only fires on an unreachable code path is a guard nobody can prove works. */
+export function localBoardIsServable(
+  asOf: string | null | undefined,
+  nowMs: number,
+  maxAgeMs: number = BOARD_STALE_SERVE_MAX_AGE_MS
+): boolean {
+  const asOfMs = Date.parse(String(asOf ?? ""));
+  if (!Number.isFinite(asOfMs)) return false; // undateable board → cannot be shown to be current
+  return nowMs - asOfMs <= maxAgeMs;
+}
 
 /** Read the shared board snapshot from Redis (in-memory fallback when Redis is
  *  unavailable), returning it with its age. Fail-soft: any store error → null, so the
@@ -761,14 +809,80 @@ let coldBuildInflight: Promise<ZeroDteBoardPayload> | null = null;
 // Intra-replica guard so a replica fires at most ONE background SWR refresh at a time.
 let backgroundRefreshInflight = false;
 
-/** Build ONE board and publish it as the shared snapshot every replica reads. Used by
- *  the cold/blocking path and by the cron warmer (proactive publish). Best-effort
- *  publish: a failed Redis write still returns the freshly built board — the fix
- *  degrades to the pre-fix per-replica behaviour, never to a blank board. */
-async function buildAndPublishBoard(): Promise<ZeroDteBoardPayload> {
-  const built = await buildZeroDteBoardPayload();
+/**
+ * Is a freshly built board actually NEWER than what is already published?
+ *
+ * The publish used to be an unconditional `sharedCacheSet`, which is only safe if builds
+ * finish in the order they start. They do not. A board build takes seconds to tens of
+ * seconds (documented live: 20–43s member polls, cold builds past the CF origin timeout),
+ * and THREE unsynchronised publishers race:
+ *   1. `refreshSharedBoardInBackground` — holds BOARD_BUILD_LOCK_KEY
+ *   2. `runColdBoardBuild` (cold miss / soft-stale kick) — takes NO lock
+ *   3. `refreshZeroDteBoardSnapshot` (the 1–5min cron warmer) — takes NO lock
+ * The lock on (1) buys nothing while (2) and (3) publish around it. So a build that STARTED
+ * at T and finished slowly at T+45s would overwrite a snapshot published at T+40s, and the
+ * shared `as_of` walked BACKWARD by the build's duration. Observed live 2026-08-17: `as_of`
+ * regressed 8m16s and the setup count flipped between 7 and 147 across consecutive polls —
+ * two builds from different discovery phases, the older one landing last.
+ *
+ * Comparing `as_of` (each build stamps its own) makes publish order irrelevant: a slow build
+ * that lost the race simply doesn't publish. Ties are refused too — an equal `as_of` carries
+ * no new information and rewriting it only re-opens the window.
+ *
+ * Guarding at the payload level rather than by extending the lock is deliberate: a lock makes
+ * publishes mutually exclusive, but exclusion is not ordering — the lock winner can still be
+ * the stale builder. Monotonicity is the property actually wanted, and it holds no matter how
+ * many publishers exist or which of them takes a lock.
+ */
+export function boardSnapshotIsNewer(
+  builtAsOf: string | null | undefined,
+  existingAsOf: string | null | undefined
+): boolean {
+  const built = Date.parse(String(builtAsOf ?? ""));
+  if (!Number.isFinite(built)) return false; // an unstamped build can never displace a stamped one
+  const existing = Date.parse(String(existingAsOf ?? ""));
+  if (!Number.isFinite(existing)) return true; // nothing valid published yet → publish
+  return built > existing;
+}
+
+/**
+ * Publish a built board as the shared snapshot, but only if it is newer than what is there
+ * (see boardSnapshotIsNewer). Returns the board that should be SERVED — the newly published
+ * one, or the fresher incumbent when this build lost the race, so a slow builder's own caller
+ * still gets the best available board rather than the stale one it just finished computing.
+ *
+ * Residual race, stated honestly: this is a read-then-write, not an atomic compare-and-set
+ * (the shared-cache layer exposes GET / SET / SETNX / DEL — no Lua eval — and adding one for
+ * this would widen the blast radius well past the bug). Two publishers can still both read the
+ * same incumbent and both write. What that costs is bounded: the window shrinks from the
+ * BUILD DURATION (5–45s, and multi-minute once the cron warmer overlaps a stalled cold build)
+ * to a single Redis round-trip, and two writers inside that window carry `as_of` values ~1ms
+ * apart — so the worst surviving regression is milliseconds, not minutes. That is the
+ * difference between an operator seeing the board jump backwards and nobody being able to
+ * perceive it.
+ */
+async function publishBoardSnapshot(built: ZeroDteBoardPayload): Promise<ZeroDteBoardPayload> {
+  try {
+    const existing = await sharedCacheGet<ZeroDteBoardPayload>(BOARD_SNAPSHOT_KEY);
+    if (existing && !boardSnapshotIsNewer(built.as_of, existing.as_of)) {
+      // A fresher snapshot already exists — this build finished late. Serve theirs, publish nothing.
+      return existing;
+    }
+  } catch {
+    // Read failed → fall through and publish. A publish that might race is strictly better than
+    // a snapshot lane that stops advancing whenever the read path is flaky.
+  }
   await sharedCacheSet(BOARD_SNAPSHOT_KEY, built, BOARD_SNAPSHOT_TTL_SEC).catch(() => {});
   return built;
+}
+
+/** Build ONE board and publish it as the shared snapshot every replica reads. Used by
+ *  the cold/blocking path and by the cron warmer (proactive publish). Best-effort
+ *  publish: a failed Redis write still returns a valid board — the fix degrades to the
+ *  pre-fix per-replica behaviour, never to a blank board. */
+async function buildAndPublishBoard(): Promise<ZeroDteBoardPayload> {
+  const built = await buildZeroDteBoardPayload();
+  return publishBoardSnapshot(built);
 }
 
 /** Single-writer background refresh: only the NX-lock winner rebuilds+publishes this
@@ -844,8 +958,9 @@ export async function getZeroDteBoardPayload(): Promise<ZeroDteBoardPayload> {
             resolve(rememberGoodBoard(snap.value));
             return;
           }
-          if (lastGoodBoardLocal) {
-            resolve(lastGoodBoardLocal);
+          const local = readLastGoodBoardLocal();
+          if (local) {
+            resolve(local);
             return;
           }
           // Never await the cold build here — that defeats maxBlockMs under load (live: 20–43s
@@ -957,6 +1072,11 @@ export async function zeroDtePlaysForLargo(): Promise<Record<string, unknown>> {
       // pre-wiring rows; Largo cites the letter, never invents one.
       tier: r.tier,
       graded: r.plan_outcome ? { outcome: r.plan_outcome, pnl_pct: r.plan_pnl_pct } : null,
+      // A CREDIT iron condor is a different instrument from a directional long — the strike/
+      // direction fields above describe it poorly, and its win rate + intraday-breach rate live
+      // in the pinned geometry, not in live_pnl_pct. Surface the condor view so Largo answers a
+      // condor question about a condor row with the condor's own numbers.
+      ...(r.is_condor ? { condor: liveCondorForLargo(r.condor) } : {}),
     };
   });
 
@@ -1027,12 +1147,40 @@ export async function zeroDtePlaysForLargo(): Promise<Record<string, unknown>> {
           };
         });
 
+  // WHICH EMPTY IS THIS? `plays: []` served two completely different facts — "the scanner ran and
+  // nothing cleared the gates" and "the board could not be built or read" — and this payload
+  // carried nothing to tell them apart. Measured on production 2026-08-21, `get_zerodte_plays`
+  // returned no `available`, no `upstream_ok`, no `degraded`, no `reason` and no `note`, so an
+  // outage reads to the model exactly like a quiet session. That is the defect #2477 closed on the
+  // OTHER Largo surface (`zeroDtePlaysFeed`, the live feed) — this is the tool a member's question
+  // actually routes to, and it was never carrying the distinction.
+  //
+  // `board.upstream_ok` is the board's own degraded flag and already folds in `committedKnown`
+  // (`upstream_ok && committedKnown` at its construction site), so it answers precisely this
+  // question. On the unknown branch the envelope omits `plays` ENTIRELY rather than shipping an
+  // empty array, so nothing downstream can count zero and call it a measurement.
+  const envelope = zeroDtePlaysToolEnvelope({
+    upstreamOk: board.upstream_ok !== false,
+    session_date: board.session.date,
+    playCount: plays.length,
+  });
+  const known = envelope.available !== false;
+
+  // The stable "what IS the iron condor" descriptor, so a condor question is answerable even with
+  // no condor live this session (pre-open, always). Gated on the same flag the board builds under:
+  // with the engine off there is no condor product to describe. This is what stops Largo denying
+  // the product exists and confabulating a win rate — the defect measured 2026-08-21.
+  const ironCondor = condorFlagEnabled() ? ironCondorProductForLargo() : undefined;
+
   return {
     source: "0DTE Command (always-on scanner, /grid)",
-    session_date: board.session.date,
-    plays,
-    fresh_finds: fresh,
-    excluded_covered_elsewhere: board.covered_elsewhere,
+    ...envelope,
+    ...(ironCondor ? { iron_condor: ironCondor } : {}),
+    ...(known ? { plays } : {}),
+    // A board that could not be built has no setups either, so there are no fresh finds to
+    // report — and printing an empty list beside an unknown committed set repeats the same
+    // mistake one field over.
+    ...(known ? { fresh_finds: fresh, excluded_covered_elsewhere: board.covered_elsewhere } : {}),
     rules: "0DTE discipline: new directional plays 10:00–15:30 ET; stop -50%, trim +100%, hard exit 15:50 ET.",
   };
 }

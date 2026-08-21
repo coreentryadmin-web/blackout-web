@@ -37,12 +37,26 @@ export const FLOW_CALL_COLOR = "#34d399"; // green — call print (matches struc
 export const FLOW_PUT_COLOR = "#f87171"; // red — put print (matches structure LH/LL + volume-down)
 
 /**
- * Default LARGE-trade premium floor. A single near-ATM print of ≥ $250K premium is a genuinely
- * notable institutional-size options bet — big enough that a member cares WHERE it hit, but not so
- * low that ordinary retail lots flood the chart (0DTE ATM contracts print thousands of small fills a
- * minute). Env-tunable server-side; exported so the test and the server share the one number.
+ * Default LARGE-trade premium NOISE FLOOR — the candidate cut, not the selection rule.
+ *
+ * This was $250,000 on the reasoning quoted below ("a single near-ATM print of ≥ $250K is a
+ * genuinely notable institutional-size bet"). That reasoning is right about AGGREGATE flow and
+ * wrong by more than an order of magnitude about a SINGLE print. Measured live 2026-08-18 during
+ * RTH — SPY 0DTE, 8 near-ATM contracts, 60-minute window, straight off Polygon:
+ *
+ *   n=1210 prints · p50 $348 · p90 $2,380 · p99 $10,452 · max $37,410 · prints ≥ $250K: ZERO
+ *
+ * So the overlay was empty by construction on the busiest chain in the market, and the "retail
+ * lots would flood the chart" worry it was guarding against is handled by the top-N cap
+ * (DEFAULT_FLOW_MAX_MARKERS) which selects the biggest prints whatever the day's scale happens to
+ * be. Set just above the measured p90 so sub-$5K noise never enters the candidate set.
+ *
+ * Also the base of `flowMarkerSize`'s [floor, 50× floor] radius ramp — at $5K that spans
+ * $5K–$250K, a range the measured distribution actually covers, so markers differ in size instead
+ * of all pinning to one end. Env-tunable server-side (OPTION_TRADES_LARGE_MIN_PREMIUM); exported
+ * so the test and the server share the one number.
  */
-export const DEFAULT_FLOW_MIN_PREMIUM = 250_000;
+export const DEFAULT_FLOW_MIN_PREMIUM = 5_000;
 
 /** Default cap on how many prints the chart draws — top N by premium. Keeps the chart readable. */
 export const DEFAULT_FLOW_MAX_MARKERS = 40;

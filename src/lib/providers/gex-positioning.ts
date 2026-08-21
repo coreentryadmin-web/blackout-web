@@ -4,7 +4,7 @@ import { fetchGexHeatmap, type GexHeatmap } from "@/lib/providers/polygon-option
 import { getGexIntradayAdjusted } from "@/lib/providers/gex-intraday-adjust";
 import type { GexIntradayAdjusted } from "@/lib/providers/gex-intraday-adjust-core";
 import { validateGexAgainstUW, type GexCrossValidationResult } from "@/lib/providers/gex-cross-validation";
-import { resolveNearTermExpiriesForCrossValidation, kingFromStrikeTotals, strikeTotalsFromLadder, wallsFromStrikeTotals } from "@/lib/providers/gex-cross-validation-core";
+import { resolveNearTermExpiriesForCrossValidation, kingFromStrikeTotals, strikeTotalsFromLadder, wallsFromStrikeTotals, cumulativeGammaFlipDetail } from "@/lib/providers/gex-cross-validation-core";
 import { hasLiveGexStrikeExpiry, getGexStrikeExpiryLadder } from "@/lib/ws/uw-socket";
 import { fmtPremium } from "@/lib/fmt-money";
 
@@ -97,8 +97,45 @@ export type GexPositioning = {
   } | null;
   /** Signed % distance of spot from the flip: (spot - flip)/spot*100, or null when no flip. */
   distance_to_flip_pct: number | null;
+  /**
+   * Zero-crossing of cumulative net dealer gamma NEAREST to spot. When the book has a single
+   * crossing this equals `flip`. When the book has MULTIPLE crossings, `flip` is the deliberately
+   * stable lowest-plausible level (spot-independent, so it does not jitter as spot moves), while
+   * this is the nearer crossing — the strike at which the regime would actually flip sign first.
+   * Also populated when `flip` is null because every crossing sits outside the ±12% plausibility
+   * window (`flip_reason` = crossings_far_from_spot): it names the closest crossing even when it
+   * was rejected as the headline flip. Null only when the book never crosses zero. */
+  flip_nearest: number | null;
+  /**
+   * Count of zero-crossings of cumulative net dealer gamma across the book. `> 1` means the served
+   * `flip` is NOT the only strike where dealer gamma changes sign, so the regime is more fragile
+   * than the single flip implies — read `flip_nearest` / `distance_to_nearest_flip_pct` before
+   * calling the name a comfortable distance from flipping. 0 when the book never crosses zero. */
+  flip_crossings: number;
+  /**
+   * Signed % distance of spot from `flip_nearest`: (spot - flip_nearest)/spot*100, or null when no
+   * crossing. Distinct from `distance_to_flip_pct`, which measures to the stable (lowest) flip;
+   * when the two diverge materially, THIS is the true regime-flip proximity to cite. */
+  distance_to_nearest_flip_pct: number | null;
   /** Intraday gamma-migration one-liner when a real diff exists, else null. */
   shift_summary: string | null;
+  /**
+   * The EXPIRY SCOPE every field above was summed over — the matrix's near-term set.
+   *
+   * WHY THIS IS ON THE CONTRACT. Every number here is a MULTI-EXPIRY AGGREGATE, and without the
+   * scope a consumer cannot tell that. Measured live 2026-08-21: at the same minute, `/heatmap`
+   * scoped to one expiry reported SPY **LONG GAMMA, flip 756, net GEX -$3.7B** while this contract
+   * (near-term aggregate) reported **gamma_posture "short", flip null, net GEX -$10.98B** — "no
+   * gamma flip, dealers net short at EVERY strike". Both are right for their scope, and a reader
+   * holding only one of them has no way to know the other exists, so the two surfaces simply
+   * contradict each other.
+   *
+   * `gex-heatmap-for-largo.ts` already solved exactly this for `get_gex_heatmap` ("carried so an
+   * answer can NAME the scope it is quoting instead of implying a single wall exists"); the scope
+   * was resolved here too, for the WS wall override and the cross-validation oracle, and then
+   * thrown away instead of published. Undefined only on a matrix that carries no expiry list.
+   */
+  near_term_expiries?: string[];
   /**
    * 0DTE / FRONT-EXPIRY INTRADAY-ADJUSTED view (OI + volume model) — an ESTIMATE that ADDS today's
    * not-yet-settled front-expiry net dealer positioning (signed buy-vs-sell from the trade tape) on
@@ -167,7 +204,7 @@ export async function getGexPositioning(
   if (hasLiveGexStrikeExpiry(root)) {
     const wsLadder = getGexStrikeExpiryLadder(root, nearTermExpiries);
     if (wsLadder) {
-      const wsWalls = wallsFromStrikeTotals(strikeTotalsFromLadder(wsLadder.ladder));
+      const wsWalls = wallsFromStrikeTotals(strikeTotalsFromLadder(wsLadder.ladder), base.spot);
       if (wsWalls.callWall != null) base.call_wall = wsWalls.callWall;
       if (wsWalls.putWall != null) base.put_wall = wsWalls.putWall;
     }
@@ -267,7 +304,27 @@ export function gexPositioningFromHeatmap(
       ? Number((((spot - flip) / spot) * 100).toFixed(2))
       : null;
 
+  // FRAGILITY: the served `flip` is the stable LOWEST-plausible zero-crossing (chosen so it does
+  // not jitter as spot moves). That stability hides a real hazard when the book crosses zero more
+  // than once — a nearer crossing can sit far closer to spot than `flip`, and THAT is where the
+  // regime actually flips first. cumulativeGammaFlipDetail already computes both; surface the
+  // nearest crossing + the crossing count so a reader is not told a name is a comfortable N% from
+  // flipping when net gamma re-crosses zero a fraction of that away. Same function, same
+  // strike_totals the matrix used, so `.flip` here matches `gex.flip` — we only read the extras.
+  const flipDetail = cumulativeGammaFlipDetail(gex.strike_totals, spot);
+  const flip_nearest = flipDetail.nearestCrossing;
+  const flip_crossings = flipDetail.crossings;
+  const distance_to_nearest_flip_pct =
+    flip_nearest != null && Number.isFinite(flip_nearest) && spot > 0
+      ? Number((((spot - flip_nearest) / spot) * 100).toFixed(2))
+      : null;
+
   const shift_summary = hm.shift?.available ? hm.shift.summary ?? null : null;
+
+  // Resolved by the SAME helper the WS override and the cross-validation oracle use, so the
+  // published scope is exactly the scope the numbers were summed over — not a second derivation
+  // that could drift from it.
+  const nearTermExpiries = resolveNearTermExpiriesForCrossValidation(hm);
 
   return {
     ticker: root,
@@ -293,7 +350,11 @@ export function gexPositioningFromHeatmap(
     charm_regime_read: charm ? charm.regime.read : null,
     nearest_wall: nearest,
     distance_to_flip_pct,
+    flip_nearest,
+    flip_crossings,
+    distance_to_nearest_flip_pct,
     shift_summary,
+    near_term_expiries: nearTermExpiries,
     source: "polygon",
   };
 }

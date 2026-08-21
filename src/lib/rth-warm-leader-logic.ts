@@ -10,6 +10,9 @@ export const RTH_WRITER_HEAL_AFTER_MIN: Record<string, number> = {
   "vector-walls-warm": 20 / 60,
   /** 10s — primary 5s writer is vector-bead-recorder-leader; HTTP cron is backup when leader stalls. */
   "vector-bead-record": 10 / 60,
+  /** 5 min — Meridian timeline + SPX GEX + desk enrichment; was missing from EventBridge
+   *  (ops #2351: market_hours_stale during RTH). */
+  "meridian-warm": 5,
   /** 1.5 = 90s — tighter than other warmers; desk cold-build blocks are the top UX pain point. */
   "desk-warm": 1.5,
   "uw-cache-refresh": 4,

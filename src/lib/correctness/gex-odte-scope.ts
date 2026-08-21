@@ -55,7 +55,15 @@ export function odteStrikeTotalsFromCells(
   return out;
 }
 
-/** 0DTE-scoped strike totals + net from a served heatmap snapshot. */
+/**
+ * 0DTE-scoped strike totals + net from a served heatmap snapshot.
+ *
+ * STRICT today-only — does NOT fall back to the front expiry when today's column is absent.
+ * After the 0DTE session expires the matrix axis drops today's date; comparing the UW
+ * `spot-exposures/expiry-strike (0DTE)` oracle against the *next* expiry column false-flagged
+ * net-GEX sign (ops-auto-fix #2360). Cross-provider checks use this helper; UI surfaces that
+ * need a front-expiry fallback call `resolveOdteExpiry` directly (SpxGexMatrixHeatmap).
+ */
 export function odteGexScopeFromHeatmap(
   hm: GexHeatmap | null | undefined,
   todayEt: string
@@ -63,7 +71,7 @@ export function odteGexScopeFromHeatmap(
   if (!hm?.gex?.cells) {
     return { expiry: null, strikeTotals: {}, total: 0 };
   }
-  const expiry = resolveOdteExpiry(hm.expiries ?? [], todayEt);
+  const expiry = resolveZeroDteExpiry(hm.expiries ?? [], todayEt);
   const strikes = hm.strikes ?? Object.keys(hm.gex.cells).map(Number).filter(Number.isFinite);
   const strikeTotals = odteStrikeTotalsFromCells(hm.gex.cells, strikes, expiry);
   let total = 0;

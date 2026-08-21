@@ -33,6 +33,28 @@ export function parseCompareTickers(raw: string | null | undefined): string[] {
   return out;
 }
 
+/**
+ * Which `compare` value the client should honour: the LIVE URL, never the page-load prop.
+ *
+ * This exists because the trap it prevents is invisible in review. `/vector` renders one client
+ * component that receives `initialCompareRaw` (derived server-side from this same `compare` search
+ * param) and also reads `useSearchParams()`. Writing the obvious
+ *
+ *   searchParams.get("compare") ?? initialCompareRaw
+ *
+ * looks like a harmless hydration fallback and is in fact a one-way door: "Exit compare" navigates
+ * to `/vector`, the param goes away, `searchParams.get("compare")` correctly returns null — and the
+ * `??` immediately hands back the value the URL had when the page FIRST loaded. Compare mode can be
+ * entered but never left, and the same staleness breaks any other same-route navigation out of it.
+ *
+ * ABSENCE OF THE PARAM IS MEANINGFUL. The server prop is only ever a first-paint convenience, and
+ * `/vector` is force-dynamic so the two always agree on first paint anyway — it can be ignored
+ * outright. Kept as a named function so the rule is testable and the next reader sees the WHY.
+ */
+export function resolveCompareRaw(urlCompareParam: string | null | undefined): string | null {
+  return urlCompareParam ?? null;
+}
+
 export function isCompareMode(compareParam: string | null | undefined): boolean {
   return compareParam != null && compareParam.length > 0;
 }
@@ -62,15 +84,29 @@ export async function loadCompareSeedsBounded<T>(
   tickers: string[],
   fetchSeed: (ticker: string) => Promise<T>,
   concurrency = 2
-): Promise<T[]> {
+): Promise<Array<T | null>> {
   const uniq = parseCompareTickers(tickers.join(","));
   if (!uniq.length) return [];
-  const out: T[] = new Array(uniq.length);
+  const out: Array<T | null> = new Array(uniq.length).fill(null);
   let next = 0;
   const workers = Array.from({ length: Math.min(concurrency, uniq.length) }, async () => {
     while (next < uniq.length) {
       const i = next++;
-      out[i] = await fetchSeed(uniq[i]!);
+      // SETTLE PER ITEM, never reject the batch.
+      //
+      // THE BUG THIS FIXES (member-visible). A rejection here used to propagate out of the worker,
+      // reject the Promise.all below, and throw out of the caller's void-ed async effect — so
+      // `setCompareSeeds` was never called and the grid sat on "Loading Vector Compare…" FOREVER,
+      // with no error state, no retry and no partial render. Ask for NVDA,META,AMD,TSLA and if AMD
+      // alone fails you lose all four, including the primary seed that was already in hand.
+      //
+      // One unreachable ticker is a fact about that ticker, not a reason to lose the others. A null
+      // slot lets the caller render the panes that DID load and mark the one that did not.
+      try {
+        out[i] = await fetchSeed(uniq[i]!);
+      } catch {
+        out[i] = null;
+      }
     }
   });
   await Promise.all(workers);

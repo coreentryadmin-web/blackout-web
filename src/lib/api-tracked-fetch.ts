@@ -129,7 +129,13 @@ export async function trackedFetch(
   // unexpected host is a configuration/injection problem, never a transient failure.
   const destHost = hostnameOf(url);
   if (!destHost || !ALLOWED_FETCH_HOSTS.has(destHost)) {
-    throw new Error(`trackedFetch: refusing to fetch disallowed host "${destHost ?? url}"`);
+    // Report the SANITIZED url, never the raw one. This branch fires precisely when the URL could
+    // not be parsed into a hostname — which is what an unresolved `${{shared.*}}` base placeholder
+    // produces ("POLYGON_API_BASE/benzinga/v1/earnings?...&apiKey=<real key>") — so the raw
+    // fallback put a live provider key into the thrown message, and from there into every log that
+    // catches it, CI output included. Observed twice on 2026-08-17. `safeUrl` is already computed
+    // above for exactly this reason and its regex fallback handles the unparseable case.
+    throw new Error(`trackedFetch: refusing to fetch disallowed host "${destHost ?? safeUrl}"`);
   }
 
   let lastEvent: ApiCallEvent | null = null;

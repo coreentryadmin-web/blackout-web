@@ -105,13 +105,17 @@ html.nav-locked body { overflow: hidden; }
   z-index: 0;
 }
 
-/* Hero */
+/* Hero — COMPACT BAR.
+   Meridian is a data desk: the timeline + detail panel below are the product, and the hero
+   was spending ~200px of vertical on a name the nav already states. Everything here is tuned
+   to hand that space back — a single band roughly the height of one stat card, with the title
+   and its sub-label on ONE baseline row instead of stacked. */
 .meridian-hero {
   position: relative;
   border: 1px solid rgba(34, 211, 238, 0.22);
   border-radius: 1rem;
-  padding: 1.1rem 1.25rem;
-  margin-bottom: 0.75rem;
+  padding: 0.6rem 1rem;
+  margin-bottom: 0.55rem;
   overflow: hidden;
   background: linear-gradient(145deg, rgba(12, 16, 28, 0.95) 0%, rgba(4, 4, 7, 0.88) 100%);
   animation: meridian-card-rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
@@ -128,21 +132,23 @@ html.nav-locked body { overflow: hidden; }
   filter: blur(40px);
   animation: meridian-orb-float 12s ease-in-out infinite;
 }
+/* Orbs scaled with the band. At the old 180px against a ~60px-tall bar the blur washed the
+   whole strip in cyan and the title lost contrast — the ambience has to shrink with its container. */
 .meridian-hero-orb-a {
-  width: 180px; height: 180px;
-  top: -40%; left: -5%;
-  background: rgba(34, 211, 238, 0.18);
+  width: 120px; height: 120px;
+  top: -60%; left: -3%;
+  background: rgba(34, 211, 238, 0.16);
 }
 .meridian-hero-orb-b {
-  width: 140px; height: 140px;
-  top: -20%; right: 5%;
-  background: rgba(167, 139, 250, 0.14);
+  width: 96px; height: 96px;
+  top: -45%; right: 5%;
+  background: rgba(167, 139, 250, 0.12);
   animation-delay: -4s;
 }
 .meridian-hero-orb-c {
-  width: 100px; height: 100px;
-  bottom: -30%; left: 40%;
-  background: rgba(52, 211, 153, 0.12);
+  width: 72px; height: 72px;
+  bottom: -55%; left: 40%;
+  background: rgba(52, 211, 153, 0.1);
   animation-delay: -8s;
 }
 .meridian-hero-grid {
@@ -159,20 +165,23 @@ html.nav-locked body { overflow: hidden; }
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
-  gap: 1rem;
+  align-items: center;
+  gap: 0.5rem 1rem;
   z-index: 1;
 }
+/* The kicker sits INLINE with the title row rather than above it — as its own line it cost a
+   full text row to say what the title says one line later. */
 .meridian-hero-kicker {
   display: flex;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.4rem;
   font-family: var(--font-mono, monospace);
-  font-size: 0.62rem;
+  font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: #22d3ee;
-  margin: 0 0 0.35rem;
+  margin: 0 0 0.15rem;
 }
 .meridian-hero-pulse {
   width: 7px; height: 7px;
@@ -181,15 +190,20 @@ html.nav-locked body { overflow: hidden; }
   box-shadow: 0 0 10px #34d399;
   animation: meridian-hero-pulse 2s ease-in-out infinite;
 }
+/* Title + sub on ONE baseline row (was a column). Two stacked lines for a four-word label is
+   the single biggest saving available here, and reading "Meridian · Event analytics" across
+   is no harder than reading it down. */
 .meridian-hero-title {
   margin: 0;
   display: flex;
-  flex-direction: column;
-  gap: 0.1rem;
+  flex-direction: row;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.1rem 0.55rem;
 }
 .meridian-hero-title-main {
   font-family: var(--font-syne, sans-serif);
-  font-size: clamp(2rem, 4vw, 2.75rem);
+  font-size: clamp(1.3rem, 2.2vw, 1.75rem);
   font-weight: 800;
   letter-spacing: -0.03em;
   line-height: 1;
@@ -202,24 +216,28 @@ html.nav-locked body { overflow: hidden; }
 }
 .meridian-hero-title-sub {
   font-family: var(--font-mono, monospace);
-  font-size: 0.7rem;
-  letter-spacing: 0.2em;
+  font-size: 0.76rem;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--mer-violet, #c4b5fd);
   font-weight: 600;
 }
 .meridian-hero-tagline {
-  margin: 0.5rem 0 0;
-  max-width: 36rem;
-  font-size: 0.82rem;
+  margin: 0.2rem 0 0;
+  max-width: 40rem;
+  font-size: 0.72rem;
   color: var(--mer-muted, #bae6fd);
-  line-height: 1.45;
+  line-height: 1.35;
 }
+/* Right side is a ROW now, not a column: badge and timestamp sat on separate lines and set the
+   band's height floor even after the left side shrank. */
 .meridian-hero-right {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.65rem;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem 0.75rem;
 }
 .meridian-hero-badge-row {
   display: flex;
@@ -230,46 +248,35 @@ html.nav-locked body { overflow: hidden; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2.5rem; height: 2.5rem;
-  border-radius: 0.65rem;
+  width: 1.6rem; height: 1.6rem;
+  border-radius: 0.45rem;
   border: 1px solid rgba(34, 211, 238, 0.4);
   background: rgba(34, 211, 238, 0.1);
   color: #22d3ee;
-  font-size: 1.1rem;
+  font-size: 0.8rem;
 }
-.meridian-hero-metrics {
-  display: flex;
-  gap: 1rem;
-  margin: 0;
-}
-.meridian-hero-metric dt {
-  font-family: var(--font-mono, monospace);
-  font-size: 0.55rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: #7dd3fc;
-}
-.meridian-hero-metric dd {
-  margin: 0.1rem 0 0;
-  font-family: var(--font-syne, sans-serif);
-  font-size: 1.1rem;
-  font-weight: 700;
-  color: #fff;
-}
-.meridian-hero-metric-urgent dd { color: #fbbf24; }
+/* .meridian-hero-metrics / -metric / -metric-urgent removed with the duplicated hero counts —
+   see MeridianHero.tsx. The stats strip below owns those numbers. */
 .meridian-hero-asof {
   font-family: var(--font-mono, monospace);
-  font-size: 0.58rem;
+  font-size: 0.74rem;
   color: #7dd3fc;
   margin: 0;
 }
 
-/* Stats strip */
+/* Stats strip — column count must MATCH the card count.
+   The strip renders FIVE cards into a four-column grid, so "Board names" always wrapped onto a
+   row of its own: one tile alone on a line, with three columns of dead space beside it. This is
+   the defect, not the card sizing — a smaller card in a 4-col grid still wraps the 5th. */
 .meridian-stats-strip {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.55rem;
-  margin-bottom: 0.75rem;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+/* Step DOWN in factors of five so a partial row never leaves a single orphan tile. */
+@media (max-width: 1100px) {
+  .meridian-stats-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 760px) {
   .meridian-stats-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -277,7 +284,7 @@ html.nav-locked body { overflow: hidden; }
 .meridian-stat-card {
   position: relative;
   border-radius: 0.75rem;
-  padding: 0.75rem 0.85rem;
+  padding: 0.5rem 0.7rem;
   overflow: hidden;
   border: 1px solid rgba(125, 211, 252, 0.14);
   background: rgba(8, 10, 16, 0.85);
@@ -294,27 +301,33 @@ html.nav-locked body { overflow: hidden; }
   pointer-events: none;
 }
 .meridian-stat-card:hover .meridian-stat-card-glow { opacity: 1; }
-.meridian-stat-tone-cyan { border-color: rgba(34, 211, 238, 0.25); }
+.meridian-stat-tone-cyan { border-color: rgba(34,211,238,0.47); }
 .meridian-stat-tone-cyan .meridian-stat-card-value { color: #22d3ee; }
 .meridian-stat-tone-cyan .meridian-stat-card-glow { box-shadow: inset 0 0 24px rgba(34, 211, 238, 0.08); }
-.meridian-stat-tone-amber { border-color: rgba(251, 191, 36, 0.25); }
+.meridian-stat-tone-amber { border-color: rgba(251,191,36,0.47); }
 .meridian-stat-tone-amber .meridian-stat-card-value { color: #fbbf24; }
-.meridian-stat-tone-violet { border-color: rgba(167, 139, 250, 0.25); }
+.meridian-stat-tone-violet { border-color: rgba(167,139,250,0.47); }
 .meridian-stat-tone-violet .meridian-stat-card-value { color: #c4b5fd; }
-.meridian-stat-tone-emerald { border-color: rgba(52, 211, 153, 0.25); }
+.meridian-stat-tone-emerald { border-color: rgba(52,211,153,0.47); }
 .meridian-stat-tone-emerald .meridian-stat-card-value { color: #34d399; }
 .meridian-stat-card-value {
   display: block;
   font-family: var(--font-syne, sans-serif);
-  font-size: 1.65rem;
+  font-size: 1.25rem;
   font-weight: 800;
-  line-height: 1.1;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
 }
 .meridian-stat-card-label {
   display: block;
-  margin-top: 0.15rem;
+  margin-top: 0.05rem;
   font-family: var(--font-mono, monospace);
-  font-size: 0.58rem;
+  /* Five columns give each label less room than four did; "Mega-cap ER" is the longest and must
+     not wrap to a second line, which would make one tile taller than its neighbours. */
+  font-size: 0.68rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: #7dd3fc;
@@ -333,7 +346,7 @@ html.nav-locked body { overflow: hidden; }
 }
 .meridian-view-tab {
   font-family: var(--font-mono, monospace);
-  font-size: 0.62rem;
+  font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -352,7 +365,7 @@ html.nav-locked body { overflow: hidden; }
 .meridian-refresh-btn {
   margin-left: auto;
   font-family: var(--font-mono, monospace);
-  font-size: 0.58rem;
+  font-size: 0.74rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: #22d3ee;
@@ -364,7 +377,7 @@ html.nav-locked body { overflow: hidden; }
 }
 .meridian-refresh-btn:hover {
   background: rgba(34, 211, 238, 0.14);
-  border-color: rgba(34, 211, 238, 0.5);
+  border-color: rgba(34,211,238,0.72);
 }
 
 /* Analytics grid view */
@@ -391,7 +404,7 @@ html.nav-locked body { overflow: hidden; }
 .meridian-analytics-card-kind {
   display: block;
   font-family: var(--font-mono, monospace);
-  font-size: 0.55rem;
+  font-size: 0.7rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   margin-bottom: 0.35rem;
@@ -404,16 +417,16 @@ html.nav-locked body { overflow: hidden; }
   margin-bottom: 0.25rem;
 }
 .meridian-analytics-card-meta {
-  font-size: 0.68rem;
+  font-size: 0.82rem;
   color: #7dd3fc;
 }
-.meridian-theme-macro { border-color: rgba(34, 211, 238, 0.22); }
+.meridian-theme-macro { border-color: rgba(34,211,238,0.44); }
 .meridian-theme-macro .meridian-analytics-card-kind { color: #22d3ee; }
-.meridian-theme-earnings { border-color: rgba(56, 189, 248, 0.22); }
+.meridian-theme-earnings { border-color: rgba(56,189,248,0.44); }
 .meridian-theme-earnings .meridian-analytics-card-kind { color: #38bdf8; }
-.meridian-theme-fda { border-color: rgba(167, 139, 250, 0.22); }
+.meridian-theme-fda { border-color: rgba(167,139,250,0.44); }
 .meridian-theme-fda .meridian-analytics-card-kind { color: #c4b5fd; }
-.meridian-theme-opex { border-color: rgba(52, 211, 153, 0.22); }
+.meridian-theme-opex { border-color: rgba(52,211,153,0.44); }
 .meridian-theme-opex .meridian-analytics-card-kind { color: #34d399; }
 
 /* Desk layout */
@@ -498,7 +511,7 @@ html.nav-locked body { overflow: hidden; }
 }
 .meridian-search-input::placeholder { color: #67e8f9; opacity: 0.55; }
 .meridian-search-input:focus {
-  border-color: rgba(34, 211, 238, 0.55);
+  border-color: rgba(34,211,238,0.77);
   box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.15);
 }
 .meridian-search-clear {
@@ -515,7 +528,7 @@ html.nav-locked body { overflow: hidden; }
 .meridian-search-meta {
   margin: 0;
   font-family: var(--font-mono, monospace);
-  font-size: 0.58rem;
+  font-size: 0.74rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: #67e8f9;
@@ -534,12 +547,12 @@ html.nav-locked body { overflow: hidden; }
   transition: border-color 120ms ease, background 120ms ease;
 }
 .meridian-lookup-card:hover {
-  border-color: rgba(56, 189, 248, 0.55);
+  border-color: rgba(56,189,248,0.77);
   background: rgba(56, 189, 248, 0.12);
 }
 .meridian-lookup-kicker {
   font-family: var(--font-mono, monospace);
-  font-size: 0.55rem;
+  font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -552,12 +565,12 @@ html.nav-locked body { overflow: hidden; }
 }
 .meridian-lookup-meta {
   font-family: var(--font-mono, monospace);
-  font-size: 0.65rem;
+  font-size: 0.8rem;
   color: #bae6fd;
 }
 .meridian-lookup-action {
   margin-top: 0.15rem;
-  font-size: 0.68rem;
+  font-size: 0.82rem;
   color: #67e8f9;
 }
 .meridian-lookup-miss {
@@ -579,7 +592,7 @@ html.nav-locked body { overflow: hidden; }
   align-items: center;
   gap: 0.35rem;
   font-family: var(--font-mono, monospace);
-  font-size: 0.56rem;
+  font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -590,7 +603,7 @@ html.nav-locked body { overflow: hidden; }
   background: rgba(255, 255, 255, 0.02);
   transition: all 0.22s ease;
 }
-.meridian-filter-pill:hover { border-color: rgba(34, 211, 238, 0.35); color: #22d3ee; }
+.meridian-filter-pill:hover { border-color: rgba(34,211,238,0.57); color: #22d3ee; }
 .meridian-filter-pill.is-active {
   color: #040407;
   background: #22d3ee;
@@ -602,14 +615,14 @@ html.nav-locked body { overflow: hidden; }
 .meridian-filter-pill.is-active.meridian-theme-fda { background: #a78bfa; border-color: #a78bfa; }
 .meridian-filter-pill.is-active.meridian-theme-opex { background: #34d399; border-color: #34d399; color: #040407; }
 .meridian-filter-pill-count {
-  font-size: 0.52rem;
+  font-size: 0.68rem;
   opacity: 0.85;
 }
 
 /* Timeline rows */
 .meridian-month-label {
   font-family: var(--font-mono, monospace);
-  font-size: 0.62rem;
+  font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -632,7 +645,7 @@ html.nav-locked body { overflow: hidden; }
 }
 .meridian-timeline-row:hover { transform: translateX(3px); }
 .meridian-timeline-row.is-active {
-  border-color: rgba(34, 211, 238, 0.45);
+  border-color: rgba(34,211,238,0.67);
   background: rgba(34, 211, 238, 0.08);
 }
 .meridian-timeline-row-beam {
@@ -655,7 +668,7 @@ html.nav-locked body { overflow: hidden; }
 }
 .meridian-timeline-kind {
   font-family: var(--font-mono, monospace);
-  font-size: 0.55rem;
+  font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -666,7 +679,7 @@ html.nav-locked body { overflow: hidden; }
 .meridian-theme-opex .meridian-timeline-kind { color: #34d399; }
 .meridian-timeline-impact {
   font-family: var(--font-mono, monospace);
-  font-size: 0.52rem;
+  font-size: 0.68rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: #7dd3fc;
@@ -675,7 +688,7 @@ html.nav-locked body { overflow: hidden; }
 .meridian-timeline-days {
   margin-left: auto;
   font-family: var(--font-mono, monospace);
-  font-size: 0.62rem;
+  font-size: 0.78rem;
   font-weight: 700;
   color: #22d3ee;
 }
@@ -687,7 +700,7 @@ html.nav-locked body { overflow: hidden; }
 }
 .meridian-timeline-meta {
   display: block;
-  font-size: 0.7rem;
+  font-size: 0.84rem;
   color: #7dd3fc;
   margin-top: 0.15rem;
 }
@@ -703,7 +716,7 @@ html.nav-locked body { overflow: hidden; }
 }
 .meridian-detail-kicker {
   font-family: var(--font-mono, monospace);
-  font-size: 0.62rem;
+  font-size: 0.78rem;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -756,16 +769,16 @@ html.nav-locked body { overflow: hidden; }
   line-height: 1;
   flex-shrink: 0;
 }
-.meridian-theme-macro.meridian-analytics-banner { border-color: rgba(34, 211, 238, 0.28); }
-.meridian-theme-earnings.meridian-analytics-banner { border-color: rgba(56, 189, 248, 0.28); background: linear-gradient(135deg, rgba(56, 189, 248, 0.08), rgba(8, 10, 16, 0.92)); }
+.meridian-theme-macro.meridian-analytics-banner { border-color: rgba(34,211,238,0.5); }
+.meridian-theme-earnings.meridian-analytics-banner { border-color: rgba(56,189,248,0.5); background: linear-gradient(135deg, rgba(56, 189, 248, 0.08), rgba(8, 10, 16, 0.92)); }
 .meridian-theme-earnings .meridian-analytics-banner-icon { color: #38bdf8; }
-.meridian-theme-fda.meridian-analytics-banner { border-color: rgba(167, 139, 250, 0.28); background: linear-gradient(135deg, rgba(167, 139, 250, 0.08), rgba(8, 10, 16, 0.92)); }
+.meridian-theme-fda.meridian-analytics-banner { border-color: rgba(167,139,250,0.5); background: linear-gradient(135deg, rgba(167, 139, 250, 0.08), rgba(8, 10, 16, 0.92)); }
 .meridian-theme-fda .meridian-analytics-banner-icon { color: #c4b5fd; }
-.meridian-theme-opex.meridian-analytics-banner { border-color: rgba(52, 211, 153, 0.28); background: linear-gradient(135deg, rgba(52, 211, 153, 0.08), rgba(8, 10, 16, 0.92)); }
+.meridian-theme-opex.meridian-analytics-banner { border-color: rgba(52,211,153,0.5); background: linear-gradient(135deg, rgba(52, 211, 153, 0.08), rgba(8, 10, 16, 0.92)); }
 .meridian-theme-opex .meridian-analytics-banner-icon { color: #34d399; }
 .meridian-analytics-banner-label {
   font-family: var(--font-mono, monospace);
-  font-size: 0.55rem;
+  font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -803,7 +816,7 @@ html.nav-locked body { overflow: hidden; }
   transition: border-color 0.25s, box-shadow 0.25s;
 }
 .meridian-data-card:hover {
-  border-color: rgba(125, 211, 252, 0.22);
+  border-color: rgba(125,211,252,0.44);
   box-shadow: 0 8px 28px -18px rgba(34, 211, 238, 0.35);
 }
 .meridian-data-card-wide { grid-column: 1 / -1; }
@@ -825,7 +838,7 @@ html.nav-locked body { overflow: hidden; }
 .meridian-theme-opex .meridian-data-card-dot { background: #34d399; box-shadow: 0 0 8px #34d399; }
 .meridian-data-card-label {
   font-family: var(--font-mono, monospace);
-  font-size: 0.58rem;
+  font-size: 0.74rem;
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -863,7 +876,7 @@ html.nav-locked body { overflow: hidden; }
 }
 .meridian-action-dock-label {
   font-family: var(--font-mono, monospace);
-  font-size: 0.55rem;
+  font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -877,7 +890,7 @@ html.nav-locked body { overflow: hidden; }
 }
 .meridian-dock-btn {
   font-family: var(--font-mono, monospace);
-  font-size: 0.6rem;
+  font-size: 0.76rem;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -891,17 +904,17 @@ html.nav-locked body { overflow: hidden; }
 }
 .meridian-dock-btn:hover {
   background: rgba(34, 211, 238, 0.12);
-  border-color: rgba(34, 211, 238, 0.5);
+  border-color: rgba(34,211,238,0.72);
   transform: translateY(-1px);
   box-shadow: 0 6px 16px -8px rgba(34, 211, 238, 0.45);
 }
 .meridian-dock-btn-primary {
   background: rgba(34, 211, 238, 0.14);
-  border-color: rgba(34, 211, 238, 0.45);
+  border-color: rgba(34,211,238,0.67);
   color: #fff;
 }
 .meridian-dock-btn-accent {
-  border-color: rgba(167, 139, 250, 0.45);
+  border-color: rgba(167,139,250,0.67);
   color: #c4b5fd;
   background: rgba(167, 139, 250, 0.08);
 }
@@ -934,6 +947,53 @@ html.nav-locked body { overflow: hidden; }
 .meridian-earn-wrap { margin-top: 0.5rem; }
 .meridian-earn-enrich { margin-bottom: 0.75rem; }
 .meridian-earn-intel { margin-bottom: 0.75rem; }
+.meridian-earnings-tabs { margin-top: 0.35rem; }
+.meridian-earnings-tablist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
+  padding: 0.25rem;
+  border-radius: 0.65rem;
+  border: 1px solid rgba(56, 189, 248, 0.14);
+  background: rgba(8, 10, 16, 0.55);
+}
+.meridian-earnings-tab {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #38bdf8;
+  border: none;
+  border-radius: 0.45rem;
+  padding: 0.38rem 0.75rem;
+  background: transparent;
+  transition: color 0.2s, background 0.2s, box-shadow 0.2s;
+}
+.meridian-earnings-tab.is-active {
+  color: var(--mer-ink, #040407);
+  background: linear-gradient(135deg, #38bdf8, #22d3ee 55%, #34d399);
+  box-shadow: 0 4px 16px -6px rgba(56, 189, 248, 0.45);
+}
+.meridian-earnings-tabpanel { animation: meridian-fade-in 0.25s ease; }
+.meridian-earnings-week { margin: 0.75rem 0 1rem; }
+.meridian-earnings-week-title {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.78rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #38bdf8;
+  margin: 0 0 0.45rem 0.15rem;
+}
+.meridian-revisions-list { margin-bottom: 0.75rem; }
+.meridian-revision-link {
+  all: unset;
+  cursor: pointer;
+  color: #e0f2fe;
+}
+.meridian-revision-link:hover { color: #38bdf8; }
+.meridian-analytics-card.is-printed { opacity: 0.72; }
 .meridian-print-track .meridian-print-arrow { font-weight: 800; margin-left: 0.15rem; }
 .meridian-print-arrow-↑ { color: #34d399; }
 .meridian-print-arrow-↓ { color: #f87171; }
@@ -981,7 +1041,7 @@ html.nav-locked body { overflow: hidden; }
 .meridian-report-play { position: relative; z-index: 1; }
 .meridian-report-kicker {
   font-family: var(--font-mono, monospace);
-  font-size: 0.55rem;
+  font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -1008,7 +1068,7 @@ html.nav-locked body { overflow: hidden; }
 .meridian-report-confidence,
 .meridian-report-score {
   font-family: var(--font-mono, monospace);
-  font-size: 0.58rem;
+  font-size: 0.74rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--mer-muted, #bae6fd);
@@ -1044,7 +1104,7 @@ html.nav-locked body { overflow: hidden; }
 }
 .meridian-report-play-label {
   font-family: var(--font-mono, monospace);
-  font-size: 0.55rem;
+  font-size: 0.7rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--mer-coral, #fb923c);
@@ -1076,9 +1136,9 @@ html.nav-locked body { overflow: hidden; }
   background: rgba(255, 255, 255, 0.02);
   position: relative;
 }
-.meridian-report-signal.meridian-signal-bull { border-color: rgba(52, 211, 153, 0.28); background: rgba(52, 211, 153, 0.06); }
-.meridian-report-signal.meridian-signal-bear { border-color: rgba(251, 113, 133, 0.28); background: rgba(251, 113, 133, 0.06); }
-.meridian-report-signal.meridian-signal-neutral { border-color: rgba(251, 191, 36, 0.18); }
+.meridian-report-signal.meridian-signal-bull { border-color: rgba(52,211,153,0.5); background: rgba(52, 211, 153, 0.06); }
+.meridian-report-signal.meridian-signal-bear { border-color: rgba(251,113,133,0.5); background: rgba(251, 113, 133, 0.06); }
+.meridian-report-signal.meridian-signal-neutral { border-color: rgba(251,191,36,0.4); }
 .meridian-report-signal-head {
   display: flex;
   justify-content: space-between;
@@ -1088,7 +1148,7 @@ html.nav-locked body { overflow: hidden; }
 }
 .meridian-report-signal-label {
   font-family: var(--font-mono, monospace);
-  font-size: 0.52rem;
+  font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1096,7 +1156,7 @@ html.nav-locked body { overflow: hidden; }
 }
 .meridian-report-signal-lean {
   font-family: var(--font-mono, monospace);
-  font-size: 0.5rem;
+  font-size: 0.66rem;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1105,7 +1165,7 @@ html.nav-locked body { overflow: hidden; }
 .meridian-report-signal-lean.meridian-signal-bear { color: var(--mer-bear, #fb7185); }
 .meridian-report-signal-lean.meridian-signal-neutral { color: var(--mer-neutral, #fbbf24); }
 .meridian-report-signal-detail {
-  font-size: 0.68rem;
+  font-size: 0.82rem;
   color: var(--mer-muted, #bae6fd);
   margin: 0;
   line-height: 1.35;
@@ -1115,7 +1175,7 @@ html.nav-locked body { overflow: hidden; }
   top: 0.4rem;
   right: 0.45rem;
   font-family: var(--font-mono, monospace);
-  font-size: 0.55rem;
+  font-size: 0.7rem;
   font-weight: 700;
   color: #fff;
   opacity: 0.65;
@@ -1123,7 +1183,7 @@ html.nav-locked body { overflow: hidden; }
 .meridian-report-grid { margin-bottom: 0.5rem; }
 .meridian-report-disclaimer {
   font-family: var(--font-mono, monospace);
-  font-size: 0.58rem;
+  font-size: 0.74rem;
   color: var(--mer-label, #7dd3fc);
   margin: 0.35rem 0 0;
   opacity: 0.85;
@@ -1139,7 +1199,7 @@ html.nav-locked body { overflow: hidden; }
 }
 .meridian-macro-warnings-label {
   font-family: var(--font-mono, monospace);
-  font-size: 0.55rem;
+  font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -1155,7 +1215,7 @@ html.nav-locked body { overflow: hidden; }
 .meridian-macro-warnings-list li { margin-bottom: 0.25rem; }
 .meridian-macro-impact-high {
   color: var(--mer-coral, #fb923c) !important;
-  border-color: rgba(251, 146, 60, 0.35) !important;
+  border-color: rgba(251,146,60,0.57) !important;
 }
 .meridian-watch-list li { font-size: 0.78rem; color: var(--mer-muted, #bae6fd); }
 
@@ -1168,7 +1228,7 @@ html.nav-locked body { overflow: hidden; }
   width: 100%;
   border-collapse: collapse;
   font-family: var(--font-mono, monospace);
-  font-size: 0.68rem;
+  font-size: 0.82rem;
 }
 .meridian-opex-table th {
   text-align: left;
@@ -1187,7 +1247,7 @@ html.nav-locked body { overflow: hidden; }
   white-space: nowrap;
 }
 .meridian-opex-date { color: var(--mer-muted, #bae6fd); }
-.meridian-opex-sub { color: var(--mer-muted, #bae6fd); font-size: 0.62rem; }
+.meridian-opex-sub { color: var(--mer-muted, #bae6fd); font-size: 0.78rem; }
 .meridian-opex-move { font-weight: 600; }
 .meridian-pct-up { color: var(--mer-bull, #34d399); }
 .meridian-pct-down { color: var(--mer-bear, #fb7185); }
@@ -1200,7 +1260,7 @@ html.nav-locked body { overflow: hidden; }
 .meridian-mag7-ticker { font-weight: 600; color: #fff; }
 .meridian-mag7-pct { font-family: var(--font-mono, monospace); font-size: 0.72rem; }
 
-.meridian-stat-tone-rose { border-color: rgba(251, 113, 133, 0.25); }
+.meridian-stat-tone-rose { border-color: rgba(251,113,133,0.47); }
 .meridian-stat-tone-rose .meridian-stat-card-value { color: #fb7185; }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1220,4 +1280,1551 @@ html.nav-locked body { overflow: hidden; }
   .meridian-analytics-card:hover,
   .meridian-dock-btn:hover,
   .meridian-stat-card:hover { transform: none; }
+}
+
+/* ── MERIDIAN EARNINGS ANALYTICS (mea-*) ────────────────────────────────────────────────────────
+   Panels for the structured Benzinga earnings feed. Two encoding rules run through the whole
+   block and are worth stating once:
+     - COLOUR carries direction (beat/miss), SIZE carries magnitude or volume. Never both on one
+       channel, so a big miss and a small beat cannot read as the same thing.
+     - "unknown" has its own muted treatment and is never painted in a directional colour. A dash
+       must be visibly not-a-number, because a fabricated 0 looks exactly like an in-line print.
+   ──────────────────────────────────────────────────────────────────────────────────────────── */
+
+.mea-tone-cyan { color: #22d3ee; }
+.mea-tone-violet { color: #c4b5fd; }
+.mea-tone-emerald { color: #34d399; }
+.mea-tone-rose { color: #fb7185; }
+
+.mea-empty {
+  padding: 18px 14px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: rgba(226, 232, 240, 0.55);
+  border: 1px dashed rgba(148, 163, 184, 0.22);
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.35);
+}
+
+/* Delta — the signed-number primitive every panel shares. */
+.mea-delta { font-variant-numeric: tabular-nums; font-weight: 600; }
+.mea-delta-up { color: #34d399; }
+.mea-delta-down { color: #fb7185; }
+.mea-delta-flat { color: #94a3b8; }
+.mea-delta-unknown { color: rgba(148, 163, 184, 0.45); }
+
+/* Importance meter — 5 pips, Benzinga's own scale. */
+.mea-imp { display: inline-flex; gap: 2px; align-items: center; }
+.mea-imp-pip {
+  width: 3px; height: 10px; border-radius: 1px;
+  background: rgba(148, 163, 184, 0.22);
+}
+.mea-imp-pip.is-on { background: #c4b5fd; box-shadow: 0 0 6px rgba(196, 181, 253, 0.5); }
+
+/* Session chip — BMO / AMC / INTRA / TBD. */
+.mea-session {
+  display: inline-block; padding: 1px 5px; border-radius: 4px;
+  font-size: 9px; font-weight: 700; letter-spacing: 0.06em;
+  border: 1px solid transparent;
+}
+.mea-session-pre { color: #fbbf24; border-color: rgba(251, 191, 36, 0.35); background: rgba(251, 191, 36, 0.08); }
+.mea-session-post { color: #38bdf8; border-color: rgba(56, 189, 248, 0.35); background: rgba(56, 189, 248, 0.08); }
+.mea-session-intraday { color: #34d399; border-color: rgba(52, 211, 153, 0.3); background: rgba(52, 211, 153, 0.07); }
+.mea-session-unknown { color: rgba(148,163,184,0.7); border-color: rgba(148,163,184,0.25); }
+
+.mea-badge {
+  display: inline-block; padding: 1px 5px; margin-left: 5px;
+  border-radius: 4px; font-size: 9px; font-weight: 700; letter-spacing: 0.05em;
+}
+/* Projected dates get a distinct, deliberately un-authoritative treatment. */
+.mea-badge-projected {
+  color: #fbbf24; background: rgba(251, 191, 36, 0.1);
+  border: 1px dashed rgba(251, 191, 36, 0.45);
+}
+
+/* 1. PULSE STRIP */
+.mea-pulse {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px; margin-bottom: 14px;
+}
+.mea-pulse-cell {
+  display: flex; flex-direction: column; gap: 4px; padding: 12px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.16); border-radius: 12px;
+  background: linear-gradient(160deg, rgba(30, 41, 59, 0.55), rgba(15, 23, 42, 0.35));
+}
+.mea-pulse-value { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; color: #e2e8f0; line-height: 1; }
+.mea-pulse-label { font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase; color: rgba(148, 163, 184, 0.75); }
+
+/* 2. PRINT CLOCK */
+.mea-clock { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.mea-clock-row { border-radius: 10px; border: 1px solid rgba(148, 163, 184, 0.14); background: rgba(15, 23, 42, 0.4); }
+.mea-clock-row.is-imminent { border-color: rgba(251, 191, 36, 0.5); background: rgba(251, 191, 36, 0.06); }
+.mea-clock-row.is-printed { opacity: 0.72; }
+.mea-clock-hit {
+  width: 100%; display: grid; grid-template-columns: 130px 1fr auto; align-items: center; gap: 12px;
+  padding: 9px 12px; background: none; border: 0; cursor: pointer; text-align: left; color: inherit;
+}
+.mea-clock-hit:disabled { cursor: default; }
+.mea-clock-when { display: flex; flex-direction: column; gap: 3px; }
+.mea-clock-count { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; color: #e2e8f0; }
+.mea-clock-id { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mea-clock-ticker { font-size: 13px; font-weight: 700; letter-spacing: 0.03em; color: #f8fafc; }
+.mea-clock-co { font-size: 11px; color: rgba(148, 163, 184, 0.8); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mea-clock-meta { display: flex; align-items: center; gap: 8px; }
+.mea-clock-est { font-size: 11px; font-variant-numeric: tabular-nums; color: rgba(226, 232, 240, 0.75); }
+
+/* 3. CALENDAR HEAT GRID */
+.mea-cal { display: grid; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: 8px; }
+.mea-cal-cell {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 10px 6px 8px; border-radius: 10px; cursor: pointer; color: inherit;
+  border: 1px solid rgba(148, 163, 184, 0.16); background: rgba(15, 23, 42, 0.4);
+  transition: transform 120ms ease, border-color 120ms ease;
+}
+.mea-cal-cell:disabled { cursor: default; }
+.mea-cal-cell:hover:not(:disabled) { transform: translateY(-2px); }
+.mea-cal-cell.is-selected { border-color: #22d3ee; box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.35); }
+.mea-cal-dow { font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(148,163,184,0.7); }
+.mea-cal-day { font-size: 15px; font-weight: 700; color: #e2e8f0; line-height: 1; }
+.mea-cal-bar { display: block; width: 100%; height: 34px; display: flex; align-items: flex-end; }
+.mea-cal-bar-fill { display: block; width: 100%; border-radius: 3px; background: currentColor; opacity: 0.55; }
+.mea-cal-count { font-size: 11px; font-variant-numeric: tabular-nums; color: rgba(226,232,240,0.85); }
+.mea-cal-mega { position: absolute; top: 6px; right: 6px; font-size: 9px; font-weight: 700; color: #c4b5fd; }
+.mea-cal-sessions { display: flex; gap: 3px; }
+.mea-dot { width: 5px; height: 5px; border-radius: 50%; display: block; }
+.mea-dot-pre { background: #fbbf24; }
+.mea-dot-post { background: #38bdf8; }
+.mea-dot-unknown { background: rgba(148,163,184,0.5); }
+/* Colour = realized surprise. A day with nothing printed carries NO directional colour. */
+.mea-cal-tone-none { color: rgba(148, 163, 184, 0.55); }
+.mea-cal-tone-beat-strong { color: #34d399; border-color: rgba(52, 211, 153, 0.4); }
+.mea-cal-tone-beat { color: #6ee7b7; }
+.mea-cal-tone-flat { color: #94a3b8; }
+.mea-cal-tone-miss { color: #fda4af; }
+.mea-cal-tone-miss-strong { color: #fb7185; border-color: rgba(251, 113, 133, 0.4); }
+
+/* 4. SURPRISE SCATTER */
+.mea-scatter-wrap { display: flex; flex-direction: column; gap: 8px; }
+.mea-scatter {
+  position: relative; width: 100%; aspect-ratio: 1 / 1; max-height: 420px;
+  border: 1px solid rgba(148, 163, 184, 0.16); border-radius: 12px;
+  background:
+    linear-gradient(rgba(148,163,184,0.05) 1px, transparent 1px) 0 0 / 100% 10%,
+    linear-gradient(90deg, rgba(148,163,184,0.05) 1px, transparent 1px) 0 0 / 10% 100%,
+    rgba(15, 23, 42, 0.45);
+}
+.mea-scatter-axis { position: absolute; background: rgba(148, 163, 184, 0.32); }
+.mea-scatter-axis-x { left: 0; right: 0; top: 50%; height: 1px; }
+.mea-scatter-axis-y { top: 0; bottom: 0; left: 50%; width: 1px; }
+.mea-scatter-q {
+  position: absolute; font-size: 9px; letter-spacing: 0.05em; text-transform: uppercase;
+  color: rgba(148, 163, 184, 0.6); pointer-events: none;
+}
+.mea-scatter-q-tr { top: 8px; right: 10px; }
+.mea-scatter-q-tl { top: 8px; left: 10px; }
+.mea-scatter-q-br { bottom: 8px; right: 10px; }
+.mea-scatter-q-bl { bottom: 8px; left: 10px; }
+.mea-dotpt {
+  position: absolute; transform: translate(-50%, 50%); width: 9px; height: 9px; padding: 0;
+  border-radius: 50%; border: 1px solid rgba(2, 6, 23, 0.6); cursor: pointer;
+}
+.mea-dotpt.is-mega { width: 13px; height: 13px; }
+.mea-dotpt-double_beat { background: #34d399; }
+.mea-dotpt-eps_beat_rev_miss { background: #fbbf24; }
+.mea-dotpt-eps_miss_rev_beat { background: #38bdf8; }
+.mea-dotpt-double_miss { background: #fb7185; }
+.mea-dotpt-label {
+  position: absolute; left: 50%; top: -14px; transform: translateX(-50%);
+  font-size: 9px; font-weight: 700; color: #e2e8f0; opacity: 0; transition: opacity 120ms ease;
+  pointer-events: none; white-space: nowrap;
+}
+.mea-dotpt:hover .mea-dotpt-label, .mea-dotpt:focus .mea-dotpt-label { opacity: 1; }
+.mea-dotpt.is-mega .mea-dotpt-label { opacity: 0.85; }
+.mea-scatter-foot { display: flex; flex-wrap: wrap; gap: 12px; font-size: 10px; color: rgba(148,163,184,0.75); }
+.mea-scatter-omitted { color: #fbbf24; }
+
+/* 5. BEAT/MISS STREAK RAIL */
+.mea-streak { display: flex; flex-direction: column; gap: 8px; }
+.mea-streak-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
+.mea-streak-ticker { font-size: 14px; font-weight: 700; color: #f8fafc; }
+.mea-streak-badge {
+  font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 999px;
+  border: 1px solid rgba(148,163,184,0.3); color: rgba(226,232,240,0.8);
+}
+.mea-streak-badge.is-beat { color: #34d399; border-color: rgba(52,211,153,0.45); background: rgba(52,211,153,0.08); }
+.mea-streak-badge.is-miss { color: #fb7185; border-color: rgba(251,113,133,0.45); background: rgba(251,113,133,0.08); }
+.mea-streak-rate, .mea-streak-avg { font-size: 11px; color: rgba(148,163,184,0.85); font-variant-numeric: tabular-nums; }
+.mea-streak-n { color: rgba(148,163,184,0.55); }
+.mea-streak-rail {
+  list-style: none; margin: 0; padding: 0; display: flex; align-items: flex-end; gap: 4px;
+  height: 74px; overflow-x: auto;
+}
+.mea-streak-mark { flex: 0 0 26px; display: flex; flex-direction: column; align-items: center; gap: 3px; height: 100%; justify-content: flex-end; }
+.mea-streak-mark-bar { display: block; width: 100%; border-radius: 3px 3px 0 0; background: #94a3b8; }
+.mea-streak-mark.is-beat .mea-streak-mark-bar { background: #34d399; }
+.mea-streak-mark.is-miss .mea-streak-mark-bar { background: #fb7185; }
+/* Ungraded is hatched, not coloured — visibly "no data", never mistaken for a miss. */
+.mea-streak-mark.is-ungraded .mea-streak-mark-bar {
+  background: repeating-linear-gradient(45deg, rgba(148,163,184,0.35) 0 3px, transparent 3px 6px);
+  border: 1px dashed rgba(148,163,184,0.4);
+}
+.mea-streak-mark-label { font-size: 9px; color: rgba(148,163,184,0.65); }
+
+/* 6. PRINT TABLE */
+.mea-table-wrap { display: flex; flex-direction: column; gap: 8px; }
+.mea-table-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.mea-toggle {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.04em; padding: 4px 10px; border-radius: 999px;
+  border: 1px solid rgba(148,163,184,0.28); background: rgba(15,23,42,0.5); color: rgba(226,232,240,0.8);
+  cursor: pointer;
+}
+.mea-toggle.is-on { border-color: #22d3ee; color: #22d3ee; background: rgba(34, 211, 238, 0.1); }
+.mea-table-count { font-size: 10px; color: rgba(148,163,184,0.7); margin-left: auto; }
+/* The table scrolls inside its OWN box so a wide desk never scrolls sideways. */
+.mea-table-scroll { overflow-x: auto; border: 1px solid rgba(148,163,184,0.14); border-radius: 12px; }
+.mea-table { width: 100%; border-collapse: collapse; font-size: 11px; min-width: 760px; }
+.mea-th {
+  position: sticky; top: 0; z-index: 1; text-align: left; padding: 8px 10px; cursor: pointer;
+  font-size: 9px; letter-spacing: 0.07em; text-transform: uppercase; color: rgba(148,163,184,0.8);
+  background: rgba(15, 23, 42, 0.95); border-bottom: 1px solid rgba(148,163,184,0.18); white-space: nowrap;
+}
+.mea-th.is-sorted { color: #22d3ee; }
+.mea-th-caret { margin-left: 4px; }
+.mea-num { text-align: right; font-variant-numeric: tabular-nums; }
+.mea-tr { border-bottom: 1px solid rgba(148,163,184,0.07); cursor: pointer; }
+.mea-tr:hover { background: rgba(34, 211, 238, 0.05); }
+.mea-tr.is-pending { opacity: 0.78; }
+.mea-td { padding: 7px 10px; color: rgba(226,232,240,0.9); white-space: nowrap; }
+.mea-td-date { font-variant-numeric: tabular-nums; color: rgba(148,163,184,0.9); }
+.mea-tk { font-weight: 700; color: #f8fafc; }
+.mea-fiscal { margin-left: 6px; font-size: 9px; color: rgba(148,163,184,0.6); }
+
+@media (max-width: 720px) {
+  .mea-clock-hit { grid-template-columns: 110px 1fr; row-gap: 6px; }
+  .mea-clock-meta { grid-column: 1 / -1; }
+  .mea-scatter { max-height: 320px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mea-cal-cell, .mea-dotpt-label { transition: none; }
+}
+
+/* Mounted earnings-analytics block on the Meridian Analytics view. */
+.meridian-earnings-analytics { display: flex; flex-direction: column; gap: 14px; margin-bottom: 18px; }
+/* Two-up above 980px; the clock and the scatter are complementary reads (what's coming vs how it
+   graded), so they belong side by side on a desk and stacked on anything narrower. */
+.meridian-mea-split { display: grid; grid-template-columns: 1fr; gap: 14px; }
+@media (min-width: 980px) { .meridian-mea-split { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+
+/* ═══ MERIDIAN VISUALIZATION LANGUAGE ═══════════════════════════════════════════════
+   Shared primitives (src/features/meridian/components/meridian-viz.tsx).
+
+   Colour is SEMANTIC here, never decorative: green = bullish/beat/raised, red =
+   bearish/miss/lowered, violet = neutral/initiated, cyan = structure & chrome, amber =
+   attention. Nothing gets an accent for looking nice — if a mark is coloured, the colour is
+   the encoding.
+
+   Every transition below animates `transform` or `opacity` only. Both are compositor-driven,
+   so a rail carrying 40 markers still moves at 60fps; animating `left`/`width` would relayout
+   on every frame. Positions are set as static `left` percentages and MOVED with transform. */
+:root {
+  --mv-bull: #34d399;
+  --mv-bear: #fb7185;
+  --mv-neutral: #a78bfa;
+  --mv-chrome: #22d3ee;
+  --mv-attention: #fbbf24;
+  --mv-track: rgba(125, 211, 252, 0.13);
+  --mv-surface: rgba(8, 10, 16, 0.72);
+  --mv-hairline: rgba(125, 211, 252, 0.16);
+  --mv-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+.mv-bull { color: var(--mv-bull); }
+.mv-bear { color: var(--mv-bear); }
+.mv-neutral { color: var(--mv-neutral); }
+
+.mv-note {
+  margin: 0.3rem 0 0;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  color: rgba(125,211,252,0.77);
+}
+
+/* ── Halo ── */
+.mv-halo { position: relative; flex: none; }
+.mv-halo svg { display: block; overflow: visible; }
+.mv-halo-track { fill: none; stroke: var(--mv-track); stroke-width: 9; }
+.mv-halo-track-inner { stroke-width: 3; }
+.mv-halo-seg {
+  fill: none;
+  stroke-width: 9;
+  stroke-linecap: round;
+  /* Segments sweep in on mount via stroke-dashoffset — the one place a non-transform property
+     animates, because it is a one-shot reveal on a handful of paths, not a per-frame layout. */
+  stroke-dasharray: 1000;
+  stroke-dashoffset: 1000;
+  animation: mv-halo-draw 0.62s var(--mv-ease) forwards;
+}
+.mv-halo-seg.mv-bull { stroke: var(--mv-bull); }
+.mv-halo-seg.mv-bear { stroke: var(--mv-bear); }
+.mv-halo-seg.mv-neutral { stroke: var(--mv-neutral); }
+.mv-halo-seg-click { cursor: pointer; transition: opacity 0.18s ease; }
+.mv-halo-seg-click:hover { opacity: 0.72; }
+@keyframes mv-halo-draw { to { stroke-dashoffset: 0; } }
+.mv-halo-agree { fill: none; stroke-width: 3; stroke-linecap: round; opacity: 0.85; }
+.mv-halo-agree.mv-bull { stroke: var(--mv-bull); }
+.mv-halo-agree.mv-bear { stroke: var(--mv-bear); }
+.mv-halo-agree.mv-neutral { stroke: var(--mv-neutral); }
+.mv-halo-center {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 0.05rem; pointer-events: none; text-align: center;
+}
+.mv-halo-verdict {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.7rem; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase;
+}
+.mv-halo-score {
+  font-family: var(--font-syne, sans-serif);
+  font-size: 1.9rem; font-weight: 800; line-height: 1; color: #fff;
+}
+.mv-halo-agreement {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.66rem; letter-spacing: 0.07em; color: rgba(125,211,252,0.9);
+}
+
+/* ── Rings ── */
+.mv-ring { display: flex; align-items: center; gap: 0.5rem; }
+.mv-ring svg { display: block; }
+.mv-ring-track { fill: none; stroke: var(--mv-track); stroke-width: 4; }
+.mv-ring-arc { fill: none; stroke-width: 4; stroke-linecap: round; }
+.mv-ring-arc.mv-bull { stroke: var(--mv-bull); }
+.mv-ring-arc.mv-bear { stroke: var(--mv-bear); }
+.mv-ring-arc.mv-neutral { stroke: var(--mv-neutral); }
+.mv-ring-body { display: flex; flex-direction: column; min-width: 0; }
+.mv-ring-label {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.66rem; letter-spacing: 0.12em; text-transform: uppercase;
+  color: rgba(125,211,252,0.9);
+}
+.mv-ring-value { font-family: var(--font-syne, sans-serif); font-size: 0.98rem; font-weight: 700; }
+.mv-ring-sig { margin-left: 0.22rem; font-size: 0.84rem; opacity: 0.85; }
+
+/* ── Rails (expected move + targets) ── */
+/* GEOMETRY IS SHARED WITH layoutRailLabels — keep these in step with meridian-viz-core.ts.
+   A tier step that is SHORTER than a label does not separate anything: at 0.62rem (9.92px)
+   against a 12px label box, two markers on the same price overlapped by 2.08px on live prod
+   ("17.00" ∩ "17.00" 33x2px). The label's line-height is pinned too, so its height stops
+   depending on which font `--mv-value` resolves to. Asserted equal to MV_RAIL_TIER_PX /
+   MV_RAIL_LABEL_PX by meridian-viz-core.test.ts. */
+.mv-rail, .mv-targets {
+  display: block;
+  --mv-rail-tier-h: 16px; --mv-rail-label-h: 14px;
+  /* How far the FIRST row of labels sits above the track. Used by BOTH the label's `top`
+     and the track's reserved headroom — they are the same distance, and when it was
+     written out twice only one of the two got it. */
+  --mv-rail-label-lift: 0.55rem;
+}
+.mv-rail-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.mv-rail-title {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.7rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--mv-chrome);
+}
+.mv-rail-pct, .mv-tape-total {
+  font-family: var(--font-mono, monospace); font-size: 0.74rem; color: rgba(125, 211, 252, 0.8);
+}
+.mv-rail-track {
+  /* Labels are absolutely positioned ABOVE the track, so the track has to reserve the space they
+     occupy — otherwise the top row renders on top of the panel head. Reserve the LIFT as well as
+     the tiers: a label sits at `top: calc(-1 * --mv-rail-label-lift - tier * --mv-rail-tier-h)`,
+     so its top edge is `lift + (tiers-1)*tier-h` above the track's padding box. Reserving only
+     the middle term left it short by the lift itself.
+
+     Measured on prod 2026-08-21, 430px, Positioning, --rail-tiers:2 —
+       head bottom 630.09 | tier-1 label 622.30..636.30 -> 7.79px INTO the head
+     which is the reported `"±2.3% · chain_iv" ∩ "17.00"` collision. Predicted shortfall at
+     those values is 0.55rem - 1px = 7.80px; the 1px is the track's border, since an absolutely
+     positioned child is placed against the padding box. Reserving the full lift therefore clears
+     by exactly 1px at every tier count.
+
+     NOTE the margins COLLAPSE: `.mv-rail-head`'s 0.5rem margin-bottom and this margin-top are
+     adjacent siblings, so the gap is max(8px, this) and NOT their sum. That is why a value below
+     8px would buy nothing at all.
+
+     The shortfall pre-dates #2497; raising the tier step from 9.92px to 16px widened it by 2px. */
+  margin-top: calc((var(--rail-tiers, 1) - 1) * var(--mv-rail-tier-h) + var(--mv-rail-label-lift));
+  position: relative; height: 34px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(251,113,133,0.07), rgba(125,211,252,0.05), rgba(52,211,153,0.07));
+  border: 1px solid var(--mv-hairline);
+}
+.mv-rail-band {
+  position: absolute; top: 50%; height: 7px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(251,113,133,0.5), rgba(34,211,238,0.35), rgba(52,211,153,0.5));
+  transform: translateY(-50%);
+  transition: left 0.42s var(--mv-ease), width 0.42s var(--mv-ease);
+}
+.mv-rail-marker { position: absolute; top: 0; height: 100%; transform: translateX(-50%); }
+.mv-rail-marker-tick {
+  position: absolute; top: 4px; bottom: 4px; left: 0; width: 1px;
+  background: rgba(125, 211, 252, 0.5);
+}
+.mv-rail-marker-wall .mv-rail-marker-tick { background: var(--mv-attention); }
+.mv-rail-marker-target .mv-rail-marker-tick { background: var(--mv-neutral); }
+.mv-rail-marker-label {
+  /* --dx nudges the label off its tick (the tick itself never moves) and --tier stacks it into
+     a second row when two labels cannot sit side by side. Both come from layoutRailLabels;
+     without them "call wall" and "king" printed through each other at the right edge. */
+  position: absolute; left: 0;
+  top: calc(-1 * var(--mv-rail-label-lift) - var(--tier, 0) * var(--mv-rail-tier-h));
+  transform: translateX(-50%) translateX(var(--dx, 0px));
+  font-family: var(--font-mono, monospace); font-size: 0.64rem; letter-spacing: 0.06em;
+  /* Pinned, not inherited: the `<b>` inside carries a different font stack, and an unpinned
+     line box made the label's height a property of font fallback rather than of this rule. */
+  line-height: var(--mv-rail-label-h);
+  color: rgba(125,211,252,0.9); white-space: nowrap;
+}
+.mv-rail-spot {
+  position: absolute; top: 0; height: 100%;
+  transform: translateX(-50%);
+  transition: transform 0.42s var(--mv-ease);
+}
+.mv-rail-spot-dot {
+  position: absolute; top: 50%; left: 0; width: 11px; height: 11px;
+  margin: -5.5px 0 0 -5.5px; border-radius: 50%;
+  background: #fff; box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.28);
+}
+.mv-rail-spot-label {
+  position: absolute; bottom: -1.1rem; left: 0; transform: translateX(-50%);
+  font-family: var(--font-mono, monospace); font-size: 0.7rem; font-weight: 700; color: #fff;
+  white-space: nowrap;
+}
+.mv-rail-bounds {
+  display: flex; justify-content: space-between;
+  /* Explicit colour, not inherited. A primitive that relies on an ambient `color` renders
+     invisible the moment it is placed in a container that does not set one — which is exactly
+     what happened in the offline render. Components own their own legibility. */
+  color: rgba(186, 230, 253, 0.85);
+  /* Clears the absolutely-positioned spot/consensus labels hanging below the track. Measured:
+     at 1.25rem the bound labels collided with the panel edge on the target rail. */
+  margin-top: 1.6rem;
+  font-family: var(--font-mono, monospace); font-size: 0.74rem;
+}
+
+/* ── Target rail extras ── */
+.mv-targets-span {
+  position: absolute; top: 50%; height: 4px; border-radius: 999px;
+  background: rgba(167, 139, 250, 0.3); transform: translateY(-50%);
+}
+.mv-target-dot {
+  position: absolute; top: 50%; width: 8px; height: 8px; padding: 0;
+  margin: -4px 0 0 -4px; border-radius: 50%;
+  border: 1px solid rgba(167, 139, 250, 0.8); background: rgba(167, 139, 250, 0.45);
+  cursor: pointer; transition: transform 0.16s var(--mv-ease);
+}
+.mv-target-dot:hover:not(:disabled) { transform: scale(1.55); }
+.mv-target-dot:disabled { cursor: default; }
+.mv-target-consensus { position: absolute; top: 0; height: 100%; transform: translateX(-50%); }
+.mv-target-consensus-tick {
+  position: absolute; top: 2px; bottom: 2px; left: 0; width: 2px; background: var(--mv-neutral);
+}
+.mv-target-consensus-label {
+  position: absolute; top: -0.6rem; left: 0; transform: translateX(-50%);
+  font-family: var(--font-mono, monospace); font-size: 0.66rem; color: var(--mv-neutral);
+  white-space: nowrap;
+}
+
+/* ── Structure ladder ── */
+/* GEOMETRY IS SHARED WITH THE RESOLVER — keep these two in step.
+   `resolveCollisions` separates rows by ONE ROW HEIGHT expressed as a fraction of the ladder
+   (MV_LADDER_MIN_GAP = MV_LADDER_ROW_PX / MV_LADDER_HEIGHT_PX in meridian-viz-core.ts). That
+   only holds if a row really is that tall. It was not: rows rendered at 20.5px against an
+   assumed 16px, so every adjacent pair overlapped by 4-11px on live prod. The height is pinned
+   here and asserted equal to the TS constant by meridian-viz-core.test.ts. */
+.mv-ladder { --mv-ladder-row-h: 20px; position: relative; min-height: 132px; }
+.mv-ladder-row {
+  position: absolute; left: 0; right: 0; top: var(--mv-pos);
+  height: var(--mv-ladder-row-h);
+  box-sizing: border-box;
+  /* Wide enough for the longest label ("Gamma flip") so it cannot wrap to a second line. A
+     wrapped row is TALLER than the pinned height, which is how the Gamma-flip/Put-wall pair
+     reached an 11.3px overlap while its neighbours sat at 4.5px. */
+  display: grid; grid-template-columns: 5.4rem 1fr auto 3.1rem;
+  align-items: center; gap: 0.45rem;
+  padding: 0.1rem 0.2rem;
+  border: 0; border-radius: 0.3rem; background: transparent; color: inherit; text-align: left;
+  cursor: pointer;
+  transform: translateY(-50%);
+  transition: top 0.4s var(--mv-ease), background-color 0.16s ease;
+  font-family: var(--font-mono, monospace); font-size: 0.72rem;
+}
+.mv-ladder-row:disabled { cursor: default; }
+.mv-ladder-row:hover:not(:disabled),
+.mv-ladder-row:focus-visible { background: rgba(125, 211, 252, 0.08); }
+.mv-ladder-row:focus-visible { outline: 1px solid rgba(34, 211, 238, 0.65); outline-offset: 1px; }
+.mv-ladder-label {
+  letter-spacing: 0.1em; text-transform: uppercase; color: rgba(125,211,252,0.9);
+  /* Single line is what makes the pinned row height true. */
+  white-space: nowrap;
+}
+.mv-ladder-bar { height: 1px; background: var(--mv-hairline); }
+.mv-ladder-value { font-weight: 700; color: #e2f4ff; }
+.mv-ladder-dist { text-align: right; }
+.mv-ladder-spot .mv-ladder-label { color: #fff; }
+.mv-ladder-spot .mv-ladder-bar { background: rgba(34, 211, 238, 0.55); height: 2px; }
+.mv-ladder-spot .mv-ladder-value { color: #fff; }
+.mv-ladder-call_wall .mv-ladder-bar,
+.mv-ladder-put_wall .mv-ladder-bar { background: rgba(251, 191, 36, 0.4); }
+
+/* ── Beat history ── */
+.mv-beats-head, .mv-rev-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem;
+  margin-bottom: 0.45rem;
+}
+.mv-beats-title, .mv-rev-title {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.7rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--mv-chrome);
+}
+.mv-beats-tally { font-family: var(--font-mono, monospace); font-size: 0.74rem; color: #e2f4ff; }
+.mv-beats-rows { display: flex; flex-direction: column; gap: 0.22rem; }
+.mv-beat-row {
+  display: grid; grid-template-columns: 3.2rem 1fr 3.4rem 3.6rem;
+  align-items: center; gap: 0.5rem;
+  padding: 0.18rem 0.3rem; border: 0; border-radius: 0.35rem;
+  background: transparent; color: inherit; text-align: left; cursor: pointer;
+  font-family: var(--font-mono, monospace); font-size: 0.72rem;
+  transition: background-color 0.16s ease;
+}
+/* Clickable row — 19px measured live, under the 24px minimum target. */
+.mv-beat-row { min-height: 24px; }
+.mv-beat-row:disabled { cursor: default; }
+.mv-beat-row:hover:not(:disabled) { background: rgba(125, 211, 252, 0.07); }
+.mv-beat-date { color: rgba(125,211,252,0.88); }
+.mv-beat-track { position: relative; height: 8px; border-radius: 999px; background: var(--mv-track); overflow: hidden; }
+.mv-beat-bar {
+  position: absolute; inset: 0; border-radius: 999px;
+  transform-origin: left center;
+  transition: transform 0.5s var(--mv-ease);
+}
+.mv-beat-bar.mv-bull { background: var(--mv-bull); }
+.mv-beat-bar.mv-bear { background: var(--mv-bear); }
+.mv-beat-bar.mv-neutral { background: rgba(167, 139, 250, 0.35); }
+.mv-beat-surprise, .mv-beat-reaction { text-align: right; font-weight: 700; }
+.mv-beat-assumed { margin-left: 0.12rem; opacity: 0.65; }
+
+/* ── Revision momentum ── */
+.mv-rev-skew {
+  font-family: var(--font-mono, monospace); font-size: 0.7rem; font-weight: 700;
+  letter-spacing: 0.12em; text-transform: uppercase;
+}
+.mv-rev-bar {
+  display: flex; height: 9px; border-radius: 999px; overflow: hidden;
+  background: var(--mv-track);
+}
+.mv-rev-seg { display: block; transition: width 0.45s var(--mv-ease); }
+.mv-rev-seg.mv-bull { background: var(--mv-bull); }
+.mv-rev-seg.mv-bear { background: var(--mv-bear); }
+.mv-rev-seg.mv-neutral { background: rgba(167, 139, 250, 0.55); }
+.mv-rev-legend {
+  display: flex; align-items: center; gap: 0.7rem; margin-top: 0.35rem;
+  font-family: var(--font-mono, monospace); font-size: 0.7rem;
+}
+.mv-rev-more {
+  margin-left: auto; padding: 0.1rem 0.4rem;
+  border: 1px solid var(--mv-hairline); border-radius: 0.3rem;
+  background: transparent; color: var(--mv-chrome); cursor: pointer;
+  font-family: inherit; font-size: 0.66rem; letter-spacing: 0.08em; text-transform: uppercase;
+  transition: background-color 0.16s ease;
+}
+.mv-rev-more:hover { background: rgba(34, 211, 238, 0.12); }
+
+/* ── Dark pool tape ── */
+.mv-tape-strip {
+  display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap;
+  min-height: 38px;
+}
+.mv-tape-print {
+  flex: none; padding: 0; border-radius: 50%;
+  border: 1px solid rgba(167, 139, 250, 0.55);
+  background: radial-gradient(circle at 35% 30%, rgba(167,139,250,0.55), rgba(167,139,250,0.16));
+  cursor: pointer;
+  opacity: 0;
+  animation: mv-pop 0.34s var(--mv-ease) forwards;
+  transition: transform 0.16s var(--mv-ease);
+}
+.mv-tape-print:hover:not(:disabled) { transform: scale(1.16); }
+.mv-tape-print:disabled { cursor: default; }
+@keyframes mv-pop { to { opacity: 1; } }
+
+/* ── Countdown ── */
+.mv-countdown {
+  display: inline-flex; align-items: baseline; gap: 0.5rem;
+  padding: 0.28rem 0.6rem; border-radius: 0.45rem;
+  border: 1px solid var(--mv-hairline); background: var(--mv-surface);
+}
+.mv-countdown-label {
+  font-family: var(--font-mono, monospace); font-size: 0.66rem;
+  letter-spacing: 0.16em; text-transform: uppercase; color: var(--mv-chrome);
+}
+.mv-countdown-clock {
+  font-family: var(--font-syne, sans-serif); font-size: 1rem; font-weight: 800; color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+.mv-countdown-clock i { font-style: normal; font-size: 0.62em; opacity: 0.6; margin: 0 0.1rem 0 0.02rem; }
+.mv-countdown-imminent { border-color: rgba(251,191,36,0.72); }
+.mv-countdown-imminent .mv-countdown-label { color: var(--mv-attention); }
+/* Pulses only inside 24h — the animation IS the signal, so it must not run constantly. */
+.mv-countdown-imminent .mv-countdown-clock { animation: mv-breathe 2.4s ease-in-out infinite; }
+.mv-countdown-past { opacity: 0.62; }
+.mv-countdown-ago { font-size: 0.6em; opacity: 0.7; margin-left: 0.15rem; }
+@keyframes mv-breathe { 0%, 100% { opacity: 1; } 50% { opacity: 0.62; } }
+
+/* ── Signal chips ── */
+.mv-chip {
+  display: inline-flex; align-items: center; gap: 0.22rem;
+  padding: 0.08rem 0.38rem; border-radius: 999px;
+  border: 1px solid var(--mv-hairline); background: var(--mv-surface);
+  font-family: var(--font-mono, monospace); font-size: 0.64rem;
+  letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap;
+  color: rgba(226, 244, 255, 0.85);
+}
+.mv-chip-glyph { font-size: 0.72em; }
+.mv-chip-accelerating, .mv-chip-rank_improving, .mv-chip-top_performer {
+  color: var(--mv-bull); border-color: rgba(52,211,153,0.57);
+}
+.mv-chip-deteriorating, .mv-chip-rank_falling {
+  color: var(--mv-bear); border-color: rgba(251,113,133,0.57);
+}
+.mv-chip-anomaly, .mv-chip-approaching_threshold {
+  color: var(--mv-attention); border-color: rgba(251,191,36,0.62);
+}
+.mv-chip-newly_changed { color: var(--mv-neutral); border-color: rgba(167,139,250,0.62); }
+/* An anomaly is by definition rare, so a persistent pulse here stays informative. */
+.mv-chip-anomaly .mv-chip-glyph { animation: mv-breathe 1.6s ease-in-out infinite; }
+
+/* ── Sparkline ── */
+.mv-spark polyline { fill: none; stroke-width: 1.4; stroke-linejoin: round; stroke-linecap: round; }
+.mv-spark.mv-bull polyline { stroke: var(--mv-bull); }
+.mv-spark.mv-bear polyline { stroke: var(--mv-bear); }
+.mv-spark.mv-neutral polyline { stroke: var(--mv-neutral); }
+
+/* Motion is a communication channel, not decoration — when the user opts out, everything
+   still renders in its final state rather than being stuck mid-reveal. */
+@media (prefers-reduced-motion: reduce) {
+  .mv-halo-seg { animation: none; stroke-dashoffset: 0; }
+  .mv-tape-print { animation: none; opacity: 1; }
+  .mv-countdown-imminent .mv-countdown-clock,
+  .mv-chip-anomaly .mv-chip-glyph { animation: none; }
+  .mv-rail-band, .mv-rail-spot, .mv-beat-bar, .mv-rev-seg, .mv-ladder-row,
+  .mv-target-dot, .mv-tape-print { transition: none; }
+}
+
+/* ═══ MERIDIAN REPORT — the 10-second decision surface ═══════════════════════════════
+   Density ladder: L1 decision (halo + countdown + move rail) → L2 dimension rings →
+   L3 analytics grid → L4 collapsed evidence. The previous version inverted this, putting
+   raw headlines on the primary surface and the verdict in a box. */
+.mr { display: flex; flex-direction: column; gap: 0.7rem; }
+
+/* ── L1 decision ── */
+.mr-decision {
+  display: flex; align-items: center; gap: 1.1rem; flex-wrap: wrap;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--mv-hairline); border-radius: 0.9rem;
+  background:
+    radial-gradient(120% 140% at 8% 0%, rgba(34, 211, 238, 0.07), transparent 62%),
+    var(--mv-surface);
+}
+.mr-decision-body { flex: 1 1 22rem; min-width: 0; display: flex; flex-direction: column; gap: 0.45rem; }
+.mr-decision-top { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
+.mr-headline {
+  margin: 0; font-family: var(--font-syne, sans-serif);
+  font-size: 1.05rem; font-weight: 700; line-height: 1.25; text-wrap: balance;
+}
+.mr-summary { margin: 0; font-size: 0.78rem; line-height: 1.45; color: #bae6fd; max-width: 46rem; }
+
+.mr-dims { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.15rem; }
+.mr-dim {
+  display: flex; align-items: center; gap: 0.35rem;
+  padding: 0.3rem 0.5rem 0.3rem 0.3rem;
+  border: 1px solid var(--mv-hairline); border-radius: 0.6rem;
+  background: rgba(8, 10, 16, 0.5); color: inherit; cursor: pointer;
+  transition: border-color 0.18s ease, background-color 0.18s ease;
+}
+.mr-dim:hover, .mr-dim:focus-visible { border-color: rgba(34,211,238,0.67); background: rgba(34, 211, 238, 0.07); }
+.mr-dim.is-open { border-color: rgba(34,211,238,0.9); background: rgba(34, 211, 238, 0.1); }
+.mr-dim-meta {
+  font-family: var(--font-mono, monospace); font-size: 0.64rem;
+  letter-spacing: 0.08em; color: rgba(125,211,252,0.82); white-space: nowrap;
+}
+
+/* ── L2 drawer (in-context drilldown, never a separate page) ── */
+.mr-drawer {
+  border: 1px solid rgba(34, 211, 238, 0.32); border-radius: 0.7rem;
+  background: rgba(6, 12, 20, 0.9);
+  padding: 0.6rem 0.75rem;
+  animation: mr-drawer-in 0.24s var(--mv-ease);
+}
+@keyframes mr-drawer-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.mr-drawer-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 0.4rem; }
+.mr-drawer-title {
+  font-family: var(--font-mono, monospace); font-size: 0.7rem; font-weight: 700;
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--mv-chrome);
+}
+.mr-drawer-close {
+  border: 0; background: transparent; color: rgba(125,211,252,0.9); cursor: pointer;
+  font-family: var(--font-mono, monospace); font-size: 0.66rem;
+  letter-spacing: 0.1em; text-transform: uppercase;
+}
+.mr-drawer-close:hover { color: #fff; }
+.mr-drawer-foot {
+  margin-top: 0.55rem; padding-top: 0.45rem;
+  border-top: 1px solid rgba(125, 211, 252, 0.12);
+}
+.mr-drawer-jump {
+  border: 0; background: transparent; padding: 0;
+  font-family: var(--font-mono, monospace); font-size: 0.68rem; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase; color: #7dd3fc; cursor: pointer;
+}
+.mr-drawer-jump:hover, .mr-drawer-jump:focus-visible { color: #fff; }
+.mr-drawer-jump:focus-visible { outline: 2px solid rgba(125, 211, 252, 0.45); outline-offset: 2px; }
+.mr-drawer-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.28rem; }
+.mr-drawer-row {
+  display: grid; grid-template-columns: 4px 7.5rem 1fr 2.6rem;
+  align-items: baseline; gap: 0.5rem;
+  font-size: 0.82rem;
+}
+.mr-drawer-lean { align-self: stretch; border-radius: 2px; background: currentColor; }
+.mr-drawer-label {
+  font-family: var(--font-mono, monospace); font-size: 0.7rem;
+  letter-spacing: 0.06em; color: #e2f4ff;
+}
+.mr-drawer-detail { color: rgba(186, 230, 253, 0.85); line-height: 1.35; }
+.mr-drawer-score {
+  font-family: var(--font-mono, monospace); font-size: 0.76rem; font-weight: 700; text-align: right;
+}
+
+/* ── L3 analytics grid ── */
+.mr-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+  gap: 0.6rem;
+}
+.mr-panel {
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--mv-hairline); border-radius: 0.75rem;
+  background: var(--mv-surface);
+  min-width: 0; /* grid children default to min-content — without this a wide rail forces
+                   the whole page to scroll sideways instead of the panel shrinking. */
+}
+.mr-panel-wide { grid-column: 1 / -1; }
+.mr-panel-title {
+  display: block; margin-bottom: 0.5rem;
+  font-family: var(--font-mono, monospace); font-size: 0.7rem; font-weight: 700;
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--mv-chrome);
+}
+.mr-panel > * + * { margin-top: 0.85rem; }
+.mr-play-headline { margin: 0; font-size: 0.86rem; font-weight: 700; line-height: 1.3; }
+.mr-play-structure { margin: 0.3rem 0 0; font-size: 0.72rem; color: #bae6fd; line-height: 1.4; }
+.mr-play-risk {
+  margin: 0.3rem 0 0; font-size: 0.8rem; color: rgba(251, 191, 36, 0.85); line-height: 1.4;
+}
+
+/* ── L4 evidence (collapsed by default) ── */
+.mr-evidence { border-top: 1px solid var(--mv-hairline); padding-top: 0.5rem; }
+.mr-evidence-toggle {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  border: 0; background: transparent; color: rgba(125, 211, 252, 0.85); cursor: pointer;
+  font-family: var(--font-mono, monospace); font-size: 0.7rem;
+  letter-spacing: 0.12em; text-transform: uppercase;
+}
+.mr-evidence-toggle { min-height: 24px; } /* 13px measured live */
+.mr-evidence-toggle:hover { color: #fff; }
+.mr-evidence-caret { font-size: 0.7em; }
+.mr-evidence-count {
+  padding: 0 0.3rem; border-radius: 999px;
+  background: rgba(125, 211, 252, 0.15); font-size: 0.9em;
+}
+.mr-evidence-body {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  gap: 0.7rem; margin-top: 0.5rem;
+}
+.mr-evidence-label {
+  display: block; margin-bottom: 0.25rem;
+  font-family: var(--font-mono, monospace); font-size: 0.66rem;
+  letter-spacing: 0.12em; text-transform: uppercase; color: var(--mv-chrome);
+}
+.mr-evidence-col ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.22rem; }
+.mr-evidence-col li { font-size: 0.82rem; line-height: 1.35; color: rgba(186, 230, 253, 0.82); }
+.mr-evidence-chan { color: rgba(125,211,252,0.77); }
+.mr-disclaimer {
+  margin: 0; font-family: var(--font-mono, monospace); font-size: 0.68rem;
+  color: rgba(125,211,252,0.72); line-height: 1.4;
+}
+
+/* Mobile: the decision block stacks and the halo centres — a focused intelligence feed
+   rather than a squeezed command center. */
+@media (max-width: 640px) {
+  .mr-decision { flex-direction: column; align-items: stretch; gap: 0.75rem; }
+  .mr-halo { align-self: center; }
+  .mr-drawer-row { grid-template-columns: 4px 1fr 2.6rem; }
+  .mr-drawer-detail { grid-column: 2 / -1; }
+}
+
+/* ═══ MERIDIAN SPATIAL LAYER ═════════════════════════════════════════════════════════
+   Depth only where it encodes something. Two views: a ring stack whose layers are three
+   different QUESTIONS separated by Z, and a tilted orbital disc where radius = influence.
+
+   All 3D is CSS transforms on `preserve-3d` parents — compositor-only, zero dependencies,
+   nothing to lazy-load. `.is-spatial` is applied ONLY when the device has a fine pointer and
+   motion is allowed; without it every rule below degrades to the flat diagram, which is the
+   same information at tilt 0 rather than a fallback stub. */
+
+/* ── 3D halo ── */
+/* margin-bottom reserves flow space for .ms-legend, which is positioned outside the box. */
+.ms-halo { position: relative; flex: none; margin-bottom: 1.35rem; }
+.ms-halo-stage { position: absolute; inset: 0; }
+.ms-halo.is-spatial .ms-halo-stage {
+  transform-style: preserve-3d;
+  perspective: 620px;
+  /* --mtx/--mty are written by rAF, never by React state — one property write per frame. */
+  transform: rotateX(var(--mtx, 0deg)) rotateY(var(--mty, 0deg));
+  transition: transform 0.5s var(--mv-ease);
+}
+.ms-halo.is-spatial:hover .ms-halo-stage { transition: none; } /* follow the cursor 1:1 */
+.ms-plane { position: absolute; inset: 0; }
+.ms-halo.is-spatial .ms-plane { transform: translateZ(var(--mz, 0px)); transform-style: preserve-3d; }
+.ms-plane svg { display: block; overflow: visible; }
+.ms-plane-hit {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  border: 0; border-radius: 50%; background: transparent; cursor: pointer; padding: 0;
+}
+.ms-plane-hit:focus-visible { outline: 1px solid rgba(34, 211, 238, 0.7); }
+.ms-track { fill: none; stroke: var(--mv-track); stroke-width: 7; }
+.ms-seg { fill: none; stroke-width: 7; stroke-linecap: round; }
+.ms-seg.mv-bull { stroke: var(--mv-bull); }
+.ms-seg.mv-bear { stroke: var(--mv-bear); }
+.ms-seg.mv-neutral { stroke: var(--mv-neutral); }
+.ms-arc { fill: none; stroke-width: 5; stroke-linecap: round; }
+.ms-arc-agreement { opacity: 0.9; }
+.ms-arc-confidence { stroke-width: 4; opacity: 0.72; stroke-dasharray: 3 4; }
+.ms-arc.mv-bull { stroke: var(--mv-bull); }
+.ms-arc.mv-bear { stroke: var(--mv-bear); }
+.ms-arc.mv-neutral { stroke: var(--mv-neutral); }
+.ms-halo-center {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 0.05rem; pointer-events: none;
+  /* Bounded to the clear area inside the innermost ring (radius 0.62). Without this the
+     agreement line grows past the ring and the two overlap — measured on the render. */
+  padding: 0 22%;
+  text-align: center;
+}
+.ms-halo-center .ms-sub { line-height: 1.15; }
+.ms-verdict {
+  font-family: var(--font-mono, monospace); font-size: 0.68rem; font-weight: 700;
+  letter-spacing: 0.18em; text-transform: uppercase;
+}
+.ms-score {
+  font-family: var(--font-syne, sans-serif); font-size: 2rem; font-weight: 800;
+  line-height: 1; color: #fff; font-variant-numeric: tabular-nums;
+}
+.ms-sub { font-family: var(--font-mono, monospace); font-size: 0.64rem; color: rgba(125,211,252,0.72); }
+.ms-legend {
+  /* Hangs BELOW the halo's square box on purpose (the box is sized to the rings), so the halo
+     reserves flow space for it via margin-bottom — see .ms-halo. Without that reservation the
+     legend printed straight through the next element the moment .mr-decision stacked into a
+     column at narrow widths: measured live at 430px, "Evidence"/"Agreement"/"Confidence" over
+     the verdict headline. */
+  position: absolute; left: 50%; bottom: -1.15rem; transform: translateX(-50%);
+  display: flex; gap: 0.55rem; white-space: nowrap;
+}
+.ms-legend-item {
+  font-family: var(--font-mono, monospace); font-size: 0.58rem;
+  letter-spacing: 0.1em; text-transform: uppercase; color: rgba(148, 220, 255, 0.8);
+}
+/* Ring roles are distinguishable WITHOUT the tilt — depth reinforces, it does not carry alone.
+   Outer solid = evidence, mid solid-thin = agreement, inner dashed = confidence. */
+
+/* ── Orbital system ── */
+.ms-orbital { position: relative; flex: none; margin: 0 auto; }
+.ms-orbital-guides { position: absolute; inset: 0; }
+.ms-orbit-guide { fill: none; stroke: rgba(125, 211, 252, 0.1); stroke-width: 1; }
+.ms-orbital-core {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  display: flex; flex-direction: column; align-items: center; gap: 0.2rem; pointer-events: none;
+}
+.ms-core-dot {
+  width: 12px; height: 12px; border-radius: 50%; background: currentColor;
+  box-shadow: 0 0 14px currentColor;
+}
+.ms-core-label {
+  font-family: var(--font-mono, monospace); font-size: 0.42rem;
+  letter-spacing: 0.2em; color: rgba(125, 211, 252, 0.6);
+}
+.ms-orb {
+  position: absolute; transform: translate(-50%, -50%);
+  border-radius: 50%; border: 1px solid currentColor; padding: 0;
+  background: radial-gradient(circle at 34% 30%, currentColor, transparent 78%);
+  cursor: pointer;
+  /* transform/opacity only — position is written inline per frame but both are composited. */
+  transition: opacity 0.2s ease, box-shadow 0.2s ease;
+}
+.ms-orb.is-hot { box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.25), 0 0 18px currentColor; }
+.ms-orb.is-dim { filter: saturate(0.45); }
+.ms-orb:focus-visible { outline: 1px solid rgba(34, 211, 238, 0.8); outline-offset: 2px; }
+.ms-orb-label {
+  /* Projected onto the shared rim ring by --lx/--ly, then anchored by --lanchor so the text
+     reads OUTWARD from the disc: nodes on the right start at the rim, nodes on the left end at
+     it, nodes near top/bottom centre on it. Anything else runs the text back across the
+     diagram and over the core. */
+  position: absolute; left: 50%; top: 50%;
+  transform: translate(var(--lanchor, -50%), -50%) translate(var(--lx, 0), var(--ly, 14px));
+  font-family: var(--font-mono, monospace); font-size: 0.52rem;
+  letter-spacing: 0.04em; white-space: nowrap; color: rgba(232, 248, 255, 0.96);
+  pointer-events: none;
+  /* Capped so a long pillar name cannot push into its neighbour's slot; the full text is
+     already on the button's title + aria-label, and hover below restores it in place. */
+  max-width: var(--orb-label-max, 84px); overflow: hidden; text-overflow: ellipsis;
+  /* A faint plate keeps a label legible where it still crosses an orbit guide or a neighbour. */
+  padding: 0 2px; border-radius: 2px; background: rgba(5, 5, 8, 0.62);
+}
+/* Hovering one orb mutes every other label, so a crowded rim is always readable on demand
+   even when the static layout is dense. */
+.ms-orbital:hover .ms-orb:not(:hover) .ms-orb-label { opacity: 0.25; }
+.ms-orb:hover .ms-orb-label {
+  opacity: 1; z-index: 200; background: rgba(5, 5, 8, 0.92);
+  max-width: none; overflow: visible;
+}
+.ms-orb.is-dim .ms-orb-label { opacity: 0.35; }
+/* An orb's drawn size ENCODES its contribution, so it must not be inflated to meet the 24px
+   minimum touch target. Instead an invisible pad extends the hit area around it — the mark
+   keeps telling the truth and the control is still reachable with a thumb. */
+.ms-orb::after {
+  content: ""; position: absolute; top: 50%; left: 50%;
+  width: 26px; height: 26px; transform: translate(-50%, -50%);
+}
+.ms-orbital-key {
+  position: absolute; left: 0; right: 0; bottom: -0.2rem; margin: 0; text-align: center;
+  font-family: var(--font-mono, monospace); font-size: 0.58rem;
+  letter-spacing: 0.05em; color: rgba(125, 211, 252, 0.5);
+}
+
+/* Reduced motion / coarse pointer: `.is-spatial` is never applied, so no transform runs and
+   the diagram renders flat and complete. This block is belt-and-braces for the transition. */
+@media (prefers-reduced-motion: reduce) {
+  .ms-halo-stage, .ms-orb { transition: none; }
+}
+@media (max-width: 640px) {
+  /* Mobile keeps the orbital as a readable flat diagram — the tilt would be driven by a
+     pointer that does not exist, and the labels need the room. */
+  .ms-orbital-key { position: static; margin-top: 0.4rem; }
+}
+
+/* A panel whose every child rendered null still painted its border and padding, leaving an
+   empty bordered box on the grid (observed live: the revision/target panel on a name with
+   neither). The primitives are right to return null — "no data, no mark" — so the SHELL has to
+   disappear too. :empty is exact here: a component that renders null contributes no node. */
+.mr-panel:empty { display: none; }
+
+.mr-panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
+.mr-panel-head .mr-panel-title { margin-bottom: 0; }
+.mr-panel-toggle {
+  border: 1px solid var(--mv-hairline); border-radius: 0.3rem;
+  padding: 0.08rem 0.4rem; background: transparent; color: var(--mv-chrome); cursor: pointer;
+  /* Measured 46x16 live — the type is small by design, the target must not be. */
+  min-height: 24px;
+  font-family: var(--font-mono, monospace); font-size: 0.64rem;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  transition: background-color 0.16s ease;
+}
+.mr-panel-toggle:hover { background: rgba(34, 211, 238, 0.12); }
+/* The orbital needs breathing room for its labels; it also carries its own bottom key line. */
+.mr-panel-orbital { display: flex; flex-direction: column; gap: 0.6rem; padding-bottom: 1.4rem; }
+.mr-panel-orbital > * + * { margin-top: 0; }
+
+/* ═══ MERIDIAN ESTIMATES ═════════════════════════════════════════════════════════════ */
+.mv-traj-rows { display: flex; flex-direction: column; gap: 0.2rem; margin-top: 0.5rem; }
+.mv-traj-row {
+  display: grid; grid-template-columns: 3.6rem 1fr 3.6rem 3.4rem;
+  align-items: center; gap: 0.45rem;
+  padding: 0.16rem 0.28rem; border: 0; border-radius: 0.32rem;
+  /* These rows are clickable (they open the print), so they carry the 24px minimum target
+     height even though the type is small — measured at 19px live. */
+  min-height: 24px;
+  background: transparent; color: inherit; text-align: left; cursor: pointer;
+  font-family: var(--font-mono, monospace); font-size: 0.72rem;
+  transition: background-color 0.16s ease;
+}
+.mv-traj-row:disabled { cursor: default; }
+.mv-traj-row:hover:not(:disabled) { background: rgba(125, 211, 252, 0.07); }
+.mv-traj-period { color: rgba(125,211,252,0.9); }
+.mv-traj-bars { position: relative; height: 12px; }
+/* The estimate is an outline the actual fills — one shared baseline, so the comparison is a
+   direct length read rather than two bars the eye has to align. */
+.mv-traj-est {
+  position: absolute; inset: 0; border-radius: 3px;
+  border: 1px solid rgba(125, 211, 252, 0.4); background: rgba(125, 211, 252, 0.07);
+  transform-origin: left center; transition: transform 0.45s var(--mv-ease);
+}
+.mv-traj-act {
+  position: absolute; top: 3px; bottom: 3px; left: 0; right: 0; border-radius: 2px;
+  transform-origin: left center; transition: transform 0.45s var(--mv-ease);
+}
+.mv-traj-act.mv-bull { background: var(--mv-bull); }
+.mv-traj-act.mv-bear { background: var(--mv-bear); }
+.mv-traj-act.mv-neutral { background: rgba(167, 139, 250, 0.6); }
+/* A forward period is dashed and dimmed — "not reported" must never read as "came in at 0". */
+.mv-traj-row.is-forward .mv-traj-est { border-style: dashed; opacity: 0.75; }
+.mv-traj-val { text-align: right; color: #e2f4ff; font-weight: 700; }
+.mv-traj-surprise { text-align: right; font-weight: 700; }
+.mv-traj-row.is-forward .mv-traj-surprise { color: rgba(125,211,252,0.77); font-weight: 400; }
+
+/* Dispersion */
+.mv-disp-track {
+  position: relative; height: 22px; border-radius: 999px;
+  background: var(--mv-track); border: 1px solid var(--mv-hairline);
+}
+.mv-disp-span {
+  position: absolute; top: 50%; height: 6px; border-radius: 999px;
+  background: rgba(167, 139, 250, 0.4); transform: translateY(-50%);
+}
+.mv-disp-median {
+  position: absolute; top: 3px; bottom: 3px; width: 2px;
+  background: var(--mv-neutral); transform: translateX(-50%);
+}
+.mv-disp .mv-rail-bounds { margin-top: 0.4rem; }
+/* The dispersion rail has no absolutely-positioned labels hanging below it, so it needs only
+   its own bottom clearance — but the panel's last child otherwise sits flush against the
+   border and the bound labels clipped. Measured on the render. */
+.mv-disp { padding-bottom: 0.15rem; }
+
+/* YoY */
+.me-yoy-rows { display: flex; flex-direction: column; gap: 0.4rem; margin-top: 0.5rem; }
+.me-yoy-row {
+  display: grid; grid-template-columns: 4.2rem 1fr 4rem; align-items: center; gap: 0.5rem;
+  font-family: var(--font-mono, monospace); font-size: 0.72rem;
+}
+.me-yoy-label { color: rgba(125,211,252,0.9); letter-spacing: 0.08em; text-transform: uppercase; }
+.me-yoy-track {
+  position: relative; height: 10px; border-radius: 999px;
+  background: var(--mv-track); overflow: hidden;
+}
+/* Zero anchored at the CENTRE so growth and contraction extend opposite ways. */
+.me-yoy-zero {
+  position: absolute; top: 0; bottom: 0; left: 50%; width: 1px;
+  background: rgba(125, 211, 252, 0.35);
+}
+.me-yoy-bar {
+  position: absolute; top: 2px; bottom: 2px; border-radius: 999px;
+  transition: width 0.45s var(--mv-ease);
+}
+.me-yoy-bar.mv-bull { background: var(--mv-bull); }
+.me-yoy-bar.mv-bear { background: var(--mv-bear); }
+.me-yoy-val { text-align: right; font-weight: 700; }
+.me-yoy-cap { opacity: 0.6; }
+
+.me-guidance { list-style: none; margin: 0.4rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.25rem; }
+.me-guidance li { font-family: var(--font-mono, monospace); font-size: 0.76rem; color: #e2f4ff; }
+.me-gated {
+  margin: 0.4rem 0 0; font-family: var(--font-mono, monospace); font-size: 0.7rem;
+  color: rgba(251,191,36,0.9); line-height: 1.4;
+}
+
+/* ═══ MERIDIAN POSITIONING + HISTORY ═════════════════════════════════════════════════ */
+.mv-strikes-rows { display: flex; flex-direction: column; gap: 0.14rem; margin-top: 0.5rem; }
+.mv-strike-row {
+  display: grid; grid-template-columns: 3.4rem 1fr 3.2rem; align-items: center; gap: 0.4rem;
+  padding: 0.1rem 0.24rem; border: 0; border-radius: 0.28rem;
+  background: transparent; color: rgba(226,244,255,0.9); text-align: left; cursor: pointer;
+  font-family: var(--font-mono, monospace); font-size: 0.68rem;
+  transition: background-color 0.16s ease;
+}
+.mv-strike-row:disabled { cursor: default; }
+.mv-strike-row:hover:not(:disabled), .mv-strike-row:focus-visible { background: rgba(125,211,252,0.08); }
+.mv-strike-row.is-spot { background: rgba(34, 211, 238, 0.1); }
+.mv-strike-row.is-spot .mv-strike-k { color: #fff; font-weight: 700; }
+.mv-strike-k { color: rgba(125,211,252,0.8); }
+.mv-strike-track { position: relative; height: 9px; border-radius: 3px; background: var(--mv-track); }
+.mv-strike-zero { position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; background: rgba(125,211,252,0.35); }
+.mv-strike-bar { position: absolute; top: 1px; bottom: 1px; border-radius: 2px; transition: width 0.4s var(--mv-ease); }
+.mv-strike-bar.mv-bull { background: var(--mv-bull); }
+.mv-strike-bar.mv-bear { background: var(--mv-bear); }
+.mv-strike-bar.mv-neutral { background: rgba(167,139,250,0.5); }
+.mv-strike-pct { text-align: right; font-weight: 700; }
+
+/* Implied vs realized */
+.mv-ivr { max-width: 56rem; }
+.mv-ivr-track {
+  position: relative; height: 30px; margin-top: 0.2rem;
+  border-radius: 999px; background: var(--mv-track); border: 1px solid var(--mv-hairline);
+}
+.mv-ivr-tick {
+  position: absolute; top: 8px; bottom: 8px; width: 2px; border-radius: 1px;
+  background: rgba(125, 211, 252, 0.65); transform: translateX(-50%);
+}
+.mv-ivr-median {
+  position: absolute; top: 3px; bottom: 3px; width: 2px;
+  background: var(--mv-neutral); transform: translateX(-50%);
+}
+.mv-ivr-implied {
+  position: absolute; top: -3px; bottom: -3px; width: 3px; border-radius: 2px;
+  background: currentColor; transform: translateX(-50%);
+  box-shadow: 0 0 10px currentColor;
+}
+.mv-ivr-legend {
+  /* Gap-packed, not space-between. On a full-width panel space-between throws the three
+     readings to opposite ends of ~1400px, so the eye has to travel to relate "implied 6%" to
+     "median 1.82%" — the exact comparison the panel exists to make. */
+  display: flex; gap: 1.4rem; margin-top: 0.45rem; flex-wrap: wrap;
+  font-family: var(--font-mono, monospace); font-size: 0.68rem;
+  color: rgba(186, 230, 253, 0.8);
+}
+.mv-ivr-legend b { font-weight: 700; }
+
+/* Flow strip */
+.mp-flow-net {
+  margin: 0.4rem 0 0.3rem; font-family: var(--font-mono, monospace); font-size: 0.72rem; color: #e2f4ff;
+}
+.mp-flow-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.16rem; }
+.mp-flow-list li {
+  display: grid; grid-template-columns: 2.4rem 3.2rem 1fr 2.4rem; gap: 0.4rem;
+  font-family: var(--font-mono, monospace); font-size: 0.68rem; color: rgba(226,244,255,0.88);
+}
+.mp-flow-dte { text-align: right; color: rgba(125,211,252,0.82); }
+
+/* Beat rates */
+.mh-rates { display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.5rem; }
+.mh-rate {
+  display: grid; grid-template-columns: 4.4rem 1fr 2.6rem; align-items: center; gap: 0.5rem;
+  font-family: var(--font-mono, monospace); font-size: 0.7rem;
+}
+.mh-rate-label { color: rgba(125,211,252,0.9); letter-spacing: 0.08em; text-transform: uppercase; }
+.mh-rate-track { position: relative; height: 9px; border-radius: 999px; background: var(--mv-track); overflow: hidden; }
+.mh-rate-fill {
+  position: absolute; inset: 0; border-radius: 999px;
+  transform-origin: left center; transition: transform 0.45s var(--mv-ease);
+}
+.mh-rate-fill.mv-bull { background: var(--mv-bull); }
+.mh-rate-fill.mv-bear { background: var(--mv-bear); }
+.mh-rate-fill.mv-neutral { background: rgba(167,139,250,0.6); }
+.mh-rate-val { text-align: right; font-weight: 700; }
+.mh-summary { margin: 0.4rem 0 0; font-size: 0.72rem; line-height: 1.45; color: #bae6fd; }
+
+/* Lane note — says the timeline filtered itself, so a shorter list cannot be mistaken for a
+   broken feed. Quiet, but not invisible: it is an explanation, not a warning. */
+.meridian-lane-note {
+  margin: 0.35rem 0 0; padding: 0.3rem 0.5rem;
+  border-left: 2px solid rgba(125, 211, 252, 0.35); border-radius: 0 0.25rem 0.25rem 0;
+  background: rgba(125, 211, 252, 0.06);
+  font-family: var(--font-mono, monospace); font-size: 0.78rem; line-height: 1.35;
+  color: rgba(186, 230, 253, 0.85);
+}
+
+/* ═══ PER-TAB IDENTITY ═══════════════════════════════════════════════════════════════
+   Every tab used the same cyan chrome, so REPORT and HISTORY were indistinguishable at a
+   glance and a reader who looked away lost their place. Each section now owns a hue, and the
+   hue is not decorative — it is the same one the tab button carries, so the strip in the header
+   and the panel titles below always agree on where you are.
+
+   The hues are assigned by what the section IS, not picked for variety:
+     REPORT      cyan    — the verdict, the desk's primary voice
+     ESTIMATES   violet  — the street's numbers, not ours
+     POSITIONING amber   — dealer structure and risk; the colour the desk already uses for
+                           attention elsewhere
+     HISTORY     emerald — settled facts, already graded
+   Semantic bull/bear colours are untouched: a green number still means a green number. */
+.meridian-earnings-tabs[data-tab="report"]      { --tab-hue: 34, 211, 238; }
+.meridian-earnings-tabs[data-tab="estimates"]   { --tab-hue: 167, 139, 250; }
+.meridian-earnings-tabs[data-tab="positioning"] { --tab-hue: 251, 191, 36; }
+.meridian-earnings-tabs[data-tab="history"]     { --tab-hue: 52, 211, 153; }
+
+/* Panel titles and section kickers take the active section's hue. */
+.meridian-earnings-tabs .mr-panel-title,
+.meridian-earnings-tabs .mv-rail-title,
+.meridian-earnings-tabs .mv-panel-title {
+  color: rgb(var(--tab-hue, 34, 211, 238));
+}
+/* A hairline of the same hue on each panel's top edge — enough to group the grid as one
+   section without repainting every border. */
+.meridian-earnings-tabs .mr-panel {
+  border-top: 1px solid rgba(var(--tab-hue, 34, 211, 238), 0.28);
+}
+
+/* The tab buttons carry their own hue even when inactive, so the strip reads as four
+   destinations rather than one control with a moving highlight. */
+.meridian-earnings-tab-report      { --tab-hue: 34, 211, 238; }
+.meridian-earnings-tab-estimates   { --tab-hue: 167, 139, 250; }
+.meridian-earnings-tab-positioning { --tab-hue: 251, 191, 36; }
+.meridian-earnings-tab-history     { --tab-hue: 52, 211, 153; }
+.meridian-earnings-tab {
+  color: rgba(var(--tab-hue), 0.72);
+  border: 1px solid rgba(var(--tab-hue), 0.22);
+}
+.meridian-earnings-tab:hover { color: rgba(var(--tab-hue), 0.95); border-color: rgba(var(--tab-hue), 0.45); }
+.meridian-earnings-tab.is-active {
+  color: #06121a;
+  background: rgb(var(--tab-hue));
+  border-color: rgb(var(--tab-hue));
+  font-weight: 700;
+}
+
+/* ── Compact detail header ──────────────────────────────────────────────────────────
+   Kind, name and timing on ONE line. The reader chose this event from the lane a second
+   ago; the header confirms which one, it does not re-announce it. */
+.meridian-detail-head-v2 { align-items: center; gap: 1rem; margin-bottom: 0.6rem; padding-bottom: 0.55rem; }
+.meridian-detail-head-main { min-width: 0; }
+.meridian-detail-title-v2 {
+  display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.55rem;
+  font-size: clamp(1.1rem, 1.9vw, 1.4rem); margin: 0;
+}
+.meridian-detail-title-v2 .meridian-detail-kicker,
+.meridian-detail-title-v2 .meridian-detail-meta {
+  font-weight: 600; letter-spacing: 0.1em;
+}
+.meridian-detail-title-v2 .meridian-detail-meta {
+  font-family: var(--font-mono, monospace); font-size: 0.72rem;
+  letter-spacing: 0.04em; color: #9fd8f7;
+}
+.meridian-earnings-tablist { margin-bottom: 0; flex-wrap: nowrap; }
+
+/* Refresh has to LOOK like it did something — a refetch that returns identical cached data is
+   otherwise indistinguishable from a dead button. */
+.meridian-refresh-btn.is-busy { opacity: 0.65; cursor: progress; }
+
+/* Numbers are the product. Tabular figures so columns line up, and a real weight so a value
+   never reads lighter than the word labelling it. */
+.mv-traj-val, .mv-beat-val, .me-yoy-val, .mr-metric-val, .mv-rail-pct, .mv-tape-total,
+.mv-target-val, .mv-ladder-val, .mv-dispersion-val, .ms-score {
+  font-variant-numeric: tabular-nums; font-weight: 700;
+}
+
+/* ═══ TYPE SYSTEM ════════════════════════════════════════════════════════════════════
+   --font-mono was NEVER DEFINED. This stylesheet asks for it 78 times; the real variable
+   next/font injects is --font-jetbrains. Every "mono" label, ticker and number on this desk
+   has therefore been falling through to the browser's default monospace — Courier-ish on most
+   machines — which is most of why the type read as cheap and inconsistent next to the rest of
+   the app. Aliasing it here fixes all 78 at once, and keeps the shorter name the rules already
+   use rather than churning every one of them.
+
+   THREE TYPOGRAPHIC ROLES, so a header can never be mistaken for the number under it:
+     LABEL  mono, small, uppercase, letterspaced, section hue    — what this is
+     VALUE  Syne, large, near-white, tabular figures             — the number itself
+     PROSE  Inter, comfortable, muted                            — the sentence about it
+   Before this, all three were the same family at nearly the same size and colour, which is
+   exactly the "everything looks the same" the desk was reported with. */
+:root {
+  --font-mono: var(--font-jetbrains, ui-monospace, "SFMono-Regular", Menlo, monospace);
+  --mv-label: var(--font-mono);
+  --mv-value: var(--font-syne, var(--font-body));
+  --mv-prose: var(--font-body);
+}
+
+/* LABEL role */
+.mr-panel-title, .mv-rail-title, .meridian-card-label, .meridian-analytics-banner-label,
+.mv-panel-title, .meridian-kv-label {
+  font-family: var(--mv-label);
+  font-size: 0.7rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+}
+
+/* VALUE role — the number is the product, so it gets the display face and the contrast. */
+.meridian-kv-value, .meridian-analytics-banner-sub, .mv-traj-val, .mv-beat-val, .me-yoy-val {
+  font-family: var(--mv-value);
+  font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.01em;
+  color: #f2fbff;
+}
+
+/* PROSE role */
+.mr-summary, .meridian-card-muted, .mv-note, .mr-play-structure, .mr-play-risk {
+  font-family: var(--mv-prose); line-height: 1.5;
+}
+
+/* ── Label → value rows ─────────────────────────────────────────────────────────────
+   The card lists were single strings, so the number sat mid-sentence in the left third of a
+   wide card and the rest of the row was blank. Splitting the pair puts every value in one
+   right-hand COLUMN — scannable down the card, comparable between rows — and the leader keeps
+   a label tied to its value across the gap. */
+.meridian-kv {
+  display: grid; grid-template-columns: auto 1fr auto; align-items: baseline;
+  gap: 0.5rem; padding: 0.22rem 0; min-height: 24px;
+  border-bottom: 1px solid rgba(125, 211, 252, 0.07);
+}
+.meridian-kv:last-child { border-bottom: 0; }
+.meridian-kv-label { color: rgba(var(--tab-hue, 125, 211, 252), 0.85); }
+.meridian-kv-note {
+  font-family: var(--mv-label); font-size: 0.62rem; font-weight: 600;
+  letter-spacing: 0.08em; color: rgba(148, 200, 230, 0.6); text-transform: none;
+}
+.meridian-kv-leader {
+  border-bottom: 1px dotted rgba(125, 211, 252, 0.22);
+  transform: translateY(-0.18em);
+}
+.meridian-kv-value { font-size: 0.96rem; white-space: nowrap; }
+.meridian-kv-value.mv-bull { color: var(--mv-bull, #34d399); }
+.meridian-kv-value.mv-bear { color: var(--mv-bear, #fb7185); }
+
+/* Banner value pulled to the right edge — these ran a short line down the left and left two
+   thirds of the row empty.
+
+   THE SUB IS TWO DIFFERENT KINDS OF CONTENT, and the old rule only worked for one of them.
+   `MeridianAnalyticsBanner`'s `sub` is a short VALUE readout on the Expected-move banner
+   ("126.39 - 134.21 (chain_iv)", 24 chars) and a full SENTENCE on the Play-read banner
+   ("If playing directionally, keep risk inside the ~3% options-implied band · king node…",
+   86 chars). It was `flex: none` (cannot shrink) plus `white-space: nowrap` (cannot wrap), so a
+   long sub stayed rigid at its max-content width and the BODY absorbed every pixel of shrinkage.
+   Measured live on prod 2026-08-21, desktop 1440, Positioning tab:
+
+     Play read      bannerW 1005  bodyW    0  headlineLines 7  sub 1031px  -> 96px past the box
+     Expected move  bannerW 1005  bodyW  640  headlineLines 1  sub  294px  -> fits
+
+   `bodyW: 0` is the label and headline squeezed out of existence, which is why "PLAY READ" and
+   "Imminent print" printed one word per line down a sliver, and the sentence itself ran under
+   `overflow: hidden` and was cut mid-word.
+
+   The 640px media query below already described this exact failure — "the value wraps under
+   rather than squeezing the headline to nothing" — but gated the cure on VIEWPORT WIDTH. The
+   trigger is not the viewport; it is the sub being longer than the room left beside the headline,
+   which happens at 1440px too. So the wrap is now unconditional and the sub may wrap its own text.
+   `white-space: normal` breaks at SPACES only (no `overflow-wrap: anywhere`), so a numeric readout
+   like "126.39 - 134.21" still never splits inside a number. */
+.meridian-analytics-banner { align-items: center; flex-wrap: wrap; }
+/* A basis, not just `auto`: it is the floor that stops the label/headline collapsing to nothing. */
+.meridian-analytics-banner-body { flex: 1 1 12rem; min-width: 0; }
+.meridian-analytics-banner-sub {
+  margin: 0;
+  /* Shrinkable and wrappable — the two properties whose absence caused the overflow. */
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  text-align: right; font-size: 1.02rem; white-space: normal;
+}
+@media (max-width: 640px) {
+  /* Left-align once the value has a row of its own; the wrap itself is now unconditional. */
+  .meridian-analytics-banner-sub { text-align: left; font-size: 0.92rem; }
+}
+
+/* A feed that failed says so. An empty panel is a CLAIM about the company; this is a statement
+   about us, and the two must never look alike. */
+.meridian-feed-error {
+  margin: 0 0 0.6rem; padding: 0.5rem 0.7rem;
+  border: 1px solid rgba(251, 191, 36, 0.35); border-left-width: 3px; border-radius: 0.4rem;
+  background: rgba(251, 191, 36, 0.07);
+  font-family: var(--mv-prose); font-size: 0.78rem; line-height: 1.45; color: #fde3a7;
+}
+
+/* ═══ SUMMARY TAB ════════════════════════════════════════════════════════════════════
+   Two ideas, always both. On a split book neither is promoted; on a one-sided book the losing
+   side recedes but stays visible, because "weak" and "absent" are different statements. */
+.meridian-earnings-tabs[data-tab="summary"] { --tab-hue: 244, 114, 182; }
+.meridian-earnings-tab-summary { --tab-hue: 244, 114, 182; }
+
+.msum { display: flex; flex-direction: column; gap: 0.85rem; }
+.msum-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.msum-headline {
+  margin: 0.25rem 0 0; font-family: var(--mv-value);
+  font-size: 1.05rem; font-weight: 800; line-height: 1.3; text-wrap: balance;
+}
+
+.msum-inputs { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0; padding: 0; list-style: none; }
+.msum-input {
+  font-family: var(--mv-label); font-size: 0.64rem; letter-spacing: 0.08em; text-transform: uppercase;
+  color: rgba(148, 180, 200, 0.5);
+}
+.msum-input.is-on { color: rgba(125, 211, 252, 0.95); }
+
+.msum-contested {
+  margin: 0; padding: 0.55rem 0.75rem;
+  border: 1px solid rgba(244, 114, 182, 0.4); border-left-width: 3px; border-radius: 0.4rem;
+  background: rgba(244, 114, 182, 0.08);
+  font-family: var(--mv-prose); font-size: 0.8rem; line-height: 1.45; color: #ffd9ef;
+}
+
+.msum-ideas { display: grid; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr)); gap: 0.75rem; }
+.msum-idea {
+  display: flex; flex-direction: column; gap: 0.6rem;
+  padding: 0.85rem 0.95rem; border-radius: 0.7rem;
+  border: 1px solid var(--mv-hairline); background: var(--mv-surface);
+  transition: opacity 0.25s var(--mv-ease);
+}
+/* Receding, not hiding: the reader can still see the other side and why it lost. */
+.msum-idea.is-muted { opacity: 0.55; }
+.msum-idea.is-muted:hover, .msum-idea.is-muted:focus-within { opacity: 1; }
+.msum-idea-call { border-top: 2px solid rgba(52, 211, 153, 0.5); }
+.msum-idea-put { border-top: 2px solid rgba(251, 113, 133, 0.5); }
+.msum-idea-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.6rem; flex-wrap: wrap; }
+.msum-idea-side { font-family: var(--mv-label); font-size: 0.9rem; font-weight: 800; letter-spacing: 0.16em; }
+.msum-idea-level { font-family: var(--mv-label); font-size: 0.76rem; color: #cfe9f8; }
+.msum-idea-level b { font-family: var(--mv-value); font-size: 0.95rem; font-variant-numeric: tabular-nums; }
+.msum-idea-src { color: rgba(148, 200, 230, 0.65); }
+
+.msum-prob { display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
+.msum-prob-val {
+  font-family: var(--mv-value); font-size: 2.1rem; font-weight: 800; line-height: 1;
+  font-variant-numeric: tabular-nums; color: #fff;
+}
+/* The label carries the honesty: a distribution statement, never "chance of profit". */
+.msum-prob-label {
+  font-family: var(--mv-label); font-size: 0.66rem; letter-spacing: 0.06em;
+  color: rgba(160, 205, 232, 0.85); max-width: 15rem; line-height: 1.35;
+}
+
+.msum-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin: 0; }
+.msum-metrics dt {
+  font-family: var(--mv-label); font-size: 0.6rem; letter-spacing: 0.09em; text-transform: uppercase;
+  color: rgba(148, 200, 230, 0.72);
+}
+.msum-metrics dd {
+  margin: 0.15rem 0 0; font-family: var(--mv-value); font-size: 0.9rem; font-weight: 700;
+  font-variant-numeric: tabular-nums; color: #eaf7ff;
+}
+.msum-thin { font-family: var(--mv-label); font-size: 0.62rem; color: rgba(148, 200, 230, 0.6); font-weight: 500; }
+
+.msum-conf { display: flex; align-items: center; gap: 0.5rem; }
+.msum-conf-bar { flex: 1; height: 6px; border-radius: 999px; background: var(--mv-track); overflow: hidden; }
+.msum-conf-fill { display: block; height: 100%; background: currentColor; transition: width 0.45s var(--mv-ease); }
+.msum-conf-val { font-family: var(--mv-value); font-size: 0.82rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+.msum-why { margin: 0; padding-left: 1rem; display: flex; flex-direction: column; gap: 0.22rem; }
+.msum-why li { font-family: var(--mv-prose); font-size: 0.76rem; line-height: 1.4; color: #b9dcf0; }
+.msum-idea-foot { margin: 0; }
+
+.msum-levels { display: flex; flex-direction: column; gap: 0.3rem; }
+.msum-level-rows { list-style: none; margin: 0; padding: 0; }
+.msum-level {
+  display: grid; grid-template-columns: auto 1fr auto; align-items: baseline; gap: 0.5rem;
+  padding: 0.22rem 0; min-height: 24px;
+}
+.msum-level-label { font-family: var(--mv-label); font-size: 0.68rem; letter-spacing: 0.09em; text-transform: uppercase; color: rgba(148, 200, 230, 0.8); }
+.msum-level-leader { border-bottom: 1px dotted rgba(125, 211, 252, 0.2); transform: translateY(-0.18em); }
+.msum-level-val { font-family: var(--mv-value); font-size: 0.92rem; font-weight: 800; font-variant-numeric: tabular-nums; color: #f2fbff; }
+.msum-level-spot .msum-level-val { color: #22d3ee; }
+.msum-level-wall .msum-level-label { color: rgba(251, 191, 36, 0.9); }
+
+.msum-note { margin: 0; font-family: var(--mv-prose); font-size: 0.78rem; line-height: 1.45; color: #a9cfe6; }
+
+/* Expiry scope badge. An event-scoped level and a whole-book aggregate look identical, so the
+   difference is spelled out — and the aggregate is the one that gets the warning colour,
+   because it is the one that may be describing a chain that dies before the print. */
+.mr-scope {
+  display: inline-block; margin-left: 0.5rem; padding: 0.1rem 0.4rem; border-radius: 0.25rem;
+  font-family: var(--mv-label); font-size: 0.62rem; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: none;
+}
+.mr-scope-event_expiry { color: #7ef0c0; background: rgba(52, 211, 153, 0.12); border: 1px solid rgba(52, 211, 153, 0.35); }
+.mr-scope-aggregate { color: #fcd9a0; background: rgba(251, 191, 36, 0.1); border: 1px solid rgba(251, 191, 36, 0.35); }
+
+/* The number rides with the label on rail markers. */
+.mv-rail-marker-num { font-family: var(--mv-value); font-weight: 800; font-variant-numeric: tabular-nums; color: #f2fbff; }
+
+/* ── Meridian sector-peer cohort ──────────────────────────────────────────────────────
+   The strip is scaled to the COHORT's own range, so the spread the panel exists to show
+   fills the width instead of bunching against one edge. Every peer's number is printed in
+   the rows below — the dots position, the rows state. */
+.mpeer { display: flex; flex-direction: column; gap: 0.5rem; }
+.mpeer-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.6rem; }
+.mpeer-sector {
+  font-family: var(--mv-label); font-size: 0.64rem; letter-spacing: 0.1em; text-transform: uppercase;
+  font-weight: 700; color: #7dd3fc;
+}
+.mpeer-verdict {
+  margin: 0; font-family: var(--mv-prose); font-size: 0.82rem; line-height: 1.45; color: #d7eefb;
+}
+.mpeer-strip {
+  position: relative; height: 34px; margin: 0.15rem 0 0.9rem;
+  border-radius: 6px; background: var(--mv-track);
+}
+.mpeer-iqr {
+  position: absolute; top: 0; bottom: 12px; border-radius: 4px;
+  background: rgba(125, 211, 252, 0.16); border-inline: 1px solid rgba(125, 211, 252, 0.35);
+}
+.mpeer-median {
+  position: absolute; top: 0; bottom: 12px; width: 2px; margin-left: -1px;
+  background: rgba(125, 211, 252, 0.85);
+}
+.mpeer-dot {
+  position: absolute; top: 7px; width: 9px; height: 9px; margin-left: -4.5px;
+  border-radius: 50%; background: rgba(203, 232, 248, 0.72);
+}
+.mpeer-dot.is-subject {
+  width: 14px; height: 14px; margin-left: -7px; top: 4px;
+  background: #fbbf24; box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.22);
+}
+.mpeer-axis {
+  position: absolute; left: 0; right: 0; bottom: -2px;
+  display: flex; justify-content: space-between;
+}
+.mpeer-axis b {
+  font-family: var(--mv-value); font-size: 0.68rem; font-weight: 700;
+  font-variant-numeric: tabular-nums; color: rgba(148, 200, 230, 0.75);
+}
+.mpeer-rows { list-style: none; margin: 0; padding: 0; }
+.mpeer-row {
+  display: grid; grid-template-columns: auto 1fr auto; align-items: baseline;
+  gap: 0.6rem; padding: 0.2rem 0; border-bottom: 1px solid rgba(125, 211, 252, 0.07);
+}
+.mpeer-row.is-subject .mpeer-tkr, .mpeer-row.is-subject .mpeer-val { color: #fbbf24; }
+.mpeer-row.is-clickable { padding: 0; border-bottom: none; }
+.mpeer-row-hit {
+  display: grid; grid-template-columns: auto 1fr auto; align-items: baseline;
+  gap: 0.6rem; width: 100%; padding: 0.2rem 0;
+  border: none; border-bottom: 1px solid rgba(125, 211, 252, 0.07);
+  background: transparent; text-align: left; cursor: pointer;
+  color: inherit; font: inherit;
+}
+.mpeer-row-hit:hover .mpeer-tkr, .mpeer-row-hit:focus-visible .mpeer-tkr { color: #7dd3fc; }
+.mpeer-row-hit:focus-visible { outline: 2px solid rgba(125, 211, 252, 0.45); outline-offset: 2px; }
+.mpeer-tkr {
+  font-family: var(--mv-label); font-size: 0.76rem; font-weight: 700; letter-spacing: 0.06em;
+  color: #eaf7ff;
+}
+.mpeer-when {
+  font-family: var(--mv-label); font-size: 0.62rem; color: rgba(148, 200, 230, 0.55);
+}
+.mpeer-val {
+  font-family: var(--mv-value); font-size: 0.95rem; font-weight: 800;
+  font-variant-numeric: tabular-nums; color: #f2fbff;
+}
+
+/* What changed — the drift panel. Rendered only when a second day exists, because a one-point
+   series is not a trend and a panel that implied otherwise would be worse than absent. */
+.msum-drift {
+  display: flex; flex-direction: column; gap: 0.4rem;
+  padding: 0.6rem 0.75rem; border-radius: 0.5rem;
+  border: 1px solid var(--mv-hairline); background: rgba(125, 211, 252, 0.04);
+}
+.msum-drift-head { display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
+.msum-drift-dir { font-family: var(--mv-value); font-size: 0.88rem; font-weight: 700; }
+.msum-drift-firming { color: var(--mv-bull, #34d399); }
+.msum-drift-fading { color: var(--mv-bear, #fb7185); }
+.msum-drift-flat, .msum-drift-unknown { color: #a9cfe6; }
+.msum-drift-turns { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.msum-drift-turns li {
+  font-family: var(--mv-label); font-size: 0.68rem; letter-spacing: 0.04em;
+  padding: 0.12rem 0.4rem; border-radius: 0.25rem; background: rgba(125, 211, 252, 0.08);
+  color: #cfe9f8;
+}
+
+/* Freshness. Reports the age of the DATA, not of the render — a component that merely animated
+   would keep ticking happily while the feed was dead, which is the failure this exists to
+   expose. Goes amber past the stale threshold rather than quietly continuing to count. */
+.msum-head-right { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.mv-fresh {
+  display: inline-flex; align-items: center; gap: 0.32rem;
+  font-family: var(--mv-label); font-size: 0.64rem; letter-spacing: 0.06em;
+  color: rgba(148, 200, 230, 0.8);
+}
+.mv-fresh-dot {
+  width: 6px; height: 6px; border-radius: 50%; background: #34d399;
+  box-shadow: 0 0 6px rgba(52, 211, 153, 0.8);
+}
+.mv-fresh.is-stale { color: #fcd9a0; }
+.mv-fresh.is-stale .mv-fresh-dot { background: #fbbf24; box-shadow: 0 0 6px rgba(251, 191, 36, 0.8); }
+@media (prefers-reduced-motion: no-preference) {
+  .mv-fresh-dot { animation: mv-fresh-pulse 2.4s ease-in-out infinite; }
+  @keyframes mv-fresh-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 }

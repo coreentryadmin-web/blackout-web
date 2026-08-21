@@ -363,7 +363,7 @@ export async function GET(req: NextRequest) {
     if (heatmap.gex && hasLiveGexStrikeExpiry(ticker)) {
       const wsLadder = getGexStrikeExpiryLadder(ticker, nearTermExpiries);
       if (wsLadder) {
-        const wsWalls = wallsFromStrikeTotals(strikeTotalsFromLadder(wsLadder.ladder));
+        const wsWalls = wallsFromStrikeTotals(strikeTotalsFromLadder(wsLadder.ladder), heatmap.spot);
         if (wsWalls.callWall != null) heatmap.gex.call_wall = wsWalls.callWall;
         if (wsWalls.putWall != null) heatmap.gex.put_wall = wsWalls.putWall;
       }

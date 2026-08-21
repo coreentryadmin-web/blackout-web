@@ -128,6 +128,32 @@ const REL_CONTRAST_EXP = 1.6;
 
 /** Frame-normalized strength in [0,1]: `pct` relative to the strongest wall in view (`maxPct`),
  *  raised to REL_CONTRAST_EXP for separation. 0 for non-positive/non-finite input or maxPct ≤ 0. */
+/**
+ * ALPHA contrast exponent — deliberately DIFFERENT from the size exponent.
+ *
+ * Size and opacity want opposite curve shapes and shared one for years, which is why the rail has
+ * never had both channels alive at once:
+ *   - SIZE wants SUPER-linear (REL_CONTRAST_EXP = 1.6). A wall fading to a third of its peak must
+ *     visibly shrink — the suite pins that at >= 4x, and flattening the curve breaks it.
+ *   - ALPHA wants SUB-linear. `maxPct` is the SESSION-WIDE king across every strike, so with a
+ *     super-linear curve a row peaking at 8% share on a 30%-king day computes (0.27)**1.6 = 0.13
+ *     and sits pinned near the floor from open to close, however much it actually moved. Every bead
+ *     in that row renders alike — the rail shows THAT a wall existed and never WHEN it mattered.
+ *
+ * Sub-linear is right for alpha because per-strike gamma is heavy-tailed: most rows live far below
+ * the day's king, so the curve must LIFT and SPREAD the low-and-middle range instead of compressing
+ * it. Against the 0.25 floor: a 3%-of-king wall renders ~0.29, a 30% one ~0.53, an 80% one ~0.86 —
+ * a spread a viewer can read, where the shared super-linear curve put those same three at
+ * 0.60 / 0.66 / 0.87.
+ */
+const REL_ALPHA_EXP = 0.8;
+
+/** Sub-linear strength for the OPACITY channel. See REL_ALPHA_EXP for why this is not relStrengthT. */
+export function relAlphaT(pct: number, maxPct: number): number {
+  if (!Number.isFinite(pct) || pct <= 0 || !(maxPct > 0)) return 0;
+  return Math.pow(Math.min(1, pct / maxPct), REL_ALPHA_EXP);
+}
+
 export function relStrengthT(pct: number, maxPct: number): number {
   if (!Number.isFinite(pct) || pct <= 0 || !(maxPct > 0)) return 0;
   return Math.pow(Math.min(1, pct / maxPct), REL_CONTRAST_EXP);
@@ -177,9 +203,144 @@ export function magnitudeGlowBoost(pct: number): number {
 
 const GROWTH_EPS = 0.02; // |Δ share-of-king| below this is "steady" — ignore honest bucket jitter.
 
+/**
+ * Self-relative thresholds for the TRAILING decay/build channel. A wall must be this far off its OWN
+ * recent baseline before the channel engages (12%), and saturates at 65% off — a wall trading at
+ * ~35% of its recent peak is fully dimmed.
+ */
+const DECAY_EPS = 0.12;
+const DECAY_FULL = 0.65;
+const BUILD_EPS = 0.12;
+const BUILD_FULL = 0.65;
+
+/**
+ * SELF-RELATIVE growth/decay — the channel that actually catches a wall bleeding out.
+ *
+ * THE BUG THIS EXISTS FOR (member-reported 2026-08-17: "once beads are formed we don't fade them —
+ * how do members know a wall that was strong is now weak?"). growthModulation below compares a bead
+ * ONLY to the immediately previous bucket, normalized by the FRAME KING (`maxPct`). Both choices
+ * blind it to the cases that matter:
+ *
+ *  1. SLOW DECAY NEVER FIRES. A wall sliding 20% -> 2% share over an hour, on 5s buckets, moves
+ *     ~0.025% of king per bucket — roughly 80x below GROWTH_EPS. Every bucket returns `neutral`, so
+ *     the wall dies across ~720 beads and the fade channel never engages once. The slow structural
+ *     bleed a member most needs to see is precisely what it cannot see.
+ *  2. SMALL WALLS NEVER FADE AT ALL. Normalizing by the frame king means a 3% wall collapsing to
+ *     0.3% moves 0.0027/maxPct — invisible for any king of reasonable size. Only walls comparable to
+ *     the king could ever trip the threshold.
+ *
+ * The fix measures against the wall's OWN trailing reference (its recent baseline) rather than the
+ * previous bucket, and normalizes by that reference rather than the frame king. Both halves are
+ * needed: the trailing window makes gradual change legible, and self-normalization makes the channel
+ * scale-free so a small wall dying reads as strongly as a big one dying.
+ *
+ * IT DOES NOT REWRITE HISTORY. Each bead is modulated using only data at or before ITS OWN bucket
+ * (see trailingRefs, which reads strictly-earlier points), so a bead's appearance stays a true
+ * statement about its own moment. Deliberate: re-fading old beads to reflect a wall's CURRENT
+ * strength would repaint the past and reintroduce exactly the defect fixed in kingStrikeByTime,
+ * where the crown was applied retroactively and no member ever saw a king lose it.
+ */
+export function decayModulation(
+  pct: number,
+  trailingRef: number | null | undefined
+): { alphaMul: number; sizeMul: number; building: boolean; fading: boolean } {
+  const neutral = { alphaMul: 1, sizeMul: 1, building: false, fading: false };
+  if (!Number.isFinite(pct) || trailingRef == null || !Number.isFinite(trailingRef)) return neutral;
+  const ref = trailingRef;
+  if (!(ref > 0)) return neutral;
+
+  const dSelf = (pct - ref) / ref;
+
+  if (dSelf < -DECAY_EPS) {
+    const drive = Math.min(1, (-dSelf - DECAY_EPS) / (DECAY_FULL - DECAY_EPS));
+    // Same multiplier envelope as the per-bucket channel, so a rail tuned for one reads the same as
+    // the other — this changes WHEN a fade fires, not how strong a full fade looks.
+    return { alphaMul: 1 - drive * 0.32, sizeMul: 1 - drive * 0.22, building: false, fading: true };
+  }
+  if (dSelf > BUILD_EPS) {
+    const drive = Math.min(1, (dSelf - BUILD_EPS) / (BUILD_FULL - BUILD_EPS));
+    return { alphaMul: 1 + drive * 0.35, sizeMul: 1 + drive * 0.28, building: true, fading: false };
+  }
+  return neutral;
+}
+
+/**
+ * AGE TAPER — older beads render dimmer purely BECAUSE they are older.
+ *
+ * A separate channel from decay, and the distinction matters. `decayModulation` answers "is this
+ * wall weakening?"; this answers "how long ago was this?". Today a bead from 09:35 and a bead from
+ * 14:35 at identical strength paint at identical opacity, so the rail has no depth cue and the LIVE
+ * edge — the only part describing the book right now — does not stand out from five hours of history.
+ *
+ * Purely temporal, so it cannot lie about strength: it is applied to ALPHA ONLY, never to radius.
+ * Bead SIZE stays a pure function of the wall's own gamma share, which is what preserves the
+ * "this wall WAS big" reading that the whole rail exists for. Dimming an old bead says "this is
+ * older"; shrinking it would say "this was weaker", which would be false.
+ *
+ * THE FLOOR IS BOUNDED BY A CORRECTNESS CONSTRAINT, not by taste. The taper must never let an old
+ * STRONG wall render dimmer than a fresh WEAK one — that would make the channel lie about strength
+ * while claiming to speak about time. The strongest bead sits at FILL_ALPHA_MAX and the weakest at
+ * FILL_ALPHA_MIN, so the floor must satisfy `FILL_ALPHA_MAX * floor > FILL_ALPHA_MIN`:
+ * 0.6 / 0.98 = 0.612 for the default tuning, 0.58 / 0.96 = 0.604 for the Compare tuning. 0.68 clears
+ * both with margin. A unit test pins this so a later "make it fade more" tweak cannot silently
+ * invert the ordering — the first draft of this constant was 0.55 and did exactly that
+ * (0.98 x 0.55 = 0.539, below a fresh straggler's 0.6).
+ *
+ * It also keeps the rail off the "too light, barely visible" complaint that once forced
+ * FILL_ALPHA_MIN 0.26 -> 0.6: the oldest bead keeps roughly two thirds of its weight.
+ *
+ * Linear in AGE (not in bead index): a rail is unevenly sampled — 5s live buckets compact to ~300s
+ * historical ones — so an index-based ramp would taper by sampling density rather than by time, and
+ * two rails of the same span would fade differently for no reason a member could see.
+ */
+export const AGE_TAPER_FLOOR = 0.68;
+/** Age at which the taper reaches its floor. One RTH session (6.5h) — a full day of context. */
+export const AGE_TAPER_FULL_SEC = 6.5 * 3600;
+
+export function ageTaperAlpha(
+  ageSec: number,
+  opts?: { floor?: number; fullSec?: number }
+): number {
+  const floor = opts?.floor ?? AGE_TAPER_FLOOR;
+  const fullSec = opts?.fullSec ?? AGE_TAPER_FULL_SEC;
+  // A non-finite or negative age means "we do not know how old this is" — never invent a fade.
+  // Negative specifically guards the live bucket, whose time can sit a hair ahead of the reference.
+  if (!Number.isFinite(ageSec) || ageSec <= 0) return 1;
+  if (!(fullSec > 0)) return 1;
+  const t = Math.min(1, ageSec / fullSec);
+  return 1 - t * (1 - floor);
+}
+
+/**
+ * Combine the fast per-bucket velocity channel with the slow self-relative trailing channel.
+ *
+ * Both are real and answer different questions: growthModulation catches a VIOLENT one-bucket move
+ * (dealers slamming a strike right now); decayModulation catches a SUSTAINED drift off the wall's
+ * own baseline. Taking the more extreme of the two keeps the fast flare that already works while
+ * adding the slow bleed that never fired, instead of trading one for the other.
+ *
+ * The multipliers are NOT multiplied together: a fast collapse is also a drop off baseline, so both
+ * channels see it, and compounding would double-count one event and drive a bead to ~0.46 alpha in a
+ * single bucket.
+ */
+export function beadModulation(
+  pct: number,
+  prevPct: number | null | undefined,
+  trailingRef: number | null | undefined,
+  maxPct: number
+): { alphaMul: number; sizeMul: number; building: boolean; fading: boolean } {
+  const bucket = growthModulation(pct, prevPct, maxPct);
+  const trailing = decayModulation(pct, trailingRef);
+  // "More extreme" = furthest from neutral in ALPHA, the channel a member actually reads.
+  return Math.abs(trailing.alphaMul - 1) > Math.abs(bucket.alphaMul - 1) ? trailing : bucket;
+}
+
 /** Per-bead growth/decay modulation from the change in frame-relative share vs the previous bucket.
  *  `prevPct` null/undefined (first bead in a trail) → neutral. Returns clamped alpha/size multipliers
- *  plus building/fading flags for the caller (e.g. a birth/afterglow cue). */
+ *  plus building/fading flags for the caller (e.g. a birth/afterglow cue).
+ *
+ *  This is the FAST channel ONLY — deliberately blind to gradual decay (see decayModulation for
+ *  why). Prefer beadModulation, which combines both. */
 export function growthModulation(
   pct: number,
   prevPct: number | null | undefined,
@@ -230,6 +391,54 @@ export function beadRadiusForNotional(
   const t = (Math.log(usd) - lo) / (hi - lo);
   const clamped = Math.max(0, Math.min(1, t));
   return floorPx + clamped * (ceilPx - floorPx);
+}
+
+// ── PER-TICKER SHARE LADDER (primary sizing) ─────────────────────────────────────────────────────
+//
+// `pct` is a per-strike share of THAT TICKER'S OWN total |gamma|, so it is already normalised per
+// ticker — which is exactly the property the absolute $ ladder throws away.
+//
+// WHY THIS REPLACED THE $ LADDER AS PRIMARY (member report 2026-08-17, measured live):
+// beadRadiusForNotional anchors on ABSOLUTE dollars ($200M floor → $2.5B ceil) and was calibrated
+// on SPX, whose median per-strike gamma is ~$863M and sits mid-ladder. Single-name gamma is two
+// orders of magnitude smaller, so their whole distribution fell BELOW the floor anchor and clamped:
+//
+//   ticker   % of beads at the floor   distinct sizes   median $gamma
+//   SPX       0.0%                     12               $863M
+//   SPY      44.8%                     12               $212M
+//   QQQ      70.1%                     10               $99.5M
+//   NVDA     93.2%                      4               $10.3M
+//   META    100.0%                      1               $7.12M
+//   TSLA    100.0%                      1               $9.32M
+//
+// META and TSLA rendered EVERY bead at one size: the size channel carried literally zero
+// information. This is the same failure mode as #2242 — that fix swapped a relative curve which
+// crushed SPX/SPY into the floor for an absolute ladder, validated on SPX alone, and so created a
+// worse version of the bug for every single-name.
+//
+// The share ladder is LOG for the same reason the $ one was: per-strike gamma is heavy-tailed, and
+// a linear map crushes the low end (the (pct/maxPct)^1.6 power curve is what put 78-88% of beads
+// within 1px of the floor). Anchors sit at the shoulders of the measured live distribution — across
+// SPX/SPY/QQQ/NVDA/META/TSLA/IWM/AAPL the p05 runs 0.01-0.53% and the p90 runs 4.4-12.1%, so 0.3%
+// and 12% bracket the real spread on EVERY ticker rather than on one.
+//
+// Measured effect (same live data): 11-12 distinct sizes on every ticker, floor share 0.0% (SPX) to
+// 42% (NVDA, whose book genuinely has a long tail of tiny strikes) — vs 1 size / 100% before.
+const PCT_FLOOR_SHARE = 0.3; // % of ticker gamma — "small" dot
+const PCT_CEIL_SHARE = 12; // % of ticker gamma — "huge" dot
+
+/** Perceptual (log) map from a per-strike gamma SHARE (`pct`, 0-100) → bead pixel radius, clamped
+ *  to [floorPx, ceilPx]. Identical treatment for every ticker because `pct` is already relative to
+ *  that ticker's own book. NaN / 0 / negative → floorPx (never throws). */
+export function beadRadiusForPctShare(
+  pct: number,
+  { floorPx, ceilPx }: { floorPx: number; ceilPx: number }
+): number {
+  if (!Number.isFinite(pct) || pct <= 0) return floorPx;
+  const lo = Math.log(PCT_FLOOR_SHARE);
+  const hi = Math.log(PCT_CEIL_SHARE);
+  const t = (Math.log(pct) - lo) / (hi - lo);
+  return floorPx + Math.max(0, Math.min(1, t)) * (ceilPx - floorPx);
 }
 
 // PROXY (documented, pending a real notional) ─────────────────────────────────────────────────────

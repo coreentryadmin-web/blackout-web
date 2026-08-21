@@ -54,7 +54,11 @@ export async function loadMeridianMacroHistory(input: {
   event: string;
   beforeYmd: string;
   releaseTimeEt?: string | null;
-}): Promise<{ release_history: MeridianMacroRelease[]; related_headlines: MeridianCatalystHeadline[] }> {
+}): Promise<{
+  release_history: MeridianMacroRelease[];
+  related_headlines: MeridianCatalystHeadline[];
+  economics_narrative: string | null;
+}> {
   const prior = priorScheduledMacroEvents({
     event: input.event,
     beforeYmd: input.beforeYmd,
@@ -105,5 +109,19 @@ export async function loadMeridianMacroHistory(input: {
       published: n.published || null,
     }));
 
-  return roundFloats({ release_history, related_headlines });
+  const lead = news.find((n) => headlineFilter(input.event, n.title));
+  const latestRx = release_history.find((r) => r.spx_session_pct != null);
+  let economics_narrative: string | null = null;
+  if (lead) {
+    const prose = [lead.title, lead.teaser?.trim()].filter(Boolean).join(" — ");
+    economics_narrative = prose.slice(0, 280) || null;
+    if (latestRx?.spx_session_pct != null) {
+      const spxPart = `SPX ${latestRx.spx_session_pct >= 0 ? "+" : ""}${latestRx.spx_session_pct.toFixed(1)}% on last ${input.event.split(" ")[0]} print`;
+      economics_narrative = economics_narrative ? `${economics_narrative} · ${spxPart}` : spxPart;
+    }
+  } else if (latestRx?.spx_session_pct != null) {
+    economics_narrative = `Last ${input.event} print · SPX ${latestRx.spx_session_pct >= 0 ? "+" : ""}${latestRx.spx_session_pct.toFixed(1)}% session`;
+  }
+
+  return roundFloats({ release_history, related_headlines, economics_narrative });
 }

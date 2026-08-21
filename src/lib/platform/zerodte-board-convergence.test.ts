@@ -228,3 +228,92 @@ test("fail-soft: a shared-store outage still serves a freshly built board — ne
   assert.ok(sharedState.scanCalls >= 1, "fell back to a local derivation when the shared snapshot was unreadable");
   assert.ok(Array.isArray(board.ledger) && Array.isArray(board.setups), "the fallback board is structurally intact");
 });
+
+// ── as_of REGRESSION (live 2026-08-17) ───────────────────────────────────────────────
+// Symptom: consecutive member polls saw `as_of` walk BACKWARD by 8m16s while the setup
+// count flipped between 7 and 147 — the board serving two snapshots from different
+// discovery phases. Cause: `buildAndPublishBoard` published UNCONDITIONALLY, and three
+// publishers race (background SWR w/ lock, cold build w/o lock, cron warmer w/o lock).
+// A build takes 5-45s, so a slow builder that STARTED earlier could finish LAST and
+// overwrite a fresher snapshot. The publish is now monotonic on `as_of`.
+
+test("boardSnapshotIsNewer: a late-finishing older build never displaces a fresher snapshot", async () => {
+  const { boardSnapshotIsNewer } = await import("./zerodte-service");
+  const older = "2026-08-17T18:34:00.000Z";
+  const newer = "2026-08-17T18:42:16.000Z"; // the live 8m16s gap
+
+  assert.equal(boardSnapshotIsNewer(newer, older), true, "a genuinely newer build publishes");
+  assert.equal(boardSnapshotIsNewer(older, newer), false, "the stale build is refused — this IS the bug");
+  assert.equal(
+    boardSnapshotIsNewer(newer, newer),
+    false,
+    "a tie carries no new information; re-writing it only re-opens the race window"
+  );
+});
+
+test("boardSnapshotIsNewer: unparseable timestamps fail in the safe direction", async () => {
+  const { boardSnapshotIsNewer } = await import("./zerodte-service");
+  const stamped = "2026-08-17T18:42:16.000Z";
+
+  // Nothing valid published yet → publish, else the lane could never start.
+  assert.equal(boardSnapshotIsNewer(stamped, null), true);
+  assert.equal(boardSnapshotIsNewer(stamped, undefined), true);
+  assert.equal(boardSnapshotIsNewer(stamped, "not-a-date"), true);
+  // An UNSTAMPED build must never displace a stamped one — it cannot be shown to be newer,
+  // and publishing it would strand the lane on a board whose age nobody can evaluate.
+  assert.equal(boardSnapshotIsNewer(null, stamped), false);
+  assert.equal(boardSnapshotIsNewer("not-a-date", stamped), false);
+  assert.equal(boardSnapshotIsNewer(undefined, undefined), false);
+});
+
+test("no clobber: a slow build finishing AFTER a fresher peer publish leaves the fresh snapshot intact", async () => {
+  const { getZeroDteBoardPayload } = await import("./zerodte-service");
+  const key = "zerodte:board:snapshot:v1";
+  const prev = process.env.ZERODTE_BOARD_MAX_BLOCK_MS;
+  process.env.ZERODTE_BOARD_MAX_BLOCK_MS = "5000"; // let the slow build be awaited
+  sharedState.slowScanMs = 400;
+
+  try {
+    // Cold miss → this replica starts a slow build. Its `as_of` will be stamped ~400ms from now.
+    const inflight = getZeroDteBoardPayload();
+
+    // Meanwhile a PEER replica (or the cron warmer) publishes a fresher board. Stamped ahead so
+    // it is unambiguously newer than whatever the slow build ends up stamping.
+    await waitFor(() => sharedState.scanCalls >= 1, 500);
+    const peerAsOf = new Date(Date.now() + 30_000).toISOString();
+    const peer = { available: true, as_of: peerAsOf, upstream_ok: true, setups: [{ ticker: "PEER" }] };
+    sharedState.store.set(key, { value: JSON.stringify(peer), expiresAt: Date.now() + 600_000 });
+
+    const served = await inflight;
+
+    const stored = JSON.parse(sharedState.store.get(key)!.value);
+    assert.equal(stored.as_of, peerAsOf, "the slow build did NOT overwrite the fresher peer snapshot");
+    assert.equal(
+      served.as_of,
+      peerAsOf,
+      "and the slow builder's own caller is handed the FRESHER board, not the stale one it just finished"
+    );
+  } finally {
+    sharedState.slowScanMs = 0;
+    if (prev === undefined) delete process.env.ZERODTE_BOARD_MAX_BLOCK_MS;
+    else process.env.ZERODTE_BOARD_MAX_BLOCK_MS = prev;
+  }
+});
+
+test("stale local fallback: the per-replica last-good board is bounded by age, not served forever", async () => {
+  const { localBoardIsServable } = await import("./zerodte-service");
+  const now = Date.parse("2026-08-17T18:42:16.000Z");
+  const min = 60_000;
+
+  assert.equal(localBoardIsServable(new Date(now - 30_000).toISOString(), now), true, "30s old — a fine last resort");
+  assert.equal(localBoardIsServable(new Date(now - 9 * min).toISOString(), now), true, "9m — inside the 10m ceiling");
+  assert.equal(
+    localBoardIsServable(new Date(now - 11 * min).toISOString(), now),
+    false,
+    "11m — past the ceiling. This is the second as_of-regression source: unbounded, it served an old session's roster as live"
+  );
+  assert.equal(localBoardIsServable(new Date(now - 6 * 60 * min).toISOString(), now), false, "6h — emphatically not current");
+  // An undateable board can't be shown to be current, so it is not servable as one.
+  assert.equal(localBoardIsServable(null, now), false);
+  assert.equal(localBoardIsServable("not-a-date", now), false);
+});

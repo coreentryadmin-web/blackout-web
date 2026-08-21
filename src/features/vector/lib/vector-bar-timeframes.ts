@@ -50,14 +50,40 @@ export const VECTOR_WALL_NODES_PER_SIDE = 20;
  */
 export function wallCountForTimeframe(tf: VectorTimeframeMinutes): number {
   let count: number;
-  if (tf <= 1) count = 6;
-  else if (tf <= 3) count = VECTOR_0DTE_WALL_COUNT;
-  else if (tf <= 5) count = 10;
-  else if (tf <= 15) count = 12;
-  else if (tf <= 30) count = 14;
-  else if (tf <= 60) count = 16;
-  else if (tf <= 120) count = 18;
-  else count = 20; // 2h+ custom intervals — widest view, saturates at the cap
+  // ── THE WALK STEPS UP (2026-08-19) ───────────────────────────────────────────────────────
+  // Every row used to cost the same visual weight, because the bead swell was normalised against
+  // each row's OWN peak — so a marginal level painted about as large as a dominant one (measured
+  // separation on real SPX data: 1.26x). Under that rendering a low ceiling was the only defence
+  // against a chart of uniform bars, and 6 rows on a 1m chart was the right call.
+  //
+  // The rail now normalises every row against ONE shared denominator (the frame's strongest wall,
+  // see BOOK_SWELL_FLOOR), so a weak level recedes to a faint trace on its own. The dynamic range
+  // does the decluttering, which is what lets a chart carry many more rows without turning to mush
+  // — the reference implementation a member sent for comparison shows ~26 rows, of which perhaps
+  // six are ever prominent. So the constraint that set these numbers is gone, and holding the old
+  // ceiling now just hides structure a member could otherwise read at a glance.
+  //
+  // Manual NODES is unaffected and still overrides in both directions, up to the recorder's cap.
+  // PARTIALLY WALKED BACK (2026-08-19, same day): 1m 10->8, 3m 14->11, 5m 16->13, 15m 18->16.
+  //
+  // The step-up earlier today was justified — a weak level now recedes to a faint trace, so rows
+  // cost less than they used to. But it was sized without checking what it does to ROW SPACING, and
+  // on a tight strike ladder that is the variable that matters: 14 rows per side put 22 rows on an
+  // SPX 3m pane and took the median row gap from 26px to 17px.
+  //
+  // At 17px the geometry stops cooperating. BEAD_READABLE_MIN_HALF_PX floors every bead at 6.4px
+  // thick, which is already 38% of the slot before the strength halo adds anything — so no amount
+  // of thinning can make a 22-row SPX pane read cleanly, and trying is fighting the wrong variable.
+  // Member: "I think the size needs to be reduced ?? its too thick imo".
+  //
+  // These counts keep most of the gain (still well above the pre-2026-08-19 6/10/10/12) while
+  // returning ~21px of row gap on SPX 3m, which is where the thickness budget below can actually
+  // bind instead of being pre-empted by the readability floor.
+  if (tf <= 1) count = 8;
+  else if (tf <= 3) count = Math.max(VECTOR_0DTE_WALL_COUNT, 11);
+  else if (tf <= 5) count = 13;
+  else if (tf <= 15) count = 16;
+  else count = 20; // 30m+ — widest views saturate at the recorder cap
   return Math.max(1, Math.min(VECTOR_WALL_NODES_PER_SIDE, count));
 }
 

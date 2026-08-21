@@ -23,9 +23,34 @@ on:
 # deploys red on the static-asset step, ECS actually rolled fine; only the unraced #975 passed). Cancelling
 # the in-progress older run means only the latest commit deploys — the final ECS state is always the newest
 # code, the smoke check runs unraced, and a red deploy once again means a REAL failure (no cry-wolf).
+#
+# CANCEL -> QUEUE (2026-08-19). The reasoning above is right that overlapping deploys must not race;
+# it is wrong that CANCELLING is how you stop them, and the difference is a member-visible outage.
+#
+# `aws ecs update-service --force-new-deployment` (below) is ASYNCHRONOUS. Cancelling this workflow
+# does not roll ECS back and does not stop the rollout — it only stops WATCHING it, and skips every
+# post-roll step: the stability wait, the static-asset validation, the Cloudflare HTML purge and the
+# worker roll. So a cancelled deploy still ships its image, unattended and unverified.
+#
+# Worse, the next merge then issues ANOTHER force-new-deployment while the previous rollout is still
+# in flight, so ECS runs overlapping deployments and the service serves tasks from SEVERAL builds at
+# once. Measured 2026-08-18: five merges in ~30 minutes produced four cancelled deploys, and a probe
+# of prod /vector caught the consequence — the page self-reloading plus
+# `TypeError: Cannot read properties of undefined (reading 'call')`, which is webpack asking a
+# loaded chunk for a module factory that build does not contain. Old HTML + a different build's
+# chunks is exactly what a multi-build fleet serves.
+#
+# Queueing gives the SAME non-overlap guarantee the comment above wanted — GitHub still runs only
+# one job in this group at a time, so the static-asset check is still never raced — while letting
+# each rollout finish and get its purge and validation. Intermediate merges are cancelled while
+# PENDING, which is harmless: a pending run has not issued update-service, so it cannot leave a
+# partial rollout behind. The final ECS state is still the newest commit.
+#
+# Cost is honest: the newest commit waits for the current deploy instead of pre-empting it, so a
+# burst of merges reaches prod later. That is the right trade against serving three builds at once.
 concurrency:
   group: ecr-push-production
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -335,11 +360,40 @@ jobs:
             echo "Cloudflare secrets not set — skipping edge purge."
             exit 0
           fi
+          # PURGE HTML ONLY — NEVER /_next/static/*.
+          #
+          # This was `purge_everything`, and it was manufacturing the outage it could not recover
+          # from. Next.js build assets are CONTENT-HASHED and served
+          # `cache-control: public, max-age=31536000, immutable` — a given URL's bytes can never
+          # change, so they never need purging. Purging them forces every client to re-fetch from an
+          # origin that, mid-rollout, is a MIX of old and new ECS tasks: HTML from a new task
+          # referencing `webpack-<newhash>.js`, whose request lands on a task that only has the old
+          # build, returns 404. Next serves that 404 as `text/plain`, the browser refuses to execute
+          # it, HYDRATION NEVER COMPLETES, and every client component sits frozen in its loading
+          # state with no error and no retry.
+          #
+          # Observed on prod 2026-08-18: a captured session showed "Loading chart…", "Loading 0dte
+          # matrix…" and "Connecting Live Helix…" all stuck simultaneously with 84/84 network
+          # requests succeeding, and the console carrying
+          # `Refused to execute script from '.../webpack-bbf5e95de4d12e67.js' because its MIME type
+          # ('text/plain') is not executable`. That exact URL returned 200 / cf-cache-status HIT
+          # ~8 minutes later, once the edge had re-cached a good copy — i.e. it self-heals, which is
+          # why the failure reads as intermittent and unreproducible.
+          #
+          # The layout.tsx chunk-reload guard cannot save this: it reloads at most 3 times, 8s apart,
+          # and while the fleet is mixed a reload can land on a bad task again, so it exhausts and
+          # leaves the member on a dead page.
+          #
+          # Leaving hashed assets cached is what lets the OLD and NEW builds coexist during a
+          # rollout — a client holding old HTML keeps getting its old chunks from the edge while new
+          # clients get the new ones. That is the entire point of immutable content-hashed URLs.
+          # Only HTML must be purged, and only the routes that are edge-cached at all (see the
+          # cache rule in CLAUDE.md: `/`, `/upgrade`, `/learn*`; every desk page is already DYNAMIC).
           curl -fsS -X POST "https://api.cloudflare.com/client/v4/zones/${CF_ZONE_ID}/purge_cache" \
             -H "Authorization: Bearer ${CF_API_TOKEN}" \
             -H "Content-Type: application/json" \
-            --data '{"purge_everything":true}'
-          echo "Cloudflare cache purged after ECS rollout."
+            --data '{"files":["https://blackouttrades.com/","https://blackouttrades.com/upgrade","https://blackouttrades.com/learn","https://blackouttrades.com/pricing","https://blackouttrades.com/faq"]}'
+          echo "Cloudflare HTML purged after ECS rollout (hashed build assets deliberately retained)."
           # Let the edge drop entries before we validate through it.
           sleep 10
 
