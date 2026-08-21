@@ -249,6 +249,20 @@ Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 | **Also removed** | A 4-char ticker-prefix re-filter that was a no-op: `fetchRecentFlows` (`db.ts:2543`) already applies exact `ticker = $1`, so it only ever re-matched rows that were already exact, and its `scoped.length ? scoped : recent` fallback was unreachable. Behaviour-preserving deletion. |
 | **Status** | FIXED — tsc clean, 8695 pass / 0 fail on Node 20 (baseline `main` 8686/0, +9 = the new tests), `npm run build` green, eslint clean. |
 
+## 2026-08-21 — [FINDING, P1 correctness] The HELIX/Thermal compare card reported `net_premium: 0` from an empty tape, and summed 48h of flow as if it were today — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Root cause (a)** | `compareSidesFrom` set `net_premium: callPrem - putPrem` unconditionally. With no rows in the window both accumulators stay 0, so the card served `net_premium: 0` beside `bias: "unknown"` — a quotable "premium is flat" manufactured out of no data. |
+| **Root cause (b)** | `getFlowTapeSummary` returns `window_hours` (default **48**) and `fetchTickerFlowAndGamma` dropped it. "Net call premium leads on the tape" reads as TODAY while being a two-session sum. "Insufficient flow in window" was worse — it named a window it never stated. |
+| **Root cause (c)** | `GexPositioning.asof` was dropped, so the gamma side carried no time of its own. |
+| **Evidence** | Live in-process payload 2026-08-21T00:12Z, both sides cold: `"helix": { "available": false, "bias": "unknown", "net_premium": 0, "call_premium": null, "put_premium": null }`. `call_premium`/`put_premium` were ALREADY correctly null — only the DERIVED net was fabricated, which is exactly the one a reader is least likely to question because its two inputs are visibly absent. |
+| **Fix** | #2438 — `net_premium` is null unless a priced print landed (`callPrem > 0 \|\| putPrem > 0`); a genuinely MEASURED zero still survives, with a test pinning that distinction against the unmeasured case. `window_hours` carried and named in the summary line. Gamma side carries `matrix_asof` + `matrix_asof_et` + `matrix_session_date` + `age_seconds`, and `freshness: "cached"` (strict cache reader). One frozen instant threads through the whole payload. |
+| **Blast radius** | Both card modes (`helix_thermal`, `peer_tickers`) and both delivery paths — the `get_helix_thermal_compare` tool and the prefetched prompt block in `largo-terminal.ts:671-675`. |
+| **Status** | FIXED — tsc clean, suite green on Node 20, `npm run build` green, eslint clean. Stacked on #2422. |
+
 ## 2026-08-19 — [FINDING, P0 correctness] `main` went red with every PR green — #2365 and #2366 collided on the 0DTE expiry resolver — FIXED
 
 > **kind:** `FINDING`
