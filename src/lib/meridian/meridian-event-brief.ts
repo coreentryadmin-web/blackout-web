@@ -1,6 +1,10 @@
 import "server-only";
 
 import { roundFloats } from "@/lib/round-floats";
+// ET-anchored stamp, not a bare UTC instant: every date on this surface is an ET SESSION, and a
+// reader handed "2026-08-21T03:12:00.000Z" at 23:12 ET on 2026-08-20 has to infer which session
+// that is. In production a model did exactly that inference and got it wrong by a full session.
+import { etStamp } from "@/lib/largo/temporal/bar-session-date";
 import { fmtPremium } from "@/lib/fmt-money";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import {
@@ -284,7 +288,7 @@ export async function buildMeridianMacroBrief(input: {
     spx_positioning,
     flow,
     report,
-    as_of: new Date().toISOString(),
+    as_of: etStamp(Date.now()) ?? new Date().toISOString(),
   });
 }
 
@@ -313,7 +317,7 @@ export async function buildMeridianOpexDetail(date: string): Promise<MeridianOpe
     pin_accuracy,
     cross_market,
     report,
-    as_of: new Date().toISOString(),
+    as_of: etStamp(Date.now()) ?? new Date().toISOString(),
   });
 }
 
@@ -355,7 +359,7 @@ export async function buildMeridianFdaDetail(input: {
     prior_decisions: fdaHistory.prior_decisions,
     positioning,
     flow,
-    as_of: new Date().toISOString(),
+    as_of: etStamp(Date.now()) ?? new Date().toISOString(),
   });
 }
 
