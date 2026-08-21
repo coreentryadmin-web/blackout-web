@@ -70,11 +70,19 @@ mock.module("../banger/positions-db", {
 let bangerBoardForLargo: typeof import("./product-reads").bangerBoardForLargo;
 let nighthawkHorizonsForLargo: typeof import("./product-reads").nighthawkHorizonsForLargo;
 let zerodteRecordForLargo: typeof import("./product-reads").zerodteRecordForLargo;
+let thermalCompareRow: typeof import("./product-reads").thermalCompareRow;
+let etSessionNow: typeof import("./product-reads").etSessionNow;
+let ageSecondsFrom: typeof import("./product-reads").ageSecondsFrom;
 
 before(async () => {
-  ({ bangerBoardForLargo, nighthawkHorizonsForLargo, zerodteRecordForLargo } = await import(
-    "./product-reads"
-  ));
+  ({
+    bangerBoardForLargo,
+    nighthawkHorizonsForLargo,
+    zerodteRecordForLargo,
+    thermalCompareRow,
+    etSessionNow,
+    ageSecondsFrom,
+  } = await import("./product-reads"));
 });
 
 describe("product-reads", () => {
@@ -258,5 +266,142 @@ describe("bangerBoardForLargo — a closed position reports what it realized", (
       if (prev === undefined) delete process.env.BANGER_ENGINE_ENABLED;
       else process.env.BANGER_ENGINE_ENABLED = prev;
     }
+  });
+});
+
+describe("thermalCompareRow — a reading carries the session it belongs to", () => {
+  // Live capture 2026-08-21T00:29Z (20:29 ET): the served spot is EXACTLY SPY's 16:00 ET
+  // close, four and a half hours old, under an envelope stamp that reads as "now".
+  const MATRIX_ASOF = "2026-08-21T00:24:56.192Z";
+  const LIVE_SPY = {
+    // Live near-term set for SPY, 2026-08-21 — the scope the aggregate below was summed over.
+    near_term_expiries: ["2026-08-21", "2026-08-24", "2026-08-25", "2026-09-18"],
+    spot: 762.6,
+    change_pct: 0.31,
+    asof: MATRIX_ASOF,
+    flip: null,
+    call_wall: 780,
+    put_wall: 765,
+    net_gex: -1_234_567,
+    gamma_regime_read: "short gamma: momentum / vol expansion. Resistance 780, support 765.",
+    gex_cross_validation: null,
+  };
+
+  it("carries the matrix asof and its age, not only the tool-run stamp", () => {
+    const now = Date.parse("2026-08-21T00:29:56.192Z");
+    const row = thermalCompareRow("SPY", LIVE_SPY, now);
+    assert.equal(row.available, true);
+    assert.equal(row.spot, 762.6);
+    // The regression: matrix_asof used to be dropped entirely.
+    assert.equal(row.matrix_asof, MATRIX_ASOF);
+    assert.equal(row.matrix_age_sec, 300);
+  });
+
+  it("anchors the matrix time to its ET SESSION, not just a UTC instant", () => {
+    const row = thermalCompareRow("SPY", LIVE_SPY, Date.parse("2026-08-21T00:29:56.192Z"));
+    // MATRIX_ASOF is 2026-08-21T00:24Z — a UTC date one day AHEAD of the ET session it belongs to.
+    assert.equal(row.matrix_asof, "2026-08-21T00:24:56.192Z");
+    assert.equal(row.matrix_session_date, "2026-08-20", "ET session, not the UTC date");
+    assert.match(String(row.matrix_asof_et), / ET$/);
+  });
+
+  it("says the gamma read is CACHED, separately from how old the computation is", () => {
+    const row = thermalCompareRow("SPY", LIVE_SPY, Date.parse("2026-08-21T00:29:56.192Z"));
+    // freshness must not be inferable from age: 300s of COMPUTE age over a 4.5h-old print.
+    assert.equal(row.freshness, "cached");
+    assert.equal(row.matrix_age_sec, 300);
+    assert.equal(row.unavailable, null);
+  });
+
+  it("reports nulls — never a borrowed timestamp — when the matrix is cold, and says why", () => {
+    const row = thermalCompareRow("NVDA", null);
+    assert.equal(row.available, false);
+    assert.equal(row.spot, null);
+    assert.equal(row.matrix_asof, null);
+    assert.equal(row.matrix_asof_et, null);
+    assert.equal(row.matrix_session_date, null);
+    assert.equal(row.matrix_age_sec, null);
+    assert.equal(row.freshness, null);
+    // A wall of nulls with no reason makes a reader guess; name the state instead.
+    assert.match(String(row.unavailable?.reason), /matrix cold/i);
+    assert.equal(row.unavailable?.retryable, true);
+  });
+});
+
+describe("etSessionNow / ageSecondsFrom", () => {
+  it("names the session for a weekday RTH instant", () => {
+    // 2026-08-20 is a Thursday; 14:30Z = 10:30 ET.
+    assert.equal(etSessionNow(new Date("2026-08-20T14:30:00Z")).phase, "OPEN");
+  });
+
+  it("does not call a closed-market instant OPEN", () => {
+    // 00:29Z on the 21st = 20:29 ET on the 20th — the exact instant measured live, at which
+    // the payload served SPY's 16:00 close under an `as_of` of "now". AFTER-HOURS ends at
+    // 20:00 ET, so this instant is CLOSED outright.
+    const s = etSessionNow(new Date("2026-08-21T00:29:00Z"));
+    assert.equal(s.phase, "CLOSED");
+    assert.equal(s.et_time, "20:29 ET");
+  });
+
+  it("names the after-hours window between 16:00 and 20:00 ET", () => {
+    assert.equal(etSessionNow(new Date("2026-08-20T21:30:00Z")).phase, "AFTER-HOURS"); // 17:30 ET
+  });
+
+  it("calls the weekend CLOSED", () => {
+    // 2026-08-22 is a Saturday.
+    assert.equal(etSessionNow(new Date("2026-08-22T14:30:00Z")).phase, "CLOSED");
+  });
+
+  it("returns null for an unusable stamp rather than a fabricated age", () => {
+    assert.equal(ageSecondsFrom(null), null);
+    assert.equal(ageSecondsFrom("not-a-date"), null);
+    assert.equal(ageSecondsFrom("2026-08-21T00:24:56.192Z", Date.parse("2026-08-21T00:25:56.192Z")), 60);
+  });
+});
+
+describe("thermalCompareRow — a multi-expiry aggregate names its scope", () => {
+  const LIVE_SPY_SCOPED = {
+    near_term_expiries: ["2026-09-18", "2026-08-21", "2026-08-25"],
+    spot: 762.6,
+    change_pct: 0.31,
+    asof: "2026-08-21T00:24:56.192Z",
+    flip: null,
+    call_wall: 780,
+    put_wall: 765,
+    net_gex: -10_984_439_955.55,
+    gamma_regime_read: "No gamma flip — dealers are net short gamma at EVERY strike.",
+    gex_cross_validation: null,
+  };
+
+  it("carries the count and date range the numbers were summed over", () => {
+    const row = thermalCompareRow("SPY", LIVE_SPY_SCOPED) as {
+      expiry_scope: { count: number; first: string; last: string } | null;
+    };
+    // Measured 2026-08-21: this aggregate said "short, flip null" while /heatmap scoped to one
+    // expiry said "LONG GAMMA, flip 756". Both correct; unreconcilable without the scope.
+    assert.deepEqual(row.expiry_scope, {
+      count: 3,
+      first: "2026-08-21",
+      last: "2026-09-18",
+    });
+  });
+
+  it("sorts the range rather than trusting upstream order", () => {
+    // The input above is deliberately out of order — first/last must be the real extremes.
+    const row = thermalCompareRow("SPY", LIVE_SPY_SCOPED) as {
+      expiry_scope: { first: string; last: string } | null;
+    };
+    assert.equal(row.expiry_scope?.first, "2026-08-21");
+    assert.equal(row.expiry_scope?.last, "2026-09-18");
+  });
+
+  it("reports a null scope rather than an empty shape when the matrix has no expiry list", () => {
+    const noList = thermalCompareRow("SPY", { ...LIVE_SPY_SCOPED, near_term_expiries: undefined }) as {
+      expiry_scope: unknown;
+    };
+    assert.equal(noList.expiry_scope, null);
+    const cold = thermalCompareRow("NVDA", null) as { expiry_scope: unknown };
+    assert.equal(cold.expiry_scope, null);
+
   });
 });
