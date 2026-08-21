@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { todayEt } from "./et-date";
+import { execAtEtYmd, todayEt } from "./et-date";
 
 // Asserts the EXACT session-date boundary behavior the money-path relies on.
 // 'en-CA' must yield ISO YYYY-MM-DD and the boundary must roll at ET midnight.
@@ -29,4 +29,14 @@ test("zero-arg call path matches the explicit-Date path for the same instant", (
   const a = todayEt();
   const b = todayEt(new Date());
   assert.ok(a === b || Math.abs(Date.parse(a) - Date.parse(b)) <= 86_400_000);
+});
+
+test("execAtEtYmd maps UTC next-day instants back to the ET session date", () => {
+  // 2026-06-22 03:30 UTC = 2026-06-21 23:30 ET
+  assert.equal(execAtEtYmd("2026-06-22T03:30:00Z"), "2026-06-21");
+});
+
+test("execAtEtYmd accepts bare YYYY-MM-DD and space-separated timestamps", () => {
+  assert.equal(execAtEtYmd("2026-08-19"), "2026-08-19");
+  assert.equal(execAtEtYmd("2026-08-19 14:30:00"), "2026-08-19");
 });

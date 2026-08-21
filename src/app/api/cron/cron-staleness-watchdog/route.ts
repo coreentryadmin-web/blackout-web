@@ -109,8 +109,15 @@ export async function GET(req: NextRequest) {
     const errWindowMin = envNum("CRON_WATCHDOG_ERROR_WINDOW_MIN", 15);
     const errWarn = envNum("CRON_WATCHDOG_ERROR_WARN", 25);
     const errCrit = envNum("CRON_WATCHDOG_ERROR_CRIT", 75);
-    const recentErrors = await countRecentErrorEvents(errWindowMin);
-    const errorSpike = classifyErrorSpike(recentErrors.total, errWarn, errCrit);
+    let recentErrors = { total: 0, groups: [] as Array<{ source: string; scope: string | null; count: number }> };
+    let errorSpike: ReturnType<typeof classifyErrorSpike> = "none";
+    try {
+      recentErrors = await countRecentErrorEvents(errWindowMin);
+      errorSpike = classifyErrorSpike(recentErrors.total, errWarn, errCrit);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      console.error("[cron/cron-staleness-watchdog] error_events count failed:", detail);
+    }
 
     let alertDelivered = true;
     if (problems.length > 0 || errorSpike !== "none") {
@@ -185,6 +192,7 @@ export async function GET(req: NextRequest) {
       error_window_min: errWindowMin,
       error_count: recentErrors.total,
       error_spike: errorSpike,
+      db_snapshot_error: snapshot.db_snapshot_error ?? null,
       alert_delivered: problems.length > 0 || errorSpike !== "none" ? alertDelivered : null,
       self_heal_enabled: selfHealEnabled,
       self_heal_dispatched: healTargets.map((j) => j.key),

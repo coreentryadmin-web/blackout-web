@@ -4,6 +4,7 @@ import type {
   MeridianEarningsPrint,
 } from "@/features/meridian/lib/meridian-types";
 import type { DarkPoolSnapshot } from "@/lib/providers/unusual-whales";
+import { num } from "@/lib/meridian/meridian-viz-core";
 
 function fmtPremShort(n: number): string {
   const abs = Math.abs(n);
@@ -14,12 +15,15 @@ function fmtPremShort(n: number): string {
 
 /** Map UW dark pool snapshot → Meridian earnings card slice (today's session prints). */
 export function shapeMeridianDarkPool(snapshot: DarkPoolSnapshot | null): MeridianEarningsDarkPool {
-  if (!snapshot || snapshot.prints.length === 0) {
+  const hasPrints = Boolean(snapshot?.prints?.length);
+  const totalPremium = snapshot?.total_premium ?? 0;
+
+  if (!snapshot || (!hasPrints && totalPremium <= 0)) {
     return {
       available: false,
       bias: snapshot?.bias ?? "neutral",
-      total_premium: snapshot?.total_premium ?? 0,
-      total_premium_label: null,
+      total_premium: totalPremium,
+      total_premium_label: totalPremium > 0 ? fmtPremShort(totalPremium) : null,
       call_premium_label: null,
       put_premium_label: null,
       pcr: snapshot?.pcr ?? null,
@@ -28,22 +32,141 @@ export function shapeMeridianDarkPool(snapshot: DarkPoolSnapshot | null): Meridi
     };
   }
 
+  if (!hasPrints && totalPremium > 0) {
+    return {
+      available: true,
+      bias: snapshot!.bias,
+      total_premium: totalPremium,
+      total_premium_label: fmtPremShort(totalPremium),
+      call_premium_label: snapshot!.call_premium > 0 ? fmtPremShort(snapshot!.call_premium) : null,
+      put_premium_label: snapshot!.put_premium > 0 ? fmtPremShort(snapshot!.put_premium) : null,
+      pcr: snapshot!.pcr,
+      detail: snapshot!.detail ?? "Aggregate dark pool activity today — print tape unavailable",
+      top_prints: [],
+    };
+  }
+
   return {
     available: true,
-    bias: snapshot.bias,
-    total_premium: snapshot.total_premium,
-    total_premium_label: fmtPremShort(snapshot.total_premium),
-    call_premium_label: snapshot.call_premium > 0 ? fmtPremShort(snapshot.call_premium) : null,
-    put_premium_label: snapshot.put_premium > 0 ? fmtPremShort(snapshot.put_premium) : null,
-    pcr: snapshot.pcr,
-    detail: snapshot.detail,
-    top_prints: snapshot.prints.slice(0, 8).map((p) => ({
+    bias: snapshot!.bias,
+    total_premium: snapshot!.total_premium,
+    total_premium_label: fmtPremShort(snapshot!.total_premium),
+    call_premium_label: snapshot!.call_premium > 0 ? fmtPremShort(snapshot!.call_premium) : null,
+    put_premium_label: snapshot!.put_premium > 0 ? fmtPremShort(snapshot!.put_premium) : null,
+    pcr: snapshot!.pcr,
+    detail: snapshot!.detail,
+    top_prints: snapshot!.prints.slice(0, 8).map((p) => ({
       premium: p.premium,
       premium_label: fmtPremShort(p.premium),
       strike: p.strike > 0 ? p.strike : null,
       side: p.side || null,
       executed_at: p.executed_at?.slice(11, 16) ?? null,
     })),
+  };
+}
+
+export type MeridianWallLevels = {
+  /** Display resistance (upper structure band). */
+  call_wall: number | null;
+  /** Display support (lower structure band). */
+  put_wall: number | null;
+  /** Raw gamma argmax strike — most positive net GEX in the scoped chain. */
+  gamma_call_wall: number | null;
+  /** Raw gamma argmin strike — most negative net GEX in the scoped chain. */
+  gamma_put_wall: number | null;
+  /** True when gamma ordering is inverted (call gamma strike at or below put gamma strike). */
+  walls_inverted: boolean;
+};
+
+/**
+ * Coerce dealer walls into a display band where put_wall < call_wall.
+ *
+ * Gamma walls are defined as argmax/argmin of net GEX and CAN invert (validated live on SPX
+ * 2026-08-14). Meridian panels render a "support – resistance" band, so we preserve the raw
+ * gamma strikes and map the display band to [min, max] of the pair, using spot to break ties.
+ */
+export function coerceMeridianWallLevels(input: {
+  call_wall: number | null | undefined;
+  put_wall: number | null | undefined;
+  spot?: number | null;
+}): MeridianWallLevels {
+  const gammaCall = num(input.call_wall);
+  const gammaPut = num(input.put_wall);
+  const spot = num(input.spot);
+
+  if (gammaCall == null && gammaPut == null) {
+    return {
+      call_wall: null,
+      put_wall: null,
+      gamma_call_wall: null,
+      gamma_put_wall: null,
+      walls_inverted: false,
+    };
+  }
+  if (gammaCall == null) {
+    return {
+      call_wall: gammaPut,
+      put_wall: gammaPut,
+      gamma_call_wall: null,
+      gamma_put_wall: gammaPut,
+      walls_inverted: false,
+    };
+  }
+  if (gammaPut == null) {
+    return {
+      call_wall: gammaCall,
+      put_wall: gammaCall,
+      gamma_call_wall: gammaCall,
+      gamma_put_wall: null,
+      walls_inverted: false,
+    };
+  }
+
+  const inverted = gammaCall <= gammaPut;
+  if (!inverted) {
+    return {
+      call_wall: gammaCall,
+      put_wall: gammaPut,
+      gamma_call_wall: gammaCall,
+      gamma_put_wall: gammaPut,
+      walls_inverted: false,
+    };
+  }
+
+  const lo = Math.min(gammaCall, gammaPut);
+  const hi = Math.max(gammaCall, gammaPut);
+
+  if (hi > lo) {
+    return {
+      call_wall: hi,
+      put_wall: lo,
+      gamma_call_wall: gammaCall,
+      gamma_put_wall: gammaPut,
+      walls_inverted: true,
+    };
+  }
+
+  // Pinned single strike — use spot to split support/resistance when possible.
+  if (spot != null && spot !== hi) {
+    const call_wall = Math.max(hi, spot);
+    const put_wall = Math.min(hi, spot);
+    if (call_wall > put_wall) {
+      return {
+        call_wall,
+        put_wall,
+        gamma_call_wall: gammaCall,
+        gamma_put_wall: gammaPut,
+        walls_inverted: true,
+      };
+    }
+  }
+
+  return {
+    call_wall: hi,
+    put_wall: lo,
+    gamma_call_wall: gammaCall,
+    gamma_put_wall: gammaPut,
+    walls_inverted: true,
   };
 }
 
@@ -75,6 +198,8 @@ type PlayInput = {
   expected_move_pct: number | null;
   days_until: number | null;
   beat_rate: number | null;
+  /** How many graded prints `beat_rate` came from. A rate off one print is not evidence. */
+  beat_rate_graded?: number | null;
   spot: number | null;
   call_wall: number | null;
   put_wall: number | null;
@@ -120,10 +245,12 @@ export function buildErPlayRead(input: PlayInput): MeridianErPlayRead {
 
   if (input.beat_rate != null && input.beat_rate >= 0.65) {
     bullish += 1;
-    rationale.push(`Historical beat rate ${Math.round(input.beat_rate * 100)}% over recent prints`);
+    rationale.push(`Historical beat rate ${Math.round(input.beat_rate * 100)}%${cohortSuffix(input.beat_rate_graded)}`);
   } else if (input.beat_rate != null && input.beat_rate <= 0.35) {
     bearish += 1;
-    rationale.push(`Recent prints skew misses (${Math.round(input.beat_rate * 100)}% beat rate)`);
+    rationale.push(
+      `Recent prints skew misses (${Math.round(input.beat_rate * 100)}% beat rate${cohortSuffix(input.beat_rate_graded)})`
+    );
   }
 
   if (input.spot != null && input.call_wall != null && input.put_wall != null) {
@@ -170,8 +297,37 @@ export function buildErPlayRead(input: PlayInput): MeridianErPlayRead {
 }
 
 /** Beat rate from print history (0–1). */
+/**
+ * " over N prints" — or nothing when the count is unknown.
+ *
+ * Deliberately silent rather than guessing: an absent count means we were handed a rate without
+ * its cohort, and inventing "over 0 prints" beside a real percentage would be worse than saying
+ * nothing. Callers that have the count get it rendered; callers that do not are unchanged.
+ */
+function cohortSuffix(graded: number | null | undefined): string {
+  if (graded == null || !Number.isFinite(graded) || graded <= 0) return "";
+  return ` over ${graded} print${graded === 1 ? "" : "s"}`;
+}
+
 export function beatRateFromPrints(prints: MeridianEarningsPrint[]): number | null {
+  return beatRateWithCohort(prints).rate;
+}
+
+/**
+ * The same rate, with the number of prints it came from.
+ *
+ * `beatRateFromPrints` returns a bare number, and both of its consumers turned it into a
+ * directional verdict AND a rendered percentage — at a 0.65/0.35 threshold that a single graded
+ * print satisfies outright. Measured live, 10.2% of names that get an EPS beat rate at all get
+ * it from one or two prints, so "100% beat rate on recent prints" is a real string this surface
+ * produces off a sample of one. The cohort has to travel with the rate for a reader to discount
+ * it; the bare accessor stays for callers that genuinely only want the number.
+ */
+export function beatRateWithCohort(prints: MeridianEarningsPrint[]): {
+  rate: number | null;
+  graded: number;
+} {
   const graded = prints.filter((p) => p.beat != null);
-  if (!graded.length) return null;
-  return graded.filter((p) => p.beat).length / graded.length;
+  if (!graded.length) return { rate: null, graded: 0 };
+  return { rate: graded.filter((p) => p.beat).length / graded.length, graded: graded.length };
 }

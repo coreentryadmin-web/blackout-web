@@ -5,6 +5,9 @@
  * so ledger PnL, intel lines, and Night Hawk dedupe never drift.
  */
 import type { ZeroDteSetupLogRow } from "@/lib/db";
+import { zeroDtePlaysToolEnvelope } from "@/lib/zerodte/feed-envelope";
+import { condorFlagEnabled } from "@/lib/zerodte/condor";
+import { ironCondorProductForLargo, liveCondorForLargo } from "@/lib/largo/zerodte-condor-for-largo";
 import { fetchNighthawkEchoForTickers, type EcosystemNightHawkTake } from "@/lib/bie/ecosystem-context";
 import { etNowParts, isTradingDayEt, nextTradingDayEt, todayEt } from "@/features/nighthawk/lib/session";
 import { fetchBenzingaNews } from "@/lib/providers/polygon";
@@ -110,6 +113,14 @@ export type ZeroDteBoardLedgerRow = {
   trough_premium: number | null;
   /** Latched peak excursion vs pinned entry — the high-water mark for closed-card display. */
   peak_pnl_pct: number | null;
+  /**
+   * The exit policy this row was COMMITTED under (entry_context.exit_policy_at_commit, Q13), or
+   * null for a legacy row that predates the pin. Carried on the payload because `live_pnl_pct` is
+   * derived TWICE — once here and once in the post-roundFloats re-price — and both derivations
+   * must agree on which policy managed the row. Only "trim_scale" may be credited with banked
+   * trim tranches on a stopped close.
+   */
+  exit_policy_at_commit: "ratchet" | "trim_scale" | null;
   live_pnl_pct: number | null;
   /** Why a CLOSED play closed — now DISTINGUISHES the exit type (pre-this-change a
    *  ratchet exit and a target trim were both null, indistinguishable). "stopped" uses
@@ -438,6 +449,11 @@ function mapLedgerRow(
     peak_pnl_pct: peakPnlPct(r.entry_premium, r.peak_premium),
     // Structure-aware: seller-framed for a credit condor; directional stopped closes use
     // trim-scale AS-MANAGED when peak armed tranches — the ONE derivation both build sites share.
+    // The row's FROZEN exit policy, carried on the payload so the post-roundFloats re-price below
+    // derives the same number from the same policy. resolveExitLadder already refuses to render a
+    // trim ladder for a row that never committed to one; the P&L had no such guard, and credited
+    // trim tranches to ratchet-committed rows.
+    exit_policy_at_commit: readFrozenExitMode(r.entry_context),
     live_pnl_pct: reconcileLedgerLivePnlPct({
       is_condor: isCondor,
       closed_reason: closedReason === "stopped" ? "stopped" : null,
@@ -446,6 +462,7 @@ function mapLedgerRow(
       peak_premium: r.peak_premium,
       trough_premium: r.trough_premium,
       status: r.status,
+      exit_policy_at_commit: readFrozenExitMode(r.entry_context),
     }),
     closed_reason: boardClosedReason,
     floor_pnl_pct: floorPnlPct,
@@ -1055,6 +1072,11 @@ export async function zeroDtePlaysForLargo(): Promise<Record<string, unknown>> {
       // pre-wiring rows; Largo cites the letter, never invents one.
       tier: r.tier,
       graded: r.plan_outcome ? { outcome: r.plan_outcome, pnl_pct: r.plan_pnl_pct } : null,
+      // A CREDIT iron condor is a different instrument from a directional long — the strike/
+      // direction fields above describe it poorly, and its win rate + intraday-breach rate live
+      // in the pinned geometry, not in live_pnl_pct. Surface the condor view so Largo answers a
+      // condor question about a condor row with the condor's own numbers.
+      ...(r.is_condor ? { condor: liveCondorForLargo(r.condor) } : {}),
     };
   });
 
@@ -1125,12 +1147,40 @@ export async function zeroDtePlaysForLargo(): Promise<Record<string, unknown>> {
           };
         });
 
+  // WHICH EMPTY IS THIS? `plays: []` served two completely different facts — "the scanner ran and
+  // nothing cleared the gates" and "the board could not be built or read" — and this payload
+  // carried nothing to tell them apart. Measured on production 2026-08-21, `get_zerodte_plays`
+  // returned no `available`, no `upstream_ok`, no `degraded`, no `reason` and no `note`, so an
+  // outage reads to the model exactly like a quiet session. That is the defect #2477 closed on the
+  // OTHER Largo surface (`zeroDtePlaysFeed`, the live feed) — this is the tool a member's question
+  // actually routes to, and it was never carrying the distinction.
+  //
+  // `board.upstream_ok` is the board's own degraded flag and already folds in `committedKnown`
+  // (`upstream_ok && committedKnown` at its construction site), so it answers precisely this
+  // question. On the unknown branch the envelope omits `plays` ENTIRELY rather than shipping an
+  // empty array, so nothing downstream can count zero and call it a measurement.
+  const envelope = zeroDtePlaysToolEnvelope({
+    upstreamOk: board.upstream_ok !== false,
+    session_date: board.session.date,
+    playCount: plays.length,
+  });
+  const known = envelope.available !== false;
+
+  // The stable "what IS the iron condor" descriptor, so a condor question is answerable even with
+  // no condor live this session (pre-open, always). Gated on the same flag the board builds under:
+  // with the engine off there is no condor product to describe. This is what stops Largo denying
+  // the product exists and confabulating a win rate — the defect measured 2026-08-21.
+  const ironCondor = condorFlagEnabled() ? ironCondorProductForLargo() : undefined;
+
   return {
     source: "0DTE Command (always-on scanner, /grid)",
-    session_date: board.session.date,
-    plays,
-    fresh_finds: fresh,
-    excluded_covered_elsewhere: board.covered_elsewhere,
+    ...envelope,
+    ...(ironCondor ? { iron_condor: ironCondor } : {}),
+    ...(known ? { plays } : {}),
+    // A board that could not be built has no setups either, so there are no fresh finds to
+    // report — and printing an empty list beside an unknown committed set repeats the same
+    // mistake one field over.
+    ...(known ? { fresh_finds: fresh, excluded_covered_elsewhere: board.covered_elsewhere } : {}),
     rules: "0DTE discipline: new directional plays 10:00–15:30 ET; stop -50%, trim +100%, hard exit 15:50 ET.",
   };
 }

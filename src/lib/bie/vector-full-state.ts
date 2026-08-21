@@ -58,7 +58,10 @@ import { confluenceZones, type ConfluenceLevel } from "@/features/vector/lib/vec
 import { scoreTopWalls } from "@/features/vector/lib/vector-wall-integrity";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import { roundFloats } from "@/lib/round-floats";
+import { VECTOR_FRACTION_DP } from "@/features/vector/lib/vector-response-rounding";
 import { readVectorFullStateCache, writeVectorFullStateCache } from "@/lib/bie/vector-full-state-cache";
+import { reportVectorAbsences, type VectorAbsenceReport } from "@/lib/bie/vector-absent-sections";
+import { isEtCashRth } from "@/lib/et-market-hours";
 
 /** The default chart timeframe (minutes) a cached snapshot is computed at — the cron warms this TF;
  *  a reader asking for a different TF must recompute live (its technicals differ). */
@@ -242,6 +245,18 @@ export async function computeVectorFullState(
 
     // roundFloats at the data boundary — several Vector reads serve unrounded floats (documented in
     // CLAUDE.md); rounding once here keeps every downstream brief number clean.
+    //
+    // VECTOR_FRACTION_DP is NOT optional here. The default dp=2 is right for the dollar-scale
+    // majority of this payload (spot / strikes / wall levels / band bounds) and DESTROYS the
+    // fraction-of-one fields: `expectedMove.movePct` is `move1 / spot`, so SPX's real 0.004006
+    // (±31 pts on 7737.83) served as `0` and Largo answered "expected move 0.00%" while the
+    // /vector page — which already passes this map — showed 0.40%. `atmIv` is a decimal vol and
+    // loses up to half a vol point at 2dp. This is the same live defect fixed on
+    // /api/market/vector/expected-move and /pin-forecast on 2026-08-07; the map was centralized
+    // precisely so the next Vector read would inherit it, and this boundary never adopted it.
+    // (`magnet.distancePct` needed no entry — it was rescaled to PERCENT at its source, because
+    // roundFloats keys on the immediate key and `proximity.distancePct` in this very payload is
+    // a percent, so no single override could have served both.)
     return roundFloats<VectorFullState>({
       ...snapshot,
       play,
@@ -261,7 +276,7 @@ export async function computeVectorFullState(
       vexWalls: vexWalls ?? null,
       vexFlip,
       darkPoolLevels: darkPoolLevels ?? [],
-    });
+    }, 2, VECTOR_FRACTION_DP);
   } catch {
     return null; // whole-state failure is a no-surface, never a throw into the caller
   }
@@ -284,12 +299,12 @@ export async function fetchVectorFullState(
   ticker: string,
   horizon: VectorDteHorizon = VECTOR_DEFAULT_DTE_HORIZON,
   timeframeMin: number = VECTOR_FULL_STATE_DEFAULT_TIMEFRAME_MIN
-): Promise<VectorFullState | null> {
+): Promise<(VectorFullState & VectorAbsenceReport) | null> {
   const cacheable = timeframeMin === VECTOR_FULL_STATE_DEFAULT_TIMEFRAME_MIN;
 
   if (cacheable) {
     const cached = await readVectorFullStateCache(ticker, horizon);
-    if (cached) return cached;
+    if (cached) return withAbsenceReport(cached);
   }
 
   const live = await computeVectorFullState(ticker, horizon, timeframeMin);
@@ -298,7 +313,42 @@ export async function fetchVectorFullState(
   // (off-hours, cold task). Fire-and-forget — a cache write must never delay or fail the read.
   if (live && cacheable) void writeVectorFullStateCache(ticker, horizon, live);
 
-  return live;
+  return live ? withAbsenceReport(live) : null;
+}
+
+/**
+ * Attach the absence report on the way OUT rather than storing it on the snapshot.
+ *
+ * Two reasons it belongs here and not in `computeVectorFullState`. (1) It is derived purely from
+ * the state's own fields, so deriving it on read means a cache entry written before this existed
+ * still gets a correct report — no cache-shape version bump, no window where the field is missing.
+ * (2) It keeps the CACHED object exactly what the cron writes, so what is stored stays the raw
+ * desk state and the labelling stays a property of the answer.
+ *
+ * `isRth` is evaluated against the snapshot's OWN `asOf`, not against "now": the question the
+ * bead-rail reason answers is "was the market open when this was measured", which is what explains
+ * an empty rail. Using "now" would mislabel a pre-open snapshot read after the bell.
+ */
+function withAbsenceReport(state: VectorFullState): VectorFullState & VectorAbsenceReport {
+  const observedAt = Date.parse(state.asOf);
+  return {
+    ...state,
+    ...reportVectorAbsences({
+      gexWalls: state.gexWalls,
+      gammaFlip: state.gammaFlip,
+      maxPain: state.maxPain,
+      expectedMove: state.expectedMove,
+      ladder: state.ladder,
+      heatmap: state.heatmap,
+      technicals: state.technicals,
+      flowMarkers: state.flowMarkers,
+      vexWalls: state.vexWalls,
+      darkPoolLevels: state.darkPoolLevels,
+      wallHistory: state.wallHistory,
+      play: state.play,
+      isRth: isEtCashRth(Number.isFinite(observedAt) ? new Date(observedAt) : new Date()),
+    }),
+  };
 }
 
 function num(n: number | null | undefined): number | null {

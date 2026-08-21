@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { AuthUserMenu } from "@/components/auth/AuthUserMenu";
 import { useAppAuth } from "@/lib/auth-client";
@@ -34,8 +34,8 @@ const FEATURE_LINKS: FeatureLink[] = [
   },
 ];
 
-/** Tool routes mount heavy client trees — disable RSC prefetch burst (503 under concurrent ?_rsc=). */
-const TOOL_LINK_PREFETCH = false;
+/** Tool routes: `null` = App Router partial prefetch to each route's loading.tsx (not a full RSC burst). */
+const TOOL_LINK_PREFETCH = null;
 
 const TOP_LINKS = [
   { href: "/faq", label: "FAQ", iosHide: false as const },
@@ -141,6 +141,8 @@ export function Nav({
   const isAdmin = useAdminFlag();
   const [featuresOpen, setFeaturesOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [routePending, setRoutePending] = useState(false);
+  const routePendingRef = useRef(false);
 
   const headerRef = useRef<HTMLElement>(null);
   const featuresRef = useRef<HTMLLIElement>(null);
@@ -201,6 +203,41 @@ export function Nav({
     applyNavSolid(scrolledRef.current);
   }, [path]);
 
+  /** Route transition feedback — desk RSC can take several seconds; without motion the page reads stuck. */
+  useEffect(() => {
+    if (!routePendingRef.current) return;
+    let cancelled = false;
+    const tick = () => {
+      if (cancelled || !routePendingRef.current) return;
+      if (document.body.innerText.length > 280) {
+        routePendingRef.current = false;
+        setRoutePending(false);
+      }
+    };
+    const poll = window.setInterval(tick, 120);
+    const max = window.setTimeout(() => {
+      routePendingRef.current = false;
+      setRoutePending(false);
+    }, 30_000);
+    tick();
+    return () => {
+      cancelled = true;
+      window.clearInterval(poll);
+      window.clearTimeout(max);
+    };
+  }, [path, routePending]);
+
+  const markRoutePending = useCallback(() => {
+    routePendingRef.current = true;
+    setRoutePending(true);
+  }, []);
+
+  useEffect(() => {
+    const onPending = () => markRoutePending();
+    window.addEventListener("blackout:route-pending", onPending);
+    return () => window.removeEventListener("blackout:route-pending", onPending);
+  }, [markRoutePending]);
+
   useEffect(() => {
     setFeaturesOpen(false);
     setMobileOpen(false);
@@ -242,6 +279,7 @@ export function Nav({
       ref={headerRef}
       role="banner"
       data-scrolled={!isHome ? "true" : "false"}
+      data-route-pending={routePending ? "true" : "false"}
       initial={isHome && !reduced ? { opacity: 0, y: -20 } : undefined}
       animate={isHome && !reduced ? { opacity: 1, y: 0 } : undefined}
       transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
@@ -317,7 +355,10 @@ export function Nav({
                       path={path}
                       lockedTools={lockedTools}
                       showAdmin={showAdmin}
-                      onNavigate={() => setFeaturesOpen(false)}
+                      onNavigate={() => {
+                        markRoutePending();
+                        setFeaturesOpen(false);
+                      }}
                     />
                   </div>
                   <div className="nav-mega-foot font-mono">Tab to explore · Esc to close</div>
@@ -436,7 +477,10 @@ export function Nav({
                   path={path}
                   lockedTools={lockedTools}
                   showAdmin={showAdmin}
-                  onNavigate={() => setMobileOpen(false)}
+                  onNavigate={() => {
+                    markRoutePending();
+                    setMobileOpen(false);
+                  }}
                 />
               </div>
               <div className="nav-sheet-divider" />

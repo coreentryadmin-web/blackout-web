@@ -10,6 +10,7 @@ import {
   timelineIndexAtOrBeforeEtClock,
   wallsAtCrosshairTime,
   wallsAtReplayTime,
+  type VectorReplayBar,
 } from "@/features/vector/lib/vector-replay";
 import type { GexWalls } from "@/lib/providers/gex-wall-levels";
 import type { WallHistorySample } from "@/features/vector/lib/vector-wall-history";
@@ -130,4 +131,99 @@ test("slice-then-aggregate: post-cursor minutes never reach a higher-timeframe r
   assert.equal(honest.length, 1);
   assert.equal(honest[0]!.high, 12, "post-cursor spike leaked into the replay bucket");
   assert.notDeepEqual(honest, leaked, "unsliced aggregate must differ — else this test proves nothing");
+});
+
+/**
+ * The replay scrubber must not span more sessions than the wall rail covers.
+ *
+ * `loadVectorSeedProps` seeds ~3 sessions of bars ("the seed carries ~3 sessions, so bars[0] is the
+ * OLDEST session's open") while the rail beside it is single-session — `loadSessionWallHistory` and
+ * `reconstructSessionRail` are both keyed on one `sessionYmd`. Unioning them raw put ~3 days of
+ * candles on a timeline that only has 1 day of beads, so most of the scrubber sat on days with no
+ * rail: `sliceHistoryToTime` returns [] there and the chart correctly draws candles and nothing
+ * else. Reported live on SPX at step 75/1521 — 10:44 AM on the OLDEST seeded session.
+ */
+const DAY = 86_400;
+/** 2026-08-19 13:30Z = 09:30 ET. */
+const SESSION_OPEN_UTC = Date.parse("2026-08-19T13:30:00Z") / 1000;
+
+function barsForDay(openSec: number, count: number): VectorReplayBar[] {
+  return Array.from({ length: count }, (_, i) => ({
+    time: openSec + i * 60,
+    open: 1,
+    high: 1,
+    low: 1,
+    close: 1,
+  }));
+}
+
+test("REGRESSION: the replay timeline covers only the session the wall rail describes", () => {
+  // Three sessions of bars, rail on the newest only — the exact seed/rail asymmetry.
+  const bars = [
+    ...barsForDay(SESSION_OPEN_UTC - 2 * DAY, 390),
+    ...barsForDay(SESSION_OPEN_UTC - 1 * DAY, 390),
+    ...barsForDay(SESSION_OPEN_UTC, 390),
+  ];
+  const history: WallHistorySample[] = [
+    { time: SESSION_OPEN_UTC + 60, walls: { callWalls: [{ strike: 7800, pct: 9 }], putWalls: [] }, gammaFlip: null },
+    { time: SESSION_OPEN_UTC + 600, walls: { callWalls: [{ strike: 7800, pct: 9 }], putWalls: [] }, gammaFlip: null },
+  ];
+
+  const timeline = buildReplayTimeline(history, bars);
+
+  const oldest = timeline[0]!;
+  assert.ok(
+    oldest >= SESSION_OPEN_UTC - 60,
+    `timeline starts at ${oldest}, which is before the rail's session — the scrubber would open on ` +
+      "a day that has candles but no beads"
+  );
+
+  // Every step must be a point where beads can exist: at/after the first rail sample, or inside
+  // the session the rail covers.
+  const beforeRail = timeline.filter((t) => t < history[0]!.time);
+  assert.ok(
+    beforeRail.length <= 390,
+    `${beforeRail.length} steps precede the first wall sample — at most one session's worth of ` +
+      "pre-rail bars is acceptable, three days' worth is the bug"
+  );
+  assert.ok(timeline.length <= 400, `timeline should be ~one session, got ${timeline.length}`);
+});
+
+test("a mid-session cursor still resolves beads after the scope fix", () => {
+  const bars = [...barsForDay(SESSION_OPEN_UTC - DAY, 390), ...barsForDay(SESSION_OPEN_UTC, 390)];
+  const history: WallHistorySample[] = [
+    { time: SESSION_OPEN_UTC + 60, walls: { callWalls: [{ strike: 7800, pct: 9 }], putWalls: [] }, gammaFlip: null },
+  ];
+  const timeline = buildReplayTimeline(history, bars);
+
+  // Quarter of the way in — the position that used to land on an older, rail-less day.
+  const cursor = timeline[Math.floor(timeline.length / 4)]!;
+  assert.ok(
+    sliceHistoryToTime(history, cursor).length > 0,
+    "a cursor a quarter into the scrubber must have wall history behind it, or the member sees " +
+      "candles with no beads and reads the feature as broken"
+  );
+});
+
+test("the rail is never truncated to the bar window — recorded structure is not dropped", () => {
+  // A recorder that started before the first bar (pre-market) is real observed structure. Scoping
+  // the BARS is a display fix; filtering the RAIL would be data loss.
+  const bars = barsForDay(SESSION_OPEN_UTC, 390);
+  const preMarket = SESSION_OPEN_UTC - 120;
+  const history: WallHistorySample[] = [
+    { time: preMarket, walls: { callWalls: [{ strike: 7800, pct: 9 }], putWalls: [] }, gammaFlip: null },
+  ];
+  const timeline = buildReplayTimeline(history, bars);
+  assert.equal(timeline[0], preMarket, "the pre-market rail sample must survive as a replay step");
+});
+
+test("bars-only and history-only inputs still produce a usable timeline", () => {
+  assert.deepEqual(buildReplayTimeline([], []), []);
+  const barsOnly = buildReplayTimeline([], barsForDay(SESSION_OPEN_UTC, 3));
+  assert.equal(barsOnly.length, 3, "no rail yet → scrub the candles of the latest session");
+  const histOnly = buildReplayTimeline(
+    [{ time: SESSION_OPEN_UTC, walls: { callWalls: [], putWalls: [] }, gammaFlip: null }],
+    []
+  );
+  assert.deepEqual(histOnly, [SESSION_OPEN_UTC]);
 });

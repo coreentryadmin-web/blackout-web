@@ -19,7 +19,7 @@ import {
   rollUpMetricStatus,
   worstStatus,
 } from "@/lib/correctness/types";
-import { odteGexScopeFromHeatmap, grossAbsFromStrikeTotals, grossAbsFromUwGexRows, isHairlineNetGammaSign, isNearGammaFlip, recomputeScopedGexLevels } from "@/lib/correctness/gex-odte-scope";
+import { odteGexScopeFromHeatmap, grossAbsFromStrikeTotals, grossAbsFromUwGexRows, isHairlineNetGammaSign, isNearGammaFlip, recomputeScopedGexLevels, resolveZeroDteExpiry } from "@/lib/correctness/gex-odte-scope";
 
 // ---------------------------------------------------------------------------
 // HEAT MAPS data-correctness verifier — the first (primary) target of the auditor.
@@ -73,12 +73,21 @@ const TOL = {
   /** Plausible-magnitude ceiling for net GEX as a fraction of (spot²·notional) — guards an absurd blow-up. */
 } as const;
 
-/** Independent argmax over per-strike net totals → the wall extrema (call=max+, put=min−). */
-function deriveWalls(strikeTotals: Record<string, number>): {
+/**
+ * Independent wall extrema from per-strike net totals.
+ * When `spot` is supplied, call/put walls are SIDE-CONSTRAINED (call above spot, put below) —
+ * the same contract production serves via `wallsFromStrikeTotals(strikeTotals, spot)` since #2417.
+ * King stays unconstrained argmax |net|. Unconstrained argmax false-flagged inverted walls (ops-auto-fix #2503).
+ */
+function deriveWalls(
+  strikeTotals: Record<string, number>,
+  spot?: number
+): {
   callWall: number | null;
   putWall: number | null;
   king: number | null;
 } {
+  const constrained = typeof spot === "number" && Number.isFinite(spot) && spot > 0;
   let callWall: number | null = null;
   let putWall: number | null = null;
   let king: number | null = null;
@@ -89,11 +98,11 @@ function deriveWalls(strikeTotals: Record<string, number>): {
     const strike = Number(s);
     const g = Number(gRaw);
     if (!Number.isFinite(strike) || !Number.isFinite(g)) continue;
-    if (g > maxPos) {
+    if (g > maxPos && (!constrained || strike > spot)) {
       maxPos = g;
       callWall = strike;
     }
-    if (g < maxNeg) {
+    if (g < maxNeg && (!constrained || strike < spot)) {
       maxNeg = g;
       putWall = strike;
     }
@@ -389,9 +398,10 @@ function invariantChecks(ctx: Ctx, hm: GexHeatmap): CheckResult[] {
   // getGexPositioning doesn't surface King directly, but the matrix strike_totals do — derive both.
   {
     const { king: derivedKing, callWall: derivedCall, putWall: derivedPut } = deriveWalls(
-      hm.gex.strike_totals
+      hm.gex.strike_totals,
+      spot
     );
-    // INV-3a: call wall == argmax positive.
+    // INV-3a: call wall == max +gamma ABOVE spot (resistance must sit overhead, not below price).
     out.push(
       mk(
         ctx,
@@ -399,12 +409,12 @@ function invariantChecks(ctx: Ctx, hm: GexHeatmap): CheckResult[] {
         "call_wall",
         sameStrike(derivedCall, hm.gex.call_wall) ? "consistency-only" : "flag",
         sameStrike(derivedCall, hm.gex.call_wall)
-          ? `Call wall ${fmt(hm.gex.call_wall)} == argmax(+net_gex) ${fmt(derivedCall)}.`
-          : `Call wall ${fmt(hm.gex.call_wall)} != independent argmax(+net_gex) ${fmt(derivedCall)} (wall is not the local positive extreme).`,
+          ? `Call wall ${fmt(hm.gex.call_wall)} == max(+net_gex) above spot ${fmt(spot)} at ${fmt(derivedCall)}.`
+          : `Call wall ${fmt(hm.gex.call_wall)} != independent max(+net_gex) above spot ${fmt(derivedCall)} (wall is not the constrained positive extreme).`,
         { id: "call-wall-is-argmax-pos", expected: derivedCall, actual: hm.gex.call_wall, tolerance: TOL.strikeAbs }
       )
     );
-    // INV-3b: put wall == argmin negative.
+    // INV-3b: put wall == max −gamma BELOW spot (support must sit under price).
     out.push(
       mk(
         ctx,
@@ -412,8 +422,8 @@ function invariantChecks(ctx: Ctx, hm: GexHeatmap): CheckResult[] {
         "put_wall",
         sameStrike(derivedPut, hm.gex.put_wall) ? "consistency-only" : "flag",
         sameStrike(derivedPut, hm.gex.put_wall)
-          ? `Put wall ${fmt(hm.gex.put_wall)} == argmin(−net_gex) ${fmt(derivedPut)}.`
-          : `Put wall ${fmt(hm.gex.put_wall)} != independent argmin(−net_gex) ${fmt(derivedPut)} (wall is not the local negative extreme).`,
+          ? `Put wall ${fmt(hm.gex.put_wall)} == max(−net_gex) below spot ${fmt(spot)} at ${fmt(derivedPut)}.`
+          : `Put wall ${fmt(hm.gex.put_wall)} != independent max(−net_gex) below spot ${fmt(derivedPut)} (wall is not the constrained negative extreme).`,
         { id: "put-wall-is-argmin-neg", expected: derivedPut, actual: hm.gex.put_wall, tolerance: TOL.strikeAbs }
       )
     );
@@ -1161,10 +1171,65 @@ async function crossProviderChecks(ctx: Ctx, hm: GexHeatmap): Promise<CheckResul
   // Pull the SAME 0DTE-scoped UW ladder the SPX overlay uses (WS → spot-exposures REST).
   // Do NOT use fetchUwOdteGexLadder's cumulative greek-exposure/strike fallback — that sums ALL
   // expiries and false-flags against the served 0DTE King (ops-auto-fix #1865).
+  // Pull the SAME expiry-scoped UW ladder as the served matrix's today column. When today's
+  // 0DTE column is absent (post-close expiry), skip the oracle — do NOT compare UW calendar-
+  // today or the front-expiry column (ops-auto-fix #2360).
+  const alignedExpiry = resolveZeroDteExpiry(hm.expiries ?? [], ctx.today);
+  if (!alignedExpiry) {
+    out.push(
+      mk(
+        ctx,
+        "cross-provider",
+        "king",
+        "consistency-only",
+        `No ${ctx.today} expiry column on the SPX matrix (0DTE expired or not on axis) — UW 0DTE King oracle skipped.`,
+        { id: "oracle-king" }
+      )
+    );
+    out.push(
+      mk(
+        ctx,
+        "cross-provider",
+        "net_gex",
+        "consistency-only",
+        `No ${ctx.today} expiry column on the SPX matrix (0DTE expired or not on axis) — UW 0DTE oracle skipped; net-sign consistency-only.`,
+        { id: "oracle-net-sign" }
+      )
+    );
+    return out;
+  }
+
+  // When the UW overlay did not run, the served 0DTE column is Polygon-derived and WILL disagree
+  // with the UW oracle by design — flagging that is a false positive (ops-auto-fix #2503).
+  if (hm.gex.odte_overlay?.applied !== true) {
+    const why = hm.gex.odte_overlay?.reason ?? "unknown";
+    out.push(
+      mk(
+        ctx,
+        "cross-provider",
+        "king",
+        "consistency-only",
+        `SPX 0DTE UW overlay not applied (${why}) — King consistency-only; Polygon column vs UW oracle is not a like-for-like compare.`,
+        { id: "oracle-king" }
+      )
+    );
+    out.push(
+      mk(
+        ctx,
+        "cross-provider",
+        "net_gex",
+        "consistency-only",
+        `SPX 0DTE UW overlay not applied (${why}) — net-GEX sign consistency-only until overlay lands.`,
+        { id: "oracle-net-sign" }
+      )
+    );
+    return out;
+  }
+
   let uw: { rows: Record<string, unknown>[]; source: string } = { rows: [], source: "none" };
   try {
     const { fetchSpxOdteScopedUwLadder } = await import("@/lib/providers/spx-odte-uw-ladder");
-    uw = await fetchSpxOdteScopedUwLadder("SPX");
+    uw = await fetchSpxOdteScopedUwLadder("SPX", alignedExpiry);
   } catch {
     uw = { rows: [], source: "none" };
   }
@@ -1286,7 +1351,99 @@ async function crossProviderChecks(ctx: Ctx, hm: GexHeatmap): Promise<CheckResul
 // ---------------------------------------------------------------------------
 // LAYER 5 — CROSS-TOOL CONSISTENCY (same value across surfaces; SPX). #80 class.
 // ---------------------------------------------------------------------------
-async function crossToolChecks(ctx: Ctx, hm: GexHeatmap): Promise<CheckResult[]> {
+
+/** Minimal merged-desk shape for the SPX desk-vs-matrix cross-tool lane (exported for tests). */
+export type SpxDeskCrossToolInput = {
+  available?: boolean;
+  price?: number;
+  gamma_flip?: number | null;
+  gex_stale?: boolean;
+  gex_age_ms?: number | null;
+};
+
+/**
+ * SPX Slayer desk vs the held Heat Maps snapshot. Off-hours the merged desk cache can lag a
+ * fresh matrix rebuild by one TTL (ops-collect runs `?force=1` premarket) — skip then, same as
+ * freshness. During RTH, skip flip when the desk itself marks GEX stale.
+ */
+export function spxDeskCrossToolChecks(
+  ctx: Ctx,
+  hm: GexHeatmap,
+  marketOpen: boolean,
+  merged: SpxDeskCrossToolInput
+): CheckResult[] {
+  const out: CheckResult[] = [];
+  if (!marketOpen) {
+    out.push(
+      mk(
+        ctx,
+        "cross-tool",
+        "gamma_flip",
+        "skipped",
+        "Market closed — SPX desk vs Heat Maps cross-tool check skipped (desk cache may lag a fresh matrix rebuild off-hours).",
+        { id: "desk-vs-matrix-flip" }
+      )
+    );
+    return out;
+  }
+  if (!merged?.available || !(merged.price! > 0) || !(hm.spot > 0)) {
+    out.push(
+      mk(ctx, "cross-tool", "spot", "skipped", "SPX desk unavailable/closed — desk cross-tool check skipped.", {
+        id: "desk-vs-matrix-spot",
+      })
+    );
+    return out;
+  }
+  const sd = fractionalDiff(merged.price!, hm.spot);
+  out.push(
+    mk(
+      ctx,
+      "cross-tool",
+      "spot",
+      sd <= TOL.spotFractional ? "consistency-only" : "flag",
+      sd <= TOL.spotFractional
+        ? `SPX desk price ${fmt(merged.price!)} == heatmap spot ${fmt(hm.spot)}.`
+        : `SPX desk price ${fmt(merged.price!)} != heatmap spot ${fmt(hm.spot)} (Δ ${(sd * 100).toFixed(2)}%) — desk vs Heat Maps spot divergence (#80 class).`,
+      { id: "desk-vs-matrix-spot", expected: hm.spot, actual: merged.price, tolerance: TOL.spotFractional }
+    )
+  );
+  if (merged.gex_stale) {
+    out.push(
+      mk(
+        ctx,
+        "cross-tool",
+        "gamma_flip",
+        "skipped",
+        "SPX desk GEX marked stale — desk-vs-matrix flip check skipped (desk shows last-good, not live).",
+        { id: "desk-vs-matrix-flip" }
+      )
+    );
+    return out;
+  }
+  if (merged.gamma_flip != null && hm.gex.flip != null) {
+    const close = Math.abs(merged.gamma_flip - hm.gex.flip) <= Math.max(hm.spot * 0.01, 1);
+    out.push(
+      mk(
+        ctx,
+        "cross-tool",
+        "gamma_flip",
+        close ? "consistency-only" : "flag",
+        close
+          ? `SPX desk γ-flip ${fmt(merged.gamma_flip)} ≈ heatmap flip ${fmt(hm.gex.flip)}.`
+          : `SPX desk γ-flip ${fmt(merged.gamma_flip)} != heatmap flip ${fmt(hm.gex.flip)} — same label, different level (#80 class).`,
+        {
+          id: "desk-vs-matrix-flip",
+          expected: hm.gex.flip,
+          actual: merged.gamma_flip,
+          tolerance: Math.max(hm.spot * 0.01, 1),
+        }
+      )
+    );
+  }
+  return out;
+}
+
+async function crossToolChecks(ctx: Ctx, hm: GexHeatmap, marketOpen: boolean): Promise<CheckResult[]> {
   const out: CheckResult[] = [];
   const { root } = resolveOptionsRoot(ctx.ticker);
 
@@ -1366,53 +1523,12 @@ async function crossToolChecks(ctx: Ctx, hm: GexHeatmap): Promise<CheckResult[]>
     );
   }
 
-  // SPX-only: confirm the SPX desk (SPX Slayer) reads the same spot / King / flip as the matrix.
+  // SPX-only: confirm the SPX desk (SPX Slayer) reads the same spot / flip as the matrix.
   if (root === "SPX") {
     try {
       const { loadMergedSpxDesk } = await import("@/features/spx/lib/spx-desk-loader");
       const { merged } = await loadMergedSpxDesk();
-      if (merged?.available && merged.price > 0 && hm.spot > 0) {
-        const sd = fractionalDiff(merged.price, hm.spot);
-        out.push(
-          mk(
-            ctx,
-            "cross-tool",
-            "spot",
-            sd <= TOL.spotFractional ? "consistency-only" : "flag",
-            sd <= TOL.spotFractional
-              ? `SPX desk price ${fmt(merged.price)} == heatmap spot ${fmt(hm.spot)}.`
-              : `SPX desk price ${fmt(merged.price)} != heatmap spot ${fmt(hm.spot)} (Δ ${(sd * 100).toFixed(2)}%) — desk vs Heat Maps spot divergence (#80 class).`,
-            { id: "desk-vs-matrix-spot", expected: hm.spot, actual: merged.price, tolerance: TOL.spotFractional }
-          )
-        );
-        // Desk gamma flip vs matrix flip.
-        if (merged.gamma_flip != null && hm.gex.flip != null) {
-          const close = Math.abs(merged.gamma_flip - hm.gex.flip) <= Math.max(hm.spot * 0.01, 1);
-          out.push(
-            mk(
-              ctx,
-              "cross-tool",
-              "gamma_flip",
-              close ? "consistency-only" : "flag",
-              close
-                ? `SPX desk γ-flip ${fmt(merged.gamma_flip)} ≈ heatmap flip ${fmt(hm.gex.flip)}.`
-                : `SPX desk γ-flip ${fmt(merged.gamma_flip)} != heatmap flip ${fmt(hm.gex.flip)} — same label, different level (#80 class).`,
-              {
-                id: "desk-vs-matrix-flip",
-                expected: hm.gex.flip,
-                actual: merged.gamma_flip,
-                tolerance: Math.max(hm.spot * 0.01, 1),
-              }
-            )
-          );
-        }
-      } else {
-        out.push(
-          mk(ctx, "cross-tool", "spot", "skipped", "SPX desk unavailable/closed — desk cross-tool check skipped.", {
-            id: "desk-vs-matrix-spot",
-          })
-        );
-      }
+      out.push(...spxDeskCrossToolChecks(ctx, hm, marketOpen, merged));
     } catch {
       out.push(
         mk(ctx, "cross-tool", "spot", "skipped", "SPX desk load failed — desk cross-tool check skipped.", {
@@ -1602,7 +1718,7 @@ export async function verifyHeatmapTicker(ticker: string, marketOpen: boolean): 
     ["freshness", () => [freshnessCheck(ctx, hm, marketOpen)]],
     ["shadow", () => shadowRecomputeChecks(ctx, hm)],
     ["oracle", () => crossProviderChecks(ctx, hm)],
-    ["cross-tool", () => crossToolChecks(ctx, hm)],
+    ["cross-tool", () => crossToolChecks(ctx, hm, marketOpen)],
     ["dex-charm-cross-tool", () => dexCharmCrossToolChecks(ctx, hm)],
   ];
   for (const [name, run] of runners) {

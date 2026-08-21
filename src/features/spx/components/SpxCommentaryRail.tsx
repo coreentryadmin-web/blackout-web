@@ -20,6 +20,7 @@
 // already updates every ~2s via useMergedDesk; no extra network traffic is added.
 
 import { useEffect, useRef, useState } from "react";
+import { etClock } from "@/lib/et-clock";
 import { clsx } from "clsx";
 
 import type { SpxDeskPayload } from "@/lib/api";
@@ -105,8 +106,10 @@ function toneTextClass(tone: SpxVoiceEventTone): string {
   }
 }
 
+// ET — this omitted `timeZone` and rendered in the VIEWER's zone, while the desk it sits on
+// pins Eastern everywhere else. See lib/et-clock.ts.
 function fmtTime(at: number): string {
-  return new Date(at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  return etClock(at) ?? "—";
 }
 
 function EventLine({ item }: { item: FeedItem }) {

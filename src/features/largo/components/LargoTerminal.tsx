@@ -5,10 +5,12 @@ import { useDictation } from "@/hooks/useDictation";
 import { motion, AnimatePresence } from "framer-motion";
 import { ImagePlus, Mic, Square, X } from "lucide-react";
 import { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useIosKeyboardInset } from "@/hooks/useIosKeyboardInset";
+import { useLargoSlashCommands } from "@/hooks/useLargoSlashCommands";
+import { resolveLargoSlashSubmit } from "@/lib/largo/slash-commands";
 import {
   LARGO_SUGGESTIONS,
-  LARGO_DESK_PROMPTS,
   largoToolLabel,
   useLargoChat,
 } from "@/hooks/useLargoChat";
@@ -18,10 +20,23 @@ import { LargoMessageBody } from "./LargoMessageBody";
 import { LargoAnswerMessage } from "./LargoAnswerMessage";
 import { LargoTerminalToolbar } from "./LargoTerminalToolbar";
 import { LargoEmptyState } from "./LargoEmptyState";
+import { LargoDeskModulePicker } from "./LargoDeskModulePicker";
+import { largoModuleComposerDesks } from "@/lib/largo/largo-module-starter-cards";
 import { LargoStatusStrip } from "./LargoStatusStrip";
-import { LargoContextRail } from "./LargoContextRail";
+import { LargoSlashMenu } from "./LargoSlashMenu";
+import { LargoSlashPromptsMenu } from "./LargoSlashPromptsMenu";
+import { LargoDeskScopeBanner } from "./LargoDeskScopeBanner";
+import { LargoProactiveComposer } from "./LargoProactiveComposer";
+import { LargoAnswerModeToggle } from "./LargoAnswerModeToggle";
+import { parseDeskSlashArgs } from "@/lib/largo/desk-scope";
+import { formatLargoScopePrefill } from "@/lib/largo/largo-module-starter-cards";
+import { slashArgsFromInput } from "@/lib/largo/slash-prompt-utils";
+import type { LargoScopePick, LargoStarterPick } from "@/lib/largo/largo-module-starter-cards";
+import type { DeskSlashArgs } from "@/lib/largo/desk-scope";
+import type { LargoSlashCommand } from "@/lib/largo/slash-commands";
+import type { SlashSubmoduleItem } from "@/lib/largo/slash-submodules";
 
-const INPUT_PLACEHOLDER = "Ask the desk — SPX levels, a ticker, flow, news…";
+const INPUT_PLACEHOLDER = "Type / for desk commands — SPX, flow, thermal, vector…";
 const INPUT_PLACEHOLDER_BUSY = "Pulling live data…";
 
 export function LargoTerminal({
@@ -46,7 +61,6 @@ export function LargoTerminal({
     loading,
     streaming,
     hydrated,
-    followups,
     activeTools,
     statusMessage,
     awaitingFirstToken,
@@ -66,12 +80,23 @@ export function LargoTerminal({
     addAttachments,
     removeAttachment,
     depth,
+    setAnswerMode,
     toggleDepth,
     historicalMode,
     toggleHistoricalMode,
     chartGuide,
     setChartGuide,
+    activeDeskScope,
+    setActiveDeskScope,
+    activeDeskScopeArgs,
+    setActiveDeskScopeArgs,
   } = useLargoChat();
+
+  const router = useRouter();
+  const slash = useLargoSlashCommands(input, setInput, (q, scope) =>
+    void runQuery(q, { deskScope: scope?.deskScope, deskScopeArgs: scope?.deskScopeArgs })
+  );
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -87,9 +112,66 @@ export function LargoTerminal({
 
   useIosKeyboardInset(nativeShell);
 
+  function applyScope(pick: LargoScopePick) {
+    setActiveDeskScope(pick.deskScope);
+    setActiveDeskScopeArgs(pick.deskScopeArgs ?? null);
+    const prefill =
+      pick.prefill ??
+      formatLargoScopePrefill(pick.deskScope, pick.deskScopeArgs?.submodule ?? null);
+    setInput(prefill);
+    inputRef.current?.focus();
+  }
+
+  function askScoped(pick: LargoStarterPick) {
+    void runQuery(pick.question, {
+      deskScope: pick.deskScope,
+      deskScopeArgs: pick.deskScopeArgs,
+    });
+    setInput("");
+  }
+
+  function askFromSlash(
+    question: string,
+    cmd?: LargoSlashCommand | null,
+    submodule?: string | null
+  ) {
+    const desk = cmd ?? slash.activeDesk;
+    const args = desk ? slashArgsFromInput(input, desk.command) : "";
+    const parsed = desk ? parseDeskSlashArgs(args, desk.command) : parseDeskSlashArgs(args);
+    void runQuery(question, {
+      deskScope: desk?.command ?? null,
+      deskScopeArgs: submodule ? { ...parsed, submodule } : parsed,
+    });
+    setInput("");
+    slash.clearDesk();
+  }
+
+  function askFromModule(mod: SlashSubmoduleItem) {
+    askFromSlash(mod.exampleQuestion, slash.activeDesk, mod.id);
+  }
+
+  function submitSlashOrQuery(text: string) {
+    const resolved = resolveLargoSlashSubmit(text, slash.promptMatches);
+    if (resolved.type === "query") {
+      void runQuery(resolved.question, {
+        deskScope: resolved.deskScope ?? null,
+        deskScopeArgs: resolved.deskScopeArgs,
+      });
+      setInput("");
+      slash.clearDesk();
+      return;
+    }
+    void runQuery(resolved.text, {
+      deskScope: activeDeskScope,
+      deskScopeArgs: activeDeskScopeArgs,
+    });
+    setInput("");
+    slash.clearDesk();
+  }
+
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    void runQuery(input);
+    submitSlashOrQuery(input);
   }
 
   /**
@@ -143,7 +225,7 @@ export function LargoTerminal({
             canRegenerate={canRegenerate}
             loading={loading}
             depth={depth}
-            onToggleDepth={toggleDepth}
+            onSetDepth={setAnswerMode}
             historicalMode={historicalMode}
             onToggleHistorical={toggleHistoricalMode}
             onToggleFullscreen={onToggleFullscreen ?? (() => {})}
@@ -154,7 +236,7 @@ export function LargoTerminal({
         {/* Rail + transcript. The rail is a SIBLING, not an overlay: it must not cover the answer
             it is context for, and it appears only once the server has resolved an instrument, so
             screen width is never permanently spent on an empty column. */}
-        <div className={clsx("largo-main", activeTicker && "largo-main-railed")}>
+        <div className="largo-main">
         <div
           role="log"
           aria-live="polite"
@@ -211,7 +293,15 @@ export function LargoTerminal({
                         loading && idx === messages.length - 1 && msg.role === "assistant"
                       }
                       className={fullPage ? "text-sm md:text-[15px] lg:text-base" : "text-sm"}
-                      onFollowup={(q) => void runQuery(q)}
+                      onFollowup={(q) =>
+                        void runQuery(q, {
+                          deskScope: activeDeskScope,
+                          deskScopeArgs: activeDeskScopeArgs,
+                        })
+                      }
+                      followups={msg.followups}
+                      ticker={activeTicker}
+                      answerMode={msg.depth === "deep" ? "deep" : "concrete"}
                     />
                   )
                 ) : (
@@ -253,7 +343,7 @@ export function LargoTerminal({
           </AnimatePresence>
 
           {isFresh && !loading && hydrated && fullPage && (
-            <LargoEmptyState onPick={(prompt) => void runQuery(prompt)} />
+            <LargoEmptyState onScope={applyScope} onAsk={askScoped} />
           )}
 
           {isFresh && !loading && hydrated && !fullPage && (
@@ -263,45 +353,12 @@ export function LargoTerminal({
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
             >
-              <p className="largo-suggestions-label">Try asking</p>
-              <div className="largo-suggestions-grid">
-                {LARGO_DESK_PROMPTS.map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    className="largo-suggestion-chip"
-                    onClick={() => void runQuery(p.question)}
-                    title={p.hint}
-                  >
-                    <span aria-hidden className="largo-suggestion-arrow">▸</span>
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-            </motion.div>
-          )}
-
-          {!isFresh && !loading && followups.length > 0 && (
-            <motion.div
-              className="largo-suggestions largo-followups"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-            >
-              <p className="largo-suggestions-label">Ask next</p>
-              <div className="largo-suggestions-grid">
-                {followups.map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    className="largo-suggestion-chip"
-                    onClick={() => void runQuery(s)}
-                  >
-                    <span aria-hidden className="largo-suggestion-arrow">▸</span>
-                    {s}
-                  </button>
-                ))}
-              </div>
+              <LargoDeskModulePicker
+                variant="compact"
+                desks={largoModuleComposerDesks()}
+                onScope={applyScope}
+                onAsk={askScoped}
+              />
             </motion.div>
           )}
 
@@ -318,7 +375,6 @@ export function LargoTerminal({
           </AnimatePresence>
           <div ref={bottomRef} />
         </div>
-        {fullPage && <LargoContextRail ticker={activeTicker} />}
         </div>
 
         {/* Staged attachments sit ABOVE the input, not inside it: the member must be able to see
@@ -331,6 +387,30 @@ export function LargoTerminal({
             </button>
           </p>
         )}
+
+        <LargoProactiveComposer
+          disabled={loading || !hydrated}
+          onAsk={(q) => void runQuery(q)}
+        />
+
+        {!fullPage && (
+          <LargoAnswerModeToggle
+            mode={depth}
+            onChange={setAnswerMode}
+            disabled={loading || !hydrated}
+            variant="composer"
+          />
+        )}
+
+        <LargoDeskScopeBanner
+          deskScope={activeDeskScope}
+          submodule={activeDeskScopeArgs?.submodule}
+          ticker={activeTicker}
+          onClear={() => {
+            setActiveDeskScope(null);
+            setActiveDeskScopeArgs(null);
+          }}
+        />
 
         {(attachments.length > 0 || attachError) && (
           <div className="largo-attach-tray">
@@ -411,12 +491,57 @@ export function LargoTerminal({
           )}
         >
           <div className="relative flex-1 largo-input-wrap">
+            <LargoSlashPromptsMenu
+              open={Boolean(slash.activeDesk && !loading && hydrated)}
+              payload={slash.promptPayload}
+              loading={slash.promptsLoading}
+              tab={slash.panelTab}
+              onTabChange={slash.setPanelTab}
+              modules={slash.moduleMatches}
+              prompts={slash.promptMatches}
+              activeIndex={slash.promptIndex}
+              onPickModule={askFromModule}
+              onPick={(p) => askFromSlash(p.question, slash.activeDesk)}
+              onHover={slash.setPromptIndex}
+              onClose={() => {
+                slash.clearDesk();
+                setInput("");
+              }}
+              onOpenDesk={(href) => router.push(href)}
+            />
+            <LargoSlashMenu
+              open={slash.commandMenuOpen && !loading && hydrated}
+              matches={slash.commandMatches}
+              activeIndex={slash.commandIndex}
+              onPick={(cmd) => {
+                slash.applyCommand(cmd);
+                inputRef.current?.focus();
+              }}
+              onHover={slash.setCommandIndex}
+            />
             <input
+              ref={inputRef}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => slash.onInputChange(e.target.value)}
+              onKeyDown={(e) => {
+                const result = slash.handleKeyDown(e);
+                if (result === "prompt-pick") {
+                  if (slash.panelTab === "modules" && slash.highlightedModule) {
+                    askFromModule(slash.highlightedModule);
+                    return;
+                  }
+                  if (slash.highlightedPrompt) {
+                    askFromSlash(slash.highlightedPrompt.question);
+                    return;
+                  }
+                }
+                if (result === "handled") return;
+              }}
               onPaste={handlePaste}
               placeholder={loading ? INPUT_PLACEHOLDER_BUSY : INPUT_PLACEHOLDER}
               aria-label="Ask Largo"
+              aria-autocomplete={slash.commandMenuOpen || slash.activeDesk ? "list" : undefined}
+              aria-controls={slash.activeDesk ? "largo-slash-prompts" : slash.commandMenuOpen ? "largo-slash-menu" : undefined}
               className={clsx(
                 "desk-largo-input w-full !border-cyan-400/25",
                 loading && "largo-input-busy",

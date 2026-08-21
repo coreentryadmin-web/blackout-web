@@ -42,6 +42,51 @@
 import { fetchRecentFlows, type FlowRow } from "@/lib/db";
 
 export const LARGE_PRINT_THRESHOLD = 2_000_000;
+/**
+ * Stand-in ratio for a ONE-SIDED book — the opposite side has zero premium, so the true ratio is
+ * undefined rather than large. Sized well above SKEW_RATIO_THRESHOLD so the anomaly still fires.
+ * Exported so tests can assert it is never rendered to a member as a measured ratio.
+ */
+export const ONE_SIDED_RATIO = 99;
+
+/** Millions, but honest about a value that is non-zero and rounds to zero. */
+function millions(v: number): string {
+  if (v > 0 && v < 50_000) return "<$0.1M";
+  return `$${(v / 1_000_000).toFixed(1)}M`;
+}
+
+/**
+ * Member-facing text for a directional skew.
+ *
+ * WHY THIS IS NOT AN INLINE TEMPLATE ANY MORE. The ratio was rendered unconditionally as
+ * `${ratio.toFixed(0)}:1`, including when it was the ONE_SIDED_RATIO sentinel — so every ticker
+ * whose opposite side was empty printed the identical "99:1" no matter its size. On the live /flows
+ * board on 2026-08-19 that produced thirteen consecutive rows all reading "99:1 (put/call)" or
+ * "99:1 (call/put)" against premiums ranging from $0.5M to $3.8M, each paired with "vs $0.0M" on
+ * the other side. A member reads that as a measured ninety-nine-to-one imbalance; the truth is
+ * simply that nothing traded on the other side. A constant presented as a measurement is a wrong
+ * number, even when the constant is well chosen.
+ *
+ * The gating is untouched — the sentinel still clears the threshold and the same anomalies fire,
+ * with the same `metric_value`. Only what the member is told changes.
+ */
+function skewDetail(
+  ticker: string,
+  dominant: "call" | "put",
+  dominantPrem: number,
+  otherPrem: number,
+  ratio: number
+): string {
+  const other = dominant === "call" ? "put" : "call";
+  if (otherPrem <= 0) {
+    return `${ticker}: one-sided ${dominant} flow — ${millions(dominantPrem)} ${dominant}s vs no ${other} premium`;
+  }
+  return (
+    `${ticker}: extreme ${dominant} skew (${ratio.toFixed(0)}:1 ${dominant}/${other}) — ` +
+    `${millions(dominantPrem)} ${dominant}s vs ${millions(otherPrem)} ${other}s`
+  );
+}
+
 export const SKEW_RATIO_THRESHOLD = 10;
 export const SKEW_MIN_TOTAL_PREMIUM = 500_000;
 
@@ -184,13 +229,17 @@ export async function detectFlowAnomalies(opts?: {
       // Extreme call/put skew (10:1 or 1:10)
       const total = callPrem + putPrem;
       if (total >= SKEW_MIN_TOTAL_PREMIUM) {
-        const callRatio = putPrem > 0 ? callPrem / putPrem : callPrem > 0 ? 99 : 0;
-        const putRatio = callPrem > 0 ? putPrem / callPrem : putPrem > 0 ? 99 : 0;
+        // ONE_SIDED_RATIO is a SENTINEL, not a measurement: when the opposite side has zero
+        // premium the ratio is undefined (division by zero), and this literal stands in so the
+        // comparison against SKEW_RATIO_THRESHOLD still fires. It must never be RENDERED as though
+        // it were measured — see skewDetail below.
+        const callRatio = putPrem > 0 ? callPrem / putPrem : callPrem > 0 ? ONE_SIDED_RATIO : 0;
+        const putRatio = callPrem > 0 ? putPrem / callPrem : putPrem > 0 ? ONE_SIDED_RATIO : 0;
         if (callRatio >= SKEW_RATIO_THRESHOLD) {
           anomalies.push({
             type: "DIRECTIONAL_FLOW_SKEW",
             ticker,
-            detail: `${ticker}: extreme call skew (${callRatio.toFixed(0)}:1 call/put) — $${(callPrem / 1_000_000).toFixed(1)}M calls vs $${(putPrem / 1_000_000).toFixed(1)}M puts`,
+            detail: skewDetail(ticker, "call", callPrem, putPrem, callRatio),
             premium: total,
             direction: "bullish",
             severity: "HIGH",
@@ -200,7 +249,7 @@ export async function detectFlowAnomalies(opts?: {
           anomalies.push({
             type: "DIRECTIONAL_FLOW_SKEW",
             ticker,
-            detail: `${ticker}: extreme put skew (${putRatio.toFixed(0)}:1 put/call) — $${(putPrem / 1_000_000).toFixed(1)}M puts vs $${(callPrem / 1_000_000).toFixed(1)}M calls`,
+            detail: skewDetail(ticker, "put", putPrem, callPrem, putRatio),
             premium: total,
             direction: "bearish",
             severity: "HIGH",

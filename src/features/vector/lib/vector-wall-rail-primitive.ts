@@ -18,8 +18,11 @@ import {
   kingStrikeByTime,
   maxPctByTime,
   trailingRefs,
-  rowPeakRefs,
   rowSwellMul,
+  rowPeakRefs,
+  wallBeadColorShade,
+  BOOK_SWELL_FLOOR,
+  BOOK_SWELL_EXP,
   rowStrengthHaloExtraPx,
   rowStrengthHaloAlphaMul,
   beadRenderTuning,
@@ -154,6 +157,9 @@ type BandPt = {
   a: number;
   emph: number;
   tier?: WallIntegrityTier;
+  /** Per-BEAD shade. The band carries the side's base hue; this is that hue mixed toward the desk
+   *  ground by combined strength, so one row can hold pale and saturated beads at once. */
+  color?: string;
 };
 /** One run of adjacent buckets for a wall (no time gap). Rendered as a ROW OF BEADS — one round dot
  *  per bucket, each sized by its yTop/yBot half-height (magnitude) and brightened by its own alpha
@@ -179,7 +185,10 @@ class WallRailRenderer implements IPrimitivePaneRenderer {
     private readonly _showIntegrityRings: boolean,
     private readonly _showEventGlyphs: boolean,
     /** Bar spacing in px — budgets peak strength-halo bloom at the current zoom. */
-    private readonly _barSpacingPx: number
+    private readonly _barSpacingPx: number,
+    /** Price-axis gap to the nearest neighbouring row — budgets the halo VERTICALLY, which is the
+     *  axis that decides whether rows read as separate or fuse into a slab. */
+    private readonly _rowGapPx: number
   ) {}
 
   draw(target: PaneRendererTarget): void {
@@ -194,6 +203,10 @@ class WallRailRenderer implements IPrimitivePaneRenderer {
         const pts = b.pts;
         for (const p of pts) {
           const emph = p.emph;
+          // Per-BEAD shade, falling back to the band's base hue. Without this the shade computed in
+          // project() is carried on every point and then thrown away at paint time — the exact way
+          // a colour channel can be "implemented" and still render one flat colour.
+          const beadHue = p.color ?? b.color;
           const rMul = 1 + emph * kingBoost;
           const cy = (p.yTop + p.yBot) / 2;
           const r = Math.max(minR, ((p.yBot - p.yTop) / 2) * rMul);
@@ -201,6 +214,10 @@ class WallRailRenderer implements IPrimitivePaneRenderer {
           if (p.rowSwell > 0.08) {
             const haloExtra = rowStrengthHaloExtraPx(p.rowSwell, {
               barSpacingPx: this._barSpacingPx,
+              rowGapPx: this._rowGapPx,
+              // The REAL core radius at this bucket, so the budget covers core+halo together and a
+              // weak bead (small core) still has room to bloom.
+              coreHalfPx: r,
             });
             if (haloExtra > 0.08) {
               const haloR = r + haloExtra;
@@ -208,7 +225,7 @@ class WallRailRenderer implements IPrimitivePaneRenderer {
                 0.62,
                 p.a * rowStrengthHaloAlphaMul(p.rowSwell) * 0.52
               );
-              ctx.fillStyle = withA(b.color, haloA);
+              ctx.fillStyle = withA(beadHue, haloA);
               ctx.beginPath();
               ctx.arc(p.x, cy, haloR, 0, Math.PI * 2);
               ctx.fill();
@@ -217,7 +234,7 @@ class WallRailRenderer implements IPrimitivePaneRenderer {
           if (this._showIntegrityRings && p.tier) {
             const ring = haloRingForTier(p.tier);
             const ringR = Math.max(minR + 1, r * (1.45 * ring.sizeMul));
-            ctx.fillStyle = withA(b.color, Math.min(0.32, p.a * 0.22 * ring.alphaMul));
+            ctx.fillStyle = withA(beadHue, Math.min(0.32, p.a * 0.22 * ring.alphaMul));
             ctx.beginPath();
             ctx.arc(p.x, cy, ringR, 0, Math.PI * 2);
             ctx.fill();
@@ -226,12 +243,12 @@ class WallRailRenderer implements IPrimitivePaneRenderer {
             emph > 0.05
               ? Math.min(this._tuning.kingAlphaCap ?? 0.72, p.a * (1 - emph * 0.12))
               : p.a;
-          ctx.fillStyle = withA(b.color, fillA);
+          ctx.fillStyle = withA(beadHue, fillA);
           ctx.beginPath();
           ctx.arc(p.x, cy, r, 0, Math.PI * 2);
           ctx.fill();
           if (emph > 0.05 && haloMul > 0) {
-            ctx.fillStyle = withA(b.color, Math.min(0.22, p.a * 0.16) * emph * haloMul);
+            ctx.fillStyle = withA(beadHue, Math.min(0.22, p.a * 0.16) * emph * haloMul);
             ctx.beginPath();
             ctx.arc(p.x, cy, r + (2 + emph * 2) * haloMul, 0, Math.PI * 2);
             ctx.fill();
@@ -246,7 +263,7 @@ class WallRailRenderer implements IPrimitivePaneRenderer {
           } else if ((this._tuning.strokeAlphaBoost ?? 0) > 0 && r >= minR) {
             // Compare panes: tiny weak beads still get a crisp outline on #040407.
             ctx.lineWidth = 1;
-            ctx.strokeStyle = withA(b.color, Math.min(1, p.a + (this._tuning.strokeAlphaBoost ?? 0)));
+            ctx.strokeStyle = withA(beadHue, Math.min(1, p.a + (this._tuning.strokeAlphaBoost ?? 0)));
             ctx.stroke();
           }
         }
@@ -284,7 +301,7 @@ class WallRailPaneView implements IPrimitivePaneView {
   renderer(): IPrimitivePaneRenderer | null {
     const projected = this._source.project();
     if (!projected) return null;
-    const { bands, glyphs, tuning, barSpacingPx: projectedBarSpacing } = projected;
+    const { bands, glyphs, tuning, barSpacingPx: projectedBarSpacing, rowGapPx: projectedRowGap } = projected;
     if (bands.length === 0) return null;
     return new WallRailRenderer(
       bands,
@@ -293,7 +310,8 @@ class WallRailPaneView implements IPrimitivePaneView {
       this._source.overlayDim(),
       this._source.showIntegrityRings(),
       this._source.showEventGlyphs(),
-      projectedBarSpacing
+      projectedBarSpacing,
+      projectedRowGap
     );
   }
 }
@@ -384,7 +402,19 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
   }
 
   beadZOrder(): PrimitivePaneViewZOrder {
-    return this._data?.profile === "compare" ? "bottom" : "top";
+    // BEHIND THE CANDLES, EVERYWHERE (2026-08-19).
+    //
+    // Compare panes have always drawn beads at "bottom" and the main desk at "top". Comparing the
+    // two side by side on prod, the member picked the compare treatment unprompted: "the beads
+    // appear much better on compare mode .. the beads paint behind the candles .. we can do the
+    // same way for all like single stocks on main page too".
+    //
+    // It is also the more defensible default. The rail ANNOTATES price; price is the subject. At
+    // "top" a strong bead occludes the very candle it is describing, which is why every previous
+    // attempt to make strong walls read as strong ran straight into "it buries the candles" and
+    // got tuned back down. Putting the rail underneath removes that conflict entirely, so the
+    // swell can carry real dynamic range without competing with the tape for the same pixels.
+    return "bottom";
   }
 
   showIntegrityRings(): boolean {
@@ -475,6 +505,9 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
     glyphs: ProjectedGlyph[];
     tuning: BeadRenderTuning;
     barSpacingPx: number;
+    /** Price-axis gap to the nearest neighbouring row — the renderer budgets the strength halo
+     *  against it so core+halo stay inside one row's slot. */
+    rowGapPx: number;
   } | null {
     if (!this._visible || !this._data || !this._chart || !this._series) {
       this._lastGlyphs = [];
@@ -521,10 +554,11 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
       const y = series.priceToCoordinate(t.strike);
       if (y != null) rowYs.push(y);
     }
-    const tuning = clampTuningToSpacing(baseTuning, {
-      barSpacingPx,
-      rowGapPx: closestRowGapPx(rowYs),
-    });
+    // Hoisted out of the clampTuningToSpacing call: the RENDERER needs this too, to budget the
+    // strength halo vertically. Without it the halo was capped only against bar spacing (a
+    // horizontal measure) and grew past the row gap, fusing neighbouring rows into a slab.
+    const rowGapPx = closestRowGapPx(rowYs);
+    const tuning = clampTuningToSpacing(baseTuning, { barSpacingPx, rowGapPx });
 
     // Rebuild target sets from scratch each project so departed beads/strikes drop out of the loop.
     this._targetHalf.clear();
@@ -579,6 +613,7 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
       // Trailing reference per bucket — drives the SLOW-decay channel (see decayModulation). Computed
       // ONCE per trail, not per bead: it is O(n) and this runs on every repaint.
       const refs = trailingRefs(pts);
+      // Running per-row peak. Reinstated for the COLOUR channel only — see the shade block below.
       const rowPeaks = rowPeakRefs(pts);
 
       const steps: number[] = [];
@@ -634,12 +669,40 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
         // wall used to render as a row of unchanged beads.
         const mod = beadModulation(p.pct, prev ? prev.pct : null, refs[i] ?? null, maxPct);
         const glow = magnitudeGlowBoost(p.pct); // absolute-magnitude brightness (frame-independent)
-        const rowPeak = rowPeaks[i] ?? 0;
+        // ── ONE DENOMINATOR FOR EVERY ROW (2026-08-19) ───────────────────────────────────────
+        // This used to divide each bucket by `rowPeaks[i]` — that row's RUNNING peak. Two defects
+        // fell out of it, both measured on the real 2026-08-18 SPX session:
+        //
+        //   1. A running peak is self-fulfilling. Each bucket is compared to the highest that wall
+        //      has been SO FAR, so a wall that builds gradually is always near its own max and
+        //      paints full-size all session. SPX 7700's share swung 2.36%->25.69% (10.9x) and its
+        //      median bucket still rendered at 0.96 of maximum. A member's words for that: "a
+        //      strong bead which was strong gets continued throughout the day .. when it weakens
+        //      it has to paint small beads .. but it is not doing that."
+        //   2. Row-relative normalisation destroys cross-row contrast outright. Every row reaches
+        //      1.0 on its own terms, so a 25.7%-of-book wall and a 5.8% one painted the same size
+        //      (measured separation at each row's median: 1.26x).
+        //
+        // `maxPct` — the strongest wall on the frame — is the denominator that fixes both, because
+        // it is SHARED. Measured on the same session it takes 7700 from a flat 0.96 to a live
+        // 0.32..0.93 and restores ordering across rows by actual share.
+        //
+        // Rejected: each row's own SESSION peak (rather than running). It fixes (1) but not (2),
+        // and measurably INVERTS the ordering — the weakest wall painted 0.81x the size of the
+        // dominant one, which is worse than shipping nothing. See
+        // scripts/audit/vector-swell-normalization-ab.mts for the A/B this came from.
+        //
+        // The cost, stated plainly: `maxPct` is a frame-wide peak, so when a new record wall prints
+        // the whole rail restretches. The previous design bought immunity to that with strict
+        // no-lookahead, and paid for it with a rail that could not show strength at all.
+        const bookPeak = maxPct;
         const rowSwell =
-          p.modeled === true || rowPeak <= 0 ? 0 : rowSwellMul(p.pct, rowPeak);
-        // Core bead radius = absolute share ladder × row swell × velocity (round dots, not ellipses).
+          p.modeled === true || bookPeak <= 0
+            ? 0
+            : rowSwellMul(p.pct, bookPeak, { floor: BOOK_SWELL_FLOOR, exp: BOOK_SWELL_EXP });
+        // Core bead radius = absolute share ladder × book swell × velocity (round dots, not ellipses).
         const target =
-          targetHalfPx(p.pct, p.notional, maxPct, tuning, { rowPeakPct: rowPeak }) * mod.sizeMul;
+          targetHalfPx(p.pct, p.notional, maxPct, tuning, { rowPeakPct: bookPeak }) * mod.sizeMul;
         const key = beadKey(side, trail.strike, p.time);
         this._targetHalf.set(key, target);
         // Displayed half lags the target (eased by the rAF loop). Reduce-motion / first sight → snap
@@ -661,15 +724,50 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
         // off-hours or replayed rail has no "now" to be old relative to, and using Date.now() there
         // would fade an entire frozen session toward the floor for no reason a member could read.
         const ageScale = ageTaperAlpha(liveTime - p.time);
-        const rowAlphaMul = rowPeak > 0 ? rowSwellMul(p.pct, rowPeak, { floor: 0.38, exp: 0.65 }) : 1;
+        // Same shared denominator for the ALPHA channel, for the same reason as the size channel
+        // above — a row-relative alpha kept every row at full brightness on its own terms. Floored
+        // higher than the size channel (0.24 vs 0.15): a bead that shrinks to a dot and ALSO fades
+        // to near-transparent disappears entirely, and the two channels multiply.
+        // ── TWO DENOMINATORS, ON PURPOSE (2026-08-19, merging #2337 and Cursor's #2339) ──────
+        // SIZE uses the BOOK peak (above): that is what makes a 25%-of-book wall visibly fatter
+        // than a 5% one, and measuring it took cross-row separation from 1.26x to 1.64x on real
+        // SPX data. Reverting size to the row peak — as #2339 did — would restore the original
+        // complaint, "a strong bead which was strong gets continued throughout the day", because a
+        // running row peak is self-fulfilling.
+        //
+        // COLOUR uses BOTH, multiplied. #2339 is right that a single book-relative denominator on
+        // colour flattens a strong row along its own length: every bucket on it sits near the same
+        // fraction of book, so the whole row shares one shade. Multiplying by the row-temporal term
+        // restores the fade the member asked for — "Cross-row: brighter when closer to session
+        // king. Along a row: fade when that wall weakens vs its own peak" — without giving up the
+        // cross-row ordering that the book term provides.
+        const rowPeak = rowPeaks[i] ?? 0;
+        const bookStrength = bookPeak > 0 ? Math.min(1, p.pct / bookPeak) : 0;
+        const temporalStrength = rowPeak > 0 ? Math.min(1, p.pct / rowPeak) : 1;
+        const beadColor = wallBeadColorShade(color, bookStrength * temporalStrength);
         const a = Math.min(
           1,
-          // POINT-IN-TIME contrast: measured against the strongest wall in THAT bucket, not the
-          // session-wide king — see maxPctByTime. Size stays absolute, so the two channels answer
-          // different questions (how big was this wall ever / how much did it dominate right then).
-          fillAlpha(p.pct, maxPctAtTime.get(p.time) ?? maxPct, tuning) *
+          // ── COLOUR USES THE SAME SHARED DENOMINATOR AS SIZE (2026-08-19) ────────────────────
+          // This divided by `maxPctAtTime` — the strongest wall in THAT BUCKET. The intent was
+          // point-in-time contrast, but the effect is that EVERY row is the bucket king at some
+          // point in the session, and at that moment it paints at full brightness regardless of
+          // how weak it is against the book. So a 5%-of-book wall and a 25% one both reach the
+          // alpha ceiling, and the rail carries no colour information at all.
+          //
+          // Member report, after the size channel was fixed: "I can see the width is fine for
+          // weaker and stronger .. but we also talked about the colors .. right now we only show
+          // sizing, but no coloring dynamics" — and later, "it paints all the beads with the same
+          // color contrast". Exactly what a per-bucket denominator produces.
+          //
+          // `maxPct` is the frame-wide king, so a weak wall now stays pale for the whole session
+          // and only a genuinely dominant one saturates — the same rule that gave the size channel
+          // its range, applied to the channel the member can actually see as colour.
+          fillAlpha(p.pct, maxPct, tuning) *
             mod.alphaMul *
-            rowAlphaMul *
+            // Temporal fade only. The cross-row term already lives in fillAlpha's book denominator
+            // AND in the shade above; multiplying a third book-relative factor here drove the whole
+            // rail toward the floor.
+            (0.55 + 0.45 * temporalStrength) *
             (0.75 + 0.25 * Math.min(1.6, glow)) *
             tuning.drawAlphaMul *
             modeledScale *
@@ -680,7 +778,7 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
         const pEmph = p.time === liveTime ? liveEmph : wasKing ? 1 : 0;
         const tier =
           showIntegrityRings && tierByStrike ? tierByStrike.get(trail.strike) : undefined;
-        run.push({ x, yTop: y - half, yBot: y + half, rowSwell, a, emph: pEmph, tier });
+        run.push({ x, yTop: y - half, yBot: y + half, rowSwell, a, emph: pEmph, tier, color: beadColor });
       }
       flush(pts.length - 1);
     };
@@ -715,6 +813,6 @@ export class WallRailPrimitive implements ISeriesPrimitive<Time> {
     }
 
     this._lastGlyphs = showEventGlyphs ? glyphs : [];
-    return { bands, glyphs, tuning, barSpacingPx };
+    return { bands, glyphs, tuning, barSpacingPx, rowGapPx };
   }
 }

@@ -108,16 +108,29 @@
   background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(163,230,53,.006) 3px,rgba(163,230,53,.006) 4px);
 }
 .atmos-sweep{
-  position:fixed;left:0;right:0;height:300px;z-index:0;pointer-events:none;
+  /* `top:0` + a transform-only keyframe. Animating `top` (what this used to do) is a
+     LAYOUT property: every frame reflowed and emitted a layout-shift entry, and because
+     the animation is `infinite` the page's CLS grew for as long as the tab stayed open —
+     measured 0.55 on desktop (Google's "poor" threshold is 0.25). `transform` is
+     composited, so it produces zero layout shifts. Visually identical: the element is
+     300px tall and travelled top:-300px → calc(100vh + 300px), which is exactly the
+     translateY range below. Mobile was unaffected only because .atmos-sweep is
+     display:none there — see the breakpoint rule further down. */
+  position:fixed;left:0;right:0;top:0;height:300px;z-index:0;pointer-events:none;
   background:linear-gradient(180deg,transparent,rgba(163,230,53,.015),transparent);
   animation:sweep 10s linear infinite;
+  will-change:transform;
 }
-@keyframes sweep{0%{top:-300px}100%{top:calc(100vh + 300px)}}
+@keyframes sweep{0%{transform:translateY(-300px)}100%{transform:translateY(calc(100vh + 300px))}}
 
 /* ═══════ SPINE ═══════ */
 .spine{position:fixed;left:50%;top:0;bottom:0;width:1px;z-index:1;background:rgba(163,230,53,.04);transform:translateX(-.5px);pointer-events:none}
-.spine::before{content:"";position:absolute;left:-1.5px;width:4px;height:80px;background:linear-gradient(180deg,transparent,var(--g),transparent);box-shadow:0 0 12px var(--g);animation:spulse 4s linear infinite}
-@keyframes spulse{0%{top:-80px;opacity:0}5%{opacity:1}95%{opacity:1}100%{top:100%;opacity:0}}
+/* transform-only, same reason as .atmos-sweep above — this pulse was the other half of the
+   0.55 desktop CLS. The old keyframe ran top:-80px → top:100%; `.spine` is position:fixed
+   with top:0;bottom:0, so its height IS the viewport and `top:100%` == 100vh, which is why
+   translateY(100vh) below is an exact substitution rather than an approximation. */
+.spine::before{content:"";position:absolute;left:-1.5px;top:0;width:4px;height:80px;background:linear-gradient(180deg,transparent,var(--g),transparent);box-shadow:0 0 12px var(--g);animation:spulse 4s linear infinite;will-change:transform}
+@keyframes spulse{0%{transform:translateY(-80px);opacity:0}5%{opacity:1}95%{opacity:1}100%{transform:translateY(100vh);opacity:0}}
 .node{position:relative;z-index:5;height:60px;display:flex;align-items:center;justify-content:center}
 .node::before{content:"";position:absolute;left:50%;top:50%;width:10px;height:10px;border-radius:50%;background:var(--g);box-shadow:0 0 20px var(--g),0 0 40px rgba(163,230,53,.3);transform:translate(-50%,-50%);animation:led 2s ease infinite}
 .node::after{content:"";position:absolute;top:50%;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent 5%,rgba(163,230,53,.12) 25%,rgba(163,230,53,.25) 50%,rgba(163,230,53,.12) 75%,transparent 95%)}
@@ -756,7 +769,16 @@
 }
 .pipe-stage.pipe-lit .pipe-status{color:var(--g)}
 .pipe-stage.pipe-lit .status-dot{background:var(--g);box-shadow:0 0 8px var(--g);animation:led 2s ease infinite}
-.pipe-stage.pipe-lit .pipe-status::after{content:"ONLINE";position:absolute;color:var(--g)}
+/* NOTE: do not add a ::after{content:"ONLINE"} rule here. LandingRedesignFx.tsx's
+   IntersectionObserver already rewrites .pipe-status's innerHTML to the dot + "ONLINE"
+   text the instant a stage scrolls into view (see the `pipe-lit` class toggle there).
+   A CSS-generated ::after with the same literal text used to sit here too; with
+   position:absolute and no top/left it rendered at its in-flow "static position"
+   (CSS2.1 10.3.7) -- i.e. immediately after the real "ONLINE" text node, not away from
+   it -- so the two labels double-exposed into unreadable overlapping glyphs on every
+   "How BlackOut Thinks" pipeline card (01-04) as soon as it scrolled into view. Fixed
+   by deleting the redundant CSS copy; the JS-authored text (already gated on the same
+   pipe-lit trigger) is the single source of truth for this label. */
 .pipe-status span + span{display:none}
 
 /* Stage body — two-column: text + visual */

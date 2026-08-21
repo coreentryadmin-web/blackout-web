@@ -38,12 +38,30 @@ import {
   playWeightedConflictBlockMin,
 } from "@/features/spx/lib/spx-play-config";
 import { mixedTapeBlockThreshold } from "@/features/spx/lib/spx-play-gates";
+// Largo product contract C1: an ET stamp and an ET session date, from the SHARED helpers
+// (bar-session-date.ts, #2418) rather than a local Intl call — one definition of "what
+// session is it" across every lane, so two tools can never disagree about today.
+import { etSessionDate, etStamp } from "@/lib/largo/temporal/bar-session-date";
 
 /** Grades the mixed-tape threshold is reported for. Ordered strongest-first. */
 const GRADES = ["A+", "A", "B", "C"] as const;
 
 export type GateRules = {
+  /** UTC instant this snapshot was taken. */
   as_of: string;
+  /**
+   * The SAME instant in ET, and the ET trading session these rules govern.
+   *
+   * WHY BOTH, AND WHY THEY ARE NOT REDUNDANT. `as_of` alone is a bare UTC instant, and
+   * these rules are read to answer "why was X blocked in TODAY'S session". Between roughly
+   * 20:00 ET and midnight the UTC date is already TOMORROW, so a model resolving "today"
+   * from `as_of` lands a full session ahead and attributes today's gate decisions to a
+   * session that has not happened. That is not hypothetical: the same shape had
+   * `largo-live-feed.ts` date a live SPX figure to the next day, conclude today's close
+   * belonged to an earlier session, and fabricate one.
+   */
+  as_of_et: string | null;
+  session_date: string | null;
   /**
    * The mixed-tape block, per grade, WITH the strong-conviction variant.
    *
@@ -74,8 +92,11 @@ export type GateRules = {
  */
 export function gateRulesForLargo(): GateRules {
   const base = playWeightedConflictBlockMin();
+  const nowMs = Date.now();
   return {
-    as_of: new Date().toISOString(),
+    as_of: new Date(nowMs).toISOString(),
+    as_of_et: etStamp(nowMs),
+    session_date: etSessionDate(nowMs),
     mixed_tape_block_threshold: GRADES.map((grade) => ({
       grade,
       weighted_conflicts_at_or_above_blocks: mixedTapeBlockThreshold(grade),
@@ -102,6 +123,9 @@ export function gateRulesForLargo(): GateRules {
         "here before attributing a loss to a gate that 'should have caught it'.",
       "These are the SPX Slayer play gates. 0DTE Command's commit gate (confluence-2), the " +
         "Cortex veto and the fail-closed firewall are separate systems with their own rules.",
+      "Date these rules by `session_date` (the ET trading session), never by `as_of` — after " +
+        "20:00 ET the UTC date in `as_of` is already the NEXT calendar day, and reading it as " +
+        "'today' attributes this session's gate decisions to a session that has not happened.",
     ],
   };
 }

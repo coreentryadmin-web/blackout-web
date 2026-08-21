@@ -1579,6 +1579,19 @@ html.product-shell .nav-mega {
   }
   .nav-bar[data-scrolled="true"] .nav-progress { opacity: 1; }
 
+  /* Indeterminate sweep while a desk route RSC is in flight — reads as progress, not a freeze. */
+  .nav-bar[data-route-pending="true"] .nav-progress {
+    opacity: 1;
+    transform: scaleX(1);
+    animation: nav-route-pending 1.1s ease-in-out infinite;
+  }
+
+  @keyframes nav-route-pending {
+    0% { transform: scaleX(0.08); opacity: 0.55; }
+    50% { transform: scaleX(0.72); opacity: 1; }
+    100% { transform: scaleX(0.14); opacity: 0.55; }
+  }
+
   .nav-inner {
     @apply relative h-full mx-auto grid items-center px-4 sm:px-6 lg:px-8;
     grid-template-columns: 1fr auto 1fr;
@@ -4835,7 +4848,10 @@ html.product-shell .nav-mega {
     display: flex;
     align-items: baseline;
     gap: 0.5rem;
+    /* `min-width: 0` lets the flex item shrink past its content; `overflow: hidden` is what makes
+       the child's ellipsis actually engage rather than the text escaping the box. */
     min-width: 0;
+    overflow: hidden;
   }
   .largo-toolbar-dot {
     width: 7px;
@@ -4854,6 +4870,16 @@ html.product-shell .nav-mega {
     text-transform: uppercase;
     color: #e0f2fe;
     white-space: nowrap;
+    /* WITHOUT THESE THE LABEL PAINTS OVER THE BUTTONS.
+       The toolbar is `justify-content: space-between` with `.largo-toolbar-actions { flex-shrink: 0 }`,
+       so at narrow widths the brand is what gives way. `nowrap` with no overflow handling means the
+       text does not shrink, wrap OR clip — it simply spills across the actions.
+       MEASURED ON PROD 2026-08-20 at 430x932: "Largo Terminal" and "Concrete" physically overlapping
+       by 30x20px, rendering as "LARGO TERM(IN)CONCRETE" in two independent captures 8 min apart.
+       `.largo-toolbar-sub` directly below already carries exactly this pair; the name was simply
+       missed. */
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .largo-toolbar-sub {
     font-family: var(--font-mono, monospace);
@@ -4916,6 +4942,101 @@ html.product-shell .nav-mega {
     .largo-toolbar-btn {
       padding: 0.4rem;
     }
+  }
+
+  .largo-answer-mode {
+    display: inline-flex;
+    align-items: stretch;
+    border-radius: 0.55rem;
+    border: 1px solid rgba(34, 211, 238, 0.25);
+    overflow: hidden;
+    background: rgba(4, 4, 7, 0.6);
+  }
+  .largo-answer-mode-composer {
+    margin: 0 0.75rem 0.5rem;
+    width: calc(100% - 1.5rem);
+  }
+  .largo-answer-mode-native {
+    margin: 0 0.65rem 0.45rem;
+    width: calc(100% - 1.3rem);
+  }
+  .largo-answer-mode-btn {
+    flex: 1;
+    padding: 0.38rem 0.65rem;
+    border: none;
+    background: transparent;
+    color: #7dd3fc;
+    font-family: var(--font-mono, monospace);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .largo-answer-mode-btn + .largo-answer-mode-btn {
+    border-left: 1px solid rgba(34, 211, 238, 0.2);
+  }
+  .largo-answer-mode-btn.is-active {
+    background: rgba(34, 211, 238, 0.18);
+    color: #fff;
+  }
+  .largo-answer-mode-btn:hover:not(:disabled):not(.is-active) {
+    background: rgba(34, 211, 238, 0.08);
+    color: #e0f2fe;
+  }
+  .largo-answer-mode-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .largo-concrete-answer {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+  }
+  .largo-concrete-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #7dd3fc;
+  }
+  .largo-concrete-mark {
+    color: #22d3ee;
+  }
+  .largo-concrete-asof {
+    color: #9fb3c8;
+  }
+  .largo-concrete-verdict {
+    margin: 0;
+    font-family: var(--font-syne, sans-serif);
+    font-size: 1.05rem;
+    font-weight: 600;
+    line-height: 1.35;
+    color: #f0f0f8;
+  }
+  .largo-concrete-body {
+    color: #e0f2fe;
+    line-height: 1.55;
+  }
+  .largo-concrete-body-after-verdict {
+    margin-top: -0.15rem;
+  }
+  .largo-concrete-body .largo-message-prose {
+    font-size: 14px;
+    line-height: 1.55;
+  }
+  .largo-concrete-body .largo-fmt-verdict {
+    display: none;
+  }
+  .largo-concrete-body .largo-fmt-heading {
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #22d3ee;
+    margin-top: 0.75rem;
   }
 
   .largo-history-wrap {
@@ -5298,10 +5419,133 @@ html.product-shell .nav-mega {
     font-weight: 600;
     color: #f0f0f8;
   }
+  .largo-empty-card-desk {
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #22d3ee;
+  }
   .largo-empty-card-hint {
     font-size: 12px;
     line-height: 1.4;
     color: #9fb3c8;
+  }
+  .largo-empty-card-meta {
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #7dd3fc;
+    margin-top: 0.15rem;
+  }
+  .largo-empty-card-desk.largo-empty-card-desk-only {
+    border-color: rgba(34, 211, 238, 0.28);
+  }
+
+  .largo-desk-module-picker-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.75rem;
+    margin-bottom: 0.5rem;
+  }
+  .largo-desk-module-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    padding: 0.2rem 0.45rem;
+    font-family: var(--font-jetbrains, monospace);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #7dd3fc;
+    background: transparent;
+    border: 1px solid rgba(34, 211, 238, 0.2);
+    border-radius: 0.35rem;
+    cursor: pointer;
+  }
+  .largo-desk-module-picker-title {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: #fff;
+  }
+  .largo-desk-module-picker-sub {
+    margin: 0;
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #22d3ee;
+  }
+  .largo-desk-module-chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+  .largo-suggestion-chip-desk {
+    border-color: rgba(34, 211, 238, 0.35);
+  }
+  .largo-module-chip-wrap {
+    display: inline-flex;
+    align-items: stretch;
+    gap: 0;
+    border-radius: 9999px;
+    overflow: hidden;
+    border: 1px solid rgba(34, 211, 238, 0.28);
+    background: rgba(8, 9, 14, 0.65);
+  }
+  .largo-module-chip-wrap .largo-suggestion-chip-module {
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  .largo-module-quick-ask {
+    padding: 0.25rem 0.55rem;
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #7dd3fc;
+    background: rgba(34, 211, 238, 0.12);
+    border: none;
+    border-left: 1px solid rgba(34, 211, 238, 0.22);
+    cursor: pointer;
+  }
+  .largo-module-quick-ask:hover {
+    background: rgba(34, 211, 238, 0.22);
+    color: #fff;
+  }
+  .largo-empty-card-module-wrap {
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    overflow: hidden;
+  }
+  .largo-empty-card-module-main {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    width: 100%;
+    padding: 0.85rem 1rem;
+    text-align: left;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+  }
+  .largo-module-quick-ask-block {
+    width: 100%;
+    padding: 0.45rem 1rem;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    text-align: left;
+    color: #22d3ee;
+    background: rgba(34, 211, 238, 0.08);
+    border: none;
+    border-top: 1px solid rgba(34, 211, 238, 0.18);
+    cursor: pointer;
+  }
+  .largo-module-quick-ask-block:hover {
+    background: rgba(34, 211, 238, 0.16);
+    color: #fff;
   }
 
   /* ── Native (iOS) top bar: New chat + Stop ── */
@@ -5841,6 +6085,485 @@ html.product-shell .nav-mega {
   .largo-input-wrap {
     position: relative;
     container-type: inline-size;
+  }
+
+  .largo-slash-menu {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: calc(100% + 0.35rem);
+    z-index: 40;
+    max-height: min(18rem, 42vh);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid rgba(34, 211, 238, 0.28);
+    border-radius: 0.65rem;
+    background: linear-gradient(180deg, rgba(8, 12, 18, 0.98), rgba(4, 4, 7, 0.99));
+    box-shadow:
+      0 12px 40px rgba(0, 0, 0, 0.55),
+      0 0 24px rgba(34, 211, 238, 0.08);
+  }
+
+  .largo-slash-menu-native {
+    bottom: calc(100% + 0.25rem);
+    max-height: min(14rem, 36vh);
+  }
+
+  .largo-native-input-wrap {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .largo-slash-menu-label {
+    margin: 0;
+    padding: 0.45rem 0.75rem 0.35rem;
+    font-size: 9px;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: #22d3ee;
+    border-bottom: 1px solid rgba(34, 211, 238, 0.12);
+  }
+
+  .largo-slash-menu-list {
+    margin: 0;
+    padding: 0.25rem 0;
+    list-style: none;
+    overflow-y: auto;
+    flex: 1;
+  }
+
+  .largo-slash-menu-item {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 0.65rem;
+    align-items: center;
+    width: 100%;
+    padding: 0.55rem 0.75rem;
+    text-align: left;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+
+  .largo-slash-menu-item:hover,
+  .largo-slash-menu-item-active {
+    background: rgba(34, 211, 238, 0.08);
+  }
+
+  .largo-slash-menu-cmd {
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    color: #67e8f9;
+    white-space: nowrap;
+  }
+
+  .largo-slash-menu-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    min-width: 0;
+  }
+
+  .largo-slash-menu-title {
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    color: #fff;
+  }
+
+  .largo-slash-menu-desc {
+    font-size: 11px;
+    line-height: 1.35;
+    color: #7dd3fc;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .largo-slash-menu-kind {
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: rgba(125, 211, 252, 0.65);
+  }
+
+  .largo-slash-menu-hint {
+    margin: 0;
+    padding: 0.35rem 0.75rem 0.45rem;
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    color: rgba(125, 211, 252, 0.55);
+    border-top: 1px solid rgba(34, 211, 238, 0.1);
+  }
+
+  .largo-slash-prompts {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: calc(100% + 0.35rem);
+    z-index: 45;
+    max-height: min(22rem, 48vh);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid rgba(34, 211, 238, 0.35);
+    border-radius: 0.65rem;
+    background: linear-gradient(180deg, rgba(6, 10, 16, 0.99), rgba(4, 4, 7, 0.99));
+    box-shadow:
+      0 16px 48px rgba(0, 0, 0, 0.6),
+      0 0 28px rgba(34, 211, 238, 0.1);
+  }
+
+  .largo-slash-prompts-native {
+    max-height: min(16rem, 40vh);
+  }
+
+  .largo-slash-prompts-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.55rem 0.75rem 0.45rem;
+    border-bottom: 1px solid rgba(34, 211, 238, 0.14);
+  }
+
+  .largo-slash-prompts-kicker {
+    margin: 0;
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #22d3ee;
+  }
+
+  .largo-slash-prompts-title {
+    margin: 0.15rem 0 0;
+    font-size: 14px;
+    letter-spacing: 0.04em;
+    color: #fff;
+  }
+
+  .largo-slash-prompts-head-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-shrink: 0;
+  }
+
+  .largo-slash-open-desk {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.45rem;
+    font-family: var(--font-jetbrains, monospace);
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #7dd3fc;
+    border: 1px solid rgba(34, 211, 238, 0.22);
+    border-radius: 0.35rem;
+    background: rgba(34, 211, 238, 0.06);
+    cursor: pointer;
+  }
+
+  .largo-slash-prompts-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border: none;
+    border-radius: 0.35rem;
+    background: transparent;
+    color: #7dd3fc;
+    cursor: pointer;
+  }
+
+  .largo-slash-prompts-loading {
+    margin: 0;
+    padding: 0.75rem;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: #7dd3fc;
+  }
+
+  .largo-slash-prompts-tabs {
+    display: flex;
+    gap: 0.25rem;
+    padding: 0.35rem 0.75rem 0.25rem;
+    border-bottom: 1px solid rgba(34, 211, 238, 0.1);
+  }
+
+  .largo-slash-tab {
+    padding: 0.25rem 0.55rem;
+    font-family: var(--font-jetbrains, monospace);
+    font-size: 9px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: #7dd3fc;
+    background: transparent;
+    border: 1px solid rgba(34, 211, 238, 0.15);
+    border-radius: 0.35rem;
+    cursor: pointer;
+  }
+
+  .largo-slash-tab-active {
+    color: #fff;
+    border-color: rgba(34, 211, 238, 0.45);
+    background: rgba(34, 211, 238, 0.12);
+  }
+
+  .largo-slash-module-id {
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #22d3ee;
+  }
+
+  .largo-slash-module-item .largo-slash-prompt-hint {
+    font-size: 10px;
+    color: #bae6fd;
+    opacity: 0.85;
+  }
+
+  .largo-slash-prompts-list {
+    margin: 0;
+    padding: 0.25rem 0;
+    list-style: none;
+    overflow-y: auto;
+    flex: 1;
+  }
+
+  .largo-slash-prompt-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.15rem;
+    width: 100%;
+    padding: 0.55rem 0.75rem;
+    text-align: left;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+
+  .largo-slash-prompt-item:hover,
+  .largo-slash-prompt-item-active {
+    background: rgba(34, 211, 238, 0.1);
+  }
+
+  .largo-slash-prompt-label {
+    font-size: 12px;
+    letter-spacing: 0.03em;
+    color: #fff;
+  }
+
+  .largo-slash-prompt-live {
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    color: #67e8f9;
+  }
+
+  .largo-slash-prompt-hint {
+    font-size: 10px;
+    color: #7dd3fc;
+  }
+
+  .largo-followup-chips {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    margin-top: 0.85rem;
+    padding-top: 0.65rem;
+    border-top: 1px solid rgba(34, 211, 238, 0.12);
+  }
+
+  .largo-followup-chips-native {
+    margin-top: 0.65rem;
+    gap: 0.4rem;
+  }
+
+  .largo-followup-chip {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 0.65rem 0.85rem;
+    border-radius: 0.75rem;
+    border: 1px solid rgba(34, 211, 238, 0.22);
+    background: rgba(34, 211, 238, 0.06);
+    color: #e0f2fe;
+    font-size: 13px;
+    line-height: 1.4;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+
+  .largo-followup-chip:hover {
+    background: rgba(34, 211, 238, 0.12);
+    border-color: rgba(34, 211, 238, 0.4);
+  }
+
+  .largo-answer-with-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  @media (min-width: 900px) {
+    .largo-answer-with-panel {
+      flex-direction: row;
+      align-items: flex-start;
+    }
+    .largo-answer-main {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+  }
+
+  .largo-mini-panel {
+    flex: 0 0 auto;
+    width: 100%;
+    max-width: 280px;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid rgba(34, 211, 238, 0.22);
+    border-radius: 0.5rem;
+    background: rgba(4, 4, 7, 0.85);
+  }
+
+  .largo-mini-panel-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.5rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .largo-mini-panel-kicker {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #22d3ee;
+  }
+
+  .largo-mini-panel-ticker {
+    font-size: 12px;
+    font-weight: 600;
+    color: #fff;
+  }
+
+  .largo-mini-panel-actions {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .largo-mini-panel-refresh,
+  .largo-mini-panel-open {
+    font-size: 11px;
+    color: #7dd3fc;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    text-decoration: none;
+  }
+
+  .largo-mini-panel-rows {
+    display: grid;
+    gap: 0.35rem;
+    margin: 0;
+  }
+
+  .largo-mini-panel-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    font-size: 12px;
+  }
+
+  .largo-mini-panel-row dt {
+    color: #7dd3fc;
+    margin: 0;
+  }
+
+  .largo-mini-panel-row dd {
+    margin: 0;
+    font-weight: 600;
+    color: #fff;
+    text-align: right;
+  }
+
+  .largo-mini-tone-bull { color: #4ade80; }
+  .largo-mini-tone-bear { color: #f87171; }
+  .largo-mini-tone-warn { color: #fbbf24; }
+  .largo-mini-tone-neutral { color: #e0f2fe; }
+
+  .largo-desk-scope-banner {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.5rem;
+    margin-bottom: 0.35rem;
+  }
+
+  .largo-desk-scope-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
+    border: 1px solid rgba(34, 211, 238, 0.35);
+    background: rgba(34, 211, 238, 0.08);
+    font-size: 11px;
+    font-weight: 600;
+    color: #e0f2fe;
+  }
+
+  .largo-desk-scope-submodule {
+    color: #22d3ee;
+    font-weight: 500;
+  }
+
+  .largo-desk-scope-ticker {
+    color: #7dd3fc;
+    font-weight: 500;
+  }
+
+  .largo-desk-scope-clear {
+    font-size: 11px;
+    color: #7dd3fc;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+  }
+
+  .largo-proactive-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    padding: 0.25rem 0.35rem 0.5rem;
+  }
+
+  .largo-proactive-chip {
+    padding: 0.3rem 0.55rem;
+    border-radius: 999px;
+    border: 1px solid rgba(34, 211, 238, 0.25);
+    background: rgba(34, 211, 238, 0.05);
+    color: #e0f2fe;
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  .largo-proactive-chip-conflict {
+    border-color: rgba(251, 191, 36, 0.45);
+    color: #fde68a;
+  }
+
+  .largo-proactive-chip-brief {
+    border-color: rgba(125, 211, 252, 0.4);
   }
 
   .largo-input-placeholder {
@@ -9671,6 +10394,18 @@ html.product-shell .nav-mega {
      column, so stretching to 100% of THAT still letterboxes the chart.
      `100dvh` (not `100vh`) so a mobile browser's collapsing URL bar can't push the chart's bottom
      edge below the viewport. */
+  /* The OTHER half of the fullscreen layering, and the half that was missing until 2026-08-19.
+     PageShell renders its content wrapper as `relative z-10`, which CREATES A STACKING CONTEXT —
+     so `.vector-page-inner-focus` below was only ever ranked against its siblings inside a box that
+     itself sat at 10 against `.nav-bar`'s 100. Measured on prod: `elementFromPoint` at the chart
+     toolbar's own centre returned `header.nav-bar`. The inner z-index could be 60, 110 or 10000 and
+     the nav would still win; the ANCESTOR is what has to move.
+     Applied only in focus mode — outside it the page content must stay under the site header.
+     Two class selectors on purpose: the value being overridden (`z-10`) is a Tailwind utility, and
+     the utilities layer is emitted after this one, so a single-class rule would lose the cascade. */
+  .vector-page-content.vector-page-content-focus {
+    z-index: 110;
+  }
   .vector-page-inner-focus {
     position: fixed;
     inset: 0;
@@ -22561,131 +23296,25 @@ html.product-shell .nav-mega {
 }
 
 @layer components {
-  /* Rail + transcript. Grid, not overlay: the rail must never cover the answer it is context for.
-     It only takes a column once an instrument is resolved, so width is never permanently spent. */
+  /* Transcript column. The context RAIL that used to sit beside it was removed — unmounted since
+     an earlier release (imported nowhere), so its styles painted nothing. `.largo-main` stays: it
+     is the live flex container for the transcript. */
   .largo-main {
     display: flex;
     flex: 1;
     min-height: 0;
     gap: 0.75rem;
   }
-  .largo-rail {
-    flex: 0 0 11rem;
-    align-self: flex-start;
-    padding: 0.6rem;
-    border: 1px solid var(--largo-info-dim);
-    background: rgba(8, 12, 20, 0.5);
-    font-family: var(--font-mono, ui-monospace, monospace);
-  }
-  /* Below the desk breakpoint the rail would leave the transcript unreadably narrow, so it stacks
-     above it instead of being hidden — the numbers are the point, the position is not. */
   @media (max-width: 1024px) {
     .largo-main {
       flex-direction: column;
     }
-    .largo-rail {
-      flex: 0 0 auto;
-      align-self: stretch;
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
-      gap: 0.25rem 0.75rem;
-    }
   }
-  .largo-rail-head {
-    font-family: var(--font-anton, sans-serif);
-    font-size: 1.05rem;
-    letter-spacing: 0.06em;
-    color: var(--largo-primary);
-    border-bottom: 1px solid var(--largo-info-dim);
-    padding-bottom: 0.3rem;
-    margin-bottom: 0.4rem;
-  }
-  .largo-rail-spot {
-    font-size: 1.15rem;
-    font-weight: 600;
-    color: var(--largo-primary);
-  }
-  .largo-rail-regime {
-    font-size: 9px;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: var(--largo-muted);
-    margin-bottom: 0.45rem;
-  }
-  .largo-rail-group {
-    padding-top: 0.35rem;
-    margin-top: 0.35rem;
-    border-top: 1px solid rgba(148, 163, 184, 0.12);
-  }
-  .largo-rail-row {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 0.4rem;
-    padding: 0.12rem 0;
-    font-size: 10px;
-  }
-  .largo-rail-label {
-    color: var(--largo-muted-faint);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-  }
-  .largo-rail-value {
-    color: var(--largo-primary);
-    font-weight: 600;
-  }
-  .largo-rail-bull { color: var(--largo-bull); }
-  .largo-rail-bear { color: var(--largo-bear); }
   /* LEVEL LADDER — price-ordered, spot marked in place. Three columns so the prices form a single
      scannable numeric edge; a ragged left column defeats the whole point of ordering them. */
-  .largo-rail-ladder {
-    display: grid;
-    gap: 0.05rem;
-  }
-  .largo-rail-rung {
-    display: grid;
-    grid-template-columns: 3.6rem 1fr auto;
-    align-items: baseline;
-    gap: 0.35rem;
-    padding: 0.1rem 0.2rem;
-    font-size: 9.5px;
-    border-left: 2px solid transparent;
-  }
-  .largo-rail-rung-price {
-    color: var(--largo-primary);
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-  }
-  .largo-rail-rung-label {
-    color: var(--largo-muted-faint);
-    letter-spacing: 0.08em;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .largo-rail-rung-dist {
-    color: var(--largo-muted);
-    font-variant-numeric: tabular-nums;
-  }
   /* The member's actual position in the structure — the one row the eye should find first. */
-  .largo-rail-rung-spot {
-    border-left-color: var(--largo-info);
-    background: rgba(34, 211, 238, 0.08);
-  }
-  .largo-rail-rung-spot .largo-rail-rung-price { color: var(--largo-info); }
-  .largo-rail-rung-spot .largo-rail-rung-label { color: var(--largo-info); }
   /* A wall that MIGRATED since the last read. Amber = watch, per the desk's colour semantics —
      it is not bullish or bearish, it is a thing that changed while you were reading. */
-  .largo-rail-rung-moved {
-    border-left-color: var(--largo-warn);
-  }
-  .largo-rail-rung-moved .largo-rail-rung-price { color: var(--largo-warn); }
-  .largo-rail-degraded {
-    margin-top: 0.4rem;
-    font-size: 9px;
-    letter-spacing: 0.08em;
-    color: var(--largo-warn);
-  }
 }
 
 @layer components {

@@ -47,7 +47,8 @@ export async function loadMeridianEarningsEnrichment(
       fetchBenzingaEarnings(sym, 6).catch(() => []),
       loadMeridianEarningsPrintHistory(sym, 8, eventDate),
       loadMeridianCatalystBundle(sym),
-      loadBenzingaTickerEarnings(sym, eventDate ?? null),
+      // 8 to match the print-history call above, so both read the same window.
+      loadBenzingaTickerEarnings(sym, eventDate ?? null, 8),
       loadBenzingaTickerGuidance(sym),
     ]);
 
@@ -88,6 +89,7 @@ export async function loadMeridianEarningsEnrichment(
     earnings_yoy,
     corporate_guidance: guidanceRow,
     guidance_entitled: guidanceRes.entitled,
+    guidance_on_file: guidanceRow != null,
     post_print: post_print.headline ? post_print : null,
     print_history: history.print_history,
     print_history_summary: history.print_history_summary,

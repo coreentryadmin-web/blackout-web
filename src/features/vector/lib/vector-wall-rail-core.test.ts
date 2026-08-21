@@ -7,6 +7,7 @@ import {
   beadRenderTuning,
   targetHalfPx,
   rowSwellMul,
+  wallBeadColorShade,
   FILL_ALPHA_MAX,
   FILL_ALPHA_MIN,
   HALF_PX_MAX,
@@ -27,6 +28,8 @@ import {
   rowPeakRefs,
   rowSwellMul,
   rowStrengthHaloExtraPx,
+  ROW_HALO_ROW_GAP_FILL,
+  BEAD_ROW_FILL_FOR_TEST,
   rowStrengthHaloAlphaMul,
   beadCenterSpacingPx,
   ROW_HALO_BAR_SPACING_FILL,
@@ -708,4 +711,107 @@ test("rowSwellMul: bounded, monotonic, and floored", () => {
     const m = rowSwellMul(pct, peak);
     assert.ok(m > 0 && m <= 1, `unusable input (${pct}, ${peak}) gave ${m}`);
   }
+});
+
+// ── THE HALO IS DRAWN IN TWO AXES AND WAS BUDGETED IN ONE (2026-08-19) ─────────────────────────
+// Member report during live RTH, with the strongest SPX rows circled: "dont you think it paints
+// too hard like too thick for the strong nodes".
+//
+// The core bead obeys BEAD_ROW_FILL (0.55 of the row gap). The strength halo is added ON TOP of the
+// core and was capped only against BAR SPACING — a horizontal measure — so vertically it was
+// unbounded. Measured on prod: band thickness / nearest row gap ran a median p90 of 0.64 and
+// exceeded 1.0 on 15 of 21 frames, worst 1.58 on QQQ. Above 1.0 the bead is thicker than the space
+// to its neighbour, so rows touch and the candles behind them disappear.
+//
+// Model-side tests could not have caught this: each function was individually correct, and the
+// defect lived in the SUM of two independently-budgeted radii. Hence a test on the sum.
+test("strength halo is budgeted against the ROW GAP, not just bar spacing", () => {
+  // Wide bars, tight rows — the geometry where the bar-spacing cap alone leaves the halo free.
+  const wideBars = { barSpacingPx: 40, rowGapPx: 10 };
+  const atPeak = rowStrengthHaloExtraPx(1, wideBars);
+  assert.ok(
+    atPeak <= (wideBars.rowGapPx * ROW_HALO_ROW_GAP_FILL) / 2 + 1e-9,
+    `halo ${atPeak}px must fit the row-gap budget, got more than ${(wideBars.rowGapPx * ROW_HALO_ROW_GAP_FILL) / 2}px`
+  );
+  // Without the row gap the same swell is allowed to bloom much further — which is the old bug.
+  const unbudgeted = rowStrengthHaloExtraPx(1, { barSpacingPx: 40 });
+  assert.ok(unbudgeted > atPeak, "the row-gap budget must actually bind on this geometry");
+});
+
+// Asserts against the BUDGET, not against 1.0 — adopted from Cursor's #2339, which is the
+// stronger form. `<= 1.0` only catches rows literally overlapping, which is the symptom at its
+// very worst; it would pass happily at 0.95 while the rail reads as a slab to anyone looking at
+// it. Tying the assertion to ROW_HALO_ROW_GAP_FILL means the test fails the moment the drawn
+// band exceeds what the budget promised, whatever that budget is later retuned to.
+test("core + halo together stay inside the row-gap budget, leaving air between rows", () => {
+  // The ordering invariant first. An earlier attempt set the core budget ABOVE the combined
+  // core+halo budget, so the core alone busted it and the halo was squeezed to its 0.25px minimum
+  // on every row — a silent flattening of the exact channel this all exists to produce. The weak
+  // `<= 1.0` form of this test passed straight through it.
+  assert.ok(
+    BEAD_ROW_FILL_FOR_TEST <= ROW_HALO_ROW_GAP_FILL,
+    `core budget ${BEAD_ROW_FILL_FOR_TEST} must not exceed the combined budget ${ROW_HALO_ROW_GAP_FILL}`
+  );
+  for (const rowGapPx of [8, 12, 20, 30, 44]) {
+    const halfMax = (rowGapPx * BEAD_ROW_FILL_FOR_TEST) / 2;
+    const halo = rowStrengthHaloExtraPx(1, { barSpacingPx: 60, rowGapPx, coreHalfPx: halfMax });
+    const thickness = 2 * (halfMax + halo);
+    assert.ok(
+      thickness / rowGapPx <= ROW_HALO_ROW_GAP_FILL + 1e-9,
+      `rowGap=${rowGapPx}: core+halo fills ${(thickness / rowGapPx).toFixed(2)} of the slot, over the ${ROW_HALO_ROW_GAP_FILL} budget`
+    );
+  }
+});
+
+test("the halo still grows with strength — the budget is a ceiling, not a flattening", () => {
+  const geom = { barSpacingPx: 40, rowGapPx: 20 };
+  const weak = rowStrengthHaloExtraPx(0.2, geom);
+  const mid = rowStrengthHaloExtraPx(0.6, geom);
+  const peak = rowStrengthHaloExtraPx(1, geom);
+  assert.ok(weak < mid && mid < peak, "clamping the peak must not collapse the swell into one size");
+});
+
+// ── COLOUR: WEAK BEADS ARE PALER, NOT JUST DIMMER (2026-08-19) ─────────────────────────────────
+// Member spec: "Weak beads -> paler, muted yellow/magenta ... Strong beads -> full saturated
+// #ffd60a / #d97bff". Alpha alone could not deliver that once the rail moved BEHIND the candles:
+// a low-alpha bead reads as whatever is behind it, not as a muted shade of its own hue.
+test("wallBeadColorShade: peak strength is the untouched brand hue", () => {
+  assert.equal(wallBeadColorShade("#ffd60a", 1), "#ffd60a");
+  assert.equal(wallBeadColorShade("#d97bff", 1), "#d97bff");
+});
+
+test("wallBeadColorShade: weak beads mute toward the desk ground, monotonically", () => {
+  const lum = (hex: string) =>
+    parseInt(hex.slice(1, 3), 16) + parseInt(hex.slice(3, 5), 16) + parseInt(hex.slice(5, 7), 16);
+  for (const base of ["#ffd60a", "#d97bff"]) {
+    const shades = [0.05, 0.25, 0.5, 0.75, 1].map((t) => lum(wallBeadColorShade(base, t)));
+    for (let i = 1; i < shades.length; i++) {
+      assert.ok(shades[i]! >= shades[i - 1]!, `${base}: shade must not darken as strength rises`);
+    }
+    // And the range has to be worth having — a 5%-of-book bead must be obviously paler than a peak.
+    assert.ok(shades[0]! < shades[shades.length - 1]! * 0.6, `${base}: weak/strong shades too close to tell apart`);
+  }
+});
+
+test("wallBeadColorShade: the SIDE hue survives at every strength", () => {
+  // Yellow stays red+green dominant, magenta stays red+blue dominant — a shade that inverted this
+  // would make a call wall read as a put wall, which is worse than no colour channel at all.
+  for (const t of [0.05, 0.3, 0.7, 1]) {
+    const y = wallBeadColorShade("#ffd60a", t);
+    const m = wallBeadColorShade("#d97bff", t);
+    const [yr, yg, yb] = [1, 3, 5].map((i) => parseInt(y.slice(i, i + 2), 16));
+    const [mr, mg, mb] = [1, 3, 5].map((i) => parseInt(m.slice(i, i + 2), 16));
+    assert.ok(yg > yb, `call shade at t=${t} lost its yellow`);
+    assert.ok(mb > mg, `put shade at t=${t} lost its magenta`);
+    assert.ok(yr > 0 && mr > 0);
+  }
+});
+
+test("wallBeadColorShade: malformed input passes through rather than painting NaN", () => {
+  // Canvas treats an unparseable fillStyle as a no-op and keeps the PREVIOUS colour, so a bad
+  // shade would silently paint beads in the wrong side's hue.
+  for (const bad of ["", "#fff", "rgb(1,2,3)", "#gggggg", "not-a-colour"]) {
+    assert.equal(wallBeadColorShade(bad, 0.4), bad);
+  }
+  assert.equal(wallBeadColorShade("#ffd60a", Number.NaN), wallBeadColorShade("#ffd60a", 0));
 });

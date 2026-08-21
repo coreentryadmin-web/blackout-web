@@ -2173,6 +2173,56 @@ async function runMigrations(): Promise<void> {
        ON meridian_report_snapshots(ticker, event_date, snapshot_day DESC)`
   );
 
+  // X INTEL QUEUE — the hourly market-intelligence package a human reviews and publishes by hand.
+  //
+  // `cycle_key` is UNIQUE and carries the ET hour slot ("2026-08-21T11"), so a re-run of the same
+  // cycle overwrites its own row instead of leaving a duplicate — same reasoning as
+  // meridian_report_snapshots' day key above. It is TEXT rather than a timestamp on purpose: the
+  // slot is an ET wall-clock concept and storing it as an instant would make it ambiguous across
+  // the DST boundary, which is precisely the class of bug that silently stops the existing
+  // x-autopost cron every November.
+  //
+  // `confidence` is nullable and MUST stay nullable. Largo contract C6: a package that cannot
+  // calibrate a score omits it. A NOT NULL DEFAULT here would manufacture the exact fabricated
+  // number the contract forbids, and it would be indistinguishable from a measured one.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS x_intel_queue (
+      id BIGSERIAL PRIMARY KEY,
+      cycle_key TEXT NOT NULL UNIQUE,
+      session_date DATE NOT NULL,
+      created_at_et TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      status TEXT NOT NULL,
+      ticker_or_market TEXT NOT NULL,
+      headline TEXT NOT NULL,
+      post_copy TEXT,
+      thread JSONB,
+      franchise TEXT,
+      attachments JSONB NOT NULL DEFAULT '[]'::jsonb,
+      products_referenced JSONB NOT NULL DEFAULT '[]'::jsonb,
+      underlying_evidence JSONB NOT NULL DEFAULT '[]'::jsonb,
+      chronology JSONB,
+      market_outcome JSONB,
+      confidence JSONB,
+      reason_selected TEXT NOT NULL,
+      runners_up JSONB NOT NULL DEFAULT '[]'::jsonb,
+      posted_tweet_id TEXT,
+      cta JSONB,
+      -- A SKIP is a result, but WHICH result matters: QUIET is a claim about the market, BLIND is
+      -- a claim about the pipeline. Collapsing them lets an outage read as a calm tape.
+      skip_kind TEXT,
+      blind_spots JSONB NOT NULL DEFAULT '[]'::jsonb
+    );
+  `);
+  await p.query(
+    `CREATE INDEX IF NOT EXISTS idx_x_intel_queue_recent
+       ON x_intel_queue(created_at DESC)`
+  );
+  await p.query(
+    `CREATE INDEX IF NOT EXISTS idx_x_intel_queue_session
+       ON x_intel_queue(session_date DESC, created_at DESC)`
+  );
+
   } finally {
     // Release the advisory lock + return the dedicated connection to the pool.
     try { await lockClient.query(`SELECT pg_advisory_unlock($1)`, [MIGRATION_LOCK_ID]); } catch { /* ignore */ }
@@ -2752,6 +2802,30 @@ export type HelixSignalOutcomeRow = {
 /** Recent signal firings for the Tier 2 follow-through tracker UI (item #10) — most-recent
  *  first, graded and pending rows both included (a member should see a firing exists even
  *  before its 1h checkpoint has elapsed, not just once it's graded). */
+/**
+ * Coerce a Postgres NUMERIC to a JS number, preserving null.
+ *
+ * `pg` returns NUMERIC and BIGSERIAL as **strings** — deliberately, because neither fits float64
+ * losslessly in general. Nothing here was casting them, so `HelixSignalOutcomeRow` declared
+ * `number | null` while the runtime value was `"7641.63"`. Measured live 2026-08-20: **32 numeric
+ * strings** in a single 50-row read.
+ *
+ * Two consequences, both real even though neither was visible on screen. `roundFloats` tests
+ * `typeof v === "number"` and is therefore BLIND to a numeric string, so any excess precision
+ * reaches the model unrounded. And the arithmetic only works by luck: `gradeOutcome` uses `-` and
+ * `/`, which coerce, but a single `+` anywhere would concatenate instead of add and produce a
+ * silently wrong grade.
+ *
+ * `Number(null)` is 0 and `Number("")` is 0 — a missing checkpoint price becoming a real 0.00 is
+ * exactly the fabrication this repo keeps finding, so both map to null rather than through the
+ * cast. Prices beyond float64 precision are not a concern for equity/index quotes.
+ */
+export function pgNumericOrNull(v: unknown): number | null {
+  if (v == null || v === "") return null;
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
 export async function fetchRecentHelixSignalOutcomes(limit = 50): Promise<HelixSignalOutcomeRow[]> {
   await ensureSchema();
   const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.min(Math.trunc(limit), 200) : 50;
@@ -2765,7 +2839,15 @@ export async function fetchRecentHelixSignalOutcomes(limit = 50): Promise<HelixS
     `,
     [safeLimit]
   );
-  return res.rows;
+  return res.rows.map((row) => ({
+    ...row,
+    // BIGSERIAL — string over the wire.
+    id: Number(row.id),
+    price_at_fire: pgNumericOrNull(row.price_at_fire),
+    price_5m: pgNumericOrNull(row.price_5m),
+    price_15m: pgNumericOrNull(row.price_15m),
+    price_1h: pgNumericOrNull(row.price_1h),
+  }));
 }
 
 /** Insert newly-detected signal firings. ON CONFLICT DO NOTHING — the recorder cron
@@ -2819,10 +2901,28 @@ export type HelixSignalOutcomePendingRow = {
 /** Rows whose `checkpoint` (5m/15m/1h) is still unfilled AND old enough that the
  *  checkpoint time has actually elapsed — never asks Polygon for a price that's still
  *  in the future. */
+/**
+ * How far back the grader will keep retrying a checkpoint it has never managed to fill.
+ *
+ * The queue is oldest-first with a fixed LIMIT, so a row that can NEVER be graded does not merely
+ * fail — it occupies a slot at the HEAD of every subsequent run, forever. Index signals did exactly
+ * that (their price lookups hit the equity namespace and came back empty; see flow-price-symbol.ts),
+ * and once enough of them accumulate they consume the whole per-run budget and no gradeable row is
+ * ever reached again. The tracker would stop producing outcomes silently, with nothing in the logs.
+ *
+ * Fixing the index lookup removes today's cause; this bounds the CLASS. A delisted ticker, an index
+ * root not in the map, or a symbol Polygon drops would otherwise reintroduce the same head-of-line
+ * block. Seven days is comfortably past any weekend gap (a Friday-close firing's 1h checkpoint needs
+ * the following Monday), and a 5m/15m/1h follow-through measurement that is a week late has no
+ * product value left — it is not worth blocking live rows to keep asking for it.
+ */
+const HELIX_CHECKPOINT_MAX_AGE_DAYS = 7;
+
 export async function fetchPendingHelixSignalCheckpoints(
   checkpoint: "price_5m" | "price_15m" | "price_1h",
   minAgeMinutes: number,
-  limit = 200
+  limit = 200,
+  maxAgeDays = HELIX_CHECKPOINT_MAX_AGE_DAYS
 ): Promise<HelixSignalOutcomePendingRow[]> {
   await ensureSchema();
   const res = await (await getPool()).query<HelixSignalOutcomePendingRow>(
@@ -2833,12 +2933,19 @@ export async function fetchPendingHelixSignalCheckpoints(
     WHERE ${checkpoint} IS NULL
       AND price_at_fire IS NOT NULL
       AND fired_at <= NOW() - ($1 || ' minutes')::interval
+      AND fired_at >= NOW() - ($3 || ' days')::interval
     ORDER BY fired_at ASC
     LIMIT $2
     `,
-    [minAgeMinutes, limit]
+    [minAgeMinutes, limit, maxAgeDays]
   );
-  return res.rows;
+  // Same cast as the read above. This row feeds gradeOutcome(), which divides by price_at_fire —
+  // it works on a string only because `-` and `/` coerce, and it must not depend on that.
+  return res.rows.map((row) => ({
+    ...row,
+    id: Number(row.id),
+    price_at_fire: pgNumericOrNull(row.price_at_fire),
+  }));
 }
 
 /** Write one checkpoint price; when `outcome` is provided (the grader's final 1h
@@ -4031,6 +4138,52 @@ export async function fetchZeroDteScanRejections(opts?: {
     last_seen: isoTimestampString(r.last_seen),
     reason: r.reason != null ? String(r.reason) : null,
   })  );
+}
+
+/**
+ * TRUE per-kind counts for one session — a `GROUP BY`, not a sample.
+ *
+ * `fetchZeroDteDiscoveryEvents` takes the newest N rows and the funnel then counts kinds inside
+ * that window. That is correct only while N exceeds the day's event count. It does not:
+ * MEASURED ON PROD 2026-08-20, mid-session, the admin funnel returned
+ * `detected 642 + gate_blocked 1354 + commit 4 = 2000` — exactly `EVENTS_SAMPLE_LIMIT`, i.e. the
+ * window was saturated and everything older than the newest 2000 events was invisible.
+ *
+ * The damage is not evenly spread. `gate_blocked` runs to thousands a session while `commit` runs
+ * to single digits, so commits are ~0.2% of the stream and whether ANY of them survive the window
+ * is luck of the ordering. At the same instant the board reported `commit_events: 0`, the admin
+ * funnel reported 4, and the ledger held 7 committed rows — one quantity, three answers, and the
+ * most visible one said nothing had traded on a day that traded seven times.
+ *
+ * A rare-but-critical event must never compete with a high-volume one for sample slots. This counts
+ * in the database, so it is exact regardless of volume, and cheap: one indexed aggregate per call.
+ */
+export async function countZeroDteDiscoveryEventsByKind(
+  sessionDate: string
+): Promise<Record<string, number>> {
+  await ensureSchema();
+  const res = await (await getPool()).query(
+    `SELECT kind, COUNT(*)::int AS n FROM zerodte_discovery_events WHERE session_date = $1 GROUP BY kind`,
+    [sessionDate]
+  );
+  const out: Record<string, number> = {};
+  for (const r of res.rows) out[String(r.kind)] = Number(r.n);
+  return out;
+}
+
+/**
+ * Distinct tickers that reached `detected` this session — also a real aggregate.
+ *
+ * Same reasoning as above: `detected` is the second-highest-volume kind, so a sampled distinct
+ * count under-reports the funnel's mouth exactly when the session has been busiest.
+ */
+export async function countZeroDteDetectedTickers(sessionDate: string): Promise<number> {
+  await ensureSchema();
+  const res = await (await getPool()).query(
+    `SELECT COUNT(DISTINCT ticker)::int AS n FROM zerodte_discovery_events WHERE session_date = $1 AND kind = 'detected'`,
+    [sessionDate]
+  );
+  return Number(res.rows[0]?.n ?? 0);
 }
 
 export async function fetchZeroDteDiscoveryEvents(opts?: {

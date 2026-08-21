@@ -10,22 +10,31 @@
  */
 
 import type {
+  MeridianEarningsAnalyticsRow,
   MeridianEarningsEnrichment,
   MeridianEarningsIntel,
 } from "@/features/meridian/lib/meridian-types";
 import { MeridianBeatHistory, MeridianImpliedVsRealized } from "./meridian-viz";
+import { MeridianBeatStreak } from "./MeridianEarningsAnalytics";
+import { MeridianDataCard } from "./meridian-ui";
 
 export function MeridianEarningsHistoryPanel({
   ticker,
   enrichment,
   intel,
+  analyticsRows,
 }: {
   ticker: string;
   enrichment: Pick<MeridianEarningsEnrichment, "print_history" | "beat_rates" | "print_history_summary">;
   intel: Pick<MeridianEarningsIntel, "expected_move_pct">;
+  /** Full-window analytics rows — powers the beat/miss streak rail when present. */
+  analyticsRows?: readonly MeridianEarningsAnalyticsRow[];
 }) {
   const prints = enrichment.print_history ?? [];
-  const moves = prints.map((p) => p.session_change_pct);
+  // The REACTION, not the anchor session's open→close: "is the market pricing more than it
+  // delivers" compares an implied move against what the print actually did, and for a post-close
+  // print that is the overnight gap plus the session, not the session alone.
+  const moves = prints.map((p) => p.reaction_pct ?? p.session_change_pct);
   const rates = enrichment.beat_rates;
   const graded = prints.filter((p) => p.beat != null).length;
 
@@ -61,6 +70,12 @@ export function MeridianEarningsHistoryPanel({
           </div>
         )}
       </div>
+
+      {(analyticsRows?.length ?? 0) > 0 && (
+        <MeridianDataCard label="Quarterly beat / miss streak" wide tone="earnings">
+          <MeridianBeatStreak ticker={ticker} rows={analyticsRows!} />
+        </MeridianDataCard>
+      )}
     </section>
   );
 }

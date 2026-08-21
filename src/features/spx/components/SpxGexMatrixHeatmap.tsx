@@ -42,6 +42,7 @@ import { SpxStrikeLadderAxis } from "./SpxStrikeLadderAxis";
 import { scrollRowIntoViewCenter } from "@/features/spx/lib/spx-matrix-scroll";
 import type { SpxTapeItem } from "@/features/spx/lib/spx-desk";
 import type { VectorPriceScaleMap } from "@/features/vector/lib/vector-price-scale-map";
+import { etClock } from "@/lib/et-clock";
 
 const MATRIX_POLL_RTH_MS = SPX_MATRIX_POLL_RTH_MS;
 const MATRIX_POLL_OFF_MS = SPX_MATRIX_POLL_OFF_MS;
@@ -112,12 +113,7 @@ function fmtAsofSeconds(iso: string | undefined): string | null {
   if (!iso) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-    timeZone: "America/New_York",
-  });
+  return etClock(d, { seconds: true });
 }
 
 type OpeningRange = {

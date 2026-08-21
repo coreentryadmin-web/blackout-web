@@ -32,6 +32,14 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { createTunneledContext } = require("./lib/proxy-tunnel-context.cjs");
+import { splitOverFetches } from "./lib/expected-poll-count.mjs";
+import {
+  EARNINGS_ROW_BASE,
+  describeCohort,
+  earningsRowSelector,
+  normalizeMinImpact,
+  splitAuthFailures,
+} from "./lib/meridian-earnings-cohort.mjs";
 
 const args = new Map(
   process.argv.slice(2).map((a) => {
@@ -42,6 +50,12 @@ const args = new Map(
 const BASE = args.get("base") ?? "https://blackouttrades.com";
 const OUT = args.get("out") ?? "/tmp/meridian-ix";
 const ONLY = args.get("viewport") ?? null;
+// Which cohort this run judges — see lib/meridian-earnings-cohort.mjs. Default `high`, because the
+// options-derived panels only populate for names with a real options market, so judging them
+// against a micro-cap measures the cohort rather than the UI.
+const MIN_IMPACT = normalizeMinImpact(args.get("min-impact"));
+const ROW_SELECTOR = earningsRowSelector(MIN_IMPACT);
+const COHORT = describeCohort(MIN_IMPACT);
 
 const VIEWPORTS = [
   { name: "desktop", viewport: "1440x1000", desktop: true },
@@ -130,11 +144,27 @@ async function openEarningsEvent(page, vp) {
   }
   // Target an EARNINGS row specifically: the timeline mixes macro/FDA/OpEx rows, and those have
   // no earnings tabs at all, so clicking the first row reports a product failure on a healthy page.
-  const row = await page
-    .waitForSelector(".meridian-timeline-row.meridian-theme-earnings", { timeout: 30_000 })
-    .catch(() => null);
+  //
+  // ...and target the right COHORT. Clicking the first earnings row lands on whichever name is
+  // next by date — live, a low-impact micro-cap with no options market, against which the
+  // options-derived panels are legitimately empty. Judging them there measures the cohort, not
+  // the UI. See lib/meridian-earnings-cohort.mjs.
+  // Two separate waits: the timeline existing, then the COHORT row appearing. Querying the
+  // cohort immediately after the first earnings row races the staggered mount (animationDelay
+  // index*40ms) and reports "cohort absent" while the API carries dozens of qualifying events.
+  const timelineUp = await page.waitForSelector(EARNINGS_ROW_BASE, { timeout: 30_000 }).catch(() => null);
+  if (!timelineUp) {
+    record({ severity: "HARNESS", viewport: vp, where: "timeline", issue: "no earnings row on the timeline at all" });
+    return false;
+  }
+  const row = await page.waitForSelector(ROW_SELECTOR, { timeout: 20_000 }).catch(() => null);
   if (!row) {
-    record({ severity: "HARNESS", viewport: vp, where: "timeline", issue: "no earnings row visible" });
+    record({
+      severity: "HARNESS",
+      viewport: vp,
+      where: "timeline",
+      issue: `no ${COHORT} earnings row visible — cohort not sampled`,
+    });
     return false;
   }
   await row.scrollIntoViewIfNeeded().catch(() => {});
@@ -158,6 +188,9 @@ async function auditViewport(vp, cookie) {
     const consoleErrors = [];
     const badResponses = [];
     const requestCounts = new Map();
+    // When the page actually opened, so a fetch count can be judged against the time it had to
+    // accumulate in. Two Meridian panels poll on purpose (10-15s), so a bare count is not a defect.
+    const pageOpenedAt = Date.now();
     page.on("console", (m) => {
       if (m.type() === "error") consoleErrors.push(m.text().slice(0, 180));
     });
@@ -315,18 +348,50 @@ async function auditViewport(vp, cookie) {
       });
     }
 
-    const dupes = [...requestCounts.entries()].filter(([, n]) => n > 2);
-    if (dupes.length > 0) {
+    // A COUNT IS NOT A DEFECT WITHOUT THE TIME IT ACCUMULATED IN.
+    //
+    // MeridianDesk polls the event detail through SWR at 10s (event within the hour) or 15s
+    // (already printed). This check used to flag anything over 2 and so reported `4×
+    // /api/market/meridian/event?id=earnings:BEKE:2026-08-21` as a duplicate fetch, on a run that
+    // held the page ~60s. The product was correct; the check was not — and it fired hardest on
+    // the panels nearest a live catalyst, which is the worst place to cry wolf.
+    const elapsedMs = Date.now() - pageOpenedAt;
+    const { over, explained } = splitOverFetches([...requestCounts.entries()], elapsedMs);
+    if (over.length > 0) {
       record({
         severity: "P3",
         viewport: vp.name,
         where: "network",
-        issue: `${dupes.length} API endpoints fetched more than twice`,
-        sample: dupes.slice(0, 5).map(([u, n]) => `${n}× ${u.slice(-70)}`),
+        issue: `${over.length} API endpoints fetched more than polling can explain (page open ${Math.round(elapsedMs / 1000)}s)`,
+        sample: over.slice(0, 5).map((o) => `${o.count}× (max ${o.max}) ${o.url.slice(-64)}`),
       });
     }
+    // Say what was EXPLAINED as well. Silence here would read as "nothing repeated", when what
+    // actually happened is that a repeat was understood — a different fact, and the one that
+    // proves this check was not simply widened until it stopped firing.
+    if (explained.length > 0) {
+      console.log(
+        `  [poll] ${explained.length} endpoint(s) repeated within their polling cadence over ${Math.round(elapsedMs / 1000)}s: ` +
+          explained.map((e) => `${e.count}/${e.max} ${e.url.slice(-48)}`).join(", ")
+      );
+    }
     if (badResponses.length > 0) {
-      record({ severity: "P2", viewport: vp.name, where: "network", issue: `${badResponses.length} failed requests`, sample: badResponses.slice(0, 5) });
+      // A 401/403 is THIS HARNESS losing its session, not the product failing. A run can outlive
+      // its ~72s JWT, and CLAUDE.md records that exactly this was mis-read as a product fault
+      // three times. Reported as HARNESS, and separately from real failures.
+      const { auth, failures } = splitAuthFailures(badResponses);
+      if (auth.length) {
+        record({
+          severity: "HARNESS",
+          viewport: vp.name,
+          where: "auth",
+          issue: `${auth.length} auth failures (401/403) — session lost mid-run, NOT a product verdict`,
+          sample: auth.slice(0, 3),
+        });
+      }
+      if (failures.length) {
+        record({ severity: "P2", viewport: vp.name, where: "network", issue: `${failures.length} failed requests`, sample: failures.slice(0, 5) });
+      }
     }
     if (consoleErrors.length > 0) {
       record({ severity: "P2", viewport: vp.name, where: "console", issue: `${consoleErrors.length} console errors`, sample: consoleErrors.slice(0, 4) });
@@ -367,7 +432,11 @@ async function main() {
   console.log(
     `\n${bySev("P2").length} P2 · ${bySev("P3").length} P3 · ${bySev("HARNESS").length} HARNESS · screenshots in ${OUT}`
   );
-  if (bySev("HARNESS").length) console.log("HARNESS entries are NOT product verdicts — the page did not load.");
+  if (bySev("HARNESS").length)
+    console.log(
+      "HARNESS entries are NOT product verdicts — the page did not load, the cohort was unsampled, or the session expired."
+    );
+  console.log(`cohort judged: ${COHORT} (a verdict without its cohort is not a fact about the panel)`);
   process.exitCode = bySev("P2").length > 0 ? 1 : 0;
 }
 

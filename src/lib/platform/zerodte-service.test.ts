@@ -406,18 +406,22 @@ test("exit visibility: a stopped play with no trim tranches armed still pins P&L
   assert.equal(board.ledger[0]!.peak_pnl_pct, 10);
 });
 
-test("exit visibility: META-class stopped runner with +87% peak returns trim-scale blend on live_pnl_pct", async () => {
+/** The META-class row: peaked +87% (arming both trim tranches), then stopped at −50%. */
+function metaStoppedRunner(entryContext: Record<string, unknown> | null) {
+  return ledgerRow({
+    ticker: "META",
+    entry_premium: 3.15,
+    last_mark: 1.57,
+    peak_premium: 5.9,
+    trough_premium: 1.57,
+    status: "CLOSED",
+    entry_context: entryContext,
+  });
+}
+
+test("exit visibility: a TRIM_SCALE-committed META-class stopped runner returns the trim-scale blend", async () => {
   state.ledgerRead = {
-    rows: [
-      ledgerRow({
-        ticker: "META",
-        entry_premium: 3.15,
-        last_mark: 1.57,
-        peak_premium: 5.9,
-        trough_premium: 1.57,
-        status: "CLOSED",
-      }),
-    ],
+    rows: [metaStoppedRunner({ exit_policy_at_commit: "trim_scale" })],
     committed_known: true,
   };
   state.setups = [];
@@ -425,7 +429,34 @@ test("exit visibility: META-class stopped runner with +87% peak returns trim-sca
   const board = await buildZeroDteBoardPayload();
   assert.equal(board.ledger[0]!.closed_reason, "stopped");
   assert.equal(board.ledger[0]!.peak_pnl_pct, 87.3);
+  assert.equal(board.ledger[0]!.exit_policy_at_commit, "trim_scale");
   assert.equal(board.ledger[0]!.live_pnl_pct, 6.67, "⅓@+20 + ⅓@+50 + ⅓@(−50) runner");
+});
+
+test("REGRESSION: the SAME stopped runner committed under RATCHET reports the real −50%, not +6.67%", async () => {
+  // A ratchet row banks nothing on the way up, so crediting it two trim tranches invents exits the
+  // member was never guided to take — and turns a play that lost half its premium into a WINNER on
+  // the board. Identical premiums to the test above; only the committed policy differs.
+  state.ledgerRead = {
+    rows: [metaStoppedRunner({ exit_policy_at_commit: "ratchet" })],
+    committed_known: true,
+  };
+  state.setups = [];
+  const { buildZeroDteBoardPayload } = await import("./zerodte-service");
+  const board = await buildZeroDteBoardPayload();
+  assert.equal(board.ledger[0]!.closed_reason, "stopped");
+  assert.equal(board.ledger[0]!.peak_pnl_pct, 87.3, "the peak excursion is unchanged — it really did run +87%");
+  assert.equal(board.ledger[0]!.exit_policy_at_commit, "ratchet");
+  assert.equal(board.ledger[0]!.live_pnl_pct, -50, "a ratchet runner that stopped lost 50%");
+});
+
+test("REGRESSION: a legacy stopped runner with NO committed policy pins to the stop rather than guessing", async () => {
+  state.ledgerRead = { rows: [metaStoppedRunner(null)], committed_known: true };
+  state.setups = [];
+  const { buildZeroDteBoardPayload } = await import("./zerodte-service");
+  const board = await buildZeroDteBoardPayload();
+  assert.equal(board.ledger[0]!.exit_policy_at_commit, null);
+  assert.equal(board.ledger[0]!.live_pnl_pct, -50, "understating a stopped play is the safe error");
 });
 
 test("exit visibility: a plain 15:30 close with no engine exit reads closed_reason 'time_stop'", async () => {

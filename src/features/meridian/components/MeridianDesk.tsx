@@ -1,7 +1,8 @@
 "use client";
 
 import useSWR from "swr";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   MeridianEventDetail,
   MeridianEventKind,
@@ -58,6 +59,29 @@ function fmtPct(n: number | null | undefined): string {
   return `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`;
 }
 
+/**
+ * "12/40 printed · rev beat 62% of 96 prints".
+ *
+ * The two numbers used to sit adjacent as `12/40 printed · rev beat 62%`, and 40 is NOT the
+ * denominator of 62% — the rate is a share of the historical prints the universe lookback could
+ * GRADE, which is a different and usually much larger set. A rate printed beside an unrelated
+ * denominator is worse than one printed with none, because the reader is handed a plausible
+ * wrong cohort instead of an obvious gap.
+ */
+function weekAnalyticsSub(a: {
+  printed_this_week: number;
+  names_count: number;
+  eps_beat_rate: number | null;
+  revenue_beat_rate: number | null;
+  revenue_graded?: number;
+}): string {
+  const printed = `${a.printed_this_week}/${a.names_count} printed`;
+  if (a.eps_beat_rate == null) return printed;
+  if (a.revenue_beat_rate == null) return `${printed} · rev beat —`;
+  const of = a.revenue_graded && a.revenue_graded > 0 ? ` of ${a.revenue_graded} prints` : "";
+  return `${printed} · rev beat ${Math.round(a.revenue_beat_rate * 100)}%${of}`;
+}
+
 export function MeridianDesk() {
   const { data, error, isLoading, mutate } = useSWR<MeridianTimelinePayload>(
     "/api/market/meridian/timeline?days=21",
@@ -80,14 +104,24 @@ export function MeridianDesk() {
    * page, and touching window during render would either break SSR or produce a hydration
    * mismatch on any link that carries state. One frame of default state is the correct trade.
    *
-   * The history entry is written with pushState for a change of EVENT (so Back returns to the
-   * previous event, which is what a reader who clicked through three names expects) and
-   * replaceState for view/filter (which are refinements of the same page, not destinations).
-   * Written directly rather than through the router because a router navigation would re-run the
-   * page and drop the SWR cache — a URL update must not cost a refetch.
+   * URL writes go through the App Router (push for event changes so Back works; replace for
+   * view/filter refinements). Raw History API URL writes desync Next's internal tree and break
+   * and breaks subsequent <Link> nav across the desk — same failure mode Night Hawk view toggles
+   * had before router.replace (see nighthawk-feed-nav.test.ts). Same-route param updates keep
+   * this client component mounted, so the timeline SWR cache is not torn down.
    */
+  const router = useRouter();
   const urlHydrated = useRef(false);
   const lastUrlState = useRef<DeskUrlState>({ event: null, view: null, filter: null });
+
+  const syncDeskUrl = useCallback(
+    (next: DeskUrlState, eventChanged: boolean) => {
+      const url = `${window.location.pathname}${deskUrlSearch(next)}`;
+      if (eventChanged) router.push(url, { scroll: false });
+      else router.replace(url, { scroll: false });
+    },
+    [router]
+  );
 
   useEffect(() => {
     const apply = (search: string) => {
@@ -113,10 +147,8 @@ export function MeridianDesk() {
     if (sameDeskUrlState(next, lastUrlState.current)) return;
     const eventChanged = next.event !== lastUrlState.current.event;
     lastUrlState.current = next;
-    const url = `${window.location.pathname}${deskUrlSearch(next)}`;
-    if (eventChanged) window.history.pushState(null, "", url);
-    else window.history.replaceState(null, "", url);
-  }, [selectedId, view, filter]);
+    syncDeskUrl(next, eventChanged);
+  }, [selectedId, view, filter, syncDeskUrl]);
   const [searchQuery, setSearchQuery] = useState("");
   /** Calendar day drill-down — clicking a day filters the print ledger; clicking it again clears. */
   const [earningsDate, setEarningsDate] = useState<string | null>(null);
@@ -206,6 +238,12 @@ export function MeridianDesk() {
     allItems.find((i) => i.id === activeId) ??
     (activeId && lookupTimelineItem?.id === activeId ? lookupTimelineItem : null);
 
+  const activeTickerAnalyticsRows = useMemo(() => {
+    const sym = activeItem?.ticker?.toUpperCase();
+    if (!sym) return [];
+    return (data?.earnings_analytics_rows ?? []).filter((r) => r.ticker.toUpperCase() === sym);
+  }, [activeItem?.ticker, data?.earnings_analytics_rows]);
+
   /**
    * Poll cadence scaled by how close the print is.
    *
@@ -229,7 +267,10 @@ export function MeridianDesk() {
     error: detailError,
     isLoading: detailLoading,
     mutate: mutateDetail,
-  } = useSWR<MeridianEventDetail>(detailKey, fetcher, { refreshInterval: detailRefreshMs });
+  } = useSWR<MeridianEventDetail>(detailKey, fetcher, {
+    refreshInterval: detailRefreshMs,
+    keepPreviousData: true,
+  });
 
   /**
    * Refresh refetches the DETAIL as well as the timeline, and says so while it runs.
@@ -419,11 +460,7 @@ export function MeridianDesk() {
                 <MeridianAnalyticsBanner
                   label="Universe analytics"
                   headline={data.earnings_week_analytics.headline}
-                  sub={
-                    data.earnings_week_analytics.eps_beat_rate != null
-                      ? `${data.earnings_week_analytics.printed_this_week}/${data.earnings_week_analytics.names_count} printed · rev beat ${data.earnings_week_analytics.revenue_beat_rate != null ? Math.round(data.earnings_week_analytics.revenue_beat_rate * 100) : "—"}%`
-                      : `${data.earnings_week_analytics.printed_this_week}/${data.earnings_week_analytics.names_count} printed`
-                  }
+                  sub={weekAnalyticsSub(data.earnings_week_analytics)}
                   tone="earnings"
                   icon="▣"
                 />
@@ -652,6 +689,8 @@ export function MeridianDesk() {
               error={detailError ? String(detailError.message) : null}
               boardTickers={data?.board_tickers ?? []}
               allItems={allItems}
+              earningsAnalyticsRows={activeTickerAnalyticsRows}
+              onSelectEarningsTicker={selectEarningsTicker}
             />
           ) : (
             <MeridianEmpty message="Select a catalyst to open the structure brief." />

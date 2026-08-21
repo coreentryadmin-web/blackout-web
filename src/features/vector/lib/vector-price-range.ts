@@ -211,6 +211,57 @@ export function beadExtensionAllowed(
  * missing spot, a degenerate step. An unmeasurable ladder must degrade to today's behaviour, never
  * to an invented window.
  */
+/**
+ * Minimum share of the price pane the session's own candles are guaranteed.
+ *
+ * Member report (2026-08-19), NVDA: "I feel like somehow the candles are too small". Measured off
+ * that exact frame — axis 210-238 ($28 of pane), candle band ~217.3-222.1 ($4.8) — the candles held
+ * **17%** and the wall ladder took the other 83%.
+ *
+ * Nothing was misbehaving: NVDA moved $4.80 that session while its wall ladder legitimately wanted
+ * $22 (213 to 235). The defect is that the window is sized from a ROW COUNT and the candles get
+ * whatever is left over, so the share they end up with is an accident of how far apart that
+ * ticker's walls happen to sit. No row count reconciles the two — a quiet session gets flat candles
+ * and a trending one gets a cramped ladder.
+ *
+ * So the candles get a floor and the ladder gets the remainder, which is the inverse of today.
+ * 0.35 keeps the near structure that price is actually trading against (for that NVDA frame: the
+ * gamma flip at 222.06, the 220 magnet, the 225 wall) and drops the far 230/235 rows that were
+ * consuming half the pane for levels price never approached.
+ */
+export const MIN_CANDLE_SHARE_OF_PANE = 0.35;
+
+/**
+ * Widest span (as a % of spot) that still leaves the candles `minShare` of the pane.
+ *
+ * Composed with the row-derived span by taking the SMALLER of the two, so this only ever tightens a
+ * window the ladder wanted wider — it never widens one, and it never overrides the hard ceiling.
+ *
+ * Returns `null` when there is nothing to protect, and the caller then keeps the row-derived span
+ * unchanged. That guard is the whole safety of this function: a session whose candles have
+ * essentially no range (a halted name, a pre-open frame with one bar, a synthetic fixture) would
+ * otherwise divide a ~0 candle span by the share and collapse the entire axis onto a single price.
+ * "Unmeasurable" has to degrade to today's behaviour, never to an invented window.
+ */
+export function candleShareSpanCapPct(
+  candleRange: PriceRange,
+  spot: number,
+  minShare: number = MIN_CANDLE_SHARE_OF_PANE
+): number | null {
+  if (!(typeof spot === "number" && Number.isFinite(spot) && spot > 0)) return null;
+  if (!(Number.isFinite(minShare) && minShare > 0 && minShare < 1)) return null;
+
+  const span = candleRange.maxValue - candleRange.minValue;
+  if (!Number.isFinite(span) || span <= 0) return null;
+
+  // Below this the "candle band" is noise, not a range worth reserving a third of the pane for.
+  // 0.05% of spot is ~$0.11 on NVDA and ~$3.85 on SPX — under a single strike step either way.
+  const candleSharePct = span / spot;
+  if (candleSharePct < 0.0005) return null;
+
+  return candleSharePct / minShare;
+}
+
 export function rowAwareSpanPct(
   spot: number,
   strikes: readonly number[],

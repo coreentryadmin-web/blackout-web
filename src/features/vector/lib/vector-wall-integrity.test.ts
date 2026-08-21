@@ -26,14 +26,17 @@ const persistentHistory: WallHistorySample[] = Array.from({ length: 30 }, (_, i)
   sample(i, { callWalls: [{ strike: 7600, pct: 90 }], putWalls: [{ strike: 7500, pct: 50 }] })
 );
 
-test("scoreWallIntegrity: a dominant, all-session wall scores FIRM", () => {
+test("scoreWallIntegrity: a dominant wall present in every rail sample scores FIRM", () => {
   const r = scoreWallIntegrity(walls.callWalls[0]!, "call", walls.callWalls, persistentHistory, REF)!;
   assert.equal(r.tier, "firm");
   assert.ok(r.score >= 70, `score ${r.score} should be >=70`);
   assert.equal(r.factors.persistence, 1, "present in every rail sample");
   assert.equal(r.factors.strength, 1, "the strongest wall anchors strength at 1.0");
   assert.ok(r.factors.isolation >= 0.5, "towers over the 7650 wall");
-  assert.match(r.note, /7600C firm — held 100% of session, dominant/);
+  // This fixture's samples are one second apart, so the honest claim is 29 seconds — which is
+  // exactly why the note no longer says "of session". The old assertion here read
+  // `held 100% of session` off a 29-SECOND rail and passed.
+  assert.match(r.note, /7600C firm — held 100% of last 29s, dominant/);
 });
 
 test("REGRESSION: realistic small absolute pct — the dominant persistent wall is FIRM, not 'thin'", () => {
@@ -143,4 +146,74 @@ test("beadIntegrityTierMaps: GEX lens → strike→tier maps; VEX / empty → nu
   assert.equal(maps!.call.get(7600), "firm");
   assert.equal(beadIntegrityTierMaps(persistentHistory, "vex"), null);
   assert.equal(beadIntegrityTierMaps([], "gex"), null);
+});
+
+/**
+ * The note must not claim more scope than the persistence window actually observed.
+ *
+ * `persistenceFor` measures over PERSISTENCE_WINDOW = 60 TRAILING SAMPLES, and 60 samples is a
+ * different duration on every recorder lane: the universe recorder writes oracle tickers every 5s
+ * (~5 minutes) and everything else every 15s (~15 minutes), and a rail compacted at the old end
+ * carries 15s buckets there too. An RTH session is 390 minutes. So "held 100% of session" was, on
+ * SPX, a claim about the last 1.3% of the session — a wall four minutes old read as having held
+ * all day, on a panel members use to decide whether a level will hold.
+ *
+ * This file already knew the failure mode: MIN_RAIL_SAMPLES exists because a ONE-sample seed rail
+ * made every wall say "held 100% of session", described in its own comment as "an overclaim, since
+ * nothing was actually observed holding over time". Sixty samples said the same wrong thing.
+ */
+test("REGRESSION: the note reports the window it measured, never 'of session'", () => {
+  // 5s cadence — the oracle recorder lane. 60 samples = 5 minutes.
+  const fiveSecond: WallHistorySample[] = Array.from({ length: 60 }, (_, i) =>
+    sample(i * 5, { callWalls: [{ strike: 7600, pct: 90 }], putWalls: [] })
+  );
+  const r = scoreWallIntegrity(walls.callWalls[0]!, "call", walls.callWalls, fiveSecond, REF)!;
+
+  assert.doesNotMatch(r.note, /of session/, "a 5-minute observation must not be sold as a session");
+  assert.match(r.note, /held 100% of last 5m/);
+});
+
+test("the reported span follows the recorder lane, because the sample COUNT does not", () => {
+  // Identical sample count, identical persistence, different lane — and now a different claim.
+  const mk = (stepSec: number) =>
+    Array.from({ length: 60 }, (_, i) =>
+      sample(i * stepSec, { callWalls: [{ strike: 7600, pct: 90 }], putWalls: [] })
+    );
+  const oracle = scoreWallIntegrity(walls.callWalls[0]!, "call", walls.callWalls, mk(5), REF)!;
+  const onDemand = scoreWallIntegrity(walls.callWalls[0]!, "call", walls.callWalls, mk(15), REF)!;
+
+  assert.equal(oracle.factors.persistence, onDemand.factors.persistence, "same evidence strength");
+  assert.match(oracle.note, /last 5m/);
+  assert.match(onDemand.note, /last 15m/, "15s cadence covers three times the wall-clock");
+});
+
+test("a long rail reads in hours, and a degenerate one falls back rather than lying", () => {
+  const hourPlus: WallHistorySample[] = Array.from({ length: 60 }, (_, i) =>
+    sample(i * 80, { callWalls: [{ strike: 7600, pct: 90 }], putWalls: [] })
+  );
+  assert.match(
+    scoreWallIntegrity(walls.callWalls[0]!, "call", walls.callWalls, hourPlus, REF)!.note,
+    /last 1h19m/
+  );
+
+  // Every sample stamped at the same instant: there is no span to report. Say "observed rail"
+  // rather than inventing "0s", which would read as a broken panel rather than a thin one.
+  const zeroSpan: WallHistorySample[] = Array.from({ length: 10 }, () =>
+    sample(1000, { callWalls: [{ strike: 7600, pct: 90 }], putWalls: [] })
+  );
+  const flat = scoreWallIntegrity(walls.callWalls[0]!, "call", walls.callWalls, zeroSpan, REF)!;
+  assert.match(flat.note, /held 100% of observed rail/);
+  assert.doesNotMatch(flat.note, /0s|NaN|undefined/);
+});
+
+test("the persistence FACTOR is unchanged — this fix touches the label, not the score", () => {
+  // Deliberate scope line. 35% of the integrity score rides on persistence, and re-basing its
+  // window would move tiers (firm/moderate/thin) on a live trading surface. That is a separate,
+  // evidence-backed change; it must not ride along inside a wording fix.
+  const r = scoreWallIntegrity(walls.callWalls[0]!, "call", walls.callWalls, persistentHistory, REF)!;
+  assert.equal(r.factors.persistence, 1);
+  assert.equal(r.factors.isolation, 0.7, "(100 - 30) / 100 against the 7650 peer");
+  // 0.45×1 (strength) + 0.35×1 (persistence) + 0.2×0.7 (isolation) = 0.94
+  assert.equal(r.score, 94);
+  assert.equal(r.tier, "firm");
 });

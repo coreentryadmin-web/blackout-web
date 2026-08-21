@@ -8,16 +8,13 @@ import {
 } from "@/lib/meridian/meridian-timeline-server";
 import { buildMeridianTimeline, parseMeridianEventId } from "@/features/meridian/lib/meridian-timeline";
 import { roundFloats } from "@/lib/round-floats";
-import { preEarningsPackForLargo } from "@/lib/largo/pre-earnings-pack";
 import {
   buildMeridianMacroBrief,
   buildMeridianOpexDetail,
   buildMeridianFdaDetail,
-  loadMeridianEarningsEnrichment,
 } from "@/lib/meridian/meridian-event-brief";
-import { loadMeridianEarningsIntel } from "@/lib/meridian/meridian-earnings-intel";
+import { loadMeridianEarningsEventDetail } from "@/lib/meridian/meridian-earnings-event-load";
 import { readMeridianBoardTickers } from "@/lib/meridian/meridian-board-tickers";
-import { recordMeridianReportSnapshot, readMeridianReportSnapshots } from "@/lib/db";
 import type {
   MeridianEventDetail,
   MeridianTimelinePayload,
@@ -84,6 +81,10 @@ export async function loadMeridianTimelineResponse(daysAhead: number): Promise<M
     // Surfaced so the lane can SAY it filtered. A quietly shorter list is indistinguishable
     // from a quietly broken feed, and the two need different reactions from the reader.
     non_optionable_hidden: earningsBundle.non_optionable_hidden,
+    // Coverage, not just values: the chain budget is capped, so a null expected_move_pct means
+    // either "no chain" or "not queried". Publishing which is which is the difference between a
+    // gap the reader can interpret and one they will read as a fact about the name.
+    expected_move_coverage: earningsBundle.expected_move_coverage,
     optionable_filter_applied: earningsBundle.optionable_filter_applied,
     // Sector coverage, forwarded so it is actually reachable. These counters existed on the lane
     // result but were never put on the payload, so the "coverage is a number, not an assumption"
@@ -102,48 +103,7 @@ export async function loadMeridianEventResponse(id: string): Promise<MeridianEve
   if (parsed.kind === "earnings") {
     const ticker = parsed.ticker;
     if (!ticker) return null;
-    const pack = await preEarningsPackForLargo(ticker, parsed.date);
-    if (!pack) return null;
-    const enrichment = await loadMeridianEarningsEnrichment(ticker, pack.expected_move_pct, parsed.date);
-    const intel = await loadMeridianEarningsIntel({
-      ticker,
-      pack,
-      print_history: enrichment.print_history,
-      enrichment,
-    });
-    const detail = roundFloats({ kind: "earnings" as const, pack, enrichment, intel });
-
-    /**
-     * Record today's read, so the desk can later say "bullish five days ago, neutral now".
-     *
-     * Written on the READ path rather than the warm cron on purpose. The warm cron is
-     * weekdays + market-hours gated, so a cron-driven series would have holes exactly where an
-     * earnings calendar is busiest — evenings and the run-up to a morning print. This costs
-     * nothing extra (the report is already built) and naturally covers the names members
-     * actually open.
-     *
-     * Fire-and-forget: a snapshot is an observation for a panel, not part of serving the page.
-     * `void` + a caught rejection so a DB hiccup can never take the event detail down with it.
-     */
-    void recordMeridianReportSnapshot({
-      ticker,
-      eventDate: parsed.date,
-      snapshotDay: todayEtYmd(),
-      score: intel?.report?.score ?? null,
-      verdict: intel?.report?.verdict ?? null,
-      confidence: intel?.report?.confidence ?? null,
-      pillars: Object.fromEntries(
-        (intel?.report?.signals ?? [])
-          .filter((sig) => sig?.pillar && sig?.lean)
-          .map((sig) => [String(sig.pillar), String(sig.lean)])
-      ),
-    }).catch(() => {});
-
-    // The day series this event has accumulated. Read AFTER the write above so today's own
-    // observation is included — a drift panel that omitted the current read would compare the
-    // reader against a past they can no longer see.
-    const drift_snapshots = await readMeridianReportSnapshots(ticker, parsed.date, 30);
-    return { ...detail, drift_snapshots };
+    return loadMeridianEarningsEventDetail(ticker, parsed.date);
   }
 
   if (parsed.kind === "fda") {

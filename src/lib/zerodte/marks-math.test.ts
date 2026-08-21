@@ -6,12 +6,15 @@ import assert from "node:assert/strict";
 
 import {
   advancePlayLatch,
+  closedPnlDisplay,
   closedStopReason,
   condorSellerPnlPct,
   executablePnlPct,
   executionTaxBps,
   isZeroDteMarkStale,
+  latchPremiumBounds,
   ledgerDisplayPnlPct,
+  directionalClosedDisplayPnlPct,
   livePnlPctFor,
   pinnedLivePnlPct,
   reconcileLedgerLivePnlPct,
@@ -306,8 +309,14 @@ test("ledgerDisplayPnlPct: a stopped row with no trim tranches armed pins to PLA
 });
 
 test("ledgerDisplayPnlPct: META-class stopped runner with +87% peak returns trim-scale blend (~+6.67%)", () => {
-  const row = { status: "CLOSED", entry_premium: 3.15, last_mark: 1.57, peak_premium: 5.9, trough_premium: 1.57 };
+  // The policy is now STATED rather than assumed. This row is the real WS-10/WS-11 META case, which
+  // committed under trim_scale — so the blend is the correct read for it and the expected value is
+  // unchanged. Before the policy argument existed this same expectation was ALSO being applied to
+  // ratchet-committed rows, which is the defect: see the REGRESSION test below.
+  const row = { status: "CLOSED", entry_premium: 3.15, last_mark: 1.57, peak_premium: 5.9, trough_premium: 1.57, exitMode: "trim_scale" as const };
   assert.equal(ledgerDisplayPnlPct(row), 6.67);
+  // Same row, ratchet-committed: nothing was banked, so the stop is the result.
+  assert.equal(ledgerDisplayPnlPct({ ...row, exitMode: "ratchet" }), -50);
 });
 
 test("ledgerDisplayPnlPct: a non-stopped row derives from the mark (target/time-stop/live)", () => {
@@ -435,7 +444,8 @@ test("reconcileLedgerLivePnlPct: winning condor POSITIVE, breached condor NEGATI
     reconcileLedgerLivePnlPct({ is_condor: false, closed_reason: "stopped", entry_premium: 6.02, last_mark: 2.0, peak_premium: 6.5, trough_premium: 2.0 }),
     PLAN_RULES.stop_pct
   );
-  // META-class: peak +87% armed both trim tranches — as-managed blend, not −50%.
+  // META-class: peak +87% armed both trim tranches — as-managed blend, not −50%. The policy is now
+  // STATED: this row committed under trim_scale, which is what earns the blend.
   assert.equal(
     reconcileLedgerLivePnlPct({
       is_condor: false,
@@ -444,7 +454,201 @@ test("reconcileLedgerLivePnlPct: winning condor POSITIVE, breached condor NEGATI
       last_mark: 1.57,
       peak_premium: 5.9,
       trough_premium: 1.57,
+      exit_policy_at_commit: "trim_scale",
     }),
     6.67
   );
+});
+
+// ---------------------------------------------------------------------------
+// A STOPPED PLAY MUST NOT BE CREDITED WITH TRIM TRANCHES IT NEVER TOOK.
+//
+// `directionalClosedDisplayPnlPct` applied the trim-scale AS-MANAGED blend to every stopped
+// directional row whose latched peak cleared +20%, without asking which policy had managed it.
+// Not every row is on trim_scale: resolveExitModeForTier commits C-tier plays under RATCHET, and
+// ZERODTE_EXIT_MODE=ratchet is an operator kill-switch for all tiers. A ratchet row banks NOTHING
+// on the way up — that IS the difference between the policies — so crediting it a third at +20%
+// and a third at +50% invents exits the member was never guided to take.
+//
+// The arithmetic is the whole finding: peak >= +50% then stopped at -50% renders as
+// 1/3(+20) + 1/3(+50) + 1/3(-50) = +6.67%. A play that lost half its premium displays as a WINNER.
+// ---------------------------------------------------------------------------
+
+/** Peaked at +50% (arms both tranches), then stopped: trough at -50% of entry. */
+const STOPPED_AFTER_BIG_PEAK = {
+  status: "CLOSED" as const,
+  entry_premium: 1.0,
+  peak_premium: 1.5,
+  trough_premium: 0.5,
+  last_mark: 0.5,
+};
+
+test("REGRESSION: a stopped RATCHET-committed play shows the real -50%, not a fabricated +6.67%", () => {
+  const shown = directionalClosedDisplayPnlPct({ ...STOPPED_AFTER_BIG_PEAK, exitMode: "ratchet" });
+  assert.equal(shown, -50, "a ratchet row banks nothing on the way up — the stop is the result");
+  assert.ok(shown! < 0, "a play that lost half its premium must never display as a winner");
+});
+
+test("a stopped TRIM_SCALE-committed play still shows the as-managed blend", () => {
+  // Unchanged behaviour for the policy the blend was written for: 1/3@+20 + 1/3@+50 + 1/3@-50.
+  const shown = directionalClosedDisplayPnlPct({ ...STOPPED_AFTER_BIG_PEAK, exitMode: "trim_scale" });
+  assert.equal(shown, 6.67);
+});
+
+test("an UNKNOWN policy (legacy row, no commit-time pin) pins to the stop rather than guessing", () => {
+  // Of the two possible errors on a stopped play, understating it is the safe one. The mechanical
+  // pin is also a number the published methodology already defines and reports.
+  assert.equal(directionalClosedDisplayPnlPct({ ...STOPPED_AFTER_BIG_PEAK, exitMode: null }), -50);
+  assert.equal(directionalClosedDisplayPnlPct(STOPPED_AFTER_BIG_PEAK), -50, "absent field behaves as unknown");
+});
+
+test("a stopped play that never armed a tranche is -50 under EVERY policy", () => {
+  const smallPeak = { ...STOPPED_AFTER_BIG_PEAK, peak_premium: 1.05 }; // +5% peak, no tranche armed
+  for (const exitMode of ["ratchet", "trim_scale", null] as const) {
+    assert.equal(directionalClosedDisplayPnlPct({ ...smallPeak, exitMode }), -50, `exitMode=${exitMode}`);
+  }
+});
+
+test("reconcileLedgerLivePnlPct honours the row's frozen policy end-to-end", () => {
+  const base = {
+    is_condor: false,
+    closed_reason: "stopped" as const,
+    entry_premium: 1.0,
+    last_mark: 0.5,
+    peak_premium: 1.5,
+    trough_premium: 0.5,
+    status: "CLOSED",
+  };
+  assert.equal(reconcileLedgerLivePnlPct({ ...base, exit_policy_at_commit: "ratchet" }), -50);
+  assert.equal(reconcileLedgerLivePnlPct({ ...base, exit_policy_at_commit: "trim_scale" }), 6.67);
+  assert.equal(reconcileLedgerLivePnlPct({ ...base, exit_policy_at_commit: null }), -50);
+});
+
+// ---------------------------------------------------------------------------
+// ONE LATCH, TWO LANES — and they used to disagree.
+//
+// `advancePlayLatch` (the 1s marks lane) latched null-safely. `syncLedgerLiveState` in scan.ts
+// latched inline as
+//   Math.min(trough_premium ?? (entry_premium ?? Number.MAX_VALUE), mark ?? Number.MAX_VALUE)
+// so a row with no prior trough, no entry premium and no fresh mark latched Number.MAX_VALUE —
+// 1.7976931348623157e308 — and served it as `trough_premium` on the board. Iron condors are the
+// population that reaches it: a credit structure carries no single entry premium, so the first `??`
+// falls through, and any tick without a quote supplies the second.
+//
+// advancePlayLatch's doc comment CLAIMED it applied "the SAME peak/trough latch syncLedgerLiveState
+// applies". It did not, and a claim of sameness backed by no shared code is exactly how they
+// drifted — the same row could carry a different trough depending on which lane touched it last.
+// ---------------------------------------------------------------------------
+
+test("REGRESSION: nothing known on either side latches null, not MAX_VALUE", () => {
+  const { peak, trough } = latchPremiumBounds(null, null, null);
+  assert.equal(trough, null, "the old scan.ts form produced 1.7976931348623157e308 here");
+  assert.equal(peak, null, "and its peak produced 0, which understates just as dishonestly");
+});
+
+test("the sentinel it replaced passes every finite check in the codebase", () => {
+  // Asserted rather than footnoted: this is why the bug survived every existing numeric scan.
+  assert.equal(Number.isFinite(Number.MAX_VALUE), true);
+});
+
+test("a mark with no seed sets both latches to that mark", () => {
+  assert.deepEqual(latchPremiumBounds(null, null, 1.25), { peak: 1.25, trough: 1.25 });
+});
+
+test("latches only ever WIDEN from the seed", () => {
+  assert.deepEqual(latchPremiumBounds(2.0, 0.8, 2.4), { peak: 2.4, trough: 0.8 });
+  assert.deepEqual(latchPremiumBounds(2.0, 0.8, 0.5), { peak: 2.0, trough: 0.5 });
+  assert.deepEqual(latchPremiumBounds(2.0, 0.8, 1.5), { peak: 2.0, trough: 0.8 });
+});
+
+test("a missing mark leaves the seeds untouched", () => {
+  assert.deepEqual(latchPremiumBounds(2.0, 0.8, null), { peak: 2.0, trough: 0.8 });
+});
+
+test("non-finite inputs are rejected rather than latched", () => {
+  assert.deepEqual(latchPremiumBounds(null, null, Number.NaN), { peak: null, trough: null });
+  assert.deepEqual(latchPremiumBounds(null, null, Number.POSITIVE_INFINITY), { peak: null, trough: null });
+  // A poisoned SEED is dropped too, so a row already carrying the old sentinel heals on next tick.
+  assert.deepEqual(latchPremiumBounds(null, Number.MAX_VALUE * 2, 1.1), { peak: 1.1, trough: 1.1 });
+});
+
+test("the two lanes now agree BY CONSTRUCTION — advancePlayLatch routes through the same function", () => {
+  // Same inputs through the public lane helper and the shared primitive must match exactly.
+  const play = { entry_premium: null, peak_premium: null, trough_premium: null };
+  const viaLane = advancePlayLatch(play, null, null, NOW_OPEN);
+  const viaPrimitive = latchPremiumBounds(null, null, null);
+  assert.equal(viaLane.peak, viaPrimitive.peak);
+  assert.equal(viaLane.trough, viaPrimitive.trough);
+  assert.equal(viaLane.trough, null, "the condor-shaped row is null on BOTH lanes now");
+});
+
+// ── closedPnlDisplay — the peak may only be shown when it was actually banked ──────────
+//
+// Fixtures are the REAL live board rows from 2026-08-20. Five of those seven closed rows
+// displayed a non-negative number for a losing trade because the peak was shown
+// unconditionally; only ONDS had banked a tranche.
+const LIVE_2026_08_20 = [
+  { ticker: "TEM", status: "CLOSED", peak_pnl_pct: 1.35, live_pnl_pct: -8.85 },
+  { ticker: "ONDS", status: "CLOSED", peak_pnl_pct: 52.08, live_pnl_pct: 45.83 },
+  { ticker: "SSPC", status: "CLOSED", peak_pnl_pct: -6.98, live_pnl_pct: -6.98 },
+  { ticker: "TSLA", status: "CLOSED", peak_pnl_pct: 2.36, live_pnl_pct: -1.89 },
+  { ticker: "SNDK", status: "CLOSED", peak_pnl_pct: 1.34, live_pnl_pct: -38.25 },
+  { ticker: "HIMS", status: "CLOSED", peak_pnl_pct: -0.6, live_pnl_pct: -20.24 },
+  { ticker: "LITE", status: "CLOSED", peak_pnl_pct: -0.49, live_pnl_pct: -25.86 },
+];
+
+test("a peak with NO tranche banked is not shown — the realized number is", () => {
+  // SNDK is the worst case: +1.34% peak against a -38.25% realized loss.
+  const v = closedPnlDisplay(LIVE_2026_08_20.find((r) => r.ticker === "SNDK")!);
+  assert.equal(v.is_peak, false);
+  assert.equal(v.tranches_armed, 0);
+  assert.equal(v.pct, -38.25, "must show the realized loss, not the +1.34% high tick");
+});
+
+test("a peak that DID bank tranches is still shown — the fix is not a blanket ban", () => {
+  const v = closedPnlDisplay(LIVE_2026_08_20.find((r) => r.ticker === "ONDS")!);
+  assert.equal(v.is_peak, true);
+  assert.equal(v.tranches_armed, 2, "peak 52.08 arms both the +20 and +50 tranches");
+  assert.equal(v.pct, 52.08);
+  assert.equal(v.realized_pct, 45.83, "the realized number must ride along for disclosure");
+});
+
+test("no closed row may display a number better than its realized P&L without banking", () => {
+  for (const row of LIVE_2026_08_20) {
+    const v = closedPnlDisplay(row);
+    if (v.tranches_armed === 0) {
+      assert.equal(v.pct, row.live_pnl_pct, `${row.ticker} must show realized`);
+    }
+    assert.ok(
+      v.tranches_armed > 0 || (v.pct ?? 0) <= (row.live_pnl_pct ?? 0) + 1e-9,
+      `${row.ticker} overstates its result with nothing banked`
+    );
+  }
+});
+
+test("the whole 2026-08-20 session stops reading green: 5 overstatements -> 0", () => {
+  const overstated = LIVE_2026_08_20.filter((r) => {
+    const v = closedPnlDisplay(r);
+    return (v.pct ?? 0) > (r.live_pnl_pct ?? 0) + 0.05 && v.tranches_armed === 0;
+  });
+  assert.equal(overstated.length, 0);
+});
+
+test("an OPEN row is untouched — this rule is about closed results only", () => {
+  const v = closedPnlDisplay({ status: "OPEN", peak_pnl_pct: 80, live_pnl_pct: 12 });
+  assert.equal(v.is_peak, false);
+  assert.equal(v.pct, 12, "a live position shows its live mark");
+});
+
+test("a missing peak falls back to the live mark rather than blanking the cell", () => {
+  const v = closedPnlDisplay({ status: "CLOSED", peak_pnl_pct: null, live_pnl_pct: -50 });
+  assert.equal(v.pct, -50);
+  assert.equal(v.is_peak, false);
+});
+
+test("realized_pct is always carried, so a peak can never be shown without its disclosure", () => {
+  for (const row of LIVE_2026_08_20) {
+    const v = closedPnlDisplay(row);
+    if (v.is_peak) assert.notEqual(v.realized_pct, null);
+  }
 });

@@ -109,14 +109,46 @@ test("aggregateVectorBars: custom 10m interval buckets", () => {
   assert.equal(out[1]!.close, 2.5);
 });
 
+// The ladder STEPPED UP on 2026-08-19 (1m 6->10, 3m 10->14, 5m 10->16, 15m 12->18, 30m+ ->20).
+// The old, lower numbers were a defence against a rail where every row painted with roughly equal
+// weight — the bead swell was normalised against each row's own peak, so a marginal level looked
+// about as big as a dominant one (measured separation on real SPX data: 1.26x). With one shared
+// denominator a weak level now recedes to a faint trace by itself, so the row count no longer has
+// to do the decluttering and a low ceiling only hides readable structure.
 test("wallCountForTimeframe: preset timeframes map to the specified shown-counts", () => {
-  assert.equal(wallCountForTimeframe(1), 6, "1m shows 6 near-spot walls");
-  assert.equal(wallCountForTimeframe(3), VECTOR_0DTE_WALL_COUNT, "3m shows 10 — same row cap as 0DTE desk");
-  assert.equal(wallCountForTimeframe(5), 10, "5m shows 10");
-  assert.equal(wallCountForTimeframe(15), 12, "15m shows 12");
-  assert.equal(wallCountForTimeframe(30), 14, "30m steps up to 14");
-  assert.equal(wallCountForTimeframe(60), 16, "60m steps up to 16");
-  assert.equal(wallCountForTimeframe(120), 18, "2h shows 18");
+  // Walked back from 10/14/16/18 the same day: those counts compressed the SPX 3m row gap from
+  // 26px to 17px, and at 17px BEAD_READABLE_MIN_HALF_PX alone fills 38% of every slot — no
+  // thickness budget can bind below the readability floor. Still well above the pre-2026-08-19
+  // 6/10/10/12; the point was never to maximise rows, it was to stop hiding structure.
+  assert.equal(wallCountForTimeframe(1), 8, "1m shows 8 near-spot walls");
+  assert.equal(wallCountForTimeframe(3), 11, "3m shows 11");
+  assert.equal(wallCountForTimeframe(5), 13, "5m shows 13");
+  assert.equal(wallCountForTimeframe(15), 16, "15m shows 16");
+  assert.equal(wallCountForTimeframe(30), 20, "30m saturates at the recorder cap");
+  assert.equal(wallCountForTimeframe(60), 20, "60m stays at the cap");
+  assert.equal(wallCountForTimeframe(120), 20, "2h stays at the cap");
+});
+
+// The shape matters more than any single number: a wider price band must never show FEWER walls.
+test("wallCountForTimeframe: monotonic non-decreasing in the timeframe", () => {
+  const tfs = [1, 3, 5, 15, 30, 60, 120, 240] as const;
+  for (let i = 1; i < tfs.length; i++) {
+    assert.ok(
+      wallCountForTimeframe(tfs[i]!) >= wallCountForTimeframe(tfs[i - 1]!),
+      `tf=${tfs[i]} must not show fewer walls than tf=${tfs[i - 1]}`
+    );
+  }
+});
+
+// The step-up must never outrun what the recorder actually persisted, or the extra rows are empty
+// rails that read as missing data rather than as absent structure.
+test("wallCountForTimeframe: the raised ladder still respects the recorder cap at every step", () => {
+  for (const tf of [1, 3, 5, 15, 30, 60, 120, 240] as const) {
+    assert.ok(
+      wallCountForTimeframe(tf) <= VECTOR_WALL_NODES_PER_SIDE,
+      `tf=${tf} asks for rows the server never recorded`
+    );
+  }
 });
 
 test("wallCountForTimeframe: never exceeds VECTOR_WALL_NODES_PER_SIDE, even for huge intervals", () => {
@@ -175,10 +207,19 @@ test("wallCountForHorizon: 0DTE matches the 3m desk row cap", async () => {
   const { wallCountForHorizon, wallCountForTimeframe, VECTOR_0DTE_WALL_COUNT } = await import(
     "./vector-bar-timeframes"
   );
-  assert.equal(wallCountForTimeframe(3), VECTOR_0DTE_WALL_COUNT);
-  assert.equal(wallCountForHorizon(3, "0dte"), VECTOR_0DTE_WALL_COUNT);
-  assert.equal(wallCountForHorizon(3, "weekly"), VECTOR_0DTE_WALL_COUNT);
-  assert.equal(wallCountForHorizon(3, "all"), VECTOR_0DTE_WALL_COUNT);
+  // Pinned to the FLOOR rather than to equality with VECTOR_0DTE_WALL_COUNT. The 3m desk row cap
+  // now exceeds that constant (14 vs 10) after the 2026-08-19 step-up, and the invariant that
+  // actually matters is that the 0DTE horizon never shows fewer rows than the timeframe would —
+  // an equality assertion here would fail every future step-up while proving nothing extra.
+  assert.ok(wallCountForTimeframe(3) >= VECTOR_0DTE_WALL_COUNT);
+  for (const horizon of ["0dte", "weekly", "all"] as const) {
+    assert.equal(
+      wallCountForHorizon(3, horizon),
+      wallCountForTimeframe(3),
+      `${horizon} must not drop below the 3m desk row cap`
+    );
+    assert.ok(wallCountForHorizon(3, horizon) >= VECTOR_0DTE_WALL_COUNT);
+  }
 });
 
 

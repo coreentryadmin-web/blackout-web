@@ -7,6 +7,7 @@
 import { uwReadRaw } from "@/lib/providers/unusual-whales";
 import { polygonReadRaw } from "@/lib/providers/polygon";
 import { isAllowedUwPath, isAllowedPolygonPath, sanitizeProviderPath } from "./provider-read-guard";
+import { stampPolygonAggregatePayload } from "@/lib/largo/temporal/bar-session-date";
 
 export type ProviderReadResult = {
   ok: boolean;
@@ -53,7 +54,10 @@ export async function readPolygon(endpoint: string, params?: Record<string, unkn
   }
   try {
     const data = await polygonReadRaw(p, toStringParams(params));
-    return { ok: true, provider: "polygon", endpoint: p, data };
+    // Aggregate bars carry only an epoch `t`. Stamp the ET session date/time on before the model
+    // sees them — asked to convert one itself it inverted the daily-bar convention and reported a
+    // dated close off by a full session. Non-aggregate payloads pass through untouched.
+    return { ok: true, provider: "polygon", endpoint: p, data: stampPolygonAggregatePayload(p, data) };
   } catch (e) {
     return {
       ok: false,

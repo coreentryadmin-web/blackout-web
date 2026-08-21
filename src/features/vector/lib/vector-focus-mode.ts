@@ -65,3 +65,38 @@ export function shouldExitFocusMode(e: {
 export function focusModeAvailable(opts: { chartOnly: boolean; nativeShell: boolean }): boolean {
   return !opts.chartOnly && !opts.nativeShell;
 }
+
+/**
+ * Classes for PageShell's CONTENT wrapper while focus mode is on.
+ *
+ * WHY THIS EXISTS — the second half of a bug that a z-index bump alone could not fix.
+ *
+ * The fullscreen surface (`.vector-page-inner-focus`) is `position: fixed; z-index: 110`, chosen to
+ * outrank `.nav-bar` at z-100. Measured on prod after that shipped, the nav STILL painted over the
+ * chart toolbar, and `document.elementFromPoint` at the toolbar's own centre returned
+ * `header.nav-bar` — every control present, none of them clickable.
+ *
+ * The reason is that a z-index is only compared against SIBLINGS inside its own stacking context.
+ * PageShell renders its content wrapper as `relative z-10`, which creates a stacking context, so
+ * the fullscreen surface's 110 competed only with other children of that wrapper. As a whole, the
+ * wrapper sat at 10 against the nav's 100 at the root — the fullscreen layer was always going to
+ * lose, at 60, at 110, or at any other number.
+ *
+ * So the wrapper itself has to be lifted, and only while focus mode is on: outside focus mode the
+ * page content must stay UNDER the nav or it would cover the site header on the ordinary desk.
+ *
+ * The rule is written in globals.css as `.vector-page-content.vector-page-content-focus` — TWO
+ * classes deliberately. The value it has to beat, `z-10`, is a Tailwind utility, and the utilities
+ * layer is emitted AFTER the components layer, so a single-class rule of equal specificity would
+ * lose the cascade and silently do nothing. Two classes outrank one whatever the layer order.
+ * (An `!z-[110]` utility in this file would also work, but only for as long as tailwind.config's
+ * content globs keep matching `.ts` — a dependency nothing here would notice breaking.)
+ *
+ * The z-index itself lives in the stylesheet next to `.vector-page-inner-focus`, so the two halves
+ * of one layering decision cannot drift apart.
+ */
+export const VECTOR_PAGE_CONTENT_FOCUS_CLASS = "vector-page-content-focus";
+
+export function focusModeContentClass(focusMode: boolean): string | null {
+  return focusMode ? VECTOR_PAGE_CONTENT_FOCUS_CLASS : null;
+}

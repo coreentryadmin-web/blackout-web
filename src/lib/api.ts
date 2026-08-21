@@ -1,5 +1,6 @@
 import type { ClaimVerification } from "@/lib/bie/verifier";
 import type { BieAnswerEnvelope } from "@/lib/bie/answer-envelope";
+import type { LargoDepth } from "@/lib/largo/largo-depth-mode";
 
 /** The server's auto-render directive — mirrors `VisualDirective` in largo-terminal.ts. */
 type LargoVisualDirective = {
@@ -509,9 +510,11 @@ export class LargoStreamAborted extends Error {
 export type LargoImageAttachment = { data: string; media_type: string };
 
 export type LargoQueryOptions = {
-  depth?: "quick" | "deep";
+  depth?: LargoDepth;
   historical?: boolean;
   playContext?: import("@/lib/largo/session-metadata").LargoPlayContext | null;
+  deskScope?: string | null;
+  deskScopeArgs?: import("@/lib/largo/desk-scope").DeskSlashArgs | null;
 };
 
 export async function queryLargoStream(
@@ -552,7 +555,10 @@ export async function queryLargoStream(
   play_similarity?: import("@/lib/largo/play-similarity").PlaySimilarityCard | null;
   pre_earnings_pack?: import("@/lib/largo/pre-earnings-pack").PreEarningsPackCard | null;
   actions?: import("@/lib/largo/largo-actions").LargoAction[];
-  depth?: "quick" | "deep";
+  depth?: LargoDepth;
+  desk_scope?: string | null;
+  desk_scope_args?: import("@/lib/largo/desk-scope").DeskSlashArgs | null;
+  mini_panel?: string | null;
 }> {
   const abort = new AbortController();
   const timeout = setTimeout(() => abort.abort(), LARGO_STREAM_TIMEOUT_MS);
@@ -593,6 +599,8 @@ export async function queryLargoStream(
         ...(options?.depth ? { depth: options.depth } : {}),
         ...(options?.historical ? { historical: true } : {}),
         ...(options?.playContext ? { play_context: options.playContext } : {}),
+        ...(options?.deskScope ? { desk_scope: options.deskScope } : {}),
+        ...(options?.deskScopeArgs ? { desk_scope_args: options.deskScopeArgs } : {}),
       }),
     });
   } catch (err) {
@@ -635,7 +643,10 @@ export async function queryLargoStream(
     play_similarity?: import("@/lib/largo/play-similarity").PlaySimilarityCard | null;
     pre_earnings_pack?: import("@/lib/largo/pre-earnings-pack").PreEarningsPackCard | null;
     actions?: import("@/lib/largo/largo-actions").LargoAction[];
-    depth?: "quick" | "deep";
+    depth?: LargoDepth;
+    desk_scope?: string | null;
+    desk_scope_args?: import("@/lib/largo/desk-scope").DeskSlashArgs | null;
+    mini_panel?: string | null;
   };
   let result: LargoDone | null = null;
 
@@ -686,6 +697,9 @@ export async function queryLargoStream(
             pre_earnings_pack: event.pre_earnings_pack ?? null,
             actions: event.actions,
             depth: event.depth,
+            desk_scope: event.desk_scope ?? null,
+            desk_scope_args: event.desk_scope_args ?? null,
+            mini_panel: event.mini_panel ?? null,
           };
         }
         if (event.type === "error") {

@@ -72,6 +72,7 @@ import {
   clampPriceRangeSpan,
   beadExtensionAllowed,
   rowAwareSpanPct,
+  candleShareSpanCapPct,
 } from "@/features/vector/lib/vector-price-range";
 import {
   scoreTopWalls,
@@ -180,6 +181,11 @@ import {
   VECTOR_DEFAULT_NODE_DENSITY,
   type VectorNodeDensity,
 } from "@/features/vector/lib/vector-node-density";
+import {
+  candleRangeFromBars,
+  resolveEffectiveNodeCount,
+  strikesForAdaptiveMeasure,
+} from "@/features/vector/lib/vector-adaptive-nodes";
 import { mergeSpyVolumeRows } from "@/features/vector/lib/vector-spy-volume-merge";
 import {
   createRenderThrottle,
@@ -1743,6 +1749,26 @@ export function VectorChart({
   // value the same way timeframeRef exists to avoid.
   const [nodeDensity, setNodeDensityState] = useState<VectorNodeDensity>(defaultNodeDensity);
   const nodeDensityRef = useRef<VectorNodeDensity>(defaultNodeDensity);
+  /** AUTO: timeframe cap on dense ladders (SPX); self-limits on coarse ladders (NVDA) — see vector-adaptive-nodes. */
+  const effectiveNodeCount = useCallback((tfAutoCount: number): number => {
+    const density = nodeDensityRef.current;
+    if (density !== "auto") return resolveNodeCount(density, tfAutoCount);
+    const spot = spotRef.current;
+    const candle = candleRangeFromBars(minuteBarsRef.current);
+    if (spot == null || !(spot > 0) || candle == null) {
+      return resolveNodeCount("auto", tfAutoCount);
+    }
+    const strikes = strikesForAdaptiveMeasure(
+      rangeWallsRef.current.call,
+      rangeWallsRef.current.put
+    );
+    return resolveEffectiveNodeCount("auto", tfAutoCount, {
+      spot,
+      strikes,
+      candleRange: candle,
+      tfAutoCount,
+    });
+  }, []);
   const timeframeUserLockedRef = useRef(false);
   const autoCoarsenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const overlayDimRef = useRef(1);
@@ -2246,8 +2272,7 @@ export function VectorChart({
     // before (member finding "select 0DTE, still shows All's walls" is still fixed either way).
     const lastBarTime = minuteBarsRef.current[minuteBarsRef.current.length - 1]?.time ?? 0;
     const horizon = dteHorizonRef.current;
-    const beadRowCap = resolveNodeCount(
-      nodeDensityRef.current,
+    const beadRowCap = effectiveNodeCount(
       wallCountForHorizon(timeframeRef.current, horizon)
     );
     const currentColumn = narrowedHorizonTrail(
@@ -2364,8 +2389,7 @@ export function VectorChart({
       // How many wall guides/beads THIS timeframe shows (1m→6 … 15m→12). Higher timeframe →
       // more, further-out walls drawn → wider axis (extendRangeForWalls keys off these SHOWN
       // strikes below, so 1m stays tight while 15m widens).
-      const maxGuides = resolveNodeCount(
-        nodeDensityRef.current,
+      const maxGuides = effectiveNodeCount(
         wallCountForHorizon(timeframeRef.current, dteHorizonRef.current)
       );
       // Walls are shown ONLY as strength-scaled beads now (the Skylit-clean look) — clear any
@@ -2922,7 +2946,7 @@ export function VectorChart({
         timeframeRef.current,
         cursorTime,
         true,
-        resolveNodeCount(nodeDensityRef.current, wallCountForTimeframe(timeframeRef.current)),
+        effectiveNodeCount(wallCountForTimeframe(timeframeRef.current)),
         true,
         trailBucketSec,
         spotRef.current,
@@ -2938,7 +2962,7 @@ export function VectorChart({
         timeframeRef.current,
         cursorTime,
         true,
-        resolveNodeCount(nodeDensityRef.current, wallCountForTimeframe(timeframeRef.current)),
+        effectiveNodeCount(wallCountForTimeframe(timeframeRef.current)),
         true,
         trailBucketSec,
         spotRef.current,
@@ -3879,27 +3903,39 @@ export function VectorChart({
         // off the ticker's own strike step instead, with the old constant kept as the FLOOR (SPX,
         // which already had room for far more rows than any cap, is unchanged) and a hard ceiling
         // so a pathological ladder still cannot squash the candles. See rowAwareSpanPct.
-        const sessionRows = resolveNodeCount(
-          nodeDensityRef.current,
+        const sessionRows = effectiveNodeCount(
           wallCountForTimeframe(timeframeRef.current)
         );
         const sessionBeadStrikes = [
           ...beadStrikesRef.current.call,
           ...beadStrikesRef.current.put,
         ];
-        const sessionBeadViewPct = rowAwareSpanPct(
-          spotRef.current ?? 0,
-          sessionBeadStrikes,
-          sessionRows,
-          SESSION_OVERVIEW_BEAD_VIEW_MAX_PCT,
-          BEAD_VIEW_MAX_PCT
+        // The candles get a guaranteed share of the pane and the ladder gets the remainder — the
+        // inverse of sizing for rows and letting the candles have what is left. `res.priceRange` is
+        // the autoscale band over the visible candles, i.e. the thing being protected, read BEFORE
+        // any wall widening is applied. Null when there is no measurable range, and then the
+        // row-derived span stands unchanged. See candleShareSpanCapPct.
+        const candleCapPct = candleShareSpanCapPct(res.priceRange, spotRef.current ?? 0);
+        // Compose by taking the SMALLER: this only ever tightens a window the ladder wanted wider.
+        const withCandleFloor = (pct: number) =>
+          candleCapPct == null ? pct : Math.min(pct, candleCapPct);
+        const sessionBeadViewPct = withCandleFloor(
+          rowAwareSpanPct(
+            spotRef.current ?? 0,
+            sessionBeadStrikes,
+            sessionRows,
+            SESSION_OVERVIEW_BEAD_VIEW_MAX_PCT,
+            BEAD_VIEW_MAX_PCT
+          )
         );
-        const sessionSpanPct = rowAwareSpanPct(
-          spotRef.current ?? 0,
-          sessionBeadStrikes,
-          sessionRows,
-          SESSION_OVERVIEW_MAX_SPAN_PCT,
-          BEAD_VIEW_MAX_PCT
+        const sessionSpanPct = withCandleFloor(
+          rowAwareSpanPct(
+            spotRef.current ?? 0,
+            sessionBeadStrikes,
+            sessionRows,
+            SESSION_OVERVIEW_MAX_SPAN_PCT,
+            BEAD_VIEW_MAX_PCT
+          )
         );
         const wallViewPct = sessionOverviewFrame ? sessionBeadViewPct : WALL_VIEW_MAX_PCT;
         // Two composed widenings (each only ever WIDENS, never narrows the candle band):
@@ -4866,7 +4902,7 @@ export function VectorChart({
       drawTools={drawToolsProps}
       nodeDensity={nodeDensity}
       onNodeDensity={handleNodeDensity}
-      nodeAutoCount={wallCountForHorizon(timeframe, dteHorizon)}
+      nodeAutoCount={effectiveNodeCount(wallCountForHorizon(timeframe, dteHorizon))}
     />
   );
 

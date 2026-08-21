@@ -266,6 +266,9 @@ export type MeridianEarningsWeekAnalytics = {
   printed_this_week: number;
   eps_beat_rate: number | null;
   revenue_beat_rate: number | null;
+  /** Prints each universe rate was computed from. `0` means the rate beside it is null. */
+  eps_graded?: number;
+  revenue_graded?: number;
   avg_surprise_pct: number | null;
   median_surprise_pct: number | null;
   headline: string;
@@ -350,6 +353,8 @@ export type MeridianEarningsEnrichment = {
   earnings_yoy: MeridianEarningsYoY | null;
   corporate_guidance: MeridianEarningsGuidanceRow | null;
   guidance_entitled: boolean;
+  /** True when a corporate guidance row exists for this ticker (distinct from SKU entitlement). */
+  guidance_on_file?: boolean;
   post_print: {
     lean: "beat" | "miss" | "inline" | "unknown";
     headline: string | null;
@@ -362,6 +367,12 @@ export type MeridianEarningsEnrichment = {
     eps_beat_rate: number | null;
     revenue_beat_rate: number | null;
     combined_beat_rate: number | null;
+    /** How many graded prints each rate came from — a rate without its cohort is not a fact
+     *  about the company. `combined_graded` is the POOLED denominator (eps + revenue), which is
+     *  what `combined_beat_rate` is now pooled over rather than averaged across. */
+    eps_graded?: number;
+    revenue_graded?: number;
+    combined_graded?: number;
   } | null;
   analyst_revisions: MeridianAnalystRevision[];
   price_targets: MeridianPriceTargetRow[];
@@ -386,6 +397,14 @@ export type MeridianEarningsPrint = {
    * Null when no move could be measured at all.
    */
   reaction_basis?: "bmo_session" | "amc_next_session" | "assumed_report_session" | null;
+  /**
+   * THE reaction to the print. Prefer this over `session_change_pct` anywhere the number is
+   * presented as a reaction: for a post-close print the reaction is priced overnight, so this
+   * is read from the last close BEFORE the print, and the two routinely differ in SIGN.
+   * `reaction_measure` says which read produced it.
+   */
+  reaction_pct?: number | null;
+  reaction_measure?: "session_open_to_close" | "prior_close_to_close" | null;
   eps_estimate: number | null;
   eps_actual: number | null;
   revenue_estimate?: number | null;
@@ -453,6 +472,12 @@ export type MeridianEarningsThermalRead = {
   gex_king_strike: number | null;
   call_wall: number | null;
   put_wall: number | null;
+  /** Raw gamma argmax strike when display walls were coerced for band ordering. */
+  gamma_call_wall?: number | null;
+  /** Raw gamma argmin strike when display walls were coerced for band ordering. */
+  gamma_put_wall?: number | null;
+  /** True when gamma call/put ordering inverted before display coercion. */
+  walls_inverted?: boolean;
   flip: number | null;
   max_pain: number | null;
   net_gex_label: string | null;
@@ -659,6 +684,20 @@ export type MeridianOpexHistoryRow = {
   max_pain: number | null;
   spx_close: number | null;
   pin_held: boolean | null;
+  /**
+   * WHERE `max_pain` came from — or, when null, WHY there is nothing.
+   *
+   * A bare null here is indistinguishable from "there was no pin", which is a different claim
+   * entirely. For a SETTLED expiry the live chain carries no open interest at all (it prunes
+   * settled expiries by design), and historical max pain is not stored anywhere — so this is a
+   * permanent, non-retryable absence, not a transient miss.
+   */
+  max_pain_basis: "expiry_open_interest" | null;
+  max_pain_unavailable: {
+    reason: string;
+    what_is_missing: string;
+    retryable: boolean;
+  } | null;
 };
 
 export type MeridianFdaDetail = {
@@ -738,6 +777,16 @@ export type MeridianTimelinePayload = {
   earnings_calendar_entitled: boolean;
   /** Prints hidden because the name has no listed options. */
   non_optionable_hidden?: number;
+  /** How far the options-implied move got — requested / attempted / skipped / resolved, and a
+   *  note when anything was skipped. A null `expected_move_pct` on a SKIPPED name is not evidence
+   *  the name lacks an options market. */
+  expected_move_coverage?: {
+    requested: number;
+    attempted: number;
+    skipped: number;
+    resolved: number;
+    note: string | null;
+  };
   /** False when the optionable universe was unavailable, so NOTHING was filtered. */
   optionable_filter_applied?: boolean;
   /** How many lane rows carry a sector cohort key, and how many do not. Coverage, stated. */

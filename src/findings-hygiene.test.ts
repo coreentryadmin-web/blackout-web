@@ -179,3 +179,62 @@ test("the reconciler is idempotent — a second --apply is a no-op", () => {
     "the reported classification changed between two runs over identical data"
   );
 });
+
+test("entry headings are never glued onto the end of another line", () => {
+  // A merge that drops the newline between two entries produces
+  //   | **Status** | FIXED. |## 2026-08-21 — [FINDING, ...
+  // which is SILENT: `entries()` splits on /\n(?=## )/, so the glued entry stops being an
+  // entry at all — it is absorbed into the one above it, inheriting that entry's `kind` tag
+  // and Status row. Every other test in this file therefore still passes while the finding
+  // has effectively vanished from the index. Four entries were in this state on 2026-08-21,
+  // from three different lanes, all introduced by batch conflict resolution.
+  //
+  // Matching on the full `## <date> — [` entry-heading shape rather than a bare "## " keeps
+  // the prose in "How to read this file" out of it — that section legitimately quotes
+  // `## … — FIXED` inside code spans, mid-line, and is not a heading.
+  const src = readFileSync(FINDINGS, "utf8");
+  const glued: string[] = [];
+  src.split("\n").forEach((line, i) => {
+    const idx = line.indexOf("## 2");
+    if (idx > 0 && /^## \d{4}-\d{2}-\d{2} — \[/.test(line.slice(idx))) {
+      glued.push(`line ${i + 1}: …${line.slice(Math.max(0, idx - 30), idx + 80)}`);
+    }
+  });
+  assert.deepEqual(
+    glued,
+    [],
+    "entry heading glued to the previous line — insert a blank line before it, or the entry is invisible to every other check here"
+  );
+});
+
+/**
+ * A merge conflict must never reach the file — and until now nothing checked.
+ *
+ * `findings-merge-resolve.mjs` refuses a merge it cannot union, printing
+ * "N entry/entries edited on BOTH sides — resolve by hand" and leaving markers in place. That
+ * refusal is easy to run straight past: `git add -A` after it stages the markers, and every other
+ * gate stays green. Measured on 2026-08-21 — a branch went to the remote with **15 markers** in
+ * this file while these very tests reported **7/7**, because they parse headings and kind tags and
+ * a `<<<<<<<` line is neither. A second branch the same hour carried 18.
+ *
+ * The markers are also silently destructive: a conflicted region duplicates one entry's heading
+ * and orphans another's body, which is the corruption #2471 and #2474 were both cleaning up.
+ *
+ * Checked at line starts only, so an entry can still quote a marker inside prose or a code fence
+ * — several entries in this log discuss exactly this failure.
+ */
+test("no merge conflict markers survive in the log", () => {
+  const raw = readFileSync(FINDINGS, "utf8");
+  const offenders = raw
+    .split("\n")
+    .map((line, i) => ({ line, n: i + 1 }))
+    .filter(({ line }) => /^(<{7}|={7}|>{7})(\s|$)/.test(line))
+    .map(({ line, n }) => `line ${n}: ${line.slice(0, 60)}`);
+
+  assert.deepEqual(
+    offenders,
+    [],
+    "unresolved merge conflict markers in FINDINGS.md — findings-merge-resolve.mjs refuses a " +
+      "merge it cannot union and leaves these behind; resolve by hand rather than staging them"
+  );
+});

@@ -46,8 +46,6 @@ const ROUTES_DIR = "src/app/api/cron";
  * Verified 2026-08-10 by reading each route.
  */
 const INTENTIONALLY_UNSCHEDULED = {
-  "vector-alerts":
-    "INERT BY DEFAULT — the route's own header states no push is sent until the platform activates delivery. Scheduling it would run a no-op.",
   "vector-bead-record":
     "Backup + observability only. The primary 5s cadence is the in-process vector-bead-recorder-leader, which does run; the route says so in its first line.",
   "x-engage":

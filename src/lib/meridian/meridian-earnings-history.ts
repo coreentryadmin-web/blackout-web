@@ -15,18 +15,26 @@ function printHistorySummary(rows: MeridianEarningsPrint[]): string | null {
   if (!graded.length) return null;
   const beats = graded.filter((r) => r.beat).length;
   const rates = dualBeatRateFromPrints(rows);
-  const withMove = rows.filter((r) => r.session_change_pct != null);
+  // `reaction_pct`, not `session_change_pct`: on a post-close print the latter is the anchor
+  // session's open→close, which excludes the overnight gap that IS the reaction. Averaging it
+  // produced a headline "avg session move" that disagreed in sign with the market on ~a third
+  // of post-close prints.
+  const withMove = rows.filter((r) => r.reaction_pct != null);
   const avgMove =
     withMove.length > 0
-      ? withMove.reduce((s, r) => s + (r.session_change_pct ?? 0), 0) / withMove.length
+      ? withMove.reduce((s, r) => s + (r.reaction_pct ?? 0), 0) / withMove.length
       : null;
   const base = `${beats}/${graded.length} EPS beats over last ${graded.length} prints`;
+  // The EPS half of this sentence carries its denominator and the revenue half did not, in the
+  // SAME string — "5/8 EPS beats · 62% rev beats", where the 62% could be 5 of 8 or 1 of 1.
+  // Revenue is graded on a different subset (measured live: the two denominators differ by 3+
+  // prints on 3.1% of names, and one side is ≤2 while the other is ≥6 on 1.2%).
   const rev =
-    rates.revenue_beat_rate != null
-      ? ` · ${Math.round(rates.revenue_beat_rate * 100)}% rev beats`
+    rates.revenue_beat_rate != null && rates.revenue_graded > 0
+      ? ` · ${Math.round(rates.revenue_beat_rate * 100)}% rev beats of ${rates.revenue_graded}`
       : "";
   if (avgMove == null) return base + rev;
-  return `${base}${rev} · avg session move ${avgMove >= 0 ? "+" : ""}${avgMove.toFixed(1)}%`;
+  return `${base}${rev} · avg reaction ${avgMove >= 0 ? "+" : ""}${avgMove.toFixed(1)}%`;
 }
 
 /** Past earnings prints — Benzinga calendar primary (no UW earnings REST). */
@@ -42,7 +50,9 @@ export async function loadMeridianEarningsPrintHistory(
   history_error: string | null;
 }> {
   const sym = ticker.trim().toUpperCase();
-  const benzingaRes = await loadBenzingaTickerEarnings(sym, eventDate ?? null);
+  // Forward the count we actually need: the loader derives its LOOKBACK WINDOW from it. Pinned at
+  // 420 days, the window was ~4.6 quarters, so asking for 8 prints returned 4-5 (measured live).
+  const benzingaRes = await loadBenzingaTickerEarnings(sym, eventDate ?? null, limit);
 
   const print_history = benzingaRowsToPrintHistory(benzingaRes.rows, limit);
 
@@ -59,6 +69,8 @@ export async function loadMeridianEarningsPrintHistory(
       session_change_pct: rx?.session_change_pct ?? null,
       next_day_change_pct: rx?.next_day_change_pct ?? null,
       reaction_basis: rx?.reaction_basis ?? null,
+      reaction_pct: rx?.reaction_pct ?? null,
+      reaction_measure: rx?.reaction_measure ?? null,
     };
   });
 

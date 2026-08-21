@@ -12,6 +12,7 @@
 // construction; where a source is missing the event kind simply doesn't fire (never faked).
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { etClock } from "@/lib/et-clock";
 import { clsx } from "clsx";
 
 import type { SpxDeskPayload } from "@/lib/api";
@@ -72,11 +73,14 @@ const FLASH_MS = 1_200;
 /** The quiet footer only shows once the newest Tier-1 event is at least this old. */
 const QUIET_AFTER_MS = 3 * 60 * 1000;
 
+// ET, like every other clock on this desk. These two omitted `timeZone` and so rendered in the
+// VIEWER's zone — this rail sits directly beside the GEX matrix "as of", which is pinned to
+// Eastern, so a member on the US West Coast read the two three hours apart. See lib/et-clock.ts.
 function fmtClock(ms: number): string {
-  return new Date(ms).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+  return etClock(ms, { pad: true, seconds: true, hour12: false }) ?? "—";
 }
 function fmtHm(ms: number): string {
-  return new Date(ms).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  return etClock(ms) ?? "—";
 }
 
 function toneClass(tone: PulseSignal["tone"]): string {

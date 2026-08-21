@@ -828,6 +828,98 @@ export const ARTICLE_FAQS: Record<string, FAQItem[]> = {
         "Iron condors work on 0DTE when walls bracket price, IV is elevated, and GEX is positive. Skip or cut size when gamma flips negative or a macro catalyst can break the range — short premium without a regime read is how 0DTE accounts blow up.",
     },
   ],
+
+  /* ── Instruments & mechanics — FAQ coverage for the 6 articles that lacked it,
+        targeting the real long-tail queries these pages already earn impressions for
+        (Search Console, 90d). Answers are grounded in each article's own content. ── */
+
+  "spx-vs-spy-options-explained": [
+    {
+      question: "Are SPX options cash settled?",
+      answer:
+        "Yes. SPX is an index, not a fund, so SPX options settle in cash at expiration — the in-the-money value is paid out and no shares change hands. SPY options settle in shares of the SPY ETF, which is why SPY can be assigned and SPX cannot.",
+    },
+    {
+      question: "Are SPX options American or European style?",
+      answer:
+        "SPX options are European-style: they can only be exercised at expiration, so there is no early-assignment risk. SPY options are American-style and can be exercised — and therefore assigned — any time before expiration.",
+    },
+    {
+      question: "What is the difference between SPX and SPXW?",
+      answer:
+        "SPXW denotes SPX Weeklys — the same cash-settled, European-style S&P 500 index options, but with weekly and daily expirations (including 0DTE) and PM settlement, versus the traditional AM-settled monthly SPX contract.",
+    },
+  ],
+
+  "options-tax-treatment-1256": [
+    {
+      question: "What is the 60/40 rule for options taxes?",
+      answer:
+        "Under Section 1256, gains and losses are treated as 60% long-term and 40% short-term regardless of how long the position was held. This is educational only and not tax advice — rules are fact-specific and change, so confirm your own situation with a qualified tax professional.",
+    },
+    {
+      question: "Which options qualify for Section 1256 treatment?",
+      answer:
+        "Broad-based index options such as SPX and SPXW generally qualify as Section 1256 contracts, as do futures options. Single-stock and ETF options — including SPY — generally follow standard capital-gains treatment instead. This is educational only, not tax advice.",
+    },
+  ],
+
+  "options-assignment-exercise-explained": [
+    {
+      question: "When do options get assigned?",
+      answer:
+        "A short option is assigned whenever the long holder exercises. That is most common at or near expiration when the option is in-the-money, but American-style options can be assigned early — most often around ex-dividend dates or when deep in-the-money.",
+    },
+    {
+      question: "What is the difference between exercise and assignment?",
+      answer:
+        "Exercise is the buyer's decision to invoke the contract; assignment is what happens to the seller when the buyer exercises. The buyer chooses; the seller has no say and simply finds out they have been assigned.",
+    },
+    {
+      question: "Can you avoid being assigned?",
+      answer:
+        "Close the short position before it is exercised to remove the risk entirely. European-style, cash-settled index options (like SPX) cannot be assigned early at all — only at expiration.",
+    },
+  ],
+
+  "wheel-strategy-cash-secured-puts": [
+    {
+      question: "How does the wheel strategy work?",
+      answer:
+        "Sell a cash-secured put; if the stock stays up, keep the premium and repeat. If you are assigned, you own the shares and sell covered calls against them for more premium; if the shares are called away, you restart with a put. It is a repeatable income loop that requires being willing to actually own the stock.",
+    },
+    {
+      question: "Is the wheel strategy profitable?",
+      answer:
+        "The wheel generates steady premium income in flat-to-rising markets, but it carries the stock's full downside while you hold assigned shares — the premium collected rarely offsets a large drawdown, so it works best on names you are genuinely willing to own.",
+    },
+  ],
+
+  "straddles-strangles-options-explained": [
+    {
+      question: "What is the difference between a straddle and a strangle?",
+      answer:
+        "A straddle buys a call and a put at the same strike, usually at-the-money. A strangle buys them at different out-of-the-money strikes — cheaper to put on, but it needs a bigger move to become profitable.",
+    },
+    {
+      question: "When should you use a straddle?",
+      answer:
+        "Use a long straddle when you expect a large move but not its direction — around earnings or a known catalyst — and only when implied volatility is not already priced so rich that the expected move is fully baked in.",
+    },
+  ],
+
+  "butterfly-spread-strategy-guide": [
+    {
+      question: "What is a butterfly spread?",
+      answer:
+        "A butterfly is a three-strike, defined-risk options structure — buy one, sell two, buy one at equally spaced strikes — that profits most when price pins at or near the middle strike by expiration. It is a lower-probability, higher-reward version of a premium-selling range trade.",
+    },
+    {
+      question: "What is the maximum profit on a butterfly spread?",
+      answer:
+        "Maximum profit occurs if the underlying closes exactly at the middle (short) strike at expiration. It equals the distance between adjacent strikes minus the net debit paid to open the position; the most you can lose is that net debit.",
+    },
+  ],
 };
 
 /**

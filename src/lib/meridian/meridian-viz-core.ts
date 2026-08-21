@@ -224,6 +224,9 @@ export type PrintLike = {
   surprise_pct?: number | null;
   beat?: boolean | null;
   session_change_pct?: number | null;
+  /** The gap-inclusive reaction. Falls back to `session_change_pct` only for pre-#2483 payloads,
+   *  where the two agree for pre-open prints and the anchor session's open→close is all there is. */
+  reaction_pct?: number | null;
   reaction_basis?: string | null;
 };
 
@@ -252,7 +255,7 @@ export function beatSeries(prints: readonly PrintLike[] | null | undefined): Bea
       // Prefer the explicit flag; fall back to the surprise sign, but never invent a verdict
       // from a missing number.
       beat: p.beat ?? (s === null ? null : s >= 0),
-      reactionPct: num(p.session_change_pct),
+      reactionPct: num(p.reaction_pct ?? p.session_change_pct),
       reactionAssumed: p.reaction_basis === "assumed_report_session",
       magnitude: s === null || peak <= 0 ? 0 : clamp(Math.abs(s) / peak, 0, 1),
     };
@@ -699,7 +702,136 @@ export function etWallClockToIso(ymd: string | null | undefined, hhmmss?: string
  *
  * When the items cannot all fit at `minGap`, they distribute evenly across the full span:
  * squashing is honest (they really are that close), silent overlap is not.
+ *
+ * `minGap` MUST be a real row height, measured, not assumed — see MV_LADDER_ROW_PX.
  */
+/**
+ * The dealer-structure ladder's geometry, in ONE place because CSS and this module have to agree.
+ *
+ * `MeridianStructureLadder` fed `resolveCollisions` a hardcoded `16 / 132` — "one row height as a
+ * fraction of the ladder". The ladder really is 132px, but a row is **not** 16px. Measured live
+ * on prod 2026-08-21 (mobile 430x932, BABA positioning tab):
+ *
+ *   ladder height 132px · row height 20.5px · enforced centre gap 16px
+ *   Spot → Call wall        centres 16.0px apart → overlap  4.5px
+ *   Call wall → King node   centres 16.0px apart → overlap  4.5px
+ *   King node → Gamma flip  centres 22.3px apart → overlap  6.8px
+ *   Gamma flip → Put wall   centres 17.8px apart → overlap 11.3px
+ *
+ * EVERY adjacent pair overlapped. The resolver was doing exactly what it was told; it was told a
+ * row was 16px tall when it renders at 20.5px, so "one row height" of separation was 4.5px short
+ * of one row height. `meridian-interaction-audit.mjs` measured the same collisions independently
+ * at 1440px — `"King node" ∩ "Gamma flip" 74x4px`, `"Gamma flip" ∩ "Put wall" 74x8px`.
+ *
+ * This is the `largo-card-deadspace.mjs` lesson again: a layout packed against an ESTIMATE that
+ * nothing ever compared to pixels. The row height is now PINNED in CSS (`--mv-ladder-row-h`) and
+ * asserted equal to this constant by `meridian-viz-core.test.ts`, so the two cannot drift apart
+ * silently again.
+ */
+/**
+ * The expected-move rail's LABEL STACKING geometry — the ladder's bug, in the sibling component.
+ *
+ * `layoutRailLabels` moves a label that cannot fit beside its neighbour to the next TIER, and CSS
+ * turns a tier index into a vertical offset. That only separates two labels if one tier step is
+ * taller than a label. It was not. Measured live on prod 2026-08-21 (desktop 1440, BEKE
+ * Positioning tab), two markers sharing the price 17.00 — `mv-rail-marker-wall` (call wall) and
+ * `mv-rail-marker-level` (king node):
+ *
+ *   tier step 0.62rem = 9.92px · label box 12px · line box 15.36px
+ *   label tops 438.17 and 448.09 → 9.92px apart → OVERLAP 2.08px, 33px wide
+ *
+ * `meridian-interaction-audit.mjs` reported it as `"17.00" ∩ "17.00" 33x2px` on both the Report
+ * and Positioning tabs. It reads as two prices printed through each other on the one component
+ * whose job is to say where the levels are.
+ *
+ * Same root cause as MV_LADDER_ROW_PX and found the same way — by measuring pixels rather than
+ * asserting a selector painted. The ladder fix pinned its row height; this pins BOTH halves,
+ * because the rail's failure needs the label height as well as the step:
+ *
+ *   MV_RAIL_LABEL_PX — the label's LINE-HEIGHT, pinned so the box height stops depending on
+ *                      whichever font the `--mv-value` stack resolves to.
+ *   MV_RAIL_TIER_PX  — one tier step. MUST exceed the label height, or tiering does not separate.
+ *
+ * The literal `0.62rem` also appeared TWICE in the stylesheet — the label's `top` and the track's
+ * `margin-top` headroom — with nothing tying them together. Both now read the same custom
+ * property, and `meridian-viz-core.test.ts` asserts the stylesheet and these constants agree.
+ */
+export const MV_RAIL_LABEL_PX = 14;
+export const MV_RAIL_TIER_PX = 16;
+/**
+ * How far the FIRST row of labels is lifted above the track, in px (`0.55rem` at a 16px root).
+ *
+ * Pinned here because the TRACK has to reserve it and the LABEL has to apply it, and reserving
+ * only the tier steps is a distinct defect from the one above: with the tiers correctly separated
+ * from each other, the whole stack still sat one lift too high and the top row printed into
+ * `.mv-rail-head`. Measured on prod 2026-08-21 at 430px with `--rail-tiers: 2`:
+ *
+ *   head bottom 630.09 | tier-1 label 622.30..636.30 -> 7.79px INSIDE the head
+ *
+ * reported as `"±2.3% · chain_iv" ∩ "17.00"`. Required headroom is `lift + (tiers-1) * step`,
+ * and the stylesheet was reserving `(tiers-1) * step` alone — short by exactly the lift.
+ */
+export const MV_RAIL_LABEL_LIFT_PX = 8.8;
+
+/**
+ * How wide a rail label will actually be drawn, in px.
+ *
+ * THE ROOT CAUSE OF THE RAIL'S LAYOUT FAILURES. `layoutRailLabels` is exact given honest widths —
+ * it clamps edge labels onto the track and tiers labels that cannot sit side by side — and it was
+ * being handed widths that were 31-43% of the truth. Everything downstream then under-fires: the
+ * clamp does not pull an edge label far enough in, and two labels that "fit" are drawn through
+ * each other. Measured on prod 2026-08-21 at 430px (track 355.22px):
+ *
+ *   drawn "put wall 15.00" 110.91px   estimated 45.20px   ->  left edge 31.85px OFF the track
+ *   drawn "king 17.00"      83.69px   estimated 25.60px   ->  shares tier 1 with "max pain 17.00"
+ *
+ * Two independent reasons, both fixed here:
+ *
+ *   1. THE NUMBER WAS NEVER COUNTED. The rail draws `{label} {price}` — the price is the reason
+ *      the label exists — but the estimate measured `label` alone. On "king 17.00" the uncounted
+ *      half is the larger half.
+ *   2. THE PER-CHAR ADVANCE WAS CALIBRATED FOR A FONT SIZE THAT NO LONGER SHIPS. The old constant
+ *      was documented as "the 0.46rem mono face"; the stylesheet has since moved to 0.64rem. As a
+ *      RATIO of font size the old number was right (4.9 / 7.36px = 0.666), so this keeps the ratio
+ *      and derives px from the size the stylesheet actually declares — a constant that cannot go
+ *      stale the same way twice.
+ *
+ * The two ratios are separate because the price ships inside a `<b class="mv-rail-marker-num">`
+ * set in the heavier `--mv-value` face, whose digits are half again as wide as the mono label's.
+ * Both are solved from the live boxes above and reproduce all four within 0.11px; the test pins
+ * them against those measurements, and against the stylesheet's font-size and letter-spacing,
+ * since the advance silently includes both.
+ */
+export const MV_RAIL_LABEL_FONT_PX = 10.24; // 0.64rem at a 16px root
+export const MV_RAIL_LABEL_LETTER_SPACING_EM = 0.06;
+/** Mono label advance / font-size — letter-spacing included, because it is part of the advance. */
+export const MV_RAIL_LABEL_CHAR_RATIO = 0.66;
+/** The `--mv-value` price face is wider per glyph than the label's mono face. */
+export const MV_RAIL_NUM_CHAR_RATIO = 0.977;
+/**
+ * Bias the estimate high by a couple of px. The two failure directions are not symmetric: too
+ * wide costs a little whitespace, or at worst one extra row that the track's headroom already
+ * follows automatically, while too narrow prints two prices on top of each other. When a model
+ * of someone else's font rendering is wrong, it should be wrong in the harmless direction.
+ */
+export const MV_RAIL_LABEL_SLACK_PX = 2;
+
+export function railLabelWidthPx(label: string, price: string): number {
+  // The space between the two is set in the label's own face, hence counted with it.
+  const labelChars = String(label ?? "").length + (price ? 1 : 0);
+  const priceChars = String(price ?? "").length;
+  return (
+    labelChars * MV_RAIL_LABEL_CHAR_RATIO * MV_RAIL_LABEL_FONT_PX +
+    priceChars * MV_RAIL_NUM_CHAR_RATIO * MV_RAIL_LABEL_FONT_PX +
+    MV_RAIL_LABEL_SLACK_PX
+  );
+}
+
+export const MV_LADDER_HEIGHT_PX = 132;
+export const MV_LADDER_ROW_PX = 20;
+/** One full row of separation, as the [0,1] fraction `resolveCollisions` works in. */
+export const MV_LADDER_MIN_GAP = MV_LADDER_ROW_PX / MV_LADDER_HEIGHT_PX;
+
 export function resolveCollisions(positions: number[], minGap: number): number[] {
   const n = positions.length;
   if (n === 0) return [];
@@ -937,6 +1069,13 @@ export type RailLabelSlot = {
 };
 
 /**
+ * How many rows beyond `maxTiers` the layout may open rather than draw two labels on top of each
+ * other. One is enough for every track width the desk renders — and an unbounded ladder of rows
+ * would push the rail off the panel, which is a worse failure than a squeeze.
+ */
+const EXTRA_TIER_HEADROOM = 1;
+
+/**
  * Place labels along a horizontal rail without overlapping them.
  *
  * Different problem from `resolveCollisions`, which nudges along ONE axis assuming uniform row
@@ -974,8 +1113,29 @@ export function layoutRailLabels(
     let pos = centred;
     if (tier === -1) {
       // Every tier is occupied at this x — take the emptiest and nudge just clear of it.
+      //
+      // THE CLAMP CAN DEFEAT THE NUDGE. `clamp(…, half, 1 - half)` keeps the label on the track,
+      // but at the right edge the nudged position exceeds `1 - half` and clamps straight back
+      // onto the label it was trying to clear — producing not a near-miss but a FULL overlap at
+      // the same tier and the same y. Measured at 430px on prod 2026-08-21:
+      //
+      //   "17.00" ∩ "17.00"  ox 23.76  oy 12   ay 1380.66 == by 1380.66
+      //
+      // Identical y is the signature: same tier, one drawn straight on top of the other. Narrow
+      // tracks hit it easily because each label is a larger fraction of the width.
+      //
+      // An extra ROW is always better than two labels in one place: the diagram grows a little,
+      // and the track's headroom is derived from the tier count so the room follows automatically.
+      // Only when even that cannot fit does it accept the squeeze — and then it really is honest,
+      // because the levels are genuinely that close.
       tier = filled.indexOf(Math.min(...filled));
       pos = clamp(filled[tier]! + gapFrac + half, half, 1 - half);
+      const wouldOverlap = pos - half < filled[tier]! + gapFrac - 1e-9;
+      if (wouldOverlap && filled.length < maxTiers + EXTRA_TIER_HEADROOM) {
+        filled.push(-Infinity);
+        tier = filled.length - 1;
+        pos = centred;
+      }
     }
     filled[tier] = pos + half;
     out[item.i] = { pos: round(pos, 5), tier };

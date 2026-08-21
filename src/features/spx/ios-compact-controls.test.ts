@@ -78,7 +78,17 @@ test("compare panes use compact bead profile", () => {
   const core = readFileSync(join(root, "src/features/vector/lib/vector-wall-rail-core.ts"), "utf8");
   assert.match(core, /BEAD_TUNING_COMPARE/);
   const primitive = readFileSync(join(root, "src/features/vector/lib/vector-wall-rail-primitive.ts"), "utf8");
-  assert.match(primitive, /profile === "compare" \? "bottom"/);
+  // Compare beads must draw BEHIND the candles. This used to assert the literal ternary
+  // `profile === "compare" ? "bottom"`, which stopped existing on 2026-08-19 when the main desk
+  // adopted the same treatment on member feedback ("the beads appear much better on compare mode
+  // .. we can do the same way for all"). The requirement did not weaken — it now holds
+  // unconditionally — so the assertion follows the intent rather than the old spelling.
+  assert.match(primitive, /beadZOrder\(\)[\s\S]{0,1200}?return "bottom";/);
+  assert.doesNotMatch(
+    primitive,
+    /beadZOrder\(\)[\s\S]{0,1200}?return [^;]*"top"/,
+    "no profile may put the bead rail back on top of the candles"
+  );
 });
 
 test("compare linked crosshair sync wiring", () => {

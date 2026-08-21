@@ -44,6 +44,7 @@ import {
 import { analyzeLargoQuestion, KNOWN_TICKERS } from "@/lib/largo/question-intent";
 import { formatImageBlock, type ImageBlock } from "@/lib/largo/core/image-attachment";
 import { deterministicLargoFollowups } from "@/lib/largo/largo-followups";
+import { contextualFollowupsFromAnswer } from "@/lib/largo/contextual-followups";
 import { withResolutionChips } from "@/lib/largo/core/resolution-chips";
 import { loadLargoPlatformSnapshotBlock } from "@/lib/largo/platform-snapshot-block";
 import { captureLargoLiveFeed, formatLargoLiveFeed } from "@/lib/largo/largo-live-feed";
@@ -55,6 +56,8 @@ import {
   LARGO_CAPABILITIES,
   rankCapabilities,
 } from "@/lib/largo/registry/capability-registry";
+import { formatSessionCalendarBlock } from "@/lib/largo/temporal/session-calendar";
+import { emptyAnswerFallback } from "@/lib/largo/empty-answer-fallback";
 import {
   formatTemporalBlock,
   resolveTimeframe,
@@ -132,6 +135,14 @@ import {
   formatWatchlistBlock,
   type LargoPlayContext,
 } from "@/lib/largo/session-metadata";
+import type { DeskSlashArgs } from "@/lib/largo/desk-scope";
+import {
+  deskScopeConfig,
+  formatDeskScopeBlock,
+  formatDiffBlock,
+  intentOverridesForDeskScope,
+} from "@/lib/largo/desk-scope";
+import { buildTurnSnapshot, prefetchDeskScopeBlock } from "@/lib/largo/desk-scope-prefetch";
 import { marketPhaseFromEt } from "@/lib/largo/core/system-status";
 import { getUserTier } from "@/lib/auth-access";
 
@@ -143,6 +154,22 @@ const LARGO_TOOL_LOOP_TIMEOUT_MS = (() => {
 
 function largoLoopTimeoutMs(depth: LargoDepth): number {
   return Math.min(largoDepthConfig(depth).timeoutMs, LARGO_TOOL_LOOP_TIMEOUT_MS);
+}
+
+/**
+ * WALL-CLOCK budget for the whole tool loop — the thing `largoLoopTimeoutMs` was mistaken for.
+ *
+ * That function bounds ONE round (anthropic.ts spends it as the per-request client timeout), so
+ * nothing bounded the loop: `maxRounds: 10` on Deep dive meant ten individually-legal rounds could
+ * add up without limit. The route's own 100s deadline caught the overrun, but as a generic
+ * "ran long" message rather than the partial answer the loop had already written.
+ *
+ * Clamped against `largoToolLoopBudgetMs()` — the live, env-tunable "route deadline minus
+ * prefetch/post overhead" figure — so the loop always gives up BEFORE the route does, leaving room
+ * for verifyClaims, the caveat pass and persistence to run on whatever it returns.
+ */
+function largoLoopBudgetMs(depth: LargoDepth): number {
+  return Math.min(largoDepthConfig(depth).loopBudgetMs, largoToolLoopBudgetMs());
 }
 
 const LARGO_TOOL_LOOP_MAX_ROUNDS = (() => {
@@ -172,6 +199,9 @@ export type LargoTurnOptions = {
   /** When true, temporal layer treats the question as explicitly historical. */
   historicalMode?: boolean;
   playContext?: LargoPlayContext | null;
+  /** Active desk from slash command — SPX Slayer, HELIX, Thermal, etc. */
+  deskScope?: string | null;
+  deskScopeArgs?: DeskSlashArgs | null;
 };
 
 export type LargoStreamEvent =
@@ -193,6 +223,9 @@ export type LargoStreamEvent =
       pre_earnings_pack?: PreEarningsPackCard | null;
       actions?: LargoAction[];
       depth?: LargoDepth;
+      desk_scope?: string | null;
+      desk_scope_args?: DeskSlashArgs | null;
+      mini_panel?: string | null;
     }
   | { type: "error"; message: string };
 
@@ -272,21 +305,46 @@ function buildDynamicSystem(
   history: AnthropicMessage[],
   liveFeedBlock: string,
   platformVitalsBlock: string,
-  extraBlocks = ""
+  extraBlocks = "",
+  /** Answer mode — the closing line below contradicts Concrete unless it knows the mode. */
+  depth: LargoDepth = "deep",
+  /**
+   * Minutes since ET midnight. Defaults undefined so existing callers are unchanged.
+   *
+   * The market phase was already computed for `formatRegimePersonalityBlock`, but only as a VOICE
+   * instruction ("Off-hours: shorter answers"). The calendar block — the one that tells the model
+   * to check before stating a DTE — never learned the time, so "0DTE" kept meaning "today" after
+   * today had settled. The calendar decides what the time MEANS; this only supplies it.
+   */
+  etMinutesNow?: number
 ): AnthropicSystemBlock[] {
   const intent = analyzeLargoQuestion(question, history);
   const platformSection = platformVitalsBlock.trim()
     ? `\n\n${platformVitalsBlock.trim()}\n`
     : "";
+  // THE LAST LINE OF THE PROMPT WINS, AND THIS IS THE LAST LINE.
+  //
+  // It used to read "opinion in Bottom line" unconditionally. The Concrete block bans **Bottom
+  // line** outright, but it lives inside `extraBlocks` — several hundred tokens EARLIER than this
+  // sentence. So the model read "never emit Bottom line", then finished on "opinion in Bottom
+  // line", and did what the closing instruction said.
+  //
+  // Measured on prod 2026-08-20, immediately after the Concrete rewrite shipped: bullets, headings
+  // and tables were gone from all 10 Concrete answers, and **Bottom line:** survived in 9 of 10 —
+  // the one section whose instruction was repeated after the ban. Position beat emphasis.
+  const opinionClause =
+    depth === "concrete"
+      ? "keep opinion to the closing clause of your own prose — no labelled section, and no **Bottom line**."
+      : "opinion in Bottom line.";
   const dynamicPart = `## This turn
 
-Session date (ET): ${todayEtYmd()}
+${formatSessionCalendarBlock(todayEtYmd(), 5, etMinutesNow)}
 
 ${liveFeedBlock}${platformSection}${extraBlocks}
 
 ${intent.guidance}
 
-Session memory is in Postgres — honor follow-ups. Re-fetch via tools if you need fresher flow, matrix, or platform numbers. Facts from the live feed and platform vitals only; opinion in Bottom line.`;
+Session memory is in Postgres — honor follow-ups. Re-fetch via tools if you need fresher flow, matrix, or platform numbers. Facts from the live feed and platform vitals only; ${opinionClause}`;
 
   return [
     {
@@ -368,6 +426,9 @@ async function prepareLargoTurn(
   preEarningsPack: PreEarningsPackCard | null;
   socialPack: SocialPackSlice | null;
   sessionMetadata: Awaited<ReturnType<typeof fetchLargoSessionMetadata>>;
+  activeDeskScope: string | null;
+  deskScopeArgs: DeskSlashArgs | null;
+  miniPanelKind: string | null;
 }> {
   let sid = sessionId.trim() || `web-${userId}-${Date.now()}`;
   try {
@@ -396,9 +457,37 @@ async function prepareLargoTurn(
       () => {}
     );
   }
-  // Read the previous turn's timestamp BEFORE the current question is appended. Fails soft to
-  // null (no DB, first turn, unusable timestamp) — a missing window start is reported as missing.
-  const previousTurn = await fetchPreviousUserTurn(sid, userId).catch(() => null);
+  const activeDeskScope =
+    turnOptions.deskScope?.trim() ||
+    (typeof sessionMetadata.desk_scope === "string" ? sessionMetadata.desk_scope : null) ||
+    null;
+  const deskScopeArgs = turnOptions.deskScopeArgs ?? sessionMetadata.desk_scope_args ?? null;
+  if (turnOptions.deskScope) {
+    void updateLargoSessionMetadata(sid, userId, {
+      desk_scope: turnOptions.deskScope,
+      desk_scope_args: deskScopeArgs,
+    }).catch(() => {});
+  }
+  if (deskScopeArgs?.watchTickers?.length) {
+    const merged = [
+      ...(sessionMetadata.watchlist ?? []),
+      ...deskScopeArgs.watchTickers,
+    ];
+    void updateLargoSessionMetadata(sid, userId, {
+      watchlist: merged,
+    }).catch(() => {});
+  }
+
+  const toolsUsed: string[] = ["live_feed_capture"];
+  let intent = analyzeLargoQuestion(question, history.slice(0, -1));
+  intent = intentOverridesForDeskScope(activeDeskScope, intent, deskScopeArgs);
+  if (deskScopeArgs?.ticker) {
+    intent = { ...intent, tickerHint: deskScopeArgs.ticker.toUpperCase() };
+  }
+  const scopeCfg = deskScopeConfig(activeDeskScope);
+  const scopeTicker =
+    deskScopeArgs?.ticker?.toUpperCase() ?? scopeCfg?.defaultTicker ?? intent.tickerHint ?? "SPX";
+
   // Images ride on THIS turn's user message only, as content blocks ahead of the text. Order is
   // deliberate and is Anthropic's documented guidance: a model that has seen the picture before the
   // instruction answers about the picture. It also survives the tool loop unchanged — anthropic.ts
@@ -416,8 +505,61 @@ async function prepareLargoTurn(
   // so the next turn pushed a second user message, broke Anthropic role
   // alternation, and 400'd until the orphan aged out (LARGO-3).
 
-  const toolsUsed: string[] = ["live_feed_capture"];
-  const intent = analyzeLargoQuestion(question, history.slice(0, -1));
+  const previousTurn = await fetchPreviousUserTurn(sid, userId).catch(() => null);
+
+  let deskScopeBlock = formatDeskScopeBlock(activeDeskScope, deskScopeArgs ?? undefined);
+  if (scopeCfg && activeDeskScope) {
+    const prefetched = await prefetchDeskScopeBlock(
+      scopeCfg.key,
+      scopeTicker,
+      deskScopeArgs?.submodule ?? null
+    ).catch(() => ({
+      block: "",
+      toolsUsed: [] as string[],
+    }));
+    deskScopeBlock += prefetched.block;
+    toolsUsed.push(...prefetched.toolsUsed);
+  }
+
+  let diffBlock = "";
+  if (deskScopeArgs?.mode === "diff") {
+    const prevSnap = sessionMetadata.last_turn_snapshot ?? null;
+    const nowSnap = await buildTurnSnapshot({
+      ticker: scopeTicker,
+      deskScope: activeDeskScope,
+    }).catch(() => null);
+    if (nowSnap) {
+      diffBlock = formatDiffBlock(prevSnap, nowSnap);
+      void updateLargoSessionMetadata(sid, userId, { last_turn_snapshot: nowSnap }).catch(() => {});
+    }
+  } else if (activeDeskScope && deskScopeArgs?.mode !== "watch") {
+    // NOT AWAITED. Outside `diff` mode this snapshot feeds NOTHING the member sees — its only
+    // consumer is the fire-and-forget `updateLargoSessionMetadata` write below, which exists so
+    // that a LATER `diff` turn has a baseline to compare against. Awaiting it made every ordinary
+    // turn wait on a desk round-trip for a value that never reaches the answer.
+    //
+    // MEASURED ON PROD 2026-08-20 during RTH, via the SSE stream: a Concrete turn spent 22.3s and
+    // 15.1s (two questions) between the request and the FIRST `tool_start` — roughly half of a
+    // 44.1s / 41.4s turn — before any tool ran. That window is a chain of sequential awaits ahead
+    // of the first model round-trip, and this is one of them.
+    //
+    // The `diff` branch above KEEPS its await: there `nowSnap` feeds `formatDiffBlock` straight
+    // into the prompt, so the answer genuinely depends on it. The distinction is exactly "does the
+    // member's answer read this value", not "is it cheap".
+    //
+    // Errors stay swallowed as before — a failed snapshot must never surface as a failed turn.
+    void buildTurnSnapshot({
+      ticker: scopeTicker,
+      deskScope: activeDeskScope,
+    })
+      .then((nowSnap) => {
+        if (nowSnap) {
+          void updateLargoSessionMetadata(sid, userId, { last_turn_snapshot: nowSnap }).catch(() => {});
+        }
+      })
+      .catch(() => {});
+  }
+
   const liveFeed = await captureLargoLiveFeed(intent, userId);
   const liveFeedBlock = formatLargoLiveFeed(liveFeed, intent.tickerHint ?? "SPX");
   // NO retrieval layer. This used to call searchKnowledge() (BIE Layer 2, Voyage embeddings) on
@@ -601,11 +743,14 @@ async function prepareLargoTurn(
   }).formatToParts(now);
   const part = (t: string) => et.find((p) => p.type === t)?.value ?? "";
   const DAYS: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-  const marketPhase = marketPhaseFromEt(DAYS[part("weekday")] ?? 1, Number(part("hour")) * 60 + Number(part("minute")));
+  const etMinutesNow = Number(part("hour")) * 60 + Number(part("minute"));
+  const marketPhase = marketPhaseFromEt(DAYS[part("weekday")] ?? 1, etMinutesNow);
 
   const tier = await getUserTier(userId).catch(() => null);
   const isAdmin = await isAdminUser(userId).catch(() => false);
   const extraBlocks =
+    deskScopeBlock +
+    diffBlock +
     formatDepthBlock(depth) +
     formatWatchlistBlock(sessionMetadata.watchlist) +
     formatPlayContextBlock(turnOptions.playContext ?? sessionMetadata.play_context) +
@@ -626,7 +771,18 @@ async function prepareLargoTurn(
       ? `\n\n## Play similarity (prefetched — cite distribution, not a single win rate)\n${JSON.stringify(playSimilarity, null, 0).slice(0, 5000)}\n`
       : "") +
     (preEarningsPack
-      ? `\n\n## Pre-earnings desk pack (prefetched — cite these numbers)\n${JSON.stringify(preEarningsPack, null, 0).slice(0, 5000)}\n`
+      ? `\n\n## Pre-earnings desk pack (prefetched — cite these numbers)\n` +
+        // A history row whose `reaction_assumed` is true rests on an ASSUMPTION about report
+        // timing: for an after-close reporter the report date's own session is drift BEFORE the
+        // numbers were public, not the reaction to them (7.41% vs 3.01% on one real print). The
+        // Meridian UI marks these with a "~"; "cite these numbers" needs the same caveat or the
+        // model states an assumption as a measurement. `history_error` distinguishes "no prints
+        // on file" from "we could not look" — an empty history with an error is not evidence.
+        `Rows with \`reaction_assumed: true\` are ASSUMED, not measured — say so if you cite one. ` +
+        `\`as_of_session\`/\`as_of_weekday\` are the ET session this card was built on — use them as "today" rather than inferring one, and use each row's \`report_weekday\` rather than deriving it. ` +
+        `A non-null \`history_error\` means the history could not be READ; an empty history under ` +
+        `it is not evidence the company has no prints.\n` +
+        `${JSON.stringify(preEarningsPack, null, 0).slice(0, 5000)}\n`
       : "") +
     socialContentBlock;
 
@@ -635,7 +791,9 @@ async function prepareLargoTurn(
     history.slice(0, -1),
     liveFeedBlock + knowledgeBlock + temporalBlock + capabilityBlock + entityBlock + ontologyBlock + tradeBlock + conversationBlock + planBlock + drillDownBlock + formatImageBlock(images.length),
     platformVitalsBlock,
-    extraBlocks
+    extraBlocks,
+    depth,
+    etMinutesNow
   );
 
   resetLargoSpxDeskCache(userId);
@@ -682,6 +840,9 @@ async function prepareLargoTurn(
     preEarningsPack,
     socialPack,
     sessionMetadata,
+    activeDeskScope,
+    deskScopeArgs,
+    miniPanelKind: scopeCfg?.miniPanel ?? null,
   };
 }
 
@@ -763,6 +924,9 @@ export async function runLargoQuery(
   pre_earnings_pack?: PreEarningsPackCard | null;
   actions?: LargoAction[];
   depth?: LargoDepth;
+  desk_scope?: string | null;
+  desk_scope_args?: DeskSlashArgs | null;
+  mini_panel?: string | null;
 }> {
   const startedAt = Date.now();
 
@@ -775,6 +939,7 @@ export async function runLargoQuery(
   const {
     sid, history, system, filteredTools, toolsUsed, tickerHint, viewer, timeframe, persistedQuestion,
     liveFeedResults, depth, compareCard, playSimilarity, preEarningsPack, socialPack,
+    activeDeskScope, deskScopeArgs, miniPanelKind,
   } = await prepareLargoTurn(
     question,
     sessionId,
@@ -798,6 +963,7 @@ export async function runLargoQuery(
       maxTokens: depthCfg.maxTokens,
       maxRounds: depthCfg.maxRounds,
       timeoutMs: largoLoopTimeoutMs(depth),
+      loopBudgetMs: largoLoopBudgetMs(depth),
       maxRetries: 1,
       cacheSystem: true,
       aiGate: "largo",
@@ -816,7 +982,14 @@ export async function runLargoQuery(
 
     let text =
       answer?.trim() ||
-      "I couldn't pull enough live data to answer that — try naming a ticker or asking about SPX structure.";
+      emptyAnswerFallback({
+        elapsedMs: Date.now() - startedAt,
+        // The LOOP budget, not the per-round timeout. #2396 classifies an empty answer as a
+        // timeout at 85% of budget; measuring total elapsed against a per-round cap made every
+        // multi-round Deep turn look timed-out and every long single-round one look fine.
+        budgetMs: largoLoopBudgetMs(depth),
+        toolsUsed,
+      });
 
     const ctxNumbers = collectContextNumbers([capturedResults, history.map((h) => h.content)]);
     // Verify the PROSE, not the component payloads. Every number inside a ```blackout block also
@@ -914,7 +1087,14 @@ export async function runLargoQuery(
     // The turn id rides on the envelope so a follow-up can name the exact turn it refers to.
     if (envelope && turnId != null) envelope.turnId = turnId;
     const followups = withResolutionChips(
-      await generateLargoFollowups(question, text, tickerHint),
+      [
+        ...contextualFollowupsFromAnswer({
+          envelope,
+          compareCard,
+          ticker: tickerHint,
+        }),
+        ...(await generateLargoFollowups(question, text, tickerHint)),
+      ],
       envelope?.headline ?? ""
     );
     const actions = buildLargoActions({ ticker: tickerHint, envelope, compareCard });
@@ -934,6 +1114,9 @@ export async function runLargoQuery(
       pre_earnings_pack: preEarningsPack,
       actions,
       depth,
+      desk_scope: activeDeskScope,
+      desk_scope_args: deskScopeArgs,
+      mini_panel: miniPanelKind,
     };
   } catch (error) {
     logClaudeTurn({
@@ -1000,6 +1183,7 @@ export async function runLargoQueryStream(
   const {
     sid, history, system, filteredTools, toolsUsed, tickerHint, viewer, timeframe, persistedQuestion,
     liveFeedResults, depth, compareCard, playSimilarity, preEarningsPack, socialPack,
+    activeDeskScope, deskScopeArgs, miniPanelKind,
   } = await prepareLargoTurn(
     question,
     sessionId,
@@ -1031,6 +1215,7 @@ export async function runLargoQueryStream(
       maxTokens: depthCfg.maxTokens,
       maxRounds: depthCfg.maxRounds,
       timeoutMs: largoLoopTimeoutMs(depth),
+      loopBudgetMs: largoLoopBudgetMs(depth),
       maxRetries: 1,
       cacheSystem: true,
       aiGate: "largo",
@@ -1066,7 +1251,14 @@ export async function runLargoQueryStream(
 
     let text =
       answer?.trim() ||
-      "I couldn't pull enough live data to answer that — try naming a ticker or asking about SPX structure.";
+      emptyAnswerFallback({
+        elapsedMs: Date.now() - startedAt,
+        // The LOOP budget, not the per-round timeout. #2396 classifies an empty answer as a
+        // timeout at 85% of budget; measuring total elapsed against a per-round cap made every
+        // multi-round Deep turn look timed-out and every long single-round one look fine.
+        budgetMs: largoLoopBudgetMs(depth),
+        toolsUsed,
+      });
 
     // Layer 4 verification: every numeric claim vs the turn's source data (tool
     // results + the history the model was shown). Heavily-unverified answers get
@@ -1167,7 +1359,14 @@ export async function runLargoQueryStream(
     // The turn id rides on the envelope so a follow-up can name the exact turn it refers to.
     if (envelope && turnId != null) envelope.turnId = turnId;
     const followups = withResolutionChips(
-      await generateLargoFollowups(question, text, tickerHint),
+      [
+        ...contextualFollowupsFromAnswer({
+          envelope,
+          compareCard,
+          ticker: tickerHint,
+        }),
+        ...(await generateLargoFollowups(question, text, tickerHint)),
+      ],
       envelope?.headline ?? ""
     );
     const actions = buildLargoActions({ ticker: tickerHint, envelope, compareCard });
@@ -1190,6 +1389,9 @@ export async function runLargoQueryStream(
       pre_earnings_pack: preEarningsPack,
       actions,
       depth,
+      desk_scope: activeDeskScope,
+      desk_scope_args: deskScopeArgs,
+      mini_panel: miniPanelKind,
     });
   } catch (error) {
     if (isSseClientDisconnect(error)) return;

@@ -36,10 +36,40 @@ export function resolveNearTermExpiriesForCrossValidation(
 }
 
 /** Largest-positive (call) and largest-negative (put) wall strikes from per-strike totals. */
-export function wallsFromStrikeTotals(strikeTotals: Record<string, number>): {
+export function wallsFromStrikeTotals(
+  strikeTotals: Record<string, number>,
+  /**
+   * Spot. When supplied, the walls are SIDE-CONSTRAINED: a call wall must sit above spot and a put
+   * wall below it. Omit it and the historical unconstrained behaviour is preserved exactly, so no
+   * existing call site changes until it is wired deliberately.
+   *
+   * WHY THIS IS NEEDED. Without the constraint this picks max-positive-GEX and max-negative-GEX
+   * ANYWHERE, so a "call wall" can land below spot and a "put wall" above it — inverted as
+   * resistance/support, which is the only way a member reads them.
+   *
+   * MEASURED ON PROD 2026-08-20, 8 tickers sampled, THREE serving an inverted level:
+   *   AAPL  spot 312.66  call_wall 310  <- resistance BELOW price (constrained: 320)
+   *   SPY   spot 763.11  put_wall  765  <- support ABOVE price    (constrained: 760)
+   *   META  spot 545.91  put_wall  550  <- support ABOVE price    (constrained: 540)
+   * AAPL is the clearest harm: "resistance at 310" while price is already 312.66 reads as
+   * "we are through resistance" when the engine means no such thing.
+   *
+   * It flips on thin margins, so it is not rare by construction — on the live SPX 3DTE book 7500
+   * beat 7700 by 2.65B vs 2.52B, a 5% gap that put the answer on the wrong side of spot.
+   *
+   * Same class as the depth-ladder finding in CLAUDE.md: a wall check that conflates a PER-STRIKE
+   * quantity with a whole-book one.
+   *
+   * NO FALLBACK TO THE WRONG SIDE. If no strike qualifies, the wall is null — "there is no call
+   * wall above spot in this book" is a true statement, and inventing one below spot is not. The
+   * return type has always been nullable, so consumers already handle it.
+   */
+  spot?: number
+): {
   callWall: number | null;
   putWall: number | null;
 } {
+  const constrained = typeof spot === "number" && Number.isFinite(spot) && spot > 0;
   let callWall: number | null = null;
   let putWall: number | null = null;
   let maxPos = 0;
@@ -48,11 +78,11 @@ export function wallsFromStrikeTotals(strikeTotals: Record<string, number>): {
     const strike = Number(s);
     const g = Number(gRaw);
     if (!Number.isFinite(strike) || !Number.isFinite(g)) continue;
-    if (g > maxPos) {
+    if (g > maxPos && (!constrained || strike > spot)) {
       maxPos = g;
       callWall = strike;
     }
-    if (g < maxNeg) {
+    if (g < maxNeg && (!constrained || strike < spot)) {
       maxNeg = g;
       putWall = strike;
     }
@@ -182,10 +212,25 @@ export type GammaFlipDetail = {
 
 const FLIP_MAX_DIST_PCT = 0.12;
 
+/**
+ * How close a plausible crossing must be to the PREVIOUS reported flip to be treated as the same
+ * level. 0.4% of spot — wide enough to absorb a strike-grid step and a snapshot's worth of
+ * cumulative-gamma noise, far narrower than the ~10% relocations the nearest-spot rule produced.
+ */
+const FLIP_HYSTERESIS_PCT = 0.004;
+
 /** `cumulativeGammaFlip` with the null cause attached — see GammaFlipReason. */
 export function cumulativeGammaFlipDetail(
   strikeTotals: Record<string, number>,
-  spot = 0
+  spot = 0,
+  opts?: {
+    /**
+     * The flip this ticker reported on the previous snapshot, when the caller has it. Supplying it
+     * enables hysteresis: a plausible crossing within FLIP_HYSTERESIS_PCT of the incumbent wins, so
+     * a level cannot be relocated by noise between two adjacent scans.
+     */
+    previousFlip?: number | null;
+  }
 ): GammaFlipDetail {
   const rows = Object.entries(strikeTotals)
     .map(([s, g]) => ({ strike: Number(s), gamma: g }))
@@ -236,8 +281,36 @@ export function cumulativeGammaFlipDetail(
       nearestCrossing: nearest,
     };
   }
+  // SELECTION: the LOWEST plausible crossing, not the one nearest spot.
+  //
+  // Nearest-to-spot is unstable by construction. A near-zero net-GEX book crosses zero more than
+  // once, and when two crossings sit at similar distance the winner is decided by where spot
+  // happens to be — so a sub-0.2% move swaps them, relocating the reported flip by tens of points
+  // and INVERTING `above_gamma_flip`, the long/short gamma posture the desk shows members.
+  //
+  // Observed live on SPX, 2026-08-19, across one session in which spot traded a 0.2% range:
+  //   13:47Z null -> 14:38Z 769.15 -> 15:55Z 803.98 -> 16:34Z 809.14 -> 16:45Z 849.17 -> 17:34Z null
+  // An 80-point migration and two disappearances on an underlying that barely moved. The nulls are
+  // this function's `crossings_far_from_spot` branch firing once the winning crossing wandered
+  // outside ±12%.
+  //
+  // The lowest crossing is both the textbook "zero gamma level" — cumulative dealer gamma summed
+  // from the bottom of the book, at the strike it first turns positive — and, critically,
+  // INDEPENDENT OF SPOT except through the plausibility window. The same book therefore yields the
+  // same flip on every scan, which is the property the old rule lacked.
+  //
+  // Hysteresis is layered on top for the residual case: a new crossing appearing or vanishing
+  // between snapshots can still move `min`, so when the caller supplies the previous flip, a
+  // plausible crossing within FLIP_HYSTERESIS_PCT of it keeps the level pinned.
+  const previous = opts?.previousFlip;
+  if (previous != null && Number.isFinite(previous)) {
+    const incumbent = plausible.find((c) => Math.abs(c - previous) <= spot * FLIP_HYSTERESIS_PCT);
+    if (incumbent != null) {
+      return { flip: incumbent, reason: "resolved", crossings: crossings.length, nearestCrossing: nearest };
+    }
+  }
   return {
-    flip: plausible.reduce((best, c) => (Math.abs(c - spot) < Math.abs(best - spot) ? c : best)),
+    flip: plausible.reduce((lowest, c) => (c < lowest ? c : lowest)),
     reason: "resolved",
     crossings: crossings.length,
     nearestCrossing: nearest,
@@ -258,7 +331,10 @@ export function uwLevelsFromLadder(
   spot = 0
 ): { callWall: number | null; putWall: number | null; gammaFlip: number | null } {
   const strikeTotals = strikeTotalsFromLadder(ladder);
-  const { callWall, putWall } = wallsFromStrikeTotals(strikeTotals);
+  // `spot` was already a parameter here and simply was not reaching the wall scan — so a call wall
+  // could resolve below it. Side-constrained now; `spot = 0` (the default) keeps the old behaviour
+  // for callers that genuinely have no quote.
+  const { callWall, putWall } = wallsFromStrikeTotals(strikeTotals, spot);
   const gammaFlip = cumulativeGammaFlip(strikeTotals, spot);
   return { callWall, putWall, gammaFlip };
 }
@@ -347,4 +423,221 @@ export function gexWallsFromStrikeTotals(strikeTotals: Record<string, number>): 
     }
   }
   return { callWall, putWall };
+}
+
+/** Regime shape — structurally identical to `GexRegime` in polygon-options-gex.ts. */
+export type GexRegimeCore = {
+  flip: number | null;
+  posture: "long" | "short" | null;
+  read: string;
+};
+
+/**
+ * Posture + read for a gamma book, derived from the flip it is measured against.
+ *
+ * LIVES HERE BECAUSE TWO MODULES MUST AGREE AND CANNOT IMPORT EACH OTHER.
+ * `polygon-options-gex.ts` imports `spx-odte-gex-uw-overlay.ts` (line 18), so the overlay can only
+ * type-import back. This module has zero imports, so both can depend on it.
+ *
+ * THE BUG THAT MADE THIS NECESSARY. `recomputeNearTermGexStrikeTotals` re-derives strike_totals,
+ * total, call_wall, put_wall and `gex.flip` after the SPX 0DTE UW ladder replaces today's column —
+ * but left `gex.regime` untouched. So on SPX the served payload carried a flip from the UW-overlaid
+ * book and a regime (its own `flip`, its `posture`, and its `read` sentence) describing the
+ * PRE-overlay book:
+ *
+ *     gex.flip ........ 7893.38
+ *     regime.flip ..... 7887.16
+ *     regime.read ..... "Spot 7,707.98 is below the gamma flip (7,887.15) -> short gamma ..."
+ *
+ * Measured on prod 2026-08-20: the 6.22 pt delta held across four samples 20s apart AND through a
+ * forced rebuild (`?force=1`, 9.5s), which is what ruled out caching and staleness — the overlay
+ * re-runs on every request, so it re-creates the skew every time.
+ *
+ * `GexRegime.flip` is documented as "mirrors gex.flip". That invariant is the whole point of this
+ * function: posture and read are computed FROM the flip passed in, so a caller that updates the
+ * flip and calls this cannot leave a regime pointing at the old one.
+ *
+ * WHY POSTURE MATTERS MORE THAN THE 6 POINTS. `posture` is `spot >= flip ? long : short`, and long
+ * vs short gamma inverts the entire trading interpretation — dampened and mean-reverting versus
+ * amplified and trending. With spot ~180 pts below both flips the answer happened to be "short"
+ * either way, which is exactly why this survived: the visible symptom was a cosmetic number
+ * mismatch, while the latent failure is a wrong REGIME whenever spot sits between the two.
+ */
+export function buildGexRegime(input: {
+  spot: number;
+  flip: number | null;
+  callWall: number | null;
+  putWall: number | null;
+  /**
+   * WHY the flip is null, when it is. A null flip has two very different meanings and this is what
+   * separates them — see GammaFlipReason. Optional so existing callers keep compiling; omitting it
+   * only costs the `net_short_everywhere` read below, never correctness.
+   */
+  flipReason?: GammaFlipReason;
+}): GexRegimeCore {
+  const { spot, flip, callWall, putWall, flipReason } = input;
+
+  /**
+   * A NULL FLIP IS NOT A NULL REGIME.
+   *
+   * `net_short_everywhere` means the cumulative gamma profile never turns positive — dealers are
+   * net short at every strike. That is not missing information, it is the strongest possible SHORT
+   * gamma reading: there is no long-gamma region for price to reach. Deriving posture only from
+   * `spot >= flip` threw that away and reported "undetermined" about a book whose regime is
+   * certain.
+   *
+   * MEASURED ON PROD 2026-08-20 across a full RTH session: SPX, SPY and QQQ all held
+   * `flip_reason: net_short_everywhere` from the open to the close (SPX net GEX -45.32B over 184
+   * strikes). NVDA, with a net-positive book, resolved a flip normally the whole time — so the
+   * machinery was healthy and the indices genuinely had no flip. For six hours the desk reported
+   * its core regime as unavailable when it was in fact unambiguously short.
+   *
+   * `insufficient_strikes` stays undetermined, because that one IS a data outage.
+   */
+  const posture: "long" | "short" | null =
+    spot > 0
+      ? flip != null
+        ? spot >= flip
+          ? "long"
+          : "short"
+        : flipReason === "net_short_everywhere"
+          ? "short"
+          : null
+      : null;
+
+  const fmt = (n: number) =>
+    n.toLocaleString("en-US", { maximumFractionDigits: 2, minimumFractionDigits: 0 });
+
+  let read: string;
+  if (posture === "short" && flip == null && spot > 0) {
+    // Say the STRUCTURAL FACT, not "unavailable". The old string ("...until the chain prints a
+    // clean dealer-gamma profile") reads as a data problem — still computing, check back — and
+    // Largo repeated it verbatim to members all session. It is the opposite of the truth: the
+    // chain printed fine, and what it printed was a book with no long-gamma region at all.
+    const resistance = callWall != null ? ` Resistance ${fmt(callWall)}` : "";
+    const support = putWall != null ? `${resistance ? "," : ""} support ${fmt(putWall)}` : "";
+    const tail = resistance || support ? `.${resistance}${support}.` : ".";
+    read =
+      `No gamma flip — dealers are net short gamma at EVERY strike, so there is no long-gamma ` +
+      `region above spot ${fmt(spot)} → short gamma: momentum / vol expansion, moves accelerate${tail}`;
+  } else if (posture == null || flip == null || !(spot > 0)) {
+    read = "Gamma flip undetermined — regime read unavailable until the chain prints a clean dealer-gamma profile.";
+  } else {
+    const resistance = callWall != null ? ` Resistance ${fmt(callWall)}` : "";
+    const support = putWall != null ? `${resistance ? "," : ""} support ${fmt(putWall)}` : "";
+    const tail = resistance || support ? `.${resistance}${support}.` : ".";
+    read =
+      posture === "long"
+        ? `Spot ${fmt(spot)} is above the gamma flip (${fmt(flip)}) → long gamma: range-bound, fade extremes${tail}`
+        : `Spot ${fmt(spot)} is below the gamma flip (${fmt(flip)}) → short gamma: momentum / vol expansion, moves accelerate${tail}`;
+  }
+  return { flip, posture, read };
+}
+
+/**
+ * WALLS BY DTE HORIZON — because one number called "the call wall" is not one thing.
+ *
+ * The served `gex.call_wall` is computed by `recomputeNearTermGexStrikeTotals` over
+ * `near_term_expiries`, which on SPX is currently FIFTEEN expiries running three weeks out. That
+ * aggregate is a legitimate quantity, but nothing in the payload said so, and it is not what a
+ * member means by "the call wall" when they are trading today.
+ *
+ * MEASURED ON PROD 2026-08-20, SPX spot 7641.16:
+ *
+ *     SERVED call_wall   7800   +158.8 pts  (+2.1%)   <- 15-expiry aggregate, to 2026-09-11
+ *     2026-08-21 alone   7700    +58.8 pts  (+0.8%)   <- the actual front-expiry wall
+ *     2026-08-28 alone   7800   +158.8 pts            <- where the aggregate's number comes from
+ *
+ * A wall 2.1% OTM is not actionable on a 0DTE or 1DTE trade, and reading the aggregate as
+ * near-dated is the natural mistake. Right number, missing scope — the same defect family as
+ * "0DTE max pain" quoting a settled session, and as the vanna walls that were dropped and then
+ * explained away.
+ *
+ * The fix is NOT to change what the aggregate computes. It is to publish the horizons beside it so
+ * the difference is visible and each number can be named. What "near-term" should mean is a
+ * product decision and is deliberately left alone.
+ */
+export type HorizonWalls = {
+  /** Horizon label as a member reads it. */
+  label: string;
+  /** Trading-session distance this bucket covers, inclusive. */
+  maxDte: number;
+  /** Expiries that actually contributed — empty when the chain has none in range. */
+  expiries: string[];
+  callWall: number | null;
+  putWall: number | null;
+  /** Signed distance from spot, in points, for whichever walls resolved. */
+  callWallPts: number | null;
+  putWallPts: number | null;
+};
+
+/** Trading-session distance from `fromYmd` to `toYmd`, counting weekdays. Holidays are not
+ *  modelled here — a holiday shifts a bucket by at most one session and never reorders them. */
+export function sessionsBetweenYmd(fromYmd: string, toYmd: string): number {
+  const a = new Date(`${fromYmd}T00:00:00Z`);
+  const b = new Date(`${toYmd}T00:00:00Z`);
+  if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return Number.NaN;
+  if (b <= a) return 0;
+  let sessions = 0;
+  const cur = new Date(a);
+  while (cur < b) {
+    cur.setUTCDate(cur.getUTCDate() + 1);
+    const d = cur.getUTCDay();
+    if (d !== 0 && d !== 6) sessions += 1;
+  }
+  return sessions;
+}
+
+/**
+ * Walls for each DTE bucket, computed from the SAME cells the aggregate uses.
+ *
+ * Buckets are CUMULATIVE (0DTE ⊂ 3DTE ⊂ 7DTE), which is what a trader means: "the 3DTE wall" is
+ * the wall of the book they are exposed to over three sessions, not the wall of the third session
+ * alone. A per-expiry-only reading would show a 2026-08-27 "call wall" BELOW spot — real for that
+ * strip in isolation, and misleading as a level.
+ */
+export function wallsByHorizon(
+  cells: Record<string, Record<string, number>> | null | undefined,
+  todayYmd: string,
+  spot: number,
+  buckets: Array<{ label: string; maxDte: number }> = [
+    { label: "0DTE", maxDte: 0 },
+    { label: "3DTE", maxDte: 3 },
+    { label: "7DTE", maxDte: 7 },
+  ]
+): HorizonWalls[] {
+  const out: HorizonWalls[] = [];
+  const byExpiry = new Map<string, number>();
+  for (const byExp of Object.values(cells ?? {})) {
+    for (const exp of Object.keys(byExp ?? {})) {
+      if (!byExpiry.has(exp)) byExpiry.set(exp, sessionsBetweenYmd(todayYmd, exp));
+    }
+  }
+  for (const { label, maxDte } of buckets) {
+    const inRange = [...byExpiry.entries()]
+      .filter(([, dte]) => Number.isFinite(dte) && dte <= maxDte)
+      .map(([exp]) => exp)
+      .sort();
+    const totals: Record<string, number> = {};
+    for (const [strike, byExp] of Object.entries(cells ?? {})) {
+      let sum = 0;
+      for (const exp of inRange) {
+        const v = byExp?.[exp];
+        if (typeof v === "number" && Number.isFinite(v)) sum += v;
+      }
+      // A zero sum carries no wall information; keeping it would only dilute the scan.
+      if (sum !== 0) totals[strike] = sum;
+    }
+    const { callWall, putWall } = wallsFromStrikeTotals(totals, spot);
+    out.push({
+      label,
+      maxDte,
+      expiries: inRange,
+      callWall,
+      putWall,
+      callWallPts: callWall != null && spot > 0 ? Number((callWall - spot).toFixed(2)) : null,
+      putWallPts: putWall != null && spot > 0 ? Number((putWall - spot).toFixed(2)) : null,
+    });
+  }
+  return out;
 }

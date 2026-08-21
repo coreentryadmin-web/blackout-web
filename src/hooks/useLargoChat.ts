@@ -20,6 +20,12 @@ import {
   parsePlayContextFromSearchParams,
   type LargoPlayContext,
 } from "@/lib/largo/session-metadata";
+import type { LargoDepth } from "@/lib/largo/largo-depth-mode";
+// Client-safe module on purpose: importing a VALUE from largo-depth.ts pulls
+// providers/anthropic -> api-telemetry-persist ("server-only") into the browser bundle
+// and fails the Next build.
+import { normalizeLargoDepth } from "@/lib/largo/largo-depth-mode";
+import type { DeskSlashArgs } from "@/lib/largo/desk-scope";
 import {
   conversationTitle,
   loadConversations,
@@ -57,11 +63,45 @@ export type LargoMessage = {
   preEarningsPack?: PreEarningsPackCard | null;
   /** Post-verdict desk deep links. */
   actions?: LargoAction[];
-  depth?: "quick" | "deep";
+  depth?: LargoDepth;
+  /** Competitor-style contextual chips — rendered inline under this answer. */
+  followups?: string[];
+  /** Active desk scope for this turn — drives mini-panel + thread context. */
+  deskScope?: string | null;
+  deskScopeArgs?: DeskSlashArgs | null;
+  /** Mini-panel kind from server (helix, spx, thermal, …). */
+  miniPanel?: string | null;
 };
 
+/**
+ * Internal tool name -> what a member reads on the source chip.
+ *
+ * A NAME MISSING HERE IS NOT INVISIBLE — it renders RAW. The chip text is uppercased by CSS, so an
+ * unmapped `platform_vitals_prefetch` reaches the member as "PLATFORM VITALS PREFETCH".
+ *
+ * CAUGHT ON PROD 2026-08-20 in a phone screenshot of a real answer. Auditing the map against every
+ * name largo-terminal actually pushes found EIGHT unmapped, not one — the screenshot happened to
+ * catch a single instance of a systematic gap.
+ *
+ * Same family as #2412 ("The Meridian prefetch already has..."), one layer over: that fixed the
+ * model narrating machinery in PROSE, this is the UI printing machinery in CHROME. Fixing the
+ * prompt could never have fixed this, which is why the sweep mattered more than the one sighting.
+ *
+ * `largo-tool-labels.test.ts` now fails when a pushed name has no entry, so the next one added
+ * server-side cannot reach a member as an internal identifier.
+ */
 const TOOL_LABEL: Record<string, string> = {
   blackout_intelligence: "BLACKOUT Intelligence",
+  // Prefetches: named for WHAT WAS READ, never for the mechanism that read it. "prefetch" is
+  // plumbing — a member has no idea what one is or why it is on their answer.
+  platform_vitals_prefetch: "platform vitals",
+  social_content_pack_prefetch: "social pack",
+  ticker_social_guide_prefetch: "ticker social guide",
+  meridian_timeline_prefetch: "Meridian timeline",
+  get_peer_ticker_compare: "peer comparison",
+  get_helix_thermal_compare: "HELIX vs Thermal",
+  get_play_similarity: "similar plays",
+  get_pre_earnings_pack: "pre-earnings pack",
   live_feed_capture: "live desk feed",
   get_spx_structure: "SPX desk",
   get_spx_confluence: "confluence engine",
@@ -176,8 +216,10 @@ export function useLargoChat() {
   // The instrument the SERVER resolved for the most recent answer — the contextual rail's only
   // source. Kept across follow-ups so the rail persists through a chain about the same name.
   const [activeTicker, setActiveTicker] = useState<string | null>(null);
-  const [depth, setDepth] = useState<"quick" | "deep">("deep");
+  const [depth, setDepth] = useState<LargoDepth>("concrete");
   const [historicalMode, setHistoricalMode] = useState(false);
+  const [activeDeskScope, setActiveDeskScope] = useState<string | null>(null);
+  const [activeDeskScopeArgs, setActiveDeskScopeArgs] = useState<DeskSlashArgs | null>(null);
   const [playContext, setPlayContext] = useState<LargoPlayContext | null>(null);
   const [chartGuide, setChartGuide] = useState(false);
 
@@ -235,7 +277,7 @@ export function useLargoChat() {
       }
     }
     const storedDepth = sessionStorage.getItem(DEPTH_STORAGE_KEY);
-    if (storedDepth === "quick" || storedDepth === "deep") setDepth(storedDepth);
+    if (storedDepth) setDepth(normalizeLargoDepth(storedDepth));
     if (sessionStorage.getItem(HISTORICAL_STORAGE_KEY) === "1") setHistoricalMode(true);
   }, []);
 
@@ -260,7 +302,14 @@ export function useLargoChat() {
   }, []);
 
   const runQuery = useCallback(
-    async (rawQ: string, opts?: { regenerate?: boolean }) => {
+    async (
+      rawQ: string,
+      opts?: {
+        regenerate?: boolean;
+        deskScope?: string | null;
+        deskScopeArgs?: DeskSlashArgs | null;
+      }
+    ) => {
       const q = rawQ.trim();
       // Attachments are captured ONCE, here, and cleared immediately. A chart pasted while the
       // previous answer was still streaming must not ride along on the next question too.
@@ -359,9 +408,14 @@ export function useLargoChat() {
             depth,
             historical: historicalMode,
             playContext,
+            deskScope: opts?.deskScope ?? undefined,
+            deskScopeArgs: opts?.deskScopeArgs ?? undefined,
           }
         );
         setSession(res.session_id);
+        if (res.desk_scope) setActiveDeskScope(res.desk_scope);
+        if (res.desk_scope_args) setActiveDeskScopeArgs(res.desk_scope_args);
+        else if (opts?.deskScopeArgs) setActiveDeskScopeArgs(opts.deskScopeArgs);
         setMessages((m) =>
           upsertAssistantMessage(m, assistantId, {
             content: res.answer,
@@ -379,12 +433,16 @@ export function useLargoChat() {
             preEarningsPack: res.pre_earnings_pack ?? null,
             actions: res.actions,
             depth: res.depth,
+            followups: Array.isArray(res.followups) ? res.followups.slice(0, 4) : [],
+            deskScope: res.desk_scope ?? null,
+            deskScopeArgs: res.desk_scope_args ?? opts?.deskScopeArgs ?? null,
+            miniPanel: res.mini_panel ?? null,
           })
         );
         // Only overwrite when the server actually resolved one: a follow-up that names no ticker
         // ("and the put side?") must keep the rail on the instrument under discussion, not blank it.
         if (res.ticker) setActiveTicker(res.ticker);
-        setFollowups(Array.isArray(res.followups) ? res.followups.slice(0, 3) : []);
+        setFollowups([]);
         setCanRegenerate(true);
         recordConversation(res.session_id, threadTitleRef.current || label, provisionalSid);
       } catch (err) {
@@ -489,6 +547,8 @@ export function useLargoChat() {
     setCanRegenerate(false);
     threadTitleRef.current = "";
     lastQueryRef.current = "";
+    setActiveDeskScope(null);
+    setActiveDeskScopeArgs(null);
     setActiveTicker(null); // a new thread is a new subject
   }, [loading, setSession]);
 
@@ -523,13 +583,14 @@ export function useLargoChat() {
     [loading, setSession]
   );
 
-  const toggleDepth = useCallback(() => {
-    setDepth((d) => {
-      const next = d === "quick" ? "deep" : "quick";
-      if (typeof window !== "undefined") sessionStorage.setItem(DEPTH_STORAGE_KEY, next);
-      return next;
-    });
+  const setAnswerMode = useCallback((mode: LargoDepth) => {
+    setDepth(mode);
+    if (typeof window !== "undefined") sessionStorage.setItem(DEPTH_STORAGE_KEY, mode);
   }, []);
+
+  const toggleDepth = useCallback(() => {
+    setAnswerMode(depth === "concrete" ? "deep" : "concrete");
+  }, [depth, setAnswerMode]);
 
   const toggleHistoricalMode = useCallback(() => {
     setHistoricalMode((h) => {
@@ -570,10 +631,15 @@ export function useLargoChat() {
     switchConversation,
     isFresh,
     depth,
+    setAnswerMode,
     toggleDepth,
     historicalMode,
     toggleHistoricalMode,
     playContext,
+    activeDeskScope,
+    setActiveDeskScope,
+    activeDeskScopeArgs,
+    setActiveDeskScopeArgs,
     chartGuide,
     setChartGuide,
     LARGO_DESK_PROMPTS,

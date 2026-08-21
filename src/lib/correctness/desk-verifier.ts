@@ -9,7 +9,7 @@ import {
   rollUpMetricStatus,
   worstStatus,
 } from "@/lib/correctness/types";
-import { kingFromStrikeTotals, odteGexScopeFromHeatmap, grossAbsFromStrikeTotals, grossAbsFromUwGexRows, isHairlineNetGammaSign, isNearGammaFlip, recomputeScopedGexLevels } from "@/lib/correctness/gex-odte-scope";
+import { kingFromStrikeTotals, odteGexScopeFromHeatmap, grossAbsFromStrikeTotals, grossAbsFromUwGexRows, isHairlineNetGammaSign, isNearGammaFlip, recomputeScopedGexLevels, resolveZeroDteExpiry } from "@/lib/correctness/gex-odte-scope";
 import { loadMergedSpxDesk } from "@/features/spx/lib/spx-desk-loader";
 
 // ---------------------------------------------------------------------------
@@ -403,9 +403,50 @@ async function crossProviderChecks(
     return out;
   }
   let uw: { rows: Record<string, unknown>[]; source: string } = { rows: [], source: "none" };
+  let odteKing: number | null = null;
+  let odteNet = 0;
+  let odteStrikeTotals: Record<string, number> = {};
+  let alignedExpiry: string | null = null;
+  try {
+    const { fetchGexHeatmap } = await import("@/lib/providers/polygon-options-gex");
+    const hm = await fetchGexHeatmap("SPX").catch(() => null);
+    alignedExpiry = hm ? resolveZeroDteExpiry(hm.expiries ?? [], ctx.today) : null;
+    const odte = odteGexScopeFromHeatmap(hm, ctx.today);
+    odteKing = kingFromStrikeTotals(odte.strikeTotals);
+    odteNet = odte.total;
+    odteStrikeTotals = odte.strikeTotals;
+  } catch {
+    odteKing = null;
+    odteNet = 0;
+  }
+
+  if (!alignedExpiry) {
+    out.push(
+      mk(
+        ctx,
+        "cross-provider",
+        "king",
+        "consistency-only",
+        `No ${ctx.today} expiry column on the SPX matrix (0DTE expired or not on axis) — UW 0DTE King oracle skipped.`,
+        { id: "desk-oracle-king" }
+      )
+    );
+    out.push(
+      mk(
+        ctx,
+        "cross-provider",
+        "gex_net",
+        "consistency-only",
+        `No ${ctx.today} expiry column on the SPX matrix (0DTE expired or not on axis) — UW 0DTE oracle skipped; net-sign consistency-only.`,
+        { id: "desk-oracle-net-sign" }
+      )
+    );
+    return out;
+  }
+
   try {
     const { fetchSpxOdteScopedUwLadder } = await import("@/lib/providers/spx-odte-uw-ladder");
-    uw = await fetchSpxOdteScopedUwLadder("SPX");
+    uw = await fetchSpxOdteScopedUwLadder("SPX", alignedExpiry);
   } catch {
     uw = { rows: [], source: "none" };
   }
@@ -433,20 +474,7 @@ async function crossProviderChecks(
 
   // Compare the 0DTE matrix column (same scope as UW) — NOT the desk's near-term aggregate
   // gex_king/gex_net, which sums multiple expiries and would false-flag against a 0DTE oracle.
-  let odteKing: number | null = null;
-  let odteNet = 0;
-  let odteStrikeTotals: Record<string, number> = {};
-  try {
-    const { fetchGexHeatmap } = await import("@/lib/providers/polygon-options-gex");
-    const hm = await fetchGexHeatmap("SPX").catch(() => null);
-    const odte = odteGexScopeFromHeatmap(hm, ctx.today);
-    odteKing = kingFromStrikeTotals(odte.strikeTotals);
-    odteNet = odte.total;
-    odteStrikeTotals = odte.strikeTotals;
-  } catch {
-    odteKing = null;
-    odteNet = 0;
-  }
+  // (Heatmap + aligned expiry resolved above before the UW fetch.)
 
   if (uwKing != null && odteKing != null && spot > 0) {
     const fd = Math.abs(uwKing - odteKing) / spot;
