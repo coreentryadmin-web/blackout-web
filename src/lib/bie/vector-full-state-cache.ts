@@ -22,9 +22,22 @@ import type { VectorFullState } from "@/lib/bie/vector-full-state";
  */
 export const VECTOR_FULL_STATE_CACHE_TTL_SEC = 15 * 60;
 
-/** `vector:full-state:{normalizedTicker}:{horizon}` — one snapshot per ticker+horizon. */
+/**
+ * Payload-shape version. BUMP THIS whenever the MEANING of a field in `VectorFullState` changes
+ * (units, scale, precision) rather than just its value.
+ *
+ * WHY: entries live for `VECTOR_FULL_STATE_CACHE_TTL_SEC` (15 min) and readers are cache-FIRST, so
+ * for that long after a deploy the new code serves snapshots written by the OLD code. That is
+ * harmless when only values changed, and a silent correctness hole when a unit changed — v2 exists
+ * because `magnet.distancePct` moved from a fraction to a PERCENT (2026-08-21), and a v1 entry
+ * would have fed Largo a magnet distance 100x too small with nothing in the payload to reveal it.
+ * A new key namespace makes the old entries unreachable instead of unreadable-but-served.
+ */
+const VECTOR_FULL_STATE_CACHE_VERSION = "v2";
+
+/** `vector:full-state:v2:{normalizedTicker}:{horizon}` — one snapshot per ticker+horizon. */
 export function vectorFullStateCacheKey(ticker: string, horizon: VectorDteHorizon): string {
-  return `vector:full-state:${normalizeVectorTicker(ticker)}:${horizon}`;
+  return `vector:full-state:${VECTOR_FULL_STATE_CACHE_VERSION}:${normalizeVectorTicker(ticker)}:${horizon}`;
 }
 
 /** Read the cached snapshot, or null on miss / any cache error (never throws). */
