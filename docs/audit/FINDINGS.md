@@ -4,6 +4,25 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-21 — [FINDING, P1 Meridian] "Expected vs realized" compared two different events and rendered a verdict on it — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom, measured on prod 2026-08-21 22:19Z** | **SMTC**, printing **2026-08-25 — four days AHEAD** — rendered *"Realized **-4.41%** vs ~**25.6%** implied (0.17×)"*, verdict **under**. The 25.6% is the **upcoming** print's implied move; the −4.41% is the **2026-05-26** print, a different quarter. Two unrelated events, one comparison, one verdict. |
+| **The other half of it** | **BJ**, which printed that morning: *"Realized **+2.6%** vs ~**0.2%** implied (**13×**)"*, verdict **over**. The 0.2% is a live post-print quote whose front expiry died that afternoon, not what the options market priced going in. BJ's real pre-print implied would be ~5–7%, so a 2.6% move was **under** — **the verdict is inverted**. BKE read 5.63×, BEKE 2.57×; all three said `over`. Because the denominator decays through the session, the multiple inflates as the day goes on. |
+| **Root cause** | `buildExpectedVsRealized(expectedMovePct, lastPrint.reaction_pct)` — the implied side is **forward-looking** (or a decayed live quote) and the realized side is **backward-looking**, and nothing checked that they describe the same print. |
+| **The right denominator exists as a field and is never written** | `print_history[].expected_move_pct` is exactly the per-print captured implied this needs. It is **populated on 0 of 8 rows** in production, and a search finds **no writer anywhere** — the only writer, `overlayTimelineExpectedMoves`, fills the *timeline item* field for upcoming prints, which is a different thing. So the correct quantity is unavailable today. |
+| **Fix** | `buildExpectedVsRealized` takes a third, **required** `sameEvent: boolean`. When false it publishes the reaction with **no ratio and no verdict**, and a headline (`Last print realized +2.6%`) that does not set the two numbers side by side as though they were commensurable. Required rather than defaulted, because a default would silently re-enable both live cases at any call site that forgot it — and `npx tsc --noEmit` does **not** typecheck the test tree, so a forgotten argument surfaced only when the suite ran. |
+| **Both call sites now prefer the print's own implied** | `priorImplied = lastPrint?.expected_move_pct ?? null`, used as the denominator when present and passed as `sameEvent`. This is deliberately written so the card **starts working the moment that field is populated**, with no further change — rather than hard-coding today's "never". |
+| **A deliberate behaviour reversal, called out** | `patchMeridianEnrichmentExpectedMove`'s existing test asserted the pack's live chain-IV move (6.2) won over the fixture's own per-print implied (5.0). That encoded the defect. It now asserts **5.0**, with a comment naming the BJ case. I rewrote the assertion because the old expectation was wrong, not to make my change pass. |
+| **Blast radius** | The ratio and verdict on the expected-vs-realized card only. `realized_move_pct` is unchanged and still published. No level, gate, score or ranking moves. Until `print_history[].expected_move_pct` is written by something, the ratio is withheld everywhere — that is the honest state, not a regression. |
+| **Regression guard** | `src/lib/meridian/meridian-evr-same-event.test.ts` (+9) driven by the two live cases: SMTC's cross-quarter comparison and BJ's inverted verdict both return `unknown` with no ratio; the headline omits "implied" and "×" entirely; the ratio/verdict still work when the sides DO describe one print (over/under/inline all asserted — this is **gated, not disabled**); a missing side stays unknown either way; sign is preserved on the realized-only headline; both call sites are wired; and `sameEvent` is asserted to have **no default and not be optional**. |
+| **Non-vacuity** | Four mutants, all caught: `sameEvent` defaulted to true (1 fail); the gate never firing (3); the headline still placing both numbers side by side (3); the enrich call site passing the live quote and asserting `sameEvent` (2). Restored: 9/9. |
+| **Gates on Node 20.20.2** | `npx tsc --noEmit` clean · `npm test` **9923 pass / 0 fail / 1 skipped** · `npm run build` clean · `npx eslint` clean. |
+| **Status** | FIXED — this PR. Live proof owed: re-read SMTC and BJ and confirm neither renders a ratio or an `over`/`under` verdict. |
+
 ## 2026-08-21 — [FINDING, P3 tooling] The interaction audit reported a deliberate, recoverable text cap as clipped text on every run — FIXED
 
 > **kind:** `FINDING`
