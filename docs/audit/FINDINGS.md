@@ -4,6 +4,20 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-21 — [FINDING, P1 tooling] The GEX wall poller claimed `finally` cleanup, had none, and leaked a live admin+premium prod Clerk user on Ctrl-C — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `scripts/audit/gex-wall-snapshot-poll.mjs` header (L39): "Deletes its temp Clerk user in a finally block, same as every other audit harness." The file contained **no `finally` in either form** and no signal handler. Cleanup was three hand-placed `await cleanup()` calls — normal end (L291), one early return (L273), and `main().catch` (L307). |
+| **Why the gap matters here specifically** | This harness is documented in its own usage block to run unattended for tens of minutes (`nohup/&/run_in_background`) for "a real multi-tens-of-minutes capture". For a long background poller, **SIGINT/SIGTERM is the normal way it ends**, not an edge case — and that was the one path with no cleanup. The user it mints is admin+premium (L16) on production Clerk and has **no TTL**, so a single Ctrl-C left a privileged live account sitting there until someone found it by hand. |
+| **Root cause** | The sentence "same as every other audit harness" was aspirational. The harness it names as its model — `data-validator.mjs` — gets this exactly right: `.finally()` at L757 **and** `process.on("SIGINT"/"SIGTERM")` at L753-754. The poller copied the claim without the mechanism. |
+| **Fix** | Cleanup is now literally what the header says: a real `.finally()` on the `main()` chain, plus SIGINT/SIGTERM handlers, mirroring `data-validator.mjs`. `cleanup()` made idempotent (`_cleanedUp`) since finally + signal + early-exit can all reach it in one run. It now also **verifies** the delete with a read-back — a DELETE that 200s and leaves the user alive is the failure mode worth knowing about and is invisible without it. |
+| **Regression guard** | 3 tests in `harness-cleanup-contract.test.mjs`. Two are file-specific (SIGINT/SIGTERM registered and reaching `cleanup()`; the delete is verified, not assumed). The third is **fleet-wide**: every harness whose header claims cleanup "in a `finally`" must contain one. That invariant is currently true across all 50 claim-bearing harnesses and would have failed on this file before the fix — verified against the real pre-fix blob from `main`. |
+| **The test had the bug it was written to catch** | The fleet-wide scan first extracted the header with `/^\s*\/\*/`, which does not match a file starting with `#!/usr/bin/env node` — so it silently skipped every shebang harness, **including the one it was written for**, and reported a clean pass. 66 of the audit harnesses carry a shebang; the anchor bug hid **20 of the 50** claim-bearing files, a 40% blind spot in a filter whose entire job is not having one. Fixed by stripping the shebang before matching. Recording it because it is the same defect class in the auditing tool itself, caught only by testing the check against a known-bad input instead of trusting a green result. |
+| **Status** | FIXED — this PR. Found by the documented-but-unwired ("phantom guards") sweep. |
+
 ## 2026-08-21 — [FINDING, P2 BIE/Largo] `ingestBieKnowledge()` silently discarded 26 of 65 docs — including CLAUDE.md, AGENTS.md and FINDINGS.md itself — and reported `{ stored }` as if the corpus were complete — FIXED
 
 > **kind:** `FINDING`
