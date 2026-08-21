@@ -35,6 +35,8 @@ import { enrichFlowsWithGex } from "@/lib/flow-gex-enrichment";
 import { runUwPooled } from "@/lib/providers/uw-rate-limiter";
 import { gexHeatmapForLargo } from "@/lib/largo/gex-heatmap-for-largo";
 import { normalizeUwEarnings } from "@/lib/largo/uw-earnings-normalize";
+import { etStamp } from "@/lib/largo/temporal/bar-session-date";
+import { weekdayEt } from "@/lib/largo/temporal/session-calendar";
 import { gexMatrixChangesForLargo } from "@/lib/largo/gex-matrix-changes";
 import { registerVectorUniverseView } from "@/features/vector/lib/vector-universe";
 import { flowAnomalyNearMissesForLargo } from "@/lib/platform/flow-anomaly-near-misses";
@@ -1451,8 +1453,17 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       // `as_of` because the tool description promises "today's" prints and the payload itself
       // carried no clock — the model had to take the framing on trust. The rows' own
       // `report_date` is the authority on which session these are; this says when we asked.
+      //
+      // ET-ANCHORED, not a bare UTC instant. "Today's premarket/afterhours earnings" is a claim
+      // about an ET SESSION, and at 23:12 ET the UTC date is already tomorrow — a reader handed
+      // `2026-08-21T03:12:00.000Z` has to infer which session that is. `as_of_session` and
+      // `as_of_weekday` remove the inference: premarket-vs-afterhours reasoning is session
+      // reasoning, and the session after a Friday close is Monday.
+      const asOfSession = todayEtYmd();
       return normalizeUwEarnings({
-        as_of: new Date().toISOString(),
+        as_of: etStamp(Date.now()) ?? new Date().toISOString(),
+        as_of_session: asOfSession,
+        as_of_weekday: weekdayEt(asOfSession),
         premarket_count: premarket.length,
         afterhours_count: afterhours.length,
         premarket,
