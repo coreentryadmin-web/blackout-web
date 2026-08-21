@@ -78,8 +78,24 @@ export type HelixThermalSide = {
   gamma_posture?: CompareGammaPosture;
   /** Gamma side only — what that posture does to realized vol. */
   volatility_regime?: CompareVolatilityRegime;
-  /** Flow side only — the lookback the premiums were summed over. The tape defaults to 48h. */
+  /**
+   * Flow side only — the ANALYSED span of the prints summed, oldest to newest, in hours. This is
+   * EVIDENCE (the tape's own print timestamps), NOT the requested lookback. On an index name the
+   * 500-print limit binds long before the 168h window does — measured live 2026-08-20, a 168h /
+   * limit-500 request came back with 500 rows spanning 54 minutes — so reporting the request here
+   * let a model say "over the last 7 days SPX leads net premium" about under an hour of tape. The
+   * requested bound is an intent; only the prints are evidence. Null when no print carried a usable
+   * time (all ingest-stamped, or empty tape) — never zero. See window_hours_requested for the intent.
+   */
   window_hours?: number | null;
+  /** Flow side only — the REQUESTED lookback (intent), kept beside window_hours as provenance. */
+  window_hours_requested?: number | null;
+  /**
+   * Flow side only — TRUE when the print limit bound before the window did, so window_hours is a
+   * fraction of window_hours_requested. The tell that this population is "the most recent N prints",
+   * not "the whole requested window" — read it before quoting window_hours as a lookback.
+   */
+  window_limit_reached?: boolean | null;
   /** Gamma side only — when the underlying matrix was computed (NOT when this card was built). */
   matrix_asof?: string | null;
   /** Gamma side only — that matrix time as an ET wall-clock stamp. */
