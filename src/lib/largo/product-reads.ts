@@ -31,6 +31,7 @@ import {
   MIN_GRADED_SAMPLE_FOR_WIN_RATE,
 } from "@/features/helix/lib/helix-signal-outcome-summary";
 import { etStamp, etSessionDate } from "@/lib/largo/temporal/bar-session-date";
+import { sessionDateForTimestamp } from "@/lib/largo/helix-tape-analytics";
 import {
   helixTickerIdentity,
   tapeFreshness,
@@ -258,6 +259,7 @@ export async function helixSignalOutcomesForLargo(limit = 50) {
   try {
     const rows = await fetchRecentHelixSignalOutcomes(limit);
     const summary = summarizeHelixSignalOutcomes(rows);
+    const { bySignalType, ...summaryScalars } = summary;
     const ROWS_SHOWN = 20;
     const compact = rows.slice(0, ROWS_SHOWN).map((r) => ({
       ticker: r.ticker,
@@ -266,12 +268,23 @@ export async function helixSignalOutcomesForLargo(limit = 50) {
        *  "continued" is meaningless without it (a continued BEARISH firing means price FELL). */
       direction: r.direction,
       outcome: r.outcome,
+      /** The raw ledger timestamp (timestamptz text, carries +00) AND the ET SESSION it fired in.
+       *  fired_at alone forces the model to convert UTC->ET to know the session, and after
+       *  ~20:00 ET that conversion crosses a calendar day — the exact bare-instant trap C1 exists
+       *  to close. fired_session states it outright. */
       fired_at: r.fired_at,
+      fired_session: sessionDateForTimestamp(r.fired_at),
       price_at_fire: r.price_at_fire,
       price_1h: r.price_1h,
     }));
+    const nowMs = Date.now();
     return roundFloats({
       available: true,
+      // C1: the read's own ET stamp + session date. This payload previously carried NO as_of at
+      // all, so the ratchet's UTC-construction scan never flagged it, yet the model still had to
+      // guess "today" to reason about how recent a firing is.
+      as_of: etStamp(nowMs),
+      session_date: etSessionDate(nowMs),
       /** No silent caps: the summary is computed over every fetched row, the list is the newest
        *  ROWS_SHOWN of them. Without this the model reads a 40-sample rate beside 20 rows and
        *  has no way to know the two describe different populations. */
@@ -283,12 +296,28 @@ export async function helixSignalOutcomesForLargo(limit = 50) {
        *  grader's threshold either way), `pending` (not yet checkpointed at 1h). */
       outcome_values: ["continued", "reversed", "flat", "pending"],
       summary: {
-        ...summary,
+        // The internal camelCase `bySignalType` is re-projected below under model-facing snake_case
+        // names; strip it here so the payload carries one shape, not both.
+        ...summaryScalars,
         /** The honest name for winRatePct. `continued` is a DIRECTIONAL follow-through, not a
          *  closed trade, and `flat` is counted outside it — calling it a "win rate" invites the
          *  model to report the complement as losses when most of it never moved at all. */
         continuation_rate_pct: summary.winRatePct,
         min_graded_for_rate: MIN_GRADED_SAMPLE_FOR_WIN_RATE,
+        /** Per-signal-type follow-through — answers "which HELIX signal is more reliable,
+         *  split_flow or velocity_spike?" without hand-counting the capped `rows` list. Each type
+         *  carries its own denominator (`graded`), and `continuation_rate_pct` is null below
+         *  `min_graded_for_rate` — a per-type rate off a handful of fires is noise, not a verdict.
+         *  Counts across types sum to the aggregate. */
+        by_signal_type: bySignalType.map((t) => ({
+          signal_type: t.signal_type,
+          graded: t.gradedCount,
+          pending: t.pendingCount,
+          continued: t.continuedCount,
+          flat: t.flatCount,
+          reversed: t.reversedCount,
+          continuation_rate_pct: t.winRatePct,
+        })),
       },
     });
   } catch (e) {
@@ -595,7 +624,7 @@ export async function helixDerivedForLargo(
     // coincidence while the contents were entirely disjoint, and the top-print direction inverted
     // (SPY puts vs SPX calls). A bigger limit is still wanted, for the reason originally given: a
     // 50-print slice would under-report every stack and every spike.
-    const { helixTapeFetchOptions: derivedFetchOptions } = await import("@/lib/largo/helix-tape-analytics");
+    const { helixTapeFetchOptions: derivedFetchOptions, cappedList } = await import("@/lib/largo/helix-tape-analytics");
     const summary = await marketPlatform.flows.getFlowTapeSummary(
       derivedFetchOptions({
         ticker,
@@ -615,6 +644,8 @@ export async function helixDerivedForLargo(
       return {
         available: true,
         ticker: ticker?.toUpperCase() ?? null,
+        as_of: etStamp(nowMs),
+        session_date: etSessionDate(nowMs),
         prints_analyzed: 0,
         empty_reason: "no_prints_in_window",
         stacked_hits: [],
@@ -629,28 +660,55 @@ export async function helixDerivedForLargo(
     const velocity = detectVelocitySpikes(alerts, nowMs);
     const split = detectSplitFlow(alerts, nowMs);
 
+    // NO SILENT CAPS (rule 7). Each panel below is capped for payload size, but the cap was
+    // invisible: a model seeing 20 stacked_hits had no way to know 34 contracts were stacking, so
+    // "how many are stacking right now" answered with the DISPLAY limit as if it were the count.
+    // `cappedList` carries the true total + a truncated flag beside each list, the same discipline
+    // get_helix_signal_outcomes (rows_shown/rows_summarized) and get_helix_tape_analytics
+    // (expiry_concentration_truncated) already use.
+    const stackedHits = cappedList(stacks, 20);
+    const topPrints = cappedList(top.rows, 12);
+    const velocitySpikes = cappedList(velocity, 12);
+    const splitFlow = cappedList(split, 12);
+
     return roundFloats({
       available: true,
       ticker: ticker?.toUpperCase() ?? null,
-      as_of: new Date(nowMs).toISOString(),
+      // C1: the ET stamp + session date, from the shared helpers — not a bare UTC ISO string.
+      // The file-level session-anchor ratchet counts product-reads.ts as anchored because
+      // helixTapeAnalyticsForLargo already calls etStamp, so this payload's UTC-only stamp slipped
+      // through — a real per-payload gap the file-granular scan cannot see. `session_date` is the
+      // session every derivation here is implicitly "now" for; after ~20:00 ET the UTC date is
+      // already tomorrow, so a model resolving today from as_of alone is a session ahead.
+      as_of: etStamp(nowMs),
+      session_date: etSessionDate(nowMs),
       prints_analyzed: alerts.length,
       hits_window_min: HELIX_STRIKE_HITS_WINDOW_MIN,
 
-      /** STACKED HITS — repeated prints on the SAME contract (strike + expiry + side). */
-      stacked_hits: stacks.slice(0, 20),
+      /** STACKED HITS — repeated prints on the SAME contract (strike + expiry + side). `_total` is
+       *  how many stacked contracts exist; `_truncated` says the list is a top-N slice of them. */
+      stacked_hits: stackedHits.items,
+      stacked_hits_total: stackedHits.total,
+      stacked_hits_truncated: stackedHits.truncated,
 
       /** TOP PRINTS — the conviction-scored leaders. `mode` says which ranking is in force, and
        *  `session_fallback` flags that every row is OUTSIDE the rolling window, i.e. these are
        *  stale session leaders rather than live conviction. Reporting them as live would be wrong. */
-      top_prints: top.rows.slice(0, 12),
+      top_prints: topPrints.items,
+      top_prints_total: topPrints.total,
+      top_prints_truncated: topPrints.truncated,
       top_prints_mode: top.mode,
       top_prints_session_fallback: top.sessionFallback,
 
       /** VELOCITY RADAR — prints per 15min vs the prior window, per ticker. */
-      velocity_spikes: velocity.slice(0, 12),
+      velocity_spikes: velocitySpikes.items,
+      velocity_spikes_total: velocitySpikes.total,
+      velocity_spikes_truncated: velocitySpikes.truncated,
 
       /** SPLIT FLOW — opposing call AND put premium on the same name inside 30 min. */
-      split_flow: split.slice(0, 12),
+      split_flow: splitFlow.items,
+      split_flow_total: splitFlow.total,
+      split_flow_truncated: splitFlow.truncated,
     });
   } catch (e) {
     // C3. Arrays stay present and EMPTY so an existing consumer does not crash, but `available`
