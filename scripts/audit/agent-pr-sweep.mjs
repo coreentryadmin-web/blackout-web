@@ -270,9 +270,30 @@ function trialMergeSet(rows) {
   let acc = base;
   const taken = [];
   const blocked = [];
+  const resolvable = [];
   for (const r of rows) {
     const head = git(["rev-parse", `origin/${r.branch}`]);
     if (!head) { blocked.push({ number: r.number, why: "ref not fetched — cannot test, excluded" }); continue; }
+    // MECHANICALLY-RESOLVABLE CONFLICTS ARE NOT BLOCKERS.
+    //
+    // `docs/audit/FINDINGS.md` collides between essentially every pair of agent PRs by construction:
+    // every lane appends at the same anchor. `_COMMON.md` rule 4 already says this is not anyone's
+    // bug, and `scripts/audit/findings-merge-resolve.mjs` already resolves it deterministically —
+    // it was simply never run INSIDE the release pass, only beside it.
+    //
+    // Measured 2026-08-21 across the open agent set, by trial-merging every pair:
+    //
+    //     conflicting pairs: 331
+    //       297  docs/audit/FINDINGS.md      <- 7x the next entry
+    //        40  src/lib/largo/tool-defs.ts
+    //         3  src/lib/largo/product-reads.ts
+    //
+    // Treating a FINDINGS-only conflict as a blocker took the releasable set from 19 to 2 and sent
+    // lanes into rebases that resolved nothing — the underlying merges re-broke the same file, so
+    // the conflict count went UP after nineteen rebases. Excluding it is not optimism; the resolver
+    // runs on the way in and its output is asserted by `findings-hygiene.test.ts`.
+    const conflictFiles = (out) =>
+      out.split("\n").filter((l) => l.startsWith("CONFLICT")).map((l) => (l.includes(" in ") ? l.split(" in ").pop().trim() : l));
     const tree = git(["merge-tree", "--write-tree", acc, head]);
     if (tree) {
       const commit = git(["commit-tree", tree.split("\n")[0], "-p", base, "-m", "trial"]);
@@ -280,10 +301,45 @@ function trialMergeSet(rows) {
       acc = commit;
       taken.push(r.number);
     } else {
-      blocked.push({ number: r.number, why: taken.length ? "conflicts with an earlier PR in this set" : "does not merge onto main" });
+      // Re-run to capture WHICH files conflicted; merge-tree prints them on failure.
+      const detail = gitAllowFail(["merge-tree", "--write-tree", acc, head]);
+      const files = conflictFiles(detail || "");
+      const onlyFindings = files.length > 0 && files.every((f) => f.startsWith("docs/"));
+      if (onlyFindings) {
+        // ADVISORY ONLY — deliberately NOT added to `taken`.
+        //
+        // The first version of this counted a docs-only conflict as releasable. Measured against
+        // the real queue, that was wrong in the UNSAFE direction, twice over:
+        //   - of 15 so classified, the resolver cleanly fixed 9; THREE needed a human, because the
+        //     same FINDINGS entry had been edited on both sides and `findings-merge-resolve.mjs`
+        //     correctly refuses that rather than guessing;
+        //   - and THREE were not docs-only at all — #2490, #2480 and #2446 conflict in
+        //     `run-tool.ts`, `tool-defs.ts` and `product-reads.test.ts`. Parsing merge-tree output
+        //     against the ACCUMULATED tree does not reproduce what a rebase onto main reports.
+        //
+        // A release tool may under-report what is safe. It must never over-report it. So this is a
+        // hint about where to spend effort — "these are probably cheap to unblock" — and the
+        // verification is the actual rebase, which is the only thing that knows.
+        resolvable.push({ number: r.number, files });
+      } else {
+        blocked.push({
+          number: r.number,
+          files,
+          why: taken.length ? "conflicts with an earlier PR in this set" : "does not merge onto main",
+        });
+      }
     }
   }
-  return { taken, blocked };
+  return { taken, blocked, resolvable };
+}
+
+/** Like git(), but returns stdout even on a non-zero exit — merge-tree reports conflicts that way. */
+function gitAllowFail(args) {
+  try {
+    return execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+  } catch (e) {
+    return e.stdout ? String(e.stdout) : "";
+  }
 }
 
 /** Run a git command, returning trimmed stdout, or null if it failed. */
@@ -436,6 +492,14 @@ function main() {
           const trial = trialMergeSet(jam);
           if (trial) {
             console.log(`\n  SAFE TO RELEASE TOGETHER: ${trial.taken.length ? trial.taken.map((n) => "#" + n).join(", ") : "(none — release one at a time)"}`);
+            if (trial.resolvable && trial.resolvable.length) {
+              console.log(`\n  LIKELY CHEAP TO UNBLOCK (${trial.resolvable.length}) — conflict appears docs-only:`);
+              console.log(`      ${trial.resolvable.map((r) => "#" + r.number).join(", ")}`);
+              console.log(`    NOT counted as releasable. Verify each by rebasing onto main and running`);
+              console.log(`    findings-merge-resolve.mjs. Measured on a real queue: ~9 in 15 resolve cleanly,`);
+              console.log(`    some need a human (same entry edited both sides), and some turn out not to be`);
+              console.log(`    docs-only at all. The rebase is the authority, not this line.`);
+            }
             if (trial.taken.length !== safe.length) {
               console.log(`    (file-overlap heuristic said ${safe.length}; trial merge says ${trial.taken.length} — git is the authority)`);
             }
