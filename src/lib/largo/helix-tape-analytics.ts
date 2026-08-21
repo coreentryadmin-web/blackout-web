@@ -1,6 +1,7 @@
 import type { FlowAlert } from "@/lib/api";
 import { executionRouteKey, daysToExpiry } from "@/features/helix/lib/helix-flow-format";
 import { HELIX_NET_PREMIUM_LEADERS_LIMIT } from "@/features/helix/lib/helix-strike-leaders";
+import { WHALE_PRINT_PREMIUM } from "@/features/helix/lib/helix-flow-limits";
 import { etStamp } from "@/lib/largo/temporal/bar-session-date";
 import { flowEventTimeMs } from "@/lib/flow-timestamp";
 
@@ -48,7 +49,12 @@ export function netPremiumLeaders(alerts: FlowAlert[], limit = HELIX_NET_PREMIUM
       puts,
       net: calls - puts,
       total: calls + puts,
-      call_pct: calls + puts > 0 ? Math.round((calls / (calls + puts)) * 100) : 50,
+      // null, not 50. The panel's `: 50` is a RENDERING fallback — it centres a bar that has
+      // nothing to show. Handed to a model it becomes a claim: "this name's flow is balanced
+      // 50/50", asserted about a name whose premium was never measured. A ticker reaches this
+      // map on any print, but only CALL/PUT prints add premium (gap-#6), so a name whose prints
+      // are all typeless lands here with total 0 — live-reachable, not hypothetical.
+      call_pct: calls + puts > 0 ? Math.round((calls / (calls + puts)) * 100) : null,
     }))
     .sort((a, b) => b.total - a.total)
     .slice(0, limit);
@@ -155,7 +161,21 @@ export function expiryConcentration(alerts: FlowAlert[], limit = 8, now: Date = 
     .slice(0, limit);
 }
 
-/** Session-wide call/put skew from the tape. */
+/**
+ * Session-wide call/put skew from the tape.
+ *
+ * `call_pct` is null when nothing measurable is on the tape, NEVER 50. An empty or quiet window
+ * is routine — the last-1h read at 00:47 ET on 2026-08-20 returned zero prints — and 50 reads to
+ * a model as a measured, perfectly balanced tape rather than as the absence of a measurement.
+ * The same substitution of a default for an absent value produced the peer-relative-strength
+ * defect (FINDINGS 2026-08-19), where a verdict was manufactured out of two nulls.
+ *
+ * `whale_prints` and `total_premium` count DIFFERENT populations on purpose: a whale is any
+ * print at or above the threshold, while premium is only summed for CALL/PUT prints (gap-#6
+ * leaves typeless prints out of both sides). That is why `{whale_prints: 1, total_premium: 0}`
+ * is reachable and is not a contradiction — `typeless_prints` is reported so the gap between the
+ * two counts is explainable from the payload instead of looking like a broken sum.
+ */
 export function sessionFlowSkew(alerts: FlowAlert[]) {
   const calls = alerts.filter((a) => a.option_type === "CALL").reduce((s, a) => s + a.premium, 0);
   const puts = alerts.filter((a) => a.option_type === "PUT").reduce((s, a) => s + a.premium, 0);
@@ -165,8 +185,13 @@ export function sessionFlowSkew(alerts: FlowAlert[]) {
     call_premium: calls,
     put_premium: puts,
     total_premium: total,
-    call_pct: total > 0 ? Math.round((calls / total) * 100) : 50,
-    whale_prints: alerts.filter((a) => a.premium >= 1_000_000).length,
+    call_pct: total > 0 ? Math.round((calls / total) * 100) : null,
+    whale_prints: alerts.filter((a) => a.premium >= WHALE_PRINT_PREMIUM).length,
+    /** Prints that are neither CALL nor PUT — counted in alert_count/whale_prints but in
+     *  neither premium leg, so this is the reconciliation between the two. */
+    typeless_prints: alerts.filter(
+      (a) => a.option_type !== "CALL" && a.option_type !== "PUT"
+    ).length,
   };
 }
 

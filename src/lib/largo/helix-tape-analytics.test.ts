@@ -268,6 +268,54 @@ test("an empty tape reports a null span, not a zero-hour one", () => {
   assert.equal(w.limit_reached, false);
 });
 
+// ── Absence-vs-measurement guards ────────────────────────────────────────────
+// An unmeasurable skew must never reach the model as a measured 50/50 balance. Same defect
+// class as the peer-relative-strength verdict manufactured from two nulls (FINDINGS 2026-08-19).
+
+test("sessionFlowSkew reports call_pct null on an empty tape, never 50", () => {
+  const s = sessionFlowSkew([]);
+  assert.equal(s.call_pct, null);
+  assert.equal(s.alert_count, 0);
+  assert.equal(s.total_premium, 0);
+});
+
+test("sessionFlowSkew reports call_pct null when every print is typeless", () => {
+  // Live-reachable: gap-#6 keeps typeless prints out of both premium legs.
+  const s = sessionFlowSkew([
+    { ...atPrint("2026-08-20T20:00:00Z", 3_000_000), option_type: "UNKNOWN" } as FlowAlert,
+  ]);
+  assert.equal(s.call_pct, null);
+  assert.equal(s.total_premium, 0);
+});
+
+test("typeless_prints reconciles whale_prints against total_premium", () => {
+  // A $3M typeless print IS a whale and is NOT premium — the payload must let a reader see why.
+  const s = sessionFlowSkew([
+    { ...atPrint("2026-08-20T20:00:00Z", 3_000_000), option_type: "UNKNOWN" } as FlowAlert,
+  ]);
+  assert.equal(s.whale_prints, 1);
+  assert.equal(s.total_premium, 0);
+  assert.equal(s.typeless_prints, 1);
+});
+
+test("a real skew is still reported as a number", () => {
+  const s = sessionFlowSkew([
+    { ...atPrint("2026-08-20T20:00:00Z", 750_000), option_type: "CALL" } as FlowAlert,
+    { ...atPrint("2026-08-20T20:01:00Z", 250_000), option_type: "PUT" } as FlowAlert,
+  ]);
+  assert.equal(s.call_pct, 75);
+  assert.equal(s.typeless_prints, 0);
+});
+
+test("netPremiumLeaders reports call_pct null for a ticker with no measurable premium", () => {
+  const rows = netPremiumLeaders([
+    { ...atPrint("2026-08-20T20:00:00Z", 2_000_000), ticker: "ZZZ", option_type: "UNKNOWN" } as FlowAlert,
+  ]);
+  assert.equal(rows[0]?.ticker, "ZZZ");
+  assert.equal(rows[0]?.total, 0);
+  assert.equal(rows[0]?.call_pct, null);
+});
+
 test("an ingest-stamped print never dates the tape — it is not a print time", () => {
   // Live 2026-08-20: 438 of 500 prints were tape_time_estimated. Reading alerted_at made the
   // tape look 282 minutes old against the desk's 309 — 27 minutes fresher than it was.

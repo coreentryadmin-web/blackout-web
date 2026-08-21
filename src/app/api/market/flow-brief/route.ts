@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { WHALE_PRINT_PREMIUM } from "@/features/helix/lib/helix-flow-limits";
 import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
 import { claudeEnabled } from "@/lib/ai-env";
 import { anthropicConfigured, anthropicText } from "@/lib/providers/anthropic";
@@ -50,7 +51,7 @@ function buildPrompt(alerts: FlowAlert[], darkPrints: NormalizedBlock[]): string
   const putPrem     = alerts.filter((a) => a.option_type === "PUT").reduce((s, a) => s + a.premium, 0);
   const total       = callPrem + putPrem;
   const callPct     = total > 0 ? Math.round((callPrem / total) * 100) : 50;
-  const whalePrints = alerts.filter((a) => a.premium >= 1_000_000).length;
+  const whalePrints = alerts.filter((a) => a.premium >= WHALE_PRINT_PREMIUM).length;
 
   // Highlight massive options flow ($15M+) — most notable signals
   const massiveFlows = alerts
