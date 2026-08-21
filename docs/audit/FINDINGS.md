@@ -2,7 +2,9 @@
 
 (Rebuilt 2026-07-13: the prior log was clobbered to an empty file by a squash-merge
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
-docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /## 2026-08-21 — [FINDING, P2 tooling/Meridian] Both live Meridian UI harnesses judged a micro-cap, and read a lost session as a product defect — FIXED
+docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
+
+## 2026-08-21 — [FINDING, P2 tooling/Meridian] Both live Meridian UI harnesses judged a micro-cap, and read a lost session as a product defect — FIXED
 
 > **kind:** `FINDING`
 
@@ -15,7 +17,9 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Evidence the guard works — it revealed defects, not just removed noise** | Before: 3 RED (all false), and the interaction audit never reached a populated panel. After: earnings-UI audit **12/12 GREEN, 0 console errors, no overflow**, every line naming its subject (`BABA earnings`) and cohort. And the interaction audit, reaching a populated Positioning panel for the FIRST time, immediately measured **real P2 overlaps it could never have seen on an empty micro-cap**: `"130.00" ∩ "130.00" 44x2px`, `"King node" ∩ "Gamma flip" 74x4px`, `"Gamma flip" ∩ "Put wall" 74x8px`, `"Thermal nodes" ∩ "Vector expected move" 10x9px`. **The false RED was masking real defects.** Those are logged separately and fixed on their own branch. |
 | **Fix** | New shared `scripts/audit/lib/meridian-earnings-cohort.mjs` — one derivation, because it was already wrong in two places. `--min-impact` (default `high`) selects the row via its own `impact-*` class; "no qualifying row" is HARNESS, never RED, because a cohort that could not be sampled is an UNKNOWN. Every result line carries `subject` and `cohort`. `low` deliberately yields the unfiltered selector rather than `:has(.impact-low)`, since "at least low" means every row and matching only the low tier would invert the flag and reinstate micro-cap-only sampling. |
 | **Regression guard** | `src/meridian-earnings-cohort.test.ts` (8 tests): the `high` default and its fallback-on-garbage, `medium` as a floor not an exact tier, `low` meaning every row, the selector never widening past earnings rows, the cohort label, the 401/403 split, an anchored status match (a 500 whose URL merely contains "401" stays a real failure), and empty/missing input. **Placed under `src/` on purpose** — `scripts/run-tests.mjs`, the command CI runs, walks `src/` only, so a test beside an audit lib never gates anything (`scripts/audit/lib/audit-identity.test.ts` is in that blind spot today). |
-| **Status** | FIXED. |## 2026-08-21 — [FINDING, P2 Largo/Meridian] The Largo pre-earnings pack dropped the reaction, its basis, and the can't-look signal — FIXED
+| **Status** | FIXED. |
+
+## 2026-08-21 — [FINDING, P2 Largo/Meridian] The Largo pre-earnings pack dropped the reaction, its basis, and the can't-look signal — FIXED
 
 > **kind:** `FINDING`
 
