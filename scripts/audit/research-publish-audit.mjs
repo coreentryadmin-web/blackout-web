@@ -80,19 +80,55 @@ function extractSessionDates(html) {
 }
 
 /**
- * The rendered ARTICLE, with scripts removed — the region the numeric checks must run against.
+ * The rendered article as VISIBLE TEXT — the region the numeric checks must run against.
  *
  * Scanning whole-page HTML for long floats or date-shaped strings sweeps up Next.js's inline
  * bundle and flight payload, which are full of both. That produces failures nobody can act on,
  * and a gate that cries wolf is a gate that gets ignored — so the checks are scoped to the prose
- * and the table a reader actually sees. Falls back to script-stripped HTML if the article element
- * is not found, rather than silently scanning nothing.
+ * and the table a reader actually sees.
+ *
+ * THIS RETURNS TEXT, NOT HTML, and that is the point. The first version stripped `<script>` blocks
+ * with `/<script[\s\S]*?<\/script>/gi` and scanned the remaining markup. CodeQL flagged it and was
+ * right on the merits, though not for the reason the alert implies: nothing here is rendered or
+ * evaluated, so there is no injection path — but `</script >` with a space is VALID HTML that the
+ * regex does not match, so a script block could survive intact and pollute the scan. That is a
+ * false-positive generator in the audit, which is the failure mode this function exists to prevent.
+ *
+ * Stripping tags to text removes the whole class rather than patching one regex: script and style
+ * CONTENT is dropped, tag attributes (which carry URLs full of digits and dates) are dropped, and
+ * what remains is what a reader actually sees — which is what the checks are asking about anyway.
  */
 function articleBody(html) {
-  const noScripts = html.replace(/<script[\s\S]*?<\/script>/gi, "");
-  const m = noScripts.match(/<article[\s\S]*?<\/article>/i);
-  return m ? m[0] : noScripts;
+  const scoped = html.match(/<article\b[\s\S]*?<\/article\s*>/i);
+  // No article element means the page is not what we think it is. Return empty rather than falling
+  // back to the whole document: the callers treat "nothing parsed" as HARNESS, which is the honest
+  // verdict, whereas scanning the raw page would manufacture findings from bundle contents.
+  if (!scoped) return "";
+  return scoped[0]
+    // Tolerant of whitespace before `>` and of attributes on the open tag, but correctness no
+    // longer depends on that — anything these miss is caught by the tag strip below.
+    .replace(/<(script|style|template)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, " ")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/\s+/g, " ");
 }
+
+/** Escape a string for literal use inside a RegExp. */
+function escapeRegExp(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * A ticker is a symbol, not a pattern.
+ *
+ * `--tickers=` is a command-line argument that was interpolated straight into a `new RegExp`.
+ * CodeQL called it regex injection; the practical harm is worse than the label suggests for an
+ * audit tool — `--tickers='.*'` builds a regex matching anything, so the page-loaded gate passes
+ * vacuously and every downstream check reports on a page that was never verified. A gate that
+ * silently accepts is more dangerous than one that errors, which is the principle this whole
+ * script is built on. So the input is validated to a real symbol shape AND escaped.
+ */
+const TICKER_SHAPE = /^[A-Z0-9][A-Z0-9.:-]{0,9}$/;
 
 /** Tickers linked from the hub — the audit follows the site's own list rather than a hardcoded one. */
 function tickersFromHub(html) {
@@ -106,20 +142,20 @@ async function auditHub() {
   const { status, html } = await fetchPage(HUB);
   if (status !== 200) {
     record("FAIL", "hub responds 200", `got ${status}`);
-    return [];
+    return { present: false, tickers: [] };
   }
   // PAGE-LOADED PROOF FIRST. Without it a 404 body, an error shell or an auth bounce would all
   // report "no ticker links found", which reads as a product defect when it is a harness failure.
   if (!/Dealer Gamma Levels by Ticker/i.test(html)) {
     record("HARNESS", "hub rendered its own H1", "page returned 200 but is not the hub — not judging its contents");
-    return [];
+    return { present: false, tickers: [] };
   }
   record("PASS", "hub rendered", "H1 present");
 
   const tickers = tickersFromHub(html);
   if (tickers.length === 0) record("FAIL", "hub links tickers", "no research links in the hub HTML");
   else record("PASS", "hub links tickers", `${tickers.length} linked`);
-  return tickers;
+  return { present: true, tickers };
 }
 
 async function auditTicker(ticker, today) {
@@ -137,7 +173,7 @@ async function auditTicker(ticker, today) {
     record("FAIL", `${ticker} responds`, `status ${status}`);
     return;
   }
-  if (!new RegExp(`${ticker} Dealer Gamma Levels`, "i").test(html)) {
+  if (!new RegExp(`${escapeRegExp(ticker)} Dealer Gamma Levels`, "i").test(html)) {
     record("HARNESS", `${ticker} rendered its own H1`, "200 but not the research page — contents not judged");
     return;
   }
@@ -184,11 +220,35 @@ async function main() {
   const today = todayEt();
   log(`Research publish audit — ${BASE} (ET today ${today})`);
 
-  const hubTickers = await auditHub();
+  const hub = await auditHub();
+  const hubTickers = hub.tickers;
+
+  // If the HUB itself is missing, the whole route family is absent — not deployed, or removed.
+  // Auditing individual tickers then produces a column of "404 — under the publish floor" lines,
+  // which is a statement about a THIN RAIL and would be false: the page does not exist for a
+  // completely different reason. Stop here and say which one it is.
+  if (!hub.present) {
+    log("\nSkipping ticker checks — the hub is absent, so a ticker 404 would not mean what it says.");
+    const fails = findings.filter((f) => f.verdict === "FAIL");
+    if (JSON_OUT) console.log(JSON.stringify({ base: BASE, today, findings, failed: fails.length }, null, 2));
+    else log(`\nRED — ${findings.length} checks, ${fails.length} failed (route family not present)`);
+    process.exit(1);
+  }
+
   const requested = flag("tickers");
-  const tickers = requested
+  const candidates = requested
     ? requested.split(",").map((t) => t.trim().toUpperCase()).filter(Boolean)
     : hubTickers.slice(0, 6);
+
+  // Reject anything that is not symbol-shaped, LOUDLY. Silently dropping it would run the audit
+  // over a smaller set than the operator asked for and still print GREEN — the same "the check did
+  // not run" mistake the HARNESS verdicts exist to prevent, just moved to the input.
+  const tickers = candidates.filter((t) => TICKER_SHAPE.test(t));
+  const rejected = candidates.filter((t) => !TICKER_SHAPE.test(t));
+  if (rejected.length > 0) {
+    console.error(`Refusing ${rejected.length} malformed ticker argument(s): ${rejected.join(", ")}`);
+    process.exit(2);
+  }
 
   for (const t of tickers) {
     // Sequential: this hits ISR renders that may each warm a cache, and a burst would measure
