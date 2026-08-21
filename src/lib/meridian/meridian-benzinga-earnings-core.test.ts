@@ -158,6 +158,41 @@ test("dualBeatRateFromPrints grades eps and revenue beats", () => {
   assert.equal(rates.eps_graded, 2);
   assert.equal(rates.revenue_graded, 2);
   assert.equal(rates.combined_graded, 4, "the pooled denominator is eps + revenue");
+  assert.equal(rates.prints_graded, 2, "…but only TWO prints produced it");
+});
+
+test("combined_graded counts READINGS; prints_graded counts PRINTS — and only one is renderable", () => {
+  // Measured live on NVDA 2026-08-21: the Print-history pillar read
+  //   "100% beat rate over 16 prints"
+  // against a name with EIGHT prints. combined_graded pools eps + revenue gradings, so a fully
+  // graded 8-print name reports 16. Correct as a denominator, false as a noun — a wrong statement
+  // about the sample size, which is precisely what carrying the cohort was meant to prevent.
+  const eight = Array.from({ length: 8 }, (_, i) => ({
+    report_date: `2026-0${(i % 8) + 1}-01`,
+    beat: true,
+    revenue_surprise_pct: 2,
+    surprise_pct: 5,
+  })) as never[];
+  const r = dualBeatRateFromPrints(eight);
+  assert.equal(r.eps_graded, 8);
+  assert.equal(r.revenue_graded, 8);
+  assert.equal(r.combined_graded, 16, "16 readings — the honest denominator of the pooled rate");
+  assert.equal(r.prints_graded, 8, "8 prints — the honest thing to SHOW a reader");
+  assert.notEqual(r.combined_graded, r.prints_graded, "conflating these is the defect");
+});
+
+test("prints_graded counts a print graded on EITHER measure, not only on both", () => {
+  // A print with revenue but no EPS still happened, and still informs the revenue rate.
+  const r = dualBeatRateFromPrints([
+    { report_date: "2026-05-01", beat: true, revenue_surprise_pct: 1, surprise_pct: 1 },
+    { report_date: "2026-02-01", beat: null, revenue_surprise_pct: -1, surprise_pct: null },
+    { report_date: "2025-11-01", beat: false, revenue_surprise_pct: null, surprise_pct: -1 },
+    { report_date: "2025-08-01", beat: null, revenue_surprise_pct: null, surprise_pct: null },
+  ] as never[]);
+  assert.equal(r.eps_graded, 2);
+  assert.equal(r.revenue_graded, 2);
+  assert.equal(r.combined_graded, 4, "4 readings");
+  assert.equal(r.prints_graded, 3, "3 prints contributed something; the 4th contributed nothing");
 });
 
 test("every rate arrives with the cohort it came from — a rate alone is not a fact", () => {

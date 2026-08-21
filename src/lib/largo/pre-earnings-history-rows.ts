@@ -33,7 +33,13 @@ export type PrintHistoryInput = {
   next_day_change_pct?: number | null;
   reaction_basis?: "bmo_session" | "amc_next_session" | "assumed_report_session" | null;
   reaction_pct?: number | null;
-  reaction_measure?: "session_open_to_close" | "prior_close_to_close" | null;
+  reaction_measure?:
+    | "session_open_to_close"
+    | "prior_close_to_close"
+    | "session_open_to_last"
+    | "prior_close_to_last"
+    | null;
+  reaction_settled?: boolean | null;
 };
 
 export type PreEarningsHistoryRow = {
@@ -47,7 +53,25 @@ export type PreEarningsHistoryRow = {
    * session's close; `session_change_pct` below cannot contain that gap and is not a substitute.
    */
   reaction_pct: number | null;
-  reaction_measure: "session_open_to_close" | "prior_close_to_close" | null;
+  /**
+   * How `reaction_pct` was measured. A `_to_last` value means the anchor session was STILL OPEN
+   * when this was read — the far end is the last trade, not a close, and the number is still
+   * moving. Measured live on 2026-08-21 at 09:46 ET, today's BMO prints came back labelled
+   * `session_open_to_close` sixteen minutes into a session closing at 16:00, matching Polygon's
+   * partial daily bar exactly; one of them moved half a point between two reads a minute apart.
+   */
+  reaction_measure:
+    | "session_open_to_close"
+    | "prior_close_to_close"
+    | "session_open_to_last"
+    | "prior_close_to_last"
+    | null;
+  /**
+   * False while the anchor session is open. Carried as a BOOLEAN as well as in the measure so a
+   * model does not have to know which two of four enum values mean "final" before deciding
+   * whether a number is safe to compare against settled history.
+   */
+  reaction_settled: boolean | null;
   /**
    * The ANCHORING session's own open→close. Equal to `reaction_pct` for a pre-open print. For a
    * post-close print it is the intraday drift AFTER the gap — a real quantity, but not the
@@ -97,6 +121,7 @@ export function toPreEarningsHistoryRows(
     expected_move_pct: p.expected_move_pct ?? null,
     reaction_pct: p.reaction_pct ?? null,
     reaction_measure: p.reaction_measure ?? null,
+    reaction_settled: p.reaction_settled ?? null,
     session_change_pct: p.session_change_pct ?? null,
     next_day_change_pct: p.next_day_change_pct ?? null,
     reaction_basis: p.reaction_basis ?? null,
