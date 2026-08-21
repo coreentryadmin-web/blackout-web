@@ -67,6 +67,21 @@ export type FlowTapeSummary = {
   strike_stacks: FlowStrikeStack[];
   /** Rolling lookback applied to this summary (hours). */
   window_hours?: number;
+  /**
+   * Call/put premium skew over the prints in THIS pull — computed once, server-side, so a
+   * consumer never hand-sums the (capped, order-dependent) `recent` list and gets a different
+   * number each time. It is scoped to this pull's population (`count` rows, `window_hours`,
+   * ordering), NOT the session-wide skew: a small premium-ordered slice can read opposite to the
+   * full member tape (measured 2026-08-21: a 50-row pull read 34% call while the full session read
+   * 60%). For the canonical session-wide skew use get_helix_tape_analytics' `session` block.
+   */
+  pull_skew?: {
+    call_pct: number | null;
+    call_premium: number;
+    put_premium: number;
+    total_premium: number;
+    prints: number;
+  };
 };
 
 export type NightHawkEditionSummary = {
