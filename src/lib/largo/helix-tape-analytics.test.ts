@@ -6,6 +6,7 @@ import {
   routeBreakdown,
   expiryConcentration,
   sessionFlowSkew,
+  cappedList,
 } from "./helix-tape-analytics";
 
 const alerts: FlowAlert[] = [
@@ -72,6 +73,38 @@ test("sessionFlowSkew computes call pct", () => {
   const skew = sessionFlowSkew(alerts);
   assert.equal(skew.alert_count, 3);
   assert.ok(skew.call_pct >= 50 && skew.call_pct <= 100);
+});
+
+// ── No silent caps (rule 7) ──────────────────────────────────────────────────
+// A capped list must carry the TRUE total, so a 20-of-34 slice can never read as the whole set —
+// the get_helix_derived panels were `.slice()`d with no total, which reads a display limit as a
+// count ("how many are stacking?" → 20 when 34 were).
+test("cappedList: truncates and reports the true total", () => {
+  const c = cappedList(Array.from({ length: 34 }, (_, i) => i), 20);
+  assert.equal(c.items.length, 20);
+  assert.equal(c.total, 34, "the total is the count BEFORE the cap");
+  assert.equal(c.truncated, true);
+  assert.equal(c.items[0], 0, "keeps the TOP n, in order");
+});
+
+test("cappedList: a list within the cap is not marked truncated", () => {
+  const c = cappedList([1, 2, 3], 20);
+  assert.equal(c.items.length, 3);
+  assert.equal(c.total, 3);
+  assert.equal(c.truncated, false);
+});
+
+test("cappedList: exactly at the cap is not truncated (boundary)", () => {
+  const c = cappedList([1, 2, 3, 4, 5], 5);
+  assert.equal(c.truncated, false, "total === cap is complete, not truncated");
+  assert.equal(c.total, 5);
+});
+
+test("cappedList: n <= 0 means no cap, and total is honest either way", () => {
+  const c = cappedList([1, 2, 3], 0);
+  assert.equal(c.items.length, 3);
+  assert.equal(c.truncated, false);
+  assert.equal(c.total, 3);
 });
 
 // ── Expiry horizon / session-anchor guards ───────────────────────────────────

@@ -33,6 +33,27 @@ function dteOf(a: FlowAlert, now: Date): number {
   return a.dte ?? daysToExpiry(a.expiry, now);
 }
 
+/**
+ * Cap a list for a payload WITHOUT hiding that it was capped — the "no silent caps" contract
+ * (rule 7) as a reusable shape. Returns the top `n` items alongside the TRUE `total` and a
+ * `truncated` flag, so a model can never read a 20-of-34 slice as the whole set. `n <= 0` is
+ * treated as "no cap".
+ *
+ * This is the same discipline get_helix_signal_outcomes already applies with rows_shown/
+ * rows_summarized and get_helix_tape_analytics with expiry_concentration_truncated — factored out
+ * so the four get_helix_derived panels (which were each `.slice()`d with no total) can adopt it
+ * identically and be unit-tested, which the inline `.slice()` in product-reads.ts could not be
+ * (that module reaches `server-only`).
+ */
+export function cappedList<T>(
+  items: readonly T[],
+  n: number
+): { items: T[]; total: number; truncated: boolean } {
+  const total = items.length;
+  const cap = n > 0 ? n : total;
+  return { items: items.slice(0, cap), total, truncated: total > cap };
+}
+
 /** Net-premium leaderboard — same aggregation as HELIX NetPremiumLeaderboard panel. */
 export function netPremiumLeaders(alerts: FlowAlert[], limit = HELIX_NET_PREMIUM_LEADERS_LIMIT) {
   const map = new Map<string, { calls: number; puts: number }>();

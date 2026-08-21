@@ -4,6 +4,22 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-21 — [FINDING, P2 Helix] get_helix_derived capped four panels with no total — the display limit read as the count — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `get_helix_derived` returns `stacked_hits` (`.slice(0,20)`), `top_prints` (`.slice(0,12)`), `velocity_spikes` (`.slice(0,12)`) and `split_flow` (`.slice(0,12)`) with **no field carrying the true count**. A member asking "how many contracts are stacking right now?" gets the DISPLAY limit (20) as if it were the answer, even when 34 contracts are stacking. Silent truncation reads as completeness. |
+| **Root cause** | The lists were sliced inline in `product-reads.ts:helixDerivedForLargo` with the cap as the only surviving number. This is exactly rule 7 ("no silent caps") — the same class the lane already closed elsewhere with `rows_shown`/`rows_summarized` on `get_helix_signal_outcomes` and `expiry_concentration_truncated` on `get_helix_tape_analytics`. Those tools disclose their caps; `get_helix_derived` did not. |
+| **Why it wasn't caught earlier** | No unit test could reach it: `product-reads.ts` imports `server-only`, and the slicing was inline literals, not a pure function — the same untestability that has repeatedly hidden selection/shape defects in this module (it is why `helixTapeFetchOptions` was extracted). The panels "work": a fluent answer comes back off 20 rows and nothing signals that 14 were dropped. |
+| **Blast radius** | All four `get_helix_derived` panels, on every call (whole-market and per-ticker). The caps bind precisely when the tape is busy — an active SPX session is exactly when >20 contracts stack and >12 names spike, i.e. the truncation is worst when the member most needs the real count. |
+| **Fix** | `cappedList(items, n)` in `helix-tape-analytics.ts` (pure, unit-tested) returns `{ items, total, truncated }`. `helixDerivedForLargo` now emits `<panel>_total` and `<panel>_truncated` beside each list (`stacked_hits_total`/`stacked_hits_truncated`, etc.), mirroring the existing `top_prints_mode`/`top_prints_session_fallback` sibling-field convention. Tool-def updated to instruct the model to read `_total`/`_truncated` and say "the top N of M" rather than quoting the shown length as the count. |
+| **What was deliberately NOT changed** | The cap sizes (20/12/12/12) are unchanged — they are payload-size limits, and the fix is to DISCLOSE them, not raise them. `cappedList` treats `n <= 0` as "no cap" so a future uncapped caller is honest by default. |
+| **Regression guard** | 4 tests in `helix-tape-analytics.test.ts`: truncates while reporting the true total, keeps the top-n in order, the at-cap boundary is not truncated, and `n <= 0` means no cap. |
+| **Gates on Node 20.20.2** | `npx tsc --noEmit` clean · `helix-tape-analytics.test.ts` 48/48. |
+| **Status** | FIXED — this PR. Not yet live-verified (held by the pure-helper tests; the `_total` fields must be re-read against a busy RTH tape where a panel actually truncates). |
+
 ## 2026-08-21 — [FINDING, P1 X marketing] `X_MARKETING_POSTS_PAUSED` did not stop all posting — a second publisher bypassed every gate — FIXED
 
 > **kind:** `FINDING`
