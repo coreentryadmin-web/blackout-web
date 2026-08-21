@@ -643,10 +643,28 @@ async function composeCortexSessionOverview(): Promise<BieComposed> {
  * session (a committed play or a logged skip is the WHY of record and always wins),
  * live composition otherwise; ticker-less questions get the session overview.
  */
-export async function composeCortexRead(ticker: string | null, question: string): Promise<BieComposed> {
+export async function composeCortexRead(
+  ticker: string | null,
+  question: string,
+  sessionDate?: string,
+): Promise<BieComposed> {
   if (!ticker) return composeCortexSessionOverview();
-  const pinned = await readCortexForPlay(ticker);
+  // sessionDate lets a member ask "why was X committed on 2026-08-20" — the frozen
+  // entry_context.cortex of a PAST play, the WHY of record. Without it this reads today only.
+  const pinned = await readCortexForPlay(ticker, sessionDate);
   if (pinned) return pinned;
+  // No pinned row for that ticker (or that DATE): a live "what would Cortex say now" only makes
+  // sense for today. For an explicit past date with no row, say so rather than answering live.
+  if (sessionDate) {
+    return {
+      answer:
+        `No 0DTE Command play of record for ${ticker.toUpperCase()} on ${sessionDate} — the scanner ` +
+        `either never committed it that session or the ledger has no row. There is no pinned Cortex ` +
+        `evidence to explain, and a live read would describe TODAY, not ${sessionDate}.`,
+      context: { mode: "unavailable", ticker: ticker.toUpperCase(), session_date: sessionDate, cortex: null, exit: null },
+      envelope: undefined,
+    };
+  }
   return composeCortexLive(ticker, directionFromQuestion(question));
 }
 
