@@ -429,3 +429,29 @@ removed) deployed** — so this is the "before" column for tomorrow's comparison
    everyone (~442 samples, 60s median) including SPX — no per-ticker bias there. On 0dte/weekly/
    monthly, SPX sits at 3845-3964 samples / 5s median while every other name is 64-750 with 35-70
    minute holes. That is the viewing-drives-density effect #2322 removes.
+
+## 2026-08-21 — Largo payload hygiene: both systemic classes measured to ZERO
+
+`scripts/audit/largo-payload-hygiene.mjs`, 28 tools, live upstream data, run through the REAL
+model-facing path (`roundResultForReading`, as `makeGuardedToolRunner` applies it).
+
+| class | before | after | fixed by |
+|---|---|---|---|
+| `bare_epoch` (a timestamp with no readable date on the same object) | 60 | **0** | #2418 |
+| `unrounded_float` (more decimals than any real measurement) | 547 | **0** | #2419 |
+
+`21/21 SCANNED tools clean · 0 flagged leaves · 7 EMPTY · 0 ERRORED`. The 7 EMPTY are off-hours
+tools with genuinely no data (post-close); they are reported as UNKNOWN and are NOT counted as
+passes — an empty payload scans clean by construction, which is the failure this harness exists to
+catch and once committed itself.
+
+**Scope of the claim.** This runs the real code path against live upstreams, so it proves the fixes
+work. It does not prove members are receiving them — that is the deploy, which was still rolling ECS
+when this ran. The separate answer-level check (`scratch/largo-dated-close-probe.mjs`, baseline
+**1/5** dated closes correct) hits the live site and is still outstanding.
+
+**Harness correction made in the same run.** The scanner previously called `runLargoTool` directly,
+which bypasses the guarded runner — so it was measuring a payload no model ever sees. It would have
+kept reporting hundreds of already-rounded floats as violations, and could not have verified #2419
+at all. It now mirrors the real path and refuses to run if it cannot resolve the rounding function,
+rather than silently scanning the raw surface again.

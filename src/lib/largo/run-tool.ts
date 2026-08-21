@@ -1188,6 +1188,13 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       return readPolygon(String(input.endpoint ?? ""), p);
     }
 
+    case "get_cross_product_read": {
+      // Injected executor rather than a direct import: the contract module would otherwise import
+      // this file back (cycle), and injection lets the fan-out be tested with no providers.
+      const { crossProductRead } = await import("@/lib/largo/contract/cross-product-read");
+      return crossProductRead(ticker, (name, toolInput) => runLargoTool(name, toolInput, userId));
+    }
+
     case "get_vector_pulse": {
       const { vectorPulseForLargo } = await import("@/lib/largo/product-reads");
       return vectorPulseForLargo(ticker, typeof input.horizon === "string" ? input.horizon : "all");

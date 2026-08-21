@@ -24,6 +24,17 @@
 import { classifyResult, countNumericLeaves, scanPayload, summarize } from "./lib/payload-hygiene.mjs";
 import { resolveToolSelection } from "./lib/tool-selection.mjs";
 
+// MEASURE WHAT THE MODEL ACTUALLY RECEIVES, not what runLargoTool returns.
+//
+// The model never sees a raw tool result: every call goes through makeGuardedToolRunner, which
+// applies roundResultForReading at the boundary where data stops being computed with and starts
+// being read (#2419). This harness called runLargoTool DIRECTLY, so it was scanning a payload that
+// no model ever sees — it would have kept reporting hundreds of unrounded floats that are rounded
+// by the time they reach the reader, and it could not verify the rounding fix at all.
+//
+// A scanner that measures the wrong surface is worse than no scanner, because its number looks
+// authoritative. So the harness now mirrors the real path.
+
 const arg = (k, d) => {
   const hit = process.argv.find((a) => a.startsWith(`--${k}=`));
   return hit ? hit.slice(k.length + 3) : d;
@@ -123,6 +134,16 @@ const TOOLS = [
 
 // tsx's CJS interop puts the exports under `default` on some resolution paths and at the top level
 // on others, so take whichever one actually carries the function rather than assuming a shape.
+const roundMod = await import(
+  new URL("../../src/lib/largo/core/round-for-reading.ts", import.meta.url).pathname
+);
+const roundResultForReading =
+  roundMod.roundResultForReading ?? roundMod.default?.roundResultForReading;
+if (typeof roundResultForReading !== "function") {
+  console.error("could not resolve roundResultForReading — refusing to scan the wrong surface");
+  process.exit(2);
+}
+
 const mod = await import(new URL("../../src/lib/largo/run-tool.ts", import.meta.url).pathname);
 const runLargoTool = mod.runLargoTool ?? mod.default?.runLargoTool;
 if (typeof runLargoTool !== "function") {
@@ -179,12 +200,17 @@ for (const [name, input] of SELECTED) {
   const label = `${name}(${Object.values(input).join(",") || "-"})`;
   const t0 = Date.now();
   try {
-    const result = await Promise.race([
+    // BOTH guards are wanted and they compose in this order. The timeout race stops one hung tool
+    // stalling the whole audit; roundResultForReading is the same transform makeGuardedToolRunner
+    // applies before the model sees anything — without it this scanner measures a surface no model
+    // ever reads, and reports precision defects the guarded runner has already removed.
+    const raw = await Promise.race([
       runLargoTool(name, input, "payload-hygiene-audit"),
       new Promise((_, reject) =>
         setTimeout(() => reject(new Error(`TIMEOUT after ${TIMEOUT_MS / 1000}s`)), TIMEOUT_MS).unref()
       ),
     ]);
+    const result = roundResultForReading(raw);
     const { findings, truncated } = scanPayload(result);
     // A payload with (almost) no numbers in it did not really run — placeholder creds, a refused
     // host, an empty upstream. It scans clean by construction, so it must NOT be counted as clean.

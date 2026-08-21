@@ -17,6 +17,7 @@ import {
   pushPinSample,
   type PinStabilitySample,
 } from "@/features/spx/lib/spx-pin-stability";
+import { isTradingDayEt } from "@/features/nighthawk/lib/session";
 
 /** Monte-Carlo overlay summary — the truer (multi-humped) distribution beside the analytic base. */
 export type PinMonteCarlo = {
@@ -104,9 +105,18 @@ export async function buildSpxPinForecast(): Promise<SpxPinForecast> {
   // because that strike's options expire at the bell. A ladder from a future expiry has no such
   // force acting today, so a pin computed from it is not a weaker forecast — it is a different
   // quantity wearing this one's label. Better to say "no 0DTE today" than to answer confidently.
+  //
+  // `loadCurrentChainContracts` NEVER THROWS — it returns [] on an unconfigured Polygon key, a
+  // 429/5xx, a fetch timeout, and an unresolvable options root alike (its own contract says so).
+  // So `contracts.length === 0` cannot by itself distinguish "nothing expires today" from "we
+  // never got a chain", and SPX has a 0DTE expiry on EVERY trading day. `chainLive` keeps that
+  // distinction: it is true when the raw chain came back with ANY expiry, which proves the fetch
+  // succeeded even if nothing matches today.
   let contracts: PinContract[] = [];
+  let chainLive = false;
   if (spot > 0) {
     const chain = (await loadCurrentChainContracts("SPX", spot).catch(() => [])) as PinContract[];
+    chainLive = chain.length > 0;
     contracts = chain.filter((c) => c.expiry === sessionYmd);
   }
 
@@ -118,7 +128,20 @@ export async function buildSpxPinForecast(): Promise<SpxPinForecast> {
   // unavailable, but only one of them resolves by waiting — the core's default copy says
   // "Collecting… waiting for a live 0DTE chain", which on a Saturday is a promise the desk cannot
   // keep. Say the true thing instead.
-  const noZeroDteToday = spot > 0 && contracts.length === 0;
+  //
+  // Assert "no 0DTE today" ONLY when we actually know it. Two states qualify:
+  //   - it is not a trading day at all (the weekend/holiday case this branch was written for), or
+  //   - the chain came back live and simply carries no expiry matching today.
+  // A trading day with an EMPTY chain is the third state and it is NOT a market fact — it is an
+  // outage. Asserting through it told a member "there is no 0DTE expiry today" on a session where
+  // one certainly exists, and did so in the one register that is actively harmful: it converts a
+  // RECOVERABLE condition ("Collecting… waiting for a live 0DTE chain" — resolves by waiting) into
+  // an irrecoverable structural claim ("nothing is coming" — do not wait). Falling through leaves
+  // the core's honest collecting copy in place. The sibling path already does this:
+  // vector-pin-forecast-server.ts returns null on an empty chain rather than asserting, and
+  // threads the same `isTradingDayEt` calendar fact through.
+  const tradingDay = isTradingDayEt(sessionYmd);
+  const noZeroDteToday = spot > 0 && contracts.length === 0 && (!tradingDay || chainLive);
   if (!base.available && noZeroDteToday) {
     const { stable, confirmed } = trackPinStability(sessionYmd, null);
     return {
