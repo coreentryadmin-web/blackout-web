@@ -1708,11 +1708,21 @@ html.nav-locked body { overflow: hidden; }
 }
 
 /* ── Structure ladder ── */
-.mv-ladder { position: relative; min-height: 132px; }
-/* Rows are absolutely placed; the container needs the height the resolver assumes (132px). */
+/* GEOMETRY IS SHARED WITH THE RESOLVER — keep these two in step.
+   `resolveCollisions` separates rows by ONE ROW HEIGHT expressed as a fraction of the ladder
+   (MV_LADDER_MIN_GAP = MV_LADDER_ROW_PX / MV_LADDER_HEIGHT_PX in meridian-viz-core.ts). That
+   only holds if a row really is that tall. It was not: rows rendered at 20.5px against an
+   assumed 16px, so every adjacent pair overlapped by 4-11px on live prod. The height is pinned
+   here and asserted equal to the TS constant by meridian-viz-core.test.ts. */
+.mv-ladder { --mv-ladder-row-h: 20px; position: relative; min-height: 132px; }
 .mv-ladder-row {
   position: absolute; left: 0; right: 0; top: var(--mv-pos);
-  display: grid; grid-template-columns: 4.6rem 1fr auto 3.1rem;
+  height: var(--mv-ladder-row-h);
+  box-sizing: border-box;
+  /* Wide enough for the longest label ("Gamma flip") so it cannot wrap to a second line. A
+     wrapped row is TALLER than the pinned height, which is how the Gamma-flip/Put-wall pair
+     reached an 11.3px overlap while its neighbours sat at 4.5px. */
+  display: grid; grid-template-columns: 5.4rem 1fr auto 3.1rem;
   align-items: center; gap: 0.45rem;
   padding: 0.1rem 0.2rem;
   border: 0; border-radius: 0.3rem; background: transparent; color: inherit; text-align: left;
@@ -1725,7 +1735,11 @@ html.nav-locked body { overflow: hidden; }
 .mv-ladder-row:hover:not(:disabled),
 .mv-ladder-row:focus-visible { background: rgba(125, 211, 252, 0.08); }
 .mv-ladder-row:focus-visible { outline: 1px solid rgba(34, 211, 238, 0.65); outline-offset: 1px; }
-.mv-ladder-label { letter-spacing: 0.1em; text-transform: uppercase; color: rgba(125,211,252,0.9); }
+.mv-ladder-label {
+  letter-spacing: 0.1em; text-transform: uppercase; color: rgba(125,211,252,0.9);
+  /* Single line is what makes the pinned row height true. */
+  white-space: nowrap;
+}
 .mv-ladder-bar { height: 1px; background: var(--mv-hairline); }
 .mv-ladder-value { font-weight: 700; color: #e2f4ff; }
 .mv-ladder-dist { text-align: right; }

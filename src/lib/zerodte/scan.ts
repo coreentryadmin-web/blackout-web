@@ -1843,13 +1843,72 @@ export async function syncLedgerLiveState(rows: ZeroDteSetupLogRow[]): Promise<Z
  *  heavier full-board rebuild: this ambient block only ever surfaces already-
  *  flagged ledger rows (never `setups`/`fresh_finds`), and importing
  *  zerodte-service.ts here would be circular (it imports FROM this module). */
-export async function zeroDtePlaysFeed(): Promise<Record<string, unknown>> {
-  const raw = await readZeroDteLedger();
-  if (raw.length === 0) return { available: false, note: "no 0DTE plays flagged this session" };
-  const rows = await syncLedgerLiveState(raw).catch(() => raw);
+/**
+ * The envelope an EMPTY 0DTE ledger read produces — and the reason the two empty states must
+ * never serialize alike (Largo product contract C3).
+ *
+ * `committed_known` already distinguishes them (`readZeroDteLedgerChecked`, whose own doc says it
+ * exists to say so "instead of lying 'empty'"). Pure and exported so both branches are testable
+ * directly: the blind branch only occurs on the FIRST read of a session, which a cached test
+ * module can never reach once any earlier test has primed the last-good latch.
+ */
+export function zeroDteFeedEmptyEnvelope(
+  committedKnown: boolean,
+  session_date: string
+): Record<string, unknown> {
+  if (!committedKnown) {
+    // An UNKNOWN. Largo's system prompt treats this feed as the authoritative source for the
+    // turn, so reporting a quiet session here tells a member "no plays today" during an outage.
+    return {
+      available: false,
+      degraded: true,
+      reason: "ledger_unreadable",
+      session_date,
+      note:
+        "Today's committed 0DTE ledger could not be read and this replica has not seen it this " +
+        "session. This is NOT 'no plays today' — the committed set is UNKNOWN. Say the ledger " +
+        "is unreadable rather than reporting a quiet session.",
+    };
+  }
+  // A real, reportable answer: the scanner ran and nothing cleared the gates.
   return {
     available: true,
-    session_date: todayEt(),
+    session_date,
+    plays: [],
+    state: "no_plays_committed",
+    note:
+      "The 0DTE scanner is running and no setup has cleared the commit gates this session — " +
+      "a MEASURED empty result, not a missing read. Report it as a quiet session.",
+  };
+}
+
+export async function zeroDtePlaysFeed(): Promise<Record<string, unknown>> {
+  // ABSENCE IS NOT EMPTINESS (Largo product contract C3).
+  //
+  // This used to call readZeroDteLedger() — the wrapper that DISCARDS `committed_known` —
+  // and then collapse two completely different states into one `available: false`:
+  //   (a) the scanner ran and nothing cleared the commit gates (a MEASURED result), and
+  //   (b) the ledger read failed and this replica has never seen today's rows (an UNKNOWN).
+  // `readZeroDteLedgerChecked` already computes exactly the fact that separates them, and its
+  // own doc comment says it exists to say so "instead of lying 'empty'". The fact was there;
+  // this reader simply was not wired to it.
+  //
+  // Both halves matter, and (b) is the money-relevant one. Largo's system prompt treats this
+  // block as the AUTHORITATIVE source for the turn, so during a ledger outage a member asking
+  // "any 0DTE plays today?" was told a confident "no plays flagged this session" when the
+  // truth is "we cannot see the ledger". And on a healthy quiet session — pre-market, or a
+  // session the fail-closed firewall held entirely — `available: false` reads as "this tool is
+  // broken" and invites the model to fall back to guessing, while the member's own desk is
+  // simultaneously showing `available: true`. Measured live 2026-08-21 pre-market: board
+  // available=true / upstream_ok=true / 0 setups / 0 ledger, feed available=false. Same fact,
+  // two answers.
+  const read = await readZeroDteLedgerChecked();
+  const session_date = todayEt();
+  if (read.rows.length === 0) return zeroDteFeedEmptyEnvelope(read.committed_known, session_date);
+  const rows = await syncLedgerLiveState(read.rows).catch(() => read.rows);
+  return {
+    available: true,
+    session_date,
     plays: rows.map((r) => ({
       ticker: r.ticker,
       contract: `${r.top_strike ?? "?"}${r.direction === "long" ? "c" : "p"}`,

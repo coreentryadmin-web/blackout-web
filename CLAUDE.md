@@ -82,6 +82,26 @@ Both harnesses and their `npm run validate:vector-*` scripts were removed with i
 - If a pre-prod render/value gate is wanted again, **stand up a fresh ephemeral target first** and
   point a new harness at it — the old one is gone on purpose.
 
+## Largo product contract (standing instruction)
+Every product surface exposed to Largo — Helix, Thermal, Vector, Meridian, Night Hawk, SPX — follows
+**`docs/audit/LARGO-PRODUCT-CONTRACT.md`** (prose) and imports its types from
+**`src/lib/largo/contract/product-read.ts`**. Ten points: time, freshness, absence, identity,
+direction, confidence, evidence, provenance, precision, historical context. It exists because
+parallel lanes otherwise invent incompatible schemas and the cross-product questions become
+unanswerable — not for lack of data, but because it cannot be joined.
+
+Two properties are easy to get backwards, so they are stated here too:
+- The contract is **ADDITIVE**. `ProductRead<T>` WRAPS a product's own `T`. **Flattening
+  product-specific intelligence to satisfy the contract is a violation, not compliance** — keep both
+  the native field and the normalized one.
+- **`confidence` must be OMITTED when a product cannot calibrate it.** An invented score is compared
+  against another lane's measured one, so fabricated certainty does not stay local — it corrupts
+  cross-product ranking. Omission is honest; fabrication is not.
+
+Cross-product **disagreement is represented, never reconciled by the lanes themselves**. Vector and
+Helix both read flow and will sometimes differ; that difference is information. A lane that quietly
+adjusts its numbers to match a peer has destroyed the signal and left a false consensus.
+
 ## Audit toolkit (committed)
 - `scripts/audit/data-validator.mjs` — cross-provider validator (Polygon+UW ground truth vs the numbers members see: prices/indices, GEX/greeks, track-record math, malformed-number scan). Secrets from env only; one temp Clerk user per run, always deleted. Exits non-zero on any FAIL.
 - `scripts/audit/zerodte-e2e-suite.mjs` (`npm run validate:e2e`) — **pre-open E2E validation gate** across FOUR sections, worst-verdict rollup, **exits non-zero if any REQUIRED section is RED**: **API-POLYGON** (every Polygon/Massive upstream the 0DTE pipeline reads — LIVE — HTTP-200 + schema-shape + sanity-value: grouped-daily ~12.4k rows, VIX 5–90, SPX 1000–20000, option chain carries greeks/last_quote, reference contracts, unified OCC snapshot); **API-UW** (flow-alerts data[], SPX spot-exposures/strike GEX, greek-exposure, screener, darkpool, net-flow/expiry, earnings pre/afterhours); **INFRA** (RDS `blackout-production-postgres` available/Multi-AZ + ElastiCache `blackout-production-redis-rg` available/failover via the AWS CLI — **SKIPPED, never RED, when AWS creds are absent/placeholder**); **DATA-PATH** (Redis board-snapshot path via `/board` + Postgres read path via `/record`, through ONE temp admin Clerk user deleted in `finally` — raw TCP to PG/Redis is blocked here, so validate THROUGH the app). Self-defaults `POLYGON_API_BASE` to `api.massive.com` primary with `api.polygon.io` fallback (first 200 wins, sticky). Pure schema/sanity validators live in `lib/e2e-schema-checks.mjs`, unit-tested by `zerodte-e2e-suite.test.ts` (`npx tsx --test`). Never prints secrets. Flags: `--json --provider=polygon|uw --quiet`. Companion doc: `docs/audit/MONDAY-RTH-READINESS.md` (the full play-generation BLOCKER trace + open checklist). First live run 2026-07-25: all required GREEN (off-hours ambers = empty greeks/trades), DATA-PATH GREEN (111 graded record rows), INFRA SKIPPED (sandbox AWS placeholder creds).
@@ -200,7 +220,32 @@ Both harnesses and their `npm run validate:vector-*` scripts were removed with i
    `.cursor/rules/live-ui-validation.mdc`. Real desk paths are `/nighthawk`, `/terminal`,
    `/vector`, `/flows`, `/heatmap` — there is no `/night-hawk` and no `/swings`; an unstyled
    Times render is the 404 page, not a CSS failure.
-3. **AWS — the operator supplies valid creds; the sandbox defaults are INVALID.** Default
+3. **AWS — WORKS IN-SESSION when the operator's creds are present (corrected 2026-08-21).** This
+   note previously said the sandbox defaults are always placeholders. That is not reliably true:
+   on 2026-08-21 `sts get-caller-identity` returned `arn:aws:iam::177922194517:user/vinay-blackout`
+   with no creds pasted that session. **Test before assuming** — `pip install boto3` (not
+   preinstalled, installs fine) then `boto3.client("sts").get_caller_identity()`. There is no `aws`
+   CLI; use boto3. Secrets Manager is writable: `blackout-production/<area>/<name>` is the
+   convention (`blackout-production/app/env` is a 98-key JSON blob ECS injects; `rds/master`;
+   `seo/gsc-service-account`; `marketing/x-pixel`).
+   **Before overwriting any existing secret, FINGERPRINT-COMPARE first** — a supplied credential is
+   often identical to what is already live, and blindly writing it risks breaking production for no
+   gain. `RESEND_API_KEY` was re-supplied on 2026-08-21 and proved byte-identical; nothing was
+   written.
+3b. **Google Search Console — service account, in Secrets Manager (2026-08-21).**
+   `blackout-production/seo/gsc-service-account` holds `claude-seo@blackout-trades.iam.gserviceaccount.com`,
+   verified `siteOwner` on **`sc-domain:blackouttrades.com`** — a **DOMAIN property**, so URL-encode
+   it as `sc-domain%3Ablackouttrades.com` in API paths. Getting that wrong returns an EMPTY result
+   rather than an error, which reads as "no search data" and is the same absence-as-fact trap this
+   file keeps documenting. A plain Google **API key does NOT work** for this API
+   (`UNAUTHENTICATED: API keys are not supported by this API`) — it needs a service account or OAuth.
+3c. **Python's crypto stack is BROKEN here — sign JWTs in Node.** `import cryptography` dies with a
+   `pyo3_runtime.PanicException` (`No module named '_cffi_backend'`), which takes `PyJWT` and
+   `google-auth` down with it, so the standard `google-api-python-client` path is unusable. Node's
+   built-in `crypto` works: `crypto.createSign("RSA-SHA256").update(unsigned).sign(sa.private_key)`
+   → POST `token_uri` with `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer`. `openssl` is
+   also present.
+3d. **AWS (original note, still true when creds ARE absent).** Default
    `AWS_ACCESS_KEY_ID/SECRET` env vars are placeholders (`InvalidClientTokenId`). When the operator
    pastes valid creds (in-session env vars), the `aws` CLI works through the proxy — pass `--region
    us-east-1` explicitly (bare `AWS_REGION` didn't stick; use `AWS_DEFAULT_REGION` or `--region`).
