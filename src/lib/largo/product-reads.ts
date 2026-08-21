@@ -5,6 +5,9 @@
 
 import { roundFloats } from "@/lib/round-floats";
 import { VECTOR_FRACTION_DP } from "@/features/vector/lib/vector-response-rounding";
+// Session phase comes from the ONE canonical helper (largo/core), not a local re-derivation —
+// a second copy of the RTH boundaries is how two surfaces end up disagreeing about the session.
+import { marketPhaseFromEt } from "@/lib/largo/core/system-status";
 import { fetchBangerBoardRows, fetchBangerOpenCount } from "@/lib/banger/positions-db";
 import { isBangerEngineEnabled } from "@/lib/banger/flag";
 import { bangerScaleOutNote } from "@/lib/zerodte/scale-out";
@@ -255,6 +258,7 @@ export async function helixSignalOutcomesForLargo(limit = 50) {
   try {
     const rows = await fetchRecentHelixSignalOutcomes(limit);
     const summary = summarizeHelixSignalOutcomes(rows);
+    const { bySignalType, ...summaryScalars } = summary;
     const ROWS_SHOWN = 20;
     const compact = rows.slice(0, ROWS_SHOWN).map((r) => ({
       ticker: r.ticker,
@@ -280,12 +284,28 @@ export async function helixSignalOutcomesForLargo(limit = 50) {
        *  grader's threshold either way), `pending` (not yet checkpointed at 1h). */
       outcome_values: ["continued", "reversed", "flat", "pending"],
       summary: {
-        ...summary,
+        // The internal camelCase `bySignalType` is re-projected below under model-facing snake_case
+        // names; strip it here so the payload carries one shape, not both.
+        ...summaryScalars,
         /** The honest name for winRatePct. `continued` is a DIRECTIONAL follow-through, not a
          *  closed trade, and `flat` is counted outside it — calling it a "win rate" invites the
          *  model to report the complement as losses when most of it never moved at all. */
         continuation_rate_pct: summary.winRatePct,
         min_graded_for_rate: MIN_GRADED_SAMPLE_FOR_WIN_RATE,
+        /** Per-signal-type follow-through — answers "which HELIX signal is more reliable,
+         *  split_flow or velocity_spike?" without hand-counting the capped `rows` list. Each type
+         *  carries its own denominator (`graded`), and `continuation_rate_pct` is null below
+         *  `min_graded_for_rate` — a per-type rate off a handful of fires is noise, not a verdict.
+         *  Counts across types sum to the aggregate. */
+        by_signal_type: bySignalType.map((t) => ({
+          signal_type: t.signal_type,
+          graded: t.gradedCount,
+          pending: t.pendingCount,
+          continued: t.continuedCount,
+          flat: t.flatCount,
+          reversed: t.reversedCount,
+          continuation_rate_pct: t.winRatePct,
+        })),
       },
     });
   } catch (e) {
@@ -863,6 +883,132 @@ export async function helixTapeAnalyticsForLargo(
   }
 }
 
+/**
+ * ET session phase + wall-clock minutes, for stamping a thermal read with the session it
+ * belongs to. Same derivation `largo-terminal.ts` uses for the regime-personality block, so
+ * the tool payload and the prompt block can never disagree about what session it is.
+ */
+export function etSessionNow(now = new Date()): { phase: string; et_time: string } {
+  // Callers pass a FROZEN instant: the phase, the envelope stamp and every row age in one payload
+  // must describe the SAME moment. A payload generated across 15:59:59 -> 16:00:01 must not
+  // report OPEN beside rows anchored after the close.
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hour: "numeric",
+    minute: "numeric",
+    weekday: "short",
+    hour12: false,
+  }).formatToParts(now);
+  const part = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  const DAYS: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  const hh = part("hour").padStart(2, "0");
+  const mm = part("minute").padStart(2, "0");
+  return {
+    phase: marketPhaseFromEt(DAYS[part("weekday")] ?? 1, Number(part("hour")) * 60 + Number(part("minute"))),
+    et_time: `${hh}:${mm} ET`,
+  };
+}
+
+/** Whole seconds between an ISO timestamp and now, or null when the stamp is unusable. */
+export function ageSecondsFrom(iso: string | null | undefined, now = Date.now()): number | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return null;
+  return Math.max(0, Math.round((now - t) / 1000));
+}
+
+/** The subset of `GexPositioning` the compare strip serves. Structural so this stays pure. */
+export type ThermalComparePositioning = {
+  spot: number;
+  change_pct: number;
+  asof: string;
+  flip: number | null;
+  call_wall: number | null;
+  put_wall: number | null;
+  net_gex: number;
+  gamma_regime_read: string;
+  gex_cross_validation?: unknown;
+  near_term_expiries?: string[];
+} | null;
+
+/**
+ * Compact expiry scope: how many expiries the aggregate covers and the range it spans. The full
+ * list runs to fifteen dates on SPX — a count plus first/last says everything an answer needs to
+ * NAME its scope without spending fifteen leaves per ticker on it.
+ */
+function expiryScopeOf(expiries: string[] | undefined) {
+  if (!expiries?.length) return null;
+  const sorted = [...expiries].sort();
+  return { count: sorted.length, first: sorted[0], last: sorted[sorted.length - 1] };
+}
+
+/**
+ * PURE: one compare-strip row from one positioning snapshot.
+ *
+ * Extracted so the row shape is testable without the aliased dynamic imports in
+ * `thermalCompareForLargo` — with `mock.module` active, tsx stops resolving "@/" for dynamic
+ * imports across the loaded graph (same resolver-hook interaction as #2073), so an integration
+ * test of that function cannot run at all. Keeping the mapping pure sidesteps it.
+ */
+export function thermalCompareRow(ticker: string, pos: ThermalComparePositioning, now = Date.now()) {
+  if (!pos) {
+    return {
+      ticker,
+      available: false,
+      spot: null,
+      change_pct: null,
+      flip: null,
+      call_wall: null,
+      put_wall: null,
+      net_gex: null,
+      gamma_regime_read: null,
+      cross_validation: null,
+      matrix_asof: null,
+      matrix_asof_et: null,
+      matrix_session_date: null,
+      matrix_age_sec: null,
+      freshness: null,
+      // A cold row says WHY, rather than serving a wall of nulls a reader has to guess at.
+      unavailable: { reason: "GEX matrix cold for this ticker", retryable: true },
+      expiry_scope: null,
+    };
+  }
+  return {
+    ticker,
+    available: true,
+    spot: pos.spot,
+    change_pct: pos.change_pct,
+    flip: pos.flip,
+    call_wall: pos.call_wall,
+    put_wall: pos.put_wall,
+    net_gex: pos.net_gex,
+    gamma_regime_read: pos.gamma_regime_read,
+    cross_validation: pos.gex_cross_validation ?? null,
+    // WHEN this ticker's matrix was computed, carried straight off the positioning contract.
+    // Previously dropped, leaving the envelope's generated-at stamp as the payload's ONLY
+    // timestamp — which reads as "this is the price right now".
+    matrix_asof: pos.asof,
+    // ET ANCHOR beside the raw instant. `matrix_asof` is a UTC ISO whose calendar date rolls at
+    // 20:00 ET, and the tool description now tells the model to name the session a price belongs
+    // to — so the session has to be available in ET terms, not inferred from a UTC date.
+    matrix_asof_et: etStamp(Date.parse(pos.asof)),
+    matrix_session_date: etSessionDate(Date.parse(pos.asof)),
+    matrix_age_sec: ageSecondsFrom(pos.asof, now),
+    // getGexPositioning is a documented STRICT CACHE READER — never a second upstream — so
+    // "cached" is the honest steady state. It matters that this is separate from `matrix_age_sec`:
+    // that age is the age of the COMPUTATION, not of the price. Measured 2026-08-21, SPY was
+    // matrix_age_sec ~300 over a print that had settled 4.5 hours earlier.
+    freshness: "cached" as const,
+    unavailable: null,
+    // WHICH EXPIRIES these numbers were summed over. Every field on this row is a multi-expiry
+    // aggregate; without the scope a reader cannot tell that, and /heatmap scoped to a single
+    // expiry can report the OPPOSITE gamma posture at the same instant (measured 2026-08-21:
+    // UI "LONG GAMMA, flip 756" vs this aggregate "short, flip null"). Both correct, mutually
+    // unreconcilable unless the scope travels with the numbers.
+    expiry_scope: expiryScopeOf(pos.near_term_expiries),
+  };
+}
+
 /** Thermal compare strip — SPY/SPX/QQQ side-by-side positioning summary. */
 export async function thermalCompareForLargo(tickers?: string[]) {
   const { THERMAL_COMPARE_TICKERS } = await import("@/features/thermal/lib/thermal-desk-state");
@@ -874,40 +1020,42 @@ export async function thermalCompareForLargo(tickers?: string[]) {
   // gexHeatmapForLargo re-fetches the entire chain per ticker and was timing out Largo turns
   // at ~120s on cold SPX+SPY. getGexPositioning reads the shared warmed cache — same numbers
   // the Thermal compare UI shows.
+  // ONE instant for the whole payload. `thermalCompareRow` defaults `now` per call, so without
+  // this each row's age was measured whenever its own getGexPositioning promise happened to
+  // resolve — seconds to tens of seconds apart on a cold ticker — and the ages between rows were
+  // not differenceable. Freezing it also keeps the envelope's session phase consistent with the
+  // rows, so a payload spanning 15:59:59 -> 16:00:01 cannot report OPEN over post-close rows.
+  const nowMs = Date.now();
   const rows = await Promise.all(
-    list.map(async (ticker) => {
-      const pos = await getGexPositioning(ticker).catch(() => null);
-      if (!pos) {
-        return {
-          ticker,
-          available: false,
-          spot: null,
-          change_pct: null,
-          flip: null,
-          call_wall: null,
-          put_wall: null,
-          net_gex: null,
-          gamma_regime_read: null,
-          cross_validation: null,
-        };
-      }
-      return {
-        ticker,
-        available: true,
-        spot: pos.spot,
-        change_pct: pos.change_pct,
-        flip: pos.flip,
-        call_wall: pos.call_wall,
-        put_wall: pos.put_wall,
-        net_gex: pos.net_gex,
-        gamma_regime_read: pos.gamma_regime_read,
-        cross_validation: pos.gex_cross_validation ?? null,
-      };
-    })
+    list.map(async (ticker) =>
+      thermalCompareRow(ticker, await getGexPositioning(ticker).catch(() => null), nowMs)
+    )
   );
+  // SESSION CONTEXT — the missing half of "when".
+  //
+  // `as_of` is the time this tool RAN, and it was the only timestamp in the payload. That is
+  // not the time the numbers describe. Measured live 2026-08-21T00:29Z (20:29 ET): the payload
+  // served SPY `spot: 762.6`, which is EXACTLY SPY's 16:00 ET close — a four-and-a-half-hour-old
+  // number presented under a stamp that reads as "now". A model asked "where is SPY trading"
+  // answers with a closing price and calls it live, and nothing in the payload contradicts it.
+  //
+  // So: keep `as_of` (unchanged, and now explicitly named as generated-at) and add the two facts
+  // that make it interpretable — which session the wall clock is in, and how old each ticker's
+  // matrix is. Both are derived, not fetched: no extra upstream, no pressure on the UW budget.
+  const session = etSessionNow(new Date(nowMs));
   return roundFloats({
     available: rows.some((r) => r.available),
-    as_of: new Date().toISOString(),
+    /**
+     * When this payload was GENERATED, as an ET wall-clock stamp — NOT a UTC ISO. A UTC instant
+     * rolls its calendar DATE at 20:00 ET, so for the last four hours of every trading day a
+     * session resolved from it is a full session ahead (#2418 / #2420 class).
+     */
+    as_of: etStamp(nowMs),
+    session_date: etSessionDate(nowMs),
+    /** Machine-orderable instant, kept for consumers that sort on it. */
+    as_of_utc: new Date(nowMs).toISOString(),
+    market_session: session.phase,
+    et_time: session.et_time,
     tickers: rows,
   });
 }

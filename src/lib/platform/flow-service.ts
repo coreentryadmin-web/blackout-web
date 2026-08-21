@@ -3,6 +3,7 @@ import { subscribeFlowEvents, publishFlowEvent } from "@/lib/flow-events";
 import {
   computeFlowStrikeStacks,
 } from "@/lib/largo/flow-strike-stacks";
+import { sessionFlowSkew } from "@/lib/largo/helix-tape-analytics";
 import type { FlowTapeSummary } from "./types";
 
 export { subscribeFlowEvents, publishFlowEvent };
@@ -50,6 +51,7 @@ export async function getFlowTapeSummary(opts?: {
     .sort((a, b) => b.premium - a.premium)
     .slice(0, 10);
 
+  const skew = sessionFlowSkew(rows);
   return {
     count: rows.length,
     total_premium: rows.reduce((s, r) => s + r.premium, 0),
@@ -57,5 +59,15 @@ export async function getFlowTapeSummary(opts?: {
     recent: rows,
     strike_stacks: computeFlowStrikeStacks(rows, { limit: 24 }),
     window_hours: opts?.since_hours ?? 48,
+    // Skew over THIS pull, computed once server-side so no caller hand-sums the capped print list
+    // (which produced a 34% / 60% / 83% spread for one "what's the skew" question). Scoped to the
+    // pull; the session-wide skew is get_helix_tape_analytics.session.
+    pull_skew: {
+      call_pct: skew.call_pct,
+      call_premium: skew.call_premium,
+      put_premium: skew.put_premium,
+      total_premium: skew.total_premium,
+      prints: rows.length,
+    },
   };
 }

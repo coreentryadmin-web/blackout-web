@@ -211,7 +211,10 @@ export function expiryConcentration(alerts: FlowAlert[], limit = 8, now: Date = 
  * is reachable and is not a contradiction — `typeless_prints` is reported so the gap between the
  * two counts is explainable from the payload instead of looking like a broken sum.
  */
-export function sessionFlowSkew(alerts: FlowAlert[]) {
+/** Accepts anything carrying option_type + premium — FlowAlert, FlowRow, or a raw print —
+ *  because those two fields are all a call/put skew reads. Kept structural so flow-service
+ *  can compute the SAME skew over its own rows without a cast or an import cycle. */
+export function sessionFlowSkew(alerts: ReadonlyArray<{ option_type: string; premium: number }>) {
   const calls = alerts.filter((a) => a.option_type === "CALL").reduce((s, a) => s + a.premium, 0);
   const puts = alerts.filter((a) => a.option_type === "PUT").reduce((s, a) => s + a.premium, 0);
   const total = calls + puts;

@@ -1,8 +1,10 @@
 ﻿import type { Metadata } from "next";
 import { LearnHub } from "@/components/learn/LearnHub";
-import { CollectionPageJsonLd, ItemListJsonLd } from "@/components/seo/JsonLd";
+import { CollectionPageJsonLd, ItemListJsonLd, CourseJsonLd } from "@/components/seo/JsonLd";
 import { Breadcrumbs } from "@/components/seo/Breadcrumbs";
 import { LEARN_ARTICLES } from "@/lib/learn/articles";
+import { LEARN_NAV, learnHref } from "@/lib/learn/nav";
+import { GUIDE_SEO } from "@/lib/learn/guide-seo";
 import { SITE } from "@/lib/site";
 import { publicPageMetadata } from "@/lib/page-metadata";
 
@@ -25,6 +27,13 @@ export default function LearnPage() {
         path="/learn"
       />
       <ItemListJsonLd name="BlackOut Academy guides" items={featured} />
+      <CourseJsonLd
+        chapters={LEARN_NAV.map((item) => ({
+          name: GUIDE_SEO[item.slug].metaTitle,
+          description: GUIDE_SEO[item.slug].metaDescription,
+          url: `${SITE.url}${learnHref(item.slug)}`,
+        }))}
+      />
       <Breadcrumbs items={[
         { name: "Home", href: "/" },
         { name: "Learn", href: "/learn" },
