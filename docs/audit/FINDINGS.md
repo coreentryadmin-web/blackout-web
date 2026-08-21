@@ -12996,9 +12996,9 @@ against.
 | **Not a trading-behaviour change** | No gate, rail, sizing, exit rule or grading function is touched. No `sim:0dte` before/after is owed. |
 | **Status** | FIXED (the lane instance) / OPEN, NAMED (the five sites owned by other lanes). |
 
-## 2026-08-21 — [ENHANCEMENT, Largo/Night Hawk] The iron condor had no queryable record and would have contaminated the directional one — SEPARATE LANE ADDED
+## 2026-08-21 — [FINDING, P2 Largo/Night Hawk] The iron condor had no queryable record and would have contaminated the directional one — SEPARATE LANE ADDED
 
-> **kind:** `ENHANCEMENT`
+> **kind:** `FINDING`
 
 | Field | Detail |
 |---|---|
