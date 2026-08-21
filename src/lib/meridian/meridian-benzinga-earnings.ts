@@ -19,6 +19,7 @@ import {
   buildRecentEarningsRevisions,
   dedupeEarningsRowsByEvent,
   parseNextEarningsFromBenzinga,
+  benzingaTickerWindow,
 } from "@/lib/meridian/meridian-benzinga-earnings-core";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import type { NextEarnings } from "@/lib/providers/uw-earnings";
@@ -142,14 +143,23 @@ export async function loadBenzingaEarningsBundle(
 }
 
 /** Ticker-scoped Benzinga earnings — upcoming + historical prints for enrichment. */
-export async function loadBenzingaTickerEarnings(ticker: string, eventDate: string | null) {
+export async function loadBenzingaTickerEarnings(
+  ticker: string,
+  eventDate: string | null,
+  /** How many PAST prints the caller needs. Drives the lookback window and the row cap. */
+  prints = 8
+) {
   const sym = ticker.trim().toUpperCase();
-  const dateGte = eventDate ? addDaysYmd(eventDate, -420) : addDaysYmd(new Date().toISOString().slice(0, 10), -420);
-  return serverCache(`meridian:benzinga:ticker:${sym}:${eventDate ?? "next"}`, BENZINGA_TICKER_TTL_MS, async () => {
+  const { lookbackDays, limit } = benzingaTickerWindow(prints);
+  const anchor = eventDate ?? new Date().toISOString().slice(0, 10);
+  const dateGte = addDaysYmd(anchor, -lookbackDays);
+  // The window is part of the identity of this result: two callers wanting different print counts
+  // must not share one cache entry, or the first one to arrive decides the sample size for both.
+  return serverCache(`meridian:benzinga:ticker:${sym}:${eventDate ?? "next"}:p${prints}`, BENZINGA_TICKER_TTL_MS, async () => {
     const res = await fetchBenzingaStructuredEarnings({
       ticker: sym,
       dateGte,
-      limit: 16,
+      limit,
       sort: "date.desc",
     });
     // THROW on a failed fetch so the cache stores NOTHING.
@@ -200,7 +210,9 @@ export async function loadBenzingaTickerGuidance(ticker: string) {
 export async function loadNextEarningsFromBenzinga(ticker: string): Promise<NextEarnings | null> {
   const sym = ticker.trim().toUpperCase();
   const today = todayEtYmd();
-  const res = await loadBenzingaTickerEarnings(sym, null);
+  // This only reads the NEXT (future) row, so it needs no past-print depth — 2 keeps the window
+  // tight while the row cap still covers Benzinga's projected tail.
+  const res = await loadBenzingaTickerEarnings(sym, null, 2);
   return parseNextEarningsFromBenzinga(sym, res.rows, today);
 }
 

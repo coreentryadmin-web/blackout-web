@@ -4,6 +4,7 @@
 // never crash on a cold lane.
 
 import { roundFloats } from "@/lib/round-floats";
+import { VECTOR_FRACTION_DP } from "@/features/vector/lib/vector-response-rounding";
 import { fetchBangerBoardRows, fetchBangerOpenCount } from "@/lib/banger/positions-db";
 import { isBangerEngineEnabled } from "@/lib/banger/flag";
 import { bangerScaleOutNote } from "@/lib/zerodte/scale-out";
@@ -257,19 +258,46 @@ export async function helixSignalOutcomesForLargo(limit = 50) {
   }
 }
 
+/**
+ * PIN FORECAST for Largo.
+ *
+ * `VECTOR_FRACTION_DP` is NOT optional here, for the reason `/api/market/vector/pin-forecast`
+ * already documents in its own header: the pin core deliberately emits `pinPct` and
+ * `magnet.strengthPct` at `toFixed(3)`, and "a blanket 2dp at the boundary silently threw that
+ * third digit away and floored a sub-1% `scenarios[].p` to zero."
+ *
+ * That is exactly what this reader was doing. Measured on a realistic forecast — the HTTP route
+ * (which passes the map) versus this reader (which did not):
+ *
+ *   pinPct                0.412  ->  0.41   (route 0.412)
+ *   magnet.strengthPct    0.084  ->  0.08   (route 0.084)
+ *   scenarios[].p         0.009  ->  0.01   (route 0.009)
+ *   scenarios[].p         0.004  ->  0      (route 0.004)   <-- ZEROED
+ *   drivers[].weight      0.128  ->  0.13   (route 0.128)
+ *   atmIv                0.1344 ->  0.13    (route 0.1344)
+ *
+ * A scenario probability of exactly `0` does not read as "unlikely" to a model — it reads as
+ * IMPOSSIBLE, and it was the tail scenarios that got zeroed. Same shape as #2423: the route was
+ * fixed, the model-facing boundary kept the default.
+ */
 export async function spxPinForLargo() {
   try {
     const pin = await loadSpxPinForecast();
-    return roundFloats({ available: true, pin });
+    return roundFloats({ available: true, pin }, 2, VECTOR_FRACTION_DP);
   } catch (e) {
     return { available: false, error: e instanceof Error ? e.message : "spx_pin_failed" };
   }
 }
 
+/**
+ * The desk pulse carries the SAME pin block (`pin.pinPct`, see spx-pulse.ts), so it needs the same
+ * map for the same reason — a 0.412 pin probability served as 0.41 to the model while the desk
+ * renders 41.2%.
+ */
 export async function spxPulseForLargo() {
   try {
     const pulse = await loadSpxDeskPulse();
-    return roundFloats({ available: true, pulse });
+    return roundFloats({ available: true, pulse }, 2, VECTOR_FRACTION_DP);
   } catch (e) {
     return { available: false, error: e instanceof Error ? e.message : "spx_pulse_failed" };
   }

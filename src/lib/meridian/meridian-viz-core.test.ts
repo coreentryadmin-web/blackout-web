@@ -1,5 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   num,
   priceDomain,
@@ -27,6 +29,9 @@ import {
   estimateDispersion,
   strikeProfile,
   impliedVsRealized,
+  MV_LADDER_MIN_GAP,
+  MV_LADDER_ROW_PX,
+  MV_LADDER_HEIGHT_PX,
 } from "./meridian-viz-core";
 
 // ── null propagation. The repo's recurring defect is Number(null) === 0; on a price rail a
@@ -668,4 +673,63 @@ test("hoursUntilIso: positive before, negative after, null on junk", () => {
   assert.equal(hoursUntilIso("2026-08-18T09:00:00Z", now), -3);
   assert.equal(hoursUntilIso("not-a-date", now), null);
   assert.equal(hoursUntilIso(null, now), null);
+});
+
+test("the ladder's row height in CSS matches the one the resolver assumes", () => {
+  // THE BUG THIS PINS. `MeridianStructureLadder` separated rows by `16 / 132` — "one row height
+  // as a fraction of the ladder". The ladder is 132px, but a row renders at 20.5px, not 16px, so
+  // "one row height" of separation came out 4.5px SHORT of one row height and every adjacent pair
+  // overlapped. Measured live on prod (mobile 430x932, BABA positioning tab): overlaps of 4.5,
+  // 4.5, 6.8 and 11.3 px; `meridian-interaction-audit.mjs` measured the same collisions
+  // independently at 1440px.
+  //
+  // Neither a type check nor a unit test could catch it, because the two halves of the geometry
+  // live in different languages: a number in TS and a pixel value in CSS. So the test reads the
+  // CSS and compares. Same principle as largo-card-deadspace.mjs comparing packed ESTIMATES to
+  // drawn pixels — an assumption nobody measured is exactly the kind that stays wrong.
+  const css = readFileSync(join(process.cwd(), "src/app/desk-app.css"), "utf8");
+
+  const rowH = /--mv-ladder-row-h:\s*(\d+(?:\.\d+)?)px/.exec(css);
+  assert.ok(rowH, "--mv-ladder-row-h must be declared in desk-app.css");
+  assert.equal(
+    Number(rowH[1]),
+    MV_LADDER_ROW_PX,
+    `CSS row height ${rowH[1]}px disagrees with MV_LADDER_ROW_PX ${MV_LADDER_ROW_PX}px — ` +
+      "the resolver would separate rows by less than a row again"
+  );
+
+  const ladderH = /\.mv-ladder\s*\{[^}]*min-height:\s*(\d+(?:\.\d+)?)px/.exec(css);
+  assert.ok(ladderH, ".mv-ladder must declare a min-height");
+  assert.equal(Number(ladderH[1]), MV_LADDER_HEIGHT_PX, "ladder height disagrees with the constant");
+
+  // The row must be HEIGHT-PINNED, not free to grow — a wrapped label made one row taller than
+  // the pinned height, which is how one pair reached an 11.3px overlap while its neighbours sat
+  // at 4.5px.
+  assert.match(css, /height:\s*var\(--mv-ladder-row-h\)/, "rows must be pinned to the row height");
+  assert.match(
+    css,
+    /\.mv-ladder-label\s*\{[^}]*white-space:\s*nowrap/,
+    "the label must not wrap, or the pinned height is not the real height"
+  );
+});
+
+test("MV_LADDER_MIN_GAP really is one full row, and separating by it removes overlap", () => {
+  assert.equal(MV_LADDER_MIN_GAP, MV_LADDER_ROW_PX / MV_LADDER_HEIGHT_PX);
+
+  // The six real levels from the live BABA book, as fractions down a 132px ladder. Before the
+  // fix these resolved to 16px centre gaps against 20.5px rows.
+  const positions = [0.0, 0.02, 0.021, 0.42, 0.55, 0.9];
+  const placed = resolveCollisions(positions, MV_LADDER_MIN_GAP);
+
+  const sorted = [...placed].sort((a, b) => a - b);
+  for (let i = 1; i < sorted.length; i += 1) {
+    const gapPx = (sorted[i]! - sorted[i - 1]!) * MV_LADDER_HEIGHT_PX;
+    assert.ok(
+      gapPx >= MV_LADDER_ROW_PX - 0.01,
+      `rows ${i - 1}→${i} separated by ${gapPx.toFixed(1)}px, less than one ${MV_LADDER_ROW_PX}px row`
+    );
+  }
+  // ORDER is the whole point of the ladder — separation must never re-sort it.
+  const rank = (xs: number[]) => xs.map((_, i) => i).sort((a, b) => xs[a]! - xs[b]!);
+  assert.deepEqual(rank(placed), rank(positions), "resolver must preserve spatial order");
 });

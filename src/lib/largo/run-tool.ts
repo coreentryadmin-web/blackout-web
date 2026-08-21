@@ -34,6 +34,7 @@ import { getGexPositioning } from "@/lib/providers/gex-positioning";
 import { enrichFlowsWithGex } from "@/lib/flow-gex-enrichment";
 import { runUwPooled } from "@/lib/providers/uw-rate-limiter";
 import { gexHeatmapForLargo } from "@/lib/largo/gex-heatmap-for-largo";
+import { normalizeUwEarnings } from "@/lib/largo/uw-earnings-normalize";
 import { gexMatrixChangesForLargo } from "@/lib/largo/gex-matrix-changes";
 import { registerVectorUniverseView } from "@/features/vector/lib/vector-universe";
 import { flowAnomalyNearMissesForLargo } from "@/lib/platform/flow-anomaly-near-misses";
@@ -788,26 +789,64 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
     case "get_earnings": {
       const sym = uwTicker(ticker);
       return serverCache(`earnings:${sym}`, TTL.EARNINGS, async () => {
-        // PRIMARY: Benzinga earnings news via Polygon (unlimited calls, no rate limit).
-        // SUPPLEMENTAL: UW earnings history and estimates (rate-limited; used only when Benzinga lacks data).
-        const benzinga = await fetchBenzingaEarnings(sym, 15);
-        const [uw, estimates] = await Promise.all([
+        // WHY THE STRUCTURED FEED IS PRIMARY AND THE NEWS CHANNEL IS NOT (don't reorder this):
+        //
+        // `fetchBenzingaEarnings` is `fetchBenzingaNews(channels: "earnings")` — the news channel
+        // filtered to stories that MENTION this ticker in an earnings context. It is not this
+        // company's earnings. Probed live 2026-08-21, `get_earnings("NVDA")` returned headlines
+        // about Fabrinet, Anthropic and Cerebras: no EPS, no revenue, no report date, no BMO/AMC
+        // time, no confirmed-vs-projected status. Asked "when does NVDA report and what's
+        // expected", that is all the model had.
+        //
+        // Benzinga's STRUCTURED earnings feed carries exactly those facts and the rest of Meridian
+        // has been reading it all along (`meridian-benzinga-earnings.ts`, `meridian-ticker-lookup`,
+        // the timeline). Same Polygon key, same entitlement — the tool simply never asked for it.
+        //
+        // Reused, not re-derived: `loadBenzingaTickerEarnings` already carries the
+        // don't-cache-a-failure fix (FINDINGS 2026-08-18 — a failed fetch cached as `{rows: []}`
+        // rendered as "this company has no earnings history" for ten minutes), and
+        // `loadMeridianEarningsPrintHistory` already anchors each print's reaction to its BMO/AMC
+        // timing and carries `reaction_basis`.
+        const [{ loadBenzingaTickerEarnings }, { parseNextEarningsFromBenzinga }, { loadMeridianEarningsPrintHistory }] =
+          await Promise.all([
+            import("@/lib/meridian/meridian-benzinga-earnings"),
+            import("@/lib/meridian/meridian-benzinga-earnings-core"),
+            import("@/lib/meridian/meridian-earnings-history"),
+          ]);
+        const [related, calendar, history, uw, estimates] = await Promise.all([
+          fetchBenzingaEarnings(sym, 15),
+          loadBenzingaTickerEarnings(sym, null),
+          loadMeridianEarningsPrintHistory(sym, 6),
           fetchUwEarnings(sym),
           fetchUwEarningsEstimates(sym),
         ]);
-        return {
+        const next_report = parseNextEarningsFromBenzinga(sym, calendar.rows, todayEtYmd());
+        const calendar_error = (calendar as { error?: string | null }).error ?? null;
+        // UW serves its side of this payload as STRINGS, with moves/returns as unlabelled
+        // fractions — `reaction: "-0.0915"` is -9.15%, not -0.09%. See uw-earnings-normalize.ts.
+        return normalizeUwEarnings({
           ticker: sym,
-          source: benzinga.length ? "benzinga" : "unusual_whales",
-          benzinga_news: benzinga,
+          source: calendar.rows.length ? "benzinga_structured" : related.length ? "benzinga_news" : "unusual_whales",
+          // The single most-asked fact, and the one the news channel could never answer.
+          next_report,
+          print_history: history.print_history,
+          print_history_summary: history.print_history_summary,
+          // Absence of a lookup is not absence of a report date — a non-null error means the
+          // calendar could not be READ, not that this company has nothing scheduled.
+          calendar_error: calendar_error ?? history.history_error ?? null,
+          // Renamed from `benzinga_news`: these are stories mentioning this ticker in the earnings
+          // channel, NOT its own results. The old name invited exactly the wrong reading.
+          related_news: related,
           unusual_whales: uw,
           estimates,
-        };
+        });
       });
     }
     case "get_earnings_history": {
       const sym = uwTicker(ticker);
       const [earnings, estimates] = await Promise.all([fetchUwEarnings(sym), fetchUwEarningsEstimates(sym)]);
-      return { ticker: sym, source: "unusual_whales", earnings, estimates };
+      // Same raw-UW units/precision problem as get_earnings — see uw-earnings-normalize.ts.
+      return normalizeUwEarnings({ ticker: sym, source: "unusual_whales", earnings, estimates });
     }
     case "get_analyst_ratings": {
       const sym = uwTicker(ticker);
@@ -1407,7 +1446,16 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         fetchUwEarningsPremarket(30),
         fetchUwEarningsAfterhours(30),
       ]);
-      return { premarket, afterhours };
+      // `as_of` because the tool description promises "today's" prints and the payload itself
+      // carried no clock — the model had to take the framing on trust. The rows' own
+      // `report_date` is the authority on which session these are; this says when we asked.
+      return normalizeUwEarnings({
+        as_of: new Date().toISOString(),
+        premarket_count: premarket.length,
+        afterhours_count: afterhours.length,
+        premarket,
+        afterhours,
+      });
     }
     case "get_congress_unusual": {
       const sym = input.ticker ? uwTicker(String(input.ticker)) : undefined;
