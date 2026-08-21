@@ -101,3 +101,14 @@ test("mentionsTool refuses to answer true for an empty or non-string tool", () =
   assert.equal(mentionsTool("get_x", null), false);
   assert.equal(mentionsTool(null, "get_x"), false);
 });
+
+test("an INDETERMINATE says WHICH kind of unknown it is", () => {
+  assert.equal(parseProbeReply("not TRUNCATED, it is COMPLETE").reason, "reply claimed BOTH truncated and complete");
+  assert.equal(parseProbeReply("").reason, "empty reply");
+  assert.equal(parseProbeReply("I cannot answer that.").reason, "reply named neither TRUNCATED nor COMPLETE");
+});
+
+test("a decided verdict carries no reason — a reason means an unknown", () => {
+  assert.equal(parseProbeReply("TRUNCATED\n`analytics`").reason, null);
+  assert.equal(parseProbeReply("COMPLETE\n`plays`").reason, null);
+});

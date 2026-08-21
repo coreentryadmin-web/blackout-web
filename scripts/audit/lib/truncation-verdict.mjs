@@ -33,6 +33,19 @@ export function parseProbeReply(reply) {
   const hasTrunc = /\bTRUNCATED\b/.test(text);
   const hasComplete = /\bCOMPLETE\b/.test(text);
   const verdict = hasTrunc && hasComplete ? "INDETERMINATE" : hasTrunc ? "TRUNCATED" : hasComplete ? "COMPLETE" : "INDETERMINATE";
+  // WHY A REASON AND NOT JUST THE VERDICT. The first live 13-tool run came back 12×INDETERMINATE
+  // and the report gave no way to tell WHICH indeterminate: a model that hedged, a model that
+  // never answered, or 12 HTTP failures rendered as if they were model replies. Same blank, three
+  // completely different findings — exactly the "absence printed as emptiness" shape this repo
+  // keeps catching elsewhere. An unknown has to say what kind of unknown it is.
+  const reason =
+    verdict !== "INDETERMINATE"
+      ? null
+      : hasTrunc && hasComplete
+        ? "reply claimed BOTH truncated and complete"
+        : text.trim() === ""
+          ? "empty reply"
+          : "reply named neither TRUNCATED nor COMPLETE";
   // The last-key claim is corroboration, never the verdict itself: a model that can name the
   // final key of a payload is demonstrably reading the payload rather than pattern-matching the
   // question. Optional — its absence downgrades nothing.
@@ -42,7 +55,7 @@ export function parseProbeReply(reply) {
   // this returned "I" from "the last top-level key I can actually see is `analytics`".
   const quoted = [...text.matchAll(/[`'"]([a-z0-9_]{2,})[`'"]/gi)].map((m) => m[1]);
   const labelled = /last(?:\s+top-level)?\s+key\s*(?:is|:|=)\s*([a-z0-9_]{2,})/i.exec(text);
-  return { verdict, last_key: quoted.at(-1) ?? labelled?.[1] ?? null };
+  return { verdict, reason, last_key: quoted.at(-1) ?? labelled?.[1] ?? null };
 }
 
 /**

@@ -113,7 +113,12 @@ async function probe(tool, args) {
     headers: { "Content-Type": "application/json", Cookie: session.cookieHeader },
     body: JSON.stringify({ question: probeQuestion(tool, args), depth: "concrete" }),
   });
-  if (!res.ok) return { tool, verdict: "INDETERMINATE", last_key: null, error: `HTTP ${res.status}` };
+  // A transport failure and a hedging model both used to land here as a bare INDETERMINATE, and
+  // the report printed them identically. They are not the same finding: one says the harness
+  // could not ask, the other says the product could not answer.
+  if (!res.ok) {
+    return { tool, verdict: "INDETERMINATE", reason: `HTTP ${res.status} — the question never reached the model`, last_key: null, reply: null };
+  }
   const text = await res.text();
   const md = /"markdown":"((?:[^"\\]|\\.)*)"/.exec(text)?.[1] ?? text;
   const reply = md.replace(/\\n/g, "\n");
@@ -121,20 +126,48 @@ async function probe(tool, args) {
   // the trace the model answered from somewhere else and its verdict is about the wrong payload.
   const called = mentionsTool(text, tool);
   const parsed = parseProbeReply(reply);
-  return { tool, ...parsed, verdict: called ? parsed.verdict : "INDETERMINATE", called };
+  return {
+    tool,
+    ...parsed,
+    verdict: called ? parsed.verdict : "INDETERMINATE",
+    reason: called ? parsed.reason : `${tool} never appears in the trace — the model answered from somewhere else`,
+    called,
+    reply: reply.slice(0, 400),
+  };
 }
 
 let exitCode = 1;
 try {
   const control = await probe(CONTROL[0], CONTROL[1]);
   const rows = [];
-  for (const [tool, args] of TOOLS) rows.push(await probe(tool, args));
-  const summary = summarizeRun(rows, control.verdict);
+  // A LOST SESSION IS NOT A LIST OF UNKNOWN TOOLS. The first live 13-tool run lost its Clerk
+  // session partway and every remaining probe came back 401 — reported, before this, as twelve
+  // indistinguishable INDETERMINATEs. One fact (the session died) had been smeared across twelve
+  // rows that each looked like a finding about a tool. So an auth failure aborts the run and says
+  // so once, instead of spending the rest of the run asking a door that is already locked.
+  let aborted = null;
+  for (const [tool, args] of TOOLS) {
+    if (aborted) {
+      rows.push({ tool, verdict: "INDETERMINATE", reason: `not probed — run aborted at ${aborted}`, last_key: null });
+      continue;
+    }
+    const row = await probe(tool, args);
+    rows.push(row);
+    if (/^HTTP 40[13]\b/.test(row.reason ?? "")) aborted = tool;
+  }
+  const summary = { ...summarizeRun(rows, control.verdict), aborted_at: aborted };
+  if (aborted) {
+    console.error(
+      `RUN ABORTED at ${aborted} — the session stopped authenticating. Everything after it is ` +
+        `unprobed, not clean. Re-run; if it aborts at the same point the session is expiring ` +
+        `mid-run and the tool list needs splitting with --tools=.`
+    );
+  }
 
   if (JSON_OUT) {
     console.log(JSON.stringify({ control, rows, summary }, null, 2));
   } else {
-    console.log(`CONTROL ${control.tool} -> ${control.verdict}${control.last_key ? ` (last key: ${control.last_key})` : ""}`);
+    console.log(`CONTROL ${control.tool} -> ${control.verdict}${control.last_key ? ` (last key: ${control.last_key})` : ""}${control.reason ? ` — ${control.reason}` : ""}`);
     console.log(
       summary.control_proven
         ? "  instrument PROVEN — it detected a real truncation, so COMPLETE below means clean\n"
@@ -144,7 +177,7 @@ try {
       const mark = r.verdict === "TRUNCATED" ? "❌" : r.verdict === "COMPLETE" ? (summary.control_proven ? "✅" : "❔") : "❔";
       console.log(
         `  ${mark} ${r.tool.padEnd(26)} ${r.verdict.padEnd(14)}` +
-          `${r.last_key ? ` last key: ${r.last_key}` : ""}${r.called === false ? "  (tool not in trace)" : ""}`
+          `${r.last_key ? ` last key: ${r.last_key}` : ""}${r.reason ? `  — ${r.reason}` : ""}`
       );
     }
     console.log(
