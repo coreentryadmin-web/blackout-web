@@ -54,7 +54,7 @@ Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 | **Non-vacuous, demonstrated** | With the floor restored to 300 and the real labels in place, six parametrised cases fail with `"Thermal nodes" overlaps "Vector expected move" by 12.8x8.7px` / `7.6x8.0px` — the same pair and the same magnitude as the live measurement. The parametrised sizes were also changed from 260/300/340 (all of which now clamp to the floor, making them three copies of one test) to the floor, 400 and 520. |
 | **Still open, deliberately not fixed here** | Four labels remain **ellipsised**: `Vector expected move` (needs 110px, gets 83), `Street / analysts`, `News & catalysts`, `Insider activity`. `labelMaxW` is exactly `LABEL_MARGIN - 10`, so it is pinned at 86px no matter how large the box grows. Clearing it needs `LABEL_MARGIN` ≥ 128, which widens every label and pushes the collision-free floor from 376 to **440** — a visible growth of the panel, and a product call rather than a correctness one. An ellipsis is honest truncation; two labels printing through each other is not, which is why only the second is fixed here. Raised for the coordinator on the PR. |
 | **Gates on Node 20.20.2** | `npx tsc --noEmit` clean · `npm test` **9042 pass / 0 fail** · `npm run build` clean · `npx eslint` clean. |
-| **Status** | FIXED — PR #____ (draft). Not yet live-verified; the pixels must be re-measured once it ships. |
+| **Status** | FIXED — PR #2502 (draft). Not yet live-verified; the pixels must be re-measured once it ships. |
 
 ## 2026-08-21 — [FINDING, P2 Largo] Rule-7 sweep of the HELIX lane — two more places absence was published as measurement — FIXED
 
