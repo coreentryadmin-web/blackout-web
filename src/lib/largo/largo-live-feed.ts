@@ -544,6 +544,24 @@ export function formatLargoLiveFeed(rawFeed: LargoLiveFeed, ticker: string): str
     if (gexReg.distance_to_flip_pct != null) {
       lines.push(`Distance to flip: ${gexReg.distance_to_flip_pct}%`);
     }
+    // FRAGILITY: the reported flip is the STABLE lowest zero-crossing. When the book crosses zero
+    // more than once, a nearer crossing can sit far closer to spot — that is where the regime
+    // actually flips first. Surface it so the read never calls a name a comfortable distance from
+    // flipping when net gamma re-crosses zero a fraction of that away.
+    if (
+      typeof gexReg.flip_crossings === "number" &&
+      gexReg.flip_crossings > 1 &&
+      gexReg.flip_nearest != null &&
+      gexReg.flip_nearest !== gexReg.flip
+    ) {
+      const dn = gexReg.distance_to_nearest_flip_pct;
+      lines.push(
+        `Regime fragility: net gamma crosses zero ${gexReg.flip_crossings}×; the nearest crossing ` +
+          `${gexReg.flip_nearest}${dn != null ? ` (${dn}% from spot)` : ""} sits closer than the ` +
+          `stable flip ${gexReg.flip} — the regime flips there first, so it is NOT a comfortable ` +
+          `${gexReg.distance_to_flip_pct}% from flipping.`
+      );
+    }
     if (gexReg.shift_summary) {
       lines.push(`Intraday gamma shift: ${gexReg.shift_summary}`);
     }
