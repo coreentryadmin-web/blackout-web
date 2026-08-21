@@ -2207,7 +2207,11 @@ async function runMigrations(): Promise<void> {
       reason_selected TEXT NOT NULL,
       runners_up JSONB NOT NULL DEFAULT '[]'::jsonb,
       posted_tweet_id TEXT,
-      cta JSONB
+      cta JSONB,
+      -- A SKIP is a result, but WHICH result matters: QUIET is a claim about the market, BLIND is
+      -- a claim about the pipeline. Collapsing them lets an outage read as a calm tape.
+      skip_kind TEXT,
+      blind_spots JSONB NOT NULL DEFAULT '[]'::jsonb
     );
   `);
   await p.query(

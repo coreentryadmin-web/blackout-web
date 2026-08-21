@@ -256,7 +256,11 @@ function PackageCard({ row }: { row: XIntelQueueRow }) {
         // A SKIP row is a decision, not a hole. It says what it looked at and why it declined.
         <div className="mt-3 rounded border border-white/10 bg-black/30 p-3">
           <p className="font-mono text-[11px] font-bold uppercase tracking-wider text-white/70">
-            No high-value post this hour
+            {row.skip_kind === "BLIND"
+              ? "Skipped — could not read the platform"
+              : row.skip_kind === "MARKET_CLOSED"
+                ? "Skipped — market closed"
+                : "No high-value post this hour"}
           </p>
           <p className="mt-1 text-[11px] text-white/60">{row.reason_selected}</p>
         </div>
@@ -304,6 +308,24 @@ function PackageCard({ row }: { row: XIntelQueueRow }) {
       )}
 
       <Chronology row={row} />
+
+      {/* A blind surface is shown, not swallowed. A reviewer must be able to tell "the market was
+          quiet" from "we could not see" — they are different claims and only one is publishable. */}
+      {row.blind_spots.length > 0 && (
+        <div className="mt-3 rounded border border-bear/30 bg-bear/5 p-2">
+          <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-bear">
+            Could not read {row.blind_spots.length} surface
+            {row.blind_spots.length === 1 ? "" : "s"} this cycle
+          </p>
+          {row.blind_spots.map((b, i) => (
+            <p key={i} className="text-[11px] text-white/70">
+              <span className="font-mono uppercase text-white/50">{surfaceLabel(b.surface)}</span>{" "}
+              — {b.what_is_missing} ({b.reason}
+              {b.retryable ? ", retryable" : ", not retryable"})
+            </p>
+          ))}
+        </div>
+      )}
 
       {row.underlying_evidence.length > 0 && (
         <div className="mt-3">

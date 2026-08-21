@@ -7,9 +7,11 @@ import {
   attachmentCaptureBlockReason,
   readyBlockReason,
   X_INTEL_CTA_VARIANTS,
+  X_INTEL_SKIP_KINDS,
   X_INTEL_STATUSES,
   X_INTEL_SURFACES,
   type XIntelAttachment,
+  type XIntelBlindSpot,
   type XIntelChronology,
   type XIntelConfidence,
   type XIntelCta,
@@ -19,6 +21,7 @@ import {
   type XIntelQueueDraft,
   type XIntelQueueRow,
   type XIntelRunnerUp,
+  type XIntelSkipKind,
   type XIntelStatus,
   type XIntelSurface,
 } from "@/lib/x-intel/queue-types";
@@ -68,6 +71,8 @@ type QueueDbRow = {
   runners_up: unknown;
   posted_tweet_id: string | null;
   cta: unknown;
+  skip_kind: string | null;
+  blind_spots: unknown;
 };
 
 function asArray<T>(value: unknown): T[] {
@@ -128,6 +133,13 @@ function asConfidence(value: unknown): XIntelConfidence | undefined {
   };
 }
 
+function asSkipKind(value: string | null): XIntelSkipKind | null {
+  if (!value) return null;
+  return (X_INTEL_SKIP_KINDS as readonly string[]).includes(value)
+    ? (value as XIntelSkipKind)
+    : null;
+}
+
 function hydrate(r: QueueDbRow): XIntelQueueRow {
   const confidence = asConfidence(r.confidence);
   const row: XIntelQueueRow = {
@@ -149,6 +161,8 @@ function hydrate(r: QueueDbRow): XIntelQueueRow {
     market_outcome: (r.market_outcome as XIntelOutcome | null) ?? null,
     reason_selected: r.reason_selected,
     runners_up: asArray<XIntelRunnerUp>(r.runners_up),
+    skip_kind: asSkipKind(r.skip_kind),
+    blind_spots: asArray<XIntelBlindSpot>(r.blind_spots),
     posted_tweet_id: r.posted_tweet_id,
     cta: (r.cta as XIntelCta | null) ?? null,
   };
@@ -160,7 +174,8 @@ const SELECT_COLUMNS = `
   id, cycle_key, session_date, created_at_et, created_at, status,
   ticker_or_market, headline, post_copy, thread, franchise,
   attachments, products_referenced, underlying_evidence, chronology,
-  market_outcome, confidence, reason_selected, runners_up, posted_tweet_id, cta
+  market_outcome, confidence, reason_selected, runners_up, posted_tweet_id, cta,
+  skip_kind, blind_spots
 `;
 
 export type SaveQueueRowResult = {
@@ -199,12 +214,12 @@ export async function saveQueueRow(
        cycle_key, session_date, created_at_et, status, ticker_or_market, headline,
        post_copy, thread, franchise, attachments, products_referenced, underlying_evidence,
        chronology, market_outcome, confidence, reason_selected, runners_up, posted_tweet_id,
-       cta
+       cta, skip_kind, blind_spots
      ) VALUES (
        $1, $2, $3, $4, $5, $6,
        $7, $8::jsonb, $9, $10::jsonb, $11::jsonb, $12::jsonb,
        $13::jsonb, $14::jsonb, $15::jsonb, $16, $17::jsonb, $18,
-       $19::jsonb
+       $19::jsonb, $20, $21::jsonb
      )
      ON CONFLICT (cycle_key) DO UPDATE SET
        session_date = EXCLUDED.session_date,
@@ -223,7 +238,9 @@ export async function saveQueueRow(
        confidence = EXCLUDED.confidence,
        reason_selected = EXCLUDED.reason_selected,
        runners_up = EXCLUDED.runners_up,
-       cta = EXCLUDED.cta
+       cta = EXCLUDED.cta,
+       skip_kind = EXCLUDED.skip_kind,
+       blind_spots = EXCLUDED.blind_spots
      RETURNING ${SELECT_COLUMNS}`,
     [
       draft.cycle_key,
@@ -246,6 +263,8 @@ export async function saveQueueRow(
       JSON.stringify(draft.runners_up),
       draft.posted_tweet_id,
       JSON.stringify(draft.cta),
+      draft.skip_kind,
+      JSON.stringify(draft.blind_spots),
     ],
   );
 

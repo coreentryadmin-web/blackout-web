@@ -16,7 +16,7 @@ import {
   type XIntelFranchise,
 } from "@/lib/x-intel/franchises";
 import { X_INTEL_VIEW_BY_ID, X_INTEL_VIEW_CATALOG } from "@/lib/x-intel/view-catalog";
-import { isCapturableSourceUrl } from "@/lib/x-intel/queue-types";
+import { checkCaptureUrl } from "@/lib/x-intel/capture-guard";
 
 function sig(over: Partial<XIntelViewSignature> = {}): XIntelViewSignature {
   return {
@@ -201,13 +201,12 @@ describe("view catalog", () => {
     // A view the guard would refuse is a view that can never be captured — catching that here
     // rather than at 09:35 on a live story.
     //
-    // NOTE: this asserts against this branch's denylist-only `isCapturableSourceUrl`. PR #2510
-    // lands the canonical deny-plus-allow `capture-guard.ts`; when it merges, this file switches
-    // to `checkCaptureUrl` and the assertion gets strictly stronger (it will then also prove every
-    // catalogued route is on the ALLOWlist, not merely absent from the denylist).
+    // #2510 landed, so this now asserts against the canonical deny-PLUS-allow guard: it proves
+    // every catalogued route is on the ALLOWLIST, not merely absent from a denylist. A view whose
+    // route the guard would refuse is a view that can never be captured.
     for (const v of X_INTEL_VIEW_CATALOG) {
-      const verdict = isCapturableSourceUrl(`https://blackouttrades.com${v.path}`);
-      assert.equal(verdict.ok, true, `${v.id} → ${v.path} refused by the never-capture check`);
+      const verdict = checkCaptureUrl(`https://blackouttrades.com${v.path}`);
+      assert.equal(verdict.ok, true, `${v.id} → ${v.path} refused by capture-guard`);
     }
   });
 

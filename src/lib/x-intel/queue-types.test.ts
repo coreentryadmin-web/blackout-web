@@ -5,7 +5,7 @@ import { etSessionDate, etStamp } from "@/lib/largo/temporal/bar-session-date";
 import {
   attachmentCaptureBlockReason,
   cycleKeyForEt,
-  isCapturableSourceUrl,
+  checkCaptureUrl,
   readyBlockReason,
   type XIntelAttachment,
   type XIntelChronology,
@@ -146,7 +146,7 @@ describe("readyBlockReason — evidence floor", () => {
   });
 });
 
-describe("isCapturableSourceUrl", () => {
+describe("checkCaptureUrl (delegated to capture-guard.ts)", () => {
   for (const path of [
     "/admin",
     "/admin/users",
@@ -158,35 +158,41 @@ describe("isCapturableSourceUrl", () => {
     "/settings",
   ]) {
     it(`refuses ${path}`, () => {
-      const v = isCapturableSourceUrl(`https://blackouttrades.com${path}`);
+      const v = checkCaptureUrl(`https://blackouttrades.com${path}`);
       assert.equal(v.ok, false);
     });
   }
 
   for (const path of ["/vector?ticker=SPX", "/flows", "/heatmap", "/nighthawk", "/terminal"]) {
     it(`allows ${path}`, () => {
-      assert.equal(isCapturableSourceUrl(`https://blackouttrades.com${path}`).ok, true);
+      assert.equal(checkCaptureUrl(`https://blackouttrades.com${path}`).ok, true);
     });
   }
 
   it("refuses a debug-flagged query on an otherwise public route", () => {
-    const v = isCapturableSourceUrl("https://blackouttrades.com/vector?ticker=SPX&debug=1");
+    const v = checkCaptureUrl("https://blackouttrades.com/vector?ticker=SPX&debug=1");
     assert.equal(v.ok, false);
   });
 
   it("refuses an unparseable URL rather than letting it through", () => {
-    assert.equal(isCapturableSourceUrl("/admin").ok, false);
-    assert.equal(isCapturableSourceUrl("").ok, false);
+    assert.equal(checkCaptureUrl("/admin").ok, false);
+    assert.equal(checkCaptureUrl("").ok, false);
   });
 
   it("refuses non-https", () => {
-    assert.equal(isCapturableSourceUrl("http://blackouttrades.com/vector").ok, false);
+    assert.equal(checkCaptureUrl("http://blackouttrades.com/vector").ok, false);
   });
 
   it("is not fooled by an admin path appearing later in the URL", () => {
     // The deny-list anchors at the start of the pathname, so a legitimate desk route that merely
     // contains the word must still be capturable — otherwise the check drifts into refusing real work.
-    assert.equal(isCapturableSourceUrl("https://blackouttrades.com/vector?ref=/admin").ok, true);
+    assert.equal(checkCaptureUrl("https://blackouttrades.com/vector?ref=/admin").ok, true);
+  });
+
+  it("now ALSO fails closed on a route that is on neither list", () => {
+    // The strengthening this delegation bought: the old local copy was denylist-only and would
+    // have ALLOWED an unknown route. The canonical guard refuses it.
+    assert.equal(checkCaptureUrl("https://blackouttrades.com/some-new-internal-page").ok, false);
   });
 });
 
@@ -301,5 +307,77 @@ describe("cycleKeyForEt — the slot is the ET hour, not the UTC one", () => {
     const c = cycleKeyForEt(Date.UTC(2026, 7, 21, 16, 0), deps);
     assert.equal(a, b);
     assert.notEqual(a, c);
+  });
+});
+
+describe("blind spots — an unread surface must never arrive as a read one", () => {
+  const blind = (surface: string) => ({
+    surface: surface as never,
+    what_is_missing: "the flow tape never populated",
+    reason: "upstream timeout",
+    retryable: true,
+  });
+
+  it("refuses READY when the package references a surface it could not read", () => {
+    const reason = readyBlockReason({
+      ...readyRow(),
+      products_referenced: ["helix", "thermal"] as never,
+      blind_spots: [blind("helix")],
+    });
+    assert.match(String(reason), /references helix but that surface could not be read/);
+  });
+
+  it("allows READY when the blind surface is NOT one the package claims", () => {
+    // Being blind to Meridian does not invalidate a Thermal + Vector gamma story.
+    assert.equal(
+      readyBlockReason({
+        ...readyRow(),
+        products_referenced: ["thermal", "vector"] as never,
+        blind_spots: [blind("meridian")],
+      }),
+      null,
+    );
+  });
+
+  it("refuses a QUIET skip while any surface was blind — that is BLIND, not QUIET", () => {
+    // "The market was quiet" is only sayable about surfaces that were actually read. Reporting our
+    // own outage as a fact about the tape is how a week of dead harness reads as a dull market.
+    const reason = readyBlockReason({
+      ...readyRow({ status: "SKIP", post_copy: null, attachments: [], underlying_evidence: [] }),
+      skip_kind: "QUIET",
+      blind_spots: [blind("helix")],
+    });
+    assert.match(String(reason), /that is BLIND, not QUIET/);
+  });
+
+  it("allows a QUIET skip when nothing was blind", () => {
+    assert.equal(
+      readyBlockReason({
+        ...readyRow({ status: "SKIP", post_copy: null, attachments: [], underlying_evidence: [] }),
+        skip_kind: "QUIET",
+        blind_spots: [],
+      }),
+      null,
+    );
+  });
+
+  it("refuses a BLIND skip that does not name what could not be read", () => {
+    const reason = readyBlockReason({
+      ...readyRow({ status: "SKIP", post_copy: null, attachments: [], underlying_evidence: [] }),
+      skip_kind: "BLIND",
+      blind_spots: [],
+    });
+    assert.match(String(reason), /name what could not be read/);
+  });
+
+  it("a package with no blind_spots field behaves exactly as before", () => {
+    // Absent must mean "nothing was blind", not "unknown" — the writers all populate it.
+    assert.equal(readyBlockReason(readyRow()), null);
+  });
+
+  it("the SKIP fixture declares QUIET, not a bare skip", () => {
+    const skip = X_INTEL_QUEUE_FIXTURES.find((r) => r.status === "SKIP")!;
+    assert.equal(skip.skip_kind, "QUIET");
+    assert.deepEqual(skip.blind_spots, []);
   });
 });

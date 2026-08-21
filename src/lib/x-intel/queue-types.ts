@@ -32,6 +32,7 @@
  * and they are always accompanied by their ET rendering.
  */
 
+import { checkCaptureUrl } from "@/lib/x-intel/capture-guard";
 import type { XIntelFranchise } from "@/lib/x-intel/franchises";
 import type { XIntelViewSignature } from "@/lib/x-intel/visual-memory";
 
@@ -79,7 +80,7 @@ export type XIntelAttachment = {
   image_url: string;
   caption: string;
   source_surface: XIntelEvidenceSource;
-  /** The exact URL captured. Audited by the never-capture check — see `isCapturableSourceUrl`. */
+  /** The exact URL captured. Audited by the never-capture check — see `capture-guard.ts`. */
   source_url: string;
   /** C1 — when the frame was taken, not when the row was written. */
   captured_at_et: string;
@@ -182,6 +183,51 @@ export type XIntelCta = {
   placement: "reply";
 };
 
+/**
+ * A surface this cycle COULD NOT READ.
+ *
+ * ── WHY THIS IS A FIELD AND NOT A LOG LINE ─────────────────────────────────────────────────────
+ *
+ * "We looked at Helix and there was nothing" and "we could not reach Helix" are different claims,
+ * and a pipeline that renders both as an empty evidence list has turned an unknown into a
+ * measurement. That is the defect class this fleet keeps paying for — the coordinator shipped
+ * three instances of it in one morning inside the tooling built to catch it: a 403 rendered as
+ * "0 open PRs", an unreadable file list as "touches nothing", an uncomputed merge state as "ready
+ * to merge". Each one a blindness reported as a finding.
+ *
+ * For this lane the shape is specific and dangerous: a story whose evidence could not be READ must
+ * not score like a story with genuinely no evidence. The first is a fact about US; the second is a
+ * fact about the market. Only the second is publishable.
+ *
+ * Largo contract C3 is the same rule at the tool boundary; this is it at the package boundary.
+ */
+export type XIntelBlindSpot = {
+  surface: XIntelEvidenceSource;
+  /** What specifically could not be read — not "error", but "the flow tape never populated". */
+  what_is_missing: string;
+  reason: string;
+  /** Whether a later cycle could succeed. A permanent gap and a transient one need different handling. */
+  retryable: boolean;
+};
+
+/**
+ * Why a cycle produced no package. A SKIP is a result, but WHICH result matters.
+ *
+ * `QUIET` is a statement about the market and is the respectable outcome the brief describes.
+ * `BLIND` is a statement about the pipeline. Collapsing them would let an outage read as a calm
+ * tape — and an operator reading a week of QUIET rows would conclude the market was dull when in
+ * fact the harness was down.
+ */
+export const X_INTEL_SKIP_KINDS = [
+  "QUIET",
+  "MARKET_CLOSED",
+  "BLIND",
+  "NO_CAPTURABLE_EVIDENCE",
+  "GATED",
+] as const;
+
+export type XIntelSkipKind = (typeof X_INTEL_SKIP_KINDS)[number];
+
 /** A story that lost, kept so the reviewer can see what the ranker passed over. */
 export type XIntelRunnerUp = {
   headline: string;
@@ -224,6 +270,13 @@ export type XIntelQueueRow = {
   cta: XIntelCta | null;
   /** Why this story beat the others. On SKIP, why there was nothing worth posting. */
   reason_selected: string;
+  /**
+   * Set on SKIP rows. `QUIET` claims the MARKET was quiet and may only be used when nothing was
+   * blind — see `readyBlockReason`.
+   */
+  skip_kind: XIntelSkipKind | null;
+  /** Surfaces this cycle could not read. Empty means everything was legible, not that nothing was checked. */
+  blind_spots: XIntelBlindSpot[];
   runners_up: XIntelRunnerUp[];
   /**
    * Filled in by a human after they publish. This is the join key the learning loop needs to get
@@ -256,9 +309,37 @@ export function readyBlockReason(
   row: Pick<
     XIntelQueueRow,
     "status" | "post_copy" | "attachments" | "chronology" | "underlying_evidence"
-  >,
+  > &
+    Partial<Pick<XIntelQueueRow, "skip_kind" | "blind_spots" | "products_referenced">>,
 ): string | null {
+  const blind = row.blind_spots ?? [];
+
+  // A SKIP is still a claim, so it is checked too. `QUIET` says the MARKET was quiet — which is
+  // only sayable about surfaces we could actually read. Saying it while blind reports our own
+  // outage as a fact about the tape, and a week of those would have an operator concluding the
+  // market was dull when the harness was down.
+  if (row.status === "SKIP") {
+    if (row.skip_kind === "QUIET" && blind.length > 0) {
+      return `skip_kind QUIET claims the market was quiet, but ${blind.length} surface(s) could not be read (${blind
+        .map((b) => b.surface)
+        .join(", ")}) — that is BLIND, not QUIET`;
+    }
+    if (row.skip_kind === "BLIND" && blind.length === 0) {
+      return "skip_kind BLIND with no blind_spots recorded — name what could not be read";
+    }
+    return null;
+  }
+
   if (row.status !== "READY") return null;
+
+  // A package must not make a claim about a surface it could not see. This is the same rule as
+  // the chronology check: the assertion has to rest on something that was actually read.
+  const claimed = new Set<string>(row.products_referenced ?? []);
+  for (const b of blind) {
+    if (claimed.has(b.surface)) {
+      return `package references ${b.surface} but that surface could not be read this cycle (${b.what_is_missing}) — an unread surface must not arrive as a read one`;
+    }
+  }
 
   if (!row.post_copy || !row.post_copy.trim()) {
     return "READY requires post_copy — there is nothing for a reviewer to paste";
@@ -294,70 +375,26 @@ export function readyBlockReason(
 }
 
 /**
- * Routes a frame must never be captured from, matched against the URL the image actually came
- * from. Enforced in code rather than left to the harness's care: the capture session runs as
- * `role: "admin"` (every audit harness mints an admin+premium Clerk user), so a privileged frame
- * is the DEFAULT capability, not an unlikely accident — and the account it would be published to
- * is public.
+ * The never-capture rule lives in ONE place: `capture-guard.ts` (#2510, now on `main`).
  *
- * Deny-list rather than allow-list is a deliberate, narrow choice: the seven desks live at paths
- * this lane does not own and that other lanes rename, so an allow-list here would silently start
- * refusing legitimate captures on someone else's route change. Step 3 pairs this with the
- * per-surface config table, where each entry names its own URL — that table is the allow-list.
- */
-const NEVER_CAPTURE_PATTERNS: ReadonlyArray<{ re: RegExp; why: string }> = [
-  { re: /^\/admin(\/|$)/i, why: "admin console" },
-  { re: /^\/api\/admin(\/|$)/i, why: "admin API" },
-  { re: /^\/api\/cron(\/|$)/i, why: "cron endpoint" },
-  { re: /^\/api\/debug(\/|$)/i, why: "debug output" },
-  { re: /^\/api\/webhooks(\/|$)/i, why: "webhook endpoint" },
-  { re: /^\/sign-in(\/|$)/i, why: "auth screen" },
-  { re: /^\/sign-up(\/|$)/i, why: "auth screen" },
-  { re: /^\/account(\/|$)/i, why: "personal account page" },
-  { re: /^\/settings(\/|$)/i, why: "personal settings page" },
-];
-
-export type CaptureUrlVerdict = { ok: true } | { ok: false; reason: string };
-
-/**
- * Whether a frame from this URL may be attached to a package.
+ * This file previously carried a denylist-only copy of that check. It was a DECLARED duplication
+ * while #2510 was open — flagged in both PR bodies as an ordering dependency, because CLAUDE.md is
+ * explicit that a deferral to an open PR is a dependency `automerge.yml` cannot see. #2510 landed,
+ * so the copy is deleted here rather than left to drift, which is exactly what a hand-duplicated
+ * rule does the first time one side changes.
  *
- * Refuses on anything it cannot positively parse, including a relative URL or a non-BLACKOUT
- * host: a source it cannot classify is a source it cannot clear, and "unparseable" must not
- * degrade into "allowed". Query strings are checked too — a debug flag on an otherwise public
- * route can render internal state onto a public page.
+ * The canonical guard is strictly stronger than what it replaces: DENY first, then an ALLOWLIST of
+ * publishable desk surfaces, so an unknown route fails CLOSED. The old local copy could only refuse
+ * what it already knew about.
  */
-export function isCapturableSourceUrl(rawUrl: string): CaptureUrlVerdict {
-  let url: URL;
-  try {
-    url = new URL(rawUrl);
-  } catch {
-    return { ok: false, reason: `unparseable source_url: ${rawUrl.slice(0, 80)}` };
-  }
-
-  if (url.protocol !== "https:") {
-    return { ok: false, reason: `source_url must be https (got ${url.protocol})` };
-  }
-
-  for (const { re, why } of NEVER_CAPTURE_PATTERNS) {
-    if (re.test(url.pathname)) {
-      return { ok: false, reason: `refusing capture from ${why}: ${url.pathname}` };
-    }
-  }
-
-  if (/(^|&)(debug|__debug|trace)=/i.test(url.search)) {
-    return { ok: false, reason: `refusing capture from a debug-flagged URL: ${url.search}` };
-  }
-
-  return { ok: true };
-}
+export { checkCaptureUrl, type CaptureVerdict } from "@/lib/x-intel/capture-guard";
 
 /** First refusal across every attachment, or null if all clear. */
 export function attachmentCaptureBlockReason(
   attachments: ReadonlyArray<Pick<XIntelAttachment, "slot" | "source_url">>,
 ): string | null {
   for (const a of attachments) {
-    const verdict = isCapturableSourceUrl(a.source_url);
+    const verdict = checkCaptureUrl(a.source_url);
     if (!verdict.ok) return `attachment ${a.slot}: ${verdict.reason}`;
   }
   return null;
