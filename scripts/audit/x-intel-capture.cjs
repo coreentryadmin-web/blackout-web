@@ -229,8 +229,25 @@ async function meridian(page, o, log) {
     }).first();
     if (await chip.count()) { await chip.click(); await page.waitForTimeout(4000); log.push(`class→${o.eventClass}`); }
     const row = page.locator(`.meridian-theme-${o.eventClass.toLowerCase()}`).first();
-    if (await row.count()) { await row.click(); await page.waitForTimeout(9000); log.push('event→opened'); }
-    else log.push(`event→no ${o.eventClass} event listed (captured honestly)`);
+    if (await row.count()) {
+      await row.click();
+      // ASSERT THE BRIEF RENDERED. Clicking a row is not the same as opening one: Meridian can come
+      // back "Timeline unavailable — try refresh", and a run that logs `event→opened` on the click
+      // alone emits a screenshot of an empty desk that looks exactly like a broken product.
+      // MEASURED 2026-08-21 — that is precisely what it did, and the step log said it succeeded.
+      if (!(await settleDetail(page, log))) {
+        const shell = await page
+          .locator('text=/Timeline unavailable|Select a catalyst/i')
+          .count()
+          .catch(() => 0);
+        throw new Error(
+          shell
+            ? `Meridian did not open the ${o.eventClass} brief — desk returned its empty shell ("Timeline unavailable" / "Select a catalyst"). Not captured.`
+            : `Meridian ${o.eventClass} brief never laid out. Not captured.`,
+        );
+      }
+      log.push('event→opened ✓');
+    } else log.push(`event→no ${o.eventClass} event listed (captured honestly)`);
   }
 
   if (o.ticker && o.ticker !== 'SPY' && !o.eventClass) {
