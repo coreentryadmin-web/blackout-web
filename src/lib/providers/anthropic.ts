@@ -173,7 +173,7 @@ const TEMPERATURE = 0.3;
 /** Per-tool_result size cap. Heavy tools (GEX bundles, full flow payloads) are
  *  re-sent every loop round; without a cap they overflow the context window and
  *  Anthropic 400s with prompt-too-long (LARGO-5). */
-const MAX_TOOL_RESULT_CHARS = 16_000;
+export const MAX_TOOL_RESULT_CHARS = 16_000;
 
 export type AnthropicSystemBlock = {
   type: "text";
