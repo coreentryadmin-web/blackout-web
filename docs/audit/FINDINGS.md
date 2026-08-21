@@ -4,6 +4,22 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-21 — [FINDING, P1 X marketing] the X capture harness screenshots as an ADMIN with no check on what page it is on — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `scripts/x-showcase-post.mjs` takes screenshots of the live site and (with `--post`) publishes them to the public @BlackOutTrade account. Nothing anywhere in the capture path checked WHICH page a frame came from. Seven `.screenshot()` call sites, zero URL assertions. |
+| **Root cause** | Two facts that are individually fine and unacceptable together. (1) `scripts/audit/lib/clerk-audit-user.mjs` stamps every temp user `DEFAULT_AUDIT_METADATA = { role: "admin", tier: "premium" }` — admin is the DEFAULT capability of the capture session, because audit harnesses need it to bypass launch gates. (2) The capture path trusted the URL it navigated to and never re-checked the URL it actually screenshotted. So a maximally-privileged browser fed a public account with no refusal in between. |
+| **The realistic leak is not a typo** | Nobody points the harness at `/admin`. What happens is that the Clerk session used here is short-lived (~60s `exp`, and `mintClerkPremiumSession` warns about slow runs), so a desk route can bounce to `/sign-in` or `/account` between navigation and screenshot — and the harness captures the bounce believing it captured a desk. The requested URL and `page.url()` are the same string only when no redirect is involved, and the redirect IS the failure mode. |
+| **Why it wasn't caught earlier** | It has never fired. This is a latent-capability defect, not a reproduced incident — no leaked frame is known. It was found by reading the capture path for the x-content lane's step 1, not by an outage. That is also why it is worth fixing now: the cost of the first occurrence is permanent and public, so "it has not happened yet" is not evidence of safety. |
+| **Blast radius** | Every frame the showcase harness produces, and by extension anything the x-content lane's capture harness inherits from it. Also `?sim=1`, which renders the ADMIN 0DTE SIMULATOR board (`docs/audit/ZERODTE-SIMULATOR.md`) — a synthetic session indistinguishable from a real one. Publishing a simulated play as live market intelligence would be a fabricated claim with a real screenshot attached, which is worse than a leak. |
+| **Fix** | New `src/lib/x-intel/capture-guard.ts`: DENYLIST first (admin console/API, cron, debug, webhooks, auth screens, account/settings/billing/checkout), then an ALLOWLIST of the eight publishable desk surfaces — anything on neither list is REFUSED, so an unknown route fails closed. Also refuses non-https, foreign hosts, `about:blank`, relative and unparseable URLs, and any URL carrying `?debug`/`?trace`/`?sim`/`?impersonate`. All seven screenshot sites in the harness now route through one `guardedShot()` choke point which asserts `page.url()` AT SHOT TIME. It throws rather than returning a flag: a caller that forgets to read a boolean captures the frame anyway, and the refusal must not be skippable by omission. |
+| **What was deliberately NOT changed** | The audit user's `role: "admin"` metadata stays. Other harnesses genuinely need it to bypass launch gates, and narrowing it would break them to fix a problem that belongs at the capture boundary. The right control is refusing the FRAME, not de-privileging every audit in the repo. |
+| **Gates** | Node 20.20.2 · `npx tsc --noEmit` clean · eslint clean · `node --check` on the harness · 39 new unit tests including deny-beats-allow ordering, fail-closed on unknown routes, and the `?sim=1` case. |
+| **Status** | FIXED — this PR. Reported on #2494 as D4; coordinator directed denylist-plus-allowlist that refuses. |
+
 ## 2026-08-21 — [FINDING, P1 Tooling/CI] `main` went red on two individually-green PRs — a deferral outlived the PR it deferred to — FIXED
 
 > **kind:** `FINDING`
