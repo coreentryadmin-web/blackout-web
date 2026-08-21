@@ -100,8 +100,11 @@ test("the absence report is attached on READ, so old cache entries still get one
   const src = readFileSync("src/lib/bie/vector-full-state.ts", "utf8");
   // Both the cache-hit and the live-compute path must go through the wrapper, or a cached read
   // silently loses the labelling that the live path has.
-  assert.match(src, /if \(cached\) return withAbsenceReport\(cached\);/);
-  assert.match(src, /return live \? withAbsenceReport\(live\) : null;/);
+  // Matches the composed name too: the freshness PR wraps the SAME function, and when both land
+  // the two helpers compose into `withReadContext`. Asserting the exact helper NAME would fail on
+  // the merge while the behaviour it checks is intact — pin the seam, not the spelling.
+  assert.match(src, /if \(cached\) return with(?:AbsenceReport|ReadContext)\(cached\);/);
+  assert.match(src, /return live \? with(?:AbsenceReport|ReadContext)\(live\) : null;/);
 });
 
 test("the tool description teaches that absence is not emptiness", () => {
