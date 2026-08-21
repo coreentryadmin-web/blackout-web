@@ -350,6 +350,24 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Found by** | Rule 6 — running the harness against production to validate #2441, rather than trusting that it shipped as tested. |
 | **Status** | FIXED — validated live against production on both viewports; tap-target count independently confirms #2441 (24 sub-24px targets → 1, the intentional visually-hidden skip link). |
 
+## 2026-08-21 — [FINDING, P2 Meridian] The orbital-label collision guard used SHORTER labels than the ones that ship, so it passed while the render overlapped — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Report tab, orbital diagram: `"Thermal nodes" ∩ "Vector expected move" 8.79 × 6.71px` on live prod (desktop 1440, BEKE, collapsed). Two pillar labels printed through each other on the diagram whose job is to say which pillar is which. |
+| **Why no test caught it** | There IS a collision guard — `meridian-spatial-core.test.ts` — written for exactly this defect, walking the same `orbitalGeometry` / `orbitalLabelOffset` the component calls, specifically so it "cannot pass while the rendered layout fails". It passed anyway. **Its fixture carried its own, shorter labels**: `"Vector"` for `"Vector expected move"`, `"Thermal"` for `"Thermal nodes"`, `"Analyst"` for `"Street / analysts"`, `"News"` for `"News & catalysts"`. Laying out boxes roughly HALF the shipping width, it found no horizontal overlap and passed. Its `LINE_PX` was 11 against a live label box of 12.47px, which on its own turns a real vertical overlap into a miss. |
+| **The lesson, stated plainly** | The guard shared the *functions* but invented the *inputs*, and the inputs were the thing under test. A fixture that restates the values it is meant to protect can only ever prove something about the fixture. |
+| **Root cause of the render** | The report panel renders the diagram at 310 collapsed / 400 expanded. `MIN_ORBITAL_SIZE` was 300, a floor derived from the **core mark** (below it the innermost orb paints over the centre). The binding constraint is the **labels**, and it is larger — at 310 two rim labels physically overlap. |
+| **Measured, not chosen** | Swept with the shipping label set through the same geometry: overlaps go 2 → 1 at 328px and 1 → 0 at **376px**, in both weight regimes (flat and spread). 376 is the smallest box at which this diagram's own labels do not collide. |
+| **Fix** | `REPORT_PILLAR_LABELS` — one canonical export replacing eleven scattered string literals — and the guard now consumes it. `ORBITAL_LABEL_CHAR_PX` / `ORBITAL_LABEL_LINE_PX` move out of the test into the module. `MIN_ORBITAL_SIZE` 300 → **376**, with the reasoning recorded. The component already sizes its box from `geo.size` rather than the prop, so no call site changes. |
+| **The floor re-measures itself** | `orbitalGeometryUnclamped` shares the disc formula so the new test can sweep *below* the floor without a second copy of the arithmetic — the exact mistake this finding is about. The test asserts both that labels do not collide AT the floor and that the last colliding box is within 8px of it, so the floor cannot silently become either wrong or wastefully large. |
+| **Non-vacuous, demonstrated** | With the floor restored to 300 and the real labels in place, six parametrised cases fail with `"Thermal nodes" overlaps "Vector expected move" by 12.8x8.7px` / `7.6x8.0px` — the same pair and the same magnitude as the live measurement. The parametrised sizes were also changed from 260/300/340 (all of which now clamp to the floor, making them three copies of one test) to the floor, 400 and 520. |
+| **Still open, deliberately not fixed here** | Four labels remain **ellipsised**: `Vector expected move` (needs 110px, gets 83), `Street / analysts`, `News & catalysts`, `Insider activity`. `labelMaxW` is exactly `LABEL_MARGIN - 10`, so it is pinned at 86px no matter how large the box grows. Clearing it needs `LABEL_MARGIN` ≥ 128, which widens every label and pushes the collision-free floor from 376 to **440** — a visible growth of the panel, and a product call rather than a correctness one. An ellipsis is honest truncation; two labels printing through each other is not, which is why only the second is fixed here. Raised for the coordinator on the PR. |
+| **Gates on Node 20.20.2** | `npx tsc --noEmit` clean · `npm test` **9042 pass / 0 fail** · `npm run build` clean · `npx eslint` clean. |
+| **Status** | FIXED — PR #2502 (draft). Not yet live-verified; the pixels must be re-measured once it ships. |
+
 ## 2026-08-21 — [FINDING, P1 Largo/Night Hawk] #2477 merged and was NOT done — the tool a member's question routes to still published an outage as a quiet session — FIXED
 
 > **kind:** `FINDING`
