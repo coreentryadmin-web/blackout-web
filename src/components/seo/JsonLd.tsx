@@ -29,7 +29,7 @@ const WEBSITE_ID = `${SITE.url}/#website`;
  * Every term here is a subject the site actually has depth on — matched to the real query demand in
  * Search Console (gamma exposure, dealer positioning, 0DTE, options flow), never aspirational.
  */
-const BRAND_TOPICS = [
+export const BRAND_TOPICS = [
   "Gamma exposure (GEX)",
   "Dealer gamma positioning",
   "0DTE options trading",
@@ -366,6 +366,58 @@ export function DefinedTermSetJsonLd({
           name: t.term,
           description: t.def,
           inDefinedTermSet: setId,
+        })),
+      }}
+    />
+  );
+}
+
+
+/**
+ * Course schema for BlackOut Academy — the curriculum is a real, free, structured 7-chapter
+ * course, and Google supports Course rich results for exactly this. It is provider-linked to the
+ * Organization @id (so the course inherits the brand entity), marked free, and lists each chapter
+ * as a LearningResource. `teaches`/`about` reuse the same BRAND_TOPICS the Organization declares
+ * `knowsAbout`, so the site asserts ONE consistent topic set across entity + course rather than
+ * two drifting lists.
+ */
+export function CourseJsonLd({
+  chapters,
+}: {
+  chapters: { name: string; description: string; url: string }[];
+}) {
+  return (
+    <JsonLdScript
+      data={{
+        "@context": "https://schema.org",
+        "@type": "Course",
+        "@id": `${SITE.url}/learn#course`,
+        name: "BlackOut Academy",
+        description:
+          "A free, structured curriculum on dealer gamma, options flow, 0DTE SPX structure, and the BlackOut desk — from first principles to live workflow.",
+        url: `${SITE.url}/learn`,
+        provider: { "@id": `${SITE.url}/#organization` },
+        inLanguage: "en-US",
+        isAccessibleForFree: true,
+        educationalLevel: "Beginner to Advanced",
+        teaches: [...BRAND_TOPICS],
+        about: [...BRAND_TOPICS],
+        // A free, self-paced online instance makes the course eligible for the richer Course
+        // treatment without asserting a price the academy does not charge.
+        hasCourseInstance: {
+          "@type": "CourseInstance",
+          courseMode: "online",
+          courseWorkload: "PT4H",
+          offers: { "@type": "Offer", price: "0", priceCurrency: "USD", availability: "https://schema.org/InStock" },
+        },
+        hasPart: chapters.map((c) => ({
+          "@type": "LearningResource",
+          name: c.name,
+          description: c.description,
+          url: c.url,
+          isAccessibleForFree: true,
+          inLanguage: "en-US",
+          provider: { "@id": `${SITE.url}/#organization` },
         })),
       }}
     />
