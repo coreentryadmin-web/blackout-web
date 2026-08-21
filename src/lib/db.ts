@@ -2173,6 +2173,56 @@ async function runMigrations(): Promise<void> {
        ON meridian_report_snapshots(ticker, event_date, snapshot_day DESC)`
   );
 
+  // X INTEL QUEUE — the hourly market-intelligence package a human reviews and publishes by hand.
+  //
+  // `cycle_key` is UNIQUE and carries the ET hour slot ("2026-08-21T11"), so a re-run of the same
+  // cycle overwrites its own row instead of leaving a duplicate — same reasoning as
+  // meridian_report_snapshots' day key above. It is TEXT rather than a timestamp on purpose: the
+  // slot is an ET wall-clock concept and storing it as an instant would make it ambiguous across
+  // the DST boundary, which is precisely the class of bug that silently stops the existing
+  // x-autopost cron every November.
+  //
+  // `confidence` is nullable and MUST stay nullable. Largo contract C6: a package that cannot
+  // calibrate a score omits it. A NOT NULL DEFAULT here would manufacture the exact fabricated
+  // number the contract forbids, and it would be indistinguishable from a measured one.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS x_intel_queue (
+      id BIGSERIAL PRIMARY KEY,
+      cycle_key TEXT NOT NULL UNIQUE,
+      session_date DATE NOT NULL,
+      created_at_et TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      status TEXT NOT NULL,
+      ticker_or_market TEXT NOT NULL,
+      headline TEXT NOT NULL,
+      post_copy TEXT,
+      thread JSONB,
+      franchise TEXT,
+      attachments JSONB NOT NULL DEFAULT '[]'::jsonb,
+      products_referenced JSONB NOT NULL DEFAULT '[]'::jsonb,
+      underlying_evidence JSONB NOT NULL DEFAULT '[]'::jsonb,
+      chronology JSONB,
+      market_outcome JSONB,
+      confidence JSONB,
+      reason_selected TEXT NOT NULL,
+      runners_up JSONB NOT NULL DEFAULT '[]'::jsonb,
+      posted_tweet_id TEXT,
+      cta JSONB,
+      -- A SKIP is a result, but WHICH result matters: QUIET is a claim about the market, BLIND is
+      -- a claim about the pipeline. Collapsing them lets an outage read as a calm tape.
+      skip_kind TEXT,
+      blind_spots JSONB NOT NULL DEFAULT '[]'::jsonb
+    );
+  `);
+  await p.query(
+    `CREATE INDEX IF NOT EXISTS idx_x_intel_queue_recent
+       ON x_intel_queue(created_at DESC)`
+  );
+  await p.query(
+    `CREATE INDEX IF NOT EXISTS idx_x_intel_queue_session
+       ON x_intel_queue(session_date DESC, created_at DESC)`
+  );
+
   } finally {
     // Release the advisory lock + return the dedicated connection to the pool.
     try { await lockClient.query(`SELECT pg_advisory_unlock($1)`, [MIGRATION_LOCK_ID]); } catch { /* ignore */ }

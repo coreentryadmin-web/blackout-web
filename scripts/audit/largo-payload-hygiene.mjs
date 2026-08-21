@@ -98,6 +98,10 @@ const TOOLS = [
   ["get_hot_tickers", {}],
   ["get_vector_pulse", { ticker: TICKER }],
   ["get_vector_full_state", { ticker: TICKER }],
+  // Vector's chart-analytics surface. Absent from this list until 2026-08-21, which is why its 21
+  // bare-epoch leaves in `market_structure` went unscanned — a tool the scanner never calls is not
+  // a clean tool, and the omission is invisible unless the list is read.
+  ["get_vector_analytics", { ticker: TICKER }],
   // ── Night Hawk / 0DTE lane ────────────────────────────────────────────────────
   // Added for the same reason the rest of the list exists: these are DATA reads the
   // model reasons over numerically — option premiums, realized P&L, win rates,

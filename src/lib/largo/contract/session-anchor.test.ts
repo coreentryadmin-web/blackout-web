@@ -20,7 +20,8 @@ import { join } from "node:path";
  * day ahead. The fix is therefore ADDITIVE — keep the instant, add the ET session date — which is
  * exactly what #2420 did. This test does not ban `toISOString()`; it requires an anchor beside it.
  *
- * RATCHET, NOT A BIG BANG. 11 files predate the rule. Rewriting all of them at once would touch
+ * RATCHET, NOT A BIG BANG. 51 files predate the rule (11 found when it was written, 40 more when
+ * ROOTS was widened from two directories to `src` on 2026-08-21 — see the ROOTS comment). Rewriting all of them at once would touch
  * five lanes' files simultaneously and cause exactly the merge conflicts the contract exists to
  * prevent. So they are listed explicitly below and the list can only shrink:
  *   - a NEW unanchored construction site fails immediately;
@@ -29,7 +30,23 @@ import { join } from "node:path";
  * permanent exemption, and this repo has been bitten by stale-by-omission before.
  */
 
-const ROOTS = ["src/lib/largo", "src/lib/bie"];
+/**
+ * WHAT THE SCANNER LOOKS AT.
+ *
+ * This was `["src/lib/largo", "src/lib/bie"]` — where the three defects in the header were found.
+ * Measured 2026-08-21: that reached **16** construction sites and could not see **40** others, so
+ * the guard covered 29% of the surface while its failure message reads as a complete list. Two
+ * of the misses are Largo-facing on their own (`/api/market/largo/context` stamps the context
+ * payload; `bie-report`), and three fabricate rather than omit — `as_of: merged.polled_at ??
+ * new Date().toISOString()` asserts the data was polled NOW when the upstream had no poll time.
+ *
+ * This file's own docblock names that failure mode: *"A guard with false NEGATIVES is worse than
+ * no guard, because it converts 'unchecked' into 'checked and clean'."* It was true of the regex
+ * and it was equally true of the search path. The rule was never "Largo and BIE stamp honestly" —
+ * it is "a Largo-facing payload stamps honestly", and payloads are assembled in route handlers and
+ * feature libs too.
+ */
+const ROOTS = ["src"];
 
 /**
  * Constructs `as_of` / `asOf` from a UTC ISO string — a real runtime value, not a type.
@@ -72,14 +89,74 @@ const KNOWN_GAPS: Record<string, string> = {
   "src/lib/bie/vector-full-state.ts": "vector lane",
   "src/lib/largo/slash-prompts.ts": "coordinator",
   "src/lib/largo/social-content-pack.ts": "coordinator — member-visible copy",
-  "src/lib/largo/vector-analytics.ts": "vector lane",
+  // ── Exposed 2026-08-21 when ROOTS was WIDENED from ["src/lib/largo","src/lib/bie"] to ["src"].
+  // 40 sites that were never scanned, listed here so `main` stays green and the ratchet keeps its
+  // shrink-only shape rather than red-lining five lanes at once — the same "not a big bang" choice
+  // the original 11 got. Each is a real gap and a work item for its owning lane, NOT an exemption.
+  //
+  // Deliberately a SEPARATE block appended below the original list: the entries above are being
+  // deleted by PRs in flight, and keeping those lines where they are lets a one-line deletion merge
+  // cleanly past these additions.
+  //
+  // Triage for whoever picks these up — they are not equally urgent:
+  //   - `/api/market/largo/context` and `/api/admin/bie-report` assemble MODEL-facing payloads.
+  //   - `lotto/today`, `spx/power-hour` and `cron/spx-evaluate` use
+  //     `as_of: merged.polled_at ?? new Date().toISOString()`, which FABRICATES the anchor rather
+  //     than omitting it — strictly worse, and the same shape as the fabricated `as_of` fixed in
+  //     the Vector desk brief (#2427). A missing anchor is an absence a caller can notice.
+  //   - the `/health`, `/ready`, `/boot` and `socket-health` routes stamp their OWN response time,
+  //     where `as_of` genuinely does mean "now"; anchoring them is tidiness, not a correctness fix.
+  "src/app/api/admin/bie-report/route.ts": "coordinator",
+  "src/app/api/admin/playbook/fsm-today/route.ts": "coordinator",
+  "src/app/api/cron/socket-health/route.ts": "coordinator",
+  "src/app/api/cron/spx-evaluate/route.ts": "coordinator (SPX lane)",
+  "src/app/api/cron/swing-active-refresh/route.ts": "coordinator (swings)",
+  "src/app/api/health/route.ts": "coordinator",
+  "src/app/api/market/banger/board/route.ts": "coordinator",
+  "src/app/api/market/health/route.ts": "coordinator",
+  "src/app/api/market/heatmap/route.ts": "coordinator",
+  "src/app/api/market/largo/context/route.ts": "coordinator",
+  "src/app/api/market/lotto/today/route.ts": "coordinator (0DTE)",
+  "src/app/api/market/spx/power-hour/route.ts": "coordinator (SPX lane)",
+  "src/app/api/worker/boot/route.ts": "coordinator",
+  "src/app/api/worker/health/route.ts": "coordinator",
+  "src/app/api/worker/ready/route.ts": "coordinator",
+  "src/features/nighthawk/lib/option-chain-prompt.ts": "coordinator (Night Hawk)",
+  "src/features/spx/lib/playbook-option-sim.ts": "coordinator (SPX lane)",
+  "src/features/spx/lib/spx-commentary.ts": "coordinator (SPX lane)",
+  "src/features/spx/lib/spx-desk-merge.ts": "coordinator (SPX lane)",
+  "src/features/spx/lib/spx-desk-state.ts": "coordinator (SPX lane)",
+  "src/features/spx/lib/spx-desk.ts": "coordinator (SPX lane)",
+  "src/features/spx/lib/spx-play-engine.ts": "coordinator (SPX lane)",
+  "src/features/spx/lib/spx-play-payload.ts": "coordinator (SPX lane)",
+  "src/features/spx/lib/spx-signals.ts": "coordinator (SPX lane)",
+  "src/features/spx/lib/spx-slayer-badge-map.ts": "coordinator (SPX lane)",
+  "src/lib/admin-playbook-promotion.ts": "coordinator",
+  "src/lib/market-health.ts": "coordinator",
+  "src/lib/meridian/meridian-snapshot.ts": "meridian lane",
+  "src/lib/nighthawk/cortex/compose.ts": "coordinator (Night Hawk)",
+  "src/lib/nighthawk/cortex/sources/opening-harvest.ts": "coordinator (Night Hawk)",
+  "src/lib/nighthawk/cortex/sources/wall-trend.ts": "coordinator (Night Hawk)",
+  "src/lib/platform/index.ts": "coordinator",
+  "src/lib/platform/zerodte-service.ts": "coordinator (0DTE)",
+  "src/lib/platform/zerodte-sim-board.ts": "coordinator (0DTE)",
+  "src/lib/providers/polygon-news.ts": "coordinator",
+  "src/lib/swing/discovery.ts": "coordinator (swings)",
+  "src/lib/swing/dossier.ts": "coordinator (swings)",
+  "src/lib/thermal-discord-extras.ts": "thermal lane",
+  "src/lib/zerodte/earnings.ts": "coordinator (0DTE)",
+  "src/lib/zerodte/live-marks.ts": "coordinator (0DTE)",
 };
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
     const p = join(dir, entry);
     if (statSync(p).isDirectory()) walk(p, out);
-    else if (p.endsWith(".ts") && !p.endsWith(".test.ts")) out.push(p);
+    // `.tsx` too, now that ROOTS covers `src`: a payload assembled inside a server component is
+    // exactly as model-facing as one assembled in a lib, and "the extension we happened to walk"
+    // is not a principled boundary. No .tsx file offends today — this keeps it that way rather
+    // than leaving a second reach gap of the same kind as the one that hid 40 sites.
+    else if (/\.tsx?$/.test(p) && !/\.test\.tsx?$/.test(p)) out.push(p);
   }
   return out;
 }
@@ -153,6 +230,26 @@ test("the scanner detects the real pattern and not a type declaration", () => {
   // Merely READING a session_date column is not deriving one — this was the false negative that
   // exempted product-reads.ts while it still stamped UTC.
   assert.ok(!HAS_ET_ANCHOR.test("    session_date: row.session_date,"), "a DB column read is not an anchor");
+});
+
+test("the scanner actually REACHES the whole payload surface, not just two directories", () => {
+  // The 2026-08-21 widening: ROOTS was ["src/lib/largo","src/lib/bie"], which saw 16 construction
+  // sites and missed 40 — including `/api/market/largo/context`, which stamps a model-facing
+  // payload. A guard is only as good as its search path, and the search path had never been
+  // audited because the regex was the part that had bugs. Assert the reach directly, so narrowing
+  // ROOTS back (or "optimising" the walk) fails loudly instead of silently shrinking coverage.
+  const files = ROOTS.flatMap((r) => walk(r));
+  const reaches = (prefix: string) => files.some((f) => f.replace(/\\/g, "/").startsWith(prefix));
+  assert.ok(reaches("src/lib/largo/"), "lib/largo — where the rule was written");
+  assert.ok(reaches("src/lib/bie/"), "lib/bie");
+  assert.ok(reaches("src/app/api/"), "route handlers assemble payloads too");
+  assert.ok(reaches("src/features/"), "so do feature libs");
+  assert.ok(
+    files.some((f) => f.endsWith(".tsx")),
+    "server components are not exempt by file extension"
+  );
+  // Test files are excluded on purpose: a fixture stamping a UTC instant is not a payload.
+  assert.ok(!files.some((f) => /\.test\.tsx?$/.test(f)), "test files must stay out of the scan");
 });
 
 test("at least one file already does it right, so the rule is known-achievable", () => {
