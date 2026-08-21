@@ -277,6 +277,69 @@ export const CAPTURE_LESSONS: ReadonlyArray<CaptureLesson> = [
     observation:
       "Vector: entering full screen and then opening the Indicators menu dropped the chart from 2512x1354 to 1196x1398 portrait in an otherwise identical run. Thermal: FORCED FLOW (DEPTH) renders no expiry bar at all, so ALL has to be set on MATRIX first.",
   },
+  {
+    id: "same-panel-later-beats-another-panel",
+    applies_to: "*",
+    evidence: "MEASURED",
+    sample_size: 1,
+    lesson:
+      "For the third attachment, prefer the SAME panel recaptured after the move over a third different view. A before/after of one panel shows the fields inverting; a third view of the same moment just shows the same moment again. It also fills market_outcome, which nothing else can.",
+    observation:
+      "BAC 2026-08-21. The package first paired the scanner (11:36) with Thermal (11:39) and a Vector chart (11:43). Recapturing the SAME Thermal panel at 12:06:46 ET produced a far stronger slot 3: LONG GAMMA / 62.20 / vol SUPPRESSED became SHORT GAMMA / 61.89 / vol EXPANDED — same ticker, same strikes, 27 minutes apart, every field that matters inverted. The Vector chart was the better-looking frame and the weaker attachment.",
+  },
+  {
+    id: "escape-before-matching",
+    applies_to: "*",
+    evidence: "MEASURED",
+    sample_size: 1,
+    lesson:
+      "Escape operator input before it becomes a matcher. An unescaped label with a metacharacter selects the wrong control or no control, and the run reports it as a timeout or an absent element rather than as a bad pattern.",
+    observation:
+      "The Vector indicator menu labels its opening-range item \"Opening range (30m)\". `new RegExp(\"Opening range (30m)\")` reads the parentheses as a capture group, so the pattern becomes `Opening range 30m` and matches nothing — verified directly: unescaped false, escaped true. CodeQL found this as regex injection across eight call sites; the security framing is thin for a local harness but the correctness bug is real.",
+  },
+  {
+    id: "tables-need-rendering-larger",
+    // The Universe Scanner is a panel ON the Vector page, not a surface of its own — the capture
+    // harness takes `--surface scanner` as a shorthand for a framing, and the test that caught this
+    // is right to refuse the shorthand here.
+    applies_to: "vector",
+    evidence: "MEASURED",
+    sample_size: 1,
+    lesson:
+      "A dense table is the one thing this desk builds that a feed cannot carry at desk width. Render the container larger with CSS zoom before shooting it — narrowing the viewport fixes the aspect but not the type, because legibility is the share of the frame a glyph occupies and that does not change when you shrink the page around it.",
+    observation:
+      "Universe Scanner at 2560 wide: 2512x498, 5.04:1, legibility 0.43 — rejected twice over. At viewport 1500 with the panel at CSS zoom 1.7: 1452x1070, 1.36:1, legibility 0.61, PASS.",
+  },
+  {
+    id: "beads-need-20-rows-and-3m",
+    applies_to: "vector",
+    evidence: "MEASURED",
+    sample_size: 1,
+    lesson:
+      "Set --tf 3 and --nodes 20 on every Vector capture. Node density defaults to AUTO, which resolves to 11 rows, and at 11 the gamma beads render as a sparse dotted scatter instead of the dense per-strike rails the operator's reference frames show. This is the single biggest gap between a reference frame and a default one.",
+    observation:
+      "Operator supplied reference captures 2026-08-21 (SPX, NVDA, MSFT) whose toolbars read 3 MIN and NODES 20 ROW. NVDA at AUTO/default: thin dotted lines at 220/215/213. NVDA at tf=3, nodes=20: dense continuous rails of individually countable beads at the same strikes, both walls in frame.",
+  },
+  {
+    id: "walls-must-stay-in-frame",
+    applies_to: "vector",
+    evidence: "RULED",
+    sample_size: null,
+    lesson:
+      "A Vector frame must contain both walls. Price-axis zoom is per-ticker and is governed by that rule, not by a fixed step count — tightening past the walls loses the thing the frame is evidence of.",
+    observation:
+      "--price-zoom 5 on NVDA took the axis from a 7.5-point span to 2 points and pushed the 220 call wall off frame entirely. The operator's SPX reference looks tighter only because SPX strikes sit 5 points apart on a 7,680 index; NVDA strikes are 2.5 apart on 215, so the same span in percent terms is a much wider band.",
+  },
+  {
+    id: "a-skipped-control-must-announce-itself",
+    applies_to: "*",
+    evidence: "MEASURED",
+    sample_size: 2,
+    lesson:
+      "Wait for a control, then report what it HOLDS — never test whether it exists yet and pass over it in silence. A silently skipped control produces a frame the caption misdescribes, which is indistinguishable from a correct frame until someone checks the pixels.",
+    observation:
+      "Two consecutive identical Vector runs 2026-08-21: the first logged tf and nodes set, the second logged neither and captured an AUTO-11 chart. The toolbar hydrates after the chart, so a bare count() at the 12s settle is a coin flip. Both selects now wait, and an absent control logs CONTROL ABSENT with what the frame is actually on.",
+  },
 ];
 
 /** Lessons that bind for a given catalog view or surface, most-binding first. */

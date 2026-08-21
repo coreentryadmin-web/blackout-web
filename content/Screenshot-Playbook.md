@@ -386,6 +386,50 @@ contrasting product views.
 
 ## 5. Lessons log
 
+### 2026-08-21 — the operator's frames had two controls set that mine did not
+
+Side by side, the beads were the tell. The reference captures show dense, continuous rails of
+individually countable beads at every strike near spot. Mine showed a thin dotted scatter.
+
+It was not framing, zoom, or timing. It was **`NODES`**, which defaults to `AUTO` and resolves to
+**11 rows** — and the reference frames run **20**, on **3-minute** candles. Nothing else about the
+capture had to change.
+
+Two things this cost that are worth remembering:
+
+1. **I had been looking at the wrong variable for hours.** Zoom, anchor, full screen, indicators —
+   all real improvements, none of them the thing. The answer was legible in the operator's own
+   toolbar the whole time (`3 MIN`, `NODES 20 ROW`); I was comparing my output to their output
+   instead of comparing my *controls* to their *controls*.
+2. **It was non-deterministic and I nearly shipped it that way.** Two identical runs: the first set
+   both controls, the second silently skipped both and captured an AUTO-11 chart. The toolbar
+   hydrates after the chart, so testing whether a control exists at the settle is a coin flip. A
+   frame that quietly lacks what the caption promises is worse than a failed capture, because
+   nothing about it looks wrong.
+
+Rule that came out of it, now general: **wait for a control, then report what it holds.** Never ask
+whether it is there yet and move on. An absent control has to say so in the step log.
+
+
+### 2026-08-21 — the best-looking frame was the weakest attachment
+
+The BAC package went out with three slots: scanner at 11:36, Thermal at 11:39, Vector chart at
+11:43. The Vector frame was easily the prettiest thing captured all day — full-bleed session,
+individual candles, both wall bands, VWAP and opening-range levels labelled.
+
+Then I went back at 12:06 and recaptured the **same Thermal panel**. `LONG GAMMA / 62.20 / vol
+SUPPRESSED` had become `SHORT GAMMA / 61.89 / vol EXPANDED`. Same ticker, same strikes, 27 minutes
+apart, every field that matters inverted.
+
+That pair is the post. A third *view* of one moment adds a camera angle; the same panel *later*
+adds a second moment, which is the only kind of evidence that can show a mechanism working. It also
+fills `market_outcome`, which nothing captured before the move can.
+
+So the rule for slot 3 is now: **prefer the same panel, later.** Go back and look at what happened.
+The prettiest frame is not automatically the most load-bearing one, and on this package it was the
+one to cut.
+
+
 ### 2026-08-21 — I read a chart four hours wrong, and the fix was to stop reasoning and measure
 
 Chasing an apparent contradiction — the Vector regime banner said NVDA spot ~215 while the chart's
