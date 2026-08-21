@@ -1617,7 +1617,14 @@ html.nav-locked body { overflow: hidden; }
    ("17.00" ∩ "17.00" 33x2px). The label's line-height is pinned too, so its height stops
    depending on which font `--mv-value` resolves to. Asserted equal to MV_RAIL_TIER_PX /
    MV_RAIL_LABEL_PX by meridian-viz-core.test.ts. */
-.mv-rail, .mv-targets { display: block; --mv-rail-tier-h: 16px; --mv-rail-label-h: 14px; }
+.mv-rail, .mv-targets {
+  display: block;
+  --mv-rail-tier-h: 16px; --mv-rail-label-h: 14px;
+  /* How far the FIRST row of labels sits above the track. Used by BOTH the label's `top`
+     and the track's reserved headroom — they are the same distance, and when it was
+     written out twice only one of the two got it. */
+  --mv-rail-label-lift: 0.55rem;
+}
 .mv-rail-head {
   display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem;
   margin-bottom: 0.5rem;
@@ -1631,9 +1638,25 @@ html.nav-locked body { overflow: hidden; }
   font-family: var(--font-mono, monospace); font-size: 0.74rem; color: rgba(125, 211, 252, 0.8);
 }
 .mv-rail-track {
-  /* Labels are absolutely positioned ABOVE the track, so the track has to reserve their rows —
-     otherwise a second tier renders on top of the panel title. One row per occupied tier. */
-  margin-top: calc((var(--rail-tiers, 1) - 1) * var(--mv-rail-tier-h));
+  /* Labels are absolutely positioned ABOVE the track, so the track has to reserve the space they
+     occupy — otherwise the top row renders on top of the panel head. Reserve the LIFT as well as
+     the tiers: a label sits at `top: calc(-1 * --mv-rail-label-lift - tier * --mv-rail-tier-h)`,
+     so its top edge is `lift + (tiers-1)*tier-h` above the track's padding box. Reserving only
+     the middle term left it short by the lift itself.
+
+     Measured on prod 2026-08-21, 430px, Positioning, --rail-tiers:2 —
+       head bottom 630.09 | tier-1 label 622.30..636.30 -> 7.79px INTO the head
+     which is the reported `"±2.3% · chain_iv" ∩ "17.00"` collision. Predicted shortfall at
+     those values is 0.55rem - 1px = 7.80px; the 1px is the track's border, since an absolutely
+     positioned child is placed against the padding box. Reserving the full lift therefore clears
+     by exactly 1px at every tier count.
+
+     NOTE the margins COLLAPSE: `.mv-rail-head`'s 0.5rem margin-bottom and this margin-top are
+     adjacent siblings, so the gap is max(8px, this) and NOT their sum. That is why a value below
+     8px would buy nothing at all.
+
+     The shortfall pre-dates #2497; raising the tier step from 9.92px to 16px widened it by 2px. */
+  margin-top: calc((var(--rail-tiers, 1) - 1) * var(--mv-rail-tier-h) + var(--mv-rail-label-lift));
   position: relative; height: 34px;
   border-radius: 999px;
   background: linear-gradient(90deg, rgba(251,113,133,0.07), rgba(125,211,252,0.05), rgba(52,211,153,0.07));
@@ -1658,7 +1681,7 @@ html.nav-locked body { overflow: hidden; }
      a second row when two labels cannot sit side by side. Both come from layoutRailLabels;
      without them "call wall" and "king" printed through each other at the right edge. */
   position: absolute; left: 0;
-  top: calc(-0.55rem - var(--tier, 0) * var(--mv-rail-tier-h));
+  top: calc(-1 * var(--mv-rail-label-lift) - var(--tier, 0) * var(--mv-rail-tier-h));
   transform: translateX(-50%) translateX(var(--dx, 0px));
   font-family: var(--font-mono, monospace); font-size: 0.64rem; letter-spacing: 0.06em;
   /* Pinned, not inherited: the `<b>` inside carries a different font stack, and an unpinned

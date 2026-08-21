@@ -33,6 +33,7 @@ import {
   haloFromSignals,
   impliedVsRealized,
   layoutRailLabels,
+  railLabelWidthPx,
   strikeProfile,
   normalizeMoveBand,
   num,
@@ -284,9 +285,6 @@ function useElementWidth<T extends HTMLElement>() {
   return { ref, width };
 }
 
-/** Approximate advance of the 0.46rem mono face the rail labels are set in. */
-const RAIL_LABEL_CHAR_PX = 4.9;
-
 export function MeridianMoveRail({
   band,
   movePct,
@@ -319,7 +317,11 @@ export function MeridianMoveRail({
     return layoutRailLabels(
       usable.map((m, i) => ({
         pos: ticks[i] ?? 0,
-        widthFrac: (String(m.label).length * RAIL_LABEL_CHAR_PX + 6) / trackW,
+        // Measure the string that is actually DRAWN — label AND price, in their two different
+        // faces. The old estimate counted the label alone at an advance calibrated for a font
+        // size the stylesheet no longer uses, which came to 31-43% of the real width and is why
+        // labels hung off the track and shared a row. See railLabelWidthPx.
+        widthFrac: railLabelWidthPx(String(m.label), fmtPrice(num(m.value))) / trackW,
       }))
     );
   }, [usable, ticks, trackW]);

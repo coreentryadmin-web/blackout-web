@@ -258,12 +258,16 @@ test("a NOW-vs-last-snapshot diff is never classified as past-capable", () => {
    * This went unnoticed while the catalog covered 43% of tools, because the guard these entries
    * feed almost never ran. Completing coverage is what made the misclassification consequential.
    */
+  // get_cortex_decision USED to be here: a live "what would Cortex say now" plus today's pinned
+  // ledger row — genuinely not past-capable. It gained a `date` (YYYY-MM-DD) parameter that reads a
+  // SPECIFIC past session's frozen entry_context.cortex (fetchZeroDteSetupLog(date)), so it is now
+  // point_in_time and correctly OUT of this list. The other four remain now-vs-one-cached-snapshot
+  // diffs with no way to be pointed at an arbitrary past moment.
   const SNAPSHOT_DIFFS = [
     "get_vector_pulse",
     "get_gex_matrix_changes",
     "get_wall_dynamics",
     "get_helix_derived",
-    "get_cortex_decision",
   ];
   const PAST_CAPABLE = new Set(["windowed", "point_in_time", "event_log"]);
   for (const tool of SNAPSHOT_DIFFS) {
