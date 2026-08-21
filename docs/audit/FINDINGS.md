@@ -4,6 +4,22 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-21 — [FINDING, P2 Helix] composeHelixRead rendered every put as a call (and every stack as a put), and read strike stacks off a premium-ordered slice — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom (defect 1 — option side mislabelled)** | In `bie/helix-read.ts` the biggest-prints list built its suffix with `p.option_type === "put" ? "p" : "c"` and the strike-stack list with `s.option_type === "call" ? "c" : "p"` — both LOWERCASE. Every producer of this field emits UPPERCASE (`FlowAlert.option_type` is typed `"CALL" \| "PUT"`; `computeFlowStrikeStacks` normalises to `opt.startsWith("P") ? "PUT" : "CALL"`). So `"PUT" === "put"` is ALWAYS false: the print list rendered **every put as a call**, and — because the two defaults were inverted — the stack list rendered **every call as a put**. The same tape read one side in one section and the opposite in the next. A $23M PUT print shown as a call is a correctness fault, not cosmetics. |
+| **Symptom (defect 2 — wrong population for a rolling signal)** | The tape was fetched `{ limit: 50 }` with no `order`, so `fetchRecentFlows` fell to `ORDER BY total_premium DESC` — the biggest 50 prints of 48h. That slice was then fed to `computeFlowStrikeStacks`, a ROLLING "what is being hit repeatedly right now" signal, plus the leaders/tape totals. Selecting by SIZE answers "what is stacking now" with the largest prints of two days — the same order-selection defect fixed in `get_helix_derived`, the HELIX↔Thermal compare card (#2528), and route coverage (#2485). |
+| **Root cause** | Both were latent in string/parameter literals: the case mismatch in two comparison literals, and the missing `order` argument. `composeHelixRead` is live — it backs the BIE `helix_read` route and `composeFlowTape`. |
+| **Why it wasn't caught earlier** | No test could load the module: `helix-read.ts` imports `@/lib/platform` at the top level, whose graph reaches `server-only`, so any test importing it fails at load (the same constraint that forced `helixTapeFetchOptions` out of `product-reads.ts`). The bugs were in inline literals with no pure seam to test. |
+| **Fix** | Two pure helpers extracted to `bie/helix-read-intent.ts` (server-free, unit-tested): `optionSideSuffix(optionType)` upper-cases and matches on `startsWith("C"/"P")` — immune to case and to a bare "C"/"P" — and returns `"?"` for an unknown side rather than guessing one; `parseHelixReadIntent(question)` returns `order: "premium"` only for the biggest-prints intent (`top N` / `by premium` / `list only`) and `order: "recent"` for every other read, so strike stacks and leaders see the recent session. `composeHelixRead` passes `order: intent.order` to `getFlowTapeSummary`. |
+| **What was deliberately NOT changed** | Premium ordering is KEPT for the explicit biggest-prints intent — that read genuinely wants the largest prints, and `parseHelixReadIntent` preserves it. Only the general/rolling reads switch to recent. |
+| **Regression guard** | 7 tests in `bie/helix-read.test.ts`: a PUT is never rendered as a call (and vice-versa); case- and format-insensitive; an unknown side is `"?"`, never a guessed side; `top N` asks premium order with a clamped N; `biggest prints`/`by premium`/`list only` ask premium; a general question asks the recent session. |
+| **Gates on Node 20.20.2** | `npx tsc --noEmit` clean · `bie/helix-read.test.ts` 7/7. |
+| **Status** | FIXED — this PR. Not yet live-verified (held by the pure-helper tests; the rendered side + the stack population must be re-read on a live tape with both puts and calls). |
+
 ## 2026-08-21 — [FINDING, P2 Helix] get_helix_derived capped four panels with no total — the display limit read as the count — FIXED
 
 > **kind:** `FINDING`
