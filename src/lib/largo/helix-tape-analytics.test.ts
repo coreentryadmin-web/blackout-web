@@ -418,3 +418,27 @@ test("all three HELIX tape tools share ONE request builder — they cannot drift
   assert.equal(derived.limit, 400);
   assert.equal(brief.limit, 500);
 });
+
+test("an expiry's reported dte does not depend on row ORDER", () => {
+  // Coordinator review of #2420 flagged this: dte was taken from the FIRST print seen per expiry
+  // key. Correct while every row agrees, but order-dependent — and this function exists to stop
+  // a horizon being decided by ordering.
+  const rows = [
+    { ...atPrint("2026-08-20T20:00:00Z", 1_000), expiry: "2026-08-20", dte: 3 } as FlowAlert,
+    { ...atPrint("2026-08-20T20:01:00Z", 1_000), expiry: "2026-08-20", dte: 0 } as FlowAlert,
+  ];
+  const forward = expiryConcentration(rows, 8);
+  const reversed = expiryConcentration([...rows].reverse(), 8);
+  assert.equal(forward[0]?.dte, reversed[0]?.dte, "same input, either order, same dte");
+  assert.equal(forward[0]?.dte, 0, "resolves toward the NEARER horizon");
+  assert.equal(forward[0]?.horizon, reversed[0]?.horizon);
+});
+
+test("an already-expired expiry keeps its negative dte rather than being recomputed", () => {
+  // SQL returns expiry - ET_today, which goes negative once expired. daysToExpiry clamps at 0,
+  // so recomputing from the key would silently discard that signal.
+  const rows = [{ ...atPrint("2026-08-20T20:00:00Z", 1_000), expiry: "2026-08-18", dte: -2 } as FlowAlert];
+  const out = expiryConcentration(rows, 8);
+  assert.equal(out[0]?.dte, -2);
+  assert.equal(out[0]?.horizon, "0DTE");
+});
