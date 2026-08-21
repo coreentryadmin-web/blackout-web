@@ -13,17 +13,57 @@ function JsonLdScript({ data }: JsonLdProps) {
   );
 }
 
+/**
+ * Stable @id nodes so the Organization and WebSite are ONE linked entity graph rather than two
+ * unrelated blobs. Google and the AI answer engines resolve `@id` references to build a single
+ * entity; without them, WebSite.publisher is a second, duplicate Organization that dilutes the
+ * signal instead of reinforcing it.
+ */
+const ORG_ID = `${SITE.url}/#organization`;
+const WEBSITE_ID = `${SITE.url}/#website`;
+
+/**
+ * The subjects BlackOut is authoritative on. `knowsAbout` is the single strongest topical-authority
+ * signal a site controls in structured data: it tells Google's entity graph and the AI answer
+ * engines (which increasingly cite by entity, not by backlink) what this brand is an authority FOR.
+ * Every term here is a subject the site actually has depth on — matched to the real query demand in
+ * Search Console (gamma exposure, dealer positioning, 0DTE, options flow), never aspirational.
+ */
+const BRAND_TOPICS = [
+  "Gamma exposure (GEX)",
+  "Dealer gamma positioning",
+  "0DTE options trading",
+  "SPX options",
+  "Options order flow",
+  "Unusual options activity",
+  "Dark pool activity",
+  "Market maker hedging",
+  "Options Greeks",
+  "Gamma flip and dealer hedging levels",
+] as const;
+
 export function OrganizationJsonLd() {
   return (
     <JsonLdScript
       data={{
         "@context": "https://schema.org",
         "@type": "Organization",
+        "@id": ORG_ID,
         name: SITE.name,
+        // Brand variants a searcher actually types. Without these, "BlackOut Trades" and the bare
+        // "BlackOut" read as different strings to the entity graph.
+        alternateName: ["BlackOut", "BlackOut Trades", SITE.legalName],
         legalName: SITE.legalName,
         url: SITE.url,
-        logo: `${SITE.url}/og-image.webp`,
+        slogan: SITE.tagline,
+        // ImageObject rather than a bare URL string — Google's Organization logo guidelines want a
+        // resolvable image node, and it lets the same asset be referenced as the entity's logo.
+        logo: {
+          "@type": "ImageObject",
+          url: `${SITE.url}${IMAGES.ogImage}`,
+        },
         description: SITE.description,
+        knowsAbout: [...BRAND_TOPICS],
         sameAs: [
           SITE.social.x.url,
           SITE.social.instagram.url,
@@ -45,15 +85,18 @@ export function WebSiteJsonLd() {
       data={{
         "@context": "https://schema.org",
         "@type": "WebSite",
+        "@id": WEBSITE_ID,
         name: SITE.name,
         url: SITE.url,
         inLanguage: "en-US",
         description: SITE.description,
-        publisher: {
-          "@type": "Organization",
-          name: SITE.name,
-          url: SITE.url,
-        },
+        // Reference the Organization node by @id instead of inlining a second, duplicate
+        // Organization — this is what fuses the two into one entity for Google and AI engines.
+        // No potentialAction/SearchAction: the site has no site-wide search endpoint, and a
+        // SearchAction pointing at a URL that does not resolve is a structured-data error, not a
+        // feature.
+        publisher: { "@id": ORG_ID },
+        about: { "@id": ORG_ID },
       }}
     />
   );
