@@ -182,6 +182,8 @@ jobs:
           released=0
           skipped=0
           max=${MAX_RELEASE:-3}
+          # PR numbers released so far THIS RUN, for the ordering-dependency guard below.
+          claimed=""
 
           # IFS=TAB, not the default whitespace split.
           #
@@ -250,6 +252,45 @@ jobs:
               echo "wait  #$num  verify=${conclusion:-none} (head $head_sha)"
               skipped=$((skipped+1)); continue
             fi
+
+            # ORDERING DEPENDENCY GUARD — do not release two PRs that touch the same file.
+            #
+            # This workflow releases by check-completion order and `automerge.yml` then merges by
+            # the same clock, so two PRs touching one file merge in an effectively random order.
+            # On 2026-08-21 that broke `main`: #2482 fixed a file that #2421's new allowlist still
+            # listed as broken, so whichever landed second was wrong, and three uninvolved PRs went
+            # red on it. `CLAUDE.md` carries the rule; this enforces it.
+            #
+            # Measured need, not a hypothetical: the first working dry run of this job would have
+            # released #2427 and #2435 together, and those two collide on `vector-full-state.ts`
+            # AND `tool-defs.ts`. Without this guard, arming the schedule would have reproduced
+            # that morning's failure three PRs at a time, every fifteen minutes.
+            #
+            # `docs/` is excluded because `FINDINGS.md` collides between EVERY pair of agent PRs by
+            # construction — every lane appends at the same anchor. Counting it would make every
+            # run release exactly one PR and the guard would read as broken.
+            if ! gh api "repos/$REPO/pulls/$num/files?per_page=100" \
+                 --jq '.[].filename' > /tmp/files-$num.txt 2>/tmp/gh-err.txt; then
+              if rate_limited /tmp/gh-err.txt; then
+                echo "RATE LIMITED reading files for #$num — exiting 0 after $released release(s)."
+                exit 0
+              fi
+              # An unreadable file list must not read as "touches nothing", which would let this PR
+              # out alongside anything. Skip it; the next run re-reads it.
+              echo "skip  #$num  file list unreadable, cannot prove it is safe to release"
+              skipped=$((skipped+1)); continue
+            fi
+            grep -v '^docs/' "/tmp/files-$num.txt" | sort -u > "/tmp/f-$num.txt" || true
+
+            collision=""
+            for prev in $claimed; do
+              if [ -n "$(comm -12 "/tmp/f-$num.txt" "/tmp/f-$prev.txt")" ]; then collision="$prev"; break; fi
+            done
+            if [ -n "$collision" ]; then
+              echo "defer #$num  shares a file with #$collision released this run — next run takes it"
+              skipped=$((skipped+1)); continue
+            fi
+            claimed="$claimed $num"
 
             if [ "${DRY_RUN:-false}" = "true" ] || [ "${HAVE_RELEASE_TOKEN}" != "true" ]; then
               echo "would release  #$num  $branch"
