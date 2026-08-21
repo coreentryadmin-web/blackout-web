@@ -15,15 +15,18 @@ import {
   fetchLatestSwingSnapshotEvents,
   fetchOpenSwingPositions,
   fetchRecentHelixSignalOutcomes,
+  fetchTrailingSessionSkew,
   fetchZeroDteSetupLogRange,
   dbConfigured,
 } from "@/lib/db";
+import { trailingSkewBaseline } from "@/features/helix/lib/helix-skew-baseline";
 import {
   discoverSwingFromPersisted,
   getSwingServingLane,
   readSwingServingSnapshot,
 } from "@/lib/swing/serving-lane";
 import { buildZeroDteRecord } from "@/lib/zerodte/record";
+import { getNighthawkMetrics } from "@/features/nighthawk/lib/analytics";
 import { bangerPnlForModel } from "./banger-pnl";
 import { zeroDteHorizonSummary } from "./zero-dte-horizon-summary";
 import { fitRowsToBudget, sampleNote } from "@/lib/largo/fit-tool-result";
@@ -80,10 +83,12 @@ function compactSwingLane(lane: Awaited<ReturnType<typeof getSwingServingLane>>)
 
 export async function bangerBoardForLargo(limit = 40) {
   if (!isBangerEngineEnabled()) {
-    return { available: false, enabled: false, reason: "BANGER_ENGINE_ENABLED=0", open: [], closed: [] };
+    // No `open`/`closed` arrays on any unavailable path: an empty list is countable, and "0 open
+    // banger positions" is a claim none of these branches is entitled to make.
+    return { available: false, enabled: false, reason: "BANGER_ENGINE_ENABLED=0" };
   }
   if (!dbConfigured()) {
-    return { available: false, degraded: true, reason: "database_unavailable", open: [], closed: [] };
+    return { available: false, degraded: true, reason: "database_unavailable" };
   }
   try {
     const rows = await fetchBangerBoardRows(limit);
@@ -148,8 +153,7 @@ export async function bangerBoardForLargo(limit = 40) {
       available: false,
       degraded: true,
       error: e instanceof Error ? e.message : "banger_fetch_failed",
-      open: [],
-      closed: [],
+      note: "The banger board read failed. There is deliberately no open/closed list here — do not report zero positions.",
     };
   }
 }
@@ -279,6 +283,97 @@ export async function zerodteRecordForLargo(days = 30) {
   }
 }
 
+/** How many resolved plays ride the model's copy of the Night Hawk record.
+ *  A reading ceiling, not a size one — `fitRowsToBudget` is the real bound. */
+const NIGHTHAWK_OUTCOMES_MAX_SAMPLE = 40;
+
+/**
+ * Night Hawk track record for the model — the SAME computed metrics the member route serves.
+ *
+ * WHY THIS EXISTS. `get_nighthawk_outcomes` used to return `fetchNighthawkOutcomeAnalytics`'s
+ * **raw rows** — 26 columns each, including the `publish_context` JSON and the `debrief` text —
+ * with no computed aggregate at all. Two things went wrong at once, and both were measured live
+ * on 2026-08-21:
+ *
+ *  1. **The model did not receive the row set it was asked to count.** Live, asked to report the
+ *     tool's own `analytics.rows.length`, it said **5** for `window_days=30` (true: 74 per
+ *     `/api/market/nighthawk/analytics`) and **78** for 90 (true: 108). Two plausible, wrong
+ *     numbers — the signature of reading a partial payload and filling the gap. 74 rows of 26
+ *     columns, two of them blobs (`publish_context`, `morning_verdict`), against a 16,000-char
+ *     transport cap. **CONFIRMED**: asked whether its raw tool result ended with the transport's
+ *     literal `…[truncated]` marker, the model answered TRUNCATED and named `analytics` as the
+ *     last top-level key it could see — so the cut lands INSIDE `analytics`, and neither
+ *     `pending_count` nor the sibling `pending` list ever arrived. The same probe answers
+ *     COMPLETE for `get_zerodte_record` (already fixed, last key `plays`), so it discriminates.
+ *  2. **It made the model do the arithmetic — and this half IS fully measured.** The tool's own
+ *     description says "use to cite credibility (e.g. hit-rate over 30d)" while shipping no
+ *     hit-rate at all. Live, Largo answered "5 plays, 2 resolved, **40% win rate**" for a window
+ *     whose real record is **74 resolved, 50%** — deriving 40% as "2 wins / 5 total", inventing
+ *     the denominator too. This repo already has the rule: `get_spx_vs_nighthawk_comparison`
+ *     exists expressly so "the model never subtracts two other tools' numbers itself".
+ *
+ * Both mechanisms are closed by the same change: the aggregate is now computed server-side (so no
+ * arithmetic is left to the model) AND the row list is bounded and lean (so there is nothing left
+ * to truncate).
+ *
+ * Reusing `getNighthawkMetrics` (rather than re-deriving here) is deliberate: it is the exact
+ * function behind `/api/market/nighthawk/record`, so the number Largo cites and the number the
+ * member's own record page shows cannot drift apart. It is also already rule-7 correct — `win_rate`
+ * is null rather than a fabricated 0 when nothing decided, `decided_count` is the denominator the
+ * rate must be printed with, and `low_n` marks a sample too small to read as a record.
+ */
+export async function nighthawkOutcomesForLargo(windowDays = 30) {
+  if (!dbConfigured()) {
+    return { available: false, degraded: true, reason: "database_unavailable", window_days: windowDays };
+  }
+  try {
+    const metrics = await getNighthawkMetrics(windowDays);
+    const { rows: _rows, ...aggregates } = metrics as Record<string, unknown> & { rows?: unknown };
+    const base = roundFloats({ available: true, ...aggregates }) as Record<string, unknown>;
+    const { fetchNighthawkOutcomeAnalytics } = await import("@/lib/db");
+    const { rows } = await fetchNighthawkOutcomeAnalytics(windowDays);
+    // The blob columns (`publish_context`, `morning_verdict`, `debrief`) are what made this
+    // undeliverable, and the model never actually received them — the cut landed long before.
+    const lean = rows.map((r) => ({
+      edition_for: r.edition_for,
+      ticker: r.ticker,
+      direction: r.direction,
+      conviction: r.conviction,
+      score: r.score,
+      sector: r.sector,
+      outcome: r.outcome,
+      hit_target: r.hit_target,
+      hit_stop: r.hit_stop,
+      pulled: r.pulled ?? false,
+    }));
+    const fitted = fitRowsToBudget(base, "plays", roundFloats(lean) as typeof lean, {
+      maxRows: NIGHTHAWK_OUTCOMES_MAX_SAMPLE,
+    });
+    return {
+      ...base,
+      plays_total: fitted.total,
+      plays_included: fitted.kept.length,
+      plays_note: sampleNote(
+        fitted.kept.length,
+        fitted.total,
+        "resolved Night Hawk plays",
+        "Quote win_rate/decided_count for any rate — never count these rows. Per-play publish " +
+          "context and debrief are omitted here; use get_nighthawk_dossier for one ticker.",
+      ),
+      // LAST on purpose: if anything ever pushes this back over the transport cap, the tail cut
+      // must eat the sample rows rather than the record itself.
+      plays: fitted.kept,
+    };
+  } catch (e) {
+    return {
+      available: false,
+      degraded: true,
+      window_days: windowDays,
+      error: e instanceof Error ? e.message : "nighthawk_outcomes_failed",
+    };
+  }
+}
+
 export async function helixSignalOutcomesForLargo(limit = 50) {
   if (!dbConfigured()) {
     // C3. NOT retryable: a missing DATABASE_URL will not resolve on a retry, and telling the
@@ -292,7 +387,28 @@ export async function helixSignalOutcomesForLargo(limit = 50) {
   try {
     const rows = await fetchRecentHelixSignalOutcomes(limit);
     const summary = summarizeHelixSignalOutcomes(rows);
-    const { bySignalType, ...summaryScalars } = summary;
+    // Strip the raw camelCase span fields too — they are re-projected below as `graded_window` with
+    // ET sessions attached, so the payload carries one shape (the C1 rule: never hand the model a
+    // bare UTC instant it must convert to know the session).
+    const { bySignalType, gradedOldestFiredAt, gradedNewestFiredAt, ...summaryScalars } = summary;
+    /**
+     * The TIME scope of a continuation rate. A rate is a number with no time until it names the
+     * window it covers; `rows_summarized` already gives the COUNT scope, this gives the TIME scope.
+     * Null bounds when nothing graded carries a time. `span_hours` is unrounded — roundFloats owns
+     * the model boundary. `oldest`/`newest` ISO are kept beside the ET sessions so a consumer can
+     * still sort on the instant.
+     */
+    const gradedWindow = (oldestIso: string | null, newestIso: string | null) => {
+      const oMs = oldestIso ? Date.parse(oldestIso) : NaN;
+      const nMs = newestIso ? Date.parse(newestIso) : NaN;
+      return {
+        oldest_fired_at: oldestIso ?? null,
+        newest_fired_at: newestIso ?? null,
+        oldest_session: oldestIso ? sessionDateForTimestamp(oldestIso) : null,
+        newest_session: newestIso ? sessionDateForTimestamp(newestIso) : null,
+        span_hours: Number.isFinite(oMs) && Number.isFinite(nMs) ? (nMs - oMs) / 3_600_000 : null,
+      };
+    };
     const ROWS_SHOWN = 20;
     const compact = rows.slice(0, ROWS_SHOWN).map((r) => ({
       ticker: r.ticker,
@@ -337,6 +453,12 @@ export async function helixSignalOutcomesForLargo(limit = 50) {
          *  model to report the complement as losses when most of it never moved at all. */
         continuation_rate_pct: summary.winRatePct,
         min_graded_for_rate: MIN_GRADED_SAMPLE_FOR_WIN_RATE,
+        /** The TIME window the aggregate rate covers — the graded rows' fired_at span, with ET
+         *  sessions. The ledger holds the 50 most-recent rows and a fire cannot be graded until
+         *  forward bars exist, so early in a session every graded row is from a PRIOR one: quote
+         *  the rate as "X% over N fires between <oldest_session> and <newest_session>", never as
+         *  current. Read it beside `as_of` (the READ time), which is not the data's time. */
+        graded_window: gradedWindow(gradedOldestFiredAt, gradedNewestFiredAt),
         /** Per-signal-type follow-through — answers "which HELIX signal is more reliable,
          *  split_flow or velocity_spike?" without hand-counting the capped `rows` list. Each type
          *  carries its own denominator (`graded`), and `continuation_rate_pct` is null below
@@ -350,6 +472,9 @@ export async function helixSignalOutcomesForLargo(limit = 50) {
           flat: t.flatCount,
           reversed: t.reversedCount,
           continuation_rate_pct: t.winRatePct,
+          /** Each type's rate has its OWN window — split_flow and velocity_spike do not fire on the
+           *  same cadence, so one can be a session stale while the other is current. */
+          graded_window: gradedWindow(t.gradedOldestFiredAt, t.gradedNewestFiredAt),
         })),
       },
     });
@@ -438,7 +563,10 @@ export async function cortexDecisionForLargo(ticker: string | null, question: st
 
 export async function horizonOutcomesForLargo(days = 30) {
   if (!dbConfigured()) {
-    return { available: false, outcomes: [], reason: "database_unavailable" };
+    // `outcomes: []` was shipped here — a key the SUCCESS path never emits (it returns `sample`).
+    // So the only time this payload carried an `outcomes` array was when there were no outcomes to
+    // report, which is precisely backwards: the list existed exactly when it was meaningless.
+    return { available: false, reason: "database_unavailable" };
   }
   try {
     const outcomes = await fetchUnifiedHorizonOutcomes({ days });
@@ -455,8 +583,8 @@ export async function horizonOutcomesForLargo(days = 30) {
   } catch (e) {
     return {
       available: false,
-      outcomes: [],
       error: e instanceof Error ? e.message : "horizon_outcomes_failed",
+      note: "The horizon outcomes read failed. There is deliberately no list and no count here — do not report zero outcomes.",
     };
   }
 }
@@ -879,6 +1007,36 @@ export async function helixTapeAnalyticsForLargo(
     const coverage = tapeWindowCoverage(alerts, windowHours, rowLimit, now);
     const sessionSkew = sessionFlowSkew(alerts);
     const sessionDirection = tapeDirection(sessionSkew.call_pct);
+
+    // C10 — place today's skew against this ticker's recent NORM. `session.call_pct` alone has no
+    // reference frame ("SPX 78% call" is only meaningful vs what SPX usually is), so a member asking
+    // "is today's skew unusual?" could only be told we didn't know. The baseline is a whole-session
+    // aggregation of flow_alerts grouped by ET date; today is the most-recent session, placed against
+    // the prior ones by the pure `trailingSkewBaseline`. Wrapped so a slow/failed baseline query never
+    // fails the primary tape read — the baseline is additive context, not the answer.
+    //
+    // today's comparison value is the full-SESSION call_pct (the today row of the same series), NOT
+    // the capped-tape `session.call_pct`, so today is compared like-for-like against full prior
+    // sessions rather than a capped-vs-full mix.
+    let sessionSkewBaseline:
+      | ReturnType<typeof trailingSkewBaseline>
+      | { available: false; reason: "baseline_unavailable" } = {
+      available: false,
+      reason: "baseline_unavailable",
+    };
+    try {
+      const skewSeries = await fetchTrailingSessionSkew({ ticker, sessions: 22 });
+      const todaySession = etSessionDate(nowMs);
+      const todayRow = skewSeries.find((s) => s.session_date === todaySession);
+      const priorRows = skewSeries.filter((s) => s.session_date !== todaySession);
+      sessionSkewBaseline = trailingSkewBaseline(
+        priorRows.map((s) => s.call_pct),
+        todayRow?.call_pct ?? null
+      );
+    } catch {
+      // Keep the placeholder — an unreadable baseline is disclosed, never presented as "typical".
+      sessionSkewBaseline = { available: false, reason: "baseline_unavailable" };
+    }
     const distinctExpiries = new Set(
       alerts.map((a) => String(a.expiry ?? "unknown").slice(0, 10))
     ).size;
@@ -908,6 +1066,16 @@ export async function helixTapeAnalyticsForLargo(
       premium_floor_applied: false,
       member_panel_premium_floor: HELIX_MEMBER_PANEL_PREMIUM_FLOOR,
       session: sessionSkew,
+      /**
+       * C10 (historical context). Today's session skew placed against this ticker's recent NORM —
+       * the median / interquartile band of daily call_pct over the trailing sessions, plus where
+       * today sits (`placement`: typical / above_normal / below_normal / unusually_high|low) and
+       * whether it is beyond the 1.5×IQR fence (`unusual`). `available:false` with
+       * `insufficient_history` when fewer than `min_sessions` measured prior sessions exist —
+       * never a norm invented from a handful. `today_call_pct` here is the FULL-session skew (see
+       * fetchTrailingSessionSkew), which can differ slightly from the capped `session.call_pct`.
+       */
+      session_skew_baseline: sessionSkewBaseline,
       /** C5. OMITTED, not "neutral", when the skew is unmeasurable — neutral is a measurement. */
       ...(sessionDirection ? { direction: sessionDirection } : {}),
       net_premium_leaders: netPremiumLeaders(alerts),

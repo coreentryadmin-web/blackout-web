@@ -27,6 +27,23 @@ import { mintClerkPremiumSession } from "./lib/prod-clerk-session.mjs";
 const BASE = "https://blackouttrades.com";
 const et = () => new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",hour:"2-digit",minute:"2-digit",weekday:"short",hour12:false}).format(new Date());
 
+// Is the US cash session open RIGHT NOW (Mon-Fri 09:30-16:00 ET)? The Q3 freshness grader depends
+// on this: when the market is CLOSED, presenting the 16:00 close as a live quote is the #2431 defect
+// and the answer must acknowledge it; when the market is OPEN, "live" is the CORRECT answer and a
+// grader that demands "market closed / last close" language false-FAILs correct behaviour during the
+// exact RTH window the harness is most useful in. Holiday-approximate (no market-calendar dep here);
+// a holiday weekday reads as open and would only make Q3 stricter, never falsely lenient.
+const cashSessionOpen = () => {
+  const p = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false })
+    .formatToParts(new Date());
+  const wd = p.find((x) => x.type === "weekday")?.value;
+  const hh = Number(p.find((x) => x.type === "hour")?.value);
+  const mm = Number(p.find((x) => x.type === "minute")?.value);
+  const mins = hh * 60 + mm;
+  const weekday = ["Mon", "Tue", "Wed", "Thu", "Fri"].includes(wd);
+  return weekday && mins >= 9 * 60 + 30 && mins < 16 * 60;
+};
+
 const session = await mintClerkPremiumSession({ appUrl: BASE });
 if (session.skip) { console.error("MINT SKIP", session.reason); process.exit(1); }
 let CK = session.cookieHeader;
@@ -91,12 +108,25 @@ try {
       ok: !has(a.answer, /gamma (is|reads|looks) (bullish|bearish)|(bullish|bearish)\/?(unstable|)? *(regime|read|setup|gamma)|reads (bullish|bearish)/i) },
   ]);
 
-  // Q3 — FRESHNESS: market is closed; must not present the close as a live quote
+  // Q3 — FRESHNESS: the correct answer depends on the SESSION. Market CLOSED → presenting the 16:00
+  // close as a live quote is the #2431 defect, so the answer must acknowledge closed/last/not-live.
+  // Market OPEN → a live price IS the correct answer, and it must NOT wrongly claim the market is
+  // closed. Grading the closed-case rule during RTH false-FAILs correct behaviour (measured
+  // 2026-08-21: the open-session run marked a correct "live" answer FAIL).
+  const marketOpen = cashSessionOpen();
   a = await ask("Where is SPY trading right now?");
-  grade("Q3-freshness", "live price when closed", a, [
-    { name: "acknowledges market closed / last close / not live",
-      ok: has(a.answer, /clos|last (trade|price|print|session)|after.?hours|not live|as of/i) },
-  ]);
+  grade("Q3-freshness", `live price when ${marketOpen ? "OPEN" : "CLOSED"}`, a,
+    marketOpen
+      ? [
+          { name: "does NOT wrongly claim the market is closed (it is open)",
+            ok: !has(a.answer, /market (is )?closed|market closed|after.?hours only/i) },
+          { name: "gives a live/current price read",
+            ok: has(a.answer, /\b\d{2,4}(\.\d+)?\b/) && has(a.answer, /live|trading|current|now|spot|price|as of/i) },
+        ]
+      : [
+          { name: "acknowledges market closed / last close / not live",
+            ok: has(a.answer, /clos|last (trade|price|print|session)|after.?hours|not live|as of/i) },
+        ]);
 
   // Q4 — flip level accuracy
   a = await ask("What is the gamma flip level for SPY?");

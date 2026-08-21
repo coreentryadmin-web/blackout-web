@@ -1595,6 +1595,124 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       const composed = await composeWallDynamicsRead(uwTicker(ticker));
       return composed ?? { available: false, ticker: uwTicker(ticker) };
     }
+    case "get_meridian_timeline": {
+      // Meridian's own loader, not the HTTP route: a tool calling its own app over HTTP would need
+      // auth it does not have and would return a transport envelope to unwrap. Same reasoning the
+      // existing `meridianTimelineForLargo` prefetch uses.
+      const { loadMeridianTimelineResponse } = await import("@/lib/meridian/meridian-snapshot");
+      const {
+        MERIDIAN_LARGO_WINDOW_DAYS,
+        normalizeDaysAhead, normalizeImpact, normalizeKind, normalizeLimit,
+        shapeTimelineItems, timelineInterpretation,
+      } = await import("@/lib/largo/meridian-timeline-for-largo");
+      const { serverCache } = await import("@/lib/server-cache");
+      const { MERIDIAN_TIMELINE_TTL_MS } = await import("@/lib/meridian/meridian-snapshot");
+
+      const daysAhead = normalizeDaysAhead(input.days_ahead, 7);
+      const filters = {
+        kind: normalizeKind(input.kind),
+        impact: normalizeImpact(input.impact),
+        ticker: input.ticker ? uwTicker(String(input.ticker)) : null,
+        daysAhead,
+      };
+      const limit = normalizeLimit(input.limit, 40);
+      const asOfSession = todayEtYmd();
+
+      let payload: Awaited<ReturnType<typeof loadMeridianTimelineResponse>> | null = null;
+      try {
+        // The SAME cache key the HTTP route uses, at the width `cron/meridian-warm` warms, so a
+        // tool call rides the warm entry instead of triggering a cold per-ticker options enrich.
+        // The caller's narrower window is applied afterwards by shapeTimelineItems.
+        payload = await serverCache(
+          `meridian:timeline:v1:${asOfSession}:${MERIDIAN_LARGO_WINDOW_DAYS}`,
+          MERIDIAN_TIMELINE_TTL_MS,
+          () => loadMeridianTimelineResponse(MERIDIAN_LARGO_WINDOW_DAYS)
+        );
+      } catch {
+        payload = null;
+      }
+      if (!payload) {
+        // C3: absence carries a reason. "No events" and "we could not look" are different facts,
+        // and only one of them means the calendar is quiet.
+        return {
+          available: false,
+          error: "timeline_unavailable",
+          note: "The Meridian timeline could not be read. This is NOT evidence that no events are scheduled.",
+          as_of: etStamp(Date.now()) ?? new Date().toISOString(),
+          as_of_session: asOfSession,
+          as_of_weekday: weekdayEt(asOfSession),
+          items: [],
+        };
+      }
+
+      const shaped = shapeTimelineItems(payload.items, filters, limit);
+      return {
+        available: true,
+        as_of: etStamp(Date.parse(payload.as_of)) ?? payload.as_of,
+        as_of_session: asOfSession,
+        as_of_weekday: weekdayEt(asOfSession),
+        days_ahead: daysAhead,
+        filters_applied: filters,
+        count: shaped.items.length,
+        total_matched: shaped.total_matched,
+        truncated: shaped.truncated,
+        stats: payload.stats,
+        items: shaped.items,
+        interpretation: timelineInterpretation(payload.earnings_analytics_rows?.length ?? 0),
+      };
+    }
+    case "get_meridian_event": {
+      const { loadMeridianEventResponse } = await import("@/lib/meridian/meridian-snapshot");
+      const { resolveMeridianEventId } = await import("@/lib/largo/meridian-event-id");
+      const asOfSession = todayEtYmd();
+      const resolved = resolveMeridianEventId({
+        id: input.id,
+        kind: input.kind,
+        ticker: input.ticker ? uwTicker(String(input.ticker)) : null,
+        date: input.date,
+      });
+      const stamp = {
+        as_of: etStamp(Date.now()) ?? new Date().toISOString(),
+        as_of_session: asOfSession,
+        as_of_weekday: weekdayEt(asOfSession),
+      };
+      if (!resolved.id) {
+        return {
+          available: false, ...stamp,
+          error: "bad_event_id",
+          note: resolved.reason,
+          requested: { id: input.id ?? null, kind: input.kind ?? null, ticker: input.ticker ?? null, date: input.date ?? null },
+        };
+      }
+      const { serverCache: cacheEvent } = await import("@/lib/server-cache");
+      const { MERIDIAN_EVENT_TTL_MS } = await import("@/lib/meridian/meridian-snapshot");
+      let detail: unknown = null;
+      let failed = false;
+      try {
+        // Same key and TTL as the HTTP route, so the desk UI and Largo share one entry rather
+        // than each paying for its own enrich of the same event.
+        detail = await cacheEvent(`meridian:event:v1:${resolved.id}`, MERIDIAN_EVENT_TTL_MS, () =>
+          loadMeridianEventResponse(resolved.id!)
+        );
+      } catch {
+        failed = true;
+      }
+      if (failed) {
+        return {
+          available: false, ...stamp, id: resolved.id, kind: resolved.kind,
+          error: "event_lookup_failed",
+          note: "The event detail could not be read. This is NOT evidence that the event does not exist or has no data.",
+        };
+      }
+      if (!detail) {
+        return {
+          available: false, ...stamp, id: resolved.id, kind: resolved.kind,
+          error: "not_found",
+          note: "No Meridian event matches this id. Confirm it against get_meridian_timeline — ids are only valid for events inside the loaded window.",
+        };
+      }
+      return { available: true, ...stamp, id: resolved.id, kind: resolved.kind, detail };
+    }
     case "get_earnings_calendar": {
       const { callInternalApiRead } = await import("@/lib/bie/internal-api");
       const { shapeEarningsCalendarRead } = await import("@/lib/largo/earnings-calendar-for-largo");
@@ -1619,11 +1737,18 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       const windowDays = Number.isFinite(rawWindow)
         ? Math.min(180, Math.max(7, Math.trunc(rawWindow)))
         : 30;
-      const [analytics, pending] = await Promise.all([
-        fetchNighthawkOutcomeAnalytics(windowDays),
+      // Was: `{ window_days, analytics: fetchNighthawkOutcomeAnalytics(...), pending }` — the
+      // RAW 26-column rows, blob columns and all, with no computed rate. 74 rows at the default
+      // window against a 16k transport cap, so the model got a fragment and invented numbers off
+      // it (measured live 2026-08-21: it reported "5 plays, 2 resolved, 40% win rate" for a window
+      // whose real record is 74 resolved / 50%). nighthawkOutcomesForLargo serves the SAME
+      // computed metrics the member record route serves, aggregates first, bounded sample last.
+      const { nighthawkOutcomesForLargo } = await import("@/lib/largo/product-reads");
+      const [record, pending] = await Promise.all([
+        nighthawkOutcomesForLargo(windowDays),
         fetchPendingNighthawkOutcomes(7),
       ]);
-      return { window_days: windowDays, analytics, pending };
+      return { ...record, pending };
     }
     case "get_spx_vs_nighthawk_comparison": {
       // WHY THIS TOOL EXISTS (don't delete without reading this): before this

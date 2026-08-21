@@ -40,6 +40,35 @@ import {
   normalizeMinImpact,
   splitAuthFailures,
 } from "./lib/meridian-earnings-cohort.mjs";
+import { splitConsoleErrors } from "./lib/console-error-triage.mjs";
+
+/**
+ * How long to wait for the Meridian surface to MOUNT, as opposed to how long to wait for a
+ * request. Raising `requestTimeoutMs` fixed the transport half and the audit then bailed one step
+ * later, at `waitForSelector`, with every request having succeeded:
+ *
+ *   routed: {"ok":217,"fail":0}   [HARNESS] mobile/timeline — earnings tab bar never appeared
+ *
+ * Three passes on 2026-08-21 died that way (desktop and tablet ~12:25, mobile 12:48). The event
+ * detail is genuinely slow to mount on a cold cache — one click fans out to `preEarningsPackForLargo`,
+ * a GEX heatmap fetch, fundamentals, vector EM and dark pool — and the 20-30s literals were under
+ * it. These numbers are the ones a probe driving the same page in the same window used while
+ * reaching the panels cleanly every time, not guesses.
+ *
+ * A deadline that is too SHORT costs an entire pass and reports nothing; one that is too long
+ * costs a slow run on a genuinely broken page. Those are not symmetric, so these lean long.
+ */
+const MOUNT_DEADLINE_MS = {
+  /** The desk shell. Already generous and never the one that failed. */
+  desk: 45_000,
+  /** Timeline rows, and the event detail that a row click mounts. */
+  timeline: 90_000,
+  detail: 90_000,
+  /** The cohort row, once the timeline itself is up — a filter over rows already rendered. */
+  cohortRow: 60_000,
+  /** After a reload, on a warm cache. */
+  afterReload: 60_000,
+};
 
 const args = new Map(
   process.argv.slice(2).map((a) => {
@@ -105,8 +134,36 @@ const OVERLAP_PROBE = (rootSel) => {
       if (ox > 2 && oy > 2) hits.push({ a: a.t, b: b.t, ox: Math.round(ox), oy: Math.round(oy) });
     }
   }
+  // CLIPPED, as opposed to CAPPED.
+  //
+  // Text cut off by its own container is only a defect when the reader cannot get it back. The
+  // Meridian orbital rim is the counter-example this exclusion exists for: `.ms-orb-label` sets
+  // `max-width: 84px; overflow: hidden; text-overflow: ellipsis` ON PURPOSE, so a long pillar name
+  // cannot shove into its neighbour's slot on a crowded rim — and the full string is carried on the
+  // parent button's `title` AND `aria-label`, with `.ms-orb:hover` restoring it in place. Four
+  // labels ("Vector expected move", "Street / analysts", "News & catalysts", "Insider activity")
+  // were reported as clipped on every single run, on a panel that is behaving exactly as designed.
+  //
+  // That is a standing false positive, and this file's own header says why that matters: a check
+  // which fires on healthy pages teaches its reader to skip the report. So the rule is narrowed,
+  // not relaxed — text still clipped with NO way to recover it is still reported, which is the
+  // case that actually costs a member something.
   const clipped = boxes
-    .filter(({ el }) => el.scrollWidth > el.clientWidth + 1 && getComputedStyle(el).overflow !== "visible")
+    .filter(({ el }) => {
+      if (!(el.scrollWidth > el.clientWidth + 1)) return false;
+      if (getComputedStyle(el).overflow === "visible") return false;
+      const full = (el.textContent ?? "").replace(/\s+/g, " ").trim();
+      if (!full) return false;
+      // Recoverable if the element or any ancestor spells the full text out in a title or an
+      // accessible name. Deliberately an ANCESTOR walk: the label is capped but the control that
+      // owns it is what carries the name, which is where a reader (or a screen reader) finds it.
+      for (let p = el; p && p !== document.body; p = p.parentElement) {
+        const carried = `${p.getAttribute("title") ?? ""} ${p.getAttribute("aria-label") ?? ""}`
+          .replace(/\s+/g, " ");
+        if (carried.includes(full)) return false;
+      }
+      return true;
+    })
     .map(({ t }) => t);
   return { hits: hits.slice(0, 12), hitCount: hits.length, clipped: clipped.slice(0, 8), leaves: boxes.length };
 };
@@ -138,7 +195,7 @@ async function openEarningsEvent(page, vp) {
     await page.waitForTimeout(12_000);
     await goto();
   }
-  if (!(await page.waitForSelector(".meridian-desk", { timeout: 45_000 }).catch(() => null))) {
+  if (!(await page.waitForSelector(".meridian-desk", { timeout: MOUNT_DEADLINE_MS.desk }).catch(() => null))) {
     record({ severity: "HARNESS", viewport: vp, where: "page", issue: "desk shell never rendered" });
     return false;
   }
@@ -152,12 +209,12 @@ async function openEarningsEvent(page, vp) {
   // Two separate waits: the timeline existing, then the COHORT row appearing. Querying the
   // cohort immediately after the first earnings row races the staggered mount (animationDelay
   // index*40ms) and reports "cohort absent" while the API carries dozens of qualifying events.
-  const timelineUp = await page.waitForSelector(EARNINGS_ROW_BASE, { timeout: 30_000 }).catch(() => null);
+  const timelineUp = await page.waitForSelector(EARNINGS_ROW_BASE, { timeout: MOUNT_DEADLINE_MS.timeline }).catch(() => null);
   if (!timelineUp) {
     record({ severity: "HARNESS", viewport: vp, where: "timeline", issue: "no earnings row on the timeline at all" });
     return false;
   }
-  const row = await page.waitForSelector(ROW_SELECTOR, { timeout: 20_000 }).catch(() => null);
+  const row = await page.waitForSelector(ROW_SELECTOR, { timeout: MOUNT_DEADLINE_MS.cohortRow }).catch(() => null);
   if (!row) {
     record({
       severity: "HARNESS",
@@ -169,7 +226,7 @@ async function openEarningsEvent(page, vp) {
   }
   await row.scrollIntoViewIfNeeded().catch(() => {});
   await row.click().catch(() => {});
-  if (!(await page.waitForSelector(".meridian-earnings-tab", { timeout: 30_000 }).catch(() => null))) {
+  if (!(await page.waitForSelector(".meridian-earnings-tab", { timeout: MOUNT_DEADLINE_MS.detail }).catch(() => null))) {
     record({ severity: "HARNESS", viewport: vp, where: "timeline", issue: "earnings tab bar never appeared" });
     return false;
   }
@@ -182,10 +239,26 @@ async function auditViewport(vp, cookie) {
     cookie,
     viewport: vp.viewport,
     desktop: vp.desktop,
+    // The Meridian timeline is legitimately slow on a cold cache — it aggregates ~160 events and
+    // computes an options-implied move for the 36 highest-impact prints. Measured 2026-08-21:
+    // 8.5s cold, then 117ms and 87ms warm. Against the tunnel's default 20s deadline that is
+    // usually fine and occasionally not: three separate passes that day (desktop and tablet in
+    // one run, tablet again in the next) died with `timeline?days=21: timeout` and reported
+    // "no earnings row on the timeline at all" — the audit never reached a single tab.
+    //
+    // That is the failure `createTunneledContext`'s own note warns about: a deadline shorter than
+    // the upstream turns "this is slow right now" into "this panel is missing". HARNESS keeps it
+    // out of the product verdict, but a pass that judges nothing is still a pass that judges
+    // nothing, and three of them in a row is an audit that has quietly stopped auditing.
+    // A deadline chosen on purpose, well clear of the measured cold path.
+    requestTimeoutMs: 70_000,
   });
   try {
     const page = await ctx.newPage();
     const consoleErrors = [];
+    // Set when badResponses is triaged below; the console branch needs it to tell an echo of this
+    // run's own expiry from an unexplained 401.
+    let authFailureCount = 0;
     const badResponses = [];
     const requestCounts = new Map();
     // When the page actually opened, so a fetch count can be judged against the time it had to
@@ -329,7 +402,7 @@ async function auditViewport(vp, cookie) {
         }
       }
       if (reloaded) {
-        const survived = await page.waitForSelector(".meridian-earnings-tab", { timeout: 40_000 }).catch(() => null);
+        const survived = await page.waitForSelector(".meridian-earnings-tab", { timeout: MOUNT_DEADLINE_MS.afterReload }).catch(() => null);
         if (!survived) {
           record({
             severity: "P2",
@@ -380,6 +453,7 @@ async function auditViewport(vp, cookie) {
       // its ~72s JWT, and CLAUDE.md records that exactly this was mis-read as a product fault
       // three times. Reported as HARNESS, and separately from real failures.
       const { auth, failures } = splitAuthFailures(badResponses);
+      authFailureCount = auth.length;
       if (auth.length) {
         record({
           severity: "HARNESS",
@@ -394,7 +468,23 @@ async function auditViewport(vp, cookie) {
       }
     }
     if (consoleErrors.length > 0) {
-      record({ severity: "P2", viewport: vp.name, where: "console", issue: `${consoleErrors.length} console errors`, sample: consoleErrors.slice(0, 4) });
+      // Chromium logs every 401/403 to the console as well as returning it, so the auth failures
+      // already reported as HARNESS above arrived here a second time and were counted as a
+      // product P2 — the harness's own expired session, reported twice, once as a defect. Only
+      // errors the auth count actually explains are reclassified; see console-error-triage.mjs.
+      const { product, authEcho } = splitConsoleErrors(consoleErrors, authFailureCount);
+      if (product.length > 0) {
+        record({ severity: "P2", viewport: vp.name, where: "console", issue: `${product.length} console errors`, sample: product.slice(0, 4) });
+      }
+      if (authEcho.length > 0) {
+        record({
+          severity: "HARNESS",
+          viewport: vp.name,
+          where: "console",
+          issue: `${authEcho.length} console errors are the browser echoing this run's own 401/403 — NOT a product verdict`,
+          sample: authEcho.slice(0, 2),
+        });
+      }
     }
 
     return { counts, consoleErrors, badResponses };

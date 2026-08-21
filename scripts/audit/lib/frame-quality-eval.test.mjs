@@ -169,3 +169,36 @@ describe("scoreFrame — edge contact warns, it does not reject", () => {
     assert.deepEqual(scoreFrame(b, w, h).warnings, []);
   });
 });
+
+describe("largestEmptyBand — the axis must not hide a dead chart", () => {
+  it("finds a dead band that a price axis would otherwise mask", () => {
+    // The failure exactly: content in the top half, nothing in the bottom half, and an axis label
+    // on EVERY row at the right edge. Measuring full width, no row is empty and the band reads 0.
+    const w = 1200, h = 800, b = canvas(w, h);
+    stripes(b, w, 0, 0, 1000, 380, 20);
+    for (let y = 0; y < h; y += 20) fill(b, w, 1150, y, 1190, y + 6, 210); // axis labels, every row
+    const withGutter = largestEmptyBand(b, w, h).fraction;
+    const fullWidth = largestEmptyBand(b, w, h, { gutter: 0 }).fraction;
+    assert.ok(withGutter > 0.4, `should see the dead half, got ${withGutter}`);
+    assert.ok(fullWidth < 0.1, `full-width measurement should be fooled, got ${fullWidth}`);
+  });
+
+  it("still reports no band when the plot is full", () => {
+    const w = 1200, h = 800, b = canvas(w, h);
+    stripes(b, w, 0, 0, 1000, h, 20);
+    assert.ok(largestEmptyBand(b, w, h).fraction < 0.05);
+  });
+});
+
+describe("scoreFrame — empty space warns well before it rejects", () => {
+  it("warns on a frame a quarter empty without failing it", () => {
+    // Content in the upper band only, grid lines throughout — the shape largestEmptyBand cannot
+    // see, because a line every few rows means no row is ever empty.
+    const w = 1600, h = 1000, b = canvas(w, h);
+    stripes(b, w, 40, 40, w - 40, 600, 20);
+    for (let y = 600; y < h; y += 150) fill(b, w, 40, y, w - 40, y + 1, 40);
+    const s = scoreFrame(b, w, h);
+    assert.equal(s.pass, true, `rejected on: ${s.rejects.join("; ")}`);
+    assert.match(s.warnings.join(" "), /empty region/);
+  });
+});

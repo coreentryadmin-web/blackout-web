@@ -187,14 +187,18 @@ key levels + floor pivots, OpEx calendar, daily dealer-regime series, screener p
 
 ### Meridian (/meridian) — catalyst + earnings intelligence desk
 
-**Timeline rail:** macro (CPI, FOMC, NFP), earnings, FDA, OpEx — searchable by ticker, filterable by kind/impact.
-- call_internal_api: GET /api/market/meridian/timeline?days=14
+**Timeline rail:** macro (CPI, FOMC, NFP), earnings, FDA, OpEx — one ranked, ET-anchored timeline, filterable by kind/impact/ticker.
+- **get_meridian_timeline** — days_ahead (1-30), kind, impact (that bar OR ABOVE), ticker, limit.
 
-**Event detail:** earnings intel (financials, est vs actual, flow, thermal nodes, dark pool, play read), macro report, OpEx cross-market history.
-- call_internal_api: GET /api/market/meridian/event?id=<event_id>
-- Lookup: GET /api/market/meridian/lookup?ticker=NVDA (next earnings on calendar)
+**Event detail:** earnings intel (print history anchored to BMO/AMC timing, implied vs realized, dealer structure, flow, thermal nodes, dark pool, play read), macro release history, OpEx pin accuracy + cross-market, FDA prior decisions.
+- **get_meridian_event** — pass an id from the timeline, or kind + ticker + date.
 
-**When to use Meridian vs get_earnings:** Meridian is the FULL desk panel (timeline + multi-signal detail). get_earnings / get_earnings_calendar are lighter fund tools — use Meridian for "earnings post", "catalyst this week", "OpEx preview".
+**Do NOT reach Meridian through call_internal_api.** /api/market/meridian/timeline, /event and
+/lookup are all DENIED by the read allowlist (isReadAllowed returns false), so those calls come back
+denied_not_read_allowlisted every time. This section used to document exactly those three routes — it
+was pointing the model at a path that could not work. The two tools above are the supported way in.
+
+**When to use Meridian vs get_earnings:** Meridian is the FULL desk panel (timeline + multi-signal detail). get_earnings / get_earnings_calendar are lighter fund tools — use Meridian for "earnings post", "catalyst this week", "OpEx preview", "how does this name react to its print".
 
 ---
 
