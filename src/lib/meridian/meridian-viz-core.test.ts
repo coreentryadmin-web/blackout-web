@@ -1081,3 +1081,64 @@ test("two rail labels on the same price land on different tiers, far enough apar
       `less than a ${MV_RAIL_LABEL_PX}px label — this is the 2.08px overlap measured on prod`
   );
 });
+
+/* ── every interactive marker must say what it is ────────────────────────────────────── */
+
+test("no control in the Meridian viz is left without an accessible name", () => {
+  // The analyst price-target dots shipped as 8x8 buttons with NO text and NO aria-label — only
+  // `title`, which is the last-resort fallback in the accname spec: inconsistently announced,
+  // invisible on touch, and not surfaced on keyboard focus in several browsers.
+  //
+  // meridian-interaction-audit.mjs found them on 2026-08-21 and printed them as `" 8x8"` x6 —
+  // an EMPTY label, because its probe reads `aria-label ?? textContent` and both were empty.
+  // Six unnamed buttons on the Estimates tab, in a file where `.mv-ladder-row` a few hundred
+  // lines away already carries a full name with its level, price and distance from spot.
+  //
+  // A source guard because these are React components with no DOM available here. The audit
+  // measures the rendered result; this stops a NEW control being added without a name in the
+  // first place, which is the cheaper place to catch it.
+  const src = readFileSync(
+    join(process.cwd(), "src/features/meridian/components/meridian-viz.tsx"),
+    "utf8"
+  );
+
+  // Find each opening <button ...> tag by SCANNING, not by regex.
+  //
+  // The first version of this used /<button[\s\S]*?(?:\/>|>)/ and silently matched almost
+  // nothing useful: the bare `>` alternative matches the `>` inside `onClick={() => …}`, so every
+  // button carrying an arrow function was truncated at the arrow and its `/>` never seen. A
+  // mutation that injected a brand-new nameless button was NOT caught. Scanning at brace depth 0
+  // is the honest way to find where a JSX tag actually ends.
+  const openTags: string[] = [];
+  for (let i = src.indexOf("<button"); i !== -1; i = src.indexOf("<button", i + 1)) {
+    let depth = 0;
+    for (let j = i; j < src.length && j < i + 4000; j += 1) {
+      const ch = src[j];
+      if (ch === "{") depth += 1;
+      else if (ch === "}") depth -= 1;
+      else if (ch === ">" && depth === 0) {
+        openTags.push(src.slice(i, j + 1));
+        break;
+      }
+    }
+  }
+  assert.ok(openTags.length >= 3, `expected several buttons, found ${openTags.length}`);
+
+  const unnamed = openTags.filter((tag) => {
+    if (/aria-label/.test(tag)) return false;
+    // Only SELF-CLOSING buttons are definitely nameless — one that closes with `>` may carry
+    // text children, which name it perfectly well. Self-closing icon/dot controls are the risk.
+    return /\/\s*>$/.test(tag);
+  });
+  assert.deepEqual(
+    unnamed.map((t) => (/className=\{?[`"]([^`"]*)/.exec(t)?.[1] ?? "?").slice(0, 40)),
+    [],
+    "self-closing <button> with no aria-label — a control with no text and no name is unreachable " +
+      "to a screen reader, however good its tooltip"
+  );
+
+  // ...and the dot specifically must not regress to title-only.
+  const dot = /<button[\s\S]{0,700}?mv-target-dot[\s\S]{0,700}?\/>/.exec(src)?.[0] ?? "";
+  assert.ok(dot, "the price-target dot must still exist");
+  assert.match(dot, /aria-label=/, "the price-target dot must carry an accessible name");
+});
