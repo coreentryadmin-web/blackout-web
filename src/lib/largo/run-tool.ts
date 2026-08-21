@@ -1030,7 +1030,15 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       const edition = date
         ? await marketPlatform.nighthawk.getNightHawkEditionForDate(date)
         : await marketPlatform.nighthawk.getLatestNightHawkEdition();
-      return edition ?? { available: false, plays: [] };
+      // The RAW edition puts market_recap (41KB on a live edition) ahead of plays
+      // (5KB), and the answer loop tail-truncates at MAX_TOOL_RESULT_CHARS — so every
+      // play was being cut off. compactNightHawkEditionForModel emits the plays first
+      // and names the two delegated recap blobs it drops. The member route
+      // (/api/market/nighthawk/edition) and the desk UI still get the full object.
+      const { compactNightHawkEditionForModel } = await import(
+        "@/lib/largo/nighthawk-edition-for-model"
+      );
+      return compactNightHawkEditionForModel(edition);
     }
 
     case "get_helix_derived": {
