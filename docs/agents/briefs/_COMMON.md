@@ -124,6 +124,59 @@ boundary work* on your own surfaces. Do not go looking for unrelated work in ano
 territory, and do not start a redesign — if something needs one, write it up in a PR comment and
 leave it.
 
+### 6c. Two operating modes — the market decides which one you are in
+
+**Standing decision (2026-08-21).** Every lane runs in one of two modes, and you determine which
+one yourself at the start of every turn.
+
+| ET clock | Mode | What you work on |
+|---|---|---|
+| **Mon–Fri 09:30–13:00** | **LIVE VALIDATION** | Your PRODUCT, against the live market |
+| everything else | **LARGO** | The Largo tool boundary (your normal lane work) |
+
+**Check the clock yourself. Do not infer the mode from which trigger woke you.** A heartbeat cron
+is UTC and the ET offset moves with daylight saving, so a schedule that lands inside the window in
+August lands outside it in January. `isTradingDayEt` and the session helpers in
+`src/features/nighthawk/lib/session.ts` are the shared source of truth — a market holiday is not a
+trading day no matter what the weekday says.
+
+#### LIVE VALIDATION mode — what it actually means
+
+The market is open and your product is producing real numbers for real members. That is the only
+window in which most defects are observable at all: a stale quote badge, a wrong regime read, a
+mispriced wall, a panel that renders correctly on a closed market and wrongly on a moving one.
+
+Work the whole surface, not just the part you last touched:
+
+- **Correctness against live data** — every number your product serves, cross-checked against the
+  provider. Prices, greeks, walls, regimes, P&L, grading.
+- **Freshness and staleness** — does anything claim "live" over a value that is not?
+- **The UI a member actually sees** — render it, at real viewports. A panel whose labels overlap
+  into garbage satisfies every selector assertion ever written about it.
+- **Your own recent merges** — rule 6, with the market open, which is the strongest possible test.
+- **Bugs, fixes, enhancements** — anything that makes your product wrong, unclear, or ugly on a
+  live tape is in scope during this window.
+
+A defect found while the market is open and reproduced against live data is worth more than a
+week of offline reasoning about the same code. **Spend the window.**
+
+#### Why the split exists
+
+Largo integration work is offline work: it reads types, payload shapes and boundaries, and it is
+equally correct at midnight. Live validation is the opposite — it is only possible for three and a
+half hours a day, and it cannot be caught up on later. **Do not spend a scarce resource on work
+that keeps.**
+
+#### At the bell
+
+- **09:30 ET:** stop Largo work at a clean point — commit or stash, do not leave a half-edit — and
+  switch to your product.
+- **13:00 ET:** write up what you found (PRs for defects, a FINDINGS entry for anything real), then
+  return to the Largo boundary.
+
+An unfinished Largo change is not a reason to skip the window. The window does not wait; the
+refactor does.
+
 ### 7. Absence is a finding, not a blank
 
 The defect class this fleet keeps finding is **a fact that exists in the system and is not wired to
