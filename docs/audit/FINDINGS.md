@@ -4,6 +4,21 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-21 — [FINDING, P1 X marketing] `X_MARKETING_POSTS_PAUSED` did not stop all posting — a second publisher bypassed every gate — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `scripts/x-showcase-post.mjs --post` published to @BlackOutTrade while subject to **no** daily cap, **no** minimum spacing, **no** content validation and **no** pause flag. Setting `X_MARKETING_POSTS_PAUSED=1` stopped the `x-autopost` cron and left this path fully live. Measured by `grep -c` on the file before the fix: `postTweet` 2, `uploadMedia` 2, `checkPostGuard` **0**, `isTweetContentValid` **0**, `recordBudgetUse` **0**, `xMarketingPostsPaused` **0**. |
+| **Root cause** | The script carries its own inline OAuth `uploadMedia` + `postTweet` rather than importing `src/lib/x-api.ts`, and the gates live one layer above that API in `x-post-guard.ts` / `x-marketing-env.ts`. Reimplementing the transport silently opted the script out of every policy attached to the shared one. Nothing was deleted or disabled — the second path simply never had the gates. |
+| **Why it wasn't caught earlier** | It is operator-triggered (`npm run x-showcase:post`), not a cron, so it never appears in `cron-health`, never logs through `logCronRun`, and produces no signal when it runs. Nothing in the repo asserted that "every publisher honours the pause flag" — the property was true by convention of there being one publisher, and stopped being true when a second appeared. Same shape as the other jams in this log: no failure, no error, an invariant nobody had written down. |
+| **Blast radius** | The kill switch itself, which is the control of last resort for a live account. Also the rate budget: 7/day and 110-minute spacing are what keep @BlackOutTrade under X's limits, and two publishers spending one budget without either knowing about the other is the single most reliable way to get an account limited. Secondary: the admin X marketing panel under-reported the ET-day post count, because only `x-autopost` incremented it. `x-live-autopost.mjs` was audited for the same defect and does **not** have it. |
+| **Fix** | New `scripts/audit/lib/x-publish-guard.mjs` runs the gate before any X write, **importing** `xMarketingPostsPaused()`, `checkPostGuard()`, `isTweetContentValid()` and `recordBudgetUse()` from the production modules rather than reimplementing them — a second copy of a rule is the same fork in a different shape. The pause flag is hydrated into `process.env` from the `blackout-production/app/env` blob the script already loads, because the helper reads `process.env` and an operator's machine has none: reading `process.env` alone would have reported "not paused" regardless of what production says. A refusal writes the collage and manifest and publishes nothing — a normal outcome, not an error. `npm run x-showcase:*` now runs under `--import tsx` so the TS gates resolve. |
+| **What was deliberately NOT changed** | The `x-autopost` cron's schedule and paused state are untouched (lane brief reserves that call to the user). The inline OAuth transport was left in place rather than swapped for `x-api.ts` — that is a larger refactor than a gate fix and would change the script's credential handling; the gates are what was missing, not the transport. `X_DAILY_CAPS.posts` was left as telemetry rather than promoted to a cap: `checkPostGuard()` derives the count from the **live timeline**, so it already sees posts from every publisher including manual ones, which a local DB counter cannot. |
+| **Gates** | Node 20.20.2 · `npx tsc --noEmit` clean · eslint clean · 14 new unit tests on the pure refusal + env-hydration logic, including that the pause flag wins over every other failing input and that hydration never copies the wider production blob. |
+| **Status** | FIXED — this PR. Found while reading the existing X system for the x-content lane's step 1 (reported on #2494 as D3). |
+
 ## 2026-08-21 — [FINDING, P1 Tooling/CI] `main` went red on two individually-green PRs — a deferral outlived the PR it deferred to — FIXED
 
 > **kind:** `FINDING`
