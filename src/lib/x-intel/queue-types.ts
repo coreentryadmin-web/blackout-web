@@ -148,6 +148,35 @@ export type XIntelOutcome = {
   move: string | null;
 };
 
+/**
+ * The call to action, rotated per package and carried SEPARATELY from `post_copy`.
+ *
+ * `placement: "reply"` is the whole design: the intelligence goes in the post, the ask goes one
+ * step behind it. See `cta.ts` for why — reach on a cold account, room inside 280 characters, and
+ * keeping the post a demonstration rather than an advert.
+ *
+ * `variant` is stored so the learning loop can attribute conversions to a specific CTA. A rotation
+ * nobody records is just variety.
+ */
+export const X_INTEL_CTA_VARIANTS = [
+  "SOFT",
+  "DISCORD",
+  "SITE",
+  "PRICING",
+  "WHOP_OFFER",
+] as const;
+
+export type XIntelCtaVariant = (typeof X_INTEL_CTA_VARIANTS)[number];
+
+export type XIntelCta = {
+  variant: XIntelCtaVariant;
+  /** Exactly what gets posted as the reply. */
+  text: string;
+  /** The tagged destination, or null for a variant that deliberately carries no link. */
+  url: string | null;
+  placement: "reply";
+};
+
 /** A story that lost, kept so the reviewer can see what the ranker passed over. */
 export type XIntelRunnerUp = {
   headline: string;
@@ -183,6 +212,11 @@ export type XIntelQueueRow = {
   market_outcome: XIntelOutcome | null;
   /** Absent when uncalibrated — see XIntelConfidence. */
   confidence?: XIntelConfidence;
+  /**
+   * The rotated call to action, posted as a REPLY to the package — never inside `post_copy`.
+   * Null on SKIP: there is no post to reply to.
+   */
+  cta: XIntelCta | null;
   /** Why this story beat the others. On SKIP, why there was nothing worth posting. */
   reason_selected: string;
   runners_up: XIntelRunnerUp[];

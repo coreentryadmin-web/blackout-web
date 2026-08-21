@@ -1,3 +1,4 @@
+import { buildCta } from "@/lib/x-intel/cta";
 import type { XIntelQueueRow } from "@/lib/x-intel/queue-types";
 
 /**
@@ -135,6 +136,9 @@ export const X_INTEL_QUEUE_FIXTURES: XIntelQueueRow[] = [
         why_not: "Not time-critical this hour — keeps until the pre-earnings slot.",
       },
     ],
+    // Built through the real rotator so the fixture shows what the pipeline will actually produce,
+    // not a hand-written approximation of it.
+    cta: buildCta("2026-08-21T11", []),
     posted_tweet_id: null,
   },
 
@@ -223,6 +227,7 @@ export const X_INTEL_QUEUE_FIXTURES: XIntelQueueRow[] = [
         why_not: "Level held without incident; nothing happened worth a reader's attention.",
       },
     ],
+    cta: buildCta("2026-08-21T10", ["SOFT"]),
     posted_tweet_id: null,
   },
 
@@ -250,6 +255,8 @@ export const X_INTEL_QUEUE_FIXTURES: XIntelQueueRow[] = [
     reason_selected:
       "Inspected all seven surfaces. Nothing crossed the bar: 7-point index range, no regime change, largest flow print well under threshold, no earnings or macro catalyst in the window. Forcing a story on this hour would spend reader attention on nothing.",
     runners_up: [],
+    // No CTA: there is no post to reply to. A SKIP row must not carry an ask.
+    cta: null,
     posted_tweet_id: null,
   },
 
@@ -326,6 +333,7 @@ export const X_INTEL_QUEUE_FIXTURES: XIntelQueueRow[] = [
     reason_selected:
       "Cross-product disagreement is the highest-value shape this account can publish and the hardest to get right, so it goes to a human before it goes out. Held at REVIEW for a read on tone, not on facts.",
     runners_up: [],
+    cta: buildCta("2026-08-21T12", ["DISCORD", "SOFT"]),
     posted_tweet_id: null,
   },
 ];

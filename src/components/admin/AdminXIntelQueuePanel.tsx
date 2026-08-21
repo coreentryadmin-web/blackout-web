@@ -244,6 +244,21 @@ function PackageCard({ row }: { row: XIntelQueueRow }) {
         </div>
       )}
 
+      {/* The CTA is a REPLY, copied separately — never pasted into the post body. See cta.ts. */}
+      {row.cta && (
+        <div className="mt-3">
+          <div className="mb-1 flex items-center justify-between">
+            <span className="font-mono text-[10px] uppercase tracking-wider text-white/40">
+              CTA reply · {row.cta.variant.replace(/_/g, " ")} — post as a reply, not in the body
+            </span>
+            <CopyButton text={row.cta.text} label="Copy CTA" />
+          </div>
+          <pre className="whitespace-pre-wrap rounded border border-violet/25 bg-black/30 p-2 font-mono text-[11px] text-white/85">
+            {row.cta.text}
+          </pre>
+        </div>
+      )}
+
       {row.thread && row.thread.length > 0 && (
         <div className="mt-3">
           <span className="font-mono text-[10px] uppercase tracking-wider text-white/40">

@@ -5,11 +5,14 @@ import {
   attachmentCaptureBlockReason,
   readyBlockReason,
   X_INTEL_FORMATS,
+  X_INTEL_CTA_VARIANTS,
   X_INTEL_STATUSES,
   X_INTEL_SURFACES,
   type XIntelAttachment,
   type XIntelChronology,
   type XIntelConfidence,
+  type XIntelCta,
+  type XIntelCtaVariant,
   type XIntelEvidence,
   type XIntelFormat,
   type XIntelOutcome,
@@ -64,6 +67,7 @@ type QueueDbRow = {
   reason_selected: string;
   runners_up: unknown;
   posted_tweet_id: string | null;
+  cta: unknown;
 };
 
 function asArray<T>(value: unknown): T[] {
@@ -146,6 +150,7 @@ function hydrate(r: QueueDbRow): XIntelQueueRow {
     reason_selected: r.reason_selected,
     runners_up: asArray<XIntelRunnerUp>(r.runners_up),
     posted_tweet_id: r.posted_tweet_id,
+    cta: (r.cta as XIntelCta | null) ?? null,
   };
   if (confidence) row.confidence = confidence;
   return row;
@@ -155,7 +160,7 @@ const SELECT_COLUMNS = `
   id, cycle_key, session_date, created_at_et, created_at, status,
   ticker_or_market, headline, post_copy, thread, format,
   attachments, products_referenced, underlying_evidence, chronology,
-  market_outcome, confidence, reason_selected, runners_up, posted_tweet_id
+  market_outcome, confidence, reason_selected, runners_up, posted_tweet_id, cta
 `;
 
 export type SaveQueueRowResult = {
@@ -193,11 +198,13 @@ export async function saveQueueRow(
     `INSERT INTO ${X_INTEL_QUEUE_TABLE} (
        cycle_key, session_date, created_at_et, status, ticker_or_market, headline,
        post_copy, thread, format, attachments, products_referenced, underlying_evidence,
-       chronology, market_outcome, confidence, reason_selected, runners_up, posted_tweet_id
+       chronology, market_outcome, confidence, reason_selected, runners_up, posted_tweet_id,
+       cta
      ) VALUES (
        $1, $2, $3, $4, $5, $6,
        $7, $8::jsonb, $9, $10::jsonb, $11::jsonb, $12::jsonb,
-       $13::jsonb, $14::jsonb, $15::jsonb, $16, $17::jsonb, $18
+       $13::jsonb, $14::jsonb, $15::jsonb, $16, $17::jsonb, $18,
+       $19::jsonb
      )
      ON CONFLICT (cycle_key) DO UPDATE SET
        session_date = EXCLUDED.session_date,
@@ -215,7 +222,8 @@ export async function saveQueueRow(
        market_outcome = EXCLUDED.market_outcome,
        confidence = EXCLUDED.confidence,
        reason_selected = EXCLUDED.reason_selected,
-       runners_up = EXCLUDED.runners_up
+       runners_up = EXCLUDED.runners_up,
+       cta = EXCLUDED.cta
      RETURNING ${SELECT_COLUMNS}`,
     [
       draft.cycle_key,
@@ -237,6 +245,7 @@ export async function saveQueueRow(
       draft.reason_selected,
       JSON.stringify(draft.runners_up),
       draft.posted_tweet_id,
+      JSON.stringify(draft.cta),
     ],
   );
 
@@ -313,6 +322,29 @@ export async function recentFormats(limit = 8): Promise<XIntelFormat[]> {
   return res.rows
     .map((r) => asFormat(r.format))
     .filter((f): f is XIntelFormat => f != null);
+}
+
+/**
+ * The CTA variants used most recently, newest-first — fed straight into `selectCtaVariant()`.
+ *
+ * SKIP rows are excluded for the same reason `recentFormats()` excludes them: an hour with nothing
+ * to say published no CTA, so counting it would advance the rotation on the strength of a post that
+ * never existed.
+ */
+export async function recentCtaVariants(limit = 8): Promise<XIntelCtaVariant[]> {
+  if (!dbConfigured()) return [];
+  const res = await dbQuery<{ variant: string | null }>(
+    `SELECT cta->>'variant' AS variant FROM ${X_INTEL_QUEUE_TABLE}
+      WHERE status <> 'SKIP' AND cta IS NOT NULL
+      ORDER BY created_at DESC
+      LIMIT $1`,
+    [Math.min(Math.max(limit, 1), 50)],
+  );
+  return res.rows
+    .map((r) => r.variant)
+    .filter((v): v is XIntelCtaVariant =>
+      v != null && (X_INTEL_CTA_VARIANTS as readonly string[]).includes(v),
+    );
 }
 
 /** Records which tweet a package became — the learning loop's join key. */

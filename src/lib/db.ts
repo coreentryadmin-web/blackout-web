@@ -2206,7 +2206,8 @@ async function runMigrations(): Promise<void> {
       confidence JSONB,
       reason_selected TEXT NOT NULL,
       runners_up JSONB NOT NULL DEFAULT '[]'::jsonb,
-      posted_tweet_id TEXT
+      posted_tweet_id TEXT,
+      cta JSONB
     );
   `);
   await p.query(
