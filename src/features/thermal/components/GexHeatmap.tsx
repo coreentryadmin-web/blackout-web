@@ -2038,7 +2038,13 @@ function ExpiryScopeBar({
         aria-pressed={active}
         title={title}
         className={clsx(
-          "rounded-md px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider outline-none transition-colors",
+          // min-h-[24px] + inline-flex, NOT a bigger font or more padding: the expiry row is the
+          // primary matrix filter and every one of its 23 chips rendered 19px tall (px-2 py-0.5 on
+          // a 10px font), measured live on a 430px phone. WCAG 2.2 AA Target Size (Minimum) is
+          // 24x24 CSS px, and this repo's own interaction harness flags anything under 24. Widths
+          // were already fine (36-62px), so only the height was short — raising the MINIMUM height
+          // meets the bar while leaving the chip's type scale and density untouched.
+          "inline-flex min-h-[24px] items-center rounded-md px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider outline-none transition-colors",
           "focus-visible:ring-2 focus-visible:ring-sky-400",
           active
             ? "bg-cyan-400/15 text-white outline outline-1 outline-cyan-400/60"
