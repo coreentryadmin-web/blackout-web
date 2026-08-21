@@ -667,6 +667,21 @@ Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
 **Lesson worth keeping — the same one, now with a second instance to prove it.** #2423 concluded that *a centralized fix is not adopted until every call site imports it*. Acting on that as a literal instruction — grep the map's importers, not the map's existence — found this within minutes. The map had three importers and the defect class had at least five call sites. **An importer count is a cheap, mechanical audit that nobody had run**, and it is worth running for every shared helper whose whole purpose is to prevent a class of defect.
 
+## 2026-08-21 — [FINDING, P2 tooling] The Vector boundary probe modelled Largo's reader as a bare `roundFloats(dp=2)` — it would report the FIXED expected-move surface as still broken — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Found by** | Post-close production validation — running `scripts/audit/vector-largo-boundary-live.mjs` against `blackouttrades.com` read-only, then reconciling its "what Largo received" line against what the reader transform actually does. |
+| **Root cause** | The probe printed `bie_boundary_movePct = roundFloats({ movePct: served }).movePct` — a bare dp=2 rounding — and labelled it `<-- what Largo received`. That was the transform the surface used BEFORE #2423. The value Largo actually receives through `get_vector_full_state` is `roundResultForReading(roundFloats(state, 2, VECTOR_FRACTION_DP))`: the BIE boundary keeps `movePct` to 6dp (#2423), then the guarded runner keeps **6 significant digits below 1**. Both stages PRESERVE the fraction. |
+| **Live proof** | Against production, SPX `movePct` served `0.005431`; Largo receives `0.005431` (preserved); NVDA served `0.014046`, receives `0.014046`. The probe would have printed `0.01` for both under "what Largo received" — declaring a surface broken that has been fixed and deployed. |
+| **Why it matters** | A probe that misreports production is the recurring failure this repo keeps paying for: a check whose measured quantity is narrower than — or simply different from — the claim it prints. Here the claim was "what Largo received" and the measured quantity was a transform the product stopped using in #2423. A green-looking desk read as broken is as costly as a broken one read as green; either way the probe cannot be trusted to gate. |
+| **Fix** | The probe now models BOTH stages in order (`roundFloats(..., VECTOR_FRACTION_DP)` then `roundResultForReading`) as `largo_received_movePct`, carries a `preserved` verdict (the reader value did not collapse to the bare-dp2 value or to 0), and keeps the bare-dp2 number ONLY as an explicitly-labelled "pre-#2423 defect, NOT what Largo gets". The module docblock is corrected to match. |
+| **The deeper gap it exposed** | The end-to-end precision — BIE boundary composed WITH the reader transform — had **no unit test**. #2423's tests pin each stage in isolation; the composition was checked only by this probe, and the probe was wrong. Added `vector-full-state-precision.test.ts`: the composed transform preserves `movePct` to the model, and a 0.40% move never reaches Largo as `0`. That test, not a live probe, is now the load-bearing guard. |
+| **Blast radius** | The probe + one test. No product code — the product was already correct; the instrument was lying about it. |
+| **Status** | FIXED — probe corrected and re-run green against production (both tickers PASS), composition now unit-guarded. |
+
 ## 2026-08-19 — [FINDING, P0 correctness] `main` went red with every PR green — #2365 and #2366 collided on the 0DTE expiry resolver — FIXED
 
 > **kind:** `FINDING`
