@@ -2848,7 +2848,10 @@ export async function fetchTrailingSessionSkew(params: {
     const put = pgNumericOrNull(r.put_prem) ?? 0;
     const total = call + put;
     return {
-      session_date: String(r.session_date),
+      // DATE column — normalize through the shared helper, never a bare String() (which on a pg
+      // Date would serialize "Fri Aug 07 2026 …"). isoDateString is the same funnel every other
+      // session_date mapper in this file uses; the db-iso-timestamp guard enforces it.
+      session_date: isoDateString(r.session_date),
       call_premium: call,
       put_premium: put,
       // null (never 50) when no measurable premium that session — sessionFlowSkew's rule.
