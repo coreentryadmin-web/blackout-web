@@ -13439,3 +13439,17 @@ against.
 | **Not a trading-behaviour change** | No gate, rail, sizing, exit rule or grading path is touched — this changes only what the model is told about an empty ledger, so no `sim:0dte` before/after is owed. |
 | **Gates** | `npx tsc --noEmit` clean · `npm test` **8854 pass / 0 fail** (Node 20.20.2) · `npm run build` clean · `npx eslint` clean. |
 | **Status** | FIXED — PR #2477. |
+
+## 2026-08-21 — [FINDING, P2 Largo/Night Hawk] "Why did Night Hawk commit X yesterday?" was unanswerable — get_cortex_decision was today-only — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **The gap** | `get_cortex_decision` — the tool for *"why did we commit/skip X, what was the evidence"* — only ever read the CURRENT session. A member asking why a specific PAST play committed (e.g. "why did Night Hawk commit HIMS on 2026-08-20") could not get the frozen commit evidence, even though it sits in the ledger. `zerodteRecordForLargo` even points members to `get_cortex_decision` "for one ticker's evidence" after dropping `entry_context` — a pointer that silently failed for any play older than today. |
+| **The capability existed one layer down** | `readCortexForPlay(ticker, sessionDate?)` already accepts a date and `fetchZeroDteSetupLog(sessionDate)` already reads a specific past session's rows (`entry_context.cortex` — "the WHY of record, exactly what the scanner saw when it committed"). But `composeCortexRead(ticker, question)` called `readCortexForPlay(ticker)` WITHOUT the date, so the Largo entry point threw the capability away. The fleet signature again: the fact is in the system, not wired to the tool. |
+| **Fix** | Threaded an optional `sessionDate` from the tool through the whole chain: `get_cortex_decision` gains a `date` (YYYY-MM-DD) param → `run-tool` reads `input.date`/`input.session_date` → `cortexDecisionForLargo(ticker, question, sessionDate)` → `composeCortexRead(..., sessionDate)` → `readCortexForPlay(ticker, sessionDate)`. Absent date = today (behaviour byte-unchanged). WITH a date it returns that session's pinned evidence — or, when nothing committed that day, says so **plainly and refuses to answer with a live read** (a live read would describe *now*, not *then* — the exact time-horizon mistake the charter names). The payload echoes `requested_session_date` so the model dates the evidence by the play. |
+| **Blast radius** | Additive optional param on `composeCortexRead` (both existing callers — Largo + BIE composers — pass through unchanged), `cortexDecisionForLargo`, the `get_cortex_decision` run-tool case, and its tool description. No provider, no gate, no grading. Date input is validated by `normalizeIsoDateInput` and used in parameterized SQL. |
+| **Regression guard** | `cortex-read.test.ts` (+3): a dated ask reads THAT session's ledger not today's; a dated ask with no play of record says so and does NOT trigger a live Cortex read; without a date, behaviour is unchanged (today's ledger, live fallback). |
+| **Not a trading-behaviour change** | No gate, rail, sizing, exit rule or grading is touched. No `sim:0dte` owed. |
+| **Status** | FIXED — extends the "why did your product say that / what was the evidence" cluster from today-only to any historical session. |
