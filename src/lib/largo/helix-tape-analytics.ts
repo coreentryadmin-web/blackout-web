@@ -76,7 +76,10 @@ export function routeBreakdown(alerts: FlowAlert[]) {
       route,
       premium,
       count,
-      pct: total > 0 ? Math.round((premium / total) * 100) : 0,
+      // null, not 0, when there is no premium to take a share OF. `pct` is a share-of-total, so
+      // with a zero denominator "0%" is not a small share — it is no measurement at all, and a
+      // route row only exists because prints landed on it. Same rule as call_pct (_COMMON.md #7).
+      pct: total > 0 ? Math.round((premium / total) * 100) : null,
     }))
     .sort((a, b) => b.premium - a.premium);
 }
@@ -121,11 +124,13 @@ export function expiryHorizonConcentration(alerts: FlowAlert[], now: Date = new 
       premium,
       // null, not 50 — an unmeasurable skew must not read as a measured balance.
       call_pct: premium > 0 ? Math.round((call_premium / premium) * 100) : null,
-      pct: 0,
+      pct: null as number | null,
     };
   });
   const total = rows.reduce((s, r) => s + r.premium, 0);
-  for (const r of rows) r.pct = total > 0 ? Math.round((r.premium / total) * 100) : 0;
+  // null on a zero denominator — a horizon holding prints with no measurable premium has no
+  // share, which is a different fact from a 0% share.
+  for (const r of rows) r.pct = total > 0 ? Math.round((r.premium / total) * 100) : null;
   return rows;
 }
 
@@ -164,7 +169,7 @@ export function expiryConcentration(alerts: FlowAlert[], limit = 8, now: Date = 
       horizon: expiryHorizonLabel(dte),
       premium,
       count,
-      pct: total > 0 ? Math.round((premium / total) * 100) : 0,
+      pct: total > 0 ? Math.round((premium / total) * 100) : null,
     }))
     .sort((a, b) => b.premium - a.premium)
     .slice(0, limit);

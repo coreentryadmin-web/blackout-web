@@ -491,3 +491,56 @@ test("a non-numeric limit is clamped, never forwarded as LIMIT NaN", () => {
     assert.ok(o.limit >= 1 && o.limit <= 5000);
   }
 });
+
+// ── Rule-7 sweep: a share needs a denominator ────────────────────────────────
+// _COMMON.md #7 — "a rate must never be printed without the denominator it came from". A `pct`
+// is a share of total premium; with a zero denominator, 0% is not a small share, it is no
+// measurement. Found by sweeping the lane for the same shape as the call_pct:50 defect.
+
+test("route pct is null, not 0, when the tape has no premium to take a share of", () => {
+  // NB routeBreakdown sums premium regardless of SIDE — unlike the call/put splits, a typeless
+  // print still contributes. So the zero-denominator case here is a tape of zero-premium prints,
+  // not a typeless one. My first version of this test asserted the wrong premise and the suite
+  // caught it; the distinction is worth keeping written down.
+  const rows = routeBreakdown([
+    { ...atPrint("2026-08-20T20:00:00Z", 0), alert_rule: "Sweep" } as FlowAlert,
+  ]);
+  assert.equal(rows[0]?.count, 1, "the print is still counted");
+  assert.equal(rows[0]?.premium, 0);
+  assert.equal(rows[0]?.pct, null, "0% would assert a measured share of nothing");
+});
+
+test("route pct counts a TYPELESS print's premium — it is side-blind by design", () => {
+  const rows = routeBreakdown([
+    { ...atPrint("2026-08-20T20:00:00Z", 3_000_000), option_type: "UNKNOWN", alert_rule: "Sweep" } as FlowAlert,
+  ]);
+  assert.equal(rows[0]?.premium, 3_000_000);
+  assert.equal(rows[0]?.pct, 100, "a real share of a real total");
+});
+
+test("horizon pct is null on a zero denominator", () => {
+  const rows = expiryHorizonConcentration([
+    { ...atPrint("2026-08-20T20:00:00Z", 3_000_000), option_type: "UNKNOWN", dte: 0 } as FlowAlert,
+  ]);
+  assert.equal(rows[0]?.count, 1);
+  assert.equal(rows[0]?.pct, null);
+  assert.equal(rows[0]?.call_pct, null);
+});
+
+test("per-date pct is null on a zero denominator", () => {
+  // Same side-blind aggregation as routeBreakdown, so the reachable zero case is zero premium.
+  const rows = expiryConcentration([
+    { ...atPrint("2026-08-20T20:00:00Z", 0), dte: 0, expiry: "2026-08-20" } as FlowAlert,
+  ]);
+  assert.equal(rows[0]?.count, 1);
+  assert.equal(rows[0]?.pct, null);
+});
+
+test("a real share is still reported as a number", () => {
+  const rows = routeBreakdown([
+    { ...atPrint("2026-08-20T20:00:00Z", 7_500_000), option_type: "CALL", alert_rule: "Sweep" } as FlowAlert,
+    { ...atPrint("2026-08-20T20:01:00Z", 2_500_000), option_type: "PUT", alert_rule: "Block" } as FlowAlert,
+  ]);
+  const sweep = rows.find((r) => r.route === "SWEEP");
+  assert.equal(sweep?.pct, 75);
+});
