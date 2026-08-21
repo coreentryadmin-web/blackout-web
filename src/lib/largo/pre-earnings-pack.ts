@@ -113,7 +113,8 @@ export async function preEarningsPackForLargo(
     await Promise.all([
       import("@/lib/providers/gex-positioning"),
       import("@/lib/platform"),
-      loadBenzingaTickerEarnings(t, earningsDate ?? null),
+      // 6 — the number of history rows this card shows. The loader sizes its window from it.
+      loadBenzingaTickerEarnings(t, earningsDate ?? null, 6),
       loadNextEarningsFromBenzinga(t).catch(() => null),
       boardExposure(t),
     ]);
