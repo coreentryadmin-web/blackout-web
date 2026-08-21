@@ -2,6 +2,7 @@ import "server-only";
 
 import { fetchIndexDailyBars, fetchStockDailyBars } from "@/lib/providers/polygon";
 import { serverCache } from "@/lib/server-cache";
+import { openSessionYmd } from "@/lib/meridian/meridian-open-session";
 import {
   reactionsForDates,
   reactionsForPrints,
@@ -85,5 +86,7 @@ export async function stockReactionsForPrints(
   if (!prints.length || !ticker.trim()) return new Map();
   const { from, to } = barWindowForDates(prints.map((p) => p.ymd));
   const bars = await loadStockBars(ticker, from, to);
-  return reactionsForPrints(bars, prints);
+  // Tell the core whether the anchor session is still running, so a print from THIS session is
+  // labelled as still moving rather than as a measurement.
+  return reactionsForPrints(bars, prints, openSessionYmd());
 }

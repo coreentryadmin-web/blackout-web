@@ -115,10 +115,10 @@ export const X_INTEL_QUEUE_FIXTURES: XIntelQueueRow[] = [
     ],
     products_referenced: ["thermal", "helix", "vector"],
     underlying_evidence: [
-      { what: "gamma flip level", value: "6,784", source: "thermal" },
-      { what: "dealer gamma below flip", value: "-$412M / 1% move", source: "thermal" },
-      { what: "SPX low after break", value: "6,751 (-33 pts, -0.49%)", source: "market" },
-      { what: "put premium 11:31–11:44", value: "$6.2M vs $1.9M call", source: "helix" },
+      { what: "gamma flip level", value: "6,784", source: "thermal", horizon: "0dte" },
+      { what: "dealer gamma below flip", value: "-$412M / 1% move", source: "thermal", horizon: "0dte" },
+      { what: "SPX low after break", value: "6,751 (-33 pts, -0.49%)", source: "market", horizon: "n/a" },
+      { what: "put premium 11:31–11:44", value: "$6.2M vs $1.9M call", source: "helix", horizon: "0dte" },
     ],
     chronology: {
       precedence_claimed: true,
@@ -172,6 +172,7 @@ export const X_INTEL_QUEUE_FIXTURES: XIntelQueueRow[] = [
     // Built through the real rotator so the fixture shows what the pipeline will actually produce,
     // not a hand-written approximation of it.
     skip_kind: null,
+    session_claim: true,
     blind_spots: [],
     cta: buildCta("2026-08-21T11", []),
     posted_tweet_id: null,
@@ -285,6 +286,7 @@ export const X_INTEL_QUEUE_FIXTURES: XIntelQueueRow[] = [
       },
     ],
     skip_kind: null,
+    session_claim: true,
     // Helix was read fine here; the package simply had only two distinct surfaces worth showing.
     blind_spots: [],
     cta: buildCta("2026-08-21T10", ["SOFT"]),
@@ -306,9 +308,9 @@ export const X_INTEL_QUEUE_FIXTURES: XIntelQueueRow[] = [
     attachments: [],
     products_referenced: ["thermal", "helix", "vector", "spx_slayer"],
     underlying_evidence: [
-      { what: "SPX range 13:00–13:30", value: "6,769–6,776 (7 pts)", source: "market" },
+      { what: "SPX range 13:00–13:30", value: "6,769–6,776 (7 pts)", source: "market", horizon: "n/a" },
       { what: "largest Helix print", value: "$780k — below the $2M whale threshold", source: "helix" },
-      { what: "Thermal regime", value: "unchanged, long gamma since 10:15 ET", source: "thermal" },
+      { what: "Thermal regime", value: "unchanged, long gamma since 10:15 ET", source: "thermal", horizon: "0dte" },
     ],
     chronology: null,
     market_outcome: null,
@@ -317,6 +319,7 @@ export const X_INTEL_QUEUE_FIXTURES: XIntelQueueRow[] = [
     runners_up: [],
     // QUIET is a claim about the MARKET, and it is only sayable because nothing was blind.
     skip_kind: "QUIET",
+    session_claim: false,
     blind_spots: [],
     // No CTA: there is no post to reply to. A SKIP row must not carry an ask.
     cta: null,
@@ -419,6 +422,7 @@ export const X_INTEL_QUEUE_FIXTURES: XIntelQueueRow[] = [
       "Cross-product disagreement is the highest-value shape this account can publish and the hardest to get right, so it goes to a human before it goes out. Held at REVIEW for a read on tone, not on facts.",
     runners_up: [],
     skip_kind: null,
+    session_claim: true,
     blind_spots: [],
     cta: buildCta("2026-08-21T12", ["DISCORD", "SOFT"]),
     posted_tweet_id: null,
