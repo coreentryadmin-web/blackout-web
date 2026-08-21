@@ -452,7 +452,12 @@ export const LARGO_CAPABILITIES: readonly LargoCapability[] = [
     tool: "get_vector_full_state",
     answers: "What is Vector's full chart state for a ticker — walls, beads, flip, magnet?",
     temporal: "as_of",
-    freshness: "realtime",
+    // NOT "realtime" (sub-minute). This state is served cache-first from a 15-minute TTL, warmed
+    // by a 5-minute RTH-gated cron that covers only the ~55 allowlist names — so off-hours, and
+    // for every other symbol, an entry simply ages until it expires. `periodic` states the
+    // guarantee; `realtime` stated the best case, next to a tool description that says the read
+    // can be 15 minutes old.
+    freshness: "periodic",
     entities: ["ticker", "strike", "expiry"],
     entitlement: "premium",
     keywords: ["vector", "walls", "beads", "chart", "magnet", "rail"],
@@ -467,13 +472,14 @@ export const LARGO_CAPABILITIES: readonly LargoCapability[] = [
     // of them can actually be answered from a single state read.
     answers: "What CHANGED on Vector just now — regime flip, magnet shift, new wall forming, integrity change?",
     temporal: "snapshot_delta",
-    freshness: "realtime",
+    // Same cache as vector.full_state — see the note there.
+    freshness: "periodic",
     entities: ["ticker", "strike"],
     entitlement: "premium",
     keywords: ["pulse", "just changed", "signal", "forming", "flipped", "shifted", "alert"],
     joinsWith: ["vector.full_state", "vector.wall_dynamics"],
     caveat:
-      "A diff of NOW against the last cached snapshot, not a queryable window — it can say what just changed, never what the pulse looked like at an earlier time.",
+      "A diff of the CURRENT cached snapshot against the previous one, not a queryable window — it can say what changed between them, never what the pulse looked like at an earlier time. Both ends are cached reads, so neither is 'now': when the same snapshot is served twice the diff has nothing new in it, which the payload reports as is_new_observation: false.",
   },
   {
     id: "vector.chart_analytics",

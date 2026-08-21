@@ -62,6 +62,7 @@ import { VECTOR_FRACTION_DP } from "@/features/vector/lib/vector-response-roundi
 import { readVectorFullStateCache, writeVectorFullStateCache } from "@/lib/bie/vector-full-state-cache";
 import { reportVectorAbsences, type VectorAbsenceReport } from "@/lib/bie/vector-absent-sections";
 import { isEtCashRth } from "@/lib/et-market-hours";
+import { describeVectorFreshness, type VectorFreshnessBlock } from "@/lib/bie/vector-state-freshness";
 
 /** The default chart timeframe (minutes) a cached snapshot is computed at — the cron warms this TF;
  *  a reader asking for a different TF must recompute live (its technicals differ). */
@@ -299,21 +300,28 @@ export async function fetchVectorFullState(
   ticker: string,
   horizon: VectorDteHorizon = VECTOR_DEFAULT_DTE_HORIZON,
   timeframeMin: number = VECTOR_FULL_STATE_DEFAULT_TIMEFRAME_MIN
-): Promise<(VectorFullState & VectorAbsenceReport) | null> {
+): Promise<(VectorFullState & VectorAbsenceReport & VectorFreshnessBlock) | null> {
   const cacheable = timeframeMin === VECTOR_FULL_STATE_DEFAULT_TIMEFRAME_MIN;
 
   if (cacheable) {
     const cached = await readVectorFullStateCache(ticker, horizon);
-    if (cached) return withAbsenceReport(cached);
+    // Compose both read-time labels: absence (which sections were unreadable) AND freshness
+    // (how old this served snapshot is). Both are derived on the way OUT, never persisted.
+    if (cached) return withFreshness(withAbsenceReport(cached));
   }
 
   const live = await computeVectorFullState(ticker, horizon, timeframeMin);
 
   // Self-warm on a default-TF miss so the next reader hits cache even if the cron hasn't run
   // (off-hours, cold task). Fire-and-forget — a cache write must never delay or fail the read.
+  //
+  // NOTE the ordering: the cache is written the RAW `live` state, and the freshness block is
+  // attached to a SEPARATE returned object. So nothing time-dependent is ever persisted — a stored
+  // age would freeze at zero and describe every later read as instantaneous, which is this defect
+  // inverted. That is what makes it safe to attach here rather than in a caller-side wrapper.
   if (live && cacheable) void writeVectorFullStateCache(ticker, horizon, live);
 
-  return live ? withAbsenceReport(live) : null;
+  return live ? withFreshness(withAbsenceReport(live)) : null;
 }
 
 /**
@@ -349,6 +357,22 @@ function withAbsenceReport(state: VectorFullState): VectorFullState & VectorAbse
       isRth: isEtCashRth(Number.isFinite(observedAt) ? new Date(observedAt) : new Date()),
     }),
   };
+
+/**
+ * Attach the READ-time freshness block. Applied here, at the single shared entry point, because
+ * EVERY consumer of this state ships the same un-aged snapshot to a model or a member — not just
+ * the two Vector tools. On `main` that is `get_ecosystem_context` (ecosystem-context.ts), the
+ * `get_wall_dynamics` reader, `desk-scope-prefetch`, `mini-panel`, `full-platform-snapshot`,
+ * `scenario-read`, `play-suggest-read`, `slash-prompts`, the `/api/market/largo/{status,context}`
+ * routes and Night Hawk's Cortex fetch. Fixing the two tools alone would have left a dozen
+ * surfaces serving a 15-minute-old snapshot as though it were current, and would have made
+ * get_ecosystem_context's documented promise to return "the exact same object" false.
+ *
+ * Generic in the input so it COMPOSES with withAbsenceReport without erasing that type: a state
+ * carrying an absence report keeps it, and the freshness fields are added alongside.
+ */
+function withFreshness<T extends VectorFullState>(state: T): T & VectorFreshnessBlock {
+  return { ...state, ...describeVectorFreshness(state.asOf, Date.now()) };
 }
 
 function num(n: number | null | undefined): number | null {

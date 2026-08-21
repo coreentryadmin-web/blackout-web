@@ -8,6 +8,7 @@ import { VECTOR_FRACTION_DP } from "@/features/vector/lib/vector-response-roundi
 // Session phase comes from the ONE canonical helper (largo/core), not a local re-derivation —
 // a second copy of the RTH boundaries is how two surfaces end up disagreeing about the session.
 import { marketPhaseFromEt } from "@/lib/largo/core/system-status";
+import { describeVectorFreshness } from "@/lib/bie/vector-state-freshness";
 import { fetchBangerBoardRows, fetchBangerOpenCount } from "@/lib/banger/positions-db";
 import { isBangerEngineEnabled } from "@/lib/banger/flag";
 import { bangerScaleOutNote } from "@/lib/zerodte/scale-out";
@@ -508,19 +509,52 @@ export async function vectorPulseForLargo(ticker: string, horizon = "all") {
       return { available: false, reason: "no_live_vector_state", ticker: ticker.toUpperCase(), signals: [] };
     }
 
+    // The OBSERVATION clock (`nowMs`) stays keyed to the snapshot, because every signal age and
+    // cooldown in the pulse detector is measured against the instant the state was MEASURED.
+    // The READ clock is separate and must come from the real wall clock — deriving "now" from a
+    // cached `asOf` is precisely what made a 15-minute-old state look instantaneous.
     const nowMs = Date.parse(state.asOf) || Date.now();
+    const readMs = Date.now();
     const cached = await cache.readVectorPulseCache(state.ticker, state.horizon).catch(() => null);
     const { fresh, cacheEntry, current } = await buildPulseSignalsForState(state, cached, nowMs);
     await cache.writeVectorPulseCache(state.ticker, state.horizon, cacheEntry).catch(() => {});
+
+    // Pulse is DIFFERENTIAL, so "no signals" is only meaningful if there were two DISTINCT
+    // observations to diff. `fetchVectorFullState` is cache-first with a 15-minute TTL, so two
+    // asks inside that window receive the SAME frozen snapshot: `buildPulseSnapshot` is a pure
+    // function of the state, `detectPulseSignals` compares a snapshot to an identical one, and the
+    // tool reported `has_baseline: true` with an empty signal list — which reads as "structure is
+    // stable" when the truth is "nothing has been re-measured since the last answer". That is the
+    // same failure `has_baseline` exists to prevent, one layer further down. `snapshot.at` IS the
+    // observation instant, so comparing it to the cached baseline's identifies the case exactly.
+    const freshnessBlock = describeVectorFreshness(state.asOf, readMs);
+    const baselineAt = cached?.snapshot?.at ?? null;
+    const isNewObservation = baselineAt == null || baselineAt !== current.at;
 
     return roundFloats({
       available: true,
       ticker: state.ticker,
       horizon: state.horizon,
-      as_of: state.asOf,
+      // observed_at / as_of / session_date / age_seconds / freshness / note. `as_of` now means
+      // "when this tool read it" — the same meaning it carries on every other Largo tool — and
+      // `observed_at` carries the snapshot's own measurement time, which is what `as_of` used to
+      // (mis)report. `fetchVectorFullState` already attaches this block; recomputing it here keeps
+      // the read clock the PULSE call's own, and costs one Date.now().
+      ...freshnessBlock,
       /** False on the FIRST read of a session: there is no previous snapshot to diff against, so
        *  an empty signal list means "no baseline yet", not "nothing is happening". */
       has_baseline: Boolean(cached?.snapshot),
+      /** FALSE when this read diffed the SAME cached VECTOR STATE the previous read already
+       *  diffed — scoped deliberately to the Vector state, because `buildPulseSignalsForState`
+       *  ALSO fetches live HELIX flow (and, on SPX, the play engine) on every single call. Those
+       *  genuinely were re-measured; only the walls/regime/magnet half was not. NULL when
+       *  `freshness` is "unknown": `nowMs` then falls back to `Date.now()`, so `current.at` differs
+       *  on every call and the flag would read TRUE in exactly the case where the payload admits
+       *  it cannot tell how old the state is. */
+      is_new_observation: freshnessBlock.freshness === "unknown" ? null : isNewObservation,
+      /** The measurement instant of the snapshot this read was diffed AGAINST (null on first read),
+       *  so a reader can see for itself whether the two ends of the diff are distinct. */
+      baseline_observed_at: baselineAt != null ? new Date(baselineAt).toISOString() : null,
       signal_count: fresh.length,
       // Field names mirror the real PulseSignal so a reader can line this up against
       // vector-pulse.ts without a translation table.
