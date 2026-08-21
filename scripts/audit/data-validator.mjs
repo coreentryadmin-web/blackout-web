@@ -462,13 +462,31 @@ async function main() {
       // The walls ARE by definition the argmax/argmin of the served strike totals, which is both
       // checkable from the payload and strictly stronger: it catches swapped walls, a stale wall,
       // and a wall computed off a different chain — none of which an ordering test can see.
+      //
+      // TWO PAYLOADS, ONE ASSERTION (rewritten 2026-08-21). The walls above come from
+      // /gex-positioning while `strike_totals` comes from /gex-heatmap — two endpoints fetched
+      // seconds apart, each with its OWN spot. Deriving the expected wall from one payload's
+      // totals while constraining it with the OTHER payload's spot is how a boundary case turns
+      // into a false FAIL, so the primary assertion is now made ENTIRELY INSIDE the heatmap
+      // payload: its walls, its totals, its spot. That comparison has zero skew by construction
+      // and is therefore a real invariant rather than a race.
+      //
+      // The cross-endpoint agreement is still worth knowing, so it is checked separately and
+      // GATED ON `asof`: both payloads stamp themselves, and when the stamps are IDENTICAL they
+      // describe the same snapshot, so a wall disagreement is structural and FAILS. When the
+      // stamps differ the endpoints legitimately describe different instants and a difference is
+      // reported as INFO with the measured skew. That gate uses the timestamps the payloads
+      // already carry instead of guessing a tolerance.
+      const heatGex = P.heatmap?.gex;
+      const heatSpot = num(P.heatmap?.spot);
+      const heatPw = num(heatGex?.put_wall), heatCw = num(heatGex?.call_wall);
       const inv = checkWallInvariants({
-        callWall: cw,
-        putWall: pw,
-        strikeTotals: P.heatmap?.gex?.strike_totals,
-        spot: aGexSpot,
+        callWall: heatCw,
+        putWall: heatPw,
+        strikeTotals: heatGex?.strike_totals,
+        spot: heatSpot,
       });
-      const base = `put_wall=${pw} flip=${P.gex.flip} max_pain=${P.gex.max_pain} call_wall=${cw} spot=${aGexSpot}`;
+      const base = `put_wall=${heatPw} flip=${P.gex.flip} max_pain=${P.gex.max_pain} call_wall=${heatCw} spot=${heatSpot}`;
       if (inv.definitional === 'skip') {
         rec('gex walls match their definition', 'INFO', `${base} — ${inv.reason}`);
       } else {
@@ -478,12 +496,34 @@ async function main() {
           `${base} | expected call=${inv.expected.callWall} put=${inv.expected.putWall} over ${inv.strikes} strikes (callOk=${inv.callOk} putOk=${inv.putOk})`,
         );
       }
-      // Ordering is REPORTED, never asserted. An inverted book is a real structure worth seeing.
+
+      // Cross-endpoint agreement, gated on the two payloads' own `asof` stamps (see above).
+      {
+        const posAsof = P.gex.asof ?? null, heatAsof = P.heatmap?.asof ?? null;
+        const skewSec = posAsof && heatAsof ? (Date.parse(posAsof) - Date.parse(heatAsof)) / 1000 : null;
+        const sameSnapshot = posAsof != null && heatAsof != null && posAsof === heatAsof;
+        const agree = pw === heatPw && cw === heatCw;
+        const detail =
+          `positioning put=${pw} call=${cw} (asof=${posAsof}) vs heatmap put=${heatPw} call=${heatCw} (asof=${heatAsof})` +
+          (skewSec != null ? ` | asof skew ${skewSec.toFixed(2)}s` : ' | asof missing on one side');
+        if (agree) {
+          rec('gex walls agree across positioning/heatmap', 'PASS', detail);
+        } else if (sameSnapshot) {
+          // Same `asof` = same underlying snapshot. Skew cannot explain this one.
+          rec('gex walls agree across positioning/heatmap', 'FAIL', `${detail} — SAME asof, so this is a structural disagreement, not skew`);
+        } else {
+          rec('gex walls agree across positioning/heatmap', 'INFO', `${detail} — different snapshots; a wall may legitimately have moved between the two reads`);
+        }
+      }
+
+      // Ordering is REPORTED, never asserted. Since #2417 side-constrains both walls, `put < call`
+      // holds by construction whenever both are non-null — so 'inverted' now only surfaces a null
+      // wall or an unconstrained read, not the 2026-08-14 structure that motivated this line.
       rec(
         'gex wall structure (ordering is informational)',
         'INFO',
-        `${inv.ordering}${inv.ordering === 'inverted' ? ' — put wall sits at/above the call wall; legitimate when the most-negative-gamma strike is above the most-positive one' : ''}` +
-          (inv.call_dist_pct != null ? ` | call ${inv.call_dist_pct.toFixed(1)}% / put ${inv.put_dist_pct.toFixed(1)}% from spot` : ''),
+        `${inv.ordering}${inv.ordering === 'inverted' ? ' — put wall sits at/above the call wall; expected only when a wall is null, since walls are side-constrained' : ''}` +
+          (inv.call_dist_pct != null && inv.put_dist_pct != null ? ` | call ${inv.call_dist_pct.toFixed(1)}% / put ${inv.put_dist_pct.toFixed(1)}% from spot` : ''),
       );
     }
     // gamma_posture is documented as spot-vs-flip ('long' at/above flip, 'short' below —
