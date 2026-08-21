@@ -31,17 +31,43 @@ import { join } from "node:path";
 
 const ROOTS = ["src/lib/largo", "src/lib/bie"];
 
-/** Constructs `as_of` / `asOf` from a UTC ISO string — a real runtime value, not a type. */
-const CONSTRUCTS_UTC_STAMP = /\b(as_of|asOf)\s*:\s*[^,;]*toISOString\(\)/;
+/**
+ * Constructs `as_of` / `asOf` from a UTC ISO string — a real runtime value, not a type.
+ *
+ * Matches BOTH the object-literal form (`as_of: new Date().toISOString()`) and the binding form
+ * (`const as_of = new Date().toISOString()`). The binding form was missed by the first version of
+ * this guard and hid a real site at `mini-panel.ts:46`, which renders member-visible Spot / Flip /
+ * Call wall / Put wall rows. A guard with false NEGATIVES is worse than no guard, because it
+ * converts "unchecked" into "checked and clean".
+ */
+const CONSTRUCTS_UTC_STAMP = /\b(as_of|asOf)\s*[:=]\s*[^,;]*toISOString\(\)/;
 
-/** Any ET session anchor in the same module. */
-const HAS_ET_ANCHOR = /session_date|etSessionDate/;
+/**
+ * A real ET anchor in the same module — a CALL to one of the shared helpers.
+ *
+ * Deliberately NOT the bare word `session_date`. That first version matched any occurrence, so a
+ * file reading a `session_date` COLUMN out of the database (`session_date: row.session_date`)
+ * counted as anchored and was silently exempted — `product-reads.ts` passed for exactly that
+ * reason while still stamping UTC. Requiring the helper call means the file has actually derived
+ * an ET session, not merely mentioned the word.
+ */
+const HAS_ET_ANCHOR = /etSessionDate\s*\(|etStamp\s*\(/;
 
 /**
  * Files that construct a UTC stamp with no ET anchor, as of 2026-08-21. Each is a real gap and a
  * work item for its owning lane — NOT an exemption on the merits.
  */
 const KNOWN_GAPS: Record<string, string> = {
+  // ── Exposed 2026-08-21 when the guard was TIGHTENED. The first version matched the bare word
+  // `session_date`, so a file merely READING a session_date column counted as anchored; and its
+  // construction regex missed the `const as_of = ...` binding form. Six files were being exempted
+  // by those two holes. They are gaps, not exemptions — the loose guard was reporting them clean.
+  "src/lib/largo/mini-panel.ts": "coordinator — binding form; renders member-visible Spot/Flip/Call wall/Put wall and drops pos.asof",
+  "src/lib/largo/morning-brief.ts": "coordinator",
+  "src/lib/largo/play-similarity.ts": "coordinator",
+  "src/lib/largo/product-reads.ts": "SHARED across all lanes — coordinator sequences; was falsely exempt via `session_date: row.session_date`",
+  "src/lib/bie/answer-envelope.ts": "coordinator",
+  "src/lib/bie/platform-context.ts": "coordinator",
   "src/lib/bie/full-platform-snapshot.ts": "coordinator — cross-product snapshot; anchor with the rest of the integration layer",
   "src/lib/bie/spx-desk-brief.ts": "coordinator (SPX lane)",
   "src/lib/bie/vector-desk-brief.ts": "vector lane",
@@ -122,10 +148,16 @@ test("the scanner detects the real pattern and not a type declaration", () => {
   // than none — so prove it fires on a construction and stays silent on a type.
   assert.ok(CONSTRUCTS_UTC_STAMP.test("  as_of: new Date().toISOString(),"));
   assert.ok(CONSTRUCTS_UTC_STAMP.test("  asOf: new Date(nowMs).toISOString(),"));
+  // The BINDING form, missed by the first version of this guard (mini-panel.ts:46).
+  assert.ok(CONSTRUCTS_UTC_STAMP.test("  const as_of = new Date().toISOString();"));
   assert.ok(!CONSTRUCTS_UTC_STAMP.test("  as_of: string;"), "a type declaration is not a stamp");
   assert.ok(!CONSTRUCTS_UTC_STAMP.test("  as_of?: string | null;"));
   assert.ok(!CONSTRUCTS_UTC_STAMP.test("  as_of: etStamp(Date.now()),"), "the correct form passes");
   assert.ok(HAS_ET_ANCHOR.test("session_date: etSessionDate(nowMs),"));
+  assert.ok(HAS_ET_ANCHOR.test("as_of: etStamp(Date.now()),"));
+  // Merely READING a session_date column is not deriving one — this was the false negative that
+  // exempted product-reads.ts while it still stamped UTC.
+  assert.ok(!HAS_ET_ANCHOR.test("    session_date: row.session_date,"), "a DB column read is not an anchor");
 });
 
 test("at least one file already does it right, so the rule is known-achievable", () => {
