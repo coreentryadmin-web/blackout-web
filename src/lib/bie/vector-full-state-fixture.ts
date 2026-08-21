@@ -37,7 +37,7 @@ export const VECTOR_FULL_STATE_FIXTURE: VectorFullState = {
   gammaFlip: 7520,
   magnet: {
     strike: 7555.5,
-    distancePct: -0.0006,
+    distancePct: -0.06,
     pull: "at",
     posture: "long",
     callout: "gamma magnet 7556 — spot pinned at the dealer-hedging center of mass",
