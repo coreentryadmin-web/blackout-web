@@ -438,7 +438,7 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
 
   t(
     "get_earnings_calendar",
-    "Market-wide earnings calendar (Alpha Vantage, 3-month horizon) — next report date per ticker. Distinct from get_earnings (Benzinga per-ticker). Optional ticker filter.",
+    "Market-wide earnings calendar (Alpha Vantage, 3-month horizon) — next report date per ticker. Distinct from get_earnings (Benzinga per-ticker). Optional ticker filter. Read `available` and `configured` before concluding anything from an empty result: `available:false` means the calendar could not be read at all, and `configured:false` means it holds no dates for ANY ticker — neither is evidence that a ticker has no upcoming report. Only `available:true` + `configured:true` + a null `next_report_date` means the horizon genuinely has no date for that ticker.",
     { ticker: { type: "string", description: "Optional — filter to one symbol." } }
   ),
 
