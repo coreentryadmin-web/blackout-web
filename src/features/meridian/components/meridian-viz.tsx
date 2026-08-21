@@ -624,17 +624,32 @@ export function MeridianTargetRail({
             width: `${(pctAlong(rail.high, domain)! - pctAlong(rail.low, domain)!) * 100}%`,
           }}
         />
-        {rail.targets.map((t, i) => (
-          <button
-            type="button"
-            key={`${t.value}-${i}`}
-            className="mv-target-dot"
-            style={{ left: `${pctAlong(t.value, domain)! * 100}%` }}
-            title={`${t.firm ?? "target"} ${fmtPrice(t.value)}${t.action ? ` · ${t.action}` : ""}`}
-            onClick={onTargetClick ? () => onTargetClick({ value: t.value, firm: t.firm }) : undefined}
-            disabled={!onTargetClick}
-          />
-        ))}
+        {rail.targets.map((t, i) => {
+          // ONE string, used as both the accessible name and the tooltip.
+          //
+          // These were `title`-only: no text content, no aria-label. `title` is the last-resort
+          // fallback in the accname spec — inconsistently announced, invisible on touch, and not
+          // surfaced on keyboard focus in several browsers — so a screen-reader user met six
+          // unnamed buttons on the Estimates tab. Measured by meridian-interaction-audit.mjs on
+          // 2026-08-21, which reported them as `" 8x8"` ×6: an EMPTY label, because the probe
+          // reads `aria-label ?? textContent` and both were empty.
+          //
+          // `.mv-ladder-row` in this same file already carries a full aria-label with its level,
+          // price and distance from spot. These dots simply never got the same treatment.
+          const label = `${t.firm ?? "price target"} ${fmtPrice(t.value)}${t.action ? ` · ${t.action}` : ""}`;
+          return (
+            <button
+              type="button"
+              key={`${t.value}-${i}`}
+              className="mv-target-dot"
+              style={{ left: `${pctAlong(t.value, domain)! * 100}%` }}
+              title={label}
+              aria-label={label}
+              onClick={onTargetClick ? () => onTargetClick({ value: t.value, firm: t.firm }) : undefined}
+              disabled={!onTargetClick}
+            />
+          );
+        })}
         <span className="mv-target-consensus" style={{ left: `${pctAlong(rail.consensus, domain)! * 100}%` }}>
           <span className="mv-target-consensus-tick" />
           <span className="mv-target-consensus-label">{fmtPrice(rail.consensus)}</span>
@@ -680,13 +695,19 @@ export function MeridianDarkPoolTape({
       <div className="mv-tape-strip">
         {tape.map((p, i) => {
           const d = MIN + p.magnitude * (MAX - MIN);
+          // Same nameless-control defect as the price-target dots, found by the guard once it
+          // was scanning tags properly instead of stopping at the `>` inside an arrow function.
+          // A dark-pool print square is `title`-only: sized by premium, so its MEANING is carried
+          // entirely by pixels and a tooltip, neither of which reaches a screen reader.
+          const printLabel = `${p.label ?? p.premium}${p.strike ? ` @ ${fmtPrice(p.strike)}` : ""}${p.at ? ` · ${p.at}` : ""}`;
           return (
             <button
               type="button"
               key={`${p.at ?? i}-${p.premium}`}
               className="mv-tape-print"
               style={{ width: d, height: d, animationDelay: `${i * 30}ms` }}
-              title={`${p.label ?? p.premium} ${p.strike ? `@ ${fmtPrice(p.strike)}` : ""}${p.at ? ` · ${p.at}` : ""}`}
+              title={printLabel}
+              aria-label={`dark pool print ${printLabel}`}
               onClick={onPrintClick ? () => onPrintClick({ premium: p.premium, strike: p.strike, at: p.at }) : undefined}
               disabled={!onPrintClick}
             />

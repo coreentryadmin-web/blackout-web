@@ -4,6 +4,38 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-21 — [FINDING, P3 tooling] The interaction audit reported a deliberate, recoverable text cap as clipped text on every run — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `[P3] tablet/Report.mr — 4 clipped text nodes` on every run, naming `Vector expected move`, `Street / analysts`, `News & catalysts`, `Insider activity`. |
+| **Why it is a false positive** | Those are the Meridian orbital rim labels, and the cap is deliberate. `.ms-orb-label` sets `max-width: 84px; overflow: hidden; text-overflow: ellipsis` so a long pillar name cannot shove into a neighbour's slot on a crowded rim, and the full string is carried on the parent button's **`title`** AND **`aria-label`** — verified in `meridian-spatial.tsx`, not taken from the CSS comment — with `.ms-orb:hover` restoring the label in place (`max-width: none; overflow: visible`). Two independent recovery paths, plus the DOM text itself is complete, so a screen reader was never affected. |
+| **Why it matters** | Four entries, every run, on a panel behaving exactly as designed. This file's own header makes the argument: a check that fires on healthy pages teaches its reader to skip the report — which is where a real clip would appear. Same family as the console-echo false positive (#2588) and the duplicate-fetch one (#2552). |
+| **Fix** | The rule is NARROWED, not relaxed. Text clipped by its container is still reported unless the full string is recoverable: the element or any ancestor up to `document.body` carries a `title` or `aria-label` that CONTAINS it. An ancestor walk because the capped label and the control that names it are different nodes. Whitespace is normalised on both sides before comparing. Empty text is never reported — an icon-only span can trip `scrollWidth` with nothing to cut off. |
+| **What is still reported** | Text clipped with no way to get it back. That is the case that actually costs a member something, and it is untouched. |
+| **Regression guard** | 4 tests in `src/meridian-audit-clip-recoverable.test.ts` — a source guard, because the predicate runs inside `page.evaluate` and cannot be imported, the same constraint `ui-geometry-probe.mjs` lives with. They pin that the geometry test and the overflow test both survive; that the excuse requires an actual `.includes(full)` against a title or accessible name; that the walk climbs ancestors and terminates at `body`; that empty text is skipped; and that the motivating case stays documented next to the code. |
+| **Non-vacuity** | Three mutations: the check deleted outright (the way a false-positive fix usually goes wrong) -> 3 tests fail; the excuse widened to accept any clip regardless of recoverability -> the narrowness test fails; the motivating case undocumented -> the documentation test fails. |
+| **Gates on Node 20.20.2** | `npx tsc --noEmit` clean · `npm test` **9446 pass / 0 fail / 1 skipped** · `npm run build` clean · `npx eslint` (2 changed files) clean. |
+| **Status** | FIXED — this PR (draft). Audit-only: no product code changes. Verified by re-running the audit and confirming the four orbital labels no longer appear while genuinely unrecoverable clips still would. |
+
+## 2026-08-21 — [FINDING, P2 Meridian a11y] Two interactive controls shipped with no accessible name — and the guard that should have caught the second one was silently broken — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `meridian-interaction-audit.mjs` on 2026-08-21 reported `[P3] tablet/Estimates:targets — 6 controls under 24px` with every sample label **empty**: `" 8x8"` x6. Empty because the probe reads `aria-label ?? textContent` and both were absent. Traced to `.mv-target-dot` — the analyst price-target markers on `MeridianTargetRail`: 8x8 `<button>`s with no text and no `aria-label`, carrying only a `title`. |
+| **Why title is not a name** | `title` is the LAST-RESORT fallback in the accessible-name spec: inconsistently announced by screen readers, invisible on touch, and not surfaced on keyboard focus in several browsers. So a member using a screen reader met six unnamed buttons on the Estimates tab — in a file where `.mv-ladder-row`, a few hundred lines away, already carries a full name with its level, price and distance from spot. The dots simply never got the same treatment. |
+| **The second control, and how it stayed hidden** | The guard written for this originally matched buttons with `/<button[\s\S]*?(?:\/>|>)/`. The bare `>` alternative matches the `>` inside `onClick={() => …}`, so EVERY button carrying an arrow function was truncated at the arrow and its self-closing `/>` was never seen. The mutation pass caught it: injecting a brand-new nameless button did NOT fail the test. Rewritten to scan for the tag end at brace depth 0, it immediately failed on a control I had not known about — `.mv-tape-print`, the dark-pool tape squares, also `title`-only. Those are sized by premium, so their meaning is carried entirely by pixels and a tooltip, neither of which reaches a screen reader. |
+| **Fix** | One string per control, used as BOTH the accessible name and the tooltip, so the two cannot drift: `${firm} ${price} · ${action}` for a target, `dark pool print ${label} @ ${strike} · ${at}` for a tape print. No layout change and no behaviour change — purely additive naming. |
+| **NOT changed** | The 8x8 and premium-scaled sizes. WCAG 2.2 SC 2.5.8 wants 24x24, but analyst targets cluster and premium-scaled squares encode magnitude by area, so enlarging hit boxes trades a too-small target for a mis-aimed one. That is a design decision with a real trade-off, separate from the name, which is unambiguous. Raised as a product call rather than decided here. |
+| **Regression guard** | A source guard in `meridian-viz-core.test.ts` (100 in the file): every `<button>` opening tag is found by scanning at brace depth 0, and any SELF-CLOSING one without an `aria-label` fails with its class name. Self-closing only, because a `>`-terminated button may be named perfectly well by its text children — the nameless risk is the icon/dot control. A second assertion pins the price-target dot specifically. |
+| **Non-vacuity** | Three mutations, suite re-run on each: the target dot back to title-only -> fails; the tape print back to title-only -> fails; a brand-new nameless self-closing button injected elsewhere -> fails. That third case is the one the ORIGINAL regex missed, which is why it is pinned. |
+| **Gates on Node 20.20.2** | `npx tsc --noEmit` clean · `npm test` **9443 pass / 0 fail / 1 skipped** · `npm run build` clean · `npx eslint` (2 changed files) clean. |
+| **Status** | FIXED — this PR (draft). Not yet live-verified: re-run `meridian-interaction-audit.mjs` after deploy and confirm the Estimates small-target samples carry real labels instead of `" 8x8"`. |
+
 ## 2026-08-21 — [FINDING, P2 Meridian] The dealer ladder showed a COERCED wall order as a measured one — `walls_inverted` was computed, typed, served, and read by nothing — FIXED
 
 > **kind:** `FINDING`
