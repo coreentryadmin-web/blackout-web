@@ -549,6 +549,20 @@ production after deploy to confirm the `Allow: /api/og` lines are served.
 
 **Lesson worth keeping — the same one, now with a second instance to prove it.** #2423 concluded that *a centralized fix is not adopted until every call site imports it*. Acting on that as a literal instruction — grep the map's importers, not the map's existence — found this within minutes. The map had three importers and the defect class had at least five call sites. **An importer count is a cheap, mechanical audit that nobody had run**, and it is worth running for every shared helper whose whole purpose is to prevent a class of defect.
 
+## 2026-08-21 — [FINDING, P2 tooling] The Thermal interaction harness documented two filters it never implemented — 62 false collisions on a clean page — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Root cause** | `scripts/audit/thermal-interaction-audit.cjs` shipped in #2441 with a doc comment describing two collision filters — exclude off-screen leaves, exclude leaves clipped by a scrolling ancestor — and **neither was in the code**. I validated the filtered version locally, then copied the *unfiltered* scratchpad file into `scripts/audit/` when committing. The header even quotes the measured effect ("919 leaves to 130 and the hits to 3") that the shipped code cannot produce. |
+| **Why it matters more than a missing feature** | A harness that silently under-filters is worse than one that never claimed to filter: the doc tells the next reader the numbers are trustworthy. Run live against a healthy production `/heatmap` on 2026-08-21 it reported **62 text collisions** — implausible pairs like `"BlackOut Thermal" ∩ "798"`, a page header supposedly intersecting a strike deep in the matrix. Exactly the "real hits drown in the false ones" failure the comment warns about. |
+| **Second defect, same file** | The page-loaded gate used a flat **11s** sleep. Production hydrated at ~9s under load but had reported `HARNESS — page-loaded gate failed` minutes earlier on a page that was rendering perfectly. A fixed wait can only be too short (false HARNESS) or wastefully long. |
+| **Evidence** | Same page, same session, filters off vs on — desktop **910 leaves / 62 collisions → 135 / 3**; phone **910 / 62 → 91 / 4**. All remaining hits are a sticky `<thead>` over the rows beneath it, which is opaque and not a defect. |
+| **Fix** | #PENDING — both filters implemented as documented; the gate now **polls** to a 45s budget (`PROBE_GATE_MS`) and prints the observed `gate_ms`, with `document.body` guarded because it can still be null on the first poll and a mid-poll navigation must read as "not loaded yet" rather than aborting the run. A gate that never satisfies still reports `HARNESS`, never a product verdict. |
+| **Found by** | Rule 6 — running the harness against production to validate #2441, rather than trusting that it shipped as tested. |
+| **Status** | FIXED — validated live against production on both viewports; tap-target count independently confirms #2441 (24 sub-24px targets → 1, the intentional visually-hidden skip link). |
+
 ## 2026-08-19 — [FINDING, P0 correctness] `main` went red with every PR green — #2365 and #2366 collided on the 0DTE expiry resolver — FIXED
 
 > **kind:** `FINDING`
