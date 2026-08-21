@@ -2775,6 +2775,88 @@ export async function fetchRecentFlows(params: {
   });
 }
 
+/** One ET-session row of the trailing skew series: the session's call/put premium totals and the
+ *  resulting call share. `call_pct` is NULL — never 50 — when no measurable premium landed that
+ *  session, the same absence-vs-measurement rule sessionFlowSkew holds on the live tape. */
+export type TrailingSessionSkewRow = {
+  session_date: string; // ET calendar date, YYYY-MM-DD
+  call_premium: number;
+  put_premium: number;
+  call_pct: number | null;
+};
+
+/**
+ * The trailing per-ET-session call/put skew series for a ticker (Helix C10 baseline source).
+ *
+ * Powers `get_helix_tape_analytics.session_skew_baseline`: today's `session.call_pct` is only
+ * meaningful next to what this ticker's daily skew USUALLY is, and that reference frame is a
+ * whole-session aggregation of flow_alerts, grouped by ET calendar date so a print at 20:30 ET
+ * counts to the session it traded in, not the next UTC day.
+ *
+ * DEFINITIONAL NOTE (disclosed on the payload): each day here is the FULL session's premium skew
+ * (every print that ET date), whereas the live `session.call_pct` shown elsewhere is computed over
+ * the capped, recent-ordered tape. On a ticker whose 500-print cap binds intraday the two can
+ * differ slightly; the baseline is deliberately full-session so today's own full-session value
+ * (the most recent row here) is compared against a like-for-like history, not against a mix.
+ *
+ * Returns the `sessions` most-recent ET sessions that have ANY flow (newest first). Sessions with
+ * no measurable premium carry `call_pct: null` and the pure baseline helper excludes them.
+ */
+export async function fetchTrailingSessionSkew(params: {
+  ticker?: string | null;
+  /** How many trailing ET sessions (incl. today) to return. Clamped [2, 90]. */
+  sessions?: number;
+  /** Calendar-day scan window; must exceed `sessions` to survive weekends/holidays. Clamped. */
+  lookbackDays?: number;
+}): Promise<TrailingSessionSkewRow[]> {
+  await ensureSchema();
+  const clamp = (v: number, lo: number, hi: number) =>
+    Math.min(Math.max(Math.trunc(Number.isFinite(v) ? v : lo), lo), hi);
+  const sessions = clamp(params.sessions ?? 21, 2, 90);
+  // Default the scan window well beyond `sessions` (≈1.8× + a week) so weekends/holidays cannot
+  // starve the LIMIT — a 21-session baseline needs ~30+ calendar days of scan.
+  const lookbackDays = clamp(params.lookbackDays ?? Math.ceil(sessions * 1.8) + 7, sessions, 200);
+
+  const values: (string | number)[] = [lookbackDays];
+  let tickerClause = "";
+  if (params.ticker) {
+    values.push(params.ticker.toUpperCase());
+    tickerClause = `AND ticker = $2`;
+  }
+
+  const res = await (await getPool()).query<QueryResultRow>(
+    `
+    WITH by_session AS (
+      SELECT (COALESCE(created_at, inserted_at) AT TIME ZONE 'America/New_York')::date AS session_date,
+             SUM(CASE WHEN LOWER(option_type) LIKE 'c%' THEN COALESCE(total_premium, 0) ELSE 0 END) AS call_prem,
+             SUM(CASE WHEN LOWER(option_type) LIKE 'p%' THEN COALESCE(total_premium, 0) ELSE 0 END) AS put_prem
+      FROM flow_alerts
+      WHERE COALESCE(created_at, inserted_at) >= NOW() - ($1::int || ' days')::interval
+        ${tickerClause}
+      GROUP BY 1
+    )
+    SELECT TO_CHAR(session_date, 'YYYY-MM-DD') AS session_date, call_prem, put_prem
+    FROM by_session
+    ORDER BY session_date DESC
+    LIMIT ${sessions}
+    `,
+    values
+  );
+
+  return res.rows.map((r) => {
+    const call = pgNumericOrNull(r.call_prem) ?? 0;
+    const put = pgNumericOrNull(r.put_prem) ?? 0;
+    const total = call + put;
+    return {
+      session_date: String(r.session_date),
+      call_premium: call,
+      put_premium: put,
+      // null (never 50) when no measurable premium that session — sessionFlowSkew's rule.
+      call_pct: total > 0 ? Math.round((call / total) * 100) : null,
+    };
+  });
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Helix signal-outcome ledger (Tier 2 item #9, 2026-08-02 audit). See
 // 008_helix_signal_outcomes.sql for the full root-cause writeup — this is a
