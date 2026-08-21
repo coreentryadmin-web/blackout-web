@@ -277,11 +277,18 @@ export type GateBlockedValueLine = {
   graded_n: number;
   ungraded_n: number;
   would_have_won: number;
+  /** The rate DENOMINATOR, named. would_have_won_rate_pct is won / decided_n (wins+losses) — NOT
+   *  won / blocked_n and NOT won / graded_n. Exposed because a consumer that pairs the rate with
+   *  blocked_n prints a self-contradictory "3 of 16 (23.1%)" — 3/16 is 18.75%, the 23.1% is 3/13. */
+  decided_n: number;
   would_have_won_rate_pct: number | null;
   /** Counterfactual 'unfilled' — the blocked play wouldn't even have filled (the gate
    *  was trivially right for these; kept out of the won/lost read). */
   unfilled_n: number;
   low_n: boolean;
+  /** A ready-made, denominator-correct sentence for a model to quote VERBATIM, so it cannot pair
+   *  the win rate with the wrong count. Every number in it agrees with the fields above. */
+  summary: string;
 };
 
 /** Per-gate "blocked value": how many plays each publish gate removed, and what the
@@ -301,15 +308,29 @@ export function gateBlockedValue(rejections: NighthawkGateRejectionInput[]): Gat
       const unfilled = graded.filter((c) => c.outcome === "unfilled");
       const decisive = graded.filter((c) => c.outcome !== "unfilled");
       const won = decisive.filter((c) => c.would_have_won).length;
+      const lost = decisive.length - won;
+      const ratePct = decisive.length > 0 ? round1((won / decisive.length) * 100) : null;
+      const summary =
+        decisive.length === 0
+          ? `${gate} blocked ${rows.length}; none have a decisive (win/loss) counterfactual yet` +
+            (unfilled.length ? `, and ${unfilled.length} would not have filled` : "") +
+            ` — no win rate to quote.`
+          : `${gate} blocked ${rows.length}; of the ${decisive.length} that would have decided ` +
+            `(win/loss), ${won} would have won (${ratePct}%) and ${lost} would have lost` +
+            (unfilled.length ? `; ${unfilled.length} more would not have filled` : "") +
+            (decisive.length < LOW_N_THRESHOLD ? " — LOW SAMPLE, read as noise" : "") +
+            `.`;
       return {
         gate,
         blocked_n: rows.length,
         graded_n: graded.length,
         ungraded_n: rows.length - graded.length,
         would_have_won: won,
-        would_have_won_rate_pct: decisive.length > 0 ? round1((won / decisive.length) * 100) : null,
+        decided_n: decisive.length,
+        would_have_won_rate_pct: ratePct,
         unfilled_n: unfilled.length,
         low_n: decisive.length < LOW_N_THRESHOLD,
+        summary,
       };
     })
     .sort((a, b) => b.blocked_n - a.blocked_n || a.gate.localeCompare(b.gate));
