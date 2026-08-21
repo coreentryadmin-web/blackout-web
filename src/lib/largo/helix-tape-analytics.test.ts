@@ -316,6 +316,47 @@ test("netPremiumLeaders reports call_pct null for a ticker with no measurable pr
   assert.equal(rows[0]?.call_pct, null);
 });
 
+// ── #2520 anti-divergence: the session skew has ONE derivation, and it cannot be bypassed ──────
+// The defect was a member asking "what's the call/put skew" getting 34% / 60% / 83% depending on
+// which tool answered — three code paths, three skews. The fix is not that they agree today; it is
+// that a second independent SESSION skew cannot reappear. These two guards enforce that.
+
+test("sessionFlowSkew is order- and slice-invariant — the same population is the same skew", () => {
+  // If the number depended on row order or which slice you summed, the 'authoritative' skew would
+  // not be authoritative. It must be a pure function of the population, nothing else.
+  const rows = [
+    { ...atPrint("2026-08-20T20:00:00Z", 900_000), option_type: "CALL" } as FlowAlert,
+    { ...atPrint("2026-08-20T20:01:00Z", 100_000), option_type: "PUT" } as FlowAlert,
+    { ...atPrint("2026-08-20T20:02:00Z", 500_000), option_type: "CALL" } as FlowAlert,
+  ];
+  const forward = sessionFlowSkew(rows);
+  const reversed = sessionFlowSkew([...rows].reverse());
+  assert.deepEqual(reversed, forward, "reversing the rows must not change the skew");
+  // A premium-ordered slice of the SAME rows sums to the SAME totals — order changes nothing.
+  const premiumOrdered = sessionFlowSkew([...rows].sort((a, b) => (b.premium ?? 0) - (a.premium ?? 0)));
+  assert.equal(premiumOrdered.call_pct, forward.call_pct);
+  assert.equal(premiumOrdered.total_premium, forward.total_premium);
+});
+
+test("flow-service sources its session skew ONLY from sessionFlowSkew — no inline call/put ratio", () => {
+  // Source-level ratchet: the 34/60/83 divergence was three paths each computing skew their own
+  // way. getFlowTapeSummary's pull_skew is the path most able to regress back to a hand-sum,
+  // because it already holds the raw rows. This fails the instant a `call_pct` in flow-service is
+  // assigned from anything but the shared sessionFlowSkew result.
+  const { readFileSync } = require("node:fs") as typeof import("node:fs");
+  const src = readFileSync("src/lib/platform/flow-service.ts", "utf8");
+  assert.match(src, /import\s*\{[^}]*sessionFlowSkew[^}]*\}/, "flow-service must import the shared helper");
+  const callPctLines = src.split("\n").filter((l) => /call_pct/.test(l) && !l.trim().startsWith("//") && !l.trim().startsWith("*"));
+  assert.ok(callPctLines.length > 0, "expected flow-service to expose a session call_pct");
+  for (const line of callPctLines) {
+    assert.match(
+      line,
+      /skew\.call_pct/,
+      `flow-service must read call_pct from the sessionFlowSkew result, not compute it: ${line.trim()}`
+    );
+  }
+});
+
 // ── Fetch-contract guards ────────────────────────────────────────────────────
 // The layer that had NO coverage, which is why two population defects shipped. Every other test
 // in this file builds its own fixture array, so none of them can see a defect in how rows are
