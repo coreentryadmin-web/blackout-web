@@ -1,4 +1,4 @@
-# Largo morning brief — 9:25 AM ET weekdays (13:25 UTC EDT)
+# Largo morning brief — 9:25 AM ET weekdays (dual UTC band for DST)
 # Wire via sync-cron-schedules.mjs / EventBridge
 
 [build]
@@ -7,6 +7,6 @@ builder = "NIXPACKS"
 [deploy]
 startCommand = "node scripts/hit-cron.mjs /api/cron/largo-morning-brief"
 restartPolicyType = "NEVER"
-
-[[cron]]
-schedule = "25 13 * * 1-5"
+# 13:25 UTC = 9:25 ET during EDT; 14:25 UTC = 9:25 ET during EST — mirrors
+# railway.nighthawk-morning-confirm.toml's dual-band convention.
+cronSchedule = "25 13,14 * * 1-5"
