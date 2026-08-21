@@ -25,6 +25,7 @@ import {
 } from "@/lib/swing/serving-lane";
 import { buildZeroDteRecord } from "@/lib/zerodte/record";
 import { bangerPnlForModel } from "./banger-pnl";
+import { zeroDteHorizonSummary } from "./zero-dte-horizon-summary";
 import { fitRowsToBudget, sampleNote } from "@/lib/largo/fit-tool-result";
 import { formatEtDate, todayEt } from "@/features/nighthawk/lib/session";
 import {
@@ -154,15 +155,37 @@ export async function bangerBoardForLargo(limit = 40) {
 }
 
 export async function swingHorizonForLargo() {
+  // `.catch(() => [])` on the open-positions read turned an unreadable ledger into "no open swing
+  // positions" — the counts below are built from it, so the failure came out as a MEASUREMENT.
+  // The catch has to stay (serving-lane.ts swallows the throw itself at its own call site, so
+  // letting it propagate would only move the silence), but what it must not do is stay silent.
+  let openPositionsRead = true;
   try {
     const snap = await readSwingServingSnapshot().catch(() => null);
     const lane = await getSwingServingLane({
       discover: discoverSwingFromPersisted,
-      fetchOpenPositions: () => fetchOpenSwingPositions().catch(() => []),
+      fetchOpenPositions: () =>
+        fetchOpenSwingPositions().catch(() => {
+          openPositionsRead = false;
+          return [];
+        }),
       fetchLatestManageEvents: (ids) => fetchLatestSwingSnapshotEvents(ids).catch(() => new Map()),
       spotsByTicker: snap?.spotsByTicker,
     });
-    return roundFloats({ available: true, ...compactSwingLane(lane) });
+    return roundFloats({
+      available: true,
+      ...(openPositionsRead
+        ? {}
+        : {
+            degraded: true,
+            reason: "open_positions_unreadable",
+            note:
+              "The open swing positions ledger could not be read, so any count of OPEN or " +
+              "managed positions below is NOT a measurement — treat it as unknown. Discovery " +
+              "candidates are unaffected.",
+          }),
+      ...compactSwingLane(lane),
+    });
   } catch (e) {
     return {
       available: false,
@@ -173,13 +196,14 @@ export async function swingHorizonForLargo() {
 
 export async function nighthawkHorizonsForLargo() {
   const [zerodte, swing] = await Promise.all([
-    zeroDtePlaysForLargo().catch(() => ({ available: false, plays: [] })),
+    // The fallback used to be `{ available: false, plays: [] }` — it MANUFACTURED the empty array
+    // the next line counted, so a failed 0DTE read published `open_count: 0` inside an
+    // `available: true` envelope. `null` carries the unknown; `zeroDteHorizonSummary` refuses to
+    // turn it into a number.
+    zeroDtePlaysForLargo().catch(() => null),
     swingHorizonForLargo(),
   ]);
-  const zPlays = Array.isArray((zerodte as { plays?: unknown[] }).plays)
-    ? ((zerodte as { plays: Array<{ ticker: string; status: string; direction: string }> }).plays ?? [])
-    : [];
-  const open0 = zPlays.filter((p) => !/closed|graded/i.test(p.status));
+  const zeroDte = zeroDteHorizonSummary(zerodte);
   const nowMs = Date.now();
   return roundFloats({
     available: true,
@@ -189,12 +213,10 @@ export async function nighthawkHorizonsForLargo() {
     // day ahead after 20:00 ET.
     as_of_et: etStamp(nowMs),
     session_date: etSessionDate(nowMs),
-    zero_dte: {
-      play_count: zPlays.length,
-      open_count: open0.length,
-      sample: open0.slice(0, 6).map((p) => `${p.ticker} ${p.direction} (${p.status})`),
-    },
-    swing: swing.available ? swing : { available: false },
+    zero_dte: zeroDte,
+    // An unavailable that does not say WHY is one step better than a fabricated zero and one
+    // step worse than an answer. Carry the producer's own reason through.
+    swing: swing.available ? swing : { available: false, reason: (swing as { error?: string }).error ?? "swing_lane_unavailable" },
   });
 }
 
