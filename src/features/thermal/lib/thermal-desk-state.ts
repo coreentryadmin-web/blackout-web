@@ -160,6 +160,30 @@ const CROSS_CHECK_OFF_TITLE =
  * effect to avoid an SSR/client mismatch, the same way ThermalFreshnessBar does). Unknown must
  * never render as live: claiming live and correcting it a tick later is the failure we are fixing.
  */
+/**
+ * The compare strip's cadence/liveness label.
+ *
+ * Same defect as the matrix panel badge, on a second component: the strip rendered a hardcoded
+ * `Live matrix · 5s` with no condition on anything. It could never be right or wrong from data —
+ * it simply always claimed live, including at 20:41 ET over a settled 16:00 close. (The payload
+ * type even declares `asof`, and the component never reads it.)
+ *
+ * The CADENCE half is a real fact and is kept: the strip does poll every 5s in and out of session
+ * (`usePollIntervalMs(5_000, 5_000)`). Only the LIVENESS half is conditional.
+ *
+ * `marketOpen: null` means not yet known (pre-hydration) and must not render as live — see
+ * thermalQuoteBadge for why.
+ */
+export function thermalCompareStripLabel(input: {
+  marketOpen: boolean | null;
+  pollSeconds: number;
+}): string {
+  const cadence = `${Math.max(1, Math.round(input.pollSeconds))}s`;
+  return input.marketOpen === true
+    ? `Live matrix · ${cadence}`
+    : `Matrix · ${cadence} · market closed`;
+}
+
 export type ThermalQuoteBadgeState = "live" | "market-closed" | "quote-only" | "offline";
 
 export function thermalQuoteBadge(input: {

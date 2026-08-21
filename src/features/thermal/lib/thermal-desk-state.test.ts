@@ -18,6 +18,7 @@ import {
   keyLevelsFootnote,
   keyLevelsFootnoteCompact,
   netFlowHeaderTooltip,
+  thermalCompareStripLabel,
   thermalQuoteBadge,
 } from "./thermal-desk-state.ts";
 
@@ -289,4 +290,30 @@ test("thermalQuoteBadge — never emits a bull tone or a dot for any non-live st
       }
     }
   }
+});
+
+test("thermalCompareStripLabel — does not claim a live matrix outside the cash session", () => {
+  // The strip rendered a HARDCODED "Live matrix · 5s" — unconditional, so it could never be
+  // right or wrong from data. At 20:41 ET it sat above the same settled 16:00 close the panel
+  // badge did. (Its payload type even declares `asof`; the component never read it.)
+  const closed = thermalCompareStripLabel({ marketOpen: false, pollSeconds: 5 });
+  assert.doesNotMatch(closed, /live/i);
+  assert.match(closed, /market closed/i);
+  // The CADENCE half is a real fact and must survive — the strip does poll every 5s either way.
+  assert.match(closed, /5s/);
+});
+
+test("thermalCompareStripLabel — claims live only when the cash session is open", () => {
+  assert.equal(thermalCompareStripLabel({ marketOpen: true, pollSeconds: 5 }), "Live matrix · 5s");
+});
+
+test("thermalCompareStripLabel — never claims live while the clock is unknown", () => {
+  const unknown = thermalCompareStripLabel({ marketOpen: null, pollSeconds: 5 });
+  assert.doesNotMatch(unknown, /live/i);
+});
+
+test("thermalCompareStripLabel — reports the cadence it is actually given, not a baked-in 5s", () => {
+  // The old label hardcoded "5s" beside a separately-declared interval; they could drift.
+  assert.match(thermalCompareStripLabel({ marketOpen: true, pollSeconds: 20 }), /20s/);
+  assert.match(thermalCompareStripLabel({ marketOpen: false, pollSeconds: 8 }), /8s/);
 });
