@@ -222,6 +222,37 @@ export function trimScaleTranchesArmed(peakPnlPct: number | null): number {
   return armed;
 }
 
+/**
+ * Which P&L a CLOSED row should DISPLAY, and whether it is a peak.
+ *
+ * WHY THIS IS A RULE AND NOT AN INLINE TERNARY. Showing the latched peak on a closed row is
+ * only honest when the trim ladder actually banked into it — the member took tranches off at
+ * +20%/+50% before the runner stopped, so the peak is money that was really realized. When
+ * ZERO tranches armed, the peak is nothing but the highest tick the contract printed before
+ * the trade died, and displaying it AS the P&L turns a loss into a gain on screen.
+ *
+ * Measured on the live board, 2026-08-20: five of seven closed rows displayed a non-negative
+ * number for a losing trade with no tranche banked. SNDK read **+1.3%** against a realized
+ * **−38.25%**; LITE 0% against −25.86%; HIMS 0% against −20.24%.
+ *
+ * `is_peak` is returned rather than inferred by the caller so the disclosure and the number can
+ * never drift apart: any surface showing the peak is obliged to show `realized_pct` too.
+ */
+export function closedPnlDisplay(row: {
+  status?: string | null;
+  peak_pnl_pct?: number | null;
+  live_pnl_pct?: number | null;
+}): { pct: number | null; is_peak: boolean; tranches_armed: number; realized_pct: number | null } {
+  const armed = trimScaleTranchesArmed(row.peak_pnl_pct ?? null);
+  const isPeak = row.status === "CLOSED" && row.peak_pnl_pct != null && armed > 0;
+  return {
+    pct: isPeak ? (row.peak_pnl_pct ?? null) : (row.live_pnl_pct ?? null),
+    is_peak: isPeak,
+    tranches_armed: armed,
+    realized_pct: row.live_pnl_pct ?? null,
+  };
+}
+
 export function trimScaleBlendedPnlAtStop(
   peakPnlPct: number | null,
   runnerPnlPct: number = PLAN_RULES.stop_pct

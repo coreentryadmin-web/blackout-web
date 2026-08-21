@@ -407,17 +407,39 @@ export type TurnSnapshot = {
   call_wall: number | null;
   put_wall: number | null;
   net_premium: number | null;
+  /** The ET SESSION this snapshot was taken in. */
+  session_date?: string | null;
+  /** WHICH GEX matrix the positioning levels came from — see formatDiffBlock. */
+  matrix_asof?: string | null;
 };
 
 export function formatDiffBlock(prev: TurnSnapshot | null | undefined, now: TurnSnapshot): string {
   if (!prev) {
     return `\n\n## Session diff\nNo prior snapshot in this thread — report current state only.\n`;
   }
+  // SAME-MATRIX GUARD.
+  //
+  // The positioning levels come from a CACHED GEX matrix. Two turns 90 seconds apart routinely
+  // read the SAME matrix, so `prior` and `now` are byte-identical by construction — yet this
+  // block announces a real time interval and then instructs "Describe what CHANGED". Asked to
+  // describe a change that does not exist, a model invents one. Naming the shared matrix removes
+  // the premise instead of hoping the model notices the numbers match.
+  const sameMatrix =
+    prev.matrix_asof != null && now.matrix_asof != null && prev.matrix_asof === now.matrix_asof;
+
   const lines = [
     `\n\n## Session diff (since last turn @ ${prev.as_of})`,
     `Prior: spot ${prev.spot ?? "—"}, flip ${prev.flip ?? "—"}, call wall ${prev.call_wall ?? "—"}, put wall ${prev.put_wall ?? "—"}, net flow ${prev.net_premium ?? "—"}`,
     `Now: spot ${now.spot ?? "—"}, flip ${now.flip ?? "—"}, call wall ${now.call_wall ?? "—"}, put wall ${now.put_wall ?? "—"}, net flow ${now.net_premium ?? "—"}`,
-    "Describe what CHANGED — do not restate unchanged levels unless they matter.",
   ];
+  if (sameMatrix) {
+    lines.push(
+      "NOTE: both turns read the SAME dealer-positioning matrix, so spot / flip / walls CANNOT " +
+        "have changed between them — only the flow tape can differ. Do not describe a move in " +
+        "those levels; say the positioning is unchanged since the last turn."
+    );
+  } else {
+    lines.push("Describe what CHANGED — do not restate unchanged levels unless they matter.");
+  }
   return lines.join("\n") + "\n";
 }
