@@ -29,6 +29,13 @@ import {
 } from "@/features/helix/lib/helix-signal-outcome-summary";
 import { etStamp, etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 import {
+  helixTickerIdentity,
+  tapeFreshness,
+  tapeDirection,
+  unavailable,
+  HELIX_TAPE_PROVENANCE,
+} from "@/lib/largo/helix-contract";
+import {
   HELIX_FLOW_DEFAULT_SINCE_HOURS,
   HELIX_FLOW_MAX_SINCE_HOURS,
   HELIX_FLOW_MAX_LIMIT,
@@ -237,7 +244,13 @@ export async function zerodteRecordForLargo(days = 30) {
 
 export async function helixSignalOutcomesForLargo(limit = 50) {
   if (!dbConfigured()) {
-    return { available: false, rows: [], summary: null, error: "database_unavailable" };
+    // C3. NOT retryable: a missing DATABASE_URL will not resolve on a retry, and telling the
+    // model to try again would burn a turn on a certainty.
+    return {
+      ...unavailable("database_unavailable", "HELIX signal-outcome ledger", false),
+      rows: [],
+      summary: null,
+    };
   }
   try {
     const rows = await fetchRecentHelixSignalOutcomes(limit);
@@ -277,10 +290,13 @@ export async function helixSignalOutcomesForLargo(limit = 50) {
     });
   } catch (e) {
     return {
-      available: false,
+      ...unavailable(
+        e instanceof Error ? e.message : "helix_signal_outcomes_failed",
+        "HELIX signal-outcome ledger (velocity-spike / split-flow follow-through)",
+        true
+      ),
       rows: [],
       summary: null,
-      error: e instanceof Error ? e.message : "helix_signal_outcomes_failed",
     };
   }
 }
@@ -634,13 +650,20 @@ export async function helixDerivedForLargo(
       split_flow: split.slice(0, 12),
     });
   } catch (e) {
+    // C3. Arrays stay present and EMPTY so an existing consumer does not crash, but `available`
+    // is false and `unavailable` says why — an empty array alone reads as "nothing is stacking",
+    // which is a finding, not a failure.
     return {
-      available: false,
+      ...unavailable(
+        e instanceof Error ? e.message : "helix_derived_failed",
+        "HELIX derived panels (stacked hits, top prints, velocity radar, split flow)",
+        true
+      ),
+      ...HELIX_TAPE_PROVENANCE,
       stacked_hits: [],
       top_prints: [],
       velocity_spikes: [],
       split_flow: [],
-      error: e instanceof Error ? e.message : "helix_derived_failed",
     };
   }
 }
@@ -700,9 +723,13 @@ export async function flowBriefForLargo(sinceHours = HELIX_FLOW_DEFAULT_SINCE_HO
     });
   } catch (e) {
     return {
-      available: false,
+      ...unavailable(
+        e instanceof Error ? e.message : "flow_brief_failed",
+        "HELIX FlowBrief session memo",
+        true
+      ),
+      ...HELIX_TAPE_PROVENANCE,
       brief: null,
-      error: e instanceof Error ? e.message : "flow_brief_failed",
     };
   }
 }
@@ -753,6 +780,9 @@ export async function helixTapeAnalyticsForLargo(
     // already tomorrow. A model resolving "today" from a UTC `as_of` is a full session ahead
     // and reads the next expiry as 0DTE — the exact defect this payload is being fixed for.
     const byExpiry = expiryConcentration(alerts, 8, now);
+    const coverage = tapeWindowCoverage(alerts, windowHours, rowLimit, now);
+    const sessionSkew = sessionFlowSkew(alerts);
+    const sessionDirection = tapeDirection(sessionSkew.call_pct);
     const distinctExpiries = new Set(
       alerts.map((a) => String(a.expiry ?? "unknown").slice(0, 10))
     ).size;
@@ -763,13 +793,15 @@ export async function helixTapeAnalyticsForLargo(
       // convention get_helix_derived already uses.
       available: true,
       empty_reason: alerts.length === 0 ? "no_prints_in_window" : undefined,
-      ticker: ticker?.toUpperCase() ?? null,
+      ...helixTickerIdentity(ticker),
+      ...HELIX_TAPE_PROVENANCE,
       as_of: etStamp(nowMs),
       session_date: etSessionDate(nowMs),
       /** What the tape ACTUALLY covers. A requested window is an intent, not evidence: the row
        *  LIMIT binds first almost every time, so `requested_hours` alone would let a model
        *  describe 54 minutes of prints as a week of flow. Read `actual_hours` + `limit_reached`. */
-      window: tapeWindowCoverage(alerts, windowHours, rowLimit, now),
+      window: coverage,
+      ...tapeFreshness(coverage.newest_age_minutes),
       ordered_by: "recent",
       /** `false`, not null: C3 asks that null never stand for a known state, and "no floor was
        *  applied" is a known state — a reader seeing null could reasonably take it as "unknown".
@@ -779,7 +811,9 @@ export async function helixTapeAnalyticsForLargo(
        *  member's on-screen numbers can be explained rather than looking like a data fault. */
       premium_floor_applied: false,
       member_panel_premium_floor: HELIX_MEMBER_PANEL_PREMIUM_FLOOR,
-      session: sessionFlowSkew(alerts),
+      session: sessionSkew,
+      /** C5. OMITTED, not "neutral", when the skew is unmeasurable — neutral is a measurement. */
+      ...(sessionDirection ? { direction: sessionDirection } : {}),
       net_premium_leaders: netPremiumLeaders(alerts),
       route_breakdown: routeBreakdown(alerts),
       /** The aggregation the member's Expiry Concentration panel renders. Complete — at most
@@ -795,9 +829,16 @@ export async function helixTapeAnalyticsForLargo(
       total_premium: summary.total_premium ?? null,
     });
   } catch (e) {
+    // C3: a real absence. NOT the same shape as a quiet tape, which stays available:true with
+    // an empty_reason — telling the model a working tool is broken every off-hours evening
+    // would destroy the one distinction this surface is careful about.
     return {
-      available: false,
-      error: e instanceof Error ? e.message : "helix_tape_analytics_failed",
+      ...unavailable(
+        e instanceof Error ? e.message : "helix_tape_analytics_failed",
+        "HELIX tape aggregates (net premium, route, expiry horizons, session skew)",
+        true
+      ),
+      ...HELIX_TAPE_PROVENANCE,
     };
   }
 }
