@@ -728,6 +728,37 @@ export function etWallClockToIso(ymd: string | null | undefined, hhmmss?: string
  * asserted equal to this constant by `meridian-viz-core.test.ts`, so the two cannot drift apart
  * silently again.
  */
+/**
+ * The expected-move rail's LABEL STACKING geometry — the ladder's bug, in the sibling component.
+ *
+ * `layoutRailLabels` moves a label that cannot fit beside its neighbour to the next TIER, and CSS
+ * turns a tier index into a vertical offset. That only separates two labels if one tier step is
+ * taller than a label. It was not. Measured live on prod 2026-08-21 (desktop 1440, BEKE
+ * Positioning tab), two markers sharing the price 17.00 — `mv-rail-marker-wall` (call wall) and
+ * `mv-rail-marker-level` (king node):
+ *
+ *   tier step 0.62rem = 9.92px · label box 12px · line box 15.36px
+ *   label tops 438.17 and 448.09 → 9.92px apart → OVERLAP 2.08px, 33px wide
+ *
+ * `meridian-interaction-audit.mjs` reported it as `"17.00" ∩ "17.00" 33x2px` on both the Report
+ * and Positioning tabs. It reads as two prices printed through each other on the one component
+ * whose job is to say where the levels are.
+ *
+ * Same root cause as MV_LADDER_ROW_PX and found the same way — by measuring pixels rather than
+ * asserting a selector painted. The ladder fix pinned its row height; this pins BOTH halves,
+ * because the rail's failure needs the label height as well as the step:
+ *
+ *   MV_RAIL_LABEL_PX — the label's LINE-HEIGHT, pinned so the box height stops depending on
+ *                      whichever font the `--mv-value` stack resolves to.
+ *   MV_RAIL_TIER_PX  — one tier step. MUST exceed the label height, or tiering does not separate.
+ *
+ * The literal `0.62rem` also appeared TWICE in the stylesheet — the label's `top` and the track's
+ * `margin-top` headroom — with nothing tying them together. Both now read the same custom
+ * property, and `meridian-viz-core.test.ts` asserts the stylesheet and these constants agree.
+ */
+export const MV_RAIL_LABEL_PX = 14;
+export const MV_RAIL_TIER_PX = 16;
+
 export const MV_LADDER_HEIGHT_PX = 132;
 export const MV_LADDER_ROW_PX = 20;
 /** One full row of separation, as the [0,1] fraction `resolveCollisions` works in. */

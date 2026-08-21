@@ -266,6 +266,9 @@ export type MeridianEarningsWeekAnalytics = {
   printed_this_week: number;
   eps_beat_rate: number | null;
   revenue_beat_rate: number | null;
+  /** Prints each universe rate was computed from. `0` means the rate beside it is null. */
+  eps_graded?: number;
+  revenue_graded?: number;
   avg_surprise_pct: number | null;
   median_surprise_pct: number | null;
   headline: string;
@@ -364,6 +367,12 @@ export type MeridianEarningsEnrichment = {
     eps_beat_rate: number | null;
     revenue_beat_rate: number | null;
     combined_beat_rate: number | null;
+    /** How many graded prints each rate came from — a rate without its cohort is not a fact
+     *  about the company. `combined_graded` is the POOLED denominator (eps + revenue), which is
+     *  what `combined_beat_rate` is now pooled over rather than averaged across. */
+    eps_graded?: number;
+    revenue_graded?: number;
+    combined_graded?: number;
   } | null;
   analyst_revisions: MeridianAnalystRevision[];
   price_targets: MeridianPriceTargetRow[];
