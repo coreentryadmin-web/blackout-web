@@ -541,3 +541,29 @@ CONTROL get_nighthawk_outcomes -> TRUNCATED
 
 **The lane is now fully measured**: 12 of 13 tools COMPLETE on the deployed build, and the one
 TRUNCATED is `get_nighthawk_outcomes`, which #2480 fixes and which is still an unmerged draft.
+
+## 2026-08-21 — Night Hawk × Largo stress harness, first committed run
+
+New reusable harness `scripts/audit/nighthawk-largo-stress.mjs` (+ pure, unit-tested graders in
+`lib/nighthawk-largo-checks.mjs`). Asks live Largo hard member questions and grades each answer
+against the product's own ground-truth endpoints, with each fixed defect encoded as a standing
+regression check on Largo's ANSWERS. First run (phase PRE_MARKET), against the deployed build
+BEFORE the day's fixes drained:
+
+```
+  ❌ condor-exists          denies the condor exists: "does not publish iron condor"
+  ❌ condor-exists          condor win rate cited with NO breach/negative-skew companion
+  ✅ rejections-session     session claim consistent with phase PRE_MARKET
+  ❌ banger-pnl-signs       WRBY: stated -34.62% but realized +32.69%; VKTX: stated -34.62% but realized +50%
+  ✅ gate-value-denominator stated rates are self-consistent
+  === 3 FAIL ===
+```
+
+The three FAILs are the exact defects still awaiting deploy: the condor confabulation (#2519) and
+the banger closed-winner-as-loss (#2490). The harness reproducing them live is the proof it works —
+they flip to PASS when those deploy, which is the live-validation the charter asks for, automated.
+The two PASSes are honest but luck-dependent this run (the model happened to state the pre-market
+phase and a consistent denominator); #2525 and #2523 make them robust rather than luck.
+
+NOT a CI gate: it hits live prod, whose current state legitimately carries pending-deploy defects.
+It is a manual / scheduled post-close QA tool, like the truncation probe.
