@@ -695,6 +695,20 @@ production after deploy to confirm the `Allow: /api/og` lines are served.
 | **Blast radius** | Additive optional field; no consumer breaks and none was changed. Checked for exact-key-set assertions across the suite first — none exist; the `GexPositioning` fixtures in `positioning.test.ts` are unaffected by an optional addition. |
 | **Status** | FIXED — tsc clean, 8696 pass / 0 fail on Node 20 (branch base 8693/0, +3 = the new tests), `npm run build` green, eslint clean. Stacked on the snapshot-freshness branch. |
 
+## 2026-08-21 — [FINDING, P1 member-visible] The base GEX matrix served an inverted call/put wall — #2417 fixed the overlays but missed the matrix scan — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Root cause** | #2417 established that a call wall below spot "is not a call wall, it is inverted" (members read walls as resistance/support) and created the side-constrained `wallsFromStrikeTotals(strikeTotals, spot)`. It wired the FOUR override/overlay producers to pass spot — but `computeGexRegime` in `polygon-options-gex.ts`, the BASE matrix scan that produces `gex.call_wall`/`gex.put_wall`, was left on the unconstrained `gexWallsFromStrikeTotals`. The overrides only fire for WS-backed tickers during RTH, so the base value was served raw off-hours AND for every non-WS single name at all times. |
+| **Evidence** | Live plausibility scan across 15 tickers, 2026-08-21 (market closed): **MSFT spot 481.97 → served `call_wall` 480** ($2 resistance BELOW price) while the real heaviest +gamma above spot is **500**; **AMZN spot 261.64 → served 260** vs the real **270**. Reproduced against the raw matrix `strike_totals`: unconstrained picks 480 (heaviest +gamma anywhere, 3.22e8) over 500 (1.54e8) — a strike with more gamma but on the wrong side. A member reads "price has broken above resistance" when the actual overhead wall is $20 higher — it changes the trade. |
+| **Blast radius** | Every consumer of the base matrix walls: `get_gex_heatmap`, the `/heatmap` UI, and `get_positioning` whenever the WS override does not fire (all single names, all tickers off-hours). All three `computeGexRegime` call sites already pass a real `spot`, so the fix covers every matrix-build path. The historical `gex_regime_events` log inherits its flip/wall values from the matrix, so this also stops future inverted levels from being logged. |
+| **Fix** | #PENDING — `computeGexRegime` now calls `wallsFromStrikeTotals(strikeTotals, spot)` (the fifth producer #2417 missed). `null` is served honestly when no positive-gamma strike sits above spot. `wall-side-constraint.test.ts` extended: the producer-wiring test is now FIVE and asserts the base matrix neither calls nor imports the unconstrained scan; a new behavioral test pins the MSFT/AMZN inverted cases. |
+| **Not fixed here (observed, needs its own investigation)** | The same scan flagged MSFT's gamma FLIP at 426.31 — 11.5% below spot 481.53 — and the historical SPX log carried a flip at 8,023.98 (~5% above spot). Flip plausibility is a separate computation (`cumulativeGammaFlipDetail`) from the walls; a flip far from spot can be a real cumulative crossing in an unusual book, so it needs reproduction before a fix. Logged so it is not lost. |
+| **Found by** | Post-close Largo-mastery probe (charter): the deep question battery surfaced a historical flip value the model itself flagged as odd, which led to the live plausibility scan. |
+| **Status** | FIXED (walls) — tsc clean, 9056 pass / 0 fail on Node 20, `wall-side-constraint.test.ts` 13/13; live re-validation pending the prod deploy. |
+
 ## 2026-08-19 — [FINDING, P0 correctness] `main` went red with every PR green — #2365 and #2366 collided on the 0DTE expiry resolver — FIXED
 
 > **kind:** `FINDING`
