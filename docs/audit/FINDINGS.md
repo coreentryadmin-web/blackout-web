@@ -12308,4 +12308,4 @@ against.
 | **Fix rationale** | The member panels keep their `: 50` — deliberately. A centred bar is the right rendering for "nothing to show"; the defect is only that a rendering fallback was reused as data. Matching the panel's **aggregation** while refusing its **display fallback** is the same line drawn in #2420 (the `$50k` bar floor) and #2428 (the `$200k` premium floor). |
 | **Blast radius** | Both functions have exactly one consumer — `helixTapeAnalyticsForLargo`. The eight HELIX UI panels compute their own `callPct` locally and are untouched. `expiryHorizonConcentration` already shipped with `call_pct: null` in #2420, so the three are now consistent. |
 | **Regression guard** | 5 tests: empty tape → null, all-typeless tape → null, `typeless_prints` reconciles the whale/premium gap, a real skew still returns a number, and `netPremiumLeaders` nulls a ticker with no measurable premium. |
-| **Status** | FIXED — gates on Node 20: tsc 0, eslint 0, build ok, 8726 pass / 0 fail. |
+| **Status** | FIXED — PR #2430 (stacked on #2428 → #2420). Gates on Node 20: tsc 0, eslint 0, build ok, 8726 pass / 0 fail. |
