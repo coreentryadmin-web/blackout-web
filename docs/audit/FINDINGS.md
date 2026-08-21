@@ -4,6 +4,24 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-21 — [FINDING, P1 ops] Two crons advertised schedules that do not exist, and the fiction PERMANENTLY silenced the alarm for "this job may never have been scheduled" — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `largo-morning-brief` and `zerodte-grade` each carried a `schedule_cron_utc` in `cron-registry.ts`. Neither appears in blackout-infra's generated `cron-jobs.json`. Neither has ever fired or logged a run. The cron health board reported them as **"No runs logged (not due — outside its window)"** rather than **"NEVER logged a run — job may not be scheduled at all"**. |
+| **Root cause** | `schedule_cron_utc` is not documentation. `admin-cron-health.ts:201,239` feeds it to `isInOffScheduleIdleGap()` to suppress staleness while a job sits in a long gap with no tick due — correct for a real schedule, actively harmful for a fictional one. For a once-a-day cron, *every* moment is such a gap. So the phantom schedule downgraded the exact status the board exists to raise. |
+| **Measured, not asserted** | Probing `isInOffScheduleIdleGap` every 30 minutes across a Wednesday: `largo-morning-brief` (`25 13 * * 1-5`) suppressed at **48/48** probes — permanently, with no moment in the day at which the board could say it had never run. `zerodte-grade` (`*/15 20-22 * * 1-5`) at **42/48** (87.5%); it escapes only inside its own 20:00–22:45 UTC band where the gaps are 15 min, under the 2h threshold. |
+| **Why `largo-morning-brief` is dark at all** | Separate root cause, same family. `blackout-infra/scripts/sync-cron-schedules.mjs`'s `parseTomlCron` matches `^cronSchedule\s*=` only. `railway.largo-morning-brief.toml` declares `[[cron]] schedule = "25 13 * * 1-5"` — the other TOML spelling — so the generator **skips the file with a `console.warn`** and the job has never reached the manifest. A member-facing pre-open push that has never fired, with a registry entry insisting it runs at 9:25 AM ET. |
+| **Blast radius (larger than the two jobs)** | The generator `writeFileSync`s `cron-jobs.json` from scratch with **no merge**. Five deployed jobs have no TOML behind them at all — `x-autopost`, `x-growth`, `x-replies`, `x-analytics`, `banger-live-sync` — so their schedules exist only as hand-edits in generated output and **would be deleted by the next sync run**, leaving routes still registered, still reported healthy, and never firing. `banger-live-sync` is the worst of them: `produces_member_alert: true`, so the live banger board would silently stop updating mid-session. |
+| **Fix** | Removed both phantom `schedule_cron_utc` lines so the two dark jobs become **visible** as never-run. No job behaviour changes — this is a monitoring-truth fix. Each removal is commented with the measurement and the instruction to restore the field only in the same change that actually schedules the job. |
+| **Second fix — labels that were true half the year** | `x-growth` and `x-replies` claimed *"Hourly 9AM–6PM ET weekdays"*; `x-analytics` claimed *"Daily 7:30 PM ET"*. All three are fixed-UTC crons, so under EST they are 8AM–5PM ET and 6:30 PM ET. A fixed-UTC band cannot hold an ET clock year-round, so the labels now state UTC with both ET equivalents — following `spx-signal-weight-optimize`'s existing honest *"Nightly 10 PM UTC"*. |
+| **Deliberately NOT fixed** | The `largo-morning-brief` TOML spelling. Correcting it would cause the next sync to switch on a member-facing push cron as a **side effect of a metadata fix**. Whether that job should run is a product decision — raised to the coordinator, allowlisted with the reason. Likewise the five missing TOMLs: `x-autopost`'s is left to the x-content lane, which is already changing that job's schedule, so this PR does not race it. |
+| **Regression guard** | `src/lib/cron-registry-schedule.test.ts` — 4 tests pinning registry-vs-TOML agreement, that every cron TOML uses the spelling the generator parses, and that a job with no parseable TOML carries no `schedule_cron_utc`. Checks the **TOML** rather than the manifest deliberately: the manifest is in another repo and a test that skips when it cannot see a file passes in CI forever, which is the failure being fixed. **Proven non-vacuous:** re-adding the phantom line takes the suite to 3 pass / 1 fail. |
+| **Gates on Node 20.20.2** | `npx tsc --noEmit` clean · `npm test` **9117 pass / 0 fail** · `npx eslint` clean. |
+| **Status** | FIXED — this PR (stacked on the `banger-discovery` PR, which adds the TOML this test requires). Found by the BLACKOUT DST/cron-correctness audit lane. |
+
 ## 2026-08-21 — [FINDING, P1 Banger] `banger-discovery` committed positions from an UNSETTLED session for four months a year — the cron is UTC, the close is ET — FIXED
 
 > **kind:** `FINDING`
