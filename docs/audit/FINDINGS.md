@@ -4,6 +4,21 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-21 — [FINDING, P1 process] Nothing counted the findings log, so a PR deleting five entries passed every check — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | PR #2552 — non-draft and auto-merge-eligible at the time — added one finding and silently **deleted five**: a net of −4 against its own merge base and −6 against `main`. Deleted were `get_positioning` hiding a nearer gamma flip (P1), `composeHelixRead` rendering every put as a call (P2), the Meridian orbital-label guard (P2), the Vector boundary probe (P2), and Largo reporting a closed banger WINNER as a 34% loss (P1). |
+| **Root cause** | Every existing check on `docs/audit/FINDINGS.md` operates on the PARSED ENTRY LIST — that each entry carries a `kind:` line and a real outcome, that headings start a line, that the reconciler is idempotent. All of them are satisfied by a file an entry has been deleted from, because **an entry that has ceased to exist trips none of them.** Nothing counted. `findings-hygiene.test.ts` passed **8/8** on the damaged file. |
+| **Evidence** | Measured against the PR's own merge base `d082314e`: 506 entries at base, 502 on the branch, 5 headings absent. The loss was found by reading a task-force proposal, not by any automated check. The file's own header records the same failure at larger scale — the whole log was once clobbered to empty by a squash-merge resolution, and nothing caught that either. |
+| **Why the merge resolver does not cover it** | `findings-merge-resolve.mjs` unions OURS with the entries THEIRS added relative to base. An entry that existed in the BASE and was dropped by OURS is neither "ours, kept" nor "theirs, added", so the union **preserves the deletion**. Verified directly: re-running the resolver over #2552 left all five entries missing. A union cannot restore what its own side discarded, which is why the guarantee has to be an assertion over the diff rather than a property of the merge tool. |
+| **Fix** | `src/findings-no-loss.test.ts`: entries are counted (not set-differenced — repeated headings are real in this file, and dropping one of a duplicated pair is as much a loss as dropping a unique entry) at the merge base and at HEAD, and any shortfall fails with the specific headings named. `ci.yml`'s checkout gains `fetch-depth: 0`, because the default depth of 1 leaves the base commit unresolvable and the guard would skip. |
+| **Proven non-vacuous against the real defect** | Run against the actual pre-restoration head of #2552 (`4dd09a2f`): `not ok 1 — 5 finding(s) present at d082314e are missing from HEAD`, naming exactly the five. Run against `main`: passes. A second test asserts the guard can read its own baseline, so a silent skip surfaces as a visible failure rather than as silence. |
+| **Blast radius** | Any PR touching this file, which by the issue-handling policy is every bug-fix PR the fleet opens. The hole has existed for the life of the file; #2552 is the instance that was caught, not necessarily the first. A retrospective sweep of merged PRs for the same signature is worth doing and is NOT part of this change. |
+| **Status** | FIXED. |
+
 ## 2026-08-21 — [FINDING, P2 Meridian] The expected-move rail laid out labels against a width 31-43% of the one it drew — labels off the track, prices printed through each other, top row inside the panel head — FIXED
 
 > **kind:** `FINDING`
