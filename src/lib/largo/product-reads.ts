@@ -20,6 +20,7 @@ import {
   readSwingServingSnapshot,
 } from "@/lib/swing/serving-lane";
 import { buildZeroDteRecord } from "@/lib/zerodte/record";
+import { fitRowsToBudget, sampleNote } from "@/lib/largo/fit-tool-result";
 import { formatEtDate, todayEt } from "@/features/nighthawk/lib/session";
 import {
   summarizeHelixSignalOutcomes,
@@ -161,6 +162,21 @@ export async function nighthawkHorizonsForLargo() {
   });
 }
 
+/** Per-play rows the model gets on the record.
+ *
+ *  `entry_context` is deliberately NOT among them. It is the frozen commit-forensics
+ *  blob (cortex snapshot, origin maps, exit-policy snapshot, tier factors) and it was
+ *  **94% of this tool's bytes** — 984,898 of 1,052,064 chars at the default 30-day
+ *  window. The model never actually received it: the transport's tail cut landed
+ *  inside play #2, so the blob bought nothing and cost every aggregate behind it.
+ *  A member question that genuinely needs one play's evidence has dedicated tools
+ *  (`get_cortex_decision` for the commit evidence, `get_grader_agreement` for the
+ *  grading lanes) which return it scoped to ONE ticker and comfortably in budget. */
+const ZERODTE_RECORD_MAX_SAMPLE_PLAYS = 40;
+
+/** Aggregate-only base is ~2.8k chars; each lean play is ~330. 40 is a reading
+ *  ceiling, not a size one — the budget in `fitRowsToBudget` is the real bound and
+ *  will cut below 40 on a wide window rather than let the aggregates be at risk. */
 export async function zerodteRecordForLargo(days = 30) {
   if (!dbConfigured()) {
     return { available: false, degraded: true, reason: "database_unavailable" };
@@ -171,7 +187,31 @@ export async function zerodteRecordForLargo(days = 30) {
   try {
     const rows = await fetchZeroDteSetupLogRange(since, Math.min(2000, capped * 20));
     const record = buildZeroDteRecord(rows, { since, through, days: capped });
-    return roundFloats(record);
+    // Split the record the way the transport reads it: AGGREGATES FIRST, sample last.
+    // `buildZeroDteRecord` is untouched — the member route (/api/market/zerodte/record)
+    // and the desk UI still get the complete record with every play and its
+    // entry_context. This reshaping is for the MODEL's copy only, which is the one
+    // that has a 16k tail-truncating transport in front of it.
+    const { plays, ...aggregates } = record;
+    const leanPlays = plays.map(({ entry_context: _entryContext, ...play }) => play);
+    const base = roundFloats(aggregates) as Record<string, unknown>;
+    const fitted = fitRowsToBudget(base, "plays", roundFloats(leanPlays) as typeof leanPlays, {
+      maxRows: ZERODTE_RECORD_MAX_SAMPLE_PLAYS,
+    });
+    return {
+      ...base,
+      plays_total: fitted.total,
+      plays_included: fitted.kept.length,
+      plays_note: sampleNote(
+        fitted.kept.length,
+        fitted.total,
+        "committed 0DTE plays",
+        "Per-play commit forensics (entry_context) are omitted here — use get_cortex_decision for one ticker's evidence."
+      ),
+      // LAST on purpose. If anything downstream ever pushes this result back over the
+      // transport cap, the tail cut must eat the sample rows, never the track record.
+      plays: fitted.kept,
+    };
   } catch (e) {
     return {
       available: false,
