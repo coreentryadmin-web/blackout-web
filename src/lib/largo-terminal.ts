@@ -771,7 +771,17 @@ async function prepareLargoTurn(
       ? `\n\n## Play similarity (prefetched — cite distribution, not a single win rate)\n${JSON.stringify(playSimilarity, null, 0).slice(0, 5000)}\n`
       : "") +
     (preEarningsPack
-      ? `\n\n## Pre-earnings desk pack (prefetched — cite these numbers)\n${JSON.stringify(preEarningsPack, null, 0).slice(0, 5000)}\n`
+      ? `\n\n## Pre-earnings desk pack (prefetched — cite these numbers)\n` +
+        // A history row whose `reaction_assumed` is true rests on an ASSUMPTION about report
+        // timing: for an after-close reporter the report date's own session is drift BEFORE the
+        // numbers were public, not the reaction to them (7.41% vs 3.01% on one real print). The
+        // Meridian UI marks these with a "~"; "cite these numbers" needs the same caveat or the
+        // model states an assumption as a measurement. `history_error` distinguishes "no prints
+        // on file" from "we could not look" — an empty history with an error is not evidence.
+        `Rows with \`reaction_assumed: true\` are ASSUMED, not measured — say so if you cite one. ` +
+        `A non-null \`history_error\` means the history could not be READ; an empty history under ` +
+        `it is not evidence the company has no prints.\n` +
+        `${JSON.stringify(preEarningsPack, null, 0).slice(0, 5000)}\n`
       : "") +
     socialContentBlock;
 

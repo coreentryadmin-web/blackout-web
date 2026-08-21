@@ -14,13 +14,12 @@ import {
   loadNextEarningsFromBenzinga,
 } from "@/lib/meridian/meridian-benzinga-earnings";
 import { parseNextEarningsFromBenzinga } from "@/lib/meridian/meridian-benzinga-earnings-core";
+import {
+  toPreEarningsHistoryRows,
+  type PreEarningsHistoryRow,
+} from "@/lib/largo/pre-earnings-history-rows";
 
-export type PreEarningsHistoryRow = {
-  report_date: string | null;
-  surprise_pct: number | null;
-  beat: boolean | null;
-  expected_move_pct: number | null;
-};
+export type { PreEarningsHistoryRow };
 
 export type PreEarningsExposure = {
   on_board: boolean;
@@ -54,8 +53,14 @@ export type PreEarningsPackCard = {
   };
   history: PreEarningsHistoryRow[];
   history_summary: string | null;
+  /**
+   * Non-null when the earnings-calendar fetch FAILED. An empty `history` with a null error means
+   * the company genuinely has no prints on file; an empty `history` WITH an error means we could
+   * not look. Collapsing those two into one empty array is how "we don't know" gets reported as
+   * "there is nothing".
+   */
+  history_error: string | null;
   zerodte: PreEarningsExposure | null;
-  nighthawk: PreEarningsExposure | null;
   as_of: string;
 };
 
@@ -152,12 +157,9 @@ export async function preEarningsPackForLargo(
           ? "Balanced flow ahead of earnings"
           : "Insufficient flow in window";
 
-  const history: PreEarningsHistoryRow[] = historyRes.print_history.map((p) => ({
-    report_date: p.report_date,
-    surprise_pct: p.surprise_pct ?? null,
-    beat: p.beat ?? null,
-    expected_move_pct: p.expected_move_pct ?? null,
-  }));
+  // Carry the REACTION and its BASIS through — see pre-earnings-history-rows.ts for why this
+  // projection is a separate, tested module rather than an inline .map().
+  const history = toPreEarningsHistoryRows(historyRes.print_history, 6);
 
   return roundFloats({
     kind: "pre_earnings",
@@ -181,10 +183,14 @@ export async function preEarningsPackForLargo(
       summary: flowSummary,
       net_premium: total >= 1 ? net : null,
     },
-    history: history.slice(0, 6),
+    history,
     history_summary: historyRes.print_history_summary ?? historySummary(history),
+    history_error: historyRes.history_error ?? null,
     zerodte,
-    nighthawk: null,
+    // `nighthawk` is deliberately GONE rather than hardcoded to null. It was declared, never
+    // populated, and never read by any consumer — so its only effect was to tell a model that
+    // Night Hawk exposure had been checked and found absent, when it had never been looked up.
+    // A field that implies a measurement nobody took is worse than no field.
     as_of: new Date().toISOString(),
   });
 }
