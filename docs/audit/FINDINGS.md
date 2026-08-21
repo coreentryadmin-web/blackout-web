@@ -38,6 +38,24 @@ PROSE status says "PR pending" stay flagged. They are genuinely unverified, so f
 
 Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 
+## 2026-08-21 — [FINDING, P1 SEO] Every page's OG image + `Article` JSON-LD `image` pointed at a robots.txt-BLOCKED URL — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Root cause** | `src/app/robots.ts` disallowed `/api` (and `/api/`) for all 11 rules — the wildcard plus every AI crawler — to keep app endpoints out of the index. But `/api/og` is the Open Graph **image renderer**, and every public page points at it *twice*: as `og:image`/`twitter:image` (`buildOgImageUrl`, `src/lib/page-metadata.ts:23`) and as the `image` property of `Article` JSON-LD (`ArticleJsonLd`, `src/components/seo/JsonLd.tsx:272`). The blanket rule therefore blocked the only image Google is ever pointed to. |
+| **Evidence** | Live crawl of all 72 sitemap URLs on 2026-08-21: **72/72** pages carry `og:image` and every one resolves to `/api/og?...`; **200** total `/api/og` references across head tags + JSON-LD, and `/api/og` is the *only* `/api/*` path any crawlable markup references. `curl https://blackouttrades.com/api/og?...` → `200 image/png 45465b` (the image is fine — only the permission was wrong). `robots.txt` lines 3–4 and 40–41 carry the blocking `Disallow: /api`. |
+| **Why it went unnoticed** | Facebook and X **ignore** robots.txt, so shared links kept previewing correctly. Google, Bing and the AI crawlers all honour it, so the breakage was invisible in exactly the place people check previews. Google's `Article` guidelines require a **crawlable** `image`; a robots-blocked one is reported as unfetchable rather than silently ignored, which suppresses Article rich results. |
+| **Blast radius** | All 72 indexable URLs — 58 of them carrying `Article` schema. Both consumers (metadata + structured data) share the one root cause and are fixed by the one change. |
+| **Fix** | Added `ALLOWED_PATHS = ["/", "/api/og"]` and applied it as the `allow` list on all 11 rules. Google and Bing resolve an `Allow`/`Disallow` conflict by **longest match**, so `Allow: /api/og` (7) outranks `Disallow: /api/` (5) and `Disallow: /api` (4) without widening access to any other API route — `/api` and `/api/` remain disallowed on every rule. `/api/og` is already a public, unauthenticated GET that renders purely from its query string. |
+| **Fix rationale** | Deliberately *not* done by moving the renderer to a non-`/api` path (a redirect-and-rename touches 72 pages of cached metadata and every previously shared link) and *not* by dropping the `/api` disallow (that would expose every app endpoint). The longest-match `Allow` is the minimal, spec-defined mechanism for this exact case. |
+| **Regression cover** | Two tests in `src/app/robots.test.ts`: one asserts every rule allows `/api/og` **and** that the `Allow` strictly outranks each `/api` `Disallow` it must override by length; the other asserts `/api/og` is the *only* `/api*` allow and that `/api` + `/api/` stay disallowed — so re-widening the hole fails loudly. |
+| **Status** | FIXED — PR `claude/seo-unblock-og-image-crawling`. Gates on Node 20.20.2: `tsc --noEmit` clean, `eslint` clean, `npm test` **8718 pass / 0 fail**, `npm run build` succeeded. |
+
+**Not yet verified live.** Merged/deployed is not done — the emitted `robots.txt` must be re-fetched from
+production after deploy to confirm the `Allow: /api/og` lines are served.
+
 ## 2026-08-19 — [FINDING, P0 correctness] `main` went red with every PR green — #2365 and #2366 collided on the 0DTE expiry resolver — FIXED
 
 > **kind:** `FINDING`
