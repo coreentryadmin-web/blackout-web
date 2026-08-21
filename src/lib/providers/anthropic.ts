@@ -371,7 +371,16 @@ export function extractTextFromLastAssistant(messages: AnthropicMessage[]): stri
  * conservative per-process backstop (this replica's own daily spend vs frac × ceiling) instead of
  * no-op'ing to "allow". When Redis is UP the authoritative cross-replica total is used unchanged.
  */
-async function isAiSpendCeilingTripped(): Promise<boolean> {
+/** Exported so the Largo caller can distinguish a SPEND-CEILING stop from a data gap when the tool
+ *  loop returns null. anthropicToolLoop returns a bare `null` for THREE different reasons — gate
+ *  closed, no client, ceiling tripped (loop entry) plus a mid-loop ceiling trip — and the caller
+ *  otherwise renders all of them as "couldn't pull enough live data". The route's pre-flight gate
+ *  (isLargoKillSwitchTripped) already emits an honest 503, but the ledger can cross the ceiling
+ *  AFTER that pre-flight check passes (trackSpend writes the shared ledger every round, across all
+ *  replicas), so a request that got past the gate can still stop on the ceiling mid-flight and land
+ *  on the bare null. The caller re-reads this to swap in the honest "temporarily paused" message.
+ *  Same predicate the loop itself uses, so the message can never claim a pause the loop did not act on. */
+export async function isAiSpendCeilingTripped(): Promise<boolean> {
   const ceiling = aiSpendKillSwitchUsd();
   if (ceiling == null) return false; // kill-switch not armed (OPT-IN)
   const localBackstopTripped = () =>
