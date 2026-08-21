@@ -8,7 +8,6 @@ import {
   type FlowStrikeStack,
 } from "@/lib/largo/flow-strike-stacks";
 import { sanitizeFeedText } from "@/lib/largo/sanitize-feed-text";
-import { etStamp, etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 import { classifyEtDay } from "@/lib/largo/temporal/session-calendar";
 import { roundFloats } from "@/lib/round-floats";
 import { getGexPositioning } from "@/lib/providers/gex-positioning";

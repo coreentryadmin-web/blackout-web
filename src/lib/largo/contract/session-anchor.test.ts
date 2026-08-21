@@ -62,19 +62,14 @@ const KNOWN_GAPS: Record<string, string> = {
   // `session_date`, so a file merely READING a session_date column counted as anchored; and its
   // construction regex missed the `const as_of = ...` binding form. Six files were being exempted
   // by those two holes. They are gaps, not exemptions — the loose guard was reporting them clean.
-  "src/lib/largo/mini-panel.ts": "coordinator — binding form; renders member-visible Spot/Flip/Call wall/Put wall and drops pos.asof",
   "src/lib/largo/morning-brief.ts": "coordinator",
   "src/lib/largo/play-similarity.ts": "coordinator",
-  "src/lib/largo/product-reads.ts": "SHARED across all lanes — coordinator sequences; was falsely exempt via `session_date: row.session_date`",
   "src/lib/bie/answer-envelope.ts": "coordinator",
   "src/lib/bie/platform-context.ts": "coordinator",
   "src/lib/bie/full-platform-snapshot.ts": "coordinator — cross-product snapshot; anchor with the rest of the integration layer",
   "src/lib/bie/spx-desk-brief.ts": "coordinator (SPX lane)",
   "src/lib/bie/vector-desk-brief.ts": "vector lane",
   "src/lib/bie/vector-full-state.ts": "vector lane",
-  "src/lib/largo/gate-rules.ts": "night hawk lane",
-  "src/lib/largo/helix-thermal-compare.ts": "thermal lane — changes already requested on PR #2422",
-  "src/lib/largo/pre-earnings-pack.ts": "meridian lane — date-arithmetic heavy, highest risk of the set",
   "src/lib/largo/slash-prompts.ts": "coordinator",
   "src/lib/largo/social-content-pack.ts": "coordinator — member-visible copy",
   "src/lib/largo/vector-analytics.ts": "vector lane",

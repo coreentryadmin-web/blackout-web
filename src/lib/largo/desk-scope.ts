@@ -416,8 +416,6 @@ export type TurnSnapshot = {
   call_wall: number | null;
   put_wall: number | null;
   net_premium: number | null;
-  /** The ET SESSION this snapshot was taken in. */
-  session_date?: string | null;
   /** WHICH GEX matrix the positioning levels came from — see formatDiffBlock. */
   matrix_asof?: string | null;
 };

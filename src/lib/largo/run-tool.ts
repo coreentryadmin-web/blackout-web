@@ -1,4 +1,5 @@
 import { serverCache, TTL } from "@/lib/server-cache";
+import { etStamp, etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 import { sanitizeFeedText } from "@/lib/largo/sanitize-feed-text";
 import { getLargoSpxLiveDesk } from "@/lib/largo/spx-desk-cache";
 import { computeSpxConfluence } from "@/features/spx/lib/spx-signals";
@@ -1456,8 +1457,15 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       // `as_of` because the tool description promises "today's" prints and the payload itself
       // carried no clock — the model had to take the framing on trust. The rows' own
       // `report_date` is the authority on which session these are; this says when we asked.
+      //
+      // ET stamp + explicit session anchor, not a bare UTC ISO: after ~20:00 ET the UTC calendar
+      // date is already tomorrow, so a model resolving "today's prints" off a UTC stamp lands a
+      // full session ahead. Enforced by contract/session-anchor.test.ts.
+      const earningsNowMs = Date.now();
       return normalizeUwEarnings({
-        as_of: new Date().toISOString(),
+        as_of: etStamp(earningsNowMs),
+        session_date: etSessionDate(earningsNowMs),
+        as_of_utc: new Date(earningsNowMs).toISOString(),
         premarket_count: premarket.length,
         afterhours_count: afterhours.length,
         premarket,

@@ -6,7 +6,6 @@
 import type { DeskScopeKey, TurnSnapshot } from "@/lib/largo/desk-scope";
 import { etSessionDate, etStamp } from "@/lib/largo/temporal/bar-session-date";
 import { resolveSubmodule } from "@/lib/largo/slash-submodules";
-import { etStamp, etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 
 export async function prefetchDeskScopeBlock(
   desk: DeskScopeKey,
