@@ -4,6 +4,24 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-21 — [FINDING, P1 Largo/Night Hawk] Four lane tools published fabricated zeros on a failed read — including "the gate blocked nothing" — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Auditing every tool in the lane for the "which empty is this" rule after #2477/#2492/#2495, four more were filling their unavailable branches with numbers they had not measured. `graderAgreementForLargo` returned `total_plays: 0, comparable: 0, agreed: 0, disagreements: []` on both a missing database and a thrown query. `gateBlockedValueForLargo` returned **five** zero totals and `by_gate: []`. `horizonOutcomesForLargo` returned `outcomes: []`. `bangerBoardForLargo` returned `open: [], closed: []` on all three of its failure branches. |
+| **The tell** | In `graderAgreementForLargo`'s own return object, `agreement_pct` was correctly `null` while `total_plays`, `comparable` and `agreed` were `0`. **The rate knew it had not been measured; the counts did not.** One object, two standards, and the model has no way to tell that `0` came from a failed connection rather than from an empty window. |
+| **The worst instance** | `gateBlockedValueForLargo` returning `blocked_total: 0` on a **failed** read. The publish gate's entire value proposition is the count of bad plays it stopped, so a broken read published the gate as having done nothing at all. |
+| **The inverse defect, same two files** | `available: cmp.comparable > 0` and `available: inputs.length > 0` reported a **successful** read of a quiet window as if the tool were unavailable. "The publish gate blocked nothing in 30 days" is a real measurement — and an important one, since a gate that never fires may be miscalibrated — but Largo could never say it, because the payload told the model there was no data. Worse for the grader: `available: false` also discarded `total_plays`, which had genuinely been measured. Both now report `available: true` whenever the read succeeded, with the missing RATE left null and a note saying the emptiness was measured. |
+| **Fix — two shapes, on purpose** | A scalar that was not measured is **`null`**: present, and unmistakably not a number. A list that was not measured is **absent**, because an empty array is countable and invites exactly the "0 disagreements" / "0 open positions" claim that is the defect. `GraderAgreementForLargo` and `GateValueForLargo` gained `number \| null` counts and optional list fields; `horizonOutcomesForLargo` and `bangerBoardForLargo` simply stop emitting their lists on failure, each with a note saying not to report zero. |
+| **An `outcomes` key that only existed when it was empty** | `horizonOutcomesForLargo`'s SUCCESS path returns `sample`; only its two failure paths returned `outcomes`. So the one time this payload carried an `outcomes` array was when there were none — precisely backwards. |
+| **Blast radius** | `evidence-reads.ts` (`get_gate_blocked_value`, `get_grader_agreement`), `product-reads.ts` (`get_horizon_outcomes`, `get_banger_board`) — four of my lane's tools, at the Largo boundary. `GateValueForLargo`/`GraderAgreementForLargo` have no consumers outside these two files, so widening the counts to nullable touches nothing else. No provider, no API route, no UI, no cron, no grading. |
+| **Regression guard** | `evidence-reads.test.ts` (+4): a failed grader read reports null counts and no `disagreements` list; a failed gate-value read reports null totals and no `by_gate`; both still state the window they could not measure; and `compareGraderLanes([])` keeps its **real** zeros, because a measured window of no rows genuinely is 0 plays and nulling that would trade one lie for another. The tests mock the db module rather than depending on whether a `DATABASE_URL` happens to resolve — which also cut them from ~20s of connection timeouts to under 1s. |
+| **Not a trading-behaviour change** | No gate, rail, sizing, exit rule or grading function is touched — this changes how gate and grader RESULTS are reported, not how anything is gated or graded. No `sim:0dte` before/after is owed. |
+| **Gates** | `npm test` **9049 pass / 0 fail / 1 skipped** (Node 20.20.2) · `tsc --noEmit` clean · `eslint` clean. |
+| **Status** | FIXED. |
+
 ## 2026-08-21 — [FINDING, P2 Helix] composeHelixRead rendered every put as a call (and every stack as a put), and read strike stacks off a premium-ordered slice — FIXED
 
 > **kind:** `FINDING`
