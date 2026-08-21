@@ -24,6 +24,10 @@ import {
   recordManualPost,
   resolvePublishRefusal,
 } from "./audit/lib/x-publish-guard.mjs";
+// The never-capture rule, enforced in code. Every screenshot below goes through guardedShot(),
+// which asserts the page's URL AT SHOT TIME — see src/lib/x-intel/capture-guard.ts for why the
+// check is on the live URL and not on the URL that was requested.
+import { assertCapturableUrl } from "@/lib/x-intel/capture-guard";
 
 const args = process.argv.slice(2);
 const flag = (k) => args.includes(`--${k}`);
@@ -346,6 +350,24 @@ async function assertActiveTicker(page, ticker, surface) {
   }
 }
 
+/**
+ * THE ONE PLACE A PIXEL IS TAKEN. Every capture in this file goes through here.
+ *
+ * The assertion reads `page.url()` — the URL the browser is ACTUALLY on when the shutter fires,
+ * not the one that was requested. Those differ exactly when it matters: the Clerk session used
+ * here is short-lived, so a slow run can have a desk route bounce to /sign-in or /account between
+ * navigation and screenshot, and the harness would otherwise capture the bounce believing it had
+ * captured a desk. The capture browser is admin+premium by default, so that frame could carry
+ * anything.
+ *
+ * It THROWS. A refused capture must fail the run loudly rather than return an empty buffer that
+ * some later step treats as a missing panel and works around.
+ */
+async function guardedShot(page, target, context, opts = {}) {
+  assertCapturableUrl(page.url(), context);
+  return (target ?? page).screenshot({ type: "png", ...opts });
+}
+
 /** Clip a tall scrollable panel to its on-screen viewport (Playwright element shots capture full scroll height). */
 async function screenshotViewportPanel(page, locator, maxH = 880) {
   const el = locator.first();
@@ -362,7 +384,7 @@ async function screenshotViewportPanel(page, locator, maxH = 880) {
       height: Math.min(r.height, h),
     };
   }, maxH);
-  return page.screenshot({ type: "png", clip });
+  return guardedShot(page, null, "viewport panel", { clip });
 }
 
 /** Force-fetch chain into Redis before UI poll (off-hours still serves last RTH snapshot when cached). */
@@ -598,7 +620,7 @@ async function captureZeroDteNighthawk(page, ticker) {
       await toggle.click();
       await page.waitForTimeout(1200);
     }
-    buf = await target.screenshot({ type: "png" });
+    buf = await guardedShot(page, target, "nighthawk 0DTE card");
   } else {
     const playCount = await page
       .locator(".nh-v2-col-zerodte")
@@ -652,7 +674,7 @@ async function captureVector0Dte(page, ticker) {
   await assertActiveTicker(page, ticker, "Vector");
   const chart = page.locator(".vector-chart-wrap").first();
   await chart.waitFor({ state: "visible" });
-  const buf = await chart.screenshot({ type: "png" });
+  const buf = await guardedShot(page, chart, "vector chart");
   const path = join(OUT, `vector-0dte-${ticker}.png`);
   writeFileSync(path, buf);
   console.log(`    saved ${path}`);
@@ -686,7 +708,7 @@ async function captureThermal(page, ticker) {
   await selectThermalTicker(page, ticker);
 
   const panel = page.locator(".gex-heatmap-desk").first();
-  const buf = await panel.screenshot({ type: "png" });
+  const buf = await guardedShot(page, panel, "thermal matrix");
   const path = join(OUT, `thermal-${ticker}.png`);
   writeFileSync(path, buf);
   console.log(`    saved ${path}`);
@@ -699,7 +721,7 @@ async function captureSlayer(page, ticker) {
   await page.goto(`${BASE}/dashboard`, { waitUntil: "domcontentloaded", timeout: 60_000 });
   await dismissOverlays(page);
   await page.waitForTimeout(7000);
-  const buf = await page.screenshot({ type: "png" });
+  const buf = await guardedShot(page, null, "full desk viewport");
   const path = join(OUT, `slayer-${ticker}.png`);
   writeFileSync(path, buf);
   console.log(`    saved ${path}`);
@@ -712,7 +734,7 @@ async function captureNighthawk(page, ticker) {
   await page.goto(`${BASE}/nighthawk`, { waitUntil: "domcontentloaded", timeout: 60_000 });
   await dismissOverlays(page);
   await page.waitForTimeout(6000);
-  const buf = await page.screenshot({ type: "png" });
+  const buf = await guardedShot(page, null, "full desk viewport");
   const path = join(OUT, `nighthawk-${ticker}.png`);
   writeFileSync(path, buf);
   console.log(`    saved ${path}`);
@@ -759,7 +781,7 @@ async function captureLargoAnswer(page, ticker) {
   await page.waitForTimeout(2500);
 
   const panel = page.locator(".largo-terminal-fullpage, .desk-largo-panel, main").first();
-  const buf = await panel.screenshot({ type: "png" });
+  const buf = await guardedShot(page, panel, "largo answer");
   const path = join(OUT, `largo-${ticker}.png`);
   writeFileSync(path, buf);
   console.log(`    saved ${path}`);

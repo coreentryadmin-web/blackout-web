@@ -521,7 +521,11 @@ export const CRON_JOBS: CronJobDefinition[] = [
     // Daily job: a full day plus slack, so one missed evening is caught the next morning and a
     // weekend does not alert.
     stale_after_min: 1800,
-    schedule_cron_utc: "15 20 * * 1-5",
+    // TWO UTC hours: 20:15 is 16:15 ET under EDT, 21:15 is 16:15 ET under EST, so one fire always
+    // lands after the 16:00 ET close. The route's inEtWindow guard skips the off-band fire (before
+    // claiming the day, so the skip cannot lock out the good fire). Was `15 20 * * 1-5`, which ran
+    // 45 min BEFORE the close all winter and committed positions off an unsettled tape.
+    schedule_cron_utc: "15 20,21 * * 1-5",
     weekdays_only: true,
     description: "Whole-market banger scan → next-session candidates",
   },

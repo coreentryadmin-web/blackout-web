@@ -26,6 +26,7 @@ import "server-only";
 import { roundFloats } from "@/lib/round-floats";
 import { normalizeVectorTicker } from "@/features/vector/lib/vector-ticker";
 import { computeVectorBarAnalytics, opexContext } from "@/lib/largo/vector-analytics-core";
+import { etStamp, etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 
 /** Screener rows returned to Largo. The panel paginates; an LLM read does not need the tail. */
 const MAX_SCREENER_ROWS = 15;
@@ -91,6 +92,11 @@ export async function vectorAnalyticsForLargo(
       screener = {
         universe_size: universe.rows.length,
         updated_at: new Date(universe.updatedAt).toISOString(),
+        // The sweep's own age, in the market's clock. A scanner list is only as current as the
+        // sweep behind it, and "how stale is this" is not answerable from two ISO instants a
+        // reader has to subtract — see the note on `as_of` above.
+        updated_at_et: etStamp(universe.updatedAt),
+        updated_at_session_date: etSessionDate(universe.updatedAt),
         /** The three curated desk presets the scanner ships — each is a different question, so all
          *  three are returned rather than one default that silently answers only one of them. */
         nearest_flip: screenUniverse(universe.rows, { preset: "nearest-flip" }).slice(0, MAX_SCREENER_ROWS).map(compact),
@@ -137,6 +143,14 @@ export async function vectorAnalyticsForLargo(
       available: true,
       ticker,
       as_of: new Date(nowMs).toISOString(),
+      // `as_of` alone is a bare UTC instant, and almost everything below it is SESSION-scoped:
+      // the opening range, HOD/LOD, the prior-day pivots, the OpEx day count, and the per-session
+      // daily_regime rows. Between ~20:00 ET and midnight the UTC date is already TOMORROW, so a
+      // reader resolving "today" from `as_of` lands a session ahead of the data it is labelling —
+      // the same inversion that had a live SPX figure dated forward and a close fabricated for the
+      // current session. Contract C1: ship the market's clock next to the instant.
+      as_of_et: etStamp(nowMs),
+      session_date: etSessionDate(nowMs),
       session_ymd: seed?.sessionYmd ?? null,
 
       ...(barAnalytics ?? {}),
