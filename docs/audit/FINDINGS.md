@@ -12589,8 +12589,6 @@ against.
 
 **Follow-up, not fixed here.** `ExpiryConcentration.tsx`'s `bucketLabel` tests `dte === 0`, so an already-expired print (negative DTE from the tape's SQL) renders under **"This week"**. Member-facing render change; separate branch.
 
-## 2026-08-20 — [FINDING, P0 member-visible] Largo aggregated a different tape than the HELIX desk, and quoted a 7-day window over 54 minutes of prints — FIXED
-
 ## 2026-08-21 — [FINDING, P2 Largo/Night Hawk] Three lane payloads dated themselves by a bare UTC instant — a session ahead after 20:00 ET — FIXED
 
 > **kind:** `FINDING`
