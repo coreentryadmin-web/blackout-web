@@ -4,6 +4,26 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-21 — [FINDING, P1 Meridian/Largo] A still-moving intraday number was labelled "session_open_to_close" sixteen minutes into the session — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **How it was found** | RTH validation, 09:46 ET, sixteen minutes after the open. Asked what reaction the product reports for prints that landed THIS morning. |
+| **Symptom** | Today's BMO prints came back from production as settled measurements: `BEKE reaction_pct -4.74`, `BJ 1.74`, `BKE 2.21` — every one carrying `reaction_measure: "session_open_to_close"` on a session that does not close for another six hours. |
+| **Proof it is the partial bar** | BJ (`1.74%`) and BKE (`2.21%`) match Polygon's **in-progress daily bar** for 2026-08-21 to the decimal — a bar whose `c` is simply the last trade so far (BJ 6,232 trades in, BKE 996). And BEKE moved **-4.74 → -4.24 between two reads a minute apart**: the number disproving its own label while being watched. |
+| **Nothing marked it** | Scanned the whole event payload for `provisional`, `partial`, `in_progress`, `incomplete`, `settled`, `session_complete`, `is_final`, `live`. **None present.** A six-hour-unfinished figure was shaped exactly like a print from three quarters ago. |
+| **Why it is P1 rather than cosmetic** | This is the lane's systemic defect in its purest form — a number arriving without its meaning. `reaction_measure` did not merely omit the caveat, it **asserted a close that had not happened**. A model comparing today's `-4.74` against a settled history of past reactions is comparing a partial to finals and will read a half-formed move as a completed one. |
+| **Fix** | Two new `ReactionMeasure` values — `session_open_to_last` and `prior_close_to_last` — plus a derived `reaction_settled: boolean \| null`. The measure changes because the measure is the thing that was false; the boolean exists so a consumer filtering for settled history does not have to know which two of four enum values mean "final". Both carried through to the Largo pack row, since the model is the reader most likely to compare across prints. |
+| **`openSessionYmd`** | New pure-apart-from-the-clock helper: the ET date of a session currently open, else null. Bounded 09:30 ≤ t < 16:00 — at exactly 16:00 the bar is final, so the close is strict. Uses `isTradingDayEt`, the **shared** calendar, so a holiday is never treated as an open session; a weekday test would have called Juneteenth open. The clock is a parameter, so the bounds are testable without freezing time. |
+| **The value is still reported** | `reaction_pct` keeps its number — it is real, just not final. Only the label changes. A test pins that the same print before and after the close yields the identical arithmetic and differs only in `reaction_measure`/`reaction_settled`. |
+| **Fails safe** | `openSessionYmd` defaults to `null` at every call site, so an un-updated caller can only ever report `settled: true` — the pre-existing behaviour — rather than start emitting spurious `false`. Pinned by a test. |
+| **Regression guard** | 9 tests in `meridian-open-session.test.ts` — bell bounds at both ends including 16:00 exactly, Juneteenth and a Saturday rejected while an ordinary Tuesday passes, the live BMO case, the same print settled after the close, an AMC print anchored on the open session, **settled history explicitly untouched** (the real risk of this change), `null` rather than `false` when nothing was measured, and the batch threading. Plus 1 in `pre-earnings-history-rows.test.ts`. Non-vacuous: hard-coding `settled = true` fails 3. |
+| **Cohort** | The three prints are every earnings row on the `days=2` timeline lane for 2026-08-21, all impacts, after the optionable filter — not a sample. |
+| **Gates on Node 20.20.2** | `npx tsc --noEmit` clean · `npm test` **9344 pass / 0 fail** · `npm run build` clean · `npx eslint` clean. |
+| **Status** | FIXED — PR #2579 (draft). Found on production during RTH; prod verification owed once it deploys. |
+
 ## 2026-08-21 — [FINDING, P2 Largo/Night Hawk] The gate-value tool let Largo print a self-contradictory "3 of 16 (23.1%)" — FIXED
 
 > **kind:** `FINDING`

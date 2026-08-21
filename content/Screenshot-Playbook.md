@@ -50,10 +50,128 @@ inside an element screenshot anyway. Cropping it off means guessing a pixel offs
 first time the header's height changes. `hideMarketingChrome()` removes it from the layer, matched
 by behaviour (fixed/sticky, top-anchored, marketing text, not owned by a desk container).
 
+### The duplicated-control trap
+
+`MEASURED 2026-08-21` — **the first match is usually the wrong match.** The responsive toolbars
+render a compact copy and a wide copy of every control, and CSS collapses the unused one to a
+zero-size box instead of unmounting it. Both copies carry the same test id and both report
+`display: inline-flex` / `visibility: visible`.
+
+On `/vector?ticker=NVDA` at 2560×1440: copy 0 has rect `[0,0,0,0]` and `elementFromPoint` at its
+origin returns the nav; copy 1 has rect `[570,89,116,32]` and hit-tests to itself. Playwright
+reports the first as an 8-second click timeout — which reads as *"the button is broken"* rather than
+*"you are pointing at the invisible one."* That single misreading blocked the Indicators menu and
+`FULL SCREEN` for a day.
+
+**Always address desk controls with a visible-only locator.**
+
+### The auth-expiry trap
+
+`MEASURED 2026-08-21` — a Clerk `__session` JWT lives about a minute; a capture run lives two to
+five. A session minted by an earlier command and pasted in fails **every** surface at `page.goto`
+with `net::ERR_CONNECTION_RESET`, because the origin 307s the expired session to `/sign-in` and the
+tunnel gives the page no Clerk client to complete the bounce. It dies at the transport and names
+neither auth nor expiry — it reads as *"the site is down."* It is not. Mint in-process and refresh
+on a timer.
+
+### The still-loading trap
+
+`MEASURED 2026-08-21` — NVDA's heatmap ran a rebuild loop (`force=1&n=1..4`) and took ~30s to
+render, showing "Loading heatmap…" the whole time with **every API call returning 200**. A fixed 9s
+wait then clicked a ticker control that did not exist yet and reported a 20s click timeout. Wait on
+a readiness signal (the expiry chips), not on a clock. Better still: `/heatmap` redirects to
+`?ticker=SPY&lens=gex`, so the query *is* the page's state channel — drive the ticker through the
+URL and skip the search UI entirely.
+
 ### The crosshair trap
 
 `MEASURED` — zooming a chart leaves a crosshair readout floating over the frame. Park the pointer
 off-chart before the shutter fires.
+
+---
+
+## 1b. PLATFORM MAP — read this before hunting for a story
+
+`MEASURED 2026-08-21` — swept from the codebase and spot-verified against production. The catalog
+in `view-catalog.ts` holds ~39 capturable views; the platform's real panel surface is **well over
+100**. This section is the map; the catalog is the subset with framing rules attached.
+
+### 🔎 START HERE: the platform finds stories for you
+
+Two panels rank the market by "what is interesting right now". Neither is a capture target first —
+they are **the story-discovery entry points**, and going to them before browsing is the difference
+between hunting and searching.
+
+**VECTOR → Universe Scanner** (`.vector-scanner-panel`, a `<details>` on `/vector`).
+Four presets, and the hints are the product telling you what each one is for:
+
+| Preset | What it ranks | The story it produces |
+|---|---|---|
+| **Nearest flip** | closest to a regime change — *"most actionable"* | 🎯 LEVEL THAT MATTERS · 🔥 GAMMA SHIFT |
+| **Most pinned** | above flip, strongest walls — mean-revert | 🎯 pin / OpEx mechanics |
+| **Most explosive** | below flip and near it — vol-expansion risk | 🔥 GAMMA SHIFT · ⚡ CONFLUENCE |
+| All | every covered name, A–Z | — |
+
+Columns: `TICKER · SPOT · REGIME (above/below) · GAMMA FLIP (+/-%) · CALL WALL · PUT WALL`.
+
+Live example from 06:45 ET today, "Nearest flip": **TSLA 349.20 vs flip 349.20 (+0.0%), call wall
+350** — a name sitting exactly on its regime boundary. SMCI −0.1%, RIOT +0.1%, MU −0.3%. That is a
+ranked story queue, pre-sorted by actionability, before a single chart is opened.
+
+⚠️ The panel renders ~2,500×3,750 px. **Crop to the top rows** — the whole table is a spreadsheet,
+the top 10–15 rows are the story.
+
+**HELIX → Net Premium Leaderboard** — tickers ranked by net premium. Same idea for flow:
+it answers *"where is the money actually going"* without picking a ticker first.
+
+### The full panel inventory
+
+Everything below exists. Bold = not yet captured by this lane; work through them.
+
+**HELIX** (23 components) — flow tape · contract drilldown drawer · high-score prints · strike-stack
+detector · split-flow radar · route breakdown · signal-outcome tracker · sector flow · dark pool
+panel + spark · **velocity spike radar** · **cumulative net-premium chart** · **expiry
+concentration (this week / monthly)** · **net premium leaderboard** · **flow brief** · **tide bar** ·
+**ticker drawer** · **Night Hawk flow panel (cross-product)** · watchlist bar
+
+**VECTOR** (32) — chart · GEX ladder · 0DTE matrix rail · **universe scanner** · **pulse** ·
+**technicals panel** · **alerts panel** · **Helix rail** · **daily chart** · **play card** ·
+**regime banner** · **replay controls** · **draw toolbar** · compare desk / pane / add-slot /
+command bar · **ticker comparison strip** · **wall event tooltip** · **crosshair legend** ·
+intraday zoom · bead-rail / nodes / lens / DTE toggles · indicator menu
+
+**THERMAL** (11) — matrix · gamma profile + curve + shift · forced flow (depth) · compare grid
+(10 sector presets) · regime strip · intensity rail · freshness bar · compact matrix · triple desk
+
+**NIGHT HAWK** (12) — 0DTE board · **Bangers board** · **horizon lane board** · **playbook board
+(Legacy)** · play detail modal (THESIS / MANAGEMENT / PNL / TIMELINE) · **hawk record strip
+(track record)** · **feed** · **briefing** · radar backdrop
+
+**SPX SLAYER** (17) — desk terminal · GEX matrix heatmap · pin forecast · play verdict bar ·
+**intel rail** · **pulse rail** · commentary rail (Largo) · **trade alerts + panels** · **signal
+analytics (Morning ORB)** · **matrix tape strip** · **strike ladder axis** · **session time bar** ·
+**sniper header** · Vector embed
+
+**MERIDIAN** (18) — timeline · analytics grid · 15 labelled panels · event tabs (Summary / Report /
+Estimates / Positioning / History) · **macro report** · **OpEx cross-market** · **peer cohort**
+
+**LARGO** (24) — terminal · answer message · **structured cards** · **compare card** ·
+**pre-earnings pack card** · **play-similarity card** · **slash menu + slash prompts** · **desk
+module picker** · **answer-mode toggle** · **desk scope banner** · status strip · followup chips
+
+### What this changes about the hourly cycle
+
+The cycle was written as *inspect seven surfaces → find a story*. That is backwards now:
+
+```
+1. Vector Universe Scanner → "Nearest flip" / "Most explosive"   ← the ranked candidate list
+2. Helix Net Premium Leaderboard                                 ← where the money is
+3. Meridian catalyst timeline                                    ← what is scheduled
+   ↓  pick the story from those three
+4. THEN open the named product and capture the evidence
+```
+
+Three panels replace a browse. Use them.
 
 ---
 
@@ -78,6 +196,10 @@ the book says they **amplify** it. Set ALL on MATRIX **before** switching tabs �
 renders no expiry bar at all.
 
 **Lens is free:** GEX / VEX / DEX / CHARM. Rotate it.
+
+**⛔ BUT THE COPY MUST NAME THE HORIZON.** `MEASURED` — capturing ALL is correct; describing an
+all-expiry aggregate as today's actionable level is not. For a session claim, read the near-dated
+scope and say which scope each number came from. See the lessons log.
 
 **Sector grid:** ten presets — Indices · Macro · Semis · AI · Space · Mag 7 · Crypto · Energy ·
 Financials · Healthcare. Ten presets is ten distinct frames.
@@ -124,6 +246,31 @@ move — not the bare chart.
 **`COMPARE` presets:** MAG 7 / INDICES / SEMIS / MOMENTUM.
 **`Replay`** — scrub a past session. `UNEXPLORED` by this lane; used by the Jul-30 batch and it is
 one of the most distinctive things the platform does. Prioritise showcasing it.
+
+**⏰ THE TIME AXIS IS UTC, NOT ET.** `MEASURED` — subtract 4 (EDT) before any time reaches copy.
+Two anchors fix it: the previous session's closing volume spike sits at **20:00** (16:00 ET close)
+and today's opening spike at **13:30** (09:30 ET open). A first reading of an NVDA frame called the
+"09:00 flush" the open; it was **05:00 ET premarket**. Getting this wrong moves every event four
+hours and manufactures a session claim out of an overnight one.
+
+**💲 SPOT IS THE BANNER OR THE PRICE TAG — NEVER THE LAST VISIBLE CANDLE.** `MEASURED` — a zoomed or
+scrolled frame ends where the viewport ends, not at the latest bar. Five NVDA captures showed
+rightmost candles at 216.30–217.84 while the banner read 214.89–215.26; the banner was right
+(independent last trade 215.2659 at 11:04:41 ET, Thermal header 215.05 at 11:01:05 ET). At full fit
+the chart's own tag read 215.12 and agreed with its banner. The disagreement was the zoom.
+
+**Reference recipe — verified 2026-08-21.**
+`--surface vector --mode fullscreen --indicators "VWAP,Opening range" --zoom 9`
+→ 2512×1354, 46% ink, 0% dead band. Full RTH session, individual candles, both wall bands with
+their bead stacks, gamma flip, VWAP and opening-range levels all labelled.
+
+- **Indicators BEFORE full screen.** The other order drops the chart to column width — an identical
+  run went 2512×1354 → 1196×1398 portrait.
+- **The zoom wheel anchors at 90% width.** The chart zooms about the cursor, so a centre anchor
+  walks the newest bars off-frame: at `--zoom 11` the last candle shown was 12:12 on a chart live to
+  14:00. For a "caught it first" post the right edge *is* the evidence.
+- Vector ships with indicators already on (the trigger carries a badge count), so a named toggle can
+  turn one **off**. The run reports the resulting count.
 
 **Use when:** a level is doing the work — break, reclaim, repeated test.
 
@@ -193,6 +340,19 @@ Before accepting any frame:
 4. **Does it show something only BLACKOUT has?**
 5. **Is there a more powerful panel elsewhere for this same claim?**
 
+### Reject and re-take — now measured, not judged
+
+```bash
+node scripts/audit/x-intel-frame-quality.mjs frame.png     # exit 1 if it fails
+```
+
+Thresholds: ink < 2% (empty/loading) · dead band > 28% · empty grid regions > 45% ·
+timeline legibility < 0.55 · aspect > 3.2:1 (sliver) or < 0.8 (X crops it) · content into the
+bottom edge > 50% (truncated panel).
+
+Judging a frame at 100% zoom on a desktop is exactly how a capture whose beads cluster at phone
+size gets approved. Run the scorer.
+
 ### Reject and re-take
 
 Huge empty areas · irrelevant panels · unreadable data at timeline size · clutter · awkward
@@ -226,7 +386,103 @@ contrasting product views.
 
 ## 5. Lessons log
 
+### 2026-08-21 — I read a chart four hours wrong, and the fix was to stop reasoning and measure
+
+Chasing an apparent contradiction — the Vector regime banner said NVDA spot ~215 while the chart's
+last visible candle read 216.30–217.84 — I built a theory that the banner was stale, and nearly
+wrote it down as a rule that said *never source a price from the banner*.
+
+It was exactly backwards. An independent last trade (215.2659 at 11:04:41 ET) and the Thermal header
+(215.05 at 11:01:05 ET) both agreed with the **banner**. What was wrong was my reading of the chart:
+a zoomed frame ends where the viewport ends, and the rightmost *visible* candle was simply not the
+latest bar. At full fit the chart's own price tag read 215.12 and agreed with its own banner all
+along.
+
+The same run turned up the real finding underneath: **the time axis is UTC.** The previous session's
+closing volume spike sits at "20:00" and today's opening spike at "13:30" — 16:00 ET and 09:30 ET.
+I had already described that 09:00 flush as the open in my own notes. It is 05:00 ET premarket.
+
+Three things worth keeping:
+
+1. **A discrepancy is a question, not a finding.** I had five captures showing the same gap and was
+   one step from publishing a rule built on the wrong half of it. What settled it was one unzoomed
+   capture bracketed by wall-clock, plus an independent price — thirty seconds of measurement
+   against an hour of plausible reasoning.
+2. **The honest intermediate answer was "I cannot resolve this from here."** The market-data feed I
+   reached for did not reconcile with the platform's own volumes, and saying so and going back to
+   the product beat picking whichever source flattered the theory.
+3. It is the operator's error class again, one level up. *Right number, wrong horizon* became
+   *right number, wrong clock.*
+
+
 Append-only. Newest first.
+
+### 2026-08-21 — frames are now MEASURED, and the first thing it caught was mine
+
+Built `scripts/audit/x-intel-frame-quality.mjs` + `lib/frame-quality-eval.cjs`: the reject list was
+prose, and prose gets applied by whoever remembers to apply it. Every item on it is a measurable
+property of the PNG.
+
+**The first version passed all nine frames I fed it, which meant the metric was broken, not that
+the frames were perfect.** `timelineLegibility` normalised gradient energy by the scale factor,
+which cancels the signal it was measuring and returns 1.00 for everything. Rewritten as
+downscale → upscale → reconstruction error, measured only over pixels that carry content (a large
+empty canvas otherwise dilutes the error of the one panel a reader needs).
+
+Scored against every frame captured today:
+
+| frame | ink | empty | legibility | aspect | verdict |
+|---|---|---|---|---|---|
+| V-spx-zoom (operator-approved) | 17.7% | 0% | **0.88** | 0.91 | PASS |
+| T-semis2 | 16.5% | 0% | 0.60 | 1.70 | PASS |
+| PKG-thermal-spx | 11.2% | 0% | 0.57 | 1.94 | PASS |
+| M-nvda-report | 7.3% | 10% | 0.57 | 1.64 | PASS |
+| T-depth | 6.1% | 36% | 0.68 | 2.54 | PASS |
+| **M-macro** | 8.3% | 15% | **0.51** | 2.34 | **REJECT** |
+| **SCAN-top14** | 2.3% | 34% | **0.43** | **4.89** | **REJECT** |
+| **M-heatgrid** | 8.6% | 26% | 0.63 | **20.68** | **REJECT** |
+
+**The operator-approved Vector zoom scores highest on legibility (0.88), by a wide margin.** That
+is real evidence the metric tracks their judgement rather than my own — it was not tuned to
+produce that result.
+
+**It rejected a frame I had just praised.** I sent SCAN-top14 describing it as "a genuinely postable
+attachment". At 4.89:1 with legibility 0.43 it is a letterboxed strip whose numbers a reader cannot
+read without tapping. The scanner is a superb story-FINDING tool and a poor standalone attachment —
+those are different jobs, and I had conflated them.
+
+**Rule added:** the scanner and the thin Meridian strips are CONFIRMATION-slot frames or internal
+research, never the lead attachment. If a ranking must be shown, crop to ~6 rows and pair it.
+
+### 2026-08-21 — the horizon error (caught by the operator)
+
+**I drafted a post that was wrong, and the number was transcribed correctly.** That is what makes
+it worth writing down.
+
+A premarket package quoted `CALL WALL 7,900` for a post about that day's session. The value came
+straight off the attachment — but the attachment was the **ALL-expiry** view, where far-dated OpEx
+positioning dominates, and the post was about the next six hours. The near-dated read of the same
+ticker at the same minute was not a different number, it was the **opposite story**:
+
+```
+ALL  : SHORT GAMMA · net GEX -$39.2B · call wall 7,900 · vol EXPANDED   · "no gamma flip"
+0DTE : LONG  GAMMA · net GEX -$13.4B · call wall 7,700 · vol SUPPRESSED · flip 7,633
+```
+
+The draft told readers dealer hedging would **amplify** the move into a 09:45 print, on a session
+whose 0DTE book says dealers are **stabilizing** and volatility is **suppressed**.
+
+**The ALL-filter capture rule was not the problem — it is correct and stays.** The failure was in
+the copy: an aggregate across every expiry narrated as though it described today.
+
+**Rule now enforced in code:** every options-book value carries the horizon it was read at, and
+`readyBlockReason()` refuses a package that claims something about today's session while every
+cited level is all-expiry. A mixed set is fine — far-dated context alongside a near-dated basis is
+exactly right.
+
+**The general lesson, which is bigger than Thermal:** an accurate transcription of the wrong scope
+is still a false claim. Ask *"what horizon is this number about, and what horizon is my sentence
+about?"* before every level that reaches copy.
 
 ### 2026-08-21 — first live capture cycle
 

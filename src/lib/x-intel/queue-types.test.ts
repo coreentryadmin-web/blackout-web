@@ -41,7 +41,9 @@ function readyRow(over: Partial<ReadyInput> = {}): ReadyInput {
       }),
     ],
     chronology: null,
-    underlying_evidence: [{ what: "flip", value: "6784", source: "thermal" }],
+    underlying_evidence: [
+      { what: "flip", value: "6784", source: "thermal", horizon: "0dte" },
+    ],
     ...over,
   };
 }
@@ -379,5 +381,72 @@ describe("blind spots — an unread surface must never arrive as a read one", ()
     const skip = X_INTEL_QUEUE_FIXTURES.find((r) => r.status === "SKIP")!;
     assert.equal(skip.skip_kind, "QUIET");
     assert.deepEqual(skip.blind_spots, []);
+  });
+});
+
+describe("horizon — an all-expiry aggregate must not describe today's session", () => {
+  // The real 2026-08-21 error. Same ticker, same minute, two scopes, OPPOSITE stories:
+  //   ALL  : SHORT GAMMA · call wall 7,900 · vol EXPANDED   · "no gamma flip"
+  //   0DTE : LONG  GAMMA · call wall 7,700 · vol SUPPRESSED · flip 7,633
+  const allExpiry = [
+    { what: "call wall", value: "7,900", source: "thermal" as const, horizon: "all" as const },
+    { what: "net GEX", value: "-$39.2B", source: "thermal" as const, horizon: "all" as const },
+  ];
+  const zeroDte = [
+    { what: "call wall", value: "7,700", source: "thermal" as const, horizon: "0dte" as const },
+    { what: "gamma flip", value: "7,633", source: "thermal" as const, horizon: "0dte" as const },
+  ];
+
+  it("REFUSES a session claim built only on all-expiry values", () => {
+    const reason = readyBlockReason({
+      ...readyRow({ underlying_evidence: allExpiry }),
+      session_claim: true,
+    });
+    assert.match(String(reason), /ALL-expiry scope.*today's session/s);
+  });
+
+  it("allows the SAME evidence when the package is not claiming anything about today", () => {
+    // Structural positioning is a legitimate story; it just must not be narrated as intraday.
+    assert.equal(
+      readyBlockReason({ ...readyRow({ underlying_evidence: allExpiry }), session_claim: false }),
+      null,
+    );
+  });
+
+  it("allows a session claim built on near-dated values", () => {
+    assert.equal(
+      readyBlockReason({ ...readyRow({ underlying_evidence: zeroDte }), session_claim: true }),
+      null,
+    );
+  });
+
+  it("allows a session claim that MIXES scopes — the far-dated one is context, not the basis", () => {
+    assert.equal(
+      readyBlockReason({
+        ...readyRow({ underlying_evidence: [...zeroDte, ...allExpiry] }),
+        session_claim: true,
+      }),
+      null,
+    );
+  });
+
+  it("REFUSES an options-book value carrying no horizon at all", () => {
+    const reason = readyBlockReason(
+      readyRow({
+        underlying_evidence: [{ what: "call wall", value: "7,900", source: "thermal" }],
+      }),
+    );
+    assert.match(String(reason), /carries no horizon/);
+  });
+
+  it("does not demand a horizon on values that have no expiry dimension", () => {
+    assert.equal(
+      readyBlockReason(
+        readyRow({
+          underlying_evidence: [{ what: "SPX spot", value: "7,641.16", source: "market" }],
+        }),
+      ),
+      null,
+    );
   });
 });
