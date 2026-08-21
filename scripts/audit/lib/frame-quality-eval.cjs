@@ -291,15 +291,25 @@ function scoreFrame(rgba, width, height) {
   const emptyCells = gridEmptiness(rgba, width, height);
 
   const rejects = [];
+  const warnings = [];
   if (emptyCells > 0.45) rejects.push(`${(emptyCells * 100).toFixed(0)}% of the frame is empty region — reframe onto the content`);
   if (aspect.verdict === "sliver") rejects.push(aspect.note);
   if (ink < 0.02) rejects.push(`almost no content (ink ${(ink * 100).toFixed(1)}%) — empty or a loading state`);
   if (band.fraction > 0.28) rejects.push(`dead band covering ${(band.fraction * 100).toFixed(0)}% of the height`);
   if (legibility < 0.55) rejects.push(`detail collapses at timeline width (legibility ${legibility.toFixed(2)}) — numbers unreadable without tapping`);
   if (aspect.verdict === "too-tall") rejects.push(`aspect ${aspect.ratio.toFixed(2)}:1 — ${aspect.note}`);
-  if (edges.bottom > 0.5) rejects.push(`content runs into the bottom edge (${(edges.bottom * 100).toFixed(0)}%) — panel likely truncated`);
+  // Edge contact is a WARNING, not a reject.
+  //
+  // The header on `edgeClipping` says the per-edge split exists so a caller can tell a deliberate
+  // full-bleed chart from a truncated panel — and then the first version rejected on it anyway. A
+  // correctly framed Vector chart runs its volume pane to the bottom edge by design and scored
+  // 100% there; rejecting that trains a reviewer to ignore the checker, which is worse than not
+  // having one. Distinguishing intent from truncation is not something these pixels can do, so it
+  // is surfaced for a human instead of decided for them.
+  if (edges.bottom > 0.5) warnings.push(`content reaches the bottom edge (${(edges.bottom * 100).toFixed(0)}%) — intended for a full-bleed chart, a truncated panel otherwise`);
+  if (edges.top > 0.5) warnings.push(`content reaches the top edge (${(edges.top * 100).toFixed(0)}%)`);
 
-  return { ink, band, legibility, edges, aspect, emptyCells, rejects, pass: rejects.length === 0 };
+  return { ink, band, legibility, edges, aspect, emptyCells, rejects, warnings, pass: rejects.length === 0 };
 }
 
 module.exports = {

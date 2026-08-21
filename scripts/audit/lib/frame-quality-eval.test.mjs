@@ -139,3 +139,33 @@ describe("scoreFrame", () => {
     assert.equal(scoreFrame(b, w, h).pass, true);
   });
 });
+
+describe("scoreFrame — edge contact warns, it does not reject", () => {
+  // A correctly framed Vector chart runs its volume pane to the bottom edge on purpose. v1
+  // rejected on that and threw away the one frame in the package that was actually right. These
+  // pixels cannot tell intent from truncation, so the call belongs to the reviewer.
+  function fullBleedChart() {
+    const w = 1600, h = 900, b = canvas(w, h);
+    stripes(b, w, 40, 40, w - 40, h - 60, 20);
+    fill(b, w, 0, h - 60, w, h, 190); // volume pane, flush to the bottom
+    return { b, w, h };
+  }
+
+  it("still passes a frame whose content reaches the bottom edge", () => {
+    const { b, w, h } = fullBleedChart();
+    const s = scoreFrame(b, w, h);
+    assert.ok(s.edges.bottom > 0.5, `test fixture must touch the edge, got ${s.edges.bottom}`);
+    assert.equal(s.pass, true, `rejected on: ${s.rejects.join("; ")}`);
+  });
+
+  it("surfaces the edge contact as a warning so a reviewer can still see it", () => {
+    const { b, w, h } = fullBleedChart();
+    assert.match(scoreFrame(b, w, h).warnings.join(" "), /reaches the bottom edge/);
+  });
+
+  it("keeps warnings empty when nothing touches an edge", () => {
+    const w = 1600, h = 900, b = canvas(w, h);
+    stripes(b, w, 40, 40, w - 40, h - 40, 20);
+    assert.deepEqual(scoreFrame(b, w, h).warnings, []);
+  });
+});

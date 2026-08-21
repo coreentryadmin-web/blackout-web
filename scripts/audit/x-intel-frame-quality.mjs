@@ -51,7 +51,8 @@ if (json) {
         `${r.aspect.ratio.toFixed(2).padStart(8)}  ` +
         (r.pass ? "PASS" : "REJECT"),
     );
-    for (const x of r.rejects) console.log(`${" ".repeat(28)}↳ ${x}`);
+    for (const x of r.rejects) console.log(`${" ".repeat(28)}✗ ${x}`);
+    for (const x of r.warnings ?? []) console.log(`${" ".repeat(28)}! ${x}`);
   }
   const failed = rows.filter((r) => !r.pass).length;
   console.log(`\n${rows.length - failed}/${rows.length} pass`);
