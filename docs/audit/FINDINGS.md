@@ -175,7 +175,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Live verification** | Re-ran against prod: the network P3 is gone, the `[poll]` line reports 3/6 and 4/6 over 38s, and the run drops from 2 P2 · 5 P3 to **1 P2 · 4 P3** — the remaining P2 being the orbital overlap #2502 already fixes. |
 | **Regression guard** | 7 tests in `src/meridian-audit-poll-count.test.ts` — under `src/` deliberately, because `scripts/run-tests.mjs` walks `src/` only and a test beside the audit lib would never gate CI. They pin the exact live false positive, that a real storm still fires, that non-polling endpoints keep the strict allowance, and the bad-elapsed fallback. |
 | **Gates on Node 20.20.2** | `npx tsc --noEmit` clean · `npm test` **9078 pass / 0 fail** · `npm run build` clean · `npx eslint` clean. |
-| **Status** | FIXED — PR #____ (draft). Verified against live prod before opening. |
+| **Status** | FIXED — PR #2552 (draft). Verified against live prod before opening. |
 
 ## 2026-08-21 — [FINDING, P2 Largo] Rule-7 sweep of the HELIX lane — two more places absence was published as measurement — FIXED
 
