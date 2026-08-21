@@ -44,15 +44,36 @@ const CK = process.env.PROBE_COOKIE || '';
     page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text().slice(0, 160)); });
     try {
       await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
-      await page.waitForTimeout(11000);
 
-      // ── PAGE-LOADED GATE ──
-      const loaded = await page.evaluate(() => {
-        const t = document.body.innerText || '';
-        return { thermal: /BlackOut Thermal/i.test(t), matrix: /MATRIX/i.test(t), state: /THERMAL STATE/i.test(t), title: document.title };
-      });
+      // ── PAGE-LOADED GATE, POLLED ──
+      // Originally a flat 11s sleep. That is a guess about hydration speed, and on 2026-08-21 it
+      // reported HARNESS against a perfectly healthy production page that simply painted at ~13s
+      // under load — a false alarm on the exact surface the harness exists to judge. A fixed wait
+      // can only be too short (false HARNESS) or wastefully long; polling is neither. The gate
+      // itself is unchanged: if it never satisfies within the budget we still report HARNESS and
+      // never a product verdict.
+      const GATE_BUDGET_MS = Number(process.env.PROBE_GATE_MS || 45000);
+      const started = Date.now();
+      let loaded = null;
+      while (Date.now() - started < GATE_BUDGET_MS) {
+        // `document.body` can still be null on the first poll — the fixed sleep this replaced
+        // happened to hide that. Guard it, and treat an evaluate that throws (a navigation
+        // landing mid-poll) as "not loaded yet" rather than letting it abort the run.
+        try {
+          loaded = await page.evaluate(() => {
+            const t = (document.body && document.body.innerText) || '';
+            return { thermal: /BlackOut Thermal/i.test(t), matrix: /MATRIX/i.test(t), state: /THERMAL STATE/i.test(t), title: document.title };
+          });
+        } catch { loaded = loaded || null; }
+        if (loaded && loaded.thermal && loaded.matrix) break;
+        await page.waitForTimeout(1000);
+      }
+      // Let late-hydrating panels settle before measuring geometry — a rect read mid-paint is not
+      // evidence either.
+      await page.waitForTimeout(2500);
+      if (loaded) loaded.gate_ms = Date.now() - started;
       if (!loaded || !loaded.thermal || !loaded.matrix) {
-        console.log(`\n[${vp}] HARNESS — page-loaded gate failed`, JSON.stringify(loaded), `routed ${counts.ok}/${counts.fail}`);
+        console.log(`\n[${vp}] HARNESS — page-loaded gate never satisfied within ${GATE_BUDGET_MS}ms`, JSON.stringify(loaded), `routed ${counts.ok}/${counts.fail}`);
         await browser.close(); continue;
       }
 
@@ -107,6 +128,21 @@ const CK = process.env.PROBE_COOKIE || '';
           if (cs.visibility === 'hidden' || cs.display === 'none' || Number(cs.opacity) === 0) continue;
           const r = n.getBoundingClientRect();
           if (r.width < 2 || r.height < 2) continue;
+          // FILTER 1 — off-screen. A row scrolled out of view still reports a viewport rect and
+          // duly "collides" with the page header.
+          if (r.bottom <= 0 || r.top >= innerHeight || r.right <= 0 || r.left >= innerWidth) continue;
+          // FILTER 2 — clipped by a scrolling ancestor. Walk up; if the leaf's rect falls outside
+          // a scrolling/hidden ancestor's rect it is not visible where it claims to be.
+          let clippedOut = false;
+          for (let a = n.parentElement; a && a !== document.body; a = a.parentElement) {
+            const acs = getComputedStyle(a);
+            if (acs.overflowX === 'visible' && acs.overflowY === 'visible') continue;
+            const ar = a.getBoundingClientRect();
+            if (r.bottom <= ar.top + 1 || r.top >= ar.bottom - 1 || r.right <= ar.left + 1 || r.left >= ar.right - 1) {
+              clippedOut = true; break;
+            }
+          }
+          if (clippedOut) continue;
           leaves.push({ txt: txt.slice(0, 22), x: r.left, y: r.top, w: r.width, h: r.height });
         }
         const hits = [];
@@ -120,7 +156,7 @@ const CK = process.env.PROBE_COOKIE || '';
       });
 
       if (!m) { console.log(`[${vp}] HARNESS — probe returned undefined`); await browser.close(); continue; }
-      console.log(`\n[${vp}] routed ${counts.ok} ok / ${counts.fail} fail — PAGE LOADED (${loaded.title})`);
+      console.log(`\n[${vp}] routed ${counts.ok} ok / ${counts.fail} fail — PAGE LOADED in ${loaded.gate_ms}ms (${loaded.title})`);
       console.log(`  body horizontal overflow : ${m.bodyOverflow}px  ${m.bodyOverflow > 1 ? '<-- PAGE SCROLLS SIDEWAYS' : 'ok'}`);
       console.log(`  elements past viewport   : ${m.offenderCount}`);
       for (const o of m.offenders) console.log(`      ${o.tag}.${o.cls} right=${o.right} vw=${o.vw} overflowX=${o.overflowX}`);

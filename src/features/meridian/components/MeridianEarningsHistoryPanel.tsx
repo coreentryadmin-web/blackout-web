@@ -31,7 +31,10 @@ export function MeridianEarningsHistoryPanel({
   analyticsRows?: readonly MeridianEarningsAnalyticsRow[];
 }) {
   const prints = enrichment.print_history ?? [];
-  const moves = prints.map((p) => p.session_change_pct);
+  // The REACTION, not the anchor session's open→close: "is the market pricing more than it
+  // delivers" compares an implied move against what the print actually did, and for a post-close
+  // print that is the overnight gap plus the session, not the session alone.
+  const moves = prints.map((p) => p.reaction_pct ?? p.session_change_pct);
   const rates = enrichment.beat_rates;
   const graded = prints.filter((p) => p.beat != null).length;
 
