@@ -85,10 +85,17 @@ export async function bangerBoardForLargo(limit = 40) {
       scale_out_action: row.scale_out_action,
       discovery_gain: row.discovery_gain,
     });
+    const nowMs = Date.now();
     return roundFloats({
       available: true,
       enabled: true,
-      as_of: new Date().toISOString(),
+      as_of: new Date(nowMs).toISOString(),
+      // `as_of` alone is a bare UTC instant, and every row here is keyed by an ET
+      // `session_date`. Between ~20:00 ET and midnight the UTC date is already TOMORROW, so
+      // a model resolving "today" from `as_of` reads a session ahead of the one these
+      // positions belong to.
+      as_of_et: etStamp(nowMs),
+      session_date: etSessionDate(nowMs),
       exit_rule_note: bangerScaleOutNote(),
       // The real number of open positions, not the number visible in this page. When the count
       // query fails we fall back to the page tally AND say so, rather than passing off a
@@ -140,9 +147,15 @@ export async function nighthawkHorizonsForLargo() {
     ? ((zerodte as { plays: Array<{ ticker: string; status: string; direction: string }> }).plays ?? [])
     : [];
   const open0 = zPlays.filter((p) => !/closed|graded/i.test(p.status));
+  const nowMs = Date.now();
   return roundFloats({
     available: true,
-    as_of: new Date().toISOString(),
+    as_of: new Date(nowMs).toISOString(),
+    // The 0DTE counts below are SESSION-scoped — "how many plays are open today" is
+    // meaningless without saying which ET session "today" is. A bare UTC `as_of` reads a
+    // day ahead after 20:00 ET.
+    as_of_et: etStamp(nowMs),
+    session_date: etSessionDate(nowMs),
     zero_dte: {
       play_count: zPlays.length,
       open_count: open0.length,
