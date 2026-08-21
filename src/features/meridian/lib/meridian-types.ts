@@ -781,6 +781,16 @@ export type MeridianTimelinePayload = {
   earnings_calendar_entitled: boolean;
   /** Prints hidden because the name has no listed options. */
   non_optionable_hidden?: number;
+  /** How far the options-implied move got — requested / attempted / skipped / resolved, and a
+   *  note when anything was skipped. A null `expected_move_pct` on a SKIPPED name is not evidence
+   *  the name lacks an options market. */
+  expected_move_coverage?: {
+    requested: number;
+    attempted: number;
+    skipped: number;
+    resolved: number;
+    note: string | null;
+  };
   /** False when the optionable universe was unavailable, so NOTHING was filtered. */
   optionable_filter_applied?: boolean;
   /** How many lane rows carry a sector cohort key, and how many do not. Coverage, stated. */
