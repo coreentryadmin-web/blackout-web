@@ -341,6 +341,22 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Honest limit** | A system-prompt change can only be validated by re-running the stress test against the DEPLOYED prompt — an LLM answer is sampled, so the evidence is "the slip stopped recurring across N runs", not a determinism proof. The harness is committed so that re-run is one command post-deploy. The clean run before this fix was already 14/14; this raises the floor on the one intermittent slip, it does not claim 100%. |
 | **Status** | FIXED (prompt) — tsc clean, `system-prompt.test.ts` 13/13; live re-validation pending the prod deploy of the new prompt. |
 
+## 2026-08-21 — [FINDING, P3 tooling] The interaction audit reported a deliberate, recoverable text cap as clipped text on every run — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `[P3] tablet/Report.mr — 4 clipped text nodes` on every run, naming `Vector expected move`, `Street / analysts`, `News & catalysts`, `Insider activity`. |
+| **Why it is a false positive** | Those are the Meridian orbital rim labels, and the cap is deliberate. `.ms-orb-label` sets `max-width: 84px; overflow: hidden; text-overflow: ellipsis` so a long pillar name cannot shove into a neighbour's slot on a crowded rim, and the full string is carried on the parent button's **`title`** AND **`aria-label`** — verified in `meridian-spatial.tsx`, not taken from the CSS comment — with `.ms-orb:hover` restoring the label in place (`max-width: none; overflow: visible`). Two independent recovery paths, plus the DOM text itself is complete, so a screen reader was never affected. |
+| **Why it matters** | Four entries, every run, on a panel behaving exactly as designed. This file's own header makes the argument: a check that fires on healthy pages teaches its reader to skip the report — which is where a real clip would appear. Same family as the console-echo false positive (#2588) and the duplicate-fetch one (#2552). |
+| **Fix** | The rule is NARROWED, not relaxed. Text clipped by its container is still reported unless the full string is recoverable: the element or any ancestor up to `document.body` carries a `title` or `aria-label` that CONTAINS it. An ancestor walk because the capped label and the control that names it are different nodes. Whitespace is normalised on both sides before comparing. Empty text is never reported — an icon-only span can trip `scrollWidth` with nothing to cut off. |
+| **What is still reported** | Text clipped with no way to get it back. That is the case that actually costs a member something, and it is untouched. |
+| **Regression guard** | 4 tests in `src/meridian-audit-clip-recoverable.test.ts` — a source guard, because the predicate runs inside `page.evaluate` and cannot be imported, the same constraint `ui-geometry-probe.mjs` lives with. They pin that the geometry test and the overflow test both survive; that the excuse requires an actual `.includes(full)` against a title or accessible name; that the walk climbs ancestors and terminates at `body`; that empty text is skipped; and that the motivating case stays documented next to the code. |
+| **Non-vacuity** | Three mutations: the check deleted outright (the way a false-positive fix usually goes wrong) -> 3 tests fail; the excuse widened to accept any clip regardless of recoverability -> the narrowness test fails; the motivating case undocumented -> the documentation test fails. |
+| **Gates on Node 20.20.2** | `npx tsc --noEmit` clean · `npm test` **9446 pass / 0 fail / 1 skipped** · `npm run build` clean · `npx eslint` (2 changed files) clean. |
+| **Status** | FIXED — this PR (draft). Audit-only: no product code changes. Verified by re-running the audit and confirming the four orbital labels no longer appear while genuinely unrecoverable clips still would. |
+
 ## 2026-08-21 — [FINDING, P1 Thermal/Largo] `get_positioning` hid a nearer gamma flip — Largo told a member a 1%-fragile regime was a "comfortable 7% cushion" — FIXED
 
 > **kind:** `FINDING`
