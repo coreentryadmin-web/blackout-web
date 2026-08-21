@@ -27,13 +27,21 @@
  * Pure and total: no IO, no throw.
  */
 
-export type EmptyAnswerCause = "timeout" | "no_data";
+export type EmptyAnswerCause = "budget_ceiling" | "timeout" | "no_data";
 
 export function classifyEmptyAnswer(input: {
   elapsedMs: number;
   budgetMs: number;
   toolsUsed: readonly string[];
+  /** The daily AI-spend ceiling is CURRENTLY tripped. Highest precedence: a paused desk has a
+   *  cause the member can act on ("come back after the ET reset"), and it must never be dressed up
+   *  as a data gap OR a timeout. The route's pre-flight gate returns an honest 503, but the ledger
+   *  can cross the ceiling AFTER that check passes (spend accrues every round, across replicas), so
+   *  the loop stops on the ceiling and returns null — this is the caller re-reading that state so
+   *  the empty answer names the real reason. See anthropic.ts::isAiSpendCeilingTripped. */
+  ceilingTripped?: boolean;
 }): EmptyAnswerCause {
+  if (input.ceilingTripped) return "budget_ceiling";
   // 85% of budget: a loop killed at its deadline rarely reports the deadline exactly, and the
   // margin matters more than the precision — misreading a timeout as "no data" sends the member
   // down a road that cannot help, while the reverse merely suggests retrying.
@@ -46,8 +54,15 @@ export function emptyAnswerFallback(input: {
   elapsedMs: number;
   budgetMs: number;
   toolsUsed: readonly string[];
+  ceilingTripped?: boolean;
 }): string {
-  if (classifyEmptyAnswer(input) === "timeout") {
+  const cause = classifyEmptyAnswer(input);
+  if (cause === "budget_ceiling") {
+    // Mirrors the route's pre-flight 503 (route.ts) so a member sees ONE consistent message whether
+    // the ceiling was already tripped at the gate or crossed mid-request.
+    return "Largo is temporarily paused: the platform-wide daily AI spend limit has been reached. Try again after midnight ET.";
+  }
+  if (cause === "timeout") {
     const secs = Math.round(input.elapsedMs / 1000);
     return (
       `That took longer than my ${Math.round(input.budgetMs / 1000)}s budget for this answer mode ` +
