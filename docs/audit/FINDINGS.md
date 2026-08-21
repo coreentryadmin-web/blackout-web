@@ -4,6 +4,58 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-21 — [FINDING, P1 tooling] The FINDINGS merge resolver raised a false collision on identical edits and carried damaged input through silently — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Releasing a 12-PR batch, `findings-merge-resolve.mjs` refused two PRs (#2515, #2502) with `1 entry/entries edited on BOTH sides — resolve by hand`, and produced a file for a third (#2446) that it reported as a clean merge but which failed `findings-hygiene.test.ts` immediately afterwards with four headings "glued to the previous line". Two different failure modes, one tool, both surfacing only under batch use. |
+| **Root cause A — false collision** | The contested test asked only "did theirs change from base AND did ours change from base". When a lane's finding lands on `main` through a batch PR while the lane branch still carries it, both stages hold **byte-identical** text. That satisfies both halves of the test, so the resolver refused. On #2515 and #2502 the entire divergence from base was **one trailing blank line, present identically on both sides** — there was nothing to choose between and nothing to lose. |
+| **Root cause B — damaged input** | A heading fused onto the end of a previous line stops being an entry: `splitEntries` reads it as body text of the entry above. The resolver's own "no silent loss" guard compares what it wrote against what it parsed — but it parsed the damaged input the same way it wrote it, so the counts balanced and the guard passed. The gluing defect in the resolver's own output was fixed earlier; the branches that merged before that fix **still carry the damage**, and every one of them is an input to a future merge. |
+| **Evidence** | #2446: `not ok 7 - entry headings are never glued onto the end of another line`, naming lines 5, 16, 32 and 46 — four entries the resolver had just declared merged. #2515/#2502: `difflib` on the contested entry versus base shows `+` one blank line on ours and the identical `+` one blank line on theirs. |
+| **Fix** | Decision logic extracted to `scripts/audit/lib/findings-merge-core.mjs` (`splitEntries`, `repairGlued`, `countGlued`, `resolveStages`) so it can be exercised against fixtures rather than only against a live three-stage merge. (A) `resolveStages` returns early on `ourLines === theirLines` — convergent edits are not collisions. (B) every stage is repaired **before** it is split, and the repair count is REPORTED, not applied silently: a repaired input means some other open branch is still carrying the damage, and that is information the operator needs. |
+| **Why not "just relax the guard"** | The divergent case is still refused, and the entry-count guard is unchanged. What changed is that the tool no longer treats "no difference" as "a difference I cannot adjudicate", and no longer treats input it cannot parse as input that parsed fine. Both are the same defect class this repo keeps recording: **an unknown rendered as a measurement.** |
+| **Blast radius** | The resolver is the only path the coordinator uses to land agent PRs past the FINDINGS append collision, so a false refusal blocks releases and a silent corruption ships. Both were exercised on the same batch. `findings-hygiene.test.ts` catches (B) downstream but only if someone runs it — it is not a merge-time gate. |
+| **Regression guard** | `src/findings-merge-resolve.test.ts` (9 tests): preamble separation, occurrence-keyed duplicate headings, one-sided append, identical-edit acceptance, divergent-edit refusal, glued-heading detection, repair, repair-is-counted, and no glued heading in the output. Verified non-vacuous — removing the identical-edit early return and the repair call fails exactly tests 4 and 8, and nothing else. |
+| **Status** | FIXED. |
+
+## 2026-08-21 — [FINDING, P2 tooling] A conflicted PR has NO CI run at all, and the absence read as a broken CI trigger — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Four open PRs (#2534, #2545, #2552, #2563) showed **zero** workflow runs on their head SHA — not queued, not skipped, absent — while sibling branches built normally in the same minutes. Reported to the operator as an unexplained CI-trigger fault with no root cause. |
+| **Root cause** | It is not a second fault. `ci.yml` runs `on: pull_request`, and GitHub builds those runs against `refs/pull/N/merge`. For a **conflicted** PR that ref cannot be created, so no run is ever started. `verify: NONE` and `mergeable_state: dirty` are the SAME fact reported through two fields. |
+| **Evidence** | Decisive, one branch, two pushes, nothing else changed. `claude/meridian-largo-cohort-unit-fix` (#2563): an **empty commit** pushed while the PR was conflicted → `actions/runs?head_sha=3bd3945` returns **total_count 0**. Conflict then resolved and pushed → `head_sha=1a6c8e0` returns **4** runs within seconds. |
+| **Why it misled** | The two facts arrive through different API calls, so nothing put them side by side. An empty-commit re-trigger — the obvious remedy for a missed webhook — also produced zero runs, which *looked* like confirmation that the trigger itself was broken. It was confirming the conflict. |
+| **Cost** | Time spent hunting a phantom infrastructure fault, and an incorrect claim to the operator that "a push from this session re-triggers CI" — it does not, while the PR is conflicted. Worse, it split one queue of conflicted PRs into two imagined problems and doubled the apparent remediation work. |
+| **Fix** | `scripts/audit/agent-pr-sweep.mjs` now records `noRuns` per PR and annotates the printed row: `[no CI run — expected while conflicted]` under CONFLICTED, `[no CI run at all]` anywhere else — so the absence is EXPLAINED where it is observed rather than discovered later out of context. The causal note is written into the file header, next to the bucket list it affects. |
+| **Fix rationale** | Deliberately not a new bucket. A separate `NO-CI-RUN` bucket would re-create the error the annotation exists to prevent, by presenting a symptom as an independent blocker with its own remedy. The remedy is the same one CONFLICTED already carries: resolve the conflict. |
+| **Blast radius** | Every lane that reads its own PR state hits this, and at least one already did — the phantom-guards lane reported itself `need_input` blocked on another lane, when its PR was simply conflicted and therefore CI-less. Any tool or agent that treats "no CI run" as independent of "conflicted" will chase it. |
+| **Status** | FIXED. |
+
+## 2026-08-21 — [FINDING, P2 tooling/Meridian] The interaction audit reported correct polling as a duplicate-fetch defect — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Why this exists** | Post-deploy validation of #2479/#2497 flagged `4× /api/market/meridian/event?id=earnings:BEKE:2026-08-21` as "API endpoints fetched more than twice". I went to fix the duplicate fetch and found there was nothing to fix. |
+| **The product was right** | `MeridianDesk` drives the event detail through SWR with `refreshInterval: detailRefreshMsFor(...)`, which returns **15s** for an event that has already printed and **10s** for one within the hour (`meridian-viz-core.ts:1066`). BEKE printed that morning, and the audit held the page open ~60s while cycling five tabs. Four fetches is the designed cadence, not a defect. |
+| **The check was wrong** | `requestCounts.entries().filter(([, n]) => n > 2)` — a bare count with no notion of elapsed time or intentional polling. It could not distinguish a 60-second page from a 3-second one. |
+| **Why a false positive here is expensive** | It fires hardest on the panels polling FASTEST, which are the ones nearest a live catalyst — the highest-value state in the product. A check that cries wolf on correct behaviour teaches its reader to skim past it, and then the real fetch storm it exists to catch reads as more of the same. Same shape as a verdict without its cohort: confidently formed, and about nothing. |
+| **Fix** | `scripts/audit/lib/expected-poll-count.mjs`. A count is judged against the time it had to accumulate in: non-polling URLs keep the strict allowance of 2; the two polling surfaces get `ceil(elapsed / FASTEST_POLL_MS) + 2`. |
+| **Deliberately NOT exempting the polling routes** | Exempting them would have been the one-line fix and would blind the check to a genuine storm on exactly the routes that matter most. Narrowed, not disabled: 4 fetches in 3s still fires (max 3), and 40 fetches in 60s still fires (max 8). |
+| **The allowance is permissive on purpose** | It uses the FLOOR of the cadence ladder (10s), because the harness cannot know which lane a given event landed in (10s / 15s / 45s / 300s). Assuming the fastest means this only fires when polling cannot explain a count **at all** — the only claim it can honestly make. |
+| **Absence of a finding is now stated, not implied** | The run prints `[poll] 2 endpoint(s) repeated within their polling cadence over 38s: 3/6 …timeline, 4/6 …event`. Silence would have read as "nothing repeated", when what happened is that a repeat was UNDERSTOOD — and it is the line that proves the check was not simply widened until it stopped firing. |
+| **A bad elapsed time makes it STRICTER, not blind** | `expectedMaxFetches` falls back to 2 on `0`, negative, `NaN`, `null` or a non-number. If the harness ever fails to record when the page opened, the check tightens rather than silently permitting an unbounded count. |
+| **Live verification** | Re-ran against prod: the network P3 is gone, the `[poll]` line reports 3/6 and 4/6 over 38s, and the run drops from 2 P2 · 5 P3 to **1 P2 · 4 P3** — the remaining P2 being the orbital overlap #2502 already fixes. |
+| **Regression guard** | 7 tests in `src/meridian-audit-poll-count.test.ts` — under `src/` deliberately, because `scripts/run-tests.mjs` walks `src/` only and a test beside the audit lib would never gate CI. They pin the exact live false positive, that a real storm still fires, that non-polling endpoints keep the strict allowance, and the bad-elapsed fallback. |
+| **Gates on Node 20.20.2** | `npx tsc --noEmit` clean · `npm test` **9078 pass / 0 fail** · `npm run build` clean · `npx eslint` clean. |
+| **Status** | FIXED — PR #2552 (draft). Verified against live prod before opening. |
+
 ## 2026-08-21 — [FINDING, P0 correctness] SPX 0DTE net-GEX sign false-flagged vs UW when overlay timed out at 2s — FIXED
 
 > **kind:** `FINDING`
