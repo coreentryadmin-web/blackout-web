@@ -22,6 +22,7 @@ import {
 import { buildZeroDteRecord } from "@/lib/zerodte/record";
 import { formatEtDate, todayEt } from "@/features/nighthawk/lib/session";
 import { summarizeHelixSignalOutcomes } from "@/features/helix/lib/helix-signal-outcome-summary";
+import { etStamp, etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 import { loadSpxDeskPulse, loadSpxPinForecast } from "@/features/spx/lib/spx-desk-loader";
 import { composeCortexRead } from "@/lib/bie/cortex-read";
 import { fetchUnifiedHorizonOutcomes } from "@/lib/horizon-outcomes";
@@ -505,6 +506,7 @@ export async function helixTapeAnalyticsForLargo(ticker: string | null, limit = 
       netPremiumLeaders,
       routeBreakdown,
       expiryConcentration,
+      expiryHorizonConcentration,
       sessionFlowSkew,
     } = await import("@/lib/largo/helix-tape-analytics");
     const summary = await marketPlatform.flows.getFlowTapeSummary({
@@ -512,13 +514,43 @@ export async function helixTapeAnalyticsForLargo(ticker: string | null, limit = 
       ticker: ticker ? ticker.toUpperCase() : undefined,
     });
     const alerts = summary.recent ?? [];
+    const now = new Date();
+    const nowMs = now.getTime();
+    // Largo product contract C1: an ET stamp and an ET session date, from the SHARED helpers
+    // (bar-session-date.ts, #2418) rather than a local Intl call — one definition of "what
+    // session is it" across every lane, so two tools can never disagree about today.
+    //
+    // Both fields are load-bearing here and are NOT redundant: every DTE on this payload is
+    // measured against `session_date`, and in the ~8pm-midnight ET window the UTC date is
+    // already tomorrow. A model resolving "today" from a UTC `as_of` is a full session ahead
+    // and reads the next expiry as 0DTE — the exact defect this payload is being fixed for.
+    const byExpiry = expiryConcentration(alerts, 8, now);
+    const distinctExpiries = new Set(
+      alerts.map((a) => String(a.expiry ?? "unknown").slice(0, 10))
+    ).size;
     return roundFloats({
-      available: alerts.length > 0,
+      // An empty tape is a STATE, not a failure. Reporting available:false for a quiet
+      // off-hours read told the model the tool was broken and invited it to fall back to
+      // some other source; `empty_reason` says which of the two actually happened. Same
+      // convention get_helix_derived already uses.
+      available: true,
+      empty_reason: alerts.length === 0 ? "no_prints_in_window" : undefined,
       ticker: ticker?.toUpperCase() ?? null,
+      as_of: etStamp(nowMs),
+      session_date: etSessionDate(nowMs),
+      window_hours: summary.window_hours ?? null,
       session: sessionFlowSkew(alerts),
       net_premium_leaders: netPremiumLeaders(alerts),
       route_breakdown: routeBreakdown(alerts),
-      expiry_concentration: expiryConcentration(alerts),
+      /** The aggregation the member's Expiry Concentration panel renders. Complete — at most
+       *  four buckets, so no horizon can ever be truncated away. Read THIS for "is there 0DTE
+       *  flow"; the per-date list below is a premium-ranked top-N and drops near-dated
+       *  horizons on any normal tape. */
+      expiry_horizons: expiryHorizonConcentration(alerts, now),
+      expiry_concentration: byExpiry,
+      /** No silent caps: the per-date list above is the top 8 BY PREMIUM out of this many. */
+      expiry_concentration_total_expiries: distinctExpiries,
+      expiry_concentration_truncated: distinctExpiries > byExpiry.length,
       count: summary.count ?? alerts.length,
       total_premium: summary.total_premium ?? null,
     });
