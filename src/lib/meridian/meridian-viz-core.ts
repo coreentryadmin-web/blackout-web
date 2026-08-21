@@ -353,6 +353,16 @@ export type LadderLevel = {
   value: number;
   /** Distance from spot as a signed %, or null when spot is unknown. */
   distPct: number | null;
+  /**
+   * Which chain this level came from, when the caller knows.
+   *
+   * The ladder renders event-scoped and whole-book levels in one list and they look identical —
+   * on prod 2026-08-21 it printed a king node re-summed from twelve expiries directly beneath a
+   * call wall re-summed from one, under a badge claiming both came from the print's own expiry.
+   * Null when the caller has not said, which is the honest default: unlabelled is not the same
+   * claim as "same scope as everything else".
+   */
+  scope?: "event_expiry" | "aggregate" | null;
 };
 
 /**
@@ -371,25 +381,37 @@ export function structureLadder(
     flip?: number | null;
     gex_king_strike?: number | null;
     max_pain?: number | null;
-  } | null | undefined
+  } | null | undefined,
+  /**
+   * Which chain each level came from, keyed by the THERMAL field name (not the ladder key), so a
+   * caller can pass `thermal.level_scopes` straight through without translating it — a mapping
+   * step between the payload that knows the answer and the list that renders it is somewhere for
+   * the two to drift apart.
+   */
+  levelScopes?: Partial<
+    Record<"call_wall" | "put_wall" | "flip" | "gex_king_strike" | "max_pain", "event_expiry" | "aggregate">
+  > | null
 ): LadderLevel[] {
   if (!thermal) return [];
   const spot = num(thermal.spot);
-  const defs: Array<[LadderLevel["key"], string, number | null]> = [
-    ["call_wall", "Call wall", num(thermal.call_wall)],
-    ["gamma_flip", "Gamma flip", num(thermal.flip)],
-    ["spot", "Spot", spot],
-    ["king_node", "King node", num(thermal.gex_king_strike)],
-    ["put_wall", "Put wall", num(thermal.put_wall)],
-    ["max_pain", "Max pain", num(thermal.max_pain)],
+  // [ladder key, label, value, the THERMAL field this level came from]. Spot has no source
+  // field because it is not chain-derived, so it is never scope-labelled.
+  const defs: Array<[LadderLevel["key"], string, number | null, keyof NonNullable<typeof levelScopes> | null]> = [
+    ["call_wall", "Call wall", num(thermal.call_wall), "call_wall"],
+    ["gamma_flip", "Gamma flip", num(thermal.flip), "flip"],
+    ["spot", "Spot", spot, null],
+    ["king_node", "King node", num(thermal.gex_king_strike), "gex_king_strike"],
+    ["put_wall", "Put wall", num(thermal.put_wall), "put_wall"],
+    ["max_pain", "Max pain", num(thermal.max_pain), "max_pain"],
   ];
   return defs
-    .filter((d): d is [LadderLevel["key"], string, number] => d[2] !== null)
-    .map(([key, label, value]) => ({
+    .filter((d): d is [LadderLevel["key"], string, number, typeof d[3]] => d[2] !== null)
+    .map(([key, label, value, sourceField]) => ({
       key,
       label,
       value,
       distPct: spot !== null && spot > 0 ? Number((((value - spot) / spot) * 100).toFixed(2)) : null,
+      scope: (sourceField && levelScopes?.[sourceField]) || null,
     }))
     .sort((a, b) => b.value - a.value);
 }

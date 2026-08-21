@@ -64,21 +64,35 @@ export function MeridianEarningsPositioningPanel({
                   className={`mr-scope mr-scope-${thermal.expiry_scope ?? "aggregate"}`}
                   title={
                     thermal.expiry_scope === "event_expiry"
-                      ? "Levels re-summed from the expiry that covers this print"
+                      ? // NOT "levels" — the walls and max pain are re-summed from this expiry, the
+                        // king node and gamma flip are not. Claiming the whole ladder is what put a
+                        // twelve-expiry king node under an event-expiry badge on prod 2026-08-21.
+                        "Walls and max pain are re-summed from the expiry that covers this print. Levels marked \u201Cagg\u201D come from the whole-book aggregate instead."
                       : `Whole-book aggregate across ${thermal.aggregate_expiry_count ?? "several"} near-term expiries — not scoped to this print`
                   }
                 >
                   {thermal.expiry_label}
                 </span>
               )}
-              <MeridianStructureLadder thermal={thermal} onLevelHover={setHoverPrice} />
+              <MeridianStructureLadder
+                thermal={thermal}
+                levelScopes={thermal.level_scopes}
+                onLevelHover={setHoverPrice}
+              />
               {thermal.net_gex_label && (
+                /* Net GEX, the regime sentence and the nearest wall are ALL whole-book, even when
+                   the walls above them are event-scoped — so this line says whose book it is
+                   reading. Without it the note contradicted the ladder in plain sight: prod
+                   2026-08-21 showed "Call wall 17.50" two lines above "nearest resistance 19". */
                 <p className="mv-note">
                   net GEX {thermal.net_gex_label}
                   {thermal.gamma_regime ? ` · ${thermal.gamma_regime}` : ""}
                   {thermal.nearest_wall
                     ? ` · nearest ${thermal.nearest_wall.kind} ${thermal.nearest_wall.strike}`
                     : ""}
+                  {thermal.structure_scope_label ? (
+                    <span className="mv-note-scope"> · {thermal.structure_scope_label}</span>
+                  ) : null}
                 </p>
               )}
             </div>
@@ -89,6 +103,12 @@ export function MeridianEarningsPositioningPanel({
                 spot={thermal.spot}
                 onStrikeHover={setHoverPrice}
               />
+              {/* This table carried NO scope at all. It is the whole book — on prod 2026-08-21 it
+                  ranked strike 19 top on a 0DTE print, where 19 holds a rounding error of the
+                  gamma it is credited with once eleven later expiries are summed in. */}
+              {thermal.structure_scope_label && (
+                <p className="mv-note mv-note-scope">{thermal.structure_scope_label}</p>
+              )}
             </div>
           </>
         )}
