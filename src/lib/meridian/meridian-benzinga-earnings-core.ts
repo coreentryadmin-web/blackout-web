@@ -323,7 +323,16 @@ export function dualBeatRateFromPrints(prints: MeridianEarningsPrint[]): {
   /** How many prints each rate was computed FROM. Zero means the rate beside it is null. */
   eps_graded: number;
   revenue_graded: number;
+  /**
+   * The POOLED denominator `combined_beat_rate` is computed over: eps gradings + revenue
+   * gradings. It is a count of READINGS, not of prints — 8 prints graded on both measures give
+   * 16. Correct as a denominator, and wrong as a noun: rendering it as "over 16 prints" on a
+   * name with 8 prints is a false statement about the sample, which is the exact defect carrying
+   * the cohort was meant to prevent. Use `prints_graded` for anything a human reads.
+   */
   combined_graded: number;
+  /** Distinct PRINTS with at least one gradeable measure — the honest "over N prints". */
+  prints_graded: number;
 } {
   const epsGraded = prints.filter((p) => p.beat != null);
   const revGraded = prints.filter((p) => p.revenue_surprise_pct != null);
@@ -333,6 +342,9 @@ export function dualBeatRateFromPrints(prints: MeridianEarningsPrint[]): {
   const revenue_beat_rate = revGraded.length > 0 ? revBeats / revGraded.length : null;
   const pooledN = epsGraded.length + revGraded.length;
   const combined = pooledN > 0 ? (epsBeats + revBeats) / pooledN : null;
+  const printsGraded = prints.filter(
+    (p) => p.beat != null || p.revenue_surprise_pct != null
+  ).length;
   return {
     eps_beat_rate,
     revenue_beat_rate,
@@ -340,6 +352,7 @@ export function dualBeatRateFromPrints(prints: MeridianEarningsPrint[]): {
     eps_graded: epsGraded.length,
     revenue_graded: revGraded.length,
     combined_graded: pooledN,
+    prints_graded: printsGraded,
   };
 }
 
