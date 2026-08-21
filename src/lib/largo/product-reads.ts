@@ -384,7 +384,11 @@ export async function vectorPulseForLargo(ticker: string, horizon = "all") {
  * `nowMs` is passed explicitly rather than read inside: the velocity and hit windows are rolling,
  * and a shared clock keeps all four derivations describing the SAME instant.
  */
-export async function helixDerivedForLargo(ticker?: string | null, limit = 400) {
+export async function helixDerivedForLargo(
+  ticker?: string | null,
+  limit = 400,
+  sinceHours = HELIX_FLOW_DEFAULT_SINCE_HOURS
+) {
   try {
     const [
       { marketPlatform },
@@ -400,13 +404,30 @@ export async function helixDerivedForLargo(ticker?: string | null, limit = 400) 
       import("@/features/helix/lib/helix-strike-leaders"),
     ]);
 
-    // The SAME tape the /flows page renders. A bigger limit than a normal tape read because every
-    // derivation below is a WINDOW over history — a 50-print slice would silently under-report
-    // every stack and every spike.
-    const summary = await marketPlatform.flows.getFlowTapeSummary({
-      limit: Math.min(1000, Math.max(50, limit)),
-      ticker: ticker ? ticker.toUpperCase() : undefined,
-    });
+    // The SAME tape the /flows page renders — which requires ORDER as well as size. This comment
+    // asserted that property for months while the call below violated it: with no `order` and no
+    // `since_hours`, fetchRecentFlows fell to `ORDER BY total_premium DESC` over 48h, i.e. the
+    // BIGGEST prints of two days. Every derivation below is a ROLLING WINDOW anchored to nowMs
+    // (repeat hits, prints-per-15min, opposing premium inside 30min), so a population selected by
+    // SIZE is the wrong input by construction — it answers "what is stacking right now" with
+    // whatever was largest since the day before yesterday.
+    //
+    // Measured live 2026-08-20, same 400-row limit, premium-ordered vs recent-ordered:
+    // stacked_hits overlapped **0 of 10** and top_prints **0 of 12** — the counts matched by
+    // coincidence while the contents were entirely disjoint, and the top-print direction inverted
+    // (SPY puts vs SPX calls). A bigger limit is still wanted, for the reason originally given: a
+    // 50-print slice would under-report every stack and every spike.
+    const { helixTapeFetchOptions: derivedFetchOptions } = await import("@/lib/largo/helix-tape-analytics");
+    const summary = await marketPlatform.flows.getFlowTapeSummary(
+      derivedFetchOptions({
+        ticker,
+        limit: Math.min(1000, Math.max(50, limit)),
+        sinceHours,
+        maxLimit: 1000,
+        defaultSinceHours: HELIX_FLOW_DEFAULT_SINCE_HOURS,
+        maxSinceHours: HELIX_FLOW_MAX_SINCE_HOURS,
+      })
+    );
     const alerts = Array.isArray(summary?.recent) ? summary.recent : [];
     const nowMs = Date.now();
 
@@ -520,6 +541,7 @@ export async function helixTapeAnalyticsForLargo(
       expiryHorizonConcentration,
       sessionFlowSkew,
       tapeWindowCoverage,
+      helixTapeFetchOptions,
     } = await import("@/lib/largo/helix-tape-analytics");
     // Read the SAME POPULATION the /flows desk reads. Ordering is not cosmetic here: it decides
     // which prints survive the LIMIT. The previous call passed neither `since_hours` nor `order`,
@@ -527,17 +549,17 @@ export async function helixTapeAnalyticsForLargo(
     // horizon was absent from the population ENTIRELY (measured live 2026-08-20: 17 0DTE prints
     // worth $2.7M, none of them in the top 200 by premium against $2.1B of LEAPS blocks), and the
     // Net Premium leaderboard disagreed with the member's own panel by up to 105x on SPXW.
-    const windowHours = Math.min(
-      HELIX_FLOW_MAX_SINCE_HOURS,
-      Math.max(1, Number.isFinite(sinceHours) ? Math.floor(sinceHours) : HELIX_FLOW_DEFAULT_SINCE_HOURS)
-    );
-    const rowLimit = Math.min(HELIX_FLOW_MAX_LIMIT, Math.max(1, Math.floor(limit)));
-    const summary = await marketPlatform.flows.getFlowTapeSummary({
-      limit: rowLimit,
-      ticker: ticker ? ticker.toUpperCase() : undefined,
-      since_hours: windowHours,
-      order: "recent",
+    const fetchOpts = helixTapeFetchOptions({
+      ticker,
+      limit,
+      sinceHours,
+      maxLimit: HELIX_FLOW_MAX_LIMIT,
+      defaultSinceHours: HELIX_FLOW_DEFAULT_SINCE_HOURS,
+      maxSinceHours: HELIX_FLOW_MAX_SINCE_HOURS,
     });
+    const windowHours = fetchOpts.since_hours;
+    const rowLimit = fetchOpts.limit;
+    const summary = await marketPlatform.flows.getFlowTapeSummary(fetchOpts);
     const alerts = summary.recent ?? [];
     const now = new Date();
     const nowMs = now.getTime();

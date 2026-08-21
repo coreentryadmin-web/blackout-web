@@ -250,3 +250,38 @@ export function tapeWindowCoverage(
     limit_reached: alerts.length >= limit,
   };
 }
+
+/**
+ * The tape request BOTH HELIX Largo tools issue — the layer where the population is chosen.
+ *
+ * Extracted as a pure function because that choice is what broke, twice, and it was untestable
+ * where it lived: it sat inline in `product-reads.ts`, whose import graph reaches `server-only`,
+ * so no unit test could ever reach it. Every existing test built a fixture array and called the
+ * aggregation functions directly, which cannot see a defect in how the rows are SELECTED.
+ *
+ * `order: "recent"` is the load-bearing field and is not a sort preference. Left unset,
+ * `getFlowTape` only infers "recent" when `since_hours <= 6`, so both tools fell through to
+ * `ORDER BY total_premium DESC` — the biggest prints of two days. Ordering decides which prints
+ * survive the LIMIT, i.e. it selects a different POPULATION. Measured live 2026-08-20 at the same
+ * 400-row limit: premium-ordered vs recent-ordered overlapped 0 of 10 stacked_hits and 0 of 12
+ * top_prints — identical counts, entirely disjoint contents, top-print direction inverted.
+ */
+export function helixTapeFetchOptions(opts: {
+  ticker?: string | null;
+  limit: number;
+  sinceHours?: number;
+  maxLimit: number;
+  defaultSinceHours: number;
+  maxSinceHours: number;
+}) {
+  const { ticker, limit, sinceHours, maxLimit, defaultSinceHours, maxSinceHours } = opts;
+  const hours = Number.isFinite(sinceHours as number)
+    ? Math.floor(sinceHours as number)
+    : defaultSinceHours;
+  return {
+    limit: Math.min(maxLimit, Math.max(1, Math.floor(limit))),
+    ticker: ticker ? ticker.toUpperCase() : undefined,
+    since_hours: Math.min(maxSinceHours, Math.max(1, hours)),
+    order: "recent" as const,
+  };
+}
