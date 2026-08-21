@@ -2,6 +2,7 @@ import type { FlowAlert } from "@/lib/api";
 import { executionRouteKey, daysToExpiry } from "@/features/helix/lib/helix-flow-format";
 import { HELIX_NET_PREMIUM_LEADERS_LIMIT } from "@/features/helix/lib/helix-strike-leaders";
 import { etStamp } from "@/lib/largo/temporal/bar-session-date";
+import { flowEventTimeMs } from "@/lib/flow-timestamp";
 
 /** The member panel's horizon buckets, in CHRONOLOGICAL order (ExpiryConcentration.tsx). */
 export const EXPIRY_HORIZONS = ["0DTE", "This week", "Monthly", "LEAPS"] as const;
@@ -182,9 +183,17 @@ export function sessionFlowSkew(alerts: FlowAlert[]) {
  * `limit_reached` is the tell: when it is true the window did not bind, the limit did, and
  * `actual_hours` is the only honest description of the population.
  *
- * Timestampless prints (UW sends some with no time; the REST read surfaces them as `''` rather
- * than fabricating one) cannot contribute to a span, so they are counted out separately rather
- * than silently widening or narrowing it.
+ * Times come from `flowEventTimeMs` — the SAME helper the /flows desk uses for its LIVE badge and
+ * its 5-minute stale flip — NOT from `alerted_at`. The two differ constantly: `alerted_at` falls
+ * back to INGEST time when UW sends no timestamp, and such a row is flagged `tape_time_estimated`
+ * precisely so freshness will ignore it. Measured live 2026-08-20: **438 of 500 prints (87.6%)
+ * were `tape_time_estimated`**, only 62 carried a real UW print time, and reading `alerted_at`
+ * instead reported the tape as **282 minutes old against the desk's 309** — 27 minutes fresher
+ * than it was. Dating a print by when WE received it, and calling that freshness, is the same
+ * fabrication this module exists to prevent.
+ *
+ * Prints with no usable print time are counted out rather than silently widening or narrowing
+ * the span, and reported so the model can see how much of the tape is ingest-stamped.
  */
 export function tapeWindowCoverage(
   alerts: FlowAlert[],
@@ -193,8 +202,8 @@ export function tapeWindowCoverage(
   now: Date = new Date()
 ) {
   const ts = alerts
-    .map((a) => Date.parse(a.alerted_at))
-    .filter((n) => Number.isFinite(n))
+    .map((a) => flowEventTimeMs(a))
+    .filter((n): n is number => n != null && Number.isFinite(n))
     .sort((a, b) => a - b);
   const undated = alerts.length - ts.length;
   if (!ts.length) {
@@ -204,6 +213,9 @@ export function tapeWindowCoverage(
       oldest_print: null,
       newest_print: null,
       prints: alerts.length,
+      /** Prints with no REAL print time — UW sent none, so the row is ingest-stamped
+       *  (`tape_time_estimated`) and is excluded from the span, exactly as the desk excludes it
+       *  from LIVE. Routinely the MAJORITY of the tape: 438/500 live on 2026-08-20. */
       undated_prints: undated,
       limit_reached: alerts.length >= limit,
     };
@@ -219,6 +231,10 @@ export function tapeWindowCoverage(
     /** How stale the freshest print is — an off-hours read can be current AND hours old. */
     newest_age_minutes: Math.max(0, Math.round((now.getTime() - newest) / 60_000)),
     prints: alerts.length,
+    /** Prints carrying a real UW print time — the only ones the span above is measured from. */
+    timed_prints: ts.length,
+    /** See above: ingest-stamped prints, excluded from the span the way the desk excludes them
+     *  from LIVE. When this dwarfs `timed_prints`, most of the tape cannot be dated at all. */
     undated_prints: undated,
     limit_reached: alerts.length >= limit,
   };

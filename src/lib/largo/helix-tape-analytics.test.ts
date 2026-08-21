@@ -203,12 +203,20 @@ test("empty tape produces no horizons rather than a fabricated bucket", () => {
 
 import { tapeWindowCoverage } from "./helix-tape-analytics";
 
+/** A print with a REAL UW time. `event_at` is what flowEventTimeMs trusts; `alerted_at` alone
+ *  is only trusted when the row is NOT tape_time_estimated. */
 function atPrint(alerted_at: string, premium = 1_000): FlowAlert {
   return {
     ticker: "AAA", option_type: "CALL", strike: 1, expiry: "2026-08-20",
     route: "SWEEP", alert_rule: "Sweep", score: 1, direction: "bullish",
-    premium, alerted_at, dte: 0,
+    premium, alerted_at, event_at: alerted_at || null, dte: 0,
   } as FlowAlert;
+}
+
+/** A print UW gave no time for — `alerted_at` is INGEST time and the row says so. The desk
+ *  excludes these from freshness; so must we. */
+function ingestStampedPrint(alerted_at: string, premium = 1_000): FlowAlert {
+  return { ...atPrint(alerted_at, premium), event_at: null, tape_time_estimated: true } as FlowAlert;
 }
 
 test("actual_hours is the span of the PRINTS, not the requested window", () => {
@@ -257,4 +265,44 @@ test("an empty tape reports a null span, not a zero-hour one", () => {
   assert.equal(w.prints, 0);
   // 0 rows against a 500 limit is genuinely window-bound, not limit-bound.
   assert.equal(w.limit_reached, false);
+});
+
+test("an ingest-stamped print never dates the tape — it is not a print time", () => {
+  // Live 2026-08-20: 438 of 500 prints were tape_time_estimated. Reading alerted_at made the
+  // tape look 282 minutes old against the desk's 309 — 27 minutes fresher than it was.
+  const w = tapeWindowCoverage(
+    [ingestStampedPrint("2026-08-20T20:49:00Z")],
+    168, 500,
+    new Date("2026-08-21T01:00:00Z")
+  );
+  assert.equal(w.actual_hours, null, "no real print time -> no span");
+  assert.equal(w.newest_print, null);
+  assert.equal(w.prints, 1);
+  assert.equal(w.undated_prints, 1);
+});
+
+test("freshness is measured off the real print time, not the ingest fallback", () => {
+  const w = tapeWindowCoverage(
+    [
+      atPrint("2026-08-20T20:00:00Z"),              // real print, 1h before the ingest row
+      ingestStampedPrint("2026-08-20T20:49:00Z"),   // newer, but ingest-stamped
+    ],
+    168, 500,
+    new Date("2026-08-20T21:00:00Z")
+  );
+  // 60 minutes off the REAL print, not 11 off the ingest stamp.
+  assert.equal(w.newest_age_minutes, 60);
+  assert.equal(w.timed_prints, 1);
+  assert.equal(w.undated_prints, 1);
+  assert.equal(w.prints, 2);
+});
+
+test("timed_prints vs prints exposes how much of the tape cannot be dated", () => {
+  const w = tapeWindowCoverage(
+    [atPrint("2026-08-20T20:00:00Z"), ...Array.from({ length: 9 }, () => ingestStampedPrint("2026-08-20T20:30:00Z"))],
+    168, 500
+  );
+  assert.equal(w.prints, 10);
+  assert.equal(w.timed_prints, 1);
+  assert.equal(w.undated_prints, 9);
 });
