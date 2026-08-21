@@ -182,10 +182,30 @@ function collisionsAmong(rows) {
 
 function classify(pr, verify, all) {
   if (verify === "failed" || all === "failed") return "CI-FAILED";
+
+  // `mergeable` is NULL while GitHub recomputes the merge commit — which it does after every push
+  // to the PR *and* after every merge into the base. During a busy merge window that is most of
+  // the time. The old test was `pr.mergeable === false`, so a null fell through to MERGEABLE:
+  // "we have not worked it out yet" was reported as "ready to merge".
+  //
+  // Caught live 2026-08-21: the sweep listed #2432 under MERGEABLE while the API said
+  // `mergeable_state: "dirty"`. Acting on that means trying to merge a conflicted PR — and worse,
+  // it makes the MERGEABLE bucket untrustworthy exactly when the backlog is moving fastest.
+  //
+  // `mergeable_state` is the more specific field and does not have the tri-state problem, so it is
+  // consulted first. "unknown" is surfaced as its own bucket rather than folded into a verdict:
+  // the honest answer is "ask again in a moment", and the sweep should say so.
+  const st = pr.mergeable_state;
+  if (st === "dirty") return "CONFLICTED";
   if (pr.mergeable === false) return "CONFLICTED";
+
   if (verify === "running" || all === "running") return "CI-RUNNING";
   if (pr.draft && verify === "pass") return "READY-BUT-DRAFT";
-  if (!pr.draft && verify === "pass") return "MERGEABLE";
+  if (!pr.draft && verify === "pass") {
+    // A clean green non-draft is genuinely mergeable. Anything else that LOOKS mergeable but whose
+    // state GitHub has not settled is reported as such, never as a green light.
+    return st === "unknown" || st == null ? "MERGE-STATE-UNKNOWN" : "MERGEABLE";
+  }
   return "OTHER";
 }
 
