@@ -91,19 +91,47 @@ test("mapInPool beats chunk barriers when one item is slow — the actual regres
   // The straggler case, which is what pushed the real sweep past 5s: one slow ticker inside a chunk
   // stalls every item queued behind it. With 12 items at width 4 and item 0 slow, the chunked
   // version pays that stall before ANY of the last 8 start; the pool overlaps it.
+  //
+  // MEASURED BY OVERLAP, NOT BY STOPWATCH. This test used to race the two implementations and
+  // assert `pooled < chunked` on Date.now() deltas, with the fast items on `setTimeout(2)`. Two
+  // milliseconds is well inside timer jitter on a loaded runner, so the comparison inverted under
+  // CI contention: it failed once on `claude/helix-compare-population` — a PR about Helix compare
+  // cards, which does not import this module — while 12 other workflow runs were in flight.
+  //
+  // A red check that does not mean a real failure is worse than no check, because this repo's whole
+  // release discipline is built on trusting them. So the assertion is now on the STRUCTURAL property
+  // the optimisation actually has, which no amount of scheduler noise can change: the pool starts
+  // work behind the straggler, the chunker cannot. Duration is downstream of that; overlap IS the
+  // mechanism.
   const { mapInPool, mapInChunks } = await import("./vector-bead-recorder-logic");
   const items = Array.from({ length: 12 }, (_, i) => i);
-  const work = async (i: number) => {
-    await new Promise((r) => setTimeout(r, i === 0 ? 60 : 2));
-    return i;
+
+  // Count how many items have STARTED by the time the straggler (item 0) finishes.
+  const runWith = async (
+    run: (items: number[], width: number, fn: (i: number) => Promise<number>) => Promise<unknown>
+  ) => {
+    let started = 0;
+    let startedWhenStragglerDone = -1;
+    const work = async (i: number) => {
+      started += 1;
+      await new Promise((r) => setTimeout(r, i === 0 ? 60 : 2));
+      if (i === 0) startedWhenStragglerDone = started;
+      return i;
+    };
+    await run(items, 4, work);
+    return startedWhenStragglerDone;
   };
-  const t0 = Date.now();
-  await mapInChunks(items, 4, work);
-  const chunked = Date.now() - t0;
-  const t1 = Date.now();
-  await mapInPool(items, 4, work);
-  const pooled = Date.now() - t1;
-  assert.ok(pooled < chunked, `pool ${pooled}ms should beat chunked ${chunked}ms on a straggler`);
+
+  const chunked = await runWith(mapInChunks);
+  const pooled = await runWith(mapInPool);
+
+  // `mapInChunks` awaits Promise.allSettled per chunk, so nothing outside the straggler's own chunk
+  // can have begun — an exact bound, not an approximation.
+  assert.equal(chunked, 4, `chunked should start only its first chunk of 4, started ${chunked}`);
+  assert.ok(
+    pooled > chunked,
+    `pool should overlap the straggler: started ${pooled} vs chunked ${chunked}`
+  );
 });
 
 test("concurrency default clears the universe in ONE pass within the tick budget", async () => {

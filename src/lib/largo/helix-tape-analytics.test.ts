@@ -6,6 +6,7 @@ import {
   routeBreakdown,
   expiryConcentration,
   sessionFlowSkew,
+  cappedList,
 } from "./helix-tape-analytics";
 
 const alerts: FlowAlert[] = [
@@ -72,6 +73,38 @@ test("sessionFlowSkew computes call pct", () => {
   const skew = sessionFlowSkew(alerts);
   assert.equal(skew.alert_count, 3);
   assert.ok(skew.call_pct >= 50 && skew.call_pct <= 100);
+});
+
+// ── No silent caps (rule 7) ──────────────────────────────────────────────────
+// A capped list must carry the TRUE total, so a 20-of-34 slice can never read as the whole set —
+// the get_helix_derived panels were `.slice()`d with no total, which reads a display limit as a
+// count ("how many are stacking?" → 20 when 34 were).
+test("cappedList: truncates and reports the true total", () => {
+  const c = cappedList(Array.from({ length: 34 }, (_, i) => i), 20);
+  assert.equal(c.items.length, 20);
+  assert.equal(c.total, 34, "the total is the count BEFORE the cap");
+  assert.equal(c.truncated, true);
+  assert.equal(c.items[0], 0, "keeps the TOP n, in order");
+});
+
+test("cappedList: a list within the cap is not marked truncated", () => {
+  const c = cappedList([1, 2, 3], 20);
+  assert.equal(c.items.length, 3);
+  assert.equal(c.total, 3);
+  assert.equal(c.truncated, false);
+});
+
+test("cappedList: exactly at the cap is not truncated (boundary)", () => {
+  const c = cappedList([1, 2, 3, 4, 5], 5);
+  assert.equal(c.truncated, false, "total === cap is complete, not truncated");
+  assert.equal(c.total, 5);
+});
+
+test("cappedList: n <= 0 means no cap, and total is honest either way", () => {
+  const c = cappedList([1, 2, 3], 0);
+  assert.equal(c.items.length, 3);
+  assert.equal(c.truncated, false);
+  assert.equal(c.total, 3);
 });
 
 // ── Expiry horizon / session-anchor guards ───────────────────────────────────
@@ -316,6 +349,47 @@ test("netPremiumLeaders reports call_pct null for a ticker with no measurable pr
   assert.equal(rows[0]?.call_pct, null);
 });
 
+// ── #2520 anti-divergence: the session skew has ONE derivation, and it cannot be bypassed ──────
+// The defect was a member asking "what's the call/put skew" getting 34% / 60% / 83% depending on
+// which tool answered — three code paths, three skews. The fix is not that they agree today; it is
+// that a second independent SESSION skew cannot reappear. These two guards enforce that.
+
+test("sessionFlowSkew is order- and slice-invariant — the same population is the same skew", () => {
+  // If the number depended on row order or which slice you summed, the 'authoritative' skew would
+  // not be authoritative. It must be a pure function of the population, nothing else.
+  const rows = [
+    { ...atPrint("2026-08-20T20:00:00Z", 900_000), option_type: "CALL" } as FlowAlert,
+    { ...atPrint("2026-08-20T20:01:00Z", 100_000), option_type: "PUT" } as FlowAlert,
+    { ...atPrint("2026-08-20T20:02:00Z", 500_000), option_type: "CALL" } as FlowAlert,
+  ];
+  const forward = sessionFlowSkew(rows);
+  const reversed = sessionFlowSkew([...rows].reverse());
+  assert.deepEqual(reversed, forward, "reversing the rows must not change the skew");
+  // A premium-ordered slice of the SAME rows sums to the SAME totals — order changes nothing.
+  const premiumOrdered = sessionFlowSkew([...rows].sort((a, b) => (b.premium ?? 0) - (a.premium ?? 0)));
+  assert.equal(premiumOrdered.call_pct, forward.call_pct);
+  assert.equal(premiumOrdered.total_premium, forward.total_premium);
+});
+
+test("flow-service sources its session skew ONLY from sessionFlowSkew — no inline call/put ratio", () => {
+  // Source-level ratchet: the 34/60/83 divergence was three paths each computing skew their own
+  // way. getFlowTapeSummary's pull_skew is the path most able to regress back to a hand-sum,
+  // because it already holds the raw rows. This fails the instant a `call_pct` in flow-service is
+  // assigned from anything but the shared sessionFlowSkew result.
+  const { readFileSync } = require("node:fs") as typeof import("node:fs");
+  const src = readFileSync("src/lib/platform/flow-service.ts", "utf8");
+  assert.match(src, /import\s*\{[^}]*sessionFlowSkew[^}]*\}/, "flow-service must import the shared helper");
+  const callPctLines = src.split("\n").filter((l) => /call_pct/.test(l) && !l.trim().startsWith("//") && !l.trim().startsWith("*"));
+  assert.ok(callPctLines.length > 0, "expected flow-service to expose a session call_pct");
+  for (const line of callPctLines) {
+    assert.match(
+      line,
+      /skew\.call_pct/,
+      `flow-service must read call_pct from the sessionFlowSkew result, not compute it: ${line.trim()}`
+    );
+  }
+});
+
 // ── Fetch-contract guards ────────────────────────────────────────────────────
 // The layer that had NO coverage, which is why two population defects shipped. Every other test
 // in this file builds its own fixture array, so none of them can see a defect in how rows are
@@ -543,4 +617,67 @@ test("a real share is still reported as a number", () => {
   ]);
   const sweep = rows.find((r) => r.route === "SWEEP");
   assert.equal(sweep?.pct, 75);
+});
+
+// ── C1: a firing's session must not be inferred from a UTC instant ───────────
+// get_helix_signal_outcomes emitted fired_at raw and get_helix_derived stamped a bare UTC as_of.
+// After ~20:00 ET the UTC calendar date is already tomorrow — the bare-instant trap from #2418/
+// #2420/#2422. The file-level session-anchor ratchet could not see either: product-reads.ts
+// already counted as anchored via helixTapeAnalyticsForLargo, and signal-outcomes carried no
+// as_of construction to scan at all.
+
+import { sessionDateForTimestamp } from "./helix-tape-analytics";
+
+test("a ledger fired_at resolves to its ET session, not its UTC date", () => {
+  // 2026-08-21T00:30Z is still 2026-08-20 in ET — the case that inverts a naive UTC read.
+  assert.equal(sessionDateForTimestamp("2026-08-21 00:30:14+00"), "2026-08-20");
+  // The ledger's actual microsecond+offset text form must parse.
+  assert.equal(sessionDateForTimestamp("2026-08-20 20:30:14.282385+00"), "2026-08-20");
+});
+
+test("an intraday fire keeps its own ET session", () => {
+  assert.equal(sessionDateForTimestamp("2026-08-20 18:00:00+00"), "2026-08-20"); // 14:00 ET
+});
+
+test("a missing or unparseable fire time becomes null, never a fabricated session", () => {
+  for (const v of [null, undefined, "", "not-a-date", "N/A"]) {
+    assert.equal(sessionDateForTimestamp(v as string | null), null);
+  }
+});
+
+// ── Skew authority: a pull's skew is computed once, not hand-summed ──────────
+// Found by stress-testing Largo on prod: "call/put skew this session" returned 34% / 60% / 83%
+// across tools because the model summed whatever capped print slice it happened to fetch.
+// sessionFlowSkew is now the single computation, and it accepts a minimal {option_type, premium}
+// shape so flow-service can hand the same number back instead of leaving the model to sum.
+
+test("sessionFlowSkew accepts a minimal print shape, not just FlowAlert", () => {
+  // FlowRow / a raw print carries only option_type + premium for this purpose — the widened
+  // signature must accept it without a cast.
+  const rows = [
+    { option_type: "CALL", premium: 6_000_000 },
+    { option_type: "PUT", premium: 4_000_000 },
+  ];
+  const s = sessionFlowSkew(rows);
+  assert.equal(s.call_pct, 60);
+  assert.equal(s.call_premium, 6_000_000);
+  assert.equal(s.put_premium, 4_000_000);
+});
+
+test("the same rows always yield the same skew — no order or slice dependence", () => {
+  const rows = [
+    { option_type: "PUT", premium: 1_000_000 },
+    { option_type: "CALL", premium: 3_000_000 },
+    { option_type: "CALL", premium: 1_000_000 },
+  ];
+  const a = sessionFlowSkew(rows).call_pct;
+  const b = sessionFlowSkew([...rows].reverse()).call_pct;
+  assert.equal(a, b);
+  assert.equal(a, 80); // 4M call / 5M total
+});
+
+test("an all-typeless pull reports call_pct null, never a fabricated balance", () => {
+  const s = sessionFlowSkew([{ option_type: "UNKNOWN", premium: 5_000_000 }]);
+  assert.equal(s.call_pct, null);
+  assert.equal(s.total_premium, 0);
 });

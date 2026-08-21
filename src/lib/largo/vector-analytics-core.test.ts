@@ -6,6 +6,7 @@ import {
   opexContext,
   VECTOR_PIVOT_K,
 } from "./vector-analytics-core";
+import type { VolumeProfileBar } from "@/features/vector/lib/vector-volume-profile";
 
 /** 09:30 ET on 2026-08-10 (a Monday) in epoch seconds — the bars are seconds, like the chart's. */
 const SESSION_OPEN = Math.floor(Date.parse("2026-08-10T13:30:00Z") / 1000);
@@ -171,4 +172,63 @@ test("OpEx day itself reads as 0 days away, never rounded into tomorrow", () => 
   const ctx = opexContext(Date.parse("2026-08-21T18:00:00Z"));
   assert.equal(ctx.next!.date, "2026-08-21");
   assert.equal(ctx.next!.days_away, 0, "today's expiry is a different claim from tomorrow's");
+});
+
+// ---------------------------------------------------------------------------
+// Structure times must carry their session — the #2418 class on the BOS/CHoCH panel
+// ---------------------------------------------------------------------------
+
+test("every structure pivot and event carries an ET anchor beside its raw epoch", () => {
+  // Two RTH sessions of 1m bars, so the structure genuinely spans more than one day — which is
+  // the whole hazard: a three-session seed produces events a reader will otherwise date as "today".
+  const bars: VolumeProfileBar[] = [];
+  // 2026-08-19 09:30 ET and 2026-08-20 09:30 ET, in epoch SECONDS (chart convention).
+  for (const base of [1787146200, 1787232600]) {
+    for (let i = 0; i < 120; i += 1) {
+      const drift = Math.sin(i / 7) * 12;
+      const close = 7600 + drift;
+      bars.push({ time: base + i * 60, open: close - 1, high: close + 3, low: close - 3, close, volume: 1000 + i });
+    }
+  }
+
+  const out = computeVectorBarAnalytics(bars, { timeframeMin: 5, spot: bars[bars.length - 1]!.close });
+  assert.ok(out, "precondition: the analytics must compute");
+
+  const ms = out!.market_structure;
+  assert.ok(ms.pivots.length > 0, "precondition: this fixture must produce pivots");
+
+  const ET_RE = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2} ET$/;
+  const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
+  for (const p of ms.pivots) {
+    assert.match(String(p.et), ET_RE, `pivot at ${p.time} must carry a readable ET stamp`);
+    assert.match(String(p.session_date), YMD_RE, `pivot at ${p.time} must carry its session date`);
+  }
+  for (const e of ms.events) {
+    assert.match(String(e.et), ET_RE, `event at ${e.time} must carry a readable ET stamp`);
+    assert.match(String(e.session_date), YMD_RE);
+  }
+  if (ms.latest_event) {
+    assert.match(String(ms.latest_event.et), ET_RE);
+    assert.match(String(ms.latest_event.session_date), YMD_RE);
+  }
+
+  // The point of the anchor: the set spans MORE THAN ONE session, so "all of these are today" is
+  // a wrong reading that the raw epochs alone would not have exposed.
+  const sessions = new Set([...ms.pivots, ...ms.events].map((x) => x.session_date));
+  assert.ok(sessions.size >= 2, `expected multi-session structure, got ${[...sessions].join(",")}`);
+});
+
+test("an unreadable structure time yields no anchor rather than a fabricated 1970 date", () => {
+  // etStamp refuses non-positive input precisely so a missing timestamp cannot become a
+  // real-looking date. Nothing downstream may invent one.
+  const bars: VolumeProfileBar[] = [];
+  for (let i = 0; i < 60; i += 1) {
+    const close = 100 + Math.sin(i / 5) * 2;
+    bars.push({ time: 0, open: close, high: close + 1, low: close - 1, close, volume: 10 });
+  }
+  const out = computeVectorBarAnalytics(bars, { timeframeMin: 5, spot: 100 });
+  for (const p of out?.market_structure.pivots ?? []) {
+    assert.equal(p.et, undefined, "a zero timestamp must not produce an ET stamp");
+    assert.equal(p.session_date, undefined);
+  }
 });

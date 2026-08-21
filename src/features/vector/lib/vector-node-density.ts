@@ -17,9 +17,9 @@
  *    because a wider price band deserves more, further-out walls. The manual steps are a subset of
  *    that same walk so AUTO and a manual pick are never in different units.
  *
- * AUTO is the default and is byte-identical to today's behaviour. This module deliberately adds a
- * member OVERRIDE rather than replacing the timeframe heuristic: on a 1-minute chart the automatic
- * 6 is right for most members most of the time, and a fixed 20 there would bury the tape.
+ * AUTO (default) follows the timeframe walk (6 → 20) on dense ladders like SPX. On coarse single-name
+ * ladders it self-limits so candles keep ≥20% of the price-axis span (see vector-adaptive-nodes.ts).
+ * Manual picks override and accept smaller candles.
  */
 
 import { VECTOR_WALL_NODES_PER_SIDE } from "@/features/vector/lib/vector-bar-timeframes";
