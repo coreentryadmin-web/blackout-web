@@ -4,6 +4,26 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-21 — [FINDING, P1 Largo/Night Hawk] `get_nighthawk_horizons` manufactured the empty array it then counted — a 0DTE outage published as `open_count: 0` — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `nighthawkHorizonsForLargo` read the 0DTE lane as `zeroDtePlaysForLargo().catch(() => ({ available: false, plays: [] }))` and counted that array on the very next line. A failed 0DTE read therefore published `zero_dte: { play_count: 0, open_count: 0, sample: [] }` inside an envelope stamped `available: true`. A member asking "what is open right now" during a 0DTE outage was told **nothing is**. |
+| **What makes this one worse than a lost error** | The fallback did not merely swallow the failure — it **constructed** the empty array that the next line measured. The zero was not a leftover; it was manufactured on the failure path and then counted as if it had been observed. |
+| **The interaction that made it urgent** | #2492 makes `zeroDtePlaysForLargo` **omit `plays` entirely** when the board is unreadable, precisely so that nothing downstream can count zero. This consumer's `Array.isArray(...) ? ... : []` guard converted that honest unknown straight back into `0`. An honest producer is not enough if its consumer launders the answer — the two fixes had to land as a pair or #2492 would have been silently undone one tool over. |
+| **Third appearance of one shape** | #2477 (Largo live feed), #2492 (`get_zerodte_plays` itself), and here. Same rule each time: an empty list must say WHICH empty it is, and when the answer is unknown there must be no number present for a model to quote. |
+| **Second defect, same function** | `swingHorizonForLargo` passed `fetchOpenSwingPositions().catch(() => [])`, so an unreadable open-positions ledger became "no open swing positions" — again a failure emerging as a measurement, again under `available: true`. The catch has to stay (`serving-lane.ts:160` swallows the throw at its own call site, so letting it propagate only moves the silence), but it now records that it fired and the payload says `degraded: true`, `reason: "open_positions_unreadable"`, with a note that the open/managed counts are not measurements while discovery candidates are unaffected. |
+| **Third, smaller** | `swing: swing.available ? swing : { available: false }` discarded the producer's own error string. An unavailable that will not say why is one step better than a fabricated zero and one step worse than an answer; the reason is now carried through. |
+| **Fix** | New pure `src/lib/largo/zero-dte-horizon-summary.ts`. `zeroDteHorizonSummary(zerodte)` returns a discriminated result: `{ available: true, play_count, open_count, sample }` only when a real `plays` array was actually read, and otherwise `{ available: false, reason, note }` with **no numeric fields at all**. Three separate inputs map to unknown — the call threw (`null`), the producer said `available: false` (its reason is preserved), or the `plays` key is absent. A **measured** empty session still reports `open_count: 0`, because that is a real answer. |
+| **Blast radius** | `nighthawkHorizonsForLargo` and `swingHorizonForLargo` in `product-reads.ts` — `get_nighthawk_horizons` and `get_swing_horizon`, both my lane's tools. No provider, no API route, no UI, no cron, no grading. |
+| **Not fixed here, named** | `src/lib/swing/serving-lane.ts:160` swallows the same open-positions failure at its own call site with `.catch(() => [])`. That is the swing lane's file and its root cause to close; my caller detects its own read failure regardless, so this fix does not depend on it. |
+| **Regression guard** | `src/lib/largo/zero-dte-horizon-summary.test.ts` (+8, pure): a real read counts what it saw; a MEASURED empty session still reports 0 because that is an answer; a thrown read carries no number to quote; an explicit `available:false` preserves the producer's reason; an absent `plays` key is unknown rather than empty; the two zeros never serialize alike; a malformed row cannot crash the summary or be counted as closed; and the sample stays bounded while the count stays complete. |
+| **Not a trading-behaviour change** | No gate, rail, sizing, exit rule or grading function is touched. No `sim:0dte` before/after is owed. |
+| **Gates** | `npm test` **9053 pass / 0 fail / 1 skipped** (Node 20.20.2) · `tsc --noEmit` clean · `eslint` clean. |
+| **Status** | FIXED. |
+
 ## 2026-08-21 — [FINDING, P2 Meridian] The expected-move rail laid out labels against a width 31-43% of the one it drew — labels off the track, prices printed through each other, top row inside the panel head — FIXED
 
 > **kind:** `FINDING`
