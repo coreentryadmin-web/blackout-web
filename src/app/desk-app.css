@@ -2053,6 +2053,24 @@ html.nav-locked body { overflow: hidden; }
                    the whole page to scroll sideways instead of the panel shrinking. */
 }
 .mr-panel-wide { grid-column: 1 / -1; }
+/*
+  A GRID THAT CANNOT HOLD ITS OWN DIAGRAM.
+  `.ms-orbital` refuses to draw below MIN_ORBITAL_SIZE because below it the rim labels collide
+  with each other, and it sets its box from that geometry — but the track floor was a flat 20rem
+  (320px), leaving ~303px of panel content. Measured on prod 2026-08-21 at 1440x1000: a 376px
+  diagram in a 328.55px panel, overflowing 61.25px, with `Fundamentals` (+32.6px past the panel),
+  `HELIX flow` (+25.1) and `YoY trajectory` (+14.0) painting inside the NEIGHBOURING panel —
+  "Fundamentals" ran straight into the track record's "25-11-10" with no gap at all.
+  Fewer, wider tracks is the honest trade: better one column less than text from one panel
+  printed on top of another. `--mr-orbital-box` comes from the shipping geometry, so this floor
+  cannot drift away from the size the diagram actually draws at.
+*/
+.mr-grid-orbital {
+  grid-template-columns: repeat(
+    auto-fit,
+    minmax(min(100%, calc(var(--mr-orbital-box, 376px) + 1.6rem + 2px)), 1fr)
+  );
+}
 .mr-panel-title {
   display: block; margin-bottom: 0.5rem;
   font-family: var(--font-mono, monospace); font-size: 0.7rem; font-weight: 700;
