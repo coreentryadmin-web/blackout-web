@@ -342,7 +342,7 @@ export async function fetchVectorFullState(
     const cached = await readVectorFullStateCache(ticker, horizon);
     // Compose both read-time labels: absence (which sections were unreadable) AND freshness
     // (how old this served snapshot is). Both are derived on the way OUT, never persisted.
-    if (cached) return withFreshness(withAbsenceReport(cached));
+    if (cached) return withReadContext(cached);
   }
 
   const live = await computeVectorFullState(ticker, horizon, timeframeMin);
@@ -356,23 +356,34 @@ export async function fetchVectorFullState(
   // inverted. That is what makes it safe to attach here rather than in a caller-side wrapper.
   if (live && cacheable) void writeVectorFullStateCache(ticker, horizon, live);
 
-  return live ? withFreshness(withAbsenceReport(live)) : null;
+  return live ? withReadContext(live) : null;
 }
 
 /**
- * Attach the absence report on the way OUT rather than storing it on the snapshot.
+ * Attach the READ-time labelling — absence report AND freshness — on the way OUT, never on the
+ * stored snapshot. Two lanes converged here (#2435 absence, #2427 freshness); both belong at this
+ * single shared entry point and both are derived purely from the served state, so they compose
+ * into ONE wrapper rather than two passes.
  *
- * Two reasons it belongs here and not in `computeVectorFullState`. (1) It is derived purely from
- * the state's own fields, so deriving it on read means a cache entry written before this existed
- * still gets a correct report — no cache-shape version bump, no window where the field is missing.
- * (2) It keeps the CACHED object exactly what the cron writes, so what is stored stays the raw
- * desk state and the labelling stays a property of the answer.
+ * WHY ON READ, NOT IN computeVectorFullState. (1) Both are derived from the state's own fields, so
+ * a cache entry written before either existed still gets a correct report on read — no cache-shape
+ * bump, no window where a field is missing. (2) The CACHED object stays exactly what the cron
+ * writes (the raw desk state), so nothing time-dependent is ever persisted — a stored age would
+ * freeze at zero and describe every later read as instantaneous, the freshness defect inverted.
  *
- * `isRth` is evaluated against the snapshot's OWN `asOf`, not against "now": the question the
- * bead-rail reason answers is "was the market open when this was measured", which is what explains
- * an empty rail. Using "now" would mislabel a pre-open snapshot read after the bell.
+ * WHY THE SHARED ENTRY POINT. Every consumer ships this same un-aged, unlabelled snapshot — not
+ * just the two Vector tools: get_ecosystem_context, the wall-dynamics reader, desk-scope-prefetch,
+ * mini-panel, full-platform-snapshot, scenario-read, play-suggest-read, slash-prompts, the
+ * /api/market/largo/{status,context} routes and Night Hawk's Cortex. Labelling in a caller-side
+ * wrapper would have left a dozen surfaces serving a stale, unlabelled read.
+ *
+ * `isRth` is evaluated against the snapshot's OWN `asOf`, not "now": the bead-rail reason answers
+ * "was the market open when this was MEASURED", which is what explains an empty rail; "now" would
+ * mislabel a pre-open snapshot read after the bell.
  */
-function withAbsenceReport(state: VectorFullState): VectorFullState & VectorAbsenceReport {
+function withReadContext(
+  state: VectorFullState
+): VectorFullState & VectorAbsenceReport & VectorFreshnessBlock {
   const observedAt = Date.parse(state.asOf);
   return {
     ...state,
@@ -391,23 +402,8 @@ function withAbsenceReport(state: VectorFullState): VectorFullState & VectorAbse
       play: state.play,
       isRth: isEtCashRth(Number.isFinite(observedAt) ? new Date(observedAt) : new Date()),
     }),
+    ...describeVectorFreshness(state.asOf, Date.now()),
   };
-
-/**
- * Attach the READ-time freshness block. Applied here, at the single shared entry point, because
- * EVERY consumer of this state ships the same un-aged snapshot to a model or a member — not just
- * the two Vector tools. On `main` that is `get_ecosystem_context` (ecosystem-context.ts), the
- * `get_wall_dynamics` reader, `desk-scope-prefetch`, `mini-panel`, `full-platform-snapshot`,
- * `scenario-read`, `play-suggest-read`, `slash-prompts`, the `/api/market/largo/{status,context}`
- * routes and Night Hawk's Cortex fetch. Fixing the two tools alone would have left a dozen
- * surfaces serving a 15-minute-old snapshot as though it were current, and would have made
- * get_ecosystem_context's documented promise to return "the exact same object" false.
- *
- * Generic in the input so it COMPOSES with withAbsenceReport without erasing that type: a state
- * carrying an absence report keeps it, and the freshness fields are added alongside.
- */
-function withFreshness<T extends VectorFullState>(state: T): T & VectorFreshnessBlock {
-  return { ...state, ...describeVectorFreshness(state.asOf, Date.now()) };
 }
 
 function num(n: number | null | undefined): number | null {
