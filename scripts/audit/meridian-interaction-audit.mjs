@@ -32,6 +32,13 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { createTunneledContext } = require("./lib/proxy-tunnel-context.cjs");
+import {
+  EARNINGS_ROW_BASE,
+  describeCohort,
+  earningsRowSelector,
+  normalizeMinImpact,
+  splitAuthFailures,
+} from "./lib/meridian-earnings-cohort.mjs";
 
 const args = new Map(
   process.argv.slice(2).map((a) => {
@@ -42,6 +49,12 @@ const args = new Map(
 const BASE = args.get("base") ?? "https://blackouttrades.com";
 const OUT = args.get("out") ?? "/tmp/meridian-ix";
 const ONLY = args.get("viewport") ?? null;
+// Which cohort this run judges — see lib/meridian-earnings-cohort.mjs. Default `high`, because the
+// options-derived panels only populate for names with a real options market, so judging them
+// against a micro-cap measures the cohort rather than the UI.
+const MIN_IMPACT = normalizeMinImpact(args.get("min-impact"));
+const ROW_SELECTOR = earningsRowSelector(MIN_IMPACT);
+const COHORT = describeCohort(MIN_IMPACT);
 
 const VIEWPORTS = [
   { name: "desktop", viewport: "1440x1000", desktop: true },
@@ -130,11 +143,20 @@ async function openEarningsEvent(page, vp) {
   }
   // Target an EARNINGS row specifically: the timeline mixes macro/FDA/OpEx rows, and those have
   // no earnings tabs at all, so clicking the first row reports a product failure on a healthy page.
-  const row = await page
-    .waitForSelector(".meridian-timeline-row.meridian-theme-earnings", { timeout: 30_000 })
-    .catch(() => null);
+  //
+  // ...and target the right COHORT. Clicking the first earnings row lands on whichever name is
+  // next by date — live, a low-impact micro-cap with no options market, against which the
+  // options-derived panels are legitimately empty. Judging them there measures the cohort, not
+  // the UI. See lib/meridian-earnings-cohort.mjs.
+  await page.waitForSelector(EARNINGS_ROW_BASE, { timeout: 30_000 }).catch(() => null);
+  const row = await page.$(ROW_SELECTOR).catch(() => null);
   if (!row) {
-    record({ severity: "HARNESS", viewport: vp, where: "timeline", issue: "no earnings row visible" });
+    record({
+      severity: "HARNESS",
+      viewport: vp,
+      where: "timeline",
+      issue: `no ${COHORT} earnings row visible — cohort not sampled`,
+    });
     return false;
   }
   await row.scrollIntoViewIfNeeded().catch(() => {});
@@ -326,7 +348,22 @@ async function auditViewport(vp, cookie) {
       });
     }
     if (badResponses.length > 0) {
-      record({ severity: "P2", viewport: vp.name, where: "network", issue: `${badResponses.length} failed requests`, sample: badResponses.slice(0, 5) });
+      // A 401/403 is THIS HARNESS losing its session, not the product failing. A run can outlive
+      // its ~72s JWT, and CLAUDE.md records that exactly this was mis-read as a product fault
+      // three times. Reported as HARNESS, and separately from real failures.
+      const { auth, failures } = splitAuthFailures(badResponses);
+      if (auth.length) {
+        record({
+          severity: "HARNESS",
+          viewport: vp.name,
+          where: "auth",
+          issue: `${auth.length} auth failures (401/403) — session lost mid-run, NOT a product verdict`,
+          sample: auth.slice(0, 3),
+        });
+      }
+      if (failures.length) {
+        record({ severity: "P2", viewport: vp.name, where: "network", issue: `${failures.length} failed requests`, sample: failures.slice(0, 5) });
+      }
     }
     if (consoleErrors.length > 0) {
       record({ severity: "P2", viewport: vp.name, where: "console", issue: `${consoleErrors.length} console errors`, sample: consoleErrors.slice(0, 4) });
@@ -367,7 +404,11 @@ async function main() {
   console.log(
     `\n${bySev("P2").length} P2 · ${bySev("P3").length} P3 · ${bySev("HARNESS").length} HARNESS · screenshots in ${OUT}`
   );
-  if (bySev("HARNESS").length) console.log("HARNESS entries are NOT product verdicts — the page did not load.");
+  if (bySev("HARNESS").length)
+    console.log(
+      "HARNESS entries are NOT product verdicts — the page did not load, the cohort was unsampled, or the session expired."
+    );
+  console.log(`cohort judged: ${COHORT} (a verdict without its cohort is not a fact about the panel)`);
   process.exitCode = bySev("P2").length > 0 ? 1 : 0;
 }
 
