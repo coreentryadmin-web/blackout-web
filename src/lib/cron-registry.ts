@@ -63,8 +63,21 @@ export const CRON_JOBS: CronJobDefinition[] = [
     name: "Largo Morning Brief",
     kind: "http",
     path: "/api/cron/largo-morning-brief",
-    schedule_label: "9:25 AM ET weekdays",
-    schedule_cron_utc: "25 13 * * 1-5",
+    schedule_label: "9:25 AM ET weekdays — NOT CURRENTLY SCHEDULED (see below)",
+    // `schedule_cron_utc` REMOVED, deliberately. It read "25 13 * * 1-5", mirroring
+    // railway.largo-morning-brief.toml — but that TOML declares its cron as a `[[cron]]` table with
+    // `schedule = "..."`, and blackout-infra's sync-cron-schedules.mjs matches only `^cronSchedule\s*=`.
+    // It therefore SKIPS the file with a console.warn, and this job has never appeared in the generated
+    // cron-jobs.json at all. It does not fire.
+    //
+    // The field is not inert metadata: admin-cron-health.ts feeds it to isInOffScheduleIdleGap() to
+    // suppress staleness inside long off-schedule gaps. For a once-a-day cron every moment is such a
+    // gap — measured 48/48 half-hour probes across a weekday — so the phantom schedule permanently
+    // downgraded this job's board status from "NEVER logged a run — job may not be scheduled at all"
+    // to "No runs logged (not due — outside its window)". The one alarm designed to catch precisely
+    // this condition was silenced by the fiction that the job was scheduled.
+    //
+    // Restore this line in the SAME change that gets the job actually scheduled — never before.
     stale_after_min: 24 * 60,
     weekdays_only: true,
     description: "Pre-open Largo summary push for opted-in members",
@@ -189,9 +202,21 @@ export const CRON_JOBS: CronJobDefinition[] = [
     name: "0DTE Ledger Grade",
     kind: "http",
     path: "/api/cron/zerodte-grade",
-    schedule_label: "Every 15 min post-close (16:00–18:00 ET band)",
-    // Mirrors railway.zerodte-grade.toml — off-window stale suppression (ops #1331).
-    schedule_cron_utc: "*/15 20-22 * * 1-5",
+    schedule_label: "Every 15 min post-close — NOT CURRENTLY SCHEDULED (see below)",
+    // `schedule_cron_utc` REMOVED for the same reason as largo-morning-brief: it mirrored
+    // railway.zerodte-grade.toml, but that job is absent from blackout-infra's generated
+    // cron-jobs.json, so nothing fires it. The mirror described a schedule that does not exist.
+    //
+    // Unlike largo-morning-brief this one suppressed only PART of the day — inside the 20:00-22:45 UTC
+    // band the gaps are 15 minutes, below isInOffScheduleIdleGap's 2h threshold — but still 42/48
+    // half-hour probes across a weekday, i.e. 87.5% of the time the board could not say this job had
+    // never run.
+    //
+    // The stated ET band was also only ever true under EDT: 20:00-22:00 UTC is 16:00-18:00 ET in
+    // summer and 15:00-17:00 ET in winter, so as written it would start an hour before the close.
+    // Whoever schedules it should use the dual-band pattern (railway.gex-eod-snapshot.toml).
+    //
+    // Restore this line in the SAME change that gets the job actually scheduled — never before.
     stale_after_min: 6 * 60,
     weekdays_only: true,
     description:
@@ -521,7 +546,11 @@ export const CRON_JOBS: CronJobDefinition[] = [
     // Daily job: a full day plus slack, so one missed evening is caught the next morning and a
     // weekend does not alert.
     stale_after_min: 1800,
-    schedule_cron_utc: "15 20 * * 1-5",
+    // TWO UTC hours: 20:15 is 16:15 ET under EDT, 21:15 is 16:15 ET under EST, so one fire always
+    // lands after the 16:00 ET close. The route's inEtWindow guard skips the off-band fire (before
+    // claiming the day, so the skip cannot lock out the good fire). Was `15 20 * * 1-5`, which ran
+    // 45 min BEFORE the close all winter and committed positions off an unsettled tape.
+    schedule_cron_utc: "15 20,21 * * 1-5",
     weekdays_only: true,
     description: "Whole-market banger scan → next-session candidates",
   },
@@ -553,7 +582,10 @@ export const CRON_JOBS: CronJobDefinition[] = [
     name: "X Growth",
     kind: "http",
     path: "/api/cron/x-growth",
-    schedule_label: "Hourly 9AM–6PM ET weekdays",
+    // Label states UTC, not ET, DELIBERATELY. 13:00-22:00 UTC is 9AM-6PM ET under EDT but
+    // 8AM-5PM ET under EST — a fixed-UTC band cannot hold an ET clock year-round, so an ET label here
+    // would be true for only half the year. Following spx-signal-weight-optimize's honest UTC label.
+    schedule_label: "Hourly 13:00–22:00 UTC weekdays (9AM–6PM ET in EDT, 8AM–5PM ET in EST)",
     stale_after_min: 150,
     schedule_cron_utc: "0 13-22 * * 1-5",
     weekdays_only: true,
@@ -564,7 +596,8 @@ export const CRON_JOBS: CronJobDefinition[] = [
     name: "X Replies",
     kind: "http",
     path: "/api/cron/x-replies",
-    schedule_label: "Hourly 9AM–6PM ET weekdays",
+    // See x-growth: UTC label, because the ET equivalent moves with daylight saving.
+    schedule_label: "Hourly :20 past, 13:00–22:00 UTC weekdays (9:20AM–6:20PM ET in EDT, an hour earlier in EST)",
     stale_after_min: 150,
     schedule_cron_utc: "20 13-22 * * 1-5",
     weekdays_only: true,
@@ -575,7 +608,8 @@ export const CRON_JOBS: CronJobDefinition[] = [
     name: "X Analytics",
     kind: "http",
     path: "/api/cron/x-analytics",
-    schedule_label: "Daily 7:30 PM ET",
+    // See x-growth: UTC label. 23:30 UTC is 7:30 PM ET under EDT and 6:30 PM ET under EST.
+    schedule_label: "Daily 23:30 UTC (7:30 PM ET in EDT, 6:30 PM ET in EST)",
     stale_after_min: 1800,
     schedule_cron_utc: "30 23 * * *",
     description: "Pull X post/profile metrics into analytics",
