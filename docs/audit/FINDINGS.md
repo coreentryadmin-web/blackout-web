@@ -3,6 +3,22 @@
 (Rebuilt 2026-07-13: the prior log was clobbered to an empty file by a squash-merge
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
+## 2026-08-21 — [FINDING, P2 Meridian] Dealer-structure ladder separated rows by less than a row — every adjacent pair overlapped — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | On the Meridian earnings **Positioning** and **Report** tabs, the dealer-structure ladder printed its level labels on top of each other. Visible by eye in a screenshot (`GAMMA FLIP` wrapping and running into `PUT WALL` beneath it) and measured independently by `meridian-interaction-audit.mjs`: `"King node" ∩ "Gamma flip" 74x4px`, `"Gamma flip" ∩ "Put wall" 74x8px`, `"130.00" ∩ "130.00" 44x2px`. |
+| **Root cause** | `MeridianStructureLadder` passed `resolveCollisions` a hardcoded `16 / 132` — documented in-code as *"one row height as a fraction of the ladder"*. The ladder really is 132px. **A row is not 16px.** Measured live on prod (mobile 430x932, BABA positioning tab): row height **20.5px** against an enforced **16px** centre-to-centre gap, so "one row height" of separation came out 4.5px SHORT of one row height. The resolver was doing exactly what it was told. |
+| **Evidence** | Live measurement, every adjacent pair in the six-level ladder: `Spot → Call wall` centres 16.0px apart, **overlap 4.5px**; `Call wall → King node` 16.0px, **4.5px**; `King node → Gamma flip` 22.3px, **6.8px**; `Gamma flip → Put wall` 17.8px, **11.3px**. Only `Put wall → Max pain` (45.7px apart) was clear. The interaction audit measured the same collisions independently at 1440px, which is the corroboration that this is geometry and not a viewport artifact. |
+| **Second cause, the 11.3px outlier** | `grid-template-columns: 4.6rem …` was too narrow for the longest label, so **"Gamma flip" wrapped to two lines** and that row rendered taller than its neighbours — which is why one pair overlapped by 11.3px while the others sat at 4.5px. A pinned row height is only true if nothing inside it wraps. |
+| **Fix** | The geometry moves into named constants — `MV_LADDER_HEIGHT_PX`, `MV_LADDER_ROW_PX`, `MV_LADDER_MIN_GAP` — and the CSS pins the row to `--mv-ladder-row-h: 20px` with `height: var(--mv-ladder-row-h)` and `box-sizing: border-box`. The label column widens to `5.4rem` and gets `white-space: nowrap`, so no row can grow past the pinned height. The resolver itself is UNCHANGED: its forward/backward sweep and order preservation were always correct, and re-sorting would destroy the spatial truth the component exists to show. |
+| **Why not caught** | The two halves of the geometry live in **different languages** — a number in TS, a pixel value in CSS — so neither `tsc` nor any unit test could compare them, and each half is internally consistent. And a selector-based UI check passes a ladder whose labels overlap into garbage: `meridian-earnings-ui-audit.mjs` asserts the ladder PAINTED, which it did. This is the `largo-card-deadspace.mjs` lesson in a new place — a layout packed against an ESTIMATE that nothing had ever compared to pixels. |
+| **Regression guard** | `meridian-viz-core.test.ts` +2 tests. One **reads `desk-app.css`** and asserts `--mv-ladder-row-h` equals `MV_LADDER_ROW_PX`, `.mv-ladder`'s `min-height` equals `MV_LADDER_HEIGHT_PX`, that rows are height-pinned, and that the label is `nowrap` — the only way to catch a cross-language drift. Verified non-vacuous: reverting the CSS to the old `16px` fails it with *"CSS row height 16px disagrees with MV_LADDER_ROW_PX 20px"*. The other asserts that separating the six real BABA levels by `MV_LADDER_MIN_GAP` leaves every pair at least one full row apart, and that order is preserved. |
+| **Not verified live yet** | The measurement above is against DEPLOYED prod, i.e. the broken build. The fix is verified by unit test and by arithmetic (6 levels × 20px = 100px of span inside a 132px ladder), **not** by a post-deploy re-run — that needs `meridian-interaction-audit.mjs` re-run after this merges and ships. |
+| **Still open, deliberately not in this PR** | The same interaction run also measured `"Thermal nodes" ∩ "Vector expected move" 10x9px` in the Report analytics grid (a different component), clipped panel titles (`Street / analysts`, `News & catalysts`), sub-24px tap targets, and a `.meridian-analytics-banner` whose long `sub` text is clipped mid-word because the flex item has no `min-width: 0`. All real, all separate. |
+| **Status** | FIXED. |
 
 ## 2026-08-21 — [FINDING, P2 availability] One bad ticker took down the whole Thermal Discord cron, breach alerts included — FIXED
 
@@ -68,6 +84,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Environment note worth keeping** | `runLargoTool` **cannot run any DB-backed tool in-process from this sandbox** — `DATABASE_URL` is a stale Railway-internal host with no route. The Night Hawk lane is almost entirely DB-backed, so it must be validated THROUGH the app (per CLAUDE.md's access model). The coordinator's original tool list is all Polygon/UW-backed, which is why this never surfaced before. |
 | **Gates** | `npx tsc --noEmit` clean · `npm test` unchanged (Node 20.20.2) · `npm run build` clean · `npx eslint` clean · `node --test scripts/audit/lib/tool-selection.test.mjs` **8 pass / 0 fail**. Audit-lib tests sit outside `npm test`'s `src/**` glob, matching every sibling in `scripts/audit/lib/`. |
 | **Status** | FIXED — PR #2439. |
+
 ## 2026-08-21 — [FINDING, P2 member-visible] Every Thermal expiry chip was a 19px tap target on a phone — FIXED
 
 > **kind:** `FINDING`

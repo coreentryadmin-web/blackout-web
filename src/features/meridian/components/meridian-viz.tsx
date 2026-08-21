@@ -39,6 +39,7 @@ import {
   pctAlong,
   priceDomain,
   resolveCollisions,
+  MV_LADDER_MIN_GAP,
   revisionMomentum,
   sparklinePoints,
   structureLadder,
@@ -397,14 +398,17 @@ export function MeridianStructureLadder({
   const domain = useMemo(() => priceDomain(levels.map((l) => l.value)), [levels]);
   // Rows carry their true price, but two levels a few cents apart land on the same pixel and
   // print on top of each other — measured live: king node 780 and max pain 775 resolved 7px
-  // apart in a 132px ladder with ~14px rows. The resolver nudges them apart while PRESERVING
-  // ORDER, so spatial truth survives; only the drawn position moves, never the value.
-  // MIN_GAP is one row height as a fraction of the ladder (16/132).
+  // apart in a 132px ladder. The resolver nudges them apart while PRESERVING ORDER, so spatial
+  // truth survives; only the drawn position moves, never the value.
+  //
+  // The gap is one ROW HEIGHT, and it now comes from MV_LADDER_MIN_GAP rather than a literal.
+  // The literal said 16/132; rows render at 20.5px, so every adjacent pair overlapped by 4-11px
+  // on live prod. See the note on MV_LADDER_ROW_PX for the measurements.
   const placed = useMemo(() => {
     if (!domain) return [];
     return resolveCollisions(
       levels.map((l) => 1 - (pctAlong(l.value, domain) ?? 0)),
-      16 / 132
+      MV_LADDER_MIN_GAP
     );
   }, [levels, domain]);
   if (levels.length < 2 || !domain) return null;
