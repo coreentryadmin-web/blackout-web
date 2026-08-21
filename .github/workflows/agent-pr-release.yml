@@ -182,6 +182,8 @@ jobs:
           released=0
           skipped=0
           max=${MAX_RELEASE:-3}
+          # PR numbers released so far THIS RUN, for the ordering-dependency guard below.
+          claimed=""
 
           # IFS=TAB, not the default whitespace split.
           #
@@ -251,6 +253,45 @@ jobs:
               skipped=$((skipped+1)); continue
             fi
 
+            # ORDERING DEPENDENCY GUARD — do not release two PRs that touch the same file.
+            #
+            # This workflow releases by check-completion order and `automerge.yml` then merges by
+            # the same clock, so two PRs touching one file merge in an effectively random order.
+            # On 2026-08-21 that broke `main`: #2482 fixed a file that #2421's new allowlist still
+            # listed as broken, so whichever landed second was wrong, and three uninvolved PRs went
+            # red on it. `CLAUDE.md` carries the rule; this enforces it.
+            #
+            # Measured need, not a hypothetical: the first working dry run of this job would have
+            # released #2427 and #2435 together, and those two collide on `vector-full-state.ts`
+            # AND `tool-defs.ts`. Without this guard, arming the schedule would have reproduced
+            # that morning's failure three PRs at a time, every fifteen minutes.
+            #
+            # `docs/` is excluded because `FINDINGS.md` collides between EVERY pair of agent PRs by
+            # construction — every lane appends at the same anchor. Counting it would make every
+            # run release exactly one PR and the guard would read as broken.
+            if ! gh api "repos/$REPO/pulls/$num/files?per_page=100" \
+                 --jq '.[].filename' > /tmp/files-$num.txt 2>/tmp/gh-err.txt; then
+              if rate_limited /tmp/gh-err.txt; then
+                echo "RATE LIMITED reading files for #$num — exiting 0 after $released release(s)."
+                exit 0
+              fi
+              # An unreadable file list must not read as "touches nothing", which would let this PR
+              # out alongside anything. Skip it; the next run re-reads it.
+              echo "skip  #$num  file list unreadable, cannot prove it is safe to release"
+              skipped=$((skipped+1)); continue
+            fi
+            grep -v '^docs/' "/tmp/files-$num.txt" | sort -u > "/tmp/f-$num.txt" || true
+
+            collision=""
+            for prev in $claimed; do
+              if [ -n "$(comm -12 "/tmp/f-$num.txt" "/tmp/f-$prev.txt")" ]; then collision="$prev"; break; fi
+            done
+            if [ -n "$collision" ]; then
+              echo "defer #$num  shares a file with #$collision released this run — next run takes it"
+              skipped=$((skipped+1)); continue
+            fi
+            claimed="$claimed $num"
+
             if [ "${DRY_RUN:-false}" = "true" ] || [ "${HAVE_RELEASE_TOKEN}" != "true" ]; then
               echo "would release  #$num  $branch"
             else
@@ -263,6 +304,39 @@ jobs:
                   echo "RATE LIMITED releasing #$num — exiting 0 after $released release(s)."
                   echo "### Agent PR release — RATE LIMITED after releasing $released" \
                     >> "$GITHUB_STEP_SUMMARY"
+                  exit 0
+                fi
+                # A PERMISSION REFUSAL IS A STANDING CONFIG GAP, NOT AN INCIDENT — same class as
+                # NOT ARMED, and it gets the same treatment for the same reason.
+                #
+                # Measured on the first armed run (32464976418):
+                #   GraphQL: Resource not accessible by personal access token
+                #   (markPullRequestReadyForReview)
+                #
+                # Failing loudly was RIGHT the first time: the error was novel, and going red is
+                # how it got found at all. But it is now a known missing checkbox, and a workflow
+                # that goes red every fifteen minutes over a known missing checkbox is one nobody
+                # reads — which is the failure this file already warns about twice. Classifying it
+                # correctly is not swallowing it: the summary below names the exact permission and
+                # the exact setting, every run, until it is fixed.
+                if grep -qiE "not accessible by (personal access token|integration)" /tmp/gh-err.txt; then
+                  {
+                    echo "### Agent PR release — TOKEN LACKS PULL-REQUEST WRITE"
+                    echo ""
+                    echo "\`AGENT_RELEASE_TOKEN\` authenticated but was refused"
+                    echo "\`markPullRequestReadyForReview\`. It is present and valid — it simply"
+                    echo "cannot perform this operation."
+                    echo ""
+                    echo "Fix one of:"
+                    echo "- Fine-grained PAT → Repository permissions → **Pull requests: Read and write**"
+                    echo "  (\"Read\" is not enough; the default permission set grants no PR access at all)"
+                    echo "- Classic PAT → the full \`repo\` scope"
+                    echo "- If the owner is an ORGANISATION, an org admin must also approve the token:"
+                    echo "  Settings → Personal access tokens → pending requests"
+                    echo ""
+                    echo "Released this run: **$released**  ·  candidate that failed: #$num"
+                  } >> "$GITHUB_STEP_SUMMARY"
+                  echo "TOKEN LACKS PULL-REQUEST WRITE — cannot undraft #$num. See the run summary."
                   exit 0
                 fi
                 echo "Release of #$num failed for a reason that is NOT a rate limit:" >&2
