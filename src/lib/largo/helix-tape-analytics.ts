@@ -2,7 +2,7 @@ import type { FlowAlert } from "@/lib/api";
 import { executionRouteKey, daysToExpiry } from "@/features/helix/lib/helix-flow-format";
 import { HELIX_NET_PREMIUM_LEADERS_LIMIT } from "@/features/helix/lib/helix-strike-leaders";
 import { WHALE_PRINT_PREMIUM } from "@/features/helix/lib/helix-flow-limits";
-import { etStamp } from "@/lib/largo/temporal/bar-session-date";
+import { etStamp, etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 import { flowEventTimeMs } from "@/lib/flow-timestamp";
 
 /** The member panel's horizon buckets, in CHRONOLOGICAL order (ExpiryConcentration.tsx). */
@@ -31,6 +31,27 @@ export function expiryHorizonLabel(dte: number): ExpiryHorizon {
  *  no `dte` column lands in the identical bucket on both surfaces. */
 function dteOf(a: FlowAlert, now: Date): number {
   return a.dte ?? daysToExpiry(a.expiry, now);
+}
+
+/**
+ * Cap a list for a payload WITHOUT hiding that it was capped — the "no silent caps" contract
+ * (rule 7) as a reusable shape. Returns the top `n` items alongside the TRUE `total` and a
+ * `truncated` flag, so a model can never read a 20-of-34 slice as the whole set. `n <= 0` is
+ * treated as "no cap".
+ *
+ * This is the same discipline get_helix_signal_outcomes already applies with rows_shown/
+ * rows_summarized and get_helix_tape_analytics with expiry_concentration_truncated — factored out
+ * so the four get_helix_derived panels (which were each `.slice()`d with no total) can adopt it
+ * identically and be unit-tested, which the inline `.slice()` in product-reads.ts could not be
+ * (that module reaches `server-only`).
+ */
+export function cappedList<T>(
+  items: readonly T[],
+  n: number
+): { items: T[]; total: number; truncated: boolean } {
+  const total = items.length;
+  const cap = n > 0 ? n : total;
+  return { items: items.slice(0, cap), total, truncated: total > cap };
 }
 
 /** Net-premium leaderboard — same aggregation as HELIX NetPremiumLeaderboard panel. */
@@ -190,7 +211,10 @@ export function expiryConcentration(alerts: FlowAlert[], limit = 8, now: Date = 
  * is reachable and is not a contradiction — `typeless_prints` is reported so the gap between the
  * two counts is explainable from the payload instead of looking like a broken sum.
  */
-export function sessionFlowSkew(alerts: FlowAlert[]) {
+/** Accepts anything carrying option_type + premium — FlowAlert, FlowRow, or a raw print —
+ *  because those two fields are all a call/put skew reads. Kept structural so flow-service
+ *  can compute the SAME skew over its own rows without a cast or an import cycle. */
+export function sessionFlowSkew(alerts: ReadonlyArray<{ option_type: string; premium: number }>) {
   const calls = alerts.filter((a) => a.option_type === "CALL").reduce((s, a) => s + a.premium, 0);
   const puts = alerts.filter((a) => a.option_type === "PUT").reduce((s, a) => s + a.premium, 0);
   const total = calls + puts;
@@ -336,4 +360,20 @@ export function helixTapeFetchOptions(opts: {
     since_hours: Math.min(maxSinceHours, Math.max(1, hours)),
     order: "recent" as const,
   };
+}
+
+/**
+ * ET session date for a ledger timestamp string (e.g. the signal-outcome ledger's
+ * `fired_at`, a timestamptz text like "2026-08-20 20:30:14+00").
+ *
+ * The value the model actually needs when it asks which session a firing belongs to. `fired_at`
+ * is UTC-offset text; after ~20:00 ET its calendar date is already tomorrow, so converting it in
+ * the model's head is the bare-instant trap C1 exists to close. Returns null — never a fabricated
+ * date — for a missing or unparseable timestamp, so an absent fire time cannot become a real
+ * session.
+ */
+export function sessionDateForTimestamp(ts: string | null | undefined): string | null {
+  if (!ts) return null;
+  const ms = Date.parse(ts);
+  return Number.isFinite(ms) ? etSessionDate(ms) : null;
 }
