@@ -23,7 +23,10 @@ import {
 import { buildZeroDteRecord } from "@/lib/zerodte/record";
 import { fitRowsToBudget, sampleNote } from "@/lib/largo/fit-tool-result";
 import { formatEtDate, todayEt } from "@/features/nighthawk/lib/session";
-import { summarizeHelixSignalOutcomes } from "@/features/helix/lib/helix-signal-outcome-summary";
+import {
+  summarizeHelixSignalOutcomes,
+  MIN_GRADED_SAMPLE_FOR_WIN_RATE,
+} from "@/features/helix/lib/helix-signal-outcome-summary";
 import { etStamp, etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 import {
   HELIX_FLOW_DEFAULT_SINCE_HOURS,
@@ -239,15 +242,39 @@ export async function helixSignalOutcomesForLargo(limit = 50) {
   try {
     const rows = await fetchRecentHelixSignalOutcomes(limit);
     const summary = summarizeHelixSignalOutcomes(rows);
-    const compact = rows.slice(0, 20).map((r) => ({
+    const ROWS_SHOWN = 20;
+    const compact = rows.slice(0, ROWS_SHOWN).map((r) => ({
       ticker: r.ticker,
       signal_type: r.signal_type,
+      /** The signal's OWN directional read at fire time — `outcome` is relative to this, so
+       *  "continued" is meaningless without it (a continued BEARISH firing means price FELL). */
+      direction: r.direction,
       outcome: r.outcome,
       fired_at: r.fired_at,
       price_at_fire: r.price_at_fire,
       price_1h: r.price_1h,
     }));
-    return roundFloats({ available: true, rows: compact, summary });
+    return roundFloats({
+      available: true,
+      /** No silent caps: the summary is computed over every fetched row, the list is the newest
+       *  ROWS_SHOWN of them. Without this the model reads a 40-sample rate beside 20 rows and
+       *  has no way to know the two describe different populations. */
+      rows: compact,
+      rows_shown: compact.length,
+      rows_summarized: rows.length,
+      /** `outcome` vocabulary, stated so the model never has to infer it: `continued` (moved in
+       *  the firing's direction), `reversed` (moved against it), `flat` (moved less than the
+       *  grader's threshold either way), `pending` (not yet checkpointed at 1h). */
+      outcome_values: ["continued", "reversed", "flat", "pending"],
+      summary: {
+        ...summary,
+        /** The honest name for winRatePct. `continued` is a DIRECTIONAL follow-through, not a
+         *  closed trade, and `flat` is counted outside it — calling it a "win rate" invites the
+         *  model to report the complement as losses when most of it never moved at all. */
+        continuation_rate_pct: summary.winRatePct,
+        min_graded_for_rate: MIN_GRADED_SAMPLE_FOR_WIN_RATE,
+      },
+    });
   } catch (e) {
     return {
       available: false,
