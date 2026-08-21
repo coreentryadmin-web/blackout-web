@@ -134,6 +134,52 @@ function summarizeChecks(runs) {
   return "pass";
 }
 
+/**
+ * Which releasable PRs touch the same file — the ordering dependencies `automerge.yml` cannot see.
+ *
+ * WHY THIS EXISTS. On 2026-08-21 two individually-green PRs broke `main` when composed: #2482 fixed
+ * a file that #2421's new allowlist still listed as broken, so whichever merged second was wrong.
+ * `automerge.yml` merges by check-completion time, which is effectively random, so releasing both
+ * at once is a coin flip. `CLAUDE.md` now carries the rule; this is the check that makes it
+ * cheap enough to actually follow.
+ *
+ * `docs/` is excluded because `FINDINGS.md` collides between EVERY pair of agent PRs by
+ * construction — every lane appends at the same anchor. Including it would flag all N-choose-2
+ * pairs and the signal would be worth nothing. That collision is real but it is a known,
+ * mechanically-resolved one (`findings-merge-resolve.mjs`), not an ordering dependency.
+ */
+function collisionsAmong(rows) {
+  const files = new Map();
+  for (const r of rows) {
+    const res = api(`/pulls/${r.number}/files?per_page=100`);
+    if (!res.ok || !Array.isArray(res.data)) {
+      // An unreadable file list must not read as "touches nothing", which would report the PR as
+      // safe to release beside anything. Same absence-as-measurement trap as everywhere else.
+      files.set(r.number, null);
+      continue;
+    }
+    files.set(r.number, new Set(
+      res.data.map((f) => f.filename).filter((f) => !f.startsWith("docs/"))
+    ));
+  }
+
+  const pairs = [];
+  const unknown = [];
+  const nums = rows.map((r) => r.number);
+  for (const n of nums) if (files.get(n) === null) unknown.push(n);
+  for (let i = 0; i < nums.length; i += 1) {
+    for (let j = i + 1; j < nums.length; j += 1) {
+      const a = files.get(nums[i]); const b = files.get(nums[j]);
+      if (!a || !b) continue;
+      const shared = [...a].filter((f) => b.has(f));
+      if (shared.length) pairs.push({ a: nums[i], b: nums[j], files: shared.sort() });
+    }
+  }
+  const entangled = new Set(pairs.flatMap((p) => [p.a, p.b]));
+  const safe = nums.filter((n) => !entangled.has(n) && files.get(n) !== null);
+  return { pairs, safe, unknown };
+}
+
 function classify(pr, verify, all) {
   if (verify === "failed" || all === "failed") return "CI-FAILED";
   if (pr.mergeable === false) return "CONFLICTED";
@@ -217,6 +263,21 @@ function main() {
         `outside the merge pipeline, not work in progress. Review, then mark ready:\n` +
         `  node scripts/audit/agent-pr-sweep.mjs --mark-ready --limit=5\n`
       );
+      if (jam.length > 1) {
+        const { pairs, safe, unknown } = collisionsAmong(jam);
+        if (pairs.length === 0) {
+          console.log(`No file collisions among them — releasing together is safe.\n`);
+        } else {
+          console.log(`⚠ ORDERING DEPENDENCIES — these pairs touch the same file, so releasing them`);
+          console.log(`  together lets automerge decide the order, and it decides by clock:`);
+          for (const pr of pairs) {
+            console.log(`   #${pr.a} ∩ #${pr.b}  ${pr.files.slice(0, 3).join(", ")}${pr.files.length > 3 ? ` (+${pr.files.length - 3})` : ""}`);
+          }
+          console.log(`\n  SAFE TO RELEASE TOGETHER: ${safe.length ? safe.map((n) => "#" + n).join(", ") : "(none — release one at a time)"}`);
+          if (unknown.length) console.log(`  UNKNOWN (file list unreadable, treat as unsafe): ${unknown.map((n) => "#" + n).join(", ")}`);
+          console.log(`  Land one of an entangled pair, confirm it is in main, then release the next.\n`);
+        }
+      }
     }
   }
 
