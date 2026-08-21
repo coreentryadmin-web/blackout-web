@@ -20,16 +20,23 @@ ever touched, 67 of them untouched for over 60 days. The split's largest output 
 `core.ts` holding 85% of the registry. That is a rename, not a decomposition.
 
 **2. Of the green PRs, how many become mutually releasable after the split?  → Fewer. 19 → 10.**
+*(Re-measured 10:55Z on a queue that has since grown to 35: **5 → 26** with the resolver, no split.
+The ratio is unchanged and the conclusion is unchanged.)*
 Simulated as an actual release pass — merge each of the 28 open agent PRs into main in turn, count
 how many land without a human:
 
 | Base | FINDINGS.md policy | Merged in one pass |
 |---|---|---:|
-| current `main` | strict (any conflict stops) | **2 / 28** ← today |
-| current `main` | auto-resolved (`findings-merge-resolve.mjs`) | **19 / 28** |
-| **after the full split** | strict | **2 / 28** |
+| current `main` | strict (any conflict stops) | **5 / 35** ← today |
+| current `main` | auto-resolved (`findings-merge-resolve.mjs`) | **26 / 35** |
+| **after the full split** | strict | 2 / 28 |
 | **after the full split** | auto-resolved | **10 / 28** |
 | after splitting `product-reads.ts` only | auto-resolved | **16 / 28** |
+
+Rows 1–2 are re-measured at 10:55Z over the current 35 open `claude/*` PRs. Rows 3–5 were measured
+at 10:45Z over the 28 open then; `main` has not moved between the two (`fbfa7d23` both times), so
+the split rows are directly comparable to the 19/28 they should be read against. **The queue grew
+by seven PRs and the ratio did not move: 14% strict, 74% with the resolver.**
 
 The split does not turn 1-per-pass into 8-per-pass. It turns 19-per-pass into 10-per-pass. What
 turns 2 into 19 is running the FINDINGS.md resolver that already exists, inside the release pass.
