@@ -172,6 +172,36 @@ async function settle(page, ms, log) {
 }
 
 /**
+ * Wait for an opened Meridian event to lay out, not merely to have text.
+ *
+ * The detail pane populates its text well before it has any height. A capture taken on a fixed
+ * post-click wait framed `.meridian-detail` at 2128x282 — the kicker, the title, a band of loading
+ * stripes and the JUMP TO DESK rail, with the actual brief clipped off below. Probing found
+ * `innerText` already 1325 characters and zero skeleton nodes at t+0s, so "is the content there"
+ * is the wrong question: it was there and the box had not grown to hold it.
+ *
+ * So the readiness signal is the BOX, and it is settled rather than thresholded — two consecutive
+ * identical heights above a floor, which catches both "still growing" and "grew, then a lazy panel
+ * pushed it further".
+ */
+async function settleDetail(page, log, { minHeight = 600, timeoutMs = 30000 } = {}) {
+  const detail = page.locator('.meridian-detail').first();
+  let last = -1;
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await page.waitForTimeout(1200);
+    const box = await detail.boundingBox().catch(() => null);
+    const h = box ? Math.round(box.height) : 0;
+    if (h >= minHeight && h === last) { log.push(`detail→${h}px`); return true; }
+    last = h;
+  }
+  // Say so rather than capturing a stub silently — a clipped brief looks like a product with
+  // nothing in it.
+  log.push(`detail→NEVER SETTLED (${last}px, wanted >=${minHeight})`);
+  return false;
+}
+
+/**
  * MERIDIAN. Two desk views (Timeline / Analytics grid) and, on an opened event, five brief tabs
  * (Summary / Report / Estimates / Positioning / History).
  *
@@ -199,8 +229,25 @@ async function meridian(page, o, log) {
     }).first();
     if (await chip.count()) { await chip.click(); await page.waitForTimeout(4000); log.push(`class→${o.eventClass}`); }
     const row = page.locator(`.meridian-theme-${o.eventClass.toLowerCase()}`).first();
-    if (await row.count()) { await row.click(); await page.waitForTimeout(9000); log.push('event→opened'); }
-    else log.push(`event→no ${o.eventClass} event listed (captured honestly)`);
+    if (await row.count()) {
+      await row.click();
+      // ASSERT THE BRIEF RENDERED. Clicking a row is not the same as opening one: Meridian can come
+      // back "Timeline unavailable — try refresh", and a run that logs `event→opened` on the click
+      // alone emits a screenshot of an empty desk that looks exactly like a broken product.
+      // MEASURED 2026-08-21 — that is precisely what it did, and the step log said it succeeded.
+      if (!(await settleDetail(page, log))) {
+        const shell = await page
+          .locator('text=/Timeline unavailable|Select a catalyst/i')
+          .count()
+          .catch(() => 0);
+        throw new Error(
+          shell
+            ? `Meridian did not open the ${o.eventClass} brief — desk returned its empty shell ("Timeline unavailable" / "Select a catalyst"). Not captured.`
+            : `Meridian ${o.eventClass} brief never laid out. Not captured.`,
+        );
+      }
+      log.push('event→opened ✓');
+    } else log.push(`event→no ${o.eventClass} event listed (captured honestly)`);
   }
 
   if (o.ticker && o.ticker !== 'SPY' && !o.eventClass) {
@@ -211,7 +258,9 @@ async function meridian(page, o, log) {
     // Select an EARNINGS row specifically — see the header note.
     const row = page.locator('.meridian-theme-earnings').filter({ hasText: o.ticker }).first();
     if (await row.count()) {
-      await row.click(); await page.waitForTimeout(9000); log.push('event→opened');
+      await row.click();
+      await settleDetail(page, log);
+      log.push('event→opened');
     } else {
       log.push(`event→none for ${o.ticker} (captured honestly)`);
     }
@@ -289,8 +338,15 @@ async function scanner(page, o, log) {
 
   // Verify it actually populated — an empty screener is a real state ("No names match") and must
   // be captured honestly, but it must never be mistaken for a loaded one.
-  const rowCount = await page.locator('.vector-scanner-body tr, .vector-scanner-body [role="row"]').count();
+  // Count the rows by their own class, not by a descendant guess.
+  //
+  // `.vector-scanner-body tr` reported FOUR rows on a screener holding about ninety (MEASURED
+  // 2026-08-21). This count exists precisely so a run can tell a populated screener from an empty
+  // one — "No names match" is a real and postable state — so a counter that silently under-reports
+  // defeats the only thing it is for.
+  const rowCount = await page.locator('.vector-scanner-row').count();
   log.push(`rows→${rowCount}`);
+  if (!rowCount) log.push('rows→EMPTY SCREENER (a real state — caption it as one)');
 
   // Type size is the whole game for a table attachment; see `zoomContainer`.
   if (o.pageZoom) {
@@ -301,10 +357,21 @@ async function scanner(page, o, log) {
 
   if (o.rows) {
     // Crop to the top N rows by clipping the panel box — the story is the head of the ranking.
+    // MEASURE THE NTH ROW, do not model it.
+    //
+    // The first version computed `150 + rows * 26` and the second scaled that by the container
+    // zoom. Both were guesses about a layout that reflows, and both produced letterboxed strips the
+    // frame scorer rejected — 3.5:1, then 4.6:1. The rows are in the DOM with real coordinates, so
+    // clipping to the bottom of the Nth one is exact and survives any future restyle.
     const box = await panel.boundingBox();
+    const nth = page.locator('.vector-scanner-row').nth(Math.max(0, Number(o.rows) - 1));
+    const rb = (await nth.count()) ? await nth.boundingBox() : null;
+    if (box && rb) {
+      return { clip: { x: box.x, y: box.y, width: box.width, height: rb.y + rb.height - box.y } };
+    }
     if (box) {
-      const height = Math.min(box.height, 150 + Number(o.rows) * 26);
-      return { clip: { x: box.x, y: box.y, width: box.width, height } };
+      log.push(`rows!${o.rows} — row ${o.rows} not found, framing the whole panel`);
+      return { clip: { x: box.x, y: box.y, width: box.width, height: box.height } };
     }
   }
   return panel;
@@ -420,14 +487,45 @@ async function helix(page, o, log) {
 
 
 async function vector(page, o, log) {
+  // Vector-only defaults — see the recipe note on the option block. Applied here rather than in the
+  // shared arg parsing so a Thermal or Meridian run is unaffected by a chart-framing decision.
+  if (!o.zoom || o.zoom === '6') o.zoom = '11';
+  if (!o.zoomAnchor) o.zoomAnchor = '0.99';
+  if (!o.priceZoom) o.priceZoom = '-1';
   const url = `https://blackouttrades.com/vector?ticker=${encodeURIComponent(o.ticker)}`;
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
   await settle(page, 12000, log);
 
-  // timeframe
+  // TIMEFRAME and NODE DENSITY — the two controls that decide whether beads read as RAILS or as a
+  // dotted line, and the two the operator's reference frames have set that mine did not.
+  //
+  // `vector-nodes-select` defaults to AUTO, which resolved to 11 rows. The operator's exemplars run
+  // 20 rows on a 3-minute chart: every strike near spot gets its own rail of individual beads
+  // instead of a sparse scatter, and 3m candles fill the session rather than leaving gaps between
+  // them. Both selects render a compact and a desk copy, so both go through `vis()`.
   if (o.tf) {
     const sel = vis(page, '#vector-tf-select');
-    if (await sel.count()) { await sel.selectOption(o.tf).catch(()=>{}); await page.waitForTimeout(4000); log.push(`tf→${o.tf}`); }
+    // Wait for it. The toolbar hydrates after the chart, so a bare count() at the 12s settle is a
+    // coin flip — one run set tf and nodes, the next silently skipped both and captured an AUTO-11
+    // chart while the caption described a 20-row one.
+    await sel.waitFor({ state: 'visible', timeout: 20000 }).catch(() => {});
+    if (await sel.count()) {
+      await sel.selectOption(o.tf).catch(() => {});
+      await page.waitForTimeout(5000);
+      // Report what the control actually holds — a silently rejected value would leave the frame
+      // on a timeframe the caption does not describe.
+      log.push(`tf→${await sel.inputValue().catch(() => '?')}`);
+    } else log.push(`tf!${o.tf} CONTROL ABSENT — frame is on the default timeframe`);
+  }
+  if (o.nodes) {
+    // id OR test id: the probe matched it on either, and only the test id is actually present.
+    const sel = vis(page, '#vector-nodes-select, select[data-testid="vector-nodes-select"]');
+    await sel.waitFor({ state: 'visible', timeout: 20000 }).catch(() => {});
+    if (await sel.count()) {
+      await sel.selectOption(o.nodes).catch(() => {});
+      await page.waitForTimeout(5000);
+      log.push(`nodes→${await sel.inputValue().catch(() => '?')}`);
+    } else log.push(`nodes!${o.nodes} CONTROL ABSENT — frame is on AUTO density`);
   }
   // horizon chip (0DTE / WEEKLY / MONTHLY)
   if (o.horizon) {
@@ -549,6 +647,83 @@ async function vector(page, o, log) {
     await page.waitForTimeout(1200);
     log.push(`zoom→${o.zoom || 6}@${anchor}`);
   }
+
+  // PRICE-AXIS ZOOM — separate, and the one the reference frames actually depend on.
+  //
+  // `--zoom` wheels over the plot, which compresses TIME. The operator's frames are tight on
+  // PRICE: the SPX reference spans about 48 points on a 7,680 index, roughly 0.6%, so each strike
+  // gets its own horizontal band and the bead rails read as distinct ropes instead of stacking
+  // into one another. Wheeling over the price scale itself is what changes that axis.
+  const pbox = await chart.boundingBox();
+  if (o.priceZoom && pbox) {
+    // DRAG, not wheel. Wheeling over the price scale was a silent no-op: an otherwise identical
+    // pair of runs with and without it produced the same 212.50-220.00 axis. This scale responds to
+    // a vertical drag on it, so that is what this does — and it reads the axis span before and
+    // after so the step log reports what CHANGED rather than what was requested.
+    // SIGN MATTERS, and I had it backwards. A NEGATIVE value EXPANDS the price range.
+    //
+    // The operator's annotated reference wants six bead levels in frame (223 / 220 / 218 / 215 /
+    // 213 / 210 on NVDA) against a candle range of roughly 214.5-218.5. That needs the axis pushed
+    // WIDER than the candles, not tighter — the levels above and below the day's range are the
+    // whole point, because they are where price is being pulled to. My first cut only tightened,
+    // which is why it kept pushing the 220 wall off frame.
+    const px = pbox.x + pbox.width * 0.985;
+    const steps = Math.abs(Number(o.priceZoom));
+    const expand = Number(o.priceZoom) < 0;
+    const spanOf = () =>
+      page.evaluate(() => {
+        const t = Array.from(document.querySelectorAll('text, div'))
+          .map((e) => Number(String(e.textContent || '').replace(/,/g, '')))
+          .filter((n) => Number.isFinite(n) && n > 0);
+        return t.length ? Math.max(...t) - Math.min(...t) : null;
+      });
+    const before = await spanOf();
+    for (let i = 0; i < steps; i += 1) {
+      const from = pbox.y + pbox.height * (expand ? 0.15 : 0.35);
+      const to = pbox.y + pbox.height * (expand ? 0.35 : 0.15);
+      await page.mouse.move(px, from);
+      await page.mouse.down();
+      await page.mouse.move(px, to, { steps: 12 });
+      await page.mouse.up();
+      await page.waitForTimeout(700);
+    }
+    await page.mouse.move(4, 4);
+    await page.waitForTimeout(2500);
+    const after = await spanOf();
+    log.push(`price-${expand ? 'expand' : 'tighten'}→${steps}${before && after && before === after ? ' (NO CHANGE)' : ''}`);
+  }
+  // LADDER LAYOUT — the operator's NVDA reference composition.
+  //
+  // That frame is not the full-screen chart: it is the DESK, with the ALL MATRIX strike ladder
+  // beside the chart, so a reader sees the gamma per strike as a column of numbers AND as beads on
+  // the price at the same time. The two together are the argument; either alone is half of it.
+  //
+  // `.vector-chart-terminal-grid` is the row that holds both, but it measured 2512x2806 — it runs
+  // far below the chart into the rails underneath, and a 2806px-tall frame is a screenshot of a
+  // page, not an attachment. So the clip takes the GRID's horizontal extent and the CHART's
+  // vertical one, which is exactly the ladder-plus-chart band and nothing else.
+  if (o.layout === 'ladder') {
+    const grid = page.locator('.vector-chart-terminal-grid').first();
+    const gb = await grid.boundingBox();
+    const cb = await chart.boundingBox();
+    // START AT THE TOOLBAR, not the chart. The reference composition includes the control row —
+    // ticker, COMPARE, FULL SCREEN, timeframe, INDICATORS, TOOLS — because it tells the reader what
+    // they are looking at and that it is a live product rather than a rendered image.
+    const tb = await page.locator('.vector-page-toolbar').first().boundingBox();
+    const top = tb ? Math.min(tb.y, cb ? cb.y : tb.y) : cb ? cb.y : 0;
+    if (gb && cb) {
+      // STOP AT THE CHART'S RIGHT EDGE. The grid's full width is the whole desk — ladder, chart,
+      // the Helix live-tape rail and the position/technicals rail, four columns. All of it is real
+      // and none of it belongs in one attachment: at that width the candles compress to a ribbon
+      // and the reader's eye has nowhere to land. The reference composition is two columns.
+      const width = cb.x + cb.width - gb.x;
+      const height = cb.y + cb.height - top;
+      log.push(`layout→ladder ${Math.round(width)}x${Math.round(height)}${tb ? ' +toolbar' : ''}`);
+      return { clip: { x: gb.x, y: top, width, height } };
+    }
+    log.push('layout!ladder — grid or chart box missing, fell back to the chart alone');
+  }
+
   return chart;
 }
 
@@ -557,9 +732,24 @@ async function vector(page, o, log) {
     surface: arg('surface','thermal'), ticker: arg('ticker','SPY').toUpperCase(),
     view: arg('view','matrix'), lens: arg('lens','GEX').toUpperCase(),
     sector: arg('sector',''), panel: arg('panel',''), out: arg('out','/tmp/shots/out.png'),
-    tf: arg('tf',''), horizon: arg('horizon',''), zoom: arg('zoom','6'),
+    // VECTOR REFERENCE FRAME AS THE DEFAULT.
+    //
+    // These six values are what separate a frame that matches the operator's annotated reference
+    // from one that does not, and nobody should have to remember six flags to get the standard
+    // shot. Each is overridable; together they are the recipe:
+    //
+    //   tf 3          3-minute candles fill the session instead of leaving gaps
+    //   nodes 20      AUTO resolves to 11 rows, at which beads are a dotted scatter, not rails
+    //   zoom 11       compresses the overnight session off the left so RTH carries the frame
+    //   anchor 0.99   zoom is about the cursor, so anchoring right keeps the newest bars
+    //   price -1      EXPANDS the price axis to reveal the levels ABOVE and BELOW the day's range
+    //   1500x1440     near-square, like the reference; an ultrawide frame shrinks every candle
+    //
+    // The operator's rule the recipe is built to satisfy: at least six bead levels in frame, with
+    // candles, beads and walls all separately legible.
+    tf: arg('tf', '3'), horizon: arg('horizon',''), zoom: arg('zoom','6'),
     mode: arg('mode',''), preset: arg('preset',''), indicators: arg('indicators',''),
-    zoomAnchor: arg('zoom-anchor',''), pageZoom: arg('page-zoom',''),
+    zoomAnchor: arg('zoom-anchor',''), layout: arg('layout',''), pageZoom: arg('page-zoom',''), nodes: arg('nodes','20'), priceZoom: arg('price-zoom',''),
     expiry: arg('expiry',''), rows: arg('rows',''), panelLabel: arg('panel-label',''), eventClass: arg('class',''),
   };
   /**
@@ -592,7 +782,7 @@ async function vector(page, o, log) {
   const { browser, ctx, counts } = await createTunneledContext({
     url: 'https://blackouttrades.com/',
     cookie: explicitCookie || session.cookieHeader,
-    viewport: arg('viewport','2560x1440'), desktop: true,
+    viewport: arg('viewport', arg('surface','thermal') === 'vector' ? '1500x1440' : '2560x1440'), desktop: true,
   });
   // 45s: comfortably inside a ~60s token, and short enough that a refresh failure shows up in the
   // step log while there is still a live token to finish the frame on.

@@ -39,8 +39,8 @@ export const X_INTEL_QUEUE_FIXTURES: XIntelQueueRow[] = [
       "",
       "SPX broke below 6,784 at 11:42 ET.",
       "",
-      "Thermal had dealers positioned SHORT GAMMA below the level at 11:34 — hedging pressure",
-      "into any break, not after it.",
+      "Thermal had dealers SHORT GAMMA below the level at 11:34 — pressure into the break,",
+      "not after it.",
       "",
       "6,784 → 6,751",
       "-33 pts",
@@ -289,7 +289,7 @@ export const X_INTEL_QUEUE_FIXTURES: XIntelQueueRow[] = [
     session_claim: true,
     // Helix was read fine here; the package simply had only two distinct surfaces worth showing.
     blind_spots: [],
-    cta: buildCta("2026-08-21T10", ["SOFT"]),
+    cta: buildCta("2026-08-21T10", ["DISCORD"]),
     posted_tweet_id: null,
   },
 
@@ -424,7 +424,7 @@ export const X_INTEL_QUEUE_FIXTURES: XIntelQueueRow[] = [
     skip_kind: null,
     session_claim: true,
     blind_spots: [],
-    cta: buildCta("2026-08-21T12", ["DISCORD", "SOFT"]),
+    cta: buildCta("2026-08-21T12", ["WHOP", "DISCORD"]),
     posted_tweet_id: null,
   },
 ];
