@@ -444,6 +444,29 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
   t("get_earnings_market", "UW ONLY — the current ET session's premarket/afterhours earnings. Trust each row's own `report_date` for which session it belongs to, and `as_of_session`/`as_of_weekday` for the ET session this was read on — do not infer today's session from a timestamp. Move/return fields are PERCENTS under `_pct` names; `expected_move` is a DOLLAR amount.", {}),
 
   t(
+    "get_meridian_timeline",
+    "MERIDIAN — the desk's event calendar: macro releases, earnings prints, OpEx and FDA decisions in ONE ranked timeline, ET-anchored. Use this for 'what's coming up', 'what are the catalysts this week', 'when does X report', 'is there an FOMC/CPI this week', 'when is the next OpEx'. Every item carries an `id` — pass it to `get_meridian_event` for that event's full detail. Filters: `kind` (macro|earnings|opex|fda), `impact` (high|medium|low, meaning THAT BAR OR ABOVE), `ticker`, `days_ahead` (1-30, default 7), `limit` (default 40). Dates and times are ET sessions, never UTC. `truncated: true` means the list was capped — raise `limit` rather than concluding nothing else is scheduled. `available: false` with an `error` means the calendar could not be READ, which is not evidence that nothing is scheduled.",
+    {
+      days_ahead: { type: "number", description: "ET days forward, 1-30. Default 7." },
+      kind: { type: "string", description: "macro | earnings | opex | fda. Omit for all." },
+      impact: { type: "string", description: "high | medium | low — that bar OR ABOVE." },
+      ticker: { type: "string", description: "Only events for this ticker (earnings/FDA)." },
+      limit: { type: "number", description: "Max items, 1-200. Default 40." },
+    }
+  ),
+
+  t(
+    "get_meridian_event",
+    "MERIDIAN — full detail for ONE event from `get_meridian_timeline`. This is where the desk's actual analysis lives, and none of it is available from the plain calendar tools. EARNINGS: print history with each reaction anchored to BMO/AMC timing (`reaction_basis`), the options-implied move vs what past prints realized, dealer structure (call/put wall, gamma flip, max pain), flow and dark-pool reads, and a weighted play read with its rationale. OPEX: pin accuracy history and cross-market rows. MACRO: prior-release reactions and surprise history. FDA: prior decisions and how the name traded them. Pass `id` from the timeline, or build one with `kind` + `ticker` + `date` (earnings/fda) or `kind` + `date` (opex). A macro event needs its full `id` — the event name is part of the key. `available: false` distinguishes a malformed id (`bad_event_id`), a lookup failure (`event_lookup_failed`) and a genuine miss (`not_found`); only the last means the event is absent.",
+    {
+      id: { type: "string", description: "Timeline id, e.g. earnings:NVDA:2026-08-26 or opex:2026-09-18." },
+      kind: { type: "string", description: "macro | earnings | opex | fda — with `ticker`/`date` instead of `id`." },
+      ticker: { type: "string", description: "Ticker, for earnings/fda when building an id." },
+      date: { type: "string", description: "ET event date YYYY-MM-DD, when building an id." },
+    }
+  ),
+
+  t(
     "get_earnings_calendar",
     "Market-wide earnings calendar (Alpha Vantage, 3-month horizon) — next report date per ticker. Distinct from get_earnings (Benzinga per-ticker). Optional ticker filter. Read `available` and `configured` before concluding anything from an empty result: `available:false` means the calendar could not be read at all, and `configured:false` means it holds no dates for ANY ticker — neither is evidence that a ticker has no upcoming report. Only `available:true` + `configured:true` + a null `next_report_date` means the horizon genuinely has no date for that ticker.",
     { ticker: { type: "string", description: "Optional — filter to one symbol." } }
