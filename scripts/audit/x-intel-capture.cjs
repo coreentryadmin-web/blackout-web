@@ -674,6 +674,32 @@ async function vector(page, o, log) {
     const after = await spanOf();
     log.push(`price-${expand ? 'expand' : 'tighten'}→${steps}${before && after && before === after ? ' (NO CHANGE)' : ''}`);
   }
+  // LADDER LAYOUT — the operator's NVDA reference composition.
+  //
+  // That frame is not the full-screen chart: it is the DESK, with the ALL MATRIX strike ladder
+  // beside the chart, so a reader sees the gamma per strike as a column of numbers AND as beads on
+  // the price at the same time. The two together are the argument; either alone is half of it.
+  //
+  // `.vector-chart-terminal-grid` is the row that holds both, but it measured 2512x2806 — it runs
+  // far below the chart into the rails underneath, and a 2806px-tall frame is a screenshot of a
+  // page, not an attachment. So the clip takes the GRID's horizontal extent and the CHART's
+  // vertical one, which is exactly the ladder-plus-chart band and nothing else.
+  if (o.layout === 'ladder') {
+    const grid = page.locator('.vector-chart-terminal-grid').first();
+    const gb = await grid.boundingBox();
+    const cb = await chart.boundingBox();
+    if (gb && cb) {
+      // STOP AT THE CHART'S RIGHT EDGE. The grid's full width is the whole desk — ladder, chart,
+      // the Helix live-tape rail and the position/technicals rail, four columns. All of it is real
+      // and none of it belongs in one attachment: at that width the candles compress to a ribbon
+      // and the reader's eye has nowhere to land. The reference composition is two columns.
+      const width = cb.x + cb.width - gb.x;
+      log.push(`layout→ladder ${Math.round(width)}x${Math.round(cb.height)}`);
+      return { clip: { x: gb.x, y: cb.y, width, height: cb.height } };
+    }
+    log.push('layout!ladder — grid or chart box missing, fell back to the chart alone');
+  }
+
   return chart;
 }
 
@@ -699,7 +725,7 @@ async function vector(page, o, log) {
     // candles, beads and walls all separately legible.
     tf: arg('tf', '3'), horizon: arg('horizon',''), zoom: arg('zoom','6'),
     mode: arg('mode',''), preset: arg('preset',''), indicators: arg('indicators',''),
-    zoomAnchor: arg('zoom-anchor',''), pageZoom: arg('page-zoom',''), nodes: arg('nodes','20'), priceZoom: arg('price-zoom',''),
+    zoomAnchor: arg('zoom-anchor',''), layout: arg('layout',''), pageZoom: arg('page-zoom',''), nodes: arg('nodes','20'), priceZoom: arg('price-zoom',''),
     expiry: arg('expiry',''), rows: arg('rows',''), panelLabel: arg('panel-label',''), eventClass: arg('class',''),
   };
   /**
