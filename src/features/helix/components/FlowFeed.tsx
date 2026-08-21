@@ -42,6 +42,7 @@ import {
 import {
   HELIX_FLOW_DEFAULT_SINCE_HOURS,
   HELIX_FLOW_PAGE_SIZE,
+  HELIX_MEMBER_PANEL_PREMIUM_FLOOR,
 } from "@/features/helix/lib/helix-flow-limits";
 import { FlowBrief } from "@/features/helix/components/FlowBrief";
 import { NetPremiumLeaderboard } from "@/features/helix/components/NetPremiumLeaderboard";
@@ -94,7 +95,8 @@ const PREMIUM_PRESETS = [200_000, 500_000, 1_000_000, 20_000_000] as const;
 // MIN_PREMIUM, default UW_FLOW_MIN_PREMIUM = $200K). A $100K floor was dead UI — no
 // row below $200K is ever persisted, so requesting them returned nothing. Keep this
 // in sync with UW_FLOW_MIN_PREMIUM if that env is lowered server-side.
-const FLOOR_PREMIUM = 200_000;
+// Single definition, shared with Largo's tape tools so the two surfaces cannot drift apart.
+const FLOOR_PREMIUM = HELIX_MEMBER_PANEL_PREMIUM_FLOOR;
 const WHALE_PREMIUM = 1_000_000;
 type TypeFilter = "ALL" | "CALL" | "PUT";
 const FLOW_POLL_MS   = 30_000;

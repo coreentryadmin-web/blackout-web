@@ -24,6 +24,13 @@ import { fitRowsToBudget, sampleNote } from "@/lib/largo/fit-tool-result";
 import { formatEtDate, todayEt } from "@/features/nighthawk/lib/session";
 import { summarizeHelixSignalOutcomes } from "@/features/helix/lib/helix-signal-outcome-summary";
 import { etStamp, etSessionDate } from "@/lib/largo/temporal/bar-session-date";
+import {
+  HELIX_FLOW_DEFAULT_SINCE_HOURS,
+  HELIX_FLOW_MAX_SINCE_HOURS,
+  HELIX_FLOW_MAX_LIMIT,
+  HELIX_FLOW_PAGE_SIZE,
+  HELIX_MEMBER_PANEL_PREMIUM_FLOOR,
+} from "@/features/helix/lib/helix-flow-limits";
 import { loadSpxDeskPulse, loadSpxPinForecast } from "@/features/spx/lib/spx-desk-loader";
 import { composeCortexRead } from "@/lib/bie/cortex-read";
 import { fetchUnifiedHorizonOutcomes } from "@/lib/horizon-outcomes";
@@ -603,7 +610,11 @@ export async function flowBriefForLargo() {
 }
 
 /** HELIX tape panel aggregates — Net Premium, Route, Expiry, session skew. */
-export async function helixTapeAnalyticsForLargo(ticker: string | null, limit = 200) {
+export async function helixTapeAnalyticsForLargo(
+  ticker: string | null,
+  limit = HELIX_FLOW_PAGE_SIZE,
+  sinceHours = HELIX_FLOW_DEFAULT_SINCE_HOURS
+) {
   try {
     const { marketPlatform } = await import("@/lib/platform");
     const {
@@ -612,10 +623,30 @@ export async function helixTapeAnalyticsForLargo(ticker: string | null, limit = 
       expiryConcentration,
       expiryHorizonConcentration,
       sessionFlowSkew,
+      tapeWindowCoverage,
     } = await import("@/lib/largo/helix-tape-analytics");
+    // Read the SAME POPULATION the /flows desk reads. Ordering is not cosmetic here: it decides
+    // which prints survive the LIMIT. The previous call passed neither `since_hours` nor `order`,
+    // so fetchRecentFlows fell to `ORDER BY total_premium DESC` over 48h — under which the 0DTE
+    // horizon was absent from the population ENTIRELY (measured live 2026-08-20: 17 0DTE prints
+    // worth $2.7M, none of them in the top 200 by premium against $2.1B of LEAPS blocks), and the
+    // Net Premium leaderboard disagreed with the member's own panel by up to 105x on SPXW.
+    const windowHours = Math.min(
+      HELIX_FLOW_MAX_SINCE_HOURS,
+      Math.max(1, Number.isFinite(sinceHours) ? Math.floor(sinceHours) : HELIX_FLOW_DEFAULT_SINCE_HOURS)
+    );
+    // Guarded the same way as the window: Math.floor(NaN) is NaN, and an unguarded NaN reaches
+    // Postgres as `LIMIT NaN`, which throws and surfaces to the model as available:false — a
+    // healthy tool reported as broken because of one bad argument.
+    const rowLimit = Math.min(
+      HELIX_FLOW_MAX_LIMIT,
+      Math.max(1, Number.isFinite(limit) ? Math.floor(limit) : HELIX_FLOW_PAGE_SIZE)
+    );
     const summary = await marketPlatform.flows.getFlowTapeSummary({
-      limit,
+      limit: rowLimit,
       ticker: ticker ? ticker.toUpperCase() : undefined,
+      since_hours: windowHours,
+      order: "recent",
     });
     const alerts = summary.recent ?? [];
     const now = new Date();
@@ -642,7 +673,19 @@ export async function helixTapeAnalyticsForLargo(ticker: string | null, limit = 
       ticker: ticker?.toUpperCase() ?? null,
       as_of: etStamp(nowMs),
       session_date: etSessionDate(nowMs),
-      window_hours: summary.window_hours ?? null,
+      /** What the tape ACTUALLY covers. A requested window is an intent, not evidence: the row
+       *  LIMIT binds first almost every time, so `requested_hours` alone would let a model
+       *  describe 54 minutes of prints as a week of flow. Read `actual_hours` + `limit_reached`. */
+      window: tapeWindowCoverage(alerts, windowHours, rowLimit, now),
+      ordered_by: "recent",
+      /** `false`, not null: C3 asks that null never stand for a known state, and "no floor was
+       *  applied" is a known state — a reader seeing null could reasonably take it as "unknown".
+       *  The member's /flows panels hide prints under $200k (FlowFeed.tsx FLOOR_PREMIUM). This
+       *  tool deliberately does NOT apply that floor — it is a rendering choice, and 16 of the 17
+       *  0DTE prints on the live tape sit below it. Disclosed so a small divergence from the
+       *  member's on-screen numbers can be explained rather than looking like a data fault. */
+      premium_floor_applied: false,
+      member_panel_premium_floor: HELIX_MEMBER_PANEL_PREMIUM_FLOOR,
       session: sessionFlowSkew(alerts),
       net_premium_leaders: netPremiumLeaders(alerts),
       route_breakdown: routeBreakdown(alerts),

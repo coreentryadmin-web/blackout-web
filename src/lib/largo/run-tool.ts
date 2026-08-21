@@ -1056,9 +1056,14 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
 
     case "get_helix_tape_analytics": {
       const { helixTapeAnalyticsForLargo } = await import("@/lib/largo/product-reads");
+      // `hours` is an accepted alias for since_hours, matching get_flow_tape's own contract —
+      // the model reaches for either, and silently ignoring one answers a "right now" question
+      // with a week of tape.
+      const hours = input.since_hours ?? input.hours;
       return helixTapeAnalyticsForLargo(
         input.ticker ? String(input.ticker) : null,
-        Number(input.limit ?? 200)
+        input.limit != null ? Number(input.limit) : undefined,
+        hours != null ? Number(hours) : undefined
       );
     }
 
