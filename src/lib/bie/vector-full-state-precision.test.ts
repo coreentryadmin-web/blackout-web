@@ -145,3 +145,24 @@ test("the AT dead-band is unchanged by the rescale", () => {
   });
   assert.equal(outsideBand!.pull, "up", "0.50% away is outside the dead-band");
 });
+
+test("Vector fractions survive BOTH rounding stages — the BIE boundary AND the reader transform", async () => {
+  // The BIE boundary (VECTOR_FRACTION_DP) is only the FIRST stage. Every tool result then passes
+  // through the guarded runner's roundResultForReading before the model sees it. Neither stage in
+  // isolation proves the fraction reaches Largo — only the COMPOSITION does, and nothing tested it:
+  // the live boundary probe (vector-largo-boundary-live.mjs) was the sole check and it modelled the
+  // reader as a bare roundFloats(dp=2), so it reported the FIXED surface as broken (0.01). This is
+  // that missing end-to-end guard.
+  const { roundResultForReading } = await import("@/lib/largo/core/round-for-reading");
+  // roundResultForReading keeps 6 significant digits below 1; a fraction like 0.004006 must survive.
+  for (const { movePct } of [{ movePct: 0.004006 }, { movePct: 0.012204 }, { movePct: 0.005431 }]) {
+    const afterBie = roundFloats({ movePct }, 2, VECTOR_FRACTION_DP);
+    const afterReader = roundResultForReading(afterBie);
+    assert.equal(afterReader.movePct, movePct, "the fraction must reach the model intact, both stages composed");
+    // And the pre-#2423 bare dp=2 path collapses it — the exact regression the two stages prevent.
+    assert.notEqual(roundFloats({ movePct }).movePct, movePct);
+  }
+  // A sub-1% move must never arrive as a literal 0 after both stages (the original member-visible harm).
+  const tiny = roundResultForReading(roundFloats({ movePct: 0.004006 }, 2, VECTOR_FRACTION_DP));
+  assert.notEqual(tiny.movePct, 0, "a 0.40% expected move must not reach Largo as 0.00%");
+});
