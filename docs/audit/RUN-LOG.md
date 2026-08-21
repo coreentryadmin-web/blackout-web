@@ -525,4 +525,19 @@ BOTH truncated and complete`, `empty reply`, `never appears in the trace`), and 
 ABORTS the run and says so once, instead of spending the remaining queries on a locked door and
 reporting the results as per-tool unknowns.
 
-`get_banger_board` and `get_swing_horizon` are therefore still UNMEASURED, not clean.
+`get_banger_board` and `get_swing_horizon` were left UNMEASURED by that run, not clean — and a
+gap you have written down is a gap you have to close. Re-probed on their own (a two-tool run stays
+well inside the session's lifetime, which is what the abort now makes visible):
+
+```
+CONTROL get_nighthawk_outcomes -> TRUNCATED
+  instrument PROVEN
+
+  ✅ get_banger_board       COMPLETE
+  ✅ get_swing_horizon      COMPLETE
+
+=== 0 TRUNCATED · 2 clean · 0 unverified · 0 indeterminate ===
+```
+
+**The lane is now fully measured**: 12 of 13 tools COMPLETE on the deployed build, and the one
+TRUNCATED is `get_nighthawk_outcomes`, which #2480 fixes and which is still an unmerged draft.
