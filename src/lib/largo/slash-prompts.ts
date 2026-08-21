@@ -9,6 +9,7 @@ import { submoduleItemsForDesk } from "@/lib/largo/slash-submodules";
 import { deskScopeConfig } from "@/lib/largo/desk-scope";
 export type { SlashPrompt, SlashPromptsPayload } from "@/lib/largo/slash-prompt-utils";
 import type { SlashPrompt, SlashPromptsPayload } from "@/lib/largo/slash-prompt-utils";
+import { skewChipText, sessionSkewChip } from "@/lib/largo/slash-prompt-utils";
 
 function sortPrompts(prompts: SlashPrompt[]): SlashPrompt[] {
   return [...prompts].sort((a, b) => a.rank - b.rank).slice(0, 8);
@@ -34,7 +35,11 @@ async function buildHelixPrompts(): Promise<SlashPrompt[]> {
     productReads.helixDerivedForLargo(null).catch(() => null),
   ]);
 
-  const leaders = (analytics as { net_premium_leaders?: Array<{ ticker: string; net: number; total: number; call_pct: number }> })
+  // `call_pct` is `number | null` — null means the tape carried no measurable call/put premium
+  // (empty, or every print typeless). This is an `as` cast, so tsc cannot catch drift from the
+  // producer: declaring `number` here while helix-tape-analytics returns `number | null` would
+  // leave the next reader trusting a type that is false.
+  const leaders = (analytics as { net_premium_leaders?: Array<{ ticker: string; net: number; total: number; call_pct: number | null }> })
     .net_premium_leaders ?? [];
   const top = leaders[0];
   const second = leaders[1];
@@ -43,7 +48,11 @@ async function buildHelixPrompts(): Promise<SlashPrompt[]> {
     pushUnique(out, {
       id: "helix-leader",
       label: `${top.ticker} tape leader`,
-      live: `${top.net >= 0 ? "+" : ""}${fmtPremium(Math.abs(top.net))} net · ${top.call_pct}% calls`,
+      // Drop the skew clause entirely when it was not measured — `${null}% calls` renders the
+      // literal string "null% calls" on a member-facing chip.
+      live: `${top.net >= 0 ? "+" : ""}${fmtPremium(Math.abs(top.net))} net${
+        skewChipText(top.call_pct) ? ` · ${skewChipText(top.call_pct)}` : ""
+      }`,
       hint: "Biggest net-premium name on the tape right now",
       question: `Summarize HELIX flow on ${top.ticker} — biggest prints, net premium, and anything anomalous.`,
       rank: 10,
@@ -60,12 +69,17 @@ async function buildHelixPrompts(): Promise<SlashPrompt[]> {
     });
   }
 
-  const session = (analytics as { session?: { call_pct?: number; alert_count?: number } }).session;
+  const session = (analytics as { session?: { call_pct?: number | null; alert_count?: number } }).session;
   if (session && (session.alert_count ?? 0) > 0) {
     pushUnique(out, {
       id: "helix-session",
       label: "Session flow skew",
-      live: `${session.call_pct ?? 50}% calls · ${session.alert_count} prints`,
+      // `?? 50` was DEAD CODE while call_pct could not be null, and would have become live the
+      // moment it could — putting the exact fabricated "50% calls" this lane just removed from
+      // the tool payload back in front of a member, on a chip. The guard above is
+      // `alert_count > 0`, so it fires precisely on the all-typeless tape: prints exist, none of
+      // them carry a side, and the skew is genuinely unmeasured. Say that instead of inventing it.
+      live: sessionSkewChip(session.call_pct, session.alert_count ?? 0),
       question: "Summarize today's HELIX tape — call vs put skew, whale prints, and what's leading.",
       rank: 15,
     });
@@ -92,9 +106,14 @@ async function buildHelixPrompts(): Promise<SlashPrompt[]> {
     });
   }
 
-  const routes = (analytics as { route_breakdown?: Array<{ route: string; pct: number }> }).route_breakdown ?? [];
+  // `pct` is `number | null` — null when the tape carried no premium to take a share of. This is
+  // an `as` cast, so tsc cannot catch drift from the producer; declaring `number` here would leave
+  // the next reader trusting a type that is false (the same trap that put "50% calls" on a chip).
+  const routes = (analytics as { route_breakdown?: Array<{ route: string; pct: number | null }> }).route_breakdown ?? [];
   const topRoute = routes[0];
-  if (topRoute && topRoute.pct >= 25) {
+  // Explicit null check rather than leaning on `null >= 25` being false: the fail-safe is correct
+  // today by accident of coercion, and the next edit should not have to rediscover that.
+  if (topRoute && topRoute.pct != null && topRoute.pct >= 25) {
     pushUnique(out, {
       id: "helix-route",
       label: `${topRoute.route} leading`,

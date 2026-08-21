@@ -1,5 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   num,
   priceDomain,
@@ -27,6 +29,11 @@ import {
   estimateDispersion,
   strikeProfile,
   impliedVsRealized,
+  MV_LADDER_MIN_GAP,
+  MV_LADDER_ROW_PX,
+  MV_LADDER_HEIGHT_PX,
+  MV_RAIL_TIER_PX,
+  MV_RAIL_LABEL_PX,
 } from "./meridian-viz-core";
 
 // ── null propagation. The repo's recurring defect is Number(null) === 0; on a price rail a
@@ -668,4 +675,133 @@ test("hoursUntilIso: positive before, negative after, null on junk", () => {
   assert.equal(hoursUntilIso("2026-08-18T09:00:00Z", now), -3);
   assert.equal(hoursUntilIso("not-a-date", now), null);
   assert.equal(hoursUntilIso(null, now), null);
+});
+
+test("the ladder's row height in CSS matches the one the resolver assumes", () => {
+  // THE BUG THIS PINS. `MeridianStructureLadder` separated rows by `16 / 132` — "one row height
+  // as a fraction of the ladder". The ladder is 132px, but a row renders at 20.5px, not 16px, so
+  // "one row height" of separation came out 4.5px SHORT of one row height and every adjacent pair
+  // overlapped. Measured live on prod (mobile 430x932, BABA positioning tab): overlaps of 4.5,
+  // 4.5, 6.8 and 11.3 px; `meridian-interaction-audit.mjs` measured the same collisions
+  // independently at 1440px.
+  //
+  // Neither a type check nor a unit test could catch it, because the two halves of the geometry
+  // live in different languages: a number in TS and a pixel value in CSS. So the test reads the
+  // CSS and compares. Same principle as largo-card-deadspace.mjs comparing packed ESTIMATES to
+  // drawn pixels — an assumption nobody measured is exactly the kind that stays wrong.
+  const css = readFileSync(join(process.cwd(), "src/app/desk-app.css"), "utf8");
+
+  const rowH = /--mv-ladder-row-h:\s*(\d+(?:\.\d+)?)px/.exec(css);
+  assert.ok(rowH, "--mv-ladder-row-h must be declared in desk-app.css");
+  assert.equal(
+    Number(rowH[1]),
+    MV_LADDER_ROW_PX,
+    `CSS row height ${rowH[1]}px disagrees with MV_LADDER_ROW_PX ${MV_LADDER_ROW_PX}px — ` +
+      "the resolver would separate rows by less than a row again"
+  );
+
+  const ladderH = /\.mv-ladder\s*\{[^}]*min-height:\s*(\d+(?:\.\d+)?)px/.exec(css);
+  assert.ok(ladderH, ".mv-ladder must declare a min-height");
+  assert.equal(Number(ladderH[1]), MV_LADDER_HEIGHT_PX, "ladder height disagrees with the constant");
+
+  // The row must be HEIGHT-PINNED, not free to grow — a wrapped label made one row taller than
+  // the pinned height, which is how one pair reached an 11.3px overlap while its neighbours sat
+  // at 4.5px.
+  assert.match(css, /height:\s*var\(--mv-ladder-row-h\)/, "rows must be pinned to the row height");
+  assert.match(
+    css,
+    /\.mv-ladder-label\s*\{[^}]*white-space:\s*nowrap/,
+    "the label must not wrap, or the pinned height is not the real height"
+  );
+});
+
+test("MV_LADDER_MIN_GAP really is one full row, and separating by it removes overlap", () => {
+  assert.equal(MV_LADDER_MIN_GAP, MV_LADDER_ROW_PX / MV_LADDER_HEIGHT_PX);
+
+  // The six real levels from the live BABA book, as fractions down a 132px ladder. Before the
+  // fix these resolved to 16px centre gaps against 20.5px rows.
+  const positions = [0.0, 0.02, 0.021, 0.42, 0.55, 0.9];
+  const placed = resolveCollisions(positions, MV_LADDER_MIN_GAP);
+
+  const sorted = [...placed].sort((a, b) => a - b);
+  for (let i = 1; i < sorted.length; i += 1) {
+    const gapPx = (sorted[i]! - sorted[i - 1]!) * MV_LADDER_HEIGHT_PX;
+    assert.ok(
+      gapPx >= MV_LADDER_ROW_PX - 0.01,
+      `rows ${i - 1}→${i} separated by ${gapPx.toFixed(1)}px, less than one ${MV_LADDER_ROW_PX}px row`
+    );
+  }
+  // ORDER is the whole point of the ladder — separation must never re-sort it.
+  const rank = (xs: number[]) => xs.map((_, i) => i).sort((a, b) => xs[a]! - xs[b]!);
+  assert.deepEqual(rank(placed), rank(positions), "resolver must preserve spatial order");
+});
+
+test("the rail's tier step is TALLER than a rail label — tiering that does not separate is not tiering", () => {
+  // Measured on live prod 2026-08-21 (desktop 1440, BEKE Positioning): two markers sharing the
+  // price 17.00 sat 9.92px apart with 12px label boxes, overlapping 2.08px. `layoutRailLabels`
+  // was doing its job — it put them on different tiers — and CSS then stacked those tiers closer
+  // together than a label is tall. The ladder's bug (#2457) in the sibling component.
+  assert.ok(
+    MV_RAIL_TIER_PX > MV_RAIL_LABEL_PX,
+    `tier step ${MV_RAIL_TIER_PX}px must exceed the label height ${MV_RAIL_LABEL_PX}px, ` +
+      "or two labels on different tiers still print through each other"
+  );
+
+  const css = readFileSync(join(process.cwd(), "src/app/desk-app.css"), "utf8");
+
+  const tier = /--mv-rail-tier-h:\s*(\d+(?:\.\d+)?)px/.exec(css);
+  assert.ok(tier, "--mv-rail-tier-h must be declared in desk-app.css");
+  assert.equal(
+    Number(tier[1]),
+    MV_RAIL_TIER_PX,
+    `CSS tier step ${tier?.[1]}px disagrees with MV_RAIL_TIER_PX ${MV_RAIL_TIER_PX}px`
+  );
+
+  const label = /--mv-rail-label-h:\s*(\d+(?:\.\d+)?)px/.exec(css);
+  assert.ok(label, "--mv-rail-label-h must be declared in desk-app.css");
+  assert.equal(
+    Number(label[1]),
+    MV_RAIL_LABEL_PX,
+    `CSS label height ${label?.[1]}px disagrees with MV_RAIL_LABEL_PX ${MV_RAIL_LABEL_PX}px`
+  );
+
+  // The label's line box must be PINNED. The `<b class="mv-rail-marker-num">` inside carries a
+  // different font stack (`--mv-value`), so an unpinned line-height makes the label's height a
+  // property of font fallback rather than of this stylesheet — exactly the kind of unmeasured
+  // assumption this pair of constants exists to remove.
+  assert.match(
+    css,
+    /\.mv-rail-marker-label\s*\{[^}]*line-height:\s*var\(--mv-rail-label-h\)/,
+    "the rail label must pin its line-height to --mv-rail-label-h"
+  );
+
+  // Both places that consume the step must read the SAME property. The literal `0.62rem` used to
+  // appear twice — the label's `top` and the track's `margin-top` headroom — with nothing tying
+  // them together, so changing one silently mis-sized the other.
+  assert.match(
+    css,
+    /top:\s*calc\(-0\.55rem - var\(--tier, 0\) \* var\(--mv-rail-tier-h\)\)/,
+    "the label's top must be derived from --mv-rail-tier-h"
+  );
+  assert.match(
+    css,
+    /margin-top:\s*calc\(\(var\(--rail-tiers, 1\) - 1\) \* var\(--mv-rail-tier-h\)\)/,
+    "the track's headroom must be derived from the SAME --mv-rail-tier-h"
+  );
+});
+
+test("two rail labels on the same price land on different tiers, far enough apart to clear", () => {
+  // The live case: call wall and king node both at 17.00, so identical positions and equal widths.
+  const slots = layoutRailLabels([
+    { pos: 0.5, widthFrac: 0.18 },
+    { pos: 0.5, widthFrac: 0.18 },
+  ]);
+  assert.notEqual(slots[0]!.tier, slots[1]!.tier, "identical prices must not share a tier");
+
+  const apartPx = Math.abs(slots[0]!.tier - slots[1]!.tier) * MV_RAIL_TIER_PX;
+  assert.ok(
+    apartPx >= MV_RAIL_LABEL_PX,
+    `tiers ${slots[0]!.tier} and ${slots[1]!.tier} are ${apartPx}px apart, ` +
+      `less than a ${MV_RAIL_LABEL_PX}px label — this is the 2.08px overlap measured on prod`
+  );
 });

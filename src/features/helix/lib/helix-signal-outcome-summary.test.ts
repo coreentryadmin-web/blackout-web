@@ -59,3 +59,132 @@ test("summarizeHelixSignalOutcomes: 'flat' outcomes count as graded but not a wi
   assert.equal(summary.winCount, 5);
   assert.equal(summary.winRatePct, Math.round((5 / 15) * 1000) / 10);
 });
+
+// ── Distribution guards ──────────────────────────────────────────────────────
+// A single continuation rate cannot express the graded split, and the missing half changes the
+// read. Live 2026-08-20: 40 graded = 25 continued / 12 flat / 3 reversed. "62.5%" implied 37.5%
+// went wrong when only 7.5% reversed and 30% went nowhere.
+
+test("the graded distribution is reported, not just the rate", () => {
+  const rows = [
+    ...Array.from({ length: 25 }, () => row({ outcome: "continued" })),
+    ...Array.from({ length: 12 }, () => row({ outcome: "flat" })),
+    ...Array.from({ length: 3 }, () => row({ outcome: "reversed" })),
+    ...Array.from({ length: 10 }, () => row({ outcome: "pending" })),
+  ];
+  const s = summarizeHelixSignalOutcomes(rows);
+  assert.equal(s.gradedCount, 40);
+  assert.equal(s.pendingCount, 10);
+  assert.equal(s.continuedCount, 25);
+  assert.equal(s.flatCount, 12);
+  assert.equal(s.reversedCount, 3);
+  assert.equal(s.winRatePct, 62.5);
+  // The complement of the rate is NOT the reversal rate — the whole point.
+  assert.notEqual(100 - s.winRatePct!, (s.reversedCount / s.gradedCount) * 100);
+});
+
+test("the four graded buckets always sum to gradedCount", () => {
+  const rows = [
+    row({ outcome: "continued" }),
+    row({ outcome: "flat" }),
+    row({ outcome: "reversed" }),
+    row({ outcome: "pending" }),
+  ];
+  const s = summarizeHelixSignalOutcomes(rows);
+  assert.equal(s.continuedCount + s.flatCount + s.reversedCount + s.otherCount, s.gradedCount);
+});
+
+test("an unrecognised grade lands in otherCount instead of being absorbed", () => {
+  // otherCount is derived by subtraction, so a future grader value cannot silently inflate
+  // continued/flat/reversed or break the sum.
+  const s = summarizeHelixSignalOutcomes([
+    row({ outcome: "continued" }),
+    row({ outcome: "some_new_grade" }),
+  ]);
+  assert.equal(s.gradedCount, 2);
+  assert.equal(s.continuedCount, 1);
+  assert.equal(s.otherCount, 1);
+  assert.equal(s.continuedCount + s.flatCount + s.reversedCount + s.otherCount, s.gradedCount);
+});
+
+test("distribution counts are present even below the rate threshold, where the rate is null", () => {
+  const rows = Array.from({ length: MIN_GRADED_SAMPLE_FOR_WIN_RATE - 1 }, () =>
+    row({ outcome: "reversed" })
+  );
+  const s = summarizeHelixSignalOutcomes(rows);
+  assert.equal(s.winRatePct, null, "rate withheld below threshold");
+  // Counts are raw observations, not an inference — withholding them too would hide the fact
+  // that every graded firing so far REVERSED, which is exactly what a member needs to know.
+  assert.equal(s.reversedCount, MIN_GRADED_SAMPLE_FOR_WIN_RATE - 1);
+  assert.equal(s.continuedCount, 0);
+});
+
+// ── Per-signal-type breakdown ────────────────────────────────────────────────
+// "Which HELIX signal is more reliable, split_flow or velocity_spike?" must be answerable from
+// the aggregate payload, each type with its OWN denominator and its OWN sub-threshold null.
+
+test("bySignalType splits the population per type, each with its own denominator", () => {
+  const rows = [
+    ...Array.from({ length: 10 }, () => row({ signal_type: "velocity_spike", outcome: "continued" })),
+    ...Array.from({ length: 6 }, () => row({ signal_type: "split_flow", outcome: "continued" })),
+    ...Array.from({ length: 4 }, () => row({ signal_type: "split_flow", outcome: "reversed" })),
+  ];
+  const s = summarizeHelixSignalOutcomes(rows);
+  const vel = s.bySignalType.find((t) => t.signal_type === "velocity_spike")!;
+  const split = s.bySignalType.find((t) => t.signal_type === "split_flow")!;
+  assert.equal(vel.gradedCount, 10);
+  assert.equal(vel.winRatePct, 100);
+  assert.equal(split.gradedCount, 10);
+  assert.equal(split.winRatePct, 60);
+  assert.equal(split.reversedCount, 4);
+});
+
+test("per-type rate is null below the per-type minimum even when the aggregate clears it", () => {
+  // The whole point: a type carried by 3 fires must not borrow the aggregate's confidence. Aggregate
+  // here is 12 graded (rate shown); split_flow alone is 3 graded (rate withheld).
+  const rows = [
+    ...Array.from({ length: 9 }, () => row({ signal_type: "velocity_spike", outcome: "continued" })),
+    ...Array.from({ length: 3 }, () => row({ signal_type: "split_flow", outcome: "continued" })),
+  ];
+  const s = summarizeHelixSignalOutcomes(rows);
+  assert.equal(s.gradedCount, 12);
+  assert.notEqual(s.winRatePct, null, "aggregate clears the threshold");
+  const split = s.bySignalType.find((t) => t.signal_type === "split_flow")!;
+  assert.equal(split.gradedCount, 3);
+  assert.equal(split.winRatePct, null, "a 3-fire type must not report a rate");
+  assert.equal(split.continuedCount, 3, "…but its raw counts are still present");
+});
+
+test("per-type graded counts sum to the aggregate, and types sort most-graded-first", () => {
+  const rows = [
+    ...Array.from({ length: 5 }, () => row({ signal_type: "split_flow", outcome: "continued" })),
+    ...Array.from({ length: 12 }, () => row({ signal_type: "velocity_spike", outcome: "flat" })),
+    ...Array.from({ length: 3 }, () => row({ signal_type: "velocity_spike", outcome: "pending" })),
+  ];
+  const s = summarizeHelixSignalOutcomes(rows);
+  assert.equal(
+    s.bySignalType.reduce((n, t) => n + t.gradedCount, 0),
+    s.gradedCount
+  );
+  assert.equal(
+    s.bySignalType.reduce((n, t) => n + t.pendingCount, 0),
+    s.pendingCount
+  );
+  // velocity_spike has more graded (12) than split_flow (5) → it leads.
+  assert.equal(s.bySignalType[0].signal_type, "velocity_spike");
+});
+
+test("an empty signal_type is bucketed as 'unknown', never dropped from the reconciliation", () => {
+  const s = summarizeHelixSignalOutcomes([
+    row({ signal_type: "", outcome: "continued" }),
+    row({ signal_type: "velocity_spike", outcome: "reversed" }),
+  ]);
+  const unknown = s.bySignalType.find((t) => t.signal_type === "unknown");
+  assert.ok(unknown, "empty type must surface as 'unknown'");
+  assert.equal(unknown!.gradedCount, 1);
+  assert.equal(
+    s.bySignalType.reduce((n, t) => n + t.gradedCount, 0),
+    s.gradedCount,
+    "unknown bucket keeps the per-type total reconciled with the aggregate"
+  );
+});

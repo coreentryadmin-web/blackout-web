@@ -1,6 +1,7 @@
 import { SITE } from "@/lib/site";
 import { LEARN_ARTICLES } from "@/lib/learn/articles";
 import { LEARN_NAV } from "@/lib/learn/nav";
+import { researchTickerPath, researchTickers } from "@/lib/research/research-tickers";
 
 export type SitemapEntry = {
   path: string;
@@ -34,6 +35,18 @@ export function publicSitemapEntries(): SitemapEntry[] {
     priority: a.type === "pillar" ? 0.8 : 0.7,
   }));
 
+  // Dealer-gamma research: one hub + one page per covered ticker. `daily` because a new closed
+  // session enters each window every trading day — the page's content genuinely changes that
+  // often, which is the only thing changeFrequency is meant to convey.
+  const research: SitemapEntry[] = [
+    { path: "/research/gamma-levels", changeFrequency: "daily", priority: 0.8 },
+    ...researchTickers().map((t) => ({
+      path: researchTickerPath(t),
+      changeFrequency: "daily" as const,
+      priority: 0.7,
+    })),
+  ];
+
   const legal: SitemapEntry[] = [
     { path: "/terms", changeFrequency: "yearly", priority: 0.3 },
     { path: "/privacy", changeFrequency: "yearly", priority: 0.3 },
@@ -42,7 +55,7 @@ export function publicSitemapEntries(): SitemapEntry[] {
     { path: "/cookie-policy", changeFrequency: "yearly", priority: 0.2 },
   ];
 
-  return [...marketing, ...curriculum, ...articles, ...legal];
+  return [...marketing, ...curriculum, ...articles, ...research, ...legal];
 }
 
 export function absolutePublicUrls(): string[] {

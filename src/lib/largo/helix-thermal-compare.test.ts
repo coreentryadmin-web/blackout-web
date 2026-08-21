@@ -8,6 +8,13 @@ import {
   type ComparePositioningInput,
 } from "./helix-thermal-compare";
 import { etSessionDate } from "@/lib/largo/temporal/bar-session-date";
+import { helixTapeFetchOptions } from "@/lib/largo/helix-tape-analytics";
+import {
+  HELIX_FLOW_PAGE_SIZE,
+  HELIX_FLOW_MAX_LIMIT,
+  HELIX_FLOW_DEFAULT_SINCE_HOURS,
+  HELIX_FLOW_MAX_SINCE_HOURS,
+} from "@/features/helix/lib/helix-flow-limits";
 
 /**
  * The LIVE production `gamma_regime_read` for SPY, captured 2026-08-21T00:10Z from
@@ -24,8 +31,10 @@ const LIVE_SHORT_GAMMA_REGIME_READ =
   "region above spot 762.6 → short gamma: momentum / vol expansion, moves accelerate. " +
   "Resistance 780, support 765.";
 
+const MATRIX_ASOF = "2026-08-21T00:24:56.192Z";
 const LIVE_SPY_POS: ComparePositioningInput = {
   gamma_posture: "short",
+  asof: MATRIX_ASOF,
   gamma_regime_read: LIVE_SHORT_GAMMA_REGIME_READ,
   flip: null,
   call_wall: 780,
@@ -33,13 +42,14 @@ const LIVE_SPY_POS: ComparePositioningInput = {
   spot: 762.6,
 };
 
-const NO_FLOW = { rows: [], available: false };
+const NO_FLOW = { rows: [], available: false, windowHours: 48 };
 const BULLISH_FLOW = {
   rows: [
     { ticker: "SPY", premium: 900_000, option_type: "call" },
     { ticker: "SPY", premium: 100_000, option_type: "put" },
   ],
   available: true,
+  windowHours: 48,
 };
 
 describe("compare card — gamma side is derived from posture, not prose", () => {
@@ -189,5 +199,134 @@ describe("compare card — regime_interaction replaces the removed conflict sign
     const ri = regimeInteractionFor("bearish", "suppressing");
     assert.match(String(ri?.read), /suppressing regime/i);
     assert.match(String(ri?.read), /damped/i);
+  });
+});
+
+describe("compare card — nothing measured is null, not zero", () => {
+  it("does not report net premium as 0 when no priced print landed", () => {
+    const { flow } = compareSidesFrom(LIVE_SPY_POS, NO_FLOW);
+    // The bug: `callPrem - putPrem` ran unconditionally, so an empty tape served
+    // `net_premium: 0` beside `bias: "unknown"` — a quotable "premium is flat" made of no data.
+    assert.equal(flow.net_premium, null);
+    assert.equal(flow.call_premium, null);
+    assert.equal(flow.put_premium, null);
+    assert.equal(flow.print_count, null);
+    assert.equal(flow.bias, "unknown");
+  });
+
+  it("still reports a genuine zero net when calls and puts truly offset", () => {
+    const { flow } = compareSidesFrom(LIVE_SPY_POS, {
+      rows: [
+        { ticker: "SPY", premium: 500_000, option_type: "call" },
+        { ticker: "SPY", premium: 500_000, option_type: "put" },
+      ],
+      available: true,
+      windowHours: 48,
+    });
+    // A measured zero is data and must survive — only the UNMEASURED zero is suppressed.
+    assert.equal(flow.net_premium, 0);
+    assert.equal(flow.bias, "neutral");
+  });
+});
+
+describe("compare card — a reading names its window and its session", () => {
+  it("names the flow lookback rather than implying today", () => {
+    const { flow } = compareSidesFrom(LIVE_SPY_POS, BULLISH_FLOW);
+    assert.equal(flow.window_hours, 48);
+    assert.match(String(flow.summary), /48h/);
+  });
+
+  it("says which window was empty when there is no flow", () => {
+    const { flow } = compareSidesFrom(LIVE_SPY_POS, NO_FLOW);
+    assert.match(String(flow.summary), /48h/);
+  });
+
+  it("anchors the matrix time to its ET SESSION, not just a UTC instant", () => {
+    const now = Date.parse("2026-08-21T00:29:56.192Z");
+    const { gamma } = compareSidesFrom(LIVE_SPY_POS, NO_FLOW, now);
+    assert.equal(gamma.matrix_asof, MATRIX_ASOF);
+    // MATRIX_ASOF's UTC date is 2026-08-21; the ET session it belongs to is the 20th.
+    assert.equal(gamma.matrix_session_date, "2026-08-20");
+    assert.match(String(gamma.matrix_asof_et), / ET$/);
+    assert.equal(gamma.age_seconds, 300);
+    assert.equal(gamma.freshness, "cached");
+  });
+
+  it("reports nulls rather than a borrowed stamp when there is no matrix", () => {
+    const { gamma } = compareSidesFrom(null, NO_FLOW);
+    assert.equal(gamma.matrix_asof, null);
+    assert.equal(gamma.matrix_asof_et, null);
+    assert.equal(gamma.matrix_session_date, null);
+    assert.equal(gamma.age_seconds, null);
+    assert.equal(gamma.freshness, null);
+  });
+});
+
+/**
+ * The population defect (fixed): the card summed call/put premium over the 50 BIGGEST prints
+ * (fetchRecentFlows' `ORDER BY total_premium DESC` default), which on an index name are LEAP/whale
+ * blocks. Live 2026-08-21 SPX read "$3.06B calls → bullish" off that slice while the recent session
+ * population (the authoritative get_helix_tape_analytics.session) read the same tape as put-leaning.
+ *
+ * compareSidesFrom is pure — it sums whatever rows it is handed — so the bug was never in the sum;
+ * it was in WHICH rows the fetch selected. These two tests pin both halves of the fix:
+ *  1. the pure function's answer genuinely flips with the population (so selection is load-bearing);
+ *  2. the exact fetch options this card now builds are recent-ordered, session-sized — i.e. it can
+ *     only ever be handed population (a), not (b).
+ */
+describe("compare card — flow bias reads the recent session, not the premium-ordered whale slice", () => {
+  // (a) The recent session population: many small near-dated PUT prints — a bearish session.
+  const RECENT_SESSION = {
+    rows: [
+      ...Array.from({ length: 40 }, () => ({
+        ticker: "SPX",
+        premium: 250_000,
+        option_type: "PUT",
+      })),
+      ...Array.from({ length: 8 }, () => ({
+        ticker: "SPX",
+        premium: 250_000,
+        option_type: "CALL",
+      })),
+    ],
+    available: true,
+    windowHours: HELIX_FLOW_DEFAULT_SINCE_HOURS,
+  };
+  // (b) The SAME session ordered biggest-premium-first and capped: two LEAP calls dominate and
+  //     bury every put. This is what `{ limit: 50 }` with no `order` used to hand the card.
+  const PREMIUM_ORDERED_SLICE = {
+    rows: [
+      { ticker: "SPXW", premium: 368_000_000, option_type: "CALL" },
+      { ticker: "SPX", premium: 35_600_000, option_type: "CALL" },
+      { ticker: "SPX", premium: 250_000, option_type: "PUT" },
+    ],
+    available: true,
+    windowHours: HELIX_FLOW_DEFAULT_SINCE_HOURS,
+  };
+
+  it("reads bearish off the recent session population", () => {
+    const { flow } = compareSidesFrom(LIVE_SPY_POS, RECENT_SESSION);
+    assert.equal(flow.bias, "bearish");
+  });
+
+  it("the SAME tape, premium-ordered, would have inverted to bullish — which is why order matters", () => {
+    const { flow } = compareSidesFrom(LIVE_SPY_POS, PREMIUM_ORDERED_SLICE);
+    assert.equal(flow.bias, "bullish");
+  });
+
+  it("builds a recent-ordered, session-sized fetch — never the premium-ordered default", () => {
+    // The exact options fetchTickerFlowAndGamma now issues. Guarding them here means a revert to
+    // `{ limit: 50 }` (premium-ordered) fails a test rather than silently re-inverting live.
+    const opts = helixTapeFetchOptions({
+      ticker: "SPX",
+      limit: HELIX_FLOW_PAGE_SIZE,
+      sinceHours: HELIX_FLOW_DEFAULT_SINCE_HOURS,
+      maxLimit: HELIX_FLOW_MAX_LIMIT,
+      defaultSinceHours: HELIX_FLOW_DEFAULT_SINCE_HOURS,
+      maxSinceHours: HELIX_FLOW_MAX_SINCE_HOURS,
+    });
+    assert.equal(opts.order, "recent");
+    assert.equal(opts.limit, HELIX_FLOW_PAGE_SIZE);
+    assert.equal(opts.since_hours, HELIX_FLOW_DEFAULT_SINCE_HOURS);
   });
 });

@@ -148,3 +148,68 @@ test("the analytics intent does not swallow unrelated questions", () => {
     assert.equal(analyzeLargoQuestion(q, []).needsVectorAnalytics, false, `"${q}" must not hint ${TOOL}`);
   }
 });
+
+// ---------------------------------------------------------------------------
+// get_vector_full_state must never hand the model a bare `null`
+// ---------------------------------------------------------------------------
+
+test("get_vector_full_state returns an honest envelope, not a bare null", () => {
+  // THE DEFECT: the case returned `fetchVectorFullState(...)` directly, which is `null` when there
+  // is no live spot. A bare null carries no ticker, no reason, and cannot distinguish "market
+  // closed" from "not optionable" from "GEX matrix cold" — three situations needing three
+  // different answers. The BIE composer path (noLiveVectorStateMessage + context.reason) had
+  // answered this honestly for months, so the same question got a good answer through one door
+  // and an uninterpretable null through the other.
+  const runTool = readFileSync("src/lib/largo/run-tool.ts", "utf8");
+  const caseBody = runTool.slice(
+    runTool.indexOf('case "get_vector_full_state"'),
+    runTool.indexOf('case "get_hot_tickers"')
+  );
+  assert.ok(caseBody.includes("vectorFullStateForLargo"), "the tool must route through the enveloped reader");
+  assert.ok(
+    !/return fetchVectorFullState\(/.test(caseBody),
+    "returning fetchVectorFullState directly re-introduces the bare null"
+  );
+
+  const reads = readFileSync("src/lib/largo/product-reads.ts", "utf8");
+  assert.match(reads, /reason: "no_live_vector_state"/);
+  // A throw is a THIRD state and must not be collapsed into "no live spot".
+  assert.match(reads, /reason: "vector_full_state_failed"/);
+  // The success path must return the state UNCHANGED — get_ecosystem_context's documented
+  // "exact same object" promise depends on the populated case not being wrapped.
+  assert.match(reads, /if \(state\) return state;/);
+});
+
+test("the description tells the model what the envelope means", () => {
+  const def = LARGO_TOOL_DEFS.find((t) => t.name === "get_vector_full_state");
+  assert.ok(def);
+  assert.match(def!.description, /NO LIVE STATE/);
+  assert.match(def!.description, /CANNOT tell those apart/);
+  assert.match(def!.description, /never report it as the ticker having no levels/);
+});
+
+// ---------------------------------------------------------------------------
+// Contract C1 — session-scoped analytics must carry the market's clock
+// ---------------------------------------------------------------------------
+
+test("vector-analytics anchors as_of and the screener sweep in ET", () => {
+  // C1: a Largo payload that builds `as_of` from toISOString() must also stamp ET in the same
+  // module. This one is not a formality — nearly every field below `as_of` here is session-scoped
+  // (opening range, HOD/LOD, prior-day pivots, OpEx days_away, per-session daily_regime rows), and
+  // after ~20:00 ET the UTC date is already TOMORROW. A reader resolving "today" from `as_of`
+  // labels this session's data with the next one's date.
+  const src = readFileSync("src/lib/largo/vector-analytics.ts", "utf8");
+  assert.match(src, /import \{ etStamp, etSessionDate \} from "@\/lib\/largo\/temporal\/bar-session-date";/);
+  assert.match(src, /as_of_et: etStamp\(nowMs\)/);
+  assert.match(src, /session_date: etSessionDate\(nowMs\)/);
+  // The universe sweep has its own age and needs its own anchor, not the read's.
+  assert.match(src, /updated_at_et: etStamp\(universe\.updatedAt\)/);
+  assert.match(src, /updated_at_session_date: etSessionDate\(universe\.updatedAt\)/);
+});
+
+test("the analytics description tells the model to use the ET fields", () => {
+  const def = LARGO_TOOL_DEFS.find((t) => t.name === "get_vector_analytics");
+  assert.ok(def);
+  assert.match(def!.description, /use `as_of_et` and `session_date`/);
+  assert.match(def!.description, /lands a session ahead of the data/);
+});

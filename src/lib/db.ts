@@ -2173,6 +2173,56 @@ async function runMigrations(): Promise<void> {
        ON meridian_report_snapshots(ticker, event_date, snapshot_day DESC)`
   );
 
+  // X INTEL QUEUE — the hourly market-intelligence package a human reviews and publishes by hand.
+  //
+  // `cycle_key` is UNIQUE and carries the ET hour slot ("2026-08-21T11"), so a re-run of the same
+  // cycle overwrites its own row instead of leaving a duplicate — same reasoning as
+  // meridian_report_snapshots' day key above. It is TEXT rather than a timestamp on purpose: the
+  // slot is an ET wall-clock concept and storing it as an instant would make it ambiguous across
+  // the DST boundary, which is precisely the class of bug that silently stops the existing
+  // x-autopost cron every November.
+  //
+  // `confidence` is nullable and MUST stay nullable. Largo contract C6: a package that cannot
+  // calibrate a score omits it. A NOT NULL DEFAULT here would manufacture the exact fabricated
+  // number the contract forbids, and it would be indistinguishable from a measured one.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS x_intel_queue (
+      id BIGSERIAL PRIMARY KEY,
+      cycle_key TEXT NOT NULL UNIQUE,
+      session_date DATE NOT NULL,
+      created_at_et TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      status TEXT NOT NULL,
+      ticker_or_market TEXT NOT NULL,
+      headline TEXT NOT NULL,
+      post_copy TEXT,
+      thread JSONB,
+      franchise TEXT,
+      attachments JSONB NOT NULL DEFAULT '[]'::jsonb,
+      products_referenced JSONB NOT NULL DEFAULT '[]'::jsonb,
+      underlying_evidence JSONB NOT NULL DEFAULT '[]'::jsonb,
+      chronology JSONB,
+      market_outcome JSONB,
+      confidence JSONB,
+      reason_selected TEXT NOT NULL,
+      runners_up JSONB NOT NULL DEFAULT '[]'::jsonb,
+      posted_tweet_id TEXT,
+      cta JSONB,
+      -- A SKIP is a result, but WHICH result matters: QUIET is a claim about the market, BLIND is
+      -- a claim about the pipeline. Collapsing them lets an outage read as a calm tape.
+      skip_kind TEXT,
+      blind_spots JSONB NOT NULL DEFAULT '[]'::jsonb
+    );
+  `);
+  await p.query(
+    `CREATE INDEX IF NOT EXISTS idx_x_intel_queue_recent
+       ON x_intel_queue(created_at DESC)`
+  );
+  await p.query(
+    `CREATE INDEX IF NOT EXISTS idx_x_intel_queue_session
+       ON x_intel_queue(session_date DESC, created_at DESC)`
+  );
+
   } finally {
     // Release the advisory lock + return the dedicated connection to the pool.
     try { await lockClient.query(`SELECT pg_advisory_unlock($1)`, [MIGRATION_LOCK_ID]); } catch { /* ignore */ }
@@ -2752,6 +2802,30 @@ export type HelixSignalOutcomeRow = {
 /** Recent signal firings for the Tier 2 follow-through tracker UI (item #10) — most-recent
  *  first, graded and pending rows both included (a member should see a firing exists even
  *  before its 1h checkpoint has elapsed, not just once it's graded). */
+/**
+ * Coerce a Postgres NUMERIC to a JS number, preserving null.
+ *
+ * `pg` returns NUMERIC and BIGSERIAL as **strings** — deliberately, because neither fits float64
+ * losslessly in general. Nothing here was casting them, so `HelixSignalOutcomeRow` declared
+ * `number | null` while the runtime value was `"7641.63"`. Measured live 2026-08-20: **32 numeric
+ * strings** in a single 50-row read.
+ *
+ * Two consequences, both real even though neither was visible on screen. `roundFloats` tests
+ * `typeof v === "number"` and is therefore BLIND to a numeric string, so any excess precision
+ * reaches the model unrounded. And the arithmetic only works by luck: `gradeOutcome` uses `-` and
+ * `/`, which coerce, but a single `+` anywhere would concatenate instead of add and produce a
+ * silently wrong grade.
+ *
+ * `Number(null)` is 0 and `Number("")` is 0 — a missing checkpoint price becoming a real 0.00 is
+ * exactly the fabrication this repo keeps finding, so both map to null rather than through the
+ * cast. Prices beyond float64 precision are not a concern for equity/index quotes.
+ */
+export function pgNumericOrNull(v: unknown): number | null {
+  if (v == null || v === "") return null;
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
 export async function fetchRecentHelixSignalOutcomes(limit = 50): Promise<HelixSignalOutcomeRow[]> {
   await ensureSchema();
   const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.min(Math.trunc(limit), 200) : 50;
@@ -2765,7 +2839,15 @@ export async function fetchRecentHelixSignalOutcomes(limit = 50): Promise<HelixS
     `,
     [safeLimit]
   );
-  return res.rows;
+  return res.rows.map((row) => ({
+    ...row,
+    // BIGSERIAL — string over the wire.
+    id: Number(row.id),
+    price_at_fire: pgNumericOrNull(row.price_at_fire),
+    price_5m: pgNumericOrNull(row.price_5m),
+    price_15m: pgNumericOrNull(row.price_15m),
+    price_1h: pgNumericOrNull(row.price_1h),
+  }));
 }
 
 /** Insert newly-detected signal firings. ON CONFLICT DO NOTHING — the recorder cron
@@ -2857,7 +2939,13 @@ export async function fetchPendingHelixSignalCheckpoints(
     `,
     [minAgeMinutes, limit, maxAgeDays]
   );
-  return res.rows;
+  // Same cast as the read above. This row feeds gradeOutcome(), which divides by price_at_fire —
+  // it works on a string only because `-` and `/` coerce, and it must not depend on that.
+  return res.rows.map((row) => ({
+    ...row,
+    id: Number(row.id),
+    price_at_fire: pgNumericOrNull(row.price_at_fire),
+  }));
 }
 
 /** Write one checkpoint price; when `outcome` is provided (the grader's final 1h

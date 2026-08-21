@@ -32,6 +32,7 @@
  * `zerodte:board:snapshot:v1`, `nw:optmark:*`, and its own sidecar marker
  * `zerodte:sim:marker:v1`. It REFUSES to run against a Redis that already holds a
  * live-looking board snapshot NOT written by this tool (no sim marker) unless `--force`.
+ * That refusal covers BOTH the publish path and `--reset` (the destructive one).
  * It NEVER touches Postgres or any provider API. Point it at a NON-prod / scratch Redis.
  *
  * USAGE. `node scripts/audit/zerodte-sim-replay.mjs --synthetic --speed=30 --redis=redis://localhost:6379`
@@ -112,6 +113,7 @@ MODES (exactly one of --synthetic / --replay / --reset):
                                          "marks": { "<OCC>": {bid,ask,mark,last} } }, ... ] }
                        Each frame publishes when the virtual clock reaches its ET; last wins.
   --reset              Delete the board snapshot, all nw:optmark:* marks, and the sim marker.
+                       Subject to the same foreign-snapshot refusal as publishing.
 
 FLAGS:
   --speed=N            Virtual seconds per real second (default 30 -> ~1 RTH day in ~13 min).
@@ -643,7 +645,7 @@ async function connectRedis(url) {
 
 /** Safety guard: refuse if the target already holds a live-looking board snapshot that
  *  this tool did NOT write (no sim marker). Our own leftover snapshot is always safe. */
-async function assertSafeTarget(client, prefix, force) {
+export async function assertSafeTarget(client, prefix, force) {
   const existing = await client.get(`${prefix}${BOARD_KEY}`).catch(() => null);
   if (!existing) return;
   const marker = await client.get(`${prefix}${SIM_MARKER_KEY}`).catch(() => null);
@@ -714,6 +716,17 @@ async function main() {
     if (args.dryRun) { console.log("[dry-run] would delete board snapshot, sim marker, and all nw:optmark:* keys."); return; }
     if (!args.redis) { console.error("--reset needs --redis or REDIS_URL"); process.exit(2); }
     const client = await connectRedis(args.redis);
+    // The safety refusal covers DELETE too, not just publish. It used to sit on the publish path
+    // only, so `--reset --redis=<prod>` walked straight past it and dropped the live board
+    // snapshot plus every nw:optmark:* key — the destructive mode was the one mode the documented
+    // guard did not cover.
+    try {
+      await assertSafeTarget(client, args.keyPrefix, args.force);
+    } catch (e) {
+      console.error(`\n${e.message}\n`);
+      await client.quit();
+      process.exit(3);
+    }
     const n = await resetKeys(client, args.keyPrefix);
     console.log(`OK reset: deleted ${n} key(s) under prefix "${args.keyPrefix}".`);
     await client.quit();

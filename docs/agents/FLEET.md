@@ -153,8 +153,9 @@ and `update_trigger` changes it without disturbing the lane.
 | Tag | Meaning |
 |---|---|
 | `fleet:blackout` | Member of this fleet. Every lane session carries it. |
-| `lane:<name>` | Which product lane — `helix`, `thermal`, `vector`, `meridian`, `nighthawk`, `spx`, `seo` |
+| `lane:<name>` | Which product lane — `helix`, `thermal`, `vector`, `meridian`, `nighthawk`, `spx`, `seo`, `x-content` |
 | `role:lane` / `role:coordinator` | Lane worker vs the session that reviews and merges |
+| `role:taskforce` | Time-boxed: one job, report, then ARCHIVED. See `docs/agents/COORDINATOR.md` §5 |
 
 Branch prefix stays `claude/<lane>-<slug>` so `automerge.yml` and `agent-pr-release.yml` both match.
 

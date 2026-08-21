@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import type { BenzingaStructuredEarnings } from "@/lib/providers/polygon";
 import {
   benzingaSurpriseToDisplayPct,
+  benzingaTickerWindow,
   dedupeEarningsRowsByEvent,
   buildRecentEarningsRevisions,
   computeEarningsYoY,
@@ -154,6 +155,71 @@ test("dualBeatRateFromPrints grades eps and revenue beats", () => {
   ]);
   assert.equal(rates.eps_beat_rate, 0.5);
   assert.equal(rates.revenue_beat_rate, 0.5);
+  assert.equal(rates.eps_graded, 2);
+  assert.equal(rates.revenue_graded, 2);
+  assert.equal(rates.combined_graded, 4, "the pooled denominator is eps + revenue");
+});
+
+test("every rate arrives with the cohort it came from — a rate alone is not a fact", () => {
+  // Measured live over 40,000 Benzinga prints across 6,065 tickers: 10.2% of names that get an
+  // EPS beat rate at all get it from ONE or TWO graded prints. "100% beat rate" off a single
+  // print clears the 0.65 bullish threshold and renders as a confident percentage, so the count
+  // has to travel beside it for a reader to discount it.
+  const one = dualBeatRateFromPrints([
+    { report_date: "2026-05-01", beat: true, revenue_surprise_pct: 5, surprise_pct: 9 } as never,
+  ]);
+  assert.equal(one.eps_beat_rate, 1);
+  assert.equal(one.eps_graded, 1, "100% — of exactly one print");
+  assert.equal(one.revenue_graded, 1);
+
+  // Zero graded prints: the rate is null AND the count is 0. Both, so "no rate" and "a rate of
+  // zero" can never be confused.
+  const none = dualBeatRateFromPrints([
+    { report_date: "2026-05-01", beat: null, revenue_surprise_pct: null, surprise_pct: null } as never,
+  ]);
+  assert.equal(none.eps_beat_rate, null);
+  assert.equal(none.eps_graded, 0);
+  assert.equal(none.combined_beat_rate, null);
+  assert.equal(none.combined_graded, 0);
+});
+
+test("combined_beat_rate POOLS, it does not average two rates of different sizes", () => {
+  // EPS graded on 4 prints (3 beats), revenue graded on 1 (0 beats).
+  //   old, averaged : (0.75 + 0) / 2      = 0.375   → below the 0.35 bearish edge is close, and
+  //                                                   a single revenue print carries the same
+  //                                                   weight as four EPS prints
+  //   new, pooled   : (3 + 0) / (4 + 1)   = 0.6
+  const prints = [
+    { report_date: "2026-05-01", beat: true, revenue_surprise_pct: -1, surprise_pct: 1 },
+    { report_date: "2026-02-01", beat: true, revenue_surprise_pct: null, surprise_pct: 1 },
+    { report_date: "2025-11-01", beat: true, revenue_surprise_pct: null, surprise_pct: 1 },
+    { report_date: "2025-08-01", beat: false, revenue_surprise_pct: null, surprise_pct: -1 },
+  ] as never[];
+  const rates = dualBeatRateFromPrints(prints);
+
+  assert.equal(rates.eps_beat_rate, 0.75);
+  assert.equal(rates.revenue_beat_rate, 0);
+  assert.equal(rates.eps_graded, 4);
+  assert.equal(rates.revenue_graded, 1);
+  assert.equal(rates.combined_beat_rate, 0.6, "pooled 3/5, not the 0.375 average of 0.75 and 0");
+  assert.equal(rates.combined_graded, 5);
+
+  // Of 4,484 live names carrying both rates, 140 (3.1%) have denominators differing by 3+ prints
+  // and 52 (1.2%) have one side at <=2 while the other is >=6. This is that shape.
+  assert.notEqual(rates.combined_beat_rate, (0.75 + 0) / 2);
+});
+
+test("when the two cohorts MATCH, pooling and averaging agree — the change is not a rewrite", () => {
+  const prints = [
+    { report_date: "2026-05-01", beat: true, revenue_surprise_pct: 2, surprise_pct: 1 },
+    { report_date: "2026-02-01", beat: true, revenue_surprise_pct: 2, surprise_pct: 1 },
+    { report_date: "2025-11-01", beat: false, revenue_surprise_pct: -2, surprise_pct: -1 },
+    { report_date: "2025-08-01", beat: false, revenue_surprise_pct: -2, surprise_pct: -1 },
+  ] as never[];
+  const r = dualBeatRateFromPrints(prints);
+  assert.equal(r.eps_graded, r.revenue_graded);
+  assert.equal(r.combined_beat_rate, (r.eps_beat_rate! + r.revenue_beat_rate!) / 2);
+  assert.equal(r.combined_beat_rate, 0.5);
 });
 
 test("postPrintSurpriseLean scores beat and miss", () => {
@@ -260,4 +326,46 @@ test("dedupeEarningsRowsByEvent tolerates empty and nullish input", () => {
   assert.deepEqual(dedupeEarningsRowsByEvent([]), []);
   assert.deepEqual(dedupeEarningsRowsByEvent(null), []);
   assert.deepEqual(dedupeEarningsRowsByEvent(undefined), []);
+});
+
+test("benzingaTickerWindow: the lookback is DERIVED from the print count, never fixed", () => {
+  // THE REGRESSION. The window was pinned at 420 days — about 4.6 quarters — while callers asked
+  // for 6 (the pre-earnings card) and 8 (print history). Measured live 2026-08-21 against the old
+  // window: NVDA returned 4 usable past prints, WMT 5, AAPL 5, BABA 5. Never the count requested.
+  // Not a WRONG number — the summary states its real n — but a silently smaller sample, which
+  // weakens every beat rate and average move computed over it.
+  assert.ok(
+    benzingaTickerWindow(6).lookbackDays > 420,
+    "6 prints needs more than the old fixed 420-day window"
+  );
+  assert.ok(benzingaTickerWindow(8).lookbackDays > benzingaTickerWindow(6).lookbackDays);
+  // ~91 days between quarterly prints; the window must clear that per print with slack.
+  for (const n of [1, 4, 6, 8, 12]) {
+    assert.ok(
+      benzingaTickerWindow(n).lookbackDays >= n * 91,
+      `${n} prints needs at least ${n * 91} days, got ${benzingaTickerWindow(n).lookbackDays}`
+    );
+  }
+});
+
+test("benzingaTickerWindow: the row cap covers the projected future tail, not just the prints", () => {
+  // The response is sorted date.desc over a window spanning past AND future, and Benzinga
+  // projects ~4-8 quarters ahead — those rows sit at the TOP of a desc sort and are consumed
+  // before any past print is reached. A cap equal to the print count could never reach them.
+  for (const n of [1, 6, 8]) {
+    assert.ok(
+      benzingaTickerWindow(n).limit >= n + 8,
+      `cap ${benzingaTickerWindow(n).limit} leaves no room for the projected tail at n=${n}`
+    );
+  }
+});
+
+test("benzingaTickerWindow: clamps a nonsense count instead of requesting the world", () => {
+  for (const bad of [0, -5, Number.NaN]) {
+    const w = benzingaTickerWindow(bad as number);
+    assert.ok(w.lookbackDays > 0 && Number.isFinite(w.lookbackDays));
+    assert.ok(w.limit > 0);
+  }
+  assert.ok(benzingaTickerWindow(9999).limit <= 200, "cap must stay inside Benzinga's own ceiling");
+  assert.ok(benzingaTickerWindow(9999).lookbackDays <= 24 * 95 + 60);
 });

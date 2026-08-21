@@ -224,6 +224,9 @@ export type PrintLike = {
   surprise_pct?: number | null;
   beat?: boolean | null;
   session_change_pct?: number | null;
+  /** The gap-inclusive reaction. Falls back to `session_change_pct` only for pre-#2483 payloads,
+   *  where the two agree for pre-open prints and the anchor session's open→close is all there is. */
+  reaction_pct?: number | null;
   reaction_basis?: string | null;
 };
 
@@ -252,7 +255,7 @@ export function beatSeries(prints: readonly PrintLike[] | null | undefined): Bea
       // Prefer the explicit flag; fall back to the surprise sign, but never invent a verdict
       // from a missing number.
       beat: p.beat ?? (s === null ? null : s >= 0),
-      reactionPct: num(p.session_change_pct),
+      reactionPct: num(p.reaction_pct ?? p.session_change_pct),
       reactionAssumed: p.reaction_basis === "assumed_report_session",
       magnitude: s === null || peak <= 0 ? 0 : clamp(Math.abs(s) / peak, 0, 1),
     };
@@ -699,7 +702,68 @@ export function etWallClockToIso(ymd: string | null | undefined, hhmmss?: string
  *
  * When the items cannot all fit at `minGap`, they distribute evenly across the full span:
  * squashing is honest (they really are that close), silent overlap is not.
+ *
+ * `minGap` MUST be a real row height, measured, not assumed — see MV_LADDER_ROW_PX.
  */
+/**
+ * The dealer-structure ladder's geometry, in ONE place because CSS and this module have to agree.
+ *
+ * `MeridianStructureLadder` fed `resolveCollisions` a hardcoded `16 / 132` — "one row height as a
+ * fraction of the ladder". The ladder really is 132px, but a row is **not** 16px. Measured live
+ * on prod 2026-08-21 (mobile 430x932, BABA positioning tab):
+ *
+ *   ladder height 132px · row height 20.5px · enforced centre gap 16px
+ *   Spot → Call wall        centres 16.0px apart → overlap  4.5px
+ *   Call wall → King node   centres 16.0px apart → overlap  4.5px
+ *   King node → Gamma flip  centres 22.3px apart → overlap  6.8px
+ *   Gamma flip → Put wall   centres 17.8px apart → overlap 11.3px
+ *
+ * EVERY adjacent pair overlapped. The resolver was doing exactly what it was told; it was told a
+ * row was 16px tall when it renders at 20.5px, so "one row height" of separation was 4.5px short
+ * of one row height. `meridian-interaction-audit.mjs` measured the same collisions independently
+ * at 1440px — `"King node" ∩ "Gamma flip" 74x4px`, `"Gamma flip" ∩ "Put wall" 74x8px`.
+ *
+ * This is the `largo-card-deadspace.mjs` lesson again: a layout packed against an ESTIMATE that
+ * nothing ever compared to pixels. The row height is now PINNED in CSS (`--mv-ladder-row-h`) and
+ * asserted equal to this constant by `meridian-viz-core.test.ts`, so the two cannot drift apart
+ * silently again.
+ */
+/**
+ * The expected-move rail's LABEL STACKING geometry — the ladder's bug, in the sibling component.
+ *
+ * `layoutRailLabels` moves a label that cannot fit beside its neighbour to the next TIER, and CSS
+ * turns a tier index into a vertical offset. That only separates two labels if one tier step is
+ * taller than a label. It was not. Measured live on prod 2026-08-21 (desktop 1440, BEKE
+ * Positioning tab), two markers sharing the price 17.00 — `mv-rail-marker-wall` (call wall) and
+ * `mv-rail-marker-level` (king node):
+ *
+ *   tier step 0.62rem = 9.92px · label box 12px · line box 15.36px
+ *   label tops 438.17 and 448.09 → 9.92px apart → OVERLAP 2.08px, 33px wide
+ *
+ * `meridian-interaction-audit.mjs` reported it as `"17.00" ∩ "17.00" 33x2px` on both the Report
+ * and Positioning tabs. It reads as two prices printed through each other on the one component
+ * whose job is to say where the levels are.
+ *
+ * Same root cause as MV_LADDER_ROW_PX and found the same way — by measuring pixels rather than
+ * asserting a selector painted. The ladder fix pinned its row height; this pins BOTH halves,
+ * because the rail's failure needs the label height as well as the step:
+ *
+ *   MV_RAIL_LABEL_PX — the label's LINE-HEIGHT, pinned so the box height stops depending on
+ *                      whichever font the `--mv-value` stack resolves to.
+ *   MV_RAIL_TIER_PX  — one tier step. MUST exceed the label height, or tiering does not separate.
+ *
+ * The literal `0.62rem` also appeared TWICE in the stylesheet — the label's `top` and the track's
+ * `margin-top` headroom — with nothing tying them together. Both now read the same custom
+ * property, and `meridian-viz-core.test.ts` asserts the stylesheet and these constants agree.
+ */
+export const MV_RAIL_LABEL_PX = 14;
+export const MV_RAIL_TIER_PX = 16;
+
+export const MV_LADDER_HEIGHT_PX = 132;
+export const MV_LADDER_ROW_PX = 20;
+/** One full row of separation, as the [0,1] fraction `resolveCollisions` works in. */
+export const MV_LADDER_MIN_GAP = MV_LADDER_ROW_PX / MV_LADDER_HEIGHT_PX;
+
 export function resolveCollisions(positions: number[], minGap: number): number[] {
   const n = positions.length;
   if (n === 0) return [];

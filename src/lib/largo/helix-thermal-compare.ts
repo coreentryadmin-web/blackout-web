@@ -13,6 +13,17 @@ import { roundFloats } from "@/lib/round-floats";
 // were opened for.
 import { etSessionDate, etStamp } from "@/lib/largo/temporal/bar-session-date";
 import { marketPhaseFromEt } from "@/lib/largo/core/system-status";
+// ONE tape-selection definition, shared with get_helix_tape_analytics. `helixTapeFetchOptions`
+// is the load-bearing `order: "recent"` selection — see its own doc in helix-tape-analytics.ts.
+// Importing it here is how this card stops being the third HELIX consumer that quietly disagreed
+// with the other two about which prints the tape even contains (see fetchTickerFlowAndGamma).
+import { helixTapeFetchOptions } from "@/lib/largo/helix-tape-analytics";
+import {
+  HELIX_FLOW_PAGE_SIZE,
+  HELIX_FLOW_MAX_LIMIT,
+  HELIX_FLOW_DEFAULT_SINCE_HOURS,
+  HELIX_FLOW_MAX_SINCE_HOURS,
+} from "@/features/helix/lib/helix-flow-limits";
 
 // Shapes and guards live in the CLIENT-SAFE module — see compare-card-types.ts for why a client
 // component importing them from HERE breaks the webpack build. Re-exported so existing server
@@ -176,11 +187,26 @@ export function regimeInteractionFor(
   return { flow_bias: flowBias, volatility_regime: vol, read };
 }
 
-function flowSummary(bias: HelixThermalSide["bias"]): string {
-  if (bias === "bullish") return "Net call premium leads on the tape";
-  if (bias === "bearish") return "Net put premium leads on the tape";
-  if (bias === "neutral") return "Flow is balanced call vs put";
-  return "Insufficient flow in window";
+/** Whole seconds between an ISO stamp and `now`, or null when the stamp is unusable. */
+function ageSecondsFromIso(iso: string | null | undefined, now: number): number | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return null;
+  return Math.max(0, Math.round((now - t) / 1000));
+}
+
+/**
+ * The flow one-liner NAMES ITS WINDOW. "Net call premium leads on the tape" reads as today; the
+ * tape defaults to a 48-hour lookback, so on a two-session window spanning a reversal the
+ * unqualified sentence is actively misleading. "Insufficient flow in window" was worse — it
+ * referred to a window it never stated.
+ */
+function flowSummary(bias: HelixThermalSide["bias"], windowHours: number | null): string {
+  const win = windowHours != null && windowHours > 0 ? ` (last ${windowHours}h)` : "";
+  if (bias === "bullish") return `Net call premium leads on the tape${win}`;
+  if (bias === "bearish") return `Net put premium leads on the tape${win}`;
+  if (bias === "neutral") return `Flow is balanced call vs put${win}`;
+  return `Insufficient flow${win || " in window"}`;
 }
 
 function gammaSummary(gammaRegime: string | null, flip: number | null | undefined): string {
@@ -200,6 +226,8 @@ type FlowTapeRow = { ticker?: string; premium?: number; option_type?: string };
 export type ComparePositioningInput = {
   gamma_posture?: "long" | "short" | null;
   gamma_regime_read?: string | null;
+  /** ISO time the underlying matrix was computed — NOT the time this card was built. */
+  asof?: string | null;
   flip?: number | null;
   call_wall?: number | null;
   put_wall?: number | null;
@@ -218,7 +246,8 @@ export type ComparePositioningInput = {
  */
 export function compareSidesFrom(
   pos: ComparePositioningInput,
-  flow: { rows: readonly FlowTapeRow[]; available: boolean }
+  flow: { rows: readonly FlowTapeRow[]; available: boolean; windowHours?: number | null },
+  nowMs = Date.now()
 ): {
   flow: HelixThermalSide;
   gamma: HelixThermalSide;
@@ -241,14 +270,27 @@ export function compareSidesFrom(
   const gammaPosture: CompareGammaPosture = pos?.gamma_posture ?? null;
   const { bias: gammaBias, volatility_regime } = thermalReadFromPosture(gammaPosture);
 
+  // NOTHING MEASURED IS NULL, NOT ZERO.
+  //
+  // `net_premium` used to be `callPrem - putPrem` unconditionally, so a card built with an empty
+  // tape served `net_premium: 0` beside `bias: "unknown"`. Zero is a real, quotable reading —
+  // "SPX net premium is flat" — manufactured out of no data. Live payload 2026-08-21 showed
+  // exactly that pairing, and note `call_premium`/`put_premium` were ALREADY correctly null: only
+  // the DERIVED net was fabricated, which is the one a reader is least likely to question.
+  const priced = callPrem > 0 || putPrem > 0;
   const flowSide: HelixThermalSide = {
     available: flow.available,
     bias: flowBias,
-    summary: flowSummary(flowBias),
-    net_premium: callPrem - putPrem,
+    summary: flowSummary(flowBias, flow.windowHours ?? null),
+    net_premium: priced ? callPrem - putPrem : null,
     call_premium: callPrem || null,
     put_premium: putPrem || null,
     print_count: flow.rows.length || null,
+    // The window the premiums were summed over. Dropped before, so "net call premium leads on
+    // the tape" read as TODAY when it is a multi-session sum (the tape defaults to 48h).
+    window_hours: flow.windowHours ?? null,
+    freshness: flow.available ? "live" : null,
+    age_seconds: null,
   };
 
   const gamma: HelixThermalSide = {
@@ -264,8 +306,15 @@ export function compareSidesFrom(
     volatility_regime,
     // getGexPositioning is a documented STRICT CACHE READER — it never hits a second upstream —
     // so "cached" is the honest steady state here, not a degraded one. Null when there is no read.
+    // WHEN the matrix behind this read was computed, with an ET anchor beside the raw instant —
+    // a UTC ISO rolls its calendar date at 20:00 ET, so the session must be given in ET terms.
+    matrix_asof: pos?.asof ?? null,
+    matrix_asof_et: pos?.asof ? etStamp(Date.parse(pos.asof)) : null,
+    matrix_session_date: pos?.asof ? etSessionDate(Date.parse(pos.asof)) : null,
     freshness: (pos != null ? "cached" : null) as CompareFreshness,
-    age_seconds: null,
+    // Age of the matrix COMPUTATION, not of the price it models — read with `freshness` and
+    // `market_session`, never on its own.
+    age_seconds: pos?.asof ? ageSecondsFromIso(pos.asof, nowMs) : null,
   };
 
   const { conflict, conflict_note } = describeConflict("Flow", flowSide, "gamma", gamma);
@@ -274,7 +323,7 @@ export function compareSidesFrom(
 }
 
 /** I/O wrapper: fetch the flow tape + GEX positioning, then hand both to the pure derivation. */
-async function fetchTickerFlowAndGamma(ticker: string): Promise<{
+async function fetchTickerFlowAndGamma(ticker: string, nowMs = Date.now()): Promise<{
   flow: HelixThermalSide;
   gamma: HelixThermalSide;
   conflict: boolean;
@@ -286,8 +335,32 @@ async function fetchTickerFlowAndGamma(ticker: string): Promise<{
     import("@/lib/providers/gex-positioning"),
   ]);
 
+  // SELECT THE SAME POPULATION get_helix_tape_analytics reads — this was the defect.
+  //
+  // The old call was `getFlowTapeSummary({ limit: 50, ticker: t })`: no `order`, so
+  // fetchRecentFlows fell to `ORDER BY total_premium DESC` — the 50 BIGGEST prints of the default
+  // 48h window. On an index name those are LEAP/whale blocks, so the call/put sum below was a bias
+  // read off the largest prints, not the session. Measured live 2026-08-21 on SPX: this card read
+  // "$3.06B calls vs $0.88B puts → bullish" while get_helix_tape_analytics.session (recent-ordered,
+  // the AUTHORITATIVE skew per #2520) read the same session at 60% call over $370M — the card's
+  // "bullish" was carried almost entirely by ONE $368M SPXW 12/31 LEAP call. Two HELIX tools, same
+  // ticker, same instant, incompatible directional reads.
+  //
+  // `helixTapeFetchOptions` is the exact selection get_helix_tape_analytics and get_flow_brief
+  // issue (order:"recent", session limit + window). Routing through it — rather than re-inlining a
+  // literal — means the tape-analytics fix (its long doc on why order is load-bearing) cannot drift
+  // away from this card again: the file comment there already claimed "BOTH HELIX Largo tools issue"
+  // this request when in fact this was a THIRD consumer it had never covered.
+  const flowFetch = helixTapeFetchOptions({
+    ticker: t,
+    limit: HELIX_FLOW_PAGE_SIZE,
+    sinceHours: HELIX_FLOW_DEFAULT_SINCE_HOURS,
+    maxLimit: HELIX_FLOW_MAX_LIMIT,
+    defaultSinceHours: HELIX_FLOW_DEFAULT_SINCE_HOURS,
+    maxSinceHours: HELIX_FLOW_MAX_SINCE_HOURS,
+  });
   const [flowRes, pos] = await Promise.all([
-    marketPlatform.flows.getFlowTapeSummary({ limit: 50, ticker: t }).catch(() => null),
+    marketPlatform.flows.getFlowTapeSummary(flowFetch).catch(() => null),
     getGexPositioning(t).catch(() => null),
   ]);
 
@@ -295,12 +368,19 @@ async function fetchTickerFlowAndGamma(ticker: string): Promise<{
   // fetchRecentFlows, so every returned row IS this ticker — no further filtering here.
   // (A 4-char-prefix re-filter used to sit at this spot. It was a no-op for exactly that
   // reason, and its `scoped.length ? scoped : recent` fallback was unreachable.)
-  const recent = (flowRes as { recent?: FlowTapeRow[] } | null)?.recent;
+  const summary = flowRes as { recent?: FlowTapeRow[]; window_hours?: number } | null;
+  const recent = summary?.recent;
 
-  return compareSidesFrom(pos, {
-    rows: Array.isArray(recent) ? recent : [],
-    available: flowRes != null,
-  });
+  return compareSidesFrom(
+    pos,
+    {
+      rows: Array.isArray(recent) ? recent : [],
+      available: flowRes != null,
+      // getFlowTapeSummary reports the lookback it actually used; carry it rather than drop it.
+      windowHours: summary?.window_hours ?? null,
+    },
+    nowMs
+  );
 }
 
 /**
@@ -348,7 +428,7 @@ export async function helixThermalCompareForLargo(ticker = "SPX"): Promise<Helix
   const t = String(ticker).trim().toUpperCase() || "SPX";
   // ONE instant for the whole payload — see cardStamp().
   const nowMs = Date.now();
-  const { flow, gamma } = await fetchTickerFlowAndGamma(t);
+  const { flow, gamma } = await fetchTickerFlowAndGamma(t, nowMs);
 
   // Re-describe with the member-facing product names. Previously this branch rebuilt only the
   // CONFLICT note and fell through to the generic note otherwise, so a non-conflict card kept
@@ -382,7 +462,7 @@ export async function peerTickerCompareForLargo(
 
   const snapshots = await Promise.all(
     list.map(async (ticker) => {
-      const snap = await fetchTickerFlowAndGamma(ticker).catch(() => null);
+      const snap = await fetchTickerFlowAndGamma(ticker, nowMs).catch(() => null);
       return { ticker, snap };
     })
   );
