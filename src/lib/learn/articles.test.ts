@@ -1,5 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { LEARN_ARTICLES } from "./articles";
 import { GUIDE_SEO } from "./guide-seo";
 
@@ -181,5 +183,23 @@ describe("learn articles — meta description uniqueness", () => {
       if (guideSlug) dupes.push(`article ${a.slug} duplicates guide ${guideSlug}`);
     }
     assert.equal(dupes.length, 0, `Article/guide metaDescription duplicates:\n  ${dupes.join("\n  ")}`);
+  });
+
+  // A referenced-but-missing image is a broken <img> on a public page — Google flags it and the
+  // reader sees a gap where a figure should be. The markdown ships in this repo but the asset lives
+  // under public/, so nothing but this test couples the two. Guards every embedded diagram
+  // (gamma-flip, call/put-wall, and any added later) at once.
+  it("every local image referenced in an article body exists on disk", () => {
+    const publicDir = join(import.meta.dirname, "..", "..", "..", "public");
+    const missing: string[] = [];
+    const re = /!\[[^\]]*\]\((\/[^)]+)\)/g;
+    for (const a of LEARN_ARTICLES) {
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(a.body)) !== null) {
+        const ref = m[1].split(/[?#]/)[0]; // strip any query/hash
+        if (!existsSync(join(publicDir, ref))) missing.push(`${a.slug} → ${ref}`);
+      }
+    }
+    assert.equal(missing.length, 0, `Article images missing from public/:\n  ${missing.join("\n  ")}`);
   });
 });
