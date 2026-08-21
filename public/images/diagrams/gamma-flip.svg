@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img" aria-label="Conceptual diagram of the gamma flip: net dealer gamma crossing zero, splitting the long-gamma stabilizing regime above from the short-gamma amplifying regime below.">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0B0E13"/>
+      <stop offset="1" stop-color="#07080B"/>
+    </linearGradient>
+    <linearGradient id="posFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#A3E635" stop-opacity="0.20"/>
+      <stop offset="1" stop-color="#A3E635" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="negFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FB7185" stop-opacity="0"/>
+      <stop offset="1" stop-color="#FB7185" stop-opacity="0.20"/>
+    </linearGradient>
+    <linearGradient id="curve" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#FB7185"/>
+      <stop offset="0.5" stop-color="#FBBF24"/>
+      <stop offset="1" stop-color="#A3E635"/>
+    </linearGradient>
+    <style>
+      text{font-family:'JetBrains Mono',ui-monospace,monospace;fill:#E8ECF3}
+      .h{font-family:'Syne',system-ui,sans-serif;font-weight:800}
+      .lbl{font-size:22px;letter-spacing:.02em}
+      .cap{font-size:17px;fill:#909BAC}
+      .tag{font-size:15px;letter-spacing:.16em;fill:#5B6573}
+    </style>
+  </defs>
+
+  <rect width="1200" height="630" rx="18" fill="url(#bg)"/>
+  <rect x="1" y="1" width="1198" height="628" rx="17" fill="none" stroke="#1A1F29"/>
+
+  <!-- title -->
+  <text class="h" x="60" y="74" font-size="38" fill="#fff">The Gamma Flip</text>
+  <text class="cap" x="60" y="104">Where net dealer gamma crosses zero — and the market changes character.</text>
+  <text class="tag" x="60" y="150">BLACKOUT · DEALER POSITIONING</text>
+
+  <!-- plot frame -->
+  <g transform="translate(60,190)">
+    <!-- zero line -->
+    <line x1="0" y1="150" x2="1080" y2="150" stroke="#2B3340" stroke-width="1"/>
+    <text class="tag" x="0" y="142" fill="#5B6573">NET GEX = 0</text>
+
+    <!-- positive region fill (above zero) -->
+    <path d="M0,150 C 220,150 300,40 540,40 C 780,40 860,150 1080,150 L1080,150 L0,150 Z" fill="url(#posFill)"/>
+    <!-- negative region fill (below zero) -->
+    <path d="M0,150 C 120,150 180,250 300,258 L300,290 L0,290 Z" fill="url(#negFill)"/>
+    <path d="M780,260 C 900,258 960,150 1080,150 L1080,290 L780,290 Z" fill="url(#negFill)"/>
+
+    <!-- the gamma curve: short (below) -> flip -> long (above) -> flip -> short -->
+    <path d="M0,270 C 120,272 180,255 300,258 C 430,262 470,55 540,45 C 610,55 650,262 780,258 C 900,255 960,272 1080,270"
+          fill="none" stroke="url(#curve)" stroke-width="4" stroke-linecap="round"/>
+
+    <!-- flip markers where the curve crosses zero -->
+    <circle cx="360" cy="150" r="7" fill="#FBBF24" stroke="#07080B" stroke-width="2"/>
+    <circle cx="720" cy="150" r="7" fill="#FBBF24" stroke="#07080B" stroke-width="2"/>
+    <line x1="360" y1="150" x2="360" y2="330" stroke="#FBBF24" stroke-width="1" stroke-dasharray="3 5" opacity="0.5"/>
+    <text class="tag" x="330" y="352" fill="#FBBF24">FLIP</text>
+
+    <!-- regime labels -->
+    <text class="lbl h" x="470" y="20" fill="#A3E635">LONG GAMMA</text>
+    <text class="cap" x="430" y="120" fill="#A3E635" opacity="0.85">dealers sell rips, buy dips → range-bound, volatility dampened</text>
+
+    <text class="lbl h" x="60" y="322" fill="#FB7185">SHORT GAMMA</text>
+    <text class="cap" x="820" y="322" fill="#FB7185">amplifying</text>
+    <text class="cap" x="40" y="300" fill="#FB7185" opacity="0.0">.</text>
+
+    <!-- price axis -->
+    <text class="tag" x="0" y="384" fill="#5B6573">← PRICE BELOW FLIP</text>
+    <text class="tag" x="900" y="384" fill="#5B6573">PRICE ABOVE FLIP →</text>
+  </g>
+
+  <text class="tag" x="60" y="612" fill="#3d4552">Conceptual illustration · blackouttrades.com/learn/gamma-flip-explained</text>
+</svg>

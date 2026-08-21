@@ -87,11 +87,16 @@ export function gexHeatmapForceMaxBlockMs(): number {
   return Math.round(ms);
 }
 
-/** Max ms SPX UW 0DTE overlay may block finalizeHeatmapForServe. Default 2s — overlay is best-effort. */
+/**
+ * Max ms SPX UW 0DTE overlay may block finalizeHeatmapForServe.
+ * Default 8s — UW spot-exposures REST on a scoped-ladder cache miss routinely takes 3–5s;
+ * the old 2s cap returned the UN-OVERLAID Polygon book and false-flagged net-GEX sign vs UW
+ * (ops-auto-fix #2503).
+ */
 export function gexHeatmapOverlayMaxMs(): number {
   const raw = process.env.GEX_HEATMAP_OVERLAY_MAX_MS?.trim();
-  const ms = raw ? Number(raw) : 2_000;
-  if (!Number.isFinite(ms) || ms < 200) return 2_000;
+  const ms = raw ? Number(raw) : 8_000;
+  if (!Number.isFinite(ms) || ms < 200) return 8_000;
   return Math.round(ms);
 }
 
