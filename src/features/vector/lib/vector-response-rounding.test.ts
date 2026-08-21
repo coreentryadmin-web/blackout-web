@@ -93,3 +93,51 @@ test("bar OHLC noise is cleaned while epoch time and volume pass through untouch
   assert.equal(bar.time, 1786109400, "epoch seconds are integers and must be bit-identical");
   assert.equal(bar.volume, 1234567);
 });
+
+// ---------------------------------------------------------------------------
+// dteDays — the fourth fraction field, caught LIVE on production 2026-08-21
+// ---------------------------------------------------------------------------
+
+test("REGRESSION: 2dp collapses an intraday dteDays to the engine's own invalid input", () => {
+  // Live capture, GET /api/market/vector/expected-move?ticker=SPX at 2026-08-21 01:23 UTC:
+  // the route served { atmIv: 20, dteDays: 0, movePct: 0.027587, bands: [±210.8 pts] }.
+  // dteDays 0 is exactly what computeExpectedMove REJECTS, yet a band was served alongside it —
+  // the payload contradicted itself. Recovering the true value from the engine's own formula:
+  //   movePct = atmIv * sqrt(dteDays / 365)  =>  dteDays = (movePct / atmIv)^2 * 365
+  const trueDteDays = (0.027587 / 20) ** 2 * 365;
+  assert.ok(trueDteDays > 0 && trueDteDays < 0.001, `expected a sub-millidat fraction, got ${trueDteDays}`);
+
+  assert.equal(
+    (roundFloats({ dteDays: trueDteDays }) as { dteDays: number }).dteDays,
+    0,
+    "pre-fix: the blanket 2dp default serves 0 — the value the engine defines as invalid"
+  );
+  assert.ok(
+    (roundFloats({ dteDays: trueDteDays }, 2, VECTOR_FRACTION_DP) as { dteDays: number }).dteDays > 0,
+    "post-fix: an intraday time-to-expiry must survive as a positive fraction"
+  );
+});
+
+test("a served dteDays never contradicts a served band", () => {
+  // The invariant the live payload broke: if a band exists, the time that produced it must be
+  // representable in the same payload. Walk the last hours of a 0DTE session.
+  for (const minutesLeft of [390, 60, 15, 5, 1]) {
+    const dteDays = minutesLeft / (60 * 24);
+    const em = computeExpectedMove({ spot: 7641.16, atmIv: 0.19, dteDays });
+    assert.ok(em, `${minutesLeft}m: precondition, a band must exist`);
+
+    const served = roundFloats({ expectedMove: em }, 2, VECTOR_FRACTION_DP);
+    assert.ok(
+      served.expectedMove.dteDays > 0,
+      `${minutesLeft}m to expiry served dteDays=${served.expectedMove.dteDays} alongside a real band`
+    );
+  }
+});
+
+test("whole-day horizons are untouched — the override only rescues fractions", () => {
+  // Weekly/monthly dteDays are integers; roundFloats short-circuits on Number.isInteger, so the
+  // override must not change them (and must not introduce float noise).
+  for (const d of [1, 7, 30, 45]) {
+    assert.equal((roundFloats({ dteDays: d }, 2, VECTOR_FRACTION_DP) as { dteDays: number }).dteDays, d);
+  }
+});
