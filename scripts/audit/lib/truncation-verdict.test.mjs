@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { parseProbeReply, probeQuestion, summarizeRun } from "./truncation-verdict.mjs";
+import { mentionsTool, parseProbeReply, probeQuestion, summarizeRun } from "./truncation-verdict.mjs";
 
 test("reads a clean TRUNCATED reply and its corroborating last key", () => {
   const r = parseProbeReply("TRUNCATED\n\nThe last top-level key I can actually see is `analytics`.");
@@ -79,4 +79,25 @@ test("the question names the marker and demands a one-word verdict", () => {
 
 test("the question works for a tool with no args", () => {
   assert.match(probeQuestion("get_open_plays"), /Call get_open_plays and nothing else/);
+});
+
+test("mentionsTool matches a whole identifier and not a substring of a longer one", () => {
+  assert.equal(mentionsTool('{"name":"get_zerodte_plays"}', "get_zerodte_plays"), true);
+  assert.equal(mentionsTool('{"name":"get_zerodte_plays_v2"}', "get_zerodte_plays"), false);
+  assert.equal(mentionsTool("called get_open_plays, then stopped", "get_open_plays"), true);
+  assert.equal(mentionsTool("nothing here", "get_open_plays"), false);
+});
+
+test("mentionsTool treats a name with regex metacharacters as a literal, never a pattern", () => {
+  // The bug this replaced compiled the name into a RegExp, so `.` matched any character and an
+  // unbalanced bracket threw mid-run. A name is a name.
+  assert.equal(mentionsTool("get_aXb", "get_a.b"), false);
+  assert.equal(mentionsTool("get_a.b", "get_a.b"), true);
+  assert.doesNotThrow(() => mentionsTool("anything", "get_a[b"));
+});
+
+test("mentionsTool refuses to answer true for an empty or non-string tool", () => {
+  assert.equal(mentionsTool("get_x", ""), false);
+  assert.equal(mentionsTool("get_x", null), false);
+  assert.equal(mentionsTool(null, "get_x"), false);
 });

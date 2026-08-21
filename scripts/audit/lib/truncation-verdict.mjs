@@ -80,3 +80,26 @@ export function probeQuestion(tool, args = "") {
     `top-level key you can actually see in that result.`
   );
 }
+
+/**
+ * Did this trace actually mention this tool, as a whole identifier?
+ *
+ * WHY NOT A REGEX. The first version built one per call — `new RegExp(`\\b${tool}\\b`)` — with
+ * `tool` reaching it from `--control=` on the command line. CodeQL flagged it as regular
+ * expression injection and was right: a caller-supplied name is not a pattern, and a name
+ * carrying regex metacharacters would either match the wrong thing or throw mid-run, in a
+ * harness whose entire value is that it cannot quietly no-op.
+ *
+ * Nor is `text.includes(tool)` a substitute: tool names nest (`get_zerodte_plays` inside a
+ * hypothetical `get_zerodte_plays_v2`), and a substring hit would credit a call that never
+ * happened. So this scans for the literal and checks the characters either side are not
+ * identifier characters — exactly `\b…\b` semantics, no pattern compiled from input.
+ */
+export function mentionsTool(text, tool) {
+  if (typeof text !== "string" || typeof tool !== "string" || tool === "") return false;
+  const isWordChar = (ch) => ch !== undefined && /[A-Za-z0-9_]/.test(ch);
+  for (let i = text.indexOf(tool); i !== -1; i = text.indexOf(tool, i + 1)) {
+    if (!isWordChar(text[i - 1]) && !isWordChar(text[i + tool.length])) return true;
+  }
+  return false;
+}

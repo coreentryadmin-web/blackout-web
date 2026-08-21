@@ -31,7 +31,7 @@
  *     [--tools=a,b] [--control=get_x] [--base=https://blackouttrades.com] [--json]
  */
 import { mintClerkPremiumSession } from "./lib/prod-clerk-session.mjs";
-import { parseProbeReply, probeQuestion, summarizeRun } from "./lib/truncation-verdict.mjs";
+import { mentionsTool, parseProbeReply, probeQuestion, summarizeRun } from "./lib/truncation-verdict.mjs";
 
 const arg = (k, d) => {
   const hit = process.argv.find((a) => a.startsWith(`--${k}=`));
@@ -68,7 +68,8 @@ const LANE_TOOLS = [
  * NOTE FOR WHOEVER READS THIS AFTER #2480 SHIPS: that fix makes this control return COMPLETE, at
  * which point the run will correctly report UNVERIFIED and demand a new control rather than
  * quietly passing. That is the design working, not a break — pick another over-cap tool with
- * `--control=`, or retire the harness if nothing is over cap any more.
+ * `--control=` (it must be one of LANE_TOOLS, so it runs with real arguments), or retire the
+ * harness if nothing is over cap any more.
  */
 const DEFAULT_CONTROL = ["get_nighthawk_outcomes", "window_days=180"];
 
@@ -85,9 +86,20 @@ if (only.length) {
   }
 }
 const controlName = arg("control", "");
-const CONTROL = controlName
-  ? [controlName, LANE_TOOLS.find(([n]) => n === controlName)?.[1] ?? ""]
-  : DEFAULT_CONTROL;
+// An unknown --control used to fall back to running that name with NO args. That is the worst
+// possible failure for this harness: a control with the wrong args comes back COMPLETE, which
+// correctly downgrades every other tool in the run to UNVERIFIED — so a typo reads exactly like
+// a finding. Same rule as --tools above: name something the file has a recipe for, or stop.
+const controlRecipe = LANE_TOOLS.find(([n]) => n === controlName);
+if (controlName && !controlRecipe) {
+  console.error(
+    `HARNESS ERROR — no argument recipe for control \`${controlName}\`. ` +
+      `Add it to LANE_TOOLS rather than probing it with no arguments: a control that is not ` +
+      `actually over the cap reports COMPLETE and marks the whole run UNVERIFIED.`
+  );
+  process.exit(2);
+}
+const CONTROL = controlRecipe ?? DEFAULT_CONTROL;
 
 const session = await mintClerkPremiumSession({ appUrl: BASE });
 if (session.skip) {
@@ -107,7 +119,7 @@ async function probe(tool, args) {
   const reply = md.replace(/\\n/g, "\n");
   // A run that never reached the tool is an UNKNOWN, not a pass — if the tool name is absent from
   // the trace the model answered from somewhere else and its verdict is about the wrong payload.
-  const called = new RegExp(`\\b${tool}\\b`).test(text);
+  const called = mentionsTool(text, tool);
   const parsed = parseProbeReply(reply);
   return { tool, ...parsed, verdict: called ? parsed.verdict : "INDETERMINATE", called };
 }
