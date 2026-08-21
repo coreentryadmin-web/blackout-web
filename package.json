@@ -133,7 +133,8 @@
     "validate:admin-users-e2e": "node scripts/validate-admin-users-e2e.mjs",
     "validate:admin-console-e2e": "node scripts/validate-admin-console-e2e.mjs",
     "validate:admin-e2e": "node scripts/validate-admin-e2e.mjs",
-    "analyze:api": "node scripts/analyze-api-usage.mjs"
+    "analyze:api": "node scripts/analyze-api-usage.mjs",
+    "validate:research": "node scripts/audit/research-publish-audit.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.117.1",

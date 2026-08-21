@@ -100,7 +100,9 @@ async function loadWindowSamples(
           walls,
           gamma_flip,
           bucket_time,
-          NTILE($3) OVER (PARTITION BY session_ymd ORDER BY bucket_time) AS slot
+          -- Explicit ::int — a bind parameter reaches Postgres untyped, and NTILE will not take
+          -- the text it would otherwise be inferred as.
+          NTILE($3::int) OVER (PARTITION BY session_ymd ORDER BY bucket_time) AS slot
         FROM vector_wall_history
         WHERE ticker = $1 AND session_ymd = ANY($2::date[])
       ) t
