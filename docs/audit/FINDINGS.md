@@ -4,6 +4,23 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-21 — [OPS-NOTE, Meridian] Five hand-found data defects turned into a live production invariant sweep — SHIPPED
+
+> **kind:** `OPS-NOTE`
+
+| Field | Detail |
+|---|---|
+| **Why** | Every Meridian defect found on 2026-08-21 — raw HTML entities on screen, a diagram wider than its panel, a coerced wall order shown as measured, an expected move from a dead expiry, a card comparing two quarters — was found **by hand**. Not one could have been caught by a unit test, because unit tests check the code that is running and these were failures in the **shape of what production actually served**. The same class also fires when a cache serves a pre-deploy payload, when a provider changes its encoding, or when a field quietly stops being written. |
+| **What** | `scripts/audit/meridian-data-integrity.mjs` sweeps live earnings events and applies five invariants from `scripts/audit/lib/meridian-invariants.mjs`, each citing the fix that made it true: **no raw HTML entities** in member-facing text (#2608); **a Vector quote may not predate the print** it describes (#2613); **no ratio or verdict across two different events** (#2614); **inverted walls must carry the raw gamma strikes** (#2611); **a claimed `expiry_scope` must say which levels it covers** (#2585). |
+| **It is red right now, for exactly the documented reasons** | First live run, 10 high-impact events: **67 violations — 49 `no_raw_entities`, 10 `evr_compares_across_events`, 8 `vector_quote_predates_print`.** Two of those three are merged and awaiting deploy, so this doubles as the live-validation harness for #2608 and #2613: when they roll, the entity and expiry counts must go to **0**. |
+| **Design — it must not cry wolf** | The entity rule matches only real entity forms, so a literal `&` in *"Fear & Greed Index"* passes; a mutant widening it to any ampersand fails the suite. The expected-vs-realized rule outlaws only the **cross-event** comparison — a ratio backed by a captured per-print implied is explicitly allowed, so the card is not disabled by the checker. A non-inverted ladder is not examined at all. |
+| **It refuses to certify what it did not read** | Every predicate is total: absent, empty, malformed and non-object payloads yield **no** violations. A timeline that did not load prints `HARNESS` and exits 0 — the same rule `meridian-interaction-audit` follows. `checked 0` prints "this run certifies nothing". Absence of evidence is never reported as absence of defects. |
+| **A security defect the repo caught in my own script** | My header claimed *"One temp Clerk user, released in a finally"* and the file contained **no `finally`** — copied boilerplate that was simply false. `scripts/audit/lib/harness-cleanup-contract.test.mjs` failed the build on it: *"A leaked temp user is a live admin+premium account on production Clerk with no TTL."* Fixed properly rather than by softening the header: the run lives in a `run()` function, cleanup is in a real `finally`, and the exit code is applied **after** it — `process.exit` inside a `try` skips the finally, which is exactly how the leak would have happened. |
+| **Regression guard** | `src/meridian-invariants.test.ts` (+14), fixtured from the shapes production actually served: each rule fires on the measured payload and passes on the corrected one; the literal-ampersand false positive is pinned; the allowed ratio case is pinned; totality is asserted across 8 malformed inputs; violations carry their ticker so a sweep report is actionable. |
+| **Non-vacuity** | Four mutants, all caught: the expiry rule disabled (1 fail); the entity rule widened to any `&` (1); the expected-vs-realized rule inverted (2); the wall-inversion rule disabled (1). Restored: 14/14. Exit code verified **1** on a real failing run — an audit that cannot fail gates nothing. |
+| **Gates on Node 20.20.2** | `npx tsc --noEmit` clean · `npm test` **9937 pass / 0 fail / 1 skipped** · `npm run build` clean · `npx eslint` clean. |
+| **Status** | SHIPPED — this PR. No product code touched; this is a checker, not a fix. |
+
 ## 2026-08-21 — [FINDING, P1 Meridian] "Expected move" served 0.1% for a print whose chain implied 7.6% — a dead expiry, labelled `chain_iv` — FIXED
 
 > **kind:** `FINDING`
