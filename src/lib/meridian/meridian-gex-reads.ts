@@ -1,14 +1,44 @@
 import type { GexHeatmap } from "@/lib/providers/polygon-options-gex";
 import type { GreekExposureSummary } from "@/lib/greek-exposure-summary";
 
-/** Max pain for one expiry from the shared Polygon GEX heatmap cache — no UW REST. */
-export function maxPainForExpiryFromHeatmap(
+/**
+ * Max pain for one expiry from the shared Polygon GEX heatmap cache — **that expiry only**,
+ * with no whole-book fallback.
+ *
+ * Use this for any DATED row (a past OpEx, a historical print). The current chain has no
+ * strikes for an expiry that already passed, so `max_pain_by_expiry` will not carry it, and
+ * falling back to the book's overall max pain stamps TODAY's number onto that date as though
+ * it had been measured then. That is not a degraded value — it is a different quantity wearing
+ * the row's date, which is precisely the defect FINDINGS 2026-08-18 ("dealer structure from the
+ * WRONG EXPIRY for dated events") already cost us once.
+ */
+export function maxPainForExpiryStrict(
   hm: GexHeatmap | null | undefined,
   expiryYmd: string
 ): number | null {
   if (!hm || !expiryYmd) return null;
   const scoped = hm.max_pain_by_expiry?.[expiryYmd];
-  if (scoped != null && Number.isFinite(scoped) && scoped > 0) return scoped;
+  return scoped != null && Number.isFinite(scoped) && scoped > 0 ? scoped : null;
+}
+
+/**
+ * Max pain for one expiry, falling back to the book's overall max pain when that expiry is not
+ * broken out.
+ *
+ * The fallback is only defensible for the CURRENT/UPCOMING event, where "the book's max pain"
+ * and "this expiry's max pain" describe the same live chain. For a historical date use
+ * `maxPainForExpiryStrict` instead — see the note there.
+ */
+export function maxPainForExpiryFromHeatmap(
+  hm: GexHeatmap | null | undefined,
+  expiryYmd: string
+): number | null {
+  // Guard BEFORE the fallback, not just inside the strict lookup: a blank expiry is a caller
+  // bug, and answering it with the book-wide number would invent an attribution to no date at
+  // all. (The pre-refactor code returned null here; this keeps it byte-identical.)
+  if (!hm || !expiryYmd) return null;
+  const scoped = maxPainForExpiryStrict(hm, expiryYmd);
+  if (scoped != null) return scoped;
   if (hm.max_pain != null && Number.isFinite(hm.max_pain) && hm.max_pain > 0) return hm.max_pain;
   return null;
 }

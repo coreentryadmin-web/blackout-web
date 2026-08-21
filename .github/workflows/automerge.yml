@@ -1,16 +1,42 @@
 name: Auto-merge agent PRs
 
-# Hands-off merging for Cursor agent PRs.
+# Hands-off merging for agent PRs.
 #
-# When a NON-DRAFT pull request from a `cursor/*` branch is opened or updated, this
-# enables GitHub's native auto-merge so the PR merges ITSELF the moment the required
-# `verify` check (see ci.yml) goes green — no human click required.
+# When a NON-DRAFT pull request from an agent branch (`cursor/*` or `claude/*`) is opened
+# or updated, this enables GitHub's native auto-merge so the PR merges ITSELF the moment
+# the required `verify` check (see ci.yml) goes green — no human click required.
+#
+# ── WHY `claude/*` IS LISTED (added 2026-08-21, after a 36-PR jam) ────────────────────────
+#
+# This workflow was written for the Cursor agent and its branch prefix was hardcoded. When
+# the Claude agent fleet came online it used `claude/*`, and nothing here matched — so 36
+# agent PRs accumulated, 28 of them with `verify` GREEN, and not one could ever merge.
+#
+# The jam was invisible because it looked like two unrelated problems. Nothing FAILED: no
+# red check, no error, no complaint. The PRs simply sat, and the natural reading was "the
+# agents are stuck" or "the connection to the agents broke" — when the agents had finished
+# their work correctly and handed it over exactly as asked.
+#
+# TWO independent conditions were failing at once, which is why fixing either alone would
+# have kept the jam in place:
+#   1. the branch prefix (`cursor/` only), and
+#   2. the draft gate — the agent harness instructs every agent to open its PR as a DRAFT,
+#      while the repo policy in CLAUDE.md says "do not auto-merge draft PRs". Those two
+#      standing instructions are individually sensible and jointly a deadlock: every agent
+#      PR is born in a state policy forbids merging, and no agent ever leaves that state.
+#
+# The draft gate is deliberately KEPT. Draft is the agent's own "still working" signal, and
+# auto-undrafting here would merge work the moment CI passes even if the agent had more to
+# push. Resolving it belongs one level up: the coordinator reviews a green draft and marks
+# it ready, at which point `ready_for_review` fires this workflow and the merge proceeds.
+# What changed is only that the mechanism now RUNS for Claude branches — a PR marked ready
+# no longer lands in a workflow that silently ignores it.
 #
 # Gating still applies: the `cursor-merge` branch ruleset on `main` requires the
 # `verify` status check, so nothing merges until CI passes. Auto-merge simply removes
 # the manual "Enable auto-merge" click.
 #
-# Scope: only `cursor/*` branches (the agent's). Human PRs from other branches are
+# Scope: only agent branches (`cursor/*`, `claude/*`). Human PRs from other branches are
 # untouched and still merge manually.
 #
 # Token: the built-in GITHUB_TOKEN is sufficient for the current ruleset (0 required
@@ -29,7 +55,7 @@ permissions:
 
 jobs:
   enable-automerge:
-    if: ${{ !github.event.pull_request.draft && startsWith(github.head_ref, 'cursor/') }}
+    if: ${{ !github.event.pull_request.draft && (startsWith(github.head_ref, 'cursor/') || startsWith(github.head_ref, 'claude/')) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
