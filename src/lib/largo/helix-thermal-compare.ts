@@ -13,6 +13,17 @@ import { roundFloats } from "@/lib/round-floats";
 // were opened for.
 import { etSessionDate, etStamp } from "@/lib/largo/temporal/bar-session-date";
 import { marketPhaseFromEt } from "@/lib/largo/core/system-status";
+// ONE tape-selection definition, shared with get_helix_tape_analytics. `helixTapeFetchOptions`
+// is the load-bearing `order: "recent"` selection — see its own doc in helix-tape-analytics.ts.
+// Importing it here is how this card stops being the third HELIX consumer that quietly disagreed
+// with the other two about which prints the tape even contains (see fetchTickerFlowAndGamma).
+import { helixTapeFetchOptions } from "@/lib/largo/helix-tape-analytics";
+import {
+  HELIX_FLOW_PAGE_SIZE,
+  HELIX_FLOW_MAX_LIMIT,
+  HELIX_FLOW_DEFAULT_SINCE_HOURS,
+  HELIX_FLOW_MAX_SINCE_HOURS,
+} from "@/features/helix/lib/helix-flow-limits";
 
 // Shapes and guards live in the CLIENT-SAFE module — see compare-card-types.ts for why a client
 // component importing them from HERE breaks the webpack build. Re-exported so existing server
@@ -324,8 +335,32 @@ async function fetchTickerFlowAndGamma(ticker: string, nowMs = Date.now()): Prom
     import("@/lib/providers/gex-positioning"),
   ]);
 
+  // SELECT THE SAME POPULATION get_helix_tape_analytics reads — this was the defect.
+  //
+  // The old call was `getFlowTapeSummary({ limit: 50, ticker: t })`: no `order`, so
+  // fetchRecentFlows fell to `ORDER BY total_premium DESC` — the 50 BIGGEST prints of the default
+  // 48h window. On an index name those are LEAP/whale blocks, so the call/put sum below was a bias
+  // read off the largest prints, not the session. Measured live 2026-08-21 on SPX: this card read
+  // "$3.06B calls vs $0.88B puts → bullish" while get_helix_tape_analytics.session (recent-ordered,
+  // the AUTHORITATIVE skew per #2520) read the same session at 60% call over $370M — the card's
+  // "bullish" was carried almost entirely by ONE $368M SPXW 12/31 LEAP call. Two HELIX tools, same
+  // ticker, same instant, incompatible directional reads.
+  //
+  // `helixTapeFetchOptions` is the exact selection get_helix_tape_analytics and get_flow_brief
+  // issue (order:"recent", session limit + window). Routing through it — rather than re-inlining a
+  // literal — means the tape-analytics fix (its long doc on why order is load-bearing) cannot drift
+  // away from this card again: the file comment there already claimed "BOTH HELIX Largo tools issue"
+  // this request when in fact this was a THIRD consumer it had never covered.
+  const flowFetch = helixTapeFetchOptions({
+    ticker: t,
+    limit: HELIX_FLOW_PAGE_SIZE,
+    sinceHours: HELIX_FLOW_DEFAULT_SINCE_HOURS,
+    maxLimit: HELIX_FLOW_MAX_LIMIT,
+    defaultSinceHours: HELIX_FLOW_DEFAULT_SINCE_HOURS,
+    maxSinceHours: HELIX_FLOW_MAX_SINCE_HOURS,
+  });
   const [flowRes, pos] = await Promise.all([
-    marketPlatform.flows.getFlowTapeSummary({ limit: 50, ticker: t }).catch(() => null),
+    marketPlatform.flows.getFlowTapeSummary(flowFetch).catch(() => null),
     getGexPositioning(t).catch(() => null),
   ]);
 

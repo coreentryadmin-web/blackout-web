@@ -93,7 +93,9 @@ gate pass/fail checklist, confirmation items, adaptive-gate telemetry, AI arbite
 
 **Summary scalars (positioning card):** spot, change_pct, net GEX/VEX/DEX/CHARM, gamma_posture, vanna_posture,
 dex_posture, charm_posture, flip, call_wall, put_wall, max_pain, gex_king_strike, nearest_wall,
-distance_to_flip_pct, shift_summary, gex_cross_validation (Polygon vs UW divergence on walls/flip).
+distance_to_flip_pct, flip_crossings / flip_nearest / distance_to_nearest_flip_pct (regime fragility —
+when the book crosses zero more than once, flip is the stable lowest crossing and flip_nearest is the
+nearer one that flips the regime first), shift_summary, gex_cross_validation (Polygon vs UW divergence on walls/flip).
 - Tool: get_positioning (full canonical object — prefer over get_gex for non-SPX tickers)
 
 **Matrix changes:** strike-level GEX delta since last warm snapshot (stronger/weaker/flipped).

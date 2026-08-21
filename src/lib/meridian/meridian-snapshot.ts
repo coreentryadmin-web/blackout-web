@@ -81,6 +81,10 @@ export async function loadMeridianTimelineResponse(daysAhead: number): Promise<M
     // Surfaced so the lane can SAY it filtered. A quietly shorter list is indistinguishable
     // from a quietly broken feed, and the two need different reactions from the reader.
     non_optionable_hidden: earningsBundle.non_optionable_hidden,
+    // Coverage, not just values: the chain budget is capped, so a null expected_move_pct means
+    // either "no chain" or "not queried". Publishing which is which is the difference between a
+    // gap the reader can interpret and one they will read as a fact about the name.
+    expected_move_coverage: earningsBundle.expected_move_coverage,
     optionable_filter_applied: earningsBundle.optionable_filter_applied,
     // Sector coverage, forwarded so it is actually reachable. These counters existed on the lane
     // result but were never put on the payload, so the "coverage is a number, not an assumption"

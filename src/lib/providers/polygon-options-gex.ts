@@ -327,7 +327,7 @@ export type GexMetricBlock = {
 /** Whether the SPX 0DTE UW overlay applied, and why not when it did not. */
 export type SpxOdteOverlayState = {
   applied: boolean;
-  reason: "applied" | "not_applicable" | "no_odte_expiry" | "ladder_unavailable";
+  reason: "applied" | "not_applicable" | "no_odte_expiry" | "ladder_unavailable" | "overlay_timeout";
 };
 
 /**
@@ -1524,7 +1524,18 @@ async function readHeatmapRedisEntry(
   }
 }
 
-/** Prune + SPX 0DTE UW overlay so served King matches the cross-provider oracle. */
+/** Stamp overlay failure on a matrix copy — never return an unmarked un-overlaid SPX book. */
+function markSpxOdteOverlayFailed(hm: GexHeatmap, reason: SpxOdteOverlayState["reason"]): GexHeatmap {
+  return {
+    ...hm,
+    gex: {
+      ...hm.gex,
+      odte_overlay: { applied: false, reason },
+    },
+  };
+}
+
+/** Prune + SPX 0DTE UW overlay so served King/net sign matches the cross-provider oracle. */
 async function finalizeHeatmapForServe(
   cacheKey: string,
   data: GexHeatmap | null
@@ -1536,11 +1547,11 @@ async function finalizeHeatmapForServe(
     return await Promise.race([
       applySpxOdteGexUwOverlay(pruned),
       new Promise<GexHeatmap>((resolve) => {
-        setTimeout(() => resolve(pruned), overlayMs);
+        setTimeout(() => resolve(markSpxOdteOverlayFailed(pruned, "overlay_timeout")), overlayMs);
       }),
     ]);
   } catch {
-    return pruned;
+    return markSpxOdteOverlayFailed(pruned, "ladder_unavailable");
   }
 }
 
@@ -3621,13 +3632,23 @@ async function buildGexHeatmapUncached(
   };
 
   // Cache once for everyone: in-memory + Redis. 500 users → one matrix, zero per-user fetch.
-  const entry = { at: now, data: heatmap };
+  // SPX: apply the UW 0DTE overlay at WRITE time (no read-path timeout race) so cached copies
+  // already carry the oracle-aligned 0DTE column (ops-auto-fix #2503).
+  let toCache = heatmap;
+  if (root === "SPX") {
+    try {
+      toCache = await applySpxOdteGexUwOverlay(heatmap);
+    } catch {
+      toCache = markSpxOdteOverlayFailed(heatmap, "ladder_unavailable");
+    }
+  }
+  const entry = { at: now, data: toCache };
   setCachedHeatmap(cacheKey, entry);
   void import("../shared-cache").then(({ sharedCacheSet }) =>
     sharedCacheSet(cacheKey, entry, gexHeatmapRedisTtlSec())
   );
 
-  return heatmap;
+  return toCache;
 }
 
 /**

@@ -6,6 +6,7 @@ import {
   routeBreakdown,
   expiryConcentration,
   sessionFlowSkew,
+  cappedList,
 } from "./helix-tape-analytics";
 
 const alerts: FlowAlert[] = [
@@ -72,6 +73,38 @@ test("sessionFlowSkew computes call pct", () => {
   const skew = sessionFlowSkew(alerts);
   assert.equal(skew.alert_count, 3);
   assert.ok(skew.call_pct >= 50 && skew.call_pct <= 100);
+});
+
+// ── No silent caps (rule 7) ──────────────────────────────────────────────────
+// A capped list must carry the TRUE total, so a 20-of-34 slice can never read as the whole set —
+// the get_helix_derived panels were `.slice()`d with no total, which reads a display limit as a
+// count ("how many are stacking?" → 20 when 34 were).
+test("cappedList: truncates and reports the true total", () => {
+  const c = cappedList(Array.from({ length: 34 }, (_, i) => i), 20);
+  assert.equal(c.items.length, 20);
+  assert.equal(c.total, 34, "the total is the count BEFORE the cap");
+  assert.equal(c.truncated, true);
+  assert.equal(c.items[0], 0, "keeps the TOP n, in order");
+});
+
+test("cappedList: a list within the cap is not marked truncated", () => {
+  const c = cappedList([1, 2, 3], 20);
+  assert.equal(c.items.length, 3);
+  assert.equal(c.total, 3);
+  assert.equal(c.truncated, false);
+});
+
+test("cappedList: exactly at the cap is not truncated (boundary)", () => {
+  const c = cappedList([1, 2, 3, 4, 5], 5);
+  assert.equal(c.truncated, false, "total === cap is complete, not truncated");
+  assert.equal(c.total, 5);
+});
+
+test("cappedList: n <= 0 means no cap, and total is honest either way", () => {
+  const c = cappedList([1, 2, 3], 0);
+  assert.equal(c.items.length, 3);
+  assert.equal(c.truncated, false);
+  assert.equal(c.total, 3);
 });
 
 // ── Expiry horizon / session-anchor guards ───────────────────────────────────
@@ -584,6 +617,32 @@ test("a real share is still reported as a number", () => {
   ]);
   const sweep = rows.find((r) => r.route === "SWEEP");
   assert.equal(sweep?.pct, 75);
+});
+
+// ── C1: a firing's session must not be inferred from a UTC instant ───────────
+// get_helix_signal_outcomes emitted fired_at raw and get_helix_derived stamped a bare UTC as_of.
+// After ~20:00 ET the UTC calendar date is already tomorrow — the bare-instant trap from #2418/
+// #2420/#2422. The file-level session-anchor ratchet could not see either: product-reads.ts
+// already counted as anchored via helixTapeAnalyticsForLargo, and signal-outcomes carried no
+// as_of construction to scan at all.
+
+import { sessionDateForTimestamp } from "./helix-tape-analytics";
+
+test("a ledger fired_at resolves to its ET session, not its UTC date", () => {
+  // 2026-08-21T00:30Z is still 2026-08-20 in ET — the case that inverts a naive UTC read.
+  assert.equal(sessionDateForTimestamp("2026-08-21 00:30:14+00"), "2026-08-20");
+  // The ledger's actual microsecond+offset text form must parse.
+  assert.equal(sessionDateForTimestamp("2026-08-20 20:30:14.282385+00"), "2026-08-20");
+});
+
+test("an intraday fire keeps its own ET session", () => {
+  assert.equal(sessionDateForTimestamp("2026-08-20 18:00:00+00"), "2026-08-20"); // 14:00 ET
+});
+
+test("a missing or unparseable fire time becomes null, never a fabricated session", () => {
+  for (const v of [null, undefined, "", "not-a-date", "N/A"]) {
+    assert.equal(sessionDateForTimestamp(v as string | null), null);
+  }
 });
 
 // ── Skew authority: a pull's skew is computed once, not hand-summed ──────────

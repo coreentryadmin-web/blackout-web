@@ -73,12 +73,21 @@ const TOL = {
   /** Plausible-magnitude ceiling for net GEX as a fraction of (spot²·notional) — guards an absurd blow-up. */
 } as const;
 
-/** Independent argmax over per-strike net totals → the wall extrema (call=max+, put=min−). */
-function deriveWalls(strikeTotals: Record<string, number>): {
+/**
+ * Independent wall extrema from per-strike net totals.
+ * When `spot` is supplied, call/put walls are SIDE-CONSTRAINED (call above spot, put below) —
+ * the same contract production serves via `wallsFromStrikeTotals(strikeTotals, spot)` since #2417.
+ * King stays unconstrained argmax |net|. Unconstrained argmax false-flagged inverted walls (ops-auto-fix #2503).
+ */
+function deriveWalls(
+  strikeTotals: Record<string, number>,
+  spot?: number
+): {
   callWall: number | null;
   putWall: number | null;
   king: number | null;
 } {
+  const constrained = typeof spot === "number" && Number.isFinite(spot) && spot > 0;
   let callWall: number | null = null;
   let putWall: number | null = null;
   let king: number | null = null;
@@ -89,11 +98,11 @@ function deriveWalls(strikeTotals: Record<string, number>): {
     const strike = Number(s);
     const g = Number(gRaw);
     if (!Number.isFinite(strike) || !Number.isFinite(g)) continue;
-    if (g > maxPos) {
+    if (g > maxPos && (!constrained || strike > spot)) {
       maxPos = g;
       callWall = strike;
     }
-    if (g < maxNeg) {
+    if (g < maxNeg && (!constrained || strike < spot)) {
       maxNeg = g;
       putWall = strike;
     }
@@ -389,9 +398,10 @@ function invariantChecks(ctx: Ctx, hm: GexHeatmap): CheckResult[] {
   // getGexPositioning doesn't surface King directly, but the matrix strike_totals do — derive both.
   {
     const { king: derivedKing, callWall: derivedCall, putWall: derivedPut } = deriveWalls(
-      hm.gex.strike_totals
+      hm.gex.strike_totals,
+      spot
     );
-    // INV-3a: call wall == argmax positive.
+    // INV-3a: call wall == max +gamma ABOVE spot (resistance must sit overhead, not below price).
     out.push(
       mk(
         ctx,
@@ -399,12 +409,12 @@ function invariantChecks(ctx: Ctx, hm: GexHeatmap): CheckResult[] {
         "call_wall",
         sameStrike(derivedCall, hm.gex.call_wall) ? "consistency-only" : "flag",
         sameStrike(derivedCall, hm.gex.call_wall)
-          ? `Call wall ${fmt(hm.gex.call_wall)} == argmax(+net_gex) ${fmt(derivedCall)}.`
-          : `Call wall ${fmt(hm.gex.call_wall)} != independent argmax(+net_gex) ${fmt(derivedCall)} (wall is not the local positive extreme).`,
+          ? `Call wall ${fmt(hm.gex.call_wall)} == max(+net_gex) above spot ${fmt(spot)} at ${fmt(derivedCall)}.`
+          : `Call wall ${fmt(hm.gex.call_wall)} != independent max(+net_gex) above spot ${fmt(derivedCall)} (wall is not the constrained positive extreme).`,
         { id: "call-wall-is-argmax-pos", expected: derivedCall, actual: hm.gex.call_wall, tolerance: TOL.strikeAbs }
       )
     );
-    // INV-3b: put wall == argmin negative.
+    // INV-3b: put wall == max −gamma BELOW spot (support must sit under price).
     out.push(
       mk(
         ctx,
@@ -412,8 +422,8 @@ function invariantChecks(ctx: Ctx, hm: GexHeatmap): CheckResult[] {
         "put_wall",
         sameStrike(derivedPut, hm.gex.put_wall) ? "consistency-only" : "flag",
         sameStrike(derivedPut, hm.gex.put_wall)
-          ? `Put wall ${fmt(hm.gex.put_wall)} == argmin(−net_gex) ${fmt(derivedPut)}.`
-          : `Put wall ${fmt(hm.gex.put_wall)} != independent argmin(−net_gex) ${fmt(derivedPut)} (wall is not the local negative extreme).`,
+          ? `Put wall ${fmt(hm.gex.put_wall)} == max(−net_gex) below spot ${fmt(spot)} at ${fmt(derivedPut)}.`
+          : `Put wall ${fmt(hm.gex.put_wall)} != independent max(−net_gex) below spot ${fmt(derivedPut)} (wall is not the constrained negative extreme).`,
         { id: "put-wall-is-argmin-neg", expected: derivedPut, actual: hm.gex.put_wall, tolerance: TOL.strikeAbs }
       )
     );
@@ -1183,6 +1193,33 @@ async function crossProviderChecks(ctx: Ctx, hm: GexHeatmap): Promise<CheckResul
         "net_gex",
         "consistency-only",
         `No ${ctx.today} expiry column on the SPX matrix (0DTE expired or not on axis) — UW 0DTE oracle skipped; net-sign consistency-only.`,
+        { id: "oracle-net-sign" }
+      )
+    );
+    return out;
+  }
+
+  // When the UW overlay did not run, the served 0DTE column is Polygon-derived and WILL disagree
+  // with the UW oracle by design — flagging that is a false positive (ops-auto-fix #2503).
+  if (hm.gex.odte_overlay?.applied !== true) {
+    const why = hm.gex.odte_overlay?.reason ?? "unknown";
+    out.push(
+      mk(
+        ctx,
+        "cross-provider",
+        "king",
+        "consistency-only",
+        `SPX 0DTE UW overlay not applied (${why}) — King consistency-only; Polygon column vs UW oracle is not a like-for-like compare.`,
+        { id: "oracle-king" }
+      )
+    );
+    out.push(
+      mk(
+        ctx,
+        "cross-provider",
+        "net_gex",
+        "consistency-only",
+        `SPX 0DTE UW overlay not applied (${why}) — net-GEX sign consistency-only until overlay lands.`,
         { id: "oracle-net-sign" }
       )
     );
