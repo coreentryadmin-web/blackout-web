@@ -90,6 +90,28 @@ layout, with no split and no rebases.
 
 ## 2. What is actually blocking the release pass
 
+### Verified against the canonical sweep
+
+`scripts/audit/agent-pr-sweep.mjs` became runnable late in this analysis (GitHub API access was
+granted for the docs push). Its roster confirms the reconstruction: **37 open PRs, 26 CONFLICTED,
+6 READY-BUT-DRAFT, 5 CI-RUNNING**. Re-measuring every PR the sweep calls CONFLICTED, against
+`main` @ `fbfa7d23`:
+
+| Conflicted on | PRs |
+|---:|---|
+| **`docs/audit/FINDINGS.md` and nothing else** | **19 of 26** |
+| `tool-defs.ts` (± other files) | 3 — #2427 #2432 #2515 |
+| `product-reads.test.ts` (with FINDINGS.md) | 2 — #2480 #2490 |
+| `session-anchor.test.ts` | 1 — #2511 |
+| `VectorChart.tsx` (a `cursor/` PR) | 1 — #2331 |
+| `product-reads.ts` | **0** |
+
+Seventy-three percent of the conflicted set is one docs file with a committed resolver. This is the
+same 73% the brief attributed to the two registries — measured against what each PR actually
+conflicts on rather than what it touches, it lands on a different file entirely.
+
+### The strict-pass breakdown
+
 From the strict pass (row 1), the 26 blocked PRs break down as:
 
 | Blocker | PRs |
@@ -332,10 +354,13 @@ then the ownership data will be worth more than it is today.
 
 ## Appendix B — what could not be verified
 
-- **`scripts/audit/agent-pr-sweep.mjs` could not be run.** It requires GitHub API access; this
-  session has anonymous git read only (`add_repo` with `access:"push"` was refused by the permission
-  layer), so the API returns 403 and the sweep correctly refuses to print a roster it cannot fetch.
-  Every PR-state number here is derived from git refs and direct merge tests instead.
+- **`scripts/audit/agent-pr-sweep.mjs` could not be run for most of this analysis.** It requires
+  GitHub API access, which this session did not have until the docs push was authorised; until then
+  the API returned 403 and the sweep correctly refused to print a roster it could not fetch. Every
+  PR-state number was therefore derived from git refs and direct merge tests. Once the sweep did
+  run, its roster **confirmed the reconstruction** (§2) — same open set, same conflicted set. The
+  ref-based method is sound, but the sweep remains the canonical source and should be preferred
+  where it is available.
 - **CI status is invisible from git.** "Green" is taken from your 10:39Z report. The release-pass
   simulation runs over all 28 open `claude/*` PRs rather than a verified-green subset, so its
   denominator is 28, not 21. It measures mergeability, not test health.
