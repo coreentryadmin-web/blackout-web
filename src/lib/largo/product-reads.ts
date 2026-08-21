@@ -80,10 +80,12 @@ function compactSwingLane(lane: Awaited<ReturnType<typeof getSwingServingLane>>)
 
 export async function bangerBoardForLargo(limit = 40) {
   if (!isBangerEngineEnabled()) {
-    return { available: false, enabled: false, reason: "BANGER_ENGINE_ENABLED=0", open: [], closed: [] };
+    // No `open`/`closed` arrays on any unavailable path: an empty list is countable, and "0 open
+    // banger positions" is a claim none of these branches is entitled to make.
+    return { available: false, enabled: false, reason: "BANGER_ENGINE_ENABLED=0" };
   }
   if (!dbConfigured()) {
-    return { available: false, degraded: true, reason: "database_unavailable", open: [], closed: [] };
+    return { available: false, degraded: true, reason: "database_unavailable" };
   }
   try {
     const rows = await fetchBangerBoardRows(limit);
@@ -148,8 +150,7 @@ export async function bangerBoardForLargo(limit = 40) {
       available: false,
       degraded: true,
       error: e instanceof Error ? e.message : "banger_fetch_failed",
-      open: [],
-      closed: [],
+      note: "The banger board read failed. There is deliberately no open/closed list here — do not report zero positions.",
     };
   }
 }
@@ -438,7 +439,10 @@ export async function cortexDecisionForLargo(ticker: string | null, question: st
 
 export async function horizonOutcomesForLargo(days = 30) {
   if (!dbConfigured()) {
-    return { available: false, outcomes: [], reason: "database_unavailable" };
+    // `outcomes: []` was shipped here — a key the SUCCESS path never emits (it returns `sample`).
+    // So the only time this payload carried an `outcomes` array was when there were no outcomes to
+    // report, which is precisely backwards: the list existed exactly when it was meaningless.
+    return { available: false, reason: "database_unavailable" };
   }
   try {
     const outcomes = await fetchUnifiedHorizonOutcomes({ days });
@@ -455,8 +459,8 @@ export async function horizonOutcomesForLargo(days = 30) {
   } catch (e) {
     return {
       available: false,
-      outcomes: [],
       error: e instanceof Error ? e.message : "horizon_outcomes_failed",
+      note: "The horizon outcomes read failed. There is deliberately no list and no count here — do not report zero outcomes.",
     };
   }
 }
