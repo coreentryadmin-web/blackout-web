@@ -46,6 +46,7 @@ import {
   type PriorDayOhlc,
 } from "@/features/vector/lib/vector-key-levels";
 import { opexDatesInRange, isQuarterlyOpex } from "@/features/vector/lib/vector-opex";
+import { etStamp, etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 
 /**
  * The chart's own fractal half-width for structure and the auto-fib swing. Both call sites in the
@@ -125,6 +126,33 @@ export type VectorBarAnalytics = ReturnType<typeof computeVectorBarAnalytics>;
  * Returns null on no bars — "we have no chart to read" is a different answer from "the chart shows
  * nothing", and only the caller can phrase the first honestly.
  */
+/**
+ * ET anchor for a chart time, so a structure pivot or break never reaches the model as a bare
+ * integer it has to interpret.
+ *
+ * WHY. `market_structure` is assembled from `fetchVectorSeedBars`, which seeds THREE sessions, so
+ * its pivots and BOS/CHoCH events genuinely span several days — measured live on SPX, one scan
+ * returned events at both 2026-08-19 15:30 ET and 2026-08-20 15:30 ET. The tool description tells
+ * the reader "latest_event is the live one", and every one of those times was served as a bare
+ * epoch with nothing on the object saying which session it belonged to. A reader that assumes the
+ * set is "today" dates a PRIOR-session break as today's — the same off-by-one-session failure
+ * #2418 fixed for OHLC bars, on the panel whose entire job is "did structure break, and when".
+ *
+ * The units are a second hazard: these are epoch SECONDS (lightweight-charts' convention), and a
+ * reader that takes them for milliseconds lands in January 1970.
+ *
+ * `session_date` is safe to state here because Vector's structure runs on RTH session bars, so a
+ * bar's ET calendar date IS its session. Returns nothing when the time is unreadable rather than
+ * inventing a date — `etStamp` refuses non-positive and non-finite input for exactly that reason.
+ */
+function etAnchor(timeSec: number): { et?: string; session_date?: string } {
+  // *1000: the helper takes epoch MILLIseconds; chart times are seconds.
+  const ms = typeof timeSec === "number" && Number.isFinite(timeSec) && timeSec > 0 ? timeSec * 1000 : NaN;
+  const et = etStamp(ms);
+  const session_date = etSessionDate(ms);
+  return et && session_date ? { et, session_date } : {};
+}
+
 export function computeVectorBarAnalytics(
   minuteBars: readonly VectorBarAnalyticsBar[],
   opts: VectorBarAnalyticsOptions = {}
@@ -196,12 +224,14 @@ export function computeVectorBarAnalytics(
       /** Most recent last — a structure read is a sequence, and the tail is the live part. */
       pivots: pivots.slice(-MAX_PIVOTS).map((p) => ({
         time: p.time,
+        ...etAnchor(p.time),
         price: p.price,
         kind: p.kind,
         label: p.label,
       })),
       events: events.slice(-MAX_EVENTS).map((e) => ({
         time: e.time,
+        ...etAnchor(e.time),
         level: e.level,
         type: e.type,
         direction: e.direction,
@@ -209,7 +239,13 @@ export function computeVectorBarAnalytics(
       /** BOS = continuation, CHOCH = character change. The distinction is the whole read; a
        *  "broke a level" summary that collapses them loses the only actionable part. */
       latest_event: lastEvent
-        ? { time: lastEvent.time, level: lastEvent.level, type: lastEvent.type, direction: lastEvent.direction }
+        ? {
+            time: lastEvent.time,
+            ...etAnchor(lastEvent.time),
+            level: lastEvent.level,
+            type: lastEvent.type,
+            direction: lastEvent.direction,
+          }
         : null,
     },
 

@@ -494,7 +494,6 @@ production after deploy to confirm the `Allow: /api/og` lines are served.
 | **Status** | FIXED — tsc clean, 8691 pass / 0 fail on Node 20 (baseline `main` 8686/0, +5 = the new tests), `npm run build` green (matters: it pulls `isEtCashRth` into a client component), eslint 0 errors and the same 5 pre-existing warnings as `main`. Before-pixel captured above; the after-pixel can only be taken post-deploy. |
 
 ## 2026-08-21 — [FINDING, P0 member-visible] Vector's fraction fields reached Largo as literal `0` — the BIE boundary never adopted the rounding map built to prevent exactly this — FIXED
-
 > **kind:** `FINDING`
 
 | Field | Detail |
@@ -562,6 +561,24 @@ production after deploy to confirm the `Allow: /api/og` lines are served.
 | **Fix** | #PENDING — both filters implemented as documented; the gate now **polls** to a 45s budget (`PROBE_GATE_MS`) and prints the observed `gate_ms`, with `document.body` guarded because it can still be null on the first poll and a mid-poll navigation must read as "not loaded yet" rather than aborting the run. A gate that never satisfies still reports `HARNESS`, never a product verdict. |
 | **Found by** | Rule 6 — running the harness against production to validate #2441, rather than trusting that it shipped as tested. |
 | **Status** | FIXED — validated live against production on both viewports; tap-target count independently confirms #2441 (24 sub-24px targets → 1, the intentional visually-hidden skip link). |
+
+
+## 2026-08-21 — [FINDING, P1 member-visible] Vector's BOS/CHoCH panel dated every structure break with a bare epoch — and its events span three sessions — FIXED
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Root cause** | `vector-analytics-core.ts` served `market_structure.pivots[].time`, `.events[].time` and `.latest_event.time` as bare epoch integers with nothing on the object naming the session they belong to. Found by the #2418 payload scanner on its first run against this surface: **21 `bare_epoch` leaves**, every one of them in `market_structure`. |
+| **Why it matters here specifically** | `market_structure` is built from `fetchVectorSeedBars`, which seeds **THREE sessions**, so its pivots and breaks genuinely span several days. Measured live on SPX: `events[0].time = 1787167800` → **2026-08-19 15:30 ET** (prior session) while `latest_event.time = 1787254200` → **2026-08-20 15:30 ET** (today). The tool description tells the reader *"latest_event is the live one"* — so a model handed a set of bare integers and no session will date a PRIOR-session break as today's. That is the identical off-by-one-session failure #2418 fixed for OHLC bars, landing on the one panel whose entire job is "did structure break, and WHEN". |
+| **Second hazard — units** | These are epoch **SECONDS** (lightweight-charts' convention), not milliseconds. A reader that guesses milliseconds lands in **January 1970** (`1787254200` → `1970-01-21 11:27 ET`), which is at least loudly wrong; the session error is the quiet one. |
+| **Fix** | Each pivot/event/latest_event now carries `et` (a full ET timestamp) and `session_date` ALONGSIDE the raw `time`, via a local `etAnchor()` that reuses #2418's own `etStamp`/`etSessionDate` rather than re-deriving ET conversion. `session_date` is safe to state because Vector's structure runs on RTH session bars, so a bar's ET calendar date IS its session. An unreadable time yields **no anchor at all** rather than a fabricated date — `etStamp` refuses non-positive input for exactly that reason, and nothing downstream invents one. The tool description now tells the reader to use `et`/`session_date`, that the panel spans multiple sessions, and that `time` is seconds. |
+| **Scanner coverage gap, also fixed** | `get_vector_analytics` was **absent from the scanner's tool list entirely** — which is why these 21 leaves went unscanned while `get_vector_pulse` and `get_vector_full_state` were covered. A tool the scanner never calls is not a clean tool, and the omission is invisible unless the list is read by eye. Added. |
+| **Environment note for the next runner** | On the first full scan in this sandbox both `get_vector_pulse` and `get_vector_full_state` reported **EMPTY (0 numeric leaves)**, not clean — correctly, because `POLYGON_API_BASE` is the literal string `POLYGON_API_BASE` here (OPS-NOTE 2026-08-19) so there is no spot and `computeVectorFullState` returns null. The scanner's "an EMPTY or ERRORED tool is an UNKNOWN, not a pass" rule is what stopped that reading as a clean bill of health. Re-run with `POLYGON_API_BASE=https://api.massive.com` to actually exercise the Vector tools; expect ~100s per call, because raw Postgres is blocked in the sandbox and `vector-wall-db` retries every session. |
+| **Blast radius** | `get_vector_analytics` only. The other two Vector tools were scanned in the same pass and carry no bare epochs — `wallHistory` samples are labelled and `asOf` is an ISO string. |
+| **Regression guard** | `vector-analytics-core.test.ts` — a two-RTH-session fixture asserting every pivot/event carries a readable `et` + `session_date`, that the set spans **≥2 distinct sessions** (the hazard the raw epochs hid), and that a zero timestamp produces NO anchor rather than a 1970 date. **Fails against the pre-fix tree, passes after.** |
+| **Status** | FIXED — ET anchors on every structure time, scanner coverage extended, description updated. Gates on Node 20 (branched off `main` @ 507fb36): `tsc --noEmit` clean, 8718 pass / 0 fail, `npm run build` clean, eslint clean. |
+
+**Lesson worth keeping.** The scanner earned its keep on its first run over a surface it had never covered — and the finding was in the tool it was NOT configured to call. Two separate omissions had to line up: the panel shipped bare epochs, and the scanner's tool list never named the panel. Coverage lists are code; an unscanned tool reports as nothing at all, which reads like silence and means ignorance. When adding a scanner, diff its target list against the actual tool registry rather than trusting that the list is complete.
 
 ## 2026-08-19 — [FINDING, P0 correctness] `main` went red with every PR green — #2365 and #2366 collided on the 0DTE expiry resolver — FIXED
 

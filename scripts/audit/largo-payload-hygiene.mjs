@@ -98,6 +98,7 @@ const TOOLS = [
   ["get_hot_tickers", {}],
   ["get_vector_pulse", { ticker: TICKER }],
   ["get_vector_full_state", { ticker: TICKER }],
+<<<<<<< HEAD
   // ── Night Hawk / 0DTE lane ────────────────────────────────────────────────────
   // Added for the same reason the rest of the list exists: these are DATA reads the
   // model reasons over numerically — option premiums, realized P&L, win rates,
@@ -130,6 +131,12 @@ const TOOLS = [
   ["get_earnings_history", { ticker: "NVDA" }],
   ["get_earnings_market", {}],
   ["get_earnings_calendar", { ticker: "NVDA" }],
+=======
+  // Vector's chart-analytics surface. Absent from this list until 2026-08-21, which is why its 21
+  // bare-epoch leaves in `market_structure` went unscanned — a tool the scanner never calls is not
+  // a clean tool, and the omission is invisible unless the list is read.
+  ["get_vector_analytics", { ticker: TICKER }],
+>>>>>>> 0f5f261 (fix(vector): structure breaks carried a bare epoch across a 3-session seed)
 ];
 
 // tsx's CJS interop puts the exports under `default` on some resolution paths and at the top level
