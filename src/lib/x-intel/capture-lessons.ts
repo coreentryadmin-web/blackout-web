@@ -49,6 +49,16 @@ export const CAPTURE_LESSONS: ReadonlyArray<CaptureLesson> = [
       "SPY 2026-08-21: front-expiry default read LONG GAMMA / NET GEX -$1.8B; expiry ALL read SHORT GAMMA at every strike / -$7.6B. Opposite regimes from the same page.",
   },
   {
+    id: "right-number-wrong-horizon",
+    applies_to: "thermal",
+    evidence: "MEASURED",
+    sample_size: 1,
+    lesson:
+      "An accurate transcription of the WRONG SCOPE is still a false claim. Capture ALL (the operator's rule), but name the horizon of every level that reaches copy, and build a session claim on the near-dated read.",
+    observation:
+      "SPX 2026-08-21 06:05-06:32 ET: ALL read SHORT GAMMA / call wall 7,900 / vol EXPANDED / no flip; 0DTE read LONG GAMMA / call wall 7,700 / vol SUPPRESSED / flip 7,633. Opposite stories, same ticker, same morning. A draft quoting the ALL figures told readers hedging would amplify a move on a session whose 0DTE book says dealers are stabilizing.",
+  },
+  {
     id: "frame-level-before-crop",
     applies_to: "*",
     evidence: "MEASURED",

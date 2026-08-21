@@ -193,12 +193,40 @@ async function thermal(page, o, log) {
   // component state shared across the tabs, so setting it here carries into whichever view we
   // then select. It is asserted, not assumed: the page DEFAULTS to the front expiry, and that
   // default flips the regime read (AUG 21 alone = LONG GAMMA; ALL = SHORT GAMMA at every strike).
-  const allChip = page.locator('button[aria-pressed]', { hasText: /^All$/ }).first();
-  if (await allChip.count()) {
+  // `--expiry 0DTE` exists for VERIFICATION, not for published frames. The operator's rule is that
+  // a published Thermal capture is always ALL; this lets a cycle read the near-dated levels so the
+  // COPY can state which horizon each number belongs to. Capturing ALL and then describing a
+  // far-dated structural wall as today's resistance is the error it exists to prevent.
+  const wantExpiry = (o.expiry || 'All');
+  // Resolve the chip by INDEX from its exact trimmed text.
+  //
+  // Both `hasText: /^0DTE$/` and `getByRole({ name, exact })` matched "All" and silently failed on
+  // "0DTE" and "Aug 21" — the chips carry a `title` attribute, so the accessible name and the text
+  // content disagree. Reading the real text and taking the index removes the ambiguity instead of
+  // guessing at a matcher that happens to work for one label.
+  // WAIT FOR THE BAR, do not race it. The expiry chips only render once the matrix data has
+  // loaded, and after a ticker switch that can take well over the fixed wait above — an earlier
+  // run found them and a later one found only "Grid", which is the signature of a race rather than
+  // a selector fault. "All" is always present once the bar exists, so it is the readiness probe.
+  await page
+    .locator('button[aria-pressed]')
+    .filter({ hasText: /^All$/ })
+    .first()
+    .waitFor({ state: 'visible', timeout: 45000 })
+    .catch(() => {});
+
+  const chipTexts = await page
+    .locator('button[aria-pressed]')
+    .evaluateAll((els) => els.map((e) => (e.textContent || '').trim()));
+  const chipIdx = chipTexts.findIndex((t) => t.toLowerCase() === wantExpiry.toLowerCase());
+  const allChip = chipIdx >= 0 ? page.locator('button[aria-pressed]').nth(chipIdx) : page.locator('__none__');
+  if (chipIdx >= 0) {
     await allChip.click(); await page.waitForTimeout(4500);
-    if (await allChip.getAttribute('aria-pressed') !== 'true') throw new Error('expiry ALL did not take');
-    log.push('expiry→ALL ✓');
-  } else if (!o.sector) throw new Error('expiry ALL chip missing on the matrix view');
+    if (await allChip.getAttribute('aria-pressed') !== 'true') throw new Error(`expiry ${wantExpiry} did not take`);
+    log.push(`expiry→${wantExpiry.toUpperCase()} ✓`);
+  } else if (!o.sector) {
+    throw new Error(`expiry "${wantExpiry}" not among chips: ${chipTexts.slice(0, 8).join(", ")}`);
+  }
 
   const lensBtn = page.locator('.thermal-desk-lens-rail [role="tab"]', { hasText: new RegExp(`^${o.lens}$`, 'i') }).first();
   if (await lensBtn.count()) { await lensBtn.click(); await page.waitForTimeout(2500); log.push(`lens→${o.lens}`); }
@@ -337,7 +365,8 @@ async function vector(page, o, log) {
     view: arg('view','matrix'), lens: arg('lens','GEX').toUpperCase(),
     sector: arg('sector',''), panel: arg('panel',''), out: arg('out','/tmp/shots/out.png'),
     tf: arg('tf',''), horizon: arg('horizon',''), zoom: arg('zoom','6'),
-    mode: arg('mode',''), preset: arg('preset',''), indicators: arg('indicators',''), panelLabel: arg('panel-label',''), eventClass: arg('class',''),
+    mode: arg('mode',''), preset: arg('preset',''), indicators: arg('indicators',''),
+    expiry: arg('expiry',''), panelLabel: arg('panel-label',''), eventClass: arg('class',''),
   };
   const { browser, ctx, counts } = await createTunneledContext({
     url: 'https://blackouttrades.com/', cookie: arg('cookie',''), viewport: arg('viewport','2560x1440'), desktop: true,

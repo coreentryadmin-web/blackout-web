@@ -79,6 +79,10 @@ renders no expiry bar at all.
 
 **Lens is free:** GEX / VEX / DEX / CHARM. Rotate it.
 
+**⛔ BUT THE COPY MUST NAME THE HORIZON.** `MEASURED` — capturing ALL is correct; describing an
+all-expiry aggregate as today's actionable level is not. For a session claim, read the near-dated
+scope and say which scope each number came from. See the lessons log.
+
 **Sector grid:** ten presets — Indices · Macro · Semis · AI · Space · Mag 7 · Crypto · Energy ·
 Financials · Healthcare. Ten presets is ten distinct frames.
 
@@ -227,6 +231,36 @@ contrasting product views.
 ## 5. Lessons log
 
 Append-only. Newest first.
+
+### 2026-08-21 — the horizon error (caught by the operator)
+
+**I drafted a post that was wrong, and the number was transcribed correctly.** That is what makes
+it worth writing down.
+
+A premarket package quoted `CALL WALL 7,900` for a post about that day's session. The value came
+straight off the attachment — but the attachment was the **ALL-expiry** view, where far-dated OpEx
+positioning dominates, and the post was about the next six hours. The near-dated read of the same
+ticker at the same minute was not a different number, it was the **opposite story**:
+
+```
+ALL  : SHORT GAMMA · net GEX -$39.2B · call wall 7,900 · vol EXPANDED   · "no gamma flip"
+0DTE : LONG  GAMMA · net GEX -$13.4B · call wall 7,700 · vol SUPPRESSED · flip 7,633
+```
+
+The draft told readers dealer hedging would **amplify** the move into a 09:45 print, on a session
+whose 0DTE book says dealers are **stabilizing** and volatility is **suppressed**.
+
+**The ALL-filter capture rule was not the problem — it is correct and stays.** The failure was in
+the copy: an aggregate across every expiry narrated as though it described today.
+
+**Rule now enforced in code:** every options-book value carries the horizon it was read at, and
+`readyBlockReason()` refuses a package that claims something about today's session while every
+cited level is all-expiry. A mixed set is fine — far-dated context alongside a near-dated basis is
+exactly right.
+
+**The general lesson, which is bigger than Thermal:** an accurate transcription of the wrong scope
+is still a false claim. Ask *"what horizon is this number about, and what horizon is my sentence
+about?"* before every level that reaches copy.
 
 ### 2026-08-21 — first live capture cycle
 
