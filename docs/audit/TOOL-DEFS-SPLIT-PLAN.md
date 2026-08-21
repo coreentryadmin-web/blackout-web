@@ -1,325 +1,128 @@
 # tool-defs.ts / product-reads.ts — split plan
 
-**Status: analysis complete. Recommendation: DO NOT DO IT (tool-defs.ts). DO NOT DO IT YET (product-reads.ts).**
-Measured 2026-08-21 against `origin/main` @ `f9ec3de5`, Node v20.20.2 (`/opt/node20/bin`).
-No code was moved. One local throwaway worktree was used to measure migration cost; nothing was pushed.
+**Recommendation: DO NOT DO IT.** Not `tool-defs.ts`, and not `product-reads.ts` first.
+The measured fix for the release jam is one line of process, not a migration.
+
+Measured 2026-08-21 ~10:45Z against `origin/main` @ `fbfa7d23`, Node v20.20.2 (`/opt/node20/bin`).
+No code moved. Three throwaway worktrees were used to measure migration cost and to simulate
+release passes; nothing was pushed. Revised after the coordinator's 10:39Z update (lanes rebased,
+21 green drafts, "wait for single digits" trigger withdrawn) — that update changed the urgency and
+the numbers, and it is answered directly in §3.
 
 ---
 
-## 0. Answer first
+## 0. The three answers, first
 
-| Question asked | Measured answer |
-|---|---|
-| Of the open PRs touching `tool-defs.ts`, how many collisions does a per-product split eliminate? | **0 of 7.** All 7 pairwise conflicts inside `tool-defs.ts` are **intra-lane** (vector×vector, helix×helix). Cross-lane conflicts in that file: **zero**. |
-| Same for `product-reads.ts`? | **2 of 5** — and both are collisions in the shared **import header at line 8**, not in the registry body. |
-| How big is the honest `shared.ts`? | `tool-defs.ts`: 2 of 127 tools. But the bucket that decides this is not `shared` — it is **`unattributed`: 108 of 127 (85%)**. |
-| How many open PRs need a non-trivial rebase to migrate? | **22 of 38** open PRs (all five lanes). Measured, not estimated — see §5. |
+**1. How many of the 127 tools land in `shared.ts`?  → 1.**
+Not 60, not 30. One: `get_helix_thermal_compare` (helix and thermal both edit it). But `shared` is
+not the bucket that decides this. **`unattributed` is 108 of 127 (85%)** — tools no lane branch has
+ever touched, 67 of them untouched for over 60 days. The split's largest output file would be
+`core.ts` holding 85% of the registry. That is a rename, not a decomposition.
 
-**The premise does not survive measurement.** `tool-defs.ts` is the most-*touched* file in the fleet's
-open work, and that part of the chokepoint memo is correct. It is not the file the fleet is
-*conflicting* on. Of the 21 currently-conflicted open PRs, **exactly one** (#2432) has a conflict in
-`tool-defs.ts`, **zero** have one in `product-reads.ts`, and **19 conflict on nothing but
-`docs/audit/FINDINGS.md`**.
+**2. Of the green PRs, how many become mutually releasable after the split?  → Fewer. 19 → 10.**
+Simulated as an actual release pass — merge each of the 28 open agent PRs into main in turn, count
+how many land without a human:
 
-The 73% statistic in the brief ("14 of 19 conflicted PRs touch one of those two files") is true and
-non-causal. Those PRs do touch the two registries; they conflict somewhere else.
+| Base | FINDINGS.md policy | Merged in one pass |
+|---|---|---:|
+| current `main` | strict (any conflict stops) | **2 / 28** ← today |
+| current `main` | auto-resolved (`findings-merge-resolve.mjs`) | **19 / 28** |
+| **after the full split** | strict | **2 / 28** |
+| **after the full split** | auto-resolved | **10 / 28** |
+| after splitting `product-reads.ts` only | auto-resolved | **16 / 28** |
+
+The split does not turn 1-per-pass into 8-per-pass. It turns 19-per-pass into 10-per-pass. What
+turns 2 into 19 is running the FINDINGS.md resolver that already exists, inside the release pass.
+
+**3. Is `product-reads.ts` separable and worth doing first, alone?  → Separable, yes. Worth it, no.**
+It has the better ownership shape (3 unattributed of 20 blocks, against 108 of 127) and it is the
+only place where a split removes any cross-lane contention at all. But it currently produces **zero
+conflicts against `main`** and **zero pairwise contention** between open PRs, and splitting it alone
+drops the release pass from 19 to 16. There is nothing there to buy.
 
 ---
 
-## 1. What is actually conflicting
+## 1. Checking the coordinator's arithmetic, as asked
 
-Every open PR merged against `origin/main` with `git merge-tree --write-tree`, conflicted paths
-taken from the machine-readable section of the output (not the `Auto-merging` chatter, which lists
-files that merged *successfully*).
+> *"Grind: ~21 sequential CI-and-merge cycles, and every merge invalidates the other 20, so each lane
+> rebases roughly 20 more times. The rebase cost is O(n²)."*
 
-**38 open PRs · 21 conflicted vs `main`.** Conflicted-file frequency, whole set:
+**The O(n²) term is real. It is not attached to `tool-defs.ts`.**
 
-| PRs | File |
+A merge only invalidates another PR if the two actually conflict. Measured across the current open
+set, after each is rebased onto `main`:
+
+| File | Pairs tested | Conflicting pairs | Cross-lane | Intra-lane |
+|---|---:|---:|---:|---:|
+| `tool-defs.ts` | 78 | **1** | **0** | 1 |
+| `product-reads.ts` | 15 | **0** | 0 | 0 |
+
+One conflicting pair, and it is helix against helix (#2485 and #2520 both editing
+`get_helix_tape_analytics`). **Cross-lane conflicts inside either registry: zero.** Merging a vector
+PR does not invalidate a helix PR — git auto-merges them, which is exactly what row 2 of the table
+in §0 shows: nineteen PRs merged sequentially, one after another, with no rebase between them.
+
+The O(n²) rebase treadmill is `docs/audit/FINDINGS.md`. Every lane appends at the same anchor, so
+every merge does invalidate every other PR — there. That is the file the quadratic cost is attached
+to, `_COMMON.md` rule 4 already names it, and `scripts/audit/findings-merge-resolve.mjs` already
+absorbs it. It is simply not being run inside the release pass.
+
+**Live evidence for that, from the last hour.** At 10:39Z the sweep read `CONFLICTED 19 → 3`. By
+10:45Z, after `fbfa7d23` and the merges before it landed, the same measurement reads **27
+conflicted, 22 of them involving FINDINGS.md, 18 of them conflicting on FINDINGS.md and nothing
+else**. Nineteen rebases were spent and the conflict count went *up*, because the merges that
+happened in between re-broke the same file. That is the treadmill, observed in real time, on a file
+the split does not touch.
+
+### The withdrawn trigger
+
+Agreed, and thank you for withdrawing it — the deadlock is real. *"Split when the chokepoint count
+reaches single digits"* cannot fire, because the count only falls as PRs merge. I am not deferring
+to it. The conclusion below is reached from the release-pass simulation and the pairwise conflict
+data, and it would be the same conclusion if that guidance had never been written.
+
+One thing worth separating out, though: the deadlock was in the *trigger*, not in the *repo*. The
+premise underneath it — "PRs can only merge one at a time because of that file" — is the part that
+does not survive measurement. Nineteen of twenty-eight merge in one pass today, on the current
+layout, with no split and no rebases.
+
+---
+
+## 2. What is actually blocking the release pass
+
+From the strict pass (row 1), the 26 blocked PRs break down as:
+
+| Blocker | PRs |
 |---:|---|
-| **20** | `docs/audit/FINDINGS.md` |
-| 1 | `src/lib/largo/tool-defs.ts`  *(#2432 only)* |
-| 1 | `src/lib/largo/run-tool.ts`  *(#2432 only)* |
-| 1 | `src/features/vector/components/VectorChart.tsx`  *(#2331, a `cursor/` PR, unrelated)* |
+| **FINDINGS.md and nothing else** | **17** |
+| `tool-defs.ts` (± other files) | 5 — #2427 #2432 #2509 #2515 #2522 |
+| `product-reads.test.ts` | 2 — #2480 #2490 |
+| other single files | 2 — #2511 (`session-anchor.test.ts`), #2331 (`VectorChart.tsx`, a `cursor/` PR) |
 
-19 of the 21 conflicted PRs conflict on **FINDINGS.md and nothing else**:
-`#2427 #2435 #2446 #2451 #2480 #2485 #2487 #2490 #2501 #2502 #2509 #2511 #2515 #2519 #2520 #2521 #2522 #2523 #2525`.
+Seventeen of twenty-six are one file, and it is not a registry.
 
-`_COMMON.md` rule 4 already names this — *"FINDINGS.md conflicts with every other lane — not your
-bug"* — and `scripts/audit/findings-merge-resolve.mjs` already exists to resolve it. The fleet's
-merge friction is the file the standing rules already say is the problem. The registry split would
-not touch it.
+Of the five that do conflict in `tool-defs.ts`, the causes are:
 
-### 1a. The one real `tool-defs.ts` conflict is intra-lane
+- **#2432** (meridian) — Batch 5 landed a superset of its own lane's `get_earnings*` edits.
+  **Meridian vs meridian.**
+- **#2427, #2522** (vector) — both editing `get_vector_pulse` / `get_vector_full_state`, against a
+  vector change that has since landed. **Vector vs vector.**
+- **#2509** (helix) — `get_helix_signal_outcomes` / `get_helix_derived` vs landed helix work.
+- **#2515** (vector) — `get_vector_analytics` vs landed vector work.
 
-**#2432** `claude/meridian-largo-uw-earnings-units` — 3 changed lines in `tool-defs.ts`
-(`get_earnings`, `get_earnings_history`, `get_earnings_market`). It conflicts because Batch 5
-(#2476, *"earnings integrity"*) landed a superset of the same description edits while #2432 was
-open. **Meridian versus meridian.** Filing meridian's tools in `tool-defs.meridian.ts` puts both
-sides of that conflict in the same new file. It changes nothing.
-
-### 1b. Contention *between* open PRs, after rebase
-
-Pairwise merge of every open-PR pair, each first rebased onto current `main` (FINDINGS.md excluded
-as a blocker so the registry contention is visible underneath it):
-
-| File | PRs modelled | Pairs tested | Conflicting in-file | Cross-lane | Intra-lane |
-|---|---:|---:|---:|---:|---:|
-| `tool-defs.ts` | 17 (of 18; #2432 excluded — real blocker) | 136 | **7** | **0** | 7 |
-| `product-reads.ts` | 11 | 55 | **5** | 2 | 3 |
-
-All seven `tool-defs.ts` pairs:
-
-```
-#2427(vector)   x #2435(vector)     INTRA  get_vector_pulse,get_vector_full_state  vs get_vector_full_state
-#2427(vector)   x #2522(vector)     INTRA  get_vector_pulse,get_vector_full_state  vs get_vector_pulse,get_vector_full_state
-#2435(vector)   x #2522(vector)     INTRA  get_vector_full_state                   vs get_vector_pulse,get_vector_full_state
-#2451(vector)   x #2515(vector)     INTRA  get_vector_analytics                    vs get_vector_analytics
-#2485(helix)    x #2520(helix)      INTRA  get_helix_tape_analytics                vs get_postgres_flows,get_helix_tape_analytics,get_flow_tape
-#2509(helix)    x #2530(helix)      INTRA  get_helix_signal_outcomes,get_helix_derived vs get_helix_signal_outcomes
-#2509(helix)    x #2532(helix)      INTRA  get_helix_signal_outcomes,get_helix_derived vs get_helix_derived
-```
-
-Six of the seven are two PRs editing **literally the same tool**. No file boundary separates a lane
-from itself.
-
-And the five in `product-reads.ts`:
-
-```
-#2425(thermal)  x #2427(vector)     CROSS  — collision is at line 8, the import block
-#2425(thermal)  x #2522(vector)     CROSS  — same import block
-#2480(nighthawk) x #2490(nighthawk) INTRA
-#2480(nighthawk) x #2495(nighthawk) INTRA
-#2490(nighthawk) x #2495(nighthawk) INTRA
-```
-
-The two cross-lane pairs are the only contention in either file that a split would remove, and
-their cause is a one-line import next to `VECTOR_FRACTION_DP` — the function bodies (`vectorPulseForLargo`
-at L473–561 vs `thermalCompareForLargo` at L847+) never come near each other. Cost to resolve by
-hand today: keep both import lines.
-
-### 1c. The chokepoint ranking, with FINDINGS.md left in
-
-Across the **32 open agent PRs** (`claude/*`):
-
-| PRs | Lanes | File |
-|---:|---:|---|
-| **28** | 6 | `docs/audit/FINDINGS.md` |
-| 18 | 5 | `src/lib/largo/tool-defs.ts` |
-| 11 | 4 | `src/lib/largo/product-reads.ts` |
-| 4 | 1 | `src/lib/largo/helix-tape-analytics.ts` |
-| 4 | 1 | `src/lib/largo/contract/session-anchor.test.ts` |
-
-The memo's shape is right and the ordering is right once the known-issue file is included. The
-inference from *touched* to *conflicting* is the step that does not hold.
-
-*(Reproduction note: `scripts/audit/agent-pr-sweep.mjs --chokepoints` could not be used — #2531
-`feat/sweep-chokepoints` is still open, and `docs/audit/MERGE-CHOKEPOINTS.md` is not on `main`.
-The open-PR roster here was reconstructed from git refs: a PR is open iff GitHub still publishes
-`refs/pull/N/merge`. Validated against the brief's own counts — it yields 32 open agent PRs / 18
-touching `tool-defs.ts` / 11 touching `product-reads.ts` / 20 conflicted, against the brief's
-30 / 16 / 9 / 19: a uniform +2 offset, consistent with #2530 and #2532 having opened since the memo
-was written. Conflict states are measured directly with `git merge-tree`, not inferred.)*
+Every one is a lane colliding with its own already-merged output. Filing those tools in
+`tool-defs.<lane>.ts` puts both sides of each collision in the same new file.
 
 ---
 
-## 2. Ownership evidence
+## 3. Why the split makes the pass worse, measured
 
-### 2a. The finding that governs everything else: there is almost no lane history to read
+A throwaway worktree applied the full per-lane split — 18 tool blocks out of `tool-defs.ts` into
+five lane files, 15 function blocks out of `product-reads.ts` into four — then re-ran the pass.
 
-The lane fleet is **one day old**. The earliest `claude/<lane>-*` branch in the repo is
-`claude/seo-homepage-cls-transform-animations`, first commit **2026-08-21T02:39Z** — about eight
-hours before this analysis. `tool-defs.ts` has 74 commits on `main` going back to 2026-06-17, and
-essentially all of them predate the existence of lanes.
-
-So "which lane edits this tool" is not answerable from `main`'s history for most of the file. It is
-answerable only from the fleet's own branches. Attribution here uses all **90** `claude/*` branches
-(merged and open) plus the open non-`claude` PRs, mapping every changed line to its enclosing
-`t(...)` block at both diff sides.
-
-Per the standing rule that absence is a finding, a tool no lane branch has touched is recorded as
-**unattributed**, never folded into `shared`.
-
-### 2b. `tool-defs.ts` — 127 tools
-
-| Bucket | Tools | Share |
-|---|---:|---:|
-| helix | 6 | 4.7% |
-| meridian | 4 | 3.1% |
-| nighthawk | 3 | 2.4% |
-| vector | 3 | 2.4% |
-| thermal | 1 | 0.8% |
-| **shared** (≥2 lanes) | **2** | **1.6%** |
-| **unattributed** (no lane has ever touched it) | **108** | **85.0%** |
-
-The brief asked for the size of `shared.ts` because that is the number the decision turns on. It is
-2 — and it is the wrong number to watch, because the residual that actually decides this is
-`unattributed` at 108. Age of that bucket, from last recorded edit of the block:
-
-| ≤7d | 8–30d | 31–60d | >60d |
-|---:|---:|---:|---:|
-| 1 | 10 | 30 | **67** |
-
-Two-thirds of the file has not been edited in two months and no lane has ever claimed it. A
-"per-product split" of `tool-defs.ts` is, measured, a rename of 85% of the file to
-`tool-defs.unattributed.ts` plus five small files holding 17 tools between them.
-
-The 19 blocks with real evidence:
-
-| tool | verdict | lane branches (m = merged, o = open) | commits on main | last edit | days |
-|---|---|---|---:|---|---:|
-| `get_flow_brief` | **helix** | helix:5m | 2 | 2026-08-20 | 0 |
-| `get_flow_tape` | **helix** | helix:1o | 4 | 2026-08-12 | 8 |
-| `get_helix_derived` | **helix** | helix:5m helix:2o | 2 | 2026-08-20 | 0 |
-| `get_helix_signal_outcomes` | **helix** | helix:4m helix:2o | 2 | 2026-08-20 | 0 |
-| `get_helix_tape_analytics` | **helix** | helix:6m helix:2o | 4 | 2026-08-20 | 0 |
-| `get_postgres_flows` | **helix** | helix:1o | 2 | 2026-07-05 | 47 |
-| `get_earnings` | **meridian** | meridian:2o | 4 | 2026-08-20 | 0 |
-| `get_earnings_calendar` | **meridian** | meridian:1m | 2 | 2026-08-20 | 0 |
-| `get_earnings_history` | **meridian** | meridian:2o | 3 | 2026-08-20 | 0 |
-| `get_earnings_market` | **meridian** | meridian:1m meridian:2o | 3 | 2026-08-21 | 0 |
-| `get_gate_blocked_value` | **nighthawk** | nighthawk:1o | 1 | 2026-08-10 | 10 |
-| `get_zerodte_plays` | **nighthawk** | nighthawk:1o | 4 | 2026-07-17 | 34 |
-| `get_zerodte_rejections` | **nighthawk** | nighthawk:1o | 2 | 2026-07-06 | 46 |
-| `get_positioning` | **thermal** | thermal:1o | 3 | 2026-07-20 | 32 |
-| `get_vector_analytics` | **vector** | vector:2o | 1 | 2026-08-10 | 11 |
-| `get_vector_full_state` | **vector** | vector:3o | 2 | 2026-08-20 | 0 |
-| `get_vector_pulse` | **vector** | vector:2o | 1 | 2026-08-10 | 11 |
-| `get_helix_thermal_compare` | **shared** | thermal:2m helix:1o | 3 | 2026-08-20 | 0 |
-| `get_thermal_compare` | **shared** | helix:1m thermal:1m thermal:2o | 1 | 2026-08-12 | 9 |
-
-Two observations worth carrying forward:
-
-- **The tool-name prefix is not the owning lane.** `get_postgres_flows` and `get_flow_tape` are
-  helix's. `spxPinForLargo` / `spxPulseForLargo` in `product-reads.ts` are edited by
-  `claude/vector-largo-pin-precision`. The brief's worry that names do not group cleanly by product
-  is correct, and it is worse than a naming problem: the two cases where a name *does* suggest an
-  owner (`get_helix_thermal_compare`, `get_thermal_compare`) are precisely the two genuinely
-  shared blocks.
-- **Only 19 of 127 tools have any lane-edit evidence at all**, and 22 open PRs are competing over
-  them. The contention is not spread across a 1154-line registry. It is concentrated in about 15% of it.
-
-### 2c. `product-reads.ts` — 15 exported functions (16 blocks incl. the internal `compactSwingLane`)
-
-| tool | verdict | lane branches | commits on main | last edit | days |
-|---|---|---|---:|---|---:|
-| `flowBriefForLargo` | **helix** | helix:5m | 2 | 2026-08-20 | 0 |
-| `helixDerivedForLargo` | **helix** | helix:5m helix:2o | 3 | 2026-08-20 | 0 |
-| `bangerBoardForLargo` | **nighthawk** | nighthawk:1m nighthawk:2o | 3 | 2026-08-20 | 0 |
-| `horizonOutcomesForLargo` | **nighthawk** | nighthawk:1o | 3 | 2026-08-20 | 0 |
-| `nighthawkHorizonsForLargo` | **nighthawk** | nighthawk:3m nighthawk:1o | 3 | 2026-08-20 | 0 |
-| `swingHorizonForLargo` | **nighthawk** | nighthawk:1o | 1 | 2026-08-05 | 15 |
-| `zerodteRecordForLargo` | **nighthawk** | nighthawk:2m nighthawk:1o | 2 | 2026-08-20 | 0 |
-| `spxPinForLargo` | **vector** | vector:1m | 2 | 2026-08-20 | 0 |
-| `spxPulseForLargo` | **vector** | vector:1m | 2 | 2026-08-20 | 0 |
-| `vectorPulseForLargo` | **vector** | vector:2o | 2 | 2026-08-10 | 11 |
-| `helixSignalOutcomesForLargo` | **shared** | helix:4m vector:1m helix:2o | 3 | 2026-08-20 | 0 |
-| `helixTapeAnalyticsForLargo` | **shared** | helix:6m thermal:1m helix:1o thermal:2o | 4 | 2026-08-20 | 0 |
-| `thermalCompareForLargo` | **shared** | helix:1m thermal:1m thermal:2o | 1 | 2026-08-12 | 9 |
-| `compactSwingLane` | — | — | 1 | 2026-08-05 | 16 |
-| `cortexDecisionForLargo` | — | — | 1 | 2026-08-05 | 16 |
-| `vectorFullStateForLargo` | — | — | 1 | 2026-08-20 | 1 |
-
-| Bucket | Blocks | Lines |
-|---|---:|---:|
-| nighthawk | 5 | 239 |
-| vector | 3 | 112 |
-| helix | 2 | 176 |
-| **shared** | **3** | **238** |
-| unattributed | 3 | 80 |
-
-This file *does* split more cleanly than `tool-defs.ts` on the ownership axis — only 3 of 16 blocks
-are unattributed, against 108 of 127. That is the good news and it is real. The bad news is the
-shared bucket: **238 of the 845 lines that fall inside a mapped block (28%)** land in `shared`, and they are not incidental.
-`helixTapeAnalyticsForLargo` is edited by helix (6 branches) *and* thermal (3);
-`thermalCompareForLargo` by thermal and helix; `helixSignalOutcomesForLargo` by helix and vector.
-Those are the file's largest functions and its hottest.
-
----
-
-## 3. Projected effect on the current open PRs
-
-Given the CURRENT 38 open PRs, computed rather than estimated:
-
-**`tool-defs.ts`**
-
-| | count |
-|---|---:|
-| Open PRs touching the file | 18 |
-| PRs whose merge into `main` currently conflicts *in this file* | **1** (#2432, intra-lane) |
-| Pairwise PR×PR conflicts inside this file after rebase | 7 |
-| …of those, **cross-lane** (i.e. removable by a per-product split) | **0** |
-| Collisions the split eliminates | **0 of 7 (0%)** |
-
-**`product-reads.ts`**
-
-| | count |
-|---|---:|
-| Open PRs touching the file | 11 |
-| PRs whose merge into `main` currently conflicts *in this file* | **0** |
-| Pairwise PR×PR conflicts inside this file after rebase | 5 |
-| …of those, cross-lane | 2 |
-| Collisions the split eliminates | **2 of 5 (40%)** — both import-header, both one-line resolutions |
-
-The brief set the bar itself: *"If the answer is 'most', the split is worth a disruptive migration.
-If it is 'half', it probably is not."* The answers are **0%** and **40%**.
-
----
-
-## 4. The proposed grouping (for the record, since it was asked for)
-
-Had the numbers come out the other way, this is the grouping the evidence supports. It is recorded
-so a future decision does not have to re-derive it, not because it should be executed now.
-
-```
-src/lib/largo/tool-defs/
-  index.ts        barrel: LARGO_TOOL_DEFS = [...core, ...helix, ...meridian, ...]
-  core.ts         108 tools — no lane has ever edited them (67 untouched >60d)
-  shared.ts         2 tools — get_thermal_compare, get_helix_thermal_compare
-  helix.ts          6 tools
-  meridian.ts       4 tools
-  nighthawk.ts      3 tools
-  vector.ts         3 tools
-  thermal.ts        1 tool
-```
-
-`core.ts` is **not** `shared.ts`, and the distinction must survive into the filenames. `shared` means
-"two lanes provably fight over this". `core` means "we have no evidence anyone owns this". Collapsing
-them would report a 110-tool shared bucket and make the split look even less attractive than it is,
-for the wrong reason.
-
-Note also that the file already carries a grouping — `TOOL_GROUPS` (`spx_desk`, `flow_analysis`,
-`stock_analysis`, `vol_analysis`, `news_events`, `fundamental`, `platform`, `screener`) — and it is
-by capability domain, not by product lane, with tools deliberately in more than one group
-(`get_gex` and `get_greek_flow` are each in two). A per-lane file split therefore cannot reuse it,
-and would introduce a second, competing decomposition of the same 127 tools alongside the seven
-`*_ENGINE_TOOL_NAMES` cohort lists (plus `BIE_TOOL_NAMES`) further down the file. Those lists carry long doc comments
-explaining exactly why each is *not* derived from `TOOL_GROUPS`. A third axis over the same objects
-is a real design cost, not just a migration cost.
-
----
-
-## 5. Migration cost — measured
-
-A throwaway worktree off `origin/main` extracted the six helix-owned tools into
-`src/lib/largo/tool-defs.helix.ts` with a re-export from the barrel — the smallest honest slice of
-the proposed split, 1/7th of the work. Every helix PR was then merge-tested against it.
-
-| PR | onto `main` today | onto the split |
-|---|---|---|
-| #2485 `helix-route-coverage` | clean | **CONFLICT** `tool-defs.ts` |
-| #2509 `helix-largo-session-anchor` | clean | **CONFLICT** `tool-defs.ts` |
-| #2520 `helix-skew-authority` | clean | **CONFLICT** `tool-defs.ts` |
-| #2528 `helix-compare-population` | clean | clean *(its tool stayed behind in `shared`)* |
-| #2530 `helix-signal-type-breakdown` | clean | **CONFLICT** `tool-defs.ts` |
-| #2532 `helix-derived-silent-caps` | clean | **CONFLICT** `tool-defs.ts` |
-| #2427 (vector, control) | clean | clean |
-| #2519 (nighthawk, control) | clean | clean |
-
-**One seventh of the split converts five currently-clean PRs into conflicted ones.**
-
-And the conflict is the bad kind. Git does not follow content between files, so the PR's edit
-reappears as an *insertion* into `tool-defs.ts` at a location the tool no longer occupies, against
-the split's deletion:
+Git does not follow content between files. A PR's edit to a tool that moved reappears as an
+*insertion* into `tool-defs.ts` at a location the tool no longer occupies, conflicting with the
+split's deletion:
 
 ```
 <<<<<<< (split)
@@ -331,136 +134,212 @@ the split's deletion:
 >>>>>>> (#2530)
 ```
 
-Resolving that means discarding the hunk where git offers it and re-applying it by hand in
-`tool-defs.helix.ts`. There is no `-X` strategy, no `rerere` entry and no rebase flag that does it,
-because from git's point of view nothing moved — one file shrank and another appeared.
+There is no `-X` strategy, no `rerere` entry and no rebase flag that resolves that, because from
+git's point of view nothing moved: one file shrank and another appeared. Resolution is manual, per
+hunk, per PR.
 
-**Scope of that cost: 22 of 38 open PRs** touch one of the two files and would need this treatment —
-7 nighthawk, 6 helix, 5 vector, 2 meridian, 2 thermal (7 of the 22 touch both files). Rename
-detection does not help: `tool-defs.ts` splitting seven ways means at most one target is scored as
-the rename and the other six are new files.
+An earlier, smaller probe isolated the effect — extracting only the six helix tools, one seventh of
+the split:
 
-### The recipe, if it is ever run
+| PR | onto `main` | onto the split |
+|---|---|---|
+| #2485, #2509, #2520, #2530, #2532 (helix) | clean | **CONFLICT** `tool-defs.ts` |
+| #2528 (helix, its tool stayed in `shared`) | clean | clean |
+| #2427 (vector), #2519 (nighthawk) — controls | clean | clean |
 
-For a lane whose hunk moves:
+**One seventh of the split converted five clean PRs into conflicted ones.** The full split does the
+same thing at scale, which is why the pass drops from 19 to 10.
 
-1. `git fetch origin main && git rebase origin/main` — expect a conflict in `tool-defs.ts` with an
-   empty "ours" side.
-2. Copy your `+` lines out of the conflict block. Take the split's side for the file itself
-   (`git checkout --ours src/lib/largo/tool-defs.ts`).
-3. Re-apply your edit to the same `t("<tool>", ...)` block in `src/lib/largo/tool-defs.<lane>.ts`.
-4. `npm test -- tool-defs` — `tool-defs.test.ts` already asserts every `*_ENGINE_TOOL_NAMES` list is
-   a subset of its `TOOL_GROUPS` entry, so a tool dropped or duplicated by a bad resolution fails
-   there rather than in production.
-5. `git rebase --continue`.
-
-Steps 2–3 are manual per hunk. That is the cost the fleet would pay, once per PR, for the numbers in §3.
+**The steady-state argument does not rescue it.** *"Every PR rebases once, then collisions go to
+zero"* assumes there are cross-lane collisions to remove. There are none: 0 of 1 in `tool-defs.ts`,
+0 of 0 in `product-reads.ts`. The one-time cost is real and measured; the recurring saving it buys
+is zero on `tool-defs.ts` and, on `product-reads.ts`, two import-header collisions that a blank line
+between import groups also fixes.
 
 ---
 
-## 6. `product-reads.ts` — should it go first, and alone?
+## 4. Ownership evidence
 
-It is the better candidate on every axis: 3 unattributed of 16 rather than 108 of 127, 11 PRs rather
-than 18, and its cross-lane contention is nonzero. **It still should not go first, because it should
-not go at all yet:**
+### The finding that governs the rest: there is almost no lane history to read
 
-- It has produced **zero** conflicts against `main` across all 38 open PRs.
-- Its 5 pairwise conflicts are 3 intra-nighthawk and 2 import-header.
-- Its `shared` bucket is 28% of the attributed line mass and holds the three hottest functions. A
-  split that leaves `helixTapeAnalyticsForLargo`, `thermalCompareForLargo` and
-  `helixSignalOutcomesForLargo` in one shared file leaves helix, thermal and vector still meeting in
-  it — which is the outcome the brief specifically warned about.
+The lane fleet is **one day old**. The earliest `claude/<lane>-*` branch is
+`claude/seo-homepage-cls-transform-animations`, first commit **2026-08-21T02:39Z**. `tool-defs.ts`
+has 74 commits on `main` going back to 2026-06-17, essentially all of them predating lanes.
+Attribution therefore comes from the fleet's own branches — all **96** `claude/*` branches, merged
+and open — mapping every changed line to its enclosing `t(...)` block at both diff sides.
 
-The two-line fix that captures its entire measurable benefit: **stop putting shared imports in one
-block.** Both cross-lane collisions are lanes adding an import next to `VECTOR_FRACTION_DP`. Group
-imports by product with a blank line between groups and those two conflicts stop happening, at a
-cost of one commit and zero rebases.
+Per rule 7, a tool no lane branch has touched is **unattributed**, never folded into `shared`.
+
+### `tool-defs.ts` — 127 tools, 1154 lines
+
+| Bucket | Tools | Block lines |
+|---|---:|---:|
+| helix | 6 | 44 |
+| meridian | 4 | 8 |
+| vector | 3 | 23 |
+| nighthawk | 3 | 15 |
+| thermal | 2 | 12 |
+| **shared** (≥2 lanes) | **1** | 7 |
+| **unattributed** | **108** | 389 |
+
+Age of the unattributed bucket, from last recorded edit: 1 within 7 days, 10 at 8–30 days, 30 at
+31–60 days, **67 over 60 days**.
+
+The 19 blocks with evidence:
+
+| tool | owner |
+|---|---|
+| `get_flow_brief`, `get_flow_tape`, `get_helix_derived`, `get_helix_signal_outcomes`, `get_helix_tape_analytics`, `get_postgres_flows` | helix |
+| `get_earnings`, `get_earnings_calendar`, `get_earnings_history`, `get_earnings_market` | meridian |
+| `get_gate_blocked_value`, `get_zerodte_plays`, `get_zerodte_rejections` | nighthawk |
+| `get_vector_analytics`, `get_vector_full_state`, `get_vector_pulse` | vector |
+| `get_positioning`, `get_thermal_compare` | thermal |
+| `get_helix_thermal_compare` | **shared** (helix + thermal) |
+
+**The tool-name prefix is not the owning lane.** `get_postgres_flows` and `get_flow_tape` are
+helix's. In `product-reads.ts`, `spxPinForLargo` and `spxPulseForLargo` are edited by
+`claude/vector-largo-pin-precision`. Your worry that the names do not group by product is correct,
+and it is sharper than a naming problem: the two names that *do* advertise an owner
+(`get_thermal_compare`, `get_helix_thermal_compare`) are the two most contested blocks in the file.
+
+### `product-reads.ts` — 20 blocks (18 exported), 1041 lines
+
+| Bucket | Blocks | Lines |
+|---|---:|---:|
+| nighthawk | 5 | 239 |
+| thermal | 5 | 172 |
+| vector | 3 | 112 |
+| helix | 2 | 176 |
+| **shared** | **2** | 211 |
+| unattributed | 3 | 80 |
+
+Better than `tool-defs.ts` on every axis — but the shared pair is
+`helixTapeAnalyticsForLargo` (helix + thermal) and `helixSignalOutcomesForLargo` (helix + vector),
+**211 of the 990 mapped lines (21%)**, and they are among the file's largest and hottest functions.
+A split leaving those two in `shared.ts` leaves helix, thermal and vector still meeting inside it.
+
+**A concrete instance of the "wrong split is worse than none" risk.** `etSessionNow`,
+`ageSecondsFrom` and `expiryScopeOf` attribute cleanly to thermal — thermal introduced them
+yesterday in #2425 and nobody else has touched them yet. They are generic time and scope helpers.
+Edit-history attribution over a one-day-old fleet would file three shared utilities in
+`product-reads.thermal.ts`, and the next lane that needs `ageSecondsFrom` imports it from another
+lane's file or copies it. The data cannot currently tell "thermal owns this" from "thermal happened
+to write it first", and the split has to be right about that distinction for all 20 blocks.
 
 ---
 
-## 7. Recommendation
+## 5. Migration cost
+
+**22 of the 34 open PRs** touch one of the two files: 7 nighthawk, 6 helix, 5 vector, 2 meridian,
+2 thermal, with 7 touching both. Each needs the manual per-hunk re-application in §3 — rename
+detection does not help, because splitting one file seven ways scores at most one target as the
+rename and the rest as new files.
+
+There is also a design cost. `tool-defs.ts` already carries a decomposition: `TOOL_GROUPS`
+(`spx_desk`, `flow_analysis`, `stock_analysis`, `vol_analysis`, `news_events`, `fundamental`,
+`platform`, `screener`), by capability domain rather than product lane, with tools deliberately in
+more than one group (`get_gex` and `get_greek_flow` are each in two). Underneath it sit seven
+`*_ENGINE_TOOL_NAMES` cohort lists plus `BIE_TOOL_NAMES`, each with a long doc comment explaining
+why it is *not* derived from `TOOL_GROUPS`, and `tool-defs.test.ts` asserts each stays a subset of
+its group. A per-lane file split is a **third** axis over the same 127 objects, and the first two
+cannot be reused for it.
+
+---
+
+## 6. Recommendation
 
 ### DO NOT DO IT.
 
-Not for `tool-defs.ts`, and not for `product-reads.ts` yet.
+1. **It does not fix the jam.** The release pass goes 19 → 10 with the split, 19 → 16 with
+   `product-reads.ts` alone. Both are worse than the current layout.
+2. **There is nothing for it to fix.** Cross-lane conflicts inside either registry: zero. One
+   conflicting pair total, helix against helix.
+3. **85% of `tool-defs.ts` has no owner to give it to**, and the ownership data that does exist is
+   one day old and already mislabelling shared helpers (§4).
+4. **The jam is FINDINGS.md, and the tool for it is already committed.** 18 of the 27 currently
+   conflicted PRs conflict on that file and nothing else.
 
-The argument, entirely from the numbers above:
+### What to do instead, in order
 
-1. **It does not fix the thing it was proposed to fix.** 0 of 7 `tool-defs.ts` collisions removed;
-   0 cross-lane conflicts exist in that file to remove. 2 of 5 in `product-reads.ts`, both trivial.
-2. **It makes things worse in the near term.** 1/7th of the split, measured, turned 5 clean PRs into
-   conflicted ones. The full split would put 22 of 38 open PRs through a manual, per-hunk
-   re-application that no rebase flag automates.
-3. **85% of `tool-defs.ts` has no owner to give it to.** The split's biggest output file would be
-   `core.ts` with 108 tools, 67 of them untouched for over two months. That is not a decomposition;
-   it is a rename.
-4. **The actual chokepoint is already named and already tooled.** 20 of 21 conflicted PRs conflict
-   on `docs/audit/FINDINGS.md`. `_COMMON.md` rule 4 says so and
-   `scripts/audit/findings-merge-resolve.mjs` handles it. Effort spent on the registries is effort
-   not spent there.
-5. **Intra-lane contention is the fleet's real registry cost, and no file boundary addresses it.**
-   Six of the seven `tool-defs.ts` pairs are two PRs from one lane editing the same tool —
-   three vector PRs on `get_vector_full_state`, three helix PRs across
-   `get_helix_signal_outcomes` / `get_helix_derived`. That is a lane running several concurrent PRs
-   over one tool, and it is fixed by sequencing within the lane, not by moving the tool.
+1. **Run `scripts/audit/findings-merge-resolve.mjs` inside the release pass, not beside it.**
+   This is the whole finding. Measured: **2 → 19 releasable in a single pass**, no rebases, no
+   migration, no freeze. If one change is made today, make this one.
+2. **Then hand-resolve the five real `tool-defs.ts` conflicts** — #2427, #2432, #2509, #2515,
+   #2522. Each is a lane against its own landed work, so route each back to its own lane; no
+   cross-lane coordination is needed. #2480 and #2490 (`product-reads.test.ts`) and #2511
+   (`session-anchor.test.ts`) are the same shape.
+3. **Stop asking lanes to rebase pre-emptively.** The 19 rebases spent between 10:39Z and 10:45Z
+   bought a conflict count that went from 3 to 27, because the merges underneath them re-broke
+   FINDINGS.md. Rebase on demand, after a merge, only for PRs that actually conflict.
+4. **Group the `product-reads.ts` import block by product**, one blank line between groups. One
+   commit, no rebases; removes the only cross-lane collision class either file has produced.
+5. **Land #2531 with FINDINGS.md inside the chokepoint frame.** The current report ranks by *files
+   touched* and excludes the known-issue file — which is how the top-touched file came to be read as
+   the top-conflicting one. Rank by *measured conflicts* (`git merge-tree` against `main`, conflicted
+   paths from the machine-readable section, not the `Auto-merging` lines) and the ordering inverts.
 
-### What to do instead
+### When to revisit
 
-In descending order of measured value per unit of disruption:
+Two conditions, either one sufficient:
 
-1. **Nothing, for the registries.** They are working. The release sequencing already in place is the
-   correct control for a shared append-only registry, and the conflict data says it is holding.
-2. **Land #2531 and add FINDINGS.md to the chokepoint report.** The sweep's chokepoint view
-   currently omits the file responsible for 20 of 21 conflicts. Reporting the top-touched file while
-   the top-*conflicting* file sits outside the frame is how this brief came to be written.
-3. **Group the `product-reads.ts` import block by product**, one blank line between groups. One
-   commit, no rebases, removes both cross-lane collisions in that file.
-4. **Sequence within a lane before sequencing across lanes.** Vector has three open PRs on
-   `get_vector_full_state`; helix has three across two adjacent tools. Those are self-collisions.
+- **Cross-lane conflicts inside `tool-defs.ts` exceed intra-lane conflicts**, over a rolling window
+  of 50 open agent PRs. Today: 0 cross, 1 intra. This is measurable from git alone and cannot
+  deadlock — it does not require anything to merge first.
+- **Lanes start adding tools rather than editing them.** Across all 34 open PRs, **zero new `t(...)`
+  blocks are being added.** The append-to-the-end collision that makes registry splits pay off is
+  not happening. When a fleet cycle lands more than a handful of new tools, the arithmetic changes
+  and this should be re-run.
 
-### The condition under which to revisit
+A third, softer signal: revisit when `core.ts`'s share would fall below ~50% — i.e. when lanes have
+actually touched half the registry and there is ownership evidence to split on. Today it is 15%, and
+it is 15% because the fleet is a day old, not because the tools are ownerless.
 
-Re-run this analysis and reconsider when **cross-lane conflicts inside `tool-defs.ts` exceed
-intra-lane conflicts over a rolling 50 open agent PRs** — today the count is 0 cross vs 7 intra. The
-mechanism that would produce that shift is lanes *adding* tools rather than editing existing ones:
-across all 38 open PRs, **zero new `t(...)` blocks are being added**, so the append-to-the-end
-collision that makes registry splits pay off is not happening yet. When a fleet cycle lands more
-than a handful of new tools per week, this stops being true and the calculation changes.
-
-Also revisit if `core.ts`'s share falls below ~50% — i.e. once lanes have actually touched half the
-registry and there is ownership evidence to split on. Today it is 15%, and it is 15% because the
-lane fleet is a day old, not because the tools are genuinely ownerless.
+**No freeze plan is included, deliberately.** You asked for one conditional on DO IT. Publishing a
+freeze recipe alongside a DO-NOT recommendation invites it to be half-executed. The migration recipe
+in §3 and the grouping in §4 are enough to reconstruct one if the revisit conditions fire, and by
+then the ownership data will be worth more than it is today.
 
 ---
 
 ## Appendix A — method
 
-- Repo read-only at `origin/main` `f9ec3de5`; full history (`git fetch --unshallow`, 3,038 commits).
-- Node **v20.20.2** from `/opt/node20/bin` (`/opt/nvm/versions/node/v20.20.2/bin` from `_COMMON.md`
-  rule 2 does not exist in this container; `/opt/nvm/versions` is absent entirely and the default is
-  v22.22.2 — flagged rather than fallen back on).
-- Open-PR roster: `refs/pull/N/merge` present ⇒ open. Merged/closed PRs identified from `(#N)` in
-  `main`'s squash subjects. `refs/pull/N/merge` goes **stale** rather than disappearing when a PR
-  becomes conflicted — 21 of the 38 have a merge ref and still conflict — so conflict state is never
-  read from the ref, only openness.
-- Conflicts: `git merge-tree --write-tree --name-only`, conflicted paths read from the machine
-  section only. Pairwise tests rebase both sides onto `main` first (`git commit-tree` on the merged
-  tree) so PR-vs-PR contention is not confounded by `main` drift under an older branch point.
-- Block attribution: every changed line mapped to its enclosing `t(...)` call (paren-balanced) or
+- Read-only clone at `origin/main` `fbfa7d23`; full history (`git fetch --unshallow`, 3,038 commits).
+- Node **v20.20.2** from `/opt/node20/bin`. `_COMMON.md` rule 2's path
+  (`/opt/nvm/versions/node/v20.20.2/bin`) does not exist in this container — `/opt/nvm/versions` is
+  absent entirely and the default is v22.22.2. Flagged rather than fallen back on; rule 2 should be
+  updated or the container fixed.
+- **Open-PR roster** reconstructed from git refs, because the API is unreachable (Appendix B): a PR
+  is open iff GitHub still publishes `refs/pull/N/merge`. That ref goes **stale** rather than
+  disappearing when a PR becomes conflicted, so it is used only for openness; conflict state is
+  always measured. Merged PRs identified from `(#N)` in `main`'s squash subjects. Validated against
+  the brief's own counts at the time it was written (32/18/11/20 vs 30/16/9/19 — a uniform +2,
+  matching #2530 and #2532 having opened since).
+- **Conflicts:** `git merge-tree --write-tree --name-only`, conflicted paths read from the
+  machine-readable section only, never from the `Auto-merging` lines (those name files that merged
+  *successfully* — reading them as conflicts is what inflates a chokepoint count).
+- **Release passes:** real sequential `git merge` into a scratch worktree, oldest PR first, matching
+  the repo's stated landing order. `auto` policy resolves FINDINGS.md by union merge, which is what
+  `findings-merge-resolve.mjs` does; any conflict elsewhere counts as blocked and the merge is
+  aborted.
+- **Block attribution:** every changed line mapped to its enclosing `t(...)` call (paren-balanced) or
   top-level function, on **both** diff sides, at that commit's own version of the file.
-- Lane attribution: branch name only (`claude/<lane>-*`), across all 90 lane branches, merged and
-  open. Commit-subject keyword inference was tried and **discarded** — it attributed 90 touches to
-  `spx` from subject text alone, on commits that predate the lane structure by two months. A tool
-  with no lane-branch evidence is `unattributed`, never `shared`.
+- **Lane attribution:** branch name only (`claude/<lane>-*`), across all 96 lane branches.
+  Commit-subject keyword inference was tried and **discarded** — it attributed 90 touches to `spx`
+  from subject text alone, on commits predating the lane structure by two months.
+- **Split probes:** three scratch worktrees (helix-only, full split, `product-reads.ts`-only), each
+  deleted after measurement. They measure merge behaviour, not compilation — no probe was
+  type-checked, and none was pushed.
 
 ## Appendix B — what could not be verified
 
 - **`scripts/audit/agent-pr-sweep.mjs` could not be run.** It requires GitHub API access; this
   session has anonymous git read only (`add_repo` with `access:"push"` was refused by the permission
-  layer), so the API returns 403. The sweep correctly refuses to print a roster it cannot fetch. All
-  PR state here is derived from git refs instead, and cross-checked against the brief's own counts
-  (§1c note).
-- **`docs/audit/MERGE-CHOKEPOINTS.md` does not exist on `main`** and #2531 has not landed, so the
-  original measurement could not be read directly or diffed against this one.
-- **Nothing here is validated live**, and nothing needs to be — this is a static analysis of git
-  state, not a behaviour claim. `_COMMON.md` rule 6 does not apply.
+  layer), so the API returns 403 and the sweep correctly refuses to print a roster it cannot fetch.
+  Every PR-state number here is derived from git refs and direct merge tests instead.
+- **CI status is invisible from git.** "Green" is taken from your 10:39Z report. The release-pass
+  simulation runs over all 28 open `claude/*` PRs rather than a verified-green subset, so its
+  denominator is 28, not 21. It measures mergeability, not test health.
+- **`docs/audit/MERGE-CHOKEPOINTS.md` is not on `main`** and #2531 has not landed, so the original
+  measurement could not be diffed against this one.
+- **Nothing here is live-validated**, and nothing needs to be — this is static analysis of git
+  state, not a behaviour claim. Rule 6 does not apply.
