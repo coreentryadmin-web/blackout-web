@@ -8,13 +8,20 @@
  */
 
 import { roundFloats } from "@/lib/round-floats";
+// ONE definition of "what session is it" across every lane. A local Intl call here would be a
+// second definition, and two tools that disagree about today is exactly the failure #2418/#2420
+// were opened for.
+import { etSessionDate, etStamp } from "@/lib/largo/temporal/bar-session-date";
+import { marketPhaseFromEt } from "@/lib/largo/core/system-status";
 
 // Shapes and guards live in the CLIENT-SAFE module — see compare-card-types.ts for why a client
 // component importing them from HERE breaks the webpack build. Re-exported so existing server
 // callers keep their import paths unchanged.
 import {
   DEFAULT_PEER_COMPARE_TICKERS,
+  type CompareFreshness,
   type CompareGammaPosture,
+  type CompareRegimeInteraction,
   type CompareVolatilityRegime,
   type LargoCompareCard,
   type HelixThermalCompareCard,
@@ -24,7 +31,9 @@ import {
 } from "@/lib/largo/compare-card-types";
 
 export type {
+  CompareFreshness,
   CompareGammaPosture,
+  CompareRegimeInteraction,
   CompareVolatilityRegime,
   HelixThermalSide,
   HelixThermalCompareCard,
@@ -143,6 +152,30 @@ function describeConflict(
   return { conflict: false, conflict_note: `${aLabel} and ${bLabel} both read ${a.bias}` };
 }
 
+/**
+ * Name the flow-vs-regime INTERACTION — the honest replacement for the direction "conflict" the
+ * broken classifier used to manufacture. Never a direction call on the gamma side; it says what
+ * the volatility regime does TO the flow's directional thesis.
+ *
+ * Null unless both sides produced a real reading, matching describeConflict's "nothing was
+ * compared" honesty.
+ */
+export function regimeInteractionFor(
+  flowBias: HelixThermalSide["bias"],
+  vol: CompareVolatilityRegime
+): CompareRegimeInteraction {
+  if (vol == null) return null;
+  if (flowBias !== "bullish" && flowBias !== "bearish" && flowBias !== "neutral") return null;
+  const side = flowBias === "neutral" ? "Balanced flow" : `${flowBias[0].toUpperCase()}${flowBias.slice(1)} flow`;
+  const read =
+    vol === "amplifying"
+      ? `${side} into an amplifying regime — dealers hedge WITH the move, so it accelerates in ` +
+        `either direction. Higher variance than the flow alone implies.`
+      : `${side} into a suppressing regime — dealers fade the move toward heavy strikes, so ` +
+        `follow-through is damped.`;
+  return { flow_bias: flowBias, volatility_regime: vol, read };
+}
+
 function flowSummary(bias: HelixThermalSide["bias"]): string {
   if (bias === "bullish") return "Net call premium leads on the tape";
   if (bias === "bearish") return "Net put premium leads on the tape";
@@ -229,6 +262,10 @@ export function compareSidesFrom(
     gamma_regime: gammaRegime != null ? String(gammaRegime) : null,
     gamma_posture: gammaPosture,
     volatility_regime,
+    // getGexPositioning is a documented STRICT CACHE READER — it never hits a second upstream —
+    // so "cached" is the honest steady state here, not a degraded one. Null when there is no read.
+    freshness: (pos != null ? "cached" : null) as CompareFreshness,
+    age_seconds: null,
   };
 
   const { conflict, conflict_note } = describeConflict("Flow", flowSide, "gamma", gamma);
@@ -266,9 +303,51 @@ async function fetchTickerFlowAndGamma(ticker: string): Promise<{
   });
 }
 
+/**
+ * ET session phase from a FROZEN instant. Taking `nowMs` rather than reading the clock means the
+ * phase, the stamp and every row age in one payload describe the SAME moment — a payload built
+ * across 15:59:59 -> 16:00:01 must not report OPEN beside rows anchored after the close.
+ */
+function cardSessionPhase(nowMs: number): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hour: "numeric",
+    minute: "numeric",
+    weekday: "short",
+    hour12: false,
+  }).formatToParts(new Date(nowMs));
+  const part = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  const DAYS: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  return marketPhaseFromEt(
+    DAYS[part("weekday")] ?? 1,
+    Number(part("hour")) * 60 + Number(part("minute"))
+  );
+}
+
+/**
+ * The card's time anchor, built once per payload from one frozen instant.
+ *
+ * `as_of` is an ET WALL-CLOCK stamp, not a UTC ISO. A UTC instant rolls its calendar DATE at
+ * 20:00 ET, so for the last four hours of every trading day anything resolving a session from it
+ * is a full session ahead — the defect class fixed in #2418 (bars) and #2420 (Helix expiry).
+ * Measured harm on this exact model: at 21:20 ET it dated a live SPX figure to the next session,
+ * concluded the real close belonged to an earlier one, and fabricated a number for it.
+ * `as_of_utc` keeps the machine-orderable instant for any consumer that sorts on it.
+ */
+export function cardStamp(nowMs: number) {
+  return {
+    as_of: etStamp(nowMs),
+    session_date: etSessionDate(nowMs),
+    as_of_utc: new Date(nowMs).toISOString(),
+    market_session: cardSessionPhase(nowMs),
+  };
+}
+
 /** Run HELIX flow + Thermal GEX in parallel for one ticker (default SPX). */
 export async function helixThermalCompareForLargo(ticker = "SPX"): Promise<HelixThermalCompareCard> {
   const t = String(ticker).trim().toUpperCase() || "SPX";
+  // ONE instant for the whole payload — see cardStamp().
+  const nowMs = Date.now();
   const { flow, gamma } = await fetchTickerFlowAndGamma(t);
 
   // Re-describe with the member-facing product names. Previously this branch rebuilt only the
@@ -279,11 +358,13 @@ export async function helixThermalCompareForLargo(ticker = "SPX"): Promise<Helix
   return roundFloats({
     kind: "helix_thermal",
     ticker: t,
-    as_of: new Date().toISOString(),
+    ...cardStamp(nowMs),
     helix: flow,
     thermal: gamma,
     conflict,
     conflict_note,
+    // The honest replacement for the removed direction-conflict field — see regimeInteraction().
+    regime_interaction: regimeInteractionFor(flow.bias, gamma.volatility_regime ?? null),
   });
 }
 
@@ -296,6 +377,8 @@ export async function peerTickerCompareForLargo(
     3
   );
   const list = normalized.length >= 2 ? normalized : [...DEFAULT_PEER_COMPARE_TICKERS];
+  // ONE instant for the whole payload — see cardStamp().
+  const nowMs = Date.now();
 
   const snapshots = await Promise.all(
     list.map(async (ticker) => {
@@ -314,6 +397,7 @@ export async function peerTickerCompareForLargo(
         gamma: { available: false, bias: "unknown", summary: "Positioning unavailable" },
         conflict: false,
         conflict_note: "Not compared — flow and gamma both unavailable",
+        regime_interaction: null,
       };
     }
     return {
@@ -322,6 +406,7 @@ export async function peerTickerCompareForLargo(
       gamma: snap.gamma,
       conflict: snap.conflict,
       conflict_note: snap.conflict_note,
+      regime_interaction: regimeInteractionFor(snap.flow.bias, snap.gamma.volatility_regime ?? null),
     };
   });
 
@@ -343,7 +428,7 @@ export async function peerTickerCompareForLargo(
   return roundFloats({
     kind: "peer_tickers",
     tickers: list,
-    as_of: new Date().toISOString(),
+    ...cardStamp(nowMs),
     rows,
     peer_divergence: peerDivergence,
     peer_divergence_note: peerDivergenceNote,
