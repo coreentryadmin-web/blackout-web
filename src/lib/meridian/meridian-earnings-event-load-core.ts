@@ -12,7 +12,11 @@ export function patchMeridianEnrichmentExpectedMove(
     ...enrichment,
     expected_vs_realized: buildExpectedVsRealized(
       expectedMovePct,
-      lastPrint?.session_change_pct ?? null
+      // The REALIZED side must be the reaction. An options-implied move prices the whole
+      // repricing event, so comparing it against the anchor session's open→close — which for a
+      // post-close print excludes the overnight gap — understates realized against implied by
+      // construction. `reaction_pct` is the like-for-like quantity.
+      lastPrint?.reaction_pct ?? lastPrint?.session_change_pct ?? null
     ),
   };
 }

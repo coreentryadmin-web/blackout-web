@@ -54,6 +54,29 @@ write-up policy below, and still keep PRs small/single-issue — the standing au
 until CI is fixed; changes the user explicitly flags as deploy-risky (hold on a branch until
 they say go).
 
+**CROSS-PR ORDERING DEPENDENCIES — sequence them, do not race them (added 2026-08-21, after a
+red `main`).** Two PRs can each be green, each be correct in isolation, and still break `main` when
+composed. Measured that day: #2482 fixed `get_earnings_market`'s bare UTC stamp; #2421 shipped a
+new C1 ratchet (`src/lib/largo/contract/session-anchor.test.ts`) that listed the SAME file in its
+KNOWN_GAPS allowlist, deliberately deferring the fix rather than writing a second conflicting one.
+Correct call — but it made #2421 depend on #2482 landing SECOND. #2482 was already non-draft, so
+`automerge.yml` took it as soon as its checks went green, #2421 merged five minutes later, and the
+allowlist arrived describing a file that was already fixed. The "list SHRINKS" assertion fired,
+correctly, on `main` and on every open PR that rebased onto it (#2480, #2451, #2487 all went red on
+someone else's mistake). Fixed by #2486.
+
+The general shape: **an allowlist entry, a TODO, or a comment that defers to an OPEN PR is an
+ordering dependency, and `automerge.yml` does not know about it.** It merges by check-completion
+time, which is effectively random. So when one PR's correctness depends on another's merge state:
+land the deferred-to PR FIRST and confirm it is in `main` before releasing the dependent one, or
+put both in a single merge. Never release both and hope. And do not respond to the resulting
+breakage by weakening the guard — a ratchet that tolerates stale entries is the stale-by-omission
+failure it was written to prevent.
+
+**A merge is not a verification.** After merging anything whose correctness depends on the state of
+`main`, re-run the affected check AGAINST `origin/main` rather than trusting that the merge did what
+you expected. That is how the twenty-minute red window above was caught at all.
+
 ## PR write-up policy (standing instruction)
 Every PR — fix or docs — gets a deep, clean write-up so Cursor (a parallel agent working the
 same repo) can read the diff cold and understand it without asking follow-up questions:
@@ -130,6 +153,7 @@ adjusts its numbers to match a peer has destroyed the signal and left a false co
 - `scripts/audit/zerodte-sim-feed.mjs` (`npm run sim:feed`) — **admin-only 0DTE sim feeder.** Authenticates as a temp admin Clerk user (reuses the data-validator FAPI-ticket auth block; deleted in a `finally`) and POSTs board frames to `POST /api/admin/zerodte/sim/board` on a clock so an admin can WATCH a simulated session play through the REAL Night Hawk panel at **`<base>/nighthawk?sim=1`** — members keep seeing the untouched real board. `--synthetic` generates the canonical 5-play RTH arc (NVDA +80% / TSLA +40% / META +30% / SPX condor +76% time_stop / AMD put −50% STOPPED); `--replay=<file.json>` replays `{etMinute,payload}` frames. Flags: `--speed=N --base= --start-et/--end-et --dry-run --reset`. Isolation = admin gate AND a separate Redis key (`zerodte:board:snapshot:sim:v1`, short TTL) AND the `?sim=1` opt-in — see `docs/audit/ZERODTE-SIMULATOR.md`. Read-only w.r.t. the member board + DB (writes only the sim Redis key).
 - `docs/audit/ZERODTE-SIMULATOR.md` — the admin sim view: watch URL, seed/reset commands, and the three-layer isolation guarantee (why members can never see sim data) + member-path-unchanged proof.
 - `scripts/audit/email-template-send.mjs` (`npm run send:emails -- --to=you@example.com`) — **send every production email template to one test inbox.** Renders all 14 (lead magnet, the 5 welcome-sequence steps, and the 8 billing/lifecycle templates incl. both welcome-premium dual-opener variants) through the REAL template builders and the REAL `sendEmail()` — nothing reimplemented — so what arrives is byte-identical to a member's copy, inline CID images and RFC 8058 one-click headers included. Read-only w.r.t. the app: no DB writes, no Clerk, no prod request. `--dry-run` prints subject / attachment count / `unsub=` / `hdrs=` per template without contacting Resend — run it first, since without `RESEND_API_KEY` the unsubscribe links and List-Unsubscribe headers can't be signed and show as `unsub=no hdrs=0`. Never prints secrets; paced ~700ms for Resend's 2 req/s default. **Most of these templates only fire on a real billing event, so nobody ever sees them** — which is how #1911 shipped a two-losing-trades screenshot under alt text promising wins. First full run 2026-08-08: 14/14 delivered.
+- `scripts/audit/largo-truncation-probe.mjs` — **does the model actually RECEIVE each tool's payload?** `anthropicToolLoop` caps every `tool_result` at `MAX_TOOL_RESULT_CHARS` with a TAIL slice, and an over-cap tool still "works": the call succeeds, the loop completes, and the model writes a fluent answer from whatever survived. Three defects shipped exactly that way in the Night Hawk lane — `get_zerodte_record` delivered **1.5%** of itself with every aggregate cut off (#2433), `get_nighthawk_edition` cut off **every play** (#2436), and `get_nighthawk_outcomes` had Largo quoting a **40% win rate over "5 plays"** for a window whose real record was **74 resolved at 50%** (#2480). Every prior Largo audit graded whether an answer was CORRECT or ROUTED correctly; **none asked whether the payload arrived.** `largo-payload-hygiene.mjs` cannot answer it from this sandbox (it runs tools IN-PROCESS and every DB-backed tool is unreachable here); this probe goes the other way and asks the LIVE agent, which runs where the data is. **The trick:** the transport appends a literal `…[truncated]` marker to an over-cap result and the model can observe its own tool result, so the question is answerable without counting a byte. **The rule that makes it trustworthy:** the instrument is a model, so a run of all-COMPLETE is indistinguishable from a run whose question never landed — every run therefore probes a CONTROL tool known to exceed the cap, and if the control does not come back TRUNCATED, **every COMPLETE is reported UNVERIFIED rather than clean**. A tool absent from the answer's trace is INDETERMINATE, never a pass. Pure verdict helpers in `lib/truncation-verdict.mjs` (11 unit tests). READ-ONLY; one temp Clerk user, deleted before exit (never in a `finally` racing `process.exit`, which would leak it). Exits non-zero on any truncation, any indeterminate, or an unproven instrument. Flags: `--tools --control --base --json`. First live run 2026-08-21: control PROVEN, `get_zerodte_record`/`get_nighthawk_edition`/`get_zerodte_plays` COMPLETE (live confirmation that #2433 and #2436 hold in production), `get_nighthawk_outcomes` TRUNCATED.
 - `docs/audit/MARKET-OPEN-VALIDATION.md` — runbook + the daily market-open **Claude scheduled-trigger** prompt + secrets checklist (13:32 UTC weekdays).
 - `docs/audit/BASELINE-2026-07-01.md` — pre-open baseline to diff the live run against.
 - `docs/audit/FINDINGS.md` — living issue log (keep updating).
@@ -173,6 +197,35 @@ adjusts its numbers to match a peer has destroyed the signal and left a false co
 - **Direct Postgres (raw TCP) is blocked**, same as WebSockets — only HTTP(S) egress through the agent proxy works. So `pg_stat_activity`/lock/row-count probes against prod are **not possible from this sandbox** — root-causing a live DB-side issue (lock contention, slow query, table bloat) needs either an AWS ECS exec session or a temporary HTTP-exposed debug endpoint in the app itself. Don't spend time retrying a raw `pg.Client` connection here.
 - **`${{shared.*}}` env refs do NOT resolve here** — set literals: `UW_API_KEY` (UUID), `DATABASE_URL`, `REDIS_URL`, `POLYGON_API_BASE`. Working: `POLYGON_API_KEY`, `CLERK_SECRET_KEY`, Clerk publishable key. **Benzinga rides the Polygon key** — the Benzinga news/catalysts feed is served under the same Polygon subscription at `{POLYGON_API_BASE}/benzinga/v2/news?...&apiKey={POLYGON_API_KEY}` (re-verified live 2026-07-13: 200 for `channels=fda|guidance|m&a` and `ticker=NVDA&channels=earnings`). There is **no separate `BENZINGA_API_KEY`**; news fetches live via the Polygon key. (Earlier note claiming the key was missing was stale.)
 - Clerk instance requires a **phone number** on user creation; rapid sign-in/token cycles get **FAPI-rate-limited** — authenticate once per run.
+
+## GitHub API: FOUR separate budgets, do not conflate them (measured 2026-08-21)
+
+"Rate limited" is four different facts here with four different remedies, and treating them as one
+wasted an hour. Check which one you are actually hitting before concluding anything:
+
+| # | Budget | Who spends it | Symptom | What it means |
+|---|---|---|---|---|
+| 1 | **Session REST** (GitHub App installation token) | `curl`/`fetch` to `api.github.com` | plentiful — 15000/hr | The workhorse. Poll CI here, not through MCP. |
+| 2 | **Session GraphQL** | nothing — **blocked outright at the proxy** | `"This GraphQL query is not enabled for this session — only the pinned set of PR-review operations is served"` | NOT a budget. No amount of waiting helps. `/rate_limit` still reports a healthy `graphql` quota, which is misleading — the block is upstream of the quota. |
+| 3 | **GitHub MCP server** | `mcp__github__*` tools | `"Retry after 16m39s"` | Its own limiter, independent of 1 and 2. This is the ONLY path that can undraft a PR, so exhausting it blocks releases specifically. |
+| 4 | **`AGENT_RELEASE_TOKEN` PAT** (user `284440397`) | `agent-pr-release.yml` in Actions | `"API rate limit exceeded for user ID 284440397"` | A user PAT gets 5000/hr **per user, shared across all that user's PATs** — a different pool from #1, which is why the session can be healthy while the workflow starves. |
+
+**The consequence that matters:** #4 is on the SAME account the fleet uses, so a job that leans on
+it is rate-limited precisely when the fleet is busy — exactly when there is a backlog to release.
+`agent-pr-release.yml` hit this three runs in a row and never reached a single PR.
+
+**The fix was NOT a second account.** That was the obvious answer and it treats a self-inflicted
+problem as an infrastructure one. `GITHUB_TOKEN` can do every READ the job needs; the PAT is only
+required for `gh pr ready`, the one call `GITHUB_TOKEN` is refused. So the job now splits them —
+reads on `GITHUB_TOKEN`, the PAT injected for that single command — which at a cap of 3 releases
+per run costs the PAT **12 calls an hour**. The general rule: when a shared, scarce credential
+starves, look first at what you are spending it on. A budget problem is usually a scope problem.
+
+**A green `agent-pr-release` run does NOT mean it released anything.** Since it now exits 0 on a
+rate limit (deliberately — see the workflow header), "success" and "did nothing" look identical from
+the conclusion. **Read the log.** Runs 32460029586 and 32461784083 are both green and both end
+`RATE LIMITED while listing PRs — exiting 0, next run retries.` As of this writing the workflow has
+never actually released a PR; that is still unproven, not proven.
 
 ## Access reality — three DIFFERENT things, do not conflate (learned 2026-07-22)
 1. **Logging into the live site as a real member — WORKS, pure HTTP, no browser.** Mint a temp

@@ -1611,7 +1611,13 @@ html.nav-locked body { overflow: hidden; }
 .mv-ring-sig { margin-left: 0.22rem; font-size: 0.84rem; opacity: 0.85; }
 
 /* ── Rails (expected move + targets) ── */
-.mv-rail, .mv-targets { display: block; }
+/* GEOMETRY IS SHARED WITH layoutRailLabels — keep these in step with meridian-viz-core.ts.
+   A tier step that is SHORTER than a label does not separate anything: at 0.62rem (9.92px)
+   against a 12px label box, two markers on the same price overlapped by 2.08px on live prod
+   ("17.00" ∩ "17.00" 33x2px). The label's line-height is pinned too, so its height stops
+   depending on which font `--mv-value` resolves to. Asserted equal to MV_RAIL_TIER_PX /
+   MV_RAIL_LABEL_PX by meridian-viz-core.test.ts. */
+.mv-rail, .mv-targets { display: block; --mv-rail-tier-h: 16px; --mv-rail-label-h: 14px; }
 .mv-rail-head {
   display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem;
   margin-bottom: 0.5rem;
@@ -1627,7 +1633,7 @@ html.nav-locked body { overflow: hidden; }
 .mv-rail-track {
   /* Labels are absolutely positioned ABOVE the track, so the track has to reserve their rows —
      otherwise a second tier renders on top of the panel title. One row per occupied tier. */
-  margin-top: calc(var(--rail-tiers, 1) * 0.62rem - 0.62rem);
+  margin-top: calc((var(--rail-tiers, 1) - 1) * var(--mv-rail-tier-h));
   position: relative; height: 34px;
   border-radius: 999px;
   background: linear-gradient(90deg, rgba(251,113,133,0.07), rgba(125,211,252,0.05), rgba(52,211,153,0.07));
@@ -1652,9 +1658,12 @@ html.nav-locked body { overflow: hidden; }
      a second row when two labels cannot sit side by side. Both come from layoutRailLabels;
      without them "call wall" and "king" printed through each other at the right edge. */
   position: absolute; left: 0;
-  top: calc(-0.55rem - var(--tier, 0) * 0.62rem);
+  top: calc(-0.55rem - var(--tier, 0) * var(--mv-rail-tier-h));
   transform: translateX(-50%) translateX(var(--dx, 0px));
   font-family: var(--font-mono, monospace); font-size: 0.64rem; letter-spacing: 0.06em;
+  /* Pinned, not inherited: the `<b>` inside carries a different font stack, and an unpinned
+     line box made the label's height a property of font fallback rather than of this rule. */
+  line-height: var(--mv-rail-label-h);
   color: rgba(125,211,252,0.9); white-space: nowrap;
 }
 .mv-rail-spot {
