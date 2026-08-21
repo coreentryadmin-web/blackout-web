@@ -289,13 +289,21 @@ export function buildErPlayRead(input: PlayInput): MeridianErPlayRead {
     }
   }
 
+  // "into earnings" is forward-looking too, and #2591 only closed the `avoid_directional` branch.
+  //
+  // Validating that PR on production caught this: BEKE, BJ and BKE all reported before the open,
+  // and with `printed` now suppressing the imminent branch they fell straight through to
+  // "Flow + structure lean bullish INTO earnings" — about a print six hours in the past. The
+  // report core got the same treatment in #2591 and its "into earnings" phrasings were guarded
+  // there; this function was left half-done. Same defect, one branch over.
+  const intoOrAfter = input.printed ? "since the print" : "into earnings";
   const headline =
     lean === "avoid_directional"
       ? "Imminent print — favor reaction over prediction"
       : lean === "bullish"
-        ? "Flow + structure lean bullish into earnings"
+        ? `Flow + structure lean bullish ${intoOrAfter}`
         : lean === "bearish"
-          ? "Flow + structure lean bearish into earnings"
+          ? `Flow + structure lean bearish ${intoOrAfter}`
           : "Mixed signals — no clean directional lean";
 
   return {
