@@ -4,6 +4,22 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-21 — [FINDING, P2 tooling] A conflicted PR has NO CI run at all, and the absence read as a broken CI trigger — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Four open PRs (#2534, #2545, #2552, #2563) showed **zero** workflow runs on their head SHA — not queued, not skipped, absent — while sibling branches built normally in the same minutes. Reported to the operator as an unexplained CI-trigger fault with no root cause. |
+| **Root cause** | It is not a second fault. `ci.yml` runs `on: pull_request`, and GitHub builds those runs against `refs/pull/N/merge`. For a **conflicted** PR that ref cannot be created, so no run is ever started. `verify: NONE` and `mergeable_state: dirty` are the SAME fact reported through two fields. |
+| **Evidence** | Decisive, one branch, two pushes, nothing else changed. `claude/meridian-largo-cohort-unit-fix` (#2563): an **empty commit** pushed while the PR was conflicted → `actions/runs?head_sha=3bd3945` returns **total_count 0**. Conflict then resolved and pushed → `head_sha=1a6c8e0` returns **4** runs within seconds. |
+| **Why it misled** | The two facts arrive through different API calls, so nothing put them side by side. An empty-commit re-trigger — the obvious remedy for a missed webhook — also produced zero runs, which *looked* like confirmation that the trigger itself was broken. It was confirming the conflict. |
+| **Cost** | Time spent hunting a phantom infrastructure fault, and an incorrect claim to the operator that "a push from this session re-triggers CI" — it does not, while the PR is conflicted. Worse, it split one queue of conflicted PRs into two imagined problems and doubled the apparent remediation work. |
+| **Fix** | `scripts/audit/agent-pr-sweep.mjs` now records `noRuns` per PR and annotates the printed row: `[no CI run — expected while conflicted]` under CONFLICTED, `[no CI run at all]` anywhere else — so the absence is EXPLAINED where it is observed rather than discovered later out of context. The causal note is written into the file header, next to the bucket list it affects. |
+| **Fix rationale** | Deliberately not a new bucket. A separate `NO-CI-RUN` bucket would re-create the error the annotation exists to prevent, by presenting a symptom as an independent blocker with its own remedy. The remedy is the same one CONFLICTED already carries: resolve the conflict. |
+| **Blast radius** | Every lane that reads its own PR state hits this, and at least one already did — the phantom-guards lane reported itself `need_input` blocked on another lane, when its PR was simply conflicted and therefore CI-less. Any tool or agent that treats "no CI run" as independent of "conflicted" will chase it. |
+| **Status** | FIXED. |
+
 ## 2026-08-21 — [FINDING, P2 Largo/Thermal] The gamma payload is non-directional but the model still said "gamma reads bearish" under a leading question — FIXED
 
 > **kind:** `FINDING`
