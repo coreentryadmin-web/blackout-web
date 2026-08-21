@@ -255,16 +255,30 @@ async function scanner(page, o, log) {
 const VIEW_TABS = { matrix: /^MATRIX$/i, profile: /GAMMA PROFILE/i, depth: /FORCED FLOW/i };
 
 async function thermal(page, o, log) {
-  await page.goto('https://blackouttrades.com/heatmap', { waitUntil: 'domcontentloaded', timeout: 45000 });
+  // TICKER IN THE URL, not through the search UI.
+  //
+  // `/heatmap` itself redirects to `?ticker=SPY&lens=gex`, so the query is the page's own state
+  // channel and it honours whatever is put there. Driving it that way removes three interactions
+  // that could each fail (open the ticker menu, type, pick the option) and, more importantly,
+  // removes the need for the desk to be interactive before the ticker is even chosen.
+  //
+  // That mattered: NVDA's heatmap ran a rebuild loop (`force=1&n=1..4`) and took ~30s to render,
+  // during which the desk shows "Loading heatmap…" and the ticker control does not exist. The old
+  // flow clicked at 9s and reported a 20s click timeout — which reads as a broken control rather
+  // than a slow build. MEASURED 2026-08-21: every API call returned 200 the whole time.
+  const lens = (o.lens || 'GEX').toLowerCase();
+  const url = `https://blackouttrades.com/heatmap?ticker=${encodeURIComponent(o.ticker)}&lens=${encodeURIComponent(lens)}`;
+  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
   await settle(page, 9000, log);
+  // Wait for the desk to finish building rather than for a clock to run out. The expiry chips are
+  // the readiness signal — they only exist once the matrix has data.
+  await page
+    .locator('button[aria-pressed]')
+    .first()
+    .waitFor({ state: 'visible', timeout: 75000 })
+    .catch(() => {});
+  log.push(`ticker→${o.ticker} (url)`);
 
-  if (o.ticker !== 'SPY' && !o.sector) {
-    await page.locator('[aria-label*="Change ticker"]').first().click({ timeout: 20000 });
-    await page.locator('[aria-label="Search any ticker"]').first().fill(o.ticker);
-    await page.waitForTimeout(1800);
-    await page.locator('#ticker-listbox [role="option"]').first().click({ timeout: 15000 });
-    await page.waitForTimeout(9000); log.push(`ticker→${o.ticker}`);
-  }
 
   if (o.sector) {
     const toggle = page.locator('.thermal-grid-toolbar-toggle').first();

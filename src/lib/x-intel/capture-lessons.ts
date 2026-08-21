@@ -237,6 +237,46 @@ export const CAPTURE_LESSONS: ReadonlyArray<CaptureLesson> = [
     lesson:
       "Night Hawk timelines may drive signups more than P&L screenshots, because a timestamped sequence is harder to fake than a number. UNTESTED.",
   },
+  {
+    id: "vector-axis-is-utc",
+    applies_to: "vector",
+    evidence: "MEASURED",
+    sample_size: 2,
+    lesson:
+      "The Vector chart's time axis is UTC, not ET. Convert before any time reaches copy. Reading it as ET moves every event four hours earlier and turns a premarket print into a session one — the exact error class that put a far-dated call wall into a 0DTE sentence.",
+    observation:
+      "NVDA 2026-08-21, captured 15:07-15:09 UTC / 11:07-11:09 ET. Two independent anchors put the axis in UTC: the previous session's closing volume spike sits at '20:00' (16:00 ET close) and today's opening spike at '13:30' (09:30 ET open), and the right edge lands just past 14:00 with roughly an hour of candles beyond it, matching a 15:08 UTC capture. A zoomed frame from the same run showed a flush at '09:00' that a first reading called the open; it is 05:00 ET premarket.",
+  },
+  {
+    id: "spot-is-not-the-last-visible-candle",
+    applies_to: "vector",
+    evidence: "MEASURED",
+    sample_size: 5,
+    lesson:
+      "Read spot from the regime banner or the price tag, never from where the candles happen to stop. A zoomed or scrolled frame ends wherever the viewport ends, which is not the latest bar.",
+    observation:
+      "NVDA 2026-08-21: five zoomed captures showed rightmost candles at 216.30-217.84 while the banner read 214.89-215.26. The banner was right — /v2/last/trade/NVDA returned 215.2659 at 11:04:41 ET and the Thermal header read 215.05 at 11:01:05 ET. At full fit the chart's own price tag read 215.12, agreeing with its banner. The disagreement was the zoom, not the data.",
+  },
+  {
+    id: "vector-toolbar-renders-twice",
+    applies_to: "vector",
+    evidence: "MEASURED",
+    sample_size: 1,
+    lesson:
+      "Address desk controls with a visible-only locator. The responsive toolbars render a compact and a wide copy of every control and collapse the unused one to a zero-size box instead of unmounting it, so the first match can be a control that is impossible to click.",
+    observation:
+      "/vector?ticker=NVDA at 2560x1440: two nodes carry data-testid=\"vector-indicator-trigger\". Copy 0 has rect [0,0,0,0] and elementFromPoint at its origin returns the nav; copy 1 has rect [570,89,116,32] and hit-tests to itself. Playwright reported the first as an 8s click timeout, which read as a broken button for a day and blocked the Indicators menu and FULL SCREEN alike.",
+  },
+  {
+    id: "state-before-view",
+    applies_to: "*",
+    evidence: "MEASURED",
+    sample_size: 2,
+    lesson:
+      "Set the state that lives on the base view BEFORE switching the view. Doing it the other way loses the state, the framing, or both.",
+    observation:
+      "Vector: entering full screen and then opening the Indicators menu dropped the chart from 2512x1354 to 1196x1398 portrait in an otherwise identical run. Thermal: FORCED FLOW (DEPTH) renders no expiry bar at all, so ALL has to be set on MATRIX first.",
+  },
 ];
 
 /** Lessons that bind for a given catalog view or surface, most-binding first. */

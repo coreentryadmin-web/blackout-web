@@ -50,6 +50,39 @@ inside an element screenshot anyway. Cropping it off means guessing a pixel offs
 first time the header's height changes. `hideMarketingChrome()` removes it from the layer, matched
 by behaviour (fixed/sticky, top-anchored, marketing text, not owned by a desk container).
 
+### The duplicated-control trap
+
+`MEASURED 2026-08-21` — **the first match is usually the wrong match.** The responsive toolbars
+render a compact copy and a wide copy of every control, and CSS collapses the unused one to a
+zero-size box instead of unmounting it. Both copies carry the same test id and both report
+`display: inline-flex` / `visibility: visible`.
+
+On `/vector?ticker=NVDA` at 2560×1440: copy 0 has rect `[0,0,0,0]` and `elementFromPoint` at its
+origin returns the nav; copy 1 has rect `[570,89,116,32]` and hit-tests to itself. Playwright
+reports the first as an 8-second click timeout — which reads as *"the button is broken"* rather than
+*"you are pointing at the invisible one."* That single misreading blocked the Indicators menu and
+`FULL SCREEN` for a day.
+
+**Always address desk controls with a visible-only locator.**
+
+### The auth-expiry trap
+
+`MEASURED 2026-08-21` — a Clerk `__session` JWT lives about a minute; a capture run lives two to
+five. A session minted by an earlier command and pasted in fails **every** surface at `page.goto`
+with `net::ERR_CONNECTION_RESET`, because the origin 307s the expired session to `/sign-in` and the
+tunnel gives the page no Clerk client to complete the bounce. It dies at the transport and names
+neither auth nor expiry — it reads as *"the site is down."* It is not. Mint in-process and refresh
+on a timer.
+
+### The still-loading trap
+
+`MEASURED 2026-08-21` — NVDA's heatmap ran a rebuild loop (`force=1&n=1..4`) and took ~30s to
+render, showing "Loading heatmap…" the whole time with **every API call returning 200**. A fixed 9s
+wait then clicked a ticker control that did not exist yet and reported a 20s click timeout. Wait on
+a readiness signal (the expiry chips), not on a clock. Better still: `/heatmap` redirects to
+`?ticker=SPY&lens=gex`, so the query *is* the page's state channel — drive the ticker through the
+URL and skip the search UI entirely.
+
 ### The crosshair trap
 
 `MEASURED` — zooming a chart leaves a crosshair readout floating over the frame. Park the pointer
@@ -214,6 +247,31 @@ move — not the bare chart.
 **`Replay`** — scrub a past session. `UNEXPLORED` by this lane; used by the Jul-30 batch and it is
 one of the most distinctive things the platform does. Prioritise showcasing it.
 
+**⏰ THE TIME AXIS IS UTC, NOT ET.** `MEASURED` — subtract 4 (EDT) before any time reaches copy.
+Two anchors fix it: the previous session's closing volume spike sits at **20:00** (16:00 ET close)
+and today's opening spike at **13:30** (09:30 ET open). A first reading of an NVDA frame called the
+"09:00 flush" the open; it was **05:00 ET premarket**. Getting this wrong moves every event four
+hours and manufactures a session claim out of an overnight one.
+
+**💲 SPOT IS THE BANNER OR THE PRICE TAG — NEVER THE LAST VISIBLE CANDLE.** `MEASURED` — a zoomed or
+scrolled frame ends where the viewport ends, not at the latest bar. Five NVDA captures showed
+rightmost candles at 216.30–217.84 while the banner read 214.89–215.26; the banner was right
+(independent last trade 215.2659 at 11:04:41 ET, Thermal header 215.05 at 11:01:05 ET). At full fit
+the chart's own tag read 215.12 and agreed with its banner. The disagreement was the zoom.
+
+**Reference recipe — verified 2026-08-21.**
+`--surface vector --mode fullscreen --indicators "VWAP,Opening range" --zoom 9`
+→ 2512×1354, 46% ink, 0% dead band. Full RTH session, individual candles, both wall bands with
+their bead stacks, gamma flip, VWAP and opening-range levels all labelled.
+
+- **Indicators BEFORE full screen.** The other order drops the chart to column width — an identical
+  run went 2512×1354 → 1196×1398 portrait.
+- **The zoom wheel anchors at 90% width.** The chart zooms about the cursor, so a centre anchor
+  walks the newest bars off-frame: at `--zoom 11` the last candle shown was 12:12 on a chart live to
+  14:00. For a "caught it first" post the right edge *is* the evidence.
+- Vector ships with indicators already on (the trigger carries a badge count), so a named toggle can
+  turn one **off**. The run reports the resulting count.
+
 **Use when:** a level is doing the work — break, reclaim, repeated test.
 
 ---
@@ -327,6 +385,35 @@ contrasting product views.
 ---
 
 ## 5. Lessons log
+
+### 2026-08-21 — I read a chart four hours wrong, and the fix was to stop reasoning and measure
+
+Chasing an apparent contradiction — the Vector regime banner said NVDA spot ~215 while the chart's
+last visible candle read 216.30–217.84 — I built a theory that the banner was stale, and nearly
+wrote it down as a rule that said *never source a price from the banner*.
+
+It was exactly backwards. An independent last trade (215.2659 at 11:04:41 ET) and the Thermal header
+(215.05 at 11:01:05 ET) both agreed with the **banner**. What was wrong was my reading of the chart:
+a zoomed frame ends where the viewport ends, and the rightmost *visible* candle was simply not the
+latest bar. At full fit the chart's own price tag read 215.12 and agreed with its own banner all
+along.
+
+The same run turned up the real finding underneath: **the time axis is UTC.** The previous session's
+closing volume spike sits at "20:00" and today's opening spike at "13:30" — 16:00 ET and 09:30 ET.
+I had already described that 09:00 flush as the open in my own notes. It is 05:00 ET premarket.
+
+Three things worth keeping:
+
+1. **A discrepancy is a question, not a finding.** I had five captures showing the same gap and was
+   one step from publishing a rule built on the wrong half of it. What settled it was one unzoomed
+   capture bracketed by wall-clock, plus an independent price — thirty seconds of measurement
+   against an hour of plausible reasoning.
+2. **The honest intermediate answer was "I cannot resolve this from here."** The market-data feed I
+   reached for did not reconcile with the platform's own volumes, and saying so and going back to
+   the product beat picking whichever source flattered the theory.
+3. It is the operator's error class again, one level up. *Right number, wrong horizon* became
+   *right number, wrong clock.*
+
 
 Append-only. Newest first.
 
