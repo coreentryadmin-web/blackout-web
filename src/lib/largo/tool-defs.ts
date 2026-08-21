@@ -436,7 +436,7 @@ export const LARGO_TOOL_DEFS: AnthropicToolDef[] = [
 
   }, ["ticker", "indicator"]),
 
-  t("get_earnings_market", "UW ONLY — the current ET session's premarket/afterhours earnings. Trust each row's own `report_date` for which session it belongs to, and `as_of` for when it was read. Move/return fields are PERCENTS under `_pct` names; `expected_move` is a DOLLAR amount.", {}),
+  t("get_earnings_market", "UW ONLY — the current ET session's premarket/afterhours earnings. Trust each row's own `report_date` for which session it belongs to, and `as_of_session`/`as_of_weekday` for the ET session this was read on — do not infer today's session from a timestamp. Move/return fields are PERCENTS under `_pct` names; `expected_move` is a DOLLAR amount.", {}),
 
   t(
     "get_earnings_calendar",
