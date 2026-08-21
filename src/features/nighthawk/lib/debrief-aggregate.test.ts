@@ -170,10 +170,28 @@ test("gateBlockedValue: per-gate n / graded / would-have-won rate; unfilled coun
   assert.equal(band.unfilled_n, 1);
   assert.equal(band.would_have_won, 1);
   assert.equal(band.would_have_won_rate_pct, 33.3); // 1 of 3 decisive
+  assert.equal(band.decided_n, 3, "the rate denominator is wins+losses, NOT blocked_n(5) or graded_n(4)");
   assert.equal(band.low_n, true);
+  // The verbatim sentence: every number in it must agree, so a model cannot print "1 of 5 (33.3%)".
+  assert.match(band.summary, /blocked 5/);
+  assert.match(band.summary, /of the 3 that would have decided/);
+  assert.match(band.summary, /1 would have won \(33\.3%\)/);
+  assert.match(band.summary, /1 more would not have filled/);
   const target = lines.find((l) => l.gate === "target_unreachable")!;
   assert.equal(target.blocked_n, 1);
   assert.equal(target.would_have_won_rate_pct, 0);
+  assert.equal(target.decided_n, 1);
+});
+
+test("gateBlockedValue: a gate with no decisive counterfactual quotes NO rate, and says so", () => {
+  const lines = gateBlockedValue([
+    rejection({ gate_codes: ["stale_quote_basis"] }), // the default is an unfilled counterfactual
+  ]);
+  const g = lines.find((l) => l.gate === "stale_quote_basis")!;
+  assert.equal(g.decided_n, 0);
+  assert.equal(g.would_have_won_rate_pct, null);
+  assert.match(g.summary, /no win rate to quote/);
+  assert.doesNotMatch(g.summary, /%/, "a null rate must never render a percent");
 });
 
 // ── Published mirror (retro gates from the pinned margins) ───────────────────────────
