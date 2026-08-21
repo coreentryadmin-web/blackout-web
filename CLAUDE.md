@@ -54,6 +54,29 @@ write-up policy below, and still keep PRs small/single-issue — the standing au
 until CI is fixed; changes the user explicitly flags as deploy-risky (hold on a branch until
 they say go).
 
+**CROSS-PR ORDERING DEPENDENCIES — sequence them, do not race them (added 2026-08-21, after a
+red `main`).** Two PRs can each be green, each be correct in isolation, and still break `main` when
+composed. Measured that day: #2482 fixed `get_earnings_market`'s bare UTC stamp; #2421 shipped a
+new C1 ratchet (`src/lib/largo/contract/session-anchor.test.ts`) that listed the SAME file in its
+KNOWN_GAPS allowlist, deliberately deferring the fix rather than writing a second conflicting one.
+Correct call — but it made #2421 depend on #2482 landing SECOND. #2482 was already non-draft, so
+`automerge.yml` took it as soon as its checks went green, #2421 merged five minutes later, and the
+allowlist arrived describing a file that was already fixed. The "list SHRINKS" assertion fired,
+correctly, on `main` and on every open PR that rebased onto it (#2480, #2451, #2487 all went red on
+someone else's mistake). Fixed by #2486.
+
+The general shape: **an allowlist entry, a TODO, or a comment that defers to an OPEN PR is an
+ordering dependency, and `automerge.yml` does not know about it.** It merges by check-completion
+time, which is effectively random. So when one PR's correctness depends on another's merge state:
+land the deferred-to PR FIRST and confirm it is in `main` before releasing the dependent one, or
+put both in a single merge. Never release both and hope. And do not respond to the resulting
+breakage by weakening the guard — a ratchet that tolerates stale entries is the stale-by-omission
+failure it was written to prevent.
+
+**A merge is not a verification.** After merging anything whose correctness depends on the state of
+`main`, re-run the affected check AGAINST `origin/main` rather than trusting that the merge did what
+you expected. That is how the twenty-minute red window above was caught at all.
+
 ## PR write-up policy (standing instruction)
 Every PR — fix or docs — gets a deep, clean write-up so Cursor (a parallel agent working the
 same repo) can read the diff cold and understand it without asking follow-up questions:
