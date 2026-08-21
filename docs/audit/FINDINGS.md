@@ -272,7 +272,7 @@ Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 | **Also confirmed by the same probe — not defects** | `intel.report` carries verdict/score/confidence and 9 weighted pillars; `intel.thermal` carries spot, king strike, call/put wall, gamma flip and max pain; `expected_vs_realized` reads `{expected 7.7%, realized -1.77%, ratio 0.23, verdict "under"}` — and **-1.77 is `reaction_pct`, not `session_change_pct`**, so #2488 flows correctly into the implied-vs-realized comparison. I probed `d.report` and `intel.call_wall` first, found nothing, and nearly filed two phantom findings; both live one level down. Recorded so the next reader uses the right paths. |
 | **Still genuinely absent** | No explicit conflict/dissent field. The pillar leans make disagreement derivable (NVDA: 5 bullish / 0 bearish / 4 neutral), but a consumer has to compute it. Raised, not fixed here. |
 | **Gates on Node 20.20.2** | `npx tsc --noEmit` clean · `npm test` **9300 pass / 0 fail** · `npm run build` clean · `npx eslint` clean. |
-| **Status** | FIXED — PR #____ (draft). |
+| **Status** | FIXED — PR #2563 (draft). |
 
 ## 2026-08-21 — [FINDING, P2 Largo] Rule-7 sweep of the HELIX lane — two more places absence was published as measurement — FIXED
 
