@@ -12894,4 +12894,4 @@ against.
 | **Shared surface — declared** | `getFlowTapeSummary` (`src/lib/platform/flow-service.ts`) and `FlowTapeSummary` (`src/lib/platform/types.ts`) are read by ~15 callers across lanes. The change is **purely additive** (a new optional `pull_skew` field); every existing caller ignores it and is byte-unchanged, confirmed by the full suite. Flagged for the coordinator's merge sequencing. |
 | **Regression guard** | 3 tests: `sessionFlowSkew` accepts a minimal print shape (no cast), the same rows always yield the same skew regardless of order/slice, and an all-typeless pull reports `call_pct: null` rather than a fabricated balance. |
 | **Owed** | Live re-validation of the skew question against Largo once this deploys — the 34/60/83 spread should collapse to the single authoritative 60. Not done here (unmerged). |
-| **Status** | FIXED — gates on Node 20: tsc 0, eslint 0, build ok, 9058 pass / 0 fail. |
+| **Status** | FIXED — PR #2520. Gates on Node 20: tsc 0, eslint 0, build ok, 9058 pass / 0 fail. |
