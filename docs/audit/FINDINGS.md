@@ -4,55 +4,20 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
-## 2026-08-21 — [FINDING, P1 Tooling/CI] `main` went red on two individually-green PRs — a deferral outlived the PR it deferred to — FIXED
+## 2026-08-21 — [FINDING, P1 X marketing] `X_MARKETING_POSTS_PAUSED` did not stop all posting — a second publisher bypassed every gate — FIXED
 
 > **kind:** `FINDING`
 
 | Field | Detail |
 |---|---|
-| **Symptom** | `main` failed `src/lib/largo/contract/session-anchor.test.ts` (2 of 5) for ~20 minutes on `b860d47a`, and every open PR that rebased onto it inherited the failure. #2480, #2451 and #2487 all went red on a mistake in none of their diffs — confirmed by pulling each CI log, where the run's *only* two failures were `the known-gap list SHRINKS` and `every known gap still exists`. Three lanes were about to debug someone else's bug. |
-| **Root cause** | #2421 shipped the C1 ratchet with `src/lib/largo/run-tool.ts` listed in its `KNOWN_GAPS` allowlist, deferring that one fix to the meridian lane's open #2482 rather than writing a second, conflicting fix to the same six lines. The deferral was the right call. What was wrong was the implicit assumption that #2421 would land FIRST and #2482 would delete the entry on its way in. #2482 was already non-draft, so `automerge.yml` took it the moment its checks went green; #2421 merged five minutes later; and `main` acquired the fix and the "still broken" allowlist entry in the wrong order. |
-| **Why it wasn't caught earlier** | Both PRs were genuinely green — each was verified on Node 20 against a `main` that did not yet contain the other. There is no pre-merge check that composes two pending branches, and `automerge.yml` merges by check-completion time, which is effectively random. The failure mode only exists in the composition, so no amount of per-PR verification would have found it. Same shape as THE DRAFT DEADLOCK: nothing failed on its own. |
-| **Blast radius** | Every open PR at the time, plus `main` itself. Zero production impact — the defect was in a test's allowlist, not in shipped code, and the underlying payload was correctly anchored throughout (that was #2482's whole point). |
-| **Fix** | #2486 deletes the stale entry and its deferral comment. `main` re-verified GREEN by re-running the guard against `origin/main` after the merge rather than assuming the merge did what was intended — which is how the window was bounded at all. |
-| **What was deliberately NOT changed** | The shrink assertion was **not** softened to a warning. An allowlist that silently retains entries for already-fixed files is precisely the stale-by-omission failure it was written to prevent, and this repo has been bitten by that before. The guard behaved correctly at every step; the sequencing around it did not. |
-| **Standing rule added** | `CLAUDE.md` → "CROSS-PR ORDERING DEPENDENCIES — sequence them, do not race them". An allowlist entry, TODO or comment that defers to an OPEN PR is an ordering dependency that `automerge.yml` cannot see. Land the deferred-to PR first and confirm it is in `main` before releasing the dependent one, or put both in one merge — never release both and hope. Paired with "a merge is not a verification": re-run the affected check against `origin/main` after merging anything whose correctness depends on `main`'s state. |
-| **Gates** | Node 20.20.2 · `npx tsc --noEmit` clean · `npm test` **9040 pass / 0 fail / 1 skipped**. |
-| **Status** | FIXED — PR #2486; rule recorded in the same batch. |
-
-## How to read this file
-
-Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
-
-| kind | meaning |
-|---|---|
-| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
-| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
-| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
-
-An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
-itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
-else, and they are among the best-documented in the file — each was written by the PR that shipped
-its own fix.
-
-`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
-it** — down from 351 at the start, worked off with evidence, never by relabelling:
-
-| step | how |
-|---|---|
-| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
-| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
-| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
-| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
-| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
-
-Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
-the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
-
-Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
-PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
-
-Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
+| **Symptom** | `scripts/x-showcase-post.mjs --post` published to @BlackOutTrade while subject to **no** daily cap, **no** minimum spacing, **no** content validation and **no** pause flag. Setting `X_MARKETING_POSTS_PAUSED=1` stopped the `x-autopost` cron and left this path fully live. Measured by `grep -c` on the file before the fix: `postTweet` 2, `uploadMedia` 2, `checkPostGuard` **0**, `isTweetContentValid` **0**, `recordBudgetUse` **0**, `xMarketingPostsPaused` **0**. |
+| **Root cause** | The script carries its own inline OAuth `uploadMedia` + `postTweet` rather than importing `src/lib/x-api.ts`, and the gates live one layer above that API in `x-post-guard.ts` / `x-marketing-env.ts`. Reimplementing the transport silently opted the script out of every policy attached to the shared one. Nothing was deleted or disabled — the second path simply never had the gates. |
+| **Why it wasn't caught earlier** | It is operator-triggered (`npm run x-showcase:post`), not a cron, so it never appears in `cron-health`, never logs through `logCronRun`, and produces no signal when it runs. Nothing in the repo asserted that "every publisher honours the pause flag" — the property was true by convention of there being one publisher, and stopped being true when a second appeared. Same shape as the other jams in this log: no failure, no error, an invariant nobody had written down. |
+| **Blast radius** | The kill switch itself, which is the control of last resort for a live account. Also the rate budget: 7/day and 110-minute spacing are what keep @BlackOutTrade under X's limits, and two publishers spending one budget without either knowing about the other is the single most reliable way to get an account limited. Secondary: the admin X marketing panel under-reported the ET-day post count, because only `x-autopost` incremented it. `x-live-autopost.mjs` was audited for the same defect and does **not** have it. |
+| **Fix** | New `scripts/audit/lib/x-publish-guard.mjs` runs the gate before any X write, **importing** `xMarketingPostsPaused()`, `checkPostGuard()`, `isTweetContentValid()` and `recordBudgetUse()` from the production modules rather than reimplementing them — a second copy of a rule is the same fork in a different shape. The pause flag is hydrated into `process.env` from the `blackout-production/app/env` blob the script already loads, because the helper reads `process.env` and an operator's machine has none: reading `process.env` alone would have reported "not paused" regardless of what production says. A refusal writes the collage and manifest and publishes nothing — a normal outcome, not an error. `npm run x-showcase:*` now runs under `--import tsx` so the TS gates resolve. |
+| **What was deliberately NOT changed** | The `x-autopost` cron's schedule and paused state are untouched (lane brief reserves that call to the user). The inline OAuth transport was left in place rather than swapped for `x-api.ts` — that is a larger refactor than a gate fix and would change the script's credential handling; the gates are what was missing, not the transport. `X_DAILY_CAPS.posts` was left as telemetry rather than promoted to a cap: `checkPostGuard()` derives the count from the **live timeline**, so it already sees posts from every publisher including manual ones, which a local DB counter cannot. |
+| **Gates** | Node 20.20.2 · `npx tsc --noEmit` clean · eslint clean · 14 new unit tests on the pure refusal + env-hydration logic, including that the pause flag wins over every other failing input and that hydration never copies the wider production blob. |
+| **Status** | FIXED — this PR. Found while reading the existing X system for the x-content lane's step 1 (reported on #2494 as D3). |
 
 ## 2026-08-21 — [FINDING, P2 Meridian] The expected-move rail stacked labels closer together than a label is tall — FIXED
 
@@ -72,6 +37,125 @@ Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
 | **Still open, deliberately not in this PR** | Same run, `.mr` (Report) tab: `"Thermal nodes" ∩ "Vector expected move" 9x7px` and 4 clipped panel titles (`Vector expected move`, `Street / analysts`, `News & catalysts`, `Insider activity`), plus sub-24px tap targets on Report/Estimates/Positioning. Different root cause (grid column sizing, not tier geometry); a separate change. |
 | **Gates on Node 20.20.2** | `npx tsc --noEmit` clean · `npm test` **9043 pass / 0 fail** · `npm run build` clean · `npx eslint` clean. |
 | **Status** | FIXED — PR #2497 (draft). The fix itself is **not yet live-verified**: it is held by the CSS contract test, and the pixels must be re-measured once it ships. |
+
+## 2026-08-21 — [FINDING, P2 Meridian] Beat rates were published with no denominator, and `combined_beat_rate` averaged a 1-print rate with an 8-print one — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Why this exists** | Lane trap #3 — *a fill rate without its cohort is not a fact about the field* — applied to the Meridian earnings surface. Trap #2 produced #2488; this is the same lens turned on the rates. |
+| **Finding 1 — a rate with no n, driving a verdict** | `dualBeatRateFromPrints` and `beatRateFromPrints` returned bare numbers. Two consumers turn that number into a **directional lean** at a 0.65 / 0.35 threshold *and* render it as a confident percentage: `meridian-earnings-report-core.ts:239` (`"100% beat rate on recent prints"`, a bullish pillar with weight) and `meridian-earnings-intel-core.ts:246` (`"Historical beat rate 100% over recent prints"` in the model-facing rationale). A single graded print with `beat: true` satisfies both outright. |
+| **Measured, not asserted** | 40,000 live Benzinga prints, 2024-08 → 2026-08, 6,065 tickers, taking the newest 8 per ticker the way `benzingaRowsToPrintHistory` does: **10.2% of names that get an EPS beat rate at all get it from 1–2 graded prints** (revenue: 11.0%). 20–25% get no rate — correctly null, and that half was already right. So roughly one name in ten publishes a beat rate off a one- or two-print sample. |
+| **Finding 2 — an unweighted mean of two differently-sized rates** | `combined_beat_rate` was `(eps_rate + revenue_rate) / 2`, which weights a rate built on one print exactly as heavily as one built on eight. Of 4,484 live names carrying both, **140 (3.1%) have denominators differing by 3+ prints and 52 (1.2%) have one side ≤2 while the other is ≥6**. Now **pooled** — `(epsBeats + revBeats) / (epsN + revN)` — which is the identical number when the cohorts match (pinned by a test) and the honest one when they do not. Worked example in the tests: EPS 3/4 and revenue 0/1 gives **0.6 pooled** against **0.375 averaged**. |
+| **Finding 3 — one sentence, one half with its cohort and one without** | `print_history_summary` rendered `"5/8 EPS beats over last 8 prints · 62% rev beats"`. The EPS half carries its denominator; the revenue half, in the same string, does not — and revenue is graded on a **different subset**. Now `"… · 62% rev beats of 13"`. |
+| **Finding 4 — a rate printed beside somebody else's denominator** | `MeridianDesk.tsx` universe chip read `"12/40 printed · rev beat 62%"`. 40 is `names_count`, and it is **not** the denominator of 62% — that rate is a share of the historical prints the universe lookback could grade, a different and usually much larger set. A plausible wrong cohort is worse than a missing one, because the reader stops looking. Now `"12/40 printed · rev beat 62% of 96 prints"`. |
+| **Fix** | `dualBeatRateFromPrints` returns `eps_graded` / `revenue_graded` / `combined_graded` beside its three rates; `beatRateWithCohort` is the cohort-carrying sibling of `beatRateFromPrints` (which stays, for callers that genuinely only want the number). `meridian-earnings-intel.ts` resolves the rate and its cohort **once** and hands the pair to both consumers — resolving it twice invited them to disagree, and one rate reaching two readers with two denominators is the defect this exists to prevent. Every rendered string now names the count. |
+| **Absence stays absent, deliberately** | `cohortSuffix` returns `""` when the count is unknown rather than `" over 0 prints"`. A fabricated denominator beside a real percentage reads as a measurement; a missing one reads as missing. Pinned by a test that also asserts no `NaN`/`undefined`/`null` leaks into the sentence. |
+| **NOT changed — raised instead** | The 0.65 / 0.35 lean thresholds are untouched, so a 1-print 100% still produces a bullish pillar; it now says `"100% beat rate over 1 print"` where it used to say `"on recent prints"`. Gating the lean on a minimum cohort is a product behaviour change, so it goes to the coordinator rather than in here. |
+| **Regression guard** | 4 tests in `meridian-benzinga-earnings-core.test.ts` (every rate carries its count; null rate ⇒ zero count so "no rate" and "a rate of zero" cannot be confused; pooled ≠ averaged on the lopsided case; pooled **==** averaged when the cohorts match) and 4 in `meridian-earnings-intel-core.test.ts` (singular "1 print", plural "8 prints", the miss branch, and the unknown-cohort silence). Non-vacuous: stubbing `cohortSuffix` to `""` fails the rationale test. |
+| **Gates on Node 20.20.2** | `npx tsc --noEmit` clean · `npm test` **9053 pass / 0 fail** · `npm run build` clean · `npx eslint` clean (2 pre-existing `react-hooks/exhaustive-deps` warnings on `MeridianDesk.tsx`, present on `main` before this change — verified by stashing). |
+| **Status** | FIXED — PR #2513 (draft). Not yet live-verified. |
+
+## 2026-08-21 — [FINDING, P2 tooling] The Thermal interaction harness documented two filters it never implemented — 62 false collisions on a clean page — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Root cause** | `scripts/audit/thermal-interaction-audit.cjs` shipped in #2441 with a doc comment describing two collision filters — exclude off-screen leaves, exclude leaves clipped by a scrolling ancestor — and **neither was in the code**. I validated the filtered version locally, then copied the *unfiltered* scratchpad file into `scripts/audit/` when committing. The header even quotes the measured effect ("919 leaves to 130 and the hits to 3") that the shipped code cannot produce. |
+| **Why it matters more than a missing feature** | A harness that silently under-filters is worse than one that never claimed to filter: the doc tells the next reader the numbers are trustworthy. Run live against a healthy production `/heatmap` on 2026-08-21 it reported **62 text collisions** — implausible pairs like `"BlackOut Thermal" ∩ "798"`, a page header supposedly intersecting a strike deep in the matrix. Exactly the "real hits drown in the false ones" failure the comment warns about. |
+| **Second defect, same file** | The page-loaded gate used a flat **11s** sleep. Production hydrated at ~9s under load but had reported `HARNESS — page-loaded gate failed` minutes earlier on a page that was rendering perfectly. A fixed wait can only be too short (false HARNESS) or wastefully long. |
+| **Evidence** | Same page, same session, filters off vs on — desktop **910 leaves / 62 collisions → 135 / 3**; phone **910 / 62 → 91 / 4**. All remaining hits are a sticky `<thead>` over the rows beneath it, which is opaque and not a defect. |
+| **Fix** | #PENDING — both filters implemented as documented; the gate now **polls** to a 45s budget (`PROBE_GATE_MS`) and prints the observed `gate_ms`, with `document.body` guarded because it can still be null on the first poll and a mid-poll navigation must read as "not loaded yet" rather than aborting the run. A gate that never satisfies still reports `HARNESS`, never a product verdict. |
+| **Found by** | Rule 6 — running the harness against production to validate #2441, rather than trusting that it shipped as tested. |
+| **Status** | FIXED — validated live against production on both viewports; tap-target count independently confirms #2441 (24 sub-24px targets → 1, the intentional visually-hidden skip link). |
+
+## 2026-08-21 — [FINDING, P1 Largo/Night Hawk] #2477 merged and was NOT done — the tool a member's question routes to still published an outage as a quiet session — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Validating #2477 on production after its deploy drained, `get_zerodte_plays` returned: `plays` present (empty array), `source`, `session_date`, `fresh_finds`, `excluded_covered_elsewhere`, `rules` — and **`available`, `state`, `degraded`, `reason` and `note` all absent**. That is not the envelope #2477 ships. The defect it was written to close was still live on the surface that matters most. |
+| **How it was found** | Not by re-reading the diff — by asking live Largo to report VERBATIM every top-level key of the raw `get_zerodte_plays` tool result, and comparing that against what `zeroDteFeedEmptyEnvelope` emits. Merged is not done. |
+| **Root cause — two Largo surfaces, one fixed** | #2477 hardened `zeroDtePlaysFeed` (`src/lib/zerodte/scan.ts`), which backs the Largo **live feed** (`largo-live-feed.ts`). That fix is real and correct. But `get_zerodte_plays` does not call it: `run-tool.ts` routes to `zeroDtePlaysForLargo` in `src/lib/platform/zerodte-service.ts` — a **second** Largo-facing surface built from the board payload, which carried no availability envelope at all and never had one. One name, two functions, one of them fixed. |
+| **The fact was already there** | The board is careful about this. When the committed set cannot be read it blanks `setups`, refuses to print fresh finds, and sets `upstream_ok: upstream_ok && committedKnown` — its own comment calls that flag *"what marks the board itself degraded"*. `buildMinimalBoardFallback()` returns `upstream_ok: false` with `ledger: []` for exactly the Redis-and-build-both-down case, and `/api/market/zerodte/board` ships `upstream_ok` to the member's own desk. `zeroDtePlaysForLargo` dropped it. Rule 7: the fact exists in the system and is not wired to the consumer that needs it. |
+| **Fix** | New pure leaf `src/lib/zerodte/feed-envelope.ts` now holds **both** Largo surfaces' empty-state logic: `zeroDteFeedEmptyEnvelope` (moved verbatim from `scan.ts`, which re-exports it so existing callers and tests are untouched) and the new `zeroDtePlaysToolEnvelope`, which keys off `board.upstream_ok`. Unknown board + no plays → `available:false, degraded:true, reason:"board_upstream_unavailable"` and **no `plays` key at all**, so nothing downstream can count zero and call it a measurement. Known board + no plays → `available:true, state:"no_plays_committed"` with the same "MEASURED empty result" wording the live feed uses. Known plays on a degraded board → reportable, `degraded:true`, with the caveat that marks may be stale rather than implied. |
+| **Why one module** | The real guarantee is not the branch logic, it is that the two Largo surfaces now derive the same silence from the same place and cannot drift into two meanings for it — which is exactly how this defect survived its own fix. |
+| **Adjacent surfaces NOT fixed here — named, not silently left** | Four other consumers read `zeroDtePlaysForLargo().plays ?? []` and would still render an outage as "0 open plays": `src/lib/largo/morning-brief.ts:42`, `src/app/api/market/largo/status/route.ts:63`, `src/lib/largo/slash-prompts.ts:268` and — member-visible marketing copy — `src/lib/largo/social-content-pack.ts:99`. All four are `?? []`-guarded so this change does not break them, and all four are listed as coordinator-owned in the C1 `KNOWN_GAPS`. Flagging rather than taking them. |
+| **Blast radius** | `zeroDtePlaysForLargo`'s return shape (adds fields; `plays`/`fresh_finds`/`excluded_covered_elsewhere` omitted only on the unknown branch), plus the extraction of one pure function out of `scan.ts`. No gate, no grading, no board construction, no API route, no UI. |
+| **Regression guard** | `src/lib/zerodte/feed-envelope.test.ts` (+8, pure): an unreadable board omits `plays` entirely; a measured quiet session is reportable and says so; the two empty states never serialize alike; known plays on a degraded board stay reportable but say marks may be stale; a healthy board carries provenance and no needless caveat; every branch states its ET session; and both surfaces refuse to publish an unknown as an empty list. `scan.test.ts`'s 25 existing tests pass unchanged through the re-export. |
+| **Not a trading-behaviour change** | No gate, rail, sizing, exit rule or grading function is touched. No `sim:0dte` before/after is owed. |
+| **Status** | FIXED. |
+
+## 2026-08-21 — [FINDING, P1 Tooling/CI] `main` went red on two individually-green PRs — a deferral outlived the PR it deferred to — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `main` failed `src/lib/largo/contract/session-anchor.test.ts` (2 of 5) for ~20 minutes on `b860d47a`, and every open PR that rebased onto it inherited the failure. #2480, #2451 and #2487 all went red on a mistake in none of their diffs — confirmed by pulling each CI log, where the run's *only* two failures were `the known-gap list SHRINKS` and `every known gap still exists`. Three lanes were about to debug someone else's bug. |
+| **Root cause** | #2421 shipped the C1 ratchet with `src/lib/largo/run-tool.ts` listed in its `KNOWN_GAPS` allowlist, deferring that one fix to the meridian lane's open #2482 rather than writing a second, conflicting fix to the same six lines. The deferral was the right call. What was wrong was the implicit assumption that #2421 would land FIRST and #2482 would delete the entry on its way in. #2482 was already non-draft, so `automerge.yml` took it the moment its checks went green; #2421 merged five minutes later; and `main` acquired the fix and the "still broken" allowlist entry in the wrong order. |
+| **Why it wasn't caught earlier** | Both PRs were genuinely green — each was verified on Node 20 against a `main` that did not yet contain the other. There is no pre-merge check that composes two pending branches, and `automerge.yml` merges by check-completion time, which is effectively random. The failure mode only exists in the composition, so no amount of per-PR verification would have found it. Same shape as THE DRAFT DEADLOCK: nothing failed on its own. |
+| **Blast radius** | Every open PR at the time, plus `main` itself. Zero production impact — the defect was in a test's allowlist, not in shipped code, and the underlying payload was correctly anchored throughout (that was #2482's whole point). |
+| **Fix** | #2486 deletes the stale entry and its deferral comment. `main` re-verified GREEN by re-running the guard against `origin/main` after the merge rather than assuming the merge did what was intended — which is how the window was bounded at all. |
+| **What was deliberately NOT changed** | The shrink assertion was **not** softened to a warning. An allowlist that silently retains entries for already-fixed files is precisely the stale-by-omission failure it was written to prevent, and this repo has been bitten by that before. The guard behaved correctly at every step; the sequencing around it did not. |
+| **Standing rule added** | `CLAUDE.md` → "CROSS-PR ORDERING DEPENDENCIES — sequence them, do not race them". An allowlist entry, TODO or comment that defers to an OPEN PR is an ordering dependency that `automerge.yml` cannot see. Land the deferred-to PR first and confirm it is in `main` before releasing the dependent one, or put both in one merge — never release both and hope. Paired with "a merge is not a verification": re-run the affected check against `origin/main` after merging anything whose correctness depends on `main`'s state. |
+| **Gates** | Node 20.20.2 · `npx tsc --noEmit` clean · `npm test` **9040 pass / 0 fail / 1 skipped**. |
+| **Status** | FIXED — PR #2486; rule recorded in the same batch. |
+
+## 2026-08-21 — [FINDING, P3 Marketing] "How BlackOut Thinks" pipeline status badges (01-04) rendered as garbled double-exposed text on the live homepage — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Spotted while sourcing a full-page homepage screenshot for a cinematic showcase video: each of the four "How BlackOut Thinks" pipeline stage cards (IDENTIFY / VALIDATE / EXECUTE / RESULTS) shows a small top-right status badge that is supposed to read `● ONLINE` once the card scrolls into view. On the live capture it instead rendered as unreadable overlapping glyphs (visually: `•NOLNONEN E`) — confirmed live on all 4 stages, not a capture artifact. |
+| **Root cause** | Two independent mechanisms write the same label onto `.pipe-status` and neither knows about the other. `LandingRedesignFx.tsx`'s scroll `IntersectionObserver` sets `statusEl.innerHTML = '<span class="status-dot"></span>ONLINE'` the instant a stage becomes visible. Separately, `marketing-redesign.css` had `.pipe-stage.pipe-lit .pipe-status::after{content:"ONLINE";position:absolute;color:var(--g)}`. With no `top`/`left` set, an absolutely-positioned `::after` renders at its in-flow "static position" (CSS2.1 §10.3.7) — i.e. immediately after the preceding content, not offset away from it — so the CSS-generated "ONLINE" lands directly on top of the JS-authored "ONLINE", double-exposing into the garbled text seen live. |
+| **Evidence** | `src/components/landing/RedesignHome.tsx` seeds the four badges with static `OFFLINE` markup pre-hydration (lines 223/250/277/304, confirmed only 4 instances repo-wide); `src/components/landing/LandingRedesignFx.tsx:882` overwrites it to `ONLINE` on scroll-into-view; `src/app/marketing-redesign.css:772` (pre-fix) independently injected a second `ONLINE` via `::after` on the same lit state. Full-page crop of the live homepage screenshot shows all 4 badges affected identically once scrolled into view; zoomed per-badge crops confirm the two overlapping "ONLINE" strings. |
+| **Blast radius** | Contained to the marketing homepage's `.pipe-status` badges only (4 instances, one shared CSS rule) — no other component references `.pipe-status` or duplicates this pattern. |
+| **Fix** | Deleted the redundant `.pipe-stage.pipe-lit .pipe-status::after{content:"ONLINE";...}` CSS rule. `LandingRedesignFx.tsx` is left as the single source of truth for the lit-state label text (it was already gated on the identical `pipe-lit` trigger, so nothing else needed to change to keep the badge showing `ONLINE` once a stage scrolls into view). A comment now sits above `.pipe-status` in the CSS explaining why a `::after` must not be re-added there. |
+| **Why not caught** | Purely visual, sub-pixel-adjacent double-text — never threw, never failed a data/API check, and every existing audit harness in this repo validates numbers/data correctness, not homepage marketing-page rendering. It surfaced only because a video-asset screenshot was inspected closely enough to zoom into the badge. |
+| **Regression guard** | `src/components/landing/RedesignHome.seo.test.ts` (new case): asserts `LandingRedesignFx.tsx` still authors the lit `.pipe-status` label via `statusEl.innerHTML`, and asserts `marketing-redesign.css` contains no `.pipe-status::after{content:"ONLINE"|"OFFLINE"}` rule. Verified the guard actually catches the regression: reverting only the CSS fix (keeping the new test) fails the added test; reverting both passes only the 3 pre-existing tests. |
+| **Status** | FIXED on branch `fix/pipeline-status-badge-double-render`. |
+
+## 2026-08-21 — [FINDING, P2 Meridian] The Play-read banner squeezed its own label to zero width and cut its text mid-word — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | On the Meridian earnings Positioning/Report tabs, the **Play read** banner printed `PLAY` / `READ` and `Imminent` / `print` one word per line down a narrow sliver, while its guidance sentence ran off the right edge and was cut mid-word: *"…keep risk inside the ~3% options-implied band · king no—"*. The **Expected move** banner directly beneath it, same component, rendered perfectly. |
+| **Root cause** | `.meridian-analytics-banner-sub` carried `flex: none` (cannot shrink) **and** `white-space: nowrap` (cannot wrap). The sub is two different kinds of content: a short VALUE readout on the Expected-move banner (`"126.39 - 134.21 (chain_iv)"`, 24 chars) and a full SENTENCE on the Play-read banner (86 chars). Rigid and unwrappable, the long one held its max-content width, so `.meridian-analytics-banner-body` — the only shrinkable sibling — absorbed **every** pixel of shrinkage and collapsed. The banner's `overflow: hidden` then cut what did not fit. |
+| **Evidence** | Measured live on prod, desktop 1440, Positioning tab (BABA): **Play read** — `bannerW 1005, bodyW 0, headlineLines 7, subTextW 1031px, 96px past the content box`. **Expected move** — `bannerW 1005, bodyW 640, headlineLines 1, subTextW 294px, fits`. `bodyW: 0` is the label and headline squeezed out of existence; the difference between the two banners is `subLen` 86 vs 24. |
+| **The fix already existed at the wrong breakpoint** | A `@media (max-width: 640px)` block already carried `flex-wrap: wrap` with the comment *"On a phone the value wraps under rather than squeezing the headline to nothing"* — the exact failure, correctly diagnosed, but gated on **viewport width**. The trigger is not the viewport; it is the sub being longer than the room left beside the headline, which happens at 1440px too. The wrap is now unconditional. |
+| **Fix** | `.meridian-analytics-banner-sub` becomes `flex: 0 1 auto; min-width: 0; max-width: 100%; white-space: normal` — shrinkable and wrappable, the two properties whose absence caused the overflow. `.meridian-analytics-banner-body` gains a `12rem` basis as a floor so the label and headline cannot collapse again. `white-space: normal` breaks at **spaces only** — deliberately not `overflow-wrap: anywhere`, which would split `"126.39"` mid-number on the value-readout banner and trade one defect for another. |
+| **Blast radius** | `MeridianAnalyticsBanner` has **14 call sites** across `MeridianEventDetailPanel`, `MeridianDesk`, `MeridianEarningsTabs` and `MeridianEarningsIntelPanel`. Every one passing a sentence-length `sub` had this; every one passing a short readout was unaffected, which is why it read as one broken panel rather than a component bug. |
+| **Why not caught** | A selector-based UI check passes a banner whose text is clipped — `meridian-earnings-ui-audit.mjs` asserts the marks painted, and they did. Every property that matters lives in the stylesheet, so `tsc` and a render test both pass on the broken version. It needed pixels, and pixels needed the cohort guard from the same session: the harness had been judging a micro-cap whose Play-read banner never rendered at all. |
+| **Regression guard** | `src/features/meridian/components/meridian-banner-css.test.ts` (4 tests) reads `desk-app.css` and asserts the sub can shrink (`flex` is not `none`, `min-width: 0`), can wrap (`white-space` is not `nowrap`), does **not** wrap mid-word, that `flex-wrap` is unconditional, and that the body keeps a rem basis. Verified non-vacuous: restoring the old declarations fails all four. |
+| **Not yet live-verified** | Measured against the deployed (broken) build; the fix is verified by the CSS contract test, not by a post-deploy pixel re-measurement. Re-run `meridian-interaction-audit.mjs` once this ships. |
+| **Status** | FIXED. |
+
+## 2026-08-21 — [FINDING, P1 correctness] An AMC earnings reaction was measured open→close, so it excluded the overnight gap that IS the reaction — 31.6% carried the WRONG SIGN — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Why this exists** | STEP 3, auditing the MERIDIAN/Largo earnings surface against lane trap #2 — *"an earnings reaction must be anchored to BMO/AMC timing; getting it wrong INVERTS the number's meaning rather than degrading it."* The anchoring half was already fixed (`reactionForPrint` sends a post-close print to the FOLLOWING session). The audit found the trap still live one step further in: the right session was being read the wrong way. |
+| **Root cause** | `reactionForPrint` anchors correctly, then returns `reactionForYmd(anchor)`, whose `session_change_pct` is that session's **open→close**. For a post-close print the market prices the news **overnight**, so open→close measures everything *except* the reaction. `src/lib/meridian/meridian-reaction-core.ts:122-129`. |
+| **Measured, not argued** | 206 settled post-close prints, 30 large caps, 2023-12 → 2026-08, UW `report_time` × Polygon daily bars (window-derived limit, per trap #1): mean \|overnight gap\| **7.41%**, mean \|open→close on that session\| **3.05%**, mean \|close→close\| **8.11%**. **65 of 206 = 31.6%** of post-close prints had open→close carrying the **opposite sign** to what the print actually did; 155/206 = 75.2% were off by ≥3 percentage points. e.g. MSFT 2025-04-30 gapped +9.07% then drifted −1.32%: we reported −3.91%, the market did +3.95%. ORCL 2026-06-10: we reported +2.47%, the market did −8.53%. |
+| **Cohort size, not a corner case** | Post-close is the MAJORITY of the surface. Live Benzinga, 9,694 prints over 2026-04-01..2026-08-20: **54.4% AMC**, 43.8% BMO, 1.8% unknown. |
+| **Why the tests did not catch it** | `meridian-reaction-core.test.ts`'s AMC fixture opened at 102 having closed at 102 — **zero overnight gap**, so both reads agreed by construction and the test passed on a fixture that could not express the bug. A gapping fixture (`GAP_BARS`) is now pinned beside it, and the old one is annotated with why it cannot see this. |
+| **Blast radius — every earnings consumer read the wrong field** | `MeridianEarningsTabs.tsx:478` and `MeridianEarningsIntelPanel.tsx:113` printed it as "· X% session" (with a direction arrow); `MeridianEarningsHistoryPanel.tsx:34` fed it to implied-vs-realized; `meridian-viz-core.ts:255` assigned it to a field literally named `reactionPct`; `meridian-earnings-history.ts:21` averaged it into the model-facing `"avg session move"` string; `meridian-earnings-event-load-core.ts:15` used it as the *realized* side against an options-implied move — a comparison that understates realized against implied **by construction**, since an implied move prices the whole repricing event. |
+| **Fix** | `reaction_pct` + `reaction_measure` (`session_open_to_close` \| `prior_close_to_close`) on `PrintReaction`. AMC reads prior close → anchor close; BMO/unknown read open→close. `session_change_pct` keeps its exact old meaning and is still carried — it is a real quantity (the post-gap intraday drift), just not the reaction. Every consumer above now reads `reaction_pct`. The unit travels in the field, the same pattern as `reaction_basis` and `max_pain_basis`. |
+| **The unknown cohort, checked rather than assumed** | 176/9,694 prints classify `unknown`. **None** are null or empty — all are genuine mid-session timestamps (14:00, 11:00, 09:31…). A release at 14:00 IS priced in that session, so `assumed_report_session` + open→close is the right assumption, and it is already labelled as one. Not a defect; recorded so it is not re-investigated. |
+| **UW agrees with us, verified** | Since #2432 surfaces UW's own reaction fields, a divergent UW convention would put two conflicting numbers before the model. Checked against Polygon over 256 settled prints: UW's `post_earnings_move_1d` is **close→close on the next session for 148/148 postmarket** rows and **the report session for 107/107 premarket** rows. Zero disagreements, zero unmatched. UW's convention is exactly the one this fix adopts — which is also why our `session_change_pct` and UW's `post_earnings_move_1d_pct` had become two differently-measured "reactions" sitting side by side. |
+| **Checked and CLEARED** | No earnings path uses the un-anchored `stockReactionsForDates`; the OpEx and FDA paths do, deliberately and documented. `barWindowForDates` runs to today with a window-derived limit, so trap #1 does not truncate the anchor session away. |
+| **Regression guard** | 5 new tests in `meridian-reaction-core.test.ts` (gap-inclusive AMC read; the sign inversion pinned explicitly; BMO's two reads must stay equal; unknown-timing measure; an AMC print whose own report-date bar is missing yields no reaction rather than substituting the session read) and 2 in `pre-earnings-history-rows.test.ts`. The existing key-completeness test caught the two new fields, as designed. |
+| **Gates on Node 20.20.2** | `npx tsc --noEmit` clean · `npm test` **8994 pass / 0 fail** · `npm run build` clean · `npx eslint` clean. |
+| **Status** | FIXED — PR #2488 (draft). NOT yet live-validated; the deployed UI must be re-checked once this ships. |
 
 ## 2026-08-21 — [FINDING, P2 Largo] Rule-7 sweep of the HELIX lane — two more places absence was published as measurement — FIXED
 
@@ -480,6 +564,40 @@ production after deploy to confirm the `Allow: /api/og` lines are served.
 
 **Follow-up, not fixed here.** `ExpiryConcentration.tsx`'s `bucketLabel` tests `dte === 0`, so an already-expired print (negative DTE from the tape's SQL) renders under **"This week"**. Member-facing render change; separate branch.
 
+## How to read this file
+
+Every entry carries a `kind` tag, added by `scripts/audit/findings-reconcile.mjs` on 2026-08-08:
+
+| kind | meaning |
+|---|---|
+| `FINDING` | a real issue. The default — anything the classifier could not confidently place stays here, because losing a finding is worse than keeping noise. |
+| `NEGATIVE-RESULT` | a cause that was **ruled out**. Keep it: its value is stopping someone re-investigating. |
+| `OPS-NOTE` | infra/ops housekeeping, not a product finding. |
+
+An entry's outcome may be recorded in EITHER a `| **Status** | ... |` table row OR the heading
+itself (`## ... — FIXED`). Both count as reconciled. 34 entries use the heading form and nothing
+else, and they are among the best-documented in the file — each was written by the PR that shipped
+its own fix.
+
+`> **status:** \`UNRECONCILED\`` marks an entry whose real state is unknown. **71 entries carry
+it** — down from 351 at the start, worked off with evidence, never by relabelling:
+
+| step | how |
+|---|---|
+| 351 → 273 | pass logs moved to `RUN-LOG.md`; every entry tagged with a `kind` |
+| 273 → 240 | 34 entries record the outcome in the HEADING (`## … — FIXED`), which the reader was missing |
+| 240 → 194 | 50 mid-flight "PR pending → CI →" statuses resolved against the tree (`findings-verify-stale.mjs`) |
+| 194 → 129 | 65 entries cite a PR the GitHub API confirms MERGED (`findings-resolve-prs.mjs`) |
+| 129 → 71  | 76 entries record the outcome as PROSE (`**Status.** FIXED on …`) — a third format the reader was missing |
+
+Three of those five steps were reader bugs, not backlog: the file recorded an outcome in a shape
+the tool did not read. **If a large batch looks unreconciled, suspect the reader before the data.**
+
+Known gap: `findings-verify-stale.mjs` still only reads the table-row format, so ~14 entries whose
+PROSE status says "PR pending" stay flagged. They are genuinely unverified, so flagged is correct.
+
+Routine "all validators GREEN" pass logs now live in `RUN-LOG.md`, not here.
+
 ## 2026-08-21 — [FINDING, P1 member-visible] `/heatmap` showed a green pulsing "Quote live" over SPY's 16:00 close at 20:41 ET — FIXED
 
 > **kind:** `FINDING`
@@ -548,20 +666,6 @@ production after deploy to confirm the `Allow: /api/og` lines are served.
 | **Status** | FIXED — both Largo pin readers adopt the shared precision map. Gates on Node 20 (branched off `main` @ 7a28522): `tsc --noEmit` clean, 8802 pass / 0 fail, `npm run build` clean, eslint clean. |
 
 **Lesson worth keeping — the same one, now with a second instance to prove it.** #2423 concluded that *a centralized fix is not adopted until every call site imports it*. Acting on that as a literal instruction — grep the map's importers, not the map's existence — found this within minutes. The map had three importers and the defect class had at least five call sites. **An importer count is a cheap, mechanical audit that nobody had run**, and it is worth running for every shared helper whose whole purpose is to prevent a class of defect.
-
-## 2026-08-21 — [FINDING, P2 tooling] The Thermal interaction harness documented two filters it never implemented — 62 false collisions on a clean page — FIXED
-
-> **kind:** `FINDING`
-
-| Field | Detail |
-|---|---|
-| **Root cause** | `scripts/audit/thermal-interaction-audit.cjs` shipped in #2441 with a doc comment describing two collision filters — exclude off-screen leaves, exclude leaves clipped by a scrolling ancestor — and **neither was in the code**. I validated the filtered version locally, then copied the *unfiltered* scratchpad file into `scripts/audit/` when committing. The header even quotes the measured effect ("919 leaves to 130 and the hits to 3") that the shipped code cannot produce. |
-| **Why it matters more than a missing feature** | A harness that silently under-filters is worse than one that never claimed to filter: the doc tells the next reader the numbers are trustworthy. Run live against a healthy production `/heatmap` on 2026-08-21 it reported **62 text collisions** — implausible pairs like `"BlackOut Thermal" ∩ "798"`, a page header supposedly intersecting a strike deep in the matrix. Exactly the "real hits drown in the false ones" failure the comment warns about. |
-| **Second defect, same file** | The page-loaded gate used a flat **11s** sleep. Production hydrated at ~9s under load but had reported `HARNESS — page-loaded gate failed` minutes earlier on a page that was rendering perfectly. A fixed wait can only be too short (false HARNESS) or wastefully long. |
-| **Evidence** | Same page, same session, filters off vs on — desktop **910 leaves / 62 collisions → 135 / 3**; phone **910 / 62 → 91 / 4**. All remaining hits are a sticky `<thead>` over the rows beneath it, which is opaque and not a defect. |
-| **Fix** | #PENDING — both filters implemented as documented; the gate now **polls** to a 45s budget (`PROBE_GATE_MS`) and prints the observed `gate_ms`, with `document.body` guarded because it can still be null on the first poll and a mid-poll navigation must read as "not loaded yet" rather than aborting the run. A gate that never satisfies still reports `HARNESS`, never a product verdict. |
-| **Found by** | Rule 6 — running the harness against production to validate #2441, rather than trusting that it shipped as tested. |
-| **Status** | FIXED — validated live against production on both viewports; tap-target count independently confirms #2441 (24 sub-24px targets → 1, the intentional visually-hidden skip link). |
 
 ## 2026-08-19 — [FINDING, P0 correctness] `main` went red with every PR green — #2365 and #2366 collided on the 0DTE expiry resolver — FIXED
 
@@ -12829,53 +12933,17 @@ against.
 | **Gates** | `npx tsc --noEmit` clean · `npm test` **8854 pass / 0 fail** (Node 20.20.2) · `npm run build` clean · `npx eslint` clean. |
 | **Status** | FIXED — PR #2477. |
 
-## 2026-08-21 — [FINDING, P3 Marketing] "How BlackOut Thinks" pipeline status badges (01-04) rendered as garbled double-exposed text on the live homepage — FIXED
+## 2026-08-21 — [FINDING, P2 Largo/Night Hawk] Largo fabricated "the market opened at 9:30 and the scan is running" at 05:00 ET — FIXED
 
 > **kind:** `FINDING`
 
 | Field | Detail |
 |---|---|
-| **Symptom** | Spotted while sourcing a full-page homepage screenshot for a cinematic showcase video: each of the four "How BlackOut Thinks" pipeline stage cards (IDENTIFY / VALIDATE / EXECUTE / RESULTS) shows a small top-right status badge that is supposed to read `● ONLINE` once the card scrolls into view. On the live capture it instead rendered as unreadable overlapping glyphs (visually: `•NOLNONEN E`) — confirmed live on all 4 stages, not a capture artifact. |
-| **Root cause** | Two independent mechanisms write the same label onto `.pipe-status` and neither knows about the other. `LandingRedesignFx.tsx`'s scroll `IntersectionObserver` sets `statusEl.innerHTML = '<span class="status-dot"></span>ONLINE'` the instant a stage becomes visible. Separately, `marketing-redesign.css` had `.pipe-stage.pipe-lit .pipe-status::after{content:"ONLINE";position:absolute;color:var(--g)}`. With no `top`/`left` set, an absolutely-positioned `::after` renders at its in-flow "static position" (CSS2.1 §10.3.7) — i.e. immediately after the preceding content, not offset away from it — so the CSS-generated "ONLINE" lands directly on top of the JS-authored "ONLINE", double-exposing into the garbled text seen live. |
-| **Evidence** | `src/components/landing/RedesignHome.tsx` seeds the four badges with static `OFFLINE` markup pre-hydration (lines 223/250/277/304, confirmed only 4 instances repo-wide); `src/components/landing/LandingRedesignFx.tsx:882` overwrites it to `ONLINE` on scroll-into-view; `src/app/marketing-redesign.css:772` (pre-fix) independently injected a second `ONLINE` via `::after` on the same lit state. Full-page crop of the live homepage screenshot shows all 4 badges affected identically once scrolled into view; zoomed per-badge crops confirm the two overlapping "ONLINE" strings. |
-| **Blast radius** | Contained to the marketing homepage's `.pipe-status` badges only (4 instances, one shared CSS rule) — no other component references `.pipe-status` or duplicates this pattern. |
-| **Fix** | Deleted the redundant `.pipe-stage.pipe-lit .pipe-status::after{content:"ONLINE";...}` CSS rule. `LandingRedesignFx.tsx` is left as the single source of truth for the lit-state label text (it was already gated on the identical `pipe-lit` trigger, so nothing else needed to change to keep the badge showing `ONLINE` once a stage scrolls into view). A comment now sits above `.pipe-status` in the CSS explaining why a `::after` must not be re-added there. |
-| **Why not caught** | Purely visual, sub-pixel-adjacent double-text — never threw, never failed a data/API check, and every existing audit harness in this repo validates numbers/data correctness, not homepage marketing-page rendering. It surfaced only because a video-asset screenshot was inspected closely enough to zoom into the badge. |
-| **Regression guard** | `src/components/landing/RedesignHome.seo.test.ts` (new case): asserts `LandingRedesignFx.tsx` still authors the lit `.pipe-status` label via `statusEl.innerHTML`, and asserts `marketing-redesign.css` contains no `.pipe-status::after{content:"ONLINE"|"OFFLINE"}` rule. Verified the guard actually catches the regression: reverting only the CSS fix (keeping the new test) fails the added test; reverting both passes only the 3 pre-existing tests. |
-| **Status** | FIXED on branch `fix/pipeline-status-badge-double-render`. |
-
-
-## 2026-08-21 — [FINDING, P2 Meridian] The Play-read banner squeezed its own label to zero width and cut its text mid-word — FIXED
-
-> **kind:** `FINDING`
-
-| Field | Detail |
-|---|---|
-| **Symptom** | On the Meridian earnings Positioning/Report tabs, the **Play read** banner printed `PLAY` / `READ` and `Imminent` / `print` one word per line down a narrow sliver, while its guidance sentence ran off the right edge and was cut mid-word: *"…keep risk inside the ~3% options-implied band · king no—"*. The **Expected move** banner directly beneath it, same component, rendered perfectly. |
-| **Root cause** | `.meridian-analytics-banner-sub` carried `flex: none` (cannot shrink) **and** `white-space: nowrap` (cannot wrap). The sub is two different kinds of content: a short VALUE readout on the Expected-move banner (`"126.39 - 134.21 (chain_iv)"`, 24 chars) and a full SENTENCE on the Play-read banner (86 chars). Rigid and unwrappable, the long one held its max-content width, so `.meridian-analytics-banner-body` — the only shrinkable sibling — absorbed **every** pixel of shrinkage and collapsed. The banner's `overflow: hidden` then cut what did not fit. |
-| **Evidence** | Measured live on prod, desktop 1440, Positioning tab (BABA): **Play read** — `bannerW 1005, bodyW 0, headlineLines 7, subTextW 1031px, 96px past the content box`. **Expected move** — `bannerW 1005, bodyW 640, headlineLines 1, subTextW 294px, fits`. `bodyW: 0` is the label and headline squeezed out of existence; the difference between the two banners is `subLen` 86 vs 24. |
-| **The fix already existed at the wrong breakpoint** | A `@media (max-width: 640px)` block already carried `flex-wrap: wrap` with the comment *"On a phone the value wraps under rather than squeezing the headline to nothing"* — the exact failure, correctly diagnosed, but gated on **viewport width**. The trigger is not the viewport; it is the sub being longer than the room left beside the headline, which happens at 1440px too. The wrap is now unconditional. |
-| **Fix** | `.meridian-analytics-banner-sub` becomes `flex: 0 1 auto; min-width: 0; max-width: 100%; white-space: normal` — shrinkable and wrappable, the two properties whose absence caused the overflow. `.meridian-analytics-banner-body` gains a `12rem` basis as a floor so the label and headline cannot collapse again. `white-space: normal` breaks at **spaces only** — deliberately not `overflow-wrap: anywhere`, which would split `"126.39"` mid-number on the value-readout banner and trade one defect for another. |
-| **Blast radius** | `MeridianAnalyticsBanner` has **14 call sites** across `MeridianEventDetailPanel`, `MeridianDesk`, `MeridianEarningsTabs` and `MeridianEarningsIntelPanel`. Every one passing a sentence-length `sub` had this; every one passing a short readout was unaffected, which is why it read as one broken panel rather than a component bug. |
-| **Why not caught** | A selector-based UI check passes a banner whose text is clipped — `meridian-earnings-ui-audit.mjs` asserts the marks painted, and they did. Every property that matters lives in the stylesheet, so `tsc` and a render test both pass on the broken version. It needed pixels, and pixels needed the cohort guard from the same session: the harness had been judging a micro-cap whose Play-read banner never rendered at all. |
-| **Regression guard** | `src/features/meridian/components/meridian-banner-css.test.ts` (4 tests) reads `desk-app.css` and asserts the sub can shrink (`flex` is not `none`, `min-width: 0`), can wrap (`white-space` is not `nowrap`), does **not** wrap mid-word, that `flex-wrap` is unconditional, and that the body keeps a rem basis. Verified non-vacuous: restoring the old declarations fails all four. |
-| **Not yet live-verified** | Measured against the deployed (broken) build; the fix is verified by the CSS contract test, not by a post-deploy pixel re-measurement. Re-run `meridian-interaction-audit.mjs` once this ships. |
-| **Status** | FIXED. |
-
-## 2026-08-21 — [FINDING, P1 Largo/Night Hawk] #2477 merged and was NOT done — the tool a member's question routes to still published an outage as a quiet session — FIXED
-
-> **kind:** `FINDING`
-
-| Field | Detail |
-|---|---|
-| **Symptom** | Validating #2477 on production after its deploy drained, `get_zerodte_plays` returned: `plays` present (empty array), `source`, `session_date`, `fresh_finds`, `excluded_covered_elsewhere`, `rules` — and **`available`, `state`, `degraded`, `reason` and `note` all absent**. That is not the envelope #2477 ships. The defect it was written to close was still live on the surface that matters most. |
-| **How it was found** | Not by re-reading the diff — by asking live Largo to report VERBATIM every top-level key of the raw `get_zerodte_plays` tool result, and comparing that against what `zeroDteFeedEmptyEnvelope` emits. Merged is not done. |
-| **Root cause — two Largo surfaces, one fixed** | #2477 hardened `zeroDtePlaysFeed` (`src/lib/zerodte/scan.ts`), which backs the Largo **live feed** (`largo-live-feed.ts`). That fix is real and correct. But `get_zerodte_plays` does not call it: `run-tool.ts` routes to `zeroDtePlaysForLargo` in `src/lib/platform/zerodte-service.ts` — a **second** Largo-facing surface built from the board payload, which carried no availability envelope at all and never had one. One name, two functions, one of them fixed. |
-| **The fact was already there** | The board is careful about this. When the committed set cannot be read it blanks `setups`, refuses to print fresh finds, and sets `upstream_ok: upstream_ok && committedKnown` — its own comment calls that flag *"what marks the board itself degraded"*. `buildMinimalBoardFallback()` returns `upstream_ok: false` with `ledger: []` for exactly the Redis-and-build-both-down case, and `/api/market/zerodte/board` ships `upstream_ok` to the member's own desk. `zeroDtePlaysForLargo` dropped it. Rule 7: the fact exists in the system and is not wired to the consumer that needs it. |
-| **Fix** | New pure leaf `src/lib/zerodte/feed-envelope.ts` now holds **both** Largo surfaces' empty-state logic: `zeroDteFeedEmptyEnvelope` (moved verbatim from `scan.ts`, which re-exports it so existing callers and tests are untouched) and the new `zeroDtePlaysToolEnvelope`, which keys off `board.upstream_ok`. Unknown board + no plays → `available:false, degraded:true, reason:"board_upstream_unavailable"` and **no `plays` key at all**, so nothing downstream can count zero and call it a measurement. Known board + no plays → `available:true, state:"no_plays_committed"` with the same "MEASURED empty result" wording the live feed uses. Known plays on a degraded board → reportable, `degraded:true`, with the caveat that marks may be stale rather than implied. |
-| **Why one module** | The real guarantee is not the branch logic, it is that the two Largo surfaces now derive the same silence from the same place and cannot drift into two meanings for it — which is exactly how this defect survived its own fix. |
-| **Adjacent surfaces NOT fixed here — named, not silently left** | Four other consumers read `zeroDtePlaysForLargo().plays ?? []` and would still render an outage as "0 open plays": `src/lib/largo/morning-brief.ts:42`, `src/app/api/market/largo/status/route.ts:63`, `src/lib/largo/slash-prompts.ts:268` and — member-visible marketing copy — `src/lib/largo/social-content-pack.ts:99`. All four are `?? []`-guarded so this change does not break them, and all four are listed as coordinator-owned in the C1 `KNOWN_GAPS`. Flagging rather than taking them. |
-| **Blast radius** | `zeroDtePlaysForLargo`'s return shape (adds fields; `plays`/`fresh_finds`/`excluded_covered_elsewhere` omitted only on the unknown branch), plus the extraction of one pure function out of `scan.ts`. No gate, no grading, no board construction, no API route, no UI. |
-| **Regression guard** | `src/lib/zerodte/feed-envelope.test.ts` (+8, pure): an unreadable board omits `plays` entirely; a measured quiet session is reportable and says so; the two empty states never serialize alike; known plays on a degraded board stay reportable but say marks may be stale; a healthy board carries provenance and no needless caveat; every branch states its ET session; and both surfaces refuse to publish an unknown as an empty list. `scan.test.ts`'s 25 existing tests pass unchanged through the re-export. |
-| **Not a trading-behaviour change** | No gate, rail, sizing, exit rule or grading function is touched. No `sim:0dte` before/after is owed. |
+| **Symptom** | Stress-testing live Largo at 05:00 ET (pre-market): *"What 0DTE Command plays did the scanner reject today?"* Largo correctly said the rejection rows were from the PRIOR session — then added, present tense, **"the market opened at 9:30 AM ET and the scan cycle is still running. Check back after 10:30 AM ET."** The market was not open. Largo confidently stated a live session state that did not exist. |
+| **Root cause** | `zeroDteRejectionsForLargo` handed the model per-row `observed_at` timestamps but **no "as of now" anchor and no session phase** — nothing said what time it is now or whether the market is open. A tool that gives historical rows with no present-tense anchor invites the model to invent the one fact it is missing. This is the C1 session anchor gap (ET stamp + ET session date) plus the piece C1 alone does not carry: the session PHASE. |
+| **Fix** | New pure `src/lib/zerodte/session-phase.ts`: `currentZerodteSessionAnchor()` composes the shared clock helpers (`etStamp`, `etSessionDate`, `sessionHeat`, `etNowParts`, `isTradingDayEt`) into `{ as_of_et, session_date, session_state, session_note }`. `session_state` is the real phase (PRE_MARKET / OPENING_DRIVE / RTH / POST_COMMIT / LATE_SESSION / CLOSED) and `session_note` is a present-tense sentence the model states verbatim — e.g. pre-market: *"The market is NOT open yet — it is pre-market. Regular trading opens at 9:30 ET. Any 0DTE scan rows below are from a PRIOR session; the scanner has not run for today yet."* Both branches of `zeroDteRejectionsForLargo` (populated and empty) now carry it, and the payload tells the model to compare each row's `observed_at` against `session_date` rather than assume the rows are live. |
+| **Reusable, not a one-off** | The helper is standalone precisely so the other 0DTE tools that could invent session state can adopt it — the capability is general, not a hard-coded string for this one tool. |
+| **Blast radius** | `zeroDteRejectionsForLargo` (`get_zerodte_rejections`) plus the new pure helper. No provider, no scan logic, no grading, no gate. |
+| **Regression guard** | `session-phase.test.ts` (+3): the anchor always carries a phase and a present-tense note; the note and the phase never contradict each other on market-open (the exact live defect — a note claiming open while pre-market); and the ET anchor is a real ET stamp + session date, never a bare UTC instant. |
+| **Not a trading-behaviour change** | No gate, rail, sizing, exit rule or grading is touched. No `sim:0dte` owed. |
 | **Status** | FIXED. |
