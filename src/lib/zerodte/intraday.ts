@@ -6,7 +6,10 @@
 // Pure functions only; the scan does the fetching.
 
 import { etMinutesOf, NEW_PLAY_CUTOFF_ET_MINUTES } from "./plan";
-import { etStampFromMs } from "@/features/nighthawk/lib/session";
+// Largo product contract C1: ET stamps come from the SHARED helper (bar-session-date.ts,
+// #2418), never a local Intl call — one definition of "what session is it" across every
+// lane, so two tools can never disagree about today.
+import { etStamp } from "@/lib/largo/temporal/bar-session-date";
 
 export type IntradayBar = { t: number; h: number; l: number; c: number; v?: number };
 
@@ -116,7 +119,7 @@ export function computeIntradayRead(bars: IntradayBar[]): IntradayRead {
     day_high: Number.isFinite(dayHigh) ? Math.round(dayHigh * 100) / 100 : null,
     day_low: Number.isFinite(dayLow) ? Math.round(dayLow * 100) / 100 : null,
     last_bar_ms: rth[rth.length - 1]!.t,
-    last_bar_et: etStampFromMs(rth[rth.length - 1]!.t),
+    last_bar_et: etStamp(rth[rth.length - 1]!.t),
   };
 }
 
