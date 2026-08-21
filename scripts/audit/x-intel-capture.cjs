@@ -79,6 +79,29 @@ async function hideMarketingChrome(page) {
 
 
 /**
+ * Build a case-insensitive matcher from an operator-supplied string, ESCAPED.
+ *
+ * Every `--flag` on this script eventually becomes a Playwright `hasText` regex, and interpolating
+ * raw input into `new RegExp` is wrong twice over.
+ *
+ * CodeQL flags it as regular-expression injection, which for a local capture harness is a thin
+ * threat model. The reason it actually matters is that it is a live correctness bug: the Vector
+ * indicator menu labels its opening-range item "Opening range (30m)", and
+ * `new RegExp("Opening range (30m)")` reads those parentheses as a capture group, so the pattern
+ * becomes `Opening range 30m` and matches nothing. Verified: unescaped `false`, escaped `true`.
+ *
+ * A label with a metacharacter silently selects the wrong control or no control — exactly the
+ * failure class that cost a day on this file already, arriving through a different door.
+ *
+ * `anchor: true` wraps in ^...$ AFTER escaping, so the anchors are the matcher's and never the
+ * caller's.
+ */
+function textMatch(value, { anchor = true } = {}) {
+  const escaped = String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(anchor ? `^${escaped}$` : escaped, 'i');
+}
+
+/**
  * Render a container LARGER before screenshotting it.
  *
  * A dense table is the one thing this desk builds that a feed cannot carry. The Universe Scanner
@@ -172,7 +195,7 @@ async function meridian(page, o, log) {
   // an event-day post gets the macro report panel rather than whatever earnings row was nearest.
   if (o.eventClass) {
     const chip = page.locator('[aria-label="Filter catalysts"] button, .meridian-filter-chip', {
-      hasText: new RegExp(`^${o.eventClass}`, 'i'),
+      hasText: textMatch(o.eventClass, { anchor: false }),
     }).first();
     if (await chip.count()) { await chip.click(); await page.waitForTimeout(4000); log.push(`class→${o.eventClass}`); }
     const row = page.locator(`.meridian-theme-${o.eventClass.toLowerCase()}`).first();
@@ -195,7 +218,7 @@ async function meridian(page, o, log) {
   }
 
   if (o.panel) {
-    const tab = page.locator('[role="tab"]', { hasText: new RegExp(`^${o.panel}$`, 'i') }).first();
+    const tab = page.locator('[role="tab"]', { hasText: textMatch(o.panel) }).first();
     if (await tab.count()) {
       await tab.click(); await page.waitForTimeout(6000);
       if (await tab.getAttribute('aria-selected') !== 'true') throw new Error(`tab ${o.panel} did not select`);
@@ -258,7 +281,7 @@ async function scanner(page, o, log) {
   if (await summary.count()) { await summary.click().catch(() => {}); await page.waitForTimeout(3000); }
 
   const preset = o.preset || 'Nearest flip';
-  const btn = page.locator('[aria-label="Screener view"] button', { hasText: new RegExp(preset, 'i') }).first();
+  const btn = page.locator('[aria-label="Screener view"] button', { hasText: textMatch(preset, { anchor: false }) }).first();
   if (!(await btn.count())) throw new Error(`scanner preset "${preset}" not found`);
   await btn.click();
   await page.waitForTimeout(6000);
@@ -320,7 +343,7 @@ async function thermal(page, o, log) {
     if (await toggle.count()) { await toggle.click(); await page.waitForTimeout(3000); log.push('grid→on'); }
     const combo = page.locator('[aria-label="Sector compare preset"]').first();
     await combo.click(); await page.waitForTimeout(800);
-    await page.locator('[role="listbox"] [role="option"]', { hasText: new RegExp(`^${o.sector}$`, 'i') }).first().click();
+    await page.locator('[role="listbox"] [role="option"]', { hasText: textMatch(o.sector) }).first().click();
     await page.waitForTimeout(16000); log.push(`sector→${o.sector}`);
   }
 
@@ -365,7 +388,7 @@ async function thermal(page, o, log) {
     throw new Error(`expiry "${wantExpiry}" not among chips: ${chipTexts.slice(0, 8).join(", ")}`);
   }
 
-  const lensBtn = page.locator('.thermal-desk-lens-rail [role="tab"]', { hasText: new RegExp(`^${o.lens}$`, 'i') }).first();
+  const lensBtn = page.locator('.thermal-desk-lens-rail [role="tab"]', { hasText: textMatch(o.lens) }).first();
   if (await lensBtn.count()) { await lensBtn.click(); await page.waitForTimeout(2500); log.push(`lens→${o.lens}`); }
 
   if (!o.sector && VIEW_TABS[o.view]) {
@@ -408,7 +431,7 @@ async function vector(page, o, log) {
   }
   // horizon chip (0DTE / WEEKLY / MONTHLY)
   if (o.horizon) {
-    const h = page.locator('button', { hasText: new RegExp(`^${o.horizon}$`,'i') }).first();
+    const h = page.locator('button', { hasText: textMatch(o.horizon) }).first();
     if (await h.count()) { await h.click().catch(()=>{}); await page.waitForTimeout(4000); log.push(`horizon→${o.horizon}`); }
   }
 
@@ -438,7 +461,7 @@ async function vector(page, o, log) {
       await page.waitForTimeout(1200);
       for (const name of o.indicators.split(',').map((x) => x.trim()).filter(Boolean)) {
         const item = page
-          .locator('[role="menuitemcheckbox"] >> visible=true', { hasText: new RegExp(name, 'i') })
+          .locator('[role="menuitemcheckbox"] >> visible=true', { hasText: textMatch(name, { anchor: false }) })
           .first();
         if (!(await item.count())) { log.push(`indicator?${name} absent`); continue; }
         // An MA family the current timeframe cannot compute renders DISABLED ("needs ≥N bars").
@@ -485,7 +508,7 @@ async function vector(page, o, log) {
     const cmp = vis(page, 'button:text-is("Compare")');
     if (await cmp.count()) { await cmp.click(); await page.waitForTimeout(7000); log.push('mode→compare'); }
     if (o.preset) {
-      const pre = page.locator('button', { hasText: new RegExp(`^${o.preset}$`, 'i') }).first();
+      const pre = page.locator('button', { hasText: textMatch(o.preset) }).first();
       if (await pre.count()) { await pre.click(); await page.waitForTimeout(18000); log.push(`preset→${o.preset}`); }
     }
     const grid = page.locator('.vector-compare, [class*="compare"]').first();

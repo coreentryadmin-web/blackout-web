@@ -182,19 +182,6 @@ function contrastOverInk(rgba, width, height, bg) {
   return n ? sum / n : 1;
 }
 
-function meanAbsGradient(buf, width, height, stepY) {
-  let sum = 0;
-  let n = 0;
-  for (let y = 0; y < height; y += stepY) {
-    for (let x = 1; x < width; x += 1) {
-      const i = (y * width + x) * 4;
-      const j = (y * width + x - 1) * 4;
-      sum += Math.abs(luma(buf[i], buf[i + 1], buf[i + 2]) - luma(buf[j], buf[j + 1], buf[j + 2]));
-      n += 1;
-    }
-  }
-  return n ? sum / n : 0;
-}
 
 /**
  * Whether content runs into the frame edge — the measurable form of "cut-off panel".
