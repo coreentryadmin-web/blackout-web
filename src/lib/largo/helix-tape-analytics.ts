@@ -142,9 +142,18 @@ export function expiryConcentration(alerts: FlowAlert[], limit = 8, now: Date = 
   const map = new Map<string, { premium: number; count: number; dte: number }>();
   for (const a of alerts) {
     const key = String(a.expiry ?? "unknown").slice(0, 10);
-    const cur = map.get(key) ?? { premium: 0, count: 0, dte: dteOf(a, now) };
+    const rowDte = dteOf(a, now);
+    const cur = map.get(key) ?? { premium: 0, count: 0, dte: rowDte };
     cur.premium += a.premium;
     cur.count += 1;
+    // MIN, not first-seen. Every row under one expiry key should carry the same DTE — both come
+    // from the same ET-anchored query — so today these are identical and this changes nothing.
+    // But "should" was doing load-bearing work: first-seen makes the reported DTE depend on ROW
+    // ORDER, and this function's whole purpose is to stop a horizon being decided by ordering.
+    // Min is order-independent by construction, keeps SQL's authoritative (possibly negative,
+    // i.e. expired) value rather than recomputing it, and resolves any future disagreement toward
+    // the NEARER horizon — the conservative answer when the question is "is this 0DTE".
+    cur.dte = Math.min(cur.dte, rowDte);
     map.set(key, cur);
   }
   const total = [...map.values()].reduce((s, v) => s + v.premium, 0);
