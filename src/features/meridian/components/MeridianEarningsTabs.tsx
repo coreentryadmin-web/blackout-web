@@ -472,10 +472,10 @@ export function MeridianEarningsTabs({
                           EPS {row.eps_actual} vs {row.eps_estimate}
                         </span>
                       ) : null}
-                      {row.session_change_pct != null && (
+                      {(row.reaction_pct ?? row.session_change_pct) != null && (
                         <span className="meridian-history-move">
                           {" "}
-                          · {fmtPct(row.session_change_pct)} session
+                          · {fmtPct(row.reaction_pct ?? row.session_change_pct)} reaction
                         </span>
                       )}
                     </li>

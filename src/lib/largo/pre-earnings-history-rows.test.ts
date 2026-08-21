@@ -87,6 +87,8 @@ describe("toPreEarningsHistoryRows: the projection must not drop the reaction", 
       "surprise_pct",
       "beat",
       "expected_move_pct",
+      "reaction_pct",
+      "reaction_measure",
       "session_change_pct",
       "next_day_change_pct",
       "reaction_basis",
@@ -144,4 +146,34 @@ describe("weekday travels with every report date", () => {
     const rows = toPreEarningsHistoryRows([{ report_date: "2026-01-01" }]);
     assert.equal(rows[0].report_weekday, "Thursday");
   });
+});
+
+test("the pack row carries the REACTION, and says how it was read", () => {
+  // A post-close print that gapped up then faded. The two numbers disagree in sign, so a row
+  // that carried only `session_change_pct` would tell the model the stock fell on a print it
+  // rose on. Both travel, and `reaction_measure` says which is which.
+  const rows = toPreEarningsHistoryRows([
+    {
+      report_date: "2026-05-14",
+      reaction_pct: 7,
+      reaction_measure: "prior_close_to_close",
+      session_change_pct: -1.83,
+      next_day_change_pct: -0.93,
+      reaction_basis: "amc_next_session",
+    },
+  ]);
+
+  assert.equal(rows[0].reaction_pct, 7);
+  assert.equal(rows[0].reaction_measure, "prior_close_to_close");
+  assert.equal(rows[0].session_change_pct, -1.83, "still carried — it is a real quantity");
+  assert.equal(rows[0].reaction_assumed, false);
+});
+
+test("a print with no reaction at all claims neither a measure nor an assumption", () => {
+  const rows = toPreEarningsHistoryRows([
+    { report_date: "2026-05-14", reaction_basis: null, reaction_pct: null, session_change_pct: null },
+  ]);
+  assert.equal(rows[0].reaction_pct, null);
+  assert.equal(rows[0].reaction_measure, null);
+  assert.equal(rows[0].reaction_assumed, false);
 });
