@@ -1048,6 +1048,32 @@ export const LARGO_CAPABILITIES: readonly LargoCapability[] = [
     keywords: ["stock state", "overview", "breakdown", "summary"],
   },
   {
+    id: "platform.cross_product_read",
+    product: "PLATFORM",
+    tool: "get_cross_product_read",
+    answers:
+      "Do the products agree about this ticker, and where exactly do they disagree? Joins Helix, " +
+      "Thermal, Vector, Meridian and Night Hawk into one read.",
+    temporal: "live_only",
+    freshness: "fast",
+    entities: ["ticker"],
+    entitlement: "premium",
+    keywords: [
+      "cross product", "disagree", "disagreement", "conflict", "agree", "consensus",
+      "what matters", "why is", "what changed", "strongest setups", "across products",
+      "all products", "everything", "combined", "together",
+    ],
+    joinsWith: [],
+    caveat:
+      "Live only — this is a snapshot of what the products say NOW, joined at read time. It cannot " +
+      "answer what the products agreed about last Tuesday; nothing here is a stored history. " +
+      "A `split` verdict is REPORTED, never resolved — four products against one is not a vote, and " +
+      "the lone dissenter is often the reason to look twice. Always state `coverage`: an agreement " +
+      "among two products is not an agreement among five. Thermal deliberately casts no directional " +
+      "vote (dealer gamma is not a directional measurement), so its absence from the camps is " +
+      "correct behaviour and must not be reported as an outage.",
+  },
+  {
     id: "market.polygon_raw",
     product: "PLATFORM",
     tool: "get_polygon",
