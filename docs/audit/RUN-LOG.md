@@ -567,3 +567,39 @@ phase and a consistent denominator); #2525 and #2523 make them robust rather tha
 
 NOT a CI gate: it hits live prod, whose current state legitimately carries pending-deploy defects.
 It is a manual / scheduled post-close QA tool, like the truncation probe.
+
+## 2026-08-21 — Helix RTH live-product validation pass (market open, 09:36–11:40 ET)
+
+Live validation of the HELIX tape and its Largo surface during the open market, per the RTH
+heartbeat. Prod (`blackouttrades.com`), premium session, read-only.
+
+- **Tape flowing.** Market-wide + SPX pulls returned live prints, newest 0–1 min old (SPX 2h: 199
+  prints, $446M premium). Real-time ingestion, not a stale replay.
+- **Provider cross-check (direct, not our aggregate).** UW `flow-alerts` returned 200 live SPX
+  alerts (newest ~8 min old); our raw `option_trades` ingestion was *fresher* (1 min) — the two are
+  different UW products, and the freshness ordering is the expected one.
+- **#2520 + #2528 live-validated on the real session.** SPX authoritative `session.call_pct` = 78%
+  bullish (calls $1,276M vs puts $367M); the compare-card flow bias reads bullish off the *identical*
+  premiums (`compareSidesFrom` over the recent-session population), not carried by a LEAP whale.
+  Single-sourced, agrees — the property #2520/#2528 shipped.
+- **Absence vs measurement.** signal-outcomes reconcile exactly (graded 40 = 25 continued + 12 flat
+  + 3 reversed; every rate divides by a real denominator). Also caught + disambiguated a **transient
+  false-absence** — an SPX pull momentarily returned 0 prints; a re-pull showed 500. Reported the 0
+  as a stale read, not an empty tape.
+- **Window-claim vs window-used swept clean** across every HELIX model-facing tool: `helixDerived`
+  publishes no window claim (rolling windows anchored to nowMs), `flowBrief` and `tapeAnalytics`
+  route through `tapeWindowCoverage` (actual_hours + limit_reached); the compare card was the last
+  gap and is fixed by #2567.
+- **Member `/flows` UI** rendered clean on live data via `proxy-browser.cjs` (112 requests ok / 0
+  fail, live anomaly panel populated, no overflow).
+
+Defect found + shipped this session: **#2578** (signal follow-through rate carried a read-time
+`as_of` but no data-time window — `graded_window` added). Follow-up build shipped: **#2597** (C10
+`session_skew_baseline` — is today's skew unusual vs the ticker's recent norm).
+
+**Model-facing re-validation of #2567/#2578/#2597 is OWED and currently BLOCKED**: on 2026-08-21
+~17:40Z Largo's answering path is a live P0 (every question returns "couldn't pull enough live data",
+`tools_used` shows prefetch only, no answering tool reached — confirmed 3/3 on the HELIX lane,
+reported on #2591; Night Hawk owns the diagnosis). Until that is fixed AND each PR's deploy drains,
+`get_helix_signal_outcomes.graded_window`, `get_helix_thermal_compare.window_hours`, and
+`get_helix_tape_analytics.session_skew_baseline` cannot be exercised through their intended surface.
