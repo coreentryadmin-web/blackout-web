@@ -779,6 +779,7 @@ async function prepareLargoTurn(
         // model states an assumption as a measurement. `history_error` distinguishes "no prints
         // on file" from "we could not look" — an empty history with an error is not evidence.
         `Rows with \`reaction_assumed: true\` are ASSUMED, not measured — say so if you cite one. ` +
+        `\`as_of_session\`/\`as_of_weekday\` are the ET session this card was built on — use them as "today" rather than inferring one, and use each row's \`report_weekday\` rather than deriving it. ` +
         `A non-null \`history_error\` means the history could not be READ; an empty history under ` +
         `it is not evidence the company has no prints.\n` +
         `${JSON.stringify(preEarningsPack, null, 0).slice(0, 5000)}\n`

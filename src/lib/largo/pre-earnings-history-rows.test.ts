@@ -83,6 +83,7 @@ describe("toPreEarningsHistoryRows: the projection must not drop the reaction", 
     const rows = toPreEarningsHistoryRows([{ report_date: "2026-08-20" }]);
     const expected = [
       "report_date",
+      "report_weekday",
       "surprise_pct",
       "beat",
       "expected_move_pct",
@@ -114,5 +115,33 @@ describe("toPreEarningsHistoryRows: the projection must not drop the reaction", 
     assert.deepEqual(toPreEarningsHistoryRows(undefined), []);
     assert.deepEqual(toPreEarningsHistoryRows(PRINTS, 0), []);
     assert.deepEqual(toPreEarningsHistoryRows(PRINTS, -3), []);
+  });
+});
+
+describe("weekday travels with every report date", () => {
+  test("the report date's ET weekday is carried, so BMO/AMC reasoning need not infer it", () => {
+    // In production a model called 2026-08-18 a Monday. It is a Tuesday. BMO/AMC reasoning is
+    // weekday reasoning — the session that trades an after-close FRIDAY print is Monday, not
+    // Saturday — so the weekday has to travel with the date rather than be re-derived.
+    const rows = toPreEarningsHistoryRows([
+      { report_date: "2026-08-18" }, // Tuesday
+      { report_date: "2026-08-21" }, // Friday
+      { report_date: "2026-08-20" }, // Thursday
+    ]);
+    assert.equal(rows[0].report_weekday, "Tuesday");
+    assert.equal(rows[1].report_weekday, "Friday");
+    assert.equal(rows[2].report_weekday, "Thursday");
+  });
+
+  test("a row with no report date carries no weekday, rather than a fabricated one", () => {
+    const rows = toPreEarningsHistoryRows([{ report_date: null }]);
+    assert.equal(rows[0].report_weekday, null);
+  });
+
+  test("the weekday is ET, not UTC — the two disagree for a whole evening every day", () => {
+    // Parsing "YYYY-MM-DD" alone is UTC midnight, which lands on the PREVIOUS ET day and would
+    // report the wrong weekday for every date. weekdayEt anchors at noon for exactly this reason.
+    const rows = toPreEarningsHistoryRows([{ report_date: "2026-01-01" }]);
+    assert.equal(rows[0].report_weekday, "Thursday");
   });
 });

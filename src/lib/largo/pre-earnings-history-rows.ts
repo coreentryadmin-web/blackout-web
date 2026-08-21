@@ -22,6 +22,8 @@
  */
 
 /** The subset of `MeridianEarningsPrint` this projection reads. */
+import { weekdayEt } from "@/lib/largo/temporal/session-calendar";
+
 export type PrintHistoryInput = {
   report_date: string | null;
   surprise_pct?: number | null;
@@ -50,6 +52,13 @@ export type PreEarningsHistoryRow = {
    */
   reaction_basis: "bmo_session" | "amc_next_session" | "assumed_report_session" | null;
   /**
+   * The report date's ET weekday. BMO/AMC reasoning IS weekday reasoning — the session that
+   * trades an after-close Friday print is Monday, not Saturday — and a model got a weekday wrong
+   * in production on this surface. Carrying it removes the inference entirely.
+   * Null when the row has no report date to name a weekday for.
+   */
+  report_weekday: string | null;
+  /**
    * True when `session_change_pct` rests on an ASSUMPTION about report timing rather than a known
    * BMO/AMC stamp. Derived rather than left implicit: the model should not have to know that one
    * particular enum value out of three carries a caveat. Mirrors the "~" the Meridian UI paints.
@@ -76,6 +85,7 @@ export function toPreEarningsHistoryRows(
     session_change_pct: p.session_change_pct ?? null,
     next_day_change_pct: p.next_day_change_pct ?? null,
     reaction_basis: p.reaction_basis ?? null,
+    report_weekday: p.report_date ? weekdayEt(p.report_date) : null,
     // Only an actual measurement can be "assumed" — a null basis beside a null move means nothing
     // was measured at all, and flagging THAT as assumed would invent a caveat about a value that
     // does not exist.
