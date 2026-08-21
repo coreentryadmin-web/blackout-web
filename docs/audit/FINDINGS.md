@@ -549,6 +549,20 @@ production after deploy to confirm the `Allow: /api/og` lines are served.
 
 **Lesson worth keeping — the same one, now with a second instance to prove it.** #2423 concluded that *a centralized fix is not adopted until every call site imports it*. Acting on that as a literal instruction — grep the map's importers, not the map's existence — found this within minutes. The map had three importers and the defect class had at least five call sites. **An importer count is a cheap, mechanical audit that nobody had run**, and it is worth running for every shared helper whose whole purpose is to prevent a class of defect.
 
+## 2026-08-21 — [FINDING, P2 tooling] The Thermal interaction harness documented two filters it never implemented — 62 false collisions on a clean page — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Root cause** | `scripts/audit/thermal-interaction-audit.cjs` shipped in #2441 with a doc comment describing two collision filters — exclude off-screen leaves, exclude leaves clipped by a scrolling ancestor — and **neither was in the code**. I validated the filtered version locally, then copied the *unfiltered* scratchpad file into `scripts/audit/` when committing. The header even quotes the measured effect ("919 leaves to 130 and the hits to 3") that the shipped code cannot produce. |
+| **Why it matters more than a missing feature** | A harness that silently under-filters is worse than one that never claimed to filter: the doc tells the next reader the numbers are trustworthy. Run live against a healthy production `/heatmap` on 2026-08-21 it reported **62 text collisions** — implausible pairs like `"BlackOut Thermal" ∩ "798"`, a page header supposedly intersecting a strike deep in the matrix. Exactly the "real hits drown in the false ones" failure the comment warns about. |
+| **Second defect, same file** | The page-loaded gate used a flat **11s** sleep. Production hydrated at ~9s under load but had reported `HARNESS — page-loaded gate failed` minutes earlier on a page that was rendering perfectly. A fixed wait can only be too short (false HARNESS) or wastefully long. |
+| **Evidence** | Same page, same session, filters off vs on — desktop **910 leaves / 62 collisions → 135 / 3**; phone **910 / 62 → 91 / 4**. All remaining hits are a sticky `<thead>` over the rows beneath it, which is opaque and not a defect. |
+| **Fix** | #PENDING — both filters implemented as documented; the gate now **polls** to a 45s budget (`PROBE_GATE_MS`) and prints the observed `gate_ms`, with `document.body` guarded because it can still be null on the first poll and a mid-poll navigation must read as "not loaded yet" rather than aborting the run. A gate that never satisfies still reports `HARNESS`, never a product verdict. |
+| **Found by** | Rule 6 — running the harness against production to validate #2441, rather than trusting that it shipped as tested. |
+| **Status** | FIXED — validated live against production on both viewports; tap-target count independently confirms #2441 (24 sub-24px targets → 1, the intentional visually-hidden skip link). |
+
 ## 2026-08-19 — [FINDING, P0 correctness] `main` went red with every PR green — #2365 and #2366 collided on the 0DTE expiry resolver — FIXED
 
 > **kind:** `FINDING`
@@ -12846,6 +12860,24 @@ against.
 | **Why not caught** | A selector-based UI check passes a banner whose text is clipped — `meridian-earnings-ui-audit.mjs` asserts the marks painted, and they did. Every property that matters lives in the stylesheet, so `tsc` and a render test both pass on the broken version. It needed pixels, and pixels needed the cohort guard from the same session: the harness had been judging a micro-cap whose Play-read banner never rendered at all. |
 | **Regression guard** | `src/features/meridian/components/meridian-banner-css.test.ts` (4 tests) reads `desk-app.css` and asserts the sub can shrink (`flex` is not `none`, `min-width: 0`), can wrap (`white-space` is not `nowrap`), does **not** wrap mid-word, that `flex-wrap` is unconditional, and that the body keeps a rem basis. Verified non-vacuous: restoring the old declarations fails all four. |
 | **Not yet live-verified** | Measured against the deployed (broken) build; the fix is verified by the CSS contract test, not by a post-deploy pixel re-measurement. Re-run `meridian-interaction-audit.mjs` once this ships. |
+| **Status** | FIXED. |
+
+## 2026-08-21 — [FINDING, P1 Largo/Night Hawk] #2477 merged and was NOT done — the tool a member's question routes to still published an outage as a quiet session — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Validating #2477 on production after its deploy drained, `get_zerodte_plays` returned: `plays` present (empty array), `source`, `session_date`, `fresh_finds`, `excluded_covered_elsewhere`, `rules` — and **`available`, `state`, `degraded`, `reason` and `note` all absent**. That is not the envelope #2477 ships. The defect it was written to close was still live on the surface that matters most. |
+| **How it was found** | Not by re-reading the diff — by asking live Largo to report VERBATIM every top-level key of the raw `get_zerodte_plays` tool result, and comparing that against what `zeroDteFeedEmptyEnvelope` emits. Merged is not done. |
+| **Root cause — two Largo surfaces, one fixed** | #2477 hardened `zeroDtePlaysFeed` (`src/lib/zerodte/scan.ts`), which backs the Largo **live feed** (`largo-live-feed.ts`). That fix is real and correct. But `get_zerodte_plays` does not call it: `run-tool.ts` routes to `zeroDtePlaysForLargo` in `src/lib/platform/zerodte-service.ts` — a **second** Largo-facing surface built from the board payload, which carried no availability envelope at all and never had one. One name, two functions, one of them fixed. |
+| **The fact was already there** | The board is careful about this. When the committed set cannot be read it blanks `setups`, refuses to print fresh finds, and sets `upstream_ok: upstream_ok && committedKnown` — its own comment calls that flag *"what marks the board itself degraded"*. `buildMinimalBoardFallback()` returns `upstream_ok: false` with `ledger: []` for exactly the Redis-and-build-both-down case, and `/api/market/zerodte/board` ships `upstream_ok` to the member's own desk. `zeroDtePlaysForLargo` dropped it. Rule 7: the fact exists in the system and is not wired to the consumer that needs it. |
+| **Fix** | New pure leaf `src/lib/zerodte/feed-envelope.ts` now holds **both** Largo surfaces' empty-state logic: `zeroDteFeedEmptyEnvelope` (moved verbatim from `scan.ts`, which re-exports it so existing callers and tests are untouched) and the new `zeroDtePlaysToolEnvelope`, which keys off `board.upstream_ok`. Unknown board + no plays → `available:false, degraded:true, reason:"board_upstream_unavailable"` and **no `plays` key at all**, so nothing downstream can count zero and call it a measurement. Known board + no plays → `available:true, state:"no_plays_committed"` with the same "MEASURED empty result" wording the live feed uses. Known plays on a degraded board → reportable, `degraded:true`, with the caveat that marks may be stale rather than implied. |
+| **Why one module** | The real guarantee is not the branch logic, it is that the two Largo surfaces now derive the same silence from the same place and cannot drift into two meanings for it — which is exactly how this defect survived its own fix. |
+| **Adjacent surfaces NOT fixed here — named, not silently left** | Four other consumers read `zeroDtePlaysForLargo().plays ?? []` and would still render an outage as "0 open plays": `src/lib/largo/morning-brief.ts:42`, `src/app/api/market/largo/status/route.ts:63`, `src/lib/largo/slash-prompts.ts:268` and — member-visible marketing copy — `src/lib/largo/social-content-pack.ts:99`. All four are `?? []`-guarded so this change does not break them, and all four are listed as coordinator-owned in the C1 `KNOWN_GAPS`. Flagging rather than taking them. |
+| **Blast radius** | `zeroDtePlaysForLargo`'s return shape (adds fields; `plays`/`fresh_finds`/`excluded_covered_elsewhere` omitted only on the unknown branch), plus the extraction of one pure function out of `scan.ts`. No gate, no grading, no board construction, no API route, no UI. |
+| **Regression guard** | `src/lib/zerodte/feed-envelope.test.ts` (+8, pure): an unreadable board omits `plays` entirely; a measured quiet session is reportable and says so; the two empty states never serialize alike; known plays on a degraded board stay reportable but say marks may be stale; a healthy board carries provenance and no needless caveat; every branch states its ET session; and both surfaces refuse to publish an unknown as an empty list. `scan.test.ts`'s 25 existing tests pass unchanged through the re-export. |
+| **Not a trading-behaviour change** | No gate, rail, sizing, exit rule or grading function is touched. No `sim:0dte` before/after is owed. |
 | **Status** | FIXED. |
 
 ## 2026-08-21 — [FINDING, P2 Largo] Two HELIX tools resolved a session from a bare UTC instant — invisible to the file-level anchor ratchet — FIXED

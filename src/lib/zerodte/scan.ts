@@ -1843,44 +1843,12 @@ export async function syncLedgerLiveState(rows: ZeroDteSetupLogRow[]): Promise<Z
  *  heavier full-board rebuild: this ambient block only ever surfaces already-
  *  flagged ledger rows (never `setups`/`fresh_finds`), and importing
  *  zerodte-service.ts here would be circular (it imports FROM this module). */
-/**
- * The envelope an EMPTY 0DTE ledger read produces — and the reason the two empty states must
- * never serialize alike (Largo product contract C3).
- *
- * `committed_known` already distinguishes them (`readZeroDteLedgerChecked`, whose own doc says it
- * exists to say so "instead of lying 'empty'"). Pure and exported so both branches are testable
- * directly: the blind branch only occurs on the FIRST read of a session, which a cached test
- * module can never reach once any earlier test has primed the last-good latch.
- */
-export function zeroDteFeedEmptyEnvelope(
-  committedKnown: boolean,
-  session_date: string
-): Record<string, unknown> {
-  if (!committedKnown) {
-    // An UNKNOWN. Largo's system prompt treats this feed as the authoritative source for the
-    // turn, so reporting a quiet session here tells a member "no plays today" during an outage.
-    return {
-      available: false,
-      degraded: true,
-      reason: "ledger_unreadable",
-      session_date,
-      note:
-        "Today's committed 0DTE ledger could not be read and this replica has not seen it this " +
-        "session. This is NOT 'no plays today' — the committed set is UNKNOWN. Say the ledger " +
-        "is unreadable rather than reporting a quiet session.",
-    };
-  }
-  // A real, reportable answer: the scanner ran and nothing cleared the gates.
-  return {
-    available: true,
-    session_date,
-    plays: [],
-    state: "no_plays_committed",
-    note:
-      "The 0DTE scanner is running and no setup has cleared the commit gates this session — " +
-      "a MEASURED empty result, not a missing read. Report it as a quiet session.",
-  };
-}
+
+// The two empty states live in a pure leaf module so `get_zerodte_plays` (built from the board
+// payload, in platform/zerodte-service.ts) shares them rather than inventing a second meaning for
+// the same silence. Re-exported here because this is where callers and tests already look.
+import { zeroDteFeedEmptyEnvelope } from "./feed-envelope";
+export { zeroDteFeedEmptyEnvelope };
 
 export async function zeroDtePlaysFeed(): Promise<Record<string, unknown>> {
   // ABSENCE IS NOT EMPTINESS (Largo product contract C3).
