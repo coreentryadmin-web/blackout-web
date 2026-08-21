@@ -89,18 +89,35 @@ function inkRatio(rgba, width, height, { threshold = 12 } = {}) {
  * that is visibly a quarter empty. That specific mistake is recorded in the Largo card work and is
  * not repeated here.
  */
-function largestEmptyBand(rgba, width, height, { threshold = 12, minInkPerRow = 0.002 } = {}) {
+/**
+ * `gutter` EXISTS BECAUSE THE AXIS DEFEATED THIS CHECK.
+ *
+ * A Vector frame whose bottom third was visibly dead black scored `dead 0%`. The reason is that a
+ * price axis prints a label on EVERY row of the frame, so no row is ever empty across the full
+ * width and the run never starts — the metric was reporting on the axis, not on the chart.
+ *
+ * MEASURED 2026-08-21: the operator pointed at the black space and asked how much of it there was,
+ * and the scorer's answer was "none". Ignoring the right-hand gutter measures the plot instead.
+ * 8% of width comfortably covers the axis column without reaching into the candles.
+ */
+function largestEmptyBand(
+  rgba,
+  width,
+  height,
+  { threshold = 12, minInkPerRow = 0.002, gutter = 0.08 } = {},
+) {
   const bg = backgroundLuma(rgba, width, height);
+  const plotW = Math.max(1, Math.floor(width * (1 - gutter)));
   let best = 0;
   let run = 0;
   let bestStart = 0;
   let runStart = 0;
   for (let y = 0; y < height; y += 1) {
     let ink = 0;
-    for (let x = 0; x < width; x += 1) {
+    for (let x = 0; x < plotW; x += 1) {
       if (isInk(rgba, (y * width + x) * 4, bg, threshold)) ink += 1;
     }
-    if (ink / width < minInkPerRow) {
+    if (ink / plotW < minInkPerRow) {
       if (run === 0) runStart = y;
       run += 1;
       if (run > best) { best = run; bestStart = runStart; }
@@ -293,6 +310,18 @@ function scoreFrame(rgba, width, height) {
   // 100% there; rejecting that trains a reviewer to ignore the checker, which is worse than not
   // having one. Distinguishing intent from truncation is not something these pixels can do, so it
   // is surfaced for a human instead of decided for them.
+  // EMPTY SPACE IS A COMPOSITION FAULT LONG BEFORE IT IS A REJECT.
+  //
+  // The reject sits at 45%, which is a frame that is mostly nothing. But the operator pointed at a
+  // frame at 18% and asked how much black space it had — and at that level it is worth saying so,
+  // because a third of a chart showing no beads, no candles and no walls is a third of the reader's
+  // attention spent on grid lines.
+  //
+  // It is a WARNING and not a reject because the honest answer is per-ticker: NVDA's strikes sit
+  // 2.50 apart on a 215 underlying, so a frame wide enough to hold six bead levels necessarily
+  // holds gaps between them. Whether that gap is waste or context is a judgement about the story,
+  // and the pixels do not know the story.
+  if (emptyCells > 0.15 && emptyCells <= 0.45) warnings.push(`${(emptyCells * 100).toFixed(0)}% of the frame is empty region — tighten the price range if those levels are not part of the story`);
   if (edges.bottom > 0.5) warnings.push(`content reaches the bottom edge (${(edges.bottom * 100).toFixed(0)}%) — intended for a full-bleed chart, a truncated panel otherwise`);
   if (edges.top > 0.5) warnings.push(`content reaches the top edge (${(edges.top * 100).toFixed(0)}%)`);
 
