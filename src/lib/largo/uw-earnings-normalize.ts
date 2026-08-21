@@ -20,8 +20,23 @@
  *   2. PRECISION. 20 significant decimals on a quantity derived from two 2-decimal closes is
  *      false precision — it implies a measurement nobody made.
  *
- * `roundFloats`, the repo's response-shaping helper, is BLIND to all of this: it short-circuits
- * on `typeof v === "number"`, and every one of these values is a string.
+ * `roundFloats`, the repo's response-shaping helper, is BLIND to both: it short-circuits on
+ * `typeof v === "number"`, and every one of these values is a string.
+ *
+ * SCOPE — THIS MODULE FIXES (1) ONLY. #2419 (`core/round-for-reading.ts`) now rounds every tool
+ * result at the model's boundary and DOES handle numeric strings, so precision is already solved
+ * upstream of here. Measured on a real UW row:
+ *
+ *   raw          reaction "-0.0915"   expected_move_perc "0.05330873875951118285"
+ *   #2419 alone  reaction "-0.0915"   expected_move_perc "0.0533087"
+ *   this + #2419 reaction_pct -9.15   expected_move_pct  5.33
+ *
+ * #2419 fixes the decimals and cannot fix the units — a correctly-rounded fraction is still read
+ * as a percent. The two are complementary; this module deliberately does NOT re-round, and does
+ * NOT coerce provider strings to numbers, because #2419 preserves string type on purpose ("silently
+ * turning `\"7705\"` into `7705` would change the shape of a result that consumers and the model
+ * have both been reading as text"). The `_pct` fields below ARE emitted as numbers — they are values
+ * this module COMPUTES, not provider text passed through, so there is no provider shape to preserve.
  *
  * THE UNIT CONVENTION IS VERIFIED, NOT ASSUMED. Two independent live checks:
  *
@@ -87,20 +102,8 @@ const FRACTION_TO_PCT = new Map<string, string>(FRACTION_TO_PCT_ENTRIES);
  */
 const CANONICAL_NUMBER = /^-?(?:0|[1-9]\d*)(?:\.\d+)?$/;
 
-/** Keys that are identifiers even when they look numeric — never coerced. */
-const NEVER_NUMERIC: ReadonlySet<string> = new Set([
-  "ticker",
-  "symbol",
-  "benzinga_id",
-  "id",
-  "cusip",
-  "isin",
-  "figi",
-]);
-
-/** Percents get 2dp; everything else keeps 4, which is UW's own maximum real price precision. */
+/** Percents are rounded to 2dp here because this module computes them; nothing else is touched. */
 const PCT_DP = 2;
-const DEFAULT_DP = 4;
 
 function round(value: number, dp: number): number {
   if (!Number.isFinite(value) || Number.isInteger(value)) return value;
@@ -108,9 +111,13 @@ function round(value: number, dp: number): number {
   return Math.round(value * f) / f;
 }
 
-/** Parse a UW scalar to a number when it unambiguously is one; else null. */
-function asNumber(value: unknown, key: string): number | null {
-  if (NEVER_NUMERIC.has(key)) return null;
+/**
+ * Parse a fraction field's value to a number when it unambiguously is one; else null.
+ *
+ * Only ever called on a key in the rename table, so there is no identifier to protect here — an
+ * unparseable value simply yields a null percent rather than a guess.
+ */
+function asNumber(value: unknown): number | null {
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
   if (typeof value !== "string") return null;
   const s = value.trim();
@@ -137,7 +144,7 @@ export function normalizeUwEarnings<T>(value: T): T {
       for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
         const pctName = FRACTION_TO_PCT.get(k);
         if (pctName) {
-          const n = asNumber(val, k);
+          const n = asNumber(val);
           // A null/absent fraction stays null under the NEW name — dropping the key entirely
           // would make "UW has no reading" indistinguishable from "this field does not exist".
           out[pctName] = n == null ? null : round(n * 100, PCT_DP);
@@ -147,8 +154,9 @@ export function normalizeUwEarnings<T>(value: T): T {
       }
       return out;
     }
-    const n = asNumber(v, key);
-    return n == null ? v : round(n, DEFAULT_DP);
+    // Every non-fraction leaf passes through UNCHANGED — including numeric strings. Rounding and
+    // type are #2419's job at the tool boundary, and it preserves provider string shape on purpose.
+    return v;
   };
   return walk(value, "") as T;
 }

@@ -24,7 +24,7 @@ const WMT_ROW = {
   post_earnings_close: "7.2504",
 };
 
-describe("normalizeUwEarnings: units, types and precision", () => {
+describe("normalizeUwEarnings: units — and ONLY units", () => {
   test("a fraction becomes a percent under a _pct name — the 100x misread this prevents", () => {
     // WMT fell 9.15% on its print. Served raw as `reaction: "-0.0915"`, a model reading it as
     // a percent reports a 0.09% slip — a confident answer that is wrong by two orders of
@@ -43,14 +43,15 @@ describe("normalizeUwEarnings: units, types and precision", () => {
     assert.equal("expected_move_perc" in out, false);
   });
 
-  test("the DOLLAR fields keep their name and are not rescaled", () => {
+  test("the DOLLAR fields keep their name, their value and their provider type", () => {
     const out = normalizeUwEarnings(WMT_ROW) as Record<string, unknown>;
     // `expected_move` (dollars) sits right beside `expected_move_pct` (percent); confusing the
-    // two is the whole hazard, so the dollar one must survive untouched and unrenamed.
-    assert.equal(out.expected_move, 11.56);
-    assert.equal(out.street_mean_est, 2.09);
-    assert.equal(out.pre_earnings_close, 7.75);
-    assert.equal(out.post_earnings_close, 7.2504, "4dp is real price precision, not noise");
+    // two is the whole hazard, so the dollar one must survive completely untouched. It stays a
+    // STRING because #2419's boundary rounder preserves provider string shape on purpose.
+    assert.equal(out.expected_move, "11.56");
+    assert.equal(out.street_mean_est, "2.09");
+    assert.equal(out.pre_earnings_close, "7.75");
+    assert.equal(out.post_earnings_close, "7.2504");
   });
 
   test("24 decimals of false precision are cut to 2 on a percent", () => {
@@ -106,38 +107,29 @@ describe("normalizeUwEarnings: units, types and precision", () => {
     assert.equal(out.actual_eps, null);
   });
 
-  test("a numeric string becomes a number so arithmetic and comparison work", () => {
+  test("non-fraction leaves are not retyped — that is #2419's boundary, not this module's", () => {
+    // Deliberate deference. core/round-for-reading.ts rounds numeric strings AS STRINGS at the
+    // tool boundary, reasoning that turning "7705" into 7705 changes a shape consumers and the
+    // model already read as text. Coercing here would make the earnings tools the only UW-backed
+    // tools returning numbers — a second inconsistent convention in place of one.
     const out = normalizeUwEarnings(WMT_ROW) as Record<string, unknown>;
-    assert.equal(typeof out.marketcap, "number");
-    assert.equal(out.marketcap, 909_608_447_417);
-    assert.equal(typeof out.expected_move, "number");
+    assert.equal(typeof out.marketcap, "string");
+    assert.equal(out.marketcap, "909608447417");
+    assert.equal(typeof out.expected_move, "string");
   });
 
-  test("identifier-ish strings are never coerced into numbers", () => {
-    const out = normalizeUwEarnings({
+  test("identifiers and every other non-fraction field survive byte-identical", () => {
+    const raw = {
       ticker: "0001",
       symbol: "123",
       benzinga_id: "0042",
       cusip: "912810TL2",
-      // Leading zeros are not canonical JSON numbers, so this survives as a string even under
-      // a key that is not on the never-numeric list.
       some_code: "007",
-      // Scientific notation is left alone.
       exp_form: "1e5",
-      // Whitespace padding IS tolerated — it is an upstream formatting artifact, not meaning.
       padded: " 12 ",
-      // ...but trimming does not rescue a leading zero.
-      padded_id: " 007 ",
-    }) as Record<string, unknown>;
-
-    assert.equal(out.ticker, "0001");
-    assert.equal(out.symbol, "123");
-    assert.equal(out.benzinga_id, "0042");
-    assert.equal(out.cusip, "912810TL2");
-    assert.equal(out.some_code, "007");
-    assert.equal(out.exp_form, "1e5");
-    assert.equal(out.padded, 12);
-    assert.equal(out.padded_id, " 007 ");
+      note: "beat by a wide margin",
+    };
+    assert.deepEqual(normalizeUwEarnings(raw), raw);
   });
 
   test("nested and array shapes normalize — estimates arrive wrapped, rows arrive flat", () => {
@@ -175,16 +167,12 @@ describe("normalizeUwEarnings: units, types and precision", () => {
     assert.equal(out.eps_estimate_analyst_count, 48);
   });
 
-  test("no leaf survives with more than four decimal places", () => {
-    // The systemic guard: false precision must not come back through some field nobody listed.
-    const out = normalizeUwEarnings({
-      rows: [{ a: "1.23456789012345678", b: 9.87654321098, c: "0.0533087387595111828" }],
-    });
-
-    const decimals = (n: number) => (String(n).split(".")[1] ?? "").length;
-    for (const v of Object.values((out as { rows: Record<string, number>[] }).rows[0])) {
-      assert.ok(decimals(v) <= 4, `${v} kept ${decimals(v)} decimals`);
-    }
+  test("an over-precise NON-fraction field is left for #2419 to round, not silently kept", () => {
+    // This module must not quietly become a second rounder. It leaves the value alone; the
+    // boundary rounder that runs after every tool is what trims it. Asserting the handoff
+    // explicitly, so nobody later reads the passthrough as "precision is handled here".
+    const raw = { rows: [{ avg30_stock_volume: "45756696.409090909091" }] };
+    assert.deepEqual(normalizeUwEarnings(raw), raw);
   });
 
   test("normalizing twice changes nothing — the rename is not applied to its own output", () => {
@@ -204,9 +192,9 @@ test("a payload key colliding with Object.prototype is not treated as a fraction
     hasOwnProperty: "3",
   }) as Record<string, unknown>;
 
-  assert.equal(out.constructor, 0.5, "coerced as an ordinary numeric field, not renamed");
-  assert.equal(out.toString, 1.25);
-  assert.equal(out.hasOwnProperty, 3);
+  assert.equal(out.constructor, "0.5", "passed through as an ordinary field, not renamed");
+  assert.equal(out.toString, "1.25");
+  assert.equal(out.hasOwnProperty, "3");
   for (const k of Object.keys(out)) {
     assert.equal(typeof k, "string");
     assert.ok(!k.includes("function"), `${k} looks like a stringified function`);
