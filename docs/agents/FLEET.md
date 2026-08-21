@@ -116,6 +116,38 @@ Two cautions:
   — it keeps its own tool configuration, as the verification above shows. A trigger that SPAWNS a
   fresh session would give it no connector tools, which is a different and much worse outcome.
 
+## Keeping lanes alive without a coordinator — the heartbeat
+
+A lane session persists, but a lane that finishes its work and goes IDLE stays idle until something
+pokes it. If the only thing that pokes it is a coordinator session, the fleet stalls the moment
+that session ends. So each lane owns a **recurring trigger into itself**:
+
+```
+create_trigger(persistent_session_id: "<lane id>", cron_expression: "0 */6 * * *", prompt: ...)
+```
+
+Every 6 hours the lane is handed a turn that tells it to re-fetch `main`, run
+`agent-pr-sweep.mjs`, re-read its brief if it has lost context, rebase anything conflicted, and go
+find work if it has none. Nothing outside the lane has to be alive for that to happen.
+
+**This is why the connector caveat does not bite.** A trigger created from here stores no MCP
+connectors, and the `connectors` parameter is *not available for this organization* (verified —
+the call is rejected outright). That would cripple a trigger which **spawns a fresh session**: it
+would come up with no connector tools at all. A trigger firing into a **persistent** session has
+no such problem — the lane keeps its own configuration, and the fired prompt is just another turn
+in a session that is already correctly equipped.
+
+So the rule is: **schedule INTO existing sessions, never schedule sessions into existence.** If a
+fresh-session Routine is ever genuinely needed with tools, it has to be created from the claude.ai
+Routines UI, which can attach connectors.
+
+The heartbeats are staggered by a minute each (the server anchors an every-N-hours cron to the
+creation minute), so six lanes do not wake simultaneously.
+
+**Cost is the thing to watch, not reliability.** Each firing is a real turn on a real model. Six
+lanes × four firings a day is 24 wakeups; the interval is the dial to turn if that is too much,
+and `update_trigger` changes it without disturbing the lane.
+
 ### Tags
 
 | Tag | Meaning |
