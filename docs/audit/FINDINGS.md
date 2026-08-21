@@ -12611,4 +12611,4 @@ against.
 | **Regression guard** | `src/lib/zerodte/scan.test.ts`: the quiet session is `available: true` / `state: "no_plays_committed"` / not `degraded`; the unreadable ledger is `available: false` / `degraded` / `reason: "ledger_unreadable"` / **no** `plays` key; the two envelopes **never serialize alike**; both carry their `session_date`; and a same-session latched read still counts as KNOWN rather than blind. |
 | **Not a trading-behaviour change** | No gate, rail, sizing, exit rule or grading path is touched — this changes only what the model is told about an empty ledger, so no `sim:0dte` before/after is owed. |
 | **Gates** | `npx tsc --noEmit` clean · `npm test` **8854 pass / 0 fail** (Node 20.20.2) · `npm run build` clean · `npx eslint` clean. |
-| **Status** | FIXED — PR #2470. |
+| **Status** | FIXED — PR #2477. |
