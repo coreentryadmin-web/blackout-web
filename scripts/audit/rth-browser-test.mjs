@@ -25,6 +25,7 @@ import { join } from 'node:path';
 import { generateDefaultAuditPhone } from './lib/audit-phone.mjs';
 import { createOrAdoptAuditUserViaCurl } from './lib/clerk-audit-user.mjs';
 
+import { subprocessErrorMessage } from "./lib/redact.mjs";
 const SECRET = req('CLERK_SECRET_KEY');
 const PUB = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || '';
 const APP = 'https://blackouttrades.com';
@@ -97,7 +98,7 @@ function curl({ method = 'GET', url, headers = {}, form, urlencodeForm, json, ja
       b: existsSync(bf) ? readFileSync(bf, 'utf8') : '',
     };
   } catch (e) {
-    return { s: 0, t: 0, b: '', err: String(e.message || e).split('\n')[0] };
+    return { s: 0, t: 0, b: '', err: subprocessErrorMessage(e) };
   }
 }
 
