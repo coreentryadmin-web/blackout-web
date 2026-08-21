@@ -566,14 +566,14 @@ export const LARGO_CAPABILITIES: readonly LargoCapability[] = [
     id: "nighthawk.cortex",
     product: "NIGHT_HAWK",
     tool: "get_cortex_decision",
-    answers: "Why did Cortex commit or veto a specific name?",
-    temporal: "as_of",
+    answers: "Why did Cortex commit or veto a specific name (today, or on a given past session)?",
+    temporal: "point_in_time",
     freshness: "fast",
     entities: ["ticker", "play", "session"],
     entitlement: "premium",
     keywords: ["cortex", "veto", "why", "decision", "blocked", "skipped"],
     caveat:
-      "One current decision composed for the question asked — not an ordered log of past decisions, and it carries no timestamps to order.",
+      "One decision, pinnable to a session: pass `date` (YYYY-MM-DD) to explain a SPECIFIC past play's frozen commit evidence, else today. Still one decision, not an ordered log of a name's history.",
   },
   {
     id: "nighthawk.swings",
