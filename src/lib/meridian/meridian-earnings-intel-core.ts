@@ -204,6 +204,17 @@ type PlayInput = {
   call_wall: number | null;
   put_wall: number | null;
   king_strike: number | null;
+  /**
+   * Has the print already landed this session? Optional, and absent means "not known to have
+   * printed", so every existing caller keeps its current behaviour.
+   *
+   * `days_until <= 1` is a distance, not a state: on the day of a BMO print it stays true for the
+   * whole session, including the hours AFTER the company reported. Without this the advisory read
+   * told members "Print is imminent — gap risk dominates; size down or wait for reaction" about a
+   * print that had already happened — measured on prod 2026-08-21 across all three names that
+   * reported that morning.
+   */
+  printed?: boolean;
 };
 
 /**
@@ -212,7 +223,10 @@ type PlayInput = {
  */
 export function buildErPlayRead(input: PlayInput): MeridianErPlayRead {
   const rationale: string[] = [];
-  const imminent = input.days_until != null && input.days_until <= 1;
+  // Imminent means the print is still AHEAD. Once it has landed the gap risk this flag exists to
+  // warn about has been realised, not avoided, and the advice inverts: there is nothing left to
+  // stand aside for.
+  const imminent = !input.printed && input.days_until != null && input.days_until <= 1;
 
   let bullish = 0;
   let bearish = 0;
