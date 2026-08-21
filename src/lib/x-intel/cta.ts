@@ -4,9 +4,19 @@ import { X_INTEL_CTA_VARIANTS } from "@/lib/x-intel/queue-types";
 /**
  * THE CALL TO ACTION — rotated per package, carried as a SEPARATE field from the post copy.
  *
- * ── WHY THE CTA IS NOT IN THE POST BODY ────────────────────────────────────────────────────────
+ * ── PLACEMENT: IN THE BODY (operator decision, 2026-08-21) ─────────────────────────────────────
  *
- * It is a reply, not a footer. Three reasons, in order of how much they cost if ignored:
+ * The CTA replaces the `BLACKOUT // THERMAL + MERIDIAN` sign-off at the foot of the post, as a
+ * rotating one-liner plus a link.
+ *
+ * I originally built this as a REPLY and argued for it on reach grounds — the reasoning is kept
+ * below because it is still true and worth re-reading if the numbers ever say so. The operator
+ * asked for a body CTA twice, which settles it: it is their account, their reach to spend, and
+ * they are the one who can see whether it costs anything. `placement` remains a field rather than
+ * a constant so the decision stays visible and reversible, and the learning loop can measure it
+ * once there is data — right now there is none, so nobody actually knows which is better.
+ *
+ * The original reasoning, for the record:
  *
  * 1. **Reach.** @BlackOutTrade is already algorithm-cold — `docs/ops/X-MARKETING-AUDIT.md` measures
  *    ~8–40 impressions on recent posts against 1,908 followers. An external link in the body of a
@@ -91,10 +101,10 @@ function tagged(url: string, cycleKey: string, variant: XIntelCtaVariant): strin
 type Builder = (cycleKey: string) => { text: string; url: string | null };
 
 const BUILDERS: Record<XIntelCtaVariant, Builder> = {
-  SOFT: () => ({
-    text: "More reads like this through the session — @BlackOutTrade, link in bio.",
-    url: null,
-  }),
+  SOFT: (cycle) => {
+    const url = tagged(LINKS.site, cycle, "SOFT");
+    return { text: `Every read on this desk is live — ${url}`, url };
+  },
 
   DISCORD: (cycle) => {
     const url = tagged(LINKS.discord, cycle, "DISCORD");
@@ -185,13 +195,13 @@ export function buildCta(
 ): XIntelCta {
   const variant = selectCtaVariant(recent);
   const { text, url } = BUILDERS[variant](cycleKey);
-  return { variant, text, url, placement: "reply" };
+  return { variant, text, url, placement: "body" };
 }
 
 /** Every variant's copy, for the admin page's preview and for tests. */
 export function previewAllCtas(cycleKey: string): XIntelCta[] {
   return X_INTEL_CTA_VARIANTS.map((variant) => {
     const { text, url } = BUILDERS[variant](cycleKey);
-    return { variant, text, url, placement: "reply" as const };
+    return { variant, text, url, placement: "body" as const };
   });
 }
