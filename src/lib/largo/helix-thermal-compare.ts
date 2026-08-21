@@ -17,7 +17,8 @@ import { marketPhaseFromEt } from "@/lib/largo/core/system-status";
 // is the load-bearing `order: "recent"` selection — see its own doc in helix-tape-analytics.ts.
 // Importing it here is how this card stops being the third HELIX consumer that quietly disagreed
 // with the other two about which prints the tape even contains (see fetchTickerFlowAndGamma).
-import { helixTapeFetchOptions } from "@/lib/largo/helix-tape-analytics";
+import { helixTapeFetchOptions, tapeWindowCoverage } from "@/lib/largo/helix-tape-analytics";
+import type { FlowAlert } from "@/lib/api";
 import {
   HELIX_FLOW_PAGE_SIZE,
   HELIX_FLOW_MAX_LIMIT,
@@ -196,13 +197,35 @@ function ageSecondsFromIso(iso: string | null | undefined, now: number): number 
 }
 
 /**
- * The flow one-liner NAMES ITS WINDOW. "Net call premium leads on the tape" reads as today; the
- * tape defaults to a 48-hour lookback, so on a two-session window spanning a reversal the
- * unqualified sentence is actively misleading. "Insufficient flow in window" was worse — it
- * referred to a window it never stated.
+ * The window phrase the flow one-liner appends — and the window it names must be the ANALYSED span
+ * of the prints, not the requested lookback.
+ *
+ * "Net call premium leads on the tape" reads as today. The old phrase named the REQUESTED window
+ * (168h), but on an index name the 500-print limit binds long before that window does — a 168h /
+ * limit-500 request returned 54 minutes of tape live 2026-08-20 — so "(last 168h)" described under
+ * an hour of prints. The requested bound is an intent; only the prints are evidence. When the limit
+ * bound, the phrase says so, because the honest description is then "the most recent N prints".
+ *
+ * Rounds to 1dp for the STRING only (the numeric window_hours field stays raw for roundFloats);
+ * sub-hour spans are named in minutes so a 40-minute burst is not printed as "0h" — the same
+ * zero-hour trap tapeWindowCoverage carries actual_minutes to avoid.
  */
-function flowSummary(bias: HelixThermalSide["bias"], windowHours: number | null): string {
-  const win = windowHours != null && windowHours > 0 ? ` (last ${windowHours}h)` : "";
+export function flowWindowPhrase(
+  actualHours: number | null | undefined,
+  actualMinutes: number | null | undefined,
+  limitReached: boolean | null | undefined
+): string {
+  // No print carried a usable time — we cannot name a MEASURED span. Do NOT fall back to the
+  // requested window here: naming a window the prints do not support is the fabrication this fixes.
+  if (actualHours == null) return limitReached ? " (most recent prints)" : "";
+  const span =
+    actualHours < 1 && actualMinutes != null
+      ? `${actualMinutes}m`
+      : `${Math.round(actualHours * 10) / 10}h`;
+  return limitReached ? ` (last ${span}, print-capped)` : ` (last ${span})`;
+}
+
+function flowSummary(bias: HelixThermalSide["bias"], win: string): string {
   if (bias === "bullish") return `Net call premium leads on the tape${win}`;
   if (bias === "bearish") return `Net put premium leads on the tape${win}`;
   if (bias === "neutral") return `Flow is balanced call vs put${win}`;
@@ -246,7 +269,18 @@ export type ComparePositioningInput = {
  */
 export function compareSidesFrom(
   pos: ComparePositioningInput,
-  flow: { rows: readonly FlowTapeRow[]; available: boolean; windowHours?: number | null },
+  flow: {
+    rows: readonly FlowTapeRow[];
+    available: boolean;
+    /** The ANALYSED span of the prints (evidence), in hours — NOT the requested lookback. */
+    windowHours?: number | null;
+    /** The same span in whole minutes, so a sub-hour burst is named in minutes, not rounded to 0h. */
+    windowMinutes?: number | null;
+    /** The REQUESTED lookback (intent), carried through as provenance. */
+    requestedWindowHours?: number | null;
+    /** TRUE when the print limit bound before the window did — the tell window_hours is capped. */
+    windowLimitReached?: boolean | null;
+  },
   nowMs = Date.now()
 ): {
   flow: HelixThermalSide;
@@ -281,14 +315,20 @@ export function compareSidesFrom(
   const flowSide: HelixThermalSide = {
     available: flow.available,
     bias: flowBias,
-    summary: flowSummary(flowBias, flow.windowHours ?? null),
+    summary: flowSummary(
+      flowBias,
+      flowWindowPhrase(flow.windowHours ?? null, flow.windowMinutes ?? null, flow.windowLimitReached ?? null)
+    ),
     net_premium: priced ? callPrem - putPrem : null,
     call_premium: callPrem || null,
     put_premium: putPrem || null,
     print_count: flow.rows.length || null,
-    // The window the premiums were summed over. Dropped before, so "net call premium leads on
-    // the tape" read as TODAY when it is a multi-session sum (the tape defaults to 48h).
+    // The ANALYSED span of the prints (evidence), NOT the requested window: on an index name the
+    // 500-print limit binds before the 168h window does, so echoing the request read "last 168h"
+    // over ~1h of tape. window_hours_requested keeps the intent; window_limit_reached is the tell.
     window_hours: flow.windowHours ?? null,
+    window_hours_requested: flow.requestedWindowHours ?? null,
+    window_limit_reached: flow.windowLimitReached ?? null,
     freshness: flow.available ? "live" : null,
     age_seconds: null,
   };
@@ -370,14 +410,35 @@ async function fetchTickerFlowAndGamma(ticker: string, nowMs = Date.now()): Prom
   // reason, and its `scoped.length ? scoped : recent` fallback was unreachable.)
   const summary = flowRes as { recent?: FlowTapeRow[]; window_hours?: number } | null;
   const recent = summary?.recent;
+  const rows = Array.isArray(recent) ? recent : [];
+
+  // NAME THE ANALYSED SPAN, NOT THE REQUESTED WINDOW.
+  //
+  // `getFlowTapeSummary.window_hours` is the lookback we ASKED for (168h) — but on an index name the
+  // 500-print limit binds long before that window does, so the tape actually spans ~1h. Echoing the
+  // request made the card say "last 168h" over 54 minutes of prints (measured 2026-08-20). Route the
+  // real prints through `tapeWindowCoverage` — the SAME evidence get_helix_tape_analytics reports —
+  // so the card names the span it measured and flags when the limit, not the window, bound it.
+  //
+  // The runtime `recent` rows are the full FlowAlert-shaped tape rows getFlowTape returns; the local
+  // FlowTapeRow is a deliberate structural subset for the pure premium sum, so cast for coverage —
+  // flowEventTimeMs safely reads null off any row missing a print time.
+  const coverage = tapeWindowCoverage(
+    rows as unknown as FlowAlert[],
+    summary?.window_hours ?? HELIX_FLOW_DEFAULT_SINCE_HOURS,
+    HELIX_FLOW_PAGE_SIZE,
+    new Date(nowMs)
+  );
 
   return compareSidesFrom(
     pos,
     {
-      rows: Array.isArray(recent) ? recent : [],
+      rows,
       available: flowRes != null,
-      // getFlowTapeSummary reports the lookback it actually used; carry it rather than drop it.
-      windowHours: summary?.window_hours ?? null,
+      windowHours: coverage.actual_hours,
+      windowMinutes: coverage.actual_minutes,
+      requestedWindowHours: summary?.window_hours ?? HELIX_FLOW_DEFAULT_SINCE_HOURS,
+      windowLimitReached: coverage.limit_reached,
     },
     nowMs
   );
