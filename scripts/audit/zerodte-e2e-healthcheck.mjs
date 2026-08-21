@@ -55,6 +55,7 @@ import { join } from "node:path";
 import { generateDefaultAuditPhone } from "./lib/audit-phone.mjs";
 import { createOrAdoptAuditUserViaCurl } from "./lib/clerk-audit-user.mjs";
 import { isAuthFailureStatus } from "./lib/auth-status.mjs";
+import { subprocessErrorMessage } from "./lib/redact.mjs";
 import {
   rollupVerdict,
   verdictForStaleness,
@@ -146,7 +147,7 @@ function curl({ method = "GET", url, headers = {}, form, urlencodeForm, json, ja
     const s = Number(execFileSync("curl", args, { encoding: "utf8", maxBuffer: 80 * 1024 * 1024 }).trim());
     return { s, b: existsSync(bf) ? readFileSync(bf, "utf8") : "" };
   } catch (e) {
-    return { s: 0, b: "", err: String(e.message || e).split("\n")[0] };
+    return { s: 0, b: "", err: subprocessErrorMessage(e) };
   }
 }
 const J = (r) => {
