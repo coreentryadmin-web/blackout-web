@@ -67,21 +67,27 @@ test("subprocessErrorMessage still returns something when the argv line is all t
 });
 
 test("redactSecrets removes env values under secret-shaped names", () => {
+  // The surviving value is deliberately NOT a URL. It used to be `https://blackouttrades.com`,
+  // which made CodeQL read the assertion as host validation — first as an unanchored regex
+  // (js/regex/missing-regexp-anchor), then, once rewritten as `.includes()`, as
+  // js/incomplete-url-substring-sanitization. Neither rule was wrong about the SHAPE; the test
+  // simply never cared about URLs. What it asserts is that a non-secret env value survives
+  // redaction, so the fixture is now a plain identifier and the false pattern is gone rather
+  // than suppressed.
+  const SURVIVOR = "ecs-task-blackout-web-42";
   const env = {
     CLERK_SECRET_KEY: ["sk", "live", "abcdefghijklmnop"].join("_"),
     SOME_API_TOKEN: "tok_zzzzzzzzzzzzzzzz",
-    NEXT_PUBLIC_BASE_URL: "https://blackouttrades.com",
+    DEPLOY_TARGET: SURVIVOR,
   };
   const out = redactSecrets(
-    `auth failed for ${env.CLERK_SECRET_KEY} and ${env.SOME_API_TOKEN} at https://blackouttrades.com`,
+    `auth failed for ${env.CLERK_SECRET_KEY} and ${env.SOME_API_TOKEN} on ${SURVIVOR}`,
     env
   );
   assert.ok(!out.includes(env.CLERK_SECRET_KEY));
   assert.ok(!out.includes(env.SOME_API_TOKEN));
   // A non-secret env value must survive — over-redaction destroys the diagnostic.
-  // Substring, not a regex: an unanchored host pattern is a CodeQL high-severity finding, and a
-  // literal containment check is what this assertion actually means anyway.
-  assert.ok(out.includes("https://blackouttrades.com"), `non-secret value was redacted: ${out}`);
+  assert.ok(out.includes(SURVIVOR), `non-secret value was redacted: ${out}`);
 });
 
 test("redactSecrets catches secret SHAPES never present in env", () => {
