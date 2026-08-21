@@ -26,7 +26,7 @@
  *
  * Run from the REPO ROOT with NODE_USE_ENV_PROXY=1:
  *   node scripts/audit/meridian-earnings-ui-audit.mjs [--base=https://blackouttrades.com] [--out=DIR]
- *     [--min-impact=high|medium|low]
+ *     [--min-impact=high|medium|low] [--viewport=desktop|tablet|mobile]
  */
 import path from "node:path";
 import fs from "node:fs";
@@ -55,11 +55,15 @@ const MIN_IMPACT = normalizeMinImpact(args.get("min-impact"));
 const ROW_SELECTOR = earningsRowSelector(MIN_IMPACT);
 const COHORT = describeCohort(MIN_IMPACT);
 // createTunneledContext takes a "WxH" STRING and a `desktop` flag, not a {width,height}.
+// `--viewport=desktop` isolates one pass. Parity with meridian-interaction-audit.mjs, and the
+// thing you actually want mid-rollout: a draining replica fails one viewport and re-running all
+// three to re-check one is three more chances to hit the drain.
+const ONLY = args.get("viewport") ?? null;
 const VIEWPORTS = [
   { name: "desktop", viewport: "1440x1000", desktop: true },
   { name: "tablet", viewport: "1024x1100", desktop: true },
   { name: "mobile", viewport: "430x932", desktop: false },
-];
+].filter((v) => !ONLY || v.name === ONLY);
 
 // Selectors are SCOPED to their own panel, and the two rails are distinguished.
 // `.mv-rail-track` is rendered by BOTH MeridianMoveRail (inside `.mv-rail`) and MeridianTargetRail
@@ -143,8 +147,20 @@ async function main() {
         // ...and the IMPACT class is how it declares its cohort. Without that filter this picked
         // the next micro-cap by date and judged the options-derived panels against a name with no
         // options market — see the cohort note in the header.
-        await page.waitForSelector(ROW_BASE, { timeout: 30_000 }).catch(() => null);
-        const row = await page.$(ROW_SELECTOR).catch(() => null);
+        // Wait for the timeline to exist at all, THEN for the cohort row specifically. Querying
+        // the cohort the instant the first earnings row appears races the list's staggered mount
+        // (MeridianTimelineRow sets animationDelay index*40ms up to 400ms), so a high-impact row
+        // a few hundred milliseconds behind the first one reads as "cohort absent". Caught live:
+        // the API carried 61 high-impact earnings while this reported none.
+        //
+        // The two waits are separate on purpose — a missing TIMELINE and a missing COHORT are
+        // different harness conditions and the reason line should say which.
+        const timelineUp = await page.waitForSelector(ROW_BASE, { timeout: 30_000 }).catch(() => null);
+        if (!timelineUp) {
+          results.push({ viewport: vp.name, verdict: "HARNESS", reason: "no earnings row on the timeline at all" });
+          continue;
+        }
+        const row = await page.waitForSelector(ROW_SELECTOR, { timeout: 20_000 }).catch(() => null);
         if (!row) {
           // A cohort we cannot sample is an UNKNOWN, not a pass and not a product failure.
           results.push({

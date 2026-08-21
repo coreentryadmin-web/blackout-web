@@ -148,8 +148,15 @@ async function openEarningsEvent(page, vp) {
   // next by date — live, a low-impact micro-cap with no options market, against which the
   // options-derived panels are legitimately empty. Judging them there measures the cohort, not
   // the UI. See lib/meridian-earnings-cohort.mjs.
-  await page.waitForSelector(EARNINGS_ROW_BASE, { timeout: 30_000 }).catch(() => null);
-  const row = await page.$(ROW_SELECTOR).catch(() => null);
+  // Two separate waits: the timeline existing, then the COHORT row appearing. Querying the
+  // cohort immediately after the first earnings row races the staggered mount (animationDelay
+  // index*40ms) and reports "cohort absent" while the API carries dozens of qualifying events.
+  const timelineUp = await page.waitForSelector(EARNINGS_ROW_BASE, { timeout: 30_000 }).catch(() => null);
+  if (!timelineUp) {
+    record({ severity: "HARNESS", viewport: vp, where: "timeline", issue: "no earnings row on the timeline at all" });
+    return false;
+  }
+  const row = await page.waitForSelector(ROW_SELECTOR, { timeout: 20_000 }).catch(() => null);
   if (!row) {
     record({
       severity: "HARNESS",
