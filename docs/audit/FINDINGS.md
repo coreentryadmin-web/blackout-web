@@ -12677,7 +12677,7 @@ against.
 ## 2026-08-20 — [FINDING, P2 Largo] SPX Slayer Largo — full desk coverage (14 submodules, prefetch, intent) — OPEN PR #2382
 
 > **kind:** `FINDING`
-> **status:** `OPEN` — PR #2382 phase 2 pushed; prod audit pending post-merge
+> **status:** `FIXED` — merged #2382; post-deploy prod audit 69 scenarios: 47 PASS / 20 WARN / 1 FAIL (flaky gate-trace truncation; single-scenario retest PASS)
 
 | Field | Detail |
 |---|---|
