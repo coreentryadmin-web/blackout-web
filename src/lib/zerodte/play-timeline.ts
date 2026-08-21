@@ -164,13 +164,23 @@ export function readExitStampFromEntryContext(entryContext: Record<string, unkno
   peak_pnl_pct: number | null;
   reason: string | null;
   detail: string | null;
+  /** The observed exit mark before floor/stop honoring; null on legacy rows stamped before this
+   *  field existed. See ZeroDteExitContext.mark_observed. */
+  mark_observed: number | null;
+  /** True when the frozen exit mark was raised to honor a protective floor/stop (an inferred fill,
+   *  not the observed print). null (unknown), not false, on legacy rows that predate the flag —
+   *  absence must never read as "definitely observed". */
+  mark_honored: boolean | null;
 } {
   const exit =
     entryContext && typeof entryContext.exit === "object"
       ? (entryContext.exit as Record<string, unknown>)
       : null;
   if (!exit) {
-    return { at: null, pnl_pct: null, peak_pnl_pct: null, reason: null, detail: null };
+    return {
+      at: null, pnl_pct: null, peak_pnl_pct: null, reason: null, detail: null,
+      mark_observed: null, mark_honored: null,
+    };
   }
   return {
     at: typeof exit.at === "string" ? exit.at : null,
@@ -179,6 +189,11 @@ export function readExitStampFromEntryContext(entryContext: Record<string, unkno
       typeof exit.peak_pnl_pct === "number" && Number.isFinite(exit.peak_pnl_pct) ? exit.peak_pnl_pct : null,
     reason: typeof exit.reason === "string" ? exit.reason : null,
     detail: typeof exit.detail === "string" ? exit.detail : null,
+    mark_observed:
+      typeof exit.mark_observed === "number" && Number.isFinite(exit.mark_observed) ? exit.mark_observed : null,
+    // Only a real boolean counts; a missing field stays null (unknown provenance) so a legacy row
+    // is never reported as an observed fill it might not be.
+    mark_honored: typeof exit.mark_honored === "boolean" ? exit.mark_honored : null,
   };
 }
 
