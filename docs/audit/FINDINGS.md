@@ -4,6 +4,23 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-21 — [FINDING, P2 Meridian] The dealer ladder showed a COERCED wall order as a measured one — `walls_inverted` was computed, typed, served, and read by nothing — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `coerceMeridianWallLevels` defines the walls as argmax/argmin of net GEX. Those can invert, and when they do it remaps the display band to `[min, max]` so the panel can render a tidy "support – resistance" pair. **The gamma structure did not say that.** It records the remap in `walls_inverted`, preserves the raw strikes in `gamma_call_wall` / `gamma_put_wall` — and **no component read any of the three**. |
+| **Measured on prod 2026-08-21, BNS (+4d)** | raw gamma call wall **85** · raw gamma put wall **87.5** · spot **87.57**, displayed as **"put 85 … call 87.5"**. So the most-**negative**-gamma strike sat within 0.08 of spot and was rendered to a member as *resistance*. A negative-gamma strike at spot is a destabilising zone; presenting it as resistance inverts the trading implication. Swept 14 high-impact names: **1 inverted**, 0 pinned-to-spot. Not common, and not rare enough to leave silent. |
+| **Why label rather than re-order** | Same reasoning as #2585: changing which strike is called "call wall" changes numbers members read, and that is a product decision, not a correction. Labelling what is already served is the honest half and the half that ships without moving a displayed price. |
+| **Fix** | `LadderLevel.inverted` — set on the two wall rows only, since every other level's position in the list is its own measured value. `structureLadder` reads `walls_inverted` off the thermal block it is already given. New pure `wallInversionNote(thermal)` returns a sentence naming **both raw gamma strikes**, or `null` when they are missing — a warning that cannot say what the real structure is would be noise. The row carries an `inv` mark styled to match `agg`, and **the caveat is in the `aria-label` too**: the button's `aria-label` replaces its content for a screen reader, so an `abbr` + `title` alone would have reached a mouse only. |
+| **A tight geometry found while placing the note** | `.mv-ladder` is a 132px `min-height` box of absolutely positioned rows, and the lowest row lands at **94.64% → top 124.9px, bottom 144.9px** — it overflows its own box by **12.9px**. The panel's generic `> * + *` gap is 0.85rem (13.6px), so the existing net-GEX note clears the bottom row by **0.7px**. That is enough today and far too tight to inherit on purpose, so `.mv-note-inverted` declares its own 1.6rem clearance, and the test **recomputes the overflow from the shipping layout functions** and fails if the margin stops covering it. The 0.7px clearance on the existing note is left alone — flagged, not changed. |
+| **Blast radius** | `structureLadder` gains an optional output field and reads three optional inputs; callers that pass none get `inverted: false` everywhere, which is what they render today. Display only — no level, gate, score or ranking changes. |
+| **Regression guard** | `src/lib/meridian/meridian-ladder-inversion.test.ts` (+9), driven by the live BNS numbers: the coercion still reports itself (precondition, via the real `coerceMeridianWallLevels`); only the two wall rows are marked; nothing is marked in measured order; a caller that says nothing gets no claim either way (silence ≠ "not inverted, we checked"); the note quotes both raw strikes; no raw strikes → no note; the note's clearance exceeds the computed overflow; the mark is rendered; and the caveat reaches the `aria-label`. |
+| **Non-vacuity** | Five mutants, all caught: marking every level instead of the walls; emitting the note without the raw strikes; reducing the clearance below the measured overflow; dropping the caveat from the `aria-label` (sighted-only); never rendering the note. Restored: 9/9 pass. |
+| **Gates on Node 20.20.2** | `npx tsc --noEmit` clean · `npm test` **9910 pass / 0 fail / 1 skipped** · `npm run build` clean · `npx eslint` clean. |
+| **Status** | FIXED — this PR. Live proof owed: re-read an inverted name and confirm the note and row mark render. |
+
 ## 2026-08-21 — [FINDING, P2 tooling] 32 test files under `scripts/` were collected by nothing — "unit-tested" was true of the files and false of the pipeline — FIXED
 
 > **kind:** `FINDING`

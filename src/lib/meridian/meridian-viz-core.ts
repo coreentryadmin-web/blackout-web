@@ -363,6 +363,20 @@ export type LadderLevel = {
    * claim as "same scope as everything else".
    */
   scope?: "event_expiry" | "aggregate" | null;
+  /**
+   * True when this row's PLACE IN THE ORDER was coerced rather than measured.
+   *
+   * `coerceMeridianWallLevels` defines the walls as argmax/argmin of net GEX, and those CAN
+   * invert. When they do, the display band is remapped to [min, max] so the panel can render a
+   * "support – resistance" pair — but the gamma structure did not say that. Measured live
+   * 2026-08-21 on BNS: raw gamma call wall 85, raw gamma put wall 87.5, spot 87.57, displayed as
+   * "put 85 … call 87.5". The most-NEGATIVE-gamma strike sat at spot and was presented as
+   * resistance, which inverts the trading implication.
+   *
+   * The payload has carried `walls_inverted` all along and no component read it. Only the two
+   * wall rows can be inverted; every other level is its own measured strike.
+   */
+  inverted?: boolean;
 };
 
 /**
@@ -381,6 +395,11 @@ export function structureLadder(
     flip?: number | null;
     gex_king_strike?: number | null;
     max_pain?: number | null;
+    /** Set by `coerceMeridianWallLevels` when the display band was remapped. */
+    walls_inverted?: boolean | null;
+    /** The raw argmax/argmin strikes, preserved through the coercion. */
+    gamma_call_wall?: number | null;
+    gamma_put_wall?: number | null;
   } | null | undefined,
   /**
    * Which chain each level came from, keyed by the THERMAL field name (not the ladder key), so a
@@ -412,8 +431,35 @@ export function structureLadder(
       value,
       distPct: spot !== null && spot > 0 ? Number((((value - spot) / spot) * 100).toFixed(2)) : null,
       scope: (sourceField && levelScopes?.[sourceField]) || null,
+      // Only the walls. `gamma_flip`, `king_node` and `max_pain` are measured strikes whose
+      // position in the list is their own value, not a remapping.
+      inverted: thermal.walls_inverted === true && (key === "call_wall" || key === "put_wall"),
     }))
     .sort((a, b) => b.value - a.value);
+}
+
+/**
+ * What to say beneath a ladder whose wall order was coerced — or null when it was not.
+ *
+ * Names the RAW gamma strikes, because "the order was adjusted" without the underlying numbers
+ * asks a reader to distrust the panel without giving them anything to read instead. Returns null
+ * rather than a hedge when the raw strikes are missing: a warning that cannot say what the real
+ * structure is would be noise on a surface that already has enough of it.
+ */
+export function wallInversionNote(
+  thermal:
+    | { walls_inverted?: boolean | null; gamma_call_wall?: number | null; gamma_put_wall?: number | null }
+    | null
+    | undefined
+): string | null {
+  if (!thermal || thermal.walls_inverted !== true) return null;
+  const gc = num(thermal.gamma_call_wall);
+  const gp = num(thermal.gamma_put_wall);
+  if (gc === null || gp === null) return null;
+  return (
+    `Gamma walls are inverted — the band above is ordered for display. Measured: most positive ` +
+    `net GEX at ${gc}, most negative at ${gp}.`
+  );
 }
 
 // ── Dark pool tape ───────────────────────────────────────────────────────────────────

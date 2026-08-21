@@ -1784,6 +1784,25 @@ html.nav-locked body { overflow: hidden; }
 }
 /* The basis line under a whole-book figure. Dimmer than the figure it qualifies. */
 .mv-note-scope { opacity: 0.72; }
+/*
+  A CORRECTNESS caveat, not a basis note — warmer and not dimmed, because it says the band above
+  is a display ordering rather than the measured gamma structure.
+
+  The margin is load-bearing. `.mv-ladder` is a 132px min-height box of ABSOLUTE rows, and the
+  lowest row lands at 94.64% -> top 124.9px, bottom 144.9px: it overflows its own box by 12.9px.
+  The panel's generic `> * + *` gap is 0.85rem (13.6px), so today's net-GEX note clears the
+  bottom row by 0.7px. That is enough and it is far too tight to inherit deliberately, so this
+  note states its own clearance. `meridian-ladder-inversion.test.ts` recomputes the overflow from
+  the shipping layout functions and fails if this margin stops covering it.
+*/
+.mv-note-inverted { margin-top: 1.6rem; color: rgba(251, 191, 36, 0.92); }
+/* Matches .mv-ladder-scope's shape so the two marks read as one system, in the wall colour. */
+.mv-ladder-inverted {
+  margin-left: 0.3rem;
+  font-size: 0.56rem; letter-spacing: 0.08em; text-transform: uppercase;
+  color: rgba(251, 191, 36, 0.95);
+  border-bottom: 1px dotted currentColor; text-decoration: none; cursor: help;
+}
 .mv-ladder-value { font-weight: 700; color: #e2f4ff; }
 .mv-ladder-dist { text-align: right; }
 .mv-ladder-spot .mv-ladder-label { color: #fff; }
