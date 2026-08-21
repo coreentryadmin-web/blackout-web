@@ -250,8 +250,11 @@ const NIGHTHAWK_OUTCOMES_MAX_SAMPLE = 40;
  *     `/api/market/nighthawk/analytics`) and **78** for 90 (true: 108). Two plausible, wrong
  *     numbers — the signature of reading a partial payload and filling the gap. 74 rows of 26
  *     columns, two of them blobs (`publish_context`, `morning_verdict`), against a 16,000-char
- *     transport cap makes truncation the likely mechanism, but the byte count was NOT measured
- *     from this sandbox (no DB reach), so it is stated as the probable cause, not a measured one.
+ *     transport cap. **CONFIRMED**: asked whether its raw tool result ended with the transport's
+ *     literal `…[truncated]` marker, the model answered TRUNCATED and named `analytics` as the
+ *     last top-level key it could see — so the cut lands INSIDE `analytics`, and neither
+ *     `pending_count` nor the sibling `pending` list ever arrived. The same probe answers
+ *     COMPLETE for `get_zerodte_record` (already fixed, last key `plays`), so it discriminates.
  *  2. **It made the model do the arithmetic — and this half IS fully measured.** The tool's own
  *     description says "use to cite credibility (e.g. hit-rate over 30d)" while shipping no
  *     hit-rate at all. Live, Largo answered "5 plays, 2 resolved, **40% win rate**" for a window
@@ -259,9 +262,9 @@ const NIGHTHAWK_OUTCOMES_MAX_SAMPLE = 40;
  *     the denominator too. This repo already has the rule: `get_spx_vs_nighthawk_comparison`
  *     exists expressly so "the model never subtracts two other tools' numbers itself".
  *
- * Both candidate mechanisms are closed by the same change, which is why it is safe to ship without
- * having isolated which one dominated: the aggregate is now computed server-side (so no arithmetic
- * is left to the model) AND the row list is bounded and lean (so there is nothing left to truncate).
+ * Both mechanisms are closed by the same change: the aggregate is now computed server-side (so no
+ * arithmetic is left to the model) AND the row list is bounded and lean (so there is nothing left
+ * to truncate).
  *
  * Reusing `getNighthawkMetrics` (rather than re-deriving here) is deliberate: it is the exact
  * function behind `/api/market/nighthawk/record`, so the number Largo cites and the number the
