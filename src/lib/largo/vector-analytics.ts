@@ -27,6 +27,9 @@ import { roundFloats } from "@/lib/round-floats";
 import { normalizeVectorTicker } from "@/features/vector/lib/vector-ticker";
 import { computeVectorBarAnalytics, opexContext } from "@/lib/largo/vector-analytics-core";
 import { etStamp, etSessionDate } from "@/lib/largo/temporal/bar-session-date";
+// Type-only: erased at build time, so this does NOT pull the screener into the module graph — the
+// implementation stays behind the dynamic import below, as it was.
+import type { VectorUniverseRow } from "@/features/vector/lib/vector-universe";
 
 /** Screener rows returned to Largo. The panel paginates; an LLM read does not need the tail. */
 const MAX_SCREENER_ROWS = 15;
@@ -76,7 +79,7 @@ export async function vectorAnalyticsForLargo(
     let screener: unknown = null;
     let comparison: unknown = null;
     if (universe?.rows?.length) {
-      const [{ screenUniverse }, { buildTickerComparisonRows }] = await Promise.all([
+      const [{ screenUniverse, absFlipDistancePct }, { buildTickerComparisonRows }] = await Promise.all([
         import("@/features/vector/lib/vector-screener"),
         import("@/features/vector/lib/vector-ticker-comparison"),
       ]);
@@ -89,6 +92,65 @@ export async function vectorAnalyticsForLargo(
         top_call_pct: r.topCallPct,
         top_put_pct: r.topPutPct,
       });
+      /**
+       * Serve ONE preset with the two numbers a ranked list is meaningless without: how many rows
+       * the preset's filter actually matched, and how many of those could be ranked at all.
+       *
+       * TWO DEFECTS THIS REPLACES, both measured against the real `screenUniverse` (see FINDINGS):
+       *
+       * (1) **The cap was silent.** Each list was `.slice(0, 15)` with `universe_size` as the only
+       *     denominator in the payload. On a 55-name universe `nearest_flip` matched all 55 and
+       *     served 15 — 40 dropped with nothing to say so — while `most_pinned` (regime `above`)
+       *     matched 30 and `most_explosive` (regime `below`) matched 16. So `universe_size` was
+       *     the right denominator for NONE of the three, and asking "what share of the universe is
+       *     pinned?" got 15/55 = 27% when the true answer was 30/55.
+       *
+       * (2) **Rows with no metric were served in ranked positions.** `screenUniverse` sorts
+       *     null-metric rows last and its docblock promises "a name with no flip data must never
+       *     rank as 'nearest to flip'" — which it honours. Taking a fixed-size PREFIX broke that
+       *     promise here, at the boundary: on a mid-warm universe with 6 of 55 names populated,
+       *     `nearest_flip` served 15 rows of which **9 had no gamma flip at all**, occupying ranks
+       *     7 through 15 of a list the tool description calls "nearest their gamma flip". That is
+       *     absence published as measurement, and the fix belongs at the model's tool boundary
+       *     rather than in the shared screener the desk UI also renders.
+       */
+      const servePreset = (
+        preset: "nearest-flip" | "most-pinned" | "most-explosive",
+        rankable: (r: VectorUniverseRow) => boolean,
+        universeFilter: string,
+        basis: string
+      ) => {
+        const matched = screenUniverse(universe.rows, { preset });
+        // Drop unrankable rows BEFORE the cap, never after — that ordering is the whole fix.
+        const ranked = matched.filter(rankable);
+        const served = ranked.slice(0, MAX_SCREENER_ROWS);
+        return {
+          basis,
+          universe_filter: universeFilter,
+          /** Rows this preset's filter matched — the denominator for "how many are X?". */
+          matched_universe: matched.length,
+          /** Of those, how many had a usable metric and could legitimately be ranked. */
+          rankable_rows: ranked.length,
+          /** Matched but unrankable — a name the sweep has not populated yet, NOT a name that scored badly. */
+          excluded_no_metric: matched.length - ranked.length,
+          returned: served.length,
+          /** True when the list is a top-N of a longer ranking. `returned` is then NOT a count of anything real. */
+          truncated: ranked.length > served.length,
+          max_rows: MAX_SCREENER_ROWS,
+          rows: served.map(compact),
+          empty_reason: ranked.length
+            ? null
+            : matched.length
+              ? "matched_but_no_row_has_this_metric_yet"
+              : "no_universe_row_matches_this_filter",
+        };
+      };
+
+      const hasFlip = (r: VectorUniverseRow) => absFlipDistancePct(r) != null;
+      // `wallStrength` coerces missing walls to 0 rather than null, so "no wall data" and "walls
+      // measured at zero" are the same number to the sorter. Test the inputs, not the metric.
+      const hasWall = (r: VectorUniverseRow) => r.topCallPct != null || r.topPutPct != null;
+
       screener = {
         universe_size: universe.rows.length,
         updated_at: new Date(universe.updatedAt).toISOString(),
@@ -98,10 +160,27 @@ export async function vectorAnalyticsForLargo(
         updated_at_et: etStamp(universe.updatedAt),
         updated_at_session_date: etSessionDate(universe.updatedAt),
         /** The three curated desk presets the scanner ships — each is a different question, so all
-         *  three are returned rather than one default that silently answers only one of them. */
-        nearest_flip: screenUniverse(universe.rows, { preset: "nearest-flip" }).slice(0, MAX_SCREENER_ROWS).map(compact),
-        most_pinned: screenUniverse(universe.rows, { preset: "most-pinned" }).slice(0, MAX_SCREENER_ROWS).map(compact),
-        most_explosive: screenUniverse(universe.rows, { preset: "most-explosive" }).slice(0, MAX_SCREENER_ROWS).map(compact),
+         *  three are returned rather than one default that silently answers only one of them.
+         *  Each carries its OWN denominators; `universe_size` above is the sweep's size and is not
+         *  the denominator for any individual list. */
+        nearest_flip: servePreset(
+          "nearest-flip",
+          hasFlip,
+          "none — the whole universe",
+          "smallest |gamma flip − spot| / spot first"
+        ),
+        most_pinned: servePreset(
+          "most-pinned",
+          hasWall,
+          "spot at or above the gamma flip (dealers pinning)",
+          "strongest wall on either side (0–100 net-gamma share), descending"
+        ),
+        most_explosive: servePreset(
+          "most-explosive",
+          hasFlip,
+          "spot below the gamma flip (dealers amplifying)",
+          "smallest |gamma flip − spot| / spot first"
+        ),
       };
       const rows = buildTickerComparisonRows(ticker, universe.rows);
       comparison = {
