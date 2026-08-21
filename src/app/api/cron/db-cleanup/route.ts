@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
     // VOYAGE_API_KEY is set) and persist the engine's self-evaluation report.
     const bie = await import("@/lib/bie/knowledge")
       .then((m) => m.ingestBieKnowledge())
-      .catch(() => ({ stored: -1, skipped: [] as Array<{ source: string; reason: string }> }));
+      .catch(() => ({ stored: -1 }));
     const selfEval = await import("@/lib/bie/report")
       .then((m) => m.runBieDailySelfEval())
       .catch(() => null);
@@ -43,13 +43,6 @@ export async function GET(req: NextRequest) {
     const tables: Record<string, unknown> = {
       ...pruneCounts,
       bie_knowledge_stored: bie.stored,
-      // Surfaced, not just counted: `stored` alone cannot distinguish "ingested
-      // everything" from "ingested what fit". The daily cron payload is where a
-      // human or a monitor would actually notice a doc falling out of the corpus.
-      bie_knowledge_skipped: bie.skipped.length,
-      ...(bie.skipped.length > 0
-        ? { bie_knowledge_skipped_docs: bie.skipped.map((s) => `${s.source} (${s.reason})`) }
-        : {}),
       bie_self_eval: selfEval ? "ok" : "skipped",
       bie_calibration: calibration
         ? `${calibration.graded_plays} graded / ${calibration.recommendations.length} recs`
