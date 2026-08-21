@@ -25,7 +25,20 @@ import type { IntradayReaction } from "@/lib/meridian/meridian-intraday-core";
 // `I:` form for it). Reusing it keeps ONE derivation rather than seeding a second, divergent copy.
 
 
-const INTRADAY_CACHE = new Map<string, IntradayReaction>();
+/**
+ * Cached intraday reactions, with an expiry per entry.
+ *
+ * A REAL read is stable forever — a past session's minute bars do not change — so it is cached
+ * without expiry. An EMPTY read is cached only briefly, and that asymmetry matters more than it
+ * looks: SPX index minute bars begin at 09:30 ET (verified live 2026-08-19 — 396 bars, 09:30 to
+ * 16:05, ZERO in the 08:20-08:40 window), while `eventReleaseTime` returns "08:30" for every
+ * macro event except the FOMC family. So every 08:30 release is PERMANENTLY dataless at its own
+ * release time. Never caching those would re-issue a `limit=5000` minute-bar fetch per date on
+ * every single request; caching them forever would freeze a genuine outage into a permanent
+ * "no reaction". A short TTL is the only reading that is honest about both.
+ */
+const INTRADAY_TTL_MS = { measured: Number.POSITIVE_INFINITY, empty: 10 * 60 * 1000 };
+const INTRADAY_CACHE = new Map<string, { value: IntradayReaction; expiresAt: number }>();
 
 function cacheKey(symbol: string, date: string, time: string): string {
   return `${symbol}:${date}:${time}`;
@@ -41,7 +54,7 @@ export async function loadIntradayReaction(input: {
   const sym = input.symbol.toUpperCase();
   const key = cacheKey(sym, input.date, input.releaseTimeEt);
   const hit = INTRADAY_CACHE.get(key);
-  if (hit) return hit;
+  if (hit && hit.expiresAt > Date.now()) return hit.value;
 
   // `useIndex: false` still forces the equity path (a caller pricing SPY, say); the map only
   // decides WHICH symbol an index request must use, it never overrides an explicit opt-out.
@@ -52,12 +65,13 @@ export async function loadIntradayReaction(input: {
 
   const bars = await fetchBars(polygonSymbol, input.date, input.date).catch(() => []);
   const reaction = intradayReactionFromBars(bars, input.releaseTimeEt);
-  // Only memoize a REAL read. `intradayReactionFromBars([])` is all-nulls, and this cache lives
-  // for the life of the process — so caching it turns one empty fetch (an upstream blip, a
-  // rate-limit, or the bug above) into a permanent "this session has no reaction". The whole
-  // defect this file was carrying is a silent empty success being taken for an answer; storing
-  // that answer would preserve the same mistake past the fix.
-  if (reaction.release_price != null) INTRADAY_CACHE.set(key, reaction);
+  // A measured read is permanent; an empty one is provisional. Caching an empty read FOREVER
+  // would turn one upstream blip into a permanent "this session has no reaction" — the same
+  // silent-empty-success mistake this file already carried once. Not caching it at all would
+  // re-fetch 5000 minute bars per date per request for the 08:30 macro cohort, which has no
+  // bars at its release time by construction (see the note on INTRADAY_TTL_MS).
+  const ttl = reaction.release_price != null ? INTRADAY_TTL_MS.measured : INTRADAY_TTL_MS.empty;
+  INTRADAY_CACHE.set(key, { value: reaction, expiresAt: Date.now() + ttl });
   return reaction;
 }
 

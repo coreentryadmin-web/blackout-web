@@ -22,6 +22,16 @@ export async function loadMeridianOpexHistory(beforeYmd: string): Promise<Meridi
         max_pain: null,
         spx_close: null,
         pin_held: null,
+        // This loader never looks at a chain at all — the heatmap variant below is the only one
+        // that can resolve max pain. Say "not attempted" rather than leaving a bare null that
+        // reads the same as "looked and found nothing".
+        max_pain_basis: null,
+        max_pain_unavailable: {
+          reason: "max_pain_not_requested_on_this_path",
+          what_is_missing:
+            "This loader resolves reactions only. Max pain comes from loadMeridianOpexHistoryWithHeatmap, which needs an SPX heatmap.",
+          retryable: true,
+        },
       };
     })
   );
@@ -41,6 +51,15 @@ export async function loadMeridianOpexHistoryWithHeatmap(
       // (2026-02-20 … 2026-07-17) read an identical `max_pain: 7685`. With `spx_close` fixed
       // below, that fallback would stop being a cosmetically-odd column and start producing
       // confidently WRONG `pin_held` verdicts, so the two must be fixed together.
+      //
+      // WHAT THIS DOES AND DOES NOT RESTORE. Strict yields null for every settled expiry, because
+      // `fetchGexHeatmap` PRUNES settled expiries out of `max_pain_by_expiry` by design (verified
+      // live 2026-08-21: 54 keys, earliest 2026-08-21, all six prior OpEx dates absent). So
+      // `pin_held` stays null, `buildOpexPinAccuracy` still grades 0 rows, and the pin-accuracy
+      // headline still reads "insufficient graded history". This fix replaces a WRONG number with
+      // an honest absence; it does not resurrect the metric. Doing that needs max pain snapshotted
+      // from open interest AT the expiry — the live chain cannot answer a question about a
+      // settlement that has already happened.
       const max_pain = hm ? maxPainForExpiryStrict(hm as never, row.date) : row.max_pain;
       const spx_close = await spxCloseOnDate(row.date);
       const pin_held = opexPinHeld(spx_close, max_pain);
@@ -49,11 +68,26 @@ export async function loadMeridianOpexHistoryWithHeatmap(
         max_pain,
         spx_close,
         pin_held,
+        // A bare null cannot be told apart from "there was no pin". Say which it is, and say
+        // that it will never resolve on a retry — otherwise a reader (or a future Largo tool
+        // reading this payload) can take the blank for a finding.
+        max_pain_basis: max_pain != null ? ("expiry_open_interest" as const) : null,
+        max_pain_unavailable:
+          max_pain != null
+            ? null
+            : {
+                reason: "settled_expiry_not_in_live_chain",
+                what_is_missing:
+                  "Max pain for a settled expiry requires that expiry's open interest as it stood at settlement. The live SPX chain prunes settled expiries, and historical OI is not stored.",
+                retryable: false,
+              },
       };
     })
   );
-  // `loadMeridianOpexHistory` rounds its own rows, but the two fields ADDED here bypassed that
-  // — and a raw Polygon index close carries IEEE-754 noise (live: 6506.4800000000005 for
-  // 2026-03-20). Harmless while `spx_close` was permanently null; visible the moment it is not.
-  return roundFloats(enriched);
+  // NOT rounded here. `buildMeridianOpexDetail` (meridian-event-brief.ts) already wraps the whole
+  // payload — `prior_opex` included — in a deep `roundFloats`, so the IEEE-754 noise never reached
+  // the wire. Rounding again HERE would also land ahead of `buildOpexPinAccuracy`, which re-derives
+  // each verdict from these rows: rounding inside a compute path changes the calculation, which is
+  // the one thing round-floats.ts is explicit about not doing.
+  return enriched;
 }

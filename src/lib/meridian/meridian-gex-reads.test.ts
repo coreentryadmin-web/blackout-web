@@ -5,6 +5,7 @@ import {
   maxPainForExpiryStrict,
   summarizeHeatmapGammaByExpiry,
 } from "./meridian-gex-reads";
+import { buildOpexPinAccuracy } from "./meridian-analytics-core";
 
 test("maxPainForExpiryFromHeatmap prefers scoped expiry over front max_pain", () => {
   const hm = {
@@ -68,4 +69,51 @@ test("both variants reject a missing heatmap, a blank date and a non-positive ma
     // A zero/absent max pain is not a strike — opexPinHeld would divide by it.
     assert.equal(fn(zeroed as never, "2026-08-21"), null);
   }
+});
+
+test("a settled expiry yields null WITH a reason — the panel does not light up, and says why", () => {
+  // Verified live 2026-08-21: the SPX heatmap's max_pain_by_expiry carried 54 keys, EARLIEST
+  // 2026-08-21. fetchGexHeatmap prunes settled expiries by design, so every prior OpEx date is
+  // absent and strict returns null for all of them.
+  //
+  // This pins the honest consequence, which the first draft of this fix overstated: strict
+  // replaces a WRONG number (today's book-wide 7685 stamped on six different past dates) with an
+  // absence. It does NOT restore pin accuracy — `buildOpexPinAccuracy` skips a row whose max_pain
+  // is null, so `graded` stays 0 and the headline stays "insufficient graded history". Recovering
+  // the metric needs open interest snapshotted AT each expiry; the live chain cannot answer a
+  // question about a settlement that already happened.
+  const liveShapedHeatmap = {
+    max_pain: 7685,
+    max_pain_by_expiry: { "2026-08-21": 7700, "2026-09-18": 7650 },
+  };
+  for (const settled of ["2026-02-20", "2026-03-20", "2026-04-17", "2026-05-15", "2026-07-17"]) {
+    assert.equal(
+      maxPainForExpiryStrict(liveShapedHeatmap as never, settled),
+      null,
+      `${settled} settled — strict must not fall back to the book-wide number`
+    );
+  }
+  assert.equal(maxPainForExpiryStrict(liveShapedHeatmap as never, "2026-08-21"), 7700);
+});
+
+test("buildOpexPinAccuracy grades nothing when max_pain is null — stated, not assumed", () => {
+  // The exact post-fix state, asserted so nobody reads the PR as "the panel now works".
+  const rows = ["2026-07-17", "2026-05-15", "2026-04-17"].map((date) => ({
+    date,
+    spx_session_pct: 0.14,
+    spx_next_day_pct: -0.19,
+    max_pain: null,
+    spx_close: 7457.69,
+    pin_held: null,
+    max_pain_basis: null,
+    max_pain_unavailable: {
+      reason: "settled_expiry_not_in_live_chain",
+      what_is_missing: "historical open interest is not stored",
+      retryable: false,
+    },
+  }));
+  const acc = buildOpexPinAccuracy(rows as never);
+  assert.equal(acc.graded, 0);
+  assert.equal(acc.accuracy_pct, null);
+  assert.match(acc.headline, /insufficient graded history/);
 });
