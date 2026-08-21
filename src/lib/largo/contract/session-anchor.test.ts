@@ -62,15 +62,6 @@ const KNOWN_GAPS: Record<string, string> = {
   // `session_date`, so a file merely READING a session_date column counted as anchored; and its
   // construction regex missed the `const as_of = ...` binding form. Six files were being exempted
   // by those two holes. They are gaps, not exemptions — the loose guard was reporting them clean.
-  // ── IN FLIGHT, NOT UNOWNED. `get_earnings_market` stamps a bare `new Date().toISOString()`
-  // (arrived on main in #2476, after this guard was written). The meridian lane is ALREADY fixing
-  // it in open PR #2482 with a richer shape than a straight anchor — `etStamp()` plus
-  // `as_of_session`/`as_of_weekday`, and a tool description that tells the model to read the
-  // session rather than infer it from a timestamp. Duplicating that here would have produced a
-  // conflicting second fix in the same lines for no gain, so this entry defers to it. When #2482
-  // lands, the SHRINK test fails and forces this line out — which is the ratchet doing its job,
-  // not a surprise.
-  "src/lib/largo/run-tool.ts": "meridian lane — fix in flight in #2482; delete this entry when it merges",
   "src/lib/largo/morning-brief.ts": "coordinator",
   "src/lib/largo/play-similarity.ts": "coordinator",
   "src/lib/bie/answer-envelope.ts": "coordinator",
