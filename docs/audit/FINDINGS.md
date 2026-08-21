@@ -22,7 +22,7 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Regression guard** | 9 tests in `meridian-open-session.test.ts` — bell bounds at both ends including 16:00 exactly, Juneteenth and a Saturday rejected while an ordinary Tuesday passes, the live BMO case, the same print settled after the close, an AMC print anchored on the open session, **settled history explicitly untouched** (the real risk of this change), `null` rather than `false` when nothing was measured, and the batch threading. Plus 1 in `pre-earnings-history-rows.test.ts`. Non-vacuous: hard-coding `settled = true` fails 3. |
 | **Cohort** | The three prints are every earnings row on the `days=2` timeline lane for 2026-08-21, all impacts, after the optionable filter — not a sample. |
 | **Gates on Node 20.20.2** | `npx tsc --noEmit` clean · `npm test` **9344 pass / 0 fail** · `npm run build` clean · `npx eslint` clean. |
-| **Status** | FIXED — PR #____ (draft). Found on production during RTH; prod verification owed once it deploys. |
+| **Status** | FIXED — PR #2579 (draft). Found on production during RTH; prod verification owed once it deploys. |
 
 ## 2026-08-21 — [FINDING, P1 Thermal/Largo] `get_positioning` hid a nearer gamma flip — Largo told a member a 1%-fragile regime was a "comfortable 7% cushion" — FIXED
 
