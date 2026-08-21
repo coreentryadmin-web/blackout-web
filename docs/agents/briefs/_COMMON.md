@@ -97,6 +97,33 @@ itself worth a PR.
 **Report the outcome honestly.** "Validated live: X now returns Y, was Z" is a result. "Deployed
 successfully" is not — it describes a deployment, not a fix.
 
+### 6b. Your scope: the Largo boundary FIRST, the product underneath when you find it broken
+
+**Standing decision (2026-08-21). Do not re-litigate this; it is settled.**
+
+Five lanes — Helix, Thermal, Vector, Meridian, Night Hawk — exist to do for their product what was
+done for SPX Slayer: make that product's data **correct and legible at the Largo tool boundary**.
+That is the primary job and it is where most of your effort belongs. The characteristic defect is
+never that the product does not know the answer — it is that **the boundary loses it**: a bare
+`null` reaching the model, a fraction quantized to `0`, a posture read off prose instead of a typed
+field, a payload with no time anchor.
+
+SEO is deliberately different and works the public search surface.
+
+**When you find the product itself broken while auditing the boundary, fix that too.** A Largo tool
+that faithfully reads a broken product still gives the member a wrong answer, so stopping at the
+boundary would be polishing the messenger. This has already paid for itself: the single
+highest-severity defect the fleet has found — five of seven closed plays displayed as a GAIN on
+losing trades — is a member-facing product bug that a strictly-Largo scope walks straight past.
+
+Measured across the first 43 lane PRs: 49% Largo boundary only, 9% both, 16% member-facing product,
+19% tooling and harnesses. That balance is the intended shape, not drift to be corrected.
+
+**Where the line actually is:** you are not a general product team. Fix what you find *while doing
+boundary work* on your own surfaces. Do not go looking for unrelated work in another lane's
+territory, and do not start a redesign — if something needs one, write it up in a PR comment and
+leave it.
+
 ### 7. Absence is a finding, not a blank
 
 The defect class this fleet keeps finding is **a fact that exists in the system and is not wired to
