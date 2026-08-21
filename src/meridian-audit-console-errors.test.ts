@@ -105,3 +105,42 @@ test("the audit routes console errors through the triage rather than counting th
     "the raw console-error count must no longer be reported as a product finding"
   );
 });
+
+/* ── mount deadlines ─────────────────────────────────────────────────────────────────── */
+
+test("the audit's mount deadlines are named, and long enough for the surface it drives", () => {
+  // The second way this audit stopped auditing. Raising the REQUEST timeout fixed transport, and
+  // the pass then died one step later at waitForSelector with every request having succeeded:
+  //
+  //   routed: {"ok":217,"fail":0}   [HARNESS] mobile/timeline — earnings tab bar never appeared
+  //
+  // Three passes on 2026-08-21 (desktop + tablet ~12:25, mobile 12:48). A bare literal cannot
+  // carry why it is what it is, so the next person shortens it back.
+  const src = readFileSync(
+    join(process.cwd(), "scripts/audit/meridian-interaction-audit.mjs"),
+    "utf8"
+  );
+
+  const block = /const MOUNT_DEADLINE_MS = \{([\s\S]*?)\};/.exec(src)?.[1];
+  assert.ok(block, "mount deadlines must be declared together, not inlined at each call site");
+
+  const val = (k: string) => {
+    const m = new RegExp(`${k}:\\s*([\\d_]+)`).exec(block!);
+    return m ? Number(m[1].replace(/_/g, "")) : null;
+  };
+  // The event detail is the one that failed: a row click fans out to the pre-earnings pack, a GEX
+  // heatmap fetch, fundamentals, vector EM and dark pool. 30s was under it; the probe that reached
+  // the panels every time in the same window used 90s.
+  assert.ok((val("detail") ?? 0) >= 60_000, `detail deadline ${val("detail")}ms is below the measured mount time`);
+  assert.ok((val("timeline") ?? 0) >= 60_000, `timeline deadline ${val("timeline")}ms is below the measured mount time`);
+  assert.ok((val("cohortRow") ?? 0) >= 30_000, `cohortRow deadline ${val("cohortRow")}ms is too short`);
+
+  // ...and every selector wait must READ one of them. A literal left behind is the defect.
+  const literals = [...src.matchAll(/waitForSelector\([^)]*timeout:\s*(\d[\d_]*)/g)].map((m) => m[1]);
+  assert.deepEqual(
+    literals,
+    [],
+    `waitForSelector still carries bare timeout literal(s): ${literals.join(", ")} — ` +
+      "route them through MOUNT_DEADLINE_MS so the measurement travels with the number"
+  );
+});

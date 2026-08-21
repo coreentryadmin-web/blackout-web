@@ -42,6 +42,34 @@ import {
 } from "./lib/meridian-earnings-cohort.mjs";
 import { splitConsoleErrors } from "./lib/console-error-triage.mjs";
 
+/**
+ * How long to wait for the Meridian surface to MOUNT, as opposed to how long to wait for a
+ * request. Raising `requestTimeoutMs` fixed the transport half and the audit then bailed one step
+ * later, at `waitForSelector`, with every request having succeeded:
+ *
+ *   routed: {"ok":217,"fail":0}   [HARNESS] mobile/timeline — earnings tab bar never appeared
+ *
+ * Three passes on 2026-08-21 died that way (desktop and tablet ~12:25, mobile 12:48). The event
+ * detail is genuinely slow to mount on a cold cache — one click fans out to `preEarningsPackForLargo`,
+ * a GEX heatmap fetch, fundamentals, vector EM and dark pool — and the 20-30s literals were under
+ * it. These numbers are the ones a probe driving the same page in the same window used while
+ * reaching the panels cleanly every time, not guesses.
+ *
+ * A deadline that is too SHORT costs an entire pass and reports nothing; one that is too long
+ * costs a slow run on a genuinely broken page. Those are not symmetric, so these lean long.
+ */
+const MOUNT_DEADLINE_MS = {
+  /** The desk shell. Already generous and never the one that failed. */
+  desk: 45_000,
+  /** Timeline rows, and the event detail that a row click mounts. */
+  timeline: 90_000,
+  detail: 90_000,
+  /** The cohort row, once the timeline itself is up — a filter over rows already rendered. */
+  cohortRow: 60_000,
+  /** After a reload, on a warm cache. */
+  afterReload: 60_000,
+};
+
 const args = new Map(
   process.argv.slice(2).map((a) => {
     const [k, v = "true"] = a.replace(/^--/, "").split("=");
@@ -139,7 +167,7 @@ async function openEarningsEvent(page, vp) {
     await page.waitForTimeout(12_000);
     await goto();
   }
-  if (!(await page.waitForSelector(".meridian-desk", { timeout: 45_000 }).catch(() => null))) {
+  if (!(await page.waitForSelector(".meridian-desk", { timeout: MOUNT_DEADLINE_MS.desk }).catch(() => null))) {
     record({ severity: "HARNESS", viewport: vp, where: "page", issue: "desk shell never rendered" });
     return false;
   }
@@ -153,12 +181,12 @@ async function openEarningsEvent(page, vp) {
   // Two separate waits: the timeline existing, then the COHORT row appearing. Querying the
   // cohort immediately after the first earnings row races the staggered mount (animationDelay
   // index*40ms) and reports "cohort absent" while the API carries dozens of qualifying events.
-  const timelineUp = await page.waitForSelector(EARNINGS_ROW_BASE, { timeout: 30_000 }).catch(() => null);
+  const timelineUp = await page.waitForSelector(EARNINGS_ROW_BASE, { timeout: MOUNT_DEADLINE_MS.timeline }).catch(() => null);
   if (!timelineUp) {
     record({ severity: "HARNESS", viewport: vp, where: "timeline", issue: "no earnings row on the timeline at all" });
     return false;
   }
-  const row = await page.waitForSelector(ROW_SELECTOR, { timeout: 20_000 }).catch(() => null);
+  const row = await page.waitForSelector(ROW_SELECTOR, { timeout: MOUNT_DEADLINE_MS.cohortRow }).catch(() => null);
   if (!row) {
     record({
       severity: "HARNESS",
@@ -170,7 +198,7 @@ async function openEarningsEvent(page, vp) {
   }
   await row.scrollIntoViewIfNeeded().catch(() => {});
   await row.click().catch(() => {});
-  if (!(await page.waitForSelector(".meridian-earnings-tab", { timeout: 30_000 }).catch(() => null))) {
+  if (!(await page.waitForSelector(".meridian-earnings-tab", { timeout: MOUNT_DEADLINE_MS.detail }).catch(() => null))) {
     record({ severity: "HARNESS", viewport: vp, where: "timeline", issue: "earnings tab bar never appeared" });
     return false;
   }
@@ -346,7 +374,7 @@ async function auditViewport(vp, cookie) {
         }
       }
       if (reloaded) {
-        const survived = await page.waitForSelector(".meridian-earnings-tab", { timeout: 40_000 }).catch(() => null);
+        const survived = await page.waitForSelector(".meridian-earnings-tab", { timeout: MOUNT_DEADLINE_MS.afterReload }).catch(() => null);
         if (!survived) {
           record({
             severity: "P2",
