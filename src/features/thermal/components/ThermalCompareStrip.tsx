@@ -1,11 +1,18 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import useSWR from "swr";
 import { clsx } from "clsx";
 import { usePollIntervalMs } from "@/hooks/use-et-market-open";
+// Canonical cash-RTH gate — holiday- and early-close-aware, documented safe on the client.
+import { isEtCashRth } from "@/lib/et-market-hours";
+
+/** ONE source for the compare poll cadence, so the label and the actual interval cannot drift. */
+const COMPARE_POLL_MS = 5_000;
 import {
   THERMAL_COMPARE_TICKERS,
   type ThermalCompareTicker,
+  thermalCompareStripLabel,
 } from "@/features/thermal/lib/thermal-desk-state";
 
 type ComparePayload = {
@@ -45,7 +52,7 @@ function CompareCard({
   active: boolean;
   onPick: (t: ThermalCompareTicker) => void;
 }) {
-  const pollMs = usePollIntervalMs(5_000, 5_000);
+  const pollMs = usePollIntervalMs(COMPARE_POLL_MS, COMPARE_POLL_MS);
   const { data, isLoading } = useSWR<ComparePayload>(
     `/api/market/gex-heatmap?ticker=${ticker}`,
     fetchCompare,
@@ -160,6 +167,23 @@ export function ThermalCompareStrip({
   className?: string;
 }) {
   const active = activeTicker.toUpperCase();
+
+  // Resolved on the CLIENT, null until then — deriving it during render would put the server's ET
+  // and the browser's ET in one HTML payload. Deliberately NOT `useEtMarketOpen()`, which seeds
+  // `useState(true)`: defaulting to OPEN is harmless for a poll interval but is exactly wrong for
+  // a liveness CLAIM, which must never assert live before it knows. See thermalQuoteBadge.
+  const [marketOpenNow, setMarketOpenNow] = useState<boolean | null>(null);
+  useEffect(() => {
+    const tick = () => setMarketOpenNow(isEtCashRth(new Date()));
+    tick();
+    const id = setInterval(tick, 30_000);
+    return () => clearInterval(id);
+  }, []);
+  const stripLabel = thermalCompareStripLabel({
+    marketOpen: marketOpenNow,
+    pollSeconds: COMPARE_POLL_MS / 1000,
+  });
+
   return (
     <div
       className={clsx("gex-compare-strip", className)}
@@ -171,7 +195,7 @@ export function ThermalCompareStrip({
           Compare · SPY / SPX / QQQ
         </span>
         <span className="font-mono text-[9px] uppercase tracking-[0.16em] text-cyan-400/80">
-          Live matrix · 5s
+          {stripLabel}
         </span>
       </div>
       <div className="flex flex-col gap-2 sm:flex-row">

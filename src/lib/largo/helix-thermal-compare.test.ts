@@ -24,8 +24,10 @@ const LIVE_SHORT_GAMMA_REGIME_READ =
   "region above spot 762.6 → short gamma: momentum / vol expansion, moves accelerate. " +
   "Resistance 780, support 765.";
 
+const MATRIX_ASOF = "2026-08-21T00:24:56.192Z";
 const LIVE_SPY_POS: ComparePositioningInput = {
   gamma_posture: "short",
+  asof: MATRIX_ASOF,
   gamma_regime_read: LIVE_SHORT_GAMMA_REGIME_READ,
   flip: null,
   call_wall: 780,
@@ -33,13 +35,14 @@ const LIVE_SPY_POS: ComparePositioningInput = {
   spot: 762.6,
 };
 
-const NO_FLOW = { rows: [], available: false };
+const NO_FLOW = { rows: [], available: false, windowHours: 48 };
 const BULLISH_FLOW = {
   rows: [
     { ticker: "SPY", premium: 900_000, option_type: "call" },
     { ticker: "SPY", premium: 100_000, option_type: "put" },
   ],
   available: true,
+  windowHours: 48,
 };
 
 describe("compare card — gamma side is derived from posture, not prose", () => {
@@ -189,5 +192,65 @@ describe("compare card — regime_interaction replaces the removed conflict sign
     const ri = regimeInteractionFor("bearish", "suppressing");
     assert.match(String(ri?.read), /suppressing regime/i);
     assert.match(String(ri?.read), /damped/i);
+  });
+});
+
+describe("compare card — nothing measured is null, not zero", () => {
+  it("does not report net premium as 0 when no priced print landed", () => {
+    const { flow } = compareSidesFrom(LIVE_SPY_POS, NO_FLOW);
+    // The bug: `callPrem - putPrem` ran unconditionally, so an empty tape served
+    // `net_premium: 0` beside `bias: "unknown"` — a quotable "premium is flat" made of no data.
+    assert.equal(flow.net_premium, null);
+    assert.equal(flow.call_premium, null);
+    assert.equal(flow.put_premium, null);
+    assert.equal(flow.print_count, null);
+    assert.equal(flow.bias, "unknown");
+  });
+
+  it("still reports a genuine zero net when calls and puts truly offset", () => {
+    const { flow } = compareSidesFrom(LIVE_SPY_POS, {
+      rows: [
+        { ticker: "SPY", premium: 500_000, option_type: "call" },
+        { ticker: "SPY", premium: 500_000, option_type: "put" },
+      ],
+      available: true,
+      windowHours: 48,
+    });
+    // A measured zero is data and must survive — only the UNMEASURED zero is suppressed.
+    assert.equal(flow.net_premium, 0);
+    assert.equal(flow.bias, "neutral");
+  });
+});
+
+describe("compare card — a reading names its window and its session", () => {
+  it("names the flow lookback rather than implying today", () => {
+    const { flow } = compareSidesFrom(LIVE_SPY_POS, BULLISH_FLOW);
+    assert.equal(flow.window_hours, 48);
+    assert.match(String(flow.summary), /48h/);
+  });
+
+  it("says which window was empty when there is no flow", () => {
+    const { flow } = compareSidesFrom(LIVE_SPY_POS, NO_FLOW);
+    assert.match(String(flow.summary), /48h/);
+  });
+
+  it("anchors the matrix time to its ET SESSION, not just a UTC instant", () => {
+    const now = Date.parse("2026-08-21T00:29:56.192Z");
+    const { gamma } = compareSidesFrom(LIVE_SPY_POS, NO_FLOW, now);
+    assert.equal(gamma.matrix_asof, MATRIX_ASOF);
+    // MATRIX_ASOF's UTC date is 2026-08-21; the ET session it belongs to is the 20th.
+    assert.equal(gamma.matrix_session_date, "2026-08-20");
+    assert.match(String(gamma.matrix_asof_et), / ET$/);
+    assert.equal(gamma.age_seconds, 300);
+    assert.equal(gamma.freshness, "cached");
+  });
+
+  it("reports nulls rather than a borrowed stamp when there is no matrix", () => {
+    const { gamma } = compareSidesFrom(null, NO_FLOW);
+    assert.equal(gamma.matrix_asof, null);
+    assert.equal(gamma.matrix_asof_et, null);
+    assert.equal(gamma.matrix_session_date, null);
+    assert.equal(gamma.age_seconds, null);
+    assert.equal(gamma.freshness, null);
   });
 });

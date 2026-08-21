@@ -33,9 +33,12 @@ import {
   parseThermalTicker,
   parseThermalUrlState,
   shouldForceMatrixRefresh,
+  thermalQuoteBadge,
   type ThermalComparePresetId,
   type ThermalLens,
 } from "@/features/thermal/lib/thermal-desk-state";
+// Canonical cash-RTH gate — holiday- and early-close-aware, and documented safe on the client.
+import { isEtCashRth } from "@/lib/et-market-hours";
 import {
   orderComparePresetTickers,
   resolveComparePresetIdForTicker,
@@ -2035,7 +2038,13 @@ function ExpiryScopeBar({
         aria-pressed={active}
         title={title}
         className={clsx(
-          "rounded-md px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider outline-none transition-colors",
+          // min-h-[24px] + inline-flex, NOT a bigger font or more padding: the expiry row is the
+          // primary matrix filter and every one of its 23 chips rendered 19px tall (px-2 py-0.5 on
+          // a 10px font), measured live on a 430px phone. WCAG 2.2 AA Target Size (Minimum) is
+          // 24x24 CSS px, and this repo's own interaction harness flags anything under 24. Widths
+          // were already fine (36-62px), so only the height was short — raising the MINIMUM height
+          // meets the bar while leaving the chip's type scale and density untouched.
+          "inline-flex min-h-[24px] items-center rounded-md px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider outline-none transition-colors",
           "focus-visible:ring-2 focus-visible:ring-sky-400",
           active
             ? "bg-cyan-400/15 text-white outline outline-1 outline-cyan-400/60"
@@ -2716,6 +2725,23 @@ export function GexHeatmap({
   // with a spot and no strikes) → a quieter "Quote only" state, not a pulsing Live.
   const quoteOnly = !error && Boolean(data?.available) && !hasStrikes && !stale;
   const fetchFailed = Boolean(error) && !isLoading;
+
+  // The status pill may only claim "live" when the CASH SESSION is open. `live` above is a
+  // content check ("we hold a chain for this ticker"), not a freshness one — see
+  // thermalQuoteBadge() for the 2026-08-21 capture where it labelled SPY's 16:00 close as a live
+  // quote at 20:41 ET. `marketOpenNow` stays null until the effect below resolves the clock on
+  // the CLIENT: deriving it during render would make the server's ET and the browser's ET part
+  // of the same HTML and risk a hydration mismatch, and "not yet known" must not render as live.
+  const [marketOpenNow, setMarketOpenNow] = useState<boolean | null>(null);
+  useEffect(() => {
+    const tick = () => setMarketOpenNow(isEtCashRth(new Date()));
+    tick();
+    // 30s is well inside the resolution a member cares about for an open/close flip, and far
+    // cheaper than the 1s tick the freshness bar needs for its age readouts.
+    const id = setInterval(tick, 30_000);
+    return () => clearInterval(id);
+  }, []);
+  const quoteBadge = thermalQuoteBadge({ hasChain: live, quoteOnly, marketOpen: marketOpenNow });
 
   const spot = data?.spot ?? 0;
 
@@ -4239,15 +4265,9 @@ export function GexHeatmap({
               </button>
             ) : null}
           </div>
-          {live ? (
-            <Badge tone="bull" dot>
-              Quote live
-            </Badge>
-          ) : quoteOnly ? (
-            <Badge tone="sky">Quote only</Badge>
-          ) : (
-            <Badge tone="sky">Offline</Badge>
-          )}
+          <Badge tone={quoteBadge.tone} dot={quoteBadge.dot} title={quoteBadge.title}>
+            {quoteBadge.label}
+          </Badge>
         </span>
 
         {/* Lens switcher — FOUR lenses on the shared Tabs primitive (controlled by `lens`)
