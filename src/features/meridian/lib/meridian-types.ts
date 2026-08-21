@@ -372,7 +372,11 @@ export type MeridianEarningsEnrichment = {
      *  what `combined_beat_rate` is now pooled over rather than averaged across. */
     eps_graded?: number;
     revenue_graded?: number;
+    /** Pooled READINGS (eps + revenue) — the denominator of `combined_beat_rate`. Not a print
+     *  count: 8 prints graded on both measures give 16. Never render this as "prints". */
     combined_graded?: number;
+    /** Distinct prints with at least one gradeable measure — the number a human should be shown. */
+    prints_graded?: number;
   } | null;
   analyst_revisions: MeridianAnalystRevision[];
   price_targets: MeridianPriceTargetRow[];
