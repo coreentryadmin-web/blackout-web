@@ -53,6 +53,11 @@ restructure the file to avoid it, and do not resolve another lane's entry.
 
 Questions, ambiguity, and scope calls go in a **PR comment**. The user is not in your loop.
 
+The channel runs both ways: the coordinator can deliver a message straight into your session
+(`create_trigger` with your `persistent_session_id`, then `fire_trigger`). It arrives as an
+ordinary user turn. **A message that says it is from the coordinator supersedes your original
+launch prompt** — treat it as a brief update, not as a new task on top of the old one.
+
 ### 6. Merged is not done. Deployed is not done.
 
 Only **live-validated** is done. Merging to `main` fires `ecr-push-production`; after it deploys,

@@ -81,6 +81,73 @@ principle as `scripts/audit/agent-pr-sweep.mjs`: **sweep by state, never by memo
 launched.** A coordinator that keeps a mental roster loses it on every restart; one that queries
 never can.
 
+## The control channel — how the coordinator actually talks to a lane
+
+**There is no `send_message` tool on the `claude-code-remote` server, and `SendMessage` cannot
+address a remote session.** Both facts led to the wrong conclusion that lanes were unreachable.
+They are reachable; the mechanism is just named something else.
+
+```
+create_trigger(persistent_session_id: "<session id>", prompt: "<the message>")
+fire_trigger(trigger_id: "<returned id>")
+```
+
+`create_trigger` with `persistent_session_id` targets ONE existing session, and `fire_trigger`
+delivers immediately instead of waiting for a schedule. The prompt arrives in that session as an
+ordinary user turn.
+
+**Verified 2026-08-21, by behaviour rather than by return code.** Two lanes changed what they were
+doing within seconds of delivery:
+
+| Lane | Before | After |
+|---|---|---|
+| SEO | "Checking local git state and branch sync" | "#2448/#2454 conflict analysis; folding docs PR into code PR" |
+| Meridian | `need_input` — "reopen remaining 6 draft PRs as fresh non-drafts" | `review_ready` — "rebasing branches on latest main" |
+
+Meridian's is the one that matters: it **abandoned** a plan the message explicitly told it to
+abandon. A tool returning 200 proves delivery to an endpoint; a peer changing course proves the
+message was read and understood.
+
+Two cautions:
+
+- **`ListAgents` is not the discovery tool for this.** It sees in-process subagents only, so it
+  reports "No reachable agents" for a healthy fleet. Use `list_sessions`.
+- **Triggers created this way carry no MCP connectors.** Firing into a PERSISTENT session is fine
+  — it keeps its own tool configuration, as the verification above shows. A trigger that SPAWNS a
+  fresh session would give it no connector tools, which is a different and much worse outcome.
+
+## Keeping lanes alive without a coordinator — the heartbeat
+
+A lane session persists, but a lane that finishes its work and goes IDLE stays idle until something
+pokes it. If the only thing that pokes it is a coordinator session, the fleet stalls the moment
+that session ends. So each lane owns a **recurring trigger into itself**:
+
+```
+create_trigger(persistent_session_id: "<lane id>", cron_expression: "0 */6 * * *", prompt: ...)
+```
+
+Every 6 hours the lane is handed a turn that tells it to re-fetch `main`, run
+`agent-pr-sweep.mjs`, re-read its brief if it has lost context, rebase anything conflicted, and go
+find work if it has none. Nothing outside the lane has to be alive for that to happen.
+
+**This is why the connector caveat does not bite.** A trigger created from here stores no MCP
+connectors, and the `connectors` parameter is *not available for this organization* (verified —
+the call is rejected outright). That would cripple a trigger which **spawns a fresh session**: it
+would come up with no connector tools at all. A trigger firing into a **persistent** session has
+no such problem — the lane keeps its own configuration, and the fired prompt is just another turn
+in a session that is already correctly equipped.
+
+So the rule is: **schedule INTO existing sessions, never schedule sessions into existence.** If a
+fresh-session Routine is ever genuinely needed with tools, it has to be created from the claude.ai
+Routines UI, which can attach connectors.
+
+The heartbeats are staggered by a minute each (the server anchors an every-N-hours cron to the
+creation minute), so six lanes do not wake simultaneously.
+
+**Cost is the thing to watch, not reliability.** Each firing is a real turn on a real model. Six
+lanes × four firings a day is 24 wakeups; the interval is the dial to turn if that is too much,
+and `update_trigger` changes it without disturbing the lane.
+
 ### Tags
 
 | Tag | Meaning |
