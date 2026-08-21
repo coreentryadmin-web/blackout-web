@@ -41,8 +41,31 @@ export function canonicalUrl(article) {
   return `${SITE}${article.path}`;
 }
 
-/** Per-article branded cover image (the existing /api/og card). Visual = more engagement. */
+/**
+ * Real BlackOut desk screenshots, mapped by topic. A screenshot of the ACTUAL product outperforms
+ * any generated art for a data brand — it shows the real thing and doubles as a soft product demo.
+ * Each entry carries the desk path so the in-body CTA links to where the reader can see it live.
+ * Order matters: the most specific patterns come first.
+ */
+const PRODUCT_SHOTS = [
+  { re: /gamma|gex|dealer|wall|flip|heatmap|thermal|charm|vex|dex|pin|max-pain/i, img: "thermal", desk: "/heatmap", label: "the Thermal dealer-positioning heatmap" },
+  { re: /flow|dark-pool|dark pool|unusual|helix|sweep|whale/i, img: "helix", desk: "/flows", label: "HELIX live options flow" },
+  { re: /night-hawk|night hawk|swing|overnight|evening/i, img: "hawk", desk: "/nighthawk", label: "the Night Hawk evening playbook" },
+  { re: /largo|ai-market|market analysis/i, img: "largo", desk: "/terminal", label: "the Largo intelligence desk" },
+  { re: /vector|structure|rth/i, img: "vector", desk: "/vector", label: "the Vector structure desk" },
+  { re: /spx|0dte|iron.?condor|slayer|straddle|butterfly|credit.?spread|lotto/i, img: "spx", desk: "/nighthawk", label: "the SPX Slayer 0DTE desk" },
+];
+
+/** The best-matching real desk screenshot for an article, or null for general-options topics. */
+export function productShotFor(article) {
+  const hay = `${article.slug} ${article.targetKeyword ?? ""} ${article.title}`;
+  return PRODUCT_SHOTS.find((m) => m.re.test(hay)) ?? null;
+}
+
+/** Cover image: a real desk screenshot when the topic maps to a product, else the branded card. */
 export function coverImageUrl(article) {
+  const shot = productShotFor(article);
+  if (shot) return `${SITE}/images/marketing/${shot.img}.webp`;
   const p = new URLSearchParams({ title: article.title, description: article.description });
   return `${SITE}/api/og?${p.toString()}`;
 }
@@ -51,10 +74,18 @@ export function coverImageUrl(article) {
  *  that also carries the canonical link in visible text (belt and braces with the API canonical). */
 export function syndicatedBody(article) {
   const canonical = canonicalUrl(article);
+  const shot = productShotFor(article);
+  // A real desk screenshot + a link to see it live — the visual doubles as a soft product demo.
+  const demo = shot
+    ? `\n\n---\n\n### See it on the live desk\n\n` +
+      `![${shot.label}](${SITE}/images/marketing/${shot.img}.webp)\n\n` +
+      `*${article.title.replace(/\s*[|:].*$/, "")} in action — ${shot.label} on the BlackOut desk. ` +
+      `[Open it live →](${SITE}${shot.desk})*`
+    : "";
   return (
-    `${absolutizeLinks(article.body)}\n\n---\n\n` +
+    `${absolutizeLinks(article.body)}${demo}\n\n---\n\n` +
     `*Originally published on [BlackOut Trades](${canonical}) — live dealer gamma, 0DTE options ` +
-    `flow, and A–F graded SPX setups. [See the free Gamma Snapshot tool.](${SITE}/tools/gamma-snapshot)*`
+    `flow, and A–F graded SPX setups. [Try the free Gamma Snapshot tool →](${SITE}/tools/gamma-snapshot)*`
   );
 }
 

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   absolutizeLinks, canonicalUrl, coverImageUrl, syndicatedBody,
-  eligibleArticles, pickToSyndicate, DEVTO_TAGS, HASHNODE_TAGS,
+  eligibleArticles, pickToSyndicate, productShotFor, DEVTO_TAGS, HASHNODE_TAGS,
 } from "./syndicate-articles.mjs";
 
 const SITE = "https://blackouttrades.com";
@@ -30,10 +30,25 @@ describe("syndication helpers", () => {
     assert.ok(!/\]\(\/learn/.test(b), "no site-relative links survive to the off-site copy");
   });
 
-  it("cover image is the per-article branded card", () => {
-    const u = coverImageUrl(art({ title: "What Is GEX?" }));
-    assert.ok(u.startsWith(`${SITE}/api/og?`));
-    assert.ok(u.includes("title=What+Is+GEX"));
+  it("cover image is a REAL desk screenshot when the topic maps to a product", () => {
+    // a dealer-gamma article -> the Thermal heatmap screenshot, not a text card
+    const u = coverImageUrl(art({ slug: "what-is-gex", targetKeyword: "what is gex", title: "What Is GEX?" }));
+    assert.equal(u, `${SITE}/images/marketing/thermal.webp`);
+    assert.equal(productShotFor(art({ slug: "how-to-read-options-flow", targetKeyword: "options flow" }))?.img, "helix");
+    assert.equal(productShotFor(art({ slug: "best-0dte-trading-strategies", targetKeyword: "0dte strategies" }))?.img, "spx");
+  });
+
+  it("cover image falls back to the branded card for general-options topics with no product match", () => {
+    const a = art({ slug: "wheel-strategy", targetKeyword: "wheel strategy", title: "The Wheel Strategy", description: "d" });
+    assert.equal(productShotFor(a), null);
+    assert.ok(coverImageUrl(a).startsWith(`${SITE}/api/og?`));
+  });
+
+  it("a product-matched article embeds a live-desk screenshot + CTA in the body", () => {
+    const b = syndicatedBody(art({ slug: "gamma-flip-explained", targetKeyword: "gamma flip", title: "Gamma Flip Explained", path: "/learn/gamma-flip-explained" }));
+    assert.ok(b.includes("### See it on the live desk"));
+    assert.ok(b.includes(`${SITE}/images/marketing/thermal.webp`));
+    assert.ok(b.includes(`${SITE}/heatmap`), "CTA links to the live desk");
   });
 
   it("eligibility keeps only pillars + articles, pillars first, drops glossary", () => {
