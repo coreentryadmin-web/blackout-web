@@ -4,6 +4,22 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-21 — [FINDING, P2 Meridian a11y] Two interactive controls shipped with no accessible name — and the guard that should have caught the second one was silently broken — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `meridian-interaction-audit.mjs` on 2026-08-21 reported `[P3] tablet/Estimates:targets — 6 controls under 24px` with every sample label **empty**: `" 8x8"` x6. Empty because the probe reads `aria-label ?? textContent` and both were absent. Traced to `.mv-target-dot` — the analyst price-target markers on `MeridianTargetRail`: 8x8 `<button>`s with no text and no `aria-label`, carrying only a `title`. |
+| **Why title is not a name** | `title` is the LAST-RESORT fallback in the accessible-name spec: inconsistently announced by screen readers, invisible on touch, and not surfaced on keyboard focus in several browsers. So a member using a screen reader met six unnamed buttons on the Estimates tab — in a file where `.mv-ladder-row`, a few hundred lines away, already carries a full name with its level, price and distance from spot. The dots simply never got the same treatment. |
+| **The second control, and how it stayed hidden** | The guard written for this originally matched buttons with `/<button[\s\S]*?(?:\/>|>)/`. The bare `>` alternative matches the `>` inside `onClick={() => …}`, so EVERY button carrying an arrow function was truncated at the arrow and its self-closing `/>` was never seen. The mutation pass caught it: injecting a brand-new nameless button did NOT fail the test. Rewritten to scan for the tag end at brace depth 0, it immediately failed on a control I had not known about — `.mv-tape-print`, the dark-pool tape squares, also `title`-only. Those are sized by premium, so their meaning is carried entirely by pixels and a tooltip, neither of which reaches a screen reader. |
+| **Fix** | One string per control, used as BOTH the accessible name and the tooltip, so the two cannot drift: `${firm} ${price} · ${action}` for a target, `dark pool print ${label} @ ${strike} · ${at}` for a tape print. No layout change and no behaviour change — purely additive naming. |
+| **NOT changed** | The 8x8 and premium-scaled sizes. WCAG 2.2 SC 2.5.8 wants 24x24, but analyst targets cluster and premium-scaled squares encode magnitude by area, so enlarging hit boxes trades a too-small target for a mis-aimed one. That is a design decision with a real trade-off, separate from the name, which is unambiguous. Raised as a product call rather than decided here. |
+| **Regression guard** | A source guard in `meridian-viz-core.test.ts` (100 in the file): every `<button>` opening tag is found by scanning at brace depth 0, and any SELF-CLOSING one without an `aria-label` fails with its class name. Self-closing only, because a `>`-terminated button may be named perfectly well by its text children — the nameless risk is the icon/dot control. A second assertion pins the price-target dot specifically. |
+| **Non-vacuity** | Three mutations, suite re-run on each: the target dot back to title-only -> fails; the tape print back to title-only -> fails; a brand-new nameless self-closing button injected elsewhere -> fails. That third case is the one the ORIGINAL regex missed, which is why it is pinned. |
+| **Gates on Node 20.20.2** | `npx tsc --noEmit` clean · `npm test` **9443 pass / 0 fail / 1 skipped** · `npm run build` clean · `npx eslint` (2 changed files) clean. |
+| **Status** | FIXED — this PR (draft). Not yet live-verified: re-run `meridian-interaction-audit.mjs` after deploy and confirm the Estimates small-target samples carry real labels instead of `" 8x8"`. |
+
 ## 2026-08-21 — [FINDING, P2 tooling] 32 test files under `scripts/` were collected by nothing — "unit-tested" was true of the files and false of the pipeline — FIXED
 
 > **kind:** `FINDING`
