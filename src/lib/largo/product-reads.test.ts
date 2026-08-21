@@ -41,15 +41,29 @@ function fatRow(i: number) {
 
 const ROWS = Array.from({ length: 182 }, (_, i) => fatRow(i));
 
+// Mutable so a test can supply banger rows: `mock.module` is applied once at module load, so the
+// fixture has to be reachable through a reference rather than baked into the mock's return value.
+let BANGER_ROWS: Array<Record<string, unknown>> = [];
+
 mock.module("../db", {
   namedExports: {
     dbConfigured: () => true,
     fetchZeroDteSetupLogRange: async () => ROWS,
-    fetchBangerBoardRows: async () => [],
-    fetchBangerOpenCount: async () => 0,
     fetchLatestSwingSnapshotEvents: async () => [],
     fetchOpenSwingPositions: async () => [],
     fetchRecentHelixSignalOutcomes: async () => [],
+  },
+});
+
+// product-reads imports these from "@/lib/banger/positions-db", NOT from "../db" — the two
+// entries that used to sit in the ../db mock above were never applied, so `bangerBoardForLargo`
+// went to the real (unreachable) database, returned available:false, and the session-anchor test
+// below took its `if (r.available === false) return` escape hatch and asserted nothing. A guard
+// that cannot fail is not a guard.
+mock.module("../banger/positions-db", {
+  namedExports: {
+    fetchBangerBoardRows: async () => BANGER_ROWS,
+    fetchBangerOpenCount: async () => BANGER_ROWS.filter((r) => r.status === "OPEN" || r.status === "PARTIAL").length,
   },
 });
 
@@ -95,7 +109,9 @@ describe("session anchors (Largo product contract C1)", () => {
     process.env.BANGER_ENGINE_ENABLED = "1";
     try {
       const r = (await bangerBoardForLargo()) as Record<string, unknown>;
-      if (r.available === false) return; // db-less environment: nothing to anchor
+      // Was `if (r.available === false) return`, which — with the banger fetchers now genuinely
+      // mocked — is the branch this guard must never take again.
+      assert.equal(r.available, true, "the board must be reachable for this guard to mean anything");
       assert.match(String(r.as_of), /^\d{4}-\d{2}-\d{2}T.*Z$/);
       assert.match(String(r.session_date), /^\d{4}-\d{2}-\d{2}$/);
       assert.equal(String(r.as_of_et).slice(0, 10), r.session_date);
@@ -203,6 +219,53 @@ describe("zerodteRecordForLargo — empty and ungraded windows", () => {
     assert.equal(rec.graded, 0);
     assert.equal(rec.losses, 0, "an ungraded play is not a loss");
     assert.equal(rec.win_rate_pct, null);
+  });
+});
+
+// The number Largo quotes for a CLOSED banger must be the one the member's own board shows.
+// Measured on the live board 2026-08-21, all eight closed rows disagreed with their recorded
+// realized figure and every one understated it — WRBY realized +32.69% against a mark-derived
+// -33.8%, a sign flip on a winner.
+describe("bangerBoardForLargo — a closed position reports what it realized", () => {
+  const wrby = {
+    id: 1, ticker: "WRBY", session_date: "2026-08-20", contract_strike: 25, contract_expiry: "2026-08-22",
+    entry_premium: 0.65, last_mark: 0.43, peak_premium: 1.3, scaled_already: true,
+    scale_out_action: "CLOSE_RUNNER", scale_out_reason: "trail", realized_pnl_pct: 32.69,
+    discovery_gain: 0.4, status: "CLOSED_RUNNER",
+  };
+
+  it("quotes the recorded realized figure and never a mark-derived stand-in", async () => {
+    const prev = process.env.BANGER_ENGINE_ENABLED;
+    process.env.BANGER_ENGINE_ENABLED = "1";
+    BANGER_ROWS = [wrby];
+    try {
+      const r = (await bangerBoardForLargo()) as Record<string, unknown>;
+      const closed = (r.closed as Array<Record<string, unknown>>)[0];
+      assert.equal(closed.realized_pnl_pct, 32.69);
+      assert.equal(closed.pnl_basis, "realized_as_managed");
+      assert.equal(closed.live_pnl_pct, undefined, '"live" on a closed position is a lie');
+      assert.match(String(closed.pnl_note), /banked tranche/);
+      assert.equal(closed.scaled_already, true);
+    } finally {
+      BANGER_ROWS = [];
+      if (prev === undefined) delete process.env.BANGER_ENGINE_ENABLED;
+      else process.env.BANGER_ENGINE_ENABLED = prev;
+    }
+  });
+
+  it("states that its closed tally is page-limited rather than passing it off as a total", async () => {
+    const prev = process.env.BANGER_ENGINE_ENABLED;
+    process.env.BANGER_ENGINE_ENABLED = "1";
+    BANGER_ROWS = [wrby];
+    try {
+      const r = (await bangerBoardForLargo()) as Record<string, unknown>;
+      assert.equal(r.closed_count_is_page_limited, true);
+      assert.equal(r.closed_shown, 1);
+    } finally {
+      BANGER_ROWS = [];
+      if (prev === undefined) delete process.env.BANGER_ENGINE_ENABLED;
+      else process.env.BANGER_ENGINE_ENABLED = prev;
+    }
   });
 });
 
@@ -339,5 +402,6 @@ describe("thermalCompareRow — a multi-expiry aggregate names its scope", () =>
     assert.equal(noList.expiry_scope, null);
     const cold = thermalCompareRow("NVDA", null) as { expiry_scope: unknown };
     assert.equal(cold.expiry_scope, null);
+
   });
 });

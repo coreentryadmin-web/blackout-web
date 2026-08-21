@@ -35,6 +35,7 @@
 import { dbConfigured, getMeta, setMeta, insertZeroDteScanRejection, fetchZeroDteScanRejections } from "@/lib/db";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import type { ZeroDteGateRejection } from "./board";
+import { currentZerodteSessionAnchor } from "./session-phase";
 
 const ZERODTE_REJECTION_CURSOR_KEY = "zerodte_scan_rejection_cursor";
 
@@ -160,17 +161,24 @@ export async function fetchZeroDteRejections(opts?: {
  *  side of this same scanner. */
 export async function zeroDteRejectionsForLargo(ticker?: string, limit = 20): Promise<Record<string, unknown>> {
   const rows = await fetchZeroDteRejections({ ticker, limit });
+  const anchor = currentZerodteSessionAnchor();
   if (rows.length === 0) {
     return {
       available: false,
+      ...anchor,
       note: ticker
-        ? `no gate-rejection history found for ${ticker.toUpperCase()} today`
-        : "no 0DTE Command gate rejections logged yet this session",
+        ? `no gate-rejection history found for ${ticker.toUpperCase()}`
+        : "no 0DTE Command gate rejections logged for this session yet",
     };
   }
   return {
     available: true,
     source: "0DTE Command scanner near-miss log (zerodte_scan_rejections) — NOT SPX Slayer",
+    // The current session clock + phase, so the model states "it is pre-market / the market is
+    // open" from THIS rather than inventing it. Each rejection row carries its own `observed_at`;
+    // compare that date against `session_date` to know if these are today's rejections or a prior
+    // session's — do not assume they are live.
+    ...anchor,
     ticker: ticker ? ticker.toUpperCase() : null,
     rejections: rows.map((r) => ({
       ticker: r.ticker,
