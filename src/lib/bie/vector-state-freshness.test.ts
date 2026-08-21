@@ -60,6 +60,75 @@ test("as_of is an ET stamp with an ET session_date, not a UTC instant", () => {
   assert.doesNotMatch(String(f.as_of), /Z$/, "as_of must not be a UTC instant");
 });
 
+test("observed_at carries the MEASUREMENT's session, which can differ from the read's", () => {
+  // The case that makes this a defect rather than a nicety. A snapshot measured 20:05 ET on the
+  // 20th is `2026-08-21T00:05Z`; read four minutes later — still 20:09 ET on the 20th — the block
+  // would otherwise ship a UTC instant dated the 21st beside `session_date: "2026-08-20"`, and a
+  // model has no way to tell which of the two labels the numbers belong to.
+  const measured = Date.parse("2026-08-21T00:05:00.000Z");
+  const read = Date.parse("2026-08-21T00:09:00.000Z");
+  const f = describeVectorFreshness(new Date(measured).toISOString(), read);
+
+  assert.equal(f.observed_at, "2026-08-21T00:05:00.000Z", "the instant itself is unchanged");
+  assert.equal(f.observed_session_date, "2026-08-20", "…but its ET session is the 20th, not the 21st");
+  // Both stamps agree here BECAUSE both fall in the same ET session — the point is that the
+  // payload now says so rather than leaving the reader to reconcile a Z-suffixed date with it.
+  assert.equal(f.session_date, "2026-08-20");
+  assert.equal(f.age_seconds, 240);
+});
+
+test("observed_session_date tracks the measurement, so it can trail the read by a session", () => {
+  // A snapshot measured Thursday 16:00 ET, still cached and read Friday pre-open. The two session
+  // dates SHOULD differ, and that difference is the answer to "is this today's tape?".
+  const measured = Date.parse("2026-08-20T20:00:00.000Z"); // Thu 16:00 ET
+  const read = Date.parse("2026-08-21T12:00:00.000Z"); // Fri 08:00 ET
+  const f = describeVectorFreshness(new Date(measured).toISOString(), read);
+  assert.equal(f.observed_session_date, "2026-08-20");
+  assert.equal(f.session_date, "2026-08-21");
+  assert.notEqual(f.observed_session_date, f.session_date);
+  assert.equal(f.freshness, "stale", "a session-old snapshot must never read as current");
+});
+
+test("an unreadable measurement time yields a NULL session, never the read's session", () => {
+  // Relabelling an unknown measurement with today's session is the inversion this whole module
+  // exists to prevent — it converts "we cannot tell" into a confident, wrong claim.
+  const f = describeVectorFreshness("not-a-timestamp", T0);
+  assert.equal(f.observed_session_date, null);
+  assert.equal(f.freshness, "unknown");
+  assert.notEqual(f.observed_session_date, f.session_date);
+});
+
+test("the full-state snapshot PERSISTS its ET anchor — contract C1, and it is not read-derived", () => {
+  // Contract C1 (session-anchor.test.ts) enforces that this module CALLS the helpers; this asserts
+  // the two properties that test cannot see:
+  //   - the anchor is stamped from the SAME `asOfMs` as `asOf`, so a slow fan-out can never
+  //     produce a state whose instant and session date straddle a boundary;
+  //   - `new Date().toISOString()` — an independent second clock read — is gone from the file.
+  const src = readFileSync("src/lib/bie/vector-full-state.ts", "utf8");
+  assert.match(src, /asOf:\s*new Date\(asOfMs\)\.toISOString\(\)/);
+  assert.match(src, /asOfEt:\s*etStamp\(asOfMs\)/);
+  assert.match(src, /sessionDate:\s*etSessionDate\(asOfMs\)/);
+  assert.doesNotMatch(
+    src,
+    /new Date\(\)\.toISOString\(\)/,
+    "a second bare clock read would let asOf and its session anchor disagree"
+  );
+  // The anchor is PERSISTED — stamped inside `computeVectorFullState`, which is the object that
+  // gets written to the cache — not attached by the read-time wrapper. "Which session was this
+  // measured in" is frozen at measurement; "how old is it" is not, and they must not share a home.
+  // Sliced at the function boundary rather than regexed over the whole file, so this cannot pass
+  // merely because the wrapper happens to be defined last.
+  const boundary = src.indexOf("export async function fetchVectorFullState");
+  assert.ok(boundary > 0, "expected the cache-first entry point to exist");
+  const computeBody = src.slice(src.indexOf("export async function computeVectorFullState"), boundary);
+  assert.match(computeBody, /sessionDate:\s*etSessionDate\(asOfMs\)/, "the anchor belongs to the measurement");
+  assert.doesNotMatch(
+    src.slice(boundary),
+    /sessionDate:\s*etSessionDate/,
+    "the read path must not re-stamp the measurement's session"
+  );
+});
+
 test("the tiers ARE freshnessFromAgeMs's — one classifier for the product, not a second", () => {
   const at = (sec: number) => describeVectorFreshness(new Date(T0).toISOString(), T0 + sec * 1000);
   assert.equal(at(0).freshness, "live");
