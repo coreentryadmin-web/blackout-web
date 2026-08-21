@@ -36,8 +36,14 @@ ignored. Both conditions failed independently — fixing either alone would have
 **The draft gate is kept on purpose**: draft is the agent's own "still working" signal, and
 auto-undrafting would merge work the instant CI passed even if the agent had more to push.
 Resolving it is the COORDINATOR'S job, and it is a real review step, not a formality: read the
-green draft, then mark it ready (`PATCH /pulls/{n}` `{"draft":false}` or `gh pr ready`) and the
-workflow takes it from there. **A green draft that nobody marks ready is not "in progress" — it is
+green draft, then mark it ready and `automerge.yml` takes it from there.
+**Undrafting is narrower than it looks — three of the four obvious ways do not work** (all measured
+2026-08-21): REST `PATCH /pulls/{n}` `{"draft":false}` returns 200 and silently leaves it a draft
+(read-only field); GraphQL `markPullRequestReadyForReview` is blocked for agent sessions; and the
+Actions `GITHUB_TOKEN` is ALSO refused it (`Resource not accessible by integration`, run
+32447301837) — so `agent-pr-release.yml` cannot arm without an `AGENT_RELEASE_TOKEN` PAT. What DOES
+work today is the GitHub MCP `update_pull_request` tool with `draft: false` (verified on #2458,
+#2424, #2423, #2422). Do not assume a token can undraft because it can write PRs — test it. **A green draft that nobody marks ready is not "in progress" — it is
 finished work that has fallen out of the pipeline.** Sweep for them by state, never by memory of
 what was launched: `state=open AND draft=true AND verify=pass` is the query that finds the jam. This supersedes any earlier "leave OPEN for end-of-day review"
 language in `FINDINGS.md` or elsewhere. Still exercise judgment on scope/blast-radius per the PR
