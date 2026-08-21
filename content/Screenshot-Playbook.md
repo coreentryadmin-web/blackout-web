@@ -57,6 +57,91 @@ off-chart before the shutter fires.
 
 ---
 
+## 1b. PLATFORM MAP — read this before hunting for a story
+
+`MEASURED 2026-08-21` — swept from the codebase and spot-verified against production. The catalog
+in `view-catalog.ts` holds ~39 capturable views; the platform's real panel surface is **well over
+100**. This section is the map; the catalog is the subset with framing rules attached.
+
+### 🔎 START HERE: the platform finds stories for you
+
+Two panels rank the market by "what is interesting right now". Neither is a capture target first —
+they are **the story-discovery entry points**, and going to them before browsing is the difference
+between hunting and searching.
+
+**VECTOR → Universe Scanner** (`.vector-scanner-panel`, a `<details>` on `/vector`).
+Four presets, and the hints are the product telling you what each one is for:
+
+| Preset | What it ranks | The story it produces |
+|---|---|---|
+| **Nearest flip** | closest to a regime change — *"most actionable"* | 🎯 LEVEL THAT MATTERS · 🔥 GAMMA SHIFT |
+| **Most pinned** | above flip, strongest walls — mean-revert | 🎯 pin / OpEx mechanics |
+| **Most explosive** | below flip and near it — vol-expansion risk | 🔥 GAMMA SHIFT · ⚡ CONFLUENCE |
+| All | every covered name, A–Z | — |
+
+Columns: `TICKER · SPOT · REGIME (above/below) · GAMMA FLIP (+/-%) · CALL WALL · PUT WALL`.
+
+Live example from 06:45 ET today, "Nearest flip": **TSLA 349.20 vs flip 349.20 (+0.0%), call wall
+350** — a name sitting exactly on its regime boundary. SMCI −0.1%, RIOT +0.1%, MU −0.3%. That is a
+ranked story queue, pre-sorted by actionability, before a single chart is opened.
+
+⚠️ The panel renders ~2,500×3,750 px. **Crop to the top rows** — the whole table is a spreadsheet,
+the top 10–15 rows are the story.
+
+**HELIX → Net Premium Leaderboard** — tickers ranked by net premium. Same idea for flow:
+it answers *"where is the money actually going"* without picking a ticker first.
+
+### The full panel inventory
+
+Everything below exists. Bold = not yet captured by this lane; work through them.
+
+**HELIX** (23 components) — flow tape · contract drilldown drawer · high-score prints · strike-stack
+detector · split-flow radar · route breakdown · signal-outcome tracker · sector flow · dark pool
+panel + spark · **velocity spike radar** · **cumulative net-premium chart** · **expiry
+concentration (this week / monthly)** · **net premium leaderboard** · **flow brief** · **tide bar** ·
+**ticker drawer** · **Night Hawk flow panel (cross-product)** · watchlist bar
+
+**VECTOR** (32) — chart · GEX ladder · 0DTE matrix rail · **universe scanner** · **pulse** ·
+**technicals panel** · **alerts panel** · **Helix rail** · **daily chart** · **play card** ·
+**regime banner** · **replay controls** · **draw toolbar** · compare desk / pane / add-slot /
+command bar · **ticker comparison strip** · **wall event tooltip** · **crosshair legend** ·
+intraday zoom · bead-rail / nodes / lens / DTE toggles · indicator menu
+
+**THERMAL** (11) — matrix · gamma profile + curve + shift · forced flow (depth) · compare grid
+(10 sector presets) · regime strip · intensity rail · freshness bar · compact matrix · triple desk
+
+**NIGHT HAWK** (12) — 0DTE board · **Bangers board** · **horizon lane board** · **playbook board
+(Legacy)** · play detail modal (THESIS / MANAGEMENT / PNL / TIMELINE) · **hawk record strip
+(track record)** · **feed** · **briefing** · radar backdrop
+
+**SPX SLAYER** (17) — desk terminal · GEX matrix heatmap · pin forecast · play verdict bar ·
+**intel rail** · **pulse rail** · commentary rail (Largo) · **trade alerts + panels** · **signal
+analytics (Morning ORB)** · **matrix tape strip** · **strike ladder axis** · **session time bar** ·
+**sniper header** · Vector embed
+
+**MERIDIAN** (18) — timeline · analytics grid · 15 labelled panels · event tabs (Summary / Report /
+Estimates / Positioning / History) · **macro report** · **OpEx cross-market** · **peer cohort**
+
+**LARGO** (24) — terminal · answer message · **structured cards** · **compare card** ·
+**pre-earnings pack card** · **play-similarity card** · **slash menu + slash prompts** · **desk
+module picker** · **answer-mode toggle** · **desk scope banner** · status strip · followup chips
+
+### What this changes about the hourly cycle
+
+The cycle was written as *inspect seven surfaces → find a story*. That is backwards now:
+
+```
+1. Vector Universe Scanner → "Nearest flip" / "Most explosive"   ← the ranked candidate list
+2. Helix Net Premium Leaderboard                                 ← where the money is
+3. Meridian catalyst timeline                                    ← what is scheduled
+   ↓  pick the story from those three
+4. THEN open the named product and capture the evidence
+```
+
+Three panels replace a browse. Use them.
+
+---
+
 ## 2. Per-product patterns
 
 ### 🔥 THERMAL — gamma / dealer positioning

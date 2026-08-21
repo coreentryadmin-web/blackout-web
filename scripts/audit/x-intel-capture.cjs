@@ -164,6 +164,52 @@ async function meridian(page, o, log) {
   return page.locator('.meridian-page-root').first();
 }
 
+
+/**
+ * THE UNIVERSE SCANNER — the story-discovery entry point, not just another frame.
+ *
+ * Vector's screener ranks every covered name by proximity to a regime change ("Nearest flip",
+ * which the product itself labels *most actionable*), by pin strength ("Most pinned") or by
+ * vol-expansion risk ("Most explosive"). Running this FIRST turns an hourly cycle from a browse
+ * into a pick: the candidate list arrives pre-sorted.
+ *
+ * `--rows N` crops to the top N rows. The full panel renders ~2,500x3,750px, which is a
+ * spreadsheet, not an attachment — the story is in the first ten to fifteen rows.
+ */
+async function scanner(page, o, log) {
+  const t = (o.ticker || 'SPX').toUpperCase();
+  const url = `https://blackouttrades.com/vector?ticker=${encodeURIComponent(t)}`;
+  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
+  await page.waitForTimeout(14000);
+
+  const panel = page.locator('.vector-scanner-panel').first();
+  await panel.waitFor({ state: 'visible', timeout: 30000 });
+  const summary = page.locator('.vector-scanner-summary').first();
+  if (await summary.count()) { await summary.click().catch(() => {}); await page.waitForTimeout(3000); }
+
+  const preset = o.preset || 'Nearest flip';
+  const btn = page.locator('[aria-label="Screener view"] button', { hasText: new RegExp(preset, 'i') }).first();
+  if (!(await btn.count())) throw new Error(`scanner preset "${preset}" not found`);
+  await btn.click();
+  await page.waitForTimeout(6000);
+  log.push(`scanner→${preset}`);
+
+  // Verify it actually populated — an empty screener is a real state ("No names match") and must
+  // be captured honestly, but it must never be mistaken for a loaded one.
+  const rowCount = await page.locator('.vector-scanner-body tr, .vector-scanner-body [role="row"]').count();
+  log.push(`rows→${rowCount}`);
+
+  if (o.rows) {
+    // Crop to the top N rows by clipping the panel box — the story is the head of the ranking.
+    const box = await panel.boundingBox();
+    if (box) {
+      const height = Math.min(box.height, 150 + Number(o.rows) * 26);
+      return { clip: { x: box.x, y: box.y, width: box.width, height } };
+    }
+  }
+  return panel;
+}
+
 const VIEW_TABS = { matrix: /^MATRIX$/i, profile: /GAMMA PROFILE/i, depth: /FORCED FLOW/i };
 
 async function thermal(page, o, log) {
@@ -366,7 +412,7 @@ async function vector(page, o, log) {
     sector: arg('sector',''), panel: arg('panel',''), out: arg('out','/tmp/shots/out.png'),
     tf: arg('tf',''), horizon: arg('horizon',''), zoom: arg('zoom','6'),
     mode: arg('mode',''), preset: arg('preset',''), indicators: arg('indicators',''),
-    expiry: arg('expiry',''), panelLabel: arg('panel-label',''), eventClass: arg('class',''),
+    expiry: arg('expiry',''), rows: arg('rows',''), panelLabel: arg('panel-label',''), eventClass: arg('class',''),
   };
   const { browser, ctx, counts } = await createTunneledContext({
     url: 'https://blackouttrades.com/', cookie: arg('cookie',''), viewport: arg('viewport','2560x1440'), desktop: true,
@@ -376,12 +422,17 @@ async function vector(page, o, log) {
     const target = o.surface === 'helix' ? await helix(page, o, log)
       : o.surface === 'vector' ? await vector(page, o, log)
       : o.surface === 'meridian' ? await meridian(page, o, log)
+      : o.surface === 'scanner' ? await scanner(page, o, log)
       : await thermal(page, o, log);
     const hid = await hideMarketingChrome(page);
     if (hid.length) log.push(`chrome hidden→${hid.length}`);
     await page.waitForTimeout(600);
-    await target.waitFor({ state: 'visible', timeout: 25000 });
-    await target.screenshot({ path: o.out, timeout: 60000, animations: 'disabled' });
+    if (target && target.clip) {
+      await page.screenshot({ path: o.out, clip: target.clip, timeout: 60000, animations: 'disabled' });
+    } else {
+      await target.waitFor({ state: 'visible', timeout: 25000 });
+      await target.screenshot({ path: o.out, timeout: 60000, animations: 'disabled' });
+    }
     console.log(`Routed: ${counts.ok} ok, ${counts.fail} fail | ${log.join(' · ')} | ${o.out}`);
   } finally { await browser.close(); }
 })().catch(e => { console.error('FAIL:', e.message); process.exit(1); });

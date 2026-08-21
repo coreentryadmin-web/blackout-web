@@ -39,6 +39,16 @@ export type CaptureLesson = {
 
 export const CAPTURE_LESSONS: ReadonlyArray<CaptureLesson> = [
   {
+    id: "platform-finds-stories-for-you",
+    applies_to: "*",
+    evidence: "MEASURED",
+    sample_size: 1,
+    lesson:
+      "Start a cycle at the Vector Universe Scanner and the Helix Net Premium Leaderboard, not by browsing seven products. They RANK the market by actionability and by where premium is going, so the candidate list arrives pre-sorted.",
+    observation:
+      "Vector scanner 'Nearest flip' at 06:45 ET 2026-08-21 returned TSLA on its flip exactly (349.20 vs 349.20, call wall 350), then SMCI -0.1%, RIOT +0.1%, MU -0.3% — a ranked story queue before opening a single chart. The scanner's own hint calls this preset 'most actionable'.",
+  },
+  {
     id: "default-view-is-not-honest-view",
     applies_to: "*",
     evidence: "MEASURED",
