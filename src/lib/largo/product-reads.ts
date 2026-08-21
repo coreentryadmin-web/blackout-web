@@ -20,6 +20,7 @@ import {
   readSwingServingSnapshot,
 } from "@/lib/swing/serving-lane";
 import { buildZeroDteRecord } from "@/lib/zerodte/record";
+import { getNighthawkMetrics } from "@/features/nighthawk/lib/analytics";
 import { fitRowsToBudget, sampleNote } from "@/lib/largo/fit-tool-result";
 import { formatEtDate, todayEt } from "@/features/nighthawk/lib/session";
 import { summarizeHelixSignalOutcomes } from "@/features/helix/lib/helix-signal-outcome-summary";
@@ -227,6 +228,94 @@ export async function zerodteRecordForLargo(days = 30) {
       available: false,
       degraded: true,
       error: e instanceof Error ? e.message : "zerodte_record_failed",
+    };
+  }
+}
+
+/** How many resolved plays ride the model's copy of the Night Hawk record.
+ *  A reading ceiling, not a size one — `fitRowsToBudget` is the real bound. */
+const NIGHTHAWK_OUTCOMES_MAX_SAMPLE = 40;
+
+/**
+ * Night Hawk track record for the model — the SAME computed metrics the member route serves.
+ *
+ * WHY THIS EXISTS. `get_nighthawk_outcomes` used to return `fetchNighthawkOutcomeAnalytics`'s
+ * **raw rows** — 26 columns each, including the `publish_context` JSON and the `debrief` text —
+ * with no computed aggregate at all. Two things went wrong at once, and both were measured live
+ * on 2026-08-21:
+ *
+ *  1. **The model did not receive the row set it was asked to count.** Live, asked to report the
+ *     tool's own `analytics.rows.length`, it said **5** for `window_days=30` (true: 74 per
+ *     `/api/market/nighthawk/analytics`) and **78** for 90 (true: 108). Two plausible, wrong
+ *     numbers — the signature of reading a partial payload and filling the gap. 74 rows of 26
+ *     columns, two of them blobs (`publish_context`, `morning_verdict`), against a 16,000-char
+ *     transport cap makes truncation the likely mechanism, but the byte count was NOT measured
+ *     from this sandbox (no DB reach), so it is stated as the probable cause, not a measured one.
+ *  2. **It made the model do the arithmetic — and this half IS fully measured.** The tool's own
+ *     description says "use to cite credibility (e.g. hit-rate over 30d)" while shipping no
+ *     hit-rate at all. Live, Largo answered "5 plays, 2 resolved, **40% win rate**" for a window
+ *     whose real record is **74 resolved, 50%** — deriving 40% as "2 wins / 5 total", inventing
+ *     the denominator too. This repo already has the rule: `get_spx_vs_nighthawk_comparison`
+ *     exists expressly so "the model never subtracts two other tools' numbers itself".
+ *
+ * Both candidate mechanisms are closed by the same change, which is why it is safe to ship without
+ * having isolated which one dominated: the aggregate is now computed server-side (so no arithmetic
+ * is left to the model) AND the row list is bounded and lean (so there is nothing left to truncate).
+ *
+ * Reusing `getNighthawkMetrics` (rather than re-deriving here) is deliberate: it is the exact
+ * function behind `/api/market/nighthawk/record`, so the number Largo cites and the number the
+ * member's own record page shows cannot drift apart. It is also already rule-7 correct — `win_rate`
+ * is null rather than a fabricated 0 when nothing decided, `decided_count` is the denominator the
+ * rate must be printed with, and `low_n` marks a sample too small to read as a record.
+ */
+export async function nighthawkOutcomesForLargo(windowDays = 30) {
+  if (!dbConfigured()) {
+    return { available: false, degraded: true, reason: "database_unavailable", window_days: windowDays };
+  }
+  try {
+    const metrics = await getNighthawkMetrics(windowDays);
+    const { rows: _rows, ...aggregates } = metrics as Record<string, unknown> & { rows?: unknown };
+    const base = roundFloats({ available: true, ...aggregates }) as Record<string, unknown>;
+    const { fetchNighthawkOutcomeAnalytics } = await import("@/lib/db");
+    const { rows } = await fetchNighthawkOutcomeAnalytics(windowDays);
+    // The blob columns (`publish_context`, `morning_verdict`, `debrief`) are what made this
+    // undeliverable, and the model never actually received them — the cut landed long before.
+    const lean = rows.map((r) => ({
+      edition_for: r.edition_for,
+      ticker: r.ticker,
+      direction: r.direction,
+      conviction: r.conviction,
+      score: r.score,
+      sector: r.sector,
+      outcome: r.outcome,
+      hit_target: r.hit_target,
+      hit_stop: r.hit_stop,
+      pulled: r.pulled ?? false,
+    }));
+    const fitted = fitRowsToBudget(base, "plays", roundFloats(lean) as typeof lean, {
+      maxRows: NIGHTHAWK_OUTCOMES_MAX_SAMPLE,
+    });
+    return {
+      ...base,
+      plays_total: fitted.total,
+      plays_included: fitted.kept.length,
+      plays_note: sampleNote(
+        fitted.kept.length,
+        fitted.total,
+        "resolved Night Hawk plays",
+        "Quote win_rate/decided_count for any rate — never count these rows. Per-play publish " +
+          "context and debrief are omitted here; use get_nighthawk_dossier for one ticker.",
+      ),
+      // LAST on purpose: if anything ever pushes this back over the transport cap, the tail cut
+      // must eat the sample rows rather than the record itself.
+      plays: fitted.kept,
+    };
+  } catch (e) {
+    return {
+      available: false,
+      degraded: true,
+      window_days: windowDays,
+      error: e instanceof Error ? e.message : "nighthawk_outcomes_failed",
     };
   }
 }

@@ -1547,11 +1547,18 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       const windowDays = Number.isFinite(rawWindow)
         ? Math.min(180, Math.max(7, Math.trunc(rawWindow)))
         : 30;
-      const [analytics, pending] = await Promise.all([
-        fetchNighthawkOutcomeAnalytics(windowDays),
+      // Was: `{ window_days, analytics: fetchNighthawkOutcomeAnalytics(...), pending }` — the
+      // RAW 26-column rows, blob columns and all, with no computed rate. 74 rows at the default
+      // window against a 16k transport cap, so the model got a fragment and invented numbers off
+      // it (measured live 2026-08-21: it reported "5 plays, 2 resolved, 40% win rate" for a window
+      // whose real record is 74 resolved / 50%). nighthawkOutcomesForLargo serves the SAME
+      // computed metrics the member record route serves, aggregates first, bounded sample last.
+      const { nighthawkOutcomesForLargo } = await import("@/lib/largo/product-reads");
+      const [record, pending] = await Promise.all([
+        nighthawkOutcomesForLargo(windowDays),
         fetchPendingNighthawkOutcomes(7),
       ]);
-      return { window_days: windowDays, analytics, pending };
+      return { ...record, pending };
     }
     case "get_spx_vs_nighthawk_comparison": {
       // WHY THIS TOOL EXISTS (don't delete without reading this): before this
