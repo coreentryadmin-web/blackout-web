@@ -161,6 +161,8 @@ export function buildEarningsWeekAnalytics(
       printed_this_week: weekRows.filter((r) => r.is_printed).length,
       eps_beat_rate: null,
       revenue_beat_rate: null,
+      eps_graded: 0,
+      revenue_graded: 0,
       avg_surprise_pct: null,
       median_surprise_pct: null,
       headline: `${weekRows.length} mega-cap names this window`,
@@ -185,7 +187,7 @@ export function buildEarningsWeekAnalytics(
     rates.eps_beat_rate != null ? Math.round(rates.eps_beat_rate * 100) : null;
   const headline =
     beatPct != null && avg != null
-      ? `Universe ${beatPct}% EPS beat · avg surprise ${avg >= 0 ? "+" : ""}${avg.toFixed(1)}%`
+      ? `Universe ${beatPct}% EPS beat of ${rates.eps_graded} prints · avg surprise ${avg >= 0 ? "+" : ""}${avg.toFixed(1)}%`
       : `${weekRows.length} mega-cap names · ${prints.length} historical prints`;
 
   return {
@@ -193,6 +195,11 @@ export function buildEarningsWeekAnalytics(
     printed_this_week: weekRows.filter((r) => r.is_printed).length,
     eps_beat_rate: rates.eps_beat_rate,
     revenue_beat_rate: rates.revenue_beat_rate,
+    // The universe rate is a share of the historical prints we could grade, not of the names in
+    // the window — `names_count` is NOT its denominator, and a reader with only those two numbers
+    // beside each other would reasonably assume it was.
+    eps_graded: rates.eps_graded,
+    revenue_graded: rates.revenue_graded,
     avg_surprise_pct: avg != null ? Number(avg.toFixed(1)) : null,
     median_surprise_pct: median != null ? Number(median.toFixed(1)) : null,
     headline,

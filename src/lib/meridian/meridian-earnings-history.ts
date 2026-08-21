@@ -21,9 +21,13 @@ function printHistorySummary(rows: MeridianEarningsPrint[]): string | null {
       ? withMove.reduce((s, r) => s + (r.session_change_pct ?? 0), 0) / withMove.length
       : null;
   const base = `${beats}/${graded.length} EPS beats over last ${graded.length} prints`;
+  // The EPS half of this sentence carries its denominator and the revenue half did not, in the
+  // SAME string — "5/8 EPS beats · 62% rev beats", where the 62% could be 5 of 8 or 1 of 1.
+  // Revenue is graded on a different subset (measured live: the two denominators differ by 3+
+  // prints on 3.1% of names, and one side is ≤2 while the other is ≥6 on 1.2%).
   const rev =
-    rates.revenue_beat_rate != null
-      ? ` · ${Math.round(rates.revenue_beat_rate * 100)}% rev beats`
+    rates.revenue_beat_rate != null && rates.revenue_graded > 0
+      ? ` · ${Math.round(rates.revenue_beat_rate * 100)}% rev beats of ${rates.revenue_graded}`
       : "";
   if (avgMove == null) return base + rev;
   return `${base}${rev} · avg session move ${avgMove >= 0 ? "+" : ""}${avgMove.toFixed(1)}%`;
