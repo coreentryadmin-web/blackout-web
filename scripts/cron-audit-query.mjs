@@ -13,6 +13,7 @@ import {
   describeConnectError,
 } from "./pg-audit.mjs";
 import { auditSecret } from "./audit/lib/prod-secrets.mjs";
+import { isXMarketingCronSuppressed } from "./audit/lib/x-marketing-paused.mjs";
 
 const JOB_KEYS = [...ALL_CRON_KEYS];
 const BASE = (process.env.CRON_TARGET_BASE_URL ?? "https://blackouttrades.com").replace(/\/$/, "");
@@ -35,7 +36,9 @@ async function auditViaWatchdog() {
     console.error(`[cron-audit] watchdog HTTP ${res.status}`);
     process.exit(1);
   }
-  const problems = [...(body.problem_keys ?? []), ...(body.rth_stale_keys ?? [])];
+  const problems = [...(body.problem_keys ?? []), ...(body.rth_stale_keys ?? [])].filter(
+    (key) => !isXMarketingCronSuppressed(key)
+  );
   console.log("\n=== CRON AUDIT (HTTP watchdog fallback) ===\n");
   console.log(`checked: ${body.checked ?? "?"}`);
   console.log(`problems: ${problems.length ? problems.join(", ") : "(none)"}`);

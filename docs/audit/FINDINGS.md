@@ -4,6 +4,63 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-21 — [FINDING, P0 correctness] SPX 0DTE net-GEX sign false-flagged vs UW when overlay timed out at 2s — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Severity** | P0 data-correctness (ops-auto-fix #2503, fingerprint `ee994b4b2bf8`). |
+| **Root cause** | Three coupled defects. (1) `finalizeHeatmapForServe` raced the UW overlay against a **2s** cap and returned the **un-overlaid Polygon book** on timeout with **no** `odte_overlay` marker — Polygon 0DTE net sign routinely disagrees with UW `spot-exposures/expiry-strike`. (2) `heatmap-verifier` INV-3 compared served side-constrained call/put walls (#2417) to an **unconstrained** `deriveWalls`, false-flagging SPY/SPX (e.g. put 7600 vs 7650). (3) Cross-provider oracle compared UW to Polygon whenever overlay silently skipped. |
+| **Evidence** | Live ops-collect 2026-08-21 13:07Z: intermittent flags `[cross-provider/net_gex] SPX 0DTE net-GEX sign (positive) CONTRADICTS UW (… negative)` plus `[invariant/call_wall]` / `[invariant/put_wall]` side-constraint mismatches; 3/3 probe runs showed flags on 2/3. |
+| **Fix** | Overlay default cap **2s → 8s**; timeout now stamps `odte_overlay: { applied: false, reason: "overlay_timeout" }`; SPX matrix **build** applies overlay before cache write; cross-provider skips when overlay did not apply; INV-3 passes `spot` into side-constrained `deriveWalls`. |
+| **Status** | FIXED — tsc clean, run-tests green on Node 20. |
+
+## 2026-08-21 — [FINDING, P2 Largo/Thermal] The gamma payload is non-directional but the model still said "gamma reads bearish" under a leading question — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Root cause** | #2422 fixed the tool DATA — `get_positioning` serves dealer gamma non-directionally (`bias: "mixed"` for short gamma, never bullish/bearish). But the model writes the member-facing sentence, and the system prompt explained the gamma MECHANISM (short gamma amplifies both ways) without ever forbidding the word-level label. Under a leading question it caved to the frame. |
+| **Evidence** | Live stress test against the full Largo answer loop (`scripts/audit/largo-thermal-stress.mjs`, 2026-08-21). To "Based on dealer gamma, is SPY set up bullish or bearish?": **run 1** answered *"Dealer gamma on SPY reads **bearish**/unstable"*; **run 2 answered *"Mixed, not a clean directional setup"***. Same question, same data, different sampling — so the correct behaviour was present but not robust. The tool payload was non-directional in both. |
+| **Why it is the same category error** | Short gamma amplifies a move in EITHER direction — a direction is the one thing the gamma reading does not carry. Calling it "bearish" asserts a direction the matrix never measured, which is exactly what #2422 stopped the payload from doing; it had simply migrated up to the prose layer. |
+| **Fix** | #2514 — one explicit guardrail added to the dealer-positioning section of `system-prompt.ts`: never answer bullish/bearish ABOUT THE GAMMA REGIME ITSELF, even when the member's question forces the frame; name the volatility regime and redirect the direction question to the axes that carry it (order flow + dealer DELTA). Pinned by a `system-prompt.test.ts` tripwire. |
+| **Also lands** | `scripts/audit/largo-thermal-stress.mjs` — drives the live answer loop for a battery of thermal questions and grades each answer against a live `get_positioning` read (posture non-directionality, freshness when closed, flip/wall accuracy, absence honesty, flow-vs-gamma). Refreshes the ~60-72s JWT before every request. This is the first check on this lane that exercises the ANSWER, not just the payload. |
+| **Honest limit** | A system-prompt change can only be validated by re-running the stress test against the DEPLOYED prompt — an LLM answer is sampled, so the evidence is "the slip stopped recurring across N runs", not a determinism proof. The harness is committed so that re-run is one command post-deploy. The clean run before this fix was already 14/14; this raises the floor on the one intermittent slip, it does not claim 100%. |
+| **Status** | FIXED (prompt) — tsc clean, `system-prompt.test.ts` 13/13; live re-validation pending the prod deploy of the new prompt. |
+
+## 2026-08-21 — [FINDING, P1 ops] `largo-morning-brief` + `zerodte-grade` watchdog stale after schedule_cron_utc removal — FIXED (#2569)
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | ops-auto-fix #2569 flagged both crons stale/failed via `cron-staleness-watchdog` at ~12:40–13:00 UTC Fri 2026-08-21. `largo-morning-brief` had **zero** lambda invocations ever; `zerodte-grade` last ran Thu post-close but showed stale all day during RTH. |
+| **Root cause** | The 2026-08-21 monitoring-truth PR removed both `schedule_cron_utc` lines (correct while jobs were dark). EventBridge rules were provisioned separately (`blackout-production-largo-morning-brief` dual-band `25 13,14`, `blackout-production-zerodte-grade` `*/15 20-22`). Without `schedule_cron_utc`, `admin-cron-health.ts` cannot suppress off-window gaps — so `zerodte-grade` goes stale ~14h after its last post-close run, and `largo-morning-brief` reads **NEVER logged a run** every morning before 9:25 ET. |
+| **Fix** | Restored `schedule_cron_utc` matching live EventBridge + TOML (#2565 on main, plus `cron-audit-query.mjs` X-marketing filter and largo schedule-window tests in #2570). Seeded prod run rows via manual `hit-cron` with prod `CRON_SECRET`. |
+| **Evidence** | Post-fix: `node scripts/ops-collect-action-items.mjs` exit **0** · `npm run validate:cron` **GREEN** · watchdog `problem_keys` no longer includes either job. |
+| **Status** | FIXED — ops #2569. |
+
+## 2026-08-21 — [FINDING, P1 Meridian] The options-implied move was computed for 4.5% of prints, and NVDA was not one of them — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | On a live 21-day timeline: **154 earnings prints, 7 carrying an `expected_move_pct` (4.5%)**. NVDA — the most-watched print of the window, high impact, five days out — showed **nothing**. The implied move is one of the two numbers a member reads off an earnings row. |
+| **Root cause 1 — the budget was spent in calendar order** | `batchLoadEarningsExpectedMovePct` did `[...byTicker.entries()].slice(0, BATCH_CAP)` — a hard cap of 36 over a Map in INSERTION order, which is calendar order and unrelated to whether anyone is watching the name. Proof it was the binding constraint: the 7 names that resolved sat at positions **2, 17, 24, 26, 28, 30, 33** — every one inside the cap, none beyond it. |
+| **The data was there the whole time** | Six high-impact names past position 36, asked directly: **VEEV 15.2% · SJM 9.2% · NVDA 7.7% · NTNX 18.2% · HPQ 12.5% · DCI 10.3%.** Every one had a chain. Meanwhile 29 of the 36 pulls that WERE spent went to micro-caps with no chain at all — the budget was being spent almost exactly backwards. |
+| **Root cause 2 — a 36-wide burst against a saturated limiter** | Ranking alone moved coverage from 7 to **2**. Each pull is a GEX positioning read plus a full chain fetch, fired as one `Promise.all` of 36 while the timeline load is already saturating the same Polygon limiter with its own per-ticker GEX work. A standalone 12-concurrency test resolved **9/12 and did not reproduce it** — the contention only appears against the full load, so only the end-to-end measurement settled it. Bounded to 6 in flight. |
+| **Fix** | `meridian-em-priority.ts`: rank by impact → Benzinga importance → soonest → ticker (stable, so the covered set cannot flap between loads), THEN cap. Plus `EM_CONCURRENCY = 6`. The cap stays — 154 chain pulls per timeline load is not affordable, and raising it would trade a visible gap for a latency one. Same principle `detailRefreshMsFor` already applies to polling: spend the budget where it changes a decision. |
+| **Measured end-to-end, live** | items with an implied move **7 → 28 (4.5% → 18.2%)** · high-impact prints covered **~0 → 28 of 52 (54%)** · **NVDA null → 7.7%**. The ranked top-36 is now PDD, BMO, BNS, INTU, CRM, CRWD, **NVDA**, SNPS, ADSK, MRVL, DELL, PANW, HPQ, VEEV, OKTA… where it used to be micro-caps. |
+| **Absence now carries its reason** | `expected_move_coverage` ships on the timeline payload: `{requested: 151, attempted: 36, skipped: 115, resolved: 28, note}`. Before this, `expected_move_pct: null` meant BOTH "this name has no options chain" and "we never looked" — different facts, and only one is about the name. The note is emitted **only when something was skipped**, because a warning that always fires is one nobody reads. |
+| **A bug I wrote and the test caught** | `daysScore` did `Number(c.days_until)`, and `Number(null)` is `0` — so a row with an unknown date scored as "reporting today", the most urgent value there is, and outranked a confirmed mega-cap print for a scarce pull. **The identical `Number(null)` trap I had fixed hours earlier in `meridian-timeline-for-largo.ts`**, written again in a new file. Guarded in one helper used by both scores; unknown importance now also ranks below a real 0, because "we do not know" is weaker evidence than "we know it is low". |
+| **Regression guard** | 9 tests in `meridian-em-priority.test.ts`, built on a fixture shaped like the live lane (40 micro-caps then NVDA/VEEV/HPQ, so NVDA sits past the real cap): NVDA survives the cap and leads; the tiebreak order is deterministic; an unknown date sorts last; blank tickers/dates are dropped before a slot is spent; duplicates take one slot; a zero cap attempts nothing; and coverage reports a truncation but stays silent when nothing was skipped. Non-vacuous — removing the null guard fails the unknown-date test. |
+| **Follow-up, not in this PR** | `get_meridian_timeline` (#2545) should surface `expected_move_coverage` in its payload once both land, so the model gets the same skipped-vs-no-chain distinction the UI now has. |
+| **Gates on Node 20.20.2** | `npx tsc --noEmit` clean · `npm test` **9291 pass / 0 fail** · `npm run build` clean · `npx eslint` clean. |
+| **Status** | FIXED — PR #2559 (draft). Verified end-to-end against live upstreams before opening; production verification still owed. |
+
 ## 2026-08-21 — [FINDING, P2 Helix] get_helix_derived capped four panels with no total — the display limit read as the count — FIXED
 
 > **kind:** `FINDING`
