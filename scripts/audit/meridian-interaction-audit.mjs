@@ -40,6 +40,7 @@ import {
   normalizeMinImpact,
   splitAuthFailures,
 } from "./lib/meridian-earnings-cohort.mjs";
+import { splitConsoleErrors } from "./lib/console-error-triage.mjs";
 
 const args = new Map(
   process.argv.slice(2).map((a) => {
@@ -182,10 +183,26 @@ async function auditViewport(vp, cookie) {
     cookie,
     viewport: vp.viewport,
     desktop: vp.desktop,
+    // The Meridian timeline is legitimately slow on a cold cache — it aggregates ~160 events and
+    // computes an options-implied move for the 36 highest-impact prints. Measured 2026-08-21:
+    // 8.5s cold, then 117ms and 87ms warm. Against the tunnel's default 20s deadline that is
+    // usually fine and occasionally not: three separate passes that day (desktop and tablet in
+    // one run, tablet again in the next) died with `timeline?days=21: timeout` and reported
+    // "no earnings row on the timeline at all" — the audit never reached a single tab.
+    //
+    // That is the failure `createTunneledContext`'s own note warns about: a deadline shorter than
+    // the upstream turns "this is slow right now" into "this panel is missing". HARNESS keeps it
+    // out of the product verdict, but a pass that judges nothing is still a pass that judges
+    // nothing, and three of them in a row is an audit that has quietly stopped auditing.
+    // A deadline chosen on purpose, well clear of the measured cold path.
+    requestTimeoutMs: 70_000,
   });
   try {
     const page = await ctx.newPage();
     const consoleErrors = [];
+    // Set when badResponses is triaged below; the console branch needs it to tell an echo of this
+    // run's own expiry from an unexplained 401.
+    let authFailureCount = 0;
     const badResponses = [];
     const requestCounts = new Map();
     // When the page actually opened, so a fetch count can be judged against the time it had to
@@ -380,6 +397,7 @@ async function auditViewport(vp, cookie) {
       // its ~72s JWT, and CLAUDE.md records that exactly this was mis-read as a product fault
       // three times. Reported as HARNESS, and separately from real failures.
       const { auth, failures } = splitAuthFailures(badResponses);
+      authFailureCount = auth.length;
       if (auth.length) {
         record({
           severity: "HARNESS",
@@ -394,7 +412,23 @@ async function auditViewport(vp, cookie) {
       }
     }
     if (consoleErrors.length > 0) {
-      record({ severity: "P2", viewport: vp.name, where: "console", issue: `${consoleErrors.length} console errors`, sample: consoleErrors.slice(0, 4) });
+      // Chromium logs every 401/403 to the console as well as returning it, so the auth failures
+      // already reported as HARNESS above arrived here a second time and were counted as a
+      // product P2 — the harness's own expired session, reported twice, once as a defect. Only
+      // errors the auth count actually explains are reclassified; see console-error-triage.mjs.
+      const { product, authEcho } = splitConsoleErrors(consoleErrors, authFailureCount);
+      if (product.length > 0) {
+        record({ severity: "P2", viewport: vp.name, where: "console", issue: `${product.length} console errors`, sample: product.slice(0, 4) });
+      }
+      if (authEcho.length > 0) {
+        record({
+          severity: "HARNESS",
+          viewport: vp.name,
+          where: "console",
+          issue: `${authEcho.length} console errors are the browser echoing this run's own 401/403 — NOT a product verdict`,
+          sample: authEcho.slice(0, 2),
+        });
+      }
     }
 
     return { counts, consoleErrors, badResponses };
