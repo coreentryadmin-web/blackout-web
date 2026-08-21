@@ -20,8 +20,10 @@ import {
   readSwingServingSnapshot,
 } from "@/lib/swing/serving-lane";
 import { buildZeroDteRecord } from "@/lib/zerodte/record";
+import { fitRowsToBudget, sampleNote } from "@/lib/largo/fit-tool-result";
 import { formatEtDate, todayEt } from "@/features/nighthawk/lib/session";
 import { summarizeHelixSignalOutcomes } from "@/features/helix/lib/helix-signal-outcome-summary";
+import { etStamp, etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 import { loadSpxDeskPulse, loadSpxPinForecast } from "@/features/spx/lib/spx-desk-loader";
 import { composeCortexRead } from "@/lib/bie/cortex-read";
 import { fetchUnifiedHorizonOutcomes } from "@/lib/horizon-outcomes";
@@ -150,6 +152,21 @@ export async function nighthawkHorizonsForLargo() {
   });
 }
 
+/** Per-play rows the model gets on the record.
+ *
+ *  `entry_context` is deliberately NOT among them. It is the frozen commit-forensics
+ *  blob (cortex snapshot, origin maps, exit-policy snapshot, tier factors) and it was
+ *  **94% of this tool's bytes** — 984,898 of 1,052,064 chars at the default 30-day
+ *  window. The model never actually received it: the transport's tail cut landed
+ *  inside play #2, so the blob bought nothing and cost every aggregate behind it.
+ *  A member question that genuinely needs one play's evidence has dedicated tools
+ *  (`get_cortex_decision` for the commit evidence, `get_grader_agreement` for the
+ *  grading lanes) which return it scoped to ONE ticker and comfortably in budget. */
+const ZERODTE_RECORD_MAX_SAMPLE_PLAYS = 40;
+
+/** Aggregate-only base is ~2.8k chars; each lean play is ~330. 40 is a reading
+ *  ceiling, not a size one — the budget in `fitRowsToBudget` is the real bound and
+ *  will cut below 40 on a wide window rather than let the aggregates be at risk. */
 export async function zerodteRecordForLargo(days = 30) {
   if (!dbConfigured()) {
     return { available: false, degraded: true, reason: "database_unavailable" };
@@ -160,7 +177,31 @@ export async function zerodteRecordForLargo(days = 30) {
   try {
     const rows = await fetchZeroDteSetupLogRange(since, Math.min(2000, capped * 20));
     const record = buildZeroDteRecord(rows, { since, through, days: capped });
-    return roundFloats(record);
+    // Split the record the way the transport reads it: AGGREGATES FIRST, sample last.
+    // `buildZeroDteRecord` is untouched — the member route (/api/market/zerodte/record)
+    // and the desk UI still get the complete record with every play and its
+    // entry_context. This reshaping is for the MODEL's copy only, which is the one
+    // that has a 16k tail-truncating transport in front of it.
+    const { plays, ...aggregates } = record;
+    const leanPlays = plays.map(({ entry_context: _entryContext, ...play }) => play);
+    const base = roundFloats(aggregates) as Record<string, unknown>;
+    const fitted = fitRowsToBudget(base, "plays", roundFloats(leanPlays) as typeof leanPlays, {
+      maxRows: ZERODTE_RECORD_MAX_SAMPLE_PLAYS,
+    });
+    return {
+      ...base,
+      plays_total: fitted.total,
+      plays_included: fitted.kept.length,
+      plays_note: sampleNote(
+        fitted.kept.length,
+        fitted.total,
+        "committed 0DTE plays",
+        "Per-play commit forensics (entry_context) are omitted here — use get_cortex_decision for one ticker's evidence."
+      ),
+      // LAST on purpose. If anything downstream ever pushes this result back over the
+      // transport cap, the tail cut must eat the sample rows, never the track record.
+      plays: fitted.kept,
+    };
   } catch (e) {
     return {
       available: false,
@@ -505,6 +546,7 @@ export async function helixTapeAnalyticsForLargo(ticker: string | null, limit = 
       netPremiumLeaders,
       routeBreakdown,
       expiryConcentration,
+      expiryHorizonConcentration,
       sessionFlowSkew,
     } = await import("@/lib/largo/helix-tape-analytics");
     const summary = await marketPlatform.flows.getFlowTapeSummary({
@@ -512,13 +554,43 @@ export async function helixTapeAnalyticsForLargo(ticker: string | null, limit = 
       ticker: ticker ? ticker.toUpperCase() : undefined,
     });
     const alerts = summary.recent ?? [];
+    const now = new Date();
+    const nowMs = now.getTime();
+    // Largo product contract C1: an ET stamp and an ET session date, from the SHARED helpers
+    // (bar-session-date.ts, #2418) rather than a local Intl call — one definition of "what
+    // session is it" across every lane, so two tools can never disagree about today.
+    //
+    // Both fields are load-bearing here and are NOT redundant: every DTE on this payload is
+    // measured against `session_date`, and in the ~8pm-midnight ET window the UTC date is
+    // already tomorrow. A model resolving "today" from a UTC `as_of` is a full session ahead
+    // and reads the next expiry as 0DTE — the exact defect this payload is being fixed for.
+    const byExpiry = expiryConcentration(alerts, 8, now);
+    const distinctExpiries = new Set(
+      alerts.map((a) => String(a.expiry ?? "unknown").slice(0, 10))
+    ).size;
     return roundFloats({
-      available: alerts.length > 0,
+      // An empty tape is a STATE, not a failure. Reporting available:false for a quiet
+      // off-hours read told the model the tool was broken and invited it to fall back to
+      // some other source; `empty_reason` says which of the two actually happened. Same
+      // convention get_helix_derived already uses.
+      available: true,
+      empty_reason: alerts.length === 0 ? "no_prints_in_window" : undefined,
       ticker: ticker?.toUpperCase() ?? null,
+      as_of: etStamp(nowMs),
+      session_date: etSessionDate(nowMs),
+      window_hours: summary.window_hours ?? null,
       session: sessionFlowSkew(alerts),
       net_premium_leaders: netPremiumLeaders(alerts),
       route_breakdown: routeBreakdown(alerts),
-      expiry_concentration: expiryConcentration(alerts),
+      /** The aggregation the member's Expiry Concentration panel renders. Complete — at most
+       *  four buckets, so no horizon can ever be truncated away. Read THIS for "is there 0DTE
+       *  flow"; the per-date list below is a premium-ranked top-N and drops near-dated
+       *  horizons on any normal tape. */
+      expiry_horizons: expiryHorizonConcentration(alerts, now),
+      expiry_concentration: byExpiry,
+      /** No silent caps: the per-date list above is the top 8 BY PREMIUM out of this many. */
+      expiry_concentration_total_expiries: distinctExpiries,
+      expiry_concentration_truncated: distinctExpiries > byExpiry.length,
       count: summary.count ?? alerts.length,
       total_premium: summary.total_premium ?? null,
     });
