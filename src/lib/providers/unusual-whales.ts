@@ -876,6 +876,25 @@ function darkPoolBias(call: number, put: number, total: number): string {
   return call > put ? "bullish" : "bearish";
 }
 
+/**
+ * The snapshot for a ticker whose tape the upstream ANSWERED for, and which is genuinely empty.
+ *
+ * Exported so the sentence has one home and a test can pin what it asserts. It says something
+ * definite about the trading day, so it must only ever be reached when the day was actually
+ * looked at — see the guard in `fetchUwDarkPool`.
+ */
+export function emptyDarkPoolSnapshot(): DarkPoolSnapshot {
+  return {
+    prints: [],
+    total_premium: 0,
+    call_premium: 0,
+    put_premium: 0,
+    bias: "neutral",
+    pcr: null,
+    detail: "No large dark pool prints today",
+  };
+}
+
 /** GET /api/darkpool/{ticker} — large institutional prints */
 export async function fetchUwDarkPool(
   ticker = "SPX",
@@ -889,18 +908,25 @@ export async function fetchUwDarkPool(
     if (opts?.min_premium) params.min_premium = opts.min_premium;
 
     const data = await uwGetSafe<unknown>(`/api/darkpool/${safeTicker(ticker)}`, params);
+    // DID THE UPSTREAM ANSWER? `uwGetSafe` never throws — it returns null when UW is not
+    // configured, when the circuit breaker is open with no stale cache, on a 403, and when the
+    // retries are exhausted. `extractRows(null)` is `[]`, so without this guard a call that never
+    // got an answer produced the same object as a call that was answered "there are none", and
+    // that object carries a positive claim about the whole trading day.
+    //
+    // Measured on prod 2026-08-21: `earnings:BEKE:2026-08-21` served `9 print(s) | $2.19M` at
+    // ~11:33 and ~11:53 ET and then "No large dark pool prints today" from 12:25, stable across
+    // three reads. Dark-pool prints are executed trades already on the tape, so a session's set
+    // cannot shrink — 9 to 0 is not something that can be true of the day. And because this
+    // fetcher is wrapped in `uwCacheGet`, that false sentence is CACHED for the TTL, which is
+    // why it did not flicker.
+    //
+    // Absence of evidence is not evidence of absence. Unknown returns null, and the consumers
+    // already say nothing when they get one: `shapeMeridianDarkPool(null)` emits `detail: null`,
+    // and the heatmap's `buildDarkPoolLevels` already treats a null snapshot as no overlay.
+    if (data == null) return null;
     const rows = extractRows(data);
-    if (!rows.length) {
-      return {
-        prints: [],
-        total_premium: 0,
-        call_premium: 0,
-        put_premium: 0,
-        bias: "neutral",
-        pcr: null,
-        detail: "No large dark pool prints today",
-      };
-    }
+    if (!rows.length) return emptyDarkPoolSnapshot();
 
     const today = todayEt();
     const prints: DarkPoolPrint[] = [];
