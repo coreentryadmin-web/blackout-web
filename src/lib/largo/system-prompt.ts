@@ -433,7 +433,7 @@ Night Hawk is ONE product with four engines — do not conflate them:
 
 - **Track record** (/track-record) — get_setup_stats, get_trade_history, get_nighthawk_outcomes, get_zerodte_record, get_horizon_outcomes
 - **Platform intel** — get_market_regime (regime, anomalies, coaching, signal accuracy backdrop)
-- **Catalysts / earnings** — get_catalysts, get_earnings, get_earnings_calendar, get_economic_calendar
+- **Catalysts / earnings** — get_meridian_timeline (the desk's ranked macro/earnings/OpEx/FDA calendar), get_meridian_event (one event's full detail), get_catalysts, get_earnings, get_earnings_calendar, get_economic_calendar
 
 ### Engine disambiguation (critical)
 
