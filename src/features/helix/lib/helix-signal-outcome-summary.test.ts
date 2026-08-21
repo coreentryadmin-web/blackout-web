@@ -188,3 +188,62 @@ test("an empty signal_type is bucketed as 'unknown', never dropped from the reco
     "unknown bucket keeps the per-type total reconciled with the aggregate"
   );
 });
+
+// ── Graded-population TIME span ───────────────────────────────────────────────
+// A rate is a number with no time until it names the window it covers. The ledger holds the 50
+// most-recent rows and a fire cannot be graded until forward bars exist, so early in a session
+// every graded row is from a PRIOR session (measured live 2026-08-21 09:40 ET: all 40 graded fires
+// were 2026-08-20 14:00–16:30 ET). The span must describe the GRADED rows the rate is over — not
+// the fetched set, whose newest rows are today's still-pending fires the rate does not include.
+
+test("gradedOldestFiredAt/NewestFiredAt bound the GRADED rows, not the pending ones", () => {
+  const s = summarizeHelixSignalOutcomes([
+    // 10 graded, all yesterday afternoon ET (18:00–20:30Z = 14:00–16:30 ET on 2026-08-20).
+    ...Array.from({ length: 6 }, () => row({ outcome: "continued", fired_at: "2026-08-20T18:00:00.000Z" })),
+    ...Array.from({ length: 4 }, () => row({ outcome: "reversed", fired_at: "2026-08-20T20:30:00.000Z" })),
+    // Today's still-pending fires are NEWER but must not widen the graded span.
+    row({ outcome: "pending", fired_at: "2026-08-21T13:40:00.000Z" }),
+  ]);
+  assert.equal(s.gradedCount, 10);
+  assert.equal(s.gradedOldestFiredAt, "2026-08-20T18:00:00.000Z");
+  assert.equal(s.gradedNewestFiredAt, "2026-08-20T20:30:00.000Z", "the pending 13:40Z row must NOT be the newest");
+});
+
+test("the span is the RAW ledger string, unparsed — no timezone reinterpretation in the pure layer", () => {
+  const s = summarizeHelixSignalOutcomes([
+    row({ outcome: "continued", fired_at: "2026-08-20T18:00:00+00:00" }),
+    row({ outcome: "continued", fired_at: "2026-08-20T19:30:00+00:00" }),
+  ]);
+  assert.equal(s.gradedOldestFiredAt, "2026-08-20T18:00:00+00:00");
+  assert.equal(s.gradedNewestFiredAt, "2026-08-20T19:30:00+00:00");
+});
+
+test("graded span is null when nothing is graded — never a fabricated instant", () => {
+  const s = summarizeHelixSignalOutcomes([
+    row({ outcome: "pending", fired_at: "2026-08-21T13:40:00.000Z" }),
+    row({ outcome: "pending", fired_at: "2026-08-21T13:50:00.000Z" }),
+  ]);
+  assert.equal(s.gradedCount, 0);
+  assert.equal(s.gradedOldestFiredAt, null);
+  assert.equal(s.gradedNewestFiredAt, null);
+});
+
+test("an unparseable fired_at is skipped, not allowed to poison the span to Invalid Date", () => {
+  const s = summarizeHelixSignalOutcomes([
+    row({ outcome: "continued", fired_at: "not-a-date" }),
+    row({ outcome: "continued", fired_at: "2026-08-20T18:00:00.000Z" }),
+  ]);
+  assert.equal(s.gradedOldestFiredAt, "2026-08-20T18:00:00.000Z");
+  assert.equal(s.gradedNewestFiredAt, "2026-08-20T18:00:00.000Z");
+});
+
+test("each signal type carries its OWN graded span", () => {
+  const s = summarizeHelixSignalOutcomes([
+    ...Array.from({ length: 3 }, () => row({ signal_type: "velocity_spike", outcome: "continued", fired_at: "2026-08-20T14:00:00.000Z" })),
+    ...Array.from({ length: 3 }, () => row({ signal_type: "split_flow", outcome: "continued", fired_at: "2026-08-19T14:00:00.000Z" })),
+  ]);
+  const vs = s.bySignalType.find((t) => t.signal_type === "velocity_spike");
+  const sf = s.bySignalType.find((t) => t.signal_type === "split_flow");
+  assert.equal(vs?.gradedNewestFiredAt, "2026-08-20T14:00:00.000Z");
+  assert.equal(sf?.gradedNewestFiredAt, "2026-08-19T14:00:00.000Z", "split_flow's window is its own, a day staler");
+});
