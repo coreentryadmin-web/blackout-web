@@ -386,6 +386,32 @@ contrasting product views.
 
 ## 5. Lessons log
 
+### 2026-08-21 — "how much black space do you have?" and the checker said none
+
+The operator circled the dead lower third of a Vector capture and asked how much of it there was.
+My frame scorer's answer was **dead 0%**.
+
+Two separate things were masking it, and only one was the one I first found:
+
+1. `largestEmptyBand` scans full-width rows. A **price axis prints a label on every row**, so no row
+   is ever empty and the run never starts — the metric was reporting on the axis, not the chart.
+   Real blindness, now fixed by ignoring the right-hand gutter.
+2. But that is not what hid *this* frame. Inside the plot, **grid lines every 0.50** do exactly the
+   same thing. `gridEmptiness` had been measuring it honestly at 18% the whole time; it simply was
+   not loud enough, because the only threshold was a reject at 45%.
+
+The fix that mattered was not a new metric. It was **lowering the volume threshold on one I already
+had.** Empty space now warns above 15%.
+
+It stays a warning rather than a reject because the honest answer is per-ticker: NVDA's strikes sit
+2.50 apart, so a frame wide enough for six bead levels necessarily has gaps between them, and
+whether a gap is waste or context is a judgement about the story. Pixels do not know the story.
+
+**The general rule:** when a check reports clean on something visibly wrong, suspect the
+measurement before the subject. And prefer turning up an existing signal over inventing a new one —
+the new one will have its own blind spots and you will not know them yet.
+
+
 ### 2026-08-21 — the operator's frames had two controls set that mine did not
 
 Side by side, the beads were the tell. The reference captures show dense, continuous rails of

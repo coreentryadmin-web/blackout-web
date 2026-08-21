@@ -340,6 +340,46 @@ export const CAPTURE_LESSONS: ReadonlyArray<CaptureLesson> = [
     observation:
       "Two consecutive identical Vector runs 2026-08-21: the first logged tf and nodes set, the second logged neither and captured an AUTO-11 chart. The toolbar hydrates after the chart, so a bare count() at the 12s settle is a coin flip. Both selects now wait, and an absent control logs CONTROL ABSENT with what the frame is actually on.",
   },
+  {
+    id: "the-ask-competes-with-the-evidence",
+    applies_to: "*",
+    evidence: "RULED",
+    sample_size: null,
+    lesson:
+      "One ask per post, and the whole post fits 280. The ask and the evidence spend the same characters, so a stacked offer does not cost 'a bit of room' — it costs the levels and the times the post exists to show.",
+    observation:
+      "The stacked block (Discord + site + price + Whop) measured ~290 weighted characters on its own, i.e. the entire budget, before a single level was written. Operator ruling 2026-08-21: pick one, keep it short.",
+  },
+  {
+    id: "count-by-the-thing-not-its-neighbourhood",
+    applies_to: "*",
+    evidence: "MEASURED",
+    sample_size: 1,
+    lesson:
+      "Count elements by their own class, never by a descendant guess off a container. A counter that silently under-reports defeats the only reason it exists.",
+    observation:
+      "`.vector-scanner-body tr` reported 4 rows on a Universe Scanner holding 106. That count exists to tell a populated screener from a genuinely empty one — 'No names match' is a real and postable state — so a wrong count does not degrade the check, it inverts it. `.vector-scanner-row` reports 106.",
+  },
+  {
+    id: "a-metric-that-cannot-fire",
+    applies_to: "*",
+    evidence: "MEASURED",
+    sample_size: 1,
+    lesson:
+      "When a check reports clean on something visibly wrong, suspect the measurement before the frame. Chrome that repeats on every row — a price axis, grid lines — makes a whole-row emptiness test unable to fire at all.",
+    observation:
+      "The operator pointed at a Vector frame's black lower third and asked how much there was; the scorer said dead 0%. Two independent maskings: the price axis prints a label on EVERY row so no row is empty across the full width, and grid lines every 0.50 do the same inside the plot. Fixed the first by ignoring the right gutter; the second is why `gridEmptiness` — which read 18% honestly all along — now warns above 15% rather than only rejecting above 45%.",
+  },
+  {
+    id: "warn-where-the-answer-is-per-ticker",
+    applies_to: "*",
+    evidence: "RULED",
+    sample_size: null,
+    lesson:
+      "Reject on what the pixels can decide; warn on what depends on the story. Empty space in a chart is the second kind.",
+    observation:
+      "NVDA strikes sit 2.50 apart on a 215 underlying, so a frame wide enough to hold six bead levels necessarily holds gaps between them. Whether a gap is wasted frame or the context that makes the level matter is a judgement about the post, and a checker that rejects on it trains a reviewer to ignore the checker.",
+  },
 ];
 
 /** Lessons that bind for a given catalog view or surface, most-binding first. */
