@@ -682,6 +682,70 @@ the reader is told the truth about the turn.
 
 ---
 
+## 9c. Is there a CODE-level cause for the outage? Six eliminated, one signature left
+
+§9b established *that* the loop returns `null` at round 0. This section asks the separate question:
+**is a code regression causing it**, or is the code faithfully reporting an upstream fault? Every
+check below is offline — no live Largo call — and production is running current `main`
+(`deploy-freshness.mjs --since=48h`: *"every deploy-worthy commit has a later deploy run"*, newest
+2026-08-22T23:31Z), so these line references describe deployed code.
+
+| # | Candidate code cause | Eliminated by |
+|---|---|---|
+| 1 | **A malformed or duplicate tool schema** would 400 the whole request for every model and every depth — and a large batch of Largo tool PRs landed 2026-08-21, the day the outage began. | Validated all **129** definitions offline: no duplicate names, every name inside `^[a-zA-Z0-9_-]{1,64}$`, every `input_schema` an object with `properties`, every `required` entry present in `properties`, no empty descriptions. Clean. Serialized tool block 99 540 chars (~25k tokens) — large but far inside a 200k context. |
+| 2 | **An empty system text block** (the API rejects zero-length text blocks) | `buildDynamicSystem` returns exactly two blocks: `LARGO_SYSTEM_PROMPT` (a constant) and `dynamicPart` (always contains literal headings). Neither can be empty. `applySystemCache` passes the array through untouched because block 0 already carries a marker. |
+| 3 | **A sampling-param 400** — `temperature` is rejected by Sonnet 5 | `modelRejectsSamplingParams` is `/claude-(?:opus\|sonnet)-5\|.../` and correctly matches `claude-sonnet-5`, so Deep omits `temperature`. Concrete runs `claude-haiku-4-5`, which accepts it. **The two depths take opposite branches of this guard and fail identically** — so the guard is not the discriminator. |
+| 4 | **Top-level `cache_control`** on `MessageCreateParams` (added by a cast, i.e. not in the SDK's type) | Shipped 2026-08-10 in #2020. `CLAUDE.md` records a **successful** live truncation-probe run on 2026-08-21 — *"control PROVEN, `get_zerodte_record`/`get_nighthawk_edition`/`get_zerodte_plays` COMPLETE"*. Largo was answering with this code in place, so it is not fatal. |
+| 5 | **Gate closed / no client / spend ceiling** | §9b. Key present, staging flags unset, and a ceiling stop renders different copy. |
+| 6 | **A single-model outage** (529/429 on `claude-sonnet-5`) | Ruled out by the escalation retry itself — see below. |
+
+### The escalation retry is the strongest evidence, and it points away from code
+
+#2582 wired `LARGO_ESCALATION_MODEL` into the round-0 failure path: when the primary model's
+create/stream throws on round 0, the loop swaps model and retries once
+(`anthropic.ts:717` streaming, `:745` non-stream). So a failing turn actually attempts **two
+different models**:
+
+- **Deep**: `claude-sonnet-5` → throws → retry on `claude-sonnet-4-6` → throws → `null`.
+- **Concrete**: `claude-haiku-4-5` → throws → retry on `claude-sonnet-4-6` → throws → `null`.
+
+Across the two depths that is **three distinct models failing at round 0**, and the measured
+latencies fit two failed calls each (Deep 3.5–4.1 s, Concrete 924 ms). `shouldFallBackToEscalationModel`'s
+own docstring names this exact signature:
+
+> *"on a non-transient fault (a 400, an auth/spend error) **both models fail** and it costs one
+> extra call, never a wrong answer."*
+
+Three models do not degrade simultaneously. **The code is behaving as designed; what it is reporting
+is an account-level, non-transient upstream fault.** That is corroboration of the billing hypothesis
+derived from the code path, not an assumption inherited from it.
+
+### Correction to §9b's "next step"
+
+§9b said #2620's warn at `anthropic.ts:785` settles which sub-case is firing. That is only half
+right, and the distinction matters to whoever reads the log:
+
+| Log line | Means |
+|---|---|
+| `[anthropic] tool-loop stream round failed — falling back to accumulated assistant text <MSG>` (`:713`) or `[anthropic] tool-loop round create failed — … <MSG>` (`:741`) | The model call **threw**. **`<MSG>` is the upstream error verbatim** — the 401/429/400/credit message. This is the line that ends the investigation. |
+| `[anthropic] round 0 stream on claude-sonnet-5 failed — retrying once on claude-sonnet-4-6` (`:718`) | The escalation retry fired — confirms the multi-model signature above. |
+| `[anthropic] tool-loop round N produced NO tool calls and NO text` (`:785`) | The model **returned** an empty round. A *different* fault from the above. |
+
+**The error is already logged.** An earlier reading of mine that the throw path swallows it silently
+was wrong — both catches `console.error` the message before returning. So no logging fix is needed
+and no code change is required to diagnose this: one `grep` of the production log for
+`[anthropic] tool-loop` names the cause exactly.
+
+### Verdict
+
+**No code regression found.** Six candidate code causes eliminated; the remaining signature is an
+account-level upstream fault that the loop reports faithfully and then narrates wrongly. The only
+code defect in scope is **L-3** — four structurally different failures collapsing into one `null`
+that is rendered as *"I couldn't pull enough live data"*. Fixing L-3 would not have prevented this
+outage; it would have made it self-describing instead of costing three lanes a day of investigation.
+
+---
+
 ## 10. What this map still does not know
 
 Stated so nobody mistakes this document for complete:
