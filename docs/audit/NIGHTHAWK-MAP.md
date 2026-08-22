@@ -95,7 +95,8 @@ replicas now serve the identical board.
 ### The never-block ladder
 
 `getZeroDteBoardPayload` never awaits a cold build. It races the build against
-`zerodteBoardMaxBlockMs()` (**default 3000ms**, env `ZERODTE_BOARD_MAX_BLOCK_MS`, floor 500ms) and
+`zerodteBoardMaxBlockMs()` (**default 3000ms**, env `ZERODTE_BOARD_MAX_BLOCK_MS`, floor 500ms —
+**confirmed NOT overridden in production**, §11) and
 on timeout falls through, in order: shared Redis snapshot → per-replica last-good board →
 `buildMinimalBoardFallback()` (a structurally valid EMPTY board). The cold build keeps running and
 publishes for the next poll.
@@ -303,6 +304,9 @@ replaced by the condor liquidity gate, G-4 blocks harder, and G-7 blocks the ses
 
 ### Phase-0 firewall kill-switches (all fail-closed, all ON by default)
 
+**All four confirmed NOT overridden in production (§11)** — so "ON by default" is the deployed
+fact here, not merely the code's intent.
+
 | Env | Default | Effect when the input is unavailable |
 |---|---|---|
 | `ZERODTE_G4_FAIL_CLOSED` | on | a fresh commit HOLDS when a present VIX could have blocked it |
@@ -447,7 +451,7 @@ Every line here is a gap, not a conclusion.
 |---|---|---|---|
 | U1 | Does deployed EventBridge carry `banger-discovery`'s two-hour schedule? | `blackout-infra` is out of session scope; the registry is a mirror | run `scripts/audit/cron-dst-audit.mjs --infra=<path>` with the infra repo attached |
 | U2 | DST-correctness of the other 8 NH crons | the 2026-08-21 audit run covered `nighthawk-morning-confirm`, `nighthawk-outcomes`, `swing-discovery` (all correct in both offsets) and `banger-discovery`; **`banger-live-sync`, `nighthawk-edition`, `swing-active-refresh`, `zerodte-grade`, `zerodte-warm` were not reported** | same run, reading the per-route table |
-| U3 | Does `get_nighthawk_outcomes` still deliver its full payload in production? | #2480 "fixed" it once and it recurred on 2026-08-22; #2628 is the follow-up. Truncation is only observable from the **live** agent | `scripts/audit/largo-truncation-probe.mjs --tools=get_nighthawk_outcomes` with a proven control |
+| U3 | Does `get_nighthawk_outcomes` still deliver its full payload in production? | #2480 "fixed" it once and it recurred on 2026-08-22; #2628 is the follow-up. Truncation is only observable from the **live** agent. **Attempted 2026-08-22 23:2x UTC: the run ABORTED at `get_zerodte_plays` on HTTP 401 — the Clerk session stopped authenticating mid-run — and correctly reported 13 INDETERMINATE / 0 clean rather than inventing a pass.** The control (`get_nighthawk_outcomes` itself) also never appeared in the trace, so the instrument was NOT PROVEN | re-run split into smaller `--tools=` batches so a run outlives its session, **and pick a new `--control=`** — the probe's own header (line 68) predicts that #2480/#2628 make this control return COMPLETE, at which point it can no longer prove the instrument |
 | U4 | Real board-build p50/p95 during RTH | the 3s never-block ladder means a slow build is invisible as latency — it shows up as an empty board instead | instrument `buildAndPublishBoard`; measure during RTH, not off-hours |
 | U5 | How often the never-block ladder actually serves `buildMinimalBoardFallback()` | nothing counts it today | a counter on the fallback branch; an empty board with `discovery_health` all-`ok` is the signature |
 | U6 | Live pixel state of `/nighthawk` at desktop + 430 | not measurable off-hours; a selector assertion is not a UI test | `proxy-browser.cjs` from the repo root during RTH |
@@ -455,7 +459,84 @@ Every line here is a gap, not a conclusion.
 
 ---
 
-## 11. How to use this file
+## 11. Deployed values — rule 8 applied
+
+`_COMMON.md` rule 8 (added 2026-08-22, #2634): *the deployed value is the fact, the code default is
+a decoy.* Every env-tunable number in §2 and §5 above was therefore checked against what production
+actually ships, read read-only from `blackout-production/app/env` via boto3 (98 keys in the blob;
+only non-secret Night Hawk flag names were read, never the full blob, never a credential).
+
+### The good news: §2 and §5 are measured, not assumed
+
+**None of the twelve env-tunables this map asserts are overridden in production** — so for these,
+the code default *is* the deployed fact:
+
+`ZERODTE_BOARD_MAX_BLOCK_MS` · `ZERODTE_G4_FAIL_CLOSED` · `ZERODTE_G7_FAIL_CLOSED` ·
+`ZERODTE_G11_FAIL_CLOSED` · `ZERODTE_G11_HALT_FAIL_CLOSED` · `ZERODTE_EXIT_MODE` ·
+`ZERODTE_WHOLE_MARKET` · `ZERODTE_SRC_BREAKOUT` · `ZERODTE_SRC_PIN` · `ZERODTE_CONDOR` ·
+`ZERODTE_CONFLUENCE_MIN` · `BREAKOUT_MAX_CANDIDATES` — all **NOT SET**.
+
+In particular the 3s never-block ceiling and all four Phase-0 firewall kill-switches really are at
+their documented defaults in production. That is now a measurement.
+
+### What IS deployed — six flags, two of which need attention
+
+| Key | Deployed | What it does |
+|---|---|---|
+| `NIGHTHAWK_EDITION_ENABLED` | `"1"` | evening edition on |
+| `ZERODTE_CALIBRATION_RAIL_PRIORS` | `"shadow"` | shadow rail priors blended into market-state merge rank |
+| `ZERODTE_CALIBRATION_PRIOR_BLEND` | `"0.35"` | the blend factor `calibrationPriorBlendFactor()` returns at trace step 1 |
+| `BREAKOUT_INTRADAY_REFRESH` | `"1"` | swing-discovery intraday refresh |
+| `PIN_TEMPORAL_STABILITY` | `"1"` | **see NH-1** |
+| `BREAKOUT_DYNAMIC_CAP` | `"1"` | **see NH-2 — this key is never read** |
+
+The two calibration flags matter for the trace: step 1's `loadShadowRailPriors()` /
+`calibrationPriorBlendFactor()` are **live in production at a 0.35 blend**, not dormant. Any
+statement that rail priors are "shadow-only, not affecting the board" is wrong — they re-sort the
+merge rank.
+
+### NH-1 — `PIN_TEMPORAL_STABILITY` is ENFORCED in production on a measurement that was never completed
+
+**Severity: material. Not flattering-direction, but it silently suppresses plays.**
+
+- `pin-temporal-stability.ts:2` states the flag is **"DEFAULT-OFF … until offline measurement
+  warrants enforcement."**
+- `INTENTIONAL-DESIGN.md` item #3 (single-snapshot PIN wall test) names
+  `scripts/audit/wall-temporal-stability.mjs` as the measurement that would justify enforcing it.
+- `CLAUDE.md` records that run's outcome: the poller was built and smoke-tested live, but **RTH was
+  closed with no reusable capture, so the stability measurement is still INSUFFICIENT DATA.**
+- Production nonetheless ships `PIN_TEMPORAL_STABILITY="1"`.
+- It is wired and it **blocks**: `pin-discovery.ts:234-238` calls `pinPassesTemporalStabilityGate`
+  and `return null`s the candidate on failure — the PIN never reaches the merge, the gate stack, or
+  the ledger. It requires `PIN_TEMPORAL_MIN_SNAPS = 2` snapshots bracketing within
+  `PIN_TEMPORAL_WALL_TOL = 0.5%`.
+
+So a hard suppression rule that the design record calls parked-pending-evidence is live, and the
+evidence it was parked on does not exist. **This is not a claim that the gate is wrong** — it may
+well be correct, and fail-closed is the house default. The finding is that *nobody can currently
+say either way*, and the code comment tells a reader it is off.
+
+Closing it needs the measurement, not a code change: capture GEX wall snapshots across one RTH
+session with `scripts/audit/gex-wall-snapshot-poll.mjs`, then run `wall-temporal-stability.mjs`
+against them. **Until then, the honest status of INTENTIONAL-DESIGN item #3 is "enforced,
+unmeasured", not "parked".**
+
+### NH-2 — `BREAKOUT_DYNAMIC_CAP="1"` is a key nothing reads
+
+Production sets `BREAKOUT_DYNAMIC_CAP="1"`. The only env name `breakout-cap.ts` ever reads is
+**`BREAKOUT_DYNAMIC_CAP_DISABLED`** (`breakout-cap.ts:47,64`). There is no read of the bare key
+anywhere in `src/`.
+
+The dynamic cap is on regardless — `disabled` resolves false when `BREAKOUT_DYNAMIC_CAP_DISABLED`
+is unset — so **today the deployed behaviour matches the evident intent by coincidence, not by the
+flag.** The trap is the inverse operation: someone trying to turn the dynamic cap OFF by setting
+`BREAKOUT_DYNAMIC_CAP="0"` would change nothing and would have no way to tell. Low severity, but it
+is a lie in the deploy config and costs one line to resolve (either read the bare name as an
+enable-flag, or drop the key).
+
+---
+
+## 12. How to use this file
 
 - **Before any Night Hawk fix**, check §9 — three of the most-cited open defects are already fixed,
   and a PR that "fixes" them again is noise.
@@ -465,5 +546,8 @@ Every line here is a gap, not a conclusion.
   skew.
 - **Before calling the board empty**, check §4.3 — `discovery_health` distinguishes a quiet market
   from a lane that could not see.
+- **Before quoting any env-tunable as behaviour**, check §11 — and re-read it against
+  `blackout-production/app/env` rather than trusting this file, because a deploy can change it
+  without a commit. Two flags there (NH-1, NH-2) are open items, not settled facts.
 
 When this file and the code disagree, **the code wins and this file is a bug.**
