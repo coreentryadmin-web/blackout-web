@@ -271,7 +271,54 @@ never asked. The tests assert the AMC branch anchors to the next session; none a
 branch is measured correctly, because open→close was the assumed-correct baseline both branches
 were compared against.
 
-*Fix not written — Phase 0 gate. Ready to follow immediately; see the note at the end of §6.*
+*Fix not written — Phase 0 gate. The read to replace it is settled in §6.1.1; see the note at
+the end of §6.*
+
+### 6.1.1 — which read replaces it (UNKNOWN #1, resolved by measurement)
+
+Establishing that `session_open_to_close` is wrong does not say what is right. Three candidates,
+measured on 90 settled BMO prints, `importance>=4`, 2026-01 → 2026-08, using **extended-hours
+minute bars** to build the third:
+
+| | read | rationale |
+|---|---|---|
+| **A** | `anchor open → anchor close` | shipped — established wrong |
+| **B** | `prior close → anchor close` | symmetric with the AMC path, and what UW serves |
+| **C** | **last trade BEFORE the print time** `→ anchor close` | isolates the print from unrelated overnight drift |
+
+C is the ground truth here: it starts the measurement at the last price that did not know the
+numbers. B's known weakness is precisely what C removes, so B-vs-C measures how much that
+weakness costs.
+
+```
+|A − C|   mean 4.33pp  median 2.62  p90 10.63  max 28.54   sign flips 28/90 = 31.1%
+|B − C|   mean 0.91pp  median 0.00  p90  3.40  max 11.06   sign flips  4/90 =  4.4%
+```
+
+**That B−C row is not the honest one and must not be quoted alone.** 44 of the 90 prints had *no
+premarket trade at all* before the print, so for those C is *defined* as B and the comparison is
+a tautology — the same cohort trap `meridian-earnings-data-inventory.mjs` exists to prevent, met
+here from a new direction. On the 43 prints where C is a genuinely independent reading:
+
+```
+|B − C|   mean 1.91pp  median 1.18  p90  4.10  max 11.06   sign flips  4/43 =  9.3%
+          and B and C differ by more than 1.5pp on 21/43 = 48.8%
+```
+
+**Decision: ship B.** It removes the defect (31.1% sign flips → 9.3%), it is symmetric with the
+AMC path so one rule covers both branches, it makes `get_earnings` and `get_earnings_history`
+agree instead of contradicting each other by 6.76pp, and it costs no extra fetch.
+
+**Do not ship C.** It is better where it applies and it does not apply half the time: on 47 of 90
+prints there is no premarket trade to anchor to, and where premarket volume is thin a single
+small trade would set the anchor for the headline number — trading a known 4pp bias for an
+unbounded and invisible one. What C establishes is that B carries a real residual (median 1.18pp
+of pre-print drift attributed to the print), and per `_COMMON.md` §7 that residual belongs **in
+the payload**, not in a comment: a `reaction_measure` of `prior_close_to_close` on a BMO print
+should say it includes overnight drift, the same way the AMC branch already does.
+
+`NBIS 2026-08-12` (06:00 print) is the case worth remembering: A `+14.69%`, B `+34.14%`,
+C `+23.08%`. All three are wrong to quote without knowing which one you are holding.
 
 ### 6.2 — P2. `reaction_basis` and `reaction_settled` reach the UI and no component reads them
 
@@ -340,19 +387,18 @@ is present under its own name), but it is a boundary description that no longer 
 - **Coverage counters** — the timeline publishes what it filtered and what it could not classify.
 
 > **On the Phase 0 gate.** The charter says *"do not open a fix PR until Phase 0's deliverable is
-> merged"*, so §6.1 and §6.2 are documented here rather than fixed. Both fixes are scoped and
-> ready. §6.1 needs a decision recorded before it is written — see §7.
+> merged"*, so §6.1 and §6.2 are documented here rather than fixed. Both are now
+> fully scoped — §6.1's open decision was the one thing blocking it, and §6.1.1 closes it.
 
 ---
 
 ## 7. UNKNOWN — every line here is a work item
 
-1. **Is `prior_close_to_close` the right read for a BMO print, or is a premarket-aware read
-   better?** §6.1 establishes that `session_open_to_close` is wrong. It does not establish which
-   replacement is right. `prior_close_to_close` matches UW and is symmetric with the AMC path,
-   but a stock that drifted overnight on unrelated news attributes that drift to the print.
-   A premarket-VWAP-anchored read is the third option and needs Polygon minute bars to evaluate.
-   **Measure before choosing.**
+*(#1 was resolved by a measurement run for this document; kept in place so the numbering in
+the PR and in §6 still points somewhere.)*
+
+1. ~~Which read replaces `session_open_to_close` for a BMO print?~~ **RESOLVED — measured, see
+   §6.1.1.** `prior_close_to_close`, with the residual named in the payload rather than fixed.
 2. **`meridian-warm`'s deployed UTC schedule.** `blackout-infra` is not in this session, and
    `cron-dst-audit.mjs` refuses a verdict without the manifest — correctly. The 04:00–20:00 ET
    band is wide enough that drift is unlikely, but "unlikely" is not "checked".
