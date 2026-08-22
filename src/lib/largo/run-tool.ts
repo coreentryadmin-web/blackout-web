@@ -2,6 +2,7 @@ import { serverCache, TTL } from "@/lib/server-cache";
 import { sanitizeFeedText } from "@/lib/largo/sanitize-feed-text";
 import { getLargoSpxLiveDesk } from "@/lib/largo/spx-desk-cache";
 import { computeSpxConfluence } from "@/features/spx/lib/spx-signals";
+import { omitUncalibratedSpxConfidence } from "@/lib/largo/spx-confidence-boundary";
 import { loadLottoRecord } from "@/features/spx/lib/spx-lotto-store";
 import { loadPowerHourRecord } from "@/features/spx/lib/spx-power-hour-store";
 import { fetchPositioningSummary } from "@/features/nighthawk/lib/positioning";
@@ -958,7 +959,9 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       return marketPlatform.spx.getSpxDeskSummary();
     }
     case "get_spx_play": {
-      return marketPlatform.spx.getSpxPlayState();
+      // Same uncalibrated `confidence` as get_spx_confluence — the play payload carries the
+      // confluence's value verbatim at its top level. See spx-confidence-boundary.ts.
+      return omitUncalibratedSpxConfidence(await marketPlatform.spx.getSpxPlayState());
     }
     case "get_open_plays":
       return marketPlatform.spx.getSpxOpenPlay();
@@ -1565,7 +1568,10 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       // Pure compute on the already-cached per-user desk — no extra API calls.
       const desk = await getLargoSpxLiveDesk(userId);
       const confluence = computeSpxConfluence(desk);
-      return (
+      // `confidence` here is a formula over |score| and a COUNT of factors (conflicting ones
+      // included), fitted to no outcome data. The product contract requires omitting a confidence
+      // a product cannot calibrate, because the model ranks it against lanes that measure theirs.
+      return omitUncalibratedSpxConfidence(
         confluence ?? { error: "No confluence available — SPX desk not live yet." }
       );
     }
