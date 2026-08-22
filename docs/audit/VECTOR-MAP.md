@@ -366,8 +366,31 @@ grace is that the head slice keeps the answer and loses the caveat, rather than 
 
 **Scope.** `get_vector_pulse` is **NOT** affected — `vectorPulseForLargo` assembles its own compact
 payload (signals capped at 25, no rail). `get_ecosystem_context.vector_full_state` **IS**, by its
-own documented promise to return "the exact same object". `get_vector_analytics` is unmeasured
-(it caps screener rows, pivots, events and buckets, so it is likely fine) — **UNKNOWN**.
+own documented promise to return "the exact same object".
+
+**`get_vector_analytics` is not broken today, and has no margin.** Estimated by reconstructing the
+payload at the tool's OWN documented caps (`MAX_SCREENER_ROWS = 15` × 3 presets, `MAX_PIVOTS = 12`,
+`MAX_EVENTS = 8`, `MAX_BUCKETS = 8`, `DAILY_REGIME_DEFAULT_DAYS = 15`) with realistic values — a
+construction, **not** a live capture, so read it as ±10–20%, not to the character:
+
+| `regimeDays` | Estimated chars | % of the 16,000 cap |
+|---|---|---|
+| 1 | 13,632 | 85% |
+| **15 (default)** | **14,948** | **93%** |
+| 22 | 15,606 | 98% |
+| 25 | 15,888 | 99% |
+| **30 (the tool's own maximum)** | **16,358** | **102% — over** |
+
+Three structural facts survive the estimate's error bars. `screener` alone is **46%** of the
+payload (three presets × fifteen rows). `daily_regime` scales linearly with `regimeDays`, which is
+**caller-settable** and clamped to `[1, 30]` by `clampDailyRegimeDays` — so the one parameter a
+model can vary is the one that pushes it over. And the default already exceeds the repo's own
+`LARGO_RESULT_CHAR_BUDGET` (14,000), which `fit-tool-result.ts` sets deliberately below the
+transport cap because "a caller may still round, wrap or annotate the object afterwards".
+
+Key order puts `unavailable_sections` and `coaching_scope` **last** here too, so what a cut takes
+first is again the absence labelling. Same fix, same module — but P3, since nothing is losing
+bytes at the default parameters today.
 
 **The fix is the module that already exists.** `fitToolResult`/`LARGO_RESULT_CHAR_BUDGET`
 (14,000) with the rail reordered last and its kept-count stated out loud, so the model can never
@@ -487,7 +510,8 @@ Required by the charter. A single wall-rail bead on SPX, 5s bucket, function nam
    30 minutes of oracle rail, with the absence and freshness blocks landing past the cut. Route it
    through `fit-tool-result.ts`, rail last, kept-count stated. Then run
    `largo-truncation-probe.mjs` **during RTH** (an off-hours run cannot see this) to confirm live,
-   and to settle `get_vector_analytics`, which is still unmeasured.
+   and to settle `get_vector_analytics`, estimated at 93% of the cap at default parameters and
+   **over it** at the `regimeDays = 30` its own clamp accepts.
 2. **Every number, against Polygon, on a live tape.** Nothing in this file is a correctness claim
    about a served value — the market was closed. Walls, flip, expected move, max pain, magnet,
    ladder, universe rows.
