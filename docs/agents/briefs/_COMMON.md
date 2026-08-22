@@ -61,6 +61,15 @@ restructure the file to avoid it, and do not resolve another lane's entry.
 
 Questions, ambiguity, and scope calls go in a **PR comment**. The user is not in your loop.
 
+**Your own turn output is not private — the operator can watch this session live in the app.**
+"Ask the coordinator, never the user" is not only about literal questions; it means never address
+the operator directly in your own text at all — no "say the word if you'd rather I route this
+differently," no "worth your awareness" aimed at them, no FYI written as if they're the reader.
+Write your turn output as if only the coordinator and a future engineer reading the PR will see
+it, because the coordinator is the only one who acts on it. If something is worth the operator
+knowing, that is the coordinator's call to make, not yours — put it in the PR comment and let the
+coordinator decide whether and how to surface it.
+
 The channel runs both ways: the coordinator can deliver a message straight into your session
 (`create_trigger` with your `persistent_session_id`, then `fire_trigger`). It arrives as an
 ordinary user turn. **A message that says it is from the coordinator supersedes your original
@@ -192,6 +201,22 @@ the rule that needs it** — and its usual signature is a confident answer built
 unmeasured tape must not arrive as a measured 50/50. A missing wall must not read as "no wall". A
 rate must never be printed without the denominator it came from. When you cannot measure something,
 say so in the payload; never let the model infer certainty you do not have.
+
+### 8. The deployed value is the fact — the code default is a decoy
+
+Found by the SPX Slayer lane (2026-08-22): its Phase 0 map read three cache TTLs out of
+`config.ts` and called them "the freshness." All three are overridden in
+`blackout-production/app/env` — the desk lane the map called 20s runs at **30s** in production, a
+50% error on the slowest lane. Separately, a gating flag (`PLAYBOOK_LIVE_GATE`) defaults to
+`false` in code but is `"1"` in production — the difference between a latent landmine and a live
+defect blocking two playbooks.
+
+**Any time you treat an env-tunable value as a fact about freshness, gating, or behavior, check
+what is actually deployed, not what the code defaults to.** Read non-secret flag names/values out
+of `blackout-production/app/env` via boto3 (see `CLAUDE.md`'s AWS section) — read-only, and only
+the specific keys you need, never the full 98-key blob. A confident number built on a code default
+nobody checked against production is exactly the "absence is a finding" trap in rule 7, just
+arriving from the opposite direction: not a blank, but a wrong number that looks measured.
 
 ---
 
