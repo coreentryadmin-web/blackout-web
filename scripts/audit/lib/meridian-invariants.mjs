@@ -81,6 +81,27 @@ export function expectedVsRealizedViolations(event) {
       sample: `ratio ${evr.ratio} verdict ${evr.verdict} with no captured per-print implied`,
     });
   }
+  // Withholding the ratio was not sufficient. `MeridianEarningsTabs` rebuilt the pairing from the
+  // pack's forward implied and rendered it under the reaction to a print months earlier, so the
+  // block must not CARRY a number that does not belong to the print it describes. An implied on a
+  // cross-event block is the raw material for the next such banner.
+  if (evr.same_event === false && evr.expected_move_pct != null) {
+    out.push({
+      rule: "evr_carries_foreign_implied",
+      path: "enrichment.expected_vs_realized.expected_move_pct",
+      sample: `expected_move_pct ${evr.expected_move_pct} on a block flagged same_event=false`,
+    });
+  }
+  // A ratio or verdict may only ride on a block that states the two sides are the same print.
+  // `same_event === false` only — an ABSENT flag is an older payload, not a claim of difference,
+  // and firing on it would light up every event during a deploy window.
+  if (claims && evr.same_event === false) {
+    out.push({
+      rule: "evr_claims_without_same_event",
+      path: "enrichment.expected_vs_realized",
+      sample: `ratio ${evr.ratio} verdict ${evr.verdict} with same_event ${evr.same_event}`,
+    });
+  }
   return out;
 }
 

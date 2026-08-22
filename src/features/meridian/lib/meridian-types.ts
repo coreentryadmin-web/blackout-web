@@ -167,10 +167,17 @@ export type MeridianCongressActivity = {
 };
 
 export type MeridianExpectedVsRealized = {
+  /** The implied captured for the SAME print as `realized_move_pct`. Null when `same_event` is false. */
   expected_move_pct: number | null;
   realized_move_pct: number | null;
   ratio: number | null;
   verdict: "under" | "over" | "inline" | "unknown";
+  /**
+   * Are both numbers from the same print? Only then may a consumer show them together, take a
+   * ratio, or use an "expected vs realized" label. False means the block describes one measured
+   * reaction and nothing else.
+   */
+  same_event: boolean;
   headline: string | null;
 };
 

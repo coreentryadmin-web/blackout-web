@@ -88,6 +88,67 @@ describe("no ratio or verdict across two different events (#2614)", () => {
     );
   });
 
+  test("a cross-event block must not CARRY the implied it cannot be paired with", () => {
+    // The banner rebuilt "Implied ~9.2% into print" from a forward implied and printed it under
+    // PDD's reaction to a print three months earlier. Withholding the ratio did not stop it.
+    const v = expectedVsRealizedViolations({
+      enrichment: {
+        print_history: [{ expected_move_pct: null }],
+        expected_vs_realized: {
+          ratio: null,
+          verdict: "unknown",
+          same_event: false,
+          expected_move_pct: 9.2,
+          realized_move_pct: -2.35,
+        },
+      },
+    });
+    assert.equal(v.length, 1);
+    assert.equal(v[0]!.rule, "evr_carries_foreign_implied");
+  });
+
+  test("the shipped corrected shape passes — reaction only, implied dropped", () => {
+    assert.deepEqual(
+      expectedVsRealizedViolations({
+        enrichment: {
+          print_history: [{ expected_move_pct: null }],
+          expected_vs_realized: {
+            ratio: null,
+            verdict: "unknown",
+            same_event: false,
+            expected_move_pct: null,
+            realized_move_pct: -2.35,
+          },
+        },
+      }),
+      []
+    );
+  });
+
+  test("a claim on a block that ADMITS it is cross-event is flagged", () => {
+    const v = expectedVsRealizedViolations({
+      enrichment: {
+        print_history: [{ expected_move_pct: 5.0 }],
+        expected_vs_realized: { ratio: 0.9, verdict: "under", same_event: false },
+      },
+    });
+    assert.deepEqual(v.map((x) => x.rule), ["evr_claims_without_same_event"]);
+  });
+
+  test("an ABSENT flag is not a violation — older payloads must not light the board up", () => {
+    // Absence of evidence is not evidence of absence. Prod serves flagless blocks until this
+    // ships, and a checker that cries wolf through every deploy window stops being read.
+    assert.deepEqual(
+      expectedVsRealizedViolations({
+        enrichment: {
+          print_history: [{ expected_move_pct: 5.0 }],
+          expected_vs_realized: { ratio: 0.9, verdict: "under" },
+        },
+      }),
+      []
+    );
+  });
+
   test("a ratio IS allowed once the print carries its own captured implied", () => {
     // The checker must not outlaw the card — only the cross-event comparison.
     assert.deepEqual(

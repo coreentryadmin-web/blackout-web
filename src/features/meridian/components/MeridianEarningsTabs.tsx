@@ -179,11 +179,21 @@ export function MeridianEarningsTabs({
             )}
             {enrichment.expected_vs_realized?.headline && (
               <MeridianAnalyticsBanner
-                label="Expected vs realized"
+                // Only a same-print pair may be labelled a comparison. When it is not, this banner
+                // reports ONE measured reaction, and the sub-line is read from the block itself —
+                // never from `pack.expected_move_pct`, which is the implied for the UPCOMING print.
+                // That substitution shipped: PDD rendered "Last print realized -2.35%" (2026-05-27)
+                // over "Implied ~9.2% into print" (into 2026-08-24), three months apart.
+                label={
+                  enrichment.expected_vs_realized.same_event
+                    ? "Expected vs realized"
+                    : "Last print reaction"
+                }
                 headline={enrichment.expected_vs_realized.headline}
                 sub={
-                  pack.expected_move_pct != null
-                    ? `Implied ~${pack.expected_move_pct}% into print`
+                  enrichment.expected_vs_realized.same_event &&
+                  enrichment.expected_vs_realized.expected_move_pct != null
+                    ? `Implied ~${enrichment.expected_vs_realized.expected_move_pct}% into that print`
                     : null
                 }
                 tone="earnings"
