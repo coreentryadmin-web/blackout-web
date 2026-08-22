@@ -289,12 +289,21 @@ export function computeVectorBarAnalytics(
  * arithmetic, which is date subtraction, not a second opinion about which Friday is OpEx.
  */
 export function opexContext(nowMs: number, horizonDays = 120) {
-  // ANCHORED TO THE DAY, NOT THE INSTANT. `opexDatesInRange` compares each OpEx against
-  // MIDNIGHT UTC of its own date, so passing a mid-session `nowMs` silently drops today's own
-  // expiry — asked "when is OpEx" at 14:00 on OpEx day, the honest answer is "today", and the
-  // instant-anchored window answered "next month". This shifts the QUERY WINDOW only; which
+  // ANCHORED TO THE ET SESSION DATE, NOT THE INSTANT AND NOT UTC. `opexDatesInRange` compares each
+  // OpEx against MIDNIGHT UTC of its own date, so passing a mid-session `nowMs` silently drops
+  // today's own expiry — asked "when is OpEx" at 14:00 on OpEx day, the honest answer is "today",
+  // and the instant-anchored window answered "next month". This shifts the QUERY WINDOW only; which
   // Fridays are OpEx remains entirely the production function's call.
-  const today = new Date(nowMs).toISOString().slice(0, 10);
+  //
+  // The date must be the ET SESSION date, not a bare `new Date(nowMs).toISOString().slice(0,10)`.
+  // That slice is the UTC calendar date, which after 20:00 ET (00:00 UTC) has already rolled to
+  // tomorrow while the ET trading day is still today. On an OpEx Friday evening that made "today"
+  // = Saturday, so this same-day OpEx got `days_away = -1`, was filtered out by `days_away >= 0`,
+  // and "next OpEx" jumped a full month — the exact off-by-one the instant→day fix above was meant
+  // to prevent, reintroduced through the timezone. `etSessionDate` is the shared anchor every other
+  // Largo date already routes through; a non-finite `nowMs` yields null, in which case we fall back
+  // to the old UTC slice rather than fabricate a date.
+  const today = etSessionDate(nowMs) ?? new Date(nowMs).toISOString().slice(0, 10);
   const dayStartMs = Date.parse(`${today}T00:00:00Z`);
   const dates = opexDatesInRange(dayStartMs, dayStartMs + horizonDays * 86_400_000);
   const rows = dates.map((d) => ({
