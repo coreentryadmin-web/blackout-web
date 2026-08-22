@@ -1009,25 +1009,68 @@ export async function fetchIndex5MinBars(symbol: string, from: string, to: strin
   return mapAggBars(data.results);
 }
 
+/**
+ * A daily-bar `limit` DERIVED from the window, because a fixed one silently drops the RECENT end.
+ *
+ * Polygon's aggs endpoint is queried `sort=asc`, so a cap SMALLER than the number of sessions in
+ * `[from, to]` returns the OLDEST N and drops everything after them. Nothing errors and the payload
+ * looks well-formed, so it presents as "this name has no recent data" rather than as truncation.
+ * That cost this repo months once already (`meridian-reaction-core`, limit 120 under a ~380-day
+ * window, every recent earnings reaction null).
+ *
+ * Measured against production 2026-08-22, with the windows and caps that were actually shipping:
+ *
+ *   swing-active-refresh   200d, cap 60   139 bars exist, 60 returned, LAST 2026-04-29  (-79)
+ *   swing-discovery        200d, cap 60   same shape
+ *   nighthawk market-wide   45d, cap 30    33 bars exist, 30 returned, LAST 2026-08-18  (-3)
+ *
+ * DO NOT hand-check a cap against an expected session count instead of deriving it. The provider's
+ * behaviour at the boundary is not `min(limit, count)`: on a 16-day window holding 12 sessions,
+ * `limit=9` returned 9 bars but `limit=10` returned **12**, while on a 60-day window holding 43,
+ * `limit=10` returned 10. "My cap looks big enough" is not a safe argument — derive it.
+ *
+ * The factor is 5/7 EXACTLY, not 0.7. `ceil(days * 5/7)` is the most sessions a window can
+ * physically hold (every weekday a trading day); 0.7 sits just below that, so the +10 slack stops
+ * covering it past roughly 700 days — at 1000 days 0.7 yields 710 against 715 possible sessions,
+ * and the cap is short again. A unit test asserts the cap against the physical maximum for a range
+ * of windows, which is how that was caught. Holidays only REMOVE sessions, so overestimating is
+ * always safe; underestimating silently drops the recent end. Floored so a short window still gets
+ * a usable page, ceilinged so a malformed date cannot request the world.
+ */
+export function dailyBarLimitForWindow(from: string, to: string): number {
+  const ms = Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`);
+  if (!Number.isFinite(ms) || ms <= 0) return 120;
+  return Math.min(5000, Math.max(120, Math.ceil((ms / 86_400_000) * (5 / 7)) + 10));
+}
+
 export async function fetchIndexDailyBars(
   symbol: string,
   from: string,
   to: string,
-  limit = "10"
+  /** Omit to derive from the window — see `dailyBarLimitForWindow`. An explicit value is honoured. */
+  limit?: string
 ) {
   const sym = symbol.toUpperCase();
+  const cap = limit ?? String(dailyBarLimitForWindow(from, to));
   const data = await polygonGet<{ results?: Array<Record<string, unknown>> }>(
     `/v2/aggs/ticker/${sym}/range/1/day/${from}/${to}`,
-    { limit, sort: "asc" }
+    { limit: cap, sort: "asc" }
   );
   return mapAggBars(data.results);
 }
 
-export async function fetchStockDailyBars(symbol: string, from: string, to: string, limit = "60") {
+export async function fetchStockDailyBars(
+  symbol: string,
+  from: string,
+  to: string,
+  /** Omit to derive from the window — see `dailyBarLimitForWindow`. An explicit value is honoured. */
+  limit?: string
+) {
   const sym = symbol.toUpperCase();
+  const cap = limit ?? String(dailyBarLimitForWindow(from, to));
   const data = await polygonGet<{ results?: Array<Record<string, unknown>> }>(
     `/v2/aggs/ticker/${sym}/range/1/day/${from}/${to}`,
-    { limit, sort: "asc" }
+    { limit: cap, sort: "asc" }
   );
   return mapAggBars(data.results);
 }
