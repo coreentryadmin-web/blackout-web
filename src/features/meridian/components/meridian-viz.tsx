@@ -44,6 +44,7 @@ import {
   revisionMomentum,
   sparklinePoints,
   structureLadder,
+  wallInversionNote,
   targetRail,
   LIVE_SIGNAL_GLYPH,
   LIVE_SIGNAL_LABEL,
@@ -403,6 +404,11 @@ export function MeridianStructureLadder({
   levelScopes?: Parameters<typeof structureLadder>[1];
 }) {
   const levels = useMemo(() => structureLadder(thermal, levelScopes), [thermal, levelScopes]);
+  // `walls_inverted` has been computed, typed and served since the walls were defined as
+  // argmax/argmin of net GEX, and NO component read it. Measured live 2026-08-21 on BNS: raw
+  // gamma call wall 85, put wall 87.5, spot 87.57 — rendered as "put 85 … call 87.5", so the
+  // most-negative-gamma strike sat at spot and was labelled resistance.
+  const inversionNote = useMemo(() => wallInversionNote(thermal), [thermal]);
   // Only worth marking rows when the list actually MIXES scopes. Tagging every row "aggregate"
   // on a whole-book ladder is noise on a panel that already says so once, above.
   const mixed = useMemo(() => new Set(levels.map((l) => l.scope).filter(Boolean)).size > 1, [levels]);
@@ -425,7 +431,8 @@ export function MeridianStructureLadder({
   if (levels.length < 2 || !domain) return null;
 
   return (
-    <div className="mv-ladder">
+    <>
+      <div className="mv-ladder">
       {levels.map((l, idx) => {
         const p = placed[idx] ?? 0;
         // Buttons, not divs with hover handlers. Cross-highlighting a level across the other
@@ -446,7 +453,7 @@ export function MeridianStructureLadder({
             disabled={!onLevelHover}
             aria-label={`${l.label} ${fmtPrice(l.value)}${l.distPct === null ? "" : `, ${fmtSignedPct(l.distPct)} from spot`}${
               mixed && l.scope === "aggregate" ? ", from the whole-book aggregate, not this print's expiry" : ""
-            }`}
+            }${l.inverted ? ", display order coerced because the gamma walls are inverted" : ""}`}
           >
             <span className="mv-ladder-label">
               {l.label}
@@ -462,6 +469,16 @@ export function MeridianStructureLadder({
                   agg
                 </abbr>
               )}
+              {/* The row's PLACE IN THE ORDER was coerced, not measured. Marked on the row a
+                  reader is actually looking at, not only in the note below it. */}
+              {l.inverted && (
+                <abbr
+                  className="mv-ladder-inverted"
+                  title="Gamma walls are inverted — this row's position in the band is a display ordering, not the measured gamma structure"
+                >
+                  inv
+                </abbr>
+              )}
             </span>
             <span className="mv-ladder-bar" />
             <span className="mv-ladder-value">{fmtPrice(l.value)}</span>
@@ -471,7 +488,9 @@ export function MeridianStructureLadder({
           </button>
         );
       })}
-    </div>
+      </div>
+      {inversionNote && <p className="mv-note mv-note-inverted">{inversionNote}</p>}
+    </>
   );
 }
 
