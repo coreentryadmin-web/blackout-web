@@ -114,32 +114,56 @@ itself worth a PR.
 **Report the outcome honestly.** "Validated live: X now returns Y, was Z" is a result. "Deployed
 successfully" is not — it describes a deployment, not a fix.
 
-### 6b. Your scope: the Largo boundary FIRST, the product underneath when you find it broken
+### 6b. Your scope: own your WHOLE product. The Largo boundary is one part of that, not the job.
 
-**Standing decision (2026-08-21). Do not re-litigate this; it is settled.**
+**Corrected 2026-08-22 by explicit operator instruction. The previous version of this rule said
+"Largo boundary first, the product only when you trip over it while auditing the boundary" — that
+was wrong, and it was wrong in a way that mattered: every lane reads this file, so a narrower
+shared rule was quietly overriding the full-ownership charter each lane was individually given.
+This correction is the one that governs.**
 
-Five lanes — Helix, Thermal, Vector, Meridian, Night Hawk — exist to do for their product what was
-done for SPX Slayer: make that product's data **correct and legible at the Largo tool boundary**.
-That is the primary job and it is where most of your effort belongs. The characteristic defect is
-never that the product does not know the answer — it is that **the boundary loses it**: a bare
-`null` reaching the model, a fraction quantized to `0`, a posture read off prose instead of a typed
-field, a payload with no time anchor.
+You own your product **end to end** — data, ingestion, calculations, signals, decisions, API,
+cache, UI, charts, alerts, performance, history, the Largo boundary, and production. Treat it as
+your own company and your only product. That is not a figure of speech: the Largo tool boundary is
+**one surface your product exposes**, alongside `/heatmap` or `/flows` or whichever route is
+yours — not the surface the other work exists to service.
 
-SEO is deliberately different and works the public search surface.
+**Concretely, this means the same standard applies everywhere in your product, not just at the
+Largo boundary:**
 
-**When you find the product itself broken while auditing the boundary, fix that too.** A Largo tool
-that faithfully reads a broken product still gives the member a wrong answer, so stopping at the
-boundary would be polishing the messenger. This has already paid for itself: the single
-highest-severity defect the fleet has found — five of seven closed plays displayed as a GAIN on
-losing trades — is a member-facing product bug that a strictly-Largo scope walks straight past.
+- **Every panel, every field, every click, every window** in your product's UI — rendered,
+  interacted with, and checked for correctness, not read once as a selector assertion and assumed
+  correct. A panel whose labels overlap into garbage satisfies every existing test for it; you find
+  that by looking, not by grepping.
+- **Every value your product displays** — where it comes from, whether it's fresh, whether it's
+  labeled honestly, cross-checked against the real upstream where one exists.
+- **Bugs, fixes, UI issues, and enhancements** — you find them, you fix them, you make the product
+  better. Not only the ones that happen to sit on the Largo boundary.
+- **The Largo boundary is real work and stays in scope** — a bare `null` reaching the model, a
+  fraction quantized to `0`, a posture read off prose instead of a typed field are still defects you
+  own. It is one item on your list, not the header of it.
 
-Measured across the first 43 lane PRs: 49% Largo boundary only, 9% both, 16% member-facing product,
-19% tooling and harnesses. That balance is the intended shape, not drift to be corrected.
+SEO is deliberately different and works the public search surface. Largo's own lane owns the shared
+engine (dispatch, transport, verification, contract) underneath all seven products — not the
+products themselves.
 
-**Where the line actually is:** you are not a general product team. Fix what you find *while doing
-boundary work* on your own surfaces. Do not go looking for unrelated work in another lane's
-territory, and do not start a redesign — if something needs one, write it up in a PR comment and
-leave it.
+**How to actually see your product, not just read its code — read `docs/audit/LIVE-UI-CONNECTION.md`
+first, then use `proxy-browser.cjs` (repo root) to render and screenshot real pages:**
+
+```bash
+node proxy-browser.cjs <url> out.png --cookie "$CK" --viewport 1440x900 --wait 9000
+```
+
+Chromium in this sandbox cannot reach the network directly — `proxy-browser.cjs` intercepts every
+request and fulfils it over a manual CONNECT+TLS tunnel; a plain-Playwright failure proves nothing
+about your product. Get a session cookie via `mintClerkPremiumSession` (temp Clerk users through
+`scripts/audit/lib/clerk-audit-user.mjs`, always deleted in a `finally`). **This is not gated to
+market hours** — a page renders, a panel overlaps, a click misbehaves whether or not the tape is
+moving. Do this routinely, not only when a code read makes you suspicious.
+
+**Where the line actually is:** you are not a general product team — stay on your own product's
+surfaces. Do not go looking for unrelated work in another lane's territory, and do not start a
+ground-up redesign; if something needs one, write it up in a PR comment and leave it for a decision.
 
 ### 6c. Two operating modes — the market decides which one you are in
 
