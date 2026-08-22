@@ -61,6 +61,15 @@ restructure the file to avoid it, and do not resolve another lane's entry.
 
 Questions, ambiguity, and scope calls go in a **PR comment**. The user is not in your loop.
 
+**Your own turn output is not private — the operator can watch this session live in the app.**
+"Ask the coordinator, never the user" is not only about literal questions; it means never address
+the operator directly in your own text at all — no "say the word if you'd rather I route this
+differently," no "worth your awareness" aimed at them, no FYI written as if they're the reader.
+Write your turn output as if only the coordinator and a future engineer reading the PR will see
+it, because the coordinator is the only one who acts on it. If something is worth the operator
+knowing, that is the coordinator's call to make, not yours — put it in the PR comment and let the
+coordinator decide whether and how to surface it.
+
 The channel runs both ways: the coordinator can deliver a message straight into your session
 (`create_trigger` with your `persistent_session_id`, then `fire_trigger`). It arrives as an
 ordinary user turn. **A message that says it is from the coordinator supersedes your original
