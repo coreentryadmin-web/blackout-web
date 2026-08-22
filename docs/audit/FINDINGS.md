@@ -4,6 +4,21 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-22 — [FINDING, P3 ops] The DST label check could not be satisfied by fixing a label, and never read one — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `cron-dst-audit.mjs` reported `LABEL DRIFTS` for `x-growth`, `x-replies` and `x-analytics`, with the remedy "state the UTC time and both ET renderings". That remedy had **already been applied** — `src/lib/cron-registry.ts:561-564, 575-576, 587-588` state exactly that, with comments explaining why. The verdict did not change. |
+| **Root cause** | The verdict was `edt.first === est.first ? "OK" : "LABEL DRIFTS"` (`scripts/audit/cron-dst-audit.mjs:452`). For a fixed-UTC cron those two values differ by exactly one hour **by definition**, so the check was unfalsifiable — no edit to any label could ever clear it. It also never read a label: it quoted `INTENTS[key].target_et` from inside the audit and called that "the label", so the message named a stale string in the auditor rather than the deployed registry's actual text. |
+| **Why it matters more than P3 suggests** | The only action that could have cleared this verdict was changing a **schedule** — and for these three routes that is outbound social cadence, not a documentation fix. A check that stays red after you do exactly what it asked, and whose only real remedy is to change unrelated production behaviour, teaches people to stop reading it. That is how a genuinely BROKEN row in the same table gets skimmed past. |
+| **Fix** | An intent may now declare `utc_labelled: true`, meaning "the intent is a UTC schedule, not an ET clock". For those, the check asserts **the thing it is named for**: does the deployed label actually name UTC and both renderings? Yes → `OK (UTC-labelled)`, with the note stating both ET spans so the shift stays visible. No → `LABEL DRIFTS`, quoting the real label. |
+| **What was NOT changed** | No cron schedule, in this repo or in `blackout-infra`. The hour of ET shift across the changeover is inherent to fixed-UTC scheduling and is not a defect — the question is only whether the documentation owns it, and that is decidable. |
+| **Evidence** | Before: `x-growth 09:00–18:00 / 08:00–17:00 LABEL DRIFTS`, same for `x-replies` and `x-analytics`. After: all three `OK (UTC-labelled)`. **Falsifiability verified** — temporarily reverting `x-analytics`'s registry label to `"Daily 7:30 PM ET"` returns it to `LABEL DRIFTS` ("declared: Daily 7:30 PM ET"); registry restored, `git diff --stat` clean. |
+| **Not fixed here — and not mine to fix** | `x-autopost` remains `BROKEN` (39 EDT fires, **0** EST). I verified it independently: UTC 12,14,16,18,20,22,0 → ET 8,10,12,14,16,18,20 under EDT, all seven inside `isPostWindow`'s weekday gate; → ET 7,9,11,13,15,17,19 under EST, **none** inside it. My lane brief forbids retuning `x-autopost`, so I have not touched it. Raised for reassignment with the analysis attached. |
+| **Status** | FIXED (label check). `x-autopost` BROKEN remains OPEN and is not in this PR. |
+
 ## 2026-08-22 — [FINDING, P1 Night Hawk/Largo] `get_nighthawk_outcomes` re-truncated after #2480: the raw `pending` list was spread in AFTER the budget, re-inflating the payload past the transport cap — FIXED
 
 > **kind:** `FINDING`
