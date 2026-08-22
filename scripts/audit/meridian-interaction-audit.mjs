@@ -28,6 +28,7 @@
  *   node scripts/audit/meridian-interaction-audit.mjs [--base=…] [--out=DIR] [--viewport=desktop]
  */
 import path from "node:path";
+import os from "node:os";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
@@ -79,7 +80,20 @@ const args = new Map(
   })
 );
 const BASE = args.get("base") ?? "https://blackouttrades.com";
-const OUT = args.get("out") ?? "/tmp/meridian-ix";
+/**
+ * Where screenshots and findings.json land.
+ *
+ * The default used to be the FIXED path `/tmp/meridian-ix`, which CodeQL flagged (correctly) as
+ * insecure temp-file creation. A fixed name in a world-writable directory can be pre-created by any
+ * local user as a symlink, and `writeFileSync` follows symlinks — so the harness, which runs as
+ * root in the audit sandbox, could be induced to write its report through that link to a path of
+ * someone else's choosing. `mkdtemp` gives an unguessable name and a 0700 directory instead.
+ *
+ * An explicit `--out` is the caller's own decision and is honoured as given; only the DEFAULT is
+ * randomised. A child process is always launched with an explicit `--out`, so the whole run shares
+ * the parent's one directory rather than scattering a directory per viewport.
+ */
+const OUT = args.get("out") ?? fs.mkdtempSync(path.join(os.tmpdir(), "meridian-ix-"));
 const ONLY = args.get("viewport") ?? null;
 // Which cohort this run judges — see lib/meridian-earnings-cohort.mjs. Default `high`, because the
 // options-derived panels only populate for names with a real options market, so judging them
@@ -636,7 +650,9 @@ function parseChildFindings(stdout) {
 }
 
 async function main() {
-  fs.mkdirSync(OUT, { recursive: true });
+  // mode 0700 matters only on the `--out` path — the default is already a mkdtemp directory, which
+  // is created 0700 and cannot be pre-empted by name.
+  fs.mkdirSync(OUT, { recursive: true, mode: 0o700 });
   if (process.env[COOKIE_ENV]) {
     await runChildViewport();
   } else {
@@ -669,9 +685,11 @@ async function main() {
   // P2 pair seen on 2026-08-22 and never reproduced across four further runs. A harness whose
   // evidence survives only if someone is watching cannot investigate anything intermittent.
   try {
+    // 0600: the report names live tickers and prod URLs, and nothing else on the box needs to read it.
     fs.writeFileSync(
       path.join(OUT, "findings.json"),
-      JSON.stringify({ base: BASE, cohort: COHORT, findings }, null, 2)
+      JSON.stringify({ base: BASE, cohort: COHORT, findings }, null, 2),
+      { mode: 0o600 }
     );
   } catch (e) {
     // Never let a write failure discard a report that already printed.
