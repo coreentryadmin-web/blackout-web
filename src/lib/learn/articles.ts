@@ -228,6 +228,9 @@ BlackOut [Thermal](/learn/heat-maps) plots the call wall and put wall across str
     description: "GEX, or gamma exposure, aggregates dealer hedging across the options chain to reveal where the market stabilizes or accelerates. Learn to read GEX.",
     body: `You'll see "GEX" all over fintwit. It stands for **gamma exposure**, and it's one of the most useful single numbers an options trader can watch — a summary of where dealers, in aggregate, are forced to buy and sell. Here's what it means and how to read it without a quant degree.
 
+![What GEX tells you: positive gamma exposure makes dealers stabilize the market so price stays range-bound with low volatility, while negative gamma exposure makes dealers amplify moves so price trends with high volatility.](/images/diagrams/what-is-gex.svg)
+*Positive GEX: dealers fade moves, so price stays pinned and calm. Negative GEX: dealers chase moves, so price trends and volatility expands.*
+
 ## GEX in one line
 
 GEX aggregates the gamma of every open option on an underlying (like SPX) into a total measure of dealer positioning. Positive GEX means dealers are net long gamma and tend to *stabilize* the market; negative GEX means they're net short gamma and tend to *amplify* moves. (For the mechanics under the hood, start with [What Is Dealer Gamma Exposure?](/learn/what-is-dealer-gamma-exposure). For what gamma itself measures, see [Options Greeks Explained](/learn/options-greeks-explained).)

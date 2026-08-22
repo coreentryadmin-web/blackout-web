@@ -2,6 +2,7 @@ import {
   anthropicText,
   anthropicToolLoop,
   COMMENTARY_MODEL,
+  isAiSpendCeilingTripped,
   LARGO_MODEL,
   type AnthropicMessage,
   type AnthropicSystemBlock,
@@ -994,16 +995,24 @@ export async function runLargoQuery(
     // explicitly called still wins and the feed can only fill gaps. See `liveFeedResults`.
     capturedResults.push(...liveFeedResults);
 
-    let text =
-      answer?.trim() ||
-      emptyAnswerFallback({
+    let text = answer?.trim() || "";
+    if (!text) {
+      // Empty turn. Distinguish a SPEND-CEILING stop from a data gap: the route's pre-flight gate
+      // already 503s a ceiling tripped BEFORE the request, but the shared ledger can cross it
+      // mid-request (spend accrues every round, across replicas), so the loop returns null on a
+      // ceiling it hit AFTER the gate passed. Re-read the ceiling ONCE, only on an empty turn, so a
+      // paused desk is never mislabelled "couldn't pull enough live data". See isAiSpendCeilingTripped.
+      const ceilingTripped = await isAiSpendCeilingTripped();
+      text = emptyAnswerFallback({
         elapsedMs: Date.now() - startedAt,
         // The LOOP budget, not the per-round timeout. #2396 classifies an empty answer as a
         // timeout at 85% of budget; measuring total elapsed against a per-round cap made every
         // multi-round Deep turn look timed-out and every long single-round one look fine.
         budgetMs: largoLoopBudgetMs(depth),
         toolsUsed,
+        ceilingTripped,
       });
+    }
 
     const ctxNumbers = collectContextNumbers([capturedResults, history.map((h) => h.content)]);
     // Verify the PROSE, not the component payloads. Every number inside a ```blackout block also
@@ -1276,16 +1285,24 @@ export async function runLargoQueryStream(
     // explicitly called still wins and the feed can only fill gaps. See `liveFeedResults`.
     capturedResults.push(...liveFeedResults);
 
-    let text =
-      answer?.trim() ||
-      emptyAnswerFallback({
+    let text = answer?.trim() || "";
+    if (!text) {
+      // Empty turn. Distinguish a SPEND-CEILING stop from a data gap: the route's pre-flight gate
+      // already 503s a ceiling tripped BEFORE the request, but the shared ledger can cross it
+      // mid-request (spend accrues every round, across replicas), so the loop returns null on a
+      // ceiling it hit AFTER the gate passed. Re-read the ceiling ONCE, only on an empty turn, so a
+      // paused desk is never mislabelled "couldn't pull enough live data". See isAiSpendCeilingTripped.
+      const ceilingTripped = await isAiSpendCeilingTripped();
+      text = emptyAnswerFallback({
         elapsedMs: Date.now() - startedAt,
         // The LOOP budget, not the per-round timeout. #2396 classifies an empty answer as a
         // timeout at 85% of budget; measuring total elapsed against a per-round cap made every
         // multi-round Deep turn look timed-out and every long single-round one look fine.
         budgetMs: largoLoopBudgetMs(depth),
         toolsUsed,
+        ceilingTripped,
       });
+    }
 
     // Layer 4 verification: every numeric claim vs the turn's source data (tool
     // results + the history the model was shown). Heavily-unverified answers get
