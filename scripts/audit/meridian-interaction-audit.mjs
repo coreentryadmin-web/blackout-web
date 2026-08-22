@@ -546,21 +546,31 @@ async function runChildViewport() {
 /**
  * Fan the viewports out over CHILD PROCESSES, one each.
  *
- * WHY A PROCESS AND NOT A LOOP. The in-process loop starved its own last viewport. Measured
- * 2026-08-22 against prod: desktop completed 185 tunnels and tablet 141, and then MOBILE COULD NOT
- * NAVIGATE AT ALL — four attempts across ~98s of #2606's backoff, every one ERR_CONNECTION_RESET,
- * while the proxy's `recentRelayFailures` stayed empty (the saturation signature, not a failure
- * signature). Run alone, the SAME viewport passed cleanly on 239 tunnels; desktop-then-mobile as
- * two separate processes passed on 237 and 273 back-to-back with no cooldown between them.
+ * WHAT THIS DOES AND DOES NOT DO. It does NOT cure the proxy-tunnel saturation. That was the
+ * hypothesis and it was FALSIFIED — see the measurements below, kept because a wrong idea that
+ * looks obvious deserves a headstone rather than a quiet deletion.
  *
- * So the exhaustion is per-PROCESS, not per-container and not time-based, and no amount of extra
- * waiting inside one process recovers it — which is why #2606's backoff, correct as far as it went,
- * could never have closed this. A fresh process can.
+ *   in-process loop, 2026-08-22   desktop 185 tunnels ok · tablet 141 ok · mobile DEAD
+ *                                 (4 navigations, ~98s of #2606 backoff, all ERR_CONNECTION_RESET,
+ *                                 while the proxy's `recentRelayFailures` stayed EMPTY — the
+ *                                 saturation signature, not a failure signature)
+ *   mobile run alone              clean, 239 tunnels
+ *   desktop then mobile, two      237 then 273, both clean
+ *     separate invocations
+ *   ---> so: "the budget is per-PROCESS, a fresh process resets it"
+ *   child-process fan-out          desktop 224 ok · tablet DEAD at 9 tunnels · mobile DEAD at 9
+ *   ---> hypothesis dead. A fresh child does NOT reset it, and the two-invocation comparison that
+ *        suggested it was confounded: those runs also differed in elapsed time and each minted its
+ *        own session, so the process boundary was never the isolated variable.
  *
- * The cost of getting this wrong is not a flaky harness, it is a SILENT BLIND SPOT: the loop always
- * sacrificed whichever viewport ran last, and mobile is always last. Every three-viewport run ever
- * recorded therefore has an unmeasured mobile — reported as "no findings" rather than "never
- * looked", which is the absence-as-evidence trap this harness exists to avoid.
+ * The controlling variable is still UNKNOWN. Do not add another cooldown on a hunch.
+ *
+ * What the fan-out IS worth keeping for is the second half of the original problem, which is not
+ * flakiness but a SILENT BLIND SPOT. The loop sacrificed whichever viewport ran last, and mobile is
+ * always last, so a starved viewport was reported as "no findings" rather than "never looked" —
+ * the absence-as-evidence trap this harness exists to prevent, sitting inside the harness. A child
+ * that dies now lands as HARNESS against its own viewport, which is exactly how the run above
+ * reported tablet and mobile instead of implying they were clean.
  */
 async function runParent(session) {
   const { spawnSync } = await import("node:child_process");
