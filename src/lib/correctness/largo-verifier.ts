@@ -158,7 +158,7 @@ export async function verifyLargo(_marketOpen: boolean): Promise<TickerScore> {
       )
     );
   } else {
-    const flagged: { id: number; coverage: number; unverified: number[] }[] = [];
+    const flagged: { id: number; coverage: number | null; unverified: number[] }[] = [];
     let skippedNoContext = 0;
     for (const a of answers) {
       if (collectContextNumbers(a.tool_results).length === 0) {
@@ -176,7 +176,7 @@ export async function verifyLargo(_marketOpen: boolean): Promise<TickerScore> {
         .slice(0, 3)
         .map(
           (f) =>
-            `#${f.id}: coverage ${Math.round(f.coverage * 100)}%, unverified sample ${f.unverified.slice(0, 3).join(", ")}`
+            `#${f.id}: coverage ${f.coverage == null ? "n/a" : `${Math.round(f.coverage * 100)}%`}, unverified sample ${f.unverified.slice(0, 3).join(", ")}`
         )
         .join("; ");
       checks.push(

@@ -8,8 +8,12 @@ export type ClaimVerification = {
   total: number;
   verified: number;
   unverified: number[];
-  /** verified / total (1 when the answer makes no numeric claims). */
-  coverage: number;
+  /** verified / total, or NULL when the answer makes no numeric claims (total === 0). Null is
+   *  deliberate: coverage over zero claims is uncalibrated, and returning 1 (100%) advertised a
+   *  degraded, data-less answer as fully grounded — the "fabricated certainty" LARGO-PRODUCT-CONTRACT
+   *  forbids, and exactly what the empty-round P0 payload showed (`{total:0,verified:0,coverage:1}`).
+   *  Every consumer must treat null as "not applicable", never as a low OR high score. (#2582 follow-up) */
+  coverage: number | null;
 };
 
 /** Numbers an answer "claims": decimals, percents, $-amounts, 3+ digit ints.
@@ -97,13 +101,16 @@ export function auditLargoAnswerGrounding(
   const shouldFlag =
     !alreadyDisclosed &&
     verification.total >= LARGO_GROUNDING_MIN_CLAIMS &&
+    verification.coverage != null &&
     verification.coverage < LARGO_GROUNDING_COVERAGE_THRESHOLD;
   return { verification, shouldFlag };
 }
 
 export function verifyClaims(answerText: string, contextNumbers: number[]): ClaimVerification {
   const claims = extractNumericClaims(answerText);
-  if (claims.length === 0) return { total: 0, verified: 0, unverified: [], coverage: 1 };
+  // No numeric claims → coverage is UNDEFINED, not 100%. Returning null keeps a data-less answer
+  // from advertising perfect grounding downstream (the payload leaves the process). (#2582 follow-up)
+  if (claims.length === 0) return { total: 0, verified: 0, unverified: [], coverage: null };
 
   const ctx = contextNumbers.filter((n) => Number.isFinite(n));
   const matches = (claim: number): boolean =>
