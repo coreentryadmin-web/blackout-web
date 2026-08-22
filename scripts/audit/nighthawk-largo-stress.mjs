@@ -25,6 +25,7 @@
  */
 import { mintClerkPremiumSession } from "./lib/prod-clerk-session.mjs";
 import {
+  largoAnswerErrored,
   condorDeniedExists,
   condorWinRateHasBreachCompanion,
   sessionClaimMatchesPhase,
@@ -126,6 +127,14 @@ try {
     const r = await ask(c.q);
     if (r.error) {
       rows.push({ id: c.id, verdicts: [["asked", { pass: false, detail: r.error }]] });
+      continue;
+    }
+    // FALLBACK GUARD (see largoAnswerErrored). A 200 whose body is the internal-error fallback is
+    // NOT an answer — the content graders below all pass vacuously on it, so an outage would read
+    // as ALL PASS. Detect it here and hard-fail the check; never grade a non-answer's content.
+    const errored = largoAnswerErrored(r.answer);
+    if (!errored.pass) {
+      rows.push({ id: c.id, tools: r.tools, verdicts: [["real answer", errored]], answer: r.answer.slice(0, 240) });
       continue;
     }
     rows.push({ id: c.id, tools: r.tools, verdicts: c.graders(r.answer), answer: r.answer.slice(0, 240) });
