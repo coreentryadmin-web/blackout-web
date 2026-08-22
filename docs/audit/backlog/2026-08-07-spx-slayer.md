@@ -1,6 +1,31 @@
 # SPX Slayer desk — live RTH audit backlog, 2026-08-07
 
-Owner: SPX-desk audit agent. **This file is mine alone** — no other agent writes to it, and I do
+> **RECONCILED 2026-08-22 against `963c8448`. Read this box before acting on anything below.**
+>
+> This file was written by a one-off audit agent on 2026-08-07 and then went stale in the most
+> expensive way available: **all ten entries still said `BACKLOG — fix after close 2026-08-07`
+> while three had been fixed and one was not a defect at all.** A stale document that reads as
+> current is worse than no document, because it sends the next reader to re-derive solved work.
+>
+> Every `### Status` block below now carries its REAL state at `963c8448`, verified by reading the
+> code, with the file and line that settles it. Three entries are marked **UNVERIFIED** rather than
+> judged — they are pixel/network observations that a source read genuinely cannot confirm or
+> refute, and calling them "fixed" or "open" from the source would be a guess wearing a verdict's
+> clothing.
+>
+> **Ownership changed.** The original header's "this file is mine alone" referred to an agent that
+> no longer exists. This file now belongs to the permanent SPX Slayer owner lane
+> (`docs/agents/briefs/spx-slayer.md`), and its live successor is **`docs/spx/SLAYER-MAP.md`** —
+> keep findings there, and keep this file as the 2026-08-07 RTH capture it is. The evidence below
+> (real prod captures, real Polygon ground truth) is still valuable precisely because it was taken
+> during a live session; none of it has been altered.
+
+Original header follows.
+
+---
+
+Owner: SPX-desk audit agent (2026-08-07 session; see the reconciliation box above for current
+ownership). **This file is mine alone** — no other agent writes to it, and I do
 not touch `docs/audit/FINDINGS.md` (consolidated centrally).
 
 Audited against **LIVE PRODUCTION** `https://blackouttrades.com` during RTH on 2026-08-07,
@@ -15,7 +40,10 @@ for every API probe — so no Clerk temp user was minted for the API sweep at al
 renders each minted and released their own temp user through
 `scripts/audit/lib/prod-clerk-session.mjs`.
 
-**Severity tally: 1 × P0 · 2 × P1 · 5 × P2 · 3 × P3.**
+**Severity tally as filed: 1 × P0 · 2 × P1 · 5 × P2 · 3 × P3.**
+
+**Reconciled tally at `963c8448`: 2 FIXED · 1 PARTIALLY FIXED · 3 OPEN · 1 NOT A DEFECT ·
+3 UNVERIFIED (need a live render or a repro, not a source read).**
 
 ---
 
@@ -121,7 +149,15 @@ Do not "fix" this by making the header read `/desk` instead: the desk lane is a 
 header would go stale — the pulse lane is the right source, its anchor is the defect.
 
 ### Status
-`BACKLOG — fix after close 2026-08-07`
+**FIXED — verified in code 2026-08-22 at `963c8448`.** `fetchPulseLaneSnapshots` now applies the
+FIX-A authoritativeness test this entry asked for: it takes the sub-second-fresh PRICE but leaves
+`change_pct` unresolved unless the Redis entry declares `open_source === "rest"`, falling through
+to the authoritative REST lane otherwise. `src/features/spx/lib/spx-desk.ts:624-651`, which carries
+this entry's own 2026-08-07 measurement in its comment. Suggested fix #1 ("carry the anchor") is
+what shipped; #2 ("derive, don't transport") was not taken.
+**Still open from this entry:** the WRITER of `spx:pulse:snapshot` was never traced, so its anchor
+is UNKNOWN at source — the app now fails closed on it rather than trusting it. Tracked as work-list
+item 2 in `docs/spx/SLAYER-MAP.md` §8.
 
 ---
 
@@ -182,7 +218,9 @@ boundary rather than at a dozen unrelated accumulation sites. `/pulse` — worth
 but it is not currently emitting noise, so it is a separate, lower-priority change.
 
 ### Status
-`BACKLOG — fix after close 2026-08-07`
+**FIXED — verified in code 2026-08-22 at `963c8448`.** `src/app/api/market/spx/flow/route.ts:24`
+wraps the payload in `roundFloats(flow)`, and its comment cites this entry's measurement
+(`net_gex -1478892837.029604`). Every SPX route now rounds at the data layer.
 
 ---
 
@@ -322,7 +360,18 @@ intraday pin forecast — the volume term is live positioning) and the desk's OI
 matches the industry-standard definition and, verified above, matches Polygon exactly).
 
 ### Status
-`BACKLOG — fix after close 2026-08-07`
+**PARTIALLY FIXED — verified in code 2026-08-22 at `963c8448`.** Superseded by
+`docs/spx/SLAYER-MAP.md` §5, which records the intended per-lane scoping so no future lane
+"fixes" this by collapsing the ladders (which would make the pin engine wrong).
+- **Shipped:** suggested fix #3 on the pin side — `SpxPinForecast.tsx:18,281` now say
+  "effective max pain" / `EFF MAX PAIN`; and suggested fix #2's disclosure now lives in the header
+  tooltips, which name the basis split for `flip`, `maxPain` and `regime`
+  (`SpxSniperHeader.tsx:96-98`).
+- **Still open:** the VISIBLE header label is still bare `Max Pain` (`SpxSniperHeader.tsx:223`) and
+  `Max pain` on iOS (`SpxIosMetricGroups.tsx:115`) — and **a tooltip is not disclosure on a touch
+  device, where there is no hover.** Suggested fix #4 (a coherence assertion in the pre-open gate:
+  two member-facing values sharing a label must agree within a stated tolerance, or the label must
+  differ) is not built — work-list item 6 in the map's §8.
 
 ---
 
@@ -370,7 +419,12 @@ true desktop-UA capture and must not claim the desktop shell is or is not affect
 covered" below).
 
 ### Status
-`BACKLOG — fix after close 2026-08-07`
+**UNVERIFIED at `963c8448` — needs a live render, not a source read.** This is a pixel defect; its
+own root-cause section correctly declines to guess a CSS rule, and reading the source cannot
+confirm or refute it either. Deliberately NOT marked fixed or open. Closing it honestly is
+work-list item 5 in `docs/spx/SLAYER-MAP.md` §8 (the SPX interaction-audit harness, built on the
+`meridian-interaction-audit.mjs` pattern — physical text intersection, gated on a PAGE-LOADED
+proof so a blank render reports HARNESS, never a product verdict).
 
 ---
 
@@ -417,7 +471,10 @@ reports the correct fix as a total no-op.
 neighbours.
 
 ### Status
-`BACKLOG — fix after close 2026-08-07`
+**OPEN — verified still open in code 2026-08-22 at `963c8448`.** The `.tap44` utility this entry
+asks for exists (`src/app/globals.css:20195`, coarse-pointer-only `::after`), but **no SPX
+component references it** — its only consumers are Helix (`HelixMobileFlowTape`, `HelixFlowTable`,
+`TickerDrawer`). The suggested fix is still exactly right and still unapplied.
 
 ---
 
@@ -473,7 +530,14 @@ ago" rather than as current.
 the split is correct, the disclosure is what is missing.
 
 ### Status
-`BACKLOG — fix after close 2026-08-07`
+**OPEN, and structural rather than a bug — superseded by `docs/spx/SLAYER-MAP.md` §2.** Confirmed
+at `963c8448`: the desk lane is a 20s TTL (`SPX_DESK_CACHE_SEC`, `src/lib/providers/config.ts:19`)
+**plus `staleWhileRevalidate`**, so a served value can be older than 20s — the TTL governs when a
+refresh STARTS, not how stale a response may be. The header tiles ride this lane while price/chart/
+pin ride the 1s/2s/1s lanes.
+The map records a second consequence this entry did not reach: `/merged` and `/bootstrap` cache at
+20s while CONTAINING the 1s pulse, so any consumer reading pulse fields off the merged bundle
+inherits 20× staleness silently. The dashboard avoids it by convention, not by constraint.
 
 ---
 
@@ -511,7 +575,9 @@ fixed min-height that is not earning it.
 (`ALL / REGIME / WALLS / FLOW / MACRO / PLAYS`) all rendered correctly and live.
 
 ### Status
-`BACKLOG — fix after close 2026-08-07`
+**UNVERIFIED at `963c8448` — needs a live render.** Same treatment as the mobile-collision entry
+above: a layout measurement cannot be confirmed from source. Closed by work-list item 5 in
+`docs/spx/SLAYER-MAP.md` §8.
 
 ---
 
@@ -568,7 +634,12 @@ written the comment describes behaviour the code does not produce.
 and well tested; this is a calibration and state-scope question, not a logic bug.
 
 ### Status
-`BACKLOG — fix after close 2026-08-07`
+**OPEN, UNCHANGED — verified in code 2026-08-22 at `963c8448`.** Every element of the root cause
+still stands verbatim: `src/features/spx/lib/spx-pin.ts:55-57` still holds the window in
+module-level per-process state, `trackPinStability` at line 67 still overwrites
+`pinStabilityConfirmed` with the raw pin on every pass where `stable` is true, and the window is
+still 3 samples. The calibration question this entry raises — anti-flicker vs discontinuous-jump —
+has not been answered, so the module header still describes behaviour the code does not produce.
 
 ---
 
@@ -612,7 +683,14 @@ a member's intuition for a live forecast.
 it pinches monotonically, which is the panel's whole point.
 
 ### Status
-`BACKLOG — fix after close 2026-08-07`
+**NOT A DEFECT — CLOSED. The check this entry asked for has now been done.** It said: *"I did not
+confirm whether the UI overlays them on one axis … If it shows only one at a time this item is a
+documentation nit."* It shows one at a time. `SpxPinForecast.tsx:22` is a
+`useState<"analytic" | "montecarlo">` toggle; `buildChart` receives a single `cone` array
+(line 50); the caption at line 106 names which construction is on screen. The two cones are never
+drawn on one axis, so the member-facing readability defect this entry hypothesised does not exist.
+The underlying observation — that the two cones plot different QUANTITIES — remains true and is
+correctly documented here as by-construction.
 
 ---
 
@@ -662,7 +740,9 @@ spending any engineering time. If the 502s appear there too, they are real and t
 if not, close it.
 
 ### Status
-`BACKLOG — fix after close 2026-08-07`
+**UNVERIFIED at `963c8448`, as originally recorded.** This entry was filed explicitly as
+not-reproduced so the observation would not be lost, and nothing since has reproduced it. A source
+read cannot confirm a transient network status. It stays recorded, not open and not closed.
 
 ---
 
