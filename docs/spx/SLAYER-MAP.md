@@ -1,0 +1,389 @@
+# SPX SLAYER — THE MAP
+
+**Phase 0 deliverable of the SPX Slayer owner lane (`docs/agents/briefs/spx-slayer.md`).**
+Living inventory. Kept current forever after — when this file and the code disagree, the code
+wins and this file is a bug.
+
+Its job is to let a stranger answer, for every displayed field: *what is this · where does it come
+from · how is it calculated · what source generated it · when was it last updated · what units ·
+what makes it unavailable · how do we know it is correct · where else is this value consumed.*
+
+**Where an answer is not known, this file says `UNKNOWN`.** An honest gap is a finding; a
+plausible guess is a lie that outlives whoever wrote it. Every `UNKNOWN` below is a work item.
+
+> **Provenance of this document.** Everything marked *verified* was read out of the code at
+> `963c8448` (2026-08-22) or measured against live Polygon/Massive data on 2026-08-22. Nothing
+> here is carried over from a prior document without being re-checked — §6 is a list of the
+> places where the prior documents turned out to be wrong.
+
+---
+
+## 1. Coordinates
+
+**The member route is `/dashboard`. There is no `/spx` page.** An unstyled Times-New-Roman
+render is the 404 page, not a CSS failure.
+
+`src/app/(site)/dashboard/page.tsx` → `requireTier("community")` → `<DeskShell fullBleed>` →
+`<SpxDashboard vectorEnabled={canAccessTool("vector")}>`. `force-dynamic`, `revalidate = 0`,
+`noindex`.
+
+| Area | Where | Count |
+|---|---|---|
+| Engine / lib | `src/features/spx/lib/` | 221 files (95 `*.test.ts`) |
+| Components | `src/features/spx/components/` (+ `ios/`) | 17 `.tsx` |
+| Hooks | `src/features/spx/hooks/` | 9 |
+| Member APIs | `/api/market/spx/*` | 13 routes |
+| Admin APIs | `/api/admin/spx/{health,dashboard}`, `/api/admin/analytics/spx` | 3 |
+| Crons | `spx-evaluate`, `spx-signal-observe`, `spx-issues-sync`, `spx-signal-weight-optimize` | 4 |
+| Largo tools | `get_spx_{play,pin,pulse,structure,confluence,engine_snapshots,vs_nighthawk_comparison}` | 7 |
+
+The first three crons are confirmed DST-correct in **both** offsets by
+`scripts/audit/cron-dst-audit.mjs`. `spx-signal-weight-optimize` — **UNKNOWN**, not covered by
+that run.
+
+### Test baseline
+
+`641 pass / 0 fail` across the 95 SPX lib test files, Node 20.20.2, at `963c8448`
+(`PLAYBOOK_VERDICT_GUARD_ASSERT=1 node --import tsx --experimental-test-module-mocks --test
+src/features/spx/lib/*.test.ts`). Quote this as the baseline; a run on Node 22, or a run before
+`npm ci`, is not evidence — the sandbox ships with neither.
+
+---
+
+## 2. THE LANE MODEL — read this before any freshness question
+
+This is the single most load-bearing fact about SPX Slayer and it is not written down anywhere
+else: **the desk is not one payload, it is five independently-cached lanes at five different
+speeds, all rendering into one screen.** Almost every coherence and staleness defect in the
+product's history is two lanes disagreeing.
+
+All five live in `src/features/spx/lib/spx-desk-loader.ts`, all keyed by ET session date
+(`todayEtYmd()`), all `staleWhileRevalidate` — meaning **a served value can be older than its TTL**;
+the TTL governs when a refresh is *started*, not how stale a response may be.
+
+| Lane | Cache key | TTL | Builder | Serves |
+|---|---|---|---|---|
+| **pulse** | `spx-desk-pulse:{ymd}` | **1s** (`SPX_PULSE_CACHE_SEC`) | `buildSpxDeskPulse` | price, change%, VIX, internals, VWAP, EMAs, session extremes |
+| **flow** | `spx-desk-flow:{ymd}` | **2s** (`SPX_FLOW_CACHE_SEC`) | `buildSpxDeskFlow` | tape, dark pool, GEX walls, its own `gamma_flip` |
+| **pin** | `spx-pin:{ymd}` | **1s** — *see below* | `buildSpxPinForecast` | EOD pin, cones, magnet, its own flip |
+| **desk** | `spx-desk:{ymd}` | **20s** (`SPX_DESK_CACHE_SEC`) | `buildSpxDesk` | GEX/max-pain/flip header tiles, macro, news, regime |
+| **merged** | `spx-merged:{ymd}` | **20s** | merge of the three above | `/merged`, `/power-hour`, `/commentary` |
+| **bootstrap** | `spx-bootstrap:{ymd}` | **20s** | `loadMergedSpxDesk` | one-shot page load |
+
+**Consequences that are structural, not bugs to be surprised by:**
+
+1. **The 20s desk lane is the slow one, and the header tiles ride it.** `Γ FLIP`, `GEX`,
+   `MAX PAIN`, `TREND` can sit still for >20s while the price tile, chart and pin panel all move.
+   Recorded as a P2 in the 2026-08-07 backlog; still true and still structural.
+2. **`/merged` and `/bootstrap` cache at 20s but *contain* the 1s pulse.** A consumer reading pulse
+   fields off the merged bundle gets them up to 20× staler than the same fields off `/pulse`.
+   The dashboard avoids this by polling `/desk`, `/pulse` and `/flow` separately after the initial
+   bootstrap (`useMergedDesk.ts`) — **any new consumer that reads pulse fields off `/merged`
+   inherits the 20s staleness silently.**
+3. **Three lanes each compute their own `gamma_flip`** (desk, flow, pin), plus the matrix's own.
+   They are *different questions* (expiry scope differs), not a race — see §5.
+
+> **Defect (doc): the pin lane's TTL comment is wrong.** `spx-desk-loader.ts:130` says
+> *"5s TTL (reuses the pulse TTL)"*. It calls `deskPulseCacheTtlMs()`, which defaults to
+> **1000ms** (`src/lib/providers/config.ts:35-40`). The pin forecast — which runs a 400-path
+> Monte-Carlo — is therefore configured to rebuild 5× more often than its own comment claims, and
+> anyone reasoning about pin cost from the comment is reasoning from a wrong number.
+
+### Client poll cadence
+
+`useMergedDesk.ts` — `/bootstrap` once, then SWR per lane: pulse at `SPX_PULSE_REST_POLL_MS`
+(slowed to `SPX_PULSE_REST_SSE_POLL_MS` while the SSE stream is connected), flow at
+`SPX_FLOW_POLL_MS`, full desk at `SPX_FULL_DESK_POLL_MS`, all `refreshInterval: 0` when
+`sessionActive` is false. `/pulse/stream` is the SSE overlay (index store + UW tide/dark-pool/
+net-flow stores, with backpressure shedding).
+
+---
+
+## 3. Field inventory — header + pulse surfaces
+
+Read as: **field → route → engine function → upstream → freshness/units → consumers**.
+
+### 3.1 `SpxSniperHeader` stat pills (`SpxSniperHeader.tsx:195-243`)
+
+| Field | Route | Engine | Upstream | Units / freshness | Unavailable when |
+|---|---|---|---|---|---|
+| SPX price | `/pulse` | `buildSpxDeskPulse` → `fetchPulseLaneSnapshots` | Redis `spx:pulse:snapshot` (WS writer), falls through to Polygon `fetchIndexSnapshots` | index pts, ≤1s TTL + SWR | `!spxSnap.price` → whole pulse payload `empty` |
+| `spx_change_pct` | `/pulse` | `fetchPulseLaneSnapshots` + `pulseChangePctFromPriorClose` | **prior close**, not session open — see §6.1 | % , 2dp | anchor unresolved → falls to REST lane |
+| `vix`, `vix_change_pct` | `/pulse` | same lane | Polygon `I:VIX` | pts / % | same |
+| `vwap` | `/pulse` | `sessionStatsWithProxyVwap` → `sessionStatsFromMinuteBars` | Polygon `I:SPX` minute bars | pts | no RTH bars |
+| `vwap_volume_weighted` | `/pulse` | `sessionStatsFromMinuteBars:82` | — | bool | **always `false` in production** — §7.1 |
+| `gex_net` (`GEX`) | `/desk` | `gexPositioningFromHeatmap(hm).net_gex` | Polygon options GEX matrix (`fetchGexHeatmap`) | $ notional, ≤20s + SWR | matrix cold → sticky `lastGood*` |
+| `gex_king` | `/desk` | `kingFromStrikeTotals` | same matrix | strike | same |
+| `max_pain` | `/desk` | `gexPositioningFromHeatmap(hm).max_pain` | same matrix, **OI-only** | strike | same |
+| `gamma_flip` (`Γ FLIP`) | `/desk` | matrix flip, `gammaRegimeWithHysteresis` | same matrix | strike, **near-term multi-expiry** | honest `null` is preserved, never back-filled from sticky (see `spx-desk.ts:418-424`) |
+| `regime` (`TREND`) | `/desk` | `inferRegime` | price vs 20/50 EMA | word | — |
+| `uw_iv_rank` | `/desk` | `intel ?? polygonIvRank ?? uwIv` | engine overlay → Polygon → UW | 0–100 | all three null |
+| `tick`/`trin`/`add` | `/pulse` | `resolveMarketInternals` | Polygon index snapshots, `intel` fallback | index | `internals_estimated` flags a derived value |
+| `gex_stale` badge | `/desk` | `gexStaleFromAge(gexAgeMs)` from `pos.asof` | — | bool | — |
+
+**Why `gex_stale` is derived from `pos.asof` and not from "did we fetch this cycle"** is worth
+keeping: a successful fetch can return data the provider itself computed minutes ago. The comment
+at `spx-desk.ts:439` records this; it is the correct pattern for every freshness flag on the desk.
+
+**Correctness check available:** the desk's `max_pain` is OI-only and was verified against a full
+Polygon SPXW chain on 2026-08-07 (`maxPain OI-only = 7630`, matching `desk.max_pain` exactly).
+That check is reproducible and should be part of a pre-open gate — see §8.
+
+### 3.2 Fields whose provenance is UNKNOWN
+
+- **The writer of Redis `spx:pulse:snapshot`.** The reader is `fetchPulseLaneSnapshots`
+  (`spx-desk.ts:595`). The writer is in the market-worker lane, outside `src/features/spx`, and
+  was **not** traced. Its `change_pct` anchor is therefore UNKNOWN at source — the app now
+  fails closed on it (§6.1), which is why this is a gap and not an outage.
+- **`leader_stocks`, `lit_dark_ratio`, `vix_term`, `gap_source`, `data_quality`** — carried on the
+  pulse payload, not traced to source in this pass. UNKNOWN.
+- **Every field on `/journal`, `/commentary`, `/outcomes`, `/power-hour`, `/signals`.** Phase 0
+  mapped the desk/pulse/flow/pin spine only. UNKNOWN — next increment of this file.
+- **The `ios/` component set** (`SpxIosMetricGroups` and siblings) renders its own field list;
+  only `Max pain` was checked. UNKNOWN whether its labels track the desktop header's.
+
+---
+
+## 4. The trace — one signal, end to end
+
+Required by the charter. Traced for the **confluence signal**, the thesis every other SPX surface
+narrates. Every arrow names a real function.
+
+```
+INPUTS      SpxDeskPayload            spx-desk.ts        buildSpxDesk / mergeDeskLayers
+   ↓                                   ← Polygon GEX matrix, Polygon index bars/snapshots,
+   ↓                                     UW WS ladder + tide + dark pool, Benzinga news,
+   ↓                                     macro-events, Postgres flow tape
+FEATURES    factors[]{label,weight,detail}   spx-signals.ts   computeSpxConfluence
+   ↓
+CONDITIONS  per-factor thresholds, all in computeSpxConfluence:
+   ↓          VWAP side                  ±12
+   ↓          γ regime (regime × side)   ±10   — only when regime & side agree
+   ↓          GEX wall within 12 pts     ±18   — mutually exclusive, nearer wall only (ISSUE-01)
+   ↓          gex_king side              ±6
+   ↓          session window quality     ±6/−8 via sessionQualityDelta (magnitude, not direction)
+   ↓          news risk                  −6…+3 (directional, added signed)
+   ↓          flow strike concentration  +3    (requires alert_count > 3)
+   ↓          Helix flow alignment       scoreHelixFlowAlignment
+   ↓
+SCORE       signed sum → clamp(−100, 100)          spx-signals.ts:684
+   ↓
+CONFIDENCE  clamp(round(|score|·1.15 + factors.length·3), 0, 96)   spx-signals.ts:706  ← §7.2
+   ↓
+GRADE       scoreToGrade(|score|, conflicts) → A+ | A | B | C | D
+   ↓
+DECISION    score ≥ +22 → BUY_CALL · ≤ −22 → BUY_PUT · |score| ≥ 10 → HOLD · else WAIT
+   ↓
+GATES       evaluatePlayGates(desk, confluence, session, confirmations)   spx-play-gates.ts:121
+   ↓          four ordered categories: operational → playbook_validity → risk → quality
+   ↓          returns blocks[], blocks_by_category, first_block_category,
+   ↓          entry_mode: none|starter|full, trade_governor
+   ↓
+STATE       SCANNING → WATCHING → BUY → HOLD → TRIM → SELL
+   ↓          spx-play-engine.ts  evaluateSpxPlay / getSpxPlaySnapshot
+   ↓          persisted via spx-play-store.ts
+OUTCOME     spx-play-outcomes.ts  fetchPlayOutcomeStats / fetchRecentPlayOutcomes
+            adaptive gates fed back via computeAdaptiveGates (spx-play-telemetry.ts)
+```
+
+**Two things this trace makes visible that reading any single file does not:**
+
+- The `Session window` factor was inverted for every short setup until it was fixed — a
+  magnitude modifier added to a *signed* score upgrades a short when it means to penalise it. The
+  fix (`sessionQualityDelta`, applied along the current sign) and its 24-line explanation sit at
+  `spx-signals.ts:625-655`. **This is the template for every future modifier: decide whether the
+  factor speaks to DIRECTION or to CONFIDENCE, and add it signed only if the former.**
+- `confidence` is computed *before* the gates and never revised by them. A play blocked by four
+  gates carries the same `confidence` as one that passed cleanly.
+
+---
+
+## 5. Why there are several gamma flips and two max pains — the intended design
+
+Recorded so no future lane "fixes" this by collapsing them, which would make the pin engine wrong.
+
+| Value | Scope | Where |
+|---|---|---|
+| `desk.gamma_flip` | near-term multi-expiry aggregate | matrix flip, `spx-desk.ts:434` |
+| `flow.gamma_flip` | flow lane's own GEX snapshot | `buildSpxDeskFlow` |
+| `pin.flip` | **0DTE-only, OI-only** BSM ladder | `pinFlip`, `spx-pin-forecast-core.ts` |
+| matrix flip | 0DTE over the 21-expiry book | GEX matrix panel |
+| `desk.max_pain` | **OI only** | `gexPositioningFromHeatmap` |
+| pin magnet max pain | **OI + intraday volume** | `pinMaxPain`, same file |
+
+Both max pains are *correct*; they are two metrics wearing one word. The disambiguation is
+partially shipped: the pin panel now says **"effective max pain" / "EFF MAX PAIN"**
+(`SpxPinForecast.tsx:18,281`) and the header tooltips now name the basis split for `flip`,
+`maxPain` and `regime` (`SpxSniperHeader.tsx:96-98`). **What is still open:** the visible header
+label is still bare `Max Pain` (`SpxSniperHeader.tsx:223`) and `Max pain` on iOS
+(`SpxIosMetricGroups.tsx:115`) — a tooltip is not disclosure on a touch device, where there is no
+hover. And there is still no coherence assertion anywhere that two member-facing values sharing a
+label must agree within a stated tolerance.
+
+---
+
+## 6. Prior art that is now WRONG
+
+The charter asks for this by name. A stale document that reads as current is the most expensive
+artifact in the repo.
+
+### 6.1 `docs/audit/backlog/2026-08-07-spx-slayer.md` — every one of its 10 items still says `BACKLOG`. Three are fixed and one is not a defect.
+
+Each item's `### Status` line reads `BACKLOG — fix after close 2026-08-07`. Re-checked against
+`963c8448`:
+
+| # | Item | Real status at `963c8448` |
+|---|---|---|
+| P0 | Day-change anchored to session open, wrong sign | **FIXED.** `fetchPulseLaneSnapshots` now applies the FIX-A authoritativeness test — takes the price, leaves `change_pct` unresolved unless `open_source === "rest"`, falls through to the REST lane. `spx-desk.ts:624-651`, carrying the 2026-08-07 measurement in the comment. |
+| P1 | `/flow` is the one route with no `roundFloats()` | **FIXED.** `flow/route.ts:24` wraps in `roundFloats`, comment cites the same measurement. |
+| P1 | Four flips / two max pains / contradictory tabs | **PARTIAL.** Tooltip disclosure + "effective max pain" shipped; bare header label and the coherence assertion are not — §5. |
+| P2 | Mobile brand text collides with menu button | **UNVERIFIED.** Pixel defect; needs a live render. Not checkable from source. |
+| P2 | Chart controls under the 44px touch minimum | **OPEN.** `.tap44` exists (`globals.css:20195`) and is used by **Helix only** — no SPX component references it. |
+| P2 | Desk lane stale for tens of seconds | **OPEN and structural** — 20s TTL + SWR, §2. |
+| P2 | Intel tab ~200px dead space above the fold | **UNVERIFIED.** Needs a live render. |
+| P3 | Pin temporal-stability gate never fires | **OPEN, unchanged.** `spx-pin.ts:55-68` — still module-level per-process state, still `if (stable) pinStabilityConfirmed = last`, still a 3-sample window. |
+| P3 | Analytic vs Monte-Carlo cones on one axis | **NOT A DEFECT — closable.** The finding said "confirm what the panel draws". It draws **one at a time**: `SpxPinForecast.tsx:22` is a `useState<"analytic"\|"montecarlo">` toggle and line 106 captions which is shown. Never overlaid. |
+| P3 | Console 411/502 on `/dashboard`, not reproduced | **UNVERIFIED.** Recorded as unreproduced originally. |
+
+**Do not re-report the three fixed items.** Re-deriving a solved finding is how a lane spends a
+day producing nothing.
+
+### 6.2 `spx-desk-loader.ts:130` — pin lane "5s TTL"
+
+Actual TTL is 1s. §2.
+
+### 6.3 Anything describing a staging deploy target
+
+`docs/spx/PLAYBOOK-*` and the in-code "STAGING FULL-ENABLEMENT" comments describe a staging
+environment that was **fully decommissioned on 2026-07-25** (CLAUDE.md). The comments are not
+merely stale prose — they gate live code paths. §7.1.
+
+### 6.4 Not re-checked in this pass
+
+The eleven `docs/spx/PLAYBOOK-*.md` documents were **not** line-audited. That is the largest
+remaining Phase 0 gap and the next increment of this file. UNKNOWN.
+
+---
+
+## 7. Findings opened while mapping
+
+### 7.1 [P2] Five SPX code paths are gated on `isStagingDeploy()`, which has been permanently false since staging was decommissioned — PB-01 and PB-02 are unreachable in production
+
+`isStagingDeploy()` is `(NEXT_PUBLIC_SITE_URL ?? "").includes("staging.")`
+(`src/lib/clerk-env.ts:10-12`). Production sets `NEXT_PUBLIC_SITE_URL=https://blackouttrades.com`,
+and **staging was fully decommissioned on 2026-07-25** — there is no deploy target that can make
+this true. Every branch behind it is dead code in every environment that exists:
+
+| Site | Effect now |
+|---|---|
+| `spx-desk.ts:129` `sessionStatsWithProxyVwap` | SPY-volume-proxy merge never runs → SPX VWAP is an equal-weight typical-price mean, and `vwap_volume_weighted` is permanently `false` |
+| `spx-play-config.ts:419` `playbookStagingLabEnabled` | always false |
+| `spx-play-config.ts:427` `playbookLiveGateEnabled` | falls through to `PLAYBOOK_LIVE_GATE` (default false) |
+| `spx-play-config.ts:483` `playbookLiveAllowlist` | full-enablement branch unreachable |
+| `spx-play-config.ts:493` `isPlaybookLiveAllowlisted` | full-enablement branch unreachable |
+
+**The consequence that matters.** `playbook-data-requirements.ts:73` sets
+`volumeWeightedVwap: id === "PB-01" || id === "PB-02"`, and line 112 raises a data-requirement
+violation whenever `desk.vwap_volume_weighted === false`. Since that flag can never be true in
+production, **PB-01 (VWAP Reclaim) and PB-02 (VWAP Reject) — both `fidelity: "high"` — can never
+satisfy their data requirements.** Two of fourteen playbooks are silently, permanently
+unreachable, and the only mechanism that could unblock them lives behind a decommissioned
+environment. The code's own comment at `spx-desk.ts:118` predicted this ("permanently hard-blocks
+PB-01/PB-02") — for staging's absence, which has now happened everywhere.
+
+**Measured, and it corrects the obvious first reading.** My first read was that this makes the
+desk's VWAP wrong. It does not, materially. Computing both VWAPs over real Polygon `I:SPX` minute
+bars merged with real SPY minute volume — the exact merge `sessionStatsWithProxyVwap` performs —
+across seven sessions (2026-08-12 → 08-21, RTH only, 390 bars each):
+
+```
+day        equalWeightVWAP  trueVWAP(SPYvol)  diff_pts  diff_bps  above/below disagreements
+2026-08-21         7676.50           7677.03     -0.52      -0.7    8/390
+2026-08-20         7671.33           7666.34     +4.99      +6.5   14/390
+2026-08-19         7720.80           7717.77     +3.03      +3.9   19/390
+2026-08-18         7702.16           7700.42     +1.75      +2.3   13/390
+2026-08-14         7786.90           7787.58     -0.68      -0.9    1/390
+2026-08-13         7794.58           7795.39     -0.81      -1.0    7/390
+2026-08-12         7749.77           7749.82     -0.05      -0.1   22/390
+```
+
+So the **level** is close — worst case 5.0 pts, 6.5 bps. The honest severity is therefore *not*
+"VWAP is wrong"; the `vwap_volume_weighted: false` badge is telling the truth and the header shows
+`vw` only when true. What is wrong is the **dead gate**. Note the last column though: the two
+VWAPs disagree about whether price is *above or below* VWAP on 1–22 minutes per session (0.3%–5.6%),
+and `above_vwap` is a ±12-weight confluence factor — the largest non-wall weight in the engine.
+
+**Fix rationale (deferred to Phase 1, per the Phase 0 gate).** Delete `isStagingDeploy()` from the
+SPX paths and make each branch an explicit env decision, so a capability is enabled by a named flag
+rather than by a URL substring that no longer occurs. The VWAP proxy in particular should be
+`SPX_VWAP_SPY_PROXY=1`-gated and decided on its merits, not inherited from a dead environment.
+**Deliberately not proposing** to force `vwap_volume_weighted` true — that flag is honest and other
+code correctly reads it.
+
+### 7.2 [P2, Largo boundary] `confidence` reaches Largo as an uncalibrated formula, which the product contract says must be omitted
+
+`spx-signals.ts:706`:
+
+```ts
+const confidence = clamp(Math.round(abs * 1.15 + factors.length * 3), 0, 96);
+```
+
+This is a deterministic transform of `|score|` and a **count of factors**, with no reference to any
+realized outcome, no denominator, and no calibration set. It is nonetheless published as a
+percentage — `computeSpxTradeSignal` renders it as `` `${c.confidence}% conviction` `` — and
+`get_spx_confluence` returns the `SpxConfluence` object **verbatim** to the model
+(`src/lib/largo/run-tool.ts:1564-1571`), so a `confidence: 74` arrives at Largo alongside other
+lanes' confidence values and is ranked against them.
+
+`docs/audit/LARGO-PRODUCT-CONTRACT.md`, restated in `CLAUDE.md`, is explicit: *"`confidence` must
+be OMITTED when a product cannot calibrate it. An invented score is compared against another lane's
+measured one, so fabricated certainty does not stay local — it corrupts cross-product ranking."*
+
+Two specific defects inside the formula, beyond the calibration question:
+
+1. **`factors.length` counts *conflicting* factors as confidence.** `factors` holds both signs. A
+   maximally-conflicted tape scoring ≈0 across 8 factors yields `0·1.15 + 8·3 = 24`; the count term
+   cannot distinguish agreement from disagreement. `agreeing` and `weighted_conflicts` are computed
+   on the very next lines and are not used.
+2. **Gates never revise it.** Confidence is fixed before `evaluatePlayGates` runs, so a play held
+   by four gates reports the same conviction as one that passed clean (§4).
+
+The tool *description* for `get_spx_confluence` (`tool-defs.ts:506`) lists action, bias, score,
+grade, agreeing/conflicting factors, levels — and **does not mention confidence at all**. So the
+field is arriving undocumented as well as uncalibrated.
+
+**UNKNOWN:** whether `get_spx_play`'s payload carries the same field. Not traced this pass.
+
+---
+
+## 8. What Phase 0 could not answer — the work list
+
+Ranked. These are the `UNKNOWN`s above, restated as tasks.
+
+1. **Line-audit the eleven `docs/spx/PLAYBOOK-*.md` documents** and mark what is now wrong (§6.4).
+   Largest remaining gap.
+2. **Trace the `spx:pulse:snapshot` writer** in the market-worker lane and record its `change_pct`
+   anchor at source (§3.2).
+3. **Map `/journal`, `/commentary`, `/outcomes`, `/power-hour`, `/signals`** to this file's schema.
+4. **Run `scripts/audit/largo-truncation-probe.mjs` against all seven SPX tools** and read the
+   CONTROL line — a run whose control does not come back TRUNCATED reports every COMPLETE as
+   UNVERIFIED, not clean.
+5. **Build the SPX interaction audit** on the `meridian-interaction-audit.mjs` pattern — physical
+   text intersection, sub-24px tap targets, overflow, tab-hammering, keyboard reach — gated on a
+   PAGE-LOADED proof so a blank render reports HARNESS, never a product verdict. This is what
+   closes the three UNVERIFIED backlog items in §6.1 (and would have caught the P2 collisions).
+6. **A coherence assertion in the pre-open gate**: any two member-facing values sharing a label
+   must agree within a stated tolerance or the label must differ (§5). The reproducible OI-only
+   max-pain check against a full Polygon SPXW chain is the model.
+7. **Confirm `spx-signal-weight-optimize`'s DST correctness** — the other three crons are done.
+
+---
+
+## 9. Keeping this file honest
+
+- Add a row when you add a field. A field with no row is undocumented by definition.
+- When you fix something listed here, update the row **in the same PR as the fix**. §6.1 exists
+  because that did not happen for ten items.
+- Prefer `UNKNOWN` over a plausible sentence. Everything in §8 started as an `UNKNOWN` in §3.
+- Measurements carry their conditions: the market phase, the date, the Node version, the session
+  count. A number without them is an anecdote.
