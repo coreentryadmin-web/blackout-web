@@ -664,6 +664,19 @@ async function main() {
   }
   console.log("\nMERIDIAN INTERACTION AUDIT\n");
   for (const f of findings) console.log(" ", JSON.stringify(f));
+  // PERSIST THE REPORT. Findings used to exist only on stdout, so an intermittent one was lost the
+  // moment a run was piped, backgrounded or left unwatched — which is exactly what happened to a
+  // P2 pair seen on 2026-08-22 and never reproduced across four further runs. A harness whose
+  // evidence survives only if someone is watching cannot investigate anything intermittent.
+  try {
+    fs.writeFileSync(
+      path.join(OUT, "findings.json"),
+      JSON.stringify({ base: BASE, cohort: COHORT, findings }, null, 2)
+    );
+  } catch (e) {
+    // Never let a write failure discard a report that already printed.
+    console.log(`  (could not persist findings.json: ${String(e?.message ?? e).slice(0, 120)})`);
+  }
   console.log(
     `\n${bySev("P2").length} P2 · ${bySev("P3").length} P3 · ${bySev("HARNESS").length} HARNESS · screenshots in ${OUT}`
   );
