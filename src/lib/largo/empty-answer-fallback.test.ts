@@ -76,3 +76,32 @@ test("total — a zero or missing budget never crashes and degrades to the data 
   assert.equal(classifyEmptyAnswer({ elapsedMs: 0, budgetMs: 0, toolsUsed: [] }), "no_data");
   assert.ok(emptyAnswerFallback({ elapsedMs: 0, budgetMs: 0, toolsUsed: [] }).length > 0);
 });
+
+test("a tripped spend ceiling outranks BOTH timeout and data-gap and names the real reason", () => {
+  // The whole point of the fix: a paused desk must never read as "no data" OR as a timeout. It
+  // wins even when the elapsed/budget would otherwise classify as a timeout (a ceiling stop can
+  // happen on a long turn) or as a data gap (it can happen early).
+  assert.equal(
+    classifyEmptyAnswer({ elapsedMs: 70_000, budgetMs: 75_000, toolsUsed: [], ceilingTripped: true }),
+    "budget_ceiling"
+  );
+  assert.equal(
+    classifyEmptyAnswer({ elapsedMs: 2_000, budgetMs: 75_000, toolsUsed: [], ceilingTripped: true }),
+    "budget_ceiling"
+  );
+  const out = emptyAnswerFallback({ elapsedMs: 2_000, budgetMs: 75_000, toolsUsed: [], ceilingTripped: true });
+  assert.match(out, /temporarily paused/i);
+  assert.match(out, /daily AI spend limit/i);
+  assert.doesNotMatch(out, /couldn't pull enough live data/i);
+});
+
+test("ceilingTripped:false is inert — the existing timeout/no_data logic is unchanged", () => {
+  assert.equal(
+    classifyEmptyAnswer({ elapsedMs: 64_000, budgetMs: 75_000, toolsUsed: [], ceilingTripped: false }),
+    "timeout"
+  );
+  assert.equal(
+    classifyEmptyAnswer({ elapsedMs: 21_300, budgetMs: 30_000, toolsUsed: [], ceilingTripped: false }),
+    "no_data"
+  );
+});
