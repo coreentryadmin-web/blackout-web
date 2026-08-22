@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { resolveBreakoutCandidateCap } from "./breakout-cap";
+import { resolveBreakoutCandidateCap, resolveBreakoutDynamicCapDisabled } from "./breakout-cap";
 
 // Dynamic-N formula (2026-08-04): max(floor, min(ceiling, ceil(qualifyingMovers * 0.30))).
 // Default floor=40 / ceiling=100 mirror the shipped breakout-discovery.ts constants; tests pass
@@ -43,4 +43,47 @@ test("resolveBreakoutCandidateCap: default floor/ceiling apply when omitted", ()
 test("resolveBreakoutCandidateCap: kill-switch (disabled) reverts to the static floor regardless of pool size", () => {
   const cap = resolveBreakoutCandidateCap({ qualifyingMovers: 390, floor: 40, ceiling: 100, disabled: true });
   assert.equal(cap, 40, "kill-switch must ignore the huge qualifying pool and return the static floor");
+});
+
+// ── NH-2 (2026-08-22): the bare `BREAKOUT_DYNAMIC_CAP` name was deployed and unread ──────────────
+// Production ships BREAKOUT_DYNAMIC_CAP="1" while the module only ever consulted
+// BREAKOUT_DYNAMIC_CAP_DISABLED, so the deployed value matched intent by coincidence. The failing
+// operation was the INVERSE one: setting BREAKOUT_DYNAMIC_CAP=0 to revert did nothing, silently.
+// These pin BOTH names and, critically, the precedence between them.
+
+test("resolveBreakoutDynamicCapDisabled: neither name set → enabled (today's default, unchanged)", () => {
+  assert.equal(resolveBreakoutDynamicCapDisabled({}), false);
+});
+
+test("resolveBreakoutDynamicCapDisabled: the deployed value BREAKOUT_DYNAMIC_CAP=1 → enabled", () => {
+  // The exact production config at the time of the finding. Must be a no-op change.
+  assert.equal(resolveBreakoutDynamicCapDisabled({ BREAKOUT_DYNAMIC_CAP: "1" }), false);
+});
+
+test("resolveBreakoutDynamicCapDisabled: BREAKOUT_DYNAMIC_CAP=0 now actually disables (the bug)", () => {
+  // Pre-fix this returned false — the operator's revert silently did nothing.
+  assert.equal(resolveBreakoutDynamicCapDisabled({ BREAKOUT_DYNAMIC_CAP: "0" }), true);
+  for (const off of ["false", "off", "no", "OFF", " 0 "]) {
+    assert.equal(resolveBreakoutDynamicCapDisabled({ BREAKOUT_DYNAMIC_CAP: off }), true, `"${off}" must disable`);
+  }
+});
+
+test("resolveBreakoutDynamicCapDisabled: legacy kill-switch still works on its own", () => {
+  assert.equal(resolveBreakoutDynamicCapDisabled({ BREAKOUT_DYNAMIC_CAP_DISABLED: "1" }), true);
+});
+
+test("resolveBreakoutDynamicCapDisabled: the EMERGENCY kill-switch beats a stale enable flag", () => {
+  // The precedence that matters: a leftover BREAKOUT_DYNAMIC_CAP=1 in the deploy config must never
+  // defeat someone actively reverting during an incident.
+  assert.equal(
+    resolveBreakoutDynamicCapDisabled({ BREAKOUT_DYNAMIC_CAP: "1", BREAKOUT_DYNAMIC_CAP_DISABLED: "1" }),
+    true,
+    "BREAKOUT_DYNAMIC_CAP_DISABLED must win outright"
+  );
+});
+
+test("resolveBreakoutDynamicCapDisabled: an unrecognised value is not treated as a disable", () => {
+  // Fail toward the shipped default rather than silently reverting on a typo.
+  assert.equal(resolveBreakoutDynamicCapDisabled({ BREAKOUT_DYNAMIC_CAP: "maybe" }), false);
+  assert.equal(resolveBreakoutDynamicCapDisabled({ BREAKOUT_DYNAMIC_CAP: "" }), false);
 });
