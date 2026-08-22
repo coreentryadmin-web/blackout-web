@@ -1,6 +1,7 @@
 import {
   polygonConfigured,
   engineIntelOverlayEnabled,
+  spxVwapSpyProxyEnabled,
   uwConfigured,
   deskPulseStructureCacheTtlMs,
   deskPulseStructureRaceMs,
@@ -70,7 +71,6 @@ import { isPremarketPlanningWindow } from "@/features/spx/lib/spx-play-session-g
 import {
   distancePct,
   inferRegime,
-  mergeVolumeIntoBars,
   priorDayFromDailyBars,
   priorEtYmd,
   sessionStatsFromMinuteBars,
@@ -78,7 +78,11 @@ import {
   widenSessionExtremesWithSpot,
 } from "@/lib/providers/spx-session";
 import { fetchSpyVolumeByMinute } from "@/features/vector/lib/vector-spy-volume";
-import { isStagingDeploy } from "@/lib/clerk-env";
+import {
+  resolveSessionVwap,
+  type SessionStatsWithSource,
+  type VwapVolumeSource,
+} from "@/features/spx/lib/spx-vwap-proxy";
 import {
   fetchUwDarkPool,
   fetchUwDarkPoolMarketWide,
@@ -111,28 +115,25 @@ import { getActiveTradingHalts, isTradingHaltChannelStale, warmUwClusterFreshnes
 const GEX_WALL_LADDER_LIMIT = 10;
 
 /**
- * SPX session stats with a TRUE volume-weighted VWAP on STAGING via the SPY-volume proxy.
+ * SPX session stats with a TRUE volume-weighted VWAP via the SPY-minute-volume proxy.
  *
- * STAGING FULL-ENABLEMENT (user directive): SPX index minute bars carry no volume (ISSUE-16), so the
- * desk VWAP is an equal-weight typical price and `vwap_volume_weighted` is always false — which
- * permanently hard-blocks PB-01/PB-02 (they require a volume-weighted VWAP). On staging we merge SPY
- * 1-minute share volume (the standard index proxy the Vector chart already uses) into the SPX bars so
- * the VWAP becomes genuinely volume-weighted and `vwap_volume_weighted` can be true, unblocking those
- * playbooks. Fail-open: any SPY-fetch miss falls back to the current typical-price VWAP.
+ * The resolution logic, its cache and the full rationale live in `spx-vwap-proxy.ts` — a module
+ * with no `server-only` and no provider import at scope, so it is unit-testable in isolation (the
+ * same reason `spx-desk-numerics.ts` exists). This wrapper only supplies the real dependencies.
  *
- * PROD IS UNCHANGED — prod keeps the existing typical-price VWAP (no SPY fetch, no value change).
+ * Short version of WHY: the merge used to be gated on `isStagingDeploy()`, which has been
+ * permanently false since staging was decommissioned 2026-07-25, so `vwap_volume_weighted` was
+ * permanently false in production and PB-01/PB-02 could never satisfy their data requirement.
+ * `SPX_VWAP_SPY_PROXY=0` reverts to the typical-price fallback without a deploy.
  */
 async function sessionStatsWithProxyVwap(
   minuteBars: Parameters<typeof sessionStatsFromMinuteBars>[0],
   ymd: string
-): Promise<ReturnType<typeof sessionStatsFromMinuteBars>> {
-  if (!isStagingDeploy()) return sessionStatsFromMinuteBars(minuteBars);
-  try {
-    const volumeByBarSec = await fetchSpyVolumeByMinute(ymd);
-    return sessionStatsFromMinuteBars(mergeVolumeIntoBars(minuteBars, volumeByBarSec));
-  } catch {
-    return sessionStatsFromMinuteBars(minuteBars);
-  }
+): Promise<SessionStatsWithSource> {
+  return resolveSessionVwap(minuteBars, ymd, {
+    fetchSpyVolume: fetchSpyVolumeByMinute,
+    enabled: spxVwapSpyProxyEnabled(),
+  });
 }
 
 
@@ -912,6 +913,9 @@ export type SpxDeskPayload = {
   vwap: number | null;
   /** False when SPX index bars lack volume — desk VWAP is typical-price average, not true VWAP. */
   vwap_volume_weighted?: boolean;
+  /** WHERE the VWAP weights came from: SPX's own bar volume, SPY's as proxy, or unweighted.
+   *  `vwap_volume_weighted: true` alone would imply SPX volume that does not exist (ISSUE-16). */
+  vwap_volume_source?: VwapVolumeSource;
   pdh: number | null;
   pdl: number | null;
   prior_close: number | null;
@@ -1576,6 +1580,7 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
 
   const vwap = session.vwap ?? intel?.vwap ?? null;
   const vwapVolumeWeighted = session.vwap_volume_weighted ?? false;
+  const vwapVolumeSource: VwapVolumeSource = session.vwap_volume_source ?? null;
   const lod = session.lod ?? intel?.lod ?? null;
   const hod = session.hod ?? intel?.hod ?? null;
 
@@ -1683,6 +1688,7 @@ export async function buildSpxDesk(): Promise<SpxDeskPayload> {
     hod: roundDeskNum(hod),
     vwap: roundDeskNum(vwap),
     vwap_volume_weighted: vwapVolumeWeighted,
+    vwap_volume_source: vwapVolumeSource,
     pdh: roundDeskNum(prior.pdh),
     pdl: roundDeskNum(prior.pdl),
     prior_close: roundDeskNum(prior.pdc),

@@ -296,9 +296,24 @@ remaining Phase 0 gap and the next increment of this file. UNKNOWN.
 and **staging was fully decommissioned on 2026-07-25** — there is no deploy target that can make
 this true. Every branch behind it is dead code in every environment that exists:
 
+> **CORRECTION (2026-08-22): this section originally said "five call sites". That was an undercount
+> by roughly 3×** — it counted only what a grep of `spx-desk.ts` and `spx-play-config.ts` turned up.
+> The real SPX surface is **~15 dead branches** across at least nine files: add
+> `playbook-session-risk.ts:47`, `trade-governor.ts:167`, `spx-play-engine.ts:875`,
+> `spx-play-gates.ts:168,205,207`, `playbook-regime-router.ts:93`, `spx-play-kanban-chips.ts:131`
+> and `SpxCommentaryRail.tsx:354` (the last five reach it through `playbookStagingLabEnabled()`,
+> which is just `isStagingDeploy()` wearing a different name — grepping the direct call alone misses
+> them). There are three more in `src/lib/ai-env.ts` and one in `src/lib/largo-env.ts`, outside this
+> lane's surface.
+>
+> **Only the VWAP site is fixed** (the one that unblocks PB-01/PB-02). The remaining branches each
+> need a per-site judgment about what the correct production behaviour is — several are staging-only
+> debug affordances where deletion is right but is a UI change — so the sweep is its own issue, not
+> a rider on a member-facing fix.
+
 | Site | Effect now |
 |---|---|
-| `spx-desk.ts:129` `sessionStatsWithProxyVwap` | SPY-volume-proxy merge never runs → SPX VWAP is an equal-weight typical-price mean, and `vwap_volume_weighted` is permanently `false` |
+| `spx-desk.ts:129` `sessionStatsWithProxyVwap` | **FIXED.** Was: SPY-volume-proxy merge never ran → SPX VWAP was an equal-weight typical-price mean and `vwap_volume_weighted` permanently `false`. Now resolved by `spx-vwap-proxy.ts` behind `SPX_VWAP_SPY_PROXY` (default ON, env-reversible), which also reports `vwap_volume_source` so `true` never silently claims SPX volume that does not exist. |
 | `spx-play-config.ts:419` `playbookStagingLabEnabled` | always false |
 | `spx-play-config.ts:427` `playbookLiveGateEnabled` | falls through to `PLAYBOOK_LIVE_GATE` (default false) |
 | `spx-play-config.ts:483` `playbookLiveAllowlist` | full-enablement branch unreachable |
