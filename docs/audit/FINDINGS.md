@@ -4,6 +4,22 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-22 — [FINDING, P1 Largo] An empty tool-loop round produced a member-facing wrong answer and left no trace of its cause — FIXED (visibility)
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | For most of 2026-08-21 into 08-22, Largo answered *"I couldn't pull enough live data to answer that"* to questions whose data was demonstrably present. Raw capture, 01:34Z: **HTTP 200**, `tools_used: ["live_feed_capture"]` (prefetch only, no answering tool), `evidence: []`. In the same minute `GET /api/market/gex-positioning?ticker=SPY` returned `available:true, spot 766.27, gamma_posture "short", net_vex +$332B` — fresh. Naming the tool explicitly (*"Use get_positioning to…"*) declined too, as did the decline message's own suggested fallback. |
+| **Where it originates** | `anthropicToolLoop`, the no-tool-calls branch: a round returning neither `tool_use` blocks nor text returns `null`, and the caller renders that null as the data-excuse fallback. The advice is not merely unhelpful, it names the wrong cause — a member is told to try a different question when the question was fine. |
+| **The real defect recorded here** | Not the empty round itself — that may well be upstream model behaviour and legitimately nothing to fix. The defect is that **nothing distinguished the two possibilities**: (a) the model returned no `tool_use` block at all, or (b) the model asked for a tool and we dropped it. (a) is upstream and closes the matter; (b) is ours and is severe. |
+| **Why it stayed unknown for a day** | `persistClaudeTurn` (`turn-outcome.ts:73`) writes only the FINAL answer, `tools_used` and captured results — no per-round record. So the stored turn shows exactly what an external capture already shows and nothing more. **Three independent harnesses across three lanes each reproduced the symptom and not one could tell (a) from (b).** Three causes were proposed and each refuted by measurement: a BIE ingestion PR (refuted — it was not in the deployed image), the daily AI-spend ceiling (refuted — the route returns an honest 503 and this returned 200), and the ceiling again the following night (same refutation). |
+| **Fix** | The empty-round branch now logs the round's shape — round index, model, block count and block-type list — plus the member-visible string it produces, at the one point where the distinction still exists. `"round 0 … blocks=0[]"` is a model that returned nothing; a non-empty block list with no `tool_use` is a different story entirely. |
+| **Fix rationale — why so narrow** | The log fires ONLY when the round has no tool calls **and** no text. A tool-less round WITH text is the normal way a turn ends; logging those would bury the one line that matters under every healthy turn, and a signal nobody can find is the same as no signal. That narrowness is asserted by the guard, so widening it later cannot silently destroy the thing it was added for. |
+| **Deliberately NOT done** | No behaviour change. The loop returns exactly what it returned before. This does not fix the P0 — it makes the P0 diagnosable, which is the actual blocker. Persisting per-round state to the turn row (so the question is answerable after the fact, not only from live ECS logs) is the larger follow-up and is NOT in this change. |
+| **Regression guard** | `src/lib/providers/anthropic-empty-round-visibility.test.ts` (5 tests), a source assertion for the same reason as `anthropic-stream-guard.test.ts`: inducing an empty round needs the real API, since the client is acquired via `getClient()` and is not injected. Verified non-vacuous — deleting the log fails exactly 3 of the 5, and restoring it passes all 5. |
+| **Status** | FIXED (visibility only — the empty round itself is OPEN and may prove to be upstream). |
+
 ## 2026-08-21 — [FINDING, P1 Night Hawk/tooling] The Largo stress harness graded the internal-error fallback as PASS — it reported "ALL PASS · #2519 verified" while live Largo was erroring on 78% of questions — FIXED (harness); live outage escalated separately
 
 > **kind:** `FINDING`
