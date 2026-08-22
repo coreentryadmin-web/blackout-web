@@ -7,7 +7,6 @@ import {
   type MeridianEarningsIntelPrefetch,
 } from "@/lib/meridian/meridian-earnings-intel";
 import { flowWindowHours } from "@/lib/meridian/meridian-earnings-intel-core";
-import { patchMeridianEnrichmentExpectedMove } from "@/lib/meridian/meridian-earnings-event-load-core";
 import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
 import { fetchTickerFundamentalsBundle } from "@/lib/bie/ticker-fundamentals";
 import { getVectorExpectedMove } from "@/features/vector/lib/vector-expected-move-server";
@@ -58,11 +57,6 @@ export async function loadMeridianEarningsEventDetail(
 
   if (!pack) return null;
 
-  const patchedEnrichment = patchMeridianEnrichmentExpectedMove(
-    enrichment,
-    pack.expected_move_pct
-  );
-
   const intelPrefetch: MeridianEarningsIntelPrefetch = {
     ...intelPrefetchBase,
     fundamentals,
@@ -75,8 +69,8 @@ export async function loadMeridianEarningsEventDetail(
     loadMeridianEarningsIntel({
       ticker: sym,
       pack,
-      print_history: patchedEnrichment.print_history,
-      enrichment: patchedEnrichment,
+      print_history: enrichment.print_history,
+      enrichment,
       prefetch: intelPrefetch,
     }),
     readMeridianReportSnapshots(sym, eventDate, 30),
@@ -85,7 +79,7 @@ export async function loadMeridianEarningsEventDetail(
   const detail = roundFloats({
     kind: "earnings" as const,
     pack,
-    enrichment: patchedEnrichment,
+    enrichment,
     intel,
     drift_snapshots,
   });

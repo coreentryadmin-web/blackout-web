@@ -70,8 +70,15 @@ export async function loadMeridianEarningsEnrichment(
   // card starts working the moment that field is populated, with no further change here.
   const priorImplied = lastPrint?.expected_move_pct ?? null;
   const expected_vs_realized = buildExpectedVsRealized(
-    priorImplied ?? expectedMovePct ?? null,
-    lastPrint?.session_change_pct ?? null,
+    // Only the per-print implied. The pack's live chain-IV move is NOT a fallback here: it belongs
+    // to a different print, and passing it made the block carry a number a consumer then paired.
+    priorImplied,
+    // The REACTION, not the anchor session's open→close. A post-close print reprices on the next
+    // session, so `session_change_pct` alone drops the overnight gap that carries the move — INTU's
+    // last print reads -1.67% by session and -20.02% by reaction. `reaction_pct` is the like-for-
+    // like quantity, and it is what `patchMeridianEnrichmentExpectedMove` already uses; this path
+    // is served whenever that patch early-returns for want of a chain-IV move.
+    lastPrint?.reaction_pct ?? lastPrint?.session_change_pct ?? null,
     priorImplied != null
   );
 

@@ -33,10 +33,20 @@ export type OpexPinAccuracy = {
 };
 
 export type ExpectedVsRealized = {
+  /**
+   * The implied move captured BEFORE the print whose reaction sits in `realized_move_pct`.
+   * Null whenever `same_event` is false — see `buildExpectedVsRealized` for why it is dropped
+   * rather than passed through.
+   */
   expected_move_pct: number | null;
   realized_move_pct: number | null;
   ratio: number | null;
   verdict: "under" | "over" | "inline" | "unknown";
+  /**
+   * Are the two numbers from the SAME print? A consumer may only put them side by side, take a
+   * ratio, or label the pair "expected vs realized" when this is true.
+   */
+  same_event: boolean;
   headline: string | null;
 };
 
@@ -195,24 +205,33 @@ export function buildExpectedVsRealized(
   realizedMovePct: number | null,
   sameEvent: boolean
 ): ExpectedVsRealized {
+  // Cross-event is checked FIRST, and `expected_move_pct` is dropped rather than passed through.
+  // Withholding the ratio was not enough: `MeridianEarningsTabs` rebuilt the same pairing from a
+  // forward implied and shipped "Implied ~9.2% into print" underneath PDD's reaction to a print
+  // three months earlier. A number a consumer must not pair does not belong in the block.
+  if (!sameEvent) {
+    return {
+      expected_move_pct: null,
+      realized_move_pct: realizedMovePct,
+      ratio: null,
+      verdict: "unknown",
+      same_event: false,
+      // The reaction is a real, settled measurement and stands on its own — including when no
+      // implied is available for either print, which is every row on the desk today.
+      headline:
+        realizedMovePct == null
+          ? null
+          : `Last print realized ${realizedMovePct >= 0 ? "+" : ""}${realizedMovePct}%`,
+    };
+  }
   if (expectedMovePct == null || realizedMovePct == null) {
     return {
       expected_move_pct: expectedMovePct,
       realized_move_pct: realizedMovePct,
       ratio: null,
       verdict: "unknown",
+      same_event: true,
       headline: null,
-    };
-  }
-  if (!sameEvent) {
-    // The reaction is real and worth showing; the comparison is not. No ratio, no verdict, and a
-    // headline that does not put the two numbers side by side as though they were commensurable.
-    return {
-      expected_move_pct: expectedMovePct,
-      realized_move_pct: realizedMovePct,
-      ratio: null,
-      verdict: "unknown",
-      headline: `Last print realized ${realizedMovePct >= 0 ? "+" : ""}${realizedMovePct}%`,
     };
   }
   const absReal = Math.abs(realizedMovePct);
@@ -230,6 +249,7 @@ export function buildExpectedVsRealized(
     realized_move_pct: realizedMovePct,
     ratio,
     verdict,
+    same_event: true,
     headline,
   };
 }
