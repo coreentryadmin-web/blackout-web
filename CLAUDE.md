@@ -173,14 +173,24 @@ adjusts its numbers to match a peer has destroyed the signal and left a false co
   - **Missed real failures.** #2073's tsx 4.23.1→4.23.10 bump threw `ERR_INVALID_URL` inside tsx's
     own ESM resolver hook under Node 20 + `--experimental-test-module-mocks`, killing 133 tests in
     CI while passing clean on Node 22 here.
-  **Node 20 is NOT pre-installed and does NOT survive a container restart — install it first:**
-  `bash -lc 'nvm install 20'` (~1 min), then run with
-  `export PATH=/opt/nvm/versions/node/v20.20.2/bin:$PATH`. `nvm` lives at **`/opt/nvm`**, not
-  `~/.nvm` — `source ~/.nvm/nvm.sh` fails, but `nvm` is already a shell function in a LOGIN shell
-  (`bash -lc`). Verified the hard way: this note originally read "v20.20.2 is installed", the
-  container restarted a few hours later, `/opt/nvm/versions/node/` was gone, and the default `node`
-  was back to 22 — the exact stale-doc trap the rest of this file exists to prevent. A restart also
-  wipes the scratchpad and any background-task output, though the repo and `node_modules` survive.
+  **Node 20's availability is container-dependent — CHECK before assuming either way (corrected
+  2026-08-22, after two containers disagreed on the same day).** This note previously asserted Node
+  20 is *never* pre-installed and `node_modules` *always* survives a restart. Neither holds
+  universally: one container had `/opt/node20/bin/node` (v20.20.2) pre-installed AND a populated
+  `node_modules` with no setup step; a fresh SPX-lane container the same day had neither — its first
+  test run reported ~20 failures that were pure missing-dependency noise, not real regressions,
+  until `npm ci` (~2 min) fixed it. That is the exact phantom-failure trap this section exists to
+  prevent, arriving from an angle it didn't cover.
+  **Check first, don't install blind:**
+  ```
+  ls /opt/node20/bin/node 2>/dev/null && echo "pre-installed" || echo "need nvm install 20"
+  test -d node_modules && ls node_modules | wc -l
+  ```
+  If Node 20 is missing: `bash -lc 'nvm install 20'` (~1 min) — `nvm` lives at **`/opt/nvm`**, not
+  `~/.nvm` (`source ~/.nvm/nvm.sh` fails, but `nvm` is already a shell function in a LOGIN shell via
+  `bash -lc`) — then use whichever path resolves, `/opt/node20/bin` or
+  `/opt/nvm/versions/node/v20.20.2/bin`. If `node_modules` is missing or looks thin: `npm ci` before
+  trusting any test run. A restart also wipes the scratchpad and any background-task output.
   `npm test` goes through `scripts/run-tests.mjs`, which is the exact command CI runs and prints a
   loud banner on any other major — so a Node 22 run announces itself rather than lying quietly.
 - **All infrastructure runs on AWS ECS only** — there is no Railway. Docker images are built and pushed to ECR, ECS services are force-deployed, Cloudflare cache is purged. **Production is now the ONLY environment** (`blackout-production-cluster` / `blackout-production-web` at `blackouttrades.com`) — the entire `blackout-staging-*` stack was decommissioned 2026-07-25 (see the Vector-validation note above). The `blackout-web` ECR repo is shared and still in use by production; it was deliberately NOT deleted.

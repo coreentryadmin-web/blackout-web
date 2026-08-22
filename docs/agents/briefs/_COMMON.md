@@ -14,12 +14,20 @@ docs-only PR, and never for a routine GREEN pass (those go in `RUN-LOG.md`).
 
 ### 2. Node 20 is mandatory — a Node 22 run is not evidence
 
+**Container provisioning varies — check, don't assume (2026-08-22: two containers disagreed the
+same day).** One container ships Node 20 pre-installed at `/opt/node20/bin` with `node_modules`
+already populated; another has neither. Check first:
+
 ```
-export PATH=/opt/nvm/versions/node/v20.20.2/bin:$PATH
+ls /opt/node20/bin/node 2>/dev/null && echo "pre-installed" || echo "need nvm install 20"
+test -d node_modules && ls node_modules | wc -l
 ```
 
-If a container restart wiped it: `bash -lc 'nvm install 20'` first (nvm lives at `/opt/nvm`, not
-`~/.nvm`). Production is `node:20-bookworm-slim` and every workflow pins 20.
+Use whichever Node 20 path resolves (`/opt/node20/bin` or `/opt/nvm/versions/node/v20.20.2/bin`,
+prepended to `PATH`). If missing: `bash -lc 'nvm install 20'` first (nvm lives at `/opt/nvm`, not
+`~/.nvm`). If `node_modules` is missing or thin: `npm ci` before trusting any test run — a fresh
+container with no `node_modules` reports dependency-missing errors that look exactly like real
+test failures. Production is `node:20-bookworm-slim` and every workflow pins 20.
 
 The two majors disagree **in both directions**, which is why this is not a preference. Node 22
 invents 12 phantom failures that were treated as an unavoidable "sandbox baseline" for a whole
