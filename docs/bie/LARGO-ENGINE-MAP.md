@@ -37,27 +37,15 @@ Measured by importing the real modules (`LARGO_TOOL_DEFS`, `LARGO_CAPABILITIES`)
 - **129 capability entries** in `capability-registry.ts`.
 - **1:1** — no tool without a capability, no capability without a tool. `registry.test.ts` holds this.
 
-Every count written elsewhere in the tree WAS stale (L-9). All corrected and now pinned by
-`src/lib/largo/tool-count-claims.test.ts`, which re-derives the count from `LARGO_TOOL_DEFS` and
-fails naming any sentence that disagrees — so this table records history, not an open gap:
+Every count written elsewhere in the tree is stale and should be read as historical:
 
-| Source | Said | Actual | |
-|---|---|---|---|
-| `docs/agents/briefs/largo.md` (×5) | 127 tools | 129 | fixed |
-| `tool-defs.ts` prompt-cache comment | 116 tools | 129 | fixed |
-| `capability-registry.ts` header + ranking note | 120 / 116 tools | 129 | fixed |
-| `tool-guard.ts` entitlement docstring | "49 of 116 catalogued" | 129 of 129 catalogued | fixed — and the fail-open policy it argued now says outright that it does not rest on the count |
-| `largo-truncation-probe.mjs` header | "all 126" | 129 | fixed |
-| `largo-terminal.ts` (×2) | 116 tools | 129 | fixed |
-| `tool-guard.test.ts` (×2) | 120 capabilities | 129 | fixed |
-
-Two were deliberately NOT renumbered, because a count that is the **denominator of a past
-measurement** is not a claim about today: `largo-terminal.ts`'s *"a mean of 21.9 / 116 tools (19%)"*
-(dated instead — renumbering would have falsified a real result) and
-`meridian-timeline-for-largo.ts`'s *"0 of 127 … mention Meridian"* (re-measured at **3 of 129**, and
-`runLargoTool` now dispatches two Meridian cases, so it was rewritten to the past tense). And
-`tool-guard.test.ts`'s *"the other 127"* is `129 − 2`, correct arithmetic that a blind replace would
-have broken.
+| Source | Says | Actual |
+|---|---|---|
+| `docs/agents/briefs/largo.md` | 127 tools | 129 |
+| `tool-defs.ts` prompt-cache comment | 116 tools | 129 |
+| `capability-registry.ts` header | 120 tools | 129 |
+| `tool-guard.ts` entitlement docstring | "49 of 116 catalogued" | 129 of 129 catalogued |
+| `largo-truncation-probe.mjs` header | "all 126" | 129 |
 
 Distribution:
 
@@ -176,21 +164,14 @@ const capped = raw.length > MAX_TOOL_RESULT_CHARS
   : raw;
 ```
 
-**The transport KEEPS the first 16 000 characters and discards everything after them.** ~~Six~~
-**seven** places in the tree described this as a "TAIL slice" — `CLAUDE.md`,
-`docs/agents/briefs/largo.md`, `docs/agents/briefs/helix.md`, `docs/agents/briefs/spx-slayer.md`,
-`largo-truncation-probe.mjs`, `fit-tool-result.ts` and `nighthawk-edition-for-model.ts`. (Two peer-lane
-charters — `helix.md`, `spx-slayer.md` — were missed by this section's first pass, and
-`run-tool.ts:1078` was wrongly counted here: it says "tail-TRUNCATES", which can only mean the tail
-is removed. Six minus one plus two = seven.) They
-meant *"the tail is cut off"*, and every one of them then reasoned correctly from that
-(`fit-tool-result.ts` puts aggregates FIRST precisely so the cut eats the row sample). But read
-cold, "tail slice" states the opposite of what the code does, and a payload designed on the wrong
-reading would put its aggregates last — which is exactly the #2433 defect.
-
-**RESOLVED.** All seven now state what SURVIVES, and `tool-count-claims.test.ts` bans the phrase's
-return across the files that describe the cap — with `tool-result-cap.ts`, which quotes it in order
-to correct it, serving as the scanner's control.
+**The transport KEEPS the first 16 000 characters and discards everything after them.** Six places
+in the tree describe this as a "TAIL slice" — `CLAUDE.md`, `docs/agents/briefs/largo.md`,
+`largo-truncation-probe.mjs`, `fit-tool-result.ts`, `nighthawk-edition-for-model.ts` and
+`run-tool.ts:1078`. They mean *"the tail is cut off"*, and every one of them then reasons correctly
+from that (`fit-tool-result.ts` puts aggregates FIRST precisely so the cut eats the row sample). But
+read cold, "tail slice" states the opposite of what the code does, and a payload designed on the
+wrong reading would put its aggregates last — which is exactly the #2433 defect. **State it as
+"keeps the head, drops the tail" and the ambiguity disappears.**
 
 The measured evidence agrees with the code, not the phrasing: `get_zerodte_record` delivered 1.5%
 of itself *"with every aggregate cut off"* — aggregates were serialized third, i.e. late, i.e. in
@@ -247,7 +228,7 @@ Three whole-table facts, stated once rather than repeated 129 times:
    wrapper internally from five adapters. **No individual product tool is contract-wrapped.** The
    contract is real as types and as the C1 session-anchor ratchet; its adoption at the tool boundary
    is one tool out of 129.
-2. **Size bound: 2 of 129 at the time of this inventory — 3 within hours** (#2649 fitted `get_vector_full_state` by hand). Only `get_zerodte_record` and `get_nighthawk_outcomes` pass their rows
+2. **Size bound: 2 of 129.** Only `get_zerodte_record` and `get_nighthawk_outcomes` pass their rows
    through `fitRowsToBudget` (budget `LARGO_RESULT_CHAR_BUDGET` = 14 000 = 87.5% of the cap, the
    headroom absorbing downstream rounding/wrapping). Those are precisely the two tools someone
    already caught being truncated (#2433, #2480, #2628). **The other 127 are capped blind.**
@@ -551,10 +532,7 @@ many words:
 report UNVERIFIED on every run until a new over-cap control is chosen** — the design working as
 written, not a break. Picking the replacement by guesswork would reintroduce the exact failure the
 harness guards against; picking it from measured `bytes` (above) would not. **This is the dependency
-order for Phase 1: instrument first, then re-arm the probe, then probe the tools it does not yet
-cover.** (Deliberately not a fixed number: the probe's `LANE_TOOLS` grows as lanes add their own —
-it went 13 → 17 on 2026-08-23 when Helix added four — so any figure written here is stale by the
-next lane contribution. It is `LARGO_TOOL_DEFS.length - LANE_TOOLS.length`, derivable on demand.)
+order for Phase 1: instrument first, then re-arm the probe, then probe the remaining 116 tools.**
 
 ---
 
@@ -614,7 +592,6 @@ would be worth, not by how easy it is.
 
 | # | What | Where | Class |
 |---|---|---|---|
-<<<<<<< HEAD
 | L-1 | No truncation detection anywhere, despite per-call bytes already being measured. 127 of 129 tools have no size bound at all. | `tool-guard.ts` `sizeOf`/`formatToolDiagnostics` | observability / transport |
 | L-2 | The grounding caveat never renders as a caveat — `applyVerificationCaveat` emits italics, the UI matches blockquotes. The `verification` kind is dead code. | `turn-outcome.ts:19` vs `answer-caveats.ts:17` | member-facing honesty |
 | **L-3** | **Four different null paths — gate closed, no client, spend stop, round-0 model failure — all reported as "I couldn't pull enough live data." REPRODUCED LIVE 9/9 turns, see §9b.** | `anthropic.ts:572,574,577,761-791`, `empty-answer-fallback.ts` | member-facing honesty |
@@ -629,24 +606,6 @@ would be worth, not by how easy it is.
 **Suggested order.** L-1 first — it is the instrument the others are measured with, and it unblocks
 L-8, which unblocks probing the remaining 116 tools. L-2 and L-3 next: both are member-facing
 honesty defects with small, local fixes. L-4 and L-5 after. L-6/L-7/L-9/L-10 are cheap and can ride
-=======
-| ~~L-1~~ **FIXED** | No truncation detection anywhere, despite per-call bytes already being measured. 127 of 129 tools have no size bound at all. Now flagged as `TRUNCATED <bytes>/<cap>` from the size the guard already recorded; the cap moved to a dependency-free `tool-result-cap.ts` so `tool-guard.ts` could read it without pulling the SDK graph. Detection only — no payload changes. | `tool-guard.ts`, `tool-result-cap.ts` | observability / transport |
-| ~~L-2~~ **FIXED** | The grounding caveat never renders as a caveat — `applyVerificationCaveat` emits italics, the UI matches blockquotes. The `verification` kind is dead code. | `turn-outcome.ts:19` vs `answer-caveats.ts:17` | member-facing honesty |
-| ~~L-3~~ **FIXED** | Four different null paths — gate closed, no client, spend stop, round-0 model failure — all reported as "I couldn't pull enough live data." Reproduced live 9/9 turns (§9b); root cause confirmed from the production log as an HTTP 400 *"credit balance is too low"*. The loop now reports which of its eight exits it took (`ToolLoopStopReason` + `onStop`), and a stated reason outranks the elapsed-time heuristic. | `anthropic.ts`, `empty-answer-fallback.ts` | member-facing honesty |
-| L-4 | SPX Slayer is a declared `ProductId` with no cross-product source or adapter, and is absent from the coverage denominator rather than reported missing. | `cross-product-read.ts:35` | cross-product coherence |
-| ~~L-5~~ **FIXED** | Three `coverage: 1` literals survive #2626; one leaves the process on the non-streaming error path. | `largo-terminal.ts:1149,1167,1454` Replaced by one `unverifiedTurn()` constructor returning `coverage: null` — a convention gets skipped, a constructor cannot be. | fabricated certainty |
-| ~~L-6~~ **FIXED** | `applyPlanCaveat` emits "Timeframe caveat.", matcher expects "Timeframe note." → renders as generic "Note". | `plan.ts:194` vs `answer-caveats.ts:17` | UI classification |
-| L-7 | ~~`tools_used` conflates seeded markers, prefetch markers and real model dispatches. BIE calibration cohorts bucket on this array.~~ **RATCHETED (#2687) — and this row overstated it.** The cohorts bucket on `{SPX,HELIX,THERMAL}_ENGINE_TOOL_NAMES` (11/5/6 names) and **no non-dispatch marker is in any of them**, so no cohort is polluted today: the exposure is LATENT, not active. What IS broken now: of the four prefetch sites pushing a `get_*` name, `get_helix_thermal_compare` **is a real callable tool**, so that name reaches the log from both a keyword-gated server prefetch (`largo-terminal.ts:678`) and a genuine model dispatch, and a stored turn cannot say which. `tools-used-provenance.test.ts` pins it shrink-only; the **rename is deferred to the coordinator** because it changes the shape of a persisted column. | `largo-terminal.ts:483` + prefetch pushes | observability / data integrity |
-| L-11 | `LargoDeskMiniPanel` is mounted by nothing, and its premium-gated route `/api/market/largo/mini-panel` is live with no caller. #2358 added and mounted it; #2387 ("drop the two side panels") removed the mount and left both behind. The lane charter still described the panels as a current member surface — corrected. **Delete-vs-remount is a product call, not this lane's**, so it is flagged rather than actioned. | `LargoDeskMiniPanel.tsx`, `api/market/largo/mini-panel/route.ts` | dead surface / stale doc |
-| L-8 | The truncation probe's control is expected COMPLETE post-#2628, so every run reports UNVERIFIED until a new control is chosen from measured sizes. **Unblocked by L-1**, but needs a live turn to produce the measurement — waiting on the upstream outage to clear. | `largo-truncation-probe.mjs:74` | tooling (unblocked, awaiting live data) |
-| L-9 | ~~Five stale tool counts across the tree (116/120/126/127 vs 129), including in the charter and in the entitlement docstring.~~ **FIXED** — 14 live claims corrected and pinned by `tool-count-claims.test.ts`; two historical measurements dated rather than renumbered. | see §1 | documentation |
-| L-10 | ~~"TAIL slice" in six places describes a HEAD-keeping cut. Every current reader reasons correctly from it; a new one would not.~~ **FIXED** — seven sites (not six) rewritten to say what survives; a scanner test with a control bans the phrase's return. | see §2.5 | documentation |
-
-**Suggested order.** L-1 first — it is the instrument the others are measured with, and it unblocks
-L-8, which unblocks probing the tools the probe does not yet cover. **L-3 is done** — the coordinator released it
-ahead of the rest once the outage made it live. L-2 next: the same class of member-facing honesty
-defect, with a small, local fix. L-4 and L-5 after. L-6/L-9/L-10 are cheap and can ride
->>>>>>> origin/main
 along with a neighbouring fix rather than costing a PR each.
 
 ---
@@ -720,70 +679,6 @@ Scope: Largo is admin-and-grant-only in production (§0), so **no ordinary membe
 upstream condition itself — if it is an account/credits state — is not a code fix and not this
 lane's to make. **L-3 is the code fix**: the loop must say which of its four null paths it took, so
 the reader is told the truth about the turn.
-
----
-
-## 9c. Is there a CODE-level cause for the outage? Six eliminated, one signature left
-
-§9b established *that* the loop returns `null` at round 0. This section asks the separate question:
-**is a code regression causing it**, or is the code faithfully reporting an upstream fault? Every
-check below is offline — no live Largo call — and production is running current `main`
-(`deploy-freshness.mjs --since=48h`: *"every deploy-worthy commit has a later deploy run"*, newest
-2026-08-22T23:31Z), so these line references describe deployed code.
-
-| # | Candidate code cause | Eliminated by |
-|---|---|---|
-| 1 | **A malformed or duplicate tool schema** would 400 the whole request for every model and every depth — and a large batch of Largo tool PRs landed 2026-08-21, the day the outage began. | Validated all **129** definitions offline: no duplicate names, every name inside `^[a-zA-Z0-9_-]{1,64}$`, every `input_schema` an object with `properties`, every `required` entry present in `properties`, no empty descriptions. Clean. Serialized tool block 99 540 chars (~25k tokens) — large but far inside a 200k context. |
-| 2 | **An empty system text block** (the API rejects zero-length text blocks) | `buildDynamicSystem` returns exactly two blocks: `LARGO_SYSTEM_PROMPT` (a constant) and `dynamicPart` (always contains literal headings). Neither can be empty. `applySystemCache` passes the array through untouched because block 0 already carries a marker. |
-| 3 | **A sampling-param 400** — `temperature` is rejected by Sonnet 5 | `modelRejectsSamplingParams` is `/claude-(?:opus\|sonnet)-5\|.../` and correctly matches `claude-sonnet-5`, so Deep omits `temperature`. Concrete runs `claude-haiku-4-5`, which accepts it. **The two depths take opposite branches of this guard and fail identically** — so the guard is not the discriminator. |
-| 4 | **Top-level `cache_control`** on `MessageCreateParams` (added by a cast, i.e. not in the SDK's type) | Shipped 2026-08-10 in #2020. `CLAUDE.md` records a **successful** live truncation-probe run on 2026-08-21 — *"control PROVEN, `get_zerodte_record`/`get_nighthawk_edition`/`get_zerodte_plays` COMPLETE"*. Largo was answering with this code in place, so it is not fatal. |
-| 5 | **Gate closed / no client / spend ceiling** | §9b. Key present, staging flags unset, and a ceiling stop renders different copy. |
-| 6 | **A single-model outage** (529/429 on `claude-sonnet-5`) | Ruled out by the escalation retry itself — see below. |
-
-### The escalation retry is the strongest evidence, and it points away from code
-
-#2582 wired `LARGO_ESCALATION_MODEL` into the round-0 failure path: when the primary model's
-create/stream throws on round 0, the loop swaps model and retries once
-(`anthropic.ts:717` streaming, `:745` non-stream). So a failing turn actually attempts **two
-different models**:
-
-- **Deep**: `claude-sonnet-5` → throws → retry on `claude-sonnet-4-6` → throws → `null`.
-- **Concrete**: `claude-haiku-4-5` → throws → retry on `claude-sonnet-4-6` → throws → `null`.
-
-Across the two depths that is **three distinct models failing at round 0**, and the measured
-latencies fit two failed calls each (Deep 3.5–4.1 s, Concrete 924 ms). `shouldFallBackToEscalationModel`'s
-own docstring names this exact signature:
-
-> *"on a non-transient fault (a 400, an auth/spend error) **both models fail** and it costs one
-> extra call, never a wrong answer."*
-
-Three models do not degrade simultaneously. **The code is behaving as designed; what it is reporting
-is an account-level, non-transient upstream fault.** That is corroboration of the billing hypothesis
-derived from the code path, not an assumption inherited from it.
-
-### Correction to §9b's "next step"
-
-§9b said #2620's warn at `anthropic.ts:785` settles which sub-case is firing. That is only half
-right, and the distinction matters to whoever reads the log:
-
-| Log line | Means |
-|---|---|
-| `[anthropic] tool-loop stream round failed — falling back to accumulated assistant text <MSG>` (`:713`) or `[anthropic] tool-loop round create failed — … <MSG>` (`:741`) | The model call **threw**. **`<MSG>` is the upstream error verbatim** — the 401/429/400/credit message. This is the line that ends the investigation. |
-| `[anthropic] round 0 stream on claude-sonnet-5 failed — retrying once on claude-sonnet-4-6` (`:718`) | The escalation retry fired — confirms the multi-model signature above. |
-| `[anthropic] tool-loop round N produced NO tool calls and NO text` (`:785`) | The model **returned** an empty round. A *different* fault from the above. |
-
-**The error is already logged.** An earlier reading of mine that the throw path swallows it silently
-was wrong — both catches `console.error` the message before returning. So no logging fix is needed
-and no code change is required to diagnose this: one `grep` of the production log for
-`[anthropic] tool-loop` names the cause exactly.
-
-### Verdict
-
-**No code regression found.** Six candidate code causes eliminated; the remaining signature is an
-account-level upstream fault that the loop reports faithfully and then narrates wrongly. The only
-code defect in scope is **L-3** — four structurally different failures collapsing into one `null`
-that is rendered as *"I couldn't pull enough live data"*. Fixing L-3 would not have prevented this
-outage; it would have made it self-describing instead of costing three lanes a day of investigation.
 
 ---
 
