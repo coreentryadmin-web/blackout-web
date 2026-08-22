@@ -52,6 +52,37 @@ read by SPX Slayer and the heatmap), and `SpxVectorEmbed` (**SPX Slayer** render
 Quote this as the baseline. A Node 22 run is not evidence, and neither is a run before `npm ci` —
 this container had Node 20 at `/opt/node20/bin` and an **empty** `node_modules`.
 
+### Coverage depth — declared, because it is not uniform
+
+245 lib files cannot be covered evenly in one pass, and a map that implies they were is worse than
+one that says where it is thin. This is the honest split as of this revision.
+
+**Read at implementation depth** — the Largo bridge end to end (`vector-full-state.ts`,
+`vector-state-freshness.ts`, `vector-absent-sections.ts`, `product-reads.ts`'s two Vector entries,
+`vector-analytics.ts` + `-core.ts`); the wall/cadence spine (`vector-snapshot.ts`,
+`vector-cadence.ts`, `vector-dte-horizon.ts`, `vector-wall-sample.ts`, `vector-ticker.ts`,
+`gex-wall-levels.ts`'s `pct` definition); precision (`vector-response-rounding.ts` plus **every**
+`roundFloats` call site in the product); all six cron routes' gates against the deployed manifest;
+the cache/TTL surface of all 17 member routes plus the bodies of `/walls`, `/rail-bootstrap`,
+`/expected-move`, `/pin-forecast`, `/stream`, `/gex-heatmap`; `vector-screener.ts`; and the alerts
+path (`VectorAlertsPanel` → `persistRules` → the cron's contract).
+
+**First pass only — types, headers and call graph, implementation NOT read.**
+`vector-wall-history.ts` (976 — types and the sample budget read, the trail/event math not),
+`vector-wall-rail-primitive.ts` (818) / `-core.ts` (753) / `vector-wall-visual.ts` (477) (the whole
+render layer), `vector-play-engine.ts` (679 — `buildVectorPlay` is cited by the bridge but not read),
+`vector-pulse.ts` (528) and its signal detectors, `vector-gex-reconstruct.ts` and its server shell
+(the OI-reconstruction math), `vector-indicators-config.ts`, `vector-drawings.ts`,
+`vector-key-levels.ts`, `vector-wall-integrity.ts` internals, compare mode, replay, and
+**`VectorChart.tsx` (237KB), which was grepped and never read.**
+
+**Not examined at all:** the bar-timeframe aggregation internals, the `evaluateAlerts` state machine
+(only its contract), the dark-pool level derivation, the Helix flows rail, and the Postgres
+wall-sample mirror's schema.
+
+Nothing in the second and third groups is asserted about in this file beyond what its own type
+signatures and headers state. Where a claim would have needed the implementation, it says so.
+
 ---
 
 ## 2. THE TICKER TIER MODEL — read this before any cadence or freshness question
@@ -257,6 +288,23 @@ census, not the severity, is the point: `vector-analytics.ts` is the one Vector 
 never imported the map, and the next fraction field added to it will land at 2dp.
 
 ---
+
+### Verdict on the two defect classes the charter names
+
+**"A fraction quantized at 2dp reaching Largo as `0`" — CLOSED on the paths that carry one.**
+The three payloads with a fraction-of-one field all pass `VECTOR_FRACTION_DP`; the census above is
+the evidence, and it was done by enumerating call sites, not by trusting that the central fix was
+adopted. The single un-adopting consumer carries fib *ratios*, which 2dp degrades but does not zero.
+
+**"Full-state absence indistinguishable from emptiness" — CLOSED, at all three levels.**
+Verified by reading the path rather than assuming: `reportVectorAbsences` names every unreadable
+section and distinguishes a pre-open empty rail (`outside_rth_no_recording_yet`) from a genuine
+in-RTH gap (`no_samples_during_rth`); `withReadContext` attaches it on the way **out** so a cache
+entry written before the block existed still gets a correct report; and `vectorFullStateForLargo`
+replaces the bare `null` with a discriminated envelope — `no_live_vector_state` (market closed /
+not optionable / cold matrix, explicitly stated as indistinguishable) vs `vector_full_state_failed`
+(something threw, a genuinely different fact). The success path is passed through untouched, which
+is what keeps `get_ecosystem_context.vector_full_state`'s "the exact same object" promise true.
 
 ## 6. The Largo boundary — three tools
 
