@@ -9,6 +9,7 @@ import {
   expectedMoveScopeViolations,
   expectedVsRealizedViolations,
   levelScopeViolations,
+  reactionAnchorViolations,
   summarize,
   wallInversionViolations,
 } from "../scripts/audit/lib/meridian-invariants.mjs";
@@ -130,6 +131,58 @@ describe("a claimed expiry scope must say which levels it covers (#2585)", () =>
       []
     );
     assert.deepEqual(levelScopeViolations({ intel: { thermal: { available: false, expiry_scope: "aggregate" } } }), []);
+  });
+});
+
+describe("an AMC print's reaction must not be measured open-to-close", () => {
+  /**
+   * VERIFIED against independent price data. GRRR printed 2026-03-02 at 16:15 ET (AMC):
+   *   03-02 close 12.46 (print day)  ->  03-03 close 11.49  =  -7.78%
+   * and production served exactly `reaction_pct: -7.78` with `prior_close_to_close`.
+   * Measuring that open->close on the reacting session gives -0.95% — the intraday move only,
+   * with the entire overnight gap dropped. Same print, two answers, one of them meaningless.
+   */
+  const AMC = { report_date: "2026-03-02", report_time_et: "16:15:00", reaction_basis: "amc_next_session" };
+
+  test("fires when the gap is dropped", () => {
+    const v = reactionAnchorViolations({
+      enrichment: { print_history: [{ ...AMC, reaction_measure: "session_open_to_close", reaction_pct: -0.95 }] },
+    });
+    assert.equal(v.length, 1);
+    assert.equal(v[0]!.rule, "amc_reaction_measured_open_to_close");
+    assert.match(v[0]!.path, /print_history\[0\]/);
+    assert.match(v[0]!.sample, /2026-03-02 16:15:00/);
+  });
+
+  test("the shape production actually serves passes", () => {
+    assert.deepEqual(
+      reactionAnchorViolations({
+        enrichment: { print_history: [{ ...AMC, reaction_measure: "prior_close_to_close", reaction_pct: -7.78 }] },
+      }),
+      []
+    );
+  });
+
+  test("a BMO print measured open-to-close is CORRECT and must not fire", () => {
+    // 84 of 95 live rows are bmo_session with session_open_to_close. Flagging those would make
+    // the rule fire on the overwhelming majority of correct data.
+    assert.deepEqual(
+      reactionAnchorViolations({
+        enrichment: {
+          print_history: [{ reaction_basis: "bmo_session", reaction_measure: "session_open_to_close" }],
+        },
+      }),
+      []
+    );
+  });
+
+  test("an unknown measure is unknown, not wrong", () => {
+    // Only the measure that actively drops the gap is flagged; absence is not a defect.
+    assert.deepEqual(
+      reactionAnchorViolations({ enrichment: { print_history: [{ ...AMC, reaction_measure: null }] } }),
+      []
+    );
+    assert.deepEqual(reactionAnchorViolations({ enrichment: { print_history: "nope" } }), []);
   });
 });
 

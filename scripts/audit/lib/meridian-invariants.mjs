@@ -109,12 +109,48 @@ export function levelScopeViolations(event) {
     : [];
 }
 
+/**
+ * BMO/AMC ANCHORING — getting this wrong INVERTS the number rather than degrading it.
+ *
+ * A post-close print is digested by the NEXT session, and its move is mostly the overnight gap.
+ * Measuring it open→close on the reacting session drops that gap entirely, so a large reaction
+ * reads as a small one — and the sign can flip when the gap and the intraday move disagree.
+ *
+ * VERIFIED against independent price data, GRRR printing 2026-03-02 16:15 ET (AMC):
+ *   03-02 close 12.46 (print day) -> 03-03 close 11.49  =  -7.78%
+ *   served: reaction_pct -7.78, basis "amc_next_session", measure "prior_close_to_close"  ✓
+ * Live distribution across 95 rows: 84 bmo_session, 10 amc_next_session, 1 assumed — and all 10
+ * AMC rows carried `prior_close_to_close`, none carried `session_open_to_close`.
+ *
+ * So this rule pins a property the product ALREADY satisfies. That is deliberate: it is cheap to
+ * regress silently (one measure swap), the failure is invisible in the payload's shape, and the
+ * number stays plausible while meaning something else.
+ */
+export function reactionAnchorViolations(event) {
+  const rows = event?.enrichment?.print_history;
+  if (!Array.isArray(rows)) return [];
+  const out = [];
+  rows.forEach((p, i) => {
+    if (p?.reaction_basis !== "amc_next_session") return;
+    // Only flag the measure that actively drops the gap. An absent measure is unknown, not wrong.
+    if (p.reaction_measure === "session_open_to_close") {
+      out.push({
+        rule: "amc_reaction_measured_open_to_close",
+        path: `enrichment.print_history[${i}]`,
+        sample: `${p.report_date ?? "?"} ${p.report_time_et ?? "?"} — AMC print measured open->close, dropping the overnight gap`,
+      });
+    }
+  });
+  return out;
+}
+
 const RULES = [
   entityViolations,
   expectedMoveScopeViolations,
   expectedVsRealizedViolations,
   wallInversionViolations,
   levelScopeViolations,
+  reactionAnchorViolations,
 ];
 
 /** Every violation on one event payload, tagged with the ticker for a readable report. */
