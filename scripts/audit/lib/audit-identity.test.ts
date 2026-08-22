@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { AUDIT_TEMP_EMAIL_PREFIX, selectSweepableAuditUsers } from "./prod-clerk-session.mjs";
+
 /**
  * CONCURRENT AUDIT RUNS MUST NOT SHARE ONE CLERK USER.
  *
@@ -34,7 +36,18 @@ test("REGRESSION: the default temp-user e-mail is unique per run", () => {
     /["'`]claude-audit-temp@blackouttrades\.com["'`]/,
     "the shared, collision-prone default must be gone"
   );
-  assert.match(CODE, /claude-audit-temp\+\$\{runTag\}@/, "the default must carry a per-run tag");
+  // The tag used to be spelled inline as `claude-audit-temp+${runTag}@`. It is now built from the
+  // exported AUDIT_TEMP_EMAIL_PREFIX so the MINT side and the SWEEP side cannot drift apart — a
+  // sweep that stops recognising what mint produces is indistinguishable from no sweep at all,
+  // which is precisely the dead-sweep bug this file's later tests exist to catch. So pin the
+  // constant's VALUE (behavioural, stronger than a source match) and that the address is composed
+  // from it plus the per-run tag.
+  assert.equal(AUDIT_TEMP_EMAIL_PREFIX, "claude-audit-temp+", "the tagged prefix is the contract");
+  assert.match(
+    CODE,
+    /\$\{AUDIT_TEMP_EMAIL_PREFIX\}\$\{runTag\}@/,
+    "the default must carry a per-run tag, built from the shared prefix constant"
+  );
 });
 
 test("the run tag is stable within a process, not per-call", () => {
@@ -106,7 +119,26 @@ test("the sweep is age-gated, and the gate exceeds any real run", () => {
 test("the sweep only reaps OUR tagged users", () => {
   // Scoped to the per-run prefix. The bare pre-per-run address is deliberately left alone: another
   // agent or an older checkout may still be using it, and reaping it would break them.
-  assert.match(CODE, /\^claude-audit-temp\\\+/, "must match only the tagged prefix");
+  //
+  // This used to assert the source regex `/^claude-audit-temp\+/`. The selection is now a pure
+  // exported function, so the property can be asserted DIRECTLY instead of inferred from the text
+  // that implements it — strictly stronger, and it survives any future refactor of the matcher.
+  const old = Date.now() - 24 * 60 * 60_000;
+  const u = (id: string, addr: string) => ({
+    id,
+    created_at: old,
+    email_addresses: [{ email_address: addr }],
+  });
+  const picked = selectSweepableAuditUsers(
+    [
+      u("tagged", `${AUDIT_TEMP_EMAIL_PREFIX}abc123@blackouttrades.com`),
+      u("bare", "claude-audit-temp@blackouttrades.com"),
+      u("member", "someone@gmail.com"),
+      u("lookalike", "not-claude-audit-temp+x@blackouttrades.com"),
+    ],
+    Date.now()
+  ).map((x) => x.id);
+  assert.deepEqual(picked, ["tagged"], "only the tagged prefix may be reaped");
 });
 
 test("housekeeping never blocks the run", () => {

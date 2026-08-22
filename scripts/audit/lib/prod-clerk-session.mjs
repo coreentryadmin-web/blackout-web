@@ -50,6 +50,63 @@ function collectSetCookies(res) {
 
 import { createAuditClerkUser, deleteAuditClerkUser } from "./clerk-audit-user.mjs";
 
+/** Local part every per-run audit temp address starts with (`claude-audit-temp+<runTag>@…`). */
+export const AUDIT_TEMP_EMAIL_PREFIX = "claude-audit-temp+";
+
+/** A temp user younger than this may still belong to a LIVE run — never sweep it. */
+export const STALE_USER_MS = 30 * 60_000;
+
+/**
+ * Pick the leaked audit temp users that are safe to delete.
+ *
+ * ── WHY THIS IS A PURE FUNCTION AND WHY THE CALLER FILTERS SERVER-SIDE ──────────────────────
+ *
+ * The sweep shipped inside a closure with no seam, so nothing tested it, and it was DEAD CODE
+ * for its whole life. It requested `/users?limit=100&order_by=+created_at` — the hundred OLDEST
+ * users in the instance. Measured live 2026-08-21: the instance holds **799** users, and the
+ * oldest 100 are real members aged 23–65 days, containing **zero** temp users. The sweep matched
+ * nothing and deleted nothing on every single run, while **81 leaked `claude-audit-temp+*` users
+ * accumulated, the oldest 19 hours old.**
+ *
+ * That is not cosmetic. Each leaked user holds a number from the `+1415555xxxx` pool, and
+ * `prod-clerk-session`'s own header records the consequence: a validator pass died with
+ * `phone-number collision persisted across 2 attempt(s) with distinct +1415555XXXX numbers —
+ * likely leaked temp users holding numbers`. The garbage collector written to prevent exactly
+ * that was never running.
+ *
+ * Flipping to `-created_at` would "work" today only by luck: it would sweep the newest 100, which
+ * happen to be temp users right now. On a busy day the newest 100 could all be under the age gate
+ * and the older leaks would sit outside the window again — the same paging bug, mirrored. So the
+ * caller scopes the REQUEST with `email_address_query`, which makes the returned page contain
+ * only candidates and removes paging position from the correctness argument entirely.
+ *
+ * The two safety properties below are kept verbatim from the original and are the whole reason
+ * this is safe to run unattended:
+ *  - **only tagged addresses.** A bare `claude-audit-temp@` (the pre-per-run shared default) is
+ *    left alone — another agent or an older checkout may still be using it. The server-side
+ *    filter is a substring match and DOES return that address, so this guard still does work.
+ *  - **only older than 30 minutes.** The age gate must exceed the longest harness (~15 min) or
+ *    this reintroduces the concurrent-run delete race it was built to avoid.
+ *
+ * @param {unknown} users Raw `GET /users` body (anything non-array yields no deletions).
+ * @param {number} nowMs
+ * @param {number} [staleMs]
+ * @returns {{ id: string }[]} users safe to delete
+ */
+export function selectSweepableAuditUsers(users, nowMs, staleMs = STALE_USER_MS) {
+  if (!Array.isArray(users)) return [];
+  const cutoff = nowMs - staleMs;
+  const out = [];
+  for (const u of users) {
+    if (!u || typeof u.id !== "string" || !u.id) continue;
+    const addr = u?.email_addresses?.[0]?.email_address ?? "";
+    if (!addr.startsWith(AUDIT_TEMP_EMAIL_PREFIX)) continue;
+    if (typeof u.created_at !== "number" || u.created_at > cutoff) continue;
+    out.push(u);
+  }
+  return out;
+}
+
 /** Mints one temp admin/premium Clerk session against a live deployment.
  *  Returns `{ skip: true, reason }` if secrets aren't configured or any step
  *  fails (never throws) — callers should treat that as a SKIP, not a FAIL,
@@ -107,7 +164,10 @@ export async function mintClerkPremiumSession({
   const email =
     emailOverride ||
     process.env.AUDIT_EMAIL ||
-    `claude-audit-temp+${runTag}@blackouttrades.com`;
+    // Built from the SAME constant the sweep filters and matches on, so the minting side and the
+    // reclaiming side cannot drift apart — a sweep that no longer recognises what mint produces is
+    // indistinguishable from no sweep at all, which is the failure this file just shipped.
+    `${AUDIT_TEMP_EMAIL_PREFIX}${runTag}@blackouttrades.com`;
   const fapi = fapiHost(publishableKey);
   const backend = (method, path, body) =>
     fetch(`${API}${path}`, {
@@ -138,20 +198,18 @@ export async function mintClerkPremiumSession({
    *
    * Best-effort throughout: a sweep failure must never block the run that needed a session.
    */
-  const STALE_USER_MS = 30 * 60_000;
   const sweepLeakedAuditUsers = async () => {
     try {
-      const res = await backend("GET", "/users?limit=100&order_by=%2Bcreated_at");
+      // SCOPE THE REQUEST TO THE POPULATION BEING SWEPT — see selectSweepableAuditUsers' comment
+      // for why an unfiltered page never reached a single temp user.
+      const res = await backend(
+        "GET",
+        `/users?limit=100&order_by=%2Bcreated_at&email_address_query=${encodeURIComponent(AUDIT_TEMP_EMAIL_PREFIX)}`,
+      );
       const users = await res.json().catch(() => null);
-      if (!Array.isArray(users)) return 0;
-      const cutoff = Date.now() - STALE_USER_MS;
+      const doomed = selectSweepableAuditUsers(users, Date.now());
       let swept = 0;
-      for (const u of users) {
-        const addr = u?.email_addresses?.[0]?.email_address ?? "";
-        // Tagged temp users only. A bare `claude-audit-temp@` (the pre-per-run default) is left
-        // alone: another agent or an older checkout may still be using it.
-        if (!/^claude-audit-temp\+/.test(addr)) continue;
-        if (typeof u?.created_at !== "number" || u.created_at > cutoff) continue;
+      for (const u of doomed) {
         await deleteAuditClerkUser(secret, u.id).catch(() => {});
         swept += 1;
       }
