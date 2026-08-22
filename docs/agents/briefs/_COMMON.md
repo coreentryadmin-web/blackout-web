@@ -193,6 +193,22 @@ unmeasured tape must not arrive as a measured 50/50. A missing wall must not rea
 rate must never be printed without the denominator it came from. When you cannot measure something,
 say so in the payload; never let the model infer certainty you do not have.
 
+### 8. The deployed value is the fact — the code default is a decoy
+
+Found by the SPX Slayer lane (2026-08-22): its Phase 0 map read three cache TTLs out of
+`config.ts` and called them "the freshness." All three are overridden in
+`blackout-production/app/env` — the desk lane the map called 20s runs at **30s** in production, a
+50% error on the slowest lane. Separately, a gating flag (`PLAYBOOK_LIVE_GATE`) defaults to
+`false` in code but is `"1"` in production — the difference between a latent landmine and a live
+defect blocking two playbooks.
+
+**Any time you treat an env-tunable value as a fact about freshness, gating, or behavior, check
+what is actually deployed, not what the code defaults to.** Read non-secret flag names/values out
+of `blackout-production/app/env` via boto3 (see `CLAUDE.md`'s AWS section) — read-only, and only
+the specific keys you need, never the full 98-key blob. A confident number built on a code default
+nobody checked against production is exactly the "absence is a finding" trap in rule 7, just
+arriving from the opposite direction: not a blank, but a wrong number that looks measured.
+
 ---
 
 ## Useful commands
