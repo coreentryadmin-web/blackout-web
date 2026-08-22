@@ -14,6 +14,8 @@ import { buildOpsConfigStatus, type OpsConfigStatus } from "@/lib/ops-config-sta
 import { getDatabasePoolStats } from "@/lib/db";
 import { withServerCache } from "@/lib/server-cache";
 import { getWallWriteObservabilitySnapshot } from "@/features/vector/lib/vector-wall-write";
+import { aiSpendHeadroomIssue, evaluateAiSpendHeadroom, type AiSpendHeadroom } from "@/lib/ai-spend-headroom";
+import { aiSpendKey, aiSpendKillSwitchUsd } from "@/lib/ai-spend-ledger";
 
 /** Shared cache lane for admin vitals — polled every 15s by multiple SWR consumers. */
 export const ADMIN_HEALTH_CACHE_KEY = "admin:health:snapshot:v1";
@@ -30,6 +32,9 @@ export type AdminHealthPayload = {
     api_errors: number;
   };
   issues: Awaited<ReturnType<typeof buildSpxAdminIssues>>["issues"];
+  /** Org-wide daily Anthropic spend against the armed ceiling. `disabled` = no ceiling armed,
+   *  which is NOT the same as having headroom; `unknown` = the ledger could not be read. */
+  ai_spend: AiSpendHeadroom;
   provider_health: ReturnType<typeof getProviderHealthSummary>;
   websockets: {
     polygon_indices: ReturnType<typeof getIndexStoreStatus>;
@@ -112,7 +117,33 @@ async function buildAdminHealthSnapshotUncached(): Promise<AdminHealthPayload> {
   // issue, bump the critical count, and fold it into health_ok so the admin console flags it (#8/#78).
   const redisDegraded = uwStats.degraded === true;
   const wallWrites = getWallWriteObservabilitySnapshot();
+
+  // AI-SPEND HEADROOM — the number that was invisible on the day it took Largo down.
+  //
+  // The ledger and the kill switch both worked correctly on 2026-08-21; what was missing is that
+  // no operator surface read them, so "how close are we?" could only be answered by shelling into
+  // Redis. The ceiling tripped, every member question came back "I couldn't pull enough live data",
+  // and it cost a day and three refuted hypotheses to establish why.
+  //
+  // Read defensively: a Redis failure here must degrade to `unknown` and surface as such, never
+  // silently drop the field — an unreadable spend figure is exactly when a runaway loop is least
+  // visible, so absence is reported, not swallowed.
+  const aiSpend: AiSpendHeadroom = await (async () => {
+    try {
+      const { getUwCacheRedis } = await import("@/lib/providers/uw-shared-cache");
+      const redis = (await getUwCacheRedis()) as { get?: (k: string) => Promise<string | null> } | null;
+      const raw = redis?.get ? await redis.get(aiSpendKey()) : null;
+      return evaluateAiSpendHeadroom({
+        spentUsd: raw == null ? null : Number(raw),
+        ceilingUsd: aiSpendKillSwitchUsd(),
+      });
+    } catch {
+      return evaluateAiSpendHeadroom({ spentUsd: null, ceilingUsd: aiSpendKillSwitchUsd() });
+    }
+  })();
+  const aiSpendIssue = aiSpendHeadroomIssue(aiSpend);
   const syntheticIssues = [
+    ...(aiSpendIssue ? [aiSpendIssue] : []),
     ...(redisDegraded
       ? [
           {
@@ -160,17 +191,31 @@ async function buildAdminHealthSnapshotUncached(): Promise<AdminHealthPayload> {
 
   return {
     generated_at: new Date().toISOString(),
-    health_ok: issuesPayload.health_ok && marketHealth.ok && !redisDegraded && !dbPoolSaturated,
+    // A tripped spend ceiling means Largo is refusing member queries, which is not a healthy
+    // system however green everything else looks — so it gates health_ok exactly like a saturated
+    // pool does. `warning`/`disabled`/`unknown` do NOT gate: they are states to act on, not outages.
+    health_ok:
+      issuesPayload.health_ok &&
+      marketHealth.ok &&
+      !redisDegraded &&
+      !dbPoolSaturated &&
+      aiSpend.verdict !== "tripped",
     counts: {
       critical:
         issuesPayload.counts.critical +
         (redisDegraded ? 1 : 0) +
-        (dbPoolSaturated ? 1 : 0),
-      warning: issuesPayload.counts.warning + (dbPoolWaiting > 0 && !dbPoolSaturated ? 1 : 0) + (wallWrites.darkTickers.length > 0 ? 1 : 0),
+        (dbPoolSaturated ? 1 : 0) +
+        (aiSpendIssue?.severity === "critical" ? 1 : 0),
+      warning:
+        issuesPayload.counts.warning +
+        (dbPoolWaiting > 0 && !dbPoolSaturated ? 1 : 0) +
+        (wallWrites.darkTickers.length > 0 ? 1 : 0) +
+        (aiSpendIssue?.severity === "warning" ? 1 : 0),
       info: issuesPayload.counts.info,
       api_errors: issuesPayload.api_errors.length,
     },
     issues,
+    ai_spend: aiSpend,
     provider_health: getProviderHealthSummary(),
     websockets: {
       polygon_indices: getIndexStoreStatus(),
