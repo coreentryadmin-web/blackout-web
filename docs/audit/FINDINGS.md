@@ -4,6 +4,23 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-22 — [FINDING, P1 ops] Merges stopped reaching production for ~5 hours and nothing noticed — merging is loud, deploying is silent — FIXED (detection)
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Three commits touching `src/**` and `public/**` sat on `main` from 00:36Z to ~04:38Z with **no `ecr-push-production` run**. Nothing was red. CI, CodeQL and Deploy-smoke all fired on the same pushes; the deploy workflow alone did not. The concrete member-facing symptom was `https://blackouttrades.com/images/diagrams/what-is-gex.svg` returning **404** — an asset merged hours earlier that had never shipped. |
+| **How it was found** | By the SEO lane trying to verify its own PR on production, not by any coordinator check. I ran the release loop through the entire window and never asked whether merges were reaching prod. My own cycle instructions say to confirm the deploy after a merge wave; I only ever checked when I cared about one specific fix. |
+| **Root cause of the blindness** | **Merging is loud and deploying is silent.** A merge posts a green check and a notification. A deploy that never *starts* posts nothing at all — there is no run to be red, no event to subscribe to, no artifact to inspect. The absence has no signal, so "merged" gets read as "shipped". (The trigger-side cause of the stall itself is NOT diagnosed here; GitHub delivered the push events — 13 CI runs on `event=push` in the same window — and only this one workflow failed to create runs.) |
+| **Why a naive check would be useless** | `ecr-push-production.yml` has a `paths:` filter, so "no deploy since the last merge" is USUALLY correct and healthy — a docs or audit-script merge is not supposed to deploy. A check that ignores the filter cries wolf on every docs merge and gets switched off within a day. |
+| **Fix (detection, not cause)** | `scripts/audit/deploy-freshness.mjs` + pure core `scripts/audit/lib/deploy-freshness-eval.mjs`. It asks the narrow answerable question: **is there a commit matching the deploy paths with no deploy run created after it?** Uses run *creation*, not completion — a queued run proves the push was seen, which is what is being checked. Missing input is `unknown`, never `ok`. |
+| **The check found its own cry-wolf on run 1** | It flagged `fe642703` — a commit whose only deploy-path file was `src/meridian-invariants.test.ts`. That legitimately matches the workflow filter but **cannot change what a member is served**. Reporting it as "production is behind" is true of the workflow and false of production. Severity is now SPLIT (`member-facing` vs `test-only`) rather than suppressed, because a deploy workflow that does not fire is a real fault at any severity. |
+| **Evidence** | The three stalled commits carried 2, 6 and 4 deploy-path files respectively, so the path filter does not explain them. Replayed as a fixture: the check returns `behind` with exactly those three and correctly excludes the audit-script commit in the same window. |
+| **Regression guard** | `src/deploy-freshness-eval.test.ts` (11 tests): path matching incl. a sibling-directory prefix trap, docs-only is OK, the real incident is `behind`, a queued run clears a commit, missing input is `unknown`, no-runs-at-all is `behind` not `unknown`, an unparseable date is skipped, and the test-only severity split both ways. |
+| **Deliberately NOT done** | The stall's own cause is unfixed and unexplained. This makes it **visible in minutes instead of hours**; it does not prevent it. Wiring the check into a schedule, and root-causing why GitHub created no run for a matching push, are both open. |
+| **Status** | FIXED (detection only — the underlying trigger fault is OPEN). |
+
 ## 2026-08-21 — [FINDING, P1 Night Hawk/tooling] The Largo stress harness graded the internal-error fallback as PASS — it reported "ALL PASS · #2519 verified" while live Largo was erroring on 78% of questions — FIXED (harness); live outage escalated separately
 
 > **kind:** `FINDING`
