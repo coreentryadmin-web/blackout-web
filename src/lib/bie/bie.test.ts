@@ -184,10 +184,14 @@ test("verifier: invented numbers are flagged, coverage drops", () => {
   assert.ok(v.coverage < 0.5);
 });
 
-test("verifier: an answer with no numeric claims has full coverage", () => {
+test("verifier: an answer with no numeric claims has NULL coverage, not 100% (#2582 follow-up)", () => {
+  // A data-less / no-claims answer must not advertise perfect grounding. coverage over zero claims
+  // is uncalibrated — null, never 1 — so no downstream ranker reads the empty-round fallback
+  // (`{total:0,verified:0,coverage:1}` in the P0 payload) as the best possible answer.
   const v = verifyClaims("The tape looks quiet; nothing clears the gates right now.", []);
   assert.equal(v.total, 0);
-  assert.equal(v.coverage, 1);
+  assert.equal(v.verified, 0);
+  assert.equal(v.coverage, null);
 });
 
 test("verifier: router play-line numbers trace to board context (Layer 4 on bie-router path)", () => {
