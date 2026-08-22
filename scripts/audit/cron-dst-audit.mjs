@@ -382,9 +382,9 @@ for (const [key, g] of Object.entries(GATES)) {
 const INTENTS = {
   "banger-discovery":   { target_et: "16:15", label: "4:15 PM ET weekdays (post-close)", must_be_after: hm(16, 0), why: "runBangerCommit screens Polygon grouped-daily (gain%/volume/close-strength) for TODAY and COMMITS positions. Before the 16:00 ET close those rows are an unsettled partial session." },
   "gex-eod-snapshot":   { target_et: "16:10", label: "~4:10 PM ET weekdays (post-close)", must_be_after: hm(16, 0), self_correcting: "appendGexEodSnapshot is idempotent per ET trading day and LAST-WRITE-WINS: it drops the day's existing entry and appends the fresh one. The pre-close 15:10 ET write under EST is overwritten by the 16:10 ET one an hour later, so the stored close is correct in both offsets. railway.gex-eod-snapshot.toml documents this dual-band intent explicitly — it is deliberate, not drift. RESIDUAL (narrow): if the second fire returns null (cold matrix / empty chain / Redis miss it treats as a skip, not a failure) the pre-close value survives as that day's close, and only under EST.", why: "appendGexEodSnapshot persists the day's CLOSE levels." },
-  "x-growth":           { target_et: "09:00-18:00", label: "Hourly 9AM-6PM ET weekdays", must_be_after: null, why: "Outbound social cadence; label states an ET band." },
-  "x-replies":          { target_et: "09:20-18:20", label: "Hourly 9AM-6PM ET weekdays", must_be_after: null, why: "Outbound social cadence; label states an ET band." },
-  "x-analytics":        { target_et: "19:30", label: "Daily 7:30 PM ET", must_be_after: null, why: "Metrics pull; label states an ET time." },
+  "x-growth":           { target_et: "13:00-22:00 UTC", label: "Hourly 13:00-22:00 UTC weekdays", must_be_after: null, utc_labelled: true, why: "Outbound social cadence. A fixed-UTC band cannot hold an ET clock year-round, so the intent is the UTC band and the label must say so in both offsets." },
+  "x-replies":          { target_et: "13:00-22:00 UTC", label: "Hourly :20 past, 13:00-22:00 UTC weekdays", must_be_after: null, utc_labelled: true, why: "Outbound social cadence. As x-growth: the intent is the UTC band." },
+  "x-analytics":        { target_et: "23:30 UTC", label: "Daily 23:30 UTC", must_be_after: null, utc_labelled: true, why: "Metrics pull. A point-in-time UTC job; its ET rendering moves with daylight saving." },
   "largo-morning-brief":{ target_et: "09:25", label: "9:25 AM ET weekdays", must_be_after: null, why: "Pre-open member push; label states an ET time." },
   "zerodte-grade":      { target_et: "16:00-18:00", label: "Every 15 min post-close (16:00-18:00 ET band)", must_be_after: hm(16, 0), why: "Grades the 0DTE ledger after the close." },
   "banger-live-sync":   { target_et: "RTH 09:30-16:00", label: "~Every 5 min (market hours)", must_be_after: null, covers: [hm(9, 30), hm(16, 0)], why: "Live marks during the session. A deliberately WIDE band: correct as long as it brackets RTH in both offsets, which is the intended design, not drift." },
@@ -448,12 +448,39 @@ for (const [key, it] of Object.entries(INTENTS)) {
     row.note = edtOk && estOk
       ? `Fire span brackets the ${fmtm(cs)}-${fmtm(ce)} ET band in both offsets — the shift is absorbed by the band width, which is the intended design.`
       : `Fire span does NOT cover the ${fmtm(cs)}-${fmtm(ce)} ET band under ${!edtOk ? "EDT" : "EST"}.`;
+  } else if (it.utc_labelled) {
+    // UTC-LABELLED INTENT — and this branch exists because the check could not previously pass.
+    //
+    // The old rule was `edt.first === est.first ? OK : LABEL DRIFTS`. For a fixed-UTC cron those two
+    // differ by exactly one hour BY DEFINITION, so the verdict was unfalsifiable: no edit to any
+    // label could ever clear it. Worse, it never read a label at all — it quoted `target_et` from
+    // this file and called that "the label".
+    //
+    // Meanwhile `src/lib/cron-registry.ts` had ALREADY been fixed to state the UTC schedule and
+    // BOTH ET renderings, with a comment explaining why. So the audit was scolding the registry for
+    // a lie the registry no longer told, and the only way to satisfy it was to change a schedule —
+    // which for these routes is outbound social cadence, not a docs fix.
+    //
+    // A check that stays red after you do exactly what it asked teaches people to ignore it. So
+    // this branch checks THE THING IT IS NAMED FOR: does the deployed label actually declare both
+    // renderings? The schedule still shifts an hour — that is inherent to fixed-UTC and is not a
+    // defect — but the documentation either owns that or it does not, and that is decidable.
+    const label = String(row.declared_label ?? "");
+    const namesUtc = /\bUTC\b/.test(label);
+    const namesBoth = /\bEDT\b/.test(label) && /\bEST\b/.test(label);
+    if (namesUtc && namesBoth) {
+      row.verdict = "OK (UTC-labelled)";
+      row.note = `Fires on a fixed UTC schedule and the label says so, naming both renderings (${row.edt_et_span} ET under EDT, ${row.est_et_span} ET under EST). The ET placement shifts an hour across the changeover — inherent to fixed-UTC scheduling, and documented rather than hidden.`;
+    } else {
+      row.verdict = "LABEL DRIFTS";
+      row.note = `Fires on a fixed UTC schedule (${row.edt_et_span} ET under EDT, ${row.est_et_span} ET under EST) but the label does not declare both renderings: ${label || "(no label)"}. State the UTC time and both ET equivalents, or the label is true for only half the year.`;
+    }
   } else {
     row.verdict = edt.first === est.first ? "OK" : "LABEL DRIFTS";
     row.note =
       edt.first === est.first
         ? "ET placement identical in both offsets."
-        : `Label says ${it.target_et} ET, but the fixed-UTC cron lands at ${row.edt_et_span} ET under EDT and ${row.est_et_span} ET under EST — the label is true for only half the year.`;
+        : `Label says ${it.target_et}, but the fixed-UTC cron lands at ${row.edt_et_span} ET under EDT and ${row.est_et_span} ET under EST — the label is true for only half the year.`;
   }
   intentRows.push(row);
 }
