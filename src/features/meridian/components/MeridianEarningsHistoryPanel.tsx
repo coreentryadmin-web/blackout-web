@@ -9,6 +9,7 @@
  * unanswerable. With that fixed, both are the centrepiece here.
  */
 
+import { settledReactions } from "@/features/meridian/lib/meridian-reaction-display";
 import type {
   MeridianEarningsAnalyticsRow,
   MeridianEarningsEnrichment,
@@ -32,9 +33,17 @@ export function MeridianEarningsHistoryPanel({
 }) {
   const prints = enrichment.print_history ?? [];
   // The REACTION, not the anchor session's open→close: "is the market pricing more than it
-  // delivers" compares an implied move against what the print actually did, and for a post-close
-  // print that is the overnight gap plus the session, not the session alone.
-  const moves = prints.map((p) => p.reaction_pct ?? p.session_change_pct);
+  // delivers" compares an implied move against what the print actually did, and for a print with
+  // a known bell-relative timing that is the gap plus the session, not the session alone.
+  //
+  // And only the SETTLED, known-timing ones. A reaction still forming is not a realized outcome,
+  // and one measured on an assumed session may be measuring the wrong session entirely — pooling
+  // either into "what this company usually does on earnings" launders an unknown into a
+  // statistic. The excluded count is stated below rather than the list quietly getting shorter.
+  const pooled = settledReactions(prints);
+  const moves = pooled.map((p) => p.reaction_pct ?? p.session_change_pct);
+  const excluded = prints.filter((p) => (p.reaction_pct ?? p.session_change_pct) != null).length -
+    pooled.filter((p) => (p.reaction_pct ?? p.session_change_pct) != null).length;
   const rates = enrichment.beat_rates;
   const graded = prints.filter((p) => p.beat != null).length;
 
@@ -43,6 +52,12 @@ export function MeridianEarningsHistoryPanel({
       <div className="mr-grid">
         <div className="mr-panel mr-panel-wide">
           <MeridianImpliedVsRealized impliedPct={intel.expected_move_pct} moves={moves} />
+          {excluded > 0 && (
+            <p className="mv-note">
+              {excluded} print{excluded === 1 ? "" : "s"} held out — still moving, or measured on an
+              assumed session
+            </p>
+          )}
         </div>
 
         <div className="mr-panel">

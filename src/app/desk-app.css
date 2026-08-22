@@ -867,6 +867,24 @@ html.nav-locked body { overflow: hidden; }
 .meridian-history-list li { margin-bottom: 0.35rem; }
 .meridian-history-date { color: #fff; font-weight: 700; }
 .meridian-history-move { color: #22d3ee; }
+/* A reaction that is still forming, or measured on an ASSUMED session, must not read as a
+   settled measurement — the engine computes reaction_settled/reaction_basis for exactly this
+   and nothing rendered them. Deliberately low-contrast and uppercase-small: it qualifies the
+   number beside it, it does not compete with it. `cursor: help` advertises the title, which is
+   where the consequence is spelled out. */
+.meridian-reaction-flag {
+  margin-left: 0.28rem;
+  padding: 0 0.28rem;
+  border: 1px solid rgba(251, 191, 36, 0.45);
+  border-radius: 3px;
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #fbbf24;
+  vertical-align: 0.06em;
+  white-space: nowrap;
+  cursor: help;
+}
 
 /* Action dock */
 .meridian-action-dock {
