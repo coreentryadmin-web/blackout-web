@@ -4,6 +4,24 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-22 — [FINDING, P1 cost/ops] The AI-spend ceiling that silently disabled Largo was invisible to every operator surface — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | On 2026-08-21 the org-wide daily Anthropic ceiling tripped and Largo began answering *"I couldn't pull enough live data to answer that"* to every question. Nothing showed the ceiling was close, nothing showed it had tripped, and nothing showed it afterwards. Establishing the cause took a full day and three refuted hypotheses (a BIE ingestion PR, the ceiling, then the ceiling again). |
+| **What was NOT broken** | `ai-spend-ledger.ts` maintains an exact cross-replica daily total and `anthropic.ts` consults it before every model call. Both worked correctly. The kill switch did precisely what it was built to do. |
+| **Root cause** | **No operator surface ever read the ledger.** "How close are we to the ceiling?" could only be answered by shelling into Redis — and raw TCP to Redis is blocked from the audit sandbox entirely, so from here it could not be answered at all. A guardrail whose state is unobservable cannot be managed; it can only be discovered by the outage it causes. |
+| **My own contribution to the outage** | I fanned four lanes onto simultaneous live Largo probes against a metered service without checking the meter, on top of another lane's ~15 probe calls and my own truncation probe. Those probes both helped trip the ceiling and biased the sample to nothing-but-failures. That is a control-plane error, not a lane error. |
+| **Fix** | `src/lib/ai-spend-headroom.ts` grades spend against the armed ceiling — `ok` / `warning` (≥75%) / `tripped` / `disabled` / `unknown` — and `admin-health` now reads the ledger, exposes `ai_spend` on the payload, and raises the verdict through the same synthetic-issue machinery as a saturated Postgres pool. A `tripped` ceiling gates `health_ok`, because Largo refusing member queries is not a healthy system however green everything else looks. |
+| **The distinction that decides the design** | **`disabled` is never reported as `ok`.** The kill switch is opt-in, so an unarmed ceiling and abundant headroom are different facts, and collapsing them is how a guardrail stays unarmed forever — the console reads green either way. Likewise an unreadable ledger is `unknown`, never `ok`: a spend figure that failed to load is exactly when a runaway loop is least visible. Both raise a warning issue rather than staying silent. |
+| **Warning reports dollars, not just a percentage** | *"$20.00 left before Largo stops answering"* is actionable at 3am; *"80% of ceiling"* requires the reader to remember the ceiling and do arithmetic. |
+| **Blast radius** | `admin-health` is the console's single health read (`use-admin-data.ts`), so the field and the issue appear wherever health already renders. The Redis read is defensive — any failure degrades to `unknown` and surfaces as such rather than dropping the field. Counts and `health_ok` were hand-maintained per synthetic issue and are updated in the same style, so the issue list and the counts cannot disagree. |
+| **Regression guard** | `src/lib/ai-spend-headroom.test.ts` (8 tests): ok raises nothing, the warn boundary is inclusive and configurable, at/over ceiling is critical, **every falsy ceiling shape is `disabled` and explicitly asserted not-`ok`**, every unreadable-spend shape is `unknown`, zero spend is `ok` not `unknown`, and the tripped message names the member-visible consequence. |
+| **Deliberately NOT done** | No ceiling value changed, no probing behaviour changed, and no alerting added beyond the existing issue channel. Per-lane spend attribution — which lane spent what — is a separate and larger piece of work; this answers only the org-wide question that caused the outage. |
+| **Status** | FIXED. |
+
 ## 2026-08-22 — [FINDING, P1 Largo] An empty tool-loop round produced a member-facing wrong answer and left no trace of its cause — FIXED (visibility)
 
 > **kind:** `FINDING`
