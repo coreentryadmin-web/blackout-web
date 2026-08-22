@@ -29,6 +29,7 @@
  */
 import path from "node:path";
 import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { createTunneledContext } = require("./lib/proxy-tunnel-context.cjs");
@@ -86,6 +87,13 @@ const ONLY = args.get("viewport") ?? null;
 const MIN_IMPACT = normalizeMinImpact(args.get("min-impact"));
 const ROW_SELECTOR = earningsRowSelector(MIN_IMPACT);
 const COHORT = describeCohort(MIN_IMPACT);
+
+/**
+ * How the parent hands a child its session. ENV, not argv — argv shows up in a process listing and
+ * the value is a live `__session` JWT.
+ */
+const COOKIE_ENV = "MERIDIAN_IX_SESSION_COOKIE";
+const IS_CHILD = Boolean(process.env[COOKIE_ENV]);
 
 const VIEWPORTS = [
   { name: "desktop", viewport: "1440x1000", desktop: true },
@@ -515,31 +523,136 @@ async function auditViewport(vp, cookie) {
   }
 }
 
+/**
+ * Run ONE viewport in this process, using a cookie the parent already minted.
+ *
+ * Children never mint and never clean up: Clerk FAPI rate-limits rapid sign-in cycles, so a run
+ * authenticates ONCE, and the temp user belongs to the parent's `finally`. A child that deleted it
+ * would pull the session out from under its siblings — the documented shared-identity failure that
+ * produced 401 storms mis-read as product faults.
+ */
+async function runChildViewport() {
+  const cookie = process.env[COOKIE_ENV] ?? "";
+  if (!cookie) {
+    record({ severity: "HARNESS", viewport: ONLY ?? "?", where: "run", issue: "child started with no session cookie" });
+    return;
+  }
+  const vp = VIEWPORTS[0];
+  console.log(`\n── ${vp.name} (${vp.viewport}) ──`);
+  const r = await auditViewport(vp, cookie);
+  console.log(`  routed: ${JSON.stringify(r.counts)}`);
+}
+
+/**
+ * Fan the viewports out over CHILD PROCESSES, one each.
+ *
+ * WHY A PROCESS AND NOT A LOOP. The in-process loop starved its own last viewport. Measured
+ * 2026-08-22 against prod: desktop completed 185 tunnels and tablet 141, and then MOBILE COULD NOT
+ * NAVIGATE AT ALL — four attempts across ~98s of #2606's backoff, every one ERR_CONNECTION_RESET,
+ * while the proxy's `recentRelayFailures` stayed empty (the saturation signature, not a failure
+ * signature). Run alone, the SAME viewport passed cleanly on 239 tunnels; desktop-then-mobile as
+ * two separate processes passed on 237 and 273 back-to-back with no cooldown between them.
+ *
+ * So the exhaustion is per-PROCESS, not per-container and not time-based, and no amount of extra
+ * waiting inside one process recovers it — which is why #2606's backoff, correct as far as it went,
+ * could never have closed this. A fresh process can.
+ *
+ * The cost of getting this wrong is not a flaky harness, it is a SILENT BLIND SPOT: the loop always
+ * sacrificed whichever viewport ran last, and mobile is always last. Every three-viewport run ever
+ * recorded therefore has an unmeasured mobile — reported as "no findings" rather than "never
+ * looked", which is the absence-as-evidence trap this harness exists to avoid.
+ */
+async function runParent(session) {
+  const { spawnSync } = await import("node:child_process");
+  const self = fileURLToPath(import.meta.url);
+  for (const [idx, vp] of VIEWPORTS.entries()) {
+    // Still cooled, though a fresh process no longer NEEDS it — the proxy is shared with whatever
+    // else the lane is running, and half a minute is cheap next to a pass that cannot run.
+    const cooldown = viewportCooldownMs(idx);
+    if (cooldown > 0) await new Promise((r) => setTimeout(r, cooldown));
+    const res = spawnSync(
+      process.execPath,
+      [self, `--viewport=${vp.name}`, `--base=${BASE}`, `--out=${OUT}`, `--min-impact=${MIN_IMPACT}`],
+      {
+        // The cookie goes through the ENVIRONMENT, never argv: argv is world-readable in a process
+        // listing, and a `__session` JWT is a live credential.
+        env: { ...process.env, [COOKIE_ENV]: session.cookieHeader },
+        encoding: "utf8",
+        maxBuffer: 64 * 1024 * 1024,
+      }
+    );
+    const out = `${res.stdout ?? ""}`;
+    // Echo the child's LIVE lines but not its JSON findings — those are re-printed once, by the
+    // parent's rollup, so forwarding them here would double every finding in the report.
+    process.stdout.write(
+      out
+        .split("\n")
+        .filter((l) => {
+          const t = l.trim();
+          return !(t.startsWith("{") && t.includes('"severity"'));
+        })
+        .join("\n")
+    );
+    if (res.stderr) process.stderr.write(res.stderr);
+    // Re-collect the child's findings so the rollup and the exit code cover every viewport. A child
+    // that died before printing any is a HARNESS condition, never a clean viewport.
+    const parsed = parseChildFindings(out);
+    if (parsed.length === 0 && res.status !== 0) {
+      findings.push({
+        severity: "HARNESS",
+        viewport: vp.name,
+        where: "run",
+        issue: `child exited ${res.status ?? "signal " + res.signal} with no findings — viewport NOT judged`,
+      });
+    }
+    findings.push(...parsed);
+  }
+}
+
+/** Findings a child printed as one JSON object per line in its rollup. */
+function parseChildFindings(stdout) {
+  const out = [];
+  for (const line of stdout.split("\n")) {
+    const t = line.trim();
+    if (!t.startsWith("{") || !t.includes('"severity"')) continue;
+    try {
+      const o = JSON.parse(t);
+      if (o && typeof o.severity === "string") out.push(o);
+    } catch {
+      // A truncated line is not a finding and must not be invented into one.
+    }
+  }
+  return out;
+}
+
 async function main() {
   fs.mkdirSync(OUT, { recursive: true });
-  const { mintClerkPremiumSession } = await import("./lib/prod-clerk-session.mjs");
-  let session = null;
-  try {
-    session = await mintClerkPremiumSession({ appUrl: BASE });
-    if (session.skip) {
-      console.log(`HARNESS SKIP: ${session.reason}`);
-      return;
+  if (process.env[COOKIE_ENV]) {
+    await runChildViewport();
+  } else {
+    const { mintClerkPremiumSession } = await import("./lib/prod-clerk-session.mjs");
+    let session = null;
+    try {
+      session = await mintClerkPremiumSession({ appUrl: BASE });
+      if (session.skip) {
+        console.log(`HARNESS SKIP: ${session.reason}`);
+        return;
+      }
+      await runParent(session);
+    } finally {
+      if (session && typeof session.cleanup === "function") await session.cleanup().catch(() => {});
     }
-    for (const [idx, vp] of VIEWPORTS.entries()) {
-      // Let the agent proxy reclaim its tunnels between viewports; without this the next viewport
-      // starts against a proxy that is already full. Costs half a minute, buys a pass that runs.
-      const cooldown = viewportCooldownMs(idx);
-      if (cooldown > 0) await new Promise((r) => setTimeout(r, cooldown));
-      console.log(`\n── ${vp.name} (${vp.viewport}) ──`);
-      const r = await auditViewport(vp, session.cookieHeader);
-      console.log(`  routed: ${JSON.stringify(r.counts)}`);
-    }
-  } finally {
-    if (session && typeof session.cleanup === "function") await session.cleanup().catch(() => {});
   }
 
-  console.log("\nMERIDIAN INTERACTION AUDIT\n");
   const bySev = (s) => findings.filter((f) => f.severity === s);
+  // A child emits ONLY the machine-readable lines; the parent owns the human rollup, so the run
+  // ends with one report covering every viewport rather than one per process.
+  if (IS_CHILD) {
+    for (const f of findings) console.log(" ", JSON.stringify(f));
+    process.exitCode = bySev("P2").length > 0 ? 1 : 0;
+    return;
+  }
+  console.log("\nMERIDIAN INTERACTION AUDIT\n");
   for (const f of findings) console.log(" ", JSON.stringify(f));
   console.log(
     `\n${bySev("P2").length} P2 · ${bySev("P3").length} P3 · ${bySev("HARNESS").length} HARNESS · screenshots in ${OUT}`
