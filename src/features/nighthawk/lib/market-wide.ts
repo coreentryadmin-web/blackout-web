@@ -283,9 +283,12 @@ export async function fetchMarketWideContext(opts?: {
           return [] as Awaited<ReturnType<typeof fetchMarketFlowAlertRows>>;
         })
       : Promise.resolve([]),
-    fetchIndexDailyBars("I:SPX", from, today, "30").catch(() => []),
+    // Cap OMITTED so it derives from `from`→`today`. It was "30" against a 45-day window that
+    // holds 33 sessions, so `spxBars` ended 2026-08-18 while the tape was at 2026-08-21 — the
+    // three most recent sessions, including the last completed one, silently dropped.
+    fetchIndexDailyBars("I:SPX", from, today).catch(() => []),
     polygonConfigured() ? fetchIndex5MinBars("I:SPX", today, today).catch(() => []) : Promise.resolve([]),
-    fetchIndexDailyBars("I:VIX", from, today, "30").catch(() => []),
+    fetchIndexDailyBars("I:VIX", from, today).catch(() => []),
     fetchSectorPerformance().catch(() => []),
     fetchSectorTidesSequential(),
     fetchEtfTidesSequential(),

@@ -274,7 +274,10 @@ export function barLimitForWindow(from: string, to: string): number {
   const ms = Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`);
   if (!Number.isFinite(ms) || ms <= 0) return 120;
   const calendarDays = ms / 86_400_000;
-  const estimate = Math.ceil(calendarDays * 0.7) + 10;
+  // 5/7 EXACTLY, not 0.7: `ceil(days * 5/7)` is the most sessions a window can physically hold, and
+  // 0.7 sits below it, so the +10 slack stops covering it past ~700 days. Latent here (the shipped
+  // caller uses ~380d) but the same defect this helper exists to prevent.
+  const estimate = Math.ceil(calendarDays * (5 / 7)) + 10;
   // Floor keeps short windows cheap; ceiling stops a malformed date from requesting the world.
   return Math.min(5000, Math.max(120, estimate));
 }
