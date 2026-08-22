@@ -13,7 +13,6 @@ import { LOW_N_THRESHOLD } from "@/lib/zerodte/record";
 import {
   fetchNighthawkOutcomeAnalytics,
   fetchNighthawkScoringHistory,
-  fetchPendingNighthawkOutcomes,
   fetchRecentFlows,
   fetchStagedDossiers,
   fetchStagedDossierTickers,
@@ -1743,12 +1742,11 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       // it (measured live 2026-08-21: it reported "5 plays, 2 resolved, 40% win rate" for a window
       // whose real record is 74 resolved / 50%). nighthawkOutcomesForLargo serves the SAME
       // computed metrics the member record route serves, aggregates first, bounded sample last.
+      // nighthawkOutcomesForLargo now fetches + budgets the pending list itself, so the WHOLE result
+      // (aggregates + resolved sample + pending) is bounded by ONE authority. Spreading a raw
+      // `pending` in here (as before) escaped that budget and re-truncated the payload. (#2480 follow-up)
       const { nighthawkOutcomesForLargo } = await import("@/lib/largo/product-reads");
-      const [record, pending] = await Promise.all([
-        nighthawkOutcomesForLargo(windowDays),
-        fetchPendingNighthawkOutcomes(7),
-      ]);
-      return { ...record, pending };
+      return nighthawkOutcomesForLargo(windowDays);
     }
     case "get_spx_vs_nighthawk_comparison": {
       // WHY THIS TOOL EXISTS (don't delete without reading this): before this

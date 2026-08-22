@@ -287,6 +287,82 @@ export async function zerodteRecordForLargo(days = 30) {
 /** How many resolved plays ride the model's copy of the Night Hawk record.
  *  A reading ceiling, not a size one — `fitRowsToBudget` is the real bound. */
 const NIGHTHAWK_OUTCOMES_MAX_SAMPLE = 40;
+/** Reading ceiling for the pending (ungraded) sample — same rationale. */
+const NIGHTHAWK_PENDING_MAX_SAMPLE = 20;
+/** Lookback for the pending (ungraded) list — preserves the prior run-tool value (7 days). */
+const NIGHTHAWK_PENDING_LOOKBACK_DAYS = 7;
+
+/** The lean, model-facing projection of a Night Hawk outcome row: identity + grade signals only,
+ *  NONE of the fat blob columns (`publish_context`, `morning_verdict`, `debrief`, `grade_methodology`,
+ *  `legacy_grade`). Those blobs are what made the payload undeliverable — and the model never used
+ *  them; a ticker's full context is `get_nighthawk_dossier`. Exported for the assembler's test. */
+export function leanNighthawkOutcomeForModel(r: {
+  edition_for?: unknown; ticker?: unknown; direction?: unknown; conviction?: unknown;
+  score?: unknown; sector?: unknown; outcome?: unknown; hit_target?: unknown;
+  hit_stop?: unknown; pulled?: unknown;
+}) {
+  return {
+    edition_for: r.edition_for, ticker: r.ticker, direction: r.direction, conviction: r.conviction,
+    score: r.score, sector: r.sector, outcome: r.outcome, hit_target: r.hit_target,
+    hit_stop: r.hit_stop, pulled: r.pulled ?? false,
+  };
+}
+
+/**
+ * Assemble the model-facing Night Hawk outcomes result under the transport cap — the SINGLE budget
+ * authority for this tool.
+ *
+ * WHY THIS IS PURE AND OWNS PENDING. #2480 bounded the `plays` sample with `fitRowsToBudget`, but
+ * the caller (`run-tool.ts`) then spread the RAW `pending` list (`fetchPendingNighthawkOutcomes`:
+ * full 26-column rows, blob columns and all) in AFTERWARDS — `{ ...record, pending }`. That escaped
+ * the budget: `record` fit under 14k, then unbounded fat pending pushed the whole object back over
+ * the 16k transport cap and the tail cut ate it (the `get_nighthawk_outcomes` truncation the probe
+ * kept flagging). Both lists now flow through ONE budget here, measured over the WHOLE object, with
+ * `pending` LAST so a residual cut eats the pending sample before the record or the resolved sample.
+ * Being pure lets a test prove the size bound without a database (the fetches are DB-backed).
+ */
+export function assembleNighthawkOutcomesForModel(input: {
+  aggregates: Record<string, unknown>;
+  resolvedRows: readonly Parameters<typeof leanNighthawkOutcomeForModel>[0][];
+  pendingRows: readonly Parameters<typeof leanNighthawkOutcomeForModel>[0][];
+}): Record<string, unknown> {
+  const base = roundFloats({ available: true, ...input.aggregates }) as Record<string, unknown>;
+  const resolved = roundFloats(input.resolvedRows.map(leanNighthawkOutcomeForModel)) as ReturnType<
+    typeof leanNighthawkOutcomeForModel
+  >[];
+  const playsFit = fitRowsToBudget(base, "plays", resolved, { maxRows: NIGHTHAWK_OUTCOMES_MAX_SAMPLE });
+  const withPlays: Record<string, unknown> = {
+    ...base,
+    plays_total: playsFit.total,
+    plays_included: playsFit.kept.length,
+    plays_note: sampleNote(
+      playsFit.kept.length,
+      playsFit.total,
+      "resolved Night Hawk plays",
+      "Quote win_rate/decided_count for any rate — never count these rows. Per-play publish " +
+        "context and debrief are omitted here; use get_nighthawk_dossier for one ticker.",
+    ),
+    plays: playsFit.kept,
+  };
+  const pending = roundFloats(input.pendingRows.map(leanNighthawkOutcomeForModel)) as ReturnType<
+    typeof leanNighthawkOutcomeForModel
+  >[];
+  // Budget pending against the object that ALREADY contains plays, so the WHOLE result is bounded.
+  const pendingFit = fitRowsToBudget(withPlays, "pending", pending, { maxRows: NIGHTHAWK_PENDING_MAX_SAMPLE });
+  return {
+    ...withPlays,
+    pending_total: pendingFit.total,
+    pending_included: pendingFit.kept.length,
+    pending_note: sampleNote(
+      pendingFit.kept.length,
+      pendingFit.total,
+      "pending (ungraded) Night Hawk plays",
+      "Awaiting outcome — NOT counted in win_rate/decided_count.",
+    ),
+    // LAST on purpose: a residual tail cut must eat the pending sample before the record.
+    pending: pendingFit.kept,
+  };
+}
 
 /**
  * Night Hawk track record for the model — the SAME computed metrics the member route serves.
@@ -330,41 +406,15 @@ export async function nighthawkOutcomesForLargo(windowDays = 30) {
   try {
     const metrics = await getNighthawkMetrics(windowDays);
     const { rows: _rows, ...aggregates } = metrics as Record<string, unknown> & { rows?: unknown };
-    const base = roundFloats({ available: true, ...aggregates }) as Record<string, unknown>;
-    const { fetchNighthawkOutcomeAnalytics } = await import("@/lib/db");
-    const { rows } = await fetchNighthawkOutcomeAnalytics(windowDays);
-    // The blob columns (`publish_context`, `morning_verdict`, `debrief`) are what made this
-    // undeliverable, and the model never actually received them — the cut landed long before.
-    const lean = rows.map((r) => ({
-      edition_for: r.edition_for,
-      ticker: r.ticker,
-      direction: r.direction,
-      conviction: r.conviction,
-      score: r.score,
-      sector: r.sector,
-      outcome: r.outcome,
-      hit_target: r.hit_target,
-      hit_stop: r.hit_stop,
-      pulled: r.pulled ?? false,
-    }));
-    const fitted = fitRowsToBudget(base, "plays", roundFloats(lean) as typeof lean, {
-      maxRows: NIGHTHAWK_OUTCOMES_MAX_SAMPLE,
-    });
-    return {
-      ...base,
-      plays_total: fitted.total,
-      plays_included: fitted.kept.length,
-      plays_note: sampleNote(
-        fitted.kept.length,
-        fitted.total,
-        "resolved Night Hawk plays",
-        "Quote win_rate/decided_count for any rate — never count these rows. Per-play publish " +
-          "context and debrief are omitted here; use get_nighthawk_dossier for one ticker.",
-      ),
-      // LAST on purpose: if anything ever pushes this back over the transport cap, the tail cut
-      // must eat the sample rows rather than the record itself.
-      plays: fitted.kept,
-    };
+    const { fetchNighthawkOutcomeAnalytics, fetchPendingNighthawkOutcomes } = await import("@/lib/db");
+    // Pending is fetched HERE (was in run-tool.ts, spread in raw AFTER the budget) so a single
+    // authority — assembleNighthawkOutcomesForModel — budgets resolved + pending together and the
+    // whole result stays under the transport cap. (#2480 follow-up: pending escaped the budget.)
+    const [{ rows }, pendingRows] = await Promise.all([
+      fetchNighthawkOutcomeAnalytics(windowDays),
+      fetchPendingNighthawkOutcomes(NIGHTHAWK_PENDING_LOOKBACK_DAYS),
+    ]);
+    return assembleNighthawkOutcomesForModel({ aggregates, resolvedRows: rows, pendingRows });
   } catch (e) {
     return {
       available: false,
