@@ -4,6 +4,21 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-22 — [FINDING, P2 Vector/Largo] `opexContext` anchored "today" to the UTC date, dropping OpEx Friday's own expiry every evening — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | Asked "when is the next OpEx?" on an OpEx Friday **evening** (after 20:00 ET), Largo's `get_vector_analytics` OpEx block answered next month's expiry instead of "today". The same question at 14:00 the same day answered correctly — the failure was time-of-day dependent, which is why it survived. |
+| **Root cause** | `opexContext` (`src/lib/largo/vector-analytics-core.ts:297`) computed the reference "today" as `new Date(nowMs).toISOString().slice(0, 10)` — the **UTC** calendar date. Between 20:00 ET (00:00 UTC) and midnight ET the UTC date has already rolled to tomorrow while the ET trading day is still today. On OpEx Friday that made `today` = Saturday, so the same-day OpEx got `days_away = -1`, was dropped by the `days_away >= 0` filter, and `next` jumped a full month. This is the *exact* off-by-one the block's own instant→day comment was written to prevent — reintroduced through the timezone, one layer down. |
+| **Evidence** | At `nowMs = 2026-08-22T00:30:00Z` (20:30 ET Fri 08-21, a real OpEx Friday): OLD `today = 2026-08-22` → `days_away(08-21) = -1` (dropped, `next` = 2026-09-18); NEW `today = 2026-08-21` → `days_away(08-21) = 0` (`next` = today). Measured both paths directly. |
+| **Fix** | Anchor to the shared ET session date: `etSessionDate(nowMs) ?? new Date(nowMs).toISOString().slice(0, 10)`. `etSessionDate` was **already imported** in this file (line 49) and used for the structure/event ET anchors — this call site simply had not adopted the centralized helper. A non-finite `nowMs` yields `null`, in which case the fallback preserves the prior behaviour rather than fabricating a date. |
+| **Fix rationale** | Only the QUERY WINDOW moves; which Fridays are OpEx remains entirely `opexDatesInRange`/`thirdFriday`'s call (those correctly compute date-only values in UTC — a bare date has no timezone, so their UTC anchoring is not the same defect). No alternative (e.g. a market-calendar dependency) is warranted for a window-start date. |
+| **Blast radius** | Swept the Vector surface for the same class (`toISOString().slice(0,10)` / `getUTC*` used as a business date). `vector-forecast-target.ts:91` (`nextYmd`) operates on a date-only string and is correctly UTC-anchored — not a defect. `vector-daily-regime-server.ts:78` (`todayYmd`) has the same UTC skew but only in the ET-evening window when the market is closed and the session already settled; weekend/closed sessions return nothing regardless, so no member-visible wrong number results — noted as lower-severity, not fixed in this PR to keep it surgical. |
+| **Regression guard** | `src/lib/largo/vector-analytics-core.test.ts` — new test "OpEx Friday EVENING still reads as today" asserts `next.date == 2026-08-21` and `days_away == 0` at the ET-evening boundary. Verified non-vacuous: the old UTC-slice logic produces `days_away = -1` for that input (shown above). Full file 16/16, C1 ratchet 6/6, analytics-wiring 17/17 pass on Node 20. |
+| **Status** | FIXED. |
+
 ## 2026-08-22 — [FINDING, P1 cost/ops] The AI-spend ceiling that silently disabled Largo was invisible to every operator surface — FIXED
 
 > **kind:** `FINDING`

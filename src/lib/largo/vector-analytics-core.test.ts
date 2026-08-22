@@ -174,6 +174,17 @@ test("OpEx day itself reads as 0 days away, never rounded into tomorrow", () => 
   assert.equal(ctx.next!.days_away, 0, "today's expiry is a different claim from tomorrow's");
 });
 
+test("OpEx Friday EVENING still reads as today — the ET session date, not the UTC one", () => {
+  // 20:30 ET on OpEx Friday 2026-08-21 is 00:30 UTC on Saturday 2026-08-22 (EDT = UTC-4). The old
+  // `new Date(nowMs).toISOString().slice(0,10)` took the UTC calendar date — Saturday — so this
+  // same-day expiry got days_away = -1, was dropped by the `>= 0` filter, and "next OpEx" jumped a
+  // full month to 09-18. Anchoring to the ET SESSION date keeps "today" = Friday until midnight ET.
+  const fridayEveningEt = Date.parse("2026-08-22T00:30:00Z");
+  const ctx = opexContext(fridayEveningEt);
+  assert.equal(ctx.next!.date, "2026-08-21", "the ET session is still Friday's OpEx, not next month");
+  assert.equal(ctx.next!.days_away, 0, "an evening on OpEx day is 0 days away, never -1-then-dropped");
+});
+
 // ---------------------------------------------------------------------------
 // Structure times must carry their session — the #2418 class on the BOS/CHoCH panel
 // ---------------------------------------------------------------------------
