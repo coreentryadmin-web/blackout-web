@@ -50,7 +50,18 @@ test("buildOpexPinAccuracy", () => {
 });
 
 test("buildExpectedVsRealized: under implied move", () => {
-  const ev = buildExpectedVsRealized(8, 3);
+  // Third argument added: the ratio is only computed when both sides describe the SAME print.
+  // The arithmetic under test is unchanged — see meridian-evr-same-event.test.ts for the gate.
+  const ev = buildExpectedVsRealized(8, 3, true);
   assert.equal(ev.verdict, "under");
   assert.equal(ev.ratio, 0.38);
+});
+
+test("buildExpectedVsRealized: no verdict when the two sides are different prints", () => {
+  // Measured on prod 2026-08-21: SMTC compared its UPCOMING print's 25.6% implied against the
+  // 2026-05-26 print's -4.41% reaction and called it "under".
+  const ev = buildExpectedVsRealized(25.6, -4.41, false);
+  assert.equal(ev.verdict, "unknown");
+  assert.equal(ev.ratio, null);
+  assert.equal(ev.realized_move_pct, -4.41, "the reaction itself is still reported");
 });
