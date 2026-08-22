@@ -760,6 +760,34 @@ export async function anthropicToolLoop(params: {
 
     if (!toolCalls.length) {
       const text = extractTextFromBlocks(content as Array<{ type: string; text?: string }>);
+
+      // THE ONE OUTCOME NOTHING RECORDED, AND IT IS THE ONE THAT BREAKS MEMBERS.
+      //
+      // A round with no tool calls AND no text returns null. The caller renders that as
+      // "I couldn't pull enough live data to answer that" — a data excuse for something that is
+      // not a data problem. On 2026-08-21/22 that string was served for a whole day while the
+      // matrix cache was warm and the underlying endpoints returned 200 with fresh values.
+      //
+      // Diagnosing it took a day and three wrong causes because NOTHING DISTINGUISHES the two
+      // possibilities from the outside, and both look identical in the persisted turn:
+      //   - the model returned no tool_use block at all (upstream behaviour, nothing to fix here)
+      //   - the model asked for a tool and we dropped it (ours, and severe)
+      // `persistClaudeTurn` writes only the FINAL answer and tools_used, so the turn row carries
+      // no per-round record. Three independent harnesses could each observe the symptom and none
+      // could tell those apart.
+      //
+      // This logs the round's SHAPE at the only point where the distinction still exists. It is
+      // deliberately narrow — an empty round only, not every tool-less round, because a tool-less
+      // round WITH text is the normal way a turn ends and logging it would bury the signal.
+      if (!text) {
+        const kinds = (content as Array<{ type?: string }>).map((b) => b?.type ?? "?");
+        console.warn(
+          `[anthropic] tool-loop round ${round} produced NO tool calls and NO text — ` +
+            `model=${activeModel} blocks=${content.length}[${kinds.join(",")}] ` +
+            `this surfaces to the member as the "couldn't pull enough live data" fallback`
+        );
+      }
+
       return text || null;
     }
 
