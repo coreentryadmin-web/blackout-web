@@ -4,6 +4,21 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-22 — [FINDING, P1 Largo] `verifyClaims` advertised 100% grounding coverage over ZERO claims — fabricated certainty in the answer payload — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | A degraded Largo answer that pulled nothing — the empty-round P0 fallback — serialized `verification:{total:0,verified:0,coverage:1}`. `coverage:1` reads as "100% grounded / best possible answer" on an answer with `evidence:[]`. The number leaves the process, so any consumer that ranks or filters answers on `coverage` sees the *worst* answer as the best. |
+| **Root cause** | `src/lib/bie/verifier.ts:106` — `if (claims.length === 0) return { …, coverage: 1 }`. Coverage is `verified/total`; at `total===0` that is `0/0`, and the code invented `1` as the default. The type comment said so out loud ("1 when the answer makes no numeric claims"). This is precisely the fabricated-certainty that `LARGO-PRODUCT-CONTRACT.md` forbids for `confidence`: a score a product cannot calibrate must be OMITTED, not invented, because it is compared against another lane's *measured* one. |
+| **Evidence** | The raw member-path capture from the still-live empty-round P0 (coordinator, 2026-08-22 01:34Z): `HTTP 200 … "verification":{"total":0,"verified":0,"unverified":[],"coverage":1}`. Coverage 1.0 computed over zero items on a data-less answer. |
+| **Fix** | `coverage: number \| null`; return `null` when `total === 0`. Null is honest ("not applicable") and forces every consumer to handle it rather than silently trusting a 1. |
+| **Blast radius** | Two in-repo consumers, BOTH already gate on `total >= LARGO_GROUNDING_MIN_CLAIMS` (=4) before reading coverage — `auditLargoAnswerGrounding` (`verifier.ts:100`) and `applyVerificationCaveat` (`turn-outcome.ts:16`) — so the internal blast radius was **nil**: neither ever reached the `coverage` compare at `total===0`. The defect was purely the value that left the process. Both now also carry an explicit `coverage != null` guard so a future caller can't reintroduce the null-coerces-to-0 trap (`null < 0.5` is `true`, which would have footnoted every empty answer as low-grounding). `largo-verifier.ts:170/179` (audit log) formats null as `n/a`. tsc confirmed no other consumer of the type. |
+| **Fix rationale** | Chose `null` over `0`: `0` means "0% verified" (also false — nothing was unverified either), and would trip the low-grounding footer via the same comparison. Null is the only value that says "uncalibrated" and cannot be misread as a score. |
+| **Regression guard** | `src/lib/bie/bie.test.ts` — the pre-existing "no numeric claims" test updated to assert `coverage === null` (was `=== 1`); the claims-present cases (`coverage === 1` when all verified) unchanged. bie 116/116, turn-outcome 2/2 pass on Node 20; tsc clean. |
+| **Status** | FIXED. |
+
 ## 2026-08-22 — [FINDING, P3 ops] The DST label check could not be satisfied by fixing a label, and never read one — FIXED
 
 > **kind:** `FINDING`

@@ -40,3 +40,10 @@ node scripts/audit/agent-pr-sweep.mjs      # live state, never trust a remembere
 
 Then read `docs/agents/FLEET.md` and `_COMMON.md`, and work your open PRs to green
 as you open them.
+
+---
+
+> **SUPERSEDED (2026-08-22).** This lane was rebuilt as a permanent product-owner lane with a much
+> wider remit — data through production, including the UI, performance, forensics and Largo.
+> **See `docs/agents/briefs/spx-slayer.md`.** This file is kept only so an old link resolves; do not
+> take direction from it.

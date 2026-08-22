@@ -13,7 +13,7 @@ import { appendLargoMessage } from "@/lib/largo/largo-store";
 const CLAUDE_TURN_BUCKET = "claude_fallback";
 
 export function applyVerificationCaveat(text: string, verification: ClaimVerification): string {
-  if (verification.total >= 4 && verification.coverage < 0.5) {
+  if (verification.total >= 4 && verification.coverage != null && verification.coverage < 0.5) {
     return (
       text +
       `\n\n_Data check: ${verification.total - verification.verified} of ${verification.total} figures in this answer could not be traced to data pulled this turn — treat those specific numbers with caution._`
