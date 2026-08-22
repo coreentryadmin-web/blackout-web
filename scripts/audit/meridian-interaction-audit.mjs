@@ -28,7 +28,9 @@
  *   node scripts/audit/meridian-interaction-audit.mjs [--base=…] [--out=DIR] [--viewport=desktop]
  */
 import path from "node:path";
+import os from "node:os";
 import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { createTunneledContext } = require("./lib/proxy-tunnel-context.cjs");
@@ -78,7 +80,20 @@ const args = new Map(
   })
 );
 const BASE = args.get("base") ?? "https://blackouttrades.com";
-const OUT = args.get("out") ?? "/tmp/meridian-ix";
+/**
+ * Where screenshots and findings.json land.
+ *
+ * The default used to be the FIXED path `/tmp/meridian-ix`, which CodeQL flagged (correctly) as
+ * insecure temp-file creation. A fixed name in a world-writable directory can be pre-created by any
+ * local user as a symlink, and `writeFileSync` follows symlinks — so the harness, which runs as
+ * root in the audit sandbox, could be induced to write its report through that link to a path of
+ * someone else's choosing. `mkdtemp` gives an unguessable name and a 0700 directory instead.
+ *
+ * An explicit `--out` is the caller's own decision and is honoured as given; only the DEFAULT is
+ * randomised. A child process is always launched with an explicit `--out`, so the whole run shares
+ * the parent's one directory rather than scattering a directory per viewport.
+ */
+const OUT = args.get("out") ?? fs.mkdtempSync(path.join(os.tmpdir(), "meridian-ix-"));
 const ONLY = args.get("viewport") ?? null;
 // Which cohort this run judges — see lib/meridian-earnings-cohort.mjs. Default `high`, because the
 // options-derived panels only populate for names with a real options market, so judging them
@@ -86,6 +101,13 @@ const ONLY = args.get("viewport") ?? null;
 const MIN_IMPACT = normalizeMinImpact(args.get("min-impact"));
 const ROW_SELECTOR = earningsRowSelector(MIN_IMPACT);
 const COHORT = describeCohort(MIN_IMPACT);
+
+/**
+ * How the parent hands a child its session. ENV, not argv — argv shows up in a process listing and
+ * the value is a live `__session` JWT.
+ */
+const COOKIE_ENV = "MERIDIAN_IX_SESSION_COOKIE";
+const IS_CHILD = Boolean(process.env[COOKIE_ENV]);
 
 const VIEWPORTS = [
   { name: "desktop", viewport: "1440x1000", desktop: true },
@@ -515,32 +537,164 @@ async function auditViewport(vp, cookie) {
   }
 }
 
+/**
+ * Run ONE viewport in this process, using a cookie the parent already minted.
+ *
+ * Children never mint and never clean up: Clerk FAPI rate-limits rapid sign-in cycles, so a run
+ * authenticates ONCE, and the temp user belongs to the parent's `finally`. A child that deleted it
+ * would pull the session out from under its siblings — the documented shared-identity failure that
+ * produced 401 storms mis-read as product faults.
+ */
+async function runChildViewport() {
+  const cookie = process.env[COOKIE_ENV] ?? "";
+  if (!cookie) {
+    record({ severity: "HARNESS", viewport: ONLY ?? "?", where: "run", issue: "child started with no session cookie" });
+    return;
+  }
+  const vp = VIEWPORTS[0];
+  console.log(`\n── ${vp.name} (${vp.viewport}) ──`);
+  const r = await auditViewport(vp, cookie);
+  console.log(`  routed: ${JSON.stringify(r.counts)}`);
+}
+
+/**
+ * Fan the viewports out over CHILD PROCESSES, one each.
+ *
+ * WHAT THIS DOES AND DOES NOT DO. It does NOT cure the proxy-tunnel saturation. That was the
+ * hypothesis and it was FALSIFIED — see the measurements below, kept because a wrong idea that
+ * looks obvious deserves a headstone rather than a quiet deletion.
+ *
+ *   in-process loop, 2026-08-22   desktop 185 tunnels ok · tablet 141 ok · mobile DEAD
+ *                                 (4 navigations, ~98s of #2606 backoff, all ERR_CONNECTION_RESET,
+ *                                 while the proxy's `recentRelayFailures` stayed EMPTY — the
+ *                                 saturation signature, not a failure signature)
+ *   mobile run alone              clean, 239 tunnels
+ *   desktop then mobile, two      237 then 273, both clean
+ *     separate invocations
+ *   ---> so: "the budget is per-PROCESS, a fresh process resets it"
+ *   child-process fan-out          desktop 224 ok · tablet DEAD at 9 tunnels · mobile DEAD at 9
+ *   ---> hypothesis dead. A fresh child does NOT reset it, and the two-invocation comparison that
+ *        suggested it was confounded: those runs also differed in elapsed time and each minted its
+ *        own session, so the process boundary was never the isolated variable.
+ *
+ * The controlling variable is still UNKNOWN. Do not add another cooldown on a hunch.
+ *
+ * What the fan-out IS worth keeping for is the second half of the original problem, which is not
+ * flakiness but a SILENT BLIND SPOT. The loop sacrificed whichever viewport ran last, and mobile is
+ * always last, so a starved viewport was reported as "no findings" rather than "never looked" —
+ * the absence-as-evidence trap this harness exists to prevent, sitting inside the harness. A child
+ * that dies now lands as HARNESS against its own viewport, which is exactly how the run above
+ * reported tablet and mobile instead of implying they were clean.
+ */
+async function runParent(session) {
+  const { spawnSync } = await import("node:child_process");
+  const self = fileURLToPath(import.meta.url);
+  for (const [idx, vp] of VIEWPORTS.entries()) {
+    // Still cooled, though a fresh process no longer NEEDS it — the proxy is shared with whatever
+    // else the lane is running, and half a minute is cheap next to a pass that cannot run.
+    const cooldown = viewportCooldownMs(idx);
+    if (cooldown > 0) await new Promise((r) => setTimeout(r, cooldown));
+    const res = spawnSync(
+      process.execPath,
+      [self, `--viewport=${vp.name}`, `--base=${BASE}`, `--out=${OUT}`, `--min-impact=${MIN_IMPACT}`],
+      {
+        // The cookie goes through the ENVIRONMENT, never argv: argv is world-readable in a process
+        // listing, and a `__session` JWT is a live credential.
+        env: { ...process.env, [COOKIE_ENV]: session.cookieHeader },
+        encoding: "utf8",
+        maxBuffer: 64 * 1024 * 1024,
+      }
+    );
+    const out = `${res.stdout ?? ""}`;
+    // Echo the child's LIVE lines but not its JSON findings — those are re-printed once, by the
+    // parent's rollup, so forwarding them here would double every finding in the report.
+    process.stdout.write(
+      out
+        .split("\n")
+        .filter((l) => {
+          const t = l.trim();
+          return !(t.startsWith("{") && t.includes('"severity"'));
+        })
+        .join("\n")
+    );
+    if (res.stderr) process.stderr.write(res.stderr);
+    // Re-collect the child's findings so the rollup and the exit code cover every viewport. A child
+    // that died before printing any is a HARNESS condition, never a clean viewport.
+    const parsed = parseChildFindings(out);
+    if (parsed.length === 0 && res.status !== 0) {
+      findings.push({
+        severity: "HARNESS",
+        viewport: vp.name,
+        where: "run",
+        issue: `child exited ${res.status ?? "signal " + res.signal} with no findings — viewport NOT judged`,
+      });
+    }
+    findings.push(...parsed);
+  }
+}
+
+/** Findings a child printed as one JSON object per line in its rollup. */
+function parseChildFindings(stdout) {
+  const out = [];
+  for (const line of stdout.split("\n")) {
+    const t = line.trim();
+    if (!t.startsWith("{") || !t.includes('"severity"')) continue;
+    try {
+      const o = JSON.parse(t);
+      if (o && typeof o.severity === "string") out.push(o);
+    } catch {
+      // A truncated line is not a finding and must not be invented into one.
+    }
+  }
+  return out;
+}
+
 async function main() {
-  fs.mkdirSync(OUT, { recursive: true });
-  const { mintClerkPremiumSession } = await import("./lib/prod-clerk-session.mjs");
-  let session = null;
-  try {
-    session = await mintClerkPremiumSession({ appUrl: BASE });
-    if (session.skip) {
-      console.log(`HARNESS SKIP: ${session.reason}`);
-      return;
+  // mode 0700 matters only on the `--out` path — the default is already a mkdtemp directory, which
+  // is created 0700 and cannot be pre-empted by name.
+  fs.mkdirSync(OUT, { recursive: true, mode: 0o700 });
+  if (process.env[COOKIE_ENV]) {
+    await runChildViewport();
+  } else {
+    const { mintClerkPremiumSession } = await import("./lib/prod-clerk-session.mjs");
+    let session = null;
+    try {
+      session = await mintClerkPremiumSession({ appUrl: BASE });
+      if (session.skip) {
+        console.log(`HARNESS SKIP: ${session.reason}`);
+        return;
+      }
+      await runParent(session);
+    } finally {
+      if (session && typeof session.cleanup === "function") await session.cleanup().catch(() => {});
     }
-    for (const [idx, vp] of VIEWPORTS.entries()) {
-      // Let the agent proxy reclaim its tunnels between viewports; without this the next viewport
-      // starts against a proxy that is already full. Costs half a minute, buys a pass that runs.
-      const cooldown = viewportCooldownMs(idx);
-      if (cooldown > 0) await new Promise((r) => setTimeout(r, cooldown));
-      console.log(`\n── ${vp.name} (${vp.viewport}) ──`);
-      const r = await auditViewport(vp, session.cookieHeader);
-      console.log(`  routed: ${JSON.stringify(r.counts)}`);
-    }
-  } finally {
-    if (session && typeof session.cleanup === "function") await session.cleanup().catch(() => {});
   }
 
-  console.log("\nMERIDIAN INTERACTION AUDIT\n");
   const bySev = (s) => findings.filter((f) => f.severity === s);
+  // A child emits ONLY the machine-readable lines; the parent owns the human rollup, so the run
+  // ends with one report covering every viewport rather than one per process.
+  if (IS_CHILD) {
+    for (const f of findings) console.log(" ", JSON.stringify(f));
+    process.exitCode = bySev("P2").length > 0 ? 1 : 0;
+    return;
+  }
+  console.log("\nMERIDIAN INTERACTION AUDIT\n");
   for (const f of findings) console.log(" ", JSON.stringify(f));
+  // PERSIST THE REPORT. Findings used to exist only on stdout, so an intermittent one was lost the
+  // moment a run was piped, backgrounded or left unwatched — which is exactly what happened to a
+  // P2 pair seen on 2026-08-22 and never reproduced across four further runs. A harness whose
+  // evidence survives only if someone is watching cannot investigate anything intermittent.
+  try {
+    // 0600: the report names live tickers and prod URLs, and nothing else on the box needs to read it.
+    fs.writeFileSync(
+      path.join(OUT, "findings.json"),
+      JSON.stringify({ base: BASE, cohort: COHORT, findings }, null, 2),
+      { mode: 0o600 }
+    );
+  } catch (e) {
+    // Never let a write failure discard a report that already printed.
+    console.log(`  (could not persist findings.json: ${String(e?.message ?? e).slice(0, 120)})`);
+  }
   console.log(
     `\n${bySev("P2").length} P2 · ${bySev("P3").length} P3 · ${bySev("HARNESS").length} HARNESS · screenshots in ${OUT}`
   );
