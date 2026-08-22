@@ -436,6 +436,43 @@ Two independent misses:
 
 ---
 
+## 4b. The `confidence` omit-vs-fabricate sweep
+
+The charter names this as the single most important line in the product contract: **`confidence` must
+be OMITTED when a product cannot calibrate it, never fabricated as a plausible number**, because it
+is compared against another lane's measured value and corrupts cross-product ranking silently. The
+`coverage: 1` bug in `verifier.ts` (#2626) was one instance. This is the sweep for others across the
+surface Largo owns.
+
+**Result: the Largo engine layer is clean.** Two constructs look exactly like the bug and both turn
+out to be guarded. Recording them as *verified clean* rather than dropping them silently, because
+the next person to grep will find them and has to re-derive the same trace.
+
+| Site | Shape | Verdict |
+|---|---|---|
+| `features/largo/answer/answer-format.ts:219` | `confidence ?? { level: "moderate", why: "" }` | **Guarded, verified end to end.** `largoAnswerToEnvelope` returns `showConfidence: confidence !== undefined`; its only consumer is `LargoAnswerMessage.tsx:118`, which passes it at `:132`; `BieAnswer.tsx:71` renders the chip only on `showConfidence && Boolean(envelope.confidence)`. The placeholder exists in the object and never reaches a pixel. |
+| `lib/bie/rich-narrative.ts:57` | `input.confidence ?? { level: "high", why: "Deterministic answer … no LLM." }` | **Latent, not live.** The only caller (`concept-narrative.ts:32`) always passes an explicit `confidence`, so the default is never exercised — and the path is dead for Largo anyway: nothing imports `composeBieAnswer`, and both `product-reads.ts:652` and `vector-pulse-wiring.test.ts:12` record that Largo no longer routes through the BIE answer-router. A trap for the next caller, not a defect today. |
+| `largo/answer-contract.ts:376-381` | confidence left **ABSENT** when the model gave no level | **Compliant, and deliberately so.** Its comment records the live incident that produced the rule: the UI once printed "MODERATE CONFIDENCE" above "No confidence rationale was given." |
+
+So within this lane's scope the `coverage: 1` literals (L-5) are the **only** surviving instance of
+the shape, and the fix for them is structural — a shared constructor rather than three literals.
+
+**Two candidates outside this lane's scope**, flagged for routing rather than touched (`_COMMON.md`
+rule 6b: a defect in a product's own implementation is that lane's fix):
+
+- `features/nighthawk/lib/play-outcomes.ts:82` and `:418` —
+  `confidence_label: String(play.conviction ?? "B").toUpperCase()`. An **absent** conviction becomes
+  a literal grade **"B"**. That is the fabricate-vs-omit shape precisely: a play nobody graded is
+  indistinguishable downstream from a play graded B. *(Night Hawk lane.)*
+- `features/spx/lib/spx-play-payload.ts:232` and `spx-play-engine.ts:1633` —
+  `confidence: confluence?.confidence ?? 0`. Milder, same family: an unmeasured confidence becomes a
+  measured **zero** on the same scale, so a consumer ranking on it cannot tell "no signal" from
+  "scored zero". *(SPX Slayer lane.)*
+
+Neither was verified live; both are reads of the code only.
+
+---
+
 ## 5. Cross-product coherence
 
 `get_cross_product_read` → `crossProductRead` → `joinProductSignals` → `coverage`.
@@ -557,7 +594,7 @@ would be worth, not by how easy it is.
 |---|---|---|---|
 | L-1 | No truncation detection anywhere, despite per-call bytes already being measured. 127 of 129 tools have no size bound at all. | `tool-guard.ts` `sizeOf`/`formatToolDiagnostics` | observability / transport |
 | L-2 | The grounding caveat never renders as a caveat — `applyVerificationCaveat` emits italics, the UI matches blockquotes. The `verification` kind is dead code. | `turn-outcome.ts:19` vs `answer-caveats.ts:17` | member-facing honesty |
-| L-3 | Empty model round is reported to the member as a data gap. The loop discards the distinction it just logged. | `anthropic.ts:761-791`, `empty-answer-fallback.ts` | member-facing honesty |
+| **L-3** | **Four different null paths — gate closed, no client, spend stop, round-0 model failure — all reported as "I couldn't pull enough live data." REPRODUCED LIVE 9/9 turns, see §9b.** | `anthropic.ts:572,574,577,761-791`, `empty-answer-fallback.ts` | member-facing honesty |
 | L-4 | SPX Slayer is a declared `ProductId` with no cross-product source or adapter, and is absent from the coverage denominator rather than reported missing. | `cross-product-read.ts:35` | cross-product coherence |
 | L-5 | Three `coverage: 1` literals survive #2626; one leaves the process on the non-streaming error path. | `largo-terminal.ts:1149,1167,1454` | fabricated certainty |
 | L-6 | `applyPlanCaveat` emits "Timeframe caveat.", matcher expects "Timeframe note." → renders as generic "Note". | `plan.ts:194` vs `answer-caveats.ts:17` | UI classification |
@@ -573,6 +610,78 @@ along with a neighbouring fix rather than costing a PR each.
 
 ---
 
+## 9b. LIVE VALIDATION — Largo is returning the empty-answer fallback on every turn
+
+Run 2026-08-22 ~23:40 UTC against production, admin session (Largo is launch-gated, §0), read-only,
+temp Clerk user deleted. **Nine turns, nine identical results.**
+
+`largo-truncation-probe.mjs` first — every tool came back INDETERMINATE, *"never appears in the
+trace — the model answered from somewhere else"*. The `--json` reply showed why:
+
+```
+"reply": "**I couldn't pull enough live data to answer that — try naming a ticker or asking
+          about SPX structure.**  _(neutral)_\n\n## Read\nI couldn't pull enough live data…"
+```
+
+That is verbatim `emptyAnswerFallback`'s `no_data` copy. A follow-up probe across both depths:
+
+| Depth | Model | Latency | Verdict | `tools_used` |
+|---|---|---|---|---|
+| concrete | haiku-4-5 | 3546 ms | EMPTY-FALLBACK (`no_data`) | `live_feed_capture, platform_vitals_prefetch` |
+| deep | sonnet-5 | 3711 ms | EMPTY-FALLBACK (`no_data`) | `live_feed_capture, platform_vitals_prefetch` |
+| concrete | haiku-4-5 | **924 ms** | EMPTY-FALLBACK (`no_data`) | `live_feed_capture, platform_vitals_prefetch` |
+| deep | sonnet-5 | 4067 ms | EMPTY-FALLBACK (`no_data`) | `live_feed_capture, platform_vitals_prefetch` |
+
+Three things this establishes that three prior investigations could not:
+
+1. **It is not depth- or model-specific.** Haiku and Sonnet fail identically, so a single-model
+   outage is ruled out — including the `LARGO_ESCALATION_MODEL` fallback #2582 added for exactly
+   that case.
+2. **`tools_used` is the seed plus one prefetch marker and nothing else** — precisely the turn-5218
+   signature. §2.2 predicted this shape from reading the seed; here it is live. Zero model
+   dispatches.
+3. **924 ms.** A Deep turn that actually reaches the model runs 20–45 s. Sub-second means the loop
+   returned **before or at the first model round**, not after it.
+
+### Root cause, by elimination
+
+`anthropicToolLoop` has three pre-flight `return null` paths (`anthropic.ts:572, 574, 577`) plus a
+round-0 failure path that also degrades to `null`. Taking them in turn, against measured facts:
+
+| Path | Would produce | Eliminated because |
+|---|---|---|
+| `!anthropicGateOpen("largo")` (`:572`) | `no_data` | `largoClaudeEnabled()` = key present ∧ not staging. Key **is** present in `blackout-production/app/env` (108 chars; value never read out). `STAGING_CLAUDE`/`STAGING_LARGO_CLAUDE` unset. Gate is open. |
+| `!client` (`:574`) | `no_data` | Same key check. `getClient()` returns null only on a missing key. Also, the route's own `largoConfigured()` would have 503'd first — it returned 200. |
+| `isAiSpendCeilingTripped()` (`:577`) | **`budget_ceiling`** | The caller re-reads the ceiling on an empty turn and would have rendered *"temporarily paused: the platform-wide daily AI spend limit has been reached."* We saw the `no_data` copy. Ceiling not tripped. |
+| **round-0 model call fails or returns empty** | **`no_data`** | **Not eliminated. This is the remaining path.** |
+
+So the loop reached the model and got nothing usable back. The code says so itself, in the comment
+on the streaming branch added by #2582/#2607: *"On failure, fall back to whatever assistant text
+prior rounds accumulated (often a usable partial), else null → the empty-answer fallback."* At round
+0 there is no accumulated text, so it is always `null`.
+
+**Two sub-cases remain and this map cannot separate them from outside the process**: the model call
+*threw* (an upstream rejection — a credits/quota refusal returns in well under a second, which fits
+the 924 ms), or the model *returned* a round with no tool calls and no text. #2620's
+`console.warn` at `anthropic.ts:785` distinguishes them in the production log, and reading that line
+is the next step. It is a one-line lookup, not another investigation.
+
+### What this changes
+
+**This is not a new defect — it is L-3 happening, in production, on 100% of sampled turns.** Three
+structurally different failures (gate closed, no client, round-0 model failure) all collapse to the
+same bare `null`, and all three are reported to the reader as *"I couldn't pull enough live data"* —
+a data excuse for something that is not a data problem. #2607's fix removed the *wrong* message
+("the desk tools did not complete cleanly", which blamed the tools) and replaced it with a
+differently wrong one.
+
+Scope: Largo is admin-and-grant-only in production (§0), so **no ordinary member is affected**. The
+upstream condition itself — if it is an account/credits state — is not a code fix and not this
+lane's to make. **L-3 is the code fix**: the loop must say which of its four null paths it took, so
+the reader is told the truth about the turn.
+
+---
+
 ## 10. What this map still does not know
 
 Stated so nobody mistakes this document for complete:
@@ -582,10 +691,10 @@ Stated so nobody mistakes this document for complete:
   shapes, but some may already carry `as_of`, provenance and an absence reason under other names.
   That distinction decides whether contract adoption is a rename or a rewrite, and it has not been
   surveyed.
-- **Whether the empty-round P0 has recurred since #2620 shipped.** The warn line exists; nobody has
-  read production logs for it. Largo being admin-gated (§0) means the population that can trigger it
-  is small.
-- **Live behaviour of anything in §9.** Everything here is traced in code and measured offline. Per
-  `_COMMON.md` rule 6, that is not the same as validated.
+- **Which of the two round-0 sub-cases is firing** — an upstream throw or a genuinely empty model
+  round. §9b eliminates everything else; #2620's warn line at `anthropic.ts:785` settles it, and
+  nobody has read the production log for it yet.
+- **Live behaviour of §9 apart from L-3.** L-3 is now reproduced live (§9b). The other nine are
+  traced in code and measured offline, which per `_COMMON.md` rule 6 is not the same as validated.
 - **Whether `applyVerificationCaveat`'s threshold is calibrated.** It fires at ≥4 claims and <50%
   coverage. Both numbers are asserted in two places and derived in none.
