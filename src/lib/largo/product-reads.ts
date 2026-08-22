@@ -679,20 +679,27 @@ export async function horizonOutcomesForLargo(days = 30) {
  * Deliberately mirrors `vectorPulseForLargo`'s existing `{ available:false, reason }` shape rather
  * than inventing a second convention for the same idea.
  *
- * THE SUCCESS PATH IS UNCHANGED — the state is returned exactly as `fetchVectorFullState` produces
- * it, freshness/absence blocks included. That matters: `get_ecosystem_context.vector_full_state`
- * is documented as "the exact same object get_vector_full_state returns", and wrapping the
- * populated case would have made that promise false. Only the `null` is replaced.
+ * THE SUCCESS PATH IS SHAPE-PRESERVING, NOT VERBATIM — see `fitVectorFullStateForModel`. Every
+ * scalar and every freshness/absence field is carried through untouched; only the four unbounded
+ * list sections are sampled, each with an explicit `fit.*` scope note. That was forced: the raw
+ * state is up to 948x the transport's 16,000-char `tool_result` cap during RTH (the whole bead
+ * rail rides on it), and the cap is a HEAD slice, so what the model actually lost was everything
+ * after `wallHistory` in key order — including the entire absence report and freshness block.
+ * `get_ecosystem_context.vector_full_state` applies the SAME helper, so its documented promise to
+ * return "the exact same object get_vector_full_state returns" stays true; leaving either side
+ * unfitted is what would break it. Only the `null` case is replaced wholesale.
  */
 export async function vectorFullStateForLargo(ticker: string, horizon = "all") {
   try {
-    const [{ fetchVectorFullState }, { normalizeDteHorizon }] = await Promise.all([
-      import("@/lib/bie/vector-full-state"),
-      import("@/features/vector/lib/vector-dte-horizon"),
-    ]);
+    const [{ fetchVectorFullState }, { normalizeDteHorizon }, { fitVectorFullStateForModel }] =
+      await Promise.all([
+        import("@/lib/bie/vector-full-state"),
+        import("@/features/vector/lib/vector-dte-horizon"),
+        import("@/lib/bie/vector-full-state-fit"),
+      ]);
     const h = normalizeDteHorizon(horizon);
     const state = await fetchVectorFullState(ticker, h);
-    if (state) return state;
+    if (state) return fitVectorFullStateForModel(state);
 
     return {
       available: false,
