@@ -33,9 +33,17 @@ could not be established the entry says **UNKNOWN** rather than guessing.
 | Crons | `heatmap-warm`, `gex-alerts`, `gex-eod-snapshot`, `thermal-discord` (+ `thermal-discord?breach_only=1`) |
 | Largo tools | `get_positioning`, `get_gex_heatmap`, `get_gex_matrix_changes`, `get_thermal_compare`, `get_wall_dynamics`, `get_gex_regime_events` (= `THERMAL_ENGINE_TOOL_NAMES`), plus `get_helix_thermal_compare` (shared boundary with Helix) |
 
-**The GEX core is shared with Vector.** `polygon-options-gex.ts`, `gex-cross-validation-core.ts` and
-`gex-depth.ts` back Vector's `/api/market/vector/{gex-heatmap,gex-ladder}` as well as Thermal. Any
-change to the build, the wall scan or the flip is a two-product change.
+### Shared boundaries — neither lane edits these unilaterally
+
+| File | Shared with | Rule |
+|---|---|---|
+| `src/lib/providers/polygon-options-gex.ts` (4,602) · `gex-cross-validation-core.ts` · `src/lib/gex-depth.ts` | **Vector** — these back `/api/market/vector/{gex-heatmap,gex-ladder}` too | any change to the build, the wall scan or the flip is a two-product change; route it through the coordinator and state in the PR what Vector-side behaviour was verified unaffected |
+| `src/lib/largo/helix-thermal-compare.ts` (577) — backs `get_helix_thermal_compare` | **Helix** — jointly owned (standing rule, coordinator, 2026-08-22) | Helix owns it by default because it existed first; that is happenstance, not primacy. Neither lane edits it unilaterally. `docs/audit/HELIX-MAP.md` §`get_helix_thermal_compare` records the same rule from the other side |
+
+On the Helix/Thermal card specifically: **the thermal side is not directional.** `bias` is `neutral`
+for long gamma and `mixed` for short gamma; `gamma_posture` and `volatility_regime` carry the real
+read, and `regime_interaction.read` is the honest flow-vs-regime line. Restating either as bullish or
+bearish is the failure mode that description exists to prevent.
 
 ### `get_gex` is NOT a Thermal tool — the charter's tool list is wrong here
 
