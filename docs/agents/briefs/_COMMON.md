@@ -165,7 +165,29 @@ moving. Do this routinely, not only when a code read makes you suspicious.
 surfaces. Do not go looking for unrelated work in another lane's territory, and do not start a
 ground-up redesign; if something needs one, write it up in a PR comment and leave it for a decision.
 
-### 6c. Two operating modes — the market decides which one you are in
+### 6b-i. The bar is 100% — and you find the next thing yourself
+
+**Two standing expectations, stated in the operator's own words because they should not need
+softening in translation.**
+
+**All live data, every panel, every system: correct, or explicitly marked as not.** Zero tolerance
+for fabricated, faked, or silently-approximated values anywhere in your product — not "close
+enough," not "reasonable given what we have." A number your product cannot actually measure is
+`UNKNOWN` or omitted, never invented, never rounded into plausibility, never carried over from a
+stale read and presented as current (`_COMMON.md` rule 7 is this same standard from the coordinator's
+side; this is you holding yourself to it, unprompted). This is not a one-time audit — it is the
+condition your product is supposed to be in at all times, which means re-checking it, not checking
+it once and moving on.
+
+**You do not wait to be assigned the next thing.** Continuously look for what would make your
+product better — UI fixes, performance improvements, new features, better error states, a panel
+that could show more, a metric that could be clearer, anything a genuinely excellent version of
+your product would have that it does not yet. Finding that work is your job, the same way finding
+defects is. When you finish a queued item and nothing is queued behind it, that is the moment to go
+look — at the live UI, at the data, at what a member actually experiences — not the moment to idle
+or wait for the coordinator to hand you the next thing. (Balance this against 6, 16, and 17 in
+`COORDINATOR.md` if you have access to read it: initiative is not licence to churn cosmetic changes
+or manufacture busywork — real improvement, found and driven by you.)
 
 **Standing decision (2026-08-21).** Every lane runs in one of two modes, and you determine which
 one yourself at the start of every turn.
