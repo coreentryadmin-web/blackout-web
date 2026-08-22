@@ -71,6 +71,8 @@ let bangerBoardForLargo: typeof import("./product-reads").bangerBoardForLargo;
 let nighthawkHorizonsForLargo: typeof import("./product-reads").nighthawkHorizonsForLargo;
 let zerodteRecordForLargo: typeof import("./product-reads").zerodteRecordForLargo;
 let nighthawkOutcomesForLargo: typeof import("./product-reads").nighthawkOutcomesForLargo;
+let assembleNighthawkOutcomesForModel: typeof import("./product-reads").assembleNighthawkOutcomesForModel;
+let leanNighthawkOutcomeForModel: typeof import("./product-reads").leanNighthawkOutcomeForModel;
 let thermalCompareRow: typeof import("./product-reads").thermalCompareRow;
 let etSessionNow: typeof import("./product-reads").etSessionNow;
 let ageSecondsFrom: typeof import("./product-reads").ageSecondsFrom;
@@ -81,10 +83,71 @@ before(async () => {
     nighthawkHorizonsForLargo,
     zerodteRecordForLargo,
     nighthawkOutcomesForLargo,
+    assembleNighthawkOutcomesForModel,
+    leanNighthawkOutcomeForModel,
     thermalCompareRow,
     etSessionNow,
     ageSecondsFrom,
   } = await import("./product-reads"));
+});
+
+/** A raw pending outcome row as fetchPendingNighthawkOutcomes returns it: the full 26 columns,
+ *  including the FAT blob columns. These blobs (publish_context / morning_verdict / debrief /
+ *  grade_methodology / legacy_grade) are what pushed get_nighthawk_outcomes back over the transport
+ *  cap when the caller spread `pending` in raw, AFTER #2480's budget. ~3KB each here so the bound
+ *  assertion tests the real failure mode, not a toy payload. */
+function fatPendingRow(i: number) {
+  const blob = (tag: string) => `${tag}:${"x".repeat(3000)}`;
+  return {
+    id: i,
+    edition_for: `2026-08-${String(3 + (i % 20)).padStart(2, "0")}`,
+    ticker: `TK${String(i).padStart(3, "0")}`,
+    direction: i % 2 === 0 ? "long" : "short",
+    conviction: "B",
+    score: 40 + (i % 55),
+    sector: "Technology",
+    outcome: "pending",
+    hit_target: false,
+    hit_stop: false,
+    pulled: false,
+    publish_context: { note: blob("publish_context") },
+    morning_verdict: { note: blob("morning_verdict") },
+    debrief: blob("debrief"),
+    grade_methodology: blob("grade_methodology"),
+    legacy_grade: { note: blob("legacy_grade") },
+  };
+}
+
+describe("get_nighthawk_outcomes payload budget (#2480 follow-up: pending escaped the budget)", () => {
+  it("leanNighthawkOutcomeForModel drops every fat blob column", () => {
+    const lean = leanNighthawkOutcomeForModel(fatPendingRow(1));
+    for (const blob of ["publish_context", "morning_verdict", "debrief", "grade_methodology", "legacy_grade", "id"]) {
+      assert.ok(!(blob in lean), `lean projection must not carry ${blob}`);
+    }
+    assert.equal(lean.ticker, "TK001");
+    assert.equal(lean.outcome, "pending");
+  });
+
+  it("the WHOLE assembled result (aggregates + resolved + pending) stays under the transport cap", () => {
+    const aggregates = { window_days: 180, win_rate: 0.5, decided_count: 74, wins: 37, losses: 37, low_n: false };
+    const resolvedRows = Array.from({ length: 74 }, (_, i) => fatPendingRow(i)); // fat resolved too
+    const pendingRows = Array.from({ length: 30 }, (_, i) => fatPendingRow(1000 + i));
+
+    // Non-vacuous guard: the OLD wiring — record spread then RAW pending appended — blows the cap.
+    const rawPendingBytes = JSON.stringify({ pending: pendingRows }).length;
+    assert.ok(rawPendingBytes > MAX_TOOL_RESULT_CHARS, `raw pending alone (${rawPendingBytes}) must exceed the cap, else the test proves nothing`);
+
+    const result = assembleNighthawkOutcomesForModel({ aggregates, resolvedRows, pendingRows });
+    const size = JSON.stringify(result).length;
+    assert.ok(size <= MAX_TOOL_RESULT_CHARS, `assembled result (${size}) must fit under the ${MAX_TOOL_RESULT_CHARS} cap`);
+
+    // Aggregates survive; both lists are sampled with honest totals; pending carries no blobs.
+    assert.equal((result as { decided_count?: number }).decided_count, 74);
+    assert.equal((result as { pending_total?: number }).pending_total, 30);
+    const pending = (result as { pending?: unknown[] }).pending ?? [];
+    assert.ok(pending.length <= 30 && pending.length > 0);
+    assert.ok(pending.every((p) => !(typeof p === "object" && p !== null && "debrief" in p)), "pending sample must be leaned");
+  });
 });
 
 describe("product-reads", () => {
