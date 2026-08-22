@@ -256,6 +256,38 @@ export function modelRejectsSamplingParams(model: string): boolean {
   return /claude-(?:opus|sonnet)-5|claude-opus-4-(?:[7-9]|\d\d)|claude-fable/i.test(model);
 }
 
+/**
+ * Whether the tool loop should retry the FIRST round on the escalation model after the primary
+ * model's create/stream threw.
+ *
+ * WHY THIS EXISTS (#2582). Every Largo turn ran on `LARGO_MODEL` (`claude-sonnet-5`). When that one
+ * model degrades — a `529 overloaded`, a `429` after retries, a request timeout — round 0's create
+ * throws, the loop's catch has no accumulated assistant text yet, and it returns `null`, which the
+ * caller renders as "I couldn't pull enough live data". `LARGO_ESCALATION_MODEL` (`claude-sonnet-4-6`)
+ * was defined for exactly this and never wired to the failure path. Retrying round 0 once on it lets
+ * Largo ride out a single-model outage instead of telling every member the desk has no data.
+ *
+ * Deliberately NARROW: round 0 only (a mid-loop swap would hand the escalation model a partial
+ * transcript), once per turn, and only when the escalation model actually differs from the one that
+ * just failed (else the retry re-hits the same outage). It is a GENERAL resilience guard — correct
+ * for any transient primary-model failure, not tied to one confirmed root cause; on a non-transient
+ * fault (a 400, an auth/spend error) both models fail and it costs one extra call, never a wrong
+ * answer.
+ */
+export function shouldFallBackToEscalationModel(input: {
+  round: number;
+  alreadyTried: boolean;
+  activeModel: string;
+  escalationModel: string | null | undefined;
+}): boolean {
+  return (
+    input.round === 0 &&
+    !input.alreadyTried &&
+    !!input.escalationModel &&
+    input.escalationModel !== input.activeModel
+  );
+}
+
 async function withTelemetry<T>(
   endpointKey: string,
   fn: () => Promise<T>,
@@ -546,6 +578,11 @@ export async function anthropicToolLoop(params: {
   }
 
   const model = resolveModel(params.model);
+  // The model actually used this round. Swapped to LARGO_ESCALATION_MODEL once, on a round-0
+  // failure, so a single-model outage (e.g. sonnet-5 529) degrades to a working peer instead of the
+  // empty-answer fallback. See shouldFallBackToEscalationModel. (#2582)
+  let activeModel = model;
+  let escalationTried = false;
   const maxTokens = params.maxTokens ?? 4096;
   const maxRounds = params.maxRounds ?? 12;
   const loopTemperature = params.temperature ?? TEMPERATURE;
@@ -609,7 +646,7 @@ export async function anthropicToolLoop(params: {
     }
 
     const createParams: MessageCreateParams = {
-      model,
+      model: activeModel,
       max_tokens: maxTokens,
       system: systemParam,
       tools,
@@ -638,7 +675,7 @@ export async function anthropicToolLoop(params: {
         type: "ephemeral",
       };
     }
-    if (!modelRejectsSamplingParams(model)) {
+    if (!modelRejectsSamplingParams(activeModel)) {
       createParams.temperature = loopTemperature;
     }
 
@@ -677,9 +714,16 @@ export async function anthropicToolLoop(params: {
           "[anthropic] tool-loop stream round failed — falling back to accumulated assistant text",
           err instanceof Error ? err.message : String(err)
         );
+        if (shouldFallBackToEscalationModel({ round, alreadyTried: escalationTried, activeModel, escalationModel: LARGO_ESCALATION_MODEL })) {
+          console.warn(`[anthropic] round 0 stream on ${activeModel} failed — retrying once on ${LARGO_ESCALATION_MODEL}`);
+          escalationTried = true;
+          activeModel = LARGO_ESCALATION_MODEL;
+          round--; // retry round 0 on the escalation model — messages carries no assistant turn yet
+          continue;
+        }
         return extractTextFromLastAssistant(messages as unknown as AnthropicMessage[]) ?? null;
       }
-      trackSpend(model, finalMessage.usage);
+      trackSpend(activeModel, finalMessage.usage);
       logCacheUsage("tool-loop-stream", finalMessage.usage);
       content = finalMessage.content;
     } else {
@@ -698,9 +742,16 @@ export async function anthropicToolLoop(params: {
           "[anthropic] tool-loop round create failed — falling back to accumulated assistant text",
           err instanceof Error ? err.message : String(err)
         );
+        if (shouldFallBackToEscalationModel({ round, alreadyTried: escalationTried, activeModel, escalationModel: LARGO_ESCALATION_MODEL })) {
+          console.warn(`[anthropic] round 0 create on ${activeModel} failed — retrying once on ${LARGO_ESCALATION_MODEL}`);
+          escalationTried = true;
+          activeModel = LARGO_ESCALATION_MODEL;
+          round--; // retry round 0 on the escalation model — messages carries no assistant turn yet
+          continue;
+        }
         return extractTextFromLastAssistant(messages as unknown as AnthropicMessage[]) ?? null;
       }
-      trackSpend(model, data.usage);
+      trackSpend(activeModel, data.usage);
       logCacheUsage("tool-loop-round", data.usage);
       content = data.content;
     }
@@ -773,7 +824,7 @@ export async function anthropicToolLoop(params: {
       () =>
         client.messages.create(
           {
-            model,
+            model: activeModel,
             max_tokens: maxTokens,
             // Same sampling-param guard as the loop rounds above. This pass was written before the
             // guard existed and kept sending temperature unconditionally, so on a model that
@@ -781,7 +832,7 @@ export async function anthropicToolLoop(params: {
             // answer — 400s while every round before it succeeds. The catch below swallows that
             // into "fall back to accumulated assistant text", which is why it never surfaced as an
             // error: the turn degrades to a partial answer instead of failing loudly.
-            ...(modelRejectsSamplingParams(model) ? {} : { temperature: loopTemperature }),
+            ...(modelRejectsSamplingParams(activeModel) ? {} : { temperature: loopTemperature }),
             system: systemParam,
             messages,
             // The synthesis pass resends the ENTIRE transcript one final time — the single largest
@@ -794,7 +845,7 @@ export async function anthropicToolLoop(params: {
         ),
       loopMaxRetries
     );
-    trackSpend(model, final.usage);
+    trackSpend(activeModel, final.usage);
     logCacheUsage("tool-loop-final", final.usage);
     return extractTextFromBlocks(final.content as Array<{ type: string; text?: string }>) || null;
   } catch (err) {
