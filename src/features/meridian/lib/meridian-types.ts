@@ -410,9 +410,11 @@ export type MeridianEarningsPrint = {
   reaction_basis?: "bmo_session" | "amc_next_session" | "assumed_report_session" | null;
   /**
    * THE reaction to the print. Prefer this over `session_change_pct` anywhere the number is
-   * presented as a reaction: for a post-close print the reaction is priced overnight, so this
-   * is read from the last close BEFORE the print, and the two routinely differ in SIGN.
-   * `reaction_measure` says which read produced it.
+   * presented as a reaction: a print with a known bell-relative timing is priced while the
+   * market is SHUT — overnight for a post-close print, in the premarket for a pre-open one —
+   * so this is read from the last close BEFORE the print, and the two routinely differ in SIGN
+   * (31.6% of post-close prints, 27.0% of pre-open ones). `reaction_measure` says which read
+   * produced it.
    */
   reaction_pct?: number | null;
   /**
@@ -428,6 +430,12 @@ export type MeridianEarningsPrint = {
     | null;
   /** False while the anchor session is open — `reaction_pct` is provisional. Null if unmeasured. */
   reaction_settled?: boolean | null;
+  /**
+   * True when `reaction_pct` spans a period the market was closed, so it necessarily includes
+   * drift unrelated to the print (median 1.18pp, p90 4.10pp, measured against a premarket-anchored
+   * read). The accepted cost of catching the gap — stated, not hidden. Null if unmeasured.
+   */
+  reaction_includes_prior_drift?: boolean | null;
   eps_estimate: number | null;
   eps_actual: number | null;
   revenue_estimate?: number | null;
