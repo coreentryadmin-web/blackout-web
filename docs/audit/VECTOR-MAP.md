@@ -327,10 +327,57 @@ This boundary is in good shape, and each of these is a defect already paid for:
 | **No silent caps** | `servePreset` — `matched_universe`, `rankable_rows`, `excluded_no_metric`, `truncated` | a 15-row slice of a 55-name match served as the universe |
 | **Scope honesty** | `coaching_scope: "not_applicable_non_spx"` | an SPX-only block reading as an outage on NVDA |
 
-**Known open item:** `scripts/audit/largo-truncation-probe.mjs` has **not** been run against these
-three tools. `get_vector_full_state` embeds the whole `wallHistory` rail (up to thousands of
-5s rows) plus `ladder` and `wallEvents`, which is exactly the shape that silently truncated
-`get_zerodte_record` to 1.5% of itself. **UNKNOWN → the highest-priority Phase 1 item.**
+### MEASURED: `get_vector_full_state` cannot fit the transport, and the cut lands on the disclosure
+
+Not an UNKNOWN — arithmetic, done offline 2026-08-22, and it is the most serious thing in this map.
+
+`anthropicToolLoop` caps every `tool_result` at **`MAX_TOOL_RESULT_CHARS = 16_000`** and enforces
+it with `raw.slice(0, MAX) + "…[truncated]"` — a **head** slice, so **key order decides what
+survives**. `vectorFullStateForLargo` returns `fetchVectorFullState`'s object as-is; it does not go
+through `fit-tool-result.ts`, the module built for exactly this after `get_zerodte_record` shipped
+the model 1.5% of itself.
+
+`getVectorWallHistory` returns the **whole in-process rail**, and Vector records walls at
+`VECTOR_WALL_NODES_PER_SIDE = 20` per side on **both** lenses with `notional` on every level — so
+one oracle bead serializes to **~4,077 chars**, a quarter of the entire budget. Measured against
+the committed `VECTOR_FULL_STATE_FIXTURE` with synthetic rails of realistic shape:
+
+| Rail length | Session time @5s | Serialized | vs the 16k cap | Model actually receives |
+|---|---|---|---|---|
+| 12 | 1 min | 52,586 | **3.3×** | 30.4% |
+| 60 | 5 min | 248,330 | **15.5×** | 6.4% |
+| 360 | 30 min | 1,471,730 | **92×** | 1.1% |
+| 3,720 | 310 min (SPX's real post-compaction shape) | 15,173,810 | **948×** | **0.11%** |
+| 5,760 | 480 min (`MAX_HISTORY`) | 23,492,930 | **1,468×** | 0.07% |
+
+**The payload exceeds the cap after roughly four beads — about twenty seconds of oracle rail.**
+
+**What is lost is worse than how much.** The key order out of `computeVectorFullState` puts
+`wallHistory` near the end, and `withReadContext` spreads `...state` FIRST and appends its blocks
+after it. So a head cut inside `wallHistory` drops, in order: `wallEvents`, `vexWalls`, `vexFlip`,
+`darkPoolLevels`, `unavailable_sections`, `wall_history_empty_reason`, `observed_at`,
+`observed_session_date`, `as_of`, `session_date`, `age_seconds`, `freshness`, `note`.
+
+**Every disclosure this lane built so the model is never misled is appended last, and is therefore
+the first thing the transport eats.** A model reading a truncated state gets spot, walls, flip,
+magnet and a plausible-looking desk read — and no absence report and no freshness block, which is
+precisely the "confident answer built on nothing" shape rule 7 exists to prevent. The one saving
+grace is that the head slice keeps the answer and loses the caveat, rather than the reverse.
+
+**Scope.** `get_vector_pulse` is **NOT** affected — `vectorPulseForLargo` assembles its own compact
+payload (signals capped at 25, no rail). `get_ecosystem_context.vector_full_state` **IS**, by its
+own documented promise to return "the exact same object". `get_vector_analytics` is unmeasured
+(it caps screener rows, pivots, events and buckets, so it is likely fine) — **UNKNOWN**.
+
+**The fix is the module that already exists.** `fitToolResult`/`LARGO_RESULT_CHAR_BUDGET`
+(14,000) with the rail reordered last and its kept-count stated out loud, so the model can never
+read a 25-bead sample as the whole session. That is a code change and Phase 0 is a gate, so it is
+recorded here and queued as Phase 1 item #1 rather than fixed in this PR.
+
+**Still owed:** `scripts/audit/largo-truncation-probe.mjs` against all three tools, to confirm this
+live. Note when reading its result: **an off-hours run proves nothing about this defect** — outside
+RTH the rail is empty, so the payload is small and every tool comes back COMPLETE. The probe must
+run during RTH.
 
 ---
 
@@ -436,8 +483,11 @@ Required by the charter. A single wall-rail bead on SPX, 5s bucket, function nam
 
 ## 10. UNKNOWNs — the Phase 1 queue, ranked
 
-1. **Do Largo's three Vector tools survive `MAX_TOOL_RESULT_CHARS`?** `get_vector_full_state`
-   embeds the whole rail. Run `largo-truncation-probe.mjs --tools=...` with a proven control.
+1. **Fit `get_vector_full_state` under the transport cap** — §6 measures it at 92× the cap after
+   30 minutes of oracle rail, with the absence and freshness blocks landing past the cut. Route it
+   through `fit-tool-result.ts`, rail last, kept-count stated. Then run
+   `largo-truncation-probe.mjs` **during RTH** (an off-hours run cannot see this) to confirm live,
+   and to settle `get_vector_analytics`, which is still unmeasured.
 2. **Every number, against Polygon, on a live tape.** Nothing in this file is a correctness claim
    about a served value — the market was closed. Walls, flip, expected move, max pain, magnet,
    ladder, universe rows.
