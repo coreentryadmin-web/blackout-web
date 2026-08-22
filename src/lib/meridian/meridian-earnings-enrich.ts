@@ -63,9 +63,16 @@ export async function loadMeridianEarningsEnrichment(
   const beat_rates = dualBeatRateFromPrints(history.print_history);
 
   const lastPrint = history.print_history[0];
+  // Compare the last print's reaction against the implied move CAPTURED FOR THAT PRINT, never
+  // against today's live quote — see buildExpectedVsRealized. `print_history[].expected_move_pct`
+  // is the field for it; when it is absent (today: 0 of 8 rows) the reaction is published without
+  // a ratio rather than compared to whatever number is to hand. Passing it this way means the
+  // card starts working the moment that field is populated, with no further change here.
+  const priorImplied = lastPrint?.expected_move_pct ?? null;
   const expected_vs_realized = buildExpectedVsRealized(
-    expectedMovePct ?? null,
-    lastPrint?.session_change_pct ?? null
+    priorImplied ?? expectedMovePct ?? null,
+    lastPrint?.session_change_pct ?? null,
+    priorImplied != null
   );
 
   const guidanceRow = guidanceRes.rows[0] ? guidanceToMeridianRow(guidanceRes.rows[0]) : null;

@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img" aria-label="Conceptual diagram of gamma exposure (GEX): positive GEX makes dealers stabilize the market so price stays range-bound with low volatility, while negative GEX makes dealers amplify moves so price trends with high volatility.">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0B0E13"/>
+      <stop offset="1" stop-color="#07080B"/>
+    </linearGradient>
+    <linearGradient id="posPanel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#A3E635" stop-opacity="0.07"/>
+      <stop offset="1" stop-color="#A3E635" stop-opacity="0.015"/>
+    </linearGradient>
+    <linearGradient id="negPanel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FB7185" stop-opacity="0.07"/>
+      <stop offset="1" stop-color="#FB7185" stop-opacity="0.015"/>
+    </linearGradient>
+    <style>
+      text{font-family:'JetBrains Mono',ui-monospace,monospace;fill:#E8ECF3}
+      .h{font-family:'Syne',system-ui,sans-serif;font-weight:800}
+      .lbl{font-size:22px;letter-spacing:.02em}
+      .sub{font-size:16px;fill:#909BAC}
+      .cap{font-size:15px;fill:#909BAC}
+      .tag{font-size:15px;letter-spacing:.16em;fill:#5B6573}
+    </style>
+  </defs>
+
+  <rect width="1200" height="630" rx="18" fill="url(#bg)"/>
+  <rect x="1" y="1" width="1198" height="628" rx="17" fill="none" stroke="#1A1F29"/>
+
+  <!-- title -->
+  <text class="h" x="60" y="74" font-size="38" fill="#fff">What GEX Tells You</text>
+  <text class="sub" x="60" y="104">Gamma exposure aggregates dealer hedging into one read: is the market being stabilized, or amplified?</text>
+  <text class="tag" x="60" y="150">BLACKOUT · DEALER POSITIONING</text>
+
+  <!-- ===== LEFT PANEL: POSITIVE GEX (stabilizing) ===== -->
+  <g>
+    <rect x="60" y="190" width="520" height="370" rx="12" fill="url(#posPanel)" stroke="#1E2A16"/>
+    <text class="lbl h" x="84" y="230" fill="#A3E635">POSITIVE GEX</text>
+    <text class="cap" x="84" y="256" fill="#A3E635" opacity="0.85">dealers are long gamma</text>
+
+    <!-- mean line -->
+    <line x1="90" y1="400" x2="550" y2="400" stroke="#2B3340" stroke-width="1" stroke-dasharray="3 6"/>
+    <!-- tight, mean-reverting price path -->
+    <path d="M96,400 C 130,372 164,428 198,400 C 232,374 266,426 300,400 C 334,376 368,424 402,400 C 436,378 470,422 504,400 C 528,384 544,414 552,400"
+          fill="none" stroke="#A3E635" stroke-width="3" stroke-linecap="round"/>
+    <!-- range guides -->
+    <line x1="90" y1="372" x2="550" y2="372" stroke="#A3E635" stroke-width="1" stroke-dasharray="2 6" opacity="0.35"/>
+    <line x1="90" y1="428" x2="550" y2="428" stroke="#A3E635" stroke-width="1" stroke-dasharray="2 6" opacity="0.35"/>
+
+    <text class="cap" x="84" y="500" fill="#A3E635" opacity="0.9">Dealers SELL rallies &amp; BUY dips</text>
+    <text class="cap" x="84" y="522" fill="#909BAC">→ range-bound · volatility dampened · pins</text>
+    <text class="tag" x="84" y="548" fill="#5B6573">CALM, MEAN-REVERTING</text>
+  </g>
+
+  <!-- ===== RIGHT PANEL: NEGATIVE GEX (amplifying) ===== -->
+  <g>
+    <rect x="620" y="190" width="520" height="370" rx="12" fill="url(#negPanel)" stroke="#2A161B"/>
+    <text class="lbl h" x="644" y="230" fill="#FB7185">NEGATIVE GEX</text>
+    <text class="cap" x="644" y="256" fill="#FB7185" opacity="0.85">dealers are short gamma</text>
+
+    <!-- reference line -->
+    <line x1="650" y1="360" x2="1110" y2="360" stroke="#2B3340" stroke-width="1" stroke-dasharray="3 6"/>
+    <!-- trending / accelerating price path with expanding swings -->
+    <path d="M656,362 C 690,352 716,378 748,360 C 786,338 812,432 858,414 C 902,398 936,300 986,336 C 1030,368 1058,470 1104,452"
+          fill="none" stroke="#FB7185" stroke-width="3" stroke-linecap="round"/>
+
+    <text class="cap" x="644" y="500" fill="#FB7185" opacity="0.9">Dealers BUY rallies &amp; SELL dips</text>
+    <text class="cap" x="644" y="522" fill="#909BAC">→ trending · volatility amplified · breaks run</text>
+    <text class="tag" x="644" y="548" fill="#5B6573">FAST, TRENDING</text>
+  </g>
+
+  <text class="tag" x="60" y="606" fill="#3d4552">Conceptual illustration · blackouttrades.com/learn/what-is-gex</text>
+</svg>
