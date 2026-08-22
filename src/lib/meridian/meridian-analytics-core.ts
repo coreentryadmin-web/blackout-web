@@ -163,9 +163,37 @@ export function buildOpexPinAccuracy(
   return { graded, held, accuracy_pct, tolerance_pct: tolerancePct, headline };
 }
 
+/**
+ * TWO SIDES THAT DESCRIBED DIFFERENT EVENTS.
+ *
+ * The ratio only means anything when the implied figure and the realized reaction describe the
+ * SAME print — implied captured before it, realized measured after it. Nothing enforced that, and
+ * both ways of breaking it were live on prod 2026-08-21 22:19Z:
+ *
+ *   SMTC  print 2026-08-25, four days AHEAD
+ *         "Realized -4.41% vs ~25.6% implied (0.17x)"   verdict: under
+ *         25.6% is the UPCOMING print's implied move; -4.41% is the 2026-05-26 print, a
+ *         different quarter. Two unrelated events, one verdict.
+ *
+ *   BJ    printed that morning
+ *         "Realized +2.6% vs ~0.2% implied (13x)"       verdict: over
+ *         0.2% is a LIVE post-print quote whose front expiry died that afternoon, not what the
+ *         options market priced going in. The multiple inflates as the day goes on, and the
+ *         verdict inverts: 2.6% against BJ's real pre-print implied is UNDER, not 13x over.
+ *
+ * `print_history[].expected_move_pct` is the field meant to carry the pre-print implied, and it is
+ * populated on 0 of 8 rows, so that quantity is not available anywhere today. Rather than compare
+ * whatever is to hand, the ratio and the verdict are withheld unless the caller states that the
+ * two sides belong to the same print. The realized reaction is still published — it is a real
+ * measurement and it stands on its own.
+ *
+ * `sameEvent` is REQUIRED, not defaulted. A default would silently re-enable exactly the two
+ * cases above at any call site that forgot it.
+ */
 export function buildExpectedVsRealized(
   expectedMovePct: number | null,
-  realizedMovePct: number | null
+  realizedMovePct: number | null,
+  sameEvent: boolean
 ): ExpectedVsRealized {
   if (expectedMovePct == null || realizedMovePct == null) {
     return {
@@ -174,6 +202,17 @@ export function buildExpectedVsRealized(
       ratio: null,
       verdict: "unknown",
       headline: null,
+    };
+  }
+  if (!sameEvent) {
+    // The reaction is real and worth showing; the comparison is not. No ratio, no verdict, and a
+    // headline that does not put the two numbers side by side as though they were commensurable.
+    return {
+      expected_move_pct: expectedMovePct,
+      realized_move_pct: realizedMovePct,
+      ratio: null,
+      verdict: "unknown",
+      headline: `Last print realized ${realizedMovePct >= 0 ? "+" : ""}${realizedMovePct}%`,
     };
   }
   const absReal = Math.abs(realizedMovePct);
