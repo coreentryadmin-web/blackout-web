@@ -46,7 +46,13 @@ that run.
 `641 pass / 0 fail` across the 95 SPX lib test files, Node 20.20.2, at `963c8448`
 (`PLAYBOOK_VERDICT_GUARD_ASSERT=1 node --import tsx --experimental-test-module-mocks --test
 src/features/spx/lib/*.test.ts`). Quote this as the baseline; a run on Node 22, or a run before
-`npm ci`, is not evidence — the sandbox ships with neither.
+`npm ci`, is not evidence.
+
+**Check both before running anything — they are container-dependent, not fixed** (`_COMMON.md` and
+`CLAUDE.md` were corrected on this point in #2633 after asserting it both ways). This container had
+Node 20 pre-installed at `/opt/node20/bin` **and an empty `node_modules`**; a run before `npm ci`
+reported 20 failures that were purely missing dependencies, which is the phantom-failure trap
+arriving from a direction the briefs did not cover. `node -v` and `ls node_modules` cost nothing.
 
 ---
 
@@ -61,22 +67,29 @@ All five live in `src/features/spx/lib/spx-desk-loader.ts`, all keyed by ET sess
 (`todayEtYmd()`), all `staleWhileRevalidate` — meaning **a served value can be older than its TTL**;
 the TTL governs when a refresh is *started*, not how stale a response may be.
 
-| Lane | Cache key | TTL | Builder | Serves |
-|---|---|---|---|---|
-| **pulse** | `spx-desk-pulse:{ymd}` | **1s** (`SPX_PULSE_CACHE_SEC`) | `buildSpxDeskPulse` | price, change%, VIX, internals, VWAP, EMAs, session extremes |
-| **flow** | `spx-desk-flow:{ymd}` | **2s** (`SPX_FLOW_CACHE_SEC`) | `buildSpxDeskFlow` | tape, dark pool, GEX walls, its own `gamma_flip` |
-| **pin** | `spx-pin:{ymd}` | **1s** — *see below* | `buildSpxPinForecast` | EOD pin, cones, magnet, its own flip |
-| **desk** | `spx-desk:{ymd}` | **20s** (`SPX_DESK_CACHE_SEC`) | `buildSpxDesk` | GEX/max-pain/flip header tiles, macro, news, regime |
-| **merged** | `spx-merged:{ymd}` | **20s** | merge of the three above | `/merged`, `/power-hour`, `/commentary` |
-| **bootstrap** | `spx-bootstrap:{ymd}` | **20s** | `loadMergedSpxDesk` | one-shot page load |
+| Lane | Cache key | Code default | **PRODUCTION** | Builder | Serves |
+|---|---|---|---|---|---|
+| **pulse** | `spx-desk-pulse:{ymd}` | 1s | **2s** (`SPX_PULSE_CACHE_SEC`) | `buildSpxDeskPulse` | price, change%, VIX, internals, VWAP, EMAs, session extremes |
+| **flow** | `spx-desk-flow:{ymd}` | 2s | **5s** (`SPX_FLOW_CACHE_SEC`) | `buildSpxDeskFlow` | tape, dark pool, GEX walls, its own `gamma_flip` |
+| **pin** | `spx-pin:{ymd}` | 1s | **2s** (reuses pulse — *see below*) | `buildSpxPinForecast` | EOD pin, cones, magnet, its own flip |
+| **desk** | `spx-desk:{ymd}` | 20s | **30s** (`SPX_DESK_CACHE_SEC`) | `buildSpxDesk` | GEX/max-pain/flip header tiles, macro, news, regime |
+| **merged** | `spx-merged:{ymd}` | 20s | **30s** | merge of the three above | `/merged`, `/power-hour`, `/commentary` |
+| **bootstrap** | `spx-bootstrap:{ymd}` | 20s | **30s** | `loadMergedSpxDesk` | one-shot page load |
+
+> **Read the PRODUCTION column, not the code default.** All three TTL env vars are set in the
+> `blackout-production/app/env` secret and every one of them overrides the code — the desk lane
+> runs at **30s, not the 20s the source suggests**. A freshness claim quoted from
+> `src/lib/providers/config.ts` alone is wrong by 50% on the slowest lane. (Read from Secrets
+> Manager 2026-08-22; flag names and their non-secret values only, nothing else inspected.)
 
 **Consequences that are structural, not bugs to be surprised by:**
 
-1. **The 20s desk lane is the slow one, and the header tiles ride it.** `Γ FLIP`, `GEX`,
-   `MAX PAIN`, `TREND` can sit still for >20s while the price tile, chart and pin panel all move.
+1. **The 30s desk lane is the slow one, and the header tiles ride it.** `Γ FLIP`, `GEX`,
+   `MAX PAIN`, `TREND` can sit still for >30s in production while the price tile, chart and pin
+   panel all move.
    Recorded as a P2 in the 2026-08-07 backlog; still true and still structural.
-2. **`/merged` and `/bootstrap` cache at 20s but *contain* the 1s pulse.** A consumer reading pulse
-   fields off the merged bundle gets them up to 20× staler than the same fields off `/pulse`.
+2. **`/merged` and `/bootstrap` cache at 30s but *contain* the 2s pulse.** A consumer reading pulse
+   fields off the merged bundle gets them up to 15× staler than the same fields off `/pulse`.
    The dashboard avoids this by polling `/desk`, `/pulse` and `/flow` separately after the initial
    bootstrap (`useMergedDesk.ts`) — **any new consumer that reads pulse fields off `/merged`
    inherits the 20s staleness silently.**
@@ -84,10 +97,12 @@ the TTL governs when a refresh is *started*, not how stale a response may be.
    They are *different questions* (expiry scope differs), not a race — see §5.
 
 > **Defect (doc): the pin lane's TTL comment is wrong.** `spx-desk-loader.ts:130` says
-> *"5s TTL (reuses the pulse TTL)"*. It calls `deskPulseCacheTtlMs()`, which defaults to
-> **1000ms** (`src/lib/providers/config.ts:35-40`). The pin forecast — which runs a 400-path
-> Monte-Carlo — is therefore configured to rebuild 5× more often than its own comment claims, and
-> anyone reasoning about pin cost from the comment is reasoning from a wrong number.
+> *"5s TTL (reuses the pulse TTL)"*. It calls `deskPulseCacheTtlMs()`, which defaults to **1000ms**
+> (`src/lib/providers/config.ts:35-40`) and is **2000ms in production**. The pin forecast — which
+> runs a 400-path Monte-Carlo — therefore rebuilds 2.5× more often than its own comment claims.
+> The comment is doubly misleading: it names a number that is neither the default nor the deployed
+> value, and it ties the pin lane's cost to a variable (`SPX_PULSE_CACHE_SEC`) that someone tuning
+> the *price* lane would not expect to be paying for a Monte-Carlo.
 
 ### Client poll cadence
 
@@ -227,10 +242,17 @@ label must agree within a stated tolerance.
 The charter asks for this by name. A stale document that reads as current is the most expensive
 artifact in the repo.
 
-### 6.1 `docs/audit/backlog/2026-08-07-spx-slayer.md` — every one of its 10 items still says `BACKLOG`. Three are fixed and one is not a defect.
+### 6.1 `docs/audit/backlog/2026-08-07-spx-slayer.md` — all 10 items said `BACKLOG`. Three were fixed and one was not a defect. **Reconciled in place by this PR.**
 
-Each item's `### Status` line reads `BACKLOG — fix after close 2026-08-07`. Re-checked against
-`963c8448`:
+As found, every item's `### Status` line read `BACKLOG — fix after close 2026-08-07`. Re-checked
+against `963c8448` and each status rewritten in that file to its real state, with the file and line
+that settles it — so the two documents cannot drift apart again. The table below is the summary;
+that file carries the detail and stays the 2026-08-07 RTH capture it is (its evidence is real live
+prod data and was not altered).
+
+Three items are marked **UNVERIFIED** rather than judged. They are pixel and network observations
+that a source read genuinely cannot settle, and calling them fixed or open from the source would be
+a guess wearing a verdict's clothing.
 
 | # | Item | Real status at `963c8448` |
 |---|---|---|
@@ -267,7 +289,7 @@ remaining Phase 0 gap and the next increment of this file. UNKNOWN.
 
 ## 7. Findings opened while mapping
 
-### 7.1 [P2] Five SPX code paths are gated on `isStagingDeploy()`, which has been permanently false since staging was decommissioned — PB-01 and PB-02 are unreachable in production
+### 7.1 [P1] Five SPX code paths are gated on `isStagingDeploy()`, permanently false since staging was decommissioned — and because `PLAYBOOK_LIVE_GATE=1` in production, PB-01 and PB-02 are unreachable setups that can never produce a live entry
 
 `isStagingDeploy()` is `(NEXT_PUBLIC_SITE_URL ?? "").includes("staging.")`
 (`src/lib/clerk-env.ts:10-12`). Production sets `NEXT_PUBLIC_SITE_URL=https://blackouttrades.com`,
@@ -290,6 +312,20 @@ satisfy their data requirements.** Two of fourteen playbooks are silently, perma
 unreachable, and the only mechanism that could unblock them lives behind a decommissioned
 environment. The code's own comment at `spx-desk.ts:118` predicted this ("permanently hard-blocks
 PB-01/PB-02") — for staging's absence, which has now happened everywhere.
+
+**This is member-facing, and the production config is what makes it so.** Read from the
+`blackout-production/app/env` secret on 2026-08-22: **`PLAYBOOK_LIVE_GATE = "1"`.** So
+`playbookLiveGateEnabled()` is TRUE in production, which means gate A17 requires a matched
+`primary_playbook_id` before any BUY. Two of the high-fidelity setups in that matcher can never
+match, so every entry PB-01 (VWAP Reclaim) or PB-02 (VWAP Reject) would have produced is silently
+not taken — not blocked with a reason a member or Largo could read, but absent from the matcher
+before any gate gets a say. `PLAYBOOK_LIVE_ALLOWLIST` is unset, so the allowlist resolves to `null`
+and is NOT the constraint; the data requirement is.
+
+*Severity was first written here as P2 on the assumption that the live gate was probably off in
+production — the code default is `false`. Checking rather than assuming moved it to P1. The
+assumption was never published, but it did shape the Phase 1 ordering, and the ordering changed
+with it.*
 
 **Measured, and it corrects the obvious first reading.** My first read was that this makes the
 desk's VWAP wrong. It does not, materially. Computing both VWAPs over real Polygon `I:SPX` minute
@@ -359,6 +395,13 @@ field is arriving undocumented as well as uncalibrated.
 ## 8. What Phase 0 could not answer — the work list
 
 Ranked. These are the `UNKNOWN`s above, restated as tasks.
+
+0. **Audit every SPX-relevant key in `blackout-production/app/env` against its code default.**
+   Three cache TTLs and `PLAYBOOK_LIVE_GATE` are all overridden in production, and none of that was
+   discoverable from the repo. Reading a default out of `config.ts` and calling it "the freshness"
+   was wrong by 50% on the desk lane; assuming the live gate matched its `false` default understated
+   a P1. **Anywhere this product's behaviour is env-tunable, the deployed value is the fact and the
+   default is a decoy.** No file in the repo lists which keys are actually set.
 
 1. **Line-audit the eleven `docs/spx/PLAYBOOK-*.md` documents** and mark what is now wrong (§6.4).
    Largest remaining gap.
