@@ -1,6 +1,6 @@
 import type { FlowAlert } from "@/lib/api";
 import { flowEventTimeMs } from "@/lib/flow-timestamp";
-import { normalizeFlowExpiry } from "@/lib/largo/flow-strike-stacks";
+import { flowContractKey } from "@/lib/helix/contract-identity";
 
 /** HELIX analytics rail — list sizes and strike-hit windows. */
 
@@ -32,10 +32,6 @@ export function flowStackAlertTimeMs(row: {
   return flowEventTimeMs(row);
 }
 
-function normalizeExpiryKey(expiry: string): string {
-  return normalizeFlowExpiry(expiry);
-}
-
 /** Count prints on the same contract within the rolling window (Top Prints magnitude line). */
 export function countMatchingContractHits(
   alerts: readonly FlowAlert[],
@@ -43,15 +39,14 @@ export function countMatchingContractHits(
   windowMs = HELIX_STRIKE_HITS_WINDOW_MS,
   nowMs = Date.now()
 ): number {
-  const ticker = target.ticker.toUpperCase();
-  const opt = target.option_type.toUpperCase();
-  const exp = normalizeExpiryKey(target.expiry);
+  // Contract identity comes from the shared key, NOT from a per-file comparison. The strike used to
+  // be compared at Math.round(...) here, which counted hits on 92.5P toward 93P — two separately
+  // traded contracts presented as one stack. See contract-identity.ts.
+  const key = flowContractKey(target);
+  if (key == null) return 0;
   let n = 0;
   for (const a of alerts) {
-    if (a.ticker.toUpperCase() !== ticker) continue;
-    if (a.option_type.toUpperCase() !== opt) continue;
-    if (Math.round(a.strike) !== Math.round(target.strike)) continue;
-    if (normalizeExpiryKey(a.expiry) !== exp) continue;
+    if (flowContractKey(a) !== key) continue;
     const ms = flowStackAlertTimeMs({
       event_at: a.event_at,
       alerted_at: a.alerted_at,
