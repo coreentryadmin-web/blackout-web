@@ -94,9 +94,9 @@ const ROUTE_BUCKETS = [
  * whose own screenshot showed the value plainly. If a probe here ever reports something missing,
  * suspect this rule before suspecting the product.
  */
-async function probe(page) {
+async function probe(page, { panelsOnly = false } = {}) {
   return page
-    .evaluate((BUCKETS) => {
+    .evaluate(({ BUCKETS, panelsOnly }) => {
       const text = (el) => (el?.textContent ?? "").replace(/\s+/g, " ").trim();
       const body = document.body;
 
@@ -105,7 +105,13 @@ async function probe(page) {
       const brand = /HELIX/i.test(bodyText);
       // The tape is a virtualized grid; its rows carry a ticker + a premium. Count anything that
       // looks like a print row rather than binding to one class name.
-      const rowNodes = Array.from(document.querySelectorAll('[class*="flow-row"], [class*="helix-tape"] [role="row"], table tbody tr'));
+      // Desktop renders HelixFlowTable, mobile renders HelixMobileFlowTape — different markup for
+      // the same tape, so bind to several shapes rather than one component's class.
+      const rowNodes = Array.from(
+        document.querySelectorAll(
+          '[class*="flow-row"], [class*="helix-tape"] [role="row"], [class*="mobile-flow"] > *, table tbody tr'
+        )
+      );
       const tapeContainer = Boolean(
         document.querySelector('[class*="helix-tape"], [class*="flow-table"], [class*="flow-feed"]')
       );
@@ -232,7 +238,7 @@ async function probe(page) {
         },
         layout: { horizontalOverflow, visibleError, scrollWidth: document.documentElement.scrollWidth, innerWidth: window.innerWidth },
       };
-    }, ROUTE_BUCKETS)
+    }, { BUCKETS: ROUTE_BUCKETS, panelsOnly })
     .catch(() => undefined);
 }
 
@@ -284,9 +290,26 @@ async function runViewport(session, vp) {
      * is what showed the toggle. Recorded here because "the panel is missing" and "the panel is one
      * click away" are indistinguishable to a selector and opposite as findings.
      */
+    /**
+     * TWO-PHASE PROBE, in the order a member experiences the page.
+     *
+     * The tape must be measured on the DEFAULT view, BEFORE the modal opens. On mobile the
+     * "MORE PANELS" modal is full-screen and the tape is not in the DOM behind it, so probing
+     * everything after opening it reported "tape painted zero rows" — a viewport-specific false
+     * failure that desktop hid, because there the modal is an overlay and the tape survives
+     * underneath. Sequencing, not selectors: the same probe was right on one viewport and wrong
+     * on the other purely because of WHEN it ran.
+     */
+    const base = await probe(page);
     const morePanels = await openSecondaryPanels(page);
-
-    const snap = await probe(page);
+    const panels = morePanels.opened ? await probe(page, { panelsOnly: true }) : undefined;
+    // Panel readings come from the modal pass; everything else from the default view.
+    const snap = base && {
+      ...base,
+      route: panels?.route ?? base.route,
+      netPremium: panels?.netPremium ?? base.netPremium,
+      expiry: panels?.expiry ?? base.expiry,
+    };
     const shot = path.join(OUT, `helix-flows-${vp.id}.png`);
     await page.screenshot({ path: shot, fullPage: false }).catch(() => {});
 
