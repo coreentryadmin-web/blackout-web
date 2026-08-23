@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  MIN_READABLE_PCT_FOR_COLOR,
+  MIN_READABLE_PCT_FOR_VERDICT,
   readDirection,
   readDirectionTitle,
   directionTone,
@@ -64,7 +64,7 @@ test("the colour gate and directionLabel's own refusal agree at the boundary", (
   // Exactly 50/50 is the seam and both must permit a read there, so the two rules cannot disagree
   // about a bucket depending on which one a future caller happens to ask.
   const even = readDirection([boughtCall(50), unsided(50)]);
-  assert.equal(even.readablePct, MIN_READABLE_PCT_FOR_COLOR);
+  assert.equal(even.readablePct, MIN_READABLE_PCT_FOR_VERDICT);
   assert.equal(even.minorityEvidence, false);
   assert.equal(even.label, "bullish");
 
@@ -219,4 +219,22 @@ test("the copy names the thesis it is talking about, long or short", () => {
   const d = readDirection([boughtCall(1_000_000)]);
   assert.match(thesisAgreementCopy("agrees", true, d).text, /long thesis/);
   assert.match(thesisAgreementCopy("diverges", false, d).text, /short thesis/);
+});
+
+test("the threshold governs the Largo payload too, not just a bar colour", () => {
+  // RENAMED from MIN_READABLE_PCT_FOR_COLOR. `directionFields` in helix-tape-analytics.ts reports
+  // `direction: "undetermined"` and `direction_minority_evidence: true` off the SAME
+  // `minorityEvidence` flag this threshold sets, and the tool description tells the model to state
+  // the readable share before quoting a direction. So retuning this as a display preference would
+  // silently move what the AI is allowed to assert. This pins that they are one decision.
+  const justUnder = readDirection([boughtCall(49), unsided(51)]);
+  const atThreshold = readDirection([boughtCall(50), unsided(50)]);
+
+  assert.equal(justUnder.minorityEvidence, true);
+  assert.equal(directionTone(justUnder), null, "no colour below the threshold");
+  assert.equal(justUnder.label, "undetermined", "and no verdict either — same flag, same decision");
+
+  assert.equal(atThreshold.minorityEvidence, false);
+  assert.equal(directionTone(atThreshold), "bull");
+  assert.equal(atThreshold.label, "bullish");
 });
