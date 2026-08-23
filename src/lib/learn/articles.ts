@@ -374,7 +374,7 @@ That's the entire premise behind BlackOut — live dealer gamma, A–F graded se
     slug: "how-to-read-options-flow",
     path: "/learn/how-to-read-options-flow",
     metaTitle: "How to Read Options Flow: Signal vs. Noise | BlackOut",
-    metaDescription: "Learn to read institutional options order flow — how to tell a real signal from a routine hedge, and what actually moves markets. A trader's guide.",
+    metaDescription: "Options order flow 101: how to separate real institutional signals from noise, routine hedging, and meaningless prints across the tape.",
     targetKeyword: "how to read options flow",
     type: "article",
     title: "How to Read Options Flow: Telling Signal From Noise",
