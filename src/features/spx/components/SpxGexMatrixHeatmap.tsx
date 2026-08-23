@@ -801,7 +801,7 @@ export function SpxGexMatrixHeatmap({
                         <td
                           key={e}
                           className={clsx(
-                            "spx-gex-matrix-expiry-col whitespace-nowrap px-1 py-1 text-center font-bold",
+                            "spx-gex-matrix-expiry-col whitespace-nowrap p-1 text-center font-bold",
                             shiftLeader && "gex-matrix-cell-with-badge",
                             has && val > 0 && !isColumnCallWall && "text-emerald-300",
                             has && val < 0 && !isColumnPutWall && "text-rose-300",
