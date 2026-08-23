@@ -9,6 +9,7 @@ import {
   fmtFullTimestamp,
   ruleLabel,
   executionRouteKey,
+  ALERT_RULE_WORD_KEYS,
   sortFlows,
 } from "./helix-flow-format";
 
@@ -83,9 +84,85 @@ test("daysToExpiry floors at zero for same-day expiry", () => {
 });
 
 test("executionRouteKey reads UW alert_rule, not internal route", () => {
+  // UNCHANGED, on purpose. The panel asks how the order EXECUTED, and sweeping is a mechanism
+  // while "repeated hits" is a pattern across prints — so a rule naming both is filed under the
+  // mechanism. The badge answers a different question about the same string and reads REPEAT.
   assert.equal(executionRouteKey({ alert_rule: "RepeatedHitsSweep" }), "SWEEP");
+  assert.equal(ruleLabel("RepeatedHitsSweep"), "REPEAT");
   assert.equal(executionRouteKey({ alert_rule: "BigBlockTrade" }), "BLOCK");
-  assert.equal(executionRouteKey({ alert_rule: undefined }), "OTHER");
+});
+
+/**
+ * The NINE `alert_rule` values actually present on the production tape, measured 2026-08-22 over
+ * 5000 rows / 168h via scripts/audit/helix-tape-inventory.mjs (docs/audit/HELIX-MAP.md §9.8).
+ *
+ * Before the shared vocabulary landed, the panel bucketed this live population as 98.8% OTHER:
+ * the three RepeatedHits* variants alone are 28.7% of the tape and matched none of the panel's six
+ * words. This test pins the real vocabulary so a future edit cannot silently re-open that gap.
+ */
+test("executionRouteKey buckets every alert_rule value the live tape actually carries", () => {
+  const LIVE_RULES: Array<[string, string]> = [
+    ["RepeatedHits", "REPEAT"],
+    ["RepeatedHitsAscendingFill", "REPEAT"],
+    ["RepeatedHitsDescendingFill", "REPEAT"],
+    ["FloorTradeLargeCap", "FLOOR"],
+    ["LowHistoricVolumeFloor", "FLOOR"],
+    ["FloorTradeMidCap", "FLOOR"],
+    ["FloorTradeSmallCap", "FLOOR"],
+    // Names two mechanisms; resolves by vocabulary precedence, not by luck.
+    ["SweepsFollowedByFloor", "SWEEP"],
+  ];
+  for (const [rule, expected] of LIVE_RULES) {
+    assert.equal(executionRouteKey({ alert_rule: rule }), expected, rule);
+  }
+  // ...and not one of them may land in OTHER, which is the defect this test exists to prevent.
+  for (const [rule] of LIVE_RULES) {
+    assert.notEqual(executionRouteKey({ alert_rule: rule }), "OTHER", rule);
+  }
+});
+
+test("a print with NO alert_rule is UNREPORTED, never OTHER", () => {
+  // 70% of the live tape — the second writer (HELIX-MAP.md §4A) sends no rule field at all.
+  // Counting those as OTHER claims we measured a route and found it to be "other", for 3500
+  // prints whose route was never reported. Absence must not be published as measurement.
+  assert.equal(executionRouteKey({ alert_rule: undefined }), "UNREPORTED");
+  assert.equal(executionRouteKey({ alert_rule: null as unknown as undefined }), "UNREPORTED");
+  assert.equal(executionRouteKey({ alert_rule: "" }), "UNREPORTED");
+  assert.equal(executionRouteKey({ alert_rule: "   " }), "UNREPORTED");
+  // A rule that IS present but names no mechanism is a real measurement — still OTHER.
+  assert.equal(executionRouteKey({ alert_rule: "SomeRuleWeHaveNoWordFor" }), "OTHER");
+});
+
+test("both readers draw from the SAME word set — neither can gain or lose a word silently", () => {
+  // The real anti-drift guarantee. The two functions deliberately ORDER these words differently
+  // (mechanism-first for the panel, rule-first for the badge), so agreement on every input is NOT
+  // the invariant — drawing from one set is. A word added for one reader and not the other is
+  // exactly how the 28.7% REPEAT gap opened in the first place.
+  const RECOGNISED = new Set<string>(ALERT_RULE_WORD_KEYS);
+  for (const word of ALERT_RULE_WORD_KEYS) {
+    // "REPEAT" is keyed on the substring "REPEATED", so feed each word a string that contains it.
+    const sample = word === "REPEAT" ? "Repeated" : word;
+    assert.notEqual(executionRouteKey({ alert_rule: sample }), "OTHER", `panel must recognise ${word}`);
+    assert.ok(RECOGNISED.has(ruleLabel(sample)), `badge must recognise ${word}, got ${ruleLabel(sample)}`);
+  }
+});
+
+test("a rule naming a mechanism AND the repeat pattern is filed under the mechanism", () => {
+  // REPEAT ranks LAST in the panel's precedence precisely so this holds: it is the answer only
+  // when no execution mechanism was named. Reversing this would silently redefine an execution
+  // panel as a rule-family panel.
+  assert.equal(executionRouteKey({ alert_rule: "RepeatedHitsSweep" }), "SWEEP");
+  assert.equal(executionRouteKey({ alert_rule: "RepeatedHitsBlock" }), "BLOCK");
+  assert.equal(executionRouteKey({ alert_rule: "RepeatedHitsFloorTrade" }), "FLOOR");
+  // ...and with no mechanism named, the pattern word is what rescues it from OTHER.
+  assert.equal(executionRouteKey({ alert_rule: "RepeatedHits" }), "REPEAT");
+});
+
+test("ruleLabel still falls back to the raw rule text, unlike the panel", () => {
+  // Deliberately different fallbacks: the BADGE shows what UW called the print (more informative
+  // than a bucket), the PANEL buckets it. Same vocabulary, different jobs.
+  assert.equal(ruleLabel("ZzzUnknownRule"), "ZZZUNKNO");
+  assert.equal(executionRouteKey({ alert_rule: "ZzzUnknownRule" }), "OTHER");
 });
 
 test("flowSignals includes near wall tags", () => {
