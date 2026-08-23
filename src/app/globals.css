@@ -19627,7 +19627,19 @@ html.product-shell .nav-mega {
 /* ── Compact 2-row left-rail header (0DTE command center) ── */
 .nh-deck-header-compact{border-bottom:1px solid var(--dk-line);background:var(--dk-bg-elevated);flex-shrink:0}
 .nh-deck-hdr-row{display:flex;align-items:stretch;gap:6px;min-width:0;overflow-x:auto;scrollbar-width:thin}
-.nh-deck-hdr-row--primary{padding:5px 8px;border-bottom:1px solid rgba(53,255,158,.08);flex-wrap:nowrap}
+/* This row is deliberately overflow-x:auto (see the min-width:max-content comment on
+   .nh-deck-cmd--inline above) — its modules routinely exceed the rail's width (measured live:
+   672px of content in a 411px mobile rail, i.e. ~40% requires a horizontal scroll). Mobile Safari
+   hides the scrollbar `scrollbar-width:thin` above asks for, so nothing on screen told anyone
+   there was more to scroll to — the last-visible module (often "Updated ... sec ago") just read as
+   clipped off mid-word, which is how it was first logged as a truncation bug rather than a missing
+   affordance. The content was never lost, only undiscoverable. A static right-edge fade is a
+   content-agnostic hint that survives that ANY module can end up as the cut-off one depending on
+   viewport/rail width, so this doesn't try to track scroll position with JS — it just always signs
+   "there's more" at the edge where a scrollable row's tail commonly lands. */
+.nh-deck-hdr-row--primary{padding:5px 8px;border-bottom:1px solid rgba(53,255,158,.08);flex-wrap:nowrap;
+  -webkit-mask-image:linear-gradient(90deg,#000 0,#000 92%,transparent 100%);
+  mask-image:linear-gradient(90deg,#000 0,#000 92%,transparent 100%)}
 .nh-deck-hdr-row--secondary{padding:4px 6px;align-items:center;gap:6px;flex-wrap:nowrap}
 .nh-deck-hdr-row--filters{justify-content:flex-start;gap:8px;padding:6px 8px}
 .nh-deck-header-compact .nh-deck-filterbar--prominent{flex:1 1 auto;width:100%}

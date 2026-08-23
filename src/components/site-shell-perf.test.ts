@@ -67,3 +67,18 @@ test("Nav: scroll chrome updates without React state", () => {
   assert.doesNotMatch(src, /setScrolled/);
   assert.match(src, /applyNavSolid/);
 });
+
+// Regression guard for the Night Hawk header stat-strip "truncation" (docs/audit/UI-UX-MAP.md §7,
+// finding #4, 2026-08-23): .nh-deck-hdr-row--primary is deliberately overflow-x:auto (its command-
+// center modules routinely exceed the narrow left-rail's width — measured live at 672px of content
+// in a 411px mobile rail), but mobile Safari hides the scrollbar `scrollbar-width:thin` requests, so
+// there was nothing on screen indicating the last-visible module (often the "Updated ... sec ago"
+// engine-status cell) could be scrolled into view — it just read as clipped mid-word. A live check
+// confirmed the text was never lost (scrolling the row to its end fully revealed it), so the fix is
+// a static right-edge fade signalling "there's more here", not a truncation/wrap change. Asserts the
+// mask-image is present on the row so a future edit can't silently drop the affordance.
+test("nh-deck-hdr-row--primary: has a right-edge scroll-affordance fade", () => {
+  const css = read("src/app/globals.css");
+  const block = css.match(/\.nh-deck-hdr-row--primary\s*\{[^}]*\}/)?.[0] ?? "";
+  assert.match(block, /mask-image:\s*linear-gradient/, "must fade its right edge — the row scrolls but nothing else on mobile signals that");
+});
