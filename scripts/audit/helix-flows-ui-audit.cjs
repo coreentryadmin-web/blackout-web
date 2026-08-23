@@ -108,18 +108,22 @@ async function probe(page, { panelsOnly = false } = {}) {
       /**
        * The tape's row classes, READ OUT OF THE COMPONENTS rather than guessed.
        *
-       * Desktop `HelixFlowTable` renders `helix-tape-row`; mobile `HelixMobileFlowTape` renders
-       * `helix-tape-alert` cards. Three earlier guesses at generic shapes ("flow-row",
-       * `[role="row"]`, "mobile-flow > *") matched desktop and missed mobile entirely, so the
-       * harness reported "tape painted zero rows" against a mobile view whose own screenshot shows
-       * a full tape of SPX cards. When a selector is wrong the harness accuses the product, so
-       * these are pinned to the real class names.
+       * Desktop `HelixFlowTable` renders `helix-tape-row`; mobile `HelixMobileFlowTape` builds its
+       * cards from `cardCls = clsx("flow-card", …)`. Both values are RESOLVED FROM THE SOURCE, not
+       * inferred from the rendered markup — four separate guesses failed first, including
+       * `helix-tape-alert`, which appears in the mobile component but is its ARIA alert region,
+       * not a card. Every one of those guesses made the harness report "tape painted zero rows"
+       * against a mobile view whose own screenshot shows a full tape of SPX cards.
+       *
+       * The rule this cost six false results to learn: when an assertion depends on markup, READ
+       * THE COMPONENT. A selector that is merely plausible does not fail loudly — it accuses the
+       * product.
        *
        * `helix-tape-col-row` and `helix-tape-group-row` are HEADER rows and do not contain the
        * substring `helix-tape-row`, so they are excluded by construction rather than by filtering.
        */
       const rowNodes = Array.from(
-        document.querySelectorAll('[class*="helix-tape-row"], [class*="helix-tape-alert"]')
+        document.querySelectorAll('[class*="helix-tape-row"], [class*="flow-card"]')
       );
       const tapeContainer = Boolean(
         document.querySelector('[class*="helix-tape"], [class*="flow-table"], [class*="flow-feed"]')
