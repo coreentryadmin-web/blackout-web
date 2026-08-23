@@ -124,6 +124,20 @@ import { formatDepthBlock, largoDepthConfig, parseLargoDepth, type LargoDepth } 
 import { largoToolLoopBudgetMs } from "@/lib/providers/config";
 import { buildLargoActions, type LargoAction } from "@/lib/largo/largo-actions";
 import {
+  initializeMemory,
+  updateMemoryWithConsensus,
+  updateMemoryWithLevels,
+  recordDecisionInMemory,
+  formatMemoryForSystemPrompt,
+  suggestTickerFromQuestion,
+  shouldReuseCachedConsensus,
+  type ConversationMemoryState,
+} from "@/lib/largo/conversation-memory";
+import { buildResponseComponents, formatComponentsAsMarkdown } from "@/lib/largo/response-builder";
+import { suggestFollowUpQuestions, formatFollowUpSuggestions } from "@/lib/largo/follow-up-question-generator";
+import { orchestrateAdaptiveResponse } from "@/lib/largo/adaptive-response-orchestrator";
+import { enrichWithConsensus } from "@/lib/largo/consensus-read-extract";
+import {
   fetchLargoSessionMetadata,
   maybePersistWatchlistFromQuestion,
   updateLargoSessionMetadata,
@@ -441,6 +455,7 @@ async function prepareLargoTurn(
   activeDeskScope: string | null;
   deskScopeArgs: DeskSlashArgs | null;
   miniPanelKind: string | null;
+  conversationMemory: ConversationMemoryState;
 }> {
   let sid = sessionId.trim() || `web-${userId}-${Date.now()}`;
   try {
@@ -462,6 +477,18 @@ async function prepareLargoTurn(
   const history = await fetchLargoHistory(sid, userId);
   const sessionMetadata = await fetchLargoSessionMetadata(sid, userId);
   const depth = parseLargoDepth(turnOptions.depth ?? sessionMetadata.depth ?? "deep");
+
+  // Initialize conversation memory — tracks ticker/consensus/regime/levels across turns
+  let conversationMemory = initializeMemory();
+  if (sessionMetadata.conversation_memory) {
+    conversationMemory = sessionMetadata.conversation_memory as ConversationMemoryState;
+  }
+  // Suggest ticker from this turn's question, updating or resetting memory as needed
+  const suggestedTicker = suggestTickerFromQuestion(question, conversationMemory);
+  if (suggestedTicker && suggestedTicker !== conversationMemory.ticker) {
+    conversationMemory = initializeMemory();
+    conversationMemory.ticker = suggestedTicker;
+  }
   void updateLargoSessionMetadata(sid, userId, { depth }).catch(() => {});
   void maybePersistWatchlistFromQuestion(sid, userId, question).catch(() => {});
   if (turnOptions.playContext?.ticker) {
@@ -760,6 +787,10 @@ async function prepareLargoTurn(
 
   const tier = await getUserTier(userId).catch(() => null);
   const isAdmin = await isAdminUser(userId).catch(() => false);
+
+  // Format conversation memory for inclusion in system prompt
+  const memoryBlock = formatMemoryForSystemPrompt(conversationMemory);
+
   const extraBlocks =
     deskScopeBlock +
     diffBlock +
@@ -774,6 +805,7 @@ async function prepareLargoTurn(
     }) +
     formatRegimePersonalityBlock(marketPhase) +
     formatCalibrationBlock() +
+    (memoryBlock ? `\n\n${memoryBlock}` : "") +
     (compareCard
       ? compareCard.kind === "peer_tickers"
         ? `\n\n## Peer ticker compare (prefetched — cite these numbers)\n${JSON.stringify(compareCard, null, 0).slice(0, 5000)}\n`
@@ -856,6 +888,7 @@ async function prepareLargoTurn(
     activeDeskScope,
     deskScopeArgs,
     miniPanelKind: scopeCfg?.miniPanel ?? null,
+    conversationMemory,
   };
 }
 
@@ -952,7 +985,7 @@ export async function runLargoQuery(
   const {
     sid, history, system, filteredTools, toolsUsed, tickerHint, viewer, timeframe, persistedQuestion,
     liveFeedResults, depth, compareCard, playSimilarity, preEarningsPack, socialPack,
-    activeDeskScope, deskScopeArgs, miniPanelKind,
+    activeDeskScope, deskScopeArgs, miniPanelKind, conversationMemory: initialMemory,
   } = await prepareLargoTurn(
     question,
     sessionId,
@@ -968,6 +1001,9 @@ export async function runLargoQuery(
   const diagnostics: ToolCallDiagnostic[] = [];
 
   try {
+    // Conversation memory evolves through the turn: fetch → tool results → record decisions
+    let conversationMemory = initialMemory;
+
     // Mark the prefetch/loop boundary so the phase split below can attribute the wall clock. See
     // turn-phase-timings.ts: everything before this line was deterministic prefetch (no model call).
     const loopStartedAt = Date.now();
@@ -1131,6 +1167,48 @@ export async function runLargoQuery(
     const envelope = envelopeFromContract(text, question, capturedResults, marketEvidence);
     // The turn id rides on the envelope so a follow-up can name the exact turn it refers to.
     if (envelope && turnId != null) envelope.turnId = turnId;
+
+    // PHASE 4 INTEGRATION: Build response components from detected intent
+    // The intent was already detected in buildDynamicSystem; use it for component generation
+    const binaryIntent = analyzeLargoQuestion(question, history.slice(0, -1));
+    const intentCategory = detectIntentCategory(question, binaryIntent);
+    let responseComponents: Awaited<ReturnType<typeof buildResponseComponents>> | null = null;
+    if (envelope && intentCategory) {
+      try {
+        // Build a minimal orchestration result for component generation
+        const orchestrationResult = {
+          intentCategory: {
+            category: intentCategory.category,
+            confidence: 0.85,
+            responseDepth: intentCategory.depth ?? "standard",
+            requiredSystems: [],
+            optionalSystems: [],
+            needsDeskRead: intentCategory.category === "TRADE_INTENT",
+            needsHistoricalContext: intentCategory.historical ?? false,
+          },
+          consensus: {
+            reads: [],
+            agreement: { voting: 0, bullish: 0, bearish: 0, neutral: 0, verdict: "neutral", direction: "neutral", averageStrength: 0 },
+            contradictions: [],
+          },
+          deskRead: undefined,
+          selectedTools: { required: toolsUsed, optional: [] },
+          envelopeStructure: {
+            headlineOnly: false,
+            includeSystemReads: true,
+            includeLevels: false,
+            includeDeskRead: false,
+            includeScenarios: false,
+            includeFollowUps: false,
+          },
+          toolResults: {},
+        };
+        responseComponents = buildResponseComponents(orchestrationResult as any, envelope.headline ?? "");
+      } catch (err) {
+        console.warn("[largo] response-component build failed:", err instanceof Error ? err.message : String(err));
+      }
+    }
+
     const followups = withResolutionChips(
       [
         ...contextualFollowupsFromAnswer({
@@ -1431,6 +1509,48 @@ export async function runLargoQueryStream(
     const envelope = envelopeFromContract(text, question, capturedResults, marketEvidence);
     // The turn id rides on the envelope so a follow-up can name the exact turn it refers to.
     if (envelope && turnId != null) envelope.turnId = turnId;
+
+    // PHASE 4 INTEGRATION: Build response components from detected intent
+    // The intent was already detected in buildDynamicSystem; use it for component generation
+    const binaryIntent = analyzeLargoQuestion(question, history.slice(0, -1));
+    const intentCategory = detectIntentCategory(question, binaryIntent);
+    let responseComponents: Awaited<ReturnType<typeof buildResponseComponents>> | null = null;
+    if (envelope && intentCategory) {
+      try {
+        // Build a minimal orchestration result for component generation
+        const orchestrationResult = {
+          intentCategory: {
+            category: intentCategory.category,
+            confidence: 0.85,
+            responseDepth: intentCategory.depth ?? "standard",
+            requiredSystems: [],
+            optionalSystems: [],
+            needsDeskRead: intentCategory.category === "TRADE_INTENT",
+            needsHistoricalContext: intentCategory.historical ?? false,
+          },
+          consensus: {
+            reads: [],
+            agreement: { voting: 0, bullish: 0, bearish: 0, neutral: 0, verdict: "neutral", direction: "neutral", averageStrength: 0 },
+            contradictions: [],
+          },
+          deskRead: undefined,
+          selectedTools: { required: toolsUsed, optional: [] },
+          envelopeStructure: {
+            headlineOnly: false,
+            includeSystemReads: true,
+            includeLevels: false,
+            includeDeskRead: false,
+            includeScenarios: false,
+            includeFollowUps: false,
+          },
+          toolResults: {},
+        };
+        responseComponents = buildResponseComponents(orchestrationResult as any, envelope.headline ?? "");
+      } catch (err) {
+        console.warn("[largo] response-component build failed:", err instanceof Error ? err.message : String(err));
+      }
+    }
+
     const followups = withResolutionChips(
       [
         ...contextualFollowupsFromAnswer({
