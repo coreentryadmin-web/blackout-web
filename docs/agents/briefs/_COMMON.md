@@ -161,6 +161,41 @@ about your product. Get a session cookie via `mintClerkPremiumSession` (temp Cle
 market hours** — a page renders, a panel overlaps, a click misbehaves whether or not the tape is
 moving. Do this routinely, not only when a code read makes you suspicious.
 
+**A single screenshot is not enough — browse like a human, don't just photograph the landing
+state.** `proxy-browser.cjs` as shown above renders one URL and saves one PNG; it does not click,
+type, zoom, or toggle anything. Most real defects (a filter that breaks a panel, a search that
+returns nothing, a zoomed chart that loses its axis, a tab that never repaints) only show up once
+you actually interact with the page the way a member would. The same CONNECT-tunnel technique
+that makes `proxy-browser.cjs` work extends directly to a normal Playwright script — write your own
+short script per session rather than reaching for a fixed CLI:
+
+```js
+const { chromium } = require('playwright');
+// same manual CONNECT + tls.connect() tunnel as proxy-browser.cjs, then:
+const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+await context.addCookies([{ name: '__session', value: CK, domain: 'blackouttrades.com', path: '/' }]);
+const page = await context.newPage();
+await context.route('**/*', /* fulfil every request over the tunnel, exactly as proxy-browser.cjs does */);
+await page.goto(url, { waitUntil: 'networkidle' });
+await page.getByRole('tab', { name: 'Depth' }).click();
+await page.getByPlaceholder('Search ticker').fill('NVDA');
+await page.keyboard.press('Enter');
+await page.locator('[data-testid="gex-chart"]').hover();
+await page.mouse.wheel(0, -200); // zoom/pan a chart
+await page.screenshot({ path: 'out.png' });
+```
+
+Two committed harnesses already do exactly this against real product surfaces and are the best
+templates to copy from rather than inventing your own tunnel plumbing:
+`scripts/audit/meridian-interaction-audit.mjs` (tab clicks, tap-target sizing, keyboard focus,
+deep-link reload survival, console-error capture) and `scripts/audit/depth-ladder-ui-audit.mjs`
+(tab navigation + rendered-content assertions on a live chart panel). **Click tabs, open panels and
+drawers, use search fields, change filters/expirations/timeframes, sort tables, hover values, zoom
+and pan charts, toggle overlays/indicators — the same interaction vocabulary
+`docs/ops/X-CONTENT-PLAYBOOK.md` already specifies for the x-content lane, generalized here for
+every product lane.** A page that merely painted its default state on load has not been tested;
+it has been photographed.
+
 **Where the line actually is:** you are not a general product team — stay on your own product's
 surfaces. Do not go looking for unrelated work in another lane's territory, and do not start a
 ground-up redesign; if something needs one, write it up in a PR comment and leave it for a decision.
