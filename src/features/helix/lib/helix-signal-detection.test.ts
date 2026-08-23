@@ -67,7 +67,13 @@ test("detectSplitFlow: fires only when BOTH legs clear the $500K minimum", () =>
   assert.equal(splits[0].ticker, "SPX");
   assert.equal(splits[0].callPremium, 600_000);
   assert.equal(splits[0].putPremium, 550_000);
-  assert.equal(splits[0].direction, "mixed"); // callPct = round(600000/1150000*100) = 52
+  // DETECTION is unchanged; only the direction READ changed. These fixtures carry no `ask_pct`,
+  // so the aggressor side is unknown and the honest answer is `undetermined` — NOT "mixed", which
+  // asserts the flow was read successfully and came back genuinely two-sided.
+  assert.equal(splits[0].direction, "undetermined");
+  assert.equal(splits[0].directional.undetermined, 1_150_000);
+  assert.equal(splits[0].directional.bullish, 0);
+  assert.equal(splits[0].directional.bearish, 0);
 });
 
 test("detectSplitFlow: excludes rows outside the 30-min window and undated rows", () => {
@@ -84,15 +90,59 @@ test("detectSplitFlow: excludes rows outside the 30-min window and undated rows"
   assert.deepEqual(detectSplitFlow(flows, now), []);
 });
 
-test("detectSplitFlow: direction reflects the dominant leg", () => {
+test("detectSplitFlow: direction reads the AGGRESSOR, not the dominant leg", () => {
   const now = Date.now();
   const recentIso = new Date(now - 5 * 60_000).toISOString();
-  const bullish: MinimalFlow[] = [
-    flow({ ticker: "IWM", option_type: "CALL", premium: 900_000, alerted_at: recentIso }),
-    flow({ ticker: "IWM", option_type: "PUT", premium: 550_000, alerted_at: recentIso }),
+
+  // The case that proves the change. Call premium DOMINATES (900k vs 550k), so the old
+  // option_type-only rule called this bullish. But the calls were SOLD (ask_pct 5) and the puts
+  // were BOUGHT (ask_pct 95) — short calls and long puts, which is bearish on both legs.
+  // MEASURED live 2026-08-23: this disagreement sign-flips 37 of 83 tickers (44.6%).
+  const callHeavyButSold: MinimalFlow[] = [
+    flow({ ticker: "IWM", option_type: "CALL", premium: 900_000, ask_pct: 5, alerted_at: recentIso }),
+    flow({ ticker: "IWM", option_type: "PUT", premium: 550_000, ask_pct: 95, alerted_at: recentIso }),
   ];
-  const [entry] = detectSplitFlow(bullish, now);
-  assert.equal(entry.direction, "bullish"); // 900k/1450k = 62% >= 60
+  const [entry] = detectSplitFlow(callHeavyButSold, now);
+  assert.equal(entry.callPct, 62, "the call leg still dominates — detection is unchanged");
+  assert.equal(entry.direction, "bearish", "sold calls + bought puts is bearish, however the legs split");
+  assert.equal(entry.directional.bearish, 1_450_000);
+  assert.equal(entry.directional.bullish, 0);
+
+  // And the mirror: put premium dominates, but the puts were SOLD and the calls BOUGHT.
+  const putHeavyButSold: MinimalFlow[] = [
+    flow({ ticker: "IWM", option_type: "PUT", premium: 900_000, ask_pct: 5, alerted_at: recentIso }),
+    flow({ ticker: "IWM", option_type: "CALL", premium: 550_000, ask_pct: 95, alerted_at: recentIso }),
+  ];
+  assert.equal(detectSplitFlow(putHeavyButSold, now)[0].direction, "bullish");
+});
+
+test("detectSplitFlow: a verdict resting on a minority of the premium is not a verdict", () => {
+  const now = Date.now();
+  const recentIso = new Date(now - 5 * 60_000).toISOString();
+  // 600k readable-bullish against 1.4M unreadable. Reporting "bullish" here would let a third of
+  // the premium decide for the whole ticker while the rest was never read at all.
+  const mostlyUnread: MinimalFlow[] = [
+    flow({ ticker: "AMD", option_type: "CALL", premium: 600_000, ask_pct: 95, alerted_at: recentIso }),
+    flow({ ticker: "AMD", option_type: "PUT", premium: 700_000, alerted_at: recentIso }),
+    flow({ ticker: "AMD", option_type: "PUT", premium: 700_000, alerted_at: recentIso }),
+  ];
+  const [entry] = detectSplitFlow(mostlyUnread, now);
+  assert.equal(entry.direction, "undetermined");
+  assert.equal(entry.directional.undetermined, 1_400_000);
+});
+
+test("detectSplitFlow: genuinely two-sided flow is MIXED, which is not the same as unread", () => {
+  const now = Date.now();
+  const recentIso = new Date(now - 5 * 60_000).toISOString();
+  // Both legs bought: long calls (bullish) and long puts (bearish), near enough to even that
+  // neither side clears the 60/40 margin. Read successfully; genuinely two-sided.
+  const twoSided: MinimalFlow[] = [
+    flow({ ticker: "NVDA", option_type: "CALL", premium: 1_000_000, ask_pct: 95, alerted_at: recentIso }),
+    flow({ ticker: "NVDA", option_type: "PUT", premium: 1_000_000, ask_pct: 95, alerted_at: recentIso }),
+  ];
+  const [entry] = detectSplitFlow(twoSided, now);
+  assert.equal(entry.direction, "mixed");
+  assert.equal(entry.directional.undetermined, 0, "nothing was unread — MIXED and UNDETERMINED are different facts");
 });
 
 // ── §9.0 — signal eligibility is stated once, and both detectors read it ───────────────────────
