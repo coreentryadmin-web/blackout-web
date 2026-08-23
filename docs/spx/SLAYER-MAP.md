@@ -399,6 +399,20 @@ Two specific defects inside the formula, beyond the calibration question:
 2. **Gates never revise it.** Confidence is fixed before `evaluatePlayGates` runs, so a play held
    by four gates reports the same conviction as one that passed clean (§4).
 
+**MEASURED 2026-08-23 — it is worse than "uncalibrated": it is a CONSTANT.** Across every closed
+play in production, **51 of 51 over 54.3 days, `confidence` is 96** — the clamp ceiling, zero
+variance. The `factors.length * 3` term contributes 24–42 points on a typical 8–14 factor desk, so
+anything clearing the entry thresholds (full 52 / starter 48 / cold-buy 78) saturates the cap. The
+desk renders it to members as `"{n}% conviction"` per play. It has said 96 for eight weeks.
+
+Measured with `scripts/audit/spx-confidence-calibration.mjs`. On the same 51 plays the substitutes
+this map recommended are themselves weak: `r(|score|, win) = 0.172`, `r(grade_rank, win) = −0.038`
+— n=51, indicative only, but `grade` shows no signal in this sample and should not be presented as
+a calibrated stand-in.
+
+**The Largo boundary is fixed (#2646); the member-facing number is not.** That is with the
+coordinator, since they directed it be left alone when the field was believed merely uncalibrated.
+
 The tool *description* for `get_spx_confluence` (`tool-defs.ts:506`) lists action, bias, score,
 grade, agreeing/conflicting factors, levels — and **does not mention confidence at all**. So the
 field is arriving undocumented as well as uncalibrated.
