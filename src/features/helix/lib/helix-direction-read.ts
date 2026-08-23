@@ -82,8 +82,17 @@ export type DirectionRead = {
   minorityEvidence: boolean;
 };
 
-/** Below this share of readable premium, a directional colour is not honest. */
-export const MIN_READABLE_PCT_FOR_COLOR = 50;
+/**
+ * Below this share of readable premium, a direction verdict is not honest.
+ *
+ * RENAMED from `MIN_READABLE_PCT_FOR_VERDICT` (2026-08-23). That name was accurate when this module
+ * only decided a bar's colour on one panel. It is not any more: #2718 put `direction` and
+ * `direction_minority_evidence` into `get_helix_tape_analytics`, and the tool description
+ * instructs the model to state the readable share before quoting any direction. So this threshold
+ * now governs **what Largo tells a member**, not just a fill style — and a name saying "FOR_COLOR"
+ * invites someone to retune it as a display preference without realising they moved the AI's
+ * evidence bar with it. The coupling is real either way; the old name hid it. */
+export const MIN_READABLE_PCT_FOR_VERDICT = 50;
 
 export function readDirection(flows: readonly DirectionReadFlow[]): DirectionRead {
   const premium = directionalPremium(flows);
@@ -91,7 +100,7 @@ export function readDirection(flows: readonly DirectionReadFlow[]): DirectionRea
   const total = readable + premium.undetermined;
 
   const readablePct = total > 0 ? (readable / total) * 100 : null;
-  const minorityEvidence = readablePct == null || readablePct < MIN_READABLE_PCT_FOR_COLOR;
+  const minorityEvidence = readablePct == null || readablePct < MIN_READABLE_PCT_FOR_VERDICT;
 
   // `directionLabel` already refuses when unreadable > readable. The extra gate here is the same
   // rule stated as a share so the SURFACE can use the number, not a second threshold: at exactly
