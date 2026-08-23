@@ -12,10 +12,11 @@
  * 5. **Depth upgrade** — if minimal answer was given, offer deeper variant
  */
 
-import type { IntentCategory } from "./intent-classifier";
+import type { QuestionIntentCategory } from "./question-intent-category";
 import type { OrchestrationResult } from "./adaptive-response-orchestrator";
 import type { ConsensusMatrix } from "./consensus-read-extract";
 import type { DeskReadDecision } from "./desk-read-decision";
+import type { LargoProduct } from "./registry/capability-registry";
 
 export interface FollowUpSuggestion {
   /** The suggested question text */
@@ -23,7 +24,7 @@ export interface FollowUpSuggestion {
   /** Why this follow-up matters now (brief reason) */
   reason: string;
   /** Intent category this question would trigger */
-  suggestedIntent: IntentCategory;
+  suggestedIntent: QuestionIntentCategory;
   /** Priority: 1=critical, 2=important, 3=nice-to-have */
   priority: 1 | 2 | 3;
   /** The missing context that makes this relevant */
@@ -73,7 +74,7 @@ export function suggestFollowUpQuestions(
    * SYSTEM GAP — which major systems are missing from consensus
    */
   const systemsRead = new Set(consensus.reads.map((r) => r.system));
-  const majorSystems = ["HELIX", "THERMAL", "VECTOR", "SPX_SLAYER", "MERIDIAN", "NIGHT_HAWK"];
+  const majorSystems = ["HELIX", "THERMAL", "VECTOR", "SPX_SLAYER", "MERIDIAN", "NIGHT_HAWK"] as const;
   const missingMajor = majorSystems.filter((s) => !systemsRead.has(s));
 
   if (missingMajor.length > 0 && (category === "MARKET_READ" || category === "COMPARISON")) {
