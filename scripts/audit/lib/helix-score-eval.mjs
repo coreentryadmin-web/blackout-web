@@ -143,3 +143,80 @@ export function scoreSeparation(summary, minN = 30) {
     excluded,
   };
 }
+
+/**
+ * Option roots the EQUITY aggregates endpoint cannot answer.
+ *
+ * MEASURED, not assumed (2026-08-23, `fetchAggBars(t, 1, "minute", "2026-08-21", ...)` — the exact
+ * call the probe makes): SPY **893 bars**, QQQ **923**; SPX, SPXW, RUT, NDX, VIX and XSP each
+ * **0 bars**. Cash indices do not live in the equity namespace, and the tape carries the OPTION
+ * root, so they arrive as bare symbols that endpoint will not serve.
+ *
+ * WHY THIS EXISTS AS A LIST AND NOT A COMMENT. `helix-score-signal.mjs` used to carry the claim in
+ * prose — *"in practice they are also Group B (no `event_at`), so they are already excluded from
+ * the gradeable set before this matters"* — and that safety argument was **wrong in both halves**.
+ * SPXW, SPX and RUT prints arrive through the `flow_alerts` channel, so they are **Group A** and
+ * always carried an `event_at`; and #2723 retired the `event_at` half of the reasoning outright.
+ * Measured on the live tape: **160 index-root prints reached the candidate set — SPXW 61, SPY 79,
+ * SPX 18, RUT 2** — of which **81 can never be graded**. They were counted in the reported
+ * `gradeable` denominator and spent slots out of the 800-row sample budget on fetches that return
+ * nothing.
+ *
+ * SPY IS DELIBERATELY ABSENT. It is an ETF, it is in the equity namespace, and it grades normally.
+ * The old comment's grouping of "SPX/SPXW/NDX/RUT/VIX" never included it either — but a reader
+ * skimming "index roots" would reasonably have swept SPY in, dropping 79 gradeable rows.
+ *
+ * The list is a floor, not a guarantee of completeness, which is why `ungradedTickers` below exists:
+ * an unlisted root must SURFACE as a named zero-graded ticker rather than silently shrink the
+ * sample.
+ */
+export const NON_EQUITY_ROOTS = Object.freeze(["SPX", "SPXW", "NDX", "RUT", "VIX", "XSP"]);
+
+/** Can this ticker be graded on equity minute bars at all? */
+export function isEquityGradeable(ticker) {
+  return !NON_EQUITY_ROOTS.includes(String(ticker ?? "").toUpperCase());
+}
+
+/**
+ * Split candidates into what can be graded and what structurally cannot.
+ *
+ * Returns the excluded rows' tickers WITH counts rather than a bare number: "81 excluded" invites
+ * the reader to assume noise, while "SPXW 61, SPX 18, RUT 2" is checkable and shows immediately if
+ * something unexpected is being dropped. Same rule this probe already applies to buckets it refuses
+ * to score (n<30) — name what you dropped.
+ */
+export function partitionGradeable(rows) {
+  const gradeable = [];
+  const excluded = new Map();
+  for (const r of rows ?? []) {
+    if (isEquityGradeable(r?.ticker)) gradeable.push(r);
+    else excluded.set(r.ticker, (excluded.get(r.ticker) ?? 0) + 1);
+  }
+  return {
+    gradeable,
+    excludedCount: (rows ?? []).length - gradeable.length,
+    excludedByTicker: Array.from(excluded).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])),
+  };
+}
+
+/**
+ * Tickers that reached grading and produced ZERO graded rows.
+ *
+ * The backstop for `NON_EQUITY_ROOTS` being incomplete. A root nobody listed still gets fetched,
+ * still returns nothing, and would otherwise just quietly shrink the graded count — which reads as
+ * thin data rather than as a symbol the probe cannot price. Named here so it is visible on every
+ * run. `minRows` avoids reporting a ticker that simply had one print outside bar tolerance.
+ */
+export function ungradedTickers(graded, minRows = 3) {
+  const tally = new Map();
+  for (const g of graded ?? []) {
+    const cur = tally.get(g.ticker) ?? { total: 0, graded: 0 };
+    cur.total++;
+    if (g.graded) cur.graded++;
+    tally.set(g.ticker, cur);
+  }
+  return Array.from(tally)
+    .filter(([, v]) => v.graded === 0 && v.total >= minRows)
+    .sort((a, b) => b[1].total - a[1].total || a[0].localeCompare(b[0]))
+    .map(([ticker, v]) => ({ ticker, prints: v.total }));
+}

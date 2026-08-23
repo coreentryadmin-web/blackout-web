@@ -49,7 +49,8 @@ const SRC = new URL("../../src/", import.meta.url).pathname;
 
 const { fetchAggBars } = await import(`${SRC}lib/providers/polygon-largo.ts`);
 const { flowDirection } = await import(`${SRC}features/helix/lib/helix-flow-aggression.ts`);
-const { gradeForward, summarizeByBucket, scoreSeparation } = await import("./lib/helix-score-eval.mjs");
+const { gradeForward, summarizeByBucket, scoreSeparation, partitionGradeable, ungradedTickers } =
+  await import("./lib/helix-score-eval.mjs");
 const { mintClerkPremiumSession } = await import("./lib/prod-clerk-session.mjs");
 
 const args = new Map(process.argv.slice(2).map((a) => {
@@ -63,9 +64,16 @@ const BASE = args.get("base") ?? "https://blackouttrades.com";
 const CONCURRENCY = 8;
 
 // Index roots do not live in the equity namespace — the tape carries the option root, so SPX/SPXW/
-// NDX/RUT/VIX arrive as bare symbols the equity aggs endpoint will not answer. In practice they are
-// also Group B (no `event_at`), so they are already excluded from the gradeable set before this
-// matters; a ticker that cannot be fetched stays UNGRADED either way.
+// NDX/RUT/VIX arrive as bare symbols the equity aggs endpoint will not answer.
+//
+// This used to continue: "in practice they are also Group B (no `event_at`), so they are already
+// excluded from the gradeable set before this matters." BOTH HALVES WERE WRONG. SPXW, SPX and RUT
+// prints arrive through the `flow_alerts` channel — they are GROUP A and always carried an
+// `event_at` — and #2723 retired the `event_at` reasoning outright by giving every row one.
+// Measured on the live tape: 160 index-root prints reached the candidate set (SPXW 61, SPY 79,
+// SPX 18, RUT 2), of which 81 can never be graded. They inflated the reported `gradeable`
+// denominator and spent slots out of the 800-row sample budget on fetches that return nothing.
+// They are now excluded UP FRONT and REPORTED — see NON_EQUITY_ROOTS / partitionGradeable.
 const ymd = (ms) => new Date(ms).toISOString().slice(0, 10);
 
 const barCache = new Map();
@@ -135,7 +143,12 @@ async function mapLimit(items, limit, fn) {
       return flowDirection(r) !== "undetermined";
     });
 
-    const sample = candidates.slice(0, MAX_ROWS);
+    // Drop what the equity aggs endpoint structurally cannot price, BEFORE the sample is taken.
+    // Doing it here rather than letting the fetch fail is what keeps the reported denominator
+    // honest: an ungradeable row in `candidates` is a row counted as gradeable, and it also eats a
+    // slot out of MAX_ROWS that a gradeable print could have used.
+    const part = partitionGradeable(candidates);
+    const sample = part.gradeable.slice(0, MAX_ROWS);
     const graded = await mapLimit(sample, CONCURRENCY, async (r) => {
       const t = Date.parse(r.event_at);
       const bars = await barsFor(r.ticker, ymd(t));
@@ -153,12 +166,33 @@ async function mapLimit(items, limit, fn) {
     const sep = scoreSeparation(summary);
 
     if (AS_JSON) {
-      console.log(JSON.stringify({ horizon_min: HORIZON_MIN, tape: all.length, candidates: candidates.length, sampled: sample.length, graded: gradedCount, summary, separation: sep }, null, 2));
+      console.log(JSON.stringify({
+        horizon_min: HORIZON_MIN, tape: all.length,
+        candidates: candidates.length,
+        excluded_non_equity: part.excludedCount,
+        excluded_by_ticker: part.excludedByTicker,
+        gradeable: part.gradeable.length,
+        sampled: sample.length, graded: gradedCount,
+        ungraded_tickers: ungradedTickers(graded),
+        summary, separation: sep,
+      }, null, 2));
     } else {
       console.log(`\n=== HELIX SCORE vs FORWARD MOVE — §9.7 ===`);
       console.log(`horizon +${HORIZON_MIN}min · tape ${all.length} rows`);
-      console.log(`gradeable (real event_at + readable direction + numeric score): ${candidates.length} (${(candidates.length / all.length * 100).toFixed(1)}%)`);
-      console.log(`sampled ${sample.length} · actually graded on bars ${gradedCount}`);
+      console.log(`candidates (real event_at + readable direction + numeric score): ${candidates.length} (${(candidates.length / all.length * 100).toFixed(1)}%)`);
+      if (part.excludedCount > 0) {
+        // Named, never a bare count: "81 excluded" invites the reader to assume noise.
+        const names = part.excludedByTicker.map(([t, n]) => `${t} ${n}`).join(", ");
+        console.log(`  minus ${part.excludedCount} on roots the equity aggs endpoint cannot price (${names})`);
+      }
+      console.log(`gradeable: ${part.gradeable.length} · sampled ${sample.length} · actually graded on bars ${gradedCount}`);
+      // Backstop for NON_EQUITY_ROOTS being incomplete: a root nobody listed still fetches nothing,
+      // and would otherwise just shrink the graded count in a way that reads as thin data.
+      const dead = ungradedTickers(graded);
+      if (dead.length) {
+        console.log(`  !! ${dead.length} ticker(s) graded ZERO of their prints — ${dead.map((d) => `${d.ticker} (${d.prints})`).join(", ")}`);
+        console.log(`     an unlisted non-equity root looks exactly like this; check before reading the buckets.`);
+      }
       console.log(`\n  bucket             n     win%    avg fav%   avg premium`);
       for (const b of summary) {
         console.log(`  ${b.bucket.padEnd(16)} ${String(b.n).padStart(4)}   ${b.winRate.toFixed(1).padStart(5)}%  ${b.avgFavorablePct.toFixed(3).padStart(8)}%   $${Math.round(b.avgPremium).toLocaleString().padStart(12)}`);

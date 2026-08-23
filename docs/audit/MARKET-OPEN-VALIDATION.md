@@ -562,16 +562,21 @@ that `new Date()` could not parse.
     survive; only the sample artifacts go.
   - **What to check at the open, then:** that SPX/SPY split flow is firing (it will be, constantly)
     and that SPX velocity is *quiet*. Both are the fix working. n=1 session — re-run the harness on
-    the live session and compare. Capture the before/after firing counts — a large jump is the fix working,
-  but it is also a large change in what members are shown, and it is the coordinator's call whether
-  the thresholds still suit a population 3× larger.
+    the live session and compare.
+  - **The part that is genuinely still open:** this is a large change in what members are shown,
+    and whether the thresholds still suit a population 3× larger is the **coordinator's call** —
+    see §6, where `SPLIT_MIN_LEG`, the unreadable-index-row question and the velocity
+    `max(1, prior)` floor are each recorded with the measurement that raises them.
 - **The coverage note must be GONE, not merely smaller.** It rendered *"Scanned 103 of 500 prints —
   397 (SPX, SPY) carry no reported print time"*. At 5000/5000 eligible the note renders **nothing**
   by design, so on the open both radars should show no coverage line at all. A note still naming
   SPX or SPY means that request's tape disagrees with this measurement — capture it, it is news.
-- **The mobile `~` marker (5f) should mostly disappear** on SPX/SPY rows — they will have real print
-  times rather than ingest estimates. A row still showing `~` after this is a row that genuinely has
-  no parseable time, which is now a much smaller and more interesting population.
+- **The mobile `~` marker (5f) is GONE, not merely rarer** — measured, not projected: **0 of 5000
+  rows** carry `tape_time_estimated`, 0 of 3621 SPX+SPY. `resolveFlowTimes` clears the flag whenever
+  an `event_at` resolves, and every row now has one. A row still showing `~` under a moving tape is
+  therefore a genuine outlier — a print whose `executed_at` the magnitude parser could not read —
+  and is worth capturing rather than ignoring. §5f is rewritten accordingly; do not read "no `~`
+  anywhere" as a failure of #2707.
 - **Sanity-check the times themselves, do not just count them — partly answered.** A magnitude-scaled
   epoch that picked the wrong unit yields a plausible-looking but wrong instant. The 363-minute span
   over 5000 prints above rules out a unit error by three orders of magnitude in either direction.
