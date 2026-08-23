@@ -791,7 +791,31 @@ Ranked. These are the `UNKNOWN`s above, restated as tasks.
    a hand-maintained transcription of what the components render (each carries a `src:` pointer). A
    rename that misses the map makes the script check a fiction. The DOM half belongs to
    `live-ui-interaction-audit.mjs`.
-8. **Confirm `spx-signal-weight-optimize`'s DST correctness** — the other three crons are done.
+8. ~~**Confirm `spx-signal-weight-optimize`'s DST correctness**~~ **DONE 2026-08-23 — and it was
+   not merely unconfirmed, it was UNAUDITABLE.** `cron-dst-audit.mjs` evaluates a hand-curated
+   `GATES` + `INTENTS` list, and this job was **deployed and in neither**, so the audit had never
+   looked at it and still exited 0. That is the audit's own absence-as-health failure mode, inside
+   the instrument.
+
+   **Verdict: OK (UTC-labelled), correct in both offsets.** Verified rather than assumed — the
+   route applies **no ET gate at all**: its window is `observed_at > now − 30 days`, a rolling
+   ABSOLUTE-time lookback. So there is no gate to stop being satisfied (form A) and nothing it must
+   land relative to (form B); a 30-day accuracy report is insensitive to a one-hour shift. Deployed
+   `0 22 * * 1-5`, registry mirror identical, ET span 18:00 EDT / 17:00 EST.
+
+   Two small fixes came out of it. The audit first returned **LABEL DRIFTS**, correctly: its
+   UTC-labelled check asks whether the deployed label owns the hour shift, and
+   `"Nightly 10 PM UTC"` names the UTC time and neither ET rendering. The route's own docstring
+   already stated both, so the registry label was simply short — now
+   `"Nightly 10 PM UTC (6 PM ET in EDT, 5 PM ET in EST)"`, the same form `x-analytics` uses. And
+   the route column was a 27-char literal that this 26-char key exactly filled, so the table
+   silently stopped being a table; the width is now derived from the data.
+
+   **Reported, not fixed — a gap this lane does not own:** `39` jobs are deployed and `27` are in
+   the two tables. The audit now PRINTS the remaining **12** and says they are UNAUDITED, not OK.
+   It deliberately does not fail on them: classifying a job means reading its route, each belongs
+   to the lane that ships it, and a hard failure would turn one lane's unclassified job into every
+   other lane's red build.
 
 ---
 
