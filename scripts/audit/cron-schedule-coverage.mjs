@@ -50,6 +50,8 @@ const INTENTIONALLY_UNSCHEDULED = {
     "Backup + observability only. The primary 5s cadence is the in-process vector-bead-recorder-leader, which does run; the route says so in its first line.",
   "x-engage":
     "Outward-facing social posting, gated on xApiEnabled + xMarketingSilentOnly. Enabling it publishes on our behalf and is a business decision, not a scheduling oversight.",
+  "vector-alerts":
+    "Inert without VECTOR_ALERTS_PUSH, which is NOT set in blackout-production/app/env (verified 2026-08-22 by key name) — the route returns {ok:true,inert:true} even when called, so scheduling it would change nothing. Turning it on is a product decision (a new member-facing push channel), not a scheduling oversight. NOTE: members' rules ARE mirrored to Postgres by VectorPageShell.persistRules for this cron to read, and the panel only ever promises background-TAB delivery, never closed-tab — so nothing member-facing is broken while it sleeps. See docs/audit/VECTOR-MAP.md section 7.",
 };
 
 function fail(msg) {
