@@ -72,6 +72,7 @@ export async function loadMeridianEarningsPrintHistory(
       reaction_pct: rx?.reaction_pct ?? null,
       reaction_measure: rx?.reaction_measure ?? null,
       reaction_settled: rx?.reaction_settled ?? null,
+      reaction_includes_prior_drift: rx?.reaction_includes_prior_drift ?? null,
     };
   });
 

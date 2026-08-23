@@ -50,6 +50,8 @@
 // score and the play were computed over the whole rail, not over the sample the model receives.
 
 import { fitRowsToBudget, LARGO_RESULT_CHAR_BUDGET } from "@/lib/largo/fit-tool-result";
+// Shared with `vector-analytics-fit.ts` — one scope-note convention across both Vector tools.
+import { sectionScope, type VectorSectionScope } from "@/lib/bie/vector-fit-scope";
 
 /**
  * The sentence that stops a sample being read as the universe.
@@ -81,19 +83,8 @@ type UnknownRecord = Record<string, unknown>;
 type Timed = { time?: unknown };
 type LadderRow = { strike?: unknown; isKing?: unknown };
 
-/**
- * Sample-scope disclosure for one trimmed section.
- *
- * Three numbers and a sentence, because a shortened list cannot say any of them for itself: how
- * many rows are here, how many exist, and — the one that actually prevents a wrong answer —
- * whether this is a sample at all.
- */
-export type VectorSectionScope = {
-  returned: number;
-  total: number;
-  truncated: boolean;
-  note: string;
-};
+/** Re-exported so existing importers of this module keep resolving it. */
+export type { VectorSectionScope };
 
 export type VectorFullStateFitScopes = {
   wall_history: VectorSectionScope;
@@ -109,26 +100,6 @@ export type FitVectorFullStateOptions = {
   maxLadderRows?: number;
   maxFlowPrints?: number;
 };
-
-function scope(
-  returned: number,
-  total: number,
-  noun: string,
-  keptDescription: string,
-  aggregateHint: string
-): VectorSectionScope {
-  const truncated = returned < total;
-  const note =
-    total === 0
-      ? // "All 0 samples" reads as a malformed sentence and invites a model to treat it as a parse
-        // failure rather than a real, reportable state. An empty rail before the open is a correct
-        // answer, and `wall_history_empty_reason` already says which kind of empty it is.
-        `No ${noun} on this read.`
-      : truncated
-        ? `${keptDescription} — ${returned} of ${total} ${noun}, a SAMPLE, not the whole set. ${aggregateHint}`
-        : `All ${total} ${noun} on this read.`;
-  return { returned, total, truncated, note };
-}
 
 /** Numeric or null — a ladder `spot` and a bead `time` are both untrusted at this boundary. */
 function num(v: unknown): number | null {
@@ -225,7 +196,7 @@ export function fitVectorFullStateForModel<T extends UnknownRecord>(
   // phrasing breaks it in the safe direction: if a section turns out to fit whole, its real note
   // is SHORTER than what was budgeted for.
   const worstCase = (total: number, noun: string): VectorSectionScope =>
-    scope(total > 0 ? total - 1 : 0, total, noun, "Most recent, ascending by time", AGGREGATE_HINT);
+    sectionScope(total > 0 ? total - 1 : 0, total, noun, "Most recent, ascending by time", AGGREGATE_HINT);
 
   // The wrapper objects go into the base with EMPTY row arrays so their own scalars (`ladder.spot`,
   // `ladder.maxAbs`, `flowMarkers.meta` …) are counted. The rows themselves are fitted through
@@ -266,28 +237,28 @@ export function fitVectorFullStateForModel<T extends UnknownRecord>(
   );
 
   const scopes: VectorFullStateFitScopes = {
-    wall_events: scope(
+    wall_events: sectionScope(
       fitEvents.kept.length,
       events.length,
       "wall events",
       "Most recent, ascending by time",
       AGGREGATE_HINT
     ),
-    ladder_rows: scope(
+    ladder_rows: sectionScope(
       fitLadder.kept.length,
       ladderRows.length,
       "ladder strikes",
       "Nearest spot, with both king strikes retained",
       "`gexWalls` and `wallIntegrity` above rank the whole ladder, not this sample."
     ),
-    flow_prints: scope(
+    flow_prints: sectionScope(
       fitPrints.kept.length,
       prints.length,
       "flow prints",
       "Largest premium first",
       "`flowMarkers.meta` above counts the whole fetch, not this sample."
     ),
-    wall_history: scope(
+    wall_history: sectionScope(
       fitBeads.kept.length,
       beads.length,
       "bead samples",
