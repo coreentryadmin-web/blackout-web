@@ -109,7 +109,7 @@ const LANE_TOOLS = [
   // probing only the fat ones cannot tell those apart.
   ["get_spx_pulse", ""],
   // ── Full coverage (102 additional tools, all remaining from tool-defs.ts) ─────────────────────
-  // Added 2026-08-23 for comprehensive 127-tool truncation validation. Default arguments ("") are
+  // Added 2026-08-23 for comprehensive 129-tool truncation validation. Default arguments ("") are
   // safe for all tools; optional-argument tools will omit the args if empty string is passed.
   ["get_ah_movers", ""],
   ["get_analyst_ratings", ""],
