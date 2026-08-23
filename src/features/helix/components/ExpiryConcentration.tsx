@@ -5,11 +5,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import { fmtPremium, type FlowAlert } from "@/lib/api";
 import { daysToExpiry } from "@/features/helix/lib/helix-flow-format";
 import {
-  horizonDirection,
-  horizonDirectionTitle,
-  horizonTone,
-  type HorizonDirection,
-} from "@/features/helix/lib/helix-expiry-horizon";
+  readDirection,
+  readDirectionTitle,
+  directionTone,
+  type DirectionRead,
+} from "@/features/helix/lib/helix-direction-read";
 import { Panel } from "@/components/ui";
 
 type Bucket = {
@@ -21,7 +21,7 @@ type Bucket = {
   total: number;
   count: number;
   /** Aggression-aware verdict plus the share of premium it could actually be read from. */
-  direction: HorizonDirection;
+  direction: DirectionRead;
 };
 
 /**
@@ -113,7 +113,7 @@ export function ExpiryConcentration({ alerts, loading }: { alerts: FlowAlert[]; 
           putPremium,
           total,
           count,
-          direction: horizonDirection(flows),
+          direction: readDirection(flows),
         } as Bucket;
       })
       .filter((b) => b.total >= 50_000);
@@ -133,10 +133,10 @@ export function ExpiryConcentration({ alerts, loading }: { alerts: FlowAlert[]; 
           // Colour comes from the aggression-aware read, not from call-vs-put premium: a SOLD call
           // is bearish, and by the old rule every one of the four horizons rendered green while
           // disagreeing with the rule the rest of this page already uses.
-          const tone = horizonTone(b.direction);
+          const tone = directionTone(b.direction);
           const isBull = tone === "bull";
           const isBear = tone === "bear";
-          const dirTitle = horizonDirectionTitle(b.direction);
+          const dirTitle = readDirectionTitle(b.direction);
           return (
             <motion.div
               key={b.label}
