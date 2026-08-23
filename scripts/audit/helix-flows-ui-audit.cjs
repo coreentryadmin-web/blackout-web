@@ -77,6 +77,23 @@ const ROUTE_BUCKETS = [
  * One in-page probe. Returns a plain object, or `undefined` if it threw — the caller treats
  * `undefined` as HARNESS, never as a clean result.
  */
+/**
+ * THE ONE PARSING RULE THIS FILE RUNS ON — it cost three separate false failures to learn.
+ *
+ * `textContent` has NO SEPARATORS. Adjacent elements concatenate with nothing between them, so a
+ * badge that reads "500 · 28h ago" on screen arrives as `…Filters500 · 28h agoFloor$200K…`, and a
+ * panel row reading "OTHER 496 100% $964.9M" arrives as `OTHER496100%$964.9M`.
+ *
+ * Two consequences, and every pattern below obeys both:
+ *   - separators are `\s*` / `\D*`, never `\s+`;
+ *   - **never assert `\b` at a token's TRAILING edge.** "ago" glued to "Floor" is word→word, so
+ *     `ago\b` does not match; "OTHER" glued to "496" is word→word, so `\bOTHER\b` does not match.
+ *     A leading `\b` is safe and is kept.
+ *
+ * Each of those produced a confident "the panel did not render" / "no age rendered" against a page
+ * whose own screenshot showed the value plainly. If a probe here ever reports something missing,
+ * suspect this rule before suspecting the product.
+ */
 async function probe(page) {
   return page
     .evaluate((BUCKETS) => {
@@ -103,11 +120,18 @@ async function probe(page) {
       // had rendered all three correctly. Search anywhere, then take the SMALLEST matching
       // container so the panel is returned rather than its ancestor (every ancestor up to <body>
       // also "contains" the title).
+      const PANEL_MIN_TEXT = 60;
       const panelByTitle = (title) => {
         const all = Array.from(document.querySelectorAll("div,section,article"));
         const hits = all.filter((el) => text(el).includes(title));
         if (!hits.length) return null;
-        return hits.reduce((best, el) => (text(el).length < text(best).length ? el : best), hits[0]);
+        // Smallest container that carries CONTENT beyond the title. Taking the smallest match
+        // outright returns the title node itself — which then fails every content check and
+        // reports "rendered but is empty" against panels that had rendered fine. Falls back to the
+        // smallest match so a genuinely tiny panel is still returned rather than dropped.
+        const withContent = hits.filter((el) => text(el).length >= PANEL_MIN_TEXT);
+        const pool = withContent.length ? withContent : hits;
+        return pool.reduce((best, el) => (text(el).length < text(best).length ? el : best), pool[0]);
       };
 
       /**
@@ -129,9 +153,43 @@ async function probe(page) {
       const routeText = text(routePanel);
       // Bucket label followed by its count and pct, e.g. "UNREPORTED 3500 70% $9.9B".
       const buckets = {};
-      for (const b of BUCKETS) {
-        const m = routeText.match(new RegExp(`\\b${b}\\b[^0-9]*([0-9,]+)\\s+([0-9]+)%`));
-        if (m) buckets[b] = { count: Number(m[1].replace(/,/g, "")), pct: Number(m[2]) };
+      /**
+       * PARSE ELEMENTS, NOT FLATTENED TEXT.
+       *
+       * Regexing the panel's concatenated textContent cannot work here and the failure is SILENT.
+       * A row reading "OTHER 496 100% $964.9M" arrives glued as `OTHER496100%$964.9M`, and
+       * `OTHER\D*(\d[\d,]*)\D*?(\d+)%` backtracks to the SHORTEST legal split — count `49610`,
+       * pct `0`. Every bucket then reported 0%, no bucket exceeded the dominance threshold, and the
+       * harness returned **PASS** on a panel the screenshot showed at OTHER 100%. A false pass is
+       * worse than a false failure: nobody investigates it.
+       *
+       * The DOM already carries the boundaries the flattened string threw away, so read the LEAF
+       * elements of each row and take the tokens whole.
+       */
+      const leafTokens = (el) =>
+        Array.from(el.querySelectorAll("*"))
+          .filter((n) => n.children.length === 0)
+          .map((n) => (n.textContent ?? "").trim())
+          .filter(Boolean);
+
+      if (routePanel) {
+        // Each bucket's label is its own leaf ("OTHER"); its row is the nearest ancestor that also
+        // holds the count and the pct.
+        for (const leaf of Array.from(routePanel.querySelectorAll("*")).filter((n) => n.children.length === 0)) {
+          const label = (leaf.textContent ?? "").trim().toUpperCase();
+          if (!BUCKETS.includes(label)) continue;
+          let row = leaf.parentElement;
+          for (let up = 0; up < 4 && row; up++) {
+            const toks = leafTokens(row);
+            const pctTok = toks.find((t) => /^\d+%$/.test(t));
+            const countTok = toks.find((t) => /^[\d,]+$/.test(t));
+            if (pctTok && countTok) {
+              buckets[label] = { count: Number(countTok.replace(/,/g, "")), pct: Number(pctTok.slice(0, -1)) };
+              break;
+            }
+            row = row.parentElement;
+          }
+        }
       }
 
       const routeState = panelState("Route Breakdown");
@@ -139,11 +197,7 @@ async function probe(page) {
       const expiryState = panelState("Expiry Concentration");
 
       // ---- Freshness badge: the age string the desk renders ("42s ago" / "7m ago" / "3h ago").
-      // `\s*`, not `\s+`, before "ago": the badge renders the number and the word in ADJACENT
-      // elements, so textContent concatenates them with no separator ("28hago"). Requiring
-      // whitespace reported "no freshness age rendered" against a badge that plainly reads
-      // "500 · 28h ago" on screen — visible in the run's own screenshot.
-      const ageMatch = bodyText.match(/\b(\d+)\s*(s|m|h)\s*ago\b/);
+      const ageMatch = bodyText.match(/\b(\d+)\s*(s|m|h)\s*ago/);
 
       // ---- Layout health.
       const horizontalOverflow = document.documentElement.scrollWidth > window.innerWidth + 1;
@@ -167,7 +221,15 @@ async function probe(page) {
           present: expiryState.located, inBodyText: expiryState.inBodyText,
           hasContent: text(expiryState.el).length > 40,
         },
-        freshness: { ageText: ageMatch ? ageMatch[0] : null },
+        freshness: {
+          ageText: ageMatch ? ageMatch[0] : null,
+          // A 90-char window around the word "ago", captured so a parse miss can be diagnosed
+          // from the run output instead of requiring another live round-trip.
+          agoContext: (() => {
+            const i = bodyText.indexOf("ago");
+            return i === -1 ? null : bodyText.slice(Math.max(0, i - 60), i + 30);
+          })(),
+        },
         layout: { horizontalOverflow, visibleError, scrollWidth: document.documentElement.scrollWidth, innerWidth: window.innerWidth },
       };
     }, ROUTE_BUCKETS)
@@ -338,6 +400,9 @@ async function runViewport(session, vp) {
       if (r.snap?.route?.bucketCount) {
         const b = Object.entries(r.snap.route.buckets).map(([k, v]) => `${k} ${v.pct}%`).join(" · ");
         console.log(`   route buckets: ${b}`);
+      }
+      if (r.snap?.freshness?.ageText == null && r.snap?.freshness?.agoContext) {
+        console.log(`   freshness context: …${r.snap.freshness.agoContext}…`);
       }
       if (r.shot) console.log(`   shot: ${r.shot}`);
     }

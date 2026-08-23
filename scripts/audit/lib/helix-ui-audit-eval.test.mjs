@@ -122,3 +122,38 @@ test("a panel allowed to be empty by design does not fail when absent", () => {
     "HARNESS"
   );
 });
+
+test("a parse whose shares do not sum to ~100 is HARNESS, never PASS", () => {
+  // The false-PASS this guard exists for: every bucket parsed as 0% by a backtracking regex,
+  // against a panel the screenshot showed at OTHER 100%. Nothing dominated, so nothing failed.
+  const v = routeBucketVerdict({
+    present: true,
+    buckets: { SWEEP: { count: 3, pct: 0 }, FLOOR: { count: 58, pct: 0 }, OTHER: { count: 4939, pct: 0 } },
+  });
+  assert.equal(v.status, "HARNESS");
+  assert.match(v.detail, /parse is broken/);
+});
+
+test("the sum guard tolerates ordinary rounding but not a broken parse", () => {
+  const rounding = routeBucketVerdict({
+    present: true,
+    buckets: { A: { count: 1, pct: 33 }, B: { count: 1, pct: 33 }, C: { count: 1, pct: 33 } },
+  });
+  assert.equal(rounding.status, "PASS", "99% is ordinary integer rounding");
+  const doubled = routeBucketVerdict({
+    present: true,
+    buckets: { A: { count: 1, pct: 90 }, B: { count: 1, pct: 90 } },
+  });
+  assert.equal(doubled.status, "HARNESS", "180% means rows were counted twice");
+});
+
+test("the real pre-fix panel still reports the §9.8 signature, not a parse fault", () => {
+  // OTHER 100% / FLOOR 0% — measured on production 2026-08-22, sums to 100, so the sum guard
+  // passes it through to the dominance check, which is what must fire.
+  const v = routeBucketVerdict({
+    present: true,
+    buckets: { OTHER: { count: 496, pct: 100 }, FLOOR: { count: 3, pct: 0 } },
+  });
+  assert.equal(v.status, "FAIL");
+  assert.match(v.detail, /OTHER at 100%/);
+});

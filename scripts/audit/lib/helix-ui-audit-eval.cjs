@@ -46,6 +46,23 @@ function routeBucketVerdict(route) {
     // must not be reported as a passing panel.
     return { status: "HARNESS", detail: "Route Breakdown rendered but no bucket could be parsed" };
   }
+  /**
+   * SANITY-CHECK THE PARSE BEFORE JUDGING THE PRODUCT.
+   *
+   * Shares of one panel must sum to ~100. When they do not, the parse is broken and NOTHING about
+   * the panel has actually been measured. This exists because the harness once returned PASS with
+   * every bucket at 0% — a regex backtracking bug — against a panel the screenshot showed at
+   * OTHER 100%. No bucket exceeded the dominance threshold, so the check found nothing to fail on,
+   * and a broken instrument certified a broken panel as healthy.
+   */
+  const sum = entries.reduce((t, [, v]) => t + (Number(v?.pct) || 0), 0);
+  if (sum < 50 || sum > 150) {
+    return {
+      status: "HARNESS",
+      detail: `Route Breakdown shares sum to ${sum}% across ${entries.length} buckets — the parse is broken, nothing was measured`,
+    };
+  }
+
   const dominant = entries.find(([, v]) => Number(v?.pct) >= DOMINANT_BUCKET_PCT);
   if (dominant) {
     return {
