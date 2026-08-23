@@ -262,6 +262,10 @@ test("Risk section appears for TRADE_INTENT PLAY but not NO_TRADE at minimal dep
     deskRead: mockPlayDecision,
   });
 
+  const noTradeMinimal = getProseSectionsForIntent("TRADE_INTENT", "minimal", {
+    deskRead: mockNoTradeDecision,
+  });
+
   // At minimal, PLAY should omit Risk
   assert.strictEqual(
     playMinimal.some((s) => s.section === "Risk"),
