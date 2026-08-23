@@ -24,7 +24,7 @@ export type Signal = {
   action: string;
   grade: string | null;
   score: number | null;
-  confidence: number | null;
+  rawScore: number | null;
   phase: SignalPhase;
   headline: string;
   thesis: string;
@@ -87,7 +87,7 @@ export function spxToSignal(play: SpxPlayPayload): Signal | null {
     action: play.action,
     grade: play.grade ?? null,
     score: Number.isFinite(play.score) ? play.score : null,
-    confidence: Number.isFinite(play.confidence) ? play.confidence : null,
+    rawScore: Number.isFinite(play.rawScore) ? play.rawScore : null,
     phase: spxPhaseFor(play),
     headline: play.headline || play.idle_message || "SPX desk",
     thesis: play.thesis || play.headline || "",
@@ -116,7 +116,7 @@ export function nighthawkToSignals(edition: NightHawkEdition): Signal[] {
     grade: play.conviction || null,
     score:
       typeof play.score === "number" && Number.isFinite(play.score) ? play.score : null,
-    confidence: null,
+    rawScore: null,
     phase: nighthawkPhaseFor(play, stale),
     headline: `${play.ticker} ${play.direction}`,
     thesis: play.thesis || play.key_signal || "",

@@ -4769,7 +4769,7 @@ export async function insertOpenSpxPlay(
   outcome?: {
     entry_path: string;
     score: number;
-    confidence: number;
+    rawScore: number;
     factors: unknown;
     confirmations: unknown;
     mtf: unknown;
@@ -4850,7 +4850,7 @@ export async function insertOpenSpxPlay(
             outcome.entry_path,
             row.grade,
             outcome.score,
-            outcome.confidence,
+            outcome.rawScore,
             row.entry_price,
             row.stop,
             row.target,
@@ -4951,7 +4951,7 @@ function mapPlayOutcomeRow(r: QueryResultRow): import("@/features/spx/lib/spx-pl
     entry_path: r.entry_path === "watch_promote" ? "watch_promote" : "cold_buy",
     grade: String(r.grade),
     score: Number(r.score),
-    confidence: Number(r.confidence),
+    rawScore: Number(r.confidence),
     entry_price: Number(r.entry_price),
     exit_price: r.exit_price != null ? Number(r.exit_price) : null,
     stop: r.stop != null ? Number(r.stop) : null,
@@ -4976,7 +4976,7 @@ export async function insertPlayOutcomeEntry(row: {
   entry_path: string;
   grade: string;
   score: number;
-  confidence: number;
+  rawScore: number;
   entry_price: number;
   stop: number | null;
   target: number | null;
@@ -5010,7 +5010,7 @@ export async function insertPlayOutcomeEntry(row: {
       row.entry_path,
       row.grade,
       row.score,
-      row.confidence,
+      row.rawScore,
       row.entry_price,
       row.stop,
       row.target,

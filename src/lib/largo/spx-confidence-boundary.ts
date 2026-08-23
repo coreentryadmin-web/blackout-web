@@ -46,19 +46,19 @@ export const SPX_CONFIDENCE_OMITTED =
   "`agreeing` vs `weighted_conflicts` to judge conviction instead.";
 
 /** Shape-agnostic: both SpxConfluence and SpxPlayPayload carry `confidence` at the top level. */
-type MaybeConfidence = { confidence?: unknown } & Record<string, unknown>;
+type MaybeConfidence = { rawScore?: unknown } & Record<string, unknown>;
 
 /**
- * Return `payload` with the uncalibrated `confidence` replaced by a named, explanatory absence.
+ * Return `payload` with the uncalibrated `rawScore` replaced by a named, explanatory absence.
  *
  * Passes `null`/`undefined` and non-objects straight through, and leaves a payload that never
- * carried `confidence` completely untouched — so this is safe to wrap around a tool result whose
+ * carried `rawScore` completely untouched — so this is safe to wrap around a tool result whose
  * shape varies (an `{ error }` object, a degraded payload) without inventing a field on it.
  */
 export function omitUncalibratedSpxConfidence<T>(payload: T): T {
   if (payload == null || typeof payload !== "object" || Array.isArray(payload)) return payload;
   const obj = payload as MaybeConfidence;
-  if (!("confidence" in obj)) return payload;
-  const { confidence: _dropped, ...rest } = obj;
+  if (!("rawScore" in obj)) return payload;
+  const { rawScore: _dropped, ...rest } = obj;
   return { ...rest, confidence_omitted: SPX_CONFIDENCE_OMITTED } as unknown as T;
 }

@@ -183,7 +183,7 @@ function LiveEngineSection({
             direction: play.direction,
             grade: play.grade,
             score: play.score,
-            confidence: play.confidence,
+            rawScore: play.rawScore,
             session_phase: play.session_phase,
             as_of: play.as_of,
             headline: play.headline,

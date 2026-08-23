@@ -8,11 +8,11 @@ import { computeSpxConfluence } from "@/features/spx/lib/spx-signals";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
 
 test("strips confidence and names the absence", () => {
-  const out = omitUncalibratedSpxConfidence({ score: 40, grade: "B", confidence: 61 }) as Record<
+  const out = omitUncalibratedSpxConfidence({ score: 40, grade: "B", rawScore: 61 }) as Record<
     string,
     unknown
   >;
-  assert.ok(!("confidence" in out), "the fabricated percentage must not reach the model");
+  assert.ok(!("rawScore" in out), "the fabricated percentage must not reach the model");
   assert.equal(out.confidence_omitted, SPX_CONFIDENCE_OMITTED);
   // The calibrated-enough structural facts stay — omission must not cost the model real signal.
   assert.equal(out.score, 40);
@@ -91,13 +91,13 @@ test("REGRESSION: confidence is exactly |score|*1.15 + factors.length*3 — a fa
     })
   );
   assert.ok(conflicted, "engine produced a read");
-  // Whatever the exact numbers, the invariant that matters is structural: confidence is built
+  // Whatever the exact numbers, the invariant that matters is structural: rawScore is built
   // from factors.length, which counts BOTH signs, so contradiction cannot lower it on its own.
   const bumped = Math.round(Math.abs(conflicted!.score) * 1.15 + conflicted!.factors.length * 3);
   assert.equal(
-    conflicted!.confidence,
+    conflicted!.rawScore,
     Math.min(96, Math.max(0, bumped)),
-    "confidence is exactly |score|*1.15 + factors.length*3 — a factor COUNT, not a measurement"
+    "rawScore is exactly |score|*1.15 + factors.length*3 — a factor COUNT, not a measurement"
   );
   // And the engine already computes the honest quantities it does not use here.
   assert.ok(typeof conflicted!.agreeing === "number");
@@ -105,7 +105,7 @@ test("REGRESSION: confidence is exactly |score|*1.15 + factors.length*3 — a fa
 
   // The boundary removes it and leaves those honest quantities in place.
   const shipped = omitUncalibratedSpxConfidence(conflicted) as Record<string, unknown>;
-  assert.ok(!("confidence" in shipped));
+  assert.ok(!("rawScore" in shipped));
   assert.equal(shipped.agreeing, conflicted!.agreeing);
   assert.equal(shipped.weighted_conflicts, conflicted!.weighted_conflicts);
   assert.equal(shipped.score, conflicted!.score);

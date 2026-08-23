@@ -36,7 +36,7 @@ export const SPX_FULL_STATE_FIXTURE: SpxPlayPayload = {
   direction: "long",
   grade: "A",
   score: 82,
-  confidence: 91,
+  rawScore: 91,
   headline: "SPX cold buy long, holding above VWAP",
   thesis: "Reclaimed VWAP with EMA20/50 stacked bullish; gamma regime supportive.",
   idle_message: null,

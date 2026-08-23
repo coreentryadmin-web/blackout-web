@@ -74,7 +74,7 @@ export type PowerHourPlayPayload = {
   stop_price: number | null;
   pnl_pts: number | null;
   peak_pnl_pts: number | null;
-  confidence: number;
+  rawScore: number;
   headline: string;
   thesis: string;
   status_message: string;
@@ -268,7 +268,7 @@ function nonePayload(
     stop_price: null,
     pnl_pts: null,
     peak_pnl_pts: null,
-    confidence: 0,
+    rawScore: 0,
     headline: "Power Hour — No Active Play",
     thesis: msgs[reason],
     status_message: msgs[reason],
@@ -321,7 +321,7 @@ function recordToPayload(
     stop_price: rec.stop_price,
     pnl_pts: pnl,
     peak_pnl_pts: rec.peak_pnl_pts || null,
-    confidence: rec.confidence,
+    rawScore: rec.rawScore,
     headline: rec.headline,
     thesis: rec.thesis,
     status_message: phaseMsg[rec.phase],
@@ -363,7 +363,7 @@ export async function evaluateSpxPowerHour(
         thesis: `Power hour closed at ${windowCloseLabel()} · PnL: ${finalPnl >= 0 ? "+" : ""}${finalPnl.toFixed(1)} pts`,
         price,
         grade: "B",
-        score: rec.confidence,
+        score: rec.rawScore,
       });
       return nonePayload("closed_for_today");
     }
@@ -388,7 +388,7 @@ export async function evaluateSpxPowerHour(
           thesis: `Hit ${rec.target_price.toFixed(0)} from ${rec.entry_price.toFixed(2)} · power hour win`,
           price,
           grade: "B",
-          score: rec.confidence,
+          score: rec.rawScore,
         });
         return nonePayload("closed_for_today");
       }
@@ -407,7 +407,7 @@ export async function evaluateSpxPowerHour(
           thesis: `Stopped at ${rec.stop_price.toFixed(0)} from ${rec.entry_price.toFixed(2)}`,
           price,
           grade: "B",
-          score: rec.confidence,
+          score: rec.rawScore,
         });
         return nonePayload("stopped");
       }
@@ -469,7 +469,7 @@ export async function evaluateSpxPowerHour(
         thesis: rec.thesis,
         price,
         grade: "B",
-        score: rec.confidence,
+        score: rec.rawScore,
       });
       return recordToPayload(entered, price, await liveQuoteForPower(entered));
     }
@@ -523,7 +523,7 @@ export async function evaluateSpxPowerHour(
     stop_pts: playPowerHourStopLossPts(),
     stop_price: null,
     peak_pnl_pts: 0,
-    confidence: confluence.confidence,
+    rawScore: confluence.rawScore,
     headline: `Power Hour ${direction === "long" ? "Bullish" : "Bearish"} — ${confluence.grade} grade · score ${abs}`,
     thesis: `${confluence.grade} ${direction === "long" ? "bullish" : "bearish"} confluence into power hour · targeting +${targetPts} pts · ${ticket.contract_label}`,
     started_at: now.toISOString(),

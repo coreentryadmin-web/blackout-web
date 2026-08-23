@@ -71,7 +71,7 @@ export async function maybeLogSpxPlay(
     direction: string | null;
     grade: string;
     score: number;
-    confidence: number;
+    rawScore: number;
     headline: string;
     thesis: string;
     factors: SpxSignalFactor[];
@@ -98,7 +98,7 @@ export async function maybeLogSpxPlay(
     action: play.action,
     bias: play.direction === "long" ? "bullish" : play.direction === "short" ? "bearish" : "neutral",
     score: play.score,
-    confidence: play.confidence,
+    confidence: play.rawScore,
     price: desk.price,
     entry: play.levels?.entry ?? null,
     stop: play.levels?.stop ?? null,

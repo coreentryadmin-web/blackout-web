@@ -72,7 +72,7 @@ function formatEngineState(engine?: EngineState | null): string {
     const tgt = ph.target_price != null ? ph.target_price : `${ph.target_pts}pt`;
     const stp = ph.stop_price != null ? ph.stop_price : `${ph.stop_pts}pt`;
     parts.push(
-      `Power hour: ${ph.phase} ${dir} · ${ph.contract_label} · anchor ${ph.anchor_price}${ph.entry_price != null ? ` · entry ${ph.entry_price}` : ""} · target ${tgt} · stop ${stp} · conf ${ph.confidence}`
+      `Power hour: ${ph.phase} ${dir} · ${ph.contract_label} · anchor ${ph.anchor_price}${ph.entry_price != null ? ` · entry ${ph.entry_price}` : ""} · target ${tgt} · stop ${stp} · score ${ph.rawScore}`
     );
   } else {
     parts.push("Power hour: idle.");
