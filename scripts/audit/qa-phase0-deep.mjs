@@ -120,8 +120,18 @@ const CONTENT_FINGERPRINT = () => {
   return (panel.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 400);
 };
 
-const ACTIVE_TAB_COUNT = () =>
-  document.querySelectorAll('[role=tab][aria-selected="true"], [role=tab].active, [role=tab][data-state=active]').length;
+/**
+ * Active-tab count WITHIN one tablist, not the whole page. A page can legitimately carry more than
+ * one independent `[role=tab]` group (Thermal's Matrix/Gamma-Profile/Forced-Flow view switcher AND
+ * its separate GEX/VEX/DEX/CHARM lens switcher, confirmed live 2026-08-23 — 7 total [role=tab]
+ * elements, one active in each of the two groups). A GLOBAL count reads that healthy state as "2
+ * tabs active" and reports a false defect. Scope to the tablist ancestor (or, lacking one, the
+ * clicked tab's own parent) so each group is judged independently.
+ */
+const ACTIVE_TAB_COUNT_IN_SCOPE = (tabEl) => {
+  const scope = tabEl.closest('[role=tablist]') ?? tabEl.parentElement ?? document;
+  return scope.querySelectorAll('[role=tab][aria-selected="true"], [role=tab].active, [role=tab][data-state=active]').length;
+};
 
 const OVERFLOW = () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1;
 
@@ -136,6 +146,7 @@ async function testTabs(page, route, vpName) {
         inShell: !el.closest("header, nav, [role=navigation], footer"),
         visible: el.getBoundingClientRect().width > 2,
         label: (el.getAttribute("aria-label") ?? el.textContent ?? "").trim().slice(0, 40),
+        wasActive: el.getAttribute("aria-selected") === "true" || el.classList.contains("active") || el.getAttribute("data-state") === "active",
       }))
       .catch(() => null);
     if (!meta || !meta.inShell || !meta.visible) continue;
@@ -156,17 +167,38 @@ async function testTabs(page, route, vpName) {
     // page/tab — a transient render/proxy race, not a product defect. A same-route client-side
     // navigation (e.g. this app's `router.replace` on view switches) can legitimately leave the DOM
     // in a brief inconsistent state; only report a defect if it is STILL wrong after settling.
+    // -1 is this function's OWN catch-fallback, not a DOM reading: `h.evaluate` throws when the
+    // clicked tab's node was replaced (not just re-attributed) by the click's re-render — some
+    // lens switchers remount their buttons rather than toggling aria-selected in place. That is a
+    // stale-handle limitation of this harness, not evidence the DOM is wrong, so it is tracked
+    // separately from a genuine "wrong count read successfully" result.
     let activeCount = -1;
+    let handleWentStale = false;
     for (let poll = 0; poll < 5; poll++) {
-      activeCount = await page.evaluate(ACTIVE_TAB_COUNT).catch(() => -1);
+      activeCount = await h.evaluate(ACTIVE_TAB_COUNT_IN_SCOPE).catch(() => {
+        handleWentStale = true;
+        return -1;
+      });
       if (activeCount === 1) break;
       await page.waitForTimeout(400);
     }
-    if (activeCount !== 1) {
-      record({ severity: "P2", route, viewport: vpName, where: `tab:${meta.label}`, issue: `${activeCount} tabs marked active 3s after click and settling (expected exactly 1)` });
+    if (handleWentStale && activeCount === -1) {
+      record({
+        severity: "HARNESS",
+        route,
+        viewport: vpName,
+        where: `tab:${meta.label}`,
+        issue: "could not re-verify active state after click — the tab's DOM node was replaced (handle went stale), not evidence of a defect on its own",
+      });
+    } else if (activeCount !== 1) {
+      record({ severity: "P2", route, viewport: vpName, where: `tab:${meta.label}`, issue: `${activeCount} tabs marked active in this tab's own tablist, 3s after click and settling (expected exactly 1)` });
     }
-    if (before && after && before === after) {
-      record({ severity: "P2", route, viewport: vpName, where: `tab:${meta.label}`, issue: "clicking this tab produced no observable content change in the panel" });
+    // A tab that was ALREADY active before the click legitimately re-selecting itself is not a
+    // "no content change" defect — re-clicking the current tab is expected to be a no-op. Only
+    // flag when the click was a REAL switch (a different tab becoming active) and content still
+    // didn't move.
+    if (!meta.wasActive && before && after && before === after) {
+      record({ severity: "P2", route, viewport: vpName, where: `tab:${meta.label}`, issue: "clicking this (previously inactive) tab produced no observable content change in the panel" });
     }
   }
   return tested;
@@ -360,13 +392,27 @@ async function runDeep() {
     });
     try {
       const page = await ctx.newPage();
-      const consoleErrors = [];
-      const badResponses = [];
+      let consoleErrors = [];
+      let badResponses = [];
       page.on("console", (m) => {
         if (m.type() === "error") consoleErrors.push(m.text().slice(0, 200));
       });
       page.on("response", (r) => {
         if (r.status() >= 400) badResponses.push(`${r.status()} ${r.url().slice(0, 120)}`);
+      });
+      // A mid-rollout chunk 404 (ecr-push-production.yml fires on every merge to main, including
+      // this lane's own — measured live 2026-08-23, twice, both times racing this exact harness)
+      // can make the app SELF-TRIGGER a reload/redirect after `domcontentloaded` already resolved,
+      // which page.goto()'s own retry loop above cannot see (goto already succeeded). Track it so
+      // the settle-poll below knows to keep waiting, and so pre-reload console noise from the
+      // discarded first attempt isn't blamed on the interaction pass that follows.
+      let lastNavAt = Date.now();
+      page.on("framenavigated", (f) => {
+        if (f === page.mainFrame()) {
+          lastNavAt = Date.now();
+          consoleErrors = [];
+          badResponses = [];
+        }
       });
 
       // Generous retry: this run is precious (one route, several minutes of interaction), so give
@@ -389,7 +435,46 @@ async function runDeep() {
         console.log(`  routed: ${JSON.stringify(counts)}`);
         return;
       }
-      await page.waitForTimeout(4000);
+
+      // SETTLE, don't just wait a fixed beat. A live pass caught two real cases (2026-08-23) where
+      // a fixed 4s wait landed mid self-triggered reload from a mid-rollout chunk error — the
+      // inventory then read 0 interactive elements and 0 findings on a page that, once actually
+      // settled, was fully populated (SPY price, GEX/VEX/DEX/CHARM lenses, wall levels — a normal
+      // Thermal render). That is a FALSE CLEAN, worse than a false positive: "0 findings" reads as
+      // "tested and fine" when it was never actually looked at. Poll for real content, and restart
+      // the clock on every self-triggered navigation so a recovery reload gets its own full window
+      // rather than inheriting whatever was left of the first one.
+      const SETTLE_DEADLINE_MS = 45_000;
+      const settleStart = Date.now();
+      let settled = false;
+      while (Date.now() - settleStart < SETTLE_DEADLINE_MS) {
+        const sinceNav = Date.now() - lastNavAt;
+        if (sinceNav < 2500) {
+          await page.waitForTimeout(2500 - sinceNav);
+          continue;
+        }
+        const probe = await page
+          .evaluate(() => ({
+            ready: document.readyState === "complete",
+            textLen: (document.body?.innerText ?? "").trim().length,
+            interactive: document.querySelectorAll("button, [role=tab], select, [role=switch]").length,
+          }))
+          .catch(() => null);
+        if (probe && probe.ready && (probe.textLen > 200 || probe.interactive > 0)) {
+          settled = true;
+          break;
+        }
+        await page.waitForTimeout(1500);
+      }
+      if (!settled) {
+        record({
+          severity: "HARNESS",
+          route: ROUTE,
+          viewport: VP_NAME,
+          where: "settle",
+          issue: `page never showed meaningful content/interactive elements within ${SETTLE_DEADLINE_MS / 1000}s of navigating — inventory below may be a false empty, not a verified-clean page`,
+        });
+      }
 
       const inv = await page.evaluate(INVENTORY).catch(() => null);
       if (!inv) {
