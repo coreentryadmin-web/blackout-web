@@ -446,7 +446,16 @@ six**, including two matrices 1.7 hours old. So `get_gex_heatmap.walls_by_horizo
 practice, and the model is left with the aggregate and no way to name its scope — the precise
 failure the field was added to prevent.
 
-**FIXED — Phase 1, first fix.** `buildGexHeatmapUncached` now publishes the block, and
+**FIXED — Phase 1, first fix**, and then **partially re-broken and re-fixed within the hour**; the
+follow-up is recorded here because the sequence is the lesson. The live validation this repo's rule
+6 requires caught a defect the whole test suite and CI had passed: on SPX only, the `0DTE` bucket
+carried the FRONT expiry's walls on a closed market, because the overlay's target-expiry parameter
+(named `today`, but resolved by `resolveOdteExpiry`'s front-expiry fallback) was threaded in as the
+session date. NVDA, which has no overlay, was correct at the same instant — the divergence between
+two tickers in one probe is what exposed it. Fixed by splitting the parameter into `odteExpiry` and
+`sessionYmd`; see `docs/audit/findings-staging/2026-08-23-thermal-odte-horizon-session-mixup.md`.
+
+**FIXED — the original defect.** `buildGexHeatmapUncached` now publishes the block, and
 `recomputeNearTermGexStrikeTotals` recomputes it so the SPX 0DTE overlay cannot leave a pre-overlay
 0DTE wall beside a post-overlay flip — the overlay replaces today's column, so 0DTE is the one
 bucket it definitionally invalidates, and that function has now been fixed for this same staleness
