@@ -201,10 +201,34 @@ export function fmtOi(n: number | null | undefined): string {
   return String(Math.round(n));
 }
 
+/**
+ * Implied volatility, rendered from the ONE unit the feed actually uses: a FRACTION (0.17 = 17%).
+ *
+ * WAS: `iv < 3 ? iv * 100 : iv` — a per-row guess at fraction-vs-percent, which is only safe if
+ * the feed is genuinely mixed-unit. MEASURED (live prod tape, 3500 rows carrying IV, 2026-08-22):
+ * min 0.07, p25 0.13, median 0.17, p75 0.23 — one fractional mode, no second cluster in the tens.
+ * The feed is uniform, so the branch had nothing to disambiguate and only ever mis-scaled its own
+ * tail.
+ *
+ * WHAT THE TAIL ACTUALLY IS, because it changes what "correct" means here. The 148 rows (4.2%) at
+ * or above the old branch point are NOT legitimately high-IV contracts. Every one is SPY, expiry
+ * 2026-08-21, `dte: -1` — EXPIRED, deep-in-the-money calls (365C/400C/500C against a ~640 spot),
+ * mean DTE 3d against the body's 146d. An expiring deep-ITM option is almost entirely intrinsic,
+ * so the provider's IV solve is degenerate and returns noise: 106.2, 69.24, 43.12.
+ *
+ * That is why the old branch was worse than either honest alternative. It rendered 106.2 as
+ * **"106%"** — a plausible-looking IV a member has no reason to distrust. Rendered in the feed's
+ * real unit it reads "10620%", which is self-evidently not a measurement. Given a choice between
+ * a number that lies quietly and one that announces itself, take the second.
+ *
+ * NOT DONE HERE, deliberately: suppressing IV on contracts where the solve is degenerate. That
+ * needs a threshold nobody has justified — real 0DTE contracts do trade at several hundred percent
+ * — and "which IV readings are meaningless" is a product question. Written up in HELIX-MAP §9.4
+ * rather than decided by a magic number in a formatter.
+ */
 export function fmtIv(iv: number | null | undefined): string {
   if (iv == null || !Number.isFinite(iv) || iv <= 0) return "—";
-  if (iv < 3) return `${(iv * 100).toFixed(0)}%`;
-  return `${iv.toFixed(0)}%`;
+  return `${(iv * 100).toFixed(0)}%`;
 }
 
 export function fmtOtm(pct: number | null | undefined): string {
