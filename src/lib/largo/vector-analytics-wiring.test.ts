@@ -175,9 +175,17 @@ test("get_vector_full_state returns an honest envelope, not a bare null", () => 
   assert.match(reads, /reason: "no_live_vector_state"/);
   // A throw is a THIRD state and must not be collapsed into "no live spot".
   assert.match(reads, /reason: "vector_full_state_failed"/);
-  // The success path must return the state UNCHANGED — get_ecosystem_context's documented
-  // "exact same object" promise depends on the populated case not being wrapped.
-  assert.match(reads, /if \(state\) return state;/);
+  // The success path must return the state FITTED for the model. It used to return it unchanged,
+  // and that is what shipped the truncation defect: the raw state carries the whole bead rail and
+  // runs up to 948x the 16,000-char tool_result cap during RTH, so the transport head-sliced it
+  // and the model lost every field after `wallHistory` — the absence report and freshness block
+  // included. get_ecosystem_context's "exact same object" promise still holds because BOTH sides
+  // call the SAME helper (asserted in ecosystem-context.test.ts).
+  assert.match(reads, /if \(state\) return fitVectorFullStateForModel\(state\);/);
+  assert.ok(
+    !/if \(state\) return state;/.test(reads),
+    "returning the raw state re-introduces the transport truncation"
+  );
 });
 
 test("the description tells the model what the envelope means", () => {

@@ -6,6 +6,7 @@ import { getFlowTapeSummary } from "@/lib/platform/flow-service";
 import { enrichFlowsWithGex, type GexProximityLabel } from "@/lib/flow-gex-enrichment";
 import { getGexPositioning, type GexPositioning } from "@/lib/providers/gex-positioning";
 import { fetchVectorFullState, type VectorFullState } from "@/lib/bie/vector-full-state";
+import { fitVectorFullStateForModel } from "@/lib/bie/vector-full-state-fit";
 // Track-B/#60 data-arsenal readers — folded into the shared ecosystem context (relevance-gated by
 // ticker class below) so EVERY composer that reads fetchEcosystemContext (the ecosystem narrative,
 // the ticker verdict, …) can cite macro/earnings/fundamentals/peers/news, not just the #59 verdict.
@@ -541,7 +542,7 @@ const ECOSYSTEM_CONTEXT_FIELD_DESCRIPTIONS: Record<Exclude<keyof EcosystemContex
   flow_feed_fresh: "Whether the live HELIX flow pipeline is actually delivering frames right now, cluster-wide — disambiguates a null/empty recent_flow or recent_anomalies as 'unknown' rather than 'genuinely quiet'.",
   gex_positioning: "BlackOut Thermal's canonical dealer gamma/vanna/delta/charm positioning for this ticker — the exact same object getGexPositioning() returns for the Heat Maps UI, the SPX rail, and Night Hawk's positioning read (spot, flip, call/put wall, max pain, gex_king_strike, net GEX/VEX/DEX/CHARM with posture + regime-read one-liners, nearest_wall, distance_to_flip_pct, optional UW cross-validation). Runs for EVERY ticker, not gated to SPX/SPXW like spx_full_state — GEX positioning isn't a single-instrument product. Distinct from get_positioning (a reshaped, DEX/CHARM-less summary) and get_gex (the raw per-strike chain) — this is the full canonical light contract, in between the two. Null when the shared GEX matrix is cold for this ticker.",
   arsenal: "The #60 data arsenal — Track-B provider readers summarized + relevance-gated by ticker class so any composer can cite them (not just the verdict). Index/ETF tickers get macro backdrop (10y yield, 10y-1y curve, CPI) + market breadth + market catalysts; single names get next-earnings date + short interest (days-to-cover, short-volume ratio) + peers + ticker news. Requested-but-thin legs are surfaced in arsenal.unavailable_sources; irrelevant-for-scope legs are null. Fails open to an empty arsenal — never blanks the rest of the context. Dark-pool levels are NOT duplicated here (already on vector_full_state).",
-  vector_full_state: "Vector's OWN complete live desk state for this ticker — the exact same object Largo's get_vector_full_state tool returns (via fetchVectorFullState(ticker, \"all\")): spot, regime, gamma walls + integrity, gamma flip, magnet, wall-proximity, options-implied expected move, max pain, confluence zones, the derived concrete play (buildVectorPlay), the full per-strike GEX ladder, a compact heatmap-presence summary, options-flow prints, the wall-history rail (the 'beads' over the session) + its dynamics events (building/fading/new/gone — the 'fadeness'), the VANNA (VEX) lens (walls + flip), and dark-pool levels. The Vector analogue of spx_full_state; runs for EVERY ticker (Vector serves any optionable symbol), not gated to SPX/SPXW. Null when there's no live spot for the ticker. One derivation — identical to get_vector_full_state.",
+  vector_full_state: "Vector's OWN complete live desk state for this ticker — the exact same object Largo's get_vector_full_state tool returns (via fetchVectorFullState(ticker, \"all\")): spot, regime, gamma walls + integrity, gamma flip, magnet, wall-proximity, options-implied expected move, max pain, confluence zones, the derived concrete play (buildVectorPlay), the full per-strike GEX ladder, a compact heatmap-presence summary, options-flow prints, the wall-history rail (the 'beads' over the session) + its dynamics events (building/fading/new/gone — the 'fadeness'), the VANNA (VEX) lens (walls + flip), and dark-pool levels. The Vector analogue of spx_full_state; runs for EVERY ticker (Vector serves any optionable symbol), not gated to SPX/SPXW. Null when there's no live spot for the ticker. One derivation — identical to get_vector_full_state. The four unbounded list sections (wall-history beads, wall events, ladder strikes, flow prints) are SAMPLED to fit the tool_result cap — read `fit.<section>.returned/total/truncated/note` for each; every derived field (wall events, wall integrity, magnet, proximity, the play) was computed server-side over the FULL set, so cite those rather than counting the rows you can see.",
 };
 
 export const ECOSYSTEM_CONTEXT_FIELDS: { field: string; description: string }[] = Object.entries(
@@ -852,7 +853,13 @@ export async function fetchEcosystemContext(ticker: string): Promise<EcosystemCo
       spx_full_state: omitUncalibratedSpxConfidence(spxFullState),
       flow_feed_fresh: flowFeedFresh,
       gex_positioning: gexPositioning,
-      vector_full_state: vectorFullState,
+      // FITTED for the model, exactly as `get_vector_full_state` fits it. The raw state carries the
+      // whole bead rail and is up to 948x the 16,000-char `tool_result` cap during RTH; this field's
+      // own contract below promises "the exact same object get_vector_full_state returns", so both
+      // sides apply the SAME helper — fitting one and not the other is what would break that
+      // promise. Scalars and the freshness/absence blocks pass through untouched; only the four
+      // unbounded list sections are sampled, each carrying an explicit `fit.*` scope note.
+      vector_full_state: vectorFullState ? fitVectorFullStateForModel(vectorFullState) : null,
       arsenal,
     };
   } catch {
