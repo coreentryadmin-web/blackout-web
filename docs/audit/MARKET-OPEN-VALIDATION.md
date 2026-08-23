@@ -633,6 +633,13 @@ These are recorded as needing a decision; RTH is when the data exists to inform 
   the signal can actually read. Options: rank readable tickers first, exclude no-aggressor feeds
   from this signal, or accept it and label it. Each changes a persisted, graded row — coordinator's
   call.
+  - **What it costs the panel, measured 2026-08-23 so this is not decided on adjectives.** Replaying
+    the real detector over one live session, 67 populated scans: the radar shows a **median of 5
+    rows** (range 1–9); SPX/SPY rank **median 1**, the top row; they are **40% of everything
+    visible**; and they occupy **BOTH top-2 rows on 84% of scans (56/67)**. So a member reading the
+    Split Flow Radar typically sees five names, two of which are permanently unreadable and sit
+    above the three the signal can actually read. Reproduce with
+    `scripts/audit/helix-signal-population-ab.mjs`.
 - **`SPLIT_MIN_LEG` against an index feed — NEW, and the sharpest of these. AWAITING COORDINATOR;
   do not tune it from this lane.** Split flow fires when a ticker shows opposing call AND put
   premium of **$500K each** inside 30 minutes. That threshold was set against single names. #2723
