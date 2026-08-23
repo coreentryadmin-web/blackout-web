@@ -7,6 +7,7 @@ import {
   playLottoMinDirectionSignals,
   playLottoMinDirectionWeight,
 } from "@/features/spx/lib/spx-play-config";
+import { spxFlowSkew } from "@/features/spx/lib/spx-tape-direction";
 
 export type LottoDirectionSignal = {
   id: string;
@@ -62,18 +63,22 @@ function flowSkew(desk: SpxDeskPayload): {
     };
   }
 
-  let bull = 0;
-  let bear = 0;
-  for (const f of desk.spx_flows?.slice(0, 12) ?? []) {
-    // THREE-WAY (mirror spx-signals.tapeSkew): UNKNOWN-side prints (parser-truth
-    // option_type='UNKNOWN'/direction='unknown') must DROP — never fall into bear,
-    // which produced false SHORT/put-led lotto signals on typeless UW prints.
-    const opt = f.option_type.toUpperCase();
-    if (f.direction === "bullish" || opt.startsWith("C")) bull += f.premium;
-    else if (f.direction === "bearish" || opt.startsWith("P")) bear += f.premium;
-    // else: unknown/typeless — count neither side
-  }
+  // AGGRESSION-AWARE (2026-08-23), same root cause as the confluence tape factor: this counted
+  // every call print as bullish premium regardless of whether the calls were BOUGHT or SOLD, so
+  // an aggressively-sold call block produced a LONG lotto catalyst. `spxFlowSkew` states the rule
+  // once for both call sites (UNKNOWN-side prints still DROP — see its doc comment).
+  const { bull, bear, unreadable } = spxFlowSkew(desk.spx_flows?.slice(0, 12) ?? []);
   const total = bull + bear;
+  // A catalyst resting on a minority of the premium is not a catalyst. When more premium is
+  // unreadable than readable, say so rather than sizing a direction off the readable remainder.
+  if (unreadable > total) {
+    return {
+      direction: null,
+      notional: total,
+      label: `Aggressor unreadable on $${(unreadable / 1_000_000).toFixed(1)}M of tape`,
+      weight: 0,
+    };
+  }
   if (total < floor) {
     return { direction: null, notional: total, label: "Flow below catalyst floor", weight: 0 };
   }

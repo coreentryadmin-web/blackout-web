@@ -61,7 +61,7 @@ test("flowSkew: UNKNOWN premium does not flip a call-led tape to short", () => {
   // long, but a larger UNKNOWN block could overturn it. Verify UNKNOWN is simply ignored and
   // the genuine call lead wins.
   const d = desk([
-    flowBrief({ premium: 6_000_000, option_type: "C", direction: "bullish" }),
+    flowBrief({ premium: 6_000_000, option_type: "C", ask_pct: 75, direction: "bullish" }),
     flowBrief({ premium: 4_000_000, option_type: "UNKNOWN", direction: "unknown" }),
   ]);
   const sig = flowSignal(d);
@@ -70,9 +70,11 @@ test("flowSkew: UNKNOWN premium does not flip a call-led tape to short", () => {
 });
 
 test("flowSkew: genuine put-led tape still reads short (no regression)", () => {
+  // Bought puts (ask_pct >= 60) are bearish. Bought calls (ask_pct >= 60) are bullish.
+  // $6M bought puts + $1M bought calls → 6/7 = 85.7% bearish → short.
   const d = desk([
-    flowBrief({ premium: 6_000_000, option_type: "P", direction: "bearish" }),
-    flowBrief({ premium: 1_000_000, option_type: "C", direction: "bullish" }),
+    flowBrief({ premium: 6_000_000, option_type: "P", ask_pct: 75, direction: "bearish" }),
+    flowBrief({ premium: 1_000_000, option_type: "C", ask_pct: 75, direction: "bullish" }),
   ]);
   const sig = flowSignal(d);
   assert.ok(sig, "a real put lead should emit a flow signal");
