@@ -6462,6 +6462,34 @@ export async function fetchZeroDteSetupLogRange(sinceDate: string, limit = 500):
 
 /** Ungraded ledger rows from sessions strictly before `beforeDate` (grading needs a
  *  finished session's close). Capped — grading is lazy/incremental. */
+/**
+ * Ungraded 0DTE ledger rows STRICTLY BEFORE `beforeDate` — callers pass today, so this never
+ * returns the current session.
+ *
+ * ⚠ THE `session_date < $1` PREDICATE IS LOAD-BEARING FOR CORRECTNESS, NOT JUST SCOPE. It is the
+ * only thing keeping `zerodte-grade` from stamping permanent wrong grades for ~5 months a year,
+ * and nothing at the call site or in the cron says so (documented 2026-08-23,
+ * `NIGHTHAWK-MAP.md` §12):
+ *
+ *   · the cron's UTC schedule (every 15 min across UTC hours 20-22) is 16:00-18:45 ET under EDT
+ *     but **15:00-17:45 ET under EST**, so four fires a day land at or BEFORE the 16:00
+ *     close every winter;
+ *   · `/api/cron/zerodte-grade` has no ET gate — it calls `gradeZeroDteLedger(force: true)`
+ *     unconditionally;
+ *   · grading is TERMINAL: `gradeZeroDteSetupRow` stamps `graded_at`, which removes the row from
+ *     every future pass, so a wrong grade is never revisited;
+ *   · `gradePlanFromBars` on an incomplete session sees no bar past the 15:30 time stop and falls
+ *     through to `time_stop` priced at the LAST AVAILABLE BAR.
+ *
+ * Compose those and a mid-session fire would freeze a fabricated outcome — wrong in the
+ * flattering direction as often as not — onto a real member's play. The only reason it cannot is
+ * that this query refuses today's rows.
+ *
+ * **So do not widen this to `<=` or to today's session** (the obvious "grade same-day plays
+ * faster" change) without FIRST giving the cron a real ET post-close gate. Doing so is a
+ * money-adjacent behaviour change that looks like a one-character scope tweak and would leave no
+ * schedule edit for a reviewer to catch.
+ */
 export async function fetchUngradedZeroDteRows(beforeDate: string, limit = 12): Promise<ZeroDteSetupLogRow[]> {
   await ensureSchema();
   const normalized = normalizeIsoDateInput(beforeDate);
