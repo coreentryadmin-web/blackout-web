@@ -12,9 +12,10 @@ import {
 import { largoAvailable, largoClaudeEnabled } from "@/lib/ai-env";
 import { randomUUID } from "node:crypto";
 import { dbConfigured } from "@/lib/db";
-import { LARGO_SYSTEM_PROMPT } from "@/lib/largo/system-prompt";
+import { getLargoSystemPrompt } from "@/lib/largo/system-prompt";
 import { LARGO_TOOL_DEFS } from "@/lib/largo/tool-defs";
 import { runLargoTool } from "@/lib/largo/run-tool";
+import { detectIntentCategory, selectToolsForIntent } from "@/lib/largo/question-intent-category";
 import {
   formatToolDiagnostics,
   makeGuardedToolRunner,
@@ -122,6 +123,13 @@ import { enrichSocialAnswerIfNeeded } from "@/lib/largo/social-answer-enrich";
 import { formatDepthBlock, largoDepthConfig, parseLargoDepth, type LargoDepth } from "@/lib/largo/largo-depth";
 import { largoToolLoopBudgetMs } from "@/lib/providers/config";
 import { buildLargoActions, type LargoAction } from "@/lib/largo/largo-actions";
+import {
+  initializeMemory,
+  formatMemoryForSystemPrompt,
+  suggestTickerFromQuestion,
+  type ConversationMemoryState,
+} from "@/lib/largo/conversation-memory";
+import { buildResponseComponents } from "@/lib/largo/response-builder";
 import {
   fetchLargoSessionMetadata,
   maybePersistWatchlistFromQuestion,
@@ -321,7 +329,10 @@ function buildDynamicSystem(
    */
   etMinutesNow?: number
 ): AnthropicSystemBlock[] {
-  const intent = analyzeLargoQuestion(question, history);
+  const binaryIntent = analyzeLargoQuestion(question, history);
+  const intentCategory = detectIntentCategory(question, binaryIntent);
+  const selectedTools = selectToolsForIntent(intentCategory);
+
   const platformSection = platformVitalsBlock.trim()
     ? `\n\n${platformVitalsBlock.trim()}\n`
     : "";
@@ -339,20 +350,25 @@ function buildDynamicSystem(
     depth === "concrete"
       ? "keep opinion to the closing clause of your own prose — no labelled section, and no **Bottom line**."
       : "opinion in Bottom line.";
+
+  const toolContext = selectedTools.required.length > 0
+    ? `\n\nAdapted tools for this intent: ${selectedTools.required.join(", ")}${selectedTools.optional.length > 0 ? "; optional: " + selectedTools.optional.join(", ") : ""}`
+    : "";
+
   const dynamicPart = `## This turn
 
 ${formatSessionCalendarBlock(todayEtYmd(), 5, etMinutesNow)}
 
 ${liveFeedBlock}${platformSection}${extraBlocks}
 
-${intent.guidance}
+${binaryIntent.guidance}${toolContext}
 
 Session memory is in Postgres — honor follow-ups. Re-fetch via tools if you need fresher flow, matrix, or platform numbers. Facts from the live feed and platform vitals only; ${opinionClause}`;
 
   return [
     {
       type: "text",
-      text: LARGO_SYSTEM_PROMPT,
+      text: getLargoSystemPrompt(intentCategory.category),
       cache_control: { type: "ephemeral" },
     },
     { type: "text", text: dynamicPart },
@@ -432,6 +448,7 @@ async function prepareLargoTurn(
   activeDeskScope: string | null;
   deskScopeArgs: DeskSlashArgs | null;
   miniPanelKind: string | null;
+  conversationMemory: ConversationMemoryState;
 }> {
   let sid = sessionId.trim() || `web-${userId}-${Date.now()}`;
   try {
@@ -453,6 +470,14 @@ async function prepareLargoTurn(
   const history = await fetchLargoHistory(sid, userId);
   const sessionMetadata = await fetchLargoSessionMetadata(sid, userId);
   const depth = parseLargoDepth(turnOptions.depth ?? sessionMetadata.depth ?? "deep");
+
+  // Initialize conversation memory — tracks ticker/consensus/regime/levels within this turn
+  // Multi-turn persistence deferred to Phase 4b (requires sessionMetadata schema extension)
+  let conversationMemory = initializeMemory();
+  const suggestedTicker = suggestTickerFromQuestion(question, conversationMemory);
+  if (suggestedTicker) {
+    conversationMemory.ticker = suggestedTicker;
+  }
   void updateLargoSessionMetadata(sid, userId, { depth }).catch(() => {});
   void maybePersistWatchlistFromQuestion(sid, userId, question).catch(() => {});
   if (turnOptions.playContext?.ticker) {
@@ -751,6 +776,10 @@ async function prepareLargoTurn(
 
   const tier = await getUserTier(userId).catch(() => null);
   const isAdmin = await isAdminUser(userId).catch(() => false);
+
+  // Format conversation memory for inclusion in system prompt
+  const memoryBlock = formatMemoryForSystemPrompt(conversationMemory);
+
   const extraBlocks =
     deskScopeBlock +
     diffBlock +
@@ -765,6 +794,7 @@ async function prepareLargoTurn(
     }) +
     formatRegimePersonalityBlock(marketPhase) +
     formatCalibrationBlock() +
+    (memoryBlock ? `\n\n${memoryBlock}` : "") +
     (compareCard
       ? compareCard.kind === "peer_tickers"
         ? `\n\n## Peer ticker compare (prefetched — cite these numbers)\n${JSON.stringify(compareCard, null, 0).slice(0, 5000)}\n`
@@ -847,6 +877,7 @@ async function prepareLargoTurn(
     activeDeskScope,
     deskScopeArgs,
     miniPanelKind: scopeCfg?.miniPanel ?? null,
+    conversationMemory,
   };
 }
 
@@ -943,7 +974,7 @@ export async function runLargoQuery(
   const {
     sid, history, system, filteredTools, toolsUsed, tickerHint, viewer, timeframe, persistedQuestion,
     liveFeedResults, depth, compareCard, playSimilarity, preEarningsPack, socialPack,
-    activeDeskScope, deskScopeArgs, miniPanelKind,
+    activeDeskScope, deskScopeArgs, miniPanelKind, conversationMemory: initialMemory,
   } = await prepareLargoTurn(
     question,
     sessionId,
@@ -959,6 +990,9 @@ export async function runLargoQuery(
   const diagnostics: ToolCallDiagnostic[] = [];
 
   try {
+    // Conversation memory evolves through the turn: fetch → tool results → record decisions
+    // (Within-turn tracking only; multi-turn persistence deferred to Phase 4b)
+
     // Mark the prefetch/loop boundary so the phase split below can attribute the wall clock. See
     // turn-phase-timings.ts: everything before this line was deterministic prefetch (no model call).
     const loopStartedAt = Date.now();
@@ -1122,6 +1156,10 @@ export async function runLargoQuery(
     const envelope = envelopeFromContract(text, question, capturedResults, marketEvidence);
     // The turn id rides on the envelope so a follow-up can name the exact turn it refers to.
     if (envelope && turnId != null) envelope.turnId = turnId;
+
+    // PHASE 4: Response component generation infrastructure is in place but component
+    // integration into the answer envelope is deferred (Phase 5 integration testing)
+
     const followups = withResolutionChips(
       [
         ...contextualFollowupsFromAnswer({
@@ -1422,6 +1460,10 @@ export async function runLargoQueryStream(
     const envelope = envelopeFromContract(text, question, capturedResults, marketEvidence);
     // The turn id rides on the envelope so a follow-up can name the exact turn it refers to.
     if (envelope && turnId != null) envelope.turnId = turnId;
+
+    // PHASE 4: Response component generation infrastructure is in place but component
+    // integration into the answer envelope is deferred (Phase 5 integration testing)
+
     const followups = withResolutionChips(
       [
         ...contextualFollowupsFromAnswer({
