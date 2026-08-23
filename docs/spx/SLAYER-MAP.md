@@ -330,18 +330,59 @@ this true. Every branch behind it is dead code in every environment that exists:
 
 > **CORRECTION (2026-08-22): this section originally said "five call sites". That was an undercount
 > by roughly 3×** — it counted only what a grep of `spx-desk.ts` and `spx-play-config.ts` turned up.
-> The real SPX surface is **~15 dead branches** across at least nine files: add
-> `playbook-session-risk.ts:47`, `trade-governor.ts:167`, `spx-play-engine.ts:875`,
-> `spx-play-gates.ts:168,205,207`, `playbook-regime-router.ts:93`, `spx-play-kanban-chips.ts:131`
-> and `SpxCommentaryRail.tsx:354` (the last five reach it through `playbookStagingLabEnabled()`,
-> which is just `isStagingDeploy()` wearing a different name — grepping the direct call alone misses
-> them). There are three more in `src/lib/ai-env.ts` and one in `src/lib/largo-env.ts`, outside this
-> lane's surface.
->
-> **Only the VWAP site is fixed** (the one that unblocks PB-01/PB-02). The remaining branches each
-> need a per-site judgment about what the correct production behaviour is — several are staging-only
-> debug affordances where deletion is right but is a UI change — so the sweep is its own issue, not
-> a rider on a member-facing fix.
+> The rest reach it through `playbookStagingLabEnabled()`, which is `isStagingDeploy()` wearing a
+> different name, so grepping the direct call alone misses them.
+
+**SWEPT 2026-08-23 — every SPX-lane site enumerated and classified.** The count was the least
+interesting part: the branches are not one kind of thing, and treating them as one is why "delete
+the dead code" was the wrong next step. Three categories, with different correct answers:
+
+**(A) Deliberate staging-only WIDENING — dead code, and production behaviour is the intended one.**
+Each carries its own `PROD IS UNCHANGED` comment. Deleting them changes nothing at runtime; the
+only question is whether to keep the affordance for a future ephemeral pre-prod target.
+
+| Site | What it widened on staging |
+|---|---|
+| `spx-play-gates.ts:205` | let plays flow from the legacy confluence engine with no fired primary |
+| `playbook-regime-router.ts:93` | every playbook regime-eligible, bypassing the regime bucket |
+| `spx-play-config.ts:483,493` | full PB-01…14 allowlist / execution-mode lift |
+| `spx-play-config.ts` `parsePlaybookLiveAllowlist` staging branch | PB-01…04 default allowlist |
+| `spx-play-kanban-chips.ts:131` | a low-conviction SCANNING chip so the desk is never blank |
+| `SpxCommentaryRail.tsx:354` | a "BlackOut Intelligence" sub-label |
+| `spx-play-engine.ts:875`, `spx-play-gates.ts:168` | `playbookLabActive` / `stagingLab` — relaxed starter entries |
+| `spx-play-config.ts:90` `playClaudeGateEnabled` | Claude gate on by default; prod is opt-in via `SPX_CLAUDE_GATE` (unset) |
+
+**(B) A TIGHTENING guard behind a widening flag — the real finding.** Two data-quality blocks sit
+inside `playbookStagingLabEnabled()`, so they read as safeguards and have never run in production:
+`trade-governor.ts:167` and `playbook-session-risk.ts:47`.
+
+- **Severe data quality on a live BUY is STILL GUARDED** — but by `spx-play-gates.ts:222`, inside
+  `if (buyIntent && playbookLiveGateEnabled())`, and that predicate IS true in production. The
+  governor's copy is redundant, not load-bearing. *(An earlier draft of this section was about to
+  claim the desk had no severe-data-quality fail-closed at all. It does. Checking the second call
+  site before writing the sentence is the only reason that is not recorded here as fact.)*
+- **Degraded-feed size reduction is NOT implemented anywhere**, and it is broken **twice over**:
+  the only branch that lowers `size_multiplier` is staging-gated, *and* `playbook_size_multiplier`
+  (`spx-play-gates.ts:496`) has **no reader** — so a reduced value would change nothing even if it
+  were computed. Fixing either half alone is a no-op. `PLAYBOOK_DEGRADED_SIZE_MULT` is an inert knob.
+
+**(C) Genuinely environment-shaped, outside this lane.** `clerk-env.ts`'s satellite/proxy/domain
+helpers (a real staging hostname concern), plus three sites in `src/lib/ai-env.ts` and one in
+`src/lib/largo-env.ts`.
+
+**What was done, and what deliberately was not.** Both (B) sites now carry a comment stating they
+are dead and naming what is and is not still guarded, and
+`src/features/spx/lib/trade-governor-staging-gate.test.ts` **characterises** production's real
+behaviour in executable form — severe data quality does not halt the governor, degraded feeds do
+not reduce size — after first asserting that `isStagingDeploy()` is false, so the suite cannot pass
+vacuously. Re-predicating the guards on `playbookLiveGateEnabled()` was **not** done: switching a
+fail-closed halt from inert to live is a blocking/sizing change on a member-facing desk, and the
+fire rate of `liveDataQualityMode() === "severe"` over a real RTH session has never been measured.
+That measurement is on the market-open battery. Category (A)'s deletion is a scope call for the
+coordinator — the branches are inert, but they are the only record of what a pre-prod lab was
+meant to do.
+
+> **Only the VWAP site is FIXED** (the one that unblocks PB-01/PB-02).
 
 | Site | Effect now |
 |---|---|
