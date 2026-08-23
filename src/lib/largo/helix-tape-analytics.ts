@@ -4,6 +4,8 @@ import { HELIX_NET_PREMIUM_LEADERS_LIMIT } from "@/features/helix/lib/helix-stri
 import { WHALE_PRINT_PREMIUM } from "@/features/helix/lib/helix-flow-limits";
 import { etStamp, etSessionDate } from "@/lib/largo/temporal/bar-session-date";
 import { flowEventTimeMs } from "@/lib/flow-timestamp";
+import { DIRECTION_BASIS } from "@/features/helix/lib/helix-flow-aggression";
+import { readDirection, type DirectionRead } from "@/features/helix/lib/helix-direction-read";
 
 /** The member panel's horizon buckets, in CHRONOLOGICAL order (ExpiryConcentration.tsx). */
 export const EXPIRY_HORIZONS = ["0DTE", "This week", "Monthly", "LEAPS"] as const;
@@ -54,17 +56,75 @@ export function cappedList<T>(
   return { items: items.slice(0, cap), total, truncated: total > cap };
 }
 
+
+/**
+ * The direction fields every HELIX aggregate hands Largo, derived once.
+ *
+ * ── WHY THIS EXISTS ─────────────────────────────────────────────────────────────────────────────
+ *
+ * These payloads carried `call_pct` and nothing else, and `get_helix_tape_analytics`'s own tool
+ * description told the model to use it for *"ANY 'call vs put', 'skew', or **bullish/bearish
+ * premium** question"*. Since #2691/#2713/#2715 the member panels do NOT read direction that way —
+ * a SOLD call is bearish — so the two audiences for one tape were about to answer opposite.
+ *
+ * Measured live 2026-08-23: `CG` was **100% call premium at 100% readable and BEARISH**. Ask the
+ * panel and it says bearish; ask Largo with only `call_pct` in hand and it says bullish, with
+ * conviction, about the same $8.0M. `helix-tape-analytics.ts` already states that it and the panel
+ * "describe the same panel to two audiences and must not disagree about it" — this is what
+ * enforcing that costs.
+ *
+ * ── ADDITIVE, PER THE PRODUCT CONTRACT ──────────────────────────────────────────────────────────
+ *
+ * `call_pct` is NOT removed. It is a real, correctly-named quantity (share of premium that is
+ * calls) and flattening it away to satisfy a shared shape would be a contract violation, not
+ * compliance. `direction` is added BESIDE it, and the tool description now says which answers
+ * which question.
+ *
+ * `direction_readable_pct` travels with the verdict for the same reason the panel renders it: a
+ * model told only `undetermined` cannot distinguish "the tape is genuinely two-sided" from "almost
+ * none of this premium carries an aggressor side", and those licence completely different
+ * sentences. `direction_basis` mirrors the stamp the signal ledger already carries, so a consumer
+ * can tell which rule produced a number and never pool two rules' results.
+ */
+export type HelixDirectionFields = {
+  /** bullish | bearish | mixed | undetermined. `undetermined` = refused, not neutral-leaning. */
+  direction: DirectionRead["label"];
+  /** Share of this population's premium whose direction could be read, 0-100. `null` = no premium
+   *  at all, which is a different fact from 0% readable and must not be reported as one. */
+  direction_readable_pct: number | null;
+  /** True when the verdict rests on a minority of the premium — the model must say so out loud
+   *  rather than quote a direction as if it covered the whole population. */
+  direction_minority_evidence: boolean;
+  /** Which rule produced it. Matches the signal ledger's stamp so results are never pooled across
+   *  rules. */
+  direction_basis: typeof DIRECTION_BASIS;
+};
+
+export function directionFields(
+  flows: ReadonlyArray<{ option_type?: string | null; ask_pct?: number | null; premium: number }>
+): HelixDirectionFields {
+  const read = readDirection(flows);
+  return {
+    direction: read.minorityEvidence ? "undetermined" : read.label,
+    direction_readable_pct:
+      read.readablePct == null ? null : Math.round(read.readablePct * 10) / 10,
+    direction_minority_evidence: read.minorityEvidence,
+    direction_basis: DIRECTION_BASIS,
+  };
+}
+
 /** Net-premium leaderboard — same aggregation as HELIX NetPremiumLeaderboard panel. */
 export function netPremiumLeaders(alerts: FlowAlert[], limit = HELIX_NET_PREMIUM_LEADERS_LIMIT) {
-  const map = new Map<string, { calls: number; puts: number }>();
+  const map = new Map<string, { calls: number; puts: number; flows: FlowAlert[] }>();
   for (const a of alerts) {
-    const cur = map.get(a.ticker) ?? { calls: 0, puts: 0 };
+    const cur = map.get(a.ticker) ?? { calls: 0, puts: 0, flows: [] };
     if (a.option_type === "CALL") cur.calls += a.premium;
     else if (a.option_type === "PUT") cur.puts += a.premium;
+    cur.flows.push(a);
     map.set(a.ticker, cur);
   }
   return Array.from(map.entries())
-    .map(([ticker, { calls, puts }]) => ({
+    .map(([ticker, { calls, puts, flows }]) => ({
       ticker,
       calls,
       puts,
@@ -76,6 +136,9 @@ export function netPremiumLeaders(alerts: FlowAlert[], limit = HELIX_NET_PREMIUM
       // map on any print, but only CALL/PUT prints add premium (gap-#6), so a name whose prints
       // are all typeless lands here with total 0 — live-reachable, not hypothetical.
       call_pct: calls + puts > 0 ? Math.round((calls / (calls + puts)) * 100) : null,
+      // `net`'s SIGN is calls-minus-puts arithmetic; DIRECTION is a separate claim. They differ on
+      // 7 of the live top 10, and the panel now renders them separately too.
+      ...directionFields(flows),
     }))
     .sort((a, b) => b.total - a.total)
     .slice(0, limit);
@@ -123,10 +186,13 @@ export function routeBreakdown(alerts: FlowAlert[]) {
  * not the same as omitting a bar, and "0DTE: $40k, 2 prints" is a real and useful answer.
  */
 export function expiryHorizonConcentration(alerts: FlowAlert[], now: Date = new Date()) {
-  const map = new Map<ExpiryHorizon, { call_premium: number; put_premium: number; count: number }>();
+  const map = new Map<
+    ExpiryHorizon,
+    { call_premium: number; put_premium: number; count: number; flows: FlowAlert[] }
+  >();
   for (const a of alerts) {
     const label = expiryHorizonLabel(dteOf(a, now));
-    const cur = map.get(label) ?? { call_premium: 0, put_premium: 0, count: 0 };
+    const cur = map.get(label) ?? { call_premium: 0, put_premium: 0, count: 0, flows: [] };
     // gap-#6: a typeless print counts toward NEITHER side (same rule as the panel), but it is
     // still a print, so it counts in `count`. That is why premium can be 0 on a non-zero count.
     if (a.option_type === "CALL") cur.call_premium += a.premium;
@@ -135,7 +201,7 @@ export function expiryHorizonConcentration(alerts: FlowAlert[], now: Date = new 
     map.set(label, cur);
   }
   const rows = EXPIRY_HORIZONS.filter((l) => map.has(l)).map((horizon) => {
-    const { call_premium, put_premium, count } = map.get(horizon)!;
+    const { call_premium, put_premium, count, flows } = map.get(horizon)!;
     const premium = call_premium + put_premium;
     return {
       horizon,
@@ -145,6 +211,7 @@ export function expiryHorizonConcentration(alerts: FlowAlert[], now: Date = new 
       premium,
       // null, not 50 — an unmeasurable skew must not read as a measured balance.
       call_pct: premium > 0 ? Math.round((call_premium / premium) * 100) : null,
+      ...directionFields(flows),
       pct: null as number | null,
     };
   });
@@ -214,7 +281,9 @@ export function expiryConcentration(alerts: FlowAlert[], limit = 8, now: Date = 
 /** Accepts anything carrying option_type + premium — FlowAlert, FlowRow, or a raw print —
  *  because those two fields are all a call/put skew reads. Kept structural so flow-service
  *  can compute the SAME skew over its own rows without a cast or an import cycle. */
-export function sessionFlowSkew(alerts: ReadonlyArray<{ option_type: string; premium: number }>) {
+export function sessionFlowSkew(
+  alerts: ReadonlyArray<{ option_type: string; premium: number; ask_pct?: number | null }>
+) {
   const calls = alerts.filter((a) => a.option_type === "CALL").reduce((s, a) => s + a.premium, 0);
   const puts = alerts.filter((a) => a.option_type === "PUT").reduce((s, a) => s + a.premium, 0);
   const total = calls + puts;
@@ -224,6 +293,9 @@ export function sessionFlowSkew(alerts: ReadonlyArray<{ option_type: string; pre
     put_premium: puts,
     total_premium: total,
     call_pct: total > 0 ? Math.round((calls / total) * 100) : null,
+    // The AUTHORITATIVE skew is a call/put share. The AUTHORITATIVE direction is this, and they
+    // are different questions — the tool description now says which answers which.
+    ...directionFields(alerts),
     whale_prints: alerts.filter((a) => a.premium >= WHALE_PRINT_PREMIUM).length,
     /** Prints that are neither CALL nor PUT — counted in alert_count/whale_prints but in
      *  neither premium leg, so this is the reconciliation between the two. */
