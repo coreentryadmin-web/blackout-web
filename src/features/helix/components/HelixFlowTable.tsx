@@ -35,6 +35,7 @@ import {
   HELIX_TAPE_OVERSCAN,
   HELIX_TAPE_ROW_HEIGHT,
 } from "@/features/helix/lib/helix-flow-limits";
+import { tapeTimeDisplay } from "@/features/helix/lib/helix-tape-time";
 
 const WHALE_PREMIUM = 1_000_000;
 
@@ -116,15 +117,21 @@ function renderCell(
     case "time":
       // Full absolute ET stamp "MM/DD/YYYY - HH:MM" (was a relative age via timeAgo). fmtFullTimestamp
       // returns "—" for empty/invalid, so no separate guard is needed. tabular-nums keeps it aligned.
-      return <span
-        className={clsx(
-          "helix-tape-time tabular-nums",
-          flow.tape_time_estimated && "helix-tape-time--estimated"
-        )}
-        title={flow.tape_time_estimated ? "Ingest time — UW print time unknown" : undefined}
-      >
-        {fmtFullTimestamp(flow.alerted_at)}
-      </span>;
+      // Shared with the mobile tape (helix-tape-time.ts) so the two surfaces cannot present one
+      // field differently. The visible `~` is new here: the estimated mark was a dimmed italic plus
+      // a TOOLTIP, and a tooltip is unreachable on touch — including on a tablet showing this very
+      // table. A dimmed italic is not a legend.
+      {
+        const t = tapeTimeDisplay(flow);
+        return (
+          <span
+            className={clsx("helix-tape-time tabular-nums", t.estimated && "helix-tape-time--estimated")}
+            title={t.title}
+          >
+            {t.label}
+          </span>
+        );
+      }
     case "ticker":
       return (
         <div className="helix-tape-symbol">

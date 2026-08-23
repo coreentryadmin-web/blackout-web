@@ -47,6 +47,10 @@ const path = require("path");
 const { createTunneledContext } = require("./lib/proxy-tunnel-context.cjs");
 const {
   routeBucketVerdict,
+  newBadgeVerdict,
+  coverageNoteVerdict,
+  directionLabelVerdict,
+  expiryBucketVerdict,
   panelVerdict,
   freshnessVerdict,
   overallVerdict,
@@ -211,6 +215,80 @@ async function probe(page, { panelsOnly = false } = {}) {
         }
       }
 
+      // ---- Surfaces shipped 2026-08-23. Each is read WITH the population that decides whether its
+      // absence is a defect or simply an unpopulated page, so the verdict layer never has to guess.
+      const grid = document.querySelector(".helix-tape-grid");
+      const colRow = grid && grid.querySelector(".helix-tape-col-row");
+      const cols = colRow ? Array.from(colRow.children).map((c) => text(c).toUpperCase()) : [];
+      const colIdx = (name) => cols.findIndex((t) => t.replace(/[^A-Z%]/g, "") === name);
+      const iOi = colIdx("OI"), iFill = colIdx("FILL"), iDte = colIdx("DTE");
+      const iPrem = cols.findIndex((t) => t.startsWith("PREM"));
+      const tapeRows = [];
+      const renderedDte = [];
+      if (grid) {
+        for (const tr of Array.from(grid.querySelectorAll('[role="row"]'))) {
+          const cells = Array.from(tr.querySelectorAll('[role="gridcell"]'));
+          if (!cells.length) continue;
+          const sigCell = cells[cells.length - 1];
+          const pills = Array.from(sigCell.querySelectorAll(".helix-tape-signal"));
+          const newPill = pills.find((el) => /^NEW\b/.test(text(el)));
+          if (iDte >= 0 && cells[iDte]) {
+            const raw = text(cells[iDte]);
+            if (/^-?\d+$/.test(raw)) renderedDte.push(Number(raw));
+          }
+          tapeRows.push({
+            oi: iOi >= 0 && cells[iOi] ? text(cells[iOi]) : null,
+            prem: iPrem >= 0 && cells[iPrem] ? text(cells[iPrem]) : null,
+            fill: iFill >= 0 && cells[iFill] ? text(cells[iFill]) : null,
+            newLabel: newPill ? text(newPill) : null,
+            newTitle: newPill ? newPill.getAttribute("title") : null,
+          });
+        }
+      }
+
+      // §9.0 coverage note, and the population that makes its absence judgeable. The note counts
+      // RENDERED prints, so the denominator must come from the rendered rows — not the API window.
+      const coverageMatch = bodyText.match(/Scanned [\d,]+ of [\d,]+ prints[^.]*\./);
+      const coverageLine = coverageMatch ? coverageMatch[0] : null;
+      // Count the ineligible rows INDEPENDENTLY of the note. Deriving the denominator from the
+      // note itself was circular: when the note was missing there was nothing to measure, so its
+      // absence could never be judged and every run reported a harness fault. `HelixFlowTable`
+      // marks an estimated-time row with `helix-tape-time--estimated` — those are exactly the
+      // prints with no real UW timestamp, which is what makes them unscannable (§9.0).
+      // Counted off the DOCUMENT, not the grid: the mobile tape has no grid, so scoping this to
+      // `grid` returned null there and the coverage check reported a harness fault on every mobile
+      // run — flagging the instrument for a layout difference rather than a defect.
+      const estimatedNodes = document.querySelectorAll(".helix-tape-time--estimated").length;
+      const ineligibleRendered = grid || estimatedNodes > 0 ? estimatedNodes : null;
+
+      // §9.11 direction labels. The legacy wording is checkable even on an empty radar; the new
+      // labels only render when the radar is populated.
+      const directionLabels = {
+        legacyPresent: /CALL BIAS|PUT BIAS/i.test(bodyText),
+        newLabels: ["BULLISH", "BEARISH", "MIXED", "UNREAD"].filter((w) =>
+          new RegExp(`[\u25b2\u25bc\u21cb\u2014]\\s*${w}`).test(bodyText)
+        ),
+        // Absent and empty are both "nothing to label". The first version tested only for the
+        // empty-state SENTENCE, so on the default view — where the panel is not mounted at all —
+        // radarEmpty was false and the verdict read "populated yet unlabelled", i.e. a harness
+        // fault against a page that had simply never rendered the panel.
+        radarEmpty:
+          /No split-flow tickers this session/i.test(bodyText) || !/Split Flow Radar/i.test(bodyText),
+      };
+
+      // §9.5 expiry buckets, as label -> count, read from the panel's own leaves.
+      const expiryPanelEl = panelByTitle("Expiry Concentration");
+      const expiryBuckets = {};
+      if (expiryPanelEl) {
+        for (const leaf of Array.from(expiryPanelEl.querySelectorAll("*")).filter((n) => n.children.length === 0)) {
+          const label = text(leaf);
+          if (!["0DTE", "This week", "Monthly", "LEAPS"].includes(label)) continue;
+          const sib = leaf.nextElementSibling;
+          const m = sib && /^([\d,]+)\s+prints$/.exec(text(sib));
+          if (m) expiryBuckets[label] = Number(m[1].replace(/,/g, ""));
+        }
+      }
+
       const routeState = panelState("Route Breakdown");
       const netState = panelState("Net Premium");
       const expiryState = panelState("Expiry Concentration");
@@ -240,6 +318,10 @@ async function probe(page, { panelsOnly = false } = {}) {
             )
           ).slice(0, 12),
         },
+        newBadge: { rows: tapeRows, hasGrid: Boolean(grid) },
+        coverage: { line: coverageLine, ineligibleRendered },
+        direction: directionLabels,
+        expiryBuckets: { buckets: expiryBuckets, renderedDte },
         route: {
           present: routeState.located,
           inBodyText: routeState.inBodyText,
@@ -338,11 +420,29 @@ async function runViewport(session, vp) {
     const morePanels = await openSecondaryPanels(page);
     const panels = morePanels.opened ? await probe(page, { panelsOnly: true }) : undefined;
     // Panel readings come from the modal pass; everything else from the default view.
+    //
+    // `coverage` and `direction` belong to this list too, and leaving them out produced a FALSE
+    // FAIL — "397 prints cannot be scanned and nothing says so" — against a page that renders the
+    // coverage line correctly. It lives inside the Velocity/Split radars, which are not mounted on
+    // the default view at all. The rule: anything rendered by a secondary panel must be READ from
+    // the pass in which that panel exists.
+    //
+    // `expiryBuckets` likewise — its counts come from the panel, but its `renderedDte` comes from
+    // the TAPE, which is behind the modal on mobile, so take the panel pass's buckets and keep
+    // whichever pass actually saw the DTE column.
     const snap = base && {
       ...base,
       route: panels?.route ?? base.route,
       netPremium: panels?.netPremium ?? base.netPremium,
       expiry: panels?.expiry ?? base.expiry,
+      coverage: panels?.coverage ?? base.coverage,
+      direction: panels?.direction ?? base.direction,
+      expiryBuckets: {
+        buckets: panels?.expiryBuckets?.buckets ?? base.expiryBuckets?.buckets,
+        renderedDte: base.expiryBuckets?.renderedDte?.length
+          ? base.expiryBuckets.renderedDte
+          : panels?.expiryBuckets?.renderedDte,
+      },
     };
     const shot = path.join(OUT, `helix-flows-${vp.id}.png`);
     await page.screenshot({ path: shot, fullPage: false }).catch(() => {});
@@ -394,6 +494,40 @@ async function runViewport(session, vp) {
       else notes.push(c.detail);
     }
 
+    // ---- Surfaces shipped 2026-08-23. NOT_EXERCISED is recorded as a note, never a fault: a
+    // market-closed page legitimately cannot populate a split-flow radar, and a harness that
+    // reports a fault for that teaches its reader to skip the report.
+    const notExercised = [];
+    // The desktop tape is a GRID with named columns; the mobile tape is `flow-card`s with no DTE or
+    // OI column at all. Column-dependent checks are therefore NOT APPLICABLE on mobile, not broken —
+    // reporting a harness fault there would flag the instrument on every mobile run forever.
+    const hasGrid = Boolean(snap.newBadge?.hasGrid);
+    const newChecks = [
+      ...(hasGrid
+        ? [
+            newBadgeVerdict(snap.newBadge?.rows),
+            ...(morePanels.opened
+              ? [expiryBucketVerdict(snap.expiryBuckets?.buckets, snap.expiryBuckets?.renderedDte)]
+              : []),
+          ]
+        : [
+            {
+              status: "NOT_EXERCISED",
+              detail: "mobile renders flow-cards, not the column grid — the NEW-ratio and expiry-bucket cross-checks need named columns and cannot run here",
+            },
+          ]),
+      // `?? undefined` would erase the deliberate `null` the probe returns for a layout that
+      // cannot be counted, turning a NOT_EXERCISED into a HARNESS fault. Pass it through.
+      coverageNoteVerdict(snap.coverage?.line, snap.coverage?.ineligibleRendered),
+      directionLabelVerdict(snap.direction ?? {}),
+    ];
+    for (const c of newChecks) {
+      if (c.status === "FAIL") fails.push(c.detail);
+      else if (c.status === "HARNESS") harnessFaults.push(c.detail);
+      else if (c.status === "NOT_EXERCISED") notExercised.push(c.detail);
+      else notes.push(c.detail);
+    }
+
     const fresh = freshnessVerdict(snap.freshness.ageText);
     if (fresh.status === "FAIL") fails.push(fresh.detail);
     else if (fresh.status === "HARNESS") harnessFaults.push(fresh.detail);
@@ -413,7 +547,7 @@ async function runViewport(session, vp) {
     // run is UNPROVEN — reporting PASS there is the half-blind certification this file exists to
     // refuse.
     const verdict = fails.length ? "FAIL" : harnessFaults.length ? "HARNESS" : "PASS";
-    return { viewport: vp.id, verdict, fails, notes, harnessFaults, morePanels, counts, shot, shotDefault, snap };
+    return { viewport: vp.id, verdict, fails, notes, harnessFaults, notExercised, morePanels, counts, shot, shotDefault, snap };
   } finally {
     await browser.close();
   }
@@ -454,6 +588,9 @@ async function runViewport(session, vp) {
       for (const f of r.fails ?? []) console.log(`   FAIL  ${f}`);
       for (const h of r.harnessFaults ?? []) console.log(`   HARN  ${h}`);
       for (const n of r.notes ?? []) console.log(`   ok    ${n}`);
+      // NOT EXERCISED is neither a pass nor a fault: the check ran and its population was absent.
+      // Printed distinctly so an off-hours run cannot be mistaken for full coverage.
+      for (const x of r.notExercised ?? []) console.log(`   n/e   ${x}`);
       if (r.snap?.route?.bucketCount) {
         const b = Object.entries(r.snap.route.buckets).map(([k, v]) => `${k} ${v.pct}%`).join(" · ");
         console.log(`   route buckets: ${b}`);
@@ -469,5 +606,7 @@ async function runViewport(session, vp) {
     }
     console.log(`\nOVERALL: ${overall}`);
   }
-  process.exit(overall === "PASS" ? 0 : overall === "HARNESS" ? 3 : 1);
+  // "PASS (partial)" exits 0: every check that could run passed, and the rest had no population
+  // to run against. Exiting non-zero off-hours would make this un-gateable.
+  process.exit(String(overall).startsWith("PASS") ? 0 : overall === "HARNESS" ? 3 : 1);
 })();

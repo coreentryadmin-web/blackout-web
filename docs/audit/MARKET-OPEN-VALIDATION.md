@@ -197,15 +197,18 @@ level". The cap is `clamp(ceil((qualifying) × 0.30), 40, 100)` names.
   tickers in the payload against the cap) before recording a verdict — an unbound cap is a
   `HARNESS` result, not a PASS.
 
-### 4. §9.0 — the signal-coverage line, and the first chance to see the radars actually fire (#2681)
+### 4. §9.0 — the coverage line is VALIDATED; the POPULATED radars are still unseen (#2681)
 
 Both HELIX signals skip every print with no real UW timestamp.
 
 - **Measured 2026-08-23 (closed):** 1500 of 5000 eligible (**30.0%**); **3500 (70.0%) ineligible,
   spanning exactly SPX (3079) and SPY (421)**, ~92% of tape premium.
-- **What to check:** `get_helix_derived` carries a non-zero `signal_ineligible_prints` naming
-  SPX/SPY, and both radars render *"Scanned N of M prints — …"* in **both** the empty and populated
-  states.
+- **VALIDATED post-deploy 2026-08-23** — the empty-state line renders verbatim: *"Scanned 103 of 500
+  prints — 397 (SPX, SPY) carry no reported print time and cannot be scanned for this signal."*
+  Note **103 of 500**, not the 30% measured over the 5000-row API window: the panel reads the
+  RENDERED page. A percentage is only meaningful with the population it was taken over.
+- **Still to check:** `get_helix_derived` carries a non-zero `signal_ineligible_prints` naming
+  SPX/SPY, and the line renders in the **populated** state too.
 - **The part that has never been seen:** off-hours both radars are **empty**, so only the empty-state
   line has ever rendered. At the open, spikes and splits actually fire — that is the first time the
   populated-state line renders **beside real entries**, which is the layout most likely to be wrong.
@@ -227,12 +230,16 @@ That IV tail is also the evidence for an open question — whether degenerate IV
 and whether "expired" is a better gate than any IV threshold. **An RTH reading is the measurement
 that decides it**, so capture it rather than just passing the check.
 
-### 5b. NEW-positioning badges — first live sighting of a brand-new signal (#2689)
+### 5b. NEW-positioning badges — VALIDATED off-hours 2026-08-23; only the RTH mix is left (#2689)
 
 The tape now proves which prints cannot be entirely closing: `size = premium / (fill_price × 100)`
 against `open_interest`, with a 1.05 margin. This is the **only genuinely new member-facing signal**
 in the batch, so it has no prior baseline to diff against — the check is coherence, not delta.
 
+- **VALIDATED post-deploy 2026-08-23** (deploy `32621010394`): 500 rendered rows, 10 badged, and all
+  three criteria passed — **0** badges on a row whose OI reads `—`, **8/8** ratios agreeing with the
+  row's own columns, every pill visible rather than collapsed, **10/10** tooltips explaining. One
+  real row: `WHALE NEW 5.7× REPEAT` — the badge sits second, ahead of the rule badge.
 - **Measured off-hours 2026-08-23:** of 1500 judgeable rows, **220 decisive** (12 at `OI === 0`,
   208 clearing the margin) = 4.4% of the tape, 14.7% of the judgeable population.
 - **What to check on screen, per badged row:**

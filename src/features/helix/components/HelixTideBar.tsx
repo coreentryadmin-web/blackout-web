@@ -3,6 +3,7 @@
 import useSWR from "swr";
 import { clsx } from "clsx";
 import { fetchSpxState, type SpxState } from "@/lib/api";
+import { tideSplit, netPremiumSense } from "@/features/helix/lib/helix-tide-split";
 
 function fmtMoney(n: number): string {
   if (n >= 1_000_000_000) return `$${(n / 1_000_000_000).toFixed(1)}B`;
@@ -28,10 +29,13 @@ export function HelixTideBar({ className }: { className?: string }) {
   // No data or market closed — render nothing (self-hides cleanly).
   if (!data?.available || (callPrem == null && putPrem == null && !tideBias)) return null;
 
-  const call = callPrem ?? 0;
-  const put = putPrem ?? 0;
-  const gross = call + put;
-  const callPct = gross > 0 ? (call / gross) * 100 : 50;
+  // `tide_call` / `tide_put` are UW's SIGNED net premiums — negative means that side was net SOLD.
+  // Summing them and taking a ratio treated them as magnitudes: on a full measured session the bar
+  // fell back to a flat 50/50 on 61.7% of snapshots (while the pill read BULLISH) and exceeded 100%
+  // width on the other 38.3%. See helix-tide-split.ts for the measurement and the decomposition.
+  const split = tideSplit(callPrem, putPrem);
+  const callSense = netPremiumSense(callPrem);
+  const putSense = netPremiumSense(putPrem);
 
   const isBull = tideBias.includes("bull");
   const isBear = tideBias.includes("bear");
@@ -54,21 +58,42 @@ export function HelixTideBar({ className }: { className?: string }) {
         {biasLabel}
       </span>
 
-      {/* Call/put premium split bar */}
+      {/* BULLISH vs BEARISH flow split — not call-vs-put premium, which cannot be split while the
+          inputs are signed. Bullish = calls bought + puts sold; bearish = calls sold + puts bought.
+          Both non-negative, so the width is always a real proportion. */}
       <div className="flex min-w-[80px] flex-1 flex-col gap-0.5">
-        <div className="flex h-1.5 overflow-hidden rounded-full bg-[rgba(8,9,14,0.8)]">
-          <span
-            className="h-full transition-[width] duration-500"
-            style={{ width: `${callPct.toFixed(1)}%`, backgroundColor: "#a3e635", boxShadow: "0 0 6px #a3e63566" }}
-          />
-          <span
-            className="h-full flex-1"
-            style={{ backgroundColor: "#ff2d55", boxShadow: "0 0 6px #ff2d5566" }}
-          />
-        </div>
+        {split.bullishPct == null ? (
+          // No directional flow to split. Deliberately NOT a 50/50 bar: "nothing measured" and
+          // "measured and balanced" are different facts and the old fallback conflated them.
+          <div className="font-mono text-[9px] uppercase tracking-wider text-sky-300/50">
+            No directional flow
+          </div>
+        ) : (
+          <div className="flex h-1.5 overflow-hidden rounded-full bg-[rgba(8,9,14,0.8)]">
+            <span
+              className="h-full transition-[width] duration-500"
+              style={{ width: `${split.bullishPct.toFixed(1)}%`, backgroundColor: "#a3e635", boxShadow: "0 0 6px #a3e63566" }}
+            />
+            <span
+              className="h-full flex-1"
+              style={{ backgroundColor: "#ff2d55", boxShadow: "0 0 6px #ff2d5566" }}
+            />
+          </div>
+        )}
         <div className="flex justify-between font-mono text-[9px] tabular-nums">
-          {call > 0 && <span className="text-emerald-400">{fmtMoney(call)} calls</span>}
-          {put > 0 && <span className="text-[#ff5c78]">{fmtMoney(put)} puts</span>}
+          {/* The SENSE is shown, not hidden. Gating on `> 0` meant a net-sold side simply vanished —
+              net put premium was negative on every snapshot measured, so the puts figure never
+              rendered at all. */}
+          {callSense && (
+            <span className={callSense === "sold" ? "text-[#ff5c78]" : "text-emerald-400"}>
+              {fmtMoney(Math.abs(callPrem ?? 0))} calls {callSense}
+            </span>
+          )}
+          {putSense && (
+            <span className={putSense === "sold" ? "text-emerald-400" : "text-[#ff5c78]"}>
+              {fmtMoney(Math.abs(putPrem ?? 0))} puts {putSense}
+            </span>
+          )}
         </div>
       </div>
 
