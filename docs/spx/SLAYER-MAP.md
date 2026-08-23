@@ -530,6 +530,36 @@ Ranked. These are the `UNKNOWN`s above, restated as tasks.
 
 ---
 
+## 8b. Known-open, recorded rather than fixed
+
+Deliberate non-fixes. Each is real, each is left alone for a stated reason, and none should be
+"discovered" again as if new.
+
+| Item | Why it is not fixed here |
+|---|---|
+| **Pin stability window size** — `PIN_STABILITY_WINDOW = 3` at the deployed 2s pin TTL asks "did the pin move more than a strike in ~6 seconds", which is structurally almost always no | Calibration, not a defect. Needs out-of-sample evidence over real sessions. The 2026-08-23 hold-steady fix is correct at any window size. |
+| **Pin stability state is per-process** — `spx-pin.ts` holds the rolling window at module scope; production runs multiple ECS tasks, so a member round-robins across replicas each with its own window and its own held pin | Needs shared state (the Redis lane the desk already uses). Architectural, not a lane's unilateral change. |
+| **`spx-play-engine.ts:1633`** — `confidence: closedConfluence?.confidence ?? 0` on the session-closed path; `0` reads as a measured floor, not "unknown" | Belongs with the calibrated-confidence work (§8 item 2), which is measured infeasible until ~264 closed plays exist. |
+| **~15 `isStagingDeploy()` dead branches** across nine SPX files (§7.1) | Each needs a per-site judgment about correct production behaviour; several are staging-only debug affordances whose removal is a UI change. |
+
+### Cross-lane: the Vector toolbar collides with itself, on BOTH surfaces
+
+Found while auditing `/dashboard`, localised, and **handed to the Vector lane rather than fixed
+here** — the component is theirs and a fix changes their page too.
+
+- **`/dashboard`**: `.vector-replay-bar` (inside `.vector-replay-controls.flex.min-w-0`) computes to
+  **width 0** while its buttons still render at full size with `overflow: visible`, so `▶ Replay`
+  prints over the `.vector-desk-seg` GEX/VEX segment — 17x27px of real intersection.
+- **`/vector`**: the same segment is overlapped by the price readouts — `"7,775"` over `GEX`,
+  `"+$30.6M"` over `VEX`, `"—"` over `VEX`.
+
+One component, two surfaces. Mechanism: `min-w-0` lets the flex child shrink to nothing, and
+`overflow: visible` means its content spills onto its neighbour instead of clipping. Reproduce with
+`NODE_USE_ENV_PROXY=1 node --import tsx scripts/audit/live-ui-interaction-audit.mjs
+--pages=/dashboard,/vector --desktop-only`.
+
+---
+
 ## 9. Keeping this file honest
 
 - Add a row when you add a field. A field with no row is undocumented by definition.

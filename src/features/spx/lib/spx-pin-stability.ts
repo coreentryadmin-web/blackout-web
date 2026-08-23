@@ -67,3 +67,46 @@ export function pushPinSample(
   const next = [...history, sample];
   return next.slice(-Math.max(1, maxLen));
 }
+
+/**
+ * The pin to SURFACE, given the value currently held and the newest rolling window.
+ *
+ * THIS IS THE "HELD STEADY" HALF OF THE CONTRACT, AND IT WAS MISSING. This module's header has
+ * always promised: *"Once confirmed, the confirmed value is held steady until a NEW cluster of N
+ * agreeing polls forms — so a single noisy poll can't yank the displayed number."* The stateful
+ * wrapper in `spx-pin.ts` did `if (stable) confirmed = latest`, overwriting the held value with the
+ * raw pin on EVERY stable pass. That is not "held steady" — it is "track the raw pin whenever the
+ * window happens to agree", which is a different behaviour wearing the same name.
+ *
+ * Measured live 2026-08-07 (`docs/audit/backlog/2026-08-07-spx-slayer.md`): `pinConfirmed === pin`
+ * on **16 of 16** consecutive observations, `pinStable === true` on all 16, while the "confirmed"
+ * pin travelled 7721.33 → 7731.15 — **9.8 points in six minutes**, nearly twice the tolerance the
+ * gate is calibrated on. The gate surfaced every wiggle it existed to absorb.
+ *
+ * The rule below is the header's own sentence, as code:
+ *   - not stable            → keep whatever is held (a noisy window never moves the number)
+ *   - stable, nothing held  → adopt it (first confirmation of the session)
+ *   - stable, agrees with held (within tolerance) → KEEP THE HELD VALUE — this is the line that
+ *     was missing, and the only one that makes the number steady
+ *   - stable, genuinely moved away → adopt the new cluster (a real relocation must come through)
+ *
+ * Deliberately NOT changed here: the window SIZE. `PIN_STABILITY_WINDOW = 3` at the deployed 2s pin
+ * TTL asks "did the pin move more than a strike in ~6 seconds", which is structurally almost always
+ * no — that is a calibration question needing out-of-sample evidence, not a bug fix, and it is
+ * recorded in `docs/spx/SLAYER-MAP.md` rather than tuned here. This fix is correct at any window
+ * size: it stops the held value tracking the raw pin, which is what the header promised.
+ */
+export function nextConfirmedPin(
+  held: number | null,
+  samples: readonly PinStabilitySample[],
+  tolerancePts: number = PIN_STABILITY_TOLERANCE_PTS,
+  window: number = PIN_STABILITY_WINDOW
+): number | null {
+  if (!isPinStable(samples, tolerancePts, window)) return held;
+  const latest = samples[samples.length - 1];
+  if (latest == null || !Number.isFinite(latest)) return held;
+  if (held == null || !Number.isFinite(held)) return latest;
+  // Within tolerance of what is already displayed → the book has not moved, so neither does the
+  // number. Beyond it → a genuine relocation, and holding a stale pin would be its own lie.
+  return Math.abs(latest - held) <= tolerancePts ? held : latest;
+}
