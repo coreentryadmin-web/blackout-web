@@ -490,7 +490,13 @@ Measured above: `get_gex_heatmap` on MSFT would have served a **6,040-second-old
 `asof` as its only time signal, and `spot: 483.49` — a 16:00 ET close — with nothing in the payload
 saying the market was shut. Contract points 1 (time) and 2 (freshness).
 
-**FIXED — Phase 1, third fix.** New shared `src/lib/et-session-facts.ts` publishes `as_of_et`, `session_date`, `market_session`, `matrix_age_sec` and `freshness` on both reads, and on `GexPositioning` itself so every downstream consumer inherits them. The helper is **holiday-aware** (`isTradingDayEt` composed with `marketPhaseFromEt`), which also retroactively closes the gap §9.1 documented as acceptable — that reasoning was wrong, the repo already had a holiday calendar. `publicSnapshotSessionFacts` now delegates to it. See `docs/audit/findings-staging/2026-08-23-thermal-largo-session-anchor.md`. **Still to do: live-validate.**
+**FIXED — Phase 1, third fix.** New shared `src/lib/et-session-facts.ts` publishes `as_of_et`, `session_date`, `market_session`, `matrix_age_sec` and `freshness` on both reads, and on `GexPositioning` itself so every downstream consumer inherits them. The helper is **holiday-aware** (`isTradingDayEt` composed with `marketPhaseFromEt`), which also retroactively closes the gap §9.1 documented as acceptable — that reasoning was wrong, the repo already had a holiday calendar. `publicSnapshotSessionFacts` now delegates to it. See `docs/audit/findings-staging/2026-08-23-thermal-largo-session-anchor.md`.
+**LIVE-VALIDATED 2026-08-23 07:31Z** after deploy `ea446b2d` (ancestry verified), through
+`/api/market/gex-positioning` — the same `getGexPositioning` object the Largo tools read, so the
+contract is proven without Largo, which is degraded platform-wide. All five fields correct on
+SPY/SPX/NVDA, and `matrix_age_sec` was **recomputed independently from each payload's own `asof`**
+and matched exactly (154 / 50 / 31) — the field is computed, not merely present. Measured detail in
+`RUN-LOG.md`.
 
 ### 9.4 [P2, member-facing] The client's scoped wall scan is unconstrained while the server's is side-constrained
 
@@ -582,10 +588,36 @@ rather than "not measurable in this session".
 2. **The 56.7s SPY force-rebuild anomaly (2026-08-13) is still unexplained.** The overnight
    `gex-force-rebuild-timing.mjs` run (SPY p95 5.4s, SPX 7.3s, QQQ 4.4s, IWM 2.1s) is a **floor**.
    Re-run during RTH before touching `GEX_HEATMAP_FORCE_MAX_BLOCK_MS`.
-3. **`cross_validation` was `null` on all six tickers.** `skipSlowEnrichment` disables it whenever
-   the matrix cache is fresh — which is the normal case for the presets it is gated to. Does the UW
-   cross-check ever actually run in production? If not, the Thermal "Cross-check" chip is
-   permanently `offline` and the guard is decorative.
+3. **`cross_validation` — characterised 2026-08-23, one question left.** It was `null` on all six
+   tickers in every probe. The mechanism is now fully traced, and it is **TWO independent gates**,
+   not the one I first assumed:
+
+   - **Route gate.** `skipSlowEnrichment = matrixPeek.cached && !matrixPeek.stale`, where `stale`
+     means `age > gexHeatmapMaxStaleMs()` (90s). So on a matrix younger than 90s — the normal state
+     while `heatmap-warm` is running — `validateGexAgainstUW` is never called at all.
+   - **Validator gate.** When it IS called, it needs the UW `gex_strike_expiry` WS channel fresh
+     within 120s. Failing that it hits `if (!restFallbackAllowed(nearTermExpiries)) return null`,
+     and `restFallbackAllowed` is **false whenever a near-term scope is supplied** — which the route
+     always supplies. That is deliberate and correct: `/spot-exposures/strike` cannot be scoped per
+     expiry, and a guaranteed-mismatched comparison is worse than none (documented at length in
+     `gex-cross-validation.ts`, verified live 2026-07-01).
+
+   **MEASURED off-hours, 2026-08-23 04:31Z**, 12 reads across SPY/SPX/QQQ/IWM: `cross_validation`
+   null on every one — *including* SPY at 1,624s and QQQ at 1,645s of matrix age, both far past the
+   90s staleness gate. That rules out the route gate as the sole cause and confirms the validator
+   gate is what returns null off-hours (WS idle → REST fallback structurally disallowed).
+
+   **The consequence to weigh:** `thermalLayerFreshness` renders the desk's "Cross-check" chip
+   `offline` whenever `crossValPresent` is false, so off-hours a member always sees an off
+   cross-check with no explanation of why.
+
+   **STILL UNMEASURED — the question that decides whether this is a defect at all:** during RTH the
+   WS *is* live, so the validator gate opens; whether the cross-check then actually runs depends on
+   how often the matrix exceeds 90s while `heatmap-warm` is active. If it rarely does, the guard is
+   effectively dormant precisely when the system is healthy and only wakes when warming is already
+   degraded — worth a design conversation. If the matrix routinely ages past 90s during RTH, the
+   guard runs fine and only the off-hours chip wording needs attention. **Do not conclude either way
+   without an RTH probe** — I have deliberately not filed this as a finding on off-hours data alone.
 4. **How often does `spot` come from the prev-bar / UW fallback?** No provenance field, no counter.
    Until one exists, "the spot is stale" is unfalsifiable from the payload.
 5. **`get_wall_dynamics`** was not audited in this pass — it routes to Vector's rail for single names
