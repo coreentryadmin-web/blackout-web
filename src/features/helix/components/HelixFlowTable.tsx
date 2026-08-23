@@ -34,10 +34,9 @@ import {
 import {
   HELIX_TAPE_OVERSCAN,
   HELIX_TAPE_ROW_HEIGHT,
+  WHALE_PRINT_PREMIUM,
 } from "@/features/helix/lib/helix-flow-limits";
 import { tapeTimeDisplay } from "@/features/helix/lib/helix-tape-time";
-
-const WHALE_PREMIUM = 1_000_000;
 
 type SignalTone = "bull" | "bear" | "gold" | "sky" | "purple" | "ember";
 
@@ -446,7 +445,7 @@ export function HelixFlowTable({
                 if (!flow) return null;
                 const i = vRow.index;
                 const isCall = flow.option_type?.toUpperCase() === "CALL";
-                const isWhale = flow.premium >= WHALE_PREMIUM;
+                const isWhale = flow.premium >= WHALE_PRINT_PREMIUM;
                 const dte = flow.dte ?? daysToExpiry(flow.expiry);
                 const is0dte = dte === 0;
                 const isCompound = compoundTickers?.has(flow.ticker) ?? false;

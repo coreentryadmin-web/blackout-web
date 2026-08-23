@@ -45,9 +45,12 @@ import {
   type HelixDarkpoolHighlight,
 } from "@/features/helix/lib/use-helix-deep-link";
 import {
+  HELIX_DEFAULT_MIN_PREMIUM,
   HELIX_FLOW_DEFAULT_SINCE_HOURS,
   HELIX_FLOW_PAGE_SIZE,
   HELIX_MEMBER_PANEL_PREMIUM_FLOOR,
+  HELIX_PREMIUM_PRESETS,
+  WHALE_PRINT_PREMIUM,
 } from "@/features/helix/lib/helix-flow-limits";
 import {
   watchlistFilterActive,
@@ -102,14 +105,12 @@ import { IosNativeSegment } from "@/components/ios/IosNativeSegment";
 import { IosSectionHeader } from "@/components/ios/IosSectionHeader";
 import { IosNativeChipRail } from "@/components/ios/IosNativeChipRail";
 
-const PREMIUM_PRESETS = [200_000, 500_000, 1_000_000, 20_000_000] as const;
 // Audit gap #16: the client floor MUST match the server ingest floor (flow-persist
 // MIN_PREMIUM, default UW_FLOW_MIN_PREMIUM = $200K). A $100K floor was dead UI — no
 // row below $200K is ever persisted, so requesting them returned nothing. Keep this
 // in sync with UW_FLOW_MIN_PREMIUM if that env is lowered server-side.
 // Single definition, shared with Largo's tape tools so the two surfaces cannot drift apart.
 const FLOOR_PREMIUM = HELIX_MEMBER_PANEL_PREMIUM_FLOOR;
-const WHALE_PREMIUM = 1_000_000;
 type TypeFilter = "ALL" | "CALL" | "PUT";
 const FLOW_POLL_MS   = 30_000;
 const REPLAY_TICK_MS = 450;
@@ -220,7 +221,7 @@ export function FlowFeed() {
   const [nextBefore, setNextBefore]       = useState<string | null>(null);
   const [live, setLive]                   = useState(false);
   // Filters
-  const [minPremium, setMinPremium]       = useState(200_000);
+  const [minPremium, setMinPremium]       = useState<number>(HELIX_DEFAULT_MIN_PREMIUM);
   const [typeFilter, setTypeFilter]       = useState<TypeFilter>("ALL");
   const [whalesOnly, setWhalesOnly]         = useState(false);
   const [dteFilter, setDteFilter]           = useState<HelixDteFilter>("all");
@@ -327,7 +328,7 @@ export function FlowFeed() {
       if (watchlistFilterActive(watchlistOnly, watchlist.watchlistSet.size)) {
         rows = rows.filter((a) => watchlist.watchlistSet.has(a.ticker));
       }
-      if (whalesOnly) rows = rows.filter((a) => a.premium >= WHALE_PREMIUM);
+      if (whalesOnly) rows = rows.filter((a) => a.premium >= WHALE_PRINT_PREMIUM);
       if (indicesOnly) {
         rows = rows.filter((a) =>
           (HELIX_INDEX_TICKERS as readonly string[]).includes(a.ticker)
@@ -727,7 +728,7 @@ export function FlowFeed() {
         });
         setLive(true);
         // Bug 14: play beep for whale prints when audio is enabled
-        if (audioEnabledRef.current && alert.premium >= 1_000_000) playWhaleBeep();
+        if (audioEnabledRef.current && alert.premium >= WHALE_PRINT_PREMIUM) playWhaleBeep();
       },
       { onOpen: () => { setLive(true); stop(); }, onClose: () => { setLive(false); go(); refreshHead(); } }
     );
@@ -1037,7 +1038,7 @@ export function FlowFeed() {
           {iosView === "tape" ? (
           <div className="helix-native-toolbar-row">
             <div className="flow-seg-group">
-              {PREMIUM_PRESETS.map((v) => (
+              {HELIX_PREMIUM_PRESETS.map((v) => (
                 <button
                   key={v}
                   type="button"

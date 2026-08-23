@@ -5,9 +5,12 @@ import type { ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { clsx } from "clsx";
 import type { HelixDteFilter } from "@/features/helix/lib/helix-table-columns";
+import {
+  HELIX_DEFAULT_MIN_PREMIUM,
+  HELIX_PREMIUM_PRESETS,
+} from "@/features/helix/lib/helix-flow-limits";
 import { watchlistFilterActive } from "@/features/helix/lib/helix-watchlist-filter";
 
-const PREMIUM_PRESETS = [200_000, 500_000, 1_000_000, 20_000_000] as const;
 const DTE_OPTIONS: { id: HelixDteFilter; label: string }[] = [
   { id: "all", label: "All DTE" },
   { id: "0dte", label: "0DTE" },
@@ -31,7 +34,7 @@ export function countActiveHelixFilters(f: {
   tickerFilter: string;
 }): number {
   return (
-    (f.minPremium !== 200_000 ? 1 : 0) +
+    (f.minPremium !== HELIX_DEFAULT_MIN_PREMIUM ? 1 : 0) +
     (f.typeFilter !== "ALL" ? 1 : 0) +
     (f.whalesOnly ? 1 : 0) +
     (f.dteFilter !== "all" ? 1 : 0) +
@@ -217,7 +220,7 @@ export function HelixCommandBar({
         <div className="helix-tape-bar-block">
           <span className="helix-tape-bar-label helix-tape-bar-label--cyan">Floor</span>
           <div className="helix-tape-seg helix-tape-seg--floor">
-            {PREMIUM_PRESETS.map((v) => (
+            {HELIX_PREMIUM_PRESETS.map((v) => (
               <button
                 key={v}
                 type="button"
