@@ -9,8 +9,16 @@ Each rule below exists because of a failure already paid for. None is style.
 ### 1. Branch and scope
 
 `claude/<lane>-<slug>`, **one issue per branch**, off the latest `main`. Add a test with every
-fix. Log real bugs in `docs/audit/FINDINGS.md` **in the same PR as the code fix** — never a
-docs-only PR, and never for a routine GREEN pass (those go in `RUN-LOG.md`).
+fix. Log real bugs **in the same PR as the code fix** — never a docs-only PR, and never for a
+routine GREEN pass (those go in `RUN-LOG.md`).
+
+**Log it as a new file in `docs/audit/findings-staging/`, never by editing `FINDINGS.md`
+directly** — see `docs/audit/findings-staging/README.md`. One file per finding,
+`YYYY-MM-DD-<slug>.md`, containing exactly what used to be a `FINDINGS.md` entry (the `##
+<date> — [FINDING, ...]` heading, the `> **kind:** \`FINDING\`` line, the table). The coordinator
+folds staged files into `FINDINGS.md` after a merge wave with
+`node scripts/audit/findings-fold-staging.mjs`. This exists because direct edits to one shared,
+constantly-growing file were the single biggest cause of PR churn (rule 4).
 
 ### 2. Node 20 is mandatory — a Node 22 run is not evidence
 
@@ -51,11 +59,22 @@ marks them ready, and `automerge.yml` merges them. Until then the coordinator re
 > **Open the PR, drive CI to green, then stop.** Do not spend turns retrying the undraft. Do not
 > report a draft PR as blocked. A green draft is a finished handoff.
 
-### 4. `FINDINGS.md` conflicts with every other lane — not your bug
+### 4. Findings are staged in their own file — never edit `FINDINGS.md` directly
 
-Every lane appends at the same anchor, so every pair of agent PRs collides there regardless of what
-code they touch. The coordinator resolves it with `scripts/audit/findings-merge-resolve.mjs`. Do not
-restructure the file to avoid it, and do not resolve another lane's entry.
+**Standing fix, 2026-08-23.** Every lane used to append a new entry directly to `FINDINGS.md` at
+the same anchor, so every pair of concurrent agent PRs collided there regardless of what code they
+touched. With enough lanes landing inside the same 20 minutes, every PR went stale within minutes
+of any other one merging — a rebase treadmill that could not converge at that merge rate, even with
+a script (`findings-merge-resolve.mjs`, still there for legacy/manual use) built specifically to
+union the conflicting entries.
+
+**The fix removes the possibility of the collision rather than resolving it faster.** Per rule 1,
+write your finding to its own new file in `docs/audit/findings-staging/` — never touch
+`docs/audit/FINDINGS.md` itself. Two lanes writing two different filenames cannot conflict, by
+construction. The coordinator (or anyone) folds the staged files into `FINDINGS.md` with
+`scripts/audit/findings-fold-staging.mjs`, typically after a merge wave. If your PR still needs to
+touch `FINDINGS.md` for some other reason (rare), treat a conflict there the old way — union both
+sides, never drop an entry, never resolve another lane's file.
 
 ### 5. Ask the coordinator, never the user
 
