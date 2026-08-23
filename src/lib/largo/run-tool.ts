@@ -1052,7 +1052,9 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
     }
     case "get_banger_board": {
       const { bangerBoardForLargo } = await import("@/lib/largo/product-reads");
-      return bangerBoardForLargo(Number(input.limit ?? 40));
+      // Reduced from 40 to 25 to stay under 16k transport cap (P2 truncation fix)
+      // 40 rows at full detail exceeded cap; 25 fits comfortably
+      return bangerBoardForLargo(Number(input.limit ?? 25));
     }
     case "get_swing_horizon": {
       const { swingHorizonForLargo } = await import("@/lib/largo/product-reads");
