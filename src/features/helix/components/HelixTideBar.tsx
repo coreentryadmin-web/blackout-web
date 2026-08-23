@@ -80,7 +80,7 @@ export function HelixTideBar({ className }: { className?: string }) {
             />
           </div>
         )}
-        <div className="flex justify-between font-mono text-[9px] tabular-nums">
+        <div className="flex flex-wrap justify-between gap-x-2 gap-y-0.5 font-mono text-[9px] tabular-nums">
           {/* The SENSE is shown, not hidden. Gating on `> 0` meant a net-sold side simply vanished —
               net put premium was negative on every snapshot measured, so the puts figure never
               rendered at all. */}
