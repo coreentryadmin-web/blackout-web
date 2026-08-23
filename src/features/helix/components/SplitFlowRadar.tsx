@@ -6,14 +6,11 @@ import { clsx } from "clsx";
 import { fmtPremium } from "@/lib/api";
 import { Panel } from "@/components/ui";
 
-export type SplitFlowEntry = {
-  ticker: string;
-  callPremium: number;
-  putPremium: number;
-  callPct: number;
-  total: number;
-  direction: "bullish" | "bearish" | "mixed";
-};
+// Re-exported, not re-declared. This component previously kept its OWN copy of the shape, which is
+// how it kept rendering a `direction` the detector had stopped meaning — a duplicated type is a
+// second reader of one definition, the same failure this lane has now fixed five times.
+export type { SplitFlowEntry } from "@/features/helix/lib/helix-signal-detection";
+import type { SplitFlowEntry } from "@/features/helix/lib/helix-signal-detection";
 
 export function SplitFlowRadar({
   entries,
@@ -129,7 +126,17 @@ export function SplitFlowRadar({
                           : "text-sky-300 border-sky-300/20 bg-sky-300/[0.06]"
                     )}
                   >
-                    {isBull ? "▲ CALL BIAS" : isBear ? "▼ PUT BIAS" : "⇋ NEUTRAL"}
+                    {/* The value no longer means "more call premium than put premium" — it means
+                        what the flow says about the UNDERLYING, from option type × aggressor side.
+                        "CALL BIAS" would now be actively wrong: a bullish read can come entirely
+                        from SOLD PUTS, with no call buying at all. */}
+                    {isBull
+                      ? "▲ BULLISH"
+                      : isBear
+                        ? "▼ BEARISH"
+                        : e.direction === "mixed"
+                          ? "⇋ MIXED"
+                          : "— UNREAD"}
                   </span>
                 </div>
 

@@ -1,5 +1,6 @@
 import { fetchRecentFlows, insertHelixSignalOutcomes, fetchPendingHelixSignalCheckpoints, updateHelixSignalCheckpoint } from "@/lib/db";
 import { detectVelocitySpikes, detectSplitFlow } from "@/features/helix/lib/helix-signal-detection";
+import { DIRECTION_BASIS } from "@/features/helix/lib/helix-flow-aggression";
 import { fetchStockMinuteBars, fetchIndexMinuteBars } from "@/lib/providers/polygon";
 import { flowPriceSymbol } from "@/lib/providers/flow-price-symbol";
 
@@ -59,7 +60,21 @@ export async function recordHelixSignalFirings(nowMs = Date.now()): Promise<{ in
       ticker: s.ticker,
       window_start: windowStartIso(nowMs, 30 * 60_000),
       direction: s.direction,
-      context: { callPremium: s.callPremium, putPremium: s.putPremium, callPct: s.callPct, total: s.total },
+      // LEDGER CONTINUITY. `direction` is not a label here — `gradeOutcome` scores it as
+      // continued/reversed, so this column is a PREDICTION the record grades. The rule that
+      // produces it changed (option_type alone -> option type × aggressor side), and the two
+      // sign-flipped on 44.6% of tickers when measured. Rows from the two eras therefore answer
+      // different questions and their hit rates are not comparable. Stamping the basis is what
+      // lets a reader separate them; pooling them would launder an unknown into a statistic.
+      // Rows written before this field exists carry no basis, which IS the old rule.
+      context: {
+        callPremium: s.callPremium,
+        putPremium: s.putPremium,
+        callPct: s.callPct,
+        total: s.total,
+        direction_basis: DIRECTION_BASIS,
+        directional: s.directional,
+      },
       price_at_fire: latestPriceByTicker.get(s.ticker) ?? null,
     })),
   ];
