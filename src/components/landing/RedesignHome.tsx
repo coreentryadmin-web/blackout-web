@@ -210,7 +210,7 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
             <div className="pipe-ingress" data-pipe-stage="ingress">
               <div className="pipe-ingress-inner">
                 <canvas id="cv-ingest" width={400} height={60} />
-                <span className="pipe-ingress-label">12,400+ contracts ingested per session</span>
+                <span className="pipe-ingress-label">12,400+ contracts scanned daily</span>
               </div>
             </div>
 
