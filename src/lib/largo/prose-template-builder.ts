@@ -28,8 +28,7 @@
  * - institutional: deep + regime/macro context, multi-session precedent
  */
 
-import type { IntentCategory } from "./intent-classifier";
-import type { ResponseDepth } from "./adaptive-response-orchestrator";
+import type { QuestionIntentCategory, ResponseDepth } from "./question-intent-category";
 import type { ConsensusMatrix } from "./consensus-read-extract";
 import type { DeskReadDecision } from "./desk-read-decision";
 
@@ -52,7 +51,7 @@ export interface ProseTemplate {
  * Returns array of section directives in order.
  */
 export function getProseSectionsForIntent(
-  category: IntentCategory,
+  category: QuestionIntentCategory,
   depth: ResponseDepth,
   context?: { consensus?: ConsensusMatrix; deskRead?: DeskReadDecision }
 ): ProseTemplate[] {

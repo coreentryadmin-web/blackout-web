@@ -105,9 +105,10 @@ export function buildResponseComponents(orchestrated: OrchestrationResult, headl
   // Evidence of bullish/bearish signals
   let evidenceComponent: BlackoutComponent | undefined;
   if ((category === "MARKET_READ" || category === "WHY" || category === "TRADE_INTENT") && consensus.reads.length > 0) {
-    evidenceComponent = buildEvidenceComponent(consensus);
-    if (evidenceComponent) {
-      components.push(evidenceComponent);
+    const evidence = buildEvidenceComponent(consensus);
+    if (evidence) {
+      evidenceComponent = evidence;
+      components.push(evidence);
     }
   }
 
