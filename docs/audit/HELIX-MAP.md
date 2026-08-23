@@ -671,6 +671,27 @@ Fixing the vocabulary matters; fixing the precedence barely does.
 Blast radius: the member panel **and** Largo's `route_breakdown` field, which is currently telling
 the model that 98.8% of institutional flow has an unknown execution route.
 
+**9.10 — The Rule column substituted `flow.route` for the rule nobody reported — FIXED, and it is
+the pattern's third occurrence.** Found post-map, by reading the live tape DOM while validating
+§9.4 — not by reading code. `HelixFlowTable.tsx` rendered
+`flow.alert_rule ? ruleLabel(...) : flow.route?.slice(0, 8) || "—"`, and `flow.route` is not a rule:
+it is our own bucket, `premium >= 1_000_000 ? "whale" : dte <= 0 ? "0dte" : "stock"`. MEASURED
+2026-08-23, 500 rendered rows: `stock:271 · whale:126 · REPEAT:99 · FLOOR:3 · SWEEP:1` — **79.4% of
+the column showed an internal bucket name.** §9.8's fix did not cause this; it made it visible, by
+making the Route Breakdown panel say `UNREPORTED 95%` while the column beside it kept showing a
+value for those same prints. Fixed by `ruleBadge`, which reports UW's `alert_rule` or `"—"`.
+
+**THE PATTERN, recorded as a class rather than three coincidences.** Three findings in this lane are
+the same shape: **one field, two readers, no shared statement of what it means.** §9.8 —
+`ruleLabel` and `executionRouteKey` knew different words for `alert_rule`. §9.4 — the IV column
+guessed units per row while Largo's copy did not. §9.10 — the Rule column and the Route Breakdown
+panel disagreed about whether `alert_rule` was **present at all**. §9.5 was the same shape across a
+product boundary (`bucketLabel` vs `expiryHorizonLabel`). In every case each reader was defensible
+alone and the pair was not, and in every case the guard that fixes it is a test asserting the two
+readers **agree** — not a test of either one. Worth applying forward: when a HELIX field acquires a
+second reader, the question to ask is not "is this reader correct" but "what does this field mean,
+including when it is missing, and do both readers say so."
+
 **9.9 — Style inconsistency, not (currently) a defect.** `detectVelocitySpikes` reads
 `alert.event_at` directly while `detectSplitFlow` uses `flowEventTimeMs`. For rows produced by the
 current REST and SSE paths the two agree, because a row with no `event_at` is always

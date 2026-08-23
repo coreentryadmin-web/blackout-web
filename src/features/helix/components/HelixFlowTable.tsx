@@ -26,7 +26,7 @@ import {
   fmtOtm,
   fmtSpot,
   premiumDisplay,
-  ruleLabel,
+  ruleBadge,
   sortFlows,
   type HelixFlowSortDir,
   type HelixFlowSortKey,
@@ -207,11 +207,9 @@ function renderCell(
     case "otm":
       return <span className="helix-tape-muted tabular-nums">{fmtOtm(flow.otm_pct)}</span>;
     case "rule":
-      return (
-        <span className="helix-tape-rule">
-          {flow.alert_rule ? ruleLabel(flow.alert_rule) : flow.route?.slice(0, 8) || "—"}
-        </span>
-      );
+      // Reports UW's alert_rule or nothing — never flow.route, which is our own premium/tenor
+      // bucket and not a rule at all. See ruleBadge's header for the measurement.
+      return <span className="helix-tape-rule">{ruleBadge(flow)}</span>;
     case "score":
       return (
         <span className="helix-tape-score tabular-nums">
