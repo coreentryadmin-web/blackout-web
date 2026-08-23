@@ -146,10 +146,34 @@ That check is reproducible and should be part of a pre-open gate — see §8.
 
 ### 3.2 Fields whose provenance is UNKNOWN
 
-- **The writer of Redis `spx:pulse:snapshot`.** The reader is `fetchPulseLaneSnapshots`
-  (`spx-desk.ts:595`). The writer is in the market-worker lane, outside `src/features/spx`, and
-  was **not** traced. Its `change_pct` anchor is therefore UNKNOWN at source — the app now
-  fails closed on it (§6.1), which is why this is a gap and not an outage.
+- ~~**The writer of Redis `spx:pulse:snapshot`.**~~ **TRACED 2026-08-23 — and it found a live
+  defect.** The writer is `src/lib/ws/polygon-socket.ts:464`: the indices-WS `A` (aggregate)
+  handler `setex`es the whole `indexStore` under a 30s TTL on every bar. The `V` (value/tick)
+  handler deliberately does **not** write it — it refreshes only the local in-process store, so
+  Redis is not hammered at tick rate. A second, conditional seeder lives at
+  `src/lib/ws/socket-cluster-health.ts:161` (UW stock-state, used when the Polygon indices WS is
+  not writing).
+
+  **The `change_pct` anchor at source is TWO different anchors behind one field name**, carried
+  on `IndexStoreEntry.open_source`:
+
+  | `open_source` | `session_open` is… | so `change_pct` is measured from… |
+  |---|---|---|
+  | `"rest"` | `price / (1 + change_pct/100)` where `change_pct` is Polygon `/v3/snapshot/indices` → `session.change_percent` | the **PRIOR CLOSE** |
+  | `"ws-bar"` | `agg.o`, the bar's own open | a **BAR OPEN** |
+
+  `seedSessionOpenFromRest()` only runs on a connect at or after **09:31 ET**, so a replica whose
+  socket comes up before the bell never gets a REST anchor and rides a bar-open anchor for the
+  whole session. The two differ by the overnight gap. The value crosses Redis and the SSE wire
+  with **no anchor attached**, which is precisely the 2026-08-07 P0 that
+  `pulseChangePctFromPriorClose` was written to make unexpressible.
+
+  The REST pulse derives correctly (`spx-desk.ts:1683`, `:2017`). The SSE overlay did **not** —
+  `usePulseStream`'s `overlayFromStream` spread the transported value over the derived one, and
+  the overlay wins (`{ ...basePulse, ...overlay }`). Fixed 2026-08-23; see the findings entry.
+  **Still open:** `vix_change_pct` on the same overlay has no VIX prior close on `SpxDeskPulse` to
+  derive from, and Thermal's `/heatmap` header (`GexHeatmap.tsx:3475`, `pushedChangePct`) consumes
+  the same transported field for SPX/VIX — that surface is the Thermal lane's.
 - **`leader_stocks`, `lit_dark_ratio`, `vix_term`, `gap_source`, `data_quality`** — carried on the
   pulse payload, not traced to source in this pass. UNKNOWN.
 - **Every field on `/journal`, `/commentary`, `/outcomes`, `/power-hour`, `/signals`.** Phase 0

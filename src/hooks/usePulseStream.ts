@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPulseEventSource, type PulseStreamSnapshot } from "@/lib/api";
 import type { SpxDeskPulse } from "@/features/spx/lib/spx-desk";
+import { pulseChangePctFromPriorClose } from "@/features/spx/lib/spx-change-anchor";
 import { computeVixTermStructure } from "@/lib/vix-term-utils";
 
 function indexPrice(snap?: { price: number } | null): number | null {
@@ -10,7 +11,8 @@ function indexPrice(snap?: { price: number } | null): number | null {
   return p != null && p > 0 ? p : null;
 }
 
-function overlayFromStream(
+/** Exported for unit test only — the SSE overlay's field merge is pure and must stay checkable. */
+export function overlayFromStream(
   snap: PulseStreamSnapshot,
   base?: SpxDeskPulse | null
 ): Partial<SpxDeskPulse> {
@@ -41,8 +43,25 @@ function overlayFromStream(
     available: true,
     polled_at: snap.t ? new Date(snap.t).toISOString() : new Date().toISOString(),
     price,
-    spx_change_pct: snap.spx?.change_pct ?? base?.spx_change_pct ?? 0,
+    // DERIVE, don't transport — the same rule the REST pulse already follows
+    // (spx-desk.ts:1683/2017). `snap.spx.change_pct` arrives from polygon-socket.ts's indexStore,
+    // where the anchor it was measured against is NOT carried with it: `open_source:"rest"` anchors
+    // to the PRIOR CLOSE (seedSessionOpenFromRest derives it from Polygon's session.change_percent)
+    // while `open_source:"ws-bar"` anchors to a BAR OPEN — and the REST seed only runs on a connect
+    // after 09:31 ET, so a replica connected before the bell rides a bar-open anchor all session.
+    // Spreading that over the derived REST value made the SSE overlay disagree with the tile it
+    // overwrote by exactly the overnight gap, which is the 2026-08-07 P0 arriving through a second
+    // door. Deriving here makes the two paths agree by construction: same price, same prior close,
+    // same arithmetic. Falls back to the transported value only when there is no prior close to
+    // derive from (pre-open cold cache) — strictly no worse than before.
+    spx_change_pct: pulseChangePctFromPriorClose(
+      price,
+      base?.prior_close,
+      snap.spx?.change_pct ?? base?.spx_change_pct ?? 0
+    ),
     vix: vix ?? base?.vix ?? null,
+    // VIX is left transported: SpxDeskPulse carries no VIX prior close, so there is nothing to
+    // derive from here. Same latent ambiguity, no local fix — recorded in SLAYER-MAP §8b.
     vix_change_pct: snap.vix?.change_pct ?? base?.vix_change_pct ?? null,
     tick: tick ?? base?.tick ?? null,
     trin: trin ?? base?.trin ?? null,
