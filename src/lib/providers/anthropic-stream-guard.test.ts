@@ -24,9 +24,15 @@ const SRC = readFileSync(
   "utf8"
 );
 
-/** The one `return extractTextFromLastAssistant(...) ?? null` inside a round-failure `catch`. */
+/** The one accumulated-text fallback inside a round-failure `catch`.
+ *
+ *  The return is now wrapped in `stop("upstream_error", …)` so the loop reports WHY it stopped —
+ *  eight outcomes used to collapse into one bare `null`, and the caller defaulted to telling the
+ *  member "I couldn't pull enough live data" for all of them, including an upstream 400. The
+ *  degradation behaviour this file guards is unchanged: the catch still returns accumulated text
+ *  rather than throwing. The reason rides alongside it. */
 const CATCH_FALLBACK =
-  /catch \(err\) \{[\s\S]*?return extractTextFromLastAssistant\(messages as unknown as AnthropicMessage\[\]\) \?\? null;[\s\S]*?\}/g;
+  /catch \(err\) \{[\s\S]*?return stop\("upstream_error", extractTextFromLastAssistant\(messages as unknown as AnthropicMessage\[\]\) \?\? null, detail\);[\s\S]*?\}/g;
 
 test("both the streaming and non-streaming round calls degrade a failure to accumulated text", () => {
   const guards = SRC.match(CATCH_FALLBACK) ?? [];
@@ -42,7 +48,7 @@ test("the streaming branch's finalMessage() is inside a try that catches", () =>
   // the stream round is guarded, not naked. Locking the ORDER (finalMessage precedes a catch that
   // returns the fallback) is what distinguishes "guarded" from "a catch elsewhere in the function".
   const streamThenCatch =
-    /stream\.finalMessage\(\)[\s\S]*?catch \(err\) \{[\s\S]*?return extractTextFromLastAssistant/;
+    /stream\.finalMessage\(\)[\s\S]*?catch \(err\) \{[\s\S]*?return stop\("upstream_error", extractTextFromLastAssistant/;
   assert.match(SRC, streamThenCatch);
 });
 

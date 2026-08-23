@@ -594,7 +594,7 @@ would be worth, not by how easy it is.
 |---|---|---|---|
 | L-1 | No truncation detection anywhere, despite per-call bytes already being measured. 127 of 129 tools have no size bound at all. | `tool-guard.ts` `sizeOf`/`formatToolDiagnostics` | observability / transport |
 | L-2 | The grounding caveat never renders as a caveat — `applyVerificationCaveat` emits italics, the UI matches blockquotes. The `verification` kind is dead code. | `turn-outcome.ts:19` vs `answer-caveats.ts:17` | member-facing honesty |
-| **L-3** | **Four different null paths — gate closed, no client, spend stop, round-0 model failure — all reported as "I couldn't pull enough live data." REPRODUCED LIVE 9/9 turns, see §9b.** | `anthropic.ts:572,574,577,761-791`, `empty-answer-fallback.ts` | member-facing honesty |
+| ~~L-3~~ **FIXED** | Four different null paths — gate closed, no client, spend stop, round-0 model failure — all reported as "I couldn't pull enough live data." Reproduced live 9/9 turns (§9b); root cause confirmed from the production log as an HTTP 400 *"credit balance is too low"*. The loop now reports which of its eight exits it took (`ToolLoopStopReason` + `onStop`), and a stated reason outranks the elapsed-time heuristic. | `anthropic.ts`, `empty-answer-fallback.ts` | member-facing honesty |
 | L-4 | SPX Slayer is a declared `ProductId` with no cross-product source or adapter, and is absent from the coverage denominator rather than reported missing. | `cross-product-read.ts:35` | cross-product coherence |
 | L-5 | Three `coverage: 1` literals survive #2626; one leaves the process on the non-streaming error path. | `largo-terminal.ts:1149,1167,1454` | fabricated certainty |
 | L-6 | `applyPlanCaveat` emits "Timeframe caveat.", matcher expects "Timeframe note." → renders as generic "Note". | `plan.ts:194` vs `answer-caveats.ts:17` | UI classification |
@@ -604,8 +604,9 @@ would be worth, not by how easy it is.
 | L-10 | "TAIL slice" in six places describes a HEAD-keeping cut. Every current reader reasons correctly from it; a new one would not. | see §2.5 | documentation |
 
 **Suggested order.** L-1 first — it is the instrument the others are measured with, and it unblocks
-L-8, which unblocks probing the remaining 116 tools. L-2 and L-3 next: both are member-facing
-honesty defects with small, local fixes. L-4 and L-5 after. L-6/L-7/L-9/L-10 are cheap and can ride
+L-8, which unblocks probing the remaining 116 tools. **L-3 is done** — the coordinator released it
+ahead of the rest once the outage made it live. L-2 next: the same class of member-facing honesty
+defect, with a small, local fix. L-4 and L-5 after. L-6/L-7/L-9/L-10 are cheap and can ride
 along with a neighbouring fix rather than costing a PR each.
 
 ---
