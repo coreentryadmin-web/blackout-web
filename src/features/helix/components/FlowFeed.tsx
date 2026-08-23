@@ -49,6 +49,10 @@ import {
   HELIX_FLOW_PAGE_SIZE,
   HELIX_MEMBER_PANEL_PREMIUM_FLOOR,
 } from "@/features/helix/lib/helix-flow-limits";
+import {
+  watchlistFilterActive,
+  watchlistFilterStuck,
+} from "@/features/helix/lib/helix-watchlist-filter";
 import { FlowBrief } from "@/features/helix/components/FlowBrief";
 import { NetPremiumLeaderboard } from "@/features/helix/components/NetPremiumLeaderboard";
 import { StrikeStackDetector } from "@/features/helix/components/StrikeStackDetector";
@@ -315,7 +319,9 @@ export function FlowFeed() {
     (base: FlowAlert[], { includeType = true }: { includeType?: boolean } = {}) => {
       let rows = base.filter((a) => a.premium >= Math.max(FLOOR_PREMIUM, minPremium));
       if (tickerFilter) rows = rows.filter((a) => a.ticker === tickerFilter.toUpperCase());
-      if (watchlistOnly && watchlist.watchlistSet.size > 0) {
+      // Same predicate the chip counter reads, so the filter and the chrome cannot disagree
+      // about whether this filter is doing anything.
+      if (watchlistFilterActive(watchlistOnly, watchlist.watchlistSet.size)) {
         rows = rows.filter((a) => watchlist.watchlistSet.has(a.ticker));
       }
       if (whalesOnly) rows = rows.filter((a) => a.premium >= WHALE_PREMIUM);
@@ -361,6 +367,14 @@ export function FlowFeed() {
     }
     return { callCount: call, putCount: put, allCount: call + put };
   }, [countSource]);
+
+  // Removing the LAST ticker — via the bar's ✕, or by un-starring from the tape or the drawer —
+  // used to leave `watchlistOnly` on with nothing to filter: a lit, counted chip that narrowed
+  // nothing, and `disabled` (because the list is empty) so it could not be switched off. `onClear`
+  // hand-applied this reset; the other two paths did not. Here it holds for all of them.
+  useEffect(() => {
+    if (watchlistFilterStuck(watchlistOnly, watchlist.watchlistSet.size)) setWatchlistOnly(false);
+  }, [watchlistOnly, watchlist.watchlistSet]);
 
   const tapeBuffer = replayMode ? replayAlerts : alerts;
 
