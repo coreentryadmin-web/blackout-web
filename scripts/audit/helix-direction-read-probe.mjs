@@ -1,6 +1,10 @@
 /**
- * Does the Expiry Concentration panel's bar COLOUR agree with the direction rule the rest of
- * /flows already uses — and is there enough readable premium to colour it at all?
+ * Do HELIX's aggregate DIRECTION claims agree with the rule the tape itself uses — and is there
+ * enough readable premium behind each one to make the claim at all?
+ *
+ * Covers all three surfaces that render a directional verdict over aggregated premium:
+ * Expiry Concentration (per horizon), the Net Premium leaderboard (per ticker), and — sharing the
+ * leaderboard's derivation exactly — the ticker drawer's bias pill.
  *
  * WHY THIS EXISTS. The panel coloured each horizon from `callPremium / (call + put)` — option type
  * alone. #2691 replaced that rule everywhere else on the same page: a SOLD call is bearish. Nothing
@@ -9,8 +13,8 @@
  * tape shows whether they differ IN PRACTICE, and by how much.
  *
  * It answers two questions, and the second is the larger one:
- *   1. Per horizon: shipped colour vs aggression-aware verdict, and what share of the readable CALL
- *      premium was actually SOLD.
+ *   1. Per horizon and per leaderboard ticker: the legacy colour vs the aggression-aware verdict,
+ *      and what share of the readable CALL premium was actually SOLD.
  *   2. What share of each horizon's premium has a readable direction AT ALL. `ask_pct` is a Group A
  *      field (HELIX-MAP §4A) and Monthly/LEAPS are dominated by the SPX/SPY index feed, which does
  *      not carry it. A confident colour over premium whose direction is 97% unknown is a worse
@@ -28,6 +32,11 @@
  * them — a second copy of the rule would drift from the panel and this would then measure a
  * bucketing nobody ships.
  *
+ * LEADERBOARD, same run: **7 of the top 10 tickers disagree** with the arrow they rendered. The
+ * worst is the panel's own top row — SPX, a green triangle-up over $4.02B of net premium whose
+ * direction is **0.1% readable**. AMD, MU and SMH agree, so the honest rule does not flatten the
+ * panel; it keeps the verdicts that have evidence behind them.
+ *
  * Usage (Node 20, from the repo root):
  *   node --import tsx scripts/audit/helix-expiry-direction-probe.mjs [--limit=5000] [--since-hours=168]
  *                                                                    [--base=URL] [--json]
@@ -38,8 +47,9 @@ import {
   directionalPremium,
   directionLabel,
 } from "@/features/helix/lib/helix-flow-aggression";
-import { horizonDirection } from "@/features/helix/lib/helix-expiry-horizon";
+import { readDirection } from "@/features/helix/lib/helix-direction-read";
 import { bucketLabel } from "@/features/helix/components/ExpiryConcentration";
+import { HELIX_NET_PREMIUM_LEADERS_LIMIT } from "@/features/helix/lib/helix-strike-leaders";
 import { daysToExpiry } from "@/features/helix/lib/helix-flow-format";
 
 const argv = process.argv.slice(2);
@@ -78,7 +88,12 @@ try {
     console.error(`FAIL: GET /api/market/flows -> HTTP ${res.status}`);
     process.exit(1);
   }
-  const flows = (await res.json()).flows ?? [];
+  const body = await res.json();
+  const flows = Array.isArray(body.flows) ? body.flows : [];
+  // Printed ALWAYS, not only on failure. A run that fetched nothing and reported "0 disagreements"
+  // is indistinguishable from a clean one, and that happened once during development — a transient
+  // empty response read as a pass until this line was added.
+  console.log(`http=${res.status} rows=${flows.length}`);
   if (flows.length === 0) {
     // An empty tape cannot support any verdict about the panel. Say that, rather than reporting
     // four clean horizons — "nothing to measure" and "measured, all fine" are opposite results.
@@ -123,7 +138,7 @@ try {
     const callPct = Math.round((b.call / total) * 100);
     const legacy = callPct >= 55 ? "bullish" : callPct <= 45 ? "bearish" : "neutral";
 
-    const d = horizonDirection(b.rows);
+    const d = readDirection(b.rows);
     const shipped = d.minorityEvidence ? "undetermined" : directionLabel(directionalPremium(b.rows));
 
     // Of the CALL premium whose side IS readable, how much was sold? This is the number that
@@ -156,7 +171,40 @@ try {
     });
   }
 
-  const disagreements = report.filter((r) => !r.agrees).length;
+  // ── LEADERBOARD ────────────────────────────────────────────────────────────────────────────
+  // Same question, different aggregation: the panel ranks by TOTAL premium and renders an arrow
+  // whose colour came from sign(calls - puts). The `net` figure itself is a named, correctly
+  // defined quantity and is NOT what is being checked — only the direction claim laid over it.
+  const byTicker = new Map();
+  for (const f of flows) {
+    const cur = byTicker.get(f.ticker) ?? { calls: 0, puts: 0, rows: [] };
+    const p = Number(f.premium) || 0;
+    if (f.option_type === "CALL") cur.calls += p;
+    else if (f.option_type === "PUT") cur.puts += p;
+    cur.rows.push(f);
+    byTicker.set(f.ticker, cur);
+  }
+  const leaders = [...byTicker.entries()]
+    .map(([ticker, v]) => ({ ticker, ...v, total: v.calls + v.puts, net: v.calls - v.puts }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, HELIX_NET_PREMIUM_LEADERS_LIMIT)
+    .map((r) => {
+      const d = readDirection(r.rows);
+      const legacy = r.net >= 0 ? "bullish" : "bearish";
+      const shipped = d.minorityEvidence ? "undetermined" : directionLabel(directionalPremium(r.rows));
+      return {
+        ticker: r.ticker,
+        legacy_colour: legacy,
+        shipped_verdict: shipped,
+        agrees: legacy === shipped,
+        readable_pct: d.readablePct == null ? null : Math.round(d.readablePct * 10) / 10,
+        net: r.net,
+        total: r.total,
+      };
+    });
+  const leaderDisagreements = leaders.filter((r) => !r.agrees).length;
+
+  const disagreements = report.filter((r) => !r.agrees).length + leaderDisagreements;
 
   if (AS_JSON) {
     console.log(
@@ -168,6 +216,9 @@ try {
           unclassified_rows: unclassified,
           unclassified_premium: unclassifiedPrem,
           horizons: report,
+          leaders,
+          horizon_disagreements: report.filter((r) => !r.agrees).length,
+          leader_disagreements: leaderDisagreements,
           disagreements,
         },
         null,
@@ -175,7 +226,7 @@ try {
       )
     );
   } else {
-    console.log(`rows=${flows.length}  base=${BASE}  window=${SINCE_HOURS}h`);
+    console.log(`base=${BASE}  window=${SINCE_HOURS}h`);
     console.log(
       "option_type: " + [...types].map(([k, v]) => `${k}=${v}`).join(" ") +
         `  | neither CALL nor PUT: ${unclassified} rows (${usd(unclassifiedPrem)})`
@@ -193,9 +244,20 @@ try {
           `bull ${usd(r.bullish_premium)} bear ${usd(r.bearish_premium)} unread ${usd(r.unreadable_premium)} · ${r.prints} prints`
       );
     }
+    console.log("\nticker   legacy-colour   shipped-verdict   readable%   net");
+    for (const r of leaders) {
+      console.log(
+        `${r.ticker.padEnd(8)} ${r.legacy_colour.padEnd(15)} ${String(r.shipped_verdict).padEnd(17)} ` +
+          `${String(r.readable_pct ?? "n/a").padStart(7)}%   ${usd(r.net)}` +
+          (r.agrees ? "" : "   <-- DISAGREE")
+      );
+    }
     console.log(
-      `\n${disagreements}/${report.length} horizons disagree between the two rules.` +
-        (disagreements === 0 ? "" : " Each one is a bar coloured by a rule this page no longer uses.")
+      `\n${report.filter((r) => !r.agrees).length}/${report.length} horizons and ` +
+        `${leaderDisagreements}/${leaders.length} leaders disagree between the two rules.` +
+        (disagreements === 0
+          ? ""
+          : " Each one renders a direction from a rule this page no longer uses.")
     );
   }
 
