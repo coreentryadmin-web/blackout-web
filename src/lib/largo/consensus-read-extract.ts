@@ -21,8 +21,6 @@
  * A system that averages them into "neutral" has destroyed the signal and misled the trader.
  */
 
-import { etSessionDate } from "@/lib/largo/temporal/bar-session-date";
-
 export type SystemDirectionalRead = {
   /** Which product system made this read. */
   system: "SPX_SLAYER" | "HELIX" | "THERMAL" | "VECTOR" | "NIGHT_HAWK" | "MERIDIAN";
@@ -43,8 +41,6 @@ export type SystemDirectionalRead = {
   internalConflict?: string;
   /** When this data was generated. */
   asOf: string; // ISO timestamp
-  /** ET session date anchor (YYYY-MM-DD). */
-  sessionDate?: string;
   /** How fresh the underlying data is. */
   freshness: "live" | "recent" | "stale" | "unknown";
 };
@@ -100,7 +96,6 @@ function extractHelixRead(result: any): SystemDirectionalRead | null {
       strength: 0,
       basis: "No flow detected",
       asOf: new Date().toISOString(),
-      sessionDate: etSessionDate(Date.now()) ?? undefined,
       freshness: "unknown",
     };
   }
@@ -127,7 +122,6 @@ function extractHelixRead(result: any): SystemDirectionalRead | null {
     strength: Math.min(strength, 10),
     basis,
     asOf: result.asOf ?? new Date().toISOString(),
-    sessionDate: etSessionDate(Date.now()) ?? undefined,
     freshness: result.freshness ?? "live",
   };
 }
@@ -328,7 +322,6 @@ function extractNightHawkRead(result: any): SystemDirectionalRead | null {
     strength: Math.min(Math.max(strength, 1), 10),
     basis,
     asOf: result.asOf ?? new Date().toISOString(),
-    sessionDate: etSessionDate(Date.now()) ?? undefined,
     freshness: result.freshness ?? "live",
   };
 }
@@ -383,36 +376,28 @@ function extractMeridianRead(result: any): SystemDirectionalRead | null {
  * makes their own decision.
  */
 export function extractConsensusFromTools(toolResults: Record<string, any>): ConsensusMatrix {
-  const validReads: SystemDirectionalRead[] = [];
+  const reads: SystemDirectionalRead[] = [];
 
-  // Each tool result → try to extract a read. Only push successful extractions.
-  const helixFlow = extractHelixRead(toolResults.get_flow_tape);
-  if (helixFlow) validReads.push(helixFlow);
-  const helixDerived = extractHelixRead(toolResults.get_helix_derived);
-  if (helixDerived) validReads.push(helixDerived);
+  // Each tool result → try to extract a read
+  if (toolResults.get_flow_tape) reads.push(extractHelixRead(toolResults.get_flow_tape) ?? null);
+  if (toolResults.get_helix_derived) reads.push(extractHelixRead(toolResults.get_helix_derived) ?? null);
 
-  const thermalPos = extractThermalRead(toolResults.get_positioning);
-  if (thermalPos) validReads.push(thermalPos);
-  const thermalGex = extractThermalRead(toolResults.get_gex_heatmap);
-  if (thermalGex) validReads.push(thermalGex);
+  if (toolResults.get_positioning) reads.push(extractThermalRead(toolResults.get_positioning) ?? null);
+  if (toolResults.get_gex_heatmap) reads.push(extractThermalRead(toolResults.get_gex_heatmap) ?? null);
 
-  const vectorFull = extractVectorRead(toolResults.get_vector_full_state);
-  if (vectorFull) validReads.push(vectorFull);
-  const vectorPulse = extractVectorRead(toolResults.get_vector_pulse);
-  if (vectorPulse) validReads.push(vectorPulse);
+  if (toolResults.get_vector_full_state) reads.push(extractVectorRead(toolResults.get_vector_full_state) ?? null);
+  if (toolResults.get_vector_pulse) reads.push(extractVectorRead(toolResults.get_vector_pulse) ?? null);
 
-  const spxStruct = extractSpxRead(toolResults.get_spx_structure);
-  if (spxStruct) validReads.push(spxStruct);
-  const spxPlay = extractSpxRead(toolResults.get_spx_play);
-  if (spxPlay) validReads.push(spxPlay);
+  if (toolResults.get_spx_structure) reads.push(extractSpxRead(toolResults.get_spx_structure) ?? null);
+  if (toolResults.get_spx_play) reads.push(extractSpxRead(toolResults.get_spx_play) ?? null);
 
-  const nighthawk = extractNightHawkRead(toolResults.get_zerodte_plays);
-  if (nighthawk) validReads.push(nighthawk);
+  if (toolResults.get_zerodte_plays) reads.push(extractNightHawkRead(toolResults.get_zerodte_plays) ?? null);
 
-  const meridianTimeline = extractMeridianRead(toolResults.get_meridian_timeline);
-  if (meridianTimeline) validReads.push(meridianTimeline);
-  const meridianEvent = extractMeridianRead(toolResults.get_meridian_event);
-  if (meridianEvent) validReads.push(meridianEvent);
+  if (toolResults.get_meridian_timeline) reads.push(extractMeridianRead(toolResults.get_meridian_timeline) ?? null);
+  if (toolResults.get_meridian_event) reads.push(extractMeridianRead(toolResults.get_meridian_event) ?? null);
+
+  // Filter out nulls
+  const validReads = reads.filter((r): r is SystemDirectionalRead => r !== null);
 
   if (validReads.length === 0) {
     return {
@@ -437,7 +422,7 @@ export function extractConsensusFromTools(toolResults: Record<string, any>): Con
   const voting = validReads.length;
 
   // Determine verdict
-  let verdict: ConsensusMatrix["agreement"]["verdict"];
+  let verdict: ConsensusMatrix["agreement"]["verdict"] = "neutral";
   let direction: "bullish" | "bearish" | "neutral" | null = null;
 
   if (bullishCount > bearishCount && bullishCount > neutralCount) {
