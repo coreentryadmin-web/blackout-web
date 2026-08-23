@@ -571,6 +571,26 @@ reclassified with a reason.
 | b1 | `SpxPlayPayload.grade`/`score`/`confidence` are non-nullable (`string`/`number`/`number`), so the three fabrication sites must invent `"D"`/`0`/`0` when nothing was assessed. `assessed` flags it; the literals are still in the payload. | Making them nullable produced 13+ `tsc` errors that force a nullability decision through gate arithmetic (`buildSpxPlayDeskContext` → `mixedTapeBlockThreshold`), **Vector's** `PlayStateSnapshot`, and the Night Hawk badge map. Each needs its own answer to "what does an ungraded desk mean here"; that is a typed-absence refactor across three lanes, not a UI fix. |
 | b2 | `spx-slayer-badge-map.ts:37-38` forwards `payload.grade`/`payload.score` into `SpxSlayerBadge` (typed `string`/`number`), and `unavailableSpxSlayerBadge()` hard-codes `grade: "D", score: 0` — the same absence-as-measurement defect, rendered on the **Night Hawk** board (`zerodte-board-strips.tsx`, `CommandDeck.tsx`). | The DTO and both renderers are Night Hawk-lane surfaces. The `assessed` flag is now on the payload for that lane to act on; changing another lane's display types inside an SPX UI fix is the cross-lane push this repo's merge history keeps punishing. |
 | b3 | The chart-control collisions on `/dashboard` desktop (3, reproduced live 2026-08-23) are localised to the harness output but the CSS rule is not yet identified. | §8 item 6 — the 2026-08-07 entry's caution against guessing a layout rule stands; needs the phone viewport too, which the sandbox tunnel has never reached. |
+| b4 | **Pin stability window size** — `PIN_STABILITY_WINDOW = 3` at the deployed 2s pin TTL asks "did the pin move more than a strike in ~6 seconds", which is structurally almost always no. | Calibration, not a defect. Needs out-of-sample evidence over real sessions. The 2026-08-23 hold-steady fix (this PR) is correct at any window size. |
+| b5 | **Pin stability state is per-process** — `spx-pin.ts` holds the rolling window at module scope; production runs multiple ECS tasks, so a member round-robins across replicas each with its own window and its own held pin. | Needs shared state (the Redis lane the desk already uses). Architectural, not a lane's unilateral change. |
+| b6 | **`spx-play-engine.ts:1633`** — `confidence: closedConfluence?.confidence ?? 0` on the session-closed path; `0` reads as a measured floor, not "unknown". | Belongs with the calibrated-confidence work (§8 item 2), which is measured infeasible until ~264 closed plays exist. |
+| b7 | **~15 `isStagingDeploy()` dead branches** across nine SPX files (§7.1). | Each needs a per-site judgment about correct production behaviour; several are staging-only debug affordances whose removal is a UI change. |
+
+### Cross-lane: the Vector toolbar collides with itself, on BOTH surfaces
+
+Found while auditing `/dashboard`, localised, and **handed to the Vector lane rather than fixed
+here** — the component is theirs and a fix changes their page too.
+
+- **`/dashboard`**: `.vector-replay-bar` (inside `.vector-replay-controls.flex.min-w-0`) computes to
+  **width 0** while its buttons still render at full size with `overflow: visible`, so `▶ Replay`
+  prints over the `.vector-desk-seg` GEX/VEX segment — 17x27px of real intersection.
+- **`/vector`**: the same segment is overlapped by the price readouts — `"7,775"` over `GEX`,
+  `"+$30.6M"` over `VEX`, `"—"` over `VEX`.
+
+One component, two surfaces. Mechanism: `min-w-0` lets the flex child shrink to nothing, and
+`overflow: visible` means its content spills onto its neighbour instead of clipping. Reproduce with
+`NODE_USE_ENV_PROXY=1 node --import tsx scripts/audit/live-ui-interaction-audit.mjs
+--pages=/dashboard,/vector --desktop-only`.
 
 ---
 
