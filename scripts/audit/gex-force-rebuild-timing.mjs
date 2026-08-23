@@ -35,6 +35,7 @@
  */
 
 import { mintClerkPremiumSession } from "./lib/prod-clerk-session.mjs";
+import { makeCookieJar } from "./lib/clerk-cookie-jar.mjs";
 
 const args = process.argv.slice(2);
 const flag = (name, dflt) => {
@@ -78,35 +79,6 @@ function marketPhaseEt(now = new Date()) {
   if (mins <= 16 * 60) return "RTH";
   if (mins <= 20 * 60) return "after-hours";
   return "overnight";
-}
-
-/**
- * Cookie holder that re-mints the session JWT before it dies (~72s), matching the pattern in
- * largo-truth-divergence.mjs.
- *
- * This is not optional bookkeeping. A forced rebuild takes seconds, so a run of any length outlives
- * a single JWT — and the failure is silent in the worst way: the FIRST tickers measure fine and the
- * LAST ones return 401 in ~60ms. Read naively that says "IWM's matrix is broken and fast", when it
- * says nothing about IWM at all. The first version of this script did exactly that and reported
- * QQQ 1/5 and IWM 0/5 on a healthy system.
- */
-function makeCookieJar(session) {
-  let cookie = session.cookieHeader;
-  let mintedAt = Date.now();
-  const force = async () => {
-    const next = await session.refresh?.().catch(() => null);
-    if (next?.cookieHeader) {
-      cookie = next.cookieHeader;
-      mintedAt = Date.now();
-    }
-    return cookie;
-  };
-  return {
-    async get() {
-      return Date.now() - mintedAt < 45_000 ? cookie : force();
-    },
-    force,
-  };
 }
 
 async function timedForce(cookieHeader, ticker) {
