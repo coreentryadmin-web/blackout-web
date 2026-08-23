@@ -4,6 +4,21 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-23 — [FINDING, P2 SPX Slayer] `production_eligible: "not_started"` on all 14 playbooks reads as a safety gate and gates nothing — while the production playbook gate is ON — FIXED (made explicit + ratcheted)
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `PLAYBOOK_SURFACE_STATUS` marks every one of the 14 playbooks `production_eligible: "not_started"`, and `PLAYBOOK-ARCHITECTURE-STATUS.md` §6 renders that as a **"Prod eligible"** column reading `not_started` for all 14. Both read as "no playbook can run in production yet". Meanwhile `PLAYBOOK_LIVE_GATE="1"` in production means gate A17 **requires** a matched primary playbook before any BUY — so playbooks decide live entries today. |
+| **Root cause** | The field is descriptive and always was. Measured at `9b20b63c`: **nothing outside `playbook-implementation-status.ts` reads `production_eligible`, or `PLAYBOOK_SURFACE_STATUS` at all.** It is a fact that exists in the system and is not wired to any rule — the defect class this fleet keeps finding, in its documentation-shaped form. |
+| **Evidence** | `grep -rn "production_eligible" src/ --include='*.ts' --include='*.tsx'` returns only the defining file; same for `PLAYBOOK_SURFACE_STATUS`. Production config read from `blackout-production/app/env` (named non-secret keys only): `PLAYBOOK_LIVE_GATE = "1"`, `PLAYBOOK_LIVE_ALLOWLIST` unset. |
+| **Why it is not cosmetic** | A reader who trusts it de-prioritises real production defects in this subsystem. That is close to what happened with PB-01/PB-02 (#2636): had the "Prod eligible: not_started" column been taken at face value, "two playbooks cannot fire in production" reads as expected rather than as a P1. The same document also states *"Prod — playbook live gate **off** unless `PLAYBOOK_LIVE_GATE=1`"*, which is literally true and practically inverted, since it **is** `1`. |
+| **Fix** | Deliberately NOT wiring it — wiring `not_started` as written would block all 14 playbooks and stop the engine entering at all, which is a behaviour change requiring the coordinator's decision, not a lane's. Instead: (a) a prominent comment at the constant stating it is descriptive, gates nothing, and naming the tension with `PLAYBOOK_LIVE_GATE=1`; (b) `playbook-status-doc-sync.test.ts` pins the current values so a future change to gating or to these statuses must come past that comment; (c) all eleven playbook docs bannered with the environment claims that are false. **Open question raised to the coordinator on the PR: should `production_eligible` gate?** |
+| **Blast radius** | The doc audit that surfaced this covered all eleven `docs/spx/PLAYBOOK-*.md`. Result recorded in `SLAYER-MAP.md` §6.4: they are **accurate about the code and false about the world** — §6's 70-cell matrix, §16's constants and §17's code map all verified correct, while all eleven reference decommissioned staging (~154 times), the "Single Source of Truth" header names a repo that is not this one (`blackout-web-sandbox`), a host deleted 2026-07-25, and a "Railway prod" that does not exist, and §18 calls `npm run validate:staging-playbook`, removed from `package.json`. |
+| **Regression guard** | `src/features/spx/lib/playbook-status-doc-sync.test.ts`, 3 tests: §6's matrix matches `PLAYBOOK_SURFACE_STATUS` cell-for-cell; every registered playbook appears in the doc (no silent omission); and the parse must find exactly 14 rows, so a regex that matches nothing FAILS rather than passing vacuously — the absence-reads-as-clean trap. SPX lib suite 660/660, tsc clean, on Node 20.20.2. |
+| **Status** | FIXED (made explicit + ratcheted). The gating question is open with the coordinator. |
+
 ## 2026-08-22 — [FINDING, P1 SPX Slayer/Largo] SPX Slayer's `confidence` reached the model as a formula over a FACTOR COUNT — fabricated certainty ranked against other lanes' measured scores — FIXED
 
 > **kind:** `FINDING`
