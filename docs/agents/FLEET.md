@@ -153,7 +153,7 @@ and `update_trigger` changes it without disturbing the lane.
 | Tag | Meaning |
 |---|---|
 | `fleet:blackout` | Member of this fleet. Every lane session carries it. |
-| `lane:<name>` | Which product lane — `helix`, `thermal`, `vector`, `meridian`, `nighthawk`, `spx`, `seo`, `x-content`, `largo`, `ui-ux` |
+| `lane:<name>` | Which product lane — `helix`, `thermal`, `vector`, `meridian`, `nighthawk`, `spx`, `seo`, `x-content`, `largo`, `ui-ux`, `qa-adversarial` |
 | `role:lane` / `role:coordinator` | Lane worker vs the session that reviews and merges |
 | `role:taskforce` | Time-boxed: one job, report, then ARCHIVED. See `docs/agents/COORDINATOR.md` §5 |
 
@@ -171,6 +171,7 @@ Branch prefix stays `claude/<lane>-<slug>` so `automerge.yml` and `agent-pr-rele
 | `spx` | SPX Slayer surfaces |
 | `seo` | Search, authority, backlinks — weekly, Monday 06:00 PT |
 | `ui-ux` | Cross-platform design system, information hierarchy, visualization, motion, navigation — the experience layer over every product lane's own UI |
+| `qa-adversarial` | Independent red-team QA — second-party validation of every product lane's own "VERIFIED" claim; finds failures, routes them to the coordinator, does not fix product code |
 
 ## What every lane brief must carry
 
