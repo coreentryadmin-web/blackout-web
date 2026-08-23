@@ -112,7 +112,13 @@ const INVENTORY = () => {
     .filter(visible)
     .filter((el) => !el.disabled)
     .map(label);
-  return { tabs, sortHeaders, searchInputs, selects, switches, buttons };
+  // `<summary>` (as the first child of `<details>`) is natively interactive and keyboard-operable
+  // — an implicit ARIA role of "button" the accessibility tree assigns, not a literal `role`
+  // attribute, so it never matched the selector above. Confirmed live: /pricing's entire FAQ is
+  // `<details><summary>`, not a single `role=tab`/button in sight.
+  const disclosures = [...document.querySelectorAll("details > summary")].filter(inShell).filter(visible).map(label);
+  const links = [...document.querySelectorAll("a[href]")].filter(inShell).filter(visible).length;
+  return { tabs, sortHeaders, searchInputs, selects, switches, buttons, disclosures, links };
 };
 
 /**
@@ -403,6 +409,38 @@ async function testSwitches(page, route, vpName) {
   return tested;
 }
 
+/**
+ * Native `<details>/<summary>` disclosures (accordions, FAQs) — a real, common interactive
+ * pattern that carries no `role=tab`/`role=button` attribute at all (its clickability comes from
+ * an IMPLICIT ARIA role the browser assigns), so it needed its own test rather than being folded
+ * into testButtons's `button, [role=button]` selector. Confirmed live: /pricing's entire FAQ is
+ * built this way.
+ */
+async function testDisclosures(page, route, vpName) {
+  const handles = await page.$$("details > summary");
+  let tested = 0;
+  for (let i = 0; i < handles.length && tested < 10; i++) {
+    const h = handles[i];
+    const meta = await h
+      .evaluate((el) => ({
+        inShell: !el.closest("header, nav, [role=navigation], footer"),
+        visible: el.getBoundingClientRect().width > 2,
+        label: (el.textContent ?? "").trim().slice(0, 40),
+      }))
+      .catch(() => null);
+    if (!meta || !meta.inShell || !meta.visible) continue;
+    const before = await h.evaluate((el) => el.parentElement.open).catch(() => null);
+    await h.click({ timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(500);
+    tested++;
+    const after = await h.evaluate((el) => el.parentElement.open).catch(() => null);
+    if (before === after) {
+      record({ severity: "P2", route, viewport: vpName, where: `disclosure:${meta.label}`, issue: "clicking this FAQ/accordion header did not toggle it open — <details> element's `open` state unchanged" });
+    }
+  }
+  return tested;
+}
+
 /** Bounded, blocklist-filtered pass over remaining buttons — the ones tabs/sort/select/switch didn't already cover. */
 async function testButtons(page, route, vpName) {
   let tested = 0;
@@ -543,10 +581,19 @@ async function runDeep() {
         // (confirmed live: Thermal 33 buttons, Vector dozens once loaded, Night Hawk 8), so requiring
         // a real control is the reliable signal; a genuinely control-less page times out to HARNESS
         // below rather than being misread as settled.
+        //
+        // Includes `summary` and real `a[href]` links, not just button/tab/select/switch — a live
+        // pass on /pricing timed out for the full 45s despite rendering perfectly (pricing tiers,
+        // a comparison table, a working FAQ) because its entire interactive surface is `<details>
+        // <summary>` (native disclosure, an IMPLICIT ARIA button role the accessibility tree
+        // assigns rather than a literal `role` attribute) and `<Link>` CTAs — a page built entirely
+        // from semantic HTML rather than the ARIA-button pattern this probe originally assumed.
         const probe = await page
           .evaluate(() => {
             const inShell = (el) => !el.closest("header, nav, [role=navigation], footer");
-            const interactive = [...document.querySelectorAll("button, [role=tab], select, [role=switch]")].filter(inShell).length;
+            const interactive =
+              [...document.querySelectorAll("button, [role=tab], select, [role=switch], details > summary")].filter(inShell).length +
+              [...document.querySelectorAll("a[href]")].filter(inShell).filter((el) => (el.textContent ?? "").trim().length > 0).length;
             return { ready: document.readyState === "complete", interactive };
           })
           .catch(() => null);
@@ -572,7 +619,7 @@ async function runDeep() {
         record({ severity: "HARNESS", route: ROUTE, viewport: VP_NAME, where: "inventory", issue: "inventory probe did not execute" });
       } else {
         console.log(
-          `  inventory: ${inv.tabs.length} tabs, ${inv.sortHeaders.length} sort headers, ${inv.searchInputs.length} search inputs, ${inv.selects.length} selects, ${inv.switches.length} switches, ${inv.buttons.length} buttons`
+          `  inventory: ${inv.tabs.length} tabs, ${inv.sortHeaders.length} sort headers, ${inv.searchInputs.length} search inputs, ${inv.selects.length} selects, ${inv.switches.length} switches, ${inv.disclosures.length} disclosures, ${inv.buttons.length} buttons, ${inv.links} links`
         );
       }
 
@@ -596,13 +643,17 @@ async function runDeep() {
         record({ severity: "HARNESS", route: ROUTE, viewport: VP_NAME, where: "switches", issue: `switch sweep threw: ${String(e?.message ?? e).slice(0, 140)}` });
         return 0;
       });
+      const disclosuresTested = await testDisclosures(page, ROUTE, VP_NAME).catch((e) => {
+        record({ severity: "HARNESS", route: ROUTE, viewport: VP_NAME, where: "disclosures", issue: `disclosure sweep threw: ${String(e?.message ?? e).slice(0, 140)}` });
+        return 0;
+      });
       const buttonsTested = await testButtons(page, ROUTE, VP_NAME).catch((e) => {
         record({ severity: "HARNESS", route: ROUTE, viewport: VP_NAME, where: "buttons", issue: `button sweep threw: ${String(e?.message ?? e).slice(0, 140)}` });
         return 0;
       });
 
       console.log(
-        `  tested: ${tabsTested} tabs, ${sortTested} sort headers, ${searchTested} search boxes, ${selectsTested} selects, ${switchesTested} switches, ${buttonsTested} buttons`
+        `  tested: ${tabsTested} tabs, ${sortTested} sort headers, ${searchTested} search boxes, ${selectsTested} selects, ${switchesTested} switches, ${disclosuresTested} disclosures, ${buttonsTested} buttons`
       );
 
       const overflow = await page.evaluate(OVERFLOW).catch(() => undefined);
