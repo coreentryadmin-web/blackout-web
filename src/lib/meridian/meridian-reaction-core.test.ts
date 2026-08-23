@@ -85,15 +85,52 @@ test("an AMC reaction contains the overnight gap — an open→close read INVERT
   assert.notEqual(Math.sign(rx.reaction_pct!), Math.sign(rx.session_change_pct!));
 });
 
-test("a BMO print's reaction IS its session — the two reads must not drift apart", () => {
+test("a BMO reaction contains the PREMARKET gap — an open→close read INVERTS its sign too", () => {
+  // The symmetric case to the AMC test above, and the defect this file used to assert as correct.
+  // GAP_BARS 05-15 opens at 109 against a 100 prior close and closes 107: the print gapped +9%
+  // and faded 1.83%. A pre-open print is priced in the PREMARKET, so the gap is the reaction —
+  // an open→close read starts after it and reports the stock FELL on a print it rose 7% on.
+  //
+  // Measured live over 519 settled BMO prints: 27.0% carry the opposite sign this way. e.g.
+  // DDOG 2026-08-06 was displayed +0.81% on a print the stock fell 19.03% on.
   const byYmd = indexBarsByYmd(GAP_BARS);
   const ordered = [...byYmd.keys()].sort();
   const rx = reactionForPrint(byYmd, ordered, "2026-05-15", "bmo");
-  // Pre-open print: the market has the whole session to price it, so open→close is the reaction
-  // and the prior close belongs to news nobody had yet.
-  assert.equal(rx.reaction_pct, rx.session_change_pct);
-  assert.equal(rx.reaction_pct, -1.83);
-  assert.equal(rx.reaction_measure, "session_open_to_close");
+
+  assert.equal(rx.reaction_pct, 7, "prior close 100 → close 107");
+  assert.equal(rx.reaction_measure, "prior_close_to_close");
+  assert.equal(rx.reaction_basis, "bmo_session", "the SESSION is still the report date's own");
+  assert.equal(rx.reaction_includes_prior_drift, true);
+
+  // The old read, still reported under its own name — and still the opposite sign.
+  assert.equal(rx.session_change_pct, -1.83);
+  assert.notEqual(Math.sign(rx.reaction_pct!), Math.sign(rx.session_change_pct!));
+});
+
+test("BMO and AMC differ in WHICH session anchors, not in how it is read", () => {
+  // Both are priced while the market is shut, so both are prior-close-to-close. Only the anchor
+  // session moves. Keeping the two measures in step is what stops this defect returning on one
+  // branch after being fixed on the other — which is exactly what happened the first time.
+  const byYmd = indexBarsByYmd(GAP_BARS);
+  const ordered = [...byYmd.keys()].sort();
+  const bmo = reactionForPrint(byYmd, ordered, "2026-05-15", "bmo");
+  const amc = reactionForPrint(byYmd, ordered, "2026-05-14", "amc");
+  assert.equal(bmo.reaction_measure, amc.reaction_measure);
+  assert.equal(bmo.reaction_includes_prior_drift, amc.reaction_includes_prior_drift);
+  assert.notEqual(bmo.reaction_basis, amc.reaction_basis);
+});
+
+test("a BMO print with no session before it yields no reaction, not a fallback", () => {
+  // Without the close BEFORE the print there is no anchor for the gap. Silently falling back to
+  // open→close would put a DIFFERENT quantity under the same field name — the same refusal the
+  // AMC branch already makes when the report-date bar is missing.
+  const byYmd = indexBarsByYmd(GAP_BARS);
+  const ordered = [...byYmd.keys()].sort();
+  const rx = reactionForPrint(byYmd, ordered, ordered[0]!, "bmo"); // oldest bar, nothing before it
+  assert.equal(rx.reaction_pct, null);
+  assert.equal(rx.reaction_measure, null, "no measure is claimed without a value to describe");
+  assert.equal(rx.reaction_includes_prior_drift, null);
+  assert.equal(rx.session_change_pct, 2.04, "the session itself is still reported as such");
 });
 
 test("an unknown-timing print is read as its own session, and says so", () => {
@@ -106,6 +143,8 @@ test("an unknown-timing print is read as its own session, and says so", () => {
   assert.equal(rx.reaction_measure, "session_open_to_close");
   assert.equal(rx.reaction_pct, rx.session_change_pct);
   assert.equal(rx.reaction_basis, "assumed_report_session");
+  // The only path that reaches an open→close read, and the only one that spans no closed market.
+  assert.equal(rx.reaction_includes_prior_drift, false);
 });
 
 test("an AMC print whose own report-date bar is missing yields no reaction, not a guess", () => {
@@ -120,12 +159,15 @@ test("an AMC print whose own report-date bar is missing yields no reaction, not 
   assert.equal(rx.session_change_pct, -1.83, "the anchor session itself is still reported as such");
 });
 
-test("BMO print reads its own session", () => {
+test("BMO print anchors on its own session", () => {
   const byYmd = indexBarsByYmd(BARS);
   const ordered = [...byYmd.keys()].sort();
   const rx = reactionForPrint(byYmd, ordered, "2026-05-15", "bmo");
   assert.equal(rx.session_change_pct, 9.8);
   assert.equal(rx.reaction_basis, "bmo_session");
+  // BARS opens exactly where it closed (102 → 102), so this fixture has NO premarket gap and the
+  // two reads agree. That is why it could not see the gap bug and GAP_BARS carries that case.
+  assert.equal(rx.reaction_pct, 9.8);
 });
 
 test("the two anchorings genuinely disagree — this is the bug, not a nuance", () => {

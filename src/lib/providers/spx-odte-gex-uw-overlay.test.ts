@@ -149,3 +149,93 @@ test("the strict 0DTE reader still refuses an off-axis today — the two resolve
   // ...while the non-strict resolver, which the overlay caller uses, still does fall back.
   assert.equal(resolveOdteExpiry(hm.expiries, "2026-08-19"), "2026-08-20");
 });
+
+/**
+ * `walls_by_horizon` — the DTE-scoped walls — must be recomputed by this overlay, not inherited.
+ *
+ * THE SETUP THAT MADE THIS NECESSARY. The field used to be assigned in exactly one place,
+ * `prunePastExpiriesFromHeatmap`, which early-returns unchanged on a matrix with no past expiry
+ * columns — i.e. on every fresh build. Measured on prod 2026-08-22 it was ABSENT on all six tickers
+ * sampled. Populating it on the fresh build (the actual fix) immediately creates a second problem
+ * here: this overlay REPLACES today's 0DTE column, so an inherited `walls_by_horizon` would carry
+ * a PRE-overlay 0DTE wall beside a POST-overlay flip, wall pair and regime.
+ *
+ * That is the third instance of one failure mode in this single function — `regime` was left stale
+ * once, `flip_reason` once — so it is asserted behaviourally rather than trusted.
+ */
+test("REGRESSION: the overlay recomputes walls_by_horizon from the OVERLAID 0DTE column", () => {
+  const hm = baseHeatmap();
+  // A stale horizon block, as if inherited from the pre-overlay book. The strikes are DELIBERATELY
+  // ones the book cannot produce (9999 / 1000 are not on this chain at all): a recompute and an
+  // inherit must be distinguishable, and picking a plausible strike makes them coincide. The first
+  // draft of this test asserted `callWall !== 7800` and failed green-on-broken in reverse — 7800 IS
+  // the correct post-overlay 0DTE call wall, so the assertion proved nothing either way.
+  hm.gex.walls_by_horizon = [
+    { label: "0DTE", maxDte: 0, expiries: [TODAY], callWall: 9999, putWall: 1000, callWallPts: 2263, putWallPts: -6736 },
+  ];
+
+  // The ladder inverts today's column: 7800 collapses to a token positive and 7650 becomes a large
+  // NEGATIVE node. The sign matters — a wall is defined by the sign of net dealer gamma, not by
+  // which side of spot it sits on, so a ladder of all-positive values has no put wall to find at
+  // all. (The first draft of this test used +835m at 7650 and asserted a put wall there; it failed
+  // correctly, and the code was right.)
+  const ladder = new Map<number, number>([
+    [7650, -835_268_500],
+    [7800, 1],
+  ]);
+  const out = applySpxOdteGexUwOverlayWithLadder(hm, ladder, TODAY);
+
+  const zero = out.gex.walls_by_horizon?.find((h) => h.label === "0DTE");
+  assert.ok(zero, "the overlay must publish a 0DTE horizon, not drop the block");
+  assert.deepEqual(zero.expiries, [TODAY], "the 0DTE bucket describes today's column only");
+  assert.notEqual(zero.callWall, 9999, "the inherited 0DTE call wall must not survive the overlay");
+  assert.notEqual(zero.putWall, 1000, "nor the inherited put wall");
+  // What a real recompute over the OVERLAID column yields: 7800 carries +1, the only POSITIVE net
+  // above spot 7736, so it is the 0DTE call wall; 7650 carries the ladder's -835,268,500, the only
+  // NEGATIVE net below spot, so it is the 0DTE put wall.
+  assert.equal(zero.callWall, 7800, "recomputed from the overlaid column, not inherited");
+  assert.equal(zero.putWall, 7650, "the overlaid ladder's dominant sub-spot node is the 0DTE put wall");
+  assert.equal(zero.callWallPts, Number((7800 - out.spot).toFixed(2)), "distances re-derive too");
+});
+
+test("the horizons the overlay publishes are side-constrained — the biggest negative is not automatically the put wall", () => {
+  // The case that makes the constraint load-bearing: 7800 is MORE negative than 7650 but sits ABOVE
+  // spot 7736. Unconstrained, argmax-negative picks 7800 and labels overhead resistance "support" —
+  // the #2417 inversion. Constrained, the honest answer is 7650 for the put wall and NULL for the
+  // call wall, because no positive-gamma strike sits above spot in this book at all.
+  const hm = baseHeatmap();
+  const out = applySpxOdteGexUwOverlayWithLadder(
+    hm,
+    new Map<number, number>([
+      [7650, -835_268_500],
+      [7800, -5e11],
+    ]),
+    TODAY
+  );
+
+  const zero = out.gex.walls_by_horizon?.find((h) => h.label === "0DTE");
+  assert.equal(zero?.putWall, 7650, "the put wall is the biggest negative BELOW spot");
+  assert.notEqual(zero?.putWall, 7800, "never the bigger negative sitting above spot");
+  assert.equal(zero?.callWall, null, "no positive strike above spot means no call wall, not a fallback");
+
+  // And the invariant across every bucket, so a future bucket added to wallsByHorizon inherits it.
+  for (const h of out.gex.walls_by_horizon ?? []) {
+    if (h.callWall != null) {
+      assert.ok(h.callWall > out.spot, `${h.label} call wall ${h.callWall} must sit above spot ${out.spot}`);
+    }
+    if (h.putWall != null) {
+      assert.ok(h.putWall < out.spot, `${h.label} put wall ${h.putWall} must sit below spot ${out.spot}`);
+    }
+  }
+});
+
+test("recomputeNearTermGexStrikeTotals honours a pinned session date for its DTE buckets", () => {
+  // The buckets are DTE distances from a session, so the session must be the caller's, not the
+  // wall clock — otherwise a date-pinned overlay and its own horizons describe different days.
+  const hm = baseHeatmap();
+  recomputeNearTermGexStrikeTotals(hm, TODAY);
+  const zero = hm.gex.walls_by_horizon?.find((h) => h.label === "0DTE");
+  assert.deepEqual(zero?.expiries, [TODAY]);
+  const seven = hm.gex.walls_by_horizon?.find((h) => h.label === "7DTE");
+  assert.deepEqual(seven?.expiries, [TODAY, "2026-08-08"], "7DTE is cumulative, so it includes today");
+});

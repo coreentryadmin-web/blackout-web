@@ -9,6 +9,7 @@ import {
   fmtFullTimestamp,
   ruleLabel,
   executionRouteKey,
+  fmtIv,
   ALERT_RULE_WORD_KEYS,
   sortFlows,
 } from "./helix-flow-format";
@@ -156,6 +157,38 @@ test("a rule naming a mechanism AND the repeat pattern is filed under the mechan
   assert.equal(executionRouteKey({ alert_rule: "RepeatedHitsFloorTrade" }), "FLOOR");
   // ...and with no mechanism named, the pattern word is what rescues it from OTHER.
   assert.equal(executionRouteKey({ alert_rule: "RepeatedHits" }), "REPEAT");
+});
+
+/**
+ * IV is a FRACTION in this feed, uniformly — measured over 3500 live rows carrying IV
+ * (docs/audit/HELIX-MAP.md §9.4). These pin the unit so a future edit cannot reintroduce a
+ * per-row fraction-vs-percent guess.
+ */
+test("fmtIv renders the feed's real unit — a fraction — at every magnitude", () => {
+  assert.equal(fmtIv(0.07), "7%");    // the live minimum
+  assert.equal(fmtIv(0.17), "17%");   // the live median
+  assert.equal(fmtIv(0.23), "23%");   // live p75
+  assert.equal(fmtIv(1), "100%");
+  assert.equal(fmtIv(2.99), "299%");  // just under the OLD branch point
+  assert.equal(fmtIv(3), "300%");     // ...and just over it: no discontinuity any more
+  assert.equal(fmtIv(3.5), "350%");
+});
+
+test("a degenerate IV solve reads as obviously wrong, not as a plausible number", () => {
+  // The real tail: SPY calls expiring the same day, deep ITM, where the solve breaks down.
+  // Old behaviour rendered 106.2 as "106%" — a number a member has no reason to distrust.
+  assert.equal(fmtIv(106.2), "10620%");
+  assert.equal(fmtIv(69.24), "6924%");
+  assert.equal(fmtIv(43.12), "4312%");
+});
+
+test("fmtIv withholds rather than inventing a value it does not have", () => {
+  assert.equal(fmtIv(null), "—");
+  assert.equal(fmtIv(undefined), "—");
+  assert.equal(fmtIv(0), "—");
+  assert.equal(fmtIv(-1), "—");
+  assert.equal(fmtIv(Number.NaN), "—");
+  assert.equal(fmtIv(Number.POSITIVE_INFINITY), "—");
 });
 
 test("ruleLabel still falls back to the raw rule text, unlike the panel", () => {

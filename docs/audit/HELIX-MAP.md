@@ -574,17 +574,34 @@ reaches `server-only`, so nothing in it could be unit-tested, which is exactly h
 consequential went unmeasured. 9 tests cover the split, the cap boundary, blank tickers, and that
 "checked, not near" is never encoded as absence.
 
-**9.4 — `implied_volatility` units — RESOLVED, and `fmtIv` misrenders its own tail.** `fmtIv`
-branches on `iv < 3` to decide fraction-vs-percent **per row**, which is only safe if the feed is
-genuinely mixed-unit. It is not. `MEASURED 2026-08-22` over 3500 rows carrying IV: **min 0.07, p25
-0.13, median 0.17, p75 0.23, max 106.2** — a single fractional mode with a long right tail, not the
-bimodal shape a mixed-unit feed produces (which would put a second cluster around 15–30). The feed
-is **uniformly fractional**, so the branch is misreading its own tail: **148 rows (4.2%)** sit at or
-above 3 and render divided by 100 — a `3.5` (350% IV, ordinary for a near-dated contract) shows as
-**"4%"**. Two further facts from §4A: IV is present **only** on Group B, so the IV column is blank
-for every equity name and populated only for SPX/SPY; and no row was below 0.03, so the
-oft-feared "genuinely sub-3% IV multiplied by 100" case does not occur on this tape. The fix is a
-fixed unit, not a smarter threshold.
+**9.4 — `implied_volatility` units — RESOLVED and FIXED, and my first reading of the tail was
+wrong.** `fmtIv` branched on `iv < 3` to decide fraction-vs-percent **per row**, which is only safe
+if the feed is genuinely mixed-unit. It is not. `MEASURED 2026-08-22` over 3500 rows carrying IV:
+**min 0.07, p25 0.13, median 0.17, p75 0.23, max 106.2** — a single fractional mode, no second
+cluster in the tens. The feed is **uniformly fractional**.
+
+**CORRECTION to this entry's first version.** It described the 148 rows (4.2%) above the branch as
+*"a 3.5 — 350% IV, ordinary for a near-dated contract"*. That was a guess and it was wrong.
+Measured directly: **every one of those rows is SPY, expiry 2026-08-21, `dte: -1`** — EXPIRED,
+deep-in-the-money calls (365C / 400C / 500C against a ~640 spot), mean DTE **3d** against the body's
+**146d**. An expiring deep-ITM option is almost entirely intrinsic, so the provider's IV solve is
+degenerate and returns noise. These are not high-IV contracts; they are non-measurements.
+
+That changes what "correct" means here, and it is why the old branch was worse than either honest
+alternative: it rendered `106.2` as **"106%"** — a plausible IV a member has no reason to distrust —
+where the feed's real unit reads `10620%`, which is self-evidently not a measurement.
+
+**FIXED** (`fmtIv` renders the fraction uniformly; 20 tests pin the unit at every magnitude and pin
+the degenerate values as obviously-wrong rather than plausible). Two facts from §4A remain: IV is
+present **only** on Group B, so the IV column is blank for every equity name and populated only for
+SPX/SPY; and no row was below 0.03, so the feared "genuinely sub-3% IV multiplied by 100" case does
+not occur on this tape.
+
+**STILL OPEN, and it is a product question not a formatter one:** whether to suppress IV entirely
+where the solve is degenerate. It needs a threshold nobody has justified — real 0DTE contracts do
+trade at several hundred percent — and it overlaps §9.5, since every degenerate row is an expired
+contract the panel is also mis-bucketing. Raised for the coordinator rather than decided by a magic
+number.
 
 **9.5 — The Expiry Concentration panel files expired contracts under "This week".** The panel reads
 `a.dte ?? daysToExpiry(a.expiry)` and its `bucketLabel` tests `dte === 0` exactly. The SQL `dte` is
