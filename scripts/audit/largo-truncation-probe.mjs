@@ -41,14 +41,24 @@ const JSON_OUT = process.argv.includes("--json");
 const BASE = arg("base", "https://blackouttrades.com").replace(/\/$/, "");
 
 /**
- * Night Hawk lane tools, with the args each needs. Deliberately the LANE's list rather than all
- * 126 — another lane's owner is better placed to say which of theirs carry enough data to be at
- * risk, and `--tools=` lets them point this at their own without editing the file.
+ * Lane tools, with the args each needs. Deliberately the LANES' list rather than all 126 — a
+ * lane's owner is better placed to say which of theirs carry enough data to be at risk, and
+ * `--tools=` lets them point this at their own subset.
+ *
+ * HELIX's four were added 2026-08-23 by that lane, per this file's own invitation. Their args are
+ * chosen to make the payload as LARGE as it legitimately gets, because a probe run against a small
+ * payload proves nothing about the cap: market-wide (no ticker) is bigger than any single name,
+ * and the tape tools default to 500/400 rows over a 168h window.
  */
 const LANE_TOOLS = [
   ["get_zerodte_record", "days=30"],
   ["get_zerodte_plays", ""],
-  ["get_zerodte_rejections", ""],
+  // Wide window deliberately. Measured 2026-08-23: at "the largest window available" this tool
+  // comes back TRUNCATED, which is (a) the only over-cap tool found across five candidates and so
+  // the current CONTROL, and (b) a real finding about this tool that the Night Hawk lane owns —
+  // reported rather than quietly baked in. A bare "" probes a payload small enough to prove
+  // nothing.
+  ["get_zerodte_rejections", "the largest window available"],
   ["get_nighthawk_edition", ""],
   ["get_nighthawk_outcomes", "window_days=30"],
   ["get_nighthawk_horizons", ""],
@@ -59,6 +69,13 @@ const LANE_TOOLS = [
   ["get_grader_agreement", "days=90"],
   ["get_banger_board", ""],
   ["get_swing_horizon", ""],
+  // ── HELIX lane (docs/audit/HELIX-MAP.md) ──────────────────────────────────────────────────
+  // Market-wide deliberately: no ticker means the whole tape, which is the biggest this gets.
+  ["get_helix_tape_analytics", "no ticker, since_hours=168"],
+  ["get_helix_derived", "no ticker"],
+  ["get_helix_signal_outcomes", ""],
+  // The only one of the four that REQUIRES a ticker. SPX carries the most tape premium.
+  ["get_helix_thermal_compare", "ticker SPX"],
 ];
 
 /**
@@ -71,7 +88,19 @@ const LANE_TOOLS = [
  * `--control=` (it must be one of LANE_TOOLS, so it runs with real arguments), or retire the
  * harness if nothing is over cap any more.
  */
-const DEFAULT_CONTROL = ["get_nighthawk_outcomes", "window_days=180"];
+/**
+ * UPDATED 2026-08-23, exactly as the note above anticipated. #2628 fixed `get_nighthawk_outcomes`,
+ * so it now returns COMPLETE and can no longer prove the instrument — the first HELIX run with it
+ * correctly reported 4 UNVERIFIED rather than 4 clean.
+ *
+ * Replacement found by probing five candidates at their widest windows: `get_zerodte_record`,
+ * `get_grader_agreement`, `get_nighthawk_outcomes` and `get_gate_blocked_value` all came back
+ * COMPLETE at 365 days; only `get_zerodte_rejections` truncated. That it was the ONLY one is worth
+ * noting — the cap is not being hit widely any more, which is good news and also means the pool of
+ * usable controls is thin. When this one is fixed too, the run will go UNVERIFIED again and the
+ * next owner must find another rather than assume the check still works.
+ */
+const DEFAULT_CONTROL = ["get_zerodte_rejections", "the largest window available"];
 
 const only = (arg("tools", "") || "").split(",").map((t) => t.trim()).filter(Boolean);
 const TOOLS = only.length ? LANE_TOOLS.filter(([n]) => only.includes(n)) : LANE_TOOLS;
