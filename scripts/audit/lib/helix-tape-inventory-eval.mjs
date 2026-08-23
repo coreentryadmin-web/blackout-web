@@ -22,6 +22,8 @@
  * exists to make one of those readings safe rather than to tidy the harness.
  */
 
+import { contractSizeExact } from "@/features/helix/lib/helix-contract-size";
+
 /** The six keys `executionRouteKey` (src/features/helix/lib/helix-flow-format.ts) scans for, in
  *  its own precedence order. Duplicated ONLY as a reference for the multi-match report below —
  *  the harness imports the real function for actual bucketing and never reimplements it. */
@@ -118,11 +120,10 @@ export function ivUnitVerdict(values, { minSample = 200, branchAt = 3 } = {}) {
  * — an unknown denominator must not become a contract count.
  */
 export function impliedContracts(row) {
-  const fill = Number(row?.fill_price);
-  const premium = Number(row?.premium);
-  if (!Number.isFinite(fill) || fill <= 0) return null;
-  if (!Number.isFinite(premium) || premium <= 0) return null;
-  return premium / (fill * 100);
+  // Delegates to the product's own derivation rather than restating it: a harness that computes
+  // contracts its own way measures a number nobody ships. The row-shaped signature is kept because
+  // that is what the tape rows this walks actually look like.
+  return contractSizeExact(row?.premium, row?.fill_price);
 }
 
 /**

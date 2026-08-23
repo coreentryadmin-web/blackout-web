@@ -8,46 +8,31 @@
  * OI, IV, OTM%, DTE, rule tags, gamma-wall proximity). Everything here derives strictly
  * from fields already present on the print — no fabrication. Two fields are *derived*
  * (est. contract size, est. notional) and are labelled "est." in the UI because they are
- * reconstructed from premium ÷ fill, not served directly.
+ * reconstructed from premium ÷ fill, not served directly. The contract-size derivation itself
+ * lives in `helix-contract-size.ts` — this module consumes it, it does not restate it.
  */
 
 import type { FlowAlert } from "@/lib/api";
-
-/**
- * Estimated contract count for a single print.
- *
- * UW `total_premium` = contracts × per-share fill × 100 (100 shares / contract). So when
- * both the dollar premium and the per-share fill are present we can back out the size:
- *   contracts = premium / (fill × 100)
- * This is an ESTIMATE (labelled as such in the UI): multi-leg prints, averaged fills, and
- * rounding make it approximate. Returns null when either input is missing/non-positive so
- * the UI omits the chip rather than showing a bogus 0 or Infinity.
- */
-export function estContractSize(premium: number | null | undefined, fillPrice: number | null | undefined): number | null {
-  if (premium == null || fillPrice == null) return null;
-  if (!Number.isFinite(premium) || !Number.isFinite(fillPrice)) return null;
-  if (premium <= 0 || fillPrice <= 0) return null;
-  const contracts = premium / (fillPrice * 100);
-  if (!Number.isFinite(contracts) || contracts <= 0) return null;
-  return Math.round(contracts);
-}
+import { SHARES_PER_CONTRACT, contractSizeRounded } from "./helix-contract-size";
 
 /**
  * Estimated underlying notional the print controls (dollar value of the shares the
  * contracts represent), NOT the premium paid:
  *   notional = contracts × 100 × strike = premium × strike / fill
- * Derived from the same premium ÷ fill reconstruction as {@link estContractSize}, so it is
- * likewise an estimate. Returns null when it can't be computed from real inputs.
+ * Derived from the same premium ÷ fill reconstruction the `Size` chip shows
+ * ({@link contractSizeRounded}), so it is likewise an estimate, and so the two agree by
+ * construction rather than by coincidence. Returns null when it can't be computed from real
+ * inputs.
  */
 export function estNotional(
   strike: number | null | undefined,
   premium: number | null | undefined,
   fillPrice: number | null | undefined
 ): number | null {
-  const size = estContractSize(premium, fillPrice);
+  const size = contractSizeRounded(premium, fillPrice);
   if (size == null) return null;
   if (strike == null || !Number.isFinite(strike) || strike <= 0) return null;
-  return size * 100 * strike;
+  return size * SHARES_PER_CONTRACT * strike;
 }
 
 export type AggressorRead = { label: string; tone: "bull" | "bear" | "neutral" };

@@ -1,30 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { contractSizeRounded } from "./helix-contract-size";
 import {
-  estContractSize,
   estNotional,
   aggressorRead,
   gexProximityLabel,
   printBias,
 } from "./helix-print-detail";
-
-test("estContractSize backs contracts out of premium ÷ (fill × 100)", () => {
-  // 100 contracts × $5.00 × 100 = $50,000 premium
-  assert.equal(estContractSize(50_000, 5), 100);
-  // 1 contract × $1.20 × 100 = $120
-  assert.equal(estContractSize(120, 1.2), 1);
-  // rounds to nearest whole contract
-  assert.equal(estContractSize(12_500, 2.5), 50);
-});
-
-test("estContractSize returns null on missing/degenerate inputs (no fabricated size)", () => {
-  assert.equal(estContractSize(undefined, 5), null);
-  assert.equal(estContractSize(50_000, undefined), null);
-  assert.equal(estContractSize(50_000, 0), null);
-  assert.equal(estContractSize(0, 5), null);
-  assert.equal(estContractSize(Number.NaN, 5), null);
-  assert.equal(estContractSize(50_000, Number.POSITIVE_INFINITY), null);
-});
 
 test("estNotional = est contracts × 100 × strike (= premium × strike / fill)", () => {
   // 100 contracts of the 600 strike → 100 × 100 × 600 = $6,000,000
@@ -33,7 +15,7 @@ test("estNotional = est contracts × 100 × strike (= premium × strike / fill)"
   const premium = 12_500,
     fill = 2.5,
     strike = 430;
-  const size = estContractSize(premium, fill)!;
+  const size = contractSizeRounded(premium, fill)!;
   assert.equal(estNotional(strike, premium, fill), size * 100 * strike);
 });
 
