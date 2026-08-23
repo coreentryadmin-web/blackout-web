@@ -4,6 +4,21 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-23 — [FINDING, P2 Largo] Three hand-written `coverage: 1` literals survived #2626 — one of them leaves the process — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `coverage` is `verified / total`; at `total === 0` that is `0/0`, and `1` advertises a data-less answer as **perfectly grounded**. #2626 fixed that at the source in `verifyClaims`, but three hand-written copies of the forbidden shape survived it in `largo-terminal.ts`'s error paths — `{ total: 0, verified: 0, coverage: 1, unverified: [] }` at `:1149`, `:1167` and `:1454`. The one at `:1167` is the **returned payload** of the non-streaming API's internal-error response, so the fabricated value leaves the process. |
+| **Root cause** | The fix was applied to the producer and not to the shape. `ClaimVerification.coverage` is legitimately `number \| null`, so every literal compiled and nothing could object. This is the same defect class as the fabricated `confidence` the product contract forbids: a score a product cannot calibrate must be OMITTED, never invented, because it is compared against another lane's MEASURED one. |
+| **Evidence** | Traced per-site during the Phase 0 map (`LARGO-ENGINE-MAP.md` §4): `:1149` and `:1454` feed `logClaudeTurn`, which nulls `claims_total`/`claims_verified` on the error path, so they are inert today; **`:1167` escapes**, on `runLargoQuery`'s catch. Severity is bounded because the browser always streams and Largo is launch-gated, so the reachable population is the non-streaming API and admin/grant viewers. |
+| **Fix** | One constructor, `unverifiedTurn()`, exported from `verifier.ts` beside the type it builds, returning `coverage: null`. All three literals replaced. A convention ("remember to use null") gets skipped; a constructor cannot be. Same reasoning as the stop-reason union that was deduplicated rather than re-guarded — remove the second copy instead of policing it. |
+| **Blast radius** | Both `runLargoQuery` and `runLargoQueryStream` error paths. No client consumer reads the returned `verification` field (checked), and `applyVerificationCaveat`/`auditLargoAnswerGrounding` already guard `coverage != null`, so nothing coerces the null into a 0 and reports a data-less turn as 0% grounded. |
+| **Fix rationale** | Deliberately NOT widened into a general "no fabricated numbers" sweep — the contract's `confidence` rule was swept separately (`LARGO-ENGINE-MAP.md` §4b, clean in this layer, two candidates routed to other lanes). This is the one surviving instance of the `coverage` shape. |
+| **Regression guard** | `src/lib/largo/no-fabricated-coverage.test.ts` (6 tests): the constructor returns null; **no `coverage: 1` literal survives anywhere in the turn pipeline** (source assertion, comments stripped first so the explanation cannot satisfy the assertion it explains); exactly three constructed call sites, so a fourth error path cannot hand-roll one; the caveat does not fire on a claimless turn; the constructed shape agrees with what `verifyClaims` itself returns on a claimless answer, so the two cannot drift into disagreeing about the same situation; and the cron does not flag a claimless turn. **Proven to fire**: restoring one literal fails 2 of the 6; restoring the constructor passes 6/6. |
+| **Status** | FIXED — verified by construction. The value is inert on two of the three sites and the third is only reachable through the non-streaming API, so there is no member-visible behaviour change to observe on production; the guard is what carries this forward. |
+
 ## 2026-08-23 — [FINDING, P1 SPX Slayer] Members see "96% conviction" on every play — `confidence` is a CONSTANT rendered as a per-play score, 51/51 — MEASURED (member-facing fix pending coordinator)
 
 > **kind:** `FINDING`
