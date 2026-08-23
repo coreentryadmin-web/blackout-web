@@ -185,6 +185,38 @@ git merge-base --is-ancestor <fix-sha> <deployed-head-sha> && echo IN || echo NO
 The six SHAs to check are the merge commits of **#2647 (§9.8)**, **#2669 (§9.4)**, **#2670 (§9.3)**,
 **#2673 (§9.5)**, **#2680 (§9.10)** and — if merged by then — **#2681 (§9.0)**.
 
+### 0b. THEN run the gate — the binary claims, executable
+
+```bash
+env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY \
+  node --import tsx scripts/audit/helix-market-open-check.mjs
+```
+
+Seven rows, each printing its **expectation** beside what it measured, rolled up to
+GREEN / AMBER / RED / HARNESS. It exits non-zero on RED **or HARNESS** — something that could not be
+measured is not a pass.
+
+**Why this exists, and what it is not.** On 2026-08-23 three criteria in this very document were
+found to have INVERTED — §5k told the reader to expect a jump where the measurement falls, §5f
+required a marker no row can render, §5c diagnosed a regression that had not happened. Each was
+correct when written, each was retired by a later fix, and **not one of them failed**. They could
+not: they were prose, and prose does not run. Two of the three would have produced a **false
+failure on a working deploy.** The gate is those claims restated so they CAN fail.
+
+It is **not** a replacement for this list. It covers only what is binary; everything needing a
+moving tape — both radars populated, §5h's horizon colours, §5j's badge count — is still owed to the
+sections below, and the gate says so in its own output rather than implying coverage it lacks.
+
+- **GREEN on all seven** means the parse, the eligibility denominator, the writer split, Group A
+  aggressor coverage, the IV units and the expiry bucketing are all where they were measured today.
+  Start the RTH-only work below.
+- **RED** names the expectation it violated. Read that row before anything else — a red here means a
+  baseline this whole list rests on has moved.
+- **HARNESS** means a sub-harness could not run. That is **not** a product verdict and must not be
+  recorded as one; re-run it directly to see why.
+- **AMBER** is measured-and-legitimately-not-a-pass. §5l is AMBER whenever the dark-pool feed reports
+  no side, which is its normal state — read the note, do not open a finding.
+
 ### 1. §9.5 — VALIDATED off-hours 2026-08-23; re-check under the RTH population (#2673)
 
 `bucketLabel` tested `dte === 0` exactly, so already-expired prints (negative `dte`) fell through to
@@ -647,6 +679,13 @@ These are recorded as needing a decision; RTH is when the data exists to inform 
   the signal can actually read. Options: rank readable tickers first, exclude no-aggressor feeds
   from this signal, or accept it and label it. Each changes a persisted, graded row — coordinator's
   call.
+  - **What it costs the panel, measured 2026-08-23 so this is not decided on adjectives.** Replaying
+    the real detector over one live session, 67 populated scans: the radar shows a **median of 5
+    rows** (range 1–9); SPX/SPY rank **median 1**, the top row; they are **40% of everything
+    visible**; and they occupy **BOTH top-2 rows on 84% of scans (56/67)**. So a member reading the
+    Split Flow Radar typically sees five names, two of which are permanently unreadable and sit
+    above the three the signal can actually read. Reproduce with
+    `scripts/audit/helix-signal-population-ab.mjs`.
 - **`SPLIT_MIN_LEG` against an index feed — NEW, and the sharpest of these. AWAITING COORDINATOR;
   do not tune it from this lane.** Split flow fires when a ticker shows opposing call AND put
   premium of **$500K each** inside 30 minutes. That threshold was set against single names. #2723
