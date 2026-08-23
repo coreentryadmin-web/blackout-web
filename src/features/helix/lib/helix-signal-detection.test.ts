@@ -1,6 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { detectVelocitySpikes, detectSplitFlow, type MinimalFlow } from "./helix-signal-detection";
+import {
+  detectVelocitySpikes,
+  detectSplitFlow,
+  signalEligible,
+  signalEligibility,
+  type MinimalFlow,
+} from "./helix-signal-detection";
 
 // Extracted verbatim from FlowFeed.tsx's own inline useMemo blocks (2026-08-02 Helix audit,
 // Tier 2 item #9) so the client badge and the new server-side outcome-persisting cron share
@@ -87,4 +93,86 @@ test("detectSplitFlow: direction reflects the dominant leg", () => {
   ];
   const [entry] = detectSplitFlow(bullish, now);
   assert.equal(entry.direction, "bullish"); // 900k/1450k = 62% >= 60
+});
+
+// ── §9.0 — signal eligibility is stated once, and both detectors read it ───────────────────────
+
+test("signalEligible accepts a real print time and refuses an undatable print", () => {
+  // The Group A shape: UW reported a time.
+  assert.equal(signalEligible({ ticker: "NVDA", premium: 1, event_at: "2026-08-23T14:00:00Z" }), true);
+  // A real, non-estimated alerted_at IS a real time — flowEventTimeMs's documented contract.
+  assert.equal(
+    signalEligible({ ticker: "NVDA", premium: 1, alerted_at: "2026-08-23T14:00:00Z", tape_time_estimated: false }),
+    true
+  );
+  // The Group B shape (§4A): the index feed sends no time, so the tape stamps an ESTIMATE. An
+  // estimated time is an ingest time, not a print time, and must never place a print in a window.
+  assert.equal(
+    signalEligible({ ticker: "SPX", premium: 1, alerted_at: "2026-08-23T14:00:00Z", tape_time_estimated: true }),
+    false
+  );
+  assert.equal(signalEligible({ ticker: "SPX", premium: 1 }), false);
+  assert.equal(signalEligible({ ticker: "SPX", premium: 1, event_at: "not-a-date" }), false);
+});
+
+test("the two detectors and the reported denominator select the SAME prints", () => {
+  // The defect this closes is a THIRD rule drifting from the two detectors (§9.9). Rather than
+  // trusting the shared call, drive real prints through both detectors and assert that every
+  // ticker either is eligible or cannot appear in either result.
+  const now = Date.parse("2026-08-23T18:00:00Z");
+  const iso = (minsAgo: number) => new Date(now - minsAgo * 60_000).toISOString();
+  const flows = [
+    // Datable, and shaped to fire BOTH signals on DTBL.
+    ...Array.from({ length: 4 }, () => ({ ticker: "DTBL", premium: 600_000, option_type: "CALL", event_at: iso(2) })),
+    { ticker: "DTBL", premium: 900_000, option_type: "PUT", event_at: iso(3) },
+    // Undatable: the index-feed shape. Enough volume and premium to fire both, if it could.
+    ...Array.from({ length: 40 }, () => ({
+      ticker: "SPX", premium: 5_000_000, option_type: "CALL", alerted_at: iso(2), tape_time_estimated: true,
+    })),
+    ...Array.from({ length: 40 }, () => ({
+      ticker: "SPX", premium: 5_000_000, option_type: "PUT", alerted_at: iso(2), tape_time_estimated: true,
+    })),
+  ];
+
+  const cov = signalEligibility(flows);
+  assert.equal(cov.total, 85);
+  assert.equal(cov.eligible, 5);
+  assert.equal(cov.ineligible, 80);
+  assert.deepEqual(cov.ineligibleTickers, ["SPX"]);
+
+  const spikeTickers = new Set(detectVelocitySpikes(flows, now).map((s) => s.ticker));
+  const splitTickers = new Set(detectSplitFlow(flows, now).map((s) => s.ticker));
+  // SPX has 80 prints, $400M, both legs, inside both windows — and fires NEITHER. That is the
+  // finding: not a threshold it missed, a scan it was never in.
+  assert.equal(spikeTickers.has("SPX"), false);
+  assert.equal(splitTickers.has("SPX"), false);
+  assert.equal(splitTickers.has("DTBL"), true);
+  // Whatever DID fire must have come from the eligible pool, in both detectors.
+  for (const t of [...spikeTickers, ...splitTickers]) {
+    assert.ok(!cov.ineligibleTickers.includes(t), `${t} fired a signal but was counted ineligible`);
+  }
+});
+
+test("signalEligibility reports a clean tape as fully scanned, so the panels stay quiet", () => {
+  const flows = [
+    { ticker: "NVDA", premium: 1, event_at: "2026-08-23T14:00:00Z" },
+    { ticker: "TSLA", premium: 1, event_at: "2026-08-23T14:01:00Z" },
+  ];
+  const cov = signalEligibility(flows);
+  assert.equal(cov.eligible, 2);
+  assert.equal(cov.ineligible, 0);
+  assert.deepEqual(cov.ineligibleTickers, []);
+  // Empty input must not read as "everything was skipped".
+  const none = signalEligibility([]);
+  assert.deepEqual(none, { total: 0, eligible: 0, ineligible: 0, ineligibleTickers: [] });
+});
+
+test("ineligible tickers are ranked by how much of the tape each one costs", () => {
+  const flows = [
+    ...Array.from({ length: 3 }, () => ({ ticker: "SPY", premium: 1 })),
+    ...Array.from({ length: 9 }, () => ({ ticker: "SPX", premium: 1 })),
+    { ticker: "QQQ", premium: 1 },
+  ];
+  // SPX first because it costs the most coverage — the live ordering (SPX 3079 · SPY 421).
+  assert.deepEqual(signalEligibility(flows).ineligibleTickers, ["SPX", "SPY", "QQQ"]);
 });
