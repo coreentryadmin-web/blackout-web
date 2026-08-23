@@ -1052,9 +1052,7 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
     }
     case "get_banger_board": {
       const { bangerBoardForLargo } = await import("@/lib/largo/product-reads");
-      // Reduced from 40 to 25 to stay under 16k transport cap (P2 truncation fix)
-      // 40 rows at full detail exceeded cap; 25 fits comfortably
-      return bangerBoardForLargo(Number(input.limit ?? 25));
+      return bangerBoardForLargo(Number(input.limit ?? 40));
     }
     case "get_swing_horizon": {
       const { swingHorizonForLargo } = await import("@/lib/largo/product-reads");
@@ -1916,7 +1914,7 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         const history = await fetchNighthawkScoringHistory(editionFor, tickerFilter);
         const archivedRow = history[0];
         const dossier = archivedRow
-          ? { ticker: archivedRow.ticker, dossier: pruneDossier(archivedRow.dossier), scored: archivedRow.scored }
+          ? { ticker: archivedRow.ticker, dossier: pruneDossier({ ...archivedRow.dossier, scored: archivedRow.scored }), scored: archivedRow.scored }
           : null;
         return { edition_for: editionFor, ticker: tickerFilter, dossier, archived: Boolean(archivedRow) };
       }
