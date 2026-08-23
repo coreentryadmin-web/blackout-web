@@ -120,7 +120,7 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — HELIX, first session on 2026-08-24 (read this before the routine pass)
 
-Six HELIX fixes merged over 2026-08-22/23. **Four are member-facing and none has been seen under a
+Eleven HELIX fixes merged over 2026-08-22/23. **Nine are member-facing and none has been seen under a
 moving tape.** Every one was validated off-hours at best, and three could not be validated at all
 because the population they act on does not exist while the market is closed. This section is the
 list of things that are *only* checkable at the open, with the baseline each one must be diffed
@@ -308,6 +308,90 @@ nothing observable. Under live volume it binds hard.
   feed goes **`MINORITY_VERDICT_RISK`** — some prints sided, most not, which is the case
   `DarkPoolPanel`'s `biasFromSide` guard does **not** cover. It exits non-zero if so; that is the
   signal to fix the guard, which was deliberately left alone while the case cannot occur.
+- **`newestPrintAgeHours` must be a real number, not `null`,** once the tape is live. It returns
+  `null` rather than `0` when there is no print at all — correct, and it means the populated branch
+  of the freshness clock has never executed. `null` under RTH means the clock has no input, which is
+  a different defect from a stale one.
+
+### 5e. The tide bar — a signed split that was rendered as magnitudes (#2704)
+
+`helix-tide-split.ts` was splitting **signed** net premiums as if they were magnitudes, so a net
+SHORT-call flow contributed to the bullish side of the bar. Off-hours the tape is one-sided enough
+that the bar renders plausibly either way, which is exactly why this could not be validated at merge
+time.
+
+- **Check on screen (`/flows`, tide bar):** the bullish share must move in the same direction as the
+  Net Premium panel over the session. A session whose net call premium is NEGATIVE must not paint a
+  majority-bullish bar.
+- **Check the refusal:** when total directional premium is `0`, `bullishPct` is `null` and the bar
+  must render as *no reading* — **never a 50/50 split**, which would imply a measured balance where
+  nothing was measured. Reachable pre-open (empty tape); confirm it once before the bell and then
+  confirm the bar populates after.
+- **The RTH-only question:** off-hours the four quadrants are barely populated. Under live flow all
+  four (long call / short call / long put / short put) should carry premium at once — that is the
+  first condition under which the sign error would have been visible by eye, and it is the condition
+  the fix has never been seen in.
+
+### 5f. Print time on mobile — there was none at all (#2707)
+
+The desktop tape marked an *estimated* tape time with a `~` prefix that was **hover-only**, and the
+mobile card carried **no timestamp whatsoever** — not a wrong time, an absent one. (The write-up on
+#2706 said mobile showed "a timestamp with no indication it is an ingest time"; that was wrong and is
+corrected here: there was no timestamp.)
+
+- **Check on mobile 430×932 (`proxy-browser.cjs`, `flow-card`):** every card shows a print time, and
+  a Group B row (SPX / SPY — no `event_at`, §4A) shows it **prefixed `~`** without needing hover.
+- **Check on desktop 1440:** the `~` is visible in the cell, not only in the `title`.
+- **The RTH-only question:** off-hours the whole tape is stale, so `~` is near-universal and proves
+  nothing about discrimination. Under live flow Group A rows carry a real `event_at` and must render
+  **without** the `~`, while SPX/SPY keep it. **If every row still shows `~` under a moving tape, the
+  three-timestamp model is not reaching the renderer** — that is the failure this check exists for,
+  and it is only detectable when both populations are fresh.
+
+### 5g. Contract size — one derivation, and a `0` that was a measurement (#2710)
+
+`contracts = premium / (fill_price × 100)` existed as five separate implementations that disagreed.
+`estContractSize` checked `contracts <= 0` *before* rounding, so a 0.4-contract quotient came back as
+`0` — and the drilldown rendered a `Size` chip of **`0`** and an est. notional of **`$0`**. All HELIX
+callers now read one module; display rounds, the size-vs-OI counting argument does not.
+
+- **Check on screen (drilldown):** `Size` must still equal `Prem ÷ (Fill × 100)` for the row it was
+  opened from — the chip and the columns are derived from the same two numbers and must agree by eye.
+- **Check the refusal:** no row may show `Size 0` or `Notional $0`. Either is now impossible by
+  construction; seeing one means the deploy does not carry this.
+- **Cross-surface, the one this actually buys:** a Discord alert's `(~N contracts est.)` must match
+  the drilldown for the **same print**. They were separate copies of the arithmetic until now, so
+  this is the first session in which they are guaranteed to agree — and the first in which a
+  disagreement would mean something.
+- **The RTH-only question:** sub-half-contract quotients need cheap fills and small premiums, which
+  is a live-tape population. Off-hours none exist, so the corrected branch has never executed on
+  production data.
+
+### 5h. Expiry Concentration bar colours — all four were green under the wrong rule (#2713)
+
+The panel coloured each horizon from `callPremium / (call + put)` — option type alone, the rule
+#2691 replaced everywhere else on this page. Measured off-hours (5000 rows / 168h): **all four
+horizons rendered BULLISH GREEN and all four disagree** with the shipped aggression-aware rule.
+`This week` is the sharpest: bearish premium **$26,302,085** slightly exceeded bullish
+**$26,231,879**, under a green bar.
+
+- **Run the probe first, it gates:** `node --import tsx scripts/audit/helix-expiry-direction-probe.mjs`.
+  It exits **non-zero on any disagreement**, so after deploy it must report **0/4**. A non-zero exit
+  means the deploy does not carry the fix — check that before reading anything else here.
+- **Check on screen:** `Monthly` and `LEAPS` must render **neutral purple** with an amber
+  `direction unread · N% sided` note, **not green**. Off-hours their premium is 6.1% and 3.2%
+  readable respectively, because `ask_pct` is a Group A field and both horizons are dominated by
+  the SPX/SPY index feed (§4A).
+- **The RTH-only question, and it is a real one:** does the readable share RISE under live flow?
+  Group A prints arrive all session and carry `ask_pct`; the index feed's share of premium should
+  fall as they accumulate. If Monthly/LEAPS stay near 3–6% readable through a full session, then
+  those two horizons are structurally uncolourable and the honest follow-up is to say so in the
+  panel rather than to keep withholding a colour without explanation. **Capture the readable % per
+  horizon at the open, at midday and at the close** — that series is the argument either way.
+- **Watch for the opposite failure:** a horizon crossing 50% readable and turning green or red for
+  the first time. That is the fix working, not a regression — but it is also the first time this
+  panel has ever asserted a direction on evidence, so **check one bar's colour against its own
+  tooltip numbers by hand** before trusting the rest.
 
 ### 6. Open questions an RTH session can actually answer
 
@@ -316,6 +400,9 @@ These are recorded as needing a decision; RTH is when the data exists to inform 
 - **The `whale`-outranks-`0dte` collision** (`db.ts:2646`). `route` is `premium >= $1M ? 'whale' : expiry = TODAY ? '0dte' : 'stock'`, so the largest 0DTE prints never get the 0DTE badge. **Unmeasurable off-hours** — the closed window holds **zero** `dte === 0` rows. At the open, count prints with `expiry = TODAY` **and** `premium >= $1M`: that is the exact population being denied the badge.
 - **§9.7 score saturation.** $1.3B and $1.0M prints both score 60; 24.1% of tape pinned at saturation, measured off-hours. Re-measure under RTH volume — saturation should be *worse*, and the size of that is the argument.
 - **Whether Route Breakdown should stay premium-weighted.** The 95%-vs-79% gap is entirely premium weighting. Under RTH the two diverge differently; capture both.
+- **`helix-signal-outcomes` has no writer.** The cron is fully registered in `cron-registry.ts` and **absent from the deployed manifest** (`blackout-infra/cron-jobs.json`, 39 jobs, none mentioning helix). So the signal ledger is never written and every "graded" HELIX signal number rests on an empty table. **Not fixable from this lane** — it is an infra change in another repo against production. Raised on #2698; awaiting a decision to either schedule it or list it INTENTIONALLY_UNSCHEDULED. Until then, **treat any HELIX track-record figure as unbacked**, and say so rather than reporting a rate. **#2712 makes the gap visible in the product** rather than fixing it: the Signal Outcomes panel now separates an empty ledger from an unwritten one, so at the open it must read **"Not recording"**, not "No firings yet". If it reads the latter, something is writing `cron_job_runs` under this key that the deployed manifest says cannot exist — chase that discrepancy before trusting anything else here.
+- **Whether Monthly and LEAPS can EVER carry a colour.** #2713 withholds a directional colour below 50% readable premium, and off-hours those two horizons read **6.1%** and **3.2%** — because `ask_pct` is a Group A field and both are dominated by the index feed. If a full RTH session does not move them, they are structurally uncolourable and the panel should say so outright rather than withhold a colour without explanation. The measurement that decides it is 5h's readable-% series (open / midday / close). Same underlying gap as the print-time question below, surfacing on a different panel.
+- **Whether the SPX/SPY index feed should get a print time at all.** Group B carries 92.1% of premium and no `event_at`, so it can never fire either persisted signal (§4A) and now renders a permanent `~` (5f). Adding a synthetic time would make it *look* eligible without making it so — worse than the gap. The decision is whether to source a real one upstream or to state the exclusion in the product. Awaiting the coordinator.
 
 ### Commands
 
@@ -327,6 +414,12 @@ node scripts/audit/helix-flows-ui-audit.cjs
 
 # API-side tape inventory — writer groups, route keys, IV units, signal eligibility
 node scripts/audit/helix-tape-inventory.mjs
+
+# Expiry Concentration bar colours — EXITS NON-ZERO on any legacy/shipped disagreement (#2713)
+node --import tsx scripts/audit/helix-expiry-direction-probe.mjs
+
+# Dark-pool field inventory + COORD directional coverage (#2708)
+node --import tsx scripts/audit/helix-darkpool-inventory.mjs
 
 # Largo payload arrival (needs the live agent)
 node scripts/audit/largo-truncation-probe.mjs
