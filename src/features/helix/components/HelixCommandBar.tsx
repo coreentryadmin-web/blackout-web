@@ -9,6 +9,7 @@ import {
   HELIX_DEFAULT_MIN_PREMIUM,
   HELIX_PREMIUM_PRESETS,
 } from "@/features/helix/lib/helix-flow-limits";
+import { watchlistFilterActive } from "@/features/helix/lib/helix-watchlist-filter";
 
 const DTE_OPTIONS: { id: HelixDteFilter; label: string }[] = [
   { id: "all", label: "All DTE" },
@@ -27,6 +28,9 @@ export function countActiveHelixFilters(f: {
   dteFilter: HelixDteFilter;
   indicesOnly: boolean;
   watchlistOnly: boolean;
+  /** How many tickers are actually starred. `watchlistOnly` alone cannot say whether the filter
+   *  narrows anything — with an empty list it is inert, and counting it claimed otherwise. */
+  watchlistCount: number;
   tickerFilter: string;
 }): number {
   return (
@@ -35,7 +39,7 @@ export function countActiveHelixFilters(f: {
     (f.whalesOnly ? 1 : 0) +
     (f.dteFilter !== "all" ? 1 : 0) +
     (f.indicesOnly ? 1 : 0) +
-    (f.watchlistOnly ? 1 : 0) +
+    (watchlistFilterActive(f.watchlistOnly, f.watchlistCount) ? 1 : 0) +
     (f.tickerFilter ? 1 : 0)
   );
 }
@@ -154,6 +158,7 @@ export function HelixCommandBar({
     dteFilter,
     indicesOnly,
     watchlistOnly,
+    watchlistCount,
     tickerFilter,
   });
 
