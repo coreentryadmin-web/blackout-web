@@ -219,6 +219,30 @@ That IV tail is also the evidence for an open question — whether degenerate IV
 and whether "expired" is a better gate than any IV threshold. **An RTH reading is the measurement
 that decides it**, so capture it rather than just passing the check.
 
+### 5b. NEW-positioning badges — first live sighting of a brand-new signal (#2689)
+
+The tape now proves which prints cannot be entirely closing: `size = premium / (fill_price × 100)`
+against `open_interest`, with a 1.05 margin. This is the **only genuinely new member-facing signal**
+in the batch, so it has no prior baseline to diff against — the check is coherence, not delta.
+
+- **Measured off-hours 2026-08-23:** of 1500 judgeable rows, **220 decisive** (12 at `OI === 0`,
+  208 clearing the margin) = 4.4% of the tape, 14.7% of the judgeable population.
+- **What to check on screen, per badged row:**
+  1. a **NEW** badge never appears on a row whose **OI** column reads `—` (that row was never
+     examined; a badge there is fabrication);
+  2. the ratio in `NEW ×N` matches the row's own **OI** and **Prem** columns — the badge and the
+     columns are derived from the same three numbers and must agree on screen;
+  3. the badge is **actually visible**, not collapsed into the `+N` overflow. It is ordered third at
+     the latest for exactly this reason, and RTH is when rows carry the most competing badges —
+     which is the condition that would expose an ordering mistake.
+- **Also check `VectorHelixRail` on `/vector`.** `flowSignals` is shared, so NEW propagates there
+  too, and Vector's rail budgets only **2** badges. A whale print with a rule badge may push NEW out
+  of view there. That is Vector's display budget, not a HELIX defect — record what it does rather
+  than "fixing" it from this lane.
+- **The RTH-only question this answers:** off-hours the decisive population is 4.4% of a stale tape.
+  Under live flow, opening trades are exactly what a busy session is made of, so **the decisive share
+  should RISE**. If it does not, the margin or the OI freshness is worth re-examining.
+
 ### 6. Open questions an RTH session can actually answer
 
 These are recorded as needing a decision; RTH is when the data exists to inform them.
