@@ -7468,6 +7468,31 @@ html.product-shell .nav-mega {
     min-height: 420px !important;
   }
 
+  /* Let the embedded Vector chart toolbar WRAP inside the desk column.
+     Same class of problem as the height rule above: a rule that is correct on the standalone
+     /vector page is wrong in this column. `.vector-toolbar-desk` is `flex-wrap: nowrap` by default
+     at >=768px, and the only `wrap` override is scoped to `.vector-page-toolbar` — the wrapper the
+     STANDALONE page puts around it. On this desk the toolbar renders inline inside
+     `.vector-chart-wrap`, so that override never reaches it, and the row is asked to fit 997px of
+     controls into a 620px column with `overflow: visible`. The children shrink to min-content and
+     then paint over each other.
+
+     BOTH selectors are load-bearing, and that is measured, not reasoned. Injecting only the first
+     into the live production page moved `.vector-toolbar-desk-right` from 295px to a full 620px
+     row and the "▶ Replay" × "GEX" overlap SURVIVED, 5/5 runs — `-right` carries its own
+     `flex-wrap: nowrap` (see the base rule above) and still needs 672px. Fixing the outer row alone
+     also turned an intermittent defect into a deterministic one, which is worse than leaving it.
+
+     Scoped to `.spx-sniper-vector-col` so the standalone /vector page — which has no collisions at
+     this viewport, measured — stays byte-identical. */
+  @media (min-width: 768px) {
+    .spx-sniper-vector-col .vector-toolbar-desk,
+    .spx-sniper-vector-col .vector-toolbar-desk-right {
+      flex-wrap: wrap;
+      row-gap: 0.375rem;
+    }
+  }
+
   /* ── SESSION TIME BAR (desk upgrade #2, 2026-07-13): thin full-width RTH timeline under the
      desk header — playbook/macro window bands (two lanes), Largo event dots, now-cursor. ── */
   .spx-desk-timebar-row {

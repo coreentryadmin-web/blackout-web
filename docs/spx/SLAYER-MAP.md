@@ -517,10 +517,45 @@ Ranked. These are the `UNKNOWN`s above, restated as tasks.
    defect in the harness itself — four false Escape FAILs per page from comparing dialog counts
    across a navigation, fixed and validated live (6 failures → 1).
 
-   **Still open here:** localise and fix the collision CSS (the 2026-08-07 entry's caution against
-   guessing a layout rule stands), and audit the **phone** viewport — it has failed navigation with
+   **LOCALISED AND FIXED 2026-08-23 — and the first candidate fix was wrong, measured.**
+   `scripts/audit/spx-collision-localise.mjs` takes the pairs `probeGeometry` already vetted (it now
+   tags them with `data-collide-id`) and reports both boxes, the first common ancestor, and that
+   ancestor's `scrollWidth` vs `clientWidth` — the discriminator between *a row that cannot fit its
+   children* and *one element stacked on another*, which take opposite fixes and look identical from
+   a text pair.
+
+   The answer: `.vector-toolbar-desk` is `flex-wrap: nowrap` at ≥768px and the only `wrap` override
+   is scoped to `.vector-page-toolbar`, the wrapper the **standalone** `/vector` page puts around it.
+   On this desk the toolbar renders inline inside `.vector-chart-wrap` — the measured ancestor chain
+   contains no `.vector-page-toolbar` at all — so the override never reaches it and the row is asked
+   to fit **997px of controls into a 620px column** with `overflow: visible`. Control:
+   `/vector` standalone at the same viewport, **0 collisions**.
+
+   **Three things this only knew because it measured rather than reasoned:**
+   - The defect is **intermittent — 3 of 5 runs** on production, always with identical geometry. A
+     single clean run is not evidence it is gone.
+   - The obvious one-line fix is a **half-fix**. Injecting `flex-wrap: wrap` on `.vector-toolbar-desk`
+     alone into the live page moved `.vector-toolbar-desk-right` from 295px to a full 620px row and
+     the `▶ Replay` × `GEX` overlap **survived, 5/5 runs** — `-right` carries its own
+     `flex-wrap: nowrap` and still needs 672px. Both selectors are required.
+   - That half-fix turned an intermittent defect into a **deterministic** one, which is worse than
+     leaving it. Shipping it on reasoning alone would have looked like progress.
+
+   Both selectors together, injected the same way into the same live page: **0 collisions, 5/5
+   runs**, against a 3/5 baseline. That is what shipped, scoped to `.spx-sniper-vector-col` so the
+   standalone page stays byte-identical. Injection proves the RULE works, not that it deployed —
+   re-run the localiser against the built page after the merge, and eyeball the wrapped toolbar's
+   height once: it is one row taller and `-right`'s controls move to the left of the second row.
+
+   Two earlier root-cause hypotheses were killed by reading the code rather than by a test failing
+   later: "Vector's toolbar CSS is wrong" (it is correct for its own page) and "the portal target
+   arrives after paint, so `useEffect` is the bug" (the code already uses `useLayoutEffect`).
+
+   **Still open here:** audit the **phone** viewport — it has failed navigation with
    `ERR_CONNECTION_RESET` on every attempt, which is the sandbox tunnel and not the server, so the
-   mobile brand/menu collision stays UNVERIFIED.
+   mobile brand/menu collision stays UNVERIFIED. Also unowned: a React **#418** hydration
+   (text-content mismatch) `pageerror` fires after clicking the nav's **Learn** pill, which lands on
+   `/learn` — a marketing page, not this lane's. Reported, not fixed.
 
 
 7. **A coherence assertion in the pre-open gate**: any two member-facing values sharing a label
