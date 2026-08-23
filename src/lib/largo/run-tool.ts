@@ -1916,7 +1916,7 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         const history = await fetchNighthawkScoringHistory(editionFor, tickerFilter);
         const archivedRow = history[0];
         const dossier = archivedRow
-          ? { ticker: archivedRow.ticker, dossier: pruneDossier({ ...archivedRow.dossier, scored: archivedRow.scored }), scored: archivedRow.scored }
+          ? { ticker: archivedRow.ticker, dossier: pruneDossier(archivedRow.dossier), scored: archivedRow.scored }
           : null;
         return { edition_for: editionFor, ticker: tickerFilter, dossier, archived: Boolean(archivedRow) };
       }
