@@ -4,6 +4,22 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-23 — [FINDING, P2 tooling] The interaction audit's Escape check compared dialog counts ACROSS a navigation — four false FAILs per page with nav links — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `live-ui-interaction-audit.mjs` reported four failures on `/dashboard`: *"dialog opened by \"BLACKOUT TRADING\" does NOT close on Escape"*, and the same for **FAQ**, **Pricing** and **Learn**. None is real. Nothing opened, so nothing could close. |
+| **Root cause** | `fingerprint()` counts `[role=dialog],[aria-modal=true]` **in the current document**. The Escape check (`after.dialogs > before.dialogs`) sat ABOVE the navigate-and-return block, so for a click that navigates it compared two *different pages* — and any dialog-shaped furniture on the destination read as "a dialog opened". Escape then cannot close it, because nothing opened. |
+| **Evidence** | Measured on live production 2026-08-23. All four labels are nav links; their destinations each ship exactly **2** such elements in served HTML: `curl -s https://blackouttrades.com{/,/faq,/pricing,/learn} \| grep -c 'role="dialog"\|aria-modal="true"'` → `2, 2, 2, 2`. Four failures, one per nav link, all from the same mechanism. Reproduced identically on two consecutive runs before the fix. |
+| **Fix** | Predicate extracted to `scripts/audit/lib/dialog-escape-gate.mjs` — `shouldCheckEscape(before, after)` returns false when `after.url !== before.url`, so a navigation is never Escape-checked. It is audited on its own next pass, where `before` is that page's own baseline. Extracted rather than inlined because the audit needs a live browser and this rule does not — and the rule is the part that was wrong. |
+| **Evidence the fix is right** | Same command against live production, before and after: **6 failures → 1**. The four Escape FAILs are gone and the one real finding (3 geometry collisions on the SPX chart control cluster) still fires. It removed the lies without removing the truth, which is the only acceptable outcome for a check that was over-reporting. |
+| **Blast radius** | `live-ui-interaction-audit.mjs` only — the sole consumer of that check. It runs across 8 default pages (`/vector, /heatmap, /flows, /nighthawk, /terminal, /dashboard, /track-record, /account`), **every one of which has the same site nav**, so this was producing ~4 false failures per page per run on every surface, not just SPX. No product code touched. Deliberately did not relax the check itself: a real same-page drawer that traps focus is still reported, which is the case that costs a member something. |
+| **Fix rationale** | Gated rather than tolerated, on this repo's own standing principle — recorded in `ui-geometry-probe.mjs`'s header — that **a check which fires on healthy pages teaches its reader to skip the report, which is worse than having no check at all.** Four guaranteed false FAILs per page is exactly that. |
+| **Regression guard** | `scripts/audit/lib/dialog-escape-gate.test.mjs`, 5 tests: the real same-page trap is still checked; each of the four measured production navigations is not; a query-string change counts as a navigation; no-new-dialog is not checked; and a null fingerprint returns false — an unmeasured click is never a clean one. |
+| **Status** | FIXED — validated against live production, not just unit-tested. |
+
 ## 2026-08-23 — [FINDING, P1 Thermal/Largo] `walls_by_horizon` was assigned in one place that never fires on a fresh build — the DTE-scoped walls shipped ABSENT on every ticker — FIXED
 
 > **kind:** `FINDING`
