@@ -8,6 +8,7 @@ import {
   fmtExpiryShort,
   fmtFullTimestamp,
   ruleLabel,
+  ruleBadge,
   executionRouteKey,
   fmtIv,
   ALERT_RULE_WORD_KEYS,
@@ -204,4 +205,55 @@ test("flowSignals includes near wall tags", () => {
     {}
   );
   assert.ok(signals.some((s) => s.id === "ncwall"));
+});
+
+// ── The Rule column reports UW's alert_rule, or nothing ────────────────────────────────────────
+// The shipped defect substituted `flow.route` — our own premium/tenor bucket — into a column
+// headed Rule, on 79.4% of the live tape. These pin the substitution shut in both directions.
+
+test("ruleBadge renders the reported rule, matching the badge vocabulary", () => {
+  assert.equal(ruleBadge(flow({ ticker: "NVDA", alert_rule: "sweep_block" })), "SWEEP");
+  assert.equal(ruleBadge(flow({ ticker: "NVDA", alert_rule: "repeated_hits" })), "REPEAT");
+  // REPEAT outranks SWEEP here on purpose: the BADGE leads with the pattern, the PANEL leads with
+  // the mechanism (BADGE_PRECEDENCE vs ROUTE_PRECEDENCE). ruleBadge must inherit the badge order,
+  // not quietly re-collapse the two onto one precedence — the mistake §9.8's first draft made.
+  assert.equal(ruleBadge(flow({ ticker: "NVDA", alert_rule: "RepeatedHitsSweep" })), "REPEAT");
+  assert.equal(executionRouteKey(flow({ ticker: "NVDA", alert_rule: "RepeatedHitsSweep" })), "SWEEP");
+  // An unrecognised rule is still SHOWN — the badge's own documented fallback, unchanged.
+  assert.equal(ruleBadge(flow({ ticker: "NVDA", alert_rule: "ZzzUnknownRule" })), "ZZZUNKNO");
+});
+
+test("ruleBadge reports absence as absence, never the internal route bucket", () => {
+  // Every value `unusual-whales.ts` can assign to `route`, on a print with no reported rule.
+  for (const route of ["whale", "stock", "0dte", ""]) {
+    for (const alert_rule of [null, undefined, "", "   "]) {
+      const got = ruleBadge(flow({ ticker: "SPX", route, alert_rule } as Partial<FlowAlert> & Pick<FlowAlert, "ticker">));
+      assert.equal(got, "\u2014", `route=${JSON.stringify(route)} rule=${JSON.stringify(alert_rule)} must render as absent, got ${got}`);
+    }
+  }
+});
+
+test("ruleBadge and executionRouteKey agree on whether the field is present at all", () => {
+  // The defect was a CONTRADICTION on one screen: the panel said UNREPORTED while the column
+  // showed a value for the same print. Presence must be one fact, not two.
+  const cases: Array<Partial<FlowAlert>> = [
+    { alert_rule: "sweep_block", route: "whale" },
+    { alert_rule: "RepeatedHitsDescendingFill", route: "stock" },
+    { alert_rule: "ZzzUnknownRule", route: "0dte" },
+    { alert_rule: null, route: "whale" },
+    { alert_rule: "", route: "stock" },
+    { alert_rule: "   ", route: "0dte" },
+    { alert_rule: undefined, route: "" },
+  ];
+  for (const c of cases) {
+    const f = flow({ ticker: "SPY", ...c } as Partial<FlowAlert> & Pick<FlowAlert, "ticker">);
+    const columnSaysAbsent = ruleBadge(f) === "\u2014";
+    const panelSaysAbsent = executionRouteKey(f) === "UNREPORTED";
+    assert.equal(
+      columnSaysAbsent,
+      panelSaysAbsent,
+      `Rule column and Route Breakdown disagree on presence for ${JSON.stringify(c)}: ` +
+        `column=${ruleBadge(f)} panel=${executionRouteKey(f)}`
+    );
+  }
 });

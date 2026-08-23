@@ -183,7 +183,9 @@ test("REGRESSION: the overlay recomputes walls_by_horizon from the OVERLAID 0DTE
     [7650, -835_268_500],
     [7800, 1],
   ]);
-  const out = applySpxOdteGexUwOverlayWithLadder(hm, ladder, TODAY);
+  // Both parameters pinned: TODAY is the overlay column AND the session here, which is the RTH
+  // case (today's expiry is on the axis). The post-close case, where they differ, is its own test.
+  const out = applySpxOdteGexUwOverlayWithLadder(hm, ladder, TODAY, TODAY);
 
   const zero = out.gex.walls_by_horizon?.find((h) => h.label === "0DTE");
   assert.ok(zero, "the overlay must publish a 0DTE horizon, not drop the block");
@@ -210,6 +212,7 @@ test("the horizons the overlay publishes are side-constrained — the biggest ne
       [7650, -835_268_500],
       [7800, -5e11],
     ]),
+    TODAY,
     TODAY
   );
 
@@ -238,4 +241,65 @@ test("recomputeNearTermGexStrikeTotals honours a pinned session date for its DTE
   assert.deepEqual(zero?.expiries, [TODAY]);
   const seven = hm.gex.walls_by_horizon?.find((h) => h.label === "7DTE");
   assert.deepEqual(seven?.expiries, [TODAY, "2026-08-08"], "7DTE is cumulative, so it includes today");
+});
+
+
+/**
+ * REGRESSION, and it is my own: the overlay's target expiry is NOT the session.
+ *
+ * `applySpxOdteGexUwOverlayWithLadder`'s expiry parameter used to be called `today`, and the
+ * horizons fix threaded it straight into `wallsByHorizon`. But the async caller resolves that value
+ * with `resolveOdteExpiry`, which falls back to the FRONT expiry once today's has settled — so
+ * outside RTH it is routinely not today. Counting DTE relative to it put the front expiry 0 sessions
+ * from itself, and it was published as the "0DTE" wall.
+ *
+ * MEASURED ON PROD 2026-08-23 03:30Z, Saturday 23:30 ET, on the deploy that first shipped horizons:
+ *   SPX  (overlaid)     0DTE expiries=[2026-08-24] call=7725 put=7630   <- Monday, labelled 0DTE
+ *   NVDA (not overlaid) 0DTE expiries=[]           call=null put=null   <- correct
+ * Same function, same minute, two answers. The parameters are now named `odteExpiry` and
+ * `sessionYmd` so they cannot be swapped silently again.
+ */
+test("REGRESSION: an overlay whose target expiry is NOT the session must not label it 0DTE", () => {
+  const SESSION = "2026-08-22"; // a Saturday
+  const FRONT = "2026-08-24"; // the following Monday — what resolveOdteExpiry falls back to
+  const hm = baseHeatmap();
+  hm.expiries = [FRONT, "2026-08-25"];
+  hm.near_term_expiries = [FRONT, "2026-08-25"];
+  hm.gex.cells = {
+    "7800": { [FRONT]: 9e11, "2026-08-25": 1e10 },
+    "7650": { [FRONT]: -2e11, "2026-08-25": -5e9 },
+  };
+
+  const out = applySpxOdteGexUwOverlayWithLadder(
+    hm,
+    new Map<number, number>([[7650, -835_268_500]]),
+    FRONT,    // odteExpiry — the column the ladder is written into
+    SESSION   // sessionYmd — the ET session the horizons are counted from
+  );
+
+  const zero = out.gex.walls_by_horizon?.find((h) => h.label === "0DTE");
+  assert.deepEqual(zero?.expiries, [], "Monday is not 0DTE on a Saturday");
+  assert.equal(zero?.callWall, null, "an empty bucket has no wall — that is NO EXPIRY IN RANGE");
+  assert.equal(zero?.putWall, null);
+
+  // ...and the expiries still land in the buckets they genuinely belong to. Counting weekday
+  // sessions from Saturday: Monday is 1 out, Tuesday is 2 — both inside the cumulative 3DTE bucket.
+  const three = out.gex.walls_by_horizon?.find((h) => h.label === "3DTE");
+  assert.deepEqual(three?.expiries, [FRONT, "2026-08-25"], "Mon (1) and Tue (2) are both within 3DTE");
+
+  // The ladder still went into the right COLUMN — the parameter split must not break the overlay.
+  assert.equal(out.gex.cells["7650"]?.[FRONT], -835_268_500);
+});
+
+test("the overlay defaults both parameters independently", () => {
+  // Guard against a future edit collapsing them back into one: they have the same default but are
+  // different arguments, and a caller supplying only the expiry must still get the real session.
+  const hm = baseHeatmap();
+  const out = applySpxOdteGexUwOverlayWithLadder(hm, new Map([[7650, -1e11]]), TODAY);
+  // TODAY (2026-08-05) is long past, so against the REAL session every fixture expiry is behind us
+  // and collapses into 0DTE. That is the honest consequence of not pinning the session, and it is
+  // asserted here so the defaulting behaviour is visible rather than accidental.
+  const zero = out.gex.walls_by_horizon?.find((h) => h.label === "0DTE");
+  assert.ok(zero, "a horizon block is still published");
+  assert.ok(Array.isArray(zero.expiries), "with a real expiry list, whatever the session resolves to");
 });

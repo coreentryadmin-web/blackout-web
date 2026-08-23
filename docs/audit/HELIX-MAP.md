@@ -687,6 +687,35 @@ Fixing the vocabulary matters; fixing the precedence barely does.
 Blast radius: the member panel **and** Largo's `route_breakdown` field, which is currently telling
 the model that 98.8% of institutional flow has an unknown execution route.
 
+**9.10 — The Rule column substituted `flow.route` for the rule nobody reported — FIXED, and it is
+the pattern's third occurrence.** Found post-map, by reading the live tape DOM while validating
+§9.4 — not by reading code. `HelixFlowTable.tsx` rendered
+`flow.alert_rule ? ruleLabel(...) : flow.route?.slice(0, 8) || "—"`, and `flow.route` is not a rule:
+it is our own bucket, `premium >= 1_000_000 ? "whale" : dte <= 0 ? "0dte" : "stock"`. MEASURED
+2026-08-23, 500 rendered rows: `stock:271 · whale:126 · REPEAT:99 · FLOOR:3 · SWEEP:1` — **79.4% of
+the column showed an internal bucket name.** §9.8's fix did not cause this; it made it visible, by
+making the Route Breakdown panel say `UNREPORTED 95%` while the column beside it kept showing a
+value for those same prints. Fixed by `ruleBadge`, which reports UW's `alert_rule` or `"—"`.
+
+**THE PATTERN, recorded as a class rather than three coincidences.** Three findings in this lane are
+the same shape: **one field, two readers, no shared statement of what it means.** §9.8 —
+`ruleLabel` and `executionRouteKey` knew different words for `alert_rule`. §9.4 — the IV column
+guessed units per row while Largo's copy did not. §9.10 — the Rule column and the Route Breakdown
+panel disagreed about whether `alert_rule` was **present at all**. §9.5 was the same shape across a
+product boundary (`bucketLabel` vs `expiryHorizonLabel`). In every case each reader was defensible
+alone and the pair was not, and in every case the guard that fixes it is a test asserting the two
+readers **agree** — not a test of either one. Worth applying forward: when a HELIX field acquires a
+second reader, the question to ask is not "is this reader correct" but "what does this field mean,
+including when it is missing, and do both readers say so."
+
+**FOURTH instance, and the one where the rule paid off before the bug shipped.** §9.0's fix needed a
+count of how many prints the two signal detectors could actually see. The obvious implementation —
+a denominator with its own eligibility test — would have been a THIRD reader of the same fact, i.e.
+this defect, written deliberately. Recognising the class is what turned it into one shared
+`signalEligible` predicate instead, and the equivalence of the two existing rules was **measured**
+(0 disagreement over 5000 live rows) rather than assumed. The class is now a design check, not only
+a post-mortem heading.
+
 **9.9 — Style inconsistency, not (currently) a defect — CLOSED by §9.0's fix.** Both detectors now
 read the shared `signalEligible` predicate; the divergence risk below is gone, and the equivalence
 it assumed was measured (0 disagreement over 5000 live rows) rather than left as reasoning. Kept

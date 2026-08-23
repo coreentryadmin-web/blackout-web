@@ -157,6 +157,44 @@ export function ruleLabel(rule: string): string {
 }
 
 /**
+ * What the tape's **Rule** column shows for one print.
+ *
+ * THE RULE IS: the column reports UW's `alert_rule` or it reports NOTHING. It never substitutes a
+ * different field.
+ *
+ * WHY THIS EXISTS AS A FUNCTION. The column used to read
+ * `flow.alert_rule ? ruleLabel(flow.alert_rule) : flow.route?.slice(0, 8) || "—"`, and
+ * `flow.route` is not a rule, a route, or anything UW reported. It is OUR OWN derived
+ * size/tenor bucket, assigned in `unusual-whales.ts`:
+ * `premium >= 1_000_000 ? "whale" : dte == null ? "" : dte <= 0 ? "0dte" : "stock"`.
+ *
+ * So a print with no reported rule rendered the word `whale` or `stock` in a column headed
+ * **Rule**, one row below a print showing `SWEEP`. Those are not the same kind of claim: `SWEEP`
+ * is how the order filled, reported by UW; `whale` is us restating the Prem column that is already
+ * on screen two columns to the left. A member cannot tell them apart, and the substituted value
+ * carries no information the row does not already show.
+ *
+ * MEASURED (live prod tape, 500 rendered rows, 2026-08-23): the Rule column read
+ * `stock:271 · whale:126 · REPEAT:99 · FLOOR:3 · SWEEP:1` — **397 of 500 rows, 79.4%, showed an
+ * internal bucket name** where a member reads execution rules.
+ *
+ * WHY IT IS A CONTRADICTION AND NOT ONLY A MISLABEL. `executionRouteKey` below was fixed to
+ * return `UNREPORTED` for exactly these prints, because no rule was ever reported for them. Live,
+ * the Route Breakdown panel now says **UNREPORTED 95%** while the Rule column beside it shows
+ * `stock`/`whale` for those same rows. Two readers of one field, disagreeing on screen about
+ * whether the field is present — the same one-field-two-readers pattern as §9.8 (`ruleLabel` vs
+ * `executionRouteKey`) and §9.4 (IV units), arriving a third time.
+ *
+ * Absence is returned as `"—"`, matching every other unmeasured cell in the tape (`fmtIv`,
+ * `fmtSpot`, `score`), so "no rule reported" reads the same as every other honest blank.
+ */
+export function ruleBadge(flow: Pick<FlowAlert, "alert_rule">): string {
+  const raw = flow.alert_rule;
+  if (raw == null || String(raw).trim() === "") return "—";
+  return ruleLabel(String(raw));
+}
+
+/**
  * Bucket for the Route Breakdown panel + Largo's `route_breakdown`, from UW's `alert_rule` —
  * NOT the internal route (whale/0dte/stock).
  *
