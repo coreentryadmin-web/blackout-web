@@ -9,6 +9,49 @@ already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
 
+## 2026-08-23 — [Thermal] Post-deploy validation of §9.2 `walls_by_horizon` — PASS on all six tickers, and it caught a regression of my own
+
+**Severity.** — (the field validated GREEN; the probe also found a mislabel I had introduced, filed
+separately and fixed in #2679 — that is a finding, not this log)
+
+**Why it ran.** #2665 shipped `walls_by_horizon`, which had been ABSENT on every ticker. Deploy
+`685e01fa` completed **success** 03:28:38Z; everything below was measured after that. An earlier
+deploy, `fc077172`, completed at 02:54 and would have been the natural thing to wait for — it
+PREDATES the merge and carries none of this. Ancestry was checked with `git merge-base
+--is-ancestor` rather than assuming the newest completed run was the right one.
+
+**Result — 6/6 present, 0 wrong-side walls.** Authenticated probe, one temp Clerk admin/premium user
+deleted in a `finally`, 2026-08-23 03:55Z (Saturday 23:55 ET, market closed):
+
+| ticker | spot | 0DTE | 3DTE | 7DTE |
+|---|---|---|---|---|
+| SPY | 765.72 | `exp=0` c=null p=null | c=772 p=765 | c=780 p=765 |
+| QQQ | 714.25 | `exp=0` c=null p=null | c=716 p=705 | c=730 p=690 |
+| NVDA | 215.38 | `exp=0` c=null p=null | c=220 p=212.5 | c=222.5 p=212.5 |
+| MSFT | 483.49 | `exp=0` c=null p=null | c=490 p=480 | c=500 p=475 |
+| AAPL | 309.69 | `exp=0` c=null p=null | c=320 p=302.5 | c=320 p=302.5 |
+| **SPX** | 7674.37 | **`exp=1` c=7725 p=7630** | c=7710 p=7600 | c=7800 p=7600 |
+
+Every call wall above spot, every put wall below it, on every bucket — the side constraint holds
+through the horizon path. An empty `0DTE` bucket carries `expiries: []`, which is NO EXPIRY IN RANGE
+on a Saturday, not "no wall".
+
+**The one divergence, and it was mine.** SPX — alone of the six, and the only ticker with a UW 0DTE
+overlay — put Monday's front expiry in the `0DTE` bucket. Root cause and fix in
+`findings-staging/2026-08-23-thermal-odte-horizon-session-mixup.md` / #2679. Worth recording HOW it
+surfaced: five tickers agreeing and one disagreeing, in one probe. A single-ticker check, or one run
+when everything happened to be consistent, would have shown a plausible `0DTE` bucket full of real
+numbers and been called clean.
+
+**A probe-methodology correction.** The first run of this probe (03:30Z, two minutes after the ECS
+roll) reported four of six as `available: false`, which reads as "the matrix is broken". It is not:
+`loadHeatmapCacheReaderOnly` returns `available: false` on a cold cache and SCHEDULES a background
+warm, so the FIRST read after a deploy is expected to be empty and the second is not. Confirmed
+directly — QQQ, MSFT and AAPL each went `available: true` with the field present on a re-read
+seconds later. **A single-shot probe cannot tell "cold, warming" from "broken"**, and off-hours the
+`heatmap-warm` cron is not running to hide the difference. Any future post-deploy Thermal probe
+should read each ticker at least twice before reporting an availability verdict.
+
 ## 2026-08-23 — [Helix] Post-deploy live validation of §9.8 + §9.4 — both PASS, and the harness needed recalibrating
 
 **Severity.** — (no product defect found; one instrument defect, fixed in the same PR as this log)
