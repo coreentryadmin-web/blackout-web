@@ -92,7 +92,10 @@ export function NetPremiumLeaderboard({ alerts, loading = false }: { alerts: Flo
             // is exactly the case the old green triangle hid.
             const tone = directionTone(row.direction);
             const netPositive = row.net >= 0;
-            const { barW, callBarW, putBarW } = leaderBarWidths(row, maxTotal);
+            // `barW` is deliberately not destructured: it is the row's share of the largest row and
+            // exists so the helper can derive the two slices from ONE division, but the render only
+            // draws the slices. CodeQL flagged the unused binding on #2745 (code-scanning/760).
+            const { callBarW, putBarW } = leaderBarWidths(row, maxTotal);
 
             return (
               <motion.div
