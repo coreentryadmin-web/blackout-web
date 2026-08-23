@@ -135,7 +135,6 @@ import {
 import { buildResponseComponents, formatComponentsAsMarkdown } from "@/lib/largo/response-builder";
 import { suggestFollowUpQuestions, formatFollowUpSuggestions } from "@/lib/largo/follow-up-question-generator";
 import { orchestrateAdaptiveResponse } from "@/lib/largo/adaptive-response-orchestrator";
-import { enrichWithConsensus } from "@/lib/largo/consensus-read-extract";
 import {
   fetchLargoSessionMetadata,
   maybePersistWatchlistFromQuestion,
@@ -477,15 +476,11 @@ async function prepareLargoTurn(
   const sessionMetadata = await fetchLargoSessionMetadata(sid, userId);
   const depth = parseLargoDepth(turnOptions.depth ?? sessionMetadata.depth ?? "deep");
 
-  // Initialize conversation memory — tracks ticker/consensus/regime/levels across turns
+  // Initialize conversation memory — tracks ticker/consensus/regime/levels within this turn
+  // Multi-turn persistence deferred to Phase 4b (requires sessionMetadata schema extension)
   let conversationMemory = initializeMemory();
-  if (sessionMetadata.conversation_memory) {
-    conversationMemory = sessionMetadata.conversation_memory as ConversationMemoryState;
-  }
-  // Suggest ticker from this turn's question, updating or resetting memory as needed
   const suggestedTicker = suggestTickerFromQuestion(question, conversationMemory);
-  if (suggestedTicker && suggestedTicker !== conversationMemory.ticker) {
-    conversationMemory = initializeMemory();
+  if (suggestedTicker) {
     conversationMemory.ticker = suggestedTicker;
   }
   void updateLargoSessionMetadata(sid, userId, { depth }).catch(() => {});
@@ -1166,12 +1161,12 @@ export async function runLargoQuery(
         const orchestrationResult = {
           intentCategory: {
             category: intentCategory.category,
-            confidence: 0.85,
-            responseDepth: intentCategory.depth ?? "standard",
-            requiredSystems: [],
-            optionalSystems: [],
-            needsDeskRead: intentCategory.category === "TRADE_INTENT",
-            needsHistoricalContext: intentCategory.historical ?? false,
+            confidence: intentCategory.confidence,
+            responseDepth: intentCategory.responseDepth,
+            requiredSystems: intentCategory.requiredSystems,
+            optionalSystems: intentCategory.optionalSystems ?? [],
+            needsDeskRead: intentCategory.needsDeskRead,
+            needsHistoricalContext: intentCategory.needsHistoricalContext,
           },
           consensus: {
             reads: [],
@@ -1501,12 +1496,12 @@ export async function runLargoQueryStream(
         const orchestrationResult = {
           intentCategory: {
             category: intentCategory.category,
-            confidence: 0.85,
-            responseDepth: intentCategory.depth ?? "standard",
-            requiredSystems: [],
-            optionalSystems: [],
-            needsDeskRead: intentCategory.category === "TRADE_INTENT",
-            needsHistoricalContext: intentCategory.historical ?? false,
+            confidence: intentCategory.confidence,
+            responseDepth: intentCategory.responseDepth,
+            requiredSystems: intentCategory.requiredSystems,
+            optionalSystems: intentCategory.optionalSystems ?? [],
+            needsDeskRead: intentCategory.needsDeskRead,
+            needsHistoricalContext: intentCategory.needsHistoricalContext,
           },
           consensus: {
             reads: [],
