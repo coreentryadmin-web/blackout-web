@@ -280,10 +280,42 @@ Actual TTL is 1s. §2.
 environment that was **fully decommissioned on 2026-07-25** (CLAUDE.md). The comments are not
 merely stale prose — they gate live code paths. §7.1.
 
-### 6.4 Not re-checked in this pass
+### 6.4 The eleven `PLAYBOOK-*.md` documents — audited 2026-08-22
 
-The eleven `docs/spx/PLAYBOOK-*.md` documents were **not** line-audited. That is the largest
-remaining Phase 0 gap and the next increment of this file. UNKNOWN.
+**The result is not what the shape of this section predicted.** These documents are *accurate about
+the code* and *false about the world*, often in the same paragraph — which is worse than being
+uniformly stale, because nothing tells a reader which half they are looking at.
+
+**What held up.** Every mechanically checkable engineering claim was correct at `9b20b63c`:
+
+- `PLAYBOOK-ARCHITECTURE-STATUS.md` §6's per-playbook matrix — **all 70 cells** match
+  `PLAYBOOK_SURFACE_STATUS`.
+- §16's hard constants — wall proximity 10pts, MTF buffer 1.0, flow materiality 100k — all match
+  `spx-play-config.ts`.
+- §17's code map — every module listed exists.
+- Referenced source paths across all eleven — 37 of 40 exist; the 3 missing are staging artifacts.
+
+**What is false.** Every one of the eleven references staging (~154 times), decommissioned
+2026-07-25. The worst is concentrated in the file that calls itself the **"Single Source of
+Truth"** and tells the reader to *"start here for current truth"*:
+
+| Claim in `PLAYBOOK-ARCHITECTURE-STATUS.md` | Reality |
+|---|---|
+| **Repo:** `coreentryadmin-web/blackout-web-sandbox` | Not this repo. This is `blackout-web`. |
+| `→ https://staging.blackouttrades.com` | Decommissioned 2026-07-25. |
+| *"do not merge to **Railway** prod"* | There is no Railway. All infra is AWS ECS. |
+| §9 *"Prod — Playbook live gate **off** unless `PLAYBOOK_LIVE_GATE=1`"* | It **is** `1` in production. The sentence is literally true and practically inverted. |
+| §9 *"Infra: `apply-staging-env-overrides.mjs` sets `PLAYBOOK_LIVE_ALLOWLIST`"* | Unset in production; the allowlist resolves to `null`. |
+| §18 `npm run validate:staging-playbook` | Removed from `package.json` with staging. |
+
+Each file now carries a banner naming exactly these, so a reader cannot take the environment
+claims at face value. **Do not delete these documents** — the design intent and per-playbook detail
+in them is the best record that exists, and it is correct.
+
+**Enforced going forward:** `src/features/spx/lib/playbook-status-doc-sync.test.ts` asserts §6's
+matrix still matches `PLAYBOOK_SURFACE_STATUS` (and that a parse finding zero rows fails rather
+than passing vacuously). The half that can be checked mechanically now is, so it cannot silently
+join the half that rotted.
 
 ---
 
@@ -399,6 +431,20 @@ Two specific defects inside the formula, beyond the calibration question:
 2. **Gates never revise it.** Confidence is fixed before `evaluatePlayGates` runs, so a play held
    by four gates reports the same conviction as one that passed clean (§4).
 
+**MEASURED 2026-08-23 — it is worse than "uncalibrated": it is a CONSTANT.** Across every closed
+play in production, **51 of 51 over 54.3 days, `confidence` is 96** — the clamp ceiling, zero
+variance. The `factors.length * 3` term contributes 24–42 points on a typical 8–14 factor desk, so
+anything clearing the entry thresholds (full 52 / starter 48 / cold-buy 78) saturates the cap. The
+desk renders it to members as `"{n}% conviction"` per play. It has said 96 for eight weeks.
+
+Measured with `scripts/audit/spx-confidence-calibration.mjs`. On the same 51 plays the substitutes
+this map recommended are themselves weak: `r(|score|, win) = 0.172`, `r(grade_rank, win) = −0.038`
+— n=51, indicative only, but `grade` shows no signal in this sample and should not be presented as
+a calibrated stand-in.
+
+**The Largo boundary is fixed (#2646); the member-facing number is not.** That is with the
+coordinator, since they directed it be left alone when the field was believed merely uncalibrated.
+
 The tool *description* for `get_spx_confluence` (`tool-defs.ts:506`) lists action, bias, score,
 grade, agreeing/conflicting factors, levels — and **does not mention confidence at all**. So the
 field is arriving undocumented as well as uncalibrated.
@@ -450,11 +496,13 @@ Ranked. These are the `UNKNOWN`s above, restated as tasks.
    Without credentials the script reports **SKIPPED, never GREEN** — "I could not look" must not
    render as "clean".
 
-1. **Line-audit the eleven `docs/spx/PLAYBOOK-*.md` documents** and mark what is now wrong (§6.4).
-   Largest remaining gap.
+1. ~~**Line-audit the eleven `docs/spx/PLAYBOOK-*.md` documents**~~ **DONE — see §6.4.** Accurate
+   about the code, false about the world; all eleven bannered, and §6's matrix is now ratcheted
+   against its source constant.
 2. **Build a calibrated confidence from `spx-play-outcomes`, out-of-sample validated** — and fix
    `spx-play-engine.ts:1633`'s `?? 0` fallback with it. The Largo boundary now omits the
    uncalibrated number, which is honest but not an answer; the member UI still renders it.
+   **Start from the measurement, not from the field's history:** `scripts/audit/spx-confidence-calibration.mjs` shows the stored `confidence` is 96 on all 51 rows (§7.2), so the ledger carries no recoverable conviction signal — a calibration has to be built from `score`/`grade`/factors. On those same rows `r(|score|, win) = 0.172` and `r(grade_rank, win) = −0.038` (n=51, indicative only).
 3. **Trace the `spx:pulse:snapshot` writer** in the market-worker lane and record its `change_pct`
    anchor at source (§3.2).
 4. **Map `/journal`, `/commentary`, `/outcomes`, `/power-hour`, `/signals`** to this file's schema.
