@@ -8,6 +8,49 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-08-23 — [Helix] Live /flows UI audit on the settled build — PASS both viewports, and it live-validates three merged fixes
+
+**Severity.** — (no defect found)
+
+**Why it ran.** MERGED IS NOT DONE and DEPLOYED IS NOT DONE. A stretch of HELIX work had landed —
+#2723 (epoch print times), #2725, #2727, #2739 (dark-pool coverage gate) — and none of it had been
+seen RENDERED. Deploy `f0e7b791` completed **success 15:14:33Z**; this ran after it settled.
+
+**Result — `OVERALL: PASS`, `EXIT=0`, desktop 95 assets routed / 0 fail, mobile 117 / 0 fail.**
+
+Three lines are direct live validations of merged work rather than generic panel checks:
+
+- **`all buckets match the rendered tape (11 expired print(s) correctly in 0DTE, not "This week")`**
+  — §9.5's `dte <= 0` bucketing, proven correct on the rendered page. Worth stating plainly: this is
+  the panel the tape-inventory harness had been ACCUSING on every run of filing expired prints under
+  a future horizon. The panel was right and the instrument was stale; the accusation was removed in
+  the same session, and this is the independent confirmation from the other direction.
+- **`every print was scannable and the note correctly stays quiet`** — §5k/§5f. At 5000/5000 eligible
+  the `SignalCoverageNote` renders nothing by design. The runbook PREDICTED this ("the coverage note
+  must be GONE, not merely smaller"); this is the measurement.
+- **`10 NEW badge(s), 0 on an unexamined row, 8 ratio(s) agreeing with their own OI/Prem/Fill
+  columns`** — §5b, the NEW-positioning badges, cross-checked against the columns they claim to be
+  derived from.
+
+Route Breakdown reads `UNREPORTED 95% · REPEAT 4% · FLOOR 0% · SWEEP 0%`, and the harness correctly
+labels that **expected, not a regression** — the routeless index feed carries ~92% of tape premium
+(§4A). The freshness badge reads "42h ago", which off-hours is the correct display of a stale tape
+rather than a fault.
+
+**What did NOT get validated, stated rather than glossed.** Both radars are empty off-hours — split
+flow needs a live 30-minute window — so the populated labels remain unverified, and the mobile
+flow-card layout has no column grid, so the NEW-ratio and expiry cross-checks cannot run there. The
+harness reports these as `n/e`, never as passes.
+
+**An operational lesson worth keeping for the open.** The FIRST attempt, run while `f0e7b791` was
+still rolling out, returned `[desktop] HARNESS` on a **404 for a `_next/static/chunks/*.js` file** —
+old HTML meeting new chunk hashes mid-rollout, on a page whose desktop-only chunks differ from
+mobile's (mobile PASSed in the same run). The gate did exactly its job: it reported HARNESS, not
+RED, so a rollout artifact could not be recorded as a product defect. **Do not audit the UI during
+an in-progress deploy** — check `ecr-push-production.yml` is `completed` first, which §5 step 0
+already requires.
+
+---
 
 ## 2026-08-23 — [SPX Slayer] Post-deploy live validation of #2646, #2694 and #2699 — three PASS, and one of them needed a new instrument
 
