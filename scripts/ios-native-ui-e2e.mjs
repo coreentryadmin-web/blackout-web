@@ -586,6 +586,10 @@ async function testToolPage(page, tab, prefix = "") {
       ok(`${prefix}vector:segment-ladder`);
       await shot(page, `${prefix}vector-ladder`);
     }
+    if (await clickSegment(page, "Scanner")) {
+      ok(`${prefix}vector:segment-scanner`);
+      await shot(page, `${prefix}vector-scanner`);
+    }
     if (await clickSegment(page, "Chart")) {
       ok(`${prefix}vector:segment-chart`);
     }
