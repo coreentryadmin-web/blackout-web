@@ -464,7 +464,10 @@ the field **on purpose**: its ladder is all-expiry filed under one synthetic `to
 bucketing it would assert a DTE breakdown the source cannot support. The aggregate `call_wall` /
 `put_wall` are deliberately unchanged — what "near-term" should mean is a product decision, and the
 fix is to publish the horizons beside the aggregate, not to redefine it. See `FINDINGS.md`
-2026-08-23. **Still to do: live-validate on production after deploy** (rule 6 — merged is not done).
+2026-08-23. **LIVE-VALIDATED 2026-08-23 03:55Z** — 6/6 tickers carry the block, 3 buckets each, **zero
+wrong-side walls** across every bucket, and an empty `0DTE` correctly reads `expiries: []` (no
+expiry in range) rather than "no wall". Measured numbers in `RUN-LOG.md`. The same probe caught the
+SPX mislabel above; five tickers agreeing and one disagreeing is what exposed it.
 
 ### 9.3 [P2, Largo boundary] `get_gex_heatmap` and `get_positioning` carry no session anchor and no freshness
 
