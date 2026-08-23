@@ -70,16 +70,33 @@ export function evaluateChecks({ tape, darkpool, expiryMinus1 }) {
         ["§9.4", "IV units", "shipped renderer suits the feed"],
       ]) out.push(row(id, sec, exp, "tape returned 0 rows", "HARNESS", "nothing was measured — not a pass"));
     } else {
-      // §5k — THE highest-impact claim, and the one that inverted. After #2723 every row carries a
-      // real print time, so the two fields must have STOPPED co-varying.
+      // §5k — THE highest-impact claim, and the one that inverted.
+      //
+      // WHAT IS ACTUALLY BEING TESTED: that the two fields have DECOUPLED. Before #2723 `event_at`
+      // was present if and only if `alert_rule` was (measured exactly: SPX 39/39, SPY 82/82); after
+      // it, every row carries a real print time while `alert_rule` stays at ~30%. A regression
+      // collapses `event_at` back toward `alert_rule`, and THAT is the signal.
+      //
+      // IT DOES NOT DEMAND event_at === 100, deliberately. Off-hours the tape is settled and reads
+      // exactly 100%. Under a MOVING tape a single print whose time cannot be resolved — an
+      // unparseable `created_at` with a usable `inserted_at`, which `resolveFlowTimes` reports as
+      // `tape_time_estimated` — drops it to 99.8%. Gating on equality would fire RED on the
+      // highest-impact row of a working deploy, which is exactly the false-alarm shape this whole
+      // gate exists to prevent. The margin is what carries the meaning; the round number does not.
       const ev = p.event_at?.all, ar = p.alert_rule?.all;
+      const EV_FLOOR = 95;          // tolerates a handful of genuinely undatable prints
+      const DECOUPLE_MARGIN = 20;   // pre-#2723 the two were EQUAL; anything near that is a collapse
+      const decoupled = ev != null && ar != null && ev >= EV_FLOOR && ev - ar > DECOUPLE_MARGIN;
       out.push(
-        ev === 100 && ar != null && ar < 100
-          ? row("§5k", "event_at parse", "event_at 100% AND alert_rule < 100%", `event_at ${ev}% · alert_rule ${ar}%`, "GREEN")
-          : row("§5k", "event_at parse", "event_at 100% AND alert_rule < 100%", `event_at ${ev}% · alert_rule ${ar}%`, "RED",
-                ev !== 100
-                  ? "event_at is no longer universal — the deploy may not carry #2723, or the wire format moved"
-                  : "the two fields co-vary again, which is the pre-#2723 signature")
+        decoupled
+          ? row("§5k", "event_at parse", `event_at >= ${EV_FLOOR}% AND at least ${DECOUPLE_MARGIN}pp above alert_rule`,
+                `event_at ${ev}% · alert_rule ${ar}% · margin ${ev == null || ar == null ? "n/a" : (ev - ar).toFixed(1)}pp`, "GREEN",
+                ev < 100 ? `${(100 - ev).toFixed(1)}% of rows carry no resolvable print time — within tolerance, not a fault` : null)
+          : row("§5k", "event_at parse", `event_at >= ${EV_FLOOR}% AND at least ${DECOUPLE_MARGIN}pp above alert_rule`,
+                `event_at ${ev}% · alert_rule ${ar}%`, "RED",
+                ev != null && ev < EV_FLOOR
+                  ? "event_at coverage has collapsed — the deploy may not carry #2723, or the wire format moved"
+                  : "the two fields have re-coupled, which is the pre-#2723 signature")
       );
 
       // §9.0 — eligibility is the denominator every signal claim rests on.

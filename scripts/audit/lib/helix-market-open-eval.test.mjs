@@ -45,6 +45,39 @@ test("§5k GOES RED if event_at and alert_rule co-vary again — the pre-#2723 s
   assert.match(r.note, /deploy may not carry #2723|wire format moved/);
 });
 
+test("§5k TOLERATES a live tape that is not exactly 100% — the false alarm it must not raise", () => {
+  // Off-hours the tape is settled and reads exactly 100%. Under a MOVING tape one print whose time
+  // cannot be resolved drops it to 99.8%. Demanding equality would fire RED on the highest-impact
+  // row of a WORKING deploy — the exact false-alarm shape this gate exists to prevent.
+  const rows = run({ tape: liveTape({ field_presence_pct: {
+    event_at: { all: 99.8 }, alert_rule: { all: 30 }, ask_pct: { A: 96.9, B: 0 },
+  } }) });
+  const r = find(rows, "§5k");
+  assert.equal(r.verdict, "GREEN");
+  assert.match(r.note, /within tolerance, not a fault/);
+});
+
+test("§5k still goes RED once event_at coverage genuinely collapses", () => {
+  // The floor has to bite somewhere, or the tolerance above swallows a real regression.
+  for (const ev of [94, 60, 31]) {
+    const rows = run({ tape: liveTape({ field_presence_pct: {
+      event_at: { all: ev }, alert_rule: { all: 30 }, ask_pct: { A: 96.9, B: 0 },
+    } }) });
+    assert.equal(find(rows, "§5k").verdict, "RED", `event_at ${ev}% must be RED`);
+  }
+});
+
+test("§5k goes RED on a NARROW margin even when event_at is high", () => {
+  // Both fields drifting up together is still re-coupling. The margin carries the meaning, not the
+  // absolute level — this is the case a floor-only check would miss.
+  const rows = run({ tape: liveTape({ field_presence_pct: {
+    event_at: { all: 99 }, alert_rule: { all: 90 }, ask_pct: { A: 96.9, B: 0 },
+  } }) });
+  const r = find(rows, "§5k");
+  assert.equal(r.verdict, "RED");
+  assert.match(r.note, /re-coupled/);
+});
+
 test("§9.0 goes RED when prints cannot be placed in time, and NAMES them", () => {
   const rows = run({ tape: liveTape({
     signal_eligibility: { total: 5000, eligible: 1500, ineligible: 3500, ineligibleTickers: ["SPX", "SPY"] },
