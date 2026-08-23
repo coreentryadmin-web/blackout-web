@@ -6,13 +6,30 @@ import { fmtPremium, type FlowAlert } from "@/lib/api";
 import { executionRouteKey } from "@/features/helix/lib/helix-flow-format";
 import { Panel } from "@/components/ui";
 
+// REPEAT and GRENADE are the two words the tape badge (`ruleLabel`) has always known and this
+// panel did not — see ALERT_RULE_VOCABULARY in helix-flow-format.ts. REPEAT alone is 28.7% of the
+// live tape and was rendering as OTHER.
+//
+// UNREPORTED is deliberately NOT given a bright colour: it is the absence of a route reading
+// (70% of the live tape — the SPX/SPY feed sends no alert_rule at all), and it should read as a
+// gap in the data rather than as a category of execution competing with the real ones.
 const ROUTE_META: Record<string, { color: string; icon: string }> = {
+  REPEAT: { color: "#60a5fa", icon: "⟲" },
   SWEEP:  { color: "#fb923c", icon: "⚡" },
   BLOCK:  { color: "#22d3ee", icon: "▮" },
   SPLIT:  { color: "#a78bfa", icon: "⟁" },
   CROSS:  { color: "#f472b6", icon: "✕" },
   FLOOR:  { color: "#facc15", icon: "▣" },
   MULTI:  { color: "#34d399", icon: "◈" },
+  GRENADE: { color: "#f87171", icon: "✸" },
+  UNREPORTED: { color: "#64748b", icon: "–" },
+};
+
+/** What the bucket means, for the row's title attribute — "UNREPORTED" is not self-explanatory
+ *  and a member should not have to guess whether it means "no route" or "route unknown". */
+const ROUTE_HINT: Record<string, string> = {
+  UNREPORTED: "No alert rule on the print — this feed does not report an execution route",
+  OTHER: "Rule present but not one we have a word for",
 };
 
 type RouteEntry = {
@@ -78,6 +95,7 @@ export function RouteBreakdown({ alerts, loading }: { alerts: FlowAlert[]; loadi
               exit={{ opacity: 0 }}
               transition={{ delay: i * 0.04, duration: 0.25 }}
               className="space-y-1"
+              title={ROUTE_HINT[e.route] ?? undefined}
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
