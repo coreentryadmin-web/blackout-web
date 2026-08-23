@@ -12,8 +12,10 @@ import {
   sortFlows,
 } from "@/features/helix/lib/helix-flow-format";
 import { tapeTimeDisplay } from "@/features/helix/lib/helix-tape-time";
+import {
+  WHALE_PRINT_PREMIUM,
+} from "@/features/helix/lib/helix-flow-limits";
 
-const WHALE_PREMIUM = 1_000_000;
 
 // Real mobile-web tape layout (2026-08-02 Helix audit, Tier 1 item #8). Mobile web (and the
 // native iOS shell — both go through useCompactDeskPanels) previously rendered the SAME
@@ -138,7 +140,7 @@ export function HelixMobileFlowTape({
           <div className="flex flex-col gap-1.5 px-1 py-2">
             {visible.map((flow, i) => {
               const isCall = flow.option_type?.toUpperCase() === "CALL";
-              const isWhale = flow.premium >= WHALE_PREMIUM;
+              const isWhale = flow.premium >= WHALE_PRINT_PREMIUM;
               const dte = flow.dte ?? daysToExpiry(flow.expiry);
               const is0dte = dte === 0;
               const isCompound = compoundTickers?.has(flow.ticker) ?? false;

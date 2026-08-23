@@ -11,6 +11,9 @@ import {
 import { Drawer, Skeleton, EmptyState } from "@/components/ui";
 import { relativeAge } from "@/lib/relative-time";
 import { fetchFlows, fetchDarkPoolPrints, fmtPremium, type FlowAlert, type DarkPoolRow } from "@/lib/api";
+import {
+  WHALE_PRINT_PREMIUM,
+} from "@/features/helix/lib/helix-flow-limits";
 
 // Guarded via the shared relativeAge: a null/unparseable alerted_at previously rendered "NaNh ago".
 function timeAgo(iso: string | null | undefined): string {
@@ -27,7 +30,7 @@ type State = { flows: FlowAlert[]; dp: DarkPoolRow[]; loading: boolean };
 
 function FlowRow({ f }: { f: FlowAlert }) {
   const isCall = f.option_type === "CALL";
-  const isWhale = f.premium >= 1_000_000;
+  const isWhale = f.premium >= WHALE_PRINT_PREMIUM;
   return (
     <div className={clsx(
       "flex items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors",
