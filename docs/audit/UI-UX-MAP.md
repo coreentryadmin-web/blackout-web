@@ -591,11 +591,18 @@ useful information the UI is correctly surfacing.
 **LIVE 2026-08-23** (`nighthawk-mobile`, 430×932) — same structure as desktop, stacked
 single-column. Two things worth recording:
 
-- **Header stat strip truncates rather than wraps:** desktop reads "UPDATED 13 sec ago" in full;
-  the identical strip on mobile is clipped to "UPDATED 12" with "sec ago" cut off at the container
-  edge — an overflow bug, not a redesign, on the `OPPS/TOP/EDGE/ENGINE/UPDATED` info strip
-  (`zerodte-board-strips.tsx`, 173 lines). Candidate **P1** (small fix, high-visibility position —
-  first thing on the page).
+- **Header stat strip truncates rather than wraps — corrected below.** ~~desktop reads "UPDATED 13
+  sec ago" in full; the identical strip on mobile is clipped to "UPDATED 12" with "sec ago" cut off
+  at the container edge — an overflow bug, not a redesign, on the `OPPS/TOP/EDGE/ENGINE/UPDATED`
+  info strip. Candidate **P1**.~~ **FIXED same day, root cause corrected from this original read.**
+  The strip is `.nh-deck-hdr-row--primary` in `CommandDeck.tsx`'s `DeckCompactHeader` (not
+  `zerodte-board-strips.tsx`, which is a different, unrelated set of header pills) — an existing
+  code comment on the row already documented it as deliberately `overflow-x:auto`. A live tunneled
+  check confirmed the text was never lost: `scrollWidth` 672px vs `clientWidth` 411px, and scrolling
+  the row to its end fully revealed the same "sec ago" text. The actual defect is narrower: mobile
+  Safari hides the scrollbar, so nothing signaled the row was scrollable. Fixed with a static
+  right-edge fade (`mask-image`), matching the existing `.landing-marquee-strip` edge-fade pattern.
+  See `docs/audit/findings-staging/2026-08-23-nighthawk-mobile-header-scroll-affordance.md`.
 - **~45% of the mobile viewport is blank below the empty-state card** on a no-session day. Not a
   bug — the layout simply doesn't have content to fill it — but a candidate **P2/P3** per brief
   item 9's "do not solve density problems with whitespace" read backwards: an empty state that
@@ -754,7 +761,7 @@ wrong UA can mask real bugs, not just invent fake ones.
 | ~~1~~ | ~~`/dashboard` desktop~~ | ~~Vector panel tab leaves ~45% of the content width blank~~ | **RETRACTED** | §2 | **FALSE — original shot used wrong UA (iPhone UA at desktop viewport); real desktop layout is a 4-col grid, no blank space.** |
 | ~~2~~ | ~~`/flows` mobile~~ | ~~Header flow-split bar overflows viewport horizontally; two stat strings concatenate with no separating space~~ | **FIXED** | §3 | Root-caused (`justify-between` with no gap/wrap) and fixed same day — see §3 and `docs/audit/findings-staging/2026-08-23-helix-mobile-tide-bar-overflow.md`. Verified via isolated CSS repro (live component couldn't be locally rendered — no dev flow data). Pending live validation post-deploy. |
 | ~~3~~ | ~~`/vector` mobile~~ | ~~GEX-scope chip overlaps the chart's own axis time ticks~~ | **FIXED** | §5 | Root-caused (unbounded-width, no-background overlay label vs. canvas-drawn ticks) and fixed same day — see §5 and `docs/audit/findings-staging/2026-08-23-vector-chart-footer-legend-overlap.md`. Verified via isolated CSS repro built from the real production text. Same fix applied on `/dashboard`'s embedded chart too (shared `VectorChart.tsx`) — that desktop half was never independently confirmed broken, but the fix is defensive there regardless. Pending live validation post-deploy. |
-| 4 | `/nighthawk` mobile | Header stat strip truncates ("UPDATED 12" cuts off "sec ago") instead of wrapping | **P1** | §7 | Correct mobile UA |
+| ~~4~~ | ~~`/nighthawk` mobile~~ | ~~Header stat strip truncates ("UPDATED 12" cuts off "sec ago") instead of wrapping~~ | **FIXED** | §7 | Root-caused (corrected from the original candidate): live measurement showed the row is deliberately `overflow-x:auto` and the text was never lost — `scrollWidth` 672px vs `clientWidth` 411px, and scrolling the row to its end fully revealed the same text. The real defect was a missing scroll affordance (mobile Safari hides the scrollbar), fixed with a static right-edge fade — see §7 and `docs/audit/findings-staging/2026-08-23-nighthawk-mobile-header-scroll-affordance.md`. Verified live against production via a tunneled Playwright session (scroll-position check), and the regression test fails against pre-fix CSS / passes with the fix. Pending live validation post-deploy. |
 | 5 | `/terminal` mobile | Toolbar label collapses to bare "L…"; composer placeholder overflows its input box | **P3** | §8 | Correct mobile UA |
 | 6 | `/nighthawk` mobile | ~45% of viewport left blank below the no-session empty state | **P2/P3** | §7 | Correct mobile UA |
 | 7 | `/vector` mobile | Drops ticker search, metric/expiry toggles, matrix table, and live tape entirely (chart-only) — scope call | **P2** (needs Vector-lane input) | §5 | Correct mobile UA |
