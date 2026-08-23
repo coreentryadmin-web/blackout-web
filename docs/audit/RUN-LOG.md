@@ -91,6 +91,23 @@ one invocation, EXIT=0.**
 
 ---
 
+## 2026-08-23 — [SPX Slayer] Post-deploy validation of #2732 — PASS, control proven
+
+**Severity.** — (no defect found)
+
+**Why it ran.** #2732 fixed `get_spx_structure`, which had been TRUNCATED with no arguments. The
+fix was proven by unit test, never on the built page. `deploy-freshness --since=6h` OK, newest
+deploy run 16:38:50Z against a 13:39Z merge.
+
+**Result.** `largo-truncation-probe.mjs --tools=get_spx_structure` → **COMPLETE**, with the
+CONTROL (`get_zerodte_rejections`) still **TRUNCATED**. The control is the load-bearing half: a run
+whose control comes back COMPLETE reports every COMPLETE as UNVERIFIED rather than clean, so this
+is a pass and not an uninstrumented silence.
+
+**What it does NOT claim.** Nothing about whether the *bounded* payload is the right shape — only
+that it now fits. Whether the per-list caps drop something an answer needed is a judgment against
+real questions, not a size check.
+
 ## 2026-08-23 — [SPX Slayer] Post-deploy live validation of #2646, #2694 and #2699 — three PASS, and one of them needed a new instrument
 
 **Severity.** — (no product defect found; one harness defect of my own fixed the same session, #2729)
