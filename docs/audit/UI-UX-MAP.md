@@ -307,13 +307,23 @@ though the fields shown (badges, strike/expiry/DTE, premium, Δ%+age) match 1:1 
 tape cards show, so no field drift found this pass.
 
 **Real defect, screenshot-confirmed:** the header's bidirectional flow-split bar **overflows the
-viewport horizontally** — its trailing edge (a bar segment plus what looks like the start of a
-"TODAY" label, clipped to a bare "T") runs off the right side of the 430px frame instead of
-wrapping or shrinking to fit. In the same row, the two stat strings run together with **no
-separating space**: `"$17M calls sold$130M puts sold"` reads as one unbroken run of text. Both are
-in the same header component — candidate **P1** (visible on every mobile Helix load, first thing
-under the wordmark, and a horizontal-overflow bug is exactly the class `_COMMON.md`'s own
-interaction-testing guidance calls out by name).
+viewport horizontally** — its trailing edge (the "Tide" label, clipped to a bare "T") runs off the
+right side of the 430px frame instead of wrapping or shrinking to fit. In the same row, the two
+stat strings run together with **no separating space**: `"$17M calls sold$130M puts sold"` reads as
+one unbroken run of text. Both are in the same header component (`HelixTideBar.tsx`) — **P1**
+(visible on every mobile Helix load, first thing under the wordmark).
+
+**FIXED same day.** Root cause: the stats row used `justify-between` with no explicit gap and no
+wrap — `justify-between` has nothing to distribute once the row is narrower than the two stats'
+combined natural width (the row's neighbors in the header, a `shrink-0` brand block and `shrink-0`
+"Tide" label, squeeze it down on mobile). Fix adds `flex-wrap` + `gap-x-2 gap-y-0.5`, so a squeezed
+row wraps to two spaced lines instead of colliding with zero gap and bleeding into "Tide". Verified
+with an isolated CSS repro reproducing the exact bug and confirming the fix (local dev data wasn't
+populated, so the live component couldn't be screenshotted directly this pass — see the staged
+finding for the full repro method). Finding staged:
+`docs/audit/findings-staging/2026-08-23-helix-mobile-tide-bar-overflow.md`. Regression-guarded by
+`src/features/helix/components/HelixTideBar.test.ts` (verified to fail pre-fix, pass post-fix).
+Pending live validation before this is fully closed (rule 6).
 
 ---
 
@@ -720,7 +730,7 @@ wrong UA can mask real bugs, not just invent fake ones.
 | # | Surface | Summary | Severity | Section | Confidence |
 |---|---|---|---|---|---|
 | ~~1~~ | ~~`/dashboard` desktop~~ | ~~Vector panel tab leaves ~45% of the content width blank~~ | **RETRACTED** | §2 | **FALSE — original shot used wrong UA (iPhone UA at desktop viewport); real desktop layout is a 4-col grid, no blank space.** |
-| 2 | `/flows` mobile | Header flow-split bar overflows viewport horizontally; two stat strings concatenate with no separating space | **P1** | §3 | Correct mobile UA. Desktop RE-VERIFIED clean (proper spacing, no overflow) — mobile-only. |
+| ~~2~~ | ~~`/flows` mobile~~ | ~~Header flow-split bar overflows viewport horizontally; two stat strings concatenate with no separating space~~ | **FIXED** | §3 | Root-caused (`justify-between` with no gap/wrap) and fixed same day — see §3 and `docs/audit/findings-staging/2026-08-23-helix-mobile-tide-bar-overflow.md`. Verified via isolated CSS repro (live component couldn't be locally rendered — no dev flow data). Pending live validation post-deploy. |
 | 3 | `/vector` mobile | Chart footer legend text overlaps itself ("16:30" on "08:30", "RECONSTRUCTED" on "SPOT-ALIGNED") | **P1** | §5 | Correct mobile UA. **Desktop half still unconfirmed** — the re-shot's Vector column was still "Loading Vector chart…" at capture, footer never rendered to compare. Plausibly the same shared `VectorChart.tsx` bug, not proven on desktop. |
 | 4 | `/nighthawk` mobile | Header stat strip truncates ("UPDATED 12" cuts off "sec ago") instead of wrapping | **P1** | §7 | Correct mobile UA |
 | 5 | `/terminal` mobile | Toolbar label collapses to bare "L…"; composer placeholder overflows its input box | **P3** | §8 | Correct mobile UA |
