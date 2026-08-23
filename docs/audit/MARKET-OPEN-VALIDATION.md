@@ -120,13 +120,25 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — HELIX, first session on 2026-08-24 (read this before the routine pass)
 
-Fourteen HELIX fixes merged over 2026-08-22/23. **Twelve are member-facing and none has been seen
-under a moving tape.** §5k is the highest-impact item on this list and should be checked first —
-its **parse half is now live-validated off-hours (2026-08-23) and needs no re-run**; what remains
-there is the consequence, which only a moving tape can show. Every one was validated off-hours at best, and three could not be validated at all
-because the population they act on does not exist while the market is closed. This section is the
-list of things that are *only* checkable at the open, with the baseline each one must be diffed
-against.
+**Every item below is a HELIX fix merged over 2026-08-22/23 that has not been seen under a moving
+tape.** The list IS the count — a hand-maintained total in this paragraph drifted out of date within
+a day and has been removed rather than re-synced, which is the same one-source-of-truth problem
+several of the fixes below are about.
+
+§5k is the highest-impact item and should be checked first — its **parse half is now live-validated
+off-hours (2026-08-23) and needs no re-run**; what remains there is the consequence, which only a
+moving tape can show.
+
+**What HAS been validated off-hours, so nobody re-runs it:** the `/flows` UI audit passes both
+viewports on the deployed build (`OVERALL: PASS`, `EXIT=0`, deploy `f0e7b791`), which confirms the
+panels render, the expiry buckets file expired prints under `0DTE`, the NEW badges agree with their
+own columns, and the signal-coverage note correctly stays quiet at 5000/5000 eligible. All four
+HELIX Largo tools are COMPLETE against a proven control, so no payload exceeds the 16k tool-result
+cap. See `RUN-LOG.md`. **What that does NOT cover is anything needing live flow** — both radars are
+empty off-hours, so every populated-state assertion below is still owed.
+
+This section is the list of things that are *only* checkable at the open, with the baseline each one
+must be diffed against.
 
 **Run the whole list, then the routine pass.** Order matters only for step 0.
 
@@ -585,6 +597,40 @@ that `new Date()` could not parse.
   `event_at` should never be in the future. #2725 keeps a future-stamped print out of both
   detectors, so a future value would be silently *excluded* rather than visibly wrong — check the
   ineligible count, not the radars.
+
+### 5l. Dark-pool bias — a ratio that excluded its own denominator (#2739)
+
+`DarkPoolPanel`'s BULLISH / BEARISH / MIXED badge was `buy / (buy + sell)` over premium — a ratio
+whose denominator is the **sided** premium only. Prints carrying no direction never entered it. The
+one guard fired only when **no** print carried a side, so the all-or-nothing case was handled and the
+**partial** case was not: with 5% of premium sided and leaning buy, the panel would render a
+confident `BULLISH` drawn from a twentieth of the tape, with nothing on screen saying so.
+
+**Measured off-hours 2026-08-23, before changing anything:** the market-wide feed and the
+ticker-scoped feed for NVDA, SPY, TSLA and AAPL each returned 50 prints — **250 prints, every one
+`neutral`, 0.0% sided premium coverage.** So the partial case is **latent, not live**, and the fix is
+behaviour-neutral on that population. It was made anyway because the defect is in the SHAPE of the
+computation, not in whether this week's feed triggers it — and the off-hours number is a floor.
+
+- **Run first:** the coverage measurement, under RTH volume. `GET /api/market/dark-pool` market-wide
+  and per ticker; count `side` values (`buy` / `sell` / `neutral`) and compute sided premium as a
+  share of total. Off-hours that is 0.0% on every endpoint; the question is whether UW populates
+  `sentiment`/`direction` when the tape is moving.
+- **⚠️ THE READING THAT WILL LOOK LIKE A REGRESSION AND IS NOT.** If coverage rises above 0% but
+  stays under `MIN_READABLE_PCT_FOR_VERDICT` (50%), the panel now shows **`—` plus
+  `side known on N% of premium`** where the old code would have shown a confident BULLISH or
+  BEARISH. **That is the fix working.** Do not open a finding for a dash that carries a coverage
+  note beside it — the note is the evidence the gate fired deliberately.
+- **If coverage clears the threshold**, the badge lights up for the first time on this feed. Spot-check
+  it by hand against the print list before trusting it — that path has never rendered against real
+  sided data.
+- **`— ` with no coverage note at all** means `readablePct` was `null`, i.e. the population carried no
+  premium whatsoever. That is different from 0% coverage and is deliberately not labelled: 0% would
+  assert a measurement over an empty population.
+- **Cross-check, cheap and worth doing once:** the same threshold governs the flow tape's direction
+  read (`helix-direction-read.ts`). If the dark-pool badge and the tape's verdict disagree about
+  whether something is readable, one of them is not using the shared constant — they are supposed to
+  be the same rule on two surfaces.
 
 ### 6. Open questions an RTH session can actually answer
 
