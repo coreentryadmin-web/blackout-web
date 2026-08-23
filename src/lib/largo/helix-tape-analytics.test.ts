@@ -681,3 +681,89 @@ test("an all-typeless pull reports call_pct null, never a fabricated balance", (
   assert.equal(s.call_pct, null);
   assert.equal(s.total_premium, 0);
 });
+
+/* ── Direction vs skew, the two-audience problem ─────────────────────────────────────────────────
+ * `get_helix_tape_analytics`'s description used to send the model to `call_pct` for "bullish/
+ * bearish premium" questions. Since #2691/#2713/#2715 the member panels do not read direction that
+ * way, so the AI and the UI were about to answer opposite about the same tape. These pin that they
+ * cannot.
+ */
+
+const sided = (
+  ticker: string,
+  option_type: "CALL" | "PUT",
+  ask_pct: number | null,
+  premium: number
+): FlowAlert =>
+  ({
+    ticker,
+    premium,
+    option_type,
+    ask_pct,
+    strike: 100,
+    expiry: "2026-09-19",
+    alerted_at: "2026-08-23T15:00:00Z",
+    dte: 27,
+  }) as unknown as FlowAlert;
+
+test("100% call premium can be BEARISH — the live CG case, in the Largo payload", () => {
+  // Every dollar a sold call. `call_pct` is 100 and correct; `direction` is bearish and also
+  // correct. Both must be present, and they must not be confused for one another.
+  const rows = netPremiumLeaders([sided("CG", "CALL", 8, 8_000_000)]);
+  const cg = rows.find((r) => r.ticker === "CG")!;
+  assert.equal(cg.call_pct, 100);
+  assert.equal(cg.direction, "bearish");
+  assert.equal(cg.direction_minority_evidence, false);
+  assert.equal(cg.direction_readable_pct, 100);
+});
+
+test("call_pct survives — the contract is additive, not a replacement", () => {
+  const rows = netPremiumLeaders([
+    sided("AAA", "CALL", 90, 600_000),
+    sided("AAA", "PUT", 90, 400_000),
+  ]);
+  const r = rows[0]!;
+  assert.equal(r.call_pct, 60);
+  assert.equal(r.net, 200_000);
+  assert.equal(r.total, 1_000_000);
+  // ...and the direction is its own field, not derived from those.
+  assert.ok(["bullish", "bearish", "mixed", "undetermined"].includes(r.direction));
+});
+
+test("a mostly-unreadable population reports undetermined AND its readable share", () => {
+  // The live SPX shape: the index feed carries no ask side. A model told only "undetermined"
+  // cannot tell "genuinely two-sided" from "almost nothing was readable" — different sentences.
+  const rows = netPremiumLeaders([
+    sided("SPX", "CALL", 90, 4_000_000),
+    sided("SPX", "CALL", null, 4_000_000_000),
+  ]);
+  const spx = rows[0]!;
+  assert.equal(spx.direction, "undetermined");
+  assert.equal(spx.direction_minority_evidence, true);
+  assert.ok(spx.direction_readable_pct != null && spx.direction_readable_pct < 1);
+});
+
+test("direction_readable_pct is null with no premium, never 0", () => {
+  // 0% claims "we measured and none was readable". Nothing was measured.
+  const skew = sessionFlowSkew([]);
+  assert.equal(skew.direction_readable_pct, null);
+  assert.equal(skew.direction, "undetermined");
+  assert.equal(skew.call_pct, null);
+});
+
+test("every aggregate carries the SAME direction basis stamp", () => {
+  const flows = [sided("X", "CALL", 90, 1_000_000)];
+  const leader = netPremiumLeaders(flows)[0]!;
+  const skew = sessionFlowSkew(flows);
+  assert.equal(leader.direction_basis, skew.direction_basis);
+  // The stamp must match the ledger's, or results graded under two rules could be pooled.
+  assert.equal(skew.direction_basis, "aggression_aware_v1");
+});
+
+test("session skew direction reads the aggressor side, not the call share", () => {
+  // 90% call premium, all of it sold. The skew says 90% calls; the direction says bearish.
+  const flows = [sided("Y", "CALL", 5, 9_000_000), sided("Y", "PUT", 95, 1_000_000)];
+  const skew = sessionFlowSkew(flows);
+  assert.equal(skew.call_pct, 90);
+  assert.equal(skew.direction, "bearish");
+});
