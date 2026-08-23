@@ -1,6 +1,7 @@
 import {
   anthropicText,
   anthropicToolLoop,
+  type ToolLoopStopReason,
   COMMENTARY_MODEL,
   isAiSpendCeilingTripped,
   LARGO_MODEL,
@@ -33,7 +34,7 @@ import { parseAnswerEnvelope, validateAnswerContract, fallbackAnswerEnvelope } f
 import { sanitizeLargoMemberText } from "@/lib/largo/sanitize-member-text";
 import { truncateCapturedResultsForPersist } from "@/lib/largo/persist-tool-results";
 import { stripLargoBlocks } from "@/features/largo/blocks/extract";
-import { collectContextNumbers, verifyClaims, type ClaimVerification } from "@/lib/bie/verifier";
+import { collectContextNumbers, unverifiedTurn, verifyClaims, type ClaimVerification } from "@/lib/bie/verifier";
 import { resetLargoSpxDeskCache } from "@/lib/largo/spx-desk-cache";
 import {
   appendLargoMessage,
@@ -960,7 +961,17 @@ export async function runLargoQuery(
     // Mark the prefetch/loop boundary so the phase split below can attribute the wall clock. See
     // turn-phase-timings.ts: everything before this line was deterministic prefetch (no model call).
     const loopStartedAt = Date.now();
+    // WHY THE LOOP'S OWN REASON IS CAPTURED. `anthropicToolLoop` returns `string | null`, and eight
+    // different outcomes collapse into that `null` — a closed gate, a missing key, the spend
+    // ceiling, an upstream failure, an empty model round, an exhausted budget. Without this the
+    // empty-answer copy had to GUESS from elapsed time, and its default guess was "no data": on
+    // 2026-08-22 that told every asker the desk had no data for a whole day while the real cause
+    // was an HTTP 400 on the Anthropic account. See ToolLoopStopReason.
+    let stopReason: ToolLoopStopReason | undefined;
     const answer = await anthropicToolLoop({
+      onStop: (s) => {
+        stopReason = s.reason;
+      },
       system,
       tools: filteredTools,
       messages: history,
@@ -1011,6 +1022,7 @@ export async function runLargoQuery(
         budgetMs: largoLoopBudgetMs(depth),
         toolsUsed,
         ceilingTripped,
+        stopReason,
       });
     }
 
@@ -1146,7 +1158,7 @@ export async function runLargoQuery(
       userId,
       question,
       toolsUsed,
-      verification: { total: 0, verified: 0, coverage: 1, unverified: [] },
+      verification: unverifiedTurn(),
       startedAt,
       answerSource: "error",
     });
@@ -1164,7 +1176,7 @@ export async function runLargoQuery(
       source: dbConfigured() ? "blackout-web+postgres" : "blackout-web",
       tools_used: Array.from(new Set(toolsUsed)),
       followups: deterministicLargoFollowups(question, tickerHint).slice(0, 3),
-      verification: { total: 0, verified: 0, coverage: 1, unverified: [] },
+      verification: unverifiedTurn(),
       ticker: tickerHint,
       turn_id: null,
       envelope,
@@ -1233,7 +1245,13 @@ export async function runLargoQueryStream(
     // Mark the prefetch/loop boundary so the phase split below can attribute the wall clock. See
     // turn-phase-timings.ts: everything before this line was deterministic prefetch (no model call).
     const loopStartedAt = Date.now();
+    // Same reason-capture as the non-streaming path above — the browser ALWAYS takes this branch,
+    // so an unexplained `null` here is the one members actually see.
+    let stopReason: ToolLoopStopReason | undefined;
     const answer = await anthropicToolLoop({
+      onStop: (s) => {
+        stopReason = s.reason;
+      },
       system,
       tools: filteredTools,
       messages: history,
@@ -1301,6 +1319,7 @@ export async function runLargoQueryStream(
         budgetMs: largoLoopBudgetMs(depth),
         toolsUsed,
         ceilingTripped,
+        stopReason,
       });
     }
 
@@ -1451,7 +1470,7 @@ export async function runLargoQueryStream(
       userId,
       question,
       toolsUsed,
-      verification: { total: 0, verified: 0, coverage: 1, unverified: [] },
+      verification: unverifiedTurn(),
       startedAt,
       answerSource: "error",
     });

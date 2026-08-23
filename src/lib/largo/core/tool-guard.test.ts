@@ -7,6 +7,7 @@ import {
   makeGuardedToolRunner,
   type ToolCallDiagnostic,
 } from "./tool-guard";
+import { exceedsToolResultCap } from "@/lib/providers/tool-result-cap";
 import { LARGO_CAPABILITIES } from "@/lib/largo/registry/capability-registry";
 import { LARGO_TOOL_DEFS } from "@/lib/largo/tool-defs";
 
@@ -224,4 +225,131 @@ test("what the model receives is rounded for reading, and captured results match
   // capturedResults feeds the extractors that render levels, so it must carry the SAME numbers the
   // model was shown — otherwise a rendered level and a spoken level could disagree.
   assert.equal(h.capturedResults[0], out);
+});
+
+/**
+ * ── TRUNCATION DETECTION (L-1) ────────────────────────────────────────────────────────────────
+ *
+ * This file has measured `bytes` on every tool call since it shipped, and NOTHING has ever compared
+ * that number to the transport cap. The cost of the missing comparison: three defects
+ * (#2433 `get_zerodte_record` delivering 1.5% of itself, #2436 `get_nighthawk_edition` cutting off
+ * every play, #2480 `get_nighthawk_outcomes` quoting a 40% win rate over "5 plays" for a window whose
+ * real record was 74 resolved at 50%), each found only by asking the LIVE model whether its payload
+ * had arrived — because an over-cap tool still "succeeds": the call returns, the loop completes, and
+ * the model writes a fluent answer from the fragment.
+ *
+ * The Phase 0 map counted the exposure: of 129 tools, exactly TWO bound their payload before this
+ * blind cut. The other 127 are capped with nothing watching.
+ *
+ * The comparison is exact, not a heuristic. `sizeOf` here stringifies the same object the loop then
+ * stringifies, so `bytes` IS `raw.length` — which is why the boundary tests below are worth having:
+ * an off-by-one would fire on the tools sitting closest to the cap, precisely the ones whose reports
+ * need to be trustworthy.
+ */
+
+const CAP = 16_000;
+
+function diag(over: Partial<ToolCallDiagnostic> = {}): ToolCallDiagnostic {
+  return { tool: "get_thing", ms: 10, denied: false, failed: false, bytes: 100, truncated: false, ...over };
+}
+
+test("a result OVER the cap is flagged truncated, with the size that makes it actionable", () => {
+  const line = formatToolDiagnostics([diag({ tool: "get_zerodte_record", bytes: 41_203, truncated: true })]);
+  assert.match(line, /TRUNCATED 41203\/16000/, "the log must name both the size and the cap");
+  assert.match(line, /1 TRUNCATED/, "the summary must count it");
+  assert.match(line, /get_zerodte_record/);
+});
+
+test("a result UNDER the cap is not flagged", () => {
+  const line = formatToolDiagnostics([diag({ bytes: 15_999 })]);
+  assert.doesNotMatch(line, /TRUNCATED/);
+});
+
+test("BOUNDARY: exactly at the cap is NOT truncated — the loop cuts on strictly greater-than", () => {
+  // The transport's own test is `raw.length > MAX_TOOL_RESULT_CHARS`. A payload landing exactly on
+  // the cap survives whole, and reporting it as truncated would cry wolf on the tools closest to
+  // the limit — the ones whose reports most need to be believed.
+  assert.equal(exceedsToolResultCap(CAP), false, "exactly at the cap is not cut");
+  assert.equal(exceedsToolResultCap(CAP + 1), true, "one over the cap is cut");
+  assert.equal(exceedsToolResultCap(CAP - 1), false);
+});
+
+test("a non-finite or zero size is never reported as truncated", () => {
+  // sizeOf returns 0 for a circular/non-serializable result, which means "unknown", not "huge".
+  assert.equal(exceedsToolResultCap(0), false);
+  assert.equal(exceedsToolResultCap(Number.NaN), false);
+  assert.equal(exceedsToolResultCap(Number.POSITIVE_INFINITY), false, "Infinity is not a measurement");
+});
+
+test("TRUNCATED outranks EMPTY and does not mask DENIED or FAILED", () => {
+  const line = formatToolDiagnostics([
+    diag({ tool: "a", denied: true, bytes: 0 }),
+    diag({ tool: "b", failed: true, bytes: 0 }),
+    diag({ tool: "c", bytes: 0 }),
+    diag({ tool: "d", bytes: 90_000, truncated: true }),
+  ]);
+  assert.match(line, /1 denied/);
+  assert.match(line, /1 failed/);
+  assert.match(line, /1 empty/);
+  assert.match(line, /1 TRUNCATED/);
+  assert.match(line, /a \d+ms DENIED/);
+  assert.match(line, /d \d+ms TRUNCATED/);
+});
+
+test("the guard populates `truncated` from the size it already measured — end to end", async () => {
+  const big = { rows: Array.from({ length: 4_000 }, (_, i) => ({ i, note: "padding-to-exceed-the-cap" })) };
+  const diagnostics: ToolCallDiagnostic[] = [];
+  const run = makeGuardedToolRunner({
+    viewer: { userId: "u1", isAdmin: false },
+    execute: async () => big,
+    toolsUsed: [],
+    capturedResults: [],
+    diagnostics,
+  });
+  await run("get_big", {});
+  assert.equal(diagnostics.length, 1);
+  assert.ok(diagnostics[0]!.bytes > CAP, `fixture must actually exceed the cap, got ${diagnostics[0]!.bytes}`);
+  assert.equal(diagnostics[0]!.truncated, true, "the guard must flag what it measured as over-cap");
+});
+
+test("a small real result is measured and NOT flagged — the guard does not over-report", async () => {
+  const diagnostics: ToolCallDiagnostic[] = [];
+  const run = makeGuardedToolRunner({
+    viewer: { userId: "u1", isAdmin: false },
+    execute: async () => ({ ticker: "SPX", spot: 6512.25 }),
+    toolsUsed: [],
+    capturedResults: [],
+    diagnostics,
+  });
+  await run("get_quote", {});
+  assert.equal(diagnostics[0]!.truncated, false);
+  assert.ok(diagnostics[0]!.bytes > 0);
+});
+
+test("the measured size IS the string the transport measures — the comparison is exact, not a heuristic", async () => {
+  // The whole detection rests on this equivalence. `anthropicToolLoop` does
+  // `JSON.stringify(results[i])` on the value `runTool` returned and tests `raw.length > cap`; the
+  // guard does `JSON.stringify(result).length` on that same value AFTER `roundResultForReading`,
+  // which is also what the loop receives. Same object, same serializer, same length — so a
+  // TRUNCATED flag here is a fact about the transport, not an estimate of one.
+  //
+  // Pinned as a test because the equivalence is invisible from either file alone: insert any
+  // re-shaping between the guard's return and the loop's stringify and the flag silently starts
+  // lying, in the direction of false confidence.
+  const payload = { ticker: "SPX", rows: Array.from({ length: 50 }, (_, i) => ({ i, v: i * 1.5 })) };
+  const diagnostics: ToolCallDiagnostic[] = [];
+  const capturedResults: unknown[] = [];
+  const run = makeGuardedToolRunner({
+    viewer: { userId: "u1", isAdmin: false },
+    execute: async () => payload,
+    toolsUsed: [],
+    capturedResults,
+    diagnostics,
+  });
+  const returned = await run("get_rows", {});
+
+  // What the transport would serialize is exactly what the guard returned.
+  const transportRaw = JSON.stringify(returned) ?? "null";
+  assert.equal(diagnostics[0]!.bytes, transportRaw.length, "guard bytes must equal the transport's raw length");
+  assert.equal(diagnostics[0]!.truncated, transportRaw.length > 16_000);
 });

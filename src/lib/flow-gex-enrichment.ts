@@ -1,6 +1,7 @@
 import { getGexPositioning } from "@/lib/providers/gex-positioning";
 import {
   enrichFlowWithGex,
+  tickersToEvaluate,
   type GexLevelSnapshot,
 } from "@/lib/flow-gex-proximity";
 
@@ -46,8 +47,17 @@ export async function getGexLevelsForTicker(ticker: string): Promise<GexLevelSna
 export async function enrichFlowsWithGex<T extends { ticker: string; strike: number }>(
   flows: T[],
   maxTickers = 100
-): Promise<Array<T & { gex_proximity?: import("@/lib/flow-gex-proximity").GexProximityLabel }>> {
-  const uniqueTickers = [...new Set(flows.map((f) => f.ticker))].slice(0, maxTickers);
+): Promise<
+  Array<
+    T & {
+      gex_proximity?: import("@/lib/flow-gex-proximity").GexProximityLabel;
+      gex_evaluated: boolean;
+    }
+  >
+> {
+  // Cap decision lives in flow-gex-proximity.ts because THIS module reaches `server-only` and
+  // cannot be unit-tested — see tickersToEvaluate's header.
+  const { evaluated: uniqueTickers } = tickersToEvaluate(flows, maxTickers);
   const gexMap = new Map<string, GexLevelSnapshot>();
   await Promise.all(
     uniqueTickers.map(async (t) => {
@@ -57,7 +67,11 @@ export async function enrichFlowsWithGex<T extends { ticker: string; strike: num
   );
   return flows.map((f) => {
     const gex = gexMap.get(f.ticker.toUpperCase());
-    if (!gex) return f;
+    // EXPLICIT `false`, never an omitted key. "We did not evaluate this print" is a KNOWN state —
+    // the ticker was past the `maxTickers` cap, or its lookup timed out / returned nothing — and
+    // C3 forbids letting absence stand in for a state we know. Measured live: 173 of 273 tickers
+    // on one page were past the cap, so this branch is the COMMON one, not an edge case.
+    if (!gex) return { ...f, gex_evaluated: false };
     return enrichFlowWithGex(f, gex);
   });
 }
