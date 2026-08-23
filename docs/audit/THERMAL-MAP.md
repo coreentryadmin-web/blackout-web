@@ -460,6 +460,10 @@ carried the FRONT expiry's walls on a closed market, because the overlay's targe
 session date. NVDA, which has no overlay, was correct at the same instant — the divergence between
 two tickers in one probe is what exposed it. Fixed by splitting the parameter into `odteExpiry` and
 `sessionYmd`; see `docs/audit/findings-staging/2026-08-23-thermal-odte-horizon-session-mixup.md`.
+**LIVE-VALIDATED 2026-08-23 05:33Z** after deploy `8dc301ad`: SPX's `0DTE` bucket is now empty
+(`exp=0`, both walls null) and matches all five other tickers, and its `3DTE` moved 4 -> 3 expiries
+to agree with SPY and QQQ — the arithmetic of counting DTE from the real session. The overlaid and
+non-overlaid paths agree again, which is the same signal that exposed the divergence.
 
 **FIXED — the original defect.** `buildGexHeatmapUncached` now publishes the block, and
 `recomputeNearTermGexStrikeTotals` recomputes it so the SPX 0DTE overlay cannot leave a pre-overlay

@@ -9,6 +9,39 @@ already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
 
+## 2026-08-23 — [Thermal] Post-deploy validation of the SPX 0DTE mislabel fix — PASS, the two code paths now agree
+
+**Severity.** — (no defect found; this closes a regression I shipped earlier tonight)
+
+**Why it ran.** #2679 (`5fff9d7f`) fixed SPX labelling the FRONT expiry's walls "0DTE" on a closed
+market — the overlay's target-expiry parameter had been threaded in as the session date. Deploy
+`8dc301ad` completed **success** 05:32:10Z and carries it (`git merge-base --is-ancestor 5fff9d7f
+8dc301ad`). A warming pass ran first, then the measurement at 05:33Z — per the methodology note in
+the §9.2 entry, a single read on a cold cache reports `available: false` and means nothing.
+
+**Result — 6/6, and SPX now matches the other five.**
+
+| ticker | 0DTE | 3DTE | 7DTE |
+|---|---|---|---|
+| SPY | `exp=0` c=null p=null | `exp=3` c=772 p=765 | `exp=7` c=780 p=765 |
+| **SPX** | **`exp=0` c=null p=null** | **`exp=3`** c=7710 p=7600 | `exp=7` c=7800 p=7600 |
+| QQQ | `exp=0` c=null p=null | `exp=3` c=716 p=705 | `exp=7` c=730 p=690 |
+| NVDA | `exp=0` c=null p=null | `exp=1` c=220 p=212.5 | `exp=3` c=222.5 p=212.5 |
+| MSFT | `exp=0` c=null p=null | `exp=2` c=490 p=480 | `exp=4` c=500 p=475 |
+| AAPL | `exp=0` c=null p=null | `exp=2` c=320 p=302.5 | `exp=4` c=320 p=302.5 |
+
+Before the fix, SPX read `0DTE expiries=[2026-08-24] call=7725 put=7630`. It now reads an EMPTY 0DTE
+bucket, which is the correct "no expiry in range" state on a Sunday.
+
+**The corroborating number.** SPX's 3DTE bucket moved from `exp=4` to `exp=3`, and now matches SPY
+and QQQ exactly. That is the arithmetic of the fix rather than a coincidence: DTE is counted from
+the real ET session (Sunday 2026-08-23) instead of from Monday's expiry, so one fewer expiry falls
+inside three sessions. **The overlaid path and the non-overlaid path now agree**, and their
+disagreement is what exposed the bug in the first place — agreement is therefore the strongest
+available evidence, stronger than SPX simply looking plausible on its own.
+
+Zero wrong-side walls across all 18 buckets: every call wall above spot, every put wall below.
+
 ## 2026-08-23 — [Thermal] Post-deploy validation of §9.1 public snapshot freshness — PASS, unauthenticated
 
 **Severity.** — (no defect found)
