@@ -31,6 +31,18 @@
  * (`"2026-08-21T23:59:52Z"`). So on the REST path this is currently latent robustness, not an
  * observed failure — and it is stated that way rather than dressed up. n=3 off-hours is a weak
  * sample, which is exactly why the guard is worth having rather than an argument that it is not.
+ *
+ * ── CORRECTION TO THAT MEASUREMENT (2026-08-23, later the same day) ─────────────────────────────
+ *
+ * "3/3 with a parseable `executed_at`" was measured THROUGH the endpoint, and at the time the
+ * endpoint stamped `new Date().toISOString()` on any row upstream had not dated. So that number
+ * could not tell an upstream timestamp from one invented at request time, and 3/3 was guaranteed
+ * regardless of what the feed actually carried. It is retained above rather than deleted because a
+ * measurement that turned out to be unfalsifiable is worth remembering as one.
+ *
+ * The endpoint no longer invents a time (`api/market/dark-pool/route.ts`), so the same probe re-run
+ * now measures the real fill rate — and this module's `executed_at == null` skip, previously
+ * unreachable on the REST path, is the branch that receives those rows.
  */
 
 /** A dark-pool block, as much of one as the correlation needs. */

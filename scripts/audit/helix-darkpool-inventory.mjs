@@ -9,7 +9,10 @@
  *
  * ── WHAT IT ASKS THAT A FILL-RATE INVENTORY CANNOT ──────────────────────────────────────────────
  *
- * Every field on a dark-pool print is 100% filled. A fill-rate inventory of the kind
+ * Every field on a dark-pool print is 100% filled — though `executed_at` used to be 100% filled
+ * only because the route stamped `new Date()` on any row upstream had not dated (fixed 2026-08-23,
+ * see `api/market/dark-pool/route.ts`). A fill rate measured through a fabricator is not a fill
+ * rate; re-run this to get the real one. A fill-rate inventory of the kind
  * `meridian-earnings-data-inventory.mjs` produces would report `side: 100% ALWAYS` — and every one
  * of those values is the literal string `"neutral"`. UW's market-wide endpoint omits direction, and
  * `dark-pool/route.ts:27` collapses anything that is not buy/sell into `"neutral"`.

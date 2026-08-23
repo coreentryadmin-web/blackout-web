@@ -78,10 +78,14 @@ export function useHelixDeepLink({
 }
 
 export function darkpoolRowHighlighted(
-  print: { executed_at: string; premium: number },
+  print: { executed_at: string | null; premium: number },
   highlight: HelixDarkpoolHighlight
 ): boolean {
   if (!highlight) return false;
+  // A print with no time cannot be the target of a link that IDENTIFIES prints by time. Without
+  // this, `String(null).slice(0, 19)` is the literal `"null"` — a value that compares, and would
+  // highlight every undated print at once the moment a link carried it.
+  if (print.executed_at == null) return false;
   if (Math.round(print.premium) !== Math.round(highlight.premium)) return false;
   return String(print.executed_at).slice(0, 19) === highlight.executed_at.slice(0, 19);
 }
