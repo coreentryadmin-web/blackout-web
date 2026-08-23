@@ -277,9 +277,25 @@ under the old rule.
 - **Check on screen:** a ticker showing `▲ BULLISH` must agree with the **contract drilldown's own
   bias** for prints from that ticker. Open one and compare — they now read the same rule, and this
   is the first session where both can be seen populated at once.
-- **Check the refusal works:** `— UNREAD` must appear **only** where the `Ask%` column is genuinely
-  absent. If `— UNREAD` dominates a busy tape, `ask_pct` coverage has regressed — measured at
-  **29.1% of all rows but ~96.9% of Group A**, and split flow only ever sees Group A.
+- **⚠️ Check the refusal works — REWRITTEN 2026-08-23, because #2723 inverted its conclusion.**
+  This bullet used to say: *"If `— UNREAD` dominates a busy tape, `ask_pct` coverage has regressed
+  … split flow only ever sees Group A."* **Split flow no longer only sees Group A.** #2723 made the
+  whole tape eligible, and Group B carries `ask_pct` on **0 of 3500** rows against Group A's
+  **1454 of 1500 (96.9%)**. So `— UNREAD` now dominates *by construction*, and the old text
+  diagnoses that as a regression that has not happened.
+  Measured off-hours over the same 67-step replay: **`undetermined` is the plurality direction —
+  162 of 333 firings (48.6%)** — and **every single index firing is undetermined: SPX 67/67,
+  SPY 65/65.** Combined with the saturation in §5k, the two most prominent rows in the Split Flow
+  Radar are now **permanently present and permanently unreadable**.
+  - **The check that still works:** `— UNREAD` on a **Group A** ticker must be rare. Group A
+    coverage is the number that can regress; measure it directly with
+    `node --import tsx scripts/audit/helix-tape-inventory.mjs` (`ask_pct`, group-A column) and
+    compare against 96.9%. A drop there is a real regression.
+  - **`— UNREAD` on SPX or SPY is EXPECTED and is not a defect** — that feed sends no aggressor
+    side at all. Do not open a finding for it.
+  - **What it costs is a real question and is raised in §6** for the coordinator: whether a signal
+    that can never state a direction for a ticker should rank that ticker at the top of a
+    direction radar.
 - **Check `⇋ MIXED` still occurs.** MIXED (read, genuinely two-sided) and UNREAD (could not read)
   are different facts and must both be reachable. If MIXED never appears, the margin is wrong.
 - **Ledger, worth capturing once:** new rows carry `context.direction_basis =
@@ -550,6 +566,16 @@ that `new Date()` could not parse.
 These are recorded as needing a decision; RTH is when the data exists to inform them.
 
 - **The `whale`-outranks-`0dte` collision** (`db.ts:2646`). `route` is `premium >= $1M ? 'whale' : expiry = TODAY ? '0dte' : 'stock'`, so the largest 0DTE prints never get the 0DTE badge. **Unmeasurable off-hours** — the closed window holds **zero** `dte === 0` rows. At the open, count prints with `expiry = TODAY` **and** `premium >= $1M`: that is the exact population being denied the badge.
+- **A permanently unreadable row at the top of a direction radar — AWAITING COORDINATOR.** Follows
+  from the item below and is arguably worse than it. Split flow reports `direction` from option type
+  **×** aggressor side, and the index feed sends **no `ask_pct` at all** (0 of 3500 rows vs Group
+  A's 1454/1500). So SPX and SPY now fire on essentially every scan and report `— UNREAD` on every
+  one of them — measured 67/67 and 65/65. The refusal is **correct**: the rule cannot read that
+  flow and says so rather than guessing, exactly as the contract requires. The question is whether a
+  ticker whose direction can never be stated belongs at the TOP of a direction radar, above names
+  the signal can actually read. Options: rank readable tickers first, exclude no-aggressor feeds
+  from this signal, or accept it and label it. Each changes a persisted, graded row — coordinator's
+  call.
 - **`SPLIT_MIN_LEG` against an index feed — NEW, and the sharpest of these. AWAITING COORDINATOR;
   do not tune it from this lane.** Split flow fires when a ticker shows opposing call AND put
   premium of **$500K each** inside 30 minutes. That threshold was set against single names. #2723
