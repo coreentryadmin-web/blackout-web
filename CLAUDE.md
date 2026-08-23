@@ -7,12 +7,18 @@ standing **audit + issue-handling policy**. Keep it and `docs/audit/FINDINGS.md`
 As soon as an issue is spotted during any audit/validation:
 1. **Open a new branch off `main`**, named `fix/<slug>`. Do NOT push straight to `main`.
 2. **Fix it and add a test** (extend the nearest `*.test.ts`; run `npx tsx --test <file>`).
-3. **Log it in `docs/audit/FINDINGS.md`** only when fixing a real bug in the same PR as the code fix — never open a docs-only PR for verify passes or GREEN audit logs.
-   Every entry must carry a **`> **kind:** `FINDING`` line** and a real outcome — either a
+3. **Log it as a new file in `docs/audit/findings-staging/`** — one file per finding,
+   `YYYY-MM-DD-<slug>.md`, in the same PR as the code fix — only when fixing a real bug, never for
+   verify passes or GREEN audit logs. **Do not edit `docs/audit/FINDINGS.md` directly** — see
+   `docs/audit/findings-staging/README.md` for why (every concurrent lane editing the same file at
+   the same anchor made every PR go stale within minutes of any other one merging, 2026-08-23).
+   The coordinator folds staged files into `FINDINGS.md` with
+   `node scripts/audit/findings-fold-staging.mjs`, typically after a merge wave.
+   Every staged entry must carry a **`> **kind:** `FINDING`` line** and a real outcome — either a
    `| **Status** | ... |` row or an outcome in the heading (`## ... — FIXED`). `src/findings-hygiene.test.ts`
-   enforces this; if it fails on your new entry, run `node scripts/audit/findings-reconcile.mjs --apply`
-   (idempotent — safe to re-run) and commit the result. Routine GREEN pass logs go in
-   `docs/audit/RUN-LOG.md`, not here.
+   enforces this once the entry is folded into `FINDINGS.md`; if it fails, run
+   `node scripts/audit/findings-reconcile.mjs --apply` (idempotent — safe to re-run) and commit the
+   result. Routine GREEN pass logs go in `docs/audit/RUN-LOG.md`, not here.
 4. **Open a PR to `main`, verify CI is green, then auto-merge it.** Keep the PR small (one issue per branch/PR).
 Documentation/policy changes (this file, FINDINGS, runbook) merge the same way once verified.
 
