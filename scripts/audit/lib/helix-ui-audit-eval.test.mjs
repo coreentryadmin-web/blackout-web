@@ -157,3 +157,49 @@ test("the real pre-fix panel still reports the §9.8 signature, not a parse faul
   assert.equal(v.status, "FAIL");
   assert.match(v.detail, /OTHER at 100%/);
 });
+
+// ── Post-fix recalibration: dominance is two different facts ─────────────────────────────────
+// The threshold was written when one bucket at ~100% could only mean the §9.8 vocabulary bug.
+// After that fix shipped it fired on the FIRST post-deploy run — `UNREPORTED at 95%` — and called
+// it "the §9.8 signature". Wrong: the panel's pct is a share of PREMIUM, and the routeless index
+// feed carries ~92% of tape premium, so 95% is the honest number.
+
+test("UNREPORTED leading on premium share is NOT a regression when other buckets are present", () => {
+  // The real post-deploy production reading, 2026-08-23, both viewports.
+  const v = routeBucketVerdict({
+    present: true,
+    buckets: {
+      UNREPORTED: { count: 397, pct: 95 },
+      REPEAT: { count: 99, pct: 4 },
+      FLOOR: { count: 3, pct: 0 },
+      SWEEP: { count: 1, pct: 0 },
+    },
+  });
+  assert.equal(v.status, "PASS");
+  assert.match(v.detail, /Not a regression/);
+});
+
+test("UNREPORTED as the ONLY bucket still fails — the rule-carrying feed has died", () => {
+  const v = routeBucketVerdict({ present: true, buckets: { UNREPORTED: { count: 500, pct: 100 } } });
+  assert.equal(v.status, "FAIL");
+  assert.match(v.detail, /stopped arriving/);
+});
+
+test("OTHER dominating is still the §9.8 signature and still fails", () => {
+  // The pre-fix production reading. A vocabulary regression must never be softened into a pass.
+  const v = routeBucketVerdict({
+    present: true,
+    buckets: { OTHER: { count: 496, pct: 100 }, FLOOR: { count: 3, pct: 0 } },
+  });
+  assert.equal(v.status, "FAIL");
+  assert.match(v.detail, /§9.8 signature/);
+});
+
+test("any OTHER-family bucket dominating still fails, named plainly", () => {
+  const v = routeBucketVerdict({
+    present: true,
+    buckets: { REPEAT: { count: 490, pct: 97 }, FLOOR: { count: 10, pct: 3 } },
+  });
+  assert.equal(v.status, "FAIL");
+  assert.match(v.detail, /REPEAT at 97%/);
+});
