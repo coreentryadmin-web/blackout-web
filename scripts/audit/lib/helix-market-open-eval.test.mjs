@@ -78,6 +78,43 @@ test("§5k goes RED on a NARROW margin even when event_at is high", () => {
   assert.match(r.note, /re-coupled/);
 });
 
+test("§9.0 TOLERATES a few unplaceable prints — the same false alarm §5k had", () => {
+  // Eligibility reads `flowEventTimeMs != null`, THE SAME FIELD §5k measures. Demanding
+  // `eligible === total` would fire RED the first time one row arrives undatable on a live tape.
+  // I fixed §5k's version of this and left §9.0's — the exact "fix where the bug was found rather
+  // than where it can occur" pattern, in my own gate.
+  const rows = run({ tape: liveTape({
+    signal_eligibility: { total: 5000, eligible: 4990, ineligible: 10, ineligibleTickers: ["ACME"] },
+  }) });
+  const r = find(rows, "§9.0");
+  assert.equal(r.verdict, "GREEN");
+  assert.match(r.note, /within tolerance/);
+});
+
+test("§9.0 still goes RED once eligibility genuinely collapses", () => {
+  for (const eligible of [4700, 3000, 1500]) {
+    const rows = run({ tape: liveTape({
+      signal_eligibility: { total: 5000, eligible, ineligible: 5000 - eligible, ineligibleTickers: ["SPX", "SPY"] },
+    }) });
+    assert.equal(find(rows, "§9.0").verdict, "RED", `${eligible}/5000 must be RED`);
+  }
+});
+
+test("§4A: a few stray rows are AMBER — news, not a failed open", () => {
+  // The inventory documents that the first row breaking the clean split IS the finding. But
+  // "worth surfacing" and "block the open" are different calls, and one malformed row is not the
+  // second.
+  const rows = run({ tape: liveTape({ writers: { A: { rows: 1499 }, B: { rows: 3500 }, mixed: 1, unknown: 0 } }) });
+  const r = find(rows, "§4A");
+  assert.equal(r.verdict, "AMBER");
+  assert.match(r.note, /news, worth capturing/);
+});
+
+test("§4A goes RED on a genuine structural break", () => {
+  const rows = run({ tape: liveTape({ writers: { A: { rows: 1000 }, B: { rows: 3000 }, mixed: 900, unknown: 100 } }) });
+  assert.equal(find(rows, "§4A").verdict, "RED");
+});
+
 test("§9.0 goes RED when prints cannot be placed in time, and NAMES them", () => {
   const rows = run({ tape: liveTape({
     signal_eligibility: { total: 5000, eligible: 1500, ineligible: 3500, ineligibleTickers: ["SPX", "SPY"] },
@@ -87,11 +124,7 @@ test("§9.0 goes RED when prints cannot be placed in time, and NAMES them", () =
   assert.match(r.note, /SPX, SPY/);
 });
 
-test("§4A goes RED the first time a row breaks the clean writer split", () => {
-  // The inventory's own rule: a row carrying both markers or neither IS the finding.
-  const rows = run({ tape: liveTape({ writers: { A: { rows: 1499 }, B: { rows: 3500 }, mixed: 1, unknown: 0 } }) });
-  assert.equal(find(rows, "§4A").verdict, "RED");
-});
+
 
 test("§5c goes RED on GROUP A coverage, and never on Group B being zero", () => {
   // Group B at 0% is expected — that feed sends no aggressor side. Gating on it would fire every

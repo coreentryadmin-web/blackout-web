@@ -100,21 +100,43 @@ export function evaluateChecks({ tape, darkpool, expiryMinus1 }) {
       );
 
       // §9.0 — eligibility is the denominator every signal claim rests on.
+      //
+      // A FLOOR, NOT EQUALITY — for exactly the reason §5k carries one. Eligibility is
+      // `flowEventTimeMs(flow) != null`, i.e. the SAME field §5k measures, so a single print whose
+      // time cannot be resolved makes `eligible !== total`. Demanding equality would fire RED on a
+      // working deploy the first time one row arrives undatable. Pre-#2723 this sat at 30%; a real
+      // regression collapses back toward that, and the floor catches it while the tolerance absorbs
+      // ordinary live-tape wobble.
+      const ELIG_FLOOR_PCT = 95;
+      const eligPct = el.total > 0 ? (el.eligible / el.total) * 100 : null;
       out.push(
-        el.total > 0 && el.eligible === el.total
-          ? row("§9.0", "signal eligibility", "eligible === total", `${el.eligible}/${el.total}`, "GREEN")
-          : row("§9.0", "signal eligibility", "eligible === total", `${el.eligible}/${el.total}`, "RED",
+        eligPct != null && eligPct >= ELIG_FLOOR_PCT
+          ? row("§9.0", "signal eligibility", `eligible >= ${ELIG_FLOOR_PCT}% of total`, `${el.eligible}/${el.total} (${eligPct.toFixed(1)}%)`, "GREEN",
+                el.ineligible > 0
+                  ? `${el.ineligible} print(s) unplaceable — within tolerance: ${(el.ineligibleTickers ?? []).slice(0, 6).join(", ")}`
+                  : null)
+          : row("§9.0", "signal eligibility", `eligible >= ${ELIG_FLOOR_PCT}% of total`, `${el.eligible}/${el.total}${eligPct == null ? "" : ` (${eligPct.toFixed(1)}%)`}`, "RED",
                 `${el.ineligible} print(s) cannot be placed in time: ${(el.ineligibleTickers ?? []).slice(0, 6).join(", ")}`)
       );
 
       // §4A — the clean two-writer split. The inventory's own comment: the first row that breaks it
       // IS the news, so it must not be folded away.
+      // A FEW stray rows are NEWS, not a failed open. The inventory documents that the first row
+      // breaking the clean split is the finding — but "worth surfacing" and "block the open" are
+      // different calls, and one malformed row should not be the second. Small breaks are AMBER
+      // with the count; a real structural break is RED.
       const mixed = w.mixed ?? 0, unknown = w.unknown ?? 0;
+      const strays = mixed + unknown;
+      const STRAY_RED_PCT = 0.5;
+      const strayPct = rows > 0 ? (strays / rows) * 100 : 0;
       out.push(
-        mixed === 0 && unknown === 0
+        strays === 0
           ? row("§4A", "writer split", "mixed 0, unknown 0", `A ${w.A?.rows} · B ${w.B?.rows} · B holds ${w.B_premium_share_pct}% of premium`, "GREEN")
-          : row("§4A", "writer split", "mixed 0, unknown 0", `mixed ${mixed} · unknown ${unknown}`, "RED",
-                "a row carries both producers' markers or neither — the exact split is the finding")
+          : strayPct < STRAY_RED_PCT
+            ? row("§4A", "writer split", `strays under ${STRAY_RED_PCT}% of rows`, `mixed ${mixed} · unknown ${unknown} (${strayPct.toFixed(2)}%)`, "AMBER",
+                  "a row carries both producers' markers or neither — news, worth capturing, but not a structural break")
+            : row("§4A", "writer split", `strays under ${STRAY_RED_PCT}% of rows`, `mixed ${mixed} · unknown ${unknown} (${strayPct.toFixed(2)}%)`, "RED",
+                  "the clean two-writer split has genuinely broken — the exact split is what several HELIX numbers rest on")
       );
 
       // §5c — the check that still works after the criterion was rewritten. GROUP A coverage is
