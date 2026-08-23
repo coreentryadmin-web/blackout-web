@@ -79,12 +79,20 @@ export function summarizeByBucket(rows) {
 }
 
 /**
- * Does score separate outcomes at all?
+ * Does score RANK outcomes — not merely differ between buckets?
  *
- * Deliberately conservative: reports a SPREAD between the best and worst sufficiently-populated
- * bucket rather than a correlation coefficient, because a coefficient over six ordinal buckets with
- * uneven n invites over-reading. Buckets below `minN` are excluded from the spread and SAID SO —
- * a spread computed off a 3-row bucket is noise wearing a number.
+ * A spread alone is not evidence of a ranking, and treating it as one is a real trap: a 400-row run
+ * of this probe produced a **10.9pp spread whose best bucket was 20–39 and worst was 40–59** — a
+ * mid bucket worst, a low bucket best. That is scrambled ordering, which is what noise looks like,
+ * and an earlier version of this function labelled it "SEPARATES". A score that ranks produces win
+ * rates that TREND with the bucket, so both facts are required and both are reported.
+ *
+ * Monotonic trend is a Spearman rank correlation between bucket ordinal and win rate. Over at most
+ * six ordinal buckets that is crude, which is exactly why it gates a verdict rather than being
+ * published as a statistic — and why the spread is reported beside it rather than replaced by it.
+ *
+ * Buckets below `minN` are excluded and NAMED: a spread computed off a 3-row bucket is noise
+ * wearing a number.
  */
 export function scoreSeparation(summary, minN = 30) {
   const usable = summary.filter((s) => s.n >= minN && s.winRate != null);
@@ -92,14 +100,46 @@ export function scoreSeparation(summary, minN = 30) {
   if (usable.length < 2) {
     return { verdict: "INSUFFICIENT DATA", usableBuckets: usable.length, excluded };
   }
+
   const rates = usable.map((s) => s.winRate);
   const spread = Math.max(...rates) - Math.min(...rates);
+
+  // Spearman: rank the buckets by their own score order (already sorted by SCORE_BUCKETS) against
+  // their win-rate ranks. Ties in win rate share an averaged rank so a flat pair cannot masquerade
+  // as agreement.
+  const n = usable.length;
+  const scoreRanks = usable.map((_, i) => i + 1);
+  const sorted = [...rates].slice().sort((a, b) => a - b);
+  const rateRanks = rates.map((r) => {
+    const first = sorted.indexOf(r);
+    const last = sorted.lastIndexOf(r);
+    return (first + last) / 2 + 1;
+  });
+  const mean = (xs) => xs.reduce((a, b) => a + b, 0) / xs.length;
+  const ms = mean(scoreRanks), mr = mean(rateRanks);
+  let num = 0, ds = 0, dr = 0;
+  for (let i = 0; i < n; i++) {
+    num += (scoreRanks[i] - ms) * (rateRanks[i] - mr);
+    ds += (scoreRanks[i] - ms) ** 2;
+    dr += (rateRanks[i] - mr) ** 2;
+  }
+  const rho = ds > 0 && dr > 0 ? num / Math.sqrt(ds * dr) : 0;
+
+  // RANKS demands BOTH a real spread and a positive trend. A large spread with scrambled or
+  // inverted ordering is reported as exactly that, never as evidence the score works.
+  const verdict =
+    spread < 5 ? "FLAT"
+      : rho >= 0.6 ? "RANKS"
+        : rho <= -0.6 ? "INVERTED"
+          : "SPREAD WITHOUT ORDER";
+
   return {
-    verdict: spread >= 10 ? "SEPARATES" : spread >= 5 ? "WEAK" : "FLAT",
+    verdict,
     spreadPp: spread,
+    rho,
     best: usable.reduce((a, b) => (b.winRate > a.winRate ? b : a)),
     worst: usable.reduce((a, b) => (b.winRate < a.winRate ? b : a)),
-    usableBuckets: usable.length,
+    usableBuckets: n,
     excluded,
   };
 }
