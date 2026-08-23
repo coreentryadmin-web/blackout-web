@@ -1,5 +1,9 @@
 /** Client-safe types/constants for the public GEX snapshot lead magnet. */
 
+import { marketPhaseFromEt, type MarketPhase } from "@/lib/largo/core/system-status";
+
+export type { MarketPhase };
+
 export type PublicWallRole = "support" | "resistance" | "concentration";
 
 export type PublicGexSnapshot = {
@@ -16,6 +20,28 @@ export type PublicGexSnapshot = {
   call_wall_role: PublicWallRole | null;
   put_wall_role: PublicWallRole | null;
   read: string;
+  /**
+   * WHEN, as three separate facts — because `asof` alone was being read as a fourth thing it is not.
+   *
+   * `asof` is the moment the MATRIX was computed. On a closed market the builder still recomputes
+   * every few seconds over an unchanged book, so `asof` is honestly "just now" while the price it
+   * models is the last session's close. The widget rendered exactly that: "Updated just now" beside
+   * a spot that had not moved since Friday's bell.
+   *
+   * MEASURED 2026-08-22 23:15Z (Saturday, 19:15 ET) on production: public `spot` for SPX (7674.37)
+   * and SPY (765.72) matched Polygon's 2026-08-21 close to the cent, with `asof` under 20 seconds
+   * old and no session label anywhere on the page. This is the one Thermal surface no member
+   * context gates, so a wrong freshness claim here is a credibility problem for the whole product.
+   *
+   * `get_thermal_compare` already solved this for its own payload after measuring the same failure
+   * ("a matrix rebuilt 300 seconds ago can be modelling a close that settled hours earlier"); these
+   * three fields are the same disclosure for the public surface.
+   */
+  market_session: MarketPhase | null;
+  /** ET session date (YYYY-MM-DD) this payload was generated in. Never derive a session from UTC. */
+  session_date: string | null;
+  /** The matrix compute time as an ET wall-clock stamp, beside the raw UTC `asof`. */
+  as_of_et: string | null;
 };
 
 const ALLOWED_TICKERS = ["SPX", "SPY", "QQQ"] as const;
@@ -98,4 +124,85 @@ export function correctPublicRead(
       " Both gamma walls currently sit on the far side of spot, so neither is acting as a level.";
 
   return read.replace(clause, replacement).replace(/\s{2,}/g, " ").trim();
+}
+
+
+/**
+ * ET session facts for a public snapshot, from ONE instant.
+ *
+ * Derived with the SAME `marketPhaseFromEt` the Largo product reads and the terminal status strip
+ * use — a third copy of "is the market open" is how two surfaces start disagreeing about the same
+ * minute. That helper deliberately does not model holidays (see its doc); a holiday therefore reads
+ * as a normal session here, which is a known and bounded inaccuracy rather than an invented
+ * calendar.
+ */
+export function publicSnapshotSessionFacts(now: Date = new Date()): {
+  market_session: MarketPhase;
+  session_date: string;
+  as_of_et: string;
+} {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "numeric",
+    minute: "numeric",
+    weekday: "short",
+    hour12: false,
+  }).formatToParts(now);
+  const part = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  const DAYS: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  // `hour12: false` renders midnight as "24" in some ICU versions; normalise so 24:07 -> 00:07 and
+  // the phase lookup cannot land a whole day out.
+  const rawHour = Number(part("hour"));
+  const hour = rawHour === 24 ? 0 : rawHour;
+  const minute = Number(part("minute"));
+  const hh = String(hour).padStart(2, "0");
+  const mm = String(minute).padStart(2, "0");
+  return {
+    market_session: marketPhaseFromEt(DAYS[part("weekday")] ?? 1, hour * 60 + minute),
+    session_date: `${part("year")}-${part("month")}-${part("day")}`,
+    as_of_et: `${part("year")}-${part("month")}-${part("day")} ${hh}:${mm} ET`,
+  };
+}
+
+/**
+ * The honest freshness line for the public widget.
+ *
+ * Two claims, deliberately kept apart, because collapsing them is the whole defect: how old the
+ * LEVELS are (a real property of `asof`) and whether the PRICE is live (a property of the market
+ * session). "Updated just now" answered the first and was read as the second.
+ *
+ * Returns `null` for `priceNote` only when the market is OPEN — the one case where the spot really
+ * is a live quote and no caveat is owed.
+ */
+export function publicFreshnessCopy(input: {
+  asof: string | null;
+  market_session: MarketPhase | null;
+  now?: number;
+}): { levels: string; priceNote: string | null } {
+  const now = input.now ?? Date.now();
+  const t = input.asof ? Date.parse(input.asof) : NaN;
+  const ms = Number.isFinite(t) ? now - t : NaN;
+
+  let levels: string;
+  if (!Number.isFinite(ms) || ms < 0) {
+    levels = "Levels — timing unavailable";
+  } else {
+    const mins = Math.round(ms / 60_000);
+    const age = mins < 1 ? "just now" : mins === 1 ? "1 min ago" : `${mins} min ago`;
+    levels = `Levels computed ${age}`;
+  }
+
+  // An unknown session must not silently render as OPEN — absence is not a green light.
+  if (input.market_session == null) return { levels, priceNote: "Market session unknown" };
+  if (input.market_session === "OPEN") return { levels, priceNote: null };
+  if (input.market_session === "PRE-MARKET") {
+    return { levels, priceNote: "Pre-market — price is the prior session's close or an early print, not a live quote" };
+  }
+  if (input.market_session === "AFTER-HOURS") {
+    return { levels, priceNote: "After hours — price is the closing print or a late trade, not a live quote" };
+  }
+  return { levels, priceNote: "Market closed — price is the last session's close, not a live quote" };
 }
