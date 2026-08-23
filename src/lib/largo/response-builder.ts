@@ -77,7 +77,7 @@ export function buildResponseComponents(orchestrated: OrchestrationResult, headl
   // Consensus comparison for multi-system reads
   let consensusComponent: BlackoutComponent | undefined;
   if (
-    (category === "MARKET_READ" || category === "COMPARISON" || category === "TRADE_INTENT") &&
+    (category === "MARKET_READ" || category === "COMPARISON" || category === "TRADE_INTENT" || category === "WHY") &&
     consensus.reads.length > 0
   ) {
     consensusComponent = buildConsensusComponent(consensus);

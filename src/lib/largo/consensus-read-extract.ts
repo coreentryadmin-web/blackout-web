@@ -21,6 +21,8 @@
  * A system that averages them into "neutral" has destroyed the signal and misled the trader.
  */
 
+import { etSessionDate } from "@/lib/largo/temporal/bar-session-date";
+
 export type SystemDirectionalRead = {
   /** Which product system made this read. */
   system: "SPX_SLAYER" | "HELIX" | "THERMAL" | "VECTOR" | "NIGHT_HAWK" | "MERIDIAN";
@@ -41,6 +43,8 @@ export type SystemDirectionalRead = {
   internalConflict?: string;
   /** When this data was generated. */
   asOf: string; // ISO timestamp
+  /** ET session date anchor (YYYY-MM-DD). */
+  sessionDate?: string;
   /** How fresh the underlying data is. */
   freshness: "live" | "recent" | "stale" | "unknown";
 };
@@ -96,6 +100,7 @@ function extractHelixRead(result: any): SystemDirectionalRead | null {
       strength: 0,
       basis: "No flow detected",
       asOf: new Date().toISOString(),
+      sessionDate: etSessionDate(Date.now()) ?? undefined,
       freshness: "unknown",
     };
   }
@@ -122,6 +127,7 @@ function extractHelixRead(result: any): SystemDirectionalRead | null {
     strength: Math.min(strength, 10),
     basis,
     asOf: result.asOf ?? new Date().toISOString(),
+    sessionDate: etSessionDate(Date.now()) ?? undefined,
     freshness: result.freshness ?? "live",
   };
 }
@@ -322,6 +328,7 @@ function extractNightHawkRead(result: any): SystemDirectionalRead | null {
     strength: Math.min(Math.max(strength, 1), 10),
     basis,
     asOf: result.asOf ?? new Date().toISOString(),
+    sessionDate: etSessionDate(Date.now()) ?? undefined,
     freshness: result.freshness ?? "live",
   };
 }

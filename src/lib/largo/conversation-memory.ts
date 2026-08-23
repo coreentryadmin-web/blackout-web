@@ -23,6 +23,7 @@
 
 import type { ConsensusMatrix } from "./consensus-read-extract";
 import type { DeskReadDecision } from "./desk-read-decision";
+import { etClock } from "@/lib/et-clock";
 
 export interface ConversationMemoryState {
   /** Current instrument being analyzed (e.g. "SPX", "QQQ", "NVDA") */
@@ -211,9 +212,9 @@ export function shouldReuseCachedConsensus(
 ): boolean {
   // Explicit refresh signals
   if (
-    question.match(/what (now|right now|currently)/) ||
-    question.match(/latest|live|fresh|updated/) ||
-    question.match(/again|re-check/)
+    question.match(/what.*?(?:now|right now|currently)/i) ||
+    question.match(/latest|live|fresh|updated/i) ||
+    question.match(/again|re-check/i)
   ) {
     return false; // User wants fresh data
   }
@@ -275,12 +276,12 @@ export function formatMemoryForSystemPrompt(memory: ConversationMemoryState): st
   if (memory.priorDecisions && memory.priorDecisions.length > 0) {
     const lastDecision = memory.priorDecisions[memory.priorDecisions.length - 1];
     lines.push(
-      `**Prior Call:** ${lastDecision.state} — ${lastDecision.reason} (${lastDecision.timestamp.toLocaleTimeString()})`
+      `**Prior Call:** ${lastDecision.state} — ${lastDecision.reason} (${etClock(lastDecision.timestamp) || "timestamp unavailable"})`
     );
   }
 
   // Data freshness
-  lines.push(`**Freshness:** ${memory.dataFreshness || "unknown"} (${memory.lastUpdated?.toLocaleTimeString() || "no timestamp"})`);
+  lines.push(`**Freshness:** ${memory.dataFreshness || "unknown"} (${etClock(memory.lastUpdated) || "no timestamp"})`);
 
   lines.push("");
   return lines.join("\n");

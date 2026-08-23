@@ -28,6 +28,7 @@ export type BlackoutComponentType =
   | "contracts"
   | "pnl"
   | "callout"
+  | "decision"
   | "risk";
 
 export type ToneType = "bullish" | "bearish" | "neutral" | "warning" | "info";
@@ -155,7 +156,7 @@ export function buildTradeDecisionComponent(decision: DeskReadDecision): Blackou
   });
 
   return {
-    type: "comparison",
+    type: "decision",
     title,
     subtitle,
     rows: items.map((item) => ({
