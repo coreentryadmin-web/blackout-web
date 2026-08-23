@@ -388,6 +388,14 @@ const INTENTS = {
   "largo-morning-brief":{ target_et: "09:25", label: "9:25 AM ET weekdays", must_be_after: null, why: "Pre-open member push; label states an ET time." },
   "zerodte-grade":      { target_et: "16:00-18:00", label: "Every 15 min post-close (16:00-18:00 ET band)", must_be_after: hm(16, 0), why: "Grades the 0DTE ledger after the close." },
   "banger-live-sync":   { target_et: "RTH 09:30-16:00", label: "~Every 5 min (market hours)", must_be_after: null, covers: [hm(9, 30), hm(16, 0)], why: "Live marks during the session. A deliberately WIDE band: correct as long as it brackets RTH in both offsets, which is the intended design, not drift." },
+  // Added 2026-08-23 (SLAYER-MAP §8 item 8) — it was DEPLOYED and in neither table, so the audit
+  // had never evaluated it and its clean exit said nothing about it. Verified UTC-labelled rather
+  // than assumed: the route (`/api/cron/spx-signal-weight-optimize`) applies NO ET gate at all —
+  // its window is `observed_at > now - 30 days`, a rolling ABSOLUTE-time lookback, so there is no
+  // gate to stop being satisfied (form A) and nothing it must land relative to (form B). A
+  // 30-day accuracy report is insensitive to a one-hour shift. Registry mirror `0 22 * * 1-5`
+  // matches the deployed manifest exactly.
+  "spx-signal-weight-optimize": { target_et: "22:00 UTC", label: "Nightly 10 PM UTC", must_be_after: null, utc_labelled: true, why: "Ranked per-signal alpha report over a rolling 30-day window. Pure duration lookback, no ET calendar boundary — the intent is the UTC time and the label says so." },
 };
 
 const intentRows = [];
@@ -494,16 +502,40 @@ for (const [key, reg] of registry) {
   else if (deployed !== reg.cron) mismatches.push({ key, registry: reg.cron, deployed, kind: "registry mirror disagrees with the deployed schedule" });
 }
 
+/**
+ * COVERAGE — which DEPLOYED jobs this audit never looked at.
+ *
+ * `GATES` and `INTENTS` are hand-curated. A job that is deployed and in neither table is not
+ * reported as OK — it is not reported AT ALL, and the run still exits 0. That is the same
+ * absence-as-health shape this audit exists to catch, sitting inside the instrument: a reader sees
+ * a clean sweep and has no way to know it covered 26 of 39 jobs.
+ *
+ * Measured 2026-08-23: 39 deployed, 26 covered, 13 unlisted. Most are warmers and cleanups with no
+ * ET-relative intent, which is why nobody noticed — but "probably harmless" is a judgment nobody
+ * has recorded, and this section is where it would go.
+ *
+ * Deliberately does NOT fail the run. Classifying a job needs its route read, and the owner of
+ * each is the lane that ships it; a hard failure here would turn one lane's unclassified job into
+ * every other lane's red build. Loud and visible, not blocking.
+ */
+const coveredKeys = new Set([...Object.keys(GATES), ...Object.keys(INTENTS)]);
+const unaudited = [...manifest.keys()].filter((k) => !coveredKeys.has(k)).sort();
+
 if (JSON_OUT) {
-  console.log(JSON.stringify({ rows, intentRows, mismatches }, null, 2));
+  console.log(JSON.stringify({ rows, intentRows, mismatches, coverage: { deployed: manifest.size, covered: manifest.size - unaudited.length, unaudited } }, null, 2));
 } else {
   const pad = (s, n) => String(s ?? "—").padEnd(n);
+  // Widths DERIVED from the data, not literals. `spx-signal-weight-optimize` (26 chars) exactly
+  // filled the old 27-wide route column and the cron ran into it with no space; the next longer
+  // key would have overlapped it. A table that silently stops being a table is a bad place to read
+  // a verdict off.
+  const routeW = Math.max(27, ...[...rows, ...intentRows].map((r) => String(r.key).length + 2));
   console.log("ET-GATED CRON — DST ALIGNMENT");
   console.log("EventBridge classic Rules fire on FIXED UTC (no timezone support). EDT = UTC-4, EST = UTC-5.\n");
-  console.log(pad("route", 27) + pad("deployed UTC cron", 30) + pad("EDT", 6) + pad("EST", 6) + "verdict");
+  console.log(pad("route", routeW) + pad("deployed UTC cron", 30) + pad("EDT", 6) + pad("EST", 6) + "verdict");
   console.log("-".repeat(96));
   for (const r of rows) {
-    console.log(pad(r.key, 27) + pad(r.deployed_utc_cron, 30) + pad(r.edt_hits, 6) + pad(r.est_hits, 6) + r.verdict);
+    console.log(pad(r.key, routeW) + pad(r.deployed_utc_cron, 30) + pad(r.edt_hits, 6) + pad(r.est_hits, 6) + r.verdict);
   }
   console.log("\nPER-ROUTE DETAIL");
   for (const r of rows) {
@@ -517,10 +549,10 @@ if (JSON_OUT) {
     console.log(`    ${r.note}`);
   }
   console.log("\n\nCHECK B — ET INTENT (routes with NO ET gate: they still run, just at the wrong ET time)");
-  console.log(pad("route", 22) + pad("deployed UTC cron", 27) + pad("ET span EDT", 15) + pad("ET span EST", 15) + "verdict");
+  console.log(pad("route", routeW) + pad("deployed UTC cron", 27) + pad("ET span EDT", 15) + pad("ET span EST", 15) + "verdict");
   console.log("-".repeat(96));
   for (const r of intentRows) {
-    console.log(pad(r.key, 22) + pad(r.deployed_utc_cron, 27) + pad(r.edt_et_span, 15) + pad(r.est_et_span, 15) + r.verdict);
+    console.log(pad(r.key, routeW) + pad(r.deployed_utc_cron, 27) + pad(r.edt_et_span, 15) + pad(r.est_et_span, 15) + r.verdict);
   }
   for (const r of intentRows) {
     if (r.verdict === "OK") continue;
@@ -530,7 +562,22 @@ if (JSON_OUT) {
   }
 
   if (mismatches.length) {
-    console.log("\nREGISTRY `schedule_cron_utc` vs DEPLOYED MANIFEST");
+    console.log(
+    `\nCOVERAGE — ${manifest.size - unaudited.length} of ${manifest.size} deployed jobs are in GATES or INTENTS`
+  );
+  if (unaudited.length) {
+    console.log(
+      `  ${unaudited.length} deployed job(s) are in NEITHER table. They are UNAUDITED, not OK — this ` +
+        `run says nothing about them:`
+    );
+    for (const k of unaudited) console.log(`    ${k}`);
+    console.log(
+      "  Add each to GATES (it applies an ET gate) or INTENTS (it has an ET-relative intent, or is " +
+        "UTC-labelled and should say so), after reading its route. Absence from both tables is a gap " +
+        "in this audit, never a verdict about the job."
+    );
+  }
+  console.log("\nREGISTRY `schedule_cron_utc` vs DEPLOYED MANIFEST");
     for (const m of mismatches) console.log(`  ${pad(m.key, 27)} registry=${pad(m.registry, 26)} deployed=${pad(m.deployed, 26)} — ${m.kind}`);
   }
 }
