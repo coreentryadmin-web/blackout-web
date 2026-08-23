@@ -257,3 +257,47 @@ test("ruleBadge and executionRouteKey agree on whether the field is present at a
     );
   }
 });
+
+// ── The NEW-positioning badge must be VISIBLE, not just present ────────────────────────────────
+// The desktop tape renders `signals.slice(0, 3)` and collapses the rest into "+N". A badge appended
+// at the end of flowSignals is therefore invisible on exactly the rows that have one, since almost
+// every Group A print already carries a `rule` badge. This is a display-budget bug that no test of
+// the badge's own logic would ever catch.
+
+test("the NEW badge lands inside the desktop tape's 3-badge budget", () => {
+  const f = flow({
+    ticker: "MRNA",
+    premium: 14_875_000,
+    fill_price: 17.5,
+    open_interest: 108,
+    alert_rule: "RepeatedHitsSweep",
+  } as Partial<FlowAlert> & Pick<FlowAlert, "ticker">);
+  // The busiest realistic context: a whale print, with a rule, on an 0DTE contract.
+  const signals = flowSignals(f, { isWhale: true, isCompound: true, is0dte: true });
+  const idx = signals.findIndex((s) => s.id === "opening");
+  assert.ok(idx >= 0, "the badge must be emitted at all");
+  assert.ok(idx < 3, `NEW must be within the first 3 badges, was at index ${idx}`);
+  assert.ok(
+    signals.slice(0, 3).some((s) => s.id === "opening"),
+    "NEW must survive signals.slice(0, 3)"
+  );
+});
+
+test("the NEW badge carries its reasoning as hover text, not a repeat of the label", () => {
+  const f = flow({
+    ticker: "MRNA", premium: 14_875_000, fill_price: 17.5, open_interest: 108,
+  } as Partial<FlowAlert> & Pick<FlowAlert, "ticker">);
+  const badge = flowSignals(f, {}).find((s) => s.id === "opening");
+  assert.ok(badge, "badge present");
+  assert.ok(badge!.title && badge!.title !== badge!.label, "title must explain, not echo the label");
+  assert.ok(badge!.title!.includes("108"), "title must carry the real open interest");
+});
+
+test("no NEW badge on prints the data cannot prove — 70% of the live tape", () => {
+  // The index-feed shape: no open_interest at all. Must produce no badge rather than a fabricated one.
+  const noOi = flow({ ticker: "SPX", premium: 5_000_000, fill_price: 12 } as Partial<FlowAlert> & Pick<FlowAlert, "ticker">);
+  assert.equal(flowSignals(noOi, { isWhale: true }).some((s) => s.id === "opening"), false);
+  // Comfortably inside open interest: genuinely ambiguous, so silent.
+  const inside = flow({ ticker: "NVDA", premium: 60_000, fill_price: 2, open_interest: 50_000 } as Partial<FlowAlert> & Pick<FlowAlert, "ticker">);
+  assert.equal(flowSignals(inside, {}).some((s) => s.id === "opening"), false);
+});

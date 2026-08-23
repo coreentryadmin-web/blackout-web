@@ -1,5 +1,10 @@
 import type { FlowAlert } from "@/lib/api";
 import { fmtPremium } from "@/lib/api";
+import {
+  openingBadgeLabel,
+  positionIntent,
+  positionIntentTitle,
+} from "@/features/helix/lib/helix-position-intent";
 
 export type HelixFlowSortKey =
   | "time"
@@ -318,7 +323,15 @@ export function sortFlows(
   });
 }
 
-export type HelixFlowSignal = { id: string; label: string; tone: "bull" | "bear" | "gold" | "sky" | "purple" | "ember" };
+export type HelixFlowSignal = {
+  id: string;
+  label: string;
+  tone: "bull" | "bear" | "gold" | "sky" | "purple" | "ember";
+  /** Optional hover text. Falls back to the label, which is what every existing badge showed —
+   *  a tooltip repeating the badge. Set it where the badge asserts something a reader would
+   *  reasonably want the basis for. */
+  title?: string;
+};
 
 export function flowSignals(flow: FlowAlert, ctx: {
   isWhale?: boolean;
@@ -333,6 +346,21 @@ export function flowSignals(flow: FlowAlert, ctx: {
   const out: HelixFlowSignal[] = [];
   if (ctx.isCompound) out.push({ id: "stack", label: "STACK", tone: "gold" });
   if (ctx.isWhale) out.push({ id: "whale", label: "WHALE", tone: "purple" });
+  // NEW POSITIONING — pushed HERE, third at the latest, on purpose. The desktop tape renders only
+  // `signals.slice(0, 3)` and collapses the rest into a "+N", and almost every Group A print
+  // already carries a `rule` badge — so appending this at the end of the list would have hidden
+  // the badge behind the overflow counter on exactly the rows that have one. Size (WHALE) and
+  // newness (NEW) are the two headline facts about a print; the rest qualify them.
+  //
+  // Only emitted when the derived size PROVES the print cannot be entirely closing (see
+  // helix-position-intent.ts). The other two outcomes — "we looked and cannot tell" and "open
+  // interest was never reported" — deliberately render NO badge: an absent badge here means
+  // "unproven", never "closing".
+  const intent = positionIntent(flow);
+  const opening = openingBadgeLabel(intent);
+  if (opening) {
+    out.push({ id: "opening", label: opening, tone: "gold", title: positionIntentTitle(intent) ?? opening });
+  }
   if (flow.alert_rule) out.push({ id: "rule", label: ruleLabel(flow.alert_rule), tone: "sky" });
   if (ctx.is0dte) out.push({ id: "0dte", label: "0DTE", tone: "ember" });
   if (ctx.hasSplit) out.push({ id: "split", label: "SPLIT", tone: "gold" });

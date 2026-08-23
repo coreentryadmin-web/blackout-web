@@ -40,9 +40,9 @@ const WHALE_PREMIUM = 1_000_000;
 
 type SignalTone = "bull" | "bear" | "gold" | "sky" | "purple" | "ember";
 
-function SignalPill({ label, tone }: { label: string; tone: SignalTone }) {
+function SignalPill({ label, tone, title }: { label: string; tone: SignalTone; title?: string }) {
   return (
-    <span className={clsx("helix-tape-signal", `helix-tape-signal--${tone}`)} title={label}>
+    <span className={clsx("helix-tape-signal", `helix-tape-signal--${tone}`)} title={title ?? label}>
       {label}
     </span>
   );
@@ -220,7 +220,7 @@ function renderCell(
       return (
         <div className="helix-tape-signals">
           {visibleSignals.map((s) => (
-            <SignalPill key={s.id} label={s.label} tone={s.tone} />
+            <SignalPill key={s.id} label={s.label} tone={s.tone} title={s.title} />
           ))}
           {extraSignals > 0 && (
             <span className="helix-tape-signal helix-tape-signal--muted">+{extraSignals}</span>
