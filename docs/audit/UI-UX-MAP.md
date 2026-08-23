@@ -141,6 +141,39 @@ minting method, not a member-facing defect** — the code comment at that line s
 directly ("Cookie/server say signed-in but Clerk JS hasn't confirmed yet — never fall back to
 Sign In"). Recorded here so a future pass doesn't re-discover it as a false positive.
 
+### 1.2b The SAME artifact also hits every CLIENT-SIDE tier display — corrected 2026-08-23
+
+**Second methodology gap found the same day as the UA correction above, same underlying cause.**
+§1.2 already identified that Clerk's client library never hydrates a real session for our minted
+cookie. That fact is broader than the nav CTA — `useAppAuth()` (`src/lib/auth-client.tsx`) is the
+ONE shared hook every client component uses for tier-gated UI, and it is built entirely on Clerk's
+client SDK (`useAuth`/`useUser`), not on the server-rendered JWT our sessions actually carry. Since
+that hook never hydrates for a minted session, `isLoaded` stays `false` and `tier` stays `null` for
+the whole life of every screenshot in this pass — independent of, and not fixed by, the `--desktop`
+UA correction above.
+
+**Confirmed affected, this pass:** `src/components/account/AccountMembershipPanel.tsx`'s "CURRENT
+PLAN" display (§2/§9's `/account` entries) reads `useAppAuth().tier` → `parseTier(null)` → always
+**"Free"**, regardless of the real `{role:"admin", tier:"premium"}` our session actually carries in
+`publicMetadata` and in the JWT server-rendered pages correctly read. `src/components/upgrade/
+PlanLadder.tsx` (`/pricing`, `/upgrade`) uses the identical hook for its `hasCommunity`/`hasPremium`
+gates, so the CTAs captured in this pass ("GET SPX ACCESS," "START MONTHLY →," "GO YEARLY," "UNLOCK
+PREMIUM →") are the **not-yet-subscribed default state**, not necessarily what our synthetic
+premium account would see with a fully-hydrated session (e.g. a "Manage subscription" state
+instead). **The `/account` "Free" plan entries in §2 and §9 are corrected in place below** — they
+previously asserted this was the account's real tier rather than flagging the hydration gap.
+
+**One more thing this surfaced, NOT confirmed either way:** `ClerkAuthBridge` in `auth-client.tsx`
+sets `tier = "admin"` (a literal string) for `role:admin` users, but `parseTier()`
+(`src/lib/tiers.ts`) only recognizes `"premium"`/`"pro"`/`"elite"`/`"community"` — `"admin"` falls
+through to `"free"`. **If a REAL admin member's browser fully hydrates a Clerk session** (unlike
+our minted ones), `parseTier("admin")` would still resolve to `"free"` and their own account page
+would show "Free" too. This cannot be confirmed or ruled out from this pass's tooling — it needs a
+real signed-in admin browser session, not a minted one, to test. Recorded as an **OPEN QUESTION**,
+not a finding, and specifically NOT filed to `findings-staging/` without that confirmation — an
+unverified claim about real admin members' billing display is exactly the kind of thing that must
+not be asserted as fact on a guess (per this file's own opening rule).
+
 ### 1.3 Locked-tool empty state
 
 `src/components/ComingSoon.tsx` — full-page padlock screen shown when a member is tier-eligible but
@@ -625,7 +658,10 @@ described is the copy `isIosAppShell()` swaps in specifically to satisfy App Sto
 a desktop web visitor sees. Confusing the two is exactly the false-positive trap this file's
 methodology notes exist to prevent, and this entry fell into it originally. Not filed as a defect —
 the swap is correct App-Store-compliance behavior — but the original inventory row was simply
-describing the wrong platform's UI as if it were the desktop web page.
+describing the wrong platform's UI as if it were the desktop web page. **Separately, per §1.2b:**
+the three CTAs are `PlanLadder.tsx`'s not-yet-subscribed default state — our minted session's
+client-side tier hook never hydrates, so this pass cannot confirm whether a real hydrated premium
+session would show these same CTAs or a "Manage subscription" state instead.
 
 **`RE-VERIFIED 2026-08-23 (correct UA)` — the original `/upgrade` entry inherited the same error**
 ("same signed-in-member routing pattern as `/pricing`, no drift found" — there was no such pattern
@@ -644,16 +680,25 @@ correctly rendering here in both the original and corrected passes, since `/acco
 PAGE /account
 └─ HEADER "Account Settings" + subheading "PROFILE · SECURITY · CONNECTED DEVICES" (reads as a
    section index, not confirmed as functional in-page anchors/tabs this pass)
-└─ CARD "Membership & Billing"  →  CURRENT PLAN "Free" + "Upgrade" link
+└─ CARD "Membership & Billing"  →  CURRENT PLAN "Free" (see correction below — NOT confirmed as the
+   real tier) + "Upgrade" link
 └─ CARD "Personal Play Alerts" (DISCORD WEBHOOK · NIGHT HAWK PLAYS)
    ├─ explainer copy — "Your webhook stays server-side — we only show a redacted host here."
    ├─ INPUT "Discord webhook URL" (placeholder `https://discord.com/api/webhooks/…`)
    └─ BUTTON "SAVE WEBHOOK"
 ```
 
-Confirms our minted test account is genuinely tier `Free` with `role:admin` — the admin role
-bypasses tool gates (per CLAUDE.md's auth model) without upgrading the billing tier itself, which
-is why every desk screenshot in this pass rendered full data despite this page showing "Free."
+**CORRECTION, same day (§1.2b) — the "Free" plan reading is NOT confirmed as our account's real
+tier.** The original entry asserted the account was "genuinely tier Free with role:admin." That
+conflated two different things: `publicMetadata` (which `mintClerkPremiumSession` sets to
+`{role:"admin", tier:"premium"}` by default, and which every server-rendered gate in this pass
+correctly read — explaining why every desk screenshot showed full premium data) versus what THIS
+PAGE displays, which reads `useAppAuth()` — a client-side-only hook that never hydrates for our
+minted `__session` cookie (§1.2b) and therefore always resolves to "Free" regardless of the
+account's actual tier. **This card's "Free" reading has not been shown to reflect anything real
+about the account — it reflects the hook never loading.** Whether a real, fully-hydrated premium
+session would show "Premium" here is unconfirmed (§1.2b's open question about `parseTier("admin")`
+is the specific reason it's not a safe assumption either way).
 
 `home-mobile` scroll-depth beyond the hero fold not yet reviewed — fold in on next edit.
 
@@ -726,9 +771,18 @@ outlives whoever wrote it):
   actually observable (§0).
 - **No admin surfaces** (`/admin*`) — explicitly noted as lower priority in the charter, not
   covered this pass.
-- **Two OPEN QUESTIONs remain, both about `/meridian`'s slow desktop fetch (§6/§10 #9)** and
-  **§5's withdrawn desktop-half of the Vector footer-overlap finding** — both need a longer
-  `--wait` or a chart-loaded re-check rather than another default 9s shot.
+- **Three OPEN QUESTIONs remain:** `/meridian`'s slow desktop fetch (§6/§10 #9) and §5's withdrawn
+  desktop-half of the Vector footer-overlap finding both need a longer `--wait` or a chart-loaded
+  re-check rather than another default 9s shot. §1.2b's `parseTier("admin")` fallthrough needs a
+  REAL signed-in admin browser session (not this lane's minted, unhydrated sessions) to confirm or
+  rule out — this pass's tooling structurally cannot answer it.
+- **A second, distinct methodology gap found the same day as the UA correction (§1.2b): every
+  client-side tier-dependent UI element (`useAppAuth()` consumers — the `/account` plan display,
+  `/pricing` and `/upgrade` CTAs) rendered in its default/unhydrated state in EVERY screenshot this
+  pass**, separate from the UA bug and not fixed by re-minting the same way. Unlike the UA bug,
+  there is no proposed tooling fix for this one yet — establishing a genuinely hydrated Clerk
+  client session from a headless mint is a bigger change than a CLI flag, and worth its own design
+  discussion rather than a quick patch. Flagged, not solved, this pass.
 - **`docs/audit/UI-UX-OPPORTUNITIES.md`** stubbed in this PR per brief item 16 but not yet
   populated with real backlog items beyond what's in §10's table.
 - **This correction pass itself is proof the methodology needs a permanent fix, not just a one-time
