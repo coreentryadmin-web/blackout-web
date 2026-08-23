@@ -420,7 +420,7 @@ stale close" class the lane brief lists, on the one surface where a member conte
 `get_thermal_compare` already solved exactly this for its own payload (`market_session`, `et_time`,
 `session_date`) after measuring the same failure; the public page has no equivalent.
 
-### 9.2 [P1, Largo boundary] `walls_by_horizon` is never set on a freshly-built matrix
+### 9.2 [P1, Largo boundary] `walls_by_horizon` is never set on a freshly-built matrix — **FIXED**
 
 `walls_by_horizon` exists to answer "where is the wall for the trade I am putting on today" — the
 served aggregate is 15 expiries deep and measured 2.1% OTM on SPX where the front expiry's wall was
@@ -436,6 +436,17 @@ Net effect: the horizon walls appear only on a cached matrix that has survived a
 six**, including two matrices 1.7 hours old. So `get_gex_heatmap.walls_by_horizon` is `null` in
 practice, and the model is left with the aggregate and no way to name its scope — the precise
 failure the field was added to prevent.
+
+**FIXED — Phase 1, first fix.** `buildGexHeatmapUncached` now publishes the block, and
+`recomputeNearTermGexStrikeTotals` recomputes it so the SPX 0DTE overlay cannot leave a pre-overlay
+0DTE wall beside a post-overlay flip — the overlay replaces today's column, so 0DTE is the one
+bucket it definitionally invalidates, and that function has now been fixed for this same staleness
+class three times (`regime`, `flip_reason`, these horizons). The degraded UW fallback still omits
+the field **on purpose**: its ladder is all-expiry filed under one synthetic `today` column, so
+bucketing it would assert a DTE breakdown the source cannot support. The aggregate `call_wall` /
+`put_wall` are deliberately unchanged — what "near-term" should mean is a product decision, and the
+fix is to publish the horizons beside the aggregate, not to redefine it. See `FINDINGS.md`
+2026-08-23. **Still to do: live-validate on production after deploy** (rule 6 — merged is not done).
 
 ### 9.3 [P2, Largo boundary] `get_gex_heatmap` and `get_positioning` carry no session anchor and no freshness
 
