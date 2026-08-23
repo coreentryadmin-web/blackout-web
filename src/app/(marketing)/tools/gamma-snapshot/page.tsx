@@ -54,7 +54,7 @@ export default async function GammaSnapshotPage() {
         </div>
 
         <p className="mt-4 font-mono text-[11px] leading-relaxed text-sky-300/50">
-          This snapshot refreshes live every 5 seconds while the tab is open — the same cadence as the dealer-gamma matrix on the member desk.
+          This snapshot refreshes live every 5 seconds while the tab is open
           Members trading live see tick-by-tick dealer positioning on the full desk (Thermal,
           GEX/VEX/DEX/CHARM by strike and expiry), not just this summary.
         </p>
