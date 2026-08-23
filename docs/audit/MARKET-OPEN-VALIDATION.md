@@ -284,6 +284,31 @@ under the old rule.
   "aggression_aware_v1"`. Confirm it is present on rows written after the deploy — rows without it
   are the old rule and **must not be pooled** with the new ones in any track-record number.
 
+### 5d. The COORD signal's dark-pool population — RTH-only by construction (#2708)
+
+`FlowFeed` fetched its dark-pool prints with **no `limit`**, taking `/api/market/dark-pool`'s default
+of **50**, while `DarkPoolPanel` beside it asks for the API's max of **100**. That population is the
+input to the **COORD** badge — the dark-pool-block-plus-options-sweep coincidence search — so the
+search ran over half the available prints, by omission rather than decision. Fixed to an explicit
+`limit: 100`.
+
+**Cannot be validated off-hours, and the reason is the point.** The whole feed returned **20–40
+prints** on the weekend, below even the 50 default, so the cap never binds and the fix changes
+nothing observable. Under live volume it binds hard.
+
+- **What to check at the open:** call `/api/market/dark-pool?limit=100&min_premium=500000` and count.
+  If it returns **more than 50**, the old code was silently discarding the remainder and the fix is
+  doing work — record the number.
+- **Then check the badge:** COORD should appear on more tickers than it used to. There is no
+  before/after baseline to diff against, because the defect produced **false negatives** — the
+  missing badges were never visible. Record the count as the new baseline.
+- **Also run** `node --import tsx scripts/audit/helix-darkpool-inventory.mjs`. Two things it may say
+  under RTH that it cannot say now: whether `side` ever becomes informative (all 20 weekend prints
+  were the literal `"neutral"`, so the field is 100% filled and carries nothing), and whether the
+  feed goes **`MINORITY_VERDICT_RISK`** — some prints sided, most not, which is the case
+  `DarkPoolPanel`'s `biasFromSide` guard does **not** cover. It exits non-zero if so; that is the
+  signal to fix the guard, which was deliberately left alone while the case cannot occur.
+
 ### 6. Open questions an RTH session can actually answer
 
 These are recorded as needing a decision; RTH is when the data exists to inform them.

@@ -272,7 +272,17 @@ export function FlowFeed() {
   // Feature 2: dark pool prints — deferred like earnings (secondary panel).
   useEffect(() => {
     const load = () =>
-      fetchDarkPoolPrints({ min_premium: 500_000 })
+      // EXPLICIT LIMIT, not the route's default. `/api/market/dark-pool` defaults `limit` to 50 and
+      // hard-caps it at 100, and this population feeds the COORD signal below — the
+      // dark-pool-block-plus-options-sweep coincidence search. Passing no limit meant that search
+      // ran over HALF the prints the endpoint would return, by omission rather than decision, while
+      // `DarkPoolPanel` right beside it already asks for the full 100.
+      //
+      // The failure is one-directional and therefore invisible: a smaller pool can only produce
+      // FALSE NEGATIVES — a coordination that happened and was not found — and a member reading no
+      // COORD badge concludes there was none. 100 is not a tuned number; it is all the data the
+      // endpoint will give, which is the only defensible size for a coincidence search.
+      fetchDarkPoolPrints({ min_premium: 500_000, limit: 100 })
         .then((d) => setDarkPoolPrints(d.prints ?? []))
         .catch((e) => console.warn("[FlowFeed] dark-pool fetch:", e));
     deferNonCriticalWork(load);
