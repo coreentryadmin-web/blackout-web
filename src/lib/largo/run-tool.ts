@@ -3,6 +3,7 @@ import { sanitizeFeedText } from "@/lib/largo/sanitize-feed-text";
 import { getLargoSpxLiveDesk } from "@/lib/largo/spx-desk-cache";
 import { computeSpxConfluence } from "@/features/spx/lib/spx-signals";
 import { omitUncalibratedSpxConfidence } from "@/lib/largo/spx-confidence-boundary";
+import { fitSpxStructureForModel } from "@/lib/largo/spx-structure-fit";
 import { loadLottoRecord } from "@/features/spx/lib/spx-lotto-store";
 import { loadPowerHourRecord } from "@/features/spx/lib/spx-power-hour-store";
 import { fetchPositioningSummary } from "@/features/nighthawk/lib/positioning";
@@ -956,7 +957,14 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
     }
 
     case "get_spx_structure": {
-      return marketPlatform.spx.getSpxDeskSummary();
+      // MEASURED TRUNCATED with no arguments, 2026-08-23 (largo-truncation-probe, control PROVEN) —
+      // the only SPX tool that was. The transport keeps the HEAD, so the desk's core scalars did
+      // reach the model and the enrichment tail (unified_tape, news_headlines, macro_events,
+      // sector_heat, oi_changes, greek_exposure, macro_indicators, strike_stacks…) fell off the
+      // end, where the model cannot tell "cut off" from "empty". Bounded here rather than in
+      // summarizeSpxDesk, which also feeds Night Hawk's edition builder and the platform snapshot —
+      // neither has a cap and neither should lose data to fix a model-transport problem.
+      return fitSpxStructureForModel(await marketPlatform.spx.getSpxDeskSummary()).fitted;
     }
     case "get_spx_play": {
       // Same uncalibrated `confidence` as get_spx_confluence — the play payload carries the
