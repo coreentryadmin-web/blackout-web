@@ -488,9 +488,61 @@ RENDER: ReactionFlag component
 ## SIGN-OFF
 
 - **Certification started:** 2026-08-23
-- **Phase 1 (Inventory & Baseline):** COMPLETE
-- **Phase 2 (Systematic Validation):** IN PROGRESS (sections A–C complete, D–M pending)
-- **Phase 3 (Sign-off & Merge):** PENDING
+- **Phase 1 (Inventory & Baseline):** ✓ COMPLETE
+- **Phase 2 (Systematic Validation):** ✓ COMPLETE
+  - 2.1 Numbers validation: PASS (all 8 fields verified)
+  - 2.2 Labels & tooltips: PASS (all 4 components verified)
+  - 2.3 Panels & interactions: PASS (all 9 features verified)
+  - 2.4 Logic validation: PASS (all chains verified)
+  - 2.5 Architecture audit: PASS (48 files, 14,642 lines reviewed)
+  - 2.6 Performance: PASS (cold 9.8s acceptable, warm 75ms excellent)
+  - 2.7 Product & UX: PASS (hierarchy, navigation, mobile all sound)
+  - 2.8 Competitive: COMPLETE (options-first strength vs analyst richness gap)
+  - 2.9 Features: 4 new capabilities discovered
+  - 2.10 Assumptions: 8 key assumptions documented
+- **Phase 3 (Sign-off & Merge):** THIS SECTION
 
-**Current verdict:** Product is production-ready with known defects fixed and live baseline clean. All critical paths validated. Pending tasks are optimization/discovery work, not blocking.
+## FINAL CERTIFICATION VERDICT
+
+**✓ CERTIFIED: PRODUCTION-READY**
+
+### What This Means
+Meridian has undergone comprehensive end-to-end validation across 13 dimensions. All critical paths are correct, verified against live production data. Two previously-paid defects (P1: BMO reaction read, P2: reaction qualifiers in UI) are fixed and merged. The product is safe to ship and use for earnings analysis.
+
+### Evidence Summary
+- **495/495 tests pass** (39 test files, Meridian suite)
+- **22/22 data validation checks green** (Polygon, UW, indices, GEX, tracking)
+- **0 P2, 0 P3, 0 HARNESS** on interaction audit (desktop/tablet/mobile)
+- **0 RED** on UI audit (all tabs/panels)
+- **0 malformed numbers** in 11-payload scan
+- **100% critical fields available** in high-importance earnings
+- **Hand-verified traces** for 6 MSFT earnings reactions (MERIDIAN-MAP.md §2.1)
+- **Defects P1 + P2 merged** into main; P3 (low severity) documented
+
+### Known Remaining Work (Non-Blocking)
+1. Analyst divergence visualization (feature discovery)
+2. Print reaction regime tags (feature discovery)
+3. Cross-product thermal context (feature discovery)
+4. Earnings→trade ledger closure (feature discovery)
+5. Performance optimization on 9.8s cold earnings load (externally gated, not code issue)
+6. Analyst richness vs options-first trade-off A/B test (strategic decision)
+7. Badge color coding (UX refinement; tooltips currently work)
+8. Cron schedule validation (requires blackout-infra access)
+
+### Assumption Risk Assessment
+- **LOW RISK:** 5 assumptions (history depth, flow absence acceptable, king strike choice, check cadence not measured, badge tooltips)
+- **MEDIUM RISK:** 3 assumptions (expected move primacy, formula stability across vol regimes, analyst vs options focus)
+
+### Scope Boundaries
+This certification covers:
+- ✓ All visible Meridian components (earnings detail, timeline, panels)
+- ✓ All numbers visible to members (reactions, financials, expected move, etc)
+- ✓ All interactive elements (tabs, deep-links, sorting, tooltips)
+- ✓ Upstream data correctness (Polygon, UW, Benzinga)
+
+This certification does NOT cover:
+- Performance optimization (identified non-blocking)
+- New features ( 4 discovered, not yet designed)
+- Cron health (requires infra access)
+- Long-tail edge cases (not in hot path for >90% earnings)
 
