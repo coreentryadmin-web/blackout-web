@@ -184,10 +184,16 @@ export async function persistAndPublishFlowAlert(
     ...extractChainFieldsFromRaw(raw, flow),
   };
   event.event_at = realCreatedAt;
-  // alerted_at drives the live tape's sort + LIVE badge. Use the REAL UW time
-  // (realCreatedAt) when known; otherwise leave it null so the UI excludes the row
-  // from LIVE/sort rather than trusting parseUwFlowAlert's "" / a fabricated now()
+  // alerted_at drives the live tape's sort + LIVE badge. Use the REAL UW time (realCreatedAt) when
+  // known; otherwise leave it empty rather than trusting parseUwFlowAlert's "" / a fabricated now()
   // (audit gap #6). The DB-backed REST read keeps its own historical fallback.
+  //
+  // CORRECTED 2026-08-23: this comment used to say the empty value made "the UI exclude the row
+  // from LIVE/sort". It did not. Nothing excluded it — `flowTimeSortKey` fabricated a 0, which on a
+  // newest-first tape is 1970, so a print that had just streamed in rendered LAST. The comment
+  // answered the question a reader would have asked, which is why it stayed invisible for so long.
+  // The sort now reports "no usable time" honestly and each caller places it; see
+  // helix-flow-tape-merge.ts.
   event.alerted_at = realCreatedAt ?? "";
   let inserted = false;
   let insertFailed = false;
