@@ -190,6 +190,24 @@ Zero rows in either off-diagonal cell. That is a schema boundary, not a distribu
 
 **Group B carries 92.1% of all premium on the tape**, from two tickers.
 
+> **⚠️ CORRECTION PENDING VALIDATION (2026-08-23, #2723).** The `event_at` row of the table above is
+> a correct MEASUREMENT and a wrong INTERPRETATION. This map reads Group B's missing print time as a
+> property of the producer — something that feed does not send. The evidence says it is a **parse**:
+> `toIso` was `new Date(String(value))`, and `new Date("1787343258239")` is **Invalid Date**, so a
+> UW timestamp arriving as an epoch became `null`.
+>
+> The chain, each link measured: `event_at` is present on a row **iff** `alert_rule` is (SPX 39/39,
+> SPY 82/82, exact); `alert_rule` comes only from the `flow_alerts` channel; the other 3500 rows
+> carry `implied_volatility`, whose only writer is `optionTradePrintToFlowRaw` — the `option_trades`
+> path — which **drops** prints with a falsy `executed_at` and stamps `created_at` from it. So every
+> one of those rows arrived WITH a truthy `executed_at` that `new Date()` could not parse.
+>
+> Not yet proven: that the unparseable value is specifically an epoch. A closed market made
+> capturing a live `option_trades` frame impossible, which is why #2723 parses by MAGNITUDE rather
+> than to one assumed unit. **Do not rewrite §4A or §9.0 on this note alone** — runbook §5k is the
+> measurement that settles it, and the check is that the `event_at` and `alert_rule` counts must
+> STOP matching at the open.
+
 **Hypothesis for Group B's identity, stated as a hypothesis:** `flow-ingest.ts` documents an
 external Python bot that "writes to the shared Postgres and publishes to the
 `blackout:flow-events` Redis channel" when `FLOW_INGEST_BOT_PRIMARY=1`, bypassing REST ingestion
@@ -586,7 +604,15 @@ population (§4A). Both persisted signals require a real print time; the Group B
 B is SPX and SPY. So the two names that top every premium panel are **structurally incapable** of
 producing a velocity spike or a split-flow signal, and `MEASURED 2026-08-22` only **30% of the tape
 (1500/5000 rows) is signal-eligible at all**. Neither detector is buggy — each correctly refuses to
-date an undatable print. The defect is that **nothing states it**: not the panels, not the ledger,
+date an undatable print.
+
+> **⚠️ "UNDATABLE" IS THE PART NOW IN DOUBT (2026-08-23, #2723).** Everything above holds as
+> measurement. What it assumes is that those prints have no time to read. The evidence is that they
+> arrived with one and the parser could not read it — see the correction note in §4A. If #2723 is
+> confirmed at the open, this section's framing inverts: not "the feed sends no time" but "we
+> discarded the time it sent", and 70% of the tape becomes signal-eligible. The reporting fix below
+> is correct either way — stating the eligible denominator is right whether the population is small
+> because of a feed or because of a bug — so nothing here needs reverting, only re-reading. The defect is that **nothing states it**: not the panels, not the ledger,
 not `get_helix_derived`, whose `velocity_spikes` / `split_flow` arrays report a total and a
 truncation flag but never the eligible denominator they were computed over. A member or a model
 reading "no velocity spikes on SPX" concludes the tape was quiet, when SPX was never eligible.

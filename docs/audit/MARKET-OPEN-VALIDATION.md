@@ -120,8 +120,8 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — HELIX, first session on 2026-08-24 (read this before the routine pass)
 
-Thirteen HELIX fixes merged over 2026-08-22/23. **Eleven are member-facing and none has been seen
-under a moving tape.** Every one was validated off-hours at best, and three could not be validated at all
+Fourteen HELIX fixes merged over 2026-08-22/23. **Twelve are member-facing and none has been seen
+under a moving tape.** §5k is the highest-impact item on this list and should be checked first. Every one was validated off-hours at best, and three could not be validated at all
 because the population they act on does not exist while the market is closed. This section is the
 list of things that are *only* checkable at the open, with the baseline each one must be diffed
 against.
@@ -455,6 +455,42 @@ with no readable side it printed `⚠ tape diverges`, a fabricated disagreement 
 - **The RTH-only part:** off-hours the tape is stale and Night Hawk's edition may be empty, so the
   panel renders nothing at all. This has never been seen with live plays AND live flow at once,
   which is the only condition under which the four states can all occur.
+
+### 5k. `event_at` on 70% of the tape — a parse, not a feed limitation (#2723) ⚠️ HIGHEST-IMPACT ITEM
+
+**§4A records that the SPX/SPY index feed carries no print time, and that this makes the population
+holding 92.1% of tape premium structurally unable to fire either persisted HELIX signal. On the
+evidence below that is not a property of the feed — it is `new Date("1787343258239")` returning
+Invalid Date.**
+
+Measured 2026-08-23, live member tape, 5000 rows / 168h: **3500 rows (70%) carry no `event_at`**,
+and `event_at` is present on a row **iff** `alert_rule` is — SPX **39/39**, SPY **82/82**. The other
+3500 carry `implied_volatility`, whose only writer is the `option_trades` WS path, which DROPS
+prints with a falsy `executed_at`. So every one of those rows arrived WITH a truthy `executed_at`
+that `new Date()` could not parse.
+
+- **Run first:** the same measurement, at the open.
+  `event_at`-present count vs `alert_rule`-present count per ticker. **They must now DIFFER** — SPX
+  should show thousands with `event_at` and only tens with `alert_rule`. If they still match
+  exactly, the deploy does not carry this, or the wire format is something the magnitude parser
+  does not cover (capture one raw `option_trades` frame and say so — that is the measurement the
+  closed market made impossible).
+- **THEN CHECK WHAT IT CHANGED, because this is the risky half.** Both persisted signals filter on
+  `flowEventTimeMs`. If the fix works, **70% of the tape moves from structurally-invisible to
+  signal-eligible in one deploy.** Expect the Velocity and Split Flow radars to fire on SPX/SPY for
+  the first time ever. Capture the before/after firing counts — a large jump is the fix working,
+  but it is also a large change in what members are shown, and it is the coordinator's call whether
+  the thresholds still suit a population 3× larger.
+- **The coverage note must shrink.** Off-hours it reads *"Scanned 103 of 500 prints — 397 (SPX, SPY)
+  carry no reported print time"*. That 397 should collapse toward zero. If it does not, the fix is
+  not live.
+- **The mobile `~` marker (5f) should mostly disappear** on SPX/SPY rows — they will have real print
+  times rather than ingest estimates. A row still showing `~` after this is a row that genuinely has
+  no parseable time, which is now a much smaller and more interesting population.
+- **Sanity-check the times themselves, do not just count them.** A magnitude-scaled epoch that
+  picked the wrong unit yields a plausible-looking but wrong instant. Compare a handful of new
+  `event_at` values against the same prints' `alerted_at` — they should be close, and `event_at`
+  should never be in the future.
 
 ### 6. Open questions an RTH session can actually answer
 

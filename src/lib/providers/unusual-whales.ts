@@ -1187,13 +1187,27 @@ export function normalizeOptionTradesWsPayload(raw: unknown): UwOptionTradePrint
         : [];
     const ivRaw = Number(r.iv ?? r.implied_volatility ?? r.volatility ?? NaN);
     out.push({
+      // The id is derived from the RAW `executedAt`, deliberately unchanged. It is the dedupe key
+      // (`ON CONFLICT (alert_id) DO NOTHING`), so re-deriving it from a normalised timestamp would
+      // mint new ids for prints already stored and re-insert a window of duplicates.
       id: String(r.id ?? `${underlying}-${executedAt}-${price}-${size}`),
       underlying,
       option_symbol: String(r.option_symbol ?? r.option_chain ?? ""),
       price,
       size,
       premium,
-      executed_at: executedAt.slice(0, 19),
+      /**
+       * VERBATIM — no `.slice(0, 19)`.
+       *
+       * The slice was there to trim sub-second precision, but it destroyed two things instead.
+       * On an ISO string it strips the trailing `Z`: `"2026-06-30T15:04:00Z"` becomes
+       * `"2026-06-30T15:04:00"`, which ES parses as **LOCAL time**, not UTC — silently correct only
+       * because production runs UTC, and silently wrong the moment it does not. On an epoch it
+       * kept the digits and left a value `new Date()` cannot parse at all, which is how 70% of the
+       * tape lost its print time (see `flow-timestamp.ts`). Sub-second precision parses fine in
+       * both forms, so there was nothing to trim.
+       */
+      executed_at: executedAt,
       tags,
       ...(Number.isFinite(ivRaw) && ivRaw > 0 ? { iv: ivRaw } : {}),
     });
