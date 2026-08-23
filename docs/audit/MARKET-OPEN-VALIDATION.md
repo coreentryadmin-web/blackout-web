@@ -120,7 +120,7 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — HELIX, first session on 2026-08-24 (read this before the routine pass)
 
-Ten HELIX fixes merged over 2026-08-22/23. **Seven are member-facing and none has been seen under a
+Ten HELIX fixes merged over 2026-08-22/23. **Eight are member-facing and none has been seen under a
 moving tape.** Every one was validated off-hours at best, and three could not be validated at all
 because the population they act on does not exist while the market is closed. This section is the
 list of things that are *only* checkable at the open, with the baseline each one must be diffed
@@ -284,7 +284,36 @@ under the old rule.
   "aggression_aware_v1"`. Confirm it is present on rows written after the deploy — rows without it
   are the old rule and **must not be pooled** with the new ones in any track-record number.
 
-### 5d. The tide bar — a signed split that was rendered as magnitudes (#2704)
+### 5d. The COORD signal's dark-pool population — RTH-only by construction (#2708)
+
+`FlowFeed` fetched its dark-pool prints with **no `limit`**, taking `/api/market/dark-pool`'s default
+of **50**, while `DarkPoolPanel` beside it asks for the API's max of **100**. That population is the
+input to the **COORD** badge — the dark-pool-block-plus-options-sweep coincidence search — so the
+search ran over half the available prints, by omission rather than decision. Fixed to an explicit
+`limit: 100`.
+
+**Cannot be validated off-hours, and the reason is the point.** The whole feed returned **20–40
+prints** on the weekend, below even the 50 default, so the cap never binds and the fix changes
+nothing observable. Under live volume it binds hard.
+
+- **What to check at the open:** call `/api/market/dark-pool?limit=100&min_premium=500000` and count.
+  If it returns **more than 50**, the old code was silently discarding the remainder and the fix is
+  doing work — record the number.
+- **Then check the badge:** COORD should appear on more tickers than it used to. There is no
+  before/after baseline to diff against, because the defect produced **false negatives** — the
+  missing badges were never visible. Record the count as the new baseline.
+- **Also run** `node --import tsx scripts/audit/helix-darkpool-inventory.mjs`. Two things it may say
+  under RTH that it cannot say now: whether `side` ever becomes informative (all 20 weekend prints
+  were the literal `"neutral"`, so the field is 100% filled and carries nothing), and whether the
+  feed goes **`MINORITY_VERDICT_RISK`** — some prints sided, most not, which is the case
+  `DarkPoolPanel`'s `biasFromSide` guard does **not** cover. It exits non-zero if so; that is the
+  signal to fix the guard, which was deliberately left alone while the case cannot occur.
+- **`newestPrintAgeHours` must be a real number, not `null`,** once the tape is live. It returns
+  `null` rather than `0` when there is no print at all — correct, and it means the populated branch
+  of the freshness clock has never executed. `null` under RTH means the clock has no input, which is
+  a different defect from a stale one.
+
+### 5e. The tide bar — a signed split that was rendered as magnitudes (#2704)
 
 `helix-tide-split.ts` was splitting **signed** net premiums as if they were magnitudes, so a net
 SHORT-call flow contributed to the bullish side of the bar. Off-hours the tape is one-sided enough
@@ -303,7 +332,7 @@ time.
   first condition under which the sign error would have been visible by eye, and it is the condition
   the fix has never been seen in.
 
-### 5e. Print time on mobile — there was none at all (#2707)
+### 5f. Print time on mobile — there was none at all (#2707)
 
 The desktop tape marked an *estimated* tape time with a `~` prefix that was **hover-only**, and the
 mobile card carried **no timestamp whatsoever** — not a wrong time, an absent one. (The write-up on
@@ -318,23 +347,6 @@ corrected here: there was no timestamp.)
   **without** the `~`, while SPX/SPY keep it. **If every row still shows `~` under a moving tape, the
   three-timestamp model is not reaching the renderer** — that is the failure this check exists for,
   and it is only detectable when both populations are fresh.
-
-### 5f. Dark-pool COORD — the panel has never been seen populated (#2708)
-
-The dark-pool inventory harness reports directional coverage as `NO_DIRECTION_REPORTED` /
-`MINORITY_VERDICT_RISK` / `DIRECTIONAL`, and `newestPrintAgeHours` returns `null` rather than `0`
-when there is no print at all. Off-hours it correctly reports the absence — which means the populated
-path is untested.
-
-- **Run it at the open:** the verdict must move off `NO_DIRECTION_REPORTED`. If it does not once
-  prints exist, the field is not being written and the panel's absence is a data gap, not a quiet
-  session.
-- **Watch for `MINORITY_VERDICT_RISK` specifically:** a directional verdict drawn from a small
-  minority of rows is the absence-as-measurement failure in its most persuasive form — it renders as
-  a confident reading. Capture the fill share alongside the verdict; **a coverage number without its
-  denominator is not a fact.**
-- **`newestPrintAgeHours` must be a real number, not `null`,** once the tape is live. `null` under
-  RTH means the freshness clock has no input, which is a different defect from a stale one.
 
 ### 5g. Contract size — one derivation, and a `0` that was a measurement (#2710)
 
@@ -362,8 +374,8 @@ These are recorded as needing a decision; RTH is when the data exists to inform 
 - **The `whale`-outranks-`0dte` collision** (`db.ts:2646`). `route` is `premium >= $1M ? 'whale' : expiry = TODAY ? '0dte' : 'stock'`, so the largest 0DTE prints never get the 0DTE badge. **Unmeasurable off-hours** — the closed window holds **zero** `dte === 0` rows. At the open, count prints with `expiry = TODAY` **and** `premium >= $1M`: that is the exact population being denied the badge.
 - **§9.7 score saturation.** $1.3B and $1.0M prints both score 60; 24.1% of tape pinned at saturation, measured off-hours. Re-measure under RTH volume — saturation should be *worse*, and the size of that is the argument.
 - **Whether Route Breakdown should stay premium-weighted.** The 95%-vs-79% gap is entirely premium weighting. Under RTH the two diverge differently; capture both.
-- **`helix-signal-outcomes` has no writer.** The cron is fully registered in `cron-registry.ts` and **absent from the deployed manifest** (`blackout-infra/cron-jobs.json`, 39 jobs, none mentioning helix). So the signal ledger is never written and every "graded" HELIX signal number rests on an empty table. **Not fixable from this lane** — it is an infra change in another repo against production. Raised on #2698; awaiting a decision to either schedule it or list it INTENTIONALLY_UNSCHEDULED. Until then, **treat any HELIX track-record figure as unbacked**, and say so rather than reporting a rate.
-- **Whether the SPX/SPY index feed should get a print time at all.** Group B carries 92.1% of premium and no `event_at`, so it can never fire either persisted signal (§4A) and now renders a permanent `~` (5e). Adding a synthetic time would make it *look* eligible without making it so — worse than the gap. The decision is whether to source a real one upstream or to state the exclusion in the product. Awaiting the coordinator.
+- **`helix-signal-outcomes` has no writer.** The cron is fully registered in `cron-registry.ts` and **absent from the deployed manifest** (`blackout-infra/cron-jobs.json`, 39 jobs, none mentioning helix). So the signal ledger is never written and every "graded" HELIX signal number rests on an empty table. **Not fixable from this lane** — it is an infra change in another repo against production. Raised on #2698; awaiting a decision to either schedule it or list it INTENTIONALLY_UNSCHEDULED. Until then, **treat any HELIX track-record figure as unbacked**, and say so rather than reporting a rate. **#2712 makes the gap visible in the product** rather than fixing it: the Signal Outcomes panel now separates an empty ledger from an unwritten one, so at the open it must read **"Not recording"**, not "No firings yet". If it reads the latter, something is writing `cron_job_runs` under this key that the deployed manifest says cannot exist — chase that discrepancy before trusting anything else here.
+- **Whether the SPX/SPY index feed should get a print time at all.** Group B carries 92.1% of premium and no `event_at`, so it can never fire either persisted signal (§4A) and now renders a permanent `~` (5f). Adding a synthetic time would make it *look* eligible without making it so — worse than the gap. The decision is whether to source a real one upstream or to state the exclusion in the product. Awaiting the coordinator.
 
 ### Commands
 
