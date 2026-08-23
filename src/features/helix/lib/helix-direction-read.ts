@@ -1,21 +1,26 @@
 /**
- * What one expiry-horizon bucket says about direction — and how much of it could be read at all.
+ * What a SET of prints says about direction — and how much of that set could be read at all.
+ *
+ * Used by every HELIX surface that renders a directional verdict over aggregated premium: the
+ * Expiry Concentration bars, the Net Premium leaderboard, and the ticker drawer's bias pill. One
+ * derivation, because three surfaces on one page silently disagreeing about what "bullish" means
+ * is the failure this whole lane keeps finding.
  *
  * ── THE DEFECT ──────────────────────────────────────────────────────────────────────────────────
  *
- * `ExpiryConcentration` coloured each horizon bar from option type alone:
+ * THREE surfaces coloured a directional verdict from option type alone:
  *
- *     const callPct = total > 0 ? Math.round((callPremium / total) * 100) : 50;
- *     const isBull  = callPct >= 55;
- *     const isBear  = callPct <= 45;
+ *     ExpiryConcentration   callPct = callPremium / (call + put);  isBull = callPct >= 55
+ *     NetPremiumLeaderboard isBull  = (calls - puts) >= 0          -> a green triangle-up
+ *     TickerDrawer          isBull  = callPrem >= putPrem          -> a green "up N% calls" pill
  *
  * Calls dominate a bucket → green. But a call that was SOLD is bearish, and #2691 replaced exactly
  * this rule everywhere else on the same page (`flowDirection`, `DIRECTION_BASIS`). So the tide bar
  * and the split-flow radar read one rule while the panel between them read the one they replaced.
  * Two components on one page can paint opposite colours from the same tape.
  *
- * MEASURED, live production tape, 5000 rows / 168h, 2026-08-23 — **all four horizons rendered
- * BULLISH GREEN and all four disagree** with the shipped rule:
+ * MEASURED, live production tape, 5000 rows / 168h, 2026-08-23. All four expiry horizons rendered
+ * BULLISH GREEN and **all four disagree** with the shipped rule:
  *
  *   horizon      total prem   readable   aggression-aware   of readable CALL premium, SOLD
  *   0DTE         $149.6M        63.0%    mixed              42.7%
@@ -25,6 +30,11 @@
  *
  * "This week" is the sharpest single number: bearish premium ($26.302M) slightly EXCEEDS bullish
  * ($26.232M), and the bar was green.
+ *
+ * The Net Premium leaderboard, measured the same run: **7 of its top 10 tickers disagree** with the
+ * arrow they render. The worst is its own top row — **SPX, a green triangle-up over $4.02B of net
+ * premium whose direction is 0.1% readable.** Three tickers (AMD, MU, SMH) agree, so the honest
+ * rule does not simply flatten the panel; it keeps the verdicts that have evidence behind them.
  *
  * ── THE SECOND DEFECT, WHICH IS THE LARGER ONE ──────────────────────────────────────────────────
  *
@@ -52,13 +62,13 @@ import {
 } from "./helix-flow-aggression";
 
 /** A print, as much of one as this module needs. */
-export type HorizonFlow = {
+export type DirectionReadFlow = {
   option_type?: string | null;
   ask_pct?: number | null;
   premium: number;
 };
 
-export type HorizonDirection = {
+export type DirectionRead = {
   /** The shipped four-way verdict, or `mixed` / `undetermined`. */
   label: FlowDirection | "mixed";
   /** The premium split the verdict was drawn from. */
@@ -75,7 +85,7 @@ export type HorizonDirection = {
 /** Below this share of readable premium, a directional colour is not honest. */
 export const MIN_READABLE_PCT_FOR_COLOR = 50;
 
-export function horizonDirection(flows: readonly HorizonFlow[]): HorizonDirection {
+export function readDirection(flows: readonly DirectionReadFlow[]): DirectionRead {
   const premium = directionalPremium(flows);
   const readable = premium.bullish + premium.bearish;
   const total = readable + premium.undetermined;
@@ -92,7 +102,7 @@ export function horizonDirection(flows: readonly HorizonFlow[]): HorizonDirectio
 }
 
 /** The colour class a horizon earns. `null` = neutral, which is the honest default. */
-export function horizonTone(d: HorizonDirection): "bull" | "bear" | null {
+export function directionTone(d: DirectionRead): "bull" | "bear" | null {
   if (d.minorityEvidence) return null;
   if (d.label === "bullish") return "bull";
   if (d.label === "bearish") return "bear";
@@ -103,7 +113,7 @@ export function horizonTone(d: HorizonDirection): "bull" | "bear" | null {
  * The row's tooltip. States the basis, the split, and — the part that matters — how much premium
  * the read covers, so a neutral bar is legible as "could not read" rather than "balanced".
  */
-export function horizonDirectionTitle(d: HorizonDirection): string {
+export function readDirectionTitle(d: DirectionRead): string {
   const usd = (n: number) =>
     "$" + Math.round(n).toLocaleString("en-US", { maximumFractionDigits: 0 });
 
