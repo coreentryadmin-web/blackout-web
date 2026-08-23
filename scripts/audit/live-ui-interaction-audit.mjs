@@ -50,6 +50,7 @@ import { join } from "node:path";
 import { createRequire } from "node:module";
 import { mintClerkPremiumSession } from "./lib/prod-clerk-session.mjs";
 import { probeGeometry } from "./lib/ui-geometry-probe.mjs";
+import { shouldCheckEscape } from "./lib/dialog-escape-gate.mjs";
 import { keepSessionAlive, isAuthExpiry } from "./lib/ui-session-keepalive.mjs";
 
 const require_ = createRequire(import.meta.url);
@@ -434,7 +435,20 @@ async function auditPage(session, path, device) {
       }
 
       // A drawer/modal that opened must close again. A trap is worse than a no-op.
-      if (after.dialogs > before.dialogs) {
+      //
+      // ONLY WHEN THE CLICK STAYED ON THE PAGE. `dialogs` counts `[role=dialog],[aria-modal=true]`
+      // in the CURRENT document, so across a navigation it compares two different pages and any
+      // dialog-shaped furniture on the destination reads as "a dialog opened" — then Escape cannot
+      // close it, because nothing opened. Measured on production 2026-08-23: `/dashboard`'s nav
+      // links (BLACKOUT TRADING, FAQ, Pricing, Learn) each produced this FAIL, and `/`, `/faq`,
+      // `/pricing` and `/learn` each ship exactly 2 such elements in their served HTML. Four
+      // failures, one per nav link, none of them real.
+      //
+      // That is the failure mode this file's own geometry probe is documented against — a check
+      // that fires on healthy pages teaches its reader to skip the report — so it is gated rather
+      // than tolerated. A navigation is audited on its own next pass, where `before` is that
+      // page's own baseline.
+      if (shouldCheckEscape(before, after)) {
         await page.keyboard.press("Escape").catch(() => {});
         await page.waitForTimeout(800);
         const closed = await fingerprint(page);

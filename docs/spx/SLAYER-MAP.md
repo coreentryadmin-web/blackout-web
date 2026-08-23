@@ -509,10 +509,20 @@ Ranked. These are the `UNKNOWN`s above, restated as tasks.
 5. **Run `scripts/audit/largo-truncation-probe.mjs` against all seven SPX tools** and read the
    CONTROL line — a run whose control does not come back TRUNCATED reports every COMPLETE as
    UNVERIFIED, not clean.
-6. **Build the SPX interaction audit** on the `meridian-interaction-audit.mjs` pattern — physical
-   text intersection, sub-24px tap targets, overflow, tab-hammering, keyboard reach — gated on a
-   PAGE-LOADED proof so a blank render reports HARNESS, never a product verdict. This is what
-   closes the three UNVERIFIED backlog items in §6.1 (and would have caught the P2 collisions).
+6. ~~**Build the SPX interaction audit**~~ **DON'T — one already exists and covers `/dashboard`.**
+   `scripts/audit/live-ui-interaction-audit.mjs` ships `/dashboard` in its default page list and
+   shares `lib/ui-geometry-probe.mjs`. It did not need writing; it needed running. First run
+   2026-08-23 confirmed the 2026-08-07 backlog's chart-control collision on **desktop** (3
+   collisions: `SPX` over the timeframe selector, `▶ Replay` over `GEX`, both ways) and exposed a
+   defect in the harness itself — four false Escape FAILs per page from comparing dialog counts
+   across a navigation, fixed and validated live (6 failures → 1).
+
+   **Still open here:** localise and fix the collision CSS (the 2026-08-07 entry's caution against
+   guessing a layout rule stands), and audit the **phone** viewport — it has failed navigation with
+   `ERR_CONNECTION_RESET` on every attempt, which is the sandbox tunnel and not the server, so the
+   mobile brand/menu collision stays UNVERIFIED.
+
+
 7. **A coherence assertion in the pre-open gate**: any two member-facing values sharing a label
    must agree within a stated tolerance or the label must differ (§5). The reproducible OI-only
    max-pain check against a full Polygon SPXW chain is the model.
