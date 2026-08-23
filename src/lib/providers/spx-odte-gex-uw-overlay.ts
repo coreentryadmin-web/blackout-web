@@ -1,6 +1,6 @@
 import type { GexHeatmap, SpxOdteOverlayState } from "@/lib/providers/polygon-options-gex";
 import { resolveOdteExpiry } from "@/lib/correctness/gex-odte-scope";
-import { wallsFromStrikeTotals, cumulativeGammaFlipDetail, buildGexRegime } from "@/lib/providers/gex-cross-validation-core";
+import { wallsFromStrikeTotals, cumulativeGammaFlipDetail, buildGexRegime, wallsByHorizon } from "@/lib/providers/gex-cross-validation-core";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import {
   getSpxOdteScopedUwLadderMap,
@@ -11,7 +11,7 @@ import {
 export { resetSpxOdteScopedUwLadderCacheForTests as resetSpxOdteUwLadderCacheForTests };
 
 /** Re-sum near-term strike_totals after a 0DTE column overlay. */
-export function recomputeNearTermGexStrikeTotals(hm: GexHeatmap): void {
+export function recomputeNearTermGexStrikeTotals(hm: GexHeatmap, today = todayEtYmd()): void {
   const near = new Set(hm.near_term_expiries?.length ? hm.near_term_expiries : hm.expiries.slice(0, 8));
   const totals: Record<string, number> = {};
   let total = 0;
@@ -64,6 +64,20 @@ export function recomputeNearTermGexStrikeTotals(hm: GexHeatmap): void {
   // was "short" either way, which is precisely why this survived unnoticed — the failure only bites
   // when spot sits BETWEEN the two.
   hm.gex.regime = buildGexRegime({ spot: hm.spot, flip, callWall, putWall, flipReason: flipDetail.reason });
+
+  // AND THE HORIZONS, for the same reason and with sharper stakes.
+  //
+  // This overlay REPLACES today's 0DTE column with the UW dealer-gamma ladder, so the "0DTE" bucket
+  // is the one bucket it definitionally invalidates. Until now that was harmless only because
+  // `walls_by_horizon` was never populated on a fresh build at all (it was set solely by
+  // prunePastExpiriesFromHeatmap, which no-ops on a fresh matrix). Populating it upstream would
+  // have made this function carry a PRE-overlay 0DTE wall beside a POST-overlay flip and regime —
+  // the third instance of exactly the staleness this function has already been fixed for twice
+  // (first `regime`, then `flip_reason`). Recomputing it here means the two cannot separate.
+  //
+  // Same input as the fresh build: the post-overlay cells, the ET session, and this heatmap's own
+  // spot, so every bucket is side-constrained against the price the rest of the payload describes.
+  hm.gex.walls_by_horizon = wallsByHorizon(hm.gex.cells, today, hm.spot);
 }
 
 /**
@@ -103,7 +117,11 @@ export function applySpxOdteGexUwOverlayWithLadder(
     strikes: Array.from(strikeSet).sort((a, b) => b - a),
     gex: { ...hm.gex, cells },
   };
-  recomputeNearTermGexStrikeTotals(out);
+  // Pass the PINNED `today` through: this function already takes an explicit session date so a
+  // test (and the 0DTE scope above) can pin it, and the recompute derives DTE buckets from it.
+  // Letting it default to the wall clock here would let the overlay and its own horizons disagree
+  // about which session they describe.
+  recomputeNearTermGexStrikeTotals(out, today);
   return out;
 }
 
