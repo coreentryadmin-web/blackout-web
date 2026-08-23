@@ -176,10 +176,69 @@ That check is reproducible and should be part of a pre-open gate — see §8.
   the same transported field for SPX/VIX — that surface is the Thermal lane's.
 - **`leader_stocks`, `lit_dark_ratio`, `vix_term`, `gap_source`, `data_quality`** — carried on the
   pulse payload, not traced to source in this pass. UNKNOWN.
-- **Every field on `/journal`, `/commentary`, `/outcomes`, `/power-hour`, `/signals`.** Phase 0
-  mapped the desk/pulse/flow/pin spine only. UNKNOWN — next increment of this file.
+- ~~**Every field on `/journal`, `/commentary`, `/outcomes`, `/power-hour`, `/signals`.**~~
+  **MAPPED 2026-08-23 — see §3.3.**
 - **The `ios/` component set** (`SpxIosMetricGroups` and siblings) renders its own field list;
   only `Max pain` was checked. UNKNOWN whether its labels track the desktop header's.
+
+### 3.3 The other five routes — `/journal` `/commentary` `/outcomes` `/power-hour` `/signals`
+
+Phase 0 mapped the desk/pulse/flow/pin spine and left these UNKNOWN (§8 item 4). Mapped
+2026-08-23. All five are `dynamic = "force-dynamic"` and send `NO_STORE_HEADERS`; only
+`/commentary` caches, and it caches server-side.
+
+| route | method | auth | cache | payload |
+|---|---|---|---|---|
+| `/api/market/spx/journal` | GET, POST | `authorizeMarketDeskApi` (community) **+ a `userId` requirement** | none | `{ entries: Record<open_play_id, JournalEntry> }` — the only PER-USER surface on this desk |
+| `/api/market/spx/commentary` | **POST** | `requireTierApi("premium")` | `serverCache` + Redis, **5-min wall-clock window** | `{ commentary, window_slot, next_refresh_ms }` |
+| `/api/market/spx/outcomes` | GET | `authorizeMarketDeskApi` (community) | none | `{ stats: PlayOutcomeStats, adaptive, rows: PlayOutcomeRow[] }`, `limit` 1…200 (default 50) |
+| `/api/market/spx/power-hour` | GET | `authorizeCronOrTierApi(req, "premium")` | none | `{ available, as_of, power_hour: PowerHourPlayPayload }` |
+| `/api/market/spx/signals` | GET | `authorizeMarketDeskApi` (community) | none | `{ rows: SpxSignalLogRow[] }`, `limit` 1…200 (default 50) |
+
+**Four things the table does not show, each checked rather than assumed:**
+
+1. **Three different auth entry points across twelve SPX routes.** Eight use
+   `authorizeMarketDeskApi` (which is `authorizeCronOrTierApi(req, "community")`); `/play` and
+   `/power-hour` call `authorizeCronOrTierApi(req, "premium")` **directly** rather than through the
+   named `authorizePremiumDeskApi`; `/commentary` uses `requireTierApi("premium")`. The tier split
+   is coherent as a product decision — community gets the desk, premium gets the plays. The
+   *naming* split is not: `authorizePremiumDeskApi`'s doc comment claims to be "the data-API gate
+   for every product whose page calls `requireTier("premium")`" and enumerates Helix/Thermal/Vector/
+   briefs, so an auditor grepping its callers to inventory premium APIs **misses SPX's two**.
+   Repo-wide the split is 25 named vs 17 raw across six lanes, so this is not an SPX defect to fix
+   unilaterally — it is a comment that reads as an inventory and is not one.
+
+2. **`/commentary` cannot be pre-warmed by a cron.** `requireTierApi` takes no cron bearer, unlike
+   every other route here. The route's own design is "one deterministic read per 5-minute window
+   serves every connected session — first request in the window composes it", so **the first member
+   into each window pays the composition cost** (merged desk + open play + lotto + power-hour
+   stores + `generateSpxCommentary`). A cron warm is the obvious mitigation and the auth choice
+   blocks it. Not changed here; recorded because the cost is real and invisible.
+
+3. **Error shapes disagree, deliberately in one case and by omission in the others.** `/signals`
+   returns a bare `{ error }` with **no `rows`** on 502, and says so at the line — ISSUE-30, clients
+   should check HTTP status, not peek at a field. `/outcomes` returns
+   `{ stats: null, adaptive: null, rows: [], error }` and `/journal` returns `{ entries: {}, error }`
+   — the pre-ISSUE-30 shape. A client written against one breaks on the other.
+
+4. **`PlayOutcomeStats.win_rate` is `0` for an empty cohort, not `null`**
+   (`spx-play-outcomes.ts:359,387` — `count > 0 ? wins / count : 0`). That is absence published as a
+   measurement in the type. **It is contained today, and I checked rather than reported it:**
+   `computeAdaptiveGates` gates on `total_closed >= minTrades && days_of_data >= minDays` before
+   reading any rate, every per-path branch gates on `count >= minPathTrades`, and
+   `telemetrySummary` nulls the rates for display (`cold_buy.count > 0 ? … : null`). So no consumer
+   currently reads the fabricated zero. Latent hazard, not a live defect — the next consumer that
+   forgets the count gate inherits it.
+
+**One dead surface found while mapping.** `useSpxDayPerformance`
+(`src/features/spx/hooks/useSpxDayPerformance.ts`) is exported and imported by **nothing**. It also
+carries the same latent bug: `fetch(...).then(r => r.json())` with **no `r.ok` check**, so on a 502
+it parses the error body, finds `rows: []`, and `computeDayStats([])` returns a stats object of
+zeros rather than null. Harmless while unused; a hazard the moment someone wires it up.
+
+`SpxSignalLogRow.confidence` and `PlayOutcomeRow.confidence` are the persisted form of the field
+§7.2 measured as a **constant 96 across all 51 rows**. The ledger is where that measurement came
+from; both routes serve it unchanged.
 
 ---
 
@@ -586,7 +645,13 @@ Ranked. These are the `UNKNOWN`s above, restated as tasks.
    **Start from the measurement, not from the field's history:** `scripts/audit/spx-confidence-calibration.mjs` shows the stored `confidence` is 96 on all 51 rows (§7.2), so the ledger carries no recoverable conviction signal — a calibration has to be built from `score`/`grade`/factors. On those same rows `r(|score|, win) = 0.172` and `r(grade_rank, win) = −0.038` (n=51, indicative only).
 3. **Trace the `spx:pulse:snapshot` writer** in the market-worker lane and record its `change_pct`
    anchor at source (§3.2).
-4. **Map `/journal`, `/commentary`, `/outcomes`, `/power-hour`, `/signals`** to this file's schema.
+4. ~~**Map `/journal`, `/commentary`, `/outcomes`, `/power-hour`, `/signals`**~~ **DONE — see §3.3.**
+   Four things it turned up that the route table alone does not show: three different auth entry
+   points across twelve SPX routes (and a helper doc-comment that reads as an inventory and is not
+   one); `/commentary` cannot be cron-warmed, so the first member into each 5-minute window pays the
+   composition cost; three disagreeing 502 error shapes; and `PlayOutcomeStats.win_rate` reporting
+   `0` for an empty cohort — contained today by sample-size gates at every consumer, **checked
+   rather than reported**, and latent for the next one that forgets.
 5. **Run `scripts/audit/largo-truncation-probe.mjs` against all seven SPX tools** and read the
    CONTROL line — a run whose control does not come back TRUNCATED reports every COMPLETE as
    UNVERIFIED, not clean.
