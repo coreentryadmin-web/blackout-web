@@ -53,7 +53,7 @@ const buildOrchestration = (category: string): OrchestrationResult => ({
     needsDeskRead: category === "TRADE_INTENT",
     needsHistoricalContext: false,
   },
-  consensus: mockConsensus,
+  consensus: { ...mockConsensus, reads: [...mockConsensus.reads] },
   deskRead: category === "TRADE_INTENT" ? mockDecision : undefined,
   selectedTools: { required: [], optional: [] },
   envelopeStructure: {
@@ -139,9 +139,11 @@ test("TRADE_INTENT generates header + consensus + decision + risk", () => {
   assert.ok(result.decision, "should have decision");
   assert.ok(result.risk, "should have risk");
 
-  assert.strictEqual(result.components.length, 4);
+  assert.strictEqual(result.components.length, 5);
   assert.ok(result.components.some((c) => c.type === "header"));
   assert.ok(result.components.some((c) => c.type === "comparison"));
+  assert.ok(result.components.some((c) => c.type === "evidence"));
+  assert.ok(result.components.some((c) => c.type === "decision"));
   assert.ok(result.components.some((c) => c.type === "risk"));
 });
 
@@ -161,9 +163,10 @@ test("TRADE_INTENT with tool results includes levels component", () => {
   const result = buildResponseComponents(orchestrated, "Should I buy calls?");
 
   assert.ok(result.levels, "should have levels component");
-  // Should now have 5 components: header + consensus + levels + decision + risk
-  assert.strictEqual(result.components.length, 5);
+  // Should now have 6 components: header + consensus + levels + evidence + decision + risk
+  assert.strictEqual(result.components.length, 6);
   assert.ok(result.components.some((c) => c.type === "levels"));
+  assert.ok(result.components.some((c) => c.type === "evidence"));
 });
 
 test("WHY generates evidence + risk", () => {

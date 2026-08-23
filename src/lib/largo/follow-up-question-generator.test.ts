@@ -192,7 +192,7 @@ test("Strong consensus suggests precedent check at priority 3", () => {
 
   const precedentSuggestion = suggestions.find((s) => s.gapType === "precedent");
   assert.ok(precedentSuggestion);
-  assert.match(precedentSuggestion!.question, /happened.*before/i);
+  assert.match(precedentSuggestion!.question, /before.*play/i);
 });
 
 test("suggestFollowUpQuestions returns sorted by priority then gap type", () => {

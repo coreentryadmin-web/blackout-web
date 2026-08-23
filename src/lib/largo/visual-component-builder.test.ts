@@ -159,7 +159,7 @@ test("buildLevelsComponent omits missing levels", () => {
 test("buildTradeDecisionComponent PLAY includes trigger and invalidation", () => {
   const component = buildTradeDecisionComponent(mockPlayDecision);
 
-  assert.strictEqual(component.type, "comparison");
+  assert.strictEqual(component.type, "decision");
   assert.match(component.title!, /🟢/);
   assert.match(component.title!, /PLAY/);
 

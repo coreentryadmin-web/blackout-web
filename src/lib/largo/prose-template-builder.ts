@@ -274,7 +274,7 @@ export function getProseSectionsForIntent(
         });
       }
 
-      if (depth !== "minimal") {
+      if (depth !== "minimal" && context?.deskRead?.state === "PLAY") {
         sections.push({
           section: "Risk",
           directive: `If the play breaks, how: what is the invalidation, and what does it cost.`,
