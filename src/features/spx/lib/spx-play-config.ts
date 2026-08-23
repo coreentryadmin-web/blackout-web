@@ -477,22 +477,17 @@ const ALL_PLAYBOOK_IDS: readonly PlaybookId[] = [...VALID_PLAYBOOK_IDS];
 
 /** When non-null, gate A17 only permits BUY for these primary playbook ids. */
 export function playbookLiveAllowlist(): ReadonlySet<PlaybookId> | null {
-  // STAGING FULL-ENABLEMENT (user directive): on staging every playbook (PB-01..PB-14) is allowlisted
-  // so the WHOLE SPX Slayer engine runs live to test + measure. An explicit env override still wins
-  // (research escape hatch). PROD IS UNCHANGED — prod keeps the env/high-fidelity default below.
-  if (isStagingDeploy() && !process.env.PLAYBOOK_LIVE_ALLOWLIST?.trim()) {
-    return new Set(ALL_PLAYBOOK_IDS);
-  }
-  return parsePlaybookLiveAllowlist(process.env.PLAYBOOK_LIVE_ALLOWLIST, isStagingDeploy());
+  // Staging (decommissioned 2026-07-25) used to enable all playbooks when this env var was unset,
+  // for full-test validation. Production keeps the high-fidelity default: null when unset, meaning
+  // only paper_executable playbooks are allowed unless explicitly configured.
+  return parsePlaybookLiveAllowlist(process.env.PLAYBOOK_LIVE_ALLOWLIST, false);
 }
 
 export function isPlaybookLiveAllowlisted(id: PlaybookId | null | undefined): boolean {
   if (!id) return false;
-  // STAGING FULL-ENABLEMENT: every playbook is paper-executable on staging (test bed), so the
-  // execution-mode gate (which keeps mvp matchers shadow-only on prod) is lifted here. PROD UNCHANGED.
-  if (isStagingDeploy() && !process.env.PLAYBOOK_LIVE_ALLOWLIST?.trim()) {
-    return VALID_PLAYBOOK_IDS.has(id);
-  }
+  // Staging (decommissioned 2026-07-25) used to lift the paper_executable gate, allowing all
+  // playbooks to live-execute in the test environment. Production enforces paper_executable
+  // execution mode for playbooks not in an explicit allowlist, and respects the configured allowlist.
   const def = playbookDef(id);
   const allowlist = playbookLiveAllowlist();
   if (allowlist == null) {
