@@ -1,5 +1,5 @@
 import type { FlowAlert } from "@/lib/api";
-import { mergeFlowAlerts } from "@/features/helix/lib/helix-flow-merge";
+import { flowCompositeKey, mergeFlowAlerts } from "@/features/helix/lib/helix-flow-merge";
 
 export function flowDedupeKey(a: {
   alert_id?: string;
@@ -9,7 +9,7 @@ export function flowDedupeKey(a: {
   alerted_at?: string | null;
 }): string {
   if (a.alert_id) return `id:${a.alert_id}`;
-  return `${a.ticker}|${a.strike}|${a.option_type}|${String(a.alerted_at ?? "").slice(0, 19)}`;
+  return flowCompositeKey(a);
 }
 
 /**

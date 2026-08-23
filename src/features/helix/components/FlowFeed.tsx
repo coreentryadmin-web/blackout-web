@@ -26,7 +26,7 @@ import {
   type HelixTableDensity,
 } from "@/features/helix/lib/helix-table-columns";
 import { daysToExpiry, flowTimeMs } from "@/features/helix/lib/helix-flow-format";
-import { findMatchingFlow, mergeFlowAlerts } from "@/features/helix/lib/helix-flow-merge";
+import { findMatchingFlow, flowCompositeKey, mergeFlowAlerts } from "@/features/helix/lib/helix-flow-merge";
 import {
   appendFlowTapePage,
   mergeFlowTapeHead,
@@ -138,9 +138,6 @@ function flowFreshnessAtMs(a: {
 // Postgres ON-CONFLICT. SSE rows now carry alert_id; DB-served REST rows do not, so we
 // fall back to the seconds-precision composite for cross-path (REST↔SSE) matching. The
 // SSE path registers BOTH keys so a reconnect can't slip a duplicate past either one.
-function flowCompositeKey(a: { ticker: string; strike: number; option_type: string; alerted_at?: string | null }): string {
-  return `${a.ticker}|${a.strike}|${a.option_type}|${String(a.alerted_at ?? "").slice(0, 19)}`;
-}
 function flowAlertId(a: { alert_id?: string }): string | null {
   return a.alert_id ? `id:${a.alert_id}` : null;
 }
