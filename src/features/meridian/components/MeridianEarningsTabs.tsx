@@ -12,6 +12,7 @@ import {
   MeridianAnalyticsBanner,
   MeridianDataCard,
   MeridianKV,
+  ReactionFlag,
 } from "./meridian-ui";
 import { MeridianEarningsIntelPanel } from "./MeridianEarningsIntelPanel";
 import { etWallClockToIso } from "@/lib/meridian/meridian-viz-core";
@@ -486,6 +487,7 @@ export function MeridianEarningsTabs({
                         <span className="meridian-history-move">
                           {" "}
                           · {fmtPct(row.reaction_pct ?? row.session_change_pct)} reaction
+                          <ReactionFlag print={row} />
                         </span>
                       )}
                     </li>
