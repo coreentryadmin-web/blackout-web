@@ -460,25 +460,29 @@ async function runDeep() {
         // still read "LOADING VECTOR" after the full interaction pass, while a direct patient probe
         // showed the real panel (chart, GEX/VEX/0DTE tabs, indicators, live tape) fully up at 6s —
         // well inside this deadline. The unscoped probe had already declared victory on nav alone.
+        // Interactive-element count ONLY — no text-length fallback. A textLen>200 fallback (tried
+        // first) passed on /vector at t=4s while the product was still showing its "LOADING VECTOR"
+        // splash and INVENTORY (same shell-exclusion shape, checked moments later) found 0 controls:
+        // persistent non-footer-tagged boilerplate (disclaimers, copy outside header/nav/<footer>)
+        // is long enough on its own to clear 200 characters before any product content exists. Every
+        // product route in this fleet has substantial interactive chrome once it actually mounts
+        // (confirmed live: Thermal 33 buttons, Vector dozens once loaded, Night Hawk 8), so requiring
+        // a real control is the reliable signal; a genuinely control-less page times out to HARNESS
+        // below rather than being misread as settled.
         const probe = await page
           .evaluate(() => {
-            const root = document.querySelector("main") ?? document.body;
             const inShell = (el) => !el.closest("header, nav, [role=navigation], footer");
-            const text = [...root.querySelectorAll("body *")]
-              .filter((el) => el.children.length === 0 && inShell(el))
-              .map((el) => el.textContent ?? "")
-              .join(" ")
-              .trim();
             const interactive = [...document.querySelectorAll("button, [role=tab], select, [role=switch]")].filter(inShell).length;
-            return { ready: document.readyState === "complete", textLen: text.length, interactive };
+            return { ready: document.readyState === "complete", interactive };
           })
           .catch(() => null);
-        if (probe && probe.ready && (probe.textLen > 200 || probe.interactive > 0)) {
+        if (probe && probe.ready && probe.interactive > 0) {
           settled = true;
           break;
         }
         await page.waitForTimeout(1500);
       }
+      console.log(`  settle: ${settled ? "OK" : "TIMED OUT"} after ${Math.round((Date.now() - settleStart) / 1000)}s`);
       if (!settled) {
         record({
           severity: "HARNESS",
