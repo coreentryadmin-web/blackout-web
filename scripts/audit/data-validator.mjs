@@ -745,6 +745,110 @@ async function main() {
     }
   }
 
+  // --- SPX DESK vs Polygon (SLAYER-MAP Priority 0) ------------------------------------------
+  //
+  // WHY THIS BLOCK EXISTS. The validator already fetched `/api/market/spx/desk` — but only to feed
+  // the malformed-number scan at the bottom. Not one of the desk's OWN numbers was ever compared
+  // to a provider: SPX price, prior close, prior-day high/low, the day's high/low, the EMAs, and
+  // the change% a member reads off the header had never been cross-checked by this lane against
+  // anything. That is the single largest gap in the SPX product's validation and it is stated as
+  // such in docs/spx/SLAYER-MAP.md.
+  //
+  // Deliberately checks what is checkable OFF-HOURS as well as during RTH, because an instrument
+  // that can only be exercised in the one scarce window is an instrument nobody has debugged.
+  // `prior_close`, `pdh`, `pdl`, the EMAs and the change%-vs-prior-close identity are all decidable
+  // on a closed market; `hod`/`lod` are RTH-only and say so rather than silently passing.
+  {
+    const d = P.spx_desk ?? {};
+    const dPrice = num(d.price), dPdc = num(d.prior_close), dPdh = num(d.pdh), dPdl = num(d.pdl);
+    const dHod = num(d.hod), dLod = num(d.lod), dChg = num(d.spx_change_pct);
+    const dEma20 = num(d.ema20), dEma50 = num(d.ema50);
+
+    if (!P.spx_desk || d.available === false) {
+      // Absence is reported, never skipped silently — a desk that did not answer must not read as
+      // a desk whose numbers all agree.
+      rec('spx-desk: payload available', 'WARN', `desk unavailable (available=${d.available}) — every check below is UNRUN, not clean`);
+    } else {
+      // PRICE — live during RTH, prior close off-hours, same convention as the SPY/SPX checks above.
+      if (dPrice != null && gtSPX != null) {
+        const pct = Math.abs(dPrice - gtSPX) / gtSPX * 100;
+        rec('spx-desk: price vs Polygon I:SPX', pct <= priceTol ? 'PASS' : 'FAIL', `desk=${dPrice} polygon(${gtLabel})=${gtSPX} Δ=${pct.toFixed(3)}%`);
+      }
+
+      // PRIOR CLOSE — an exact number with an exact source, and the anchor the header's change%
+      // is derived from (see spx-change-anchor.ts). Checkable in any session.
+      const gtPdc = num(pSPXprev?.c);
+      if (dPdc != null && gtPdc != null) {
+        const pct = Math.abs(dPdc - gtPdc) / gtPdc * 100;
+        rec('spx-desk: prior_close vs Polygon prev close', pct <= 0.05 ? 'PASS' : 'FAIL', `desk=${dPdc} polygon=${gtPdc} Δ=${pct.toFixed(4)}%`);
+      } else if (dPdc == null) {
+        rec('spx-desk: prior_close present', 'WARN', 'desk served no prior_close — the header change% has nothing to derive from');
+      }
+
+      // PRIOR-DAY HIGH / LOW — same aggregate, same session, so a mismatch is a real defect
+      // rather than a timing artifact.
+      const gtPdh = num(pSPXprev?.h), gtPdl = num(pSPXprev?.l);
+      if (dPdh != null && gtPdh != null) rec('spx-desk: pdh vs Polygon prev high', Math.abs(dPdh - gtPdh) / gtPdh * 100 <= 0.05 ? 'PASS' : 'FAIL', `desk=${dPdh} polygon=${gtPdh}`);
+      if (dPdl != null && gtPdl != null) rec('spx-desk: pdl vs Polygon prev low', Math.abs(dPdl - gtPdl) / gtPdl * 100 <= 0.05 ? 'PASS' : 'FAIL', `desk=${dPdl} polygon=${gtPdl}`);
+
+      // CHANGE% IDENTITY — the member-facing number must be reconstructible from the two numbers
+      // printed beside it. This is #2692's fix expressed as an assertion: the SSE overlay used to
+      // publish a change% anchored to a BAR OPEN while the tile showed a PRIOR CLOSE, and the two
+      // differ by the overnight gap. Self-consistency, so it holds off-hours too.
+      if (dPrice != null && dPdc != null && dPdc > 0 && dChg != null) {
+        const derived = (dPrice - dPdc) / dPdc * 100;
+        const gap = Math.abs(derived - dChg);
+        // OFF-HOURS THIS IS DEGENERATE and the verdict says so. With the market closed the desk's
+        // price IS the prior close, so both sides are 0 and the check passes without exercising
+        // anything. A PASS here is evidence the plumbing runs, not that the anchor is right — the
+        // assertion only has teeth once price and prior close differ.
+        const degenerate = Math.abs(dPrice - dPdc) < 1e-9;
+        rec(
+          'spx-desk: change% == (price − prior_close)/prior_close',
+          gap <= 0.02 ? (degenerate ? 'INFO' : 'PASS') : 'FAIL',
+          `served=${dChg.toFixed(4)}% derived=${derived.toFixed(4)}% Δ=${gap.toFixed(4)}pp` +
+            (degenerate ? ' — DEGENERATE: price == prior_close (market closed), so this run does not exercise the anchor' : '')
+        );
+      }
+
+      // HIGH / LOW OF DAY — RTH only. Off-hours the desk legitimately carries the last session's
+      // extremes while Polygon's intraday aggregate is empty, so a comparison there would compare
+      // two different days and fail a healthy desk.
+      if (rth) {
+        const today = todayEtYmd();
+        const bars = poly(`/v2/aggs/ticker/I:SPX/range/1/day/${today}/${today}`)?.results?.[0];
+        const gtHod = num(bars?.h), gtLod = num(bars?.l);
+        if (dHod != null && gtHod != null) rec('spx-desk: hod vs Polygon day high', Math.abs(dHod - gtHod) / gtHod * 100 <= 0.1 ? 'PASS' : 'FAIL', `desk=${dHod} polygon=${gtHod}`);
+        if (dLod != null && gtLod != null) rec('spx-desk: lod vs Polygon day low', Math.abs(dLod - gtLod) / gtLod * 100 <= 0.1 ? 'PASS' : 'FAIL', `desk=${dLod} polygon=${gtLod}`);
+      } else {
+        rec('spx-desk: hod/lod vs Polygon', 'INFO', 'skipped — market closed; the desk carries the last session\'s extremes while the intraday aggregate is empty, so this comparison would span two different days');
+      }
+
+      // EMAs — recomputed from Polygon daily closes rather than trusted. Uses the standard
+      // 2/(n+1) smoothing seeded on an SMA of the first n closes, which is what ma-math.ts does.
+      // A 1% tolerance, not equality: the desk seeds and updates its EMAs on its own bar history,
+      // and demanding an exact match would fail on a difference of seed length rather than of
+      // arithmetic.
+      const daily = poly(`/v2/aggs/ticker/I:SPX/range/1/day/${new Date(Date.now() - 200 * 864e5).toISOString().slice(0, 10)}/${todayEtYmd()}?adjusted=true&sort=asc&limit=400`)?.results;
+      const closes = Array.isArray(daily) ? daily.map((b) => num(b.c)).filter((c) => c != null && c > 0) : [];
+      const emaOf = (n) => {
+        if (closes.length < n + 5) return null;
+        const k = 2 / (n + 1);
+        let e = closes.slice(0, n).reduce((a, b) => a + b, 0) / n;
+        for (const c of closes.slice(n)) e = c * k + e * (1 - k);
+        return e;
+      };
+      for (const [label, served, want] of [['ema20', dEma20, emaOf(20)], ['ema50', dEma50, emaOf(50)]]) {
+        if (served == null || want == null) {
+          rec(`spx-desk: ${label} vs recomputed`, 'INFO', served == null ? `desk served no ${label}` : `not enough Polygon daily bars to recompute (${closes.length})`);
+          continue;
+        }
+        const pct = Math.abs(served - want) / want * 100;
+        rec(`spx-desk: ${label} vs recomputed from Polygon dailies`, pct <= 1 ? 'PASS' : 'FAIL', `desk=${served.toFixed(2)} recomputed=${want.toFixed(2)} Δ=${pct.toFixed(3)}% over ${closes.length} closes`);
+      }
+    }
+  }
+
   // --- flow (UW market-tide ground truth) ---
   if (uTideRow) rec('flow: UW market-tide latest (ground truth)', 'INFO', `date=${uTideRow.date} netCallPrem=${uTideRow.net_call_premium} netPutPrem=${uTideRow.net_put_premium} netVol=${uTideRow.net_volume}`);
 
