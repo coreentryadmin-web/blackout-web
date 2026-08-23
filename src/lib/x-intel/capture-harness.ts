@@ -154,6 +154,9 @@ async function getAuthenticatedSession(
     const email = `claude-audit-temp+${Date.now()}@blackouttrades.com`;
 
     // Create Clerk user via Backend API
+    // Generate random password (Clerk instance requires one)
+    const password = Math.random().toString(36).slice(2, 18) + "Aa1!";
+
     const createRes = await fetch("https://api.clerk.com/v1/users", {
       method: "POST",
       headers: {
@@ -163,6 +166,7 @@ async function getAuthenticatedSession(
       body: JSON.stringify({
         email_address: [email],
         phone_number: [phone],
+        password,
         public_metadata: { role: "admin", tier: "premium" },
       }),
     });
@@ -185,7 +189,8 @@ async function getAuthenticatedSession(
     });
 
     if (!tokenRes.ok) {
-      throw new Error("Failed to get sign-in token");
+      const err = await tokenRes.text();
+      throw new Error(`Failed to get sign-in token: ${err}`);
     }
 
     const { token } = (await tokenRes.json()) as { token: string };
