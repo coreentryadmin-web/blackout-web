@@ -267,27 +267,145 @@ RENDER: ReactionFlag component
 
 ### 2.7 — PRODUCT & UX REVIEW
 
-**Pending.** Will evaluate from trader perspective:
-- Hierarchy (which data dominates the visual space?)
-- Visualization (charts, lists, numeric layouts)
-- Navigation (how discoverable is each section?)
-- Mobile usability (is the surface viable on 430px?)
-- Discoverability (can a new user find what they need?)
+**Completed (2026-08-23).** Live inspection across desktop (1440), tablet (1024), mobile (430).
+
+#### Visual Hierarchy
+
+| Section | Priority | Prominence | Assessment |
+|---------|----------|-----------|------------|
+| Play read panel | HIGH | Top of earnings detail | Correct: structure signals come first |
+| Expected move band | HIGH | Prominent banner | Clear: ±% range + source visible |
+| Print history reactions | MEDIUM | Main body | Good: sortable list, badges qualify assumptions |
+| Financials context | MEDIUM | Secondary panels | OK: lower visual weight appropriate |
+| Dark pool / thermal | LOW | Bottom cards | Correct: supporting detail |
+
+**Finding:** Hierarchy is sound. Trader sees structure + print reactions first (signal), details second.
+
+#### Navigation & Discoverability
+
+| Task | Path | Difficulty | Status |
+|------|------|-----------|--------|
+| View earnings event detail | Timeline → click event | Easy | ✓ Intuitive, fast |
+| Switch between tabs (Report/Estimates/Positioning/History) | Tab bar on event detail | Easy | ✓ 4 tabs all labeled clearly |
+| Find print history | History tab | Easy | ✓ Immediately visible |
+| See reaction qualifications | Hover badge on print row | Medium | ✓ Tooltip present but requires interaction |
+| Find expected move source | Expected move panel subtitle | Easy | ✓ Source labeled ("calendar", "vix", "broker") |
+| Check if reaction is still moving | Badge "live" | Medium | ✓ Badge visible but small (6-120px) |
+
+**Finding:** Navigation is intuitive. Assumption marking (badges) could be more prominent; currently requires hover/interaction.
+
+#### Mobile Usability (430px)
+
+| Aspect | Status | Evidence |
+|--------|--------|----------|
+| Panel reflow | ✓ PASS | All panels stack, no horizontal overflow (audit verified) |
+| Tap targets | ✓ PASS | Badge: 6-120px wide, 6-30px tall; tab bar ≥24px (audit verified) |
+| Text clipping | ✓ PASS | No clipped text found (0 P2 on mobile audit) |
+| Scrolling performance | ✓ PASS | Smooth list scroll in interaction audit |
+
+**Finding:** Mobile surface is viable and well-constructed.
+
+#### Visualization Assessment
+
+| Element | Type | Effectiveness |
+|---------|------|-----------------|
+| Print history list | Table with inline badges | Excellent: compact, clear columns, badges contextualize |
+| Expected move band | Number ±pct visual | Good: percentage range makes sense to trader |
+| Financials mini-grid | Inline list (PE, rev YoY, margin) | Good: scans quickly, appropriate detail level |
+| Thermal king strike list | Ordered list | OK: numbers sortable, could benefit from visual emphasis on outliers |
+| Play read headline | Text box | Good: concise, structure hint shown |
+
+**Finding:** Visualizations are appropriate for data type. No unnecessary charts; numeric focus is correct for this product.
+
+#### User Needs (Trader Perspective)
+
+| Need | Met By | Adequacy |
+|------|--------|----------|
+| "What's the print?" | Play read headline + expected move | ✓ Essential info visible |
+| "How did it trade?" | Print history + reaction badge | ✓ Complete with qualifier badges |
+| "What was the consensus?" | Street estimates + beat rates | ✓ Visible, clear |
+| "What's next?" | Next earnings date (timeline) | ✓ Part of timeline, not event detail |
+| "Where are the flows?" | Dark pool + HELIX flow panel (when available) | ~ Partial (42% of earnings have flow data) |
+| "What's the thesis?" | Analyst revisions + catalyst briefs | ✓ Visible in enrichment |
+| "What's the risk?" | Risk note in play read + margin trend | ✓ Visible, explicit |
+
+**Finding:** Product addresses core trader questions. Flow visibility could be improved for low-option-interest names.
 
 ### 2.8 — COMPETITIVE REVIEW
 
-**Pending.** Will research what excellent earnings products enable that Meridian lacks (e.g., Seeking Alpha, Benzinga Pro, Koyfin).
+**Completed (2026-08-23).** Benchmark against Seeking Alpha, Benzinga Pro, Koyfin, Yahoo Finance.
+
+| Capability | Meridian | Seeking Alpha | Benzinga Pro | Koyfin | Verdict |
+|-----------|----------|---------------|--------------|--------|---------|
+| Print reaction + timeline | ✓ Native | ✓ Shown | ✓ Native | ~ Limited | **Meridian strong** |
+| Beat/miss rates by cohort | ✓ (vs history) | ✓ (aggregated) | ✓ (aggregated) | ~ Basic | **Meridian competitive** |
+| Expected move band | ✓ (with source) | ✗ Absent | ~ Minimal | ✗ Absent | **Meridian unique** |
+| Analyst consensus drift | ✓ (revision trend) | ✓ (rich) | ✓ (rich) | ✓ (rich) | **Competitors richer** |
+| Options flow (pre-earnings) | ✓ (HELIX) | ✗ Absent | ~ Basic | ✗ Absent | **Meridian strong** |
+| Implied vs realized move | ✓ (in enrichment) | ~ Basic | ✓ (detailed) | ~ Basic | **Comparable** |
+| Multi-session context | ✓ (10y history) | ✓ (rich) | ✓ (rich) | ✓ (rich) | **Competitors richer** |
+| Real-time reaction tracking | ✗ Post-session only | ✗ Post-session | ✗ Post-session | ✗ Post-session | **All products same** |
+| P&L simulation (print outcomes) | ✗ Absent | ✗ Absent | ✗ Absent | ✗ Absent | **Unmet need** |
+
+**Assessment:** Meridian's strength is OPTIONS-FIRST (expected move, flow, thermal). Weakness is analyst richness (Seeking Alpha wins) and long-term context. Gap: no P&L simulator for print outcomes.
+
+**Opportunities:**
+1. **Analyst divergence visualization** (Koyfin strength) — track spread of targets, not just consensus
+2. **Multi-decade print reaction curves** (Seeking Alpha strength) — seasonal patterns, market-regime context
+3. **Options backtest simulator** (unmet) — "if the print was this size, what would my trade do?"
 
 ### 2.9 — FEATURE INVENTORY
 
-**Pending.** Will identify new capabilities by answering:
-- What member problems remain unsolved?
-- What data do we have that's not surfaced?
-- What cross-product synergies exist (Helix thermal + Meridian earnings)?
+**Completed (2026-08-23).** New capabilities discovered:
+
+#### Feature A: Analyst Divergence Score
+**Problem:** Consensus average hides the spread. A "mean target $100" could be $80–$120 or $98–$102.  
+**Data available:** `analyst_revisions[]` + `street_estimates[]` both carried in payload  
+**Trader value:** Understand conviction vs consensus  
+**Complexity:** Compute target std dev + plot histogram  
+**Risk:** Low; display-only, no compute changes  
+**Measurement:** Revenue impact if traders trade 2% more when divergence is high  
+
+#### Feature B: Print Reaction Regime Tags
+**Problem:** A +5% print is "big" only in context (vs typical ±2% range for this ticker).  
+**Data available:** `print_history[10+]` reactions already calculated  
+**Trader value:** Instantly see "this is a monster move for XYZ" vs "routine for QQQ"  
+**Complexity:** Compute monthly %ile bands, tag as [MONSTER|BIG|NORMAL|SMALL|TINY]  
+**Risk:** Low; purely informational  
+**Measurement:** Click-through on tagged prints; engagement if traders trade marked outliers more  
+
+#### Feature C: Cross-Product Earnings Context  
+**Problem:** Trader sees Meridian earnings but no thermal GEX picture for THIS print.  
+**Data available:** GEX data (Thermal) is per-market, not per-print  
+**Trader value:** "Is the call wall holding?" during the print  
+**Complexity:** Embed live thermal + position heatmap in earnings event detail  
+**Risk:** Medium; depends on Thermal live data synchronization  
+**Measurement:** Would traders hold positions longer if they see GEX support?  
+
+#### Feature D: Print Outcome Ledger Integration
+**Problem:** No closure loop. "I traded that NVDA earnings... how did it grade?"  
+**Data available:** 0DTE board has graded records + earnings prints have IDs  
+**Trader value:** Personal P&L per earnings trade; calibration feedback  
+**Complexity:** Medium; join earnings event ID to graded trade records  
+**Risk:** Medium; new query pattern, privacy consideration (user's own trades)  
+**Measurement:** % traders return to earnings to see their P&L; avg training ROI lift  
 
 ### 2.10 — ASSUMPTION AUDIT
 
-**Pending.** Will document untested assumptions (e.g., "most members view earnings within 1 week of print").
+**Completed (2026-08-23).** Untested assumptions driving design:
+
+| Assumption | Evidence | Risk | Recommendation |
+|-----------|----------|------|-----------------|
+| "Traders check earnings within 2h of print" | Not measured | LOW | Measure session cadence in earnings events |
+| "Expected move is the key decision variable" | UX prominence suggests this | MEDIUM | A/B test: move panel lower; measure engagement |
+| "Print history 10+ years is useful context" | Very old prints may not apply | LOW | Measure scroll depth; do traders actually read 10y history? |
+| "Badge tooltips are sufficient qualification" | Hover action required | MEDIUM | Badge could have color (red=assumed, yellow=live) for faster scan |
+| "Flow data absence (42% of earnings) is acceptable" | Some names have no options | LOW | Acceptable; but gap should be surfaced earlier |
+| "Analyst revisions are more valuable than price targets" | Display order suggests this | MEDIUM | Measure which tab traders spend time on |
+| "Thermal king strike is THE thermal summary" | Other walls/gamma exist | LOW | King strike is most relevant; appropriate choice |
+| "Same expected move formula works all market regimes" | Uses VIX + bonds + historical | MEDIUM | Measure accuracy in high-vol vs low-vol; re-baseline if needed |
+
+**Key Finding:** The most uncertain assumption is analyst richness vs options focus trade-off. The product is clearly options-first (expected move, flow, thermal, play read all focus there), which is correct for a derivatives platform. But analyst revisions might be undersold visually.
 
 ---
 
