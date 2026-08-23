@@ -42,9 +42,57 @@ function envFlag(name: string): boolean {
   return raw === "1" || raw === "true" || raw === "on";
 }
 
+const TRUTHY = new Set(["1", "true", "on", "yes"]);
+const FALSEY = new Set(["0", "false", "off", "no"]);
+const norm = (v: string | undefined): string | null => {
+  const t = v?.trim().toLowerCase();
+  return t ? t : null;
+};
+
 /** Emergency kill-switch: set to revert to the static floor (today's pre-2026-08-04 behavior)
- *  without a redeploy, in case dynamic sizing misbehaves live. Default OFF (dynamic-N is live). */
+ *  without a redeploy, in case dynamic sizing misbehaves live. Default OFF (dynamic-N is live).
+ *
+ *  NOTE: module-eval snapshot, kept for back-compat. Prefer {@link resolveBreakoutDynamicCapDisabled},
+ *  which reads at CALL time and also honours the bare `BREAKOUT_DYNAMIC_CAP` name. */
 export const BREAKOUT_DYNAMIC_CAP_DISABLED = envFlag("BREAKOUT_DYNAMIC_CAP_DISABLED");
+
+/**
+ * Resolve the dynamic-cap kill-switch from BOTH env names.
+ *
+ * WHY THIS EXISTS (NH-2, found 2026-08-22 by the Night Hawk Phase 0 map's rule-8 deploy sweep).
+ * Production ships `BREAKOUT_DYNAMIC_CAP="1"` in `blackout-production/app/env`, and **nothing read
+ * it** — the only name this module consulted was `BREAKOUT_DYNAMIC_CAP_DISABLED`. Dynamic-N was on
+ * anyway, because `disabled` resolves false when the kill-switch is unset, so the deployed value
+ * happened to match the evident intent **by coincidence rather than by the flag**.
+ *
+ * That is a latent trap, not a live defect: the failing operation is the INVERSE one. An operator
+ * reaching for the obvious name to turn dynamic sizing OFF — `BREAKOUT_DYNAMIC_CAP=0` — would
+ * change nothing, get no error, and have no way to tell. During an incident, on the emergency
+ * revert path, is the worst possible time to discover a kill-switch spelled the way you expect is
+ * inert.
+ *
+ * PRECEDENCE, and it is deliberate: `BREAKOUT_DYNAMIC_CAP_DISABLED` wins OUTRIGHT. It is the
+ * emergency revert, and a stale `BREAKOUT_DYNAMIC_CAP=1` left in the deploy config must never be
+ * able to defeat someone actively disabling the feature. The bare name is only consulted when the
+ * kill-switch is absent.
+ *
+ * Behaviour is UNCHANGED for every value deployed today: kill-switch unset + bare "1" → enabled,
+ * exactly as before this function existed.
+ *
+ * Pure: takes the env explicitly so a test can exercise every combination without depending on
+ * module-eval order.
+ */
+export function resolveBreakoutDynamicCapDisabled(
+  env: Record<string, string | undefined> = process.env
+): boolean {
+  // Emergency revert wins, unconditionally.
+  const killSwitch = norm(env.BREAKOUT_DYNAMIC_CAP_DISABLED);
+  if (killSwitch != null && TRUTHY.has(killSwitch)) return true;
+  // Otherwise honour the natural name an operator is most likely to reach for.
+  const bare = norm(env.BREAKOUT_DYNAMIC_CAP);
+  if (bare != null && FALSEY.has(bare)) return true;
+  return false;
+}
 
 /**
  * Size the BREAKOUT chain-fetch cap from the qualifying pool's breadth. Pure, deterministic.
@@ -61,7 +109,9 @@ export function resolveBreakoutCandidateCap(args: {
   disabled?: boolean;
 }): number {
   const floor = args.floor ?? DEFAULT_FLOOR;
-  const disabled = args.disabled ?? BREAKOUT_DYNAMIC_CAP_DISABLED;
+  // Call-time read (not the module-eval const) so a deploy-time env value is honoured and so the
+  // bare BREAKOUT_DYNAMIC_CAP name works — see resolveBreakoutDynamicCapDisabled.
+  const disabled = args.disabled ?? resolveBreakoutDynamicCapDisabled();
   if (disabled) {
     return floor;
   }
