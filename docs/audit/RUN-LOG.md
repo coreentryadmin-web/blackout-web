@@ -648,3 +648,43 @@ first, per #2633.
 **Not validated here.** Nothing in this pass touches live market data: run on a Saturday with the
 tape closed. Correctness-against-Polygon, the rail accumulating, the UI at pixels, and the Largo
 truncation probe are all Phase 1 and queued in `VECTOR-MAP.md` §10.
+
+
+---
+
+## 2026-08-23 — Vector live UI interaction pass, desktop + mobile (Vector lane) — PRODUCT GREEN
+
+**Severity.** — (no product defect found; the harness defect is FINDINGS 2026-08-23 [P2 Vector/tooling])
+
+**Why it ran.** `_COMMON.md` rule 6b was corrected (#2650) to full product ownership, and states
+explicitly that live UI validation is **not** gated to market hours — "a page renders, a panel
+overlaps, a click misbehaves whether or not the tape is moving." The Vector lane had never run one.
+
+**Method.** `scripts/audit/vector-ui-walkthrough.cjs` against production through the CONNECT-tunnel
+Chromium, desktop 1680×1050 and `--mobile` (iOS shell), NVDA. Sixteen states: initial load, three
+timeframes, three DTE horizons, both lenses, ladder reset, indicator menu, replay, and all four
+chart views. ECS confirmed settled first (`rolloutState: COMPLETED`, 8/8) — the deploy for #2649 /
+#2650 was still rolling when the window opened, and shooting mid-rollout produces transport
+failures that read as a broken page.
+
+**Desktop: 16/16 ok, 0 failing, 175 requests routed, 0 fail.** Matrix rail populated across every
+state (24–68 rows, correctly denser on the 1D/1W/4H surfaces), chart canvas with real pixels in all
+sixteen, play card headline present throughout, cross-check of rendered strikes against
+`/api/market/vector/gex-ladder` clean at every horizon. Every control reacted: timeframe select, DTE
+toggles, GEX lens, ladder reset, indicator menu, replay, and all four chart views.
+
+**One control deliberately inert, reported as such.** The VEX lens is `disabled` when
+`vexAvailable` is false (`VectorLensToggle.tsx:51`) — correct off-hours behaviour, now reported
+NOT EXERCISED instead of FAILED.
+
+**Mobile: 0 failing, 10 of 16 controls NOT RENDERED on the default segment.** The iOS shell
+collapses the desk into a Chart / Helix / Matrix / Scanner switcher, and the harness never changes
+segment — so the timeframe select, DTE toggles, lens toggles, indicator menu and replay were not
+reached. Recorded as a **coverage gap, not a pass**: the mobile interaction layer remains
+unverified. Ruled out while looking: the `pulse` segment id is labelled "Helix" and renders the
+tape, so no mobile segment is empty despite `VectorPulse` being unmounted.
+
+**What this pass does NOT claim.** Nothing about whether the numbers are RIGHT — the tape was
+closed (Saturday, "AUG 21 CLOSE" in the header, which is the correct prior session). This is a
+render-and-interaction pass. Correctness against Polygon on a moving tape is still owed, as is the
+RTH truncation probe for #2649.

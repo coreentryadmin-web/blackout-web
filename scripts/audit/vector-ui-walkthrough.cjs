@@ -64,7 +64,7 @@ const STEPS = [
   { id: "06-dte-weekly", label: "DTE weekly", sel: "[data-testid=vector-dte-weekly]", settle: 8000, horizon: "weekly", effect: { kind: "active", sel: "[data-testid=vector-dte-weekly]" } },
   { id: "07-lens-vex", label: "lens VEX", sel: "[data-testid=vector-lens-vex]", settle: 6000, effect: { kind: "active", sel: "[data-testid=vector-lens-vex]" } },
   { id: "08-lens-gex", label: "lens GEX", sel: "[data-testid=vector-lens-gex]", settle: 6000, effect: { kind: "active", sel: "[data-testid=vector-lens-gex]" } },
-  { id: "09-ladder-reset", label: "ladder reset-to-spot", sel: "[data-testid=vector-gex-ladder-reset]", settle: 2500, effect: { kind: "spotInLadderView" } },
+  { id: "09-ladder-reset", label: "ladder reset-to-spot", sel: "[data-testid=vector-odte-matrix-reset]", settle: 2500, effect: { kind: "spotInLadderView" } },
   { id: "10-indicators", label: "indicator menu", sel: "[data-testid=vector-indicator-trigger]", settle: 2500, effect: { kind: "expanded", sel: "[data-testid=vector-indicator-trigger]" } },
   { id: "11-replay", label: "replay toggle", sel: "[data-testid=vector-replay-toggle]", settle: 4000, effect: { kind: "exists", sel: "[data-testid=vector-replay-play]" } },
 ];
@@ -76,10 +76,10 @@ const STEPS = [
  * broken for correctly showing the intraday chart. The harness was wrong, not the page.
  */
 const DAILY_STEPS = [
-  { id: "12-view-1D", label: "chart view 1D", select: ["[data-testid=vector-chart-view-select]", "1D"], settle: 9000, daily: true, effect: { kind: "selectValue", sel: "[data-testid=vector-chart-view-select]", value: "1D" } },
-  { id: "13-view-1W", label: "chart view 1W", select: ["[data-testid=vector-chart-view-select]", "1W"], settle: 9000, daily: true, effect: { kind: "selectValue", sel: "[data-testid=vector-chart-view-select]", value: "1W" } },
-  { id: "14-view-4H", label: "chart view 4H", select: ["[data-testid=vector-chart-view-select]", "4H"], settle: 9000, daily: true, effect: { kind: "selectValue", sel: "[data-testid=vector-chart-view-select]", value: "4H" } },
-  { id: "15-view-intraday", label: "chart view Intraday", select: ["[data-testid=vector-chart-view-select]", "intraday"], settle: 9000, daily: false, effect: { kind: "selectValue", sel: "[data-testid=vector-chart-view-select]", value: "intraday" } },
+  { id: "12-view-1D", label: "chart view 1D", sel: "[data-testid=vector-chart-view-1d]", settle: 9000, daily: true, effect: { kind: "active", sel: "[data-testid=vector-chart-view-1d]" } },
+  { id: "13-view-1W", label: "chart view 1W", sel: "[data-testid=vector-chart-view-1w]", settle: 9000, daily: true, effect: { kind: "active", sel: "[data-testid=vector-chart-view-1w]" } },
+  { id: "14-view-4H", label: "chart view 4H", sel: "[data-testid=vector-chart-view-4h]", settle: 9000, daily: true, effect: { kind: "active", sel: "[data-testid=vector-chart-view-4h]" } },
+  { id: "15-view-intraday", label: "chart view Intraday", sel: "[data-testid=vector-chart-view-intraday]", settle: 9000, daily: false, effect: { kind: "active", sel: "[data-testid=vector-chart-view-intraday]" } },
 ];
 
 const BROKEN_TEXT = /something went wrong|we couldn['’]t load|failed to load|unhandled runtime error|application error/i;
@@ -135,7 +135,18 @@ async function verifyEffect(page, effect) {
       case "active": {
         const el = q(e.sel);
         if (!el) return `${e.sel} vanished`;
-        return isActive(el) ? null : `${e.sel} did not become active — the click had no effect`;
+        if (isActive(el)) return null;
+        // A DISABLED control that did not activate is the product working, not failing. The VEX
+        // lens disables itself when `vexAvailable` is false (VectorLensToggle.tsx:51) precisely so
+        // a member cannot select a lens with no data behind it — reporting that as "the click had
+        // no effect" turns correct absence-handling into a defect, which is the same
+        // absence-vs-fault confusion this repo keeps paying for. Report it as NOT EXERCISED, which
+        // is the honest verdict: the control was there, it was deliberately inert, and the
+        // interaction it guards remains unverified.
+        if (el.hasAttribute("disabled") || el.getAttribute("aria-disabled") === "true") {
+          return { skipped: `${e.sel} is disabled (data unavailable) — deliberately inert, NOT exercised` };
+        }
+        return `${e.sel} did not become active — the click had no effect`;
       }
       case "expanded": {
         const el = q(e.sel);
@@ -146,8 +157,8 @@ async function verifyEffect(page, effect) {
         return q(e.sel) ? null : `${e.sel} never appeared`;
       case "spotInLadderView": {
         // The reset button's whole job: put the spot marker back inside the visible rail.
-        const list = q(".vector-gex-ladder-rows");
-        const spot = q(".vector-gex-ladder-spot");
+        const list = q(".vector-odte-matrix-table");
+        const spot = q(".vector-odte-matrix-spot-row");
         if (!list || !spot) return "ladder list or spot marker missing";
         const l = list.getBoundingClientRect();
         const s = spot.getBoundingClientRect();
@@ -177,10 +188,33 @@ async function verifyEffect(page, effect) {
  * It deliberately does NOT try to judge whether the underlying numbers are the RIGHT numbers.
  * That is the invariant harness's job (relationships between values) and, past that, a human's.
  */
+/**
+ * Run an in-page evaluate that survives a client-side navigation.
+ *
+ * `/vector` is CLIENT-hydrated: `VectorPageClient` resolves the ticker and calls `router.replace`,
+ * and the Suspense boundary swaps the tree under it. An `evaluate` issued between
+ * `domcontentloaded` and that settle dies with "Execution context was destroyed, most likely
+ * because of a navigation" — which killed the whole run before a single state was asserted, on 2
+ * of 3 attempts. It is a RACE, so it passed the first time it was written and looked fine.
+ *
+ * One retry is the right shape: the context is destroyed exactly once, by the replace. If it dies
+ * twice the cause is not this race and the error should surface rather than be swallowed.
+ */
+async function evaluateSurvivingNav(page, fn, arg) {
+  try {
+    return await page.evaluate(fn, arg);
+  } catch (e) {
+    if (!/Execution context was destroyed/i.test(e?.message ?? "")) throw e;
+    await page.waitForTimeout(2000);
+    return page.evaluate(fn, arg);
+  }
+}
+
 async function captureApiBaseline(page, ticker, horizons) {
   const out = {};
   for (const h of horizons) {
-    out[h] = await page.evaluate(
+    out[h] = await evaluateSurvivingNav(
+      page,
       async (q) => {
         const r = await fetch(`/api/market/vector/gex-ladder?ticker=${encodeURIComponent(q.t)}&dte=${encodeURIComponent(q.h)}`);
         if (!r.ok) return { error: `HTTP ${r.status}` };
@@ -229,9 +263,9 @@ async function readRenderedLadder(page) {
       const all = [...document.querySelectorAll(sel)];
       return all.find((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; }) ?? null;
     };
-    const head = pick(".vector-gex-ladder-sub");
+    const head = pick(".vector-odte-matrix-spot");
     const spotTxt = head ? (head.textContent || "").match(/[\d,]+\.?\d*/) : null;
-    const strikes = [...document.querySelectorAll(".vector-gex-ladder-rows > *")]
+    const strikes = [...document.querySelectorAll(".vector-odte-matrix-row")]
       .map((el) => Number(String(el.textContent || "").trim().split(/\s+/)[0].replace(/,/g, "")))
       .filter((n) => Number.isFinite(n));
     return { spot: spotTxt ? Number(spotTxt[0].replace(/,/g, "")) : null, strikes };
@@ -247,7 +281,7 @@ async function inspect(page, { daily }) {
       h: c.height,
     }));
     const chart = document.querySelector(isDaily ? "[data-testid=vector-daily-chart]" : ".vector-chart-terminal-chart");
-    const ladderRows = document.querySelectorAll(".vector-gex-ladder-rows > *").length;
+    const ladderRows = document.querySelectorAll(".vector-odte-matrix-row").length;
     const playCard = document.querySelector("[data-testid=vector-play-card]");
     const nav = document.querySelector(".nav-signin") ? "signed-out" : "signed-in";
     return {
@@ -260,10 +294,16 @@ async function inspect(page, { daily }) {
       panels: {
         play: Boolean(document.querySelector("[data-testid=vector-play-card]")),
         regime: Boolean(document.querySelector("[data-testid=vector-regime-banner]")),
-        ladder: Boolean(document.querySelector(".vector-gex-ladder")),
+        ladder: Boolean(document.querySelector(".vector-odte-matrix-rail")),
         technicals: Boolean(document.querySelector(".vector-technicals-panel, .vector-technicals")),
         alerts: Boolean(document.querySelector(".vector-alerts-panel, .vector-alert-rules")),
-        pulse: Boolean(document.querySelector(".vector-pulse")),
+        // NOT `.vector-pulse`. `VectorPulse.tsx` (528 lines) is imported by no component and is
+        // not exported from the feature index — it cannot render on any shell, so asserting it
+        // produced a FAIL on every state of a healthy desk. Its TECHNICALS card was extracted into
+        // `VectorTechnicalsPanel` (see that file's header), which IS mounted, so that is what a
+        // side-panel check should look for. Whether the rest of VectorPulse was retired on purpose
+        // or orphaned is a product question, raised separately — not something to assert here.
+        technicals: Boolean(document.querySelector(".vector-technicals-panel")),
       },
       ladderRows,
       // The card's first line is the grade badge ("B"), which is present even when the engine
@@ -370,11 +410,21 @@ async function run(session) {
 
   try {
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
+    // Wait for the desk to actually MOUNT before evaluating anything in it. `domcontentloaded`
+    // fires on the SSR shell, which on this route is a Suspense fallback — the toolbar is the
+    // first thing that exists only once VectorPageClient has hydrated and settled its route.
+    // Without this the baseline evaluate races `router.replace` (see evaluateSurvivingNav).
+    await page
+      .waitForSelector("[data-testid=vector-page-toolbar]", { timeout: 45000 })
+      .catch(() => {
+        // Not fatal on its own — the retry below still has a chance, and a genuinely missing
+        // toolbar will surface as a real assertion failure with a screenshot attached.
+      });
     // Inside the auth window: baselines first, before any settle time is spent.
     baseline = await captureApiBaseline(page, TICKER, ["0dte", "weekly", "monthly"]);
-    liveSession = await page
-      .evaluate(() => !document.body.innerText.includes("CLOSE"))
-      .catch(() => false);
+    liveSession = await evaluateSurvivingNav(page, () => !document.body.innerText.includes("CLOSE")).catch(
+      () => false
+    );
 
     // Each step's own `daily` wins. Blanket-stamping `daily: true` across DAILY_STEPS is what made
     // "return to Intraday" assert for the daily container and report the desk broken.
@@ -423,9 +473,18 @@ async function run(session) {
 
       const snap = await inspect(page, { daily: step.daily });
       const fails = acted === "missing" ? [] : assertState(snap, { daily: step.daily, mobile: MOBILE, replay: step.id === "11-replay" });
+      let effectSkipped = null;
       if (acted !== "missing" && step.effect) {
         const effectFail = await verifyEffect(page, step.effect);
-        if (effectFail) fails.push(`no effect: ${effectFail}`);
+        // `verifyEffect` returns a STRING for a real failure and `{skipped}` for a control that was
+        // deliberately inert (disabled because its data is unavailable). Those are different
+        // verdicts and must not collapse into one — a disabled control is the product behaving,
+        // and reporting it as a defect is how a harness earns the right to be ignored.
+        if (effectFail && typeof effectFail === "object" && effectFail.skipped) {
+          effectSkipped = effectFail.skipped;
+        } else if (effectFail) {
+          fails.push(`no effect: ${effectFail}`);
+        }
       }
       // A step that changes the DTE toggle changes which ladder scope the desk should be showing;
       // carry it forward so the cross-check asks the API for the scope actually on screen.
@@ -444,6 +503,8 @@ async function run(session) {
         label: step.label,
         acted,
         skipped: acted === "missing",
+        /** A control that was present and deliberately inert. Reported, never counted as a pass. */
+        effectSkipped,
         fails,
         ladderRows: snap.ladderRows,
         canvasPx: snap.biggestCanvas,
@@ -487,6 +548,7 @@ async function run(session) {
       );
       for (const f of r.fails) console.log(`         ${f}`);
       if (r.skipped) console.log(`         control not rendered — NOT exercised`);
+      if (r.effectSkipped) console.log(`         ${r.effectSkipped}`);
     }
   }
 
