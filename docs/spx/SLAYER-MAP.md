@@ -602,6 +602,35 @@ belongs with the calibrated-confidence work, not the boundary fix.
 
 Ranked. These are the `UNKNOWN`s above, restated as tasks.
 
+0a. ~~**Cross-check the desk's own numbers against a provider.**~~ **STARTED 2026-08-23 — the gap
+   was smaller than "wait for RTH" made it look.** `data-validator.mjs` already fetched
+   `/api/market/spx/desk`, but only to feed the malformed-number scan; not one of the desk's own
+   fields had ever been compared to Polygon by this lane. It now carries an **SPX DESK vs Polygon**
+   block, built so most of it is decidable **off-hours** — an instrument that can only be exercised
+   in the one scarce RTH window is an instrument nobody has debugged.
+
+   **First run (market closed): every check PASS.**
+
+   | check | desk | Polygon | Δ |
+   |---|---|---|---|
+   | price | 7674.37 | 7674.37 | 0.000% |
+   | prior_close | 7674.37 | 7674.37 | 0.0000% |
+   | pdh | 7697.11 | 7697.110000000001 | — |
+   | pdl | 7660.06 | 7660.06 | — |
+   | ema20 | 7658.03 | 7658.02 *(recomputed from 138 dailies)* | 0.000% |
+   | ema50 | 7551.56 | 7551.71 *(recomputed)* | 0.002% |
+
+   The EMA result is the strongest: an independent recomputation from raw daily closes landing
+   within 0.002% is evidence the math is right, not merely that the field returns a number.
+
+   **What it does NOT establish, and says so in its own output rather than leaving it to the
+   reader:** off-hours the desk's price IS the prior close, so the change%-identity check has both
+   sides at 0 and passes without exercising anything — exactly the assertion #2692 was about. It
+   reports `INFO … DEGENERATE`, not PASS. `hod`/`lod` are skipped with their reason. **VWAP is
+   deliberately absent**: SPX index bars carry no volume and the desk uses a SPY-volume proxy, so a
+   reference value must re-perform the same merge — that belongs with #2636's validation, on the
+   market-open battery.
+
 0. ~~**Audit every SPX-relevant key in `blackout-production/app/env` against its code default.**~~
    **DONE — and made reproducible rather than snapshotted.** `scripts/audit/spx-env-drift.mjs`
    scans the SPX surface for `process.env.X`, extracts each one's code default from the source,
