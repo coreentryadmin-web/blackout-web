@@ -280,10 +280,42 @@ Actual TTL is 1s. §2.
 environment that was **fully decommissioned on 2026-07-25** (CLAUDE.md). The comments are not
 merely stale prose — they gate live code paths. §7.1.
 
-### 6.4 Not re-checked in this pass
+### 6.4 The eleven `PLAYBOOK-*.md` documents — audited 2026-08-22
 
-The eleven `docs/spx/PLAYBOOK-*.md` documents were **not** line-audited. That is the largest
-remaining Phase 0 gap and the next increment of this file. UNKNOWN.
+**The result is not what the shape of this section predicted.** These documents are *accurate about
+the code* and *false about the world*, often in the same paragraph — which is worse than being
+uniformly stale, because nothing tells a reader which half they are looking at.
+
+**What held up.** Every mechanically checkable engineering claim was correct at `9b20b63c`:
+
+- `PLAYBOOK-ARCHITECTURE-STATUS.md` §6's per-playbook matrix — **all 70 cells** match
+  `PLAYBOOK_SURFACE_STATUS`.
+- §16's hard constants — wall proximity 10pts, MTF buffer 1.0, flow materiality 100k — all match
+  `spx-play-config.ts`.
+- §17's code map — every module listed exists.
+- Referenced source paths across all eleven — 37 of 40 exist; the 3 missing are staging artifacts.
+
+**What is false.** Every one of the eleven references staging (~154 times), decommissioned
+2026-07-25. The worst is concentrated in the file that calls itself the **"Single Source of
+Truth"** and tells the reader to *"start here for current truth"*:
+
+| Claim in `PLAYBOOK-ARCHITECTURE-STATUS.md` | Reality |
+|---|---|
+| **Repo:** `coreentryadmin-web/blackout-web-sandbox` | Not this repo. This is `blackout-web`. |
+| `→ https://staging.blackouttrades.com` | Decommissioned 2026-07-25. |
+| *"do not merge to **Railway** prod"* | There is no Railway. All infra is AWS ECS. |
+| §9 *"Prod — Playbook live gate **off** unless `PLAYBOOK_LIVE_GATE=1`"* | It **is** `1` in production. The sentence is literally true and practically inverted. |
+| §9 *"Infra: `apply-staging-env-overrides.mjs` sets `PLAYBOOK_LIVE_ALLOWLIST`"* | Unset in production; the allowlist resolves to `null`. |
+| §18 `npm run validate:staging-playbook` | Removed from `package.json` with staging. |
+
+Each file now carries a banner naming exactly these, so a reader cannot take the environment
+claims at face value. **Do not delete these documents** — the design intent and per-playbook detail
+in them is the best record that exists, and it is correct.
+
+**Enforced going forward:** `src/features/spx/lib/playbook-status-doc-sync.test.ts` asserts §6's
+matrix still matches `PLAYBOOK_SURFACE_STATUS` (and that a parse finding zero rows fails rather
+than passing vacuously). The half that can be checked mechanically now is, so it cannot silently
+join the half that rotted.
 
 ---
 
@@ -464,8 +496,9 @@ Ranked. These are the `UNKNOWN`s above, restated as tasks.
    Without credentials the script reports **SKIPPED, never GREEN** — "I could not look" must not
    render as "clean".
 
-1. **Line-audit the eleven `docs/spx/PLAYBOOK-*.md` documents** and mark what is now wrong (§6.4).
-   Largest remaining gap.
+1. ~~**Line-audit the eleven `docs/spx/PLAYBOOK-*.md` documents**~~ **DONE — see §6.4.** Accurate
+   about the code, false about the world; all eleven bannered, and §6's matrix is now ratcheted
+   against its source constant.
 2. **Build a calibrated confidence from `spx-play-outcomes`, out-of-sample validated** — and fix
    `spx-play-engine.ts:1633`'s `?? 0` fallback with it. The Largo boundary now omits the
    uncalibrated number, which is honest but not an answer; the member UI still renders it.
