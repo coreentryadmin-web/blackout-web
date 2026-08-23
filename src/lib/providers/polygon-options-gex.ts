@@ -3701,6 +3701,7 @@ function emptyHeatmap(
     change_pct: ctx?.changePct ?? 0,
     asof: new Date().toISOString(),
     expiries: [],
+    near_term_expiries: [],
     strikes: [],
     max_pain: null,
     gex: {

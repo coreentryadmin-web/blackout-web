@@ -225,6 +225,33 @@ cases. Presence alone would only have proven the key exists.
 close — stamped 03:31 ET Sunday. Three different times that previously collapsed into one UTC
 instant, now individually readable.
 
+## 2026-08-23 — [Thermal] Post-deploy validation of §9.3 session anchor — PASS, and the age field is computed not merely present
+
+**Severity.** — (no defect found)
+
+**Why it ran.** #2683 (`ced99a71`) added `as_of_et` / `session_date` / `market_session` /
+`matrix_age_sec` / `freshness` to `GexPositioning` and `GexHeatmapForLargo`. Deploy `ea446b2d`
+completed **success** 07:12:57Z and carries it — ancestry checked against each of the five most
+recent runs, only that one qualifies. Measured 07:31Z via `/api/market/gex-positioning`, which reads
+the SAME `getGexPositioning` object the Largo tools do, so the contract is verified without Largo
+(still degraded platform-wide).
+
+| ticker | `as_of_et` | `session_date` | `market_session` | `matrix_age_sec` | independent cross-check | `freshness` |
+|---|---|---|---|---|---|---|
+| SPY | 2026-08-23 03:31 ET | 2026-08-23 | CLOSED | 154 | **154** | cached |
+| SPX | 2026-08-23 03:31 ET | 2026-08-23 | CLOSED | 50 | **50** | cached |
+| NVDA | 2026-08-23 03:31 ET | 2026-08-23 | CLOSED | 31 | **31** | cached |
+
+Real ET clock at measurement: **Sun Aug 23 03:31 EDT**. Matches on all three.
+
+**The cross-check column is the point.** `matrix_age_sec` was recomputed independently from each
+payload's own `asof` rather than trusting the field's presence, and agreed exactly in all three
+cases. Presence alone would only have proven the key exists.
+
+**SPY is the finding in one row:** a matrix 154 seconds old, carrying `spot: 765.72` — Friday's
+close — stamped 03:31 ET Sunday. Three different times that previously collapsed into one UTC
+instant, now individually readable.
+
 ## 2026-08-23 — [Thermal] Post-deploy validation of the SPX 0DTE mislabel fix — PASS, the two code paths now agree
 
 **Severity.** — (no defect found; this closes a regression I shipped earlier tonight)
