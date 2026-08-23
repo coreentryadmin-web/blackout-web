@@ -63,11 +63,47 @@ function routeBucketVerdict(route) {
     };
   }
 
+  /**
+   * DOMINANCE IS TWO DIFFERENT FACTS, and conflating them makes this check cry wolf.
+   *
+   * The threshold was written pre-fix, when one bucket at ~100% could only mean the §9.8
+   * vocabulary bug — everything falling to `OTHER` for want of a word. After the fix it fired
+   * again on the very first post-deploy run, this time on `UNREPORTED at 95%`, and reported it as
+   * "the §9.8 signature". That was wrong: §9.8 is fixed, and 95% is the honest number.
+   *
+   * WHY 95% IS HONEST. The panel's `pct` is a share of PREMIUM, not of prints. The routeless
+   * SPX/SPY feed (HELIX-MAP §4A) carries 92.1% of all premium on the tape while being ~70-79% of
+   * rows, so a premium-weighted `UNREPORTED` near 95% is exactly what a correct panel shows. A
+   * harness that fails on that is failing on reality, and would be switched off inside a week.
+   *
+   * So the two cases are separated by WHICH bucket dominates:
+   *   - `OTHER` dominating  -> a vocabulary regression. Rules exist and we have no word for them.
+   *     That is a code defect and stays a FAIL.
+   *   - `UNREPORTED` dominating -> prints carry no rule at all. Honest, and a product/data
+   *     condition rather than a regression — UNLESS it is the ONLY bucket, which would mean the
+   *     rule-carrying feed has stopped arriving entirely. That stays a FAIL.
+   */
   const dominant = entries.find(([, v]) => Number(v?.pct) >= DOMINANT_BUCKET_PCT);
   if (dominant) {
+    const [name, v] = dominant;
+    if (name === "UNREPORTED") {
+      if (entries.length === 1) {
+        return {
+          status: "FAIL",
+          detail: `Route Breakdown is UNREPORTED and nothing else (${v.pct}%) — the rule-carrying feed has stopped arriving`,
+        };
+      }
+      return {
+        status: "PASS",
+        detail:
+          `Route Breakdown led by UNREPORTED at ${v.pct}% of PREMIUM, with ${entries.length - 1} other bucket(s) present ` +
+          `— expected: the routeless index feed carries ~92% of tape premium. Not a regression`,
+      };
+    }
     return {
       status: "FAIL",
-      detail: `Route Breakdown is one bar: ${dominant[0]} at ${dominant[1].pct}% (>= ${DOMINANT_BUCKET_PCT}%) — the §9.8 signature`,
+      detail: `Route Breakdown is one bar: ${name} at ${v.pct}% (>= ${DOMINANT_BUCKET_PCT}%)` +
+        (name === "OTHER" ? " — the §9.8 signature: rules exist that we have no word for" : ""),
     };
   }
   const shown = entries.map(([k, v]) => `${k} ${v.pct}%`).join(", ");
