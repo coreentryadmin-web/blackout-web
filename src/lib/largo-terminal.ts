@@ -11,7 +11,7 @@ import {
 import { largoAvailable, largoClaudeEnabled } from "@/lib/ai-env";
 import { randomUUID } from "node:crypto";
 import { dbConfigured } from "@/lib/db";
-import { LARGO_SYSTEM_PROMPT, getLargoSystemPrompt } from "@/lib/largo/system-prompt";
+import { getLargoSystemPrompt } from "@/lib/largo/system-prompt";
 import { LARGO_TOOL_DEFS } from "@/lib/largo/tool-defs";
 import { runLargoTool } from "@/lib/largo/run-tool";
 import { detectIntentCategory, selectToolsForIntent } from "@/lib/largo/question-intent-category";
@@ -124,17 +124,11 @@ import { largoToolLoopBudgetMs } from "@/lib/providers/config";
 import { buildLargoActions, type LargoAction } from "@/lib/largo/largo-actions";
 import {
   initializeMemory,
-  updateMemoryWithConsensus,
-  updateMemoryWithLevels,
-  recordDecisionInMemory,
   formatMemoryForSystemPrompt,
   suggestTickerFromQuestion,
-  shouldReuseCachedConsensus,
   type ConversationMemoryState,
 } from "@/lib/largo/conversation-memory";
-import { buildResponseComponents, formatComponentsAsMarkdown } from "@/lib/largo/response-builder";
-import { suggestFollowUpQuestions, formatFollowUpSuggestions } from "@/lib/largo/follow-up-question-generator";
-import { orchestrateAdaptiveResponse } from "@/lib/largo/adaptive-response-orchestrator";
+import { buildResponseComponents } from "@/lib/largo/response-builder";
 import {
   fetchLargoSessionMetadata,
   maybePersistWatchlistFromQuestion,
@@ -995,7 +989,7 @@ export async function runLargoQuery(
 
   try {
     // Conversation memory evolves through the turn: fetch → tool results → record decisions
-    let conversationMemory = initialMemory;
+    // (Within-turn tracking only; multi-turn persistence deferred to Phase 4b)
 
     // Mark the prefetch/loop boundary so the phase split below can attribute the wall clock. See
     // turn-phase-timings.ts: everything before this line was deterministic prefetch (no model call).
@@ -1150,46 +1144,8 @@ export async function runLargoQuery(
     // The turn id rides on the envelope so a follow-up can name the exact turn it refers to.
     if (envelope && turnId != null) envelope.turnId = turnId;
 
-    // PHASE 4 INTEGRATION: Build response components from detected intent
-    // The intent was already detected in buildDynamicSystem; use it for component generation
-    const binaryIntent = analyzeLargoQuestion(question, history.slice(0, -1));
-    const intentCategory = detectIntentCategory(question, binaryIntent);
-    let responseComponents: Awaited<ReturnType<typeof buildResponseComponents>> | null = null;
-    if (envelope && intentCategory) {
-      try {
-        // Build a minimal orchestration result for component generation
-        const orchestrationResult = {
-          intentCategory: {
-            category: intentCategory.category,
-            confidence: intentCategory.confidence,
-            responseDepth: intentCategory.responseDepth,
-            requiredSystems: intentCategory.requiredSystems,
-            optionalSystems: intentCategory.optionalSystems ?? [],
-            needsDeskRead: intentCategory.needsDeskRead,
-            needsHistoricalContext: intentCategory.needsHistoricalContext,
-          },
-          consensus: {
-            reads: [],
-            agreement: { voting: 0, bullish: 0, bearish: 0, neutral: 0, verdict: "neutral", direction: "neutral", averageStrength: 0 },
-            contradictions: [],
-          },
-          deskRead: undefined,
-          selectedTools: { required: toolsUsed, optional: [] },
-          envelopeStructure: {
-            headlineOnly: false,
-            includeSystemReads: true,
-            includeLevels: false,
-            includeDeskRead: false,
-            includeScenarios: false,
-            includeFollowUps: false,
-          },
-          toolResults: {},
-        };
-        responseComponents = buildResponseComponents(orchestrationResult as any, envelope.headline ?? "");
-      } catch (err) {
-        console.warn("[largo] response-component build failed:", err instanceof Error ? err.message : String(err));
-      }
-    }
+    // PHASE 4: Response component generation infrastructure is in place but component
+    // integration into the answer envelope is deferred (Phase 5 integration testing)
 
     const followups = withResolutionChips(
       [
@@ -1485,46 +1441,8 @@ export async function runLargoQueryStream(
     // The turn id rides on the envelope so a follow-up can name the exact turn it refers to.
     if (envelope && turnId != null) envelope.turnId = turnId;
 
-    // PHASE 4 INTEGRATION: Build response components from detected intent
-    // The intent was already detected in buildDynamicSystem; use it for component generation
-    const binaryIntent = analyzeLargoQuestion(question, history.slice(0, -1));
-    const intentCategory = detectIntentCategory(question, binaryIntent);
-    let responseComponents: Awaited<ReturnType<typeof buildResponseComponents>> | null = null;
-    if (envelope && intentCategory) {
-      try {
-        // Build a minimal orchestration result for component generation
-        const orchestrationResult = {
-          intentCategory: {
-            category: intentCategory.category,
-            confidence: intentCategory.confidence,
-            responseDepth: intentCategory.responseDepth,
-            requiredSystems: intentCategory.requiredSystems,
-            optionalSystems: intentCategory.optionalSystems ?? [],
-            needsDeskRead: intentCategory.needsDeskRead,
-            needsHistoricalContext: intentCategory.needsHistoricalContext,
-          },
-          consensus: {
-            reads: [],
-            agreement: { voting: 0, bullish: 0, bearish: 0, neutral: 0, verdict: "neutral", direction: "neutral", averageStrength: 0 },
-            contradictions: [],
-          },
-          deskRead: undefined,
-          selectedTools: { required: toolsUsed, optional: [] },
-          envelopeStructure: {
-            headlineOnly: false,
-            includeSystemReads: true,
-            includeLevels: false,
-            includeDeskRead: false,
-            includeScenarios: false,
-            includeFollowUps: false,
-          },
-          toolResults: {},
-        };
-        responseComponents = buildResponseComponents(orchestrationResult as any, envelope.headline ?? "");
-      } catch (err) {
-        console.warn("[largo] response-component build failed:", err instanceof Error ? err.message : String(err));
-      }
-    }
+    // PHASE 4: Response component generation infrastructure is in place but component
+    // integration into the answer envelope is deferred (Phase 5 integration testing)
 
     const followups = withResolutionChips(
       [

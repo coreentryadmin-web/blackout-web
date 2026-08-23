@@ -70,7 +70,7 @@ export type DecisionContext = {
  * NO_TRADE: Insufficient evidence, strong conflict, missing data, or counter-regime
  */
 export function evaluateDeskRead(context: DecisionContext, ticker: string): DeskReadDecision {
-  const { consensus, levels, regime, regimeAlignment, tapeBias, spot, isEventDay } = context;
+  const { consensus, levels, regimeAlignment, spot, isEventDay } = context;
 
   // Short-circuit: no data
   if (consensus.reads.length === 0) {
@@ -96,8 +96,6 @@ export function evaluateDeskRead(context: DecisionContext, ticker: string): Desk
   const consensusStrength = consensus.agreement.averageStrength;
   const bullishVote = consensus.agreement.bullish;
   const bearishVote = consensus.agreement.bearish;
-  const neutralVote = consensus.agreement.neutral;
-  const totalVotes = consensus.agreement.voting;
 
   // ── PLAY Conditions ──
   // Strong consensus + structural support + regime aligned

@@ -27,7 +27,6 @@ import {
   buildTradeDecisionComponent,
   buildEvidenceComponent,
   buildRiskComponent,
-  buildDecisionCallout,
   buildConsensusHeader,
   type BlackoutComponent,
 } from "@/lib/largo/visual-component-builder";

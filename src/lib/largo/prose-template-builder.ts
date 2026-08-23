@@ -356,7 +356,6 @@ export function getProseSectionsForIntent(
       break;
 
     case "CHANGE_DETECTION":
-    case "FLOW":
     default:
       sections.push({
         section: "Observation",

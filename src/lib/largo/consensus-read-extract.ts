@@ -422,7 +422,7 @@ export function extractConsensusFromTools(toolResults: Record<string, any>): Con
   const voting = validReads.length;
 
   // Determine verdict
-  let verdict: ConsensusMatrix["agreement"]["verdict"] = "neutral";
+  let verdict: ConsensusMatrix["agreement"]["verdict"];
   let direction: "bullish" | "bearish" | "neutral" | null = null;
 
   if (bullishCount > bearishCount && bullishCount > neutralCount) {
