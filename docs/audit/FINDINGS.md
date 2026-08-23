@@ -4,6 +4,22 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-23 — [FINDING, P2 Largo] `/terminal` displayed a hardcoded "AI Online" badge — lit green through a total outage, on a claim nothing measured — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | The Largo page header rendered `AI Online` with a green status dot. It was a **hardcoded literal** — no prop, no state, no health read — so it could not be false. It rendered green during a complete Largo outage, and would render green with `ANTHROPIC_API_KEY` removed entirely. |
+| **Root cause** | `src/features/largo/components/LargoPageShell.tsx` passed `badge={<Badge tone="accent" dot>AI Online</Badge>}` as a static JSX literal. Nothing in the component reads any liveness signal. |
+| **Evidence** | Rendered on PRODUCTION at both viewports via `proxy-browser.cjs` (`Routed: 108 ok, 0 fail` desktop 1440x900; `102 ok, 0 fail` mobile 430x932): **"AI ONLINE", green, on both** — while every Largo turn was failing at round 0 with HTTP 400 *"Your credit balance is too low to access the Anthropic API"* (confirmed from the production log). Found by LOOKING at the rendered page under the corrected `_COMMON` rule 6b, not by reading code. |
+| **The irony that makes it a finding, not a nit** | The status endpoint rendered *directly below* this header states the exact principle in its own docstring: *"a row of dots that are green because they are hard-coded green says the opposite the first time a member sees one lit during an outage"* (`app/api/market/largo/status/route.ts`). It honours that for all six PRODUCT dots, each derived from that system's own production reader. The AI's own dot was the single exception, one component higher — and it was lit during precisely the outage that sentence describes. |
+| **Fix** | The badge is **omitted**, not replaced. Per the product contract's rule for exactly this case: a value that cannot be calibrated is OMITTED, never fabricated. Nothing today measures whether the model can answer — `/status` deliberately makes **no Anthropic call** ("NO ANTHROPIC CALL, no tool loop, no cost"), and inferring liveness from the API key being present is what produced the defect. The reasoning is left in place as a comment so the next person does not re-add it because the header looks unfinished. |
+| **Blast radius** | `/terminal` at every viewport, for every viewer (admins and `tool_access` grantees today, since Largo is launch-gated). The live status strip below — LIVE/CLOSED, data age, N/6 systems online — is derived from real reads and is untouched; this removes the false claim, not the true one. |
+| **Fix rationale** | A real signal becomes available once the tool loop reports `upstream_error` (`ToolLoopStopReason`, PR #2653): a badge could then read recent turns' stop reasons and be *true*. **Deliberately not wired here** — that would be an ordering dependency on an unmerged PR, and `CLAUDE.md` carries the incident that pattern caused. Honest omission now; a measured badge when there is something to measure. |
+| **Regression guard** | `src/features/largo/components/largo-shell-no-fabricated-status.test.ts` (4 tests): no hardcoded `AI Online`; no hardcoded liveness word passed as a `badge`; the explanatory comment survives (naming both the live symptom and the contract rule); and the terminal still mounts, so the real status strip was not removed with the false one. Comments are stripped before matching so the explanation cannot satisfy the assertion it explains. A badge driven by a prop/state/fetch is explicitly permitted — the guard forbids only the unmeasured literal. **Proven to fire**: re-adding the badge fails 2 of the 4 tests; restoring passes 4/4. |
+| **Status** | FIXED — verified by construction (the claim is gone from the source and the guard fires). A post-deploy render should confirm the header no longer asserts liveness. |
+
 ## 2026-08-22 — [FINDING, P1 SPX Slayer/Largo] SPX Slayer's `confidence` reached the model as a formula over a FACTOR COUNT — fabricated certainty ranked against other lanes' measured scores — FIXED
 
 > **kind:** `FINDING`
