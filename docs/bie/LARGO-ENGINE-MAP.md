@@ -551,7 +551,10 @@ many words:
 report UNVERIFIED on every run until a new over-cap control is chosen** — the design working as
 written, not a break. Picking the replacement by guesswork would reintroduce the exact failure the
 harness guards against; picking it from measured `bytes` (above) would not. **This is the dependency
-order for Phase 1: instrument first, then re-arm the probe, then probe the remaining 116 tools.**
+order for Phase 1: instrument first, then re-arm the probe, then probe the tools it does not yet
+cover.** (Deliberately not a fixed number: the probe's `LANE_TOOLS` grows as lanes add their own —
+it went 13 → 17 on 2026-08-23 when Helix added four — so any figure written here is stale by the
+next lane contribution. It is `LARGO_TOOL_DEFS.length - LANE_TOOLS.length`, derivable on demand.)
 
 ---
 
@@ -617,16 +620,16 @@ would be worth, not by how easy it is.
 | L-4 | SPX Slayer is a declared `ProductId` with no cross-product source or adapter, and is absent from the coverage denominator rather than reported missing. | `cross-product-read.ts:35` | cross-product coherence |
 | ~~L-5~~ **FIXED** | Three `coverage: 1` literals survive #2626; one leaves the process on the non-streaming error path. | `largo-terminal.ts:1149,1167,1454` Replaced by one `unverifiedTurn()` constructor returning `coverage: null` — a convention gets skipped, a constructor cannot be. | fabricated certainty |
 | ~~L-6~~ **FIXED** | `applyPlanCaveat` emits "Timeframe caveat.", matcher expects "Timeframe note." → renders as generic "Note". | `plan.ts:194` vs `answer-caveats.ts:17` | UI classification |
-| L-7 | `tools_used` conflates seeded markers, prefetch markers and real model dispatches. BIE calibration cohorts bucket on this array. | `largo-terminal.ts:483` + prefetch pushes | observability / data integrity |
+| L-7 | ~~`tools_used` conflates seeded markers, prefetch markers and real model dispatches. BIE calibration cohorts bucket on this array.~~ **RATCHETED (#2687) — and this row overstated it.** The cohorts bucket on `{SPX,HELIX,THERMAL}_ENGINE_TOOL_NAMES` (11/5/6 names) and **no non-dispatch marker is in any of them**, so no cohort is polluted today: the exposure is LATENT, not active. What IS broken now: of the four prefetch sites pushing a `get_*` name, `get_helix_thermal_compare` **is a real callable tool**, so that name reaches the log from both a keyword-gated server prefetch (`largo-terminal.ts:678`) and a genuine model dispatch, and a stored turn cannot say which. `tools-used-provenance.test.ts` pins it shrink-only; the **rename is deferred to the coordinator** because it changes the shape of a persisted column. | `largo-terminal.ts:483` + prefetch pushes | observability / data integrity |
 | L-11 | `LargoDeskMiniPanel` is mounted by nothing, and its premium-gated route `/api/market/largo/mini-panel` is live with no caller. #2358 added and mounted it; #2387 ("drop the two side panels") removed the mount and left both behind. The lane charter still described the panels as a current member surface — corrected. **Delete-vs-remount is a product call, not this lane's**, so it is flagged rather than actioned. | `LargoDeskMiniPanel.tsx`, `api/market/largo/mini-panel/route.ts` | dead surface / stale doc |
 | L-8 | The truncation probe's control is expected COMPLETE post-#2628, so every run reports UNVERIFIED until a new control is chosen from measured sizes. **Unblocked by L-1**, but needs a live turn to produce the measurement — waiting on the upstream outage to clear. | `largo-truncation-probe.mjs:74` | tooling (unblocked, awaiting live data) |
 | L-9 | ~~Five stale tool counts across the tree (116/120/126/127 vs 129), including in the charter and in the entitlement docstring.~~ **FIXED** — 14 live claims corrected and pinned by `tool-count-claims.test.ts`; two historical measurements dated rather than renumbered. | see §1 | documentation |
 | L-10 | ~~"TAIL slice" in six places describes a HEAD-keeping cut. Every current reader reasons correctly from it; a new one would not.~~ **FIXED** — seven sites (not six) rewritten to say what survives; a scanner test with a control bans the phrase's return. | see §2.5 | documentation |
 
 **Suggested order.** L-1 first — it is the instrument the others are measured with, and it unblocks
-L-8, which unblocks probing the remaining 116 tools. **L-3 is done** — the coordinator released it
+L-8, which unblocks probing the tools the probe does not yet cover. **L-3 is done** — the coordinator released it
 ahead of the rest once the outage made it live. L-2 next: the same class of member-facing honesty
-defect, with a small, local fix. L-4 and L-5 after. L-6/L-7/L-9/L-10 are cheap and can ride
+defect, with a small, local fix. L-4 and L-5 after. L-6/L-9/L-10 are cheap and can ride
 along with a neighbouring fix rather than costing a PR each.
 
 ---
