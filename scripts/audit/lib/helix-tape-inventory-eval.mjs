@@ -81,17 +81,26 @@ export function routeKeyMatches(rule) {
 }
 
 /**
- * Verdict on `implied_volatility` units for one sample.
+ * Are `implied_volatility` units what the SHIPPED renderer assumes?
  *
- * `fmtIv` renders `iv < 3` as `iv * 100` and anything else verbatim — i.e. it decides
- * fraction-vs-percent PER ROW, from the value itself. That is only safe if the feed is genuinely
- * mixed-unit. Measured live: min 0.07, p25 0.13, median 0.17, p75 0.23, max 106.2 — a single
+ * REFRAMED 2026-08-23 — it used to ACCUSE a renderer that no longer exists. `fmtIv` once decided
+ * fraction-vs-percent PER ROW (`iv < 3 ? iv * 100 : iv`), and this helper counted the tail that
+ * branch misread. #2669 removed the branch — `fmtIv` is now an unconditional `iv * 100` — but this
+ * helper kept scoring against the retired rule, so the harness printed
+ * `fmtIv misrenders 148 of 3500 rows (4.2%)` about code that is correct. Third false accusation
+ * from this one instrument, alongside the two `writerGroup`/`signalEligible` produced.
+ *
+ * The distribution evidence is KEPT, because it is what justifies the unconditional multiply in the
+ * first place: measured live, min 0.07, p25 0.13, median 0.17, p75 0.23, max 106.2 — a single
  * fractional mode with a long right tail, NOT the bimodal shape a mixed-unit feed produces (which
- * would cluster a second lump around 15-30). So the feed is uniformly FRACTIONAL and the branch
- * misreads its own tail: a 3.5 (350% IV, ordinary for a near-dated contract) renders as "4%".
+ * would cluster a second lump around 15-30). What changed is the QUESTION. Instead of scoring a
+ * dead branch, it now asks whether #2669's assumption still holds, and reports how many rows the
+ * shipped renderer would get wrong if it ever stopped holding.
  *
- * Returns the evidence rather than a bare verdict, because the conclusion depends on the SHAPE of
- * the distribution and a caller quoting "4.2% of rows are misrendered" should be able to show why.
+ * So `above_branch` is no longer "rows fmtIv misreads" — it is the upper lump whose APPEARANCE
+ * would mean the feed had gone mixed-unit. On a uniformly fractional feed the shipped renderer
+ * misrenders NOTHING, and this reports 0 rather than a number that reads like a defect.
+ *
  * `verdict` is null — never a guess — below `minSample`.
  */
 export function ivUnitVerdict(values, { minSample = 200, branchAt = 3 } = {}) {
@@ -118,9 +127,15 @@ export function ivUnitVerdict(values, { minSample = 200, branchAt = 3 } = {}) {
     max: nums[n - 1],
     below_branch: belowBranch,
     above_branch: aboveBranch,
-    /** Rows the `iv < branchAt` heuristic renders on the WRONG side, IF the feed is uniform. */
-    misrendered: looksFractional ? aboveBranch : belowBranch,
-    misrendered_pct: Math.round((1000 * (looksFractional ? aboveBranch : belowBranch)) / n) / 10,
+    /** Does the SHIPPED `fmtIv` — an unconditional `iv * 100` since #2669 — suit this feed? True
+     *  exactly when the feed is uniformly fractional. */
+    shipped_renderer_ok: looksFractional,
+    /** Rows the SHIPPED renderer would get wrong. Zero on a uniformly fractional feed; the
+     *  percent-unit lump if the feed ever goes mixed, and every row if it flips outright. */
+    misrendered: looksFractional ? 0 : n,
+    misrendered_pct: looksFractional ? 0 : 100,
+    /** The value separating a fractional body from a percent lump. Retained as the bimodality
+     *  probe it always was — NOT as a branch any shipped code still takes. */
     branch_at: branchAt,
   };
 }

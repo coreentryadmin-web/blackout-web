@@ -27,8 +27,11 @@
  *      the SAME file, already maps "repeated" to a REPEAT badge on the tape.
  *
  *   4. WHAT UNIT `implied_volatility` IS IN. Single fractional mode (median 0.17), long right
- *      tail (max 106.2) — not the bimodal shape a mixed-unit feed makes. So `fmtIv`'s per-row
- *      `iv < 3` branch misrenders its own tail: 4.2% of rows with IV, a 3.5 (350%) shown as "4%".
+ *      tail (max 106.2) — not the bimodal shape a mixed-unit feed makes. That measurement is what
+ *      justified #2669 replacing `fmtIv`'s per-row `iv < 3` branch with an unconditional `iv * 100`.
+ *      This now CHECKS that assumption rather than accusing the retired branch: it reports 0
+ *      misrendered on a uniformly fractional feed, and flags the day the distribution goes bimodal
+ *      — which is the day the unconditional multiply becomes wrong.
  *
  * READ-ONLY against production. One temp Clerk user, deleted in a `finally`. Never prints a secret.
  *
@@ -76,6 +79,15 @@ if (session.skip) {
 try {
   const { executionRouteKey } = await import(
     new URL("../../src/features/helix/lib/helix-flow-format.ts", import.meta.url).pathname
+  );
+  // The REAL horizon bucketer. `ExpiryConcentration.tsx`'s `bucketLabel` is byte-identical and
+  // documented as such, but it lives in a component file; this is the importable twin. Imported
+  // rather than restated for the reason this whole file exists: the previous line here ASSERTED
+  // that the panel files negative-DTE prints under "This week", which stopped being true when
+  // §9.5 changed the test to `dte <= 0`. A harness that states what a panel does, instead of
+  // asking it, accuses fixed code.
+  const { expiryHorizonLabel } = await import(
+    new URL("../../src/lib/largo/helix-tape-analytics.ts", import.meta.url).pathname
   );
 
   const qs = new URLSearchParams({ limit: String(LIMIT), since_hours: String(SINCE_HOURS) });
@@ -217,11 +229,19 @@ try {
     L();
     L(`## implied_volatility UNITS`);
     if (iv.verdict == null) L(`  verdict WITHHELD — ${iv.reason} (${iv.sample}/${iv.min_sample})`);
-    else L(`  ${iv.verdict}: median ${iv.median}, max ${iv.max} · fmtIv misrenders ${iv.misrendered} of ${iv.sample} rows (${iv.misrendered_pct}%)`);
+    else if (iv.shipped_renderer_ok)
+      L(`  ${iv.verdict}: median ${iv.median}, max ${iv.max} · fmtIv's unconditional x100 (#2669) suits this feed — 0 misrendered`);
+    else
+      L(`  ${iv.verdict}: median ${iv.median}, max ${iv.max} · !! NOT uniformly fractional — fmtIv multiplies unconditionally, so all ${iv.sample} rows are suspect (upper lump ${iv.above_branch} above ${iv.branch_at})`);
     L();
     L(`## TAPE SHAPE`);
     L(`  distinct tickers ${tickers.size} (GEX enrichment caps at 100 — ${report.tape_shape.tickers_beyond_gex_cap} never evaluated)`);
-    L(`  negative-DTE rows ${negDte} (${report.tape_shape.negative_dte_pct}%) — expired, panel buckets these as "This week"`);
+    // Ask the panel's own function what it does with an expired print, rather than asserting it.
+    const negBucket = expiryHorizonLabel(-1);
+    L(
+      `  negative-DTE rows ${negDte} (${report.tape_shape.negative_dte_pct}%) — expired; panel files them under "${negBucket}"` +
+        (negBucket === "0DTE" ? "  (correct since §9.5)" : `  !! a FUTURE horizon for an expired contract`)
+    );
     L(`  real-print span ${spanMin} min over ${dated.length} dated prints — REQUESTED ${SINCE_HOURS}h`);
     L(`  newest real print ${report.tape_shape.newest_print_age_minutes} min old`);
   }

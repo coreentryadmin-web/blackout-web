@@ -74,8 +74,8 @@ test("ROUTE_KEYS still mirrors what the production function recognises", () => {
   }
 });
 
-test("ivUnitVerdict calls a single fractional mode fractional, and counts the misrendered tail", () => {
-  // 300 rows shaped like the live sample: fractional body, small tail above the fmtIv branch.
+test("ivUnitVerdict clears the SHIPPED renderer on a uniformly fractional feed", () => {
+  // 300 rows shaped like the live sample: fractional body, small tail above the bimodality probe.
   const values = [
     ...Array.from({ length: 288 }, (_, i) => 0.08 + (i % 20) * 0.01),
     ...Array.from({ length: 12 }, (_, i) => 3.5 + i),
@@ -83,9 +83,33 @@ test("ivUnitVerdict calls a single fractional mode fractional, and counts the mi
   const v = ivUnitVerdict(values);
   assert.equal(v.verdict, "fractional");
   assert.ok(v.median < 1, "median should sit well under 1");
+  // The tail is still COUNTED — it is the bimodality evidence — but it is not a defect. `fmtIv`
+  // has multiplied unconditionally since #2669, so a 3.5 renders as "350%", correctly.
   assert.equal(v.above_branch, 12);
-  assert.equal(v.misrendered, 12, "the tail above the branch is misrendered, not a second unit");
-  assert.equal(v.misrendered_pct, 4);
+  assert.equal(v.shipped_renderer_ok, true);
+  assert.equal(v.misrendered, 0, "the retired iv<3 branch is not something to score against");
+  assert.equal(v.misrendered_pct, 0);
+});
+
+test("ivUnitVerdict condemns the shipped renderer if the feed ever stops being fractional", () => {
+  // The regression this reframing exists to keep catchable: a percent-unit feed makes the
+  // unconditional x100 wrong for EVERY row, and that must read as a defect, not as 0 misrendered.
+  const v = ivUnitVerdict(Array.from({ length: 300 }, (_, i) => 15 + (i % 20)));
+  assert.notEqual(v.verdict, "fractional");
+  assert.equal(v.shipped_renderer_ok, false);
+  assert.equal(v.misrendered, 300);
+  assert.equal(v.misrendered_pct, 100);
+});
+
+test("the harness reads the panel's OWN horizon rule rather than asserting one", async () => {
+  // The stale claim this replaces: the report line said negative-DTE prints are filed under
+  // "This week". §9.5 changed the test to `dte <= 0`, so they are filed under "0DTE" — and the
+  // harness went on accusing a fixed panel. Asserted against the real function so the report line
+  // cannot drift from it again.
+  const { expiryHorizonLabel } = await import(`${SRC}lib/largo/helix-tape-analytics.ts`);
+  assert.equal(expiryHorizonLabel(-1), "0DTE");
+  assert.equal(expiryHorizonLabel(0), "0DTE");
+  assert.equal(expiryHorizonLabel(3), "This week");
 });
 
 test("ivUnitVerdict withholds a verdict below the sample floor rather than guessing", () => {
