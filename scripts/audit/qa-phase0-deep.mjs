@@ -115,9 +115,36 @@ const INVENTORY = () => {
   return { tabs, sortHeaders, searchInputs, selects, switches, buttons };
 };
 
+/**
+ * Was: first 400 chars of `[role=tabpanel]` / `main` / `body` textContent, UNSCOPED. Confirmed live
+ * on /meridian (2026-08-23): every one of 7 view tabs and 4 sort headers reported "no observable
+ * content change" — a 100% hit rate that was itself the tell, since 11 simultaneous real breakages
+ * on a shipped product is far less likely than one broken probe. Direct verification: clicking
+ * "Macro" changed the page's total body text from 14,979 to 876 characters — a real, large change —
+ * but the static header/toolbar/page-title prose that precedes Meridian's actual dynamic panel is,
+ * on its own, longer than 400 characters, so the fingerprint's slice never reached content that
+ * could differ. A prefix-only, unscoped sample is exactly the wrong shape for a page whose static
+ * chrome outweighs its first screenful of dynamic content.
+ *
+ * Fixed by scoping outside header/nav/footer (same inShell filter as INVENTORY) and using total
+ * SCOPED LENGTH plus samples from both the start and end of that scoped text — length alone would
+ * have caught the Meridian case (14979 vs 876), and the start/end samples catch a same-length swap
+ * a bare length comparison would miss.
+ */
 const CONTENT_FINGERPRINT = () => {
-  const panel = document.querySelector('[role=tabpanel]') ?? document.querySelector("main") ?? document.body;
-  return (panel.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 400);
+  const inShell = (el) => !el.closest("header, nav, [role=navigation], footer");
+  const panel = document.querySelector('[role=tabpanel]');
+  const root = panel && inShell(panel) ? panel : document.body;
+  const text =
+    root === document.body
+      ? [...document.body.querySelectorAll("*")]
+          .filter((el) => el.children.length === 0 && inShell(el))
+          .map((el) => el.textContent ?? "")
+          .join(" ")
+          .replace(/\s+/g, " ")
+          .trim()
+      : (root.textContent ?? "").replace(/\s+/g, " ").trim();
+  return `${text.length}:${text.slice(0, 200)}:${text.slice(-200)}`;
 };
 
 /**
