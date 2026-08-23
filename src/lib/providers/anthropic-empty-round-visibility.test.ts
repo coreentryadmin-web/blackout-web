@@ -35,11 +35,25 @@ import { dirname, join } from "node:path";
 
 const SRC = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "anthropic.ts"), "utf8");
 
-/** The no-tool-calls branch: `if (!toolCalls.length) { … }` through its `return text || null;`. */
-const EMPTY_BRANCH = /if \(!toolCalls\.length\) \{([\s\S]*?)return text \|\| null;/;
+/** The no-tool-calls branch: `if (!toolCalls.length) { … }` through its terminating return.
+ *  The return used to be `return text || null;`. It now discriminates the two outcomes it had been
+ *  conflating — text is an ANSWER, no text is an EMPTY ROUND — so the branch reports which, instead
+ *  of leaving the caller to guess from a bare `null` and default to "no data". */
+const EMPTY_BRANCH =
+  /if \(!toolCalls\.length\) \{([\s\S]*?)return text \? stop\("answered", text\) : stop\("empty_round", null\);/;
 
 test("the no-tool-calls branch exists and still returns text-or-null", () => {
   assert.match(SRC, EMPTY_BRANCH, "the tool-loop's no-tool-calls branch has moved or changed shape");
+});
+
+test("the branch REPORTS which of the two outcomes it took — the whole point of the split", () => {
+  const branch = SRC.match(EMPTY_BRANCH)?.[1] ?? "";
+  // The match itself pins the return, but assert the reasons by name so a rename that keeps the
+  // shape (e.g. stop("no_text", …)) still fails here rather than silently changing what the member
+  // is told. An empty round is NOT a data gap and must never be classified as one again.
+  assert.match(SRC, /stop\("empty_round", null\)/, "an empty round must report empty_round");
+  assert.match(SRC, /stop\("answered", text\)/, "a tool-less round WITH text is a normal answer");
+  void branch;
 });
 
 test("an empty round (no tool calls AND no text) is logged before returning null", () => {
@@ -72,7 +86,20 @@ test("the log names the member-visible consequence, so a reader connects it to t
   const branch = SRC.match(EMPTY_BRANCH)?.[1] ?? "";
   assert.match(
     branch,
-    /couldn't pull enough live data|fallback/i,
+    /surfaces to the member|fallback/i,
     "the operator searching logs for the member-reported string must land here",
   );
+  // Scoped to the console.warn CALL, not the whole branch: the branch also carries the historical
+  // comment explaining the defect, which quotes the old copy on purpose and must keep doing so.
+  // The log used to PROMISE that copy. Once this branch got its own stop reason that became FALSE,
+  // and a log line naming the wrong member-facing message sends whoever greps it to the wrong
+  // branch — the exact confusion this whole file exists to end.
+  const warnCall = branch.match(/console\.warn\(([\s\S]*?)\);/)?.[1] ?? "";
+  assert.notEqual(warnCall, "", "the empty-round console.warn call must be findable");
+  assert.doesNotMatch(
+    warnCall,
+    /couldn't pull enough live data/i,
+    "stale consequence: an empty round no longer renders the data-gap copy",
+  );
+  assert.match(warnCall, /empty_round/, "the log must name the stop reason it now reports");
 });
