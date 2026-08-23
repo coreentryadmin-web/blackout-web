@@ -87,11 +87,20 @@ export function buildResponseComponents(orchestrated: OrchestrationResult, headl
 
   // Levels component for LEVEL_STRUCTURE and TRADE_INTENT
   let levelsComponent: BlackoutComponent | undefined;
-  if (category === "LEVEL_STRUCTURE" || (category === "TRADE_INTENT" && deskRead?.state)) {
-    // In real implementation, extract levels from toolResults
-    // For now, placeholder shown in comments
-    // levelsComponent = buildLevelsComponent(levels, spot);
-    // components.push(levelsComponent);
+  if ((category === "LEVEL_STRUCTURE" || (category === "TRADE_INTENT" && deskRead?.state)) && orchestrated.toolResults) {
+    // Extract levels and spot from tool results
+    const toolResults = orchestrated.toolResults;
+    const levels = {
+      floor: toolResults.positioning?.put_wall ?? 0,
+      gate: toolResults.positioning?.spot ?? toolResults.get_quote?.current_price ?? 0,
+      king: toolResults.positioning?.call_wall ?? 0,
+    };
+    const spot = toolResults.get_quote?.current_price;
+
+    if (levels.floor || levels.gate || levels.king) {
+      levelsComponent = buildLevelsComponent(levels, spot);
+      components.push(levelsComponent);
+    }
   }
 
   // Evidence of bullish/bearish signals

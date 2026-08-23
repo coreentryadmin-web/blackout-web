@@ -42,6 +42,8 @@ export type OrchestrationResult = {
     includeScenarios: boolean;
     includeFollowUps: boolean;
   };
+  /** Tool results (populated after tool invocation). Optional for backward compatibility. */
+  toolResults?: Record<string, any>;
 };
 
 /**
@@ -128,6 +130,7 @@ export async function enrichWithConsensus(
     ...orchestration,
     consensus,
     deskRead,
+    toolResults,
   };
 }
 
