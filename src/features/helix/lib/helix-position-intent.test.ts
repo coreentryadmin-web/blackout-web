@@ -2,7 +2,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { FlowAlert } from "@/lib/api";
 import {
-  impliedContractSize,
   positionIntent,
   openingBadgeLabel,
   positionIntentTitle,
@@ -16,25 +15,23 @@ const print = (size: number, fill: number, open_interest?: number | null) =>
     "premium" | "fill_price" | "open_interest"
   >;
 
-test("impliedContractSize recovers contracts from premium and per-share fill", () => {
-  // The live MRNA print: 8500 contracts at $17.50/share = $14,875,000.
-  assert.equal(impliedContractSize({ premium: 14_875_000, fill_price: 17.5 }), 8500);
-  assert.equal(impliedContractSize({ premium: 512_640, fill_price: 1.8 }), 2848);
-});
-
-test("impliedContractSize returns null rather than a fabricated zero", () => {
-  // Every one of these would produce 0, Infinity or NaN if computed naively — and a print of
-  // "0 contracts" compared against OI would read as indeterminate instead of unknown.
+test("an underivable size reaches positionIntent as unknown, never as zero contracts", () => {
+  // The derivation itself is tested in helix-contract-size.test.ts. What matters here is that its
+  // `null` survives into an `unknown` verdict rather than collapsing into a 0-vs-OI comparison,
+  // which would read as a measured indeterminate.
   for (const bad of [
-    { premium: 0, fill_price: 5 },
-    { premium: 1000, fill_price: 0 },
-    { premium: 1000, fill_price: -1 },
-    { premium: -1000, fill_price: 5 },
-    { premium: 1000, fill_price: undefined },
-    { premium: undefined, fill_price: 5 },
-    { premium: Number.NaN, fill_price: 5 },
-  ] as Array<Pick<FlowAlert, "premium" | "fill_price">>) {
-    assert.equal(impliedContractSize(bad), null, `${JSON.stringify(bad)} must be null`);
+    { premium: 0, fill_price: 5, open_interest: 100 },
+    { premium: 1000, fill_price: 0, open_interest: 100 },
+    { premium: undefined, fill_price: 5, open_interest: 100 },
+    { premium: Number.NaN, fill_price: 5, open_interest: 100 },
+  ] as Array<Pick<FlowAlert, "premium" | "fill_price" | "open_interest">>) {
+    const v = positionIntent(bad);
+    assert.equal(v.intent, "unknown", `${JSON.stringify(bad)} must be unknown`);
+    assert.equal(
+      v.intent === "unknown" ? v.reason : null,
+      "size_underivable",
+      `${JSON.stringify(bad)} must say WHY`
+    );
   }
 });
 

@@ -1,4 +1,5 @@
 import type { FlowAlert } from "@/lib/api";
+import { contractSizeExact } from "./helix-contract-size";
 
 /**
  * Is this print OPENING new positioning, or could it be closing something already there?
@@ -57,9 +58,6 @@ import type { FlowAlert } from "@/lib/api";
  * classifies one print and claims nothing about a sequence.
  */
 
-/** Contracts per option. */
-const SHARES_PER_CONTRACT = 100;
-
 /**
  * How far above open interest a derived size must sit before the print is called opening.
  * 1.05 = 5%; see the header for the measured error this is sized against.
@@ -91,26 +89,13 @@ export type PositionIntent =
       reason: "open_interest_unreported" | "size_underivable";
     };
 
-/**
- * Contracts implied by a print, from premium and per-share fill. `null` when either input is
- * missing or non-positive — never 0, which would read as "a print of no contracts".
- */
-export function impliedContractSize(
-  flow: Pick<FlowAlert, "premium" | "fill_price">
-): number | null {
-  const premium = Number(flow.premium);
-  const fill = Number(flow.fill_price);
-  if (!Number.isFinite(premium) || premium <= 0) return null;
-  if (!Number.isFinite(fill) || fill <= 0) return null;
-  const size = premium / (fill * SHARES_PER_CONTRACT);
-  return Number.isFinite(size) && size > 0 ? size : null;
-}
-
 /** Classify one print. Pure; the three outcomes are exhaustive and never collapse into each other. */
 export function positionIntent(
   flow: Pick<FlowAlert, "premium" | "fill_price" | "open_interest">
 ): PositionIntent {
-  const size = impliedContractSize(flow);
+  // EXACT, not rounded: the 1.05 margin below was measured against the unrounded quotient.
+  // Rounding first would move the opening/indeterminate boundary by up to half a contract.
+  const size = contractSizeExact(flow.premium, flow.fill_price);
   if (size == null) return { intent: "unknown", reason: "size_underivable" };
 
   const oi = Number(flow.open_interest);
