@@ -76,7 +76,10 @@ const ContractDrilldownDrawer = dynamic(
   { ssr: false }
 );
 import { SplitFlowRadar } from "@/features/helix/components/SplitFlowRadar";
-import { VelocityRadar } from "@/features/helix/components/VelocityRadar";
+import {
+  VELOCITY_RADAR_DISPLAY_LIMIT,
+  VelocityRadar,
+} from "@/features/helix/components/VelocityRadar";
 import { detectSplitFlow, detectVelocitySpikes, signalEligibility } from "@/features/helix/lib/helix-signal-detection";
 import { SectorFlowPanel, type SectorFlowEntry } from "@/features/helix/components/SectorFlowPanel";
 import { NightHawkFlowPanel, type NightHawkPlayWithFlow } from "@/features/helix/components/NightHawkFlowPanel";
@@ -421,10 +424,15 @@ export function FlowFeed() {
 
   // Feature 1: velocity spike detection — prints per 15min vs prior 15min window.
   // Same shared helix-signal-detection.ts as the split-flow detector above.
-  const { velocityEntries, velocitySpikeTickers } = useMemo(() => {
+  const { velocityEntries, velocityTotal, velocitySpikeTickers } = useMemo(() => {
     const spikes = detectVelocitySpikes(filteredTapeBuffer, Date.now());
     return {
-      velocityEntries: spikes.slice(0, 8),
+      velocityEntries: spikes.slice(0, VELOCITY_RADAR_DISPLAY_LIMIT),
+      // The FULL count, handed to the panel so its header can say "8 of 14" rather than assert
+      // that 8 is how many there were. `velocitySpikeTickers` below is deliberately built from the
+      // full list — the tape badges every spiking ticker — which is exactly why the radar must not
+      // claim a smaller number: one computation, two surfaces, and they were disagreeing.
+      velocityTotal: spikes.length,
       velocitySpikeTickers: new Set(spikes.map((e) => e.ticker)),
     };
   }, [filteredTapeBuffer]);
@@ -904,7 +912,12 @@ export function FlowFeed() {
   const moreAnalyticsPanels = (
     <>
       {marketWidePanels && (
-        <VelocityRadar entries={velocityEntries} onTickerClick={setSelectedTicker} eligibility={signalCoverage} />
+        <VelocityRadar
+          entries={velocityEntries}
+          totalSpikes={velocityTotal}
+          onTickerClick={setSelectedTicker}
+          eligibility={signalCoverage}
+        />
       )}
       <NightHawkFlowPanel
         plays={nighthawkPlaysVisible}
