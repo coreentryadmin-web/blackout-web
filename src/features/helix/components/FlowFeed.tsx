@@ -52,6 +52,7 @@ import {
   HELIX_PREMIUM_PRESETS,
   WHALE_PRINT_PREMIUM,
 } from "@/features/helix/lib/helix-flow-limits";
+import { hasCoincidentBlock } from "@/features/helix/lib/helix-coord-window";
 import {
   watchlistFilterActive,
   watchlistFilterStuck,
@@ -464,11 +465,7 @@ export function FlowFeed() {
       // skip rows with no trustworthy time — they can't be time-correlated to a block.
       const alertTime = flowFreshnessAtMs(alert);
       if (alertTime == null) continue;
-      const hasBlock = darkPoolPrints.some(
-        (dp) =>
-          dp.ticker === alert.ticker &&
-          Math.abs(new Date(dp.executed_at).getTime() - alertTime) <= WINDOW_MS
-      );
+      const hasBlock = hasCoincidentBlock(darkPoolPrints, alert.ticker, alertTime, WINDOW_MS);
       if (hasBlock) coordinated.add(alert.ticker);
     }
     return coordinated;
