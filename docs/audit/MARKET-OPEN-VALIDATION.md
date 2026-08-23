@@ -120,7 +120,7 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — HELIX, first session on 2026-08-24 (read this before the routine pass)
 
-Six HELIX fixes merged over 2026-08-22/23. **Four are member-facing and none has been seen under a
+Ten HELIX fixes merged over 2026-08-22/23. **Seven are member-facing and none has been seen under a
 moving tape.** Every one was validated off-hours at best, and three could not be validated at all
 because the population they act on does not exist while the market is closed. This section is the
 list of things that are *only* checkable at the open, with the baseline each one must be diffed
@@ -284,6 +284,77 @@ under the old rule.
   "aggression_aware_v1"`. Confirm it is present on rows written after the deploy — rows without it
   are the old rule and **must not be pooled** with the new ones in any track-record number.
 
+### 5d. The tide bar — a signed split that was rendered as magnitudes (#2704)
+
+`helix-tide-split.ts` was splitting **signed** net premiums as if they were magnitudes, so a net
+SHORT-call flow contributed to the bullish side of the bar. Off-hours the tape is one-sided enough
+that the bar renders plausibly either way, which is exactly why this could not be validated at merge
+time.
+
+- **Check on screen (`/flows`, tide bar):** the bullish share must move in the same direction as the
+  Net Premium panel over the session. A session whose net call premium is NEGATIVE must not paint a
+  majority-bullish bar.
+- **Check the refusal:** when total directional premium is `0`, `bullishPct` is `null` and the bar
+  must render as *no reading* — **never a 50/50 split**, which would imply a measured balance where
+  nothing was measured. Reachable pre-open (empty tape); confirm it once before the bell and then
+  confirm the bar populates after.
+- **The RTH-only question:** off-hours the four quadrants are barely populated. Under live flow all
+  four (long call / short call / long put / short put) should carry premium at once — that is the
+  first condition under which the sign error would have been visible by eye, and it is the condition
+  the fix has never been seen in.
+
+### 5e. Print time on mobile — there was none at all (#2707)
+
+The desktop tape marked an *estimated* tape time with a `~` prefix that was **hover-only**, and the
+mobile card carried **no timestamp whatsoever** — not a wrong time, an absent one. (The write-up on
+#2706 said mobile showed "a timestamp with no indication it is an ingest time"; that was wrong and is
+corrected here: there was no timestamp.)
+
+- **Check on mobile 430×932 (`proxy-browser.cjs`, `flow-card`):** every card shows a print time, and
+  a Group B row (SPX / SPY — no `event_at`, §4A) shows it **prefixed `~`** without needing hover.
+- **Check on desktop 1440:** the `~` is visible in the cell, not only in the `title`.
+- **The RTH-only question:** off-hours the whole tape is stale, so `~` is near-universal and proves
+  nothing about discrimination. Under live flow Group A rows carry a real `event_at` and must render
+  **without** the `~`, while SPX/SPY keep it. **If every row still shows `~` under a moving tape, the
+  three-timestamp model is not reaching the renderer** — that is the failure this check exists for,
+  and it is only detectable when both populations are fresh.
+
+### 5f. Dark-pool COORD — the panel has never been seen populated (#2708)
+
+The dark-pool inventory harness reports directional coverage as `NO_DIRECTION_REPORTED` /
+`MINORITY_VERDICT_RISK` / `DIRECTIONAL`, and `newestPrintAgeHours` returns `null` rather than `0`
+when there is no print at all. Off-hours it correctly reports the absence — which means the populated
+path is untested.
+
+- **Run it at the open:** the verdict must move off `NO_DIRECTION_REPORTED`. If it does not once
+  prints exist, the field is not being written and the panel's absence is a data gap, not a quiet
+  session.
+- **Watch for `MINORITY_VERDICT_RISK` specifically:** a directional verdict drawn from a small
+  minority of rows is the absence-as-measurement failure in its most persuasive form — it renders as
+  a confident reading. Capture the fill share alongside the verdict; **a coverage number without its
+  denominator is not a fact.**
+- **`newestPrintAgeHours` must be a real number, not `null`,** once the tape is live. `null` under
+  RTH means the freshness clock has no input, which is a different defect from a stale one.
+
+### 5g. Contract size — one derivation, and a `0` that was a measurement (#2710)
+
+`contracts = premium / (fill_price × 100)` existed as five separate implementations that disagreed.
+`estContractSize` checked `contracts <= 0` *before* rounding, so a 0.4-contract quotient came back as
+`0` — and the drilldown rendered a `Size` chip of **`0`** and an est. notional of **`$0`**. All HELIX
+callers now read one module; display rounds, the size-vs-OI counting argument does not.
+
+- **Check on screen (drilldown):** `Size` must still equal `Prem ÷ (Fill × 100)` for the row it was
+  opened from — the chip and the columns are derived from the same two numbers and must agree by eye.
+- **Check the refusal:** no row may show `Size 0` or `Notional $0`. Either is now impossible by
+  construction; seeing one means the deploy does not carry this.
+- **Cross-surface, the one this actually buys:** a Discord alert's `(~N contracts est.)` must match
+  the drilldown for the **same print**. They were separate copies of the arithmetic until now, so
+  this is the first session in which they are guaranteed to agree — and the first in which a
+  disagreement would mean something.
+- **The RTH-only question:** sub-half-contract quotients need cheap fills and small premiums, which
+  is a live-tape population. Off-hours none exist, so the corrected branch has never executed on
+  production data.
+
 ### 6. Open questions an RTH session can actually answer
 
 These are recorded as needing a decision; RTH is when the data exists to inform them.
@@ -291,6 +362,8 @@ These are recorded as needing a decision; RTH is when the data exists to inform 
 - **The `whale`-outranks-`0dte` collision** (`db.ts:2646`). `route` is `premium >= $1M ? 'whale' : expiry = TODAY ? '0dte' : 'stock'`, so the largest 0DTE prints never get the 0DTE badge. **Unmeasurable off-hours** — the closed window holds **zero** `dte === 0` rows. At the open, count prints with `expiry = TODAY` **and** `premium >= $1M`: that is the exact population being denied the badge.
 - **§9.7 score saturation.** $1.3B and $1.0M prints both score 60; 24.1% of tape pinned at saturation, measured off-hours. Re-measure under RTH volume — saturation should be *worse*, and the size of that is the argument.
 - **Whether Route Breakdown should stay premium-weighted.** The 95%-vs-79% gap is entirely premium weighting. Under RTH the two diverge differently; capture both.
+- **`helix-signal-outcomes` has no writer.** The cron is fully registered in `cron-registry.ts` and **absent from the deployed manifest** (`blackout-infra/cron-jobs.json`, 39 jobs, none mentioning helix). So the signal ledger is never written and every "graded" HELIX signal number rests on an empty table. **Not fixable from this lane** — it is an infra change in another repo against production. Raised on #2698; awaiting a decision to either schedule it or list it INTENTIONALLY_UNSCHEDULED. Until then, **treat any HELIX track-record figure as unbacked**, and say so rather than reporting a rate.
+- **Whether the SPX/SPY index feed should get a print time at all.** Group B carries 92.1% of premium and no `event_at`, so it can never fire either persisted signal (§4A) and now renders a permanent `~` (5e). Adding a synthetic time would make it *look* eligible without making it so — worse than the gap. The decision is whether to source a real one upstream or to state the exclusion in the product. Awaiting the coordinator.
 
 ### Commands
 
