@@ -191,5 +191,9 @@ export function validatePlanExecution(input: {
 export function applyPlanCaveat(text: string, violations: readonly PlanViolation[]): string {
   if (violations.length === 0) return text;
   const body = violations.map((v) => v.detail).join(" ");
-  return `${text}\n\n> **Timeframe caveat.** ${body} Treat the numbers above as current, not as of that period.`;
+  // "Timeframe NOTE", not "Timeframe caveat": the terminal's matcher keys on
+  // /^>\s*\*\*(?:Timeframe|Plan) note\.\*\*/ and labels the callout "Timeframe note". With
+  // "caveat" the block was still peeled off the body but classified as generic `other` and rendered
+  // under the label "Note" — the timeframe warning lost its identity on the way to the member.
+  return `${text}\n\n> **Timeframe note.** ${body} Treat the numbers above as current, not as of that period.`;
 }

@@ -1,4 +1,4 @@
-import { type ClaimVerification } from "@/lib/bie/verifier";
+import { type ClaimVerification, LARGO_RUNTIME_CAUTION_MARKER } from "@/lib/bie/verifier";
 import { dbConfigured, insertBieInteraction } from "@/lib/db";
 import { appendLargoMessage } from "@/lib/largo/largo-store";
 
@@ -12,11 +12,34 @@ import { appendLargoMessage } from "@/lib/largo/largo-store";
  */
 const CLAUDE_TURN_BUCKET = "claude_fallback";
 
+/**
+ * Append the grounding caveat — as a BLOCKQUOTE, because that is what the terminal renders.
+ *
+ * IT USED TO EMIT ITALIC PROSE (`_Data check: …_`) AND THEREFORE NEVER RENDERED AS A CAVEAT AT ALL.
+ * Every other honesty caveat in this pipeline — coherence, provenance, source-conflict, integrity,
+ * timeframe — is emitted as a trailing `> **Heading.**` block, and `splitAnswerCaveats` collects
+ * exactly those, peels them off the body and hands them to `<LargoAnswerCaveats>` as labelled
+ * callouts. Italic prose matches nothing, so it stayed buried mid-answer as ordinary text.
+ *
+ * The UI has had the `verification` kind, its regex and its "Grounding note" label wired end to end
+ * the whole time; nothing in the codebase ever produced the string they were waiting for. Measured
+ * before the fix: this function's output classified as `kinds=[]` — not even split off as a caveat.
+ *
+ * That mattered more here than anywhere else. This is the one caveat that says the answer's own
+ * NUMBERS could not be traced to data pulled this turn — the single signal a member most needs to
+ * see set apart from the prose, and the only one that was not.
+ *
+ * The heading is built from `LARGO_RUNTIME_CAUTION_MARKER` rather than written out, because the
+ * cron auditor keys "already disclosed" off that same constant. Hand-keeping the two is what broke
+ * both of them.
+ */
 export function applyVerificationCaveat(text: string, verification: ClaimVerification): string {
   if (verification.total >= 4 && verification.coverage != null && verification.coverage < 0.5) {
+    const unverified = verification.total - verification.verified;
     return (
       text +
-      `\n\n_Data check: ${verification.total - verification.verified} of ${verification.total} figures in this answer could not be traced to data pulled this turn — treat those specific numbers with caution._`
+      `\n\n> **${LARGO_RUNTIME_CAUTION_MARKER}.** ${unverified} of ${verification.total} figures in this ` +
+      `answer could not be traced to data pulled this turn — treat those specific numbers with caution.`
     );
   }
   return text;
