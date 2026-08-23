@@ -182,7 +182,6 @@ async function auditRoute(route, vp, cookie) {
     desktop: vp.desktop,
     requestTimeoutMs: 40_000,
   });
-  const where = `${route.name}`;
   try {
     const page = await ctx.newPage();
     const consoleErrors = [];
