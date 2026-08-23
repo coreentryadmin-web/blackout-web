@@ -217,12 +217,48 @@ state it as fact without checking.
 
 ### Three consequences that change how HELIX numbers must be read
 
-**(a) SPX and SPY can NEVER fire either persisted HELIX signal.** `detectVelocitySpikes` skips any
-row without `event_at`; `detectSplitFlow` filters on `flowEventTimeMs`, which returns null for the
-same rows. Group B has no `event_at`, so **only 30% of the tape is signal-eligible at all**, and the
-excluded 70% is precisely SPX and SPY. Neither detector is wrong — each is correctly refusing to
-date a print it cannot date. But the product has a population that **dominates every premium panel
-while being invisible to every time-based signal**, and nothing anywhere says so.
+**(a) SPX and SPY were invisible to both persisted HELIX signals — and the cause was a PARSE, not
+the feed. RESOLVED 2026-08-23 (#2723); the framing below is inverted from what this section
+originally said.**
+
+As measured 2026-08-22, `detectVelocitySpikes` skipped any row without `event_at` and
+`detectSplitFlow` filtered on `flowEventTimeMs`, which returned null for the same rows — so only
+**30% of the tape (1500/5000)** was signal-eligible and the excluded 70% was precisely SPX and SPY.
+That measurement was correct. Its **explanation** was not: those prints were never timeless. They
+arrived carrying an epoch that `new Date("1787343258239")` returns `Invalid Date` for, and the
+timestamp was discarded on ingest.
+
+**Re-measured against the deployed fix, same endpoint and same 5000-row/168h query
+(2026-08-23):** `event_at` presence **30% → 100%**, `alert_rule` unchanged at 30% — so the two
+fields have stopped co-varying, which is what proves the deploy carries it. Eligibility is
+**5000/5000**. The recovered times are coherent rather than merely present: 5000 dated prints span
+**363 minutes**, one RTH session, newest 2392 min old against a market closed since Friday, so the
+magnitude parser picked the right unit.
+
+**Do not read "no `event_at`" as a property of the index feed anywhere in this map.** It was a
+property of one parser for as long as that parser shipped. Anything keyed on that absence was
+silently keyed on the bug — which is exactly how the tape-inventory harness came to report Group B
+as *0 rows, $0, 0% of all premium* the moment the fix landed (#2731).
+
+**What actually changed for the signals, measured rather than assumed** (replay over one live
+session, 67 five-minute steps, both real detectors):
+
+- **Split flow now fires on the index names essentially always** — SPX **67 of 67 steps**, SPY 65 of
+  67, up from 24 and 23. Its `SPLIT_MIN_LEG` is **$500K per leg** and SPX's mid-session legs are
+  **$246,955,657 call / $186,889,748 put** — 494× and 374× over. A signal that is always on for a
+  name carries no information about that name. AWAITING COORDINATOR.
+- **Velocity firings FELL** — 239 → 220 overall, **SPX 13 → 1**. Counter-intuitive and important:
+  the old detectors saw **39 of SPX's 3118 prints (1.3%)**, and every one of those 13 firings was
+  `recent=3, prior=0, ratio=3.0` — three prints against a **literally empty** prior window, cleared
+  by the `max(1, prior)` floor. The same instants on the full population read
+  `recent=34, prior=86, **ratio=0.40**`. SPX was never quiet-then-spiking; the Velocity Radar was
+  showing a spike the full tape contradicts, and the fix **removes a false positive**. SPY, 16.3%
+  visible, KEEPS its genuine 15:51 spike in both runs — the control that separates "artifacts
+  removed" from "signal suppressed".
+- **Every index split-flow firing is `undetermined`** (SPX 67/67, SPY 65/65), because the feed
+  carries `ask_pct` on **0 of 3500** rows. So the two rows now permanently topping the Split Flow
+  Radar are permanently unreadable. The refusal is correct; whether such a row belongs at the TOP of
+  a direction radar is AWAITING COORDINATOR.
 
 **(b) The Net Premium leaderboard is decided by Group B.** `MEASURED`: SPX **$9,984,228,007** vs
 TSLA $40,522,361 — a **246×** gap, and SPX's total is ~99.9% Group B rows. The leaderboard is not
@@ -598,21 +634,32 @@ Ranked by IMPACT × FREQUENCY × CONFIDENCE-IN-FIX × IMPLEMENTATION-RISK, per t
 these has a fix PR yet — the Phase 0 gate is that this map merges first.** They are recorded here
 with their evidence so the next pass starts from a position, not from scratch.
 
-**9.0 — SPX and SPY cannot fire either HELIX signal, while carrying 92% of the tape's premium — REPORTING FIXED, the underlying gap is a coordinator decision.**
+**9.0 — SPX and SPY could not fire either HELIX signal, while carrying 92% of the tape's premium — REPORTING FIXED, and the underlying cause turned out to be a PARSE, fixed by #2723.**
 The lane's highest-impact structural finding, and it only became visible by measuring the live
-population (§4A). Both persisted signals require a real print time; the Group B feed has none; Group
-B is SPX and SPY. So the two names that top every premium panel are **structurally incapable** of
-producing a velocity spike or a split-flow signal, and `MEASURED 2026-08-22` only **30% of the tape
-(1500/5000 rows) is signal-eligible at all**. Neither detector is buggy — each correctly refuses to
-date an undatable print.
+population (§4A). Both persisted signals require a real print time; the Group B feed appeared to
+have none; Group B is SPX and SPY. So the two names that top every premium panel **were** incapable
+of producing a velocity spike or a split-flow signal, and `MEASURED 2026-08-22` only **30% of the
+tape (1500/5000 rows) was signal-eligible at all**. Neither detector was buggy — each correctly
+refused to date a print it could not date.
 
-> **⚠️ "UNDATABLE" IS THE PART NOW IN DOUBT (2026-08-23, #2723).** Everything above holds as
-> measurement. What it assumes is that those prints have no time to read. The evidence is that they
-> arrived with one and the parser could not read it — see the correction note in §4A. If #2723 is
-> confirmed at the open, this section's framing inverts: not "the feed sends no time" but "we
-> discarded the time it sent", and 70% of the tape becomes signal-eligible. The reporting fix below
-> is correct either way — stating the eligible denominator is right whether the population is small
-> because of a feed or because of a bug — so nothing here needs reverting, only re-reading. The defect is that **nothing states it**: not the panels, not the ledger,
+**The word that turned out to be wrong is "structurally".** It was a parse, not a property of the
+feed, and the tense above is past for that reason — see the confirmation immediately below and the
+measured consequences in §4A.
+
+> **✅ CONFIRMED, AND THE FRAMING HAS INVERTED AS THIS NOTE SAID IT WOULD (2026-08-23, #2723).**
+> The condition this note set has been met — and it did not need the open to answer it. Re-measured
+> against the deployed fix on the same endpoint and the same 5000-row/168h query: `event_at`
+> presence **30% → 100%** with `alert_rule` unchanged at 30% (the two have stopped co-varying, which
+> is what proves the deploy carries it), eligibility **1500/5000 → 5000/5000**, and the recovered
+> times coherent — 5000 dated prints spanning 363 minutes, one RTH session.
+>
+> So it is **not** "the feed sends no time" but **"we discarded the time it sent"**, and the whole
+> 70% is signal-eligible. Everything above stands as *measurement of what was true while the parser
+> shipped*; only its explanation was wrong. As this note predicted, **the reporting fix below needs
+> no reverting** — stating the eligible denominator is right whether the population is small because
+> of a feed or because of a bug — and it is now reporting full coverage rather than being absent.
+> §4A carries the measured consequences for both signals, including the one nobody predicted: SPX's
+> velocity firings **fell** 13 → 1, because the old ones were artifacts of a 1.3% sample. The defect is that **nothing states it**: not the panels, not the ledger,
 not `get_helix_derived`, whose `velocity_spikes` / `split_flow` arrays report a total and a
 truncation flag but never the eligible denominator they were computed over. A member or a model
 reading "no velocity spikes on SPX" concludes the tape was quiet, when SPX was never eligible.

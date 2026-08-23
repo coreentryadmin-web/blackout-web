@@ -50,6 +50,45 @@ RED, so a rollout artifact could not be recorded as a product defect. **Do not a
 an in-progress deploy** — check `ecr-push-production.yml` is `completed` first, which §5 step 0
 already requires.
 
+## 2026-08-23 — [Helix] Largo payload-truncation sweep after #2723 tripled the eligible population — 4/4 COMPLETE, control proven twice
+
+**Severity.** — (no defect found)
+
+**Why it ran.** #2723 took HELIX signal eligibility from 1500/5000 to **5000/5000** in one deploy.
+`anthropicToolLoop` caps every `tool_result` at `MAX_TOOL_RESULT_CHARS = 16_000` by keeping the HEAD
+and discarding the tail, and three tools in the Night Hawk lane have already shipped truncated that
+way (#2433, #2436, #2480) — one of them had Largo quoting a 40% win rate over "5 plays" for a window
+whose real record was 74 resolved at 50%. A payload that grows threefold is exactly the shape that
+crosses the cap without anything failing, so the question is not rhetorical.
+
+**Result — all four HELIX tools COMPLETE, and the instrument was proven on every run.**
+
+| tool | verdict |
+|---|---|
+| `get_helix_tape_analytics` | ✅ COMPLETE |
+| `get_helix_derived` | ✅ COMPLETE |
+| `get_helix_signal_outcomes` | ✅ COMPLETE |
+| `get_helix_thermal_compare` | ✅ COMPLETE |
+
+`CONTROL get_zerodte_rejections -> TRUNCATED` on every run. That control is what makes the four
+COMPLETEs mean anything: the instrument is a model, so a run of all-COMPLETE is otherwise
+indistinguishable from a run whose question never landed. It detected a real truncation first, so
+COMPLETE reads as clean rather than as unverified.
+
+**So #2723's population growth did NOT push any HELIX payload over the cap.** The lists inside
+`get_helix_derived` are already capped with `_truncated` companions (`top_prints`, `stacked_hits`,
+`velocity_spikes`, `split_flow`), which is why tripling the underlying population did not triple the
+payload — but that was the reasoning, and this is the measurement.
+
+**What the first attempt cost, and what it produced.** The four-tool run **aborted at the fourth
+tool** with `HTTP 401` — the `__session` JWT dies at ~72s and one Largo question takes seconds, so a
+multi-tool run always outlives a single token. The probe handled that correctly (it aborts and
+refuses to call the remainder clean, rather than smearing one dead session across N rows that each
+look like a finding about a tool), but the fourth tool went unprobed and had to be re-run alone.
+That is the defect fixed in the same PR as this entry: the probe now holds its cookie in the shared
+re-minting jar and retries once on a 401. Re-measured after the fix, **all four tools complete in
+one invocation, EXIT=0.**
+
 ---
 
 ## 2026-08-23 — [SPX Slayer] Post-deploy live validation of #2646, #2694 and #2699 — three PASS, and one of them needed a new instrument

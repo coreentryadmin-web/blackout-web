@@ -47,7 +47,11 @@ import {
   directionalPremium,
   directionLabel,
 } from "@/features/helix/lib/helix-flow-aggression";
-import { readDirection } from "@/features/helix/lib/helix-direction-read";
+import {
+  readDirection,
+  MIN_READABLE_PCT_FOR_VERDICT,
+} from "@/features/helix/lib/helix-direction-read";
+import { coverageContractViolations } from "./lib/helix-direction-probe-eval.mjs";
 import { bucketLabel } from "@/features/helix/components/ExpiryConcentration";
 import { HELIX_NET_PREMIUM_LEADERS_LIMIT } from "@/features/helix/lib/helix-strike-leaders";
 import { daysToExpiry } from "@/features/helix/lib/helix-flow-format";
@@ -257,14 +261,51 @@ try {
         `${leaderDisagreements}/${leaders.length} leaders disagree between the two rules.` +
         (disagreements === 0
           ? ""
-          : " Each one renders a direction from a rule this page no longer uses.")
+          : " That is the MEASUREMENT, not a failure: the two rules genuinely differ, and each" +
+            " disagreement is a place the retired rule would have coloured a direction the" +
+            " evidence does not support. Both sides are computed here, so this says nothing" +
+            " about which rule the deployed page uses.")
     );
   }
 
-  // Non-zero on any disagreement so this can gate. After the fix the panel USES the shipped
-  // verdict, so a disagreement means the deploy does not carry it — which is the thing worth
-  // failing on.
-  if (disagreements > 0) exitCode = 1;
+  // ── WHAT THIS GATES ON, AND WHAT IT DELIBERATELY DOES NOT (corrected 2026-08-23) ────────────
+  //
+  // This used to be `if (disagreements > 0) exitCode = 1`, justified as: "after the fix the panel
+  // USES the shipped verdict, so a disagreement means the deploy does not carry it."
+  //
+  // THAT REASONING DOES NOT HOLD, and it made this probe permanently red. Both sides of the
+  // comparison are computed HERE, offline, from the same payload: `legacy` is the old rule
+  // reimplemented above (`callPct >= 55`, `net >= 0`) and `shipped` is `readDirection`. Nothing in
+  // this probe observes what the page renders. So a disagreement means only that the two RULES
+  // differ on this data — which is the finding this probe exists to measure (#2713: the rules
+  // sign-flip on 44.6% of tickers), not a deploy fault. It is the expected, permanent state, and
+  // the module header states it as the headline result. Gating on it made the file contradict
+  // itself and guaranteed exit 1 forever — and a gate that can never go green is not a gate; run
+  // tomorrow it reads as "the deploy does not carry #2713" on a deploy that carries it fine.
+  //
+  // What IS falsifiable here is the shipped rule's own contract: `readDirection` must never state
+  // a direction it lacks the coverage for. Below MIN_READABLE_PCT_FOR_VERDICT it is required to
+  // return `undetermined`. That invariant is checkable from this payload, it is GREEN today, and
+  // it goes red exactly when something real has broken — the threshold retuned by accident, the
+  // gate dropped, or a build serving a `readDirection` that predates the coverage gate.
+  const contractViolations = coverageContractViolations(
+    [
+      ...report.map((r) => ({ what: `horizon ${r.horizon}`, ...r })),
+      ...leaders.map((r) => ({ what: `ticker ${r.ticker}`, ...r })),
+    ],
+    MIN_READABLE_PCT_FOR_VERDICT
+  );
+
+  if (contractViolations.length > 0) {
+    console.log(
+      `\n!! CONTRACT VIOLATION — readDirection stated a verdict below ${MIN_READABLE_PCT_FOR_VERDICT}% readable premium:`
+    );
+    for (const v of contractViolations) {
+      console.log(`   ${v.what}: ${v.shipped_verdict} at ${v.readable_pct}% readable`);
+    }
+    console.log(`   The coverage gate is the thing that makes every number above honest.`);
+    exitCode = 1;
+  }
 } finally {
   await session.cleanup?.();
 }
