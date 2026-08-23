@@ -102,13 +102,16 @@ function barAt(bars, ms, toleranceMin = 10) {
   return Number.isFinite(c) && c > 0 ? c : null;
 }
 
+/** Bounded-concurrency map, preserving input order. `fn` takes the ITEM only — the index was passed
+ *  too and no caller ever used it, which CodeQL correctly flagged as a superfluous argument
+ *  (alert 759). Speculative generality in a one-call-site helper is just an unused parameter. */
 async function mapLimit(items, limit, fn) {
   const out = new Array(items.length);
   let i = 0;
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
     while (i < items.length) {
       const idx = i++;
-      out[idx] = await fn(items[idx], idx);
+      out[idx] = await fn(items[idx]);
     }
   }));
   return out;
@@ -160,7 +163,13 @@ async function mapLimit(items, limit, fn) {
       for (const b of summary) {
         console.log(`  ${b.bucket.padEnd(16)} ${String(b.n).padStart(4)}   ${b.winRate.toFixed(1).padStart(5)}%  ${b.avgFavorablePct.toFixed(3).padStart(8)}%   $${Math.round(b.avgPremium).toLocaleString().padStart(12)}`);
       }
-      console.log(`\nVERDICT: ${sep.verdict}` + (sep.spreadPp != null ? ` — best/worst win-rate spread ${sep.spreadPp.toFixed(1)}pp (${sep.best.bucket} ${sep.best.winRate.toFixed(1)}% vs ${sep.worst.bucket} ${sep.worst.winRate.toFixed(1)}%)` : ""));
+      console.log(`\nVERDICT: ${sep.verdict}` + (sep.spreadPp != null
+        ? ` — spread ${sep.spreadPp.toFixed(1)}pp (best ${sep.best.bucket} ${sep.best.winRate.toFixed(1)}% vs worst ${sep.worst.bucket} ${sep.worst.winRate.toFixed(1)}%), rank correlation rho=${sep.rho.toFixed(2)}`
+        : ""));
+      if (sep.verdict === "SPREAD WITHOUT ORDER") {
+        console.log(`  Buckets DIFFER but do not TREND with the score — a mid or low bucket outperforms`);
+        console.log(`  a high one. That is what noise looks like, not a ranking.`);
+      }
       if (sep.excluded?.length) console.log(`buckets excluded as too thin (n<30): ${sep.excluded.join(", ")}`);
       console.log(`\nScope: measures whether score ranks DIRECTIONAL follow-through in the underlying.`);
       console.log(`It does NOT measure option P&L — no strike, no decay, no exit rule. A flat result`);
