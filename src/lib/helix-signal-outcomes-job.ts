@@ -1,6 +1,7 @@
 import { fetchRecentFlows, insertHelixSignalOutcomes, fetchPendingHelixSignalCheckpoints, updateHelixSignalCheckpoint } from "@/lib/db";
 import { detectVelocitySpikes, detectSplitFlow } from "@/features/helix/lib/helix-signal-detection";
 import { DIRECTION_BASIS } from "@/features/helix/lib/helix-flow-aggression";
+import { signalEligibility } from "@/features/helix/lib/helix-signal-detection";
 import { fetchStockMinuteBars, fetchIndexMinuteBars } from "@/lib/providers/polygon";
 import { flowPriceSymbol } from "@/lib/providers/flow-price-symbol";
 
@@ -9,9 +10,21 @@ import { flowPriceSymbol } from "@/lib/providers/flow-price-symbol";
  * called from the same cron (src/app/api/cron/helix-signal-outcomes/route.ts):
  *
  *  1. record() — re-runs the SAME detection helix-signal-detection.ts uses live in the
- *     browser (so client badge and persisted record can never disagree) over the last
- *     hour of flow_alerts, and inserts newly-fired signals. price_at_fire comes from the
- *     firing print's own underlying_price — no live external call needed to record a firing.
+ *     browser over the last hour of flow_alerts, and inserts newly-fired signals.
+ *     price_at_fire comes from the firing print's own underlying_price — no live external call
+ *     needed to record a firing.
+ *
+ *     THE SHARED DEFINITION DOES NOT MAKE THE TWO AGREE, and this comment used to say it did
+ *     ("so client badge and persisted record can never disagree"). Same detector, DIFFERENT
+ *     POPULATION: the browser runs it over `applyTapeFilters(tapeBuffer)` — the member's own
+ *     ticker/side/premium filters applied to whatever the tape has streamed — while this job runs
+ *     it over an unfiltered `since_hours: 1, limit: 5000` read straight from the DB. So a badge a
+ *     member saw and a row this job wrote can legitimately differ, in both directions, and until
+ *     now neither the row nor the panel said so (HELIX-MAP.md §9.6).
+ *
+ *     Every row therefore carries `context.population`, which is the precondition for ever using
+ *     this ledger's follow-through rate to describe what a member actually SAW rather than what
+ *     the cron happened to scan.
  *  2. grade() — for firings whose 5m/15m/1h checkpoint has actually elapsed, fetches the
  *     ticker's price at that moment from Polygon (the only point this touches an external
  *     API — recording never does) and fills the checkpoint; the 1h checkpoint also grades
@@ -28,9 +41,73 @@ export function windowStartIso(nowMs: number, bucketMs: number): string {
   return new Date(Math.floor(nowMs / bucketMs) * bucketMs).toISOString();
 }
 
+/** How many ineligible tickers to NAME. Enough to identify the feed responsible without turning
+ *  every ledger row into a ticker dump — measured live, the whole ineligible set is 2 tickers. */
+const POPULATION_TICKER_SAMPLE = 20;
+
+export type SignalPopulation = {
+  /** Which reader produced the firing. The browser is `client_filtered`; this job is not. */
+  source: "cron_unfiltered";
+  since_hours: number;
+  limit: number;
+  scanned: number;
+  signal_eligible: number;
+  signal_ineligible: number;
+  signal_ineligible_tickers: string[];
+  client_equivalent: boolean;
+};
+
+/**
+ * §9.6 — WHAT A FIRING WAS COMPUTED OVER.
+ *
+ * The detector is shared with the browser, which is why this job's header used to claim badge and
+ * record "can never disagree". They can: same definition, DIFFERENT POPULATION. The browser runs it
+ * over `applyTapeFilters(tapeBuffer)` — the member's own ticker/side/premium filters over whatever
+ * has streamed — and this job runs it over an unfiltered DB read. Neither is wrong; they answer
+ * different questions, and a row that does not say which one it answered cannot be used to describe
+ * what a member saw.
+ *
+ * `signal_eligible` is the denominator BOTH detectors could actually see. A print with no real UW
+ * timestamp cannot be placed in a window, and measured live 2026-08-23 that is 70% of the tape —
+ * SPX and SPY (HELIX-MAP.md §9.0). A firing found among 1500 eligible prints and one found among 30
+ * are not the same evidence, and without this they are indistinguishable in the record.
+ *
+ * Pure so it can be tested without a database — the job around it cannot.
+ */
+export function buildSignalPopulation(
+  flows: Parameters<typeof signalEligibility>[0],
+  params: { since_hours: number; limit: number }
+): SignalPopulation {
+  const eligibility = signalEligibility(flows);
+  return {
+    source: "cron_unfiltered",
+    since_hours: params.since_hours,
+    limit: params.limit,
+    scanned: flows.length,
+    signal_eligible: eligibility.eligible,
+    signal_ineligible: eligibility.ineligible,
+    // Named, not merely counted: "70% ineligible" is abstract, "SPX and SPY" is checkable.
+    signal_ineligible_tickers: eligibility.ineligibleTickers.slice(0, POPULATION_TICKER_SAMPLE),
+    // The client applies the member's filters before detecting; this job applies none. Stating it
+    // makes the difference a fact in the row rather than something a reader must rediscover by
+    // reading two files.
+    client_equivalent: false,
+  };
+}
+
 export async function recordHelixSignalFirings(nowMs = Date.now()): Promise<{ inserted: number; scanned: number }> {
   const flows = await fetchRecentFlows({ since_hours: 1, order: "recent", limit: 5000 });
   if (!flows.length) return { inserted: 0, scanned: 0 };
+
+  // §9.6 — WHAT THIS FIRING WAS COMPUTED OVER. Stamped on every row so a reader can tell a ledger
+  // firing from a badge a member saw, and so a follow-through rate is never quoted without the
+  // population it was measured on.
+  //
+  // `eligible` is the denominator BOTH detectors could actually see: a print with no real UW
+  // timestamp cannot be placed in a window, and measured live 2026-08-23 that is 70% of the tape
+  // — SPX and SPY. A row that fired out of 1500 eligible prints and one that fired out of 30 are
+  // not the same evidence, and without this the two are indistinguishable in the record.
+  const population = buildSignalPopulation(flows, { since_hours: 1, limit: 5000 });
 
   const latestPriceByTicker = new Map<string, number>();
   for (const f of flows) {
@@ -52,7 +129,7 @@ export async function recordHelixSignalFirings(nowMs = Date.now()): Promise<{ in
       // within the same 15-min bucket across cron runs is the SAME firing, not a new one.
       window_start: windowStartIso(nowMs, 15 * 60_000),
       direction: null, // velocity spikes are a magnitude signal, not directional
-      context: { recent: s.recent, prior: s.prior, ratio: s.ratio, recentPremium: s.recentPremium },
+      context: { recent: s.recent, prior: s.prior, ratio: s.ratio, recentPremium: s.recentPremium, population },
       price_at_fire: latestPriceByTicker.get(s.ticker) ?? null,
     })),
     ...splitFlows.map((s) => ({
@@ -74,6 +151,7 @@ export async function recordHelixSignalFirings(nowMs = Date.now()): Promise<{ in
         total: s.total,
         direction_basis: DIRECTION_BASIS,
         directional: s.directional,
+        population,
       },
       price_at_fire: latestPriceByTicker.get(s.ticker) ?? null,
     })),

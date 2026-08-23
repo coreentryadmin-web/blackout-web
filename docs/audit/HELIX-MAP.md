@@ -549,14 +549,43 @@ That means either sourcing a timestamp for the SPX/SPY writer or deciding those 
 ingest-dated forever. Upstream of this lane — the fix above makes the cost visible and measurable,
 it does not remove it. 70% of the tape remains unscannable, now honestly so.
 
-**9.1 — `helix-discord-digest` is unreachable in production.** The route is complete (filters
+**9.1 — `helix-discord-digest` is unreachable in production — VERIFIED against the deployed manifest.** The route is complete (filters
 ≥$500k · fill <$10 · ≤30 DTE, Redis NX dedup, two embed builders), `railway.helix-discord-digest.toml`
 exists as a schedule *catalog* entry, but the job is in `INTENTIONALLY_UNREGISTERED` ("Unscheduled in
 cron-jobs.json") and **no code in `src/` invokes it** — unlike `darkpool-discord`, which the same
 comment says is "invoked off another job's path". Per-print HELIX Discord alerts *do* fire
 (`notifyHelixDiscordFlow` from `flow-persist`), so the channel is alive; only the digest is dormant.
-Needs a decision, not a patch: schedule it, or delete it and drop the catalog file. `UNVERIFIED-LIVE`
-— the blackout-infra `cron-jobs.json` was not read this pass.
+Needs a decision, not a patch: schedule it, or delete it and drop the catalog file.
+
+**VERIFIED 2026-08-23** — the `UNVERIFIED-LIVE` caveat is discharged. `blackout-infra` was attached
+to the session and cloned; `terraform/modules/crons/cron-jobs.json` carries **39 jobs and not one
+mentions `helix` or `discord`**. `helix-discord-digest` is confirmed unscheduled in production.
+
+**AND THE LARGER FACT NEXT TO IT, which matters more to this lane than §9.1 does.**
+`helix-signal-outcomes` is dark too — and unlike the digest it is **fully registered** in
+`cron-registry.ts` (`schedule_label: "~Every 15 min (market hours)"`, `stale_after_min: 45`,
+`weekdays_only`, `market_hours_only`) while being absent from the deployed manifest. Its only
+invoker is its own unscheduled route; nothing else in `src/` calls `recordHelixSignalFirings`.
+
+**This is NOT a new discovery and must not be written up as one.** It is already named in five
+places in `src/` as the canonical example of a fully-built capability with no path to run
+(`product-reads.ts:655` and `:858`, `evidence-reads.ts:14`, `vector-analytics-core.ts:14`,
+`admin-cron-health.ts:184`), and `cron-schedule-coverage.mjs` ends its own output with
+*"Leaving it unlisted is how helix-signal-outcomes stayed dark."* It is known, documented, unfixed.
+
+**What it means for this map.** The signal ledger has no writer running, so every ledger-dependent
+statement here is about a table that is not being filled: §9.6's `context.population` stamp,
+§9.11's `direction_basis`, and §9.7's note that the ledger is *"the only instrument that could say
+whether score correlates with follow-through"*. Those changes are correct and are PRECONDITIONS —
+they are not measurements, and no follow-through number should be quoted from this ledger until the
+cron runs.
+
+**Not actioned from this lane, deliberately.** Scheduling it is an infra change in another repo that
+starts a job running against production. CLAUDE.md is explicit that terraform in a PR is a RECORD,
+not an instruction to apply, and that new resources are created deliberately rather than swept in.
+Raised for the coordinator with the evidence above rather than taken. The same run also flags
+`darkpool-discord`, `largo-morning-brief`, `meridian-warm`, `thermal-discord`, `welcome-sequence`
+and `zerodte-grade` as unscheduled-and-unexplained — other lanes' surfaces, reported not touched.
 
 **9.2 — Two UTC-anchored DTE derivations at ingest (C1 class) — FIXED, and the impact assessment was confirmed by measurement.** `parseUwFlowAlert`
 (`unusual-whales.ts:270`) computes `dte` from `new Date(expiry) − Date.now()` in UTC and derives
@@ -658,11 +687,24 @@ prints appear in a current-tape panel at all. It also overlaps §9.4, since ever
 measured there was one of these expired contracts. Raised for the coordinator rather than decided
 here; an "Expired" bucket would change `EXPIRY_HORIZONS`, which is a Largo contract.
 
-**9.6 — Nothing records which population fired a persisted signal.** Client badges run the detectors
+**9.6 — Nothing records which population fired a persisted signal — FIXED.** Client badges run the detectors
 over the filtered/floored/scoped client buffer; the cron runs them over the unfiltered last hour.
 Same definition, different inputs — so ledger and badge can legitimately disagree, and today neither
 the row nor the panel says so. Cheap fix (stamp the population into `context`), and it is the
 precondition for ever using the ledger's follow-through rate to describe what a member *saw*.
+
+**FIXED 2026-08-23.** Every firing — both signal types — now carries `context.population`:
+`{source, since_hours, limit, scanned, signal_eligible, signal_ineligible,
+signal_ineligible_tickers, client_equivalent}`. Built by the pure, exported
+`buildSignalPopulation`, so it is testable without a database (the job around it is not).
+`signal_eligible` reuses §9.0's `signalEligibility`, which is what made this cheap — a row that
+fired among 1500 eligible prints and one that fired among 30 are not the same evidence, and the
+record could not previously tell them apart. `client_equivalent: false` states outright that this
+is NOT the member's population.
+
+The job's own header claimed the shared detector meant badge and record "can never disagree". That
+was false and is now corrected in place, with the old wording quoted so the history survives — the
+detector is shared, the INPUTS are not.
 
 **9.7 — The conviction score saturates at $1M.** `min(60, premium/$1M × 60)` means every print at or
 above $1M contributes the same 60 premium points, so a $50M block and a $1.1M print are separated
