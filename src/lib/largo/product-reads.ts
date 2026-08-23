@@ -881,12 +881,14 @@ export async function helixDerivedForLargo(
       { marketPlatform },
       { computeFlowStrikeStacks },
       { selectTopPrints },
+      { positionIntent },
       { detectVelocitySpikes, detectSplitFlow, signalEligibility },
       { HELIX_STRIKE_HITS_WINDOW_MIN },
     ] = await Promise.all([
       import("@/lib/platform"),
       import("@/lib/largo/flow-strike-stacks"),
       import("@/features/helix/lib/helix-top-prints"),
+      import("@/features/helix/lib/helix-position-intent"),
       import("@/features/helix/lib/helix-signal-detection"),
       import("@/features/helix/lib/helix-strike-leaders"),
     ]);
@@ -957,7 +959,20 @@ export async function helixDerivedForLargo(
     // get_helix_signal_outcomes (rows_shown/rows_summarized) and get_helix_tape_analytics
     // (expiry_concentration_truncated) already use.
     const stackedHits = cappedList(stacks, 20);
-    const topPrints = cappedList(top.rows, 12);
+    // POSITION INTENT on the leaders. The model would otherwise have to re-derive
+    // `premium / (fill_price * 100)` against `open_interest` AND re-pick the margin — a second
+    // reader of one fact, which is the failure this lane has now fixed five times. Stated once, by
+    // the same function the tape badge uses, so the desk and the model cannot disagree about
+    // whether a print is provably new positioning.
+    //
+    // The verdict is carried WHOLE, including its refusals: `indeterminate` (below open interest,
+    // could be either) and `unknown` (no open interest reported — never examined) are distinct
+    // facts and neither may be read as "closing". Flattening them to a boolean would delete
+    // exactly the distinction that makes the field honest.
+    const topPrints = cappedList(
+      top.rows.map((row) => ({ ...row, position_intent: positionIntent(row) })),
+      12
+    );
     const velocitySpikes = cappedList(velocity, 12);
     const splitFlow = cappedList(split, 12);
 
@@ -983,7 +998,15 @@ export async function helixDerivedForLargo(
 
       /** TOP PRINTS — the conviction-scored leaders. `mode` says which ranking is in force, and
        *  `session_fallback` flags that every row is OUTSIDE the rolling window, i.e. these are
-       *  stale session leaders rather than live conviction. Reporting them as live would be wrong. */
+       *  stale session leaders rather than live conviction. Reporting them as live would be wrong.
+       *
+       *  Each row also carries `position_intent` — whether the print PROVABLY opened new
+       *  positioning, from `premium / (fill_price * 100)` against `open_interest`. Three outcomes,
+       *  two of them refusals: `opening` (the size exceeds what exists to close, so at least part
+       *  is new), `indeterminate` (below open interest — could be opening OR closing, and is NEVER
+       *  evidence of closing), and `unknown` (no open interest reported, so nothing was examined).
+       *  Measured live 2026-08-23: only 30% of the tape carries open interest at all, so `unknown`
+       *  is the common case and must not be read as a negative answer. */
       top_prints: topPrints.items,
       top_prints_total: topPrints.total,
       top_prints_truncated: topPrints.truncated,

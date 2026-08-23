@@ -4,6 +4,7 @@ import "server-only";
 import { fetchGexHeatmap } from "@/lib/providers/polygon-options-gex";
 import { getGexPositioning } from "@/lib/providers/gex-positioning";
 import { strikeTotalsFromLadder } from "@/lib/providers/gex-cross-validation-core";
+import { etSessionFacts, ageSecondsFromIso, type MarketPhase } from "@/lib/et-session-facts";
 
 export type GexHeatmapLargoLens = "gex" | "vex" | "dex" | "charm";
 
@@ -73,6 +74,26 @@ export type GexHeatmapForLargo = {
   nearest_wall: { strike: number; kind: "resistance" | "support"; distance_pts: number } | null;
   distance_to_flip_pct: number | null;
   shift_summary: string | null;
+  /**
+   * WHEN — the three facts a bare `asof` cannot carry.
+   *
+   * `asof` is a UTC ISO of the MATRIX COMPUTE, and it was the only time signal on this payload.
+   * Two things go wrong with that alone. A UTC instant rolls its calendar date at 20:00 ET, so a
+   * session derived from it is a full session ahead for the last four hours of every trading day
+   * (#2418 / #2420). And the compute age is not the PRICE age: measured 2026-08-22, this tool would
+   * have served MSFT from a matrix 6,040 seconds old, `spot: 483.49` — a 16:00 ET close — with
+   * nothing in the payload saying the market was shut.
+   *
+   * `get_thermal_compare` and `get_helix_thermal_compare` already carry all of this and say so in
+   * their descriptions; these two reads were the outliers. Same derivation, shared helper.
+   */
+  as_of_et: string | null;
+  session_date: string | null;
+  market_session: MarketPhase | null;
+  /** Age of the matrix COMPUTATION in seconds — not of the price it models. Null when unusable. */
+  matrix_age_sec: number | null;
+  /** Always 'cached': this is a cache read, never a fresh upstream fetch. */
+  freshness: "cached";
   /** Polygon vs UW divergence on primary levels — same chip Thermal UI shows. */
   cross_validation?: {
     divergence?: number | null;
@@ -115,6 +136,11 @@ export async function gexHeatmapForLargo(
   const lens = opts?.lens ?? "gex";
   const topN = Math.min(24, Math.max(4, opts?.top_strikes ?? 12));
 
+  // ONE instant for the whole payload — phase, session date and the age must describe the same
+  // moment, or a read assembled across 15:59:59 -> 16:00:01 reports OPEN beside post-close levels.
+  const nowMs = Date.now();
+  const unavailableFacts = etSessionFacts(new Date(nowMs));
+
   const hm =
     opts && "heatmap" in opts
       ? (opts.heatmap ?? null)
@@ -151,6 +177,13 @@ export async function gexHeatmapForLargo(
       nearest_wall: null,
       distance_to_flip_pct: null,
       shift_summary: null,
+      // Session facts are stamped even when the matrix is cold: "no data for this ticker" and
+      // "the market is shut" are different statements, and nulls for both cannot tell them apart.
+      as_of_et: unavailableFacts.as_of_et,
+      session_date: unavailableFacts.session_date,
+      market_session: unavailableFacts.market_session,
+      matrix_age_sec: null,
+      freshness: "cached",
       cross_validation: null,
       source: "polygon",
     };
@@ -212,6 +245,11 @@ export async function gexHeatmapForLargo(
     nearest_wall: pos?.nearest_wall ?? null,
     distance_to_flip_pct: pos?.distance_to_flip_pct ?? null,
     shift_summary: pos?.shift_summary ?? hm.shift?.summary ?? null,
+    as_of_et: unavailableFacts.as_of_et,
+    session_date: unavailableFacts.session_date,
+    market_session: unavailableFacts.market_session,
+    matrix_age_sec: ageSecondsFromIso(hm.asof ?? null, nowMs),
+    freshness: "cached",
     cross_validation: crossValidation,
     source: "polygon",
   };

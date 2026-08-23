@@ -9,6 +9,76 @@ already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
 
+## 2026-08-23 — [Thermal] Post-deploy validation of the SPX 0DTE mislabel fix — PASS, the two code paths now agree
+
+**Severity.** — (no defect found; this closes a regression I shipped earlier tonight)
+
+**Why it ran.** #2679 (`5fff9d7f`) fixed SPX labelling the FRONT expiry's walls "0DTE" on a closed
+market — the overlay's target-expiry parameter had been threaded in as the session date. Deploy
+`8dc301ad` completed **success** 05:32:10Z and carries it (`git merge-base --is-ancestor 5fff9d7f
+8dc301ad`). A warming pass ran first, then the measurement at 05:33Z — per the methodology note in
+the §9.2 entry, a single read on a cold cache reports `available: false` and means nothing.
+
+**Result — 6/6, and SPX now matches the other five.**
+
+| ticker | 0DTE | 3DTE | 7DTE |
+|---|---|---|---|
+| SPY | `exp=0` c=null p=null | `exp=3` c=772 p=765 | `exp=7` c=780 p=765 |
+| **SPX** | **`exp=0` c=null p=null** | **`exp=3`** c=7710 p=7600 | `exp=7` c=7800 p=7600 |
+| QQQ | `exp=0` c=null p=null | `exp=3` c=716 p=705 | `exp=7` c=730 p=690 |
+| NVDA | `exp=0` c=null p=null | `exp=1` c=220 p=212.5 | `exp=3` c=222.5 p=212.5 |
+| MSFT | `exp=0` c=null p=null | `exp=2` c=490 p=480 | `exp=4` c=500 p=475 |
+| AAPL | `exp=0` c=null p=null | `exp=2` c=320 p=302.5 | `exp=4` c=320 p=302.5 |
+
+Before the fix, SPX read `0DTE expiries=[2026-08-24] call=7725 put=7630`. It now reads an EMPTY 0DTE
+bucket, which is the correct "no expiry in range" state on a Sunday.
+
+**The corroborating number.** SPX's 3DTE bucket moved from `exp=4` to `exp=3`, and now matches SPY
+and QQQ exactly. That is the arithmetic of the fix rather than a coincidence: DTE is counted from
+the real ET session (Sunday 2026-08-23) instead of from Monday's expiry, so one fewer expiry falls
+inside three sessions. **The overlaid path and the non-overlaid path now agree**, and their
+disagreement is what exposed the bug in the first place — agreement is therefore the strongest
+available evidence, stronger than SPX simply looking plausible on its own.
+
+Zero wrong-side walls across all 18 buckets: every call wall above spot, every put wall below.
+
+## 2026-08-23 — [Thermal] Post-deploy validation of §9.1 public snapshot freshness — PASS, unauthenticated
+
+**Severity.** — (no defect found)
+
+**Why it ran.** #2676 (`cb70a03f`) fixed the public gamma-snapshot page dating a prior-session close
+as "Updated just now". Deploy `7bd99a49` completed **success** 04:58:05Z and carries it — confirmed
+with `git merge-base --is-ancestor cb70a03f 7bd99a49`, not by assuming the newest completed run was
+the right one. Measured 05:26Z, ~28 minutes after the roll, well past the 5s public cache.
+
+**Payload — `/api/public/gex-snapshot`, no credentials, all three allowlisted tickers:**
+
+| ticker | available | spot | `market_session` | `session_date` | `as_of_et` |
+|---|---|---|---|---|---|
+| SPX | true | 7674.37 | CLOSED | 2026-08-23 | 2026-08-23 01:26 ET |
+| SPY | true | 765.72 | CLOSED | 2026-08-23 | 2026-08-23 01:26 ET |
+| QQQ | true | 714.25 | CLOSED | 2026-08-23 | 2026-08-23 01:26 ET |
+
+Real ET clock at measurement: **Sun Aug 23 01:26 EDT**. Matches. The UTC `asof` is retained
+alongside, so nothing was traded away for the new fields.
+
+**Rendered page — the part that actually matters.** A field in a payload is not a disclosure; the
+defect was what a reader SEES. Fetched the HTML and extracted the rendered text:
+
+```
+CAVEAT: Market closed — price is the last session's close, not a live quote
+LEVELS: Levels computed just now
+```
+
+`"Updated just now"` — the exact string of the defect — **no longer appears anywhere in the page**.
+The two claims are now separated: the levels age is still shown and is still true, and the price
+carries its own caveat directly beneath it. Spot renders as `7,674.37`, Friday's close, now labelled.
+
+**Not yet covered by this pass.** The holiday-aware session derivation is in #2683 and NOT in this
+deploy — `cb70a03f` composes `marketPhaseFromEt` directly, so a market holiday would still read as a
+normal session here. Sunday is CLOSED under either derivation, so this measurement does not
+discriminate between them and must not be read as validating the holiday path.
+
 ## 2026-08-23 — [Thermal] Post-deploy validation of §9.2 `walls_by_horizon` — PASS on all six tickers, and it caught a regression of my own
 
 **Severity.** — (the field validated GREEN; the probe also found a mislabel I had introduced, filed
@@ -51,6 +121,54 @@ directly — QQQ, MSFT and AAPL each went `available: true` with the field prese
 seconds later. **A single-shot probe cannot tell "cold, warming" from "broken"**, and off-hours the
 `heatmap-warm` cron is not running to hide the difference. Any future post-deploy Thermal probe
 should read each ticker at least twice before reporting an availability verdict.
+
+## 2026-08-23 — [Helix] Post-deploy live validation of §9.3 + §9.5 + §9.10 — all three PASS
+
+**Severity.** — (no product defect found; one harness error, corrected mid-run and recorded below)
+
+**Why it ran.** The three remaining merged-but-unvalidated HELIX fixes. Deploy `32618414670`
+completed **success** at 05:32:10Z; all three confirmed present by ancestry against the deployed
+head `8dc301ad` before anything was measured — `#2670` (7bd99a49), `#2673` (9da026d0), `#2680`
+(8dc301ad itself). Two earlier attempts were correctly refused because the only completed deploy at
+the time predated all three.
+
+**§9.10 — PASS, and the cleanest result of the batch.** The Rule column, 500 rendered rows:
+
+| | before | after |
+|---|---|---|
+| `stock` | 271 | **0** |
+| `whale` | 126 | **0** |
+| `0dte` | 0 | 0 |
+| `—` (honest absence) | 0 | **397** |
+| `REPEAT` / `FLOOR` / `SWEEP` | 99 / 3 / 1 | **99 / 3 / 1** |
+
+The 397 rows that displayed an internal bucket name now display `—`, and the 103 real rule words are
+**preserved exactly**. It removed the lies without removing the truth, which is the only acceptable
+shape for a fix that deletes displayed content.
+
+**§9.5 — PASS.** Expiry Concentration, compared bucket-by-bucket against the tape's own rendered
+DTE column: `0DTE 11/11 · This week 18/18 · Monthly 140/140 · LEAPS 331/331`, panel total 500. The
+11 expired prints (negative `dte`) are in **0DTE**; pre-fix they fell through to `dte <= 7` and
+"This week" would have read **29**.
+
+**§9.3 — PASS, and the cap genuinely binds.** `gex_evaluated` present on **5000/5000 rows — zero
+absent**, split `true 689 / false 4311`, across 272 distinct tickers of which **5** were evaluated.
+The flag discriminates, which is the whole fix: "no wall badge" can no longer be confused with "not
+near a wall".
+
+**Worth recording, not a defect:** only **5 of 272** tickers were evaluated, far below the
+`clamp(…, 40, 100)` cap. Off-hours the GEX matrices are not being rebuilt, so most lookups return
+empty rather than being cut by the cap. So this run proves the FLAG works; it does **not** exercise
+the cap as the binding constraint. That distinction is exactly what §9.3 exists to express, and the
+RTH re-run is what will test the cap itself.
+
+**The harness error, recorded because it produced a false FAIL.** The first §9.5 pass compared the
+panel's bucket counts against the **5000-row API window** and reported `"This week" 18 vs 155 —
+FAIL`. The panel reads the **500 rendered rows**, not the API window; its four buckets summed to
+exactly 500, which is what gave it away. Re-run against the tape's own rendered DTE column, all four
+buckets matched exactly. **A denominator taken from the wrong population turns a correct fix into a
+reported failure** — the same class as the 2026-08-23 UI-harness FALSE PASS earlier in this file,
+arriving from the opposite direction. Suspect the instrument before the product.
 
 ## 2026-08-23 — [Helix] Post-deploy live validation of §9.8 + §9.4 — both PASS, and the harness needed recalibrating
 
