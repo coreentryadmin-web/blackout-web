@@ -42,12 +42,21 @@ export type MinimalFlow = {
  * both correctly skip it. Neither is buggy. The defect (HELIX-MAP.md §9.0) is that **nothing said
  * so**, and the consequence is not small.
  *
- * MEASURED (live prod tape, 5000 rows / 168h, 2026-08-23): **1500 rows (30.0%) are signal-eligible;
- * 3500 (70.0%) can fire NEITHER signal — and those 3500 span exactly TWO tickers, SPX (3079) and
- * SPY (421).** They come from the second writer (§4A), an index feed that sends no time field, and
- * they carry ~92% of the tape's premium. So the two names that top every premium panel are
- * structurally incapable of producing either signal, and a member or a model reading "no velocity
- * spikes on SPX" concludes the tape was quiet when SPX was never scanned.
+ * MEASURED (live prod tape, 5000 rows / 168h, 2026-08-23, BEFORE #2723 deployed): **1500 rows
+ * (30.0%) signal-eligible; 3500 (70.0%) could fire NEITHER signal — and those 3500 spanned exactly
+ * TWO tickers, SPX (3079) and SPY (421)**, ~92% of the tape's premium. So the two names topping
+ * every premium panel produced no signal at all, and a member or a model reading "no velocity
+ * spikes on SPX" concluded the tape was quiet when SPX was never scanned.
+ *
+ * RE-MEASURED against the deployed fix, same query, same day: **5000/5000 eligible, 0 ineligible.**
+ * The index feed was never timeless — `toIso` could not read the epoch it sends (#2723). Both
+ * detectors now see SPX and SPY.
+ *
+ * The eligibility COUNT therefore moves with the data and must not be restated anywhere as a
+ * standing property of the feed. It is computed, here, from one rule, and every surface that
+ * reports it — the Largo read, the member panel, the audit harness — reads that rule rather than
+ * a remembered number. `scripts/audit/lib/helix-tape-inventory-eval.mjs` kept its own copy and
+ * spent the deploy reporting 30% at a tape that was already at 100%.
  *
  * WHY THIS IS ONE FUNCTION AND NOT A THIRD RULE. The two detectors expressed eligibility
  * differently — velocity tested `alert.event_at` directly, split called `flowEventTimeMs` — which

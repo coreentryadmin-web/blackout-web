@@ -68,9 +68,20 @@ function epochToMs(n: number): number | null {
  *
  * `flowEventTimeMs` returns null without `event_at`, and BOTH persisted HELIX signals filter on it
  * — `detectVelocitySpikes` skips such rows outright, `detectSplitFlow` filters on the same. So the
- * population carrying **92.1% of all tape premium** is structurally incapable of firing either
- * signal, while dominating every premium panel. HELIX-MAP §4A records that as a property of the
- * feed. On this evidence it is not: it is a parse.
+ * population carrying **92.1% of all tape premium** was structurally incapable of firing either
+ * signal, while dominating every premium panel. HELIX-MAP §4A recorded that as a property of the
+ * feed. On this evidence it was not: it was a parse.
+ *
+ * ── CONFIRMED AGAINST THE DEPLOYED FIX (2026-08-23, same endpoint, same 5000-row/168h query) ────
+ *
+ * `event_at` presence **30% -> 100%**; `alert_rule` unchanged at 30%, so the two fields have
+ * stopped co-varying exactly as predicted. The recovered timestamps are coherent rather than
+ * merely present — 5000 dated prints span 363 minutes, one RTH session, with the newest 2392 min
+ * old against a market closed since Friday. Signal eligibility went **1500/5000 -> 5000/5000**:
+ * SPX and SPY are scanned by both detectors for the first time.
+ *
+ * That last number is why `writerGroup` in the audit harness no longer identifies a producer by
+ * this field. Anything keyed on "has no `event_at`" was silently keyed on this bug.
  *
  * ── WHAT IS DEDUCED vs MEASURED ─────────────────────────────────────────────────────────────────
  *

@@ -12,12 +12,13 @@
  *      carrying implied_volatility and none of the rest. Nothing in the product says so, and
  *      several HELIX numbers cannot be read correctly without knowing it.
  *
- *   2. WHAT THAT COSTS. Both persisted HELIX signals need a real print time — detectVelocitySpikes
- *      skips rows without event_at, detectSplitFlow filters on flowEventTimeMs. Group B has
- *      neither, so SPX and SPY can NEVER fire a velocity spike or a split-flow signal, while
- *      carrying 92.1% of all premium on the tape and topping the Net Premium leaderboard by 246x.
- *      Every premium panel is dominated by exactly the population every time-based signal is blind
- *      to.
+ *   2. WHAT THAT COSTS — and it is now much less than it was. Both persisted HELIX signals need a
+ *      real print time; on 2026-08-22 Group B had none, so SPX and SPY — 92.1% of all tape premium
+ *      — could fire NEITHER signal. #2723 found the cause was a PARSE, not the feed: `toIso` could
+ *      not read the epoch those rows carry. Re-measured against the deployed fix on 2026-08-23,
+ *      `event_at` presence is 100% (was 30%) and eligibility is 5000/5000 (was 1500/5000).
+ *      Eligibility is therefore read from the PRODUCT's rule, never from the writer group — the
+ *      two agreed only by coincidence, and the coincidence is over.
  *
  *   3. WHETHER THE ROUTE BREAKDOWN PANEL MEANS ANYTHING. Measured: 98.8% OTHER, 1.2% FLOOR,
  *      0.1% SWEEP. BLOCK / SPLIT / CROSS / MULTI never fire at all. 70% of rows carry no
@@ -26,8 +27,11 @@
  *      the SAME file, already maps "repeated" to a REPEAT badge on the tape.
  *
  *   4. WHAT UNIT `implied_volatility` IS IN. Single fractional mode (median 0.17), long right
- *      tail (max 106.2) — not the bimodal shape a mixed-unit feed makes. So `fmtIv`'s per-row
- *      `iv < 3` branch misrenders its own tail: 4.2% of rows with IV, a 3.5 (350%) shown as "4%".
+ *      tail (max 106.2) — not the bimodal shape a mixed-unit feed makes. That measurement is what
+ *      justified #2669 replacing `fmtIv`'s per-row `iv < 3` branch with an unconditional `iv * 100`.
+ *      This now CHECKS that assumption rather than accusing the retired branch: it reports 0
+ *      misrendered on a uniformly fractional feed, and flags the day the distribution goes bimodal
+ *      — which is the day the unconditional multiply becomes wrong.
  *
  * READ-ONLY against production. One temp Clerk user, deleted in a `finally`. Never prints a secret.
  *
@@ -75,6 +79,15 @@ if (session.skip) {
 try {
   const { executionRouteKey } = await import(
     new URL("../../src/features/helix/lib/helix-flow-format.ts", import.meta.url).pathname
+  );
+  // The REAL horizon bucketer. `ExpiryConcentration.tsx`'s `bucketLabel` is byte-identical and
+  // documented as such, but it lives in a component file; this is the importable twin. Imported
+  // rather than restated for the reason this whole file exists: the previous line here ASSERTED
+  // that the panel files negative-DTE prints under "This week", which stopped being true when
+  // §9.5 changed the test to `dte <= 0`. A harness that states what a panel does, instead of
+  // asking it, accuses fixed code.
+  const { expiryHorizonLabel } = await import(
+    new URL("../../src/lib/largo/helix-tape-analytics.ts", import.meta.url).pathname
   );
 
   const qs = new URLSearchParams({ limit: String(LIMIT), since_hours: String(SINCE_HOURS) });
@@ -179,8 +192,8 @@ try {
     L(`  HTTP 200 in ${fetchMs}ms · source=${report.response.source} · rows=${flows.length} · has_more=${report.response.has_more}`);
     L();
     L(`## WRITERS  (the tape has two producers with different payload schemas)`);
-    L(`  A  UW flow_alerts   ${String(groups.A.length).padStart(5)} rows · ${report.writers.A.tickers} tickers · ${usd(premA)}`);
-    L(`  B  index-only feed  ${String(groups.B.length).padStart(5)} rows · ${report.writers.B.tickers} tickers · ${usd(premB)}`);
+    L(`  A  UW flow_alerts   ${String(groups.A.length).padStart(5)} rows · ${report.writers.A.tickers} tickers · ${usd(premA)}   [alert_rule]`);
+    L(`  B  index-only feed  ${String(groups.B.length).padStart(5)} rows · ${report.writers.B.tickers} tickers · ${usd(premB)}   [implied_volatility]`);
     if (groups.mixed.length) L(`  !! MIXED (breaks the clean split — this is news): ${groups.mixed.length}`);
     L(`  Group B carries ${report.writers.B_premium_share_pct}% of ALL premium on this tape`);
     L();
@@ -191,7 +204,15 @@ try {
     }
     L();
     L(`## SIGNAL ELIGIBILITY   (velocity + split both require a real print time)`);
-    L(`  eligible ${eligibility.eligible}/${eligibility.total} rows (${eligibility.eligible_pct}%) — the rest can never fire either signal`);
+    // Read from the PRODUCT's rule, not this harness's own — see helix-tape-inventory-eval.mjs.
+    // The ineligible clause is printed only when there ARE ineligible rows: a blanket "the rest can
+    // never fire either signal" is how this harness reported #2723 as having changed nothing.
+    L(`  eligible ${eligibility.eligible}/${eligibility.total} rows (${eligibility.eligible_pct}%)`);
+    if (eligibility.ineligible > 0) {
+      const names = eligibility.ineligibleTickers.slice(0, 8).join(", ");
+      const more = eligibility.ineligibleTickers.length > 8 ? ` +${eligibility.ineligibleTickers.length - 8} more` : "";
+      L(`  !! ${eligibility.ineligible} rows carry no placeable print time and can fire NEITHER signal: ${names}${more}`);
+    }
     L();
     L(`## ROUTE BREAKDOWN   (what the member panel shows)`);
     for (const [k, n] of Object.entries(report.route_breakdown)) L(`  ${String(n).padStart(5)} ${String(pct(n, flows.length)).padStart(6)}%  ${k}`);
@@ -208,11 +229,19 @@ try {
     L();
     L(`## implied_volatility UNITS`);
     if (iv.verdict == null) L(`  verdict WITHHELD — ${iv.reason} (${iv.sample}/${iv.min_sample})`);
-    else L(`  ${iv.verdict}: median ${iv.median}, max ${iv.max} · fmtIv misrenders ${iv.misrendered} of ${iv.sample} rows (${iv.misrendered_pct}%)`);
+    else if (iv.shipped_renderer_ok)
+      L(`  ${iv.verdict}: median ${iv.median}, max ${iv.max} · fmtIv's unconditional x100 (#2669) suits this feed — 0 misrendered`);
+    else
+      L(`  ${iv.verdict}: median ${iv.median}, max ${iv.max} · !! NOT uniformly fractional — fmtIv multiplies unconditionally, so all ${iv.sample} rows are suspect (upper lump ${iv.above_branch} above ${iv.branch_at})`);
     L();
     L(`## TAPE SHAPE`);
     L(`  distinct tickers ${tickers.size} (GEX enrichment caps at 100 — ${report.tape_shape.tickers_beyond_gex_cap} never evaluated)`);
-    L(`  negative-DTE rows ${negDte} (${report.tape_shape.negative_dte_pct}%) — expired, panel buckets these as "This week"`);
+    // Ask the panel's own function what it does with an expired print, rather than asserting it.
+    const negBucket = expiryHorizonLabel(-1);
+    L(
+      `  negative-DTE rows ${negDte} (${report.tape_shape.negative_dte_pct}%) — expired; panel files them under "${negBucket}"` +
+        (negBucket === "0DTE" ? "  (correct since §9.5)" : `  !! a FUTURE horizon for an expired contract`)
+    );
     L(`  real-print span ${spanMin} min over ${dated.length} dated prints — REQUESTED ${SINCE_HOURS}h`);
     L(`  newest real print ${report.tape_shape.newest_print_age_minutes} min old`);
   }

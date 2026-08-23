@@ -23,6 +23,10 @@
  */
 
 import { contractSizeExact } from "@/features/helix/lib/helix-contract-size";
+import {
+  signalEligible as productSignalEligible,
+  signalEligibility as productSignalEligibility,
+} from "@/features/helix/lib/helix-signal-detection";
 
 /** The six keys `executionRouteKey` (src/features/helix/lib/helix-flow-format.ts) scans for, in
  *  its own precedence order. Duplicated ONLY as a reference for the multi-match report below —
@@ -32,23 +36,34 @@ export const ROUTE_KEYS = Object.freeze(["SWEEP", "BLOCK", "SPLIT", "CROSS", "FL
 /**
  * Which writer produced this row.
  *
- * `event_at` is the discriminator because it is the field whose absence the rest of HELIX already
- * reacts to — but the point of naming the GROUP rather than testing the field at each call site is
- * that "no event_at" is not one fact. It means: this row came from the producer that also sends no
- * alert_rule, no open interest, no ask side, no underlying price and no OTM% — and that IS an
- * SPX-or-SPY row. Reading it as "this particular print happened to lack a timestamp" is the
- * mistake this function exists to prevent.
+ * DISCRIMINATED ON POSITIVE MARKERS, NOT ON A MISSING TIMESTAMP (corrected 2026-08-23).
+ *
+ * This used to test `event_at` — present -> A, absent -> B — because on the live tape the two
+ * co-varied EXACTLY (1500 both / 0 / 0 / 3500 neither). That was true, and it was still the wrong
+ * discriminator: it identified a producer by a field that a PARSE BUG happened to be emptying.
+ * When #2723 taught `toIso` to read an epoch, all 3500 index rows gained an `event_at` and this
+ * function reclassified every one of them from `B` to `mixed` — so the harness reported
+ * "Group B: 0 rows, $0, 0% of all premium" about a population that had not changed at all and
+ * still carries ~92% of the tape's premium. A fix landing read as the writer vanishing.
+ *
+ * Each group is now named by a field only ITS producer writes, so the classification is
+ * independent of whether any timestamp parses:
+ *   A -> `alert_rule`, sent only by the UW `flow_alerts` channel.
+ *   B -> `implied_volatility`, written only by `optionTradePrintToFlowRaw` (the `option_trades`
+ *        WS path). Verified against the same 5000-row tape: the IV-carrying set and the
+ *        no-alert_rule set are the same 3500 rows.
+ *
+ * Both markers, or neither, is still reported rather than folded into a group — the clean split is
+ * the finding, so the first row that breaks it is the news.
  */
 export function writerGroup(row) {
   if (!row || typeof row !== "object") return "unknown";
-  const hasEvent = row.event_at != null && row.event_at !== "";
   const hasRule = row.alert_rule != null && row.alert_rule !== "";
-  if (hasEvent && hasRule) return "A";
-  if (!hasEvent && !hasRule) return "B";
-  // Neither pure A nor pure B. Today this is EMPTY live (0 of 5000), and that is exactly why it
-  // must be reported rather than folded into one of the two: the clean split is the finding, so
-  // the first row that breaks it is the news.
-  return "mixed";
+  const hasIv = row.implied_volatility != null && row.implied_volatility !== "";
+  if (hasRule && hasIv) return "mixed";
+  if (hasRule) return "A";
+  if (hasIv) return "B";
+  return "unknown";
 }
 
 /**
@@ -66,17 +81,26 @@ export function routeKeyMatches(rule) {
 }
 
 /**
- * Verdict on `implied_volatility` units for one sample.
+ * Are `implied_volatility` units what the SHIPPED renderer assumes?
  *
- * `fmtIv` renders `iv < 3` as `iv * 100` and anything else verbatim — i.e. it decides
- * fraction-vs-percent PER ROW, from the value itself. That is only safe if the feed is genuinely
- * mixed-unit. Measured live: min 0.07, p25 0.13, median 0.17, p75 0.23, max 106.2 — a single
+ * REFRAMED 2026-08-23 — it used to ACCUSE a renderer that no longer exists. `fmtIv` once decided
+ * fraction-vs-percent PER ROW (`iv < 3 ? iv * 100 : iv`), and this helper counted the tail that
+ * branch misread. #2669 removed the branch — `fmtIv` is now an unconditional `iv * 100` — but this
+ * helper kept scoring against the retired rule, so the harness printed
+ * `fmtIv misrenders 148 of 3500 rows (4.2%)` about code that is correct. Third false accusation
+ * from this one instrument, alongside the two `writerGroup`/`signalEligible` produced.
+ *
+ * The distribution evidence is KEPT, because it is what justifies the unconditional multiply in the
+ * first place: measured live, min 0.07, p25 0.13, median 0.17, p75 0.23, max 106.2 — a single
  * fractional mode with a long right tail, NOT the bimodal shape a mixed-unit feed produces (which
- * would cluster a second lump around 15-30). So the feed is uniformly FRACTIONAL and the branch
- * misreads its own tail: a 3.5 (350% IV, ordinary for a near-dated contract) renders as "4%".
+ * would cluster a second lump around 15-30). What changed is the QUESTION. Instead of scoring a
+ * dead branch, it now asks whether #2669's assumption still holds, and reports how many rows the
+ * shipped renderer would get wrong if it ever stopped holding.
  *
- * Returns the evidence rather than a bare verdict, because the conclusion depends on the SHAPE of
- * the distribution and a caller quoting "4.2% of rows are misrendered" should be able to show why.
+ * So `above_branch` is no longer "rows fmtIv misreads" — it is the upper lump whose APPEARANCE
+ * would mean the feed had gone mixed-unit. On a uniformly fractional feed the shipped renderer
+ * misrenders NOTHING, and this reports 0 rather than a number that reads like a defect.
+ *
  * `verdict` is null — never a guess — below `minSample`.
  */
 export function ivUnitVerdict(values, { minSample = 200, branchAt = 3 } = {}) {
@@ -103,9 +127,15 @@ export function ivUnitVerdict(values, { minSample = 200, branchAt = 3 } = {}) {
     max: nums[n - 1],
     below_branch: belowBranch,
     above_branch: aboveBranch,
-    /** Rows the `iv < branchAt` heuristic renders on the WRONG side, IF the feed is uniform. */
-    misrendered: looksFractional ? aboveBranch : belowBranch,
-    misrendered_pct: Math.round((1000 * (looksFractional ? aboveBranch : belowBranch)) / n) / 10,
+    /** Does the SHIPPED `fmtIv` — an unconditional `iv * 100` since #2669 — suit this feed? True
+     *  exactly when the feed is uniformly fractional. */
+    shipped_renderer_ok: looksFractional,
+    /** Rows the SHIPPED renderer would get wrong. Zero on a uniformly fractional feed; the
+     *  percent-unit lump if the feed ever goes mixed, and every row if it flips outright. */
+    misrendered: looksFractional ? 0 : n,
+    misrendered_pct: looksFractional ? 0 : 100,
+    /** The value separating a fractional body from a percent lump. Retained as the bimodality
+     *  probe it always was — NOT as a branch any shipped code still takes. */
     branch_at: branchAt,
   };
 }
@@ -127,31 +157,37 @@ export function impliedContracts(row) {
 }
 
 /**
- * Can this row EVER fire HELIX's two persisted signals?
+ * Can this row fire HELIX's two persisted signals?
  *
- * `detectVelocitySpikes` skips any row without `event_at`; `detectSplitFlow` filters on
- * `flowEventTimeMs`, which returns null for the same rows. So a Group B row is structurally
- * incapable of contributing to either signal — while still counting toward every PREMIUM
- * aggregate (leaderboard, session skew, expiry concentration, route breakdown).
+ * DELEGATES to the product's own `signalEligible` — it does NOT restate the rule. That is the
+ * whole correction here (2026-08-23). This used to answer `writerGroup(row) === "A"`, a second,
+ * private definition of eligibility that agreed with the detectors only by coincidence: on the
+ * pre-#2723 tape "came from the flow_alerts writer" and "has a parseable print time" happened to
+ * select the same 1500 rows.
  *
- * Measured consequence: Group B is SPX and SPY only and carries 92.1% of all premium on the tape,
- * so the two names that dominate every premium panel are the two that can never raise a signal.
- * That is not a bug in either detector — each is correctly refusing to date a print it cannot
- * date. It is a property of the tape that nothing currently states.
+ * #2723 broke the coincidence and the harness kept answering the old question. It reported
+ * `eligible 1500/5000 (30%) — the rest can never fire either signal` against a deployed tape where
+ * ALL 5000 rows carry a real print time — i.e. it reported the fix as having changed nothing, in
+ * the strongest available words ("can never"), on the one instrument §5k of the market-open runbook
+ * exists to read. A harness that owns its own copy of a product rule reports on a product nobody
+ * ships; this file already refuses that for `executionRouteKey` and `contractSizeExact`, and the
+ * refusal now covers eligibility too.
  */
-export function signalEligible(row) {
-  return writerGroup(row) === "A";
-}
+export const signalEligible = productSignalEligible;
 
-/** Share of a population that is signal-eligible, with the counts that produced it — never a bare
- *  rate. (_COMMON.md #7: a rate without its denominator is not a measurement.) */
+/**
+ * Share of a population that is signal-eligible, with the counts that produced it — never a bare
+ * rate (_COMMON.md #7: a rate without its denominator is not a measurement).
+ *
+ * Wraps the product's `signalEligibility` and adds only the percentage this harness prints, so the
+ * counts and the ineligible-ticker list are byte-identical to what Largo and the member panel are
+ * told. `eligible_pct` stays null on an empty population — 0% would assert a measured rate over
+ * nothing.
+ */
 export function signalEligibility(rows) {
-  const total = (rows ?? []).length;
-  const eligible = (rows ?? []).filter(signalEligible).length;
+  const base = productSignalEligibility(rows ?? []);
   return {
-    total,
-    eligible,
-    ineligible: total - eligible,
-    eligible_pct: total > 0 ? Math.round((1000 * eligible) / total) / 10 : null,
+    ...base,
+    eligible_pct: base.total > 0 ? Math.round((1000 * base.eligible) / base.total) / 10 : null,
   };
 }
