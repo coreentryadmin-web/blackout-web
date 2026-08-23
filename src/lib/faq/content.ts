@@ -135,16 +135,13 @@ const RAW: Record<FaqCatKey, { q: string; a: string }[]> = {
       a: "Create your free BlackOut account, then pick a plan: SPX Slayer ($49/mo) for SPX desk access — live regime, GEX, 0DTE graded plays — or Premium ($199/mo or $1,999/yr) to unlock the full platform with all six modules. Same email, same login — upgrade anytime from your account.",
     },
     {
-      q: "What's the difference between Community and Premium?",
-      a: "Community gives you the private Discord server — daily live signals, market reads, real-time session discussions, and evening recaps. Premium includes everything in Community plus the full platform: the SPX Slayer desk, HELIX live flow feed, Largo desk analyst, GEX / dealer positioning, dark-pool activity, Night Hawk, strike-level heatmaps, and the graded play log.",
-    },
     {
       q: "What's included in Premium?",
       a: "The entire arsenal, one membership: the SPX Slayer desk, the HELIX live flow feed, Largo, GEX / dealer positioning, dark-pool activity, Night Hawk, the market heatmap, the graded play log — and full Discord access. One tier, full clearance — nothing held back.",
     },
     {
-      q: "Can I upgrade from Community to Premium later?",
-      a: "Yes — upgrade from your account at any time. Your Community subscription is replaced by Premium, which includes everything Community offers plus the full platform.",
+      q: "Can I upgrade from SPX Slayer to Premium later?",
+      a: "Yes — upgrade from your account at any time. Your SPX Slayer subscription is replaced by Premium, which includes everything SPX Slayer offers plus the full platform.",
     },
     {
       q: "Can I cancel anytime?",
