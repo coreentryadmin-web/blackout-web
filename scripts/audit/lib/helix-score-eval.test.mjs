@@ -1,6 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { bucketForScore, gradeForward, summarizeByBucket, scoreSeparation, SCORE_BUCKETS } from "./helix-score-eval.mjs";
+import { bucketForScore, gradeForward, summarizeByBucket, scoreSeparation, SCORE_BUCKETS,
+  isEquityGradeable,
+  partitionGradeable,
+  ungradedTickers,
+} from "./helix-score-eval.mjs";
 
 test("buckets isolate the saturation point at exactly 60", () => {
   assert.equal(bucketForScore(59.9), "40-59");
@@ -125,4 +129,55 @@ test("tied win rates cannot masquerade as agreement", () => {
   const r = scoreSeparation(summarizeByBucket([...mk(10, 50, 50), ...mk(50, 50, 50), ...mk(90, 50, 50)]), 30);
   assert.equal(r.verdict, "FLAT");
   assert.equal(r.spreadPp, 0);
+});
+
+test("NON_EQUITY_ROOTS excludes cash-index roots and NOT SPY", () => {
+  // Measured 2026-08-23 with the probe's own `fetchAggBars` call: SPY 893 bars, QQQ 923 bars;
+  // SPX / SPXW / RUT / NDX / VIX / XSP all 0. SPY is an ETF in the equity namespace and grades
+  // normally — sweeping it in with "index roots" would silently drop 79 gradeable live prints.
+  assert.equal(isEquityGradeable("SPY"), true);
+  assert.equal(isEquityGradeable("QQQ"), true);
+  for (const root of ["SPX", "SPXW", "RUT", "NDX", "VIX", "XSP"]) {
+    assert.equal(isEquityGradeable(root), false, `${root} must be excluded`);
+  }
+  assert.equal(isEquityGradeable("spxw"), false, "case must not decide gradeability");
+});
+
+test("partitionGradeable names what it dropped, with counts", () => {
+  // The live composition: 160 index-root prints reached candidates, 81 of them ungradeable.
+  const rows = [
+    ...Array.from({ length: 61 }, () => ({ ticker: "SPXW" })),
+    ...Array.from({ length: 18 }, () => ({ ticker: "SPX" })),
+    ...Array.from({ length: 2 }, () => ({ ticker: "RUT" })),
+    ...Array.from({ length: 79 }, () => ({ ticker: "SPY" })),
+    ...Array.from({ length: 40 }, () => ({ ticker: "NVDA" })),
+  ];
+  const p = partitionGradeable(rows);
+  assert.equal(p.excludedCount, 81);
+  assert.equal(p.gradeable.length, 119, "SPY must survive the partition");
+  // A bare "81 excluded" invites the reader to assume noise; the breakdown is checkable.
+  assert.deepEqual(p.excludedByTicker, [["SPXW", 61], ["SPX", 18], ["RUT", 2]]);
+});
+
+test("partitionGradeable handles an empty population without inventing an exclusion", () => {
+  const p = partitionGradeable([]);
+  assert.equal(p.excludedCount, 0);
+  assert.deepEqual(p.excludedByTicker, []);
+});
+
+test("ungradedTickers surfaces a root NON_EQUITY_ROOTS does not list", () => {
+  // The backstop. If the list is incomplete, the unlisted root fetches nothing and would otherwise
+  // just shrink the graded count — which reads as thin data, not as a symbol we cannot price.
+  const graded = [
+    ...Array.from({ length: 5 }, () => ({ ticker: "DJX", graded: null })),
+    ...Array.from({ length: 4 }, () => ({ ticker: "NVDA", graded: "win" })),
+    // one print that simply fell outside bar tolerance must NOT be reported as a dead ticker
+    { ticker: "AMD", graded: null },
+  ];
+  assert.deepEqual(ungradedTickers(graded), [{ ticker: "DJX", prints: 5 }]);
+});
+
+test("ungradedTickers stays silent when every ticker graded something", () => {
+  const graded = Array.from({ length: 6 }, (_, i) => ({ ticker: "NVDA", graded: i ? "win" : null }));
+  assert.deepEqual(ungradedTickers(graded), []);
 });
