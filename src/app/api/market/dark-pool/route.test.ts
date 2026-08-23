@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { normalizeRow } from "./route";
+import { normalizeRow } from "./normalize";
 
 test("a print upstream did not date arrives with NO time, not with now", () => {
   // The whole point. `new Date().toISOString()` is not a default — it is a measurement nobody
