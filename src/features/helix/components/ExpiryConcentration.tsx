@@ -8,8 +8,25 @@ import { Panel } from "@/components/ui";
 
 type Bucket = { label: string; callPremium: number; putPremium: number; total: number; callPct: number; count: number };
 
-function bucketLabel(dte: number): string {
-  if (dte === 0) return "0DTE";
+/**
+ * Horizon bucket for a print, matching `expiryHorizonLabel` in
+ * `src/lib/largo/helix-tape-analytics.ts` exactly — the two describe the same panel to two
+ * audiences and must not disagree about it.
+ *
+ * `dte <= 0`, not `dte === 0`. The tape's `dte` comes from SQL as
+ * `expiry - (NOW() AT TIME ZONE 'America/New_York')::date` and is genuinely NEGATIVE for a print
+ * on an already-expired contract — routine here, because the tape's default window is 7 days of
+ * history. An exact `=== 0` test misses those, so they fell through to the `dte <= 7` branch and
+ * were filed under **"This week"** — a FUTURE horizon, for a contract that has already expired.
+ *
+ * MEASURED (live prod tape, 5000 rows, 2026-08-22 — docs/audit/HELIX-MAP.md §9.5): **803 rows,
+ * 16.1%** carry a negative DTE. Not an edge case; a sixth of the panel.
+ *
+ * Largo's copy was fixed when the defect was found and its comment named this panel as the
+ * remaining half. This closes it, so both surfaces bucket identically.
+ */
+export function bucketLabel(dte: number): string {
+  if (dte <= 0) return "0DTE";
   if (dte <= 7) return "This week";
   if (dte <= 30) return "Monthly";
   return "LEAPS";
