@@ -130,6 +130,26 @@ against.
 
 **Run the whole list, then the routine pass.** Order matters only for step 0.
 
+> **#2723 EXPIRED THREE OF THE CRITERIA BELOW — the sweep is done, do not redo it, and do not
+> extend it (2026-08-23).** §5k, §5f and §5c were each correct when written, each written against
+> the pre-#2723 population, and each now returns a **wrong verdict** rather than a stale note: two
+> false failures and one false alarm. All three are rewritten in place with the measurement that
+> retired them.
+>
+> **The boundary is exact, and was checked rather than assumed.** #2723 changed which rows carry a
+> **print time**, so the checks that expired are precisely the ones gated on *time*-eligibility.
+> §5h and §5j also reference §4A and the writer groups, and **both remain correct**: they depend on
+> **aggressor-side coverage** (`ask_pct`), which #2723 did not touch — measured unchanged at
+> **1454/1500 Group A and 0/3500 Group B**, the exact figures §5h already quotes. §5b, §5d, §5e,
+> §5g and §5i carry no population dependency at all. **Do not "correct" §5h or §5j to match; they
+> are not stale.**
+>
+> The rule worth carrying forward: **when a fix changes a POPULATION, every check written against
+> the old one is a false verdict waiting to fire** — not a stale note, a wrong answer delivered
+> confidently on the morning you most need the runbook to be right. Sweep them together, on one
+> body of evidence, and record which checks you verified were NOT affected — otherwise the next
+> reader re-sweeps, or worse, "fixes" the ones that were fine.
+
 ### 0. FIRST — prove the deploy actually carries these, before measuring anything
 
 The single most expensive mistake available here: measuring a pre-fix bundle and reporting correct
@@ -277,9 +297,25 @@ under the old rule.
 - **Check on screen:** a ticker showing `▲ BULLISH` must agree with the **contract drilldown's own
   bias** for prints from that ticker. Open one and compare — they now read the same rule, and this
   is the first session where both can be seen populated at once.
-- **Check the refusal works:** `— UNREAD` must appear **only** where the `Ask%` column is genuinely
-  absent. If `— UNREAD` dominates a busy tape, `ask_pct` coverage has regressed — measured at
-  **29.1% of all rows but ~96.9% of Group A**, and split flow only ever sees Group A.
+- **⚠️ Check the refusal works — REWRITTEN 2026-08-23, because #2723 inverted its conclusion.**
+  This bullet used to say: *"If `— UNREAD` dominates a busy tape, `ask_pct` coverage has regressed
+  … split flow only ever sees Group A."* **Split flow no longer only sees Group A.** #2723 made the
+  whole tape eligible, and Group B carries `ask_pct` on **0 of 3500** rows against Group A's
+  **1454 of 1500 (96.9%)**. So `— UNREAD` now dominates *by construction*, and the old text
+  diagnoses that as a regression that has not happened.
+  Measured off-hours over the same 67-step replay: **`undetermined` is the plurality direction —
+  162 of 333 firings (48.6%)** — and **every single index firing is undetermined: SPX 67/67,
+  SPY 65/65.** Combined with the saturation in §5k, the two most prominent rows in the Split Flow
+  Radar are now **permanently present and permanently unreadable**.
+  - **The check that still works:** `— UNREAD` on a **Group A** ticker must be rare. Group A
+    coverage is the number that can regress; measure it directly with
+    `node --import tsx scripts/audit/helix-tape-inventory.mjs` (`ask_pct`, group-A column) and
+    compare against 96.9%. A drop there is a real regression.
+  - **`— UNREAD` on SPX or SPY is EXPECTED and is not a defect** — that feed sends no aggressor
+    side at all. Do not open a finding for it.
+  - **What it costs is a real question and is raised in §6** for the coordinator: whether a signal
+    that can never state a direction for a ticker should rank that ticker at the top of a
+    direction radar.
 - **Check `⇋ MIXED` still occurs.** MIXED (read, genuinely two-sided) and UNREAD (could not read)
   are different facts and must both be reachable. If MIXED never appears, the margin is wrong.
 - **Ledger, worth capturing once:** new rows carry `context.direction_basis =
@@ -341,14 +377,31 @@ mobile card carried **no timestamp whatsoever** — not a wrong time, an absent 
 #2706 said mobile showed "a timestamp with no indication it is an ingest time"; that was wrong and is
 corrected here: there was no timestamp.)
 
-- **Check on mobile 430×932 (`proxy-browser.cjs`, `flow-card`):** every card shows a print time, and
-  a Group B row (SPX / SPY — no `event_at`, §4A) shows it **prefixed `~`** without needing hover.
-- **Check on desktop 1440:** the `~` is visible in the cell, not only in the `title`.
-- **The RTH-only question:** off-hours the whole tape is stale, so `~` is near-universal and proves
-  nothing about discrimination. Under live flow Group A rows carry a real `event_at` and must render
-  **without** the `~`, while SPX/SPY keep it. **If every row still shows `~` under a moving tape, the
-  three-timestamp model is not reaching the renderer** — that is the failure this check exists for,
-  and it is only detectable when both populations are fresh.
+> **⚠️ THIS SECTION'S PASS CONDITION EXPIRED WHEN #2723 DEPLOYED — corrected 2026-08-23.** It used
+> to require that *"a Group B row (SPX / SPY — no `event_at`, §4A) shows it **prefixed `~`**"*, and
+> that under live flow *"SPX/SPY keep it"*. **Both are now impossible.** `resolveFlowTimes` sets
+> `tape_time_estimated: false` whenever an `event_at` resolves, and #2723 gave every index row one.
+> Measured on the live tape: **0 of 5000 rows carry `tape_time_estimated` — 0 of 3621 SPX+SPY.**
+> A checker following the old text finds no `~` anywhere and marks a working #2707 FAILED. This is
+> the second criterion in this runbook that #2723 expired (see §5k); when a fix changes a
+> population, every check written against the old one becomes a false negative, not a stale note.
+
+- **Check on mobile 430×932 (`proxy-browser.cjs`, `flow-card`):** **every card shows a print time.**
+  That is #2707's actual fix and it is still fully checkable — the defect was an *absent* timestamp,
+  not a mislabelled one.
+- **Check on desktop 1440:** where a `~` does render it is visible in the cell, not only in the
+  `title`. Note this is now hard to exercise — see below.
+- **The `~` path is currently unfalsifiable, and that is the honest status.** With every row
+  carrying a real `event_at`, no row takes the estimated branch, so neither the mobile nor the
+  desktop `~` assertion can pass or fail. Do **not** record "no `~` seen" as either a pass or a
+  failure of the marker itself. If you need it exercised, the only rows that can reach that branch
+  are ones with no parseable time at all — count them first:
+  `node --import tsx scripts/audit/helix-tape-inventory.mjs` → the `event_at` presence row. At 100%
+  there is nothing to render and nothing to check.
+- **What to watch for instead, and it is more interesting than the original check:** a row that
+  DOES show `~` under a moving tape is now a genuine outlier — a print whose `executed_at` the
+  magnitude parser could not read. **Capture it.** That is the population #2723's write-up said it
+  could not name off-hours, and one live example would settle what the wire format actually is.
 
 ### 5g. Contract size — one derivation, and a `0` that was a measurement (#2710)
 
@@ -485,21 +538,45 @@ that `new Date()` could not parse.
   absence of `event_at` and so reported the fix as Group B vanishing. See
   `findings-staging/2026-08-23-helix-inventory-eligibility-rule.md`. Any harness output from
   before that fix is void on these four numbers.)*
-- **⚠️ STILL OPEN — THE RISKY HALF, and it is now CONFIRMED to have happened.** Both persisted
-  signals filter on `flowEventTimeMs`, and eligibility is measured at 5000/5000, so **70% of the
-  tape has already moved from structurally-invisible to signal-eligible.** What that does to
-  FIRING counts is unmeasurable off-hours — the eligible population exists now, but a velocity
-  spike needs prints arriving in a moving window. Expect the Velocity and Split Flow radars to fire
-  on SPX/SPY for the first time ever. Capture the before/after firing counts — a large jump is the fix working,
-  but it is also a large change in what members are shown, and it is the coordinator's call whether
-  the thresholds still suit a population 3× larger.
+- **⚠️ THE RISKY HALF — MEASURED, AND IT DOES NOT GO THE WAY THIS SECTION ORIGINALLY SAID.**
+  This bullet used to read *"expect the Velocity and Split Flow radars to fire on SPX/SPY for the
+  first time ever … a large jump is the fix working."* **Half of that is backwards, and following
+  it would mis-diagnose a working deploy.** Replayed off-hours over the same live session with both
+  real detectors — `node --import tsx scripts/audit/helix-signal-population-ab.mjs`, 363 min,
+  67 five-minute steps:
+  - **SPLIT FLOW rises and then SATURATES.** SPX **24 → 67 firings of 67 steps**, SPY 23 → 65.
+    At mid-session SPX's legs are **$246,955,657 call / $186,889,748 put** against a **$500,000**
+    per-leg threshold — 494× and 374× over. It now fires on **every scan** of both index names,
+    which is not a strong signal but an absent one.
+  - **VELOCITY FALLS.** Total ticker-firings **239 → 220**, and **SPX 13 → 1**, SPY 13 → 6. SPX
+    drops out of the top-6 entirely. **A reader expecting a jump sees this and concludes the deploy
+    does not carry #2723.** It does.
+  - **Why**, and it is a third defect the parse was hiding: the old detectors saw **39 of SPX's
+    3118 prints — 1.3%**. Every one of those 13 firings was `recent=3, prior=0, ratio=3.0` — three
+    prints against a **literally empty** prior window, cleared by the `max(1, prior)` floor. The
+    same instants on the full population read `recent=34, prior=86, **ratio=0.40**`. SPX was never
+    quiet-then-spiking; the Velocity Radar was showing members a spike the full tape contradicts,
+    and the fix **removes a false positive** rather than adding a true one.
+  - **The control**: SPY (16.3% visible) keeps its genuine spike — 15:51 reads `recent=42, prior=9`
+    on the full population and fires in **both** runs — while losing the artifacts. Real spikes
+    survive; only the sample artifacts go.
+  - **What to check at the open, then:** that SPX/SPY split flow is firing (it will be, constantly)
+    and that SPX velocity is *quiet*. Both are the fix working. n=1 session — re-run the harness on
+    the live session and compare.
+  - **The part that is genuinely still open:** this is a large change in what members are shown,
+    and whether the thresholds still suit a population 3× larger is the **coordinator's call** —
+    see §6, where `SPLIT_MIN_LEG`, the unreadable-index-row question and the velocity
+    `max(1, prior)` floor are each recorded with the measurement that raises them.
 - **The coverage note must be GONE, not merely smaller.** It rendered *"Scanned 103 of 500 prints —
   397 (SPX, SPY) carry no reported print time"*. At 5000/5000 eligible the note renders **nothing**
   by design, so on the open both radars should show no coverage line at all. A note still naming
   SPX or SPY means that request's tape disagrees with this measurement — capture it, it is news.
-- **The mobile `~` marker (5f) should mostly disappear** on SPX/SPY rows — they will have real print
-  times rather than ingest estimates. A row still showing `~` after this is a row that genuinely has
-  no parseable time, which is now a much smaller and more interesting population.
+- **The mobile `~` marker (5f) is GONE, not merely rarer** — measured, not projected: **0 of 5000
+  rows** carry `tape_time_estimated`, 0 of 3621 SPX+SPY. `resolveFlowTimes` clears the flag whenever
+  an `event_at` resolves, and every row now has one. A row still showing `~` under a moving tape is
+  therefore a genuine outlier — a print whose `executed_at` the magnitude parser could not read —
+  and is worth capturing rather than ignoring. §5f is rewritten accordingly; do not read "no `~`
+  anywhere" as a failure of #2707.
 - **Sanity-check the times themselves, do not just count them — partly answered.** A magnitude-scaled
   epoch that picked the wrong unit yields a plausible-looking but wrong instant. The 363-minute span
   over 5000 prints above rules out a unit error by three orders of magnitude in either direction.
@@ -514,6 +591,32 @@ that `new Date()` could not parse.
 These are recorded as needing a decision; RTH is when the data exists to inform them.
 
 - **The `whale`-outranks-`0dte` collision** (`db.ts:2646`). `route` is `premium >= $1M ? 'whale' : expiry = TODAY ? '0dte' : 'stock'`, so the largest 0DTE prints never get the 0DTE badge. **Unmeasurable off-hours** — the closed window holds **zero** `dte === 0` rows. At the open, count prints with `expiry = TODAY` **and** `premium >= $1M`: that is the exact population being denied the badge.
+- **A permanently unreadable row at the top of a direction radar — AWAITING COORDINATOR.** Follows
+  from the item below and is arguably worse than it. Split flow reports `direction` from option type
+  **×** aggressor side, and the index feed sends **no `ask_pct` at all** (0 of 3500 rows vs Group
+  A's 1454/1500). So SPX and SPY now fire on essentially every scan and report `— UNREAD` on every
+  one of them — measured 67/67 and 65/65. The refusal is **correct**: the rule cannot read that
+  flow and says so rather than guessing, exactly as the contract requires. The question is whether a
+  ticker whose direction can never be stated belongs at the TOP of a direction radar, above names
+  the signal can actually read. Options: rank readable tickers first, exclude no-aggressor feeds
+  from this signal, or accept it and label it. Each changes a persisted, graded row — coordinator's
+  call.
+- **`SPLIT_MIN_LEG` against an index feed — NEW, and the sharpest of these. AWAITING COORDINATOR;
+  do not tune it from this lane.** Split flow fires when a ticker shows opposing call AND put
+  premium of **$500K each** inside 30 minutes. That threshold was set against single names. #2723
+  admitted a feed carrying **$9.99B/week across two tickers**, and measured off-hours SPX clears it
+  by 494× on every scan — 67 of 67 replay steps, SPY 65 of 67. **A signal that is always on for a
+  name carries no information about that name**, and both radars now lead with SPX and SPY. The
+  options are a premium-relative leg threshold, a per-ticker floor, or accepting index saturation as
+  correct; each changes when a **persisted, graded** row is written, so each breaks continuity of
+  the record and none is this lane's call. Re-measure under RTH volume first —
+  `scripts/audit/helix-signal-population-ab.mjs` — the off-hours number is a floor.
+- **The velocity `max(1, prior)` floor.** Observed rather than fixed: `ratio = recent / max(1,
+  prior)` means 3 prints against an EMPTY prior window scores exactly 3.0 and fires. On the
+  pre-#2723 tape that produced 13 phantom SPX spikes off a 1.3% sample. With the full population it
+  no longer misfires there, so nothing was changed — but the floor still makes "3 prints after
+  silence" indistinguishable from a real burst on any genuinely thin name. Worth a decision, not an
+  edit.
 - **§9.7 score saturation.** $1.3B and $1.0M prints both score 60; 24.1% of tape pinned at saturation, measured off-hours. Re-measure under RTH volume — saturation should be *worse*, and the size of that is the argument.
 - **Whether Route Breakdown should stay premium-weighted.** The 95%-vs-79% gap is entirely premium weighting. Under RTH the two diverge differently; capture both.
 - **`helix-signal-outcomes` has no writer.** The cron is fully registered in `cron-registry.ts` and **absent from the deployed manifest** (`blackout-infra/cron-jobs.json`, 39 jobs, none mentioning helix). So the signal ledger is never written and every "graded" HELIX signal number rests on an empty table. **Not fixable from this lane** — it is an infra change in another repo against production. Raised on #2698; awaiting a decision to either schedule it or list it INTENTIONALLY_UNSCHEDULED. Until then, **treat any HELIX track-record figure as unbacked**, and say so rather than reporting a rate. **#2712 makes the gap visible in the product** rather than fixing it: the Signal Outcomes panel now separates an empty ledger from an unwritten one, so at the open it must read **"Not recording"**, not "No firings yet". If it reads the latter, something is writing `cron_job_runs` under this key that the deployed manifest says cannot exist — chase that discrepancy before trusting anything else here.
