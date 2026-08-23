@@ -28,7 +28,8 @@
  * - institutional: deep + regime/macro context, multi-session precedent
  */
 
-import type { QuestionIntentCategory, ResponseDepth } from "./question-intent-category";
+import type { IntentCategory } from "./intent-classifier";
+import type { ResponseDepth } from "./adaptive-response-orchestrator";
 import type { ConsensusMatrix } from "./consensus-read-extract";
 import type { DeskReadDecision } from "./desk-read-decision";
 
@@ -51,7 +52,7 @@ export interface ProseTemplate {
  * Returns array of section directives in order.
  */
 export function getProseSectionsForIntent(
-  category: QuestionIntentCategory,
+  category: IntentCategory,
   depth: ResponseDepth,
   context?: { consensus?: ConsensusMatrix; deskRead?: DeskReadDecision }
 ): ProseTemplate[] {
@@ -274,7 +275,7 @@ export function getProseSectionsForIntent(
         });
       }
 
-      if (depth !== "minimal" && context?.deskRead?.state === "PLAY") {
+      if (depth !== "minimal") {
         sections.push({
           section: "Risk",
           directive: `If the play breaks, how: what is the invalidation, and what does it cost.`,
@@ -355,6 +356,7 @@ export function getProseSectionsForIntent(
       break;
 
     case "CHANGE_DETECTION":
+    case "FLOW":
     default:
       sections.push({
         section: "Observation",
