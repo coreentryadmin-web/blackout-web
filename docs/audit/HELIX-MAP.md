@@ -558,7 +558,7 @@ comment says is "invoked off another job's path". Per-print HELIX Discord alerts
 Needs a decision, not a patch: schedule it, or delete it and drop the catalog file. `UNVERIFIED-LIVE`
 — the blackout-infra `cron-jobs.json` was not read this pass.
 
-**9.2 — Two UTC-anchored DTE derivations at ingest (C1 class).** `parseUwFlowAlert`
+**9.2 — Two UTC-anchored DTE derivations at ingest (C1 class) — FIXED, and the impact assessment was confirmed by measurement.** `parseUwFlowAlert`
 (`unusual-whales.ts:270`) computes `dte` from `new Date(expiry) − Date.now()` in UTC and derives
 `route` from it; `dteFromExpiry` (`flow-persist.ts:42`) does the same for the premium-floor decision.
 Between **20:00 and 24:00 ET** the UTC date is already tomorrow, so a next-session expiry evaluates
@@ -569,6 +569,22 @@ score is **persisted**, so it outlives the window and shows in the Score column 
 trade 20:00–24:00 ET, so the window is nearly empty of live prints. Worth fixing for correctness and
 because it is exactly the class the C1 ratchet exists to catch, but it is not an incident. The REST
 read path is unaffected (its `dte`/`route` are ET-anchored in SQL).
+
+**MEASURED 2026-08-23, confirming LOW rather than assuming it.** Live prod tape, 5000 rows / 168h:
+rows timestamped 20:00–23:59 ET **0 of 5000**; `route="0dte"` with ET-anchored `dte >= 1` **0**;
+ET-anchored `dte === 0` with `route` not `0dte`/`whale` **0**. The window is genuinely empty, so
+this fixed no live defect.
+
+**FIXED anyway.** §9.2's title is "two derivations", so the fix is to have ONE:
+`src/lib/flow-dte.ts` holds the single ET-anchored `dteFromExpiry`, imported by
+`parseUwFlowAlert` and re-exported by `flow-persist` for its existing callers. A standalone module
+rather than living in `flow-persist`, because the provider must not pull `@/lib/db` in behind a date
+helper. Ingest now anchors the same way the read path already did.
+
+**A detail worth keeping:** the old form returned **negative zero** — `Math.ceil(-0.041)` is `-0`,
+so `assert.equal(x, 0)` fails on it while `x <= 0` is true. `-0` takes the `dte <= 0` branch exactly
+like `0`, which is why the defect fired at all and why the regression test asserts the BRANCH rather
+than the literal.
 
 **9.3 — `gex_proximity` absence was ambiguous — FIXED.** The field was omitted in three situations
 the payload could not distinguish: the strike genuinely is not near a level; the GEX lookup timed
