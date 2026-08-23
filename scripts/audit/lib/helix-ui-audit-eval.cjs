@@ -334,7 +334,84 @@ function expiryBucketVerdict(panelBuckets, renderedDte) {
   };
 }
 
+
+/**
+ * Did the page actually FINISH loading — or did assertions run against a half-painted page?
+ *
+ * ── THE DEFECT THIS EXISTS FOR ──────────────────────────────────────────────────────────────────
+ *
+ * The harness already had exactly the right rule:
+ *
+ *     if (counts.fail > 0) return { verdict: "HARNESS",
+ *       reason: `${counts.fail} routed request(s) failed — page did not fully paint` };
+ *
+ * `counts.fail` is the TUNNEL's failure count — requests Node could not route at all. But a
+ * request that routed perfectly and came back **HTTP 404** is counted `ok`. Both mean the page did
+ * not fully paint; only one was gated.
+ *
+ * MEASURED 2026-08-23, on this harness against production: a run reported
+ * `[desktop] FAIL (routed 177 ok, 0 fail)` with `Route Breakdown panel did not render`,
+ * `Net Premium panel did not render`, and `9 console error(s): Failed to load resource: 404`.
+ * Its own screenshot showed the page still in skeleton loaders. **Mobile PASSED in the same run,
+ * on the same page** — and an immediate re-run came back `OVERALL: PASS` with 4 panels on both
+ * viewports and zero failed responses. There was no product defect at any point; the first run
+ * caught a transient mid-load state and reported it as two missing panels.
+ *
+ * That matters because this harness is the market-open gate. A transient FAIL on that morning
+ * costs the one window in which the RTH-only checks can be run at all.
+ *
+ * ── WHY THE CONSOLE ERRORS ARE NOT SEPARATE EVIDENCE ────────────────────────────────────────────
+ *
+ * The nine console errors were `Failed to load resource: … 404` — the SAME event as the failed
+ * responses, counted a second time. Reporting them as an independent product signal makes one
+ * cause look like two, which is what turned "the page is still loading" into a confident verdict.
+ * They are attributed here instead.
+ */
+
+/** Resource types whose failure means the page could not finish rendering. */
+const CRITICAL_RESOURCE_TYPES = new Set(["document", "script", "stylesheet"]);
+
+/**
+ * @param failedResponses [{status, resourceType, url}] — every response with status >= 400.
+ * @param routedFailures  the tunnel's own unroutable count (`counts.fail`).
+ * @returns null when the page loaded cleanly, else a HARNESS verdict explaining what was missing.
+ */
+function pageLoadGate(failedResponses, routedFailures = 0) {
+  if (routedFailures > 0) {
+    return {
+      status: "HARNESS",
+      detail: `${routedFailures} routed request(s) failed — page did not fully paint`,
+    };
+  }
+  const critical = (failedResponses || []).filter((r) =>
+    CRITICAL_RESOURCE_TYPES.has(String(r && r.resourceType))
+  );
+  if (critical.length === 0) return null;
+  const first = critical[0];
+  return {
+    status: "HARNESS",
+    // Names the first one, so the reader can tell a stale-chunk rollout from a real 404 route.
+    detail:
+      `${critical.length} critical asset(s) failed to load (${first.status} ${first.resourceType} ` +
+      `${String(first.url || "").slice(0, 110)}) — page did not fully paint, so panel assertions ` +
+      `are unproven rather than failed`,
+  };
+}
+
+/**
+ * Console errors that are just the failed loads restated. Filtered out so one cause is reported
+ * once — see the note above.
+ */
+function consoleErrorsNotFromFailedLoads(consoleErrors) {
+  return (consoleErrors || []).filter(
+    (t) => !/Failed to load resource/i.test(String(t))
+  );
+}
+
 module.exports = {
+  pageLoadGate,
+  consoleErrorsNotFromFailedLoads,
+  CRITICAL_RESOURCE_TYPES,
   routeBucketVerdict, panelVerdict, freshnessVerdict, overallVerdict, DOMINANT_BUCKET_PCT,
   newBadgeVerdict, coverageNoteVerdict, directionLabelVerdict, expiryBucketVerdict,
   parseCompactNumber, NEW_RATIO_TOLERANCE,

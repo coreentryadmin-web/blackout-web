@@ -14,16 +14,38 @@ export type VelocityEntry = {
   recentPremium: number;
 };
 
+/**
+ * How many spikes the radar RENDERS. Named, and exported, because the cap and the disclosure of
+ * the cap have to move together — the defect was a bare `slice(0, 8)` at the call site with a
+ * header that reported `entries.length` as the population.
+ */
+export const VELOCITY_RADAR_DISPLAY_LIMIT = 8;
+
 export function VelocityRadar({
   entries,
   onTickerClick,
   eligibility,
+  totalSpikes,
 }: {
   entries: VelocityEntry[];
   onTickerClick?: (ticker: string) => void;
   /** The denominator these entries were computed over. Optional so an existing caller keeps
    *  working; when supplied and part of the tape was unscannable, the panel says so. */
   eligibility?: SignalEligibility;
+  /**
+   * How many spikes the detector actually found, BEFORE the caller's display cap.
+   *
+   * The header renders a COUNT — `{entries.length} spikes` — so a capped list does not read as a
+   * truncated view, it reads as a MEASUREMENT: "there were 8". MEASURED against the live tape
+   * (2026-08-21 RTH, replayed at 5-minute steps): the caller's `slice(0, 8)` binds in **11.3% of
+   * non-empty windows, with up to 14 spikes rendered as "8"**. And it is internally inconsistent —
+   * `velocitySpikeTickers` is built from the FULL list, so the tape badges more tickers than the
+   * radar says exist.
+   *
+   * Optional so existing callers keep working, and only shown when it exceeds what was rendered:
+   * "8 of 14" on an uncapped window would be noise.
+   */
+  totalSpikes?: number;
 }) {
   // Hoisted above the early return (Rules of Hooks). Static for reduced-motion users.
   const pulse = usePulse({ opacity: [1, 0.2, 1] }, { repeat: Infinity, duration: 1.4, ease: "easeInOut" });
@@ -44,6 +66,10 @@ export function VelocityRadar({
     );
   }
 
+  // "8 of 14", never a bare "8", whenever the caller's display cap dropped spikes. A count that
+  // silently omits its remainder reads as the whole population — the "no silent caps" rule.
+  const capped = totalSpikes != null && totalSpikes > entries.length;
+
   const maxRatio = Math.max(...entries.map((e) => e.ratio), 1);
 
   return (
@@ -58,8 +84,16 @@ export function VelocityRadar({
           </motion.span>
           <span className="flow-panel-title">Velocity Radar</span>
         </div>
-        <span className="font-mono text-[10px] text-orange-600/60 tabular-nums">
-          {entries.length} spike{entries.length !== 1 ? "s" : ""} · 15min
+        <span
+          className="font-mono text-[10px] text-orange-600/60 tabular-nums"
+          title={
+            capped
+              ? `${totalSpikes} tickers cleared the velocity threshold; the ${entries.length} strongest are shown.`
+              : undefined
+          }
+        >
+          {capped ? `${entries.length} of ${totalSpikes}` : entries.length} spike
+          {(capped ? totalSpikes : entries.length) !== 1 ? "s" : ""} · 15min
         </span>
       </div>
 

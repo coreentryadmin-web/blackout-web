@@ -9,6 +9,56 @@ already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
 
+## 2026-08-23 — [Helix] `/flows` UI audit exercised pre-Monday — PASS, after one TRANSIENT desktop FAIL
+
+**Severity.** — (no product defect found; one harness defect fixed, #2722)
+
+**Why it ran.** The market-open watch list (§5a–§5j) is built almost entirely on
+`scripts/audit/helix-flows-ui-audit.cjs`. If that harness is broken, the whole list is unusable —
+and Monday's open is the one window in which the RTH-only checks can be run at all. So it was run
+now rather than discovered then.
+
+**What happened.** The FIRST run reported:
+
+```
+[desktop] FAIL  (routed 177 ok, 0 fail)
+   FAIL  Route Breakdown panel did not render
+   FAIL  Net Premium panel did not render
+   FAIL  9 console error(s): Failed to load resource: … 404 (Not Found)
+[mobile]  PASS
+OVERALL: FAIL
+```
+
+Its own desktop screenshot showed the page still in skeleton loaders under the marketing nav.
+
+**It was not a product defect.** Two independent checks:
+
+1. A direct probe of both viewports (shared tunnel helper, real member cookie) — **0 failed
+   responses, 0 skeletons, 4 panels on desktop AND 4 on mobile.**
+2. An immediate re-run of the harness itself — **OVERALL: PASS**, with Route Breakdown, Net Premium
+   and Expiry Concentration all rendering, and the expiry-bucket cross-check passing (11 expired
+   prints correctly in 0DTE).
+
+The tell was in the first run all along: **mobile PASSED on the same page in the same run.** One
+page healthy on one viewport and not the other is far likelier to be timing than a defect.
+
+**The harness defect that made a transient look like a verdict.** It already had the right rule —
+`if (counts.fail > 0) return HARNESS ("page did not fully paint")` — but `counts.fail` is the
+TUNNEL's unroutable count. A request that routes fine and returns **HTTP 404** counts as `ok`. Both
+mean the page did not paint; only one was gated. Fixed in #2722 (`pageLoadGate`), and the
+404-derived console errors are now attributed to the same cause rather than counted as a second,
+independent product signal.
+
+**Verified after the fix:** the patched harness re-run against production returns **OVERALL: PASS**,
+and 7 new unit tests cover the gate (41 total in `helix-ui-audit-eval.test.mjs`).
+
+**Off-hours limits, stated rather than glossed.** Split Flow and Velocity radars are empty (both
+need a live window), the tape reads 38h stale, and Route Breakdown is 95% `UNREPORTED` — all
+expected on a closed tape, none of them regressions. The RTH-only items remain unverified by
+construction; that is what §5a–§5j exist for.
+
+---
+
 ## 2026-08-23 — [Thermal] Post-deploy validation of §9.3 session anchor — PASS, and the age field is computed not merely present
 
 **Severity.** — (no defect found)

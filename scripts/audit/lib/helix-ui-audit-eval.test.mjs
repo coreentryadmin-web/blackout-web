@@ -6,6 +6,7 @@ const require_ = createRequire(import.meta.url);
 const {
   routeBucketVerdict, panelVerdict, freshnessVerdict, overallVerdict, DOMINANT_BUCKET_PCT,
   newBadgeVerdict, coverageNoteVerdict, directionLabelVerdict, expiryBucketVerdict, parseCompactNumber,
+  pageLoadGate, consoleErrorsNotFromFailedLoads,
 } =
   require_("./helix-ui-audit-eval.cjs");
 
@@ -310,4 +311,71 @@ test("coverageNoteVerdict: 'cannot be counted here' is not the same as 'nobody c
   assert.equal(coverageNoteVerdict(null, null).status, "NOT_EXERCISED");
   assert.equal(coverageNoteVerdict(null, undefined).status, "HARNESS");
   assert.equal(coverageNoteVerdict(null, 0).status, "PASS");
+});
+
+/* ── The page-load gate ──────────────────────────────────────────────────────────────────────────
+ * Measured 2026-08-23: a run reported "[desktop] FAIL (routed 177 ok, 0 fail)" with two panels
+ * "did not render" and 9 console 404s, while MOBILE PASSED on the same page in the same run — and
+ * an immediate re-run came back PASS with 4 panels on both viewports. No product defect existed.
+ * The harness already had the right rule and applied it only to tunnel-level failures.
+ */
+
+test("a 404 on a script is a HARNESS verdict, not a product failure", () => {
+  const v = pageLoadGate(
+    [{ status: 404, resourceType: "script", url: "https://x/_next/static/chunks/app-abc.js" }],
+    0
+  );
+  assert.ok(v, "a failed critical asset must gate");
+  assert.equal(v.status, "HARNESS");
+  assert.match(v.detail, /did not fully paint/);
+  // It must say the assertions are UNPROVEN, not that they failed — the whole distinction.
+  assert.match(v.detail, /unproven rather than failed/);
+});
+
+test("the tunnel's own routing failures still gate — the original rule is not lost", () => {
+  const v = pageLoadGate([], 3);
+  assert.ok(v);
+  assert.equal(v.status, "HARNESS");
+  assert.match(v.detail, /3 routed request\(s\) failed/);
+});
+
+test("a clean page does not gate", () => {
+  assert.equal(pageLoadGate([], 0), null);
+});
+
+test("a failed IMAGE or XHR does not gate — the scan is deliberately narrow", () => {
+  // A missing avatar or a 404 on an optional endpoint does not stop the page rendering. Gating on
+  // those would turn the gate off in practice, and a gate nobody trusts is worse than none.
+  assert.equal(pageLoadGate([{ status: 404, resourceType: "image", url: "https://x/a.png" }], 0), null);
+  assert.equal(pageLoadGate([{ status: 500, resourceType: "xhr", url: "https://x/api/y" }], 0), null);
+});
+
+test("the gate names the first failing asset so a stale rollout is distinguishable", () => {
+  const v = pageLoadGate(
+    [
+      { status: 404, resourceType: "script", url: "https://x/_next/static/chunks/1234-old.js" },
+      { status: 404, resourceType: "stylesheet", url: "https://x/_next/static/css/a.css" },
+    ],
+    0
+  );
+  assert.match(v.detail, /2 critical asset\(s\)/);
+  assert.match(v.detail, /1234-old\.js/);
+});
+
+test("404-derived console errors are attributed, not double-counted", () => {
+  const errs = [
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "Failed to load resource: net::ERR_ABORTED",
+    "TypeError: cannot read properties of undefined",
+  ];
+  const real = consoleErrorsNotFromFailedLoads(errs);
+  assert.deepEqual(real, ["TypeError: cannot read properties of undefined"]);
+});
+
+test("a genuine console error is still reported when the page loaded fine", () => {
+  // The gate must not become a blanket excuse: with no failed assets, real errors still surface.
+  assert.equal(pageLoadGate([], 0), null);
+  assert.deepEqual(consoleErrorsNotFromFailedLoads(["ReferenceError: x is not defined"]), [
+    "ReferenceError: x is not defined",
+  ]);
 });
