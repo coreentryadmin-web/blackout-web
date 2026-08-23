@@ -105,12 +105,21 @@ async function probe(page, { panelsOnly = false } = {}) {
       const brand = /HELIX/i.test(bodyText);
       // The tape is a virtualized grid; its rows carry a ticker + a premium. Count anything that
       // looks like a print row rather than binding to one class name.
-      // Desktop renders HelixFlowTable, mobile renders HelixMobileFlowTape — different markup for
-      // the same tape, so bind to several shapes rather than one component's class.
+      /**
+       * The tape's row classes, READ OUT OF THE COMPONENTS rather than guessed.
+       *
+       * Desktop `HelixFlowTable` renders `helix-tape-row`; mobile `HelixMobileFlowTape` renders
+       * `helix-tape-alert` cards. Three earlier guesses at generic shapes ("flow-row",
+       * `[role="row"]`, "mobile-flow > *") matched desktop and missed mobile entirely, so the
+       * harness reported "tape painted zero rows" against a mobile view whose own screenshot shows
+       * a full tape of SPX cards. When a selector is wrong the harness accuses the product, so
+       * these are pinned to the real class names.
+       *
+       * `helix-tape-col-row` and `helix-tape-group-row` are HEADER rows and do not contain the
+       * substring `helix-tape-row`, so they are excluded by construction rather than by filtering.
+       */
       const rowNodes = Array.from(
-        document.querySelectorAll(
-          '[class*="flow-row"], [class*="helix-tape"] [role="row"], [class*="mobile-flow"] > *, table tbody tr'
-        )
+        document.querySelectorAll('[class*="helix-tape-row"], [class*="helix-tape-alert"]')
       );
       const tapeContainer = Boolean(
         document.querySelector('[class*="helix-tape"], [class*="flow-table"], [class*="flow-feed"]')
@@ -211,7 +220,22 @@ async function probe(page, { panelsOnly = false } = {}) {
       const visibleError = badWords.test(bodyText) ? bodyText.match(badWords)[0] : null;
 
       return {
-        gate: { brand, tapeContainer, rowCount: rowNodes.length },
+        gate: {
+          brand,
+          tapeContainer,
+          rowCount: rowNodes.length,
+          // What the tape area actually looks like when rowCount is 0. Guessing at markup across
+          // two different tape components (desktop HelixFlowTable / mobile HelixMobileFlowTape)
+          // cost two runs; capturing the candidate class names costs nothing and ends it.
+          tapeClasses: Array.from(
+            new Set(
+              Array.from(document.querySelectorAll('[class*="flow"], [class*="tape"]'))
+                .slice(0, 40)
+                .map((n) => String(n.className || "").slice(0, 80))
+                .filter(Boolean)
+            )
+          ).slice(0, 12),
+        },
         route: {
           present: routeState.located,
           inBodyText: routeState.inBodyText,
@@ -301,6 +325,12 @@ async function runViewport(session, vp) {
      * on the other purely because of WHEN it ran.
      */
     const base = await probe(page);
+    // The DEFAULT view, captured before anything is clicked. Every screenshot this harness took
+    // until now was of the MODAL, so a tape assertion could fail with no picture of the thing it
+    // was asserting about — which is how "tape painted zero rows" stayed unexplained for two runs.
+    const shotDefault = path.join(OUT, `helix-flows-${vp.id}-default.png`);
+    await page.screenshot({ path: shotDefault, fullPage: false }).catch(() => {});
+
     const morePanels = await openSecondaryPanels(page);
     const panels = morePanels.opened ? await probe(page, { panelsOnly: true }) : undefined;
     // Panel readings come from the modal pass; everything else from the default view.
@@ -379,7 +409,7 @@ async function runViewport(session, vp) {
     // run is UNPROVEN — reporting PASS there is the half-blind certification this file exists to
     // refuse.
     const verdict = fails.length ? "FAIL" : harnessFaults.length ? "HARNESS" : "PASS";
-    return { viewport: vp.id, verdict, fails, notes, harnessFaults, morePanels, counts, shot, snap };
+    return { viewport: vp.id, verdict, fails, notes, harnessFaults, morePanels, counts, shot, shotDefault, snap };
   } finally {
     await browser.close();
   }
@@ -427,7 +457,11 @@ async function runViewport(session, vp) {
       if (r.snap?.freshness?.ageText == null && r.snap?.freshness?.agoContext) {
         console.log(`   freshness context: …${r.snap.freshness.agoContext}…`);
       }
-      if (r.shot) console.log(`   shot: ${r.shot}`);
+      if (r.snap?.gate?.rowCount === 0 && r.snap?.gate?.tapeClasses?.length) {
+        console.log(`   tape classes seen: ${r.snap.gate.tapeClasses.join(" | ")}`);
+      }
+      if (r.shotDefault) console.log(`   shot (default view): ${r.shotDefault}`);
+      if (r.shot) console.log(`   shot (panels modal): ${r.shot}`);
     }
     console.log(`\nOVERALL: ${overall}`);
   }
