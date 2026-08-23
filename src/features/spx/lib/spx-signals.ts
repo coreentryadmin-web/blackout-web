@@ -22,7 +22,7 @@ export type SpxSignalFactor = {
 export type SpxTradeSignal = {
   action: SpxSignalAction;
   bias: "bullish" | "bearish" | "neutral";
-  confidence: number;
+  rawScore: number;
   score: number;
   headline: string;
   thesis: string;
@@ -719,7 +719,7 @@ export function computeSpxConfluence(desk: SpxDeskPayload): SpxConfluence | null
     bias = "neutral";
   }
 
-  const confidence = clamp(Math.round(abs * 1.15 + factors.length * 3), 0, 96);
+  const rawScore = clamp(Math.round(abs * 1.15 + factors.length * 3), 0, 96);
   const grade = scoreToGrade(abs, conflicts);
   const direction: SpxPlayDirection | null =
     bias === "bullish" ? "long" : bias === "bearish" ? "short" : null;
@@ -730,7 +730,7 @@ export function computeSpxConfluence(desk: SpxDeskPayload): SpxConfluence | null
   return {
     action,
     bias,
-    confidence,
+    rawScore,
     score,
     grade,
     conflicts,
@@ -767,7 +767,7 @@ export function computeSpxTradeSignal(desk: SpxDeskPayload): SpxTradeSignal | nu
   const headline =
     c.action === "WAIT"
       ? "Mixed confluence — stand aside"
-      : `${actionLabel} · ${c.confidence}% conviction`;
+      : `${actionLabel} · ${c.rawScore} Score`;
 
   const thesis =
     c.action === "BUY_CALL"
@@ -781,7 +781,7 @@ export function computeSpxTradeSignal(desk: SpxDeskPayload): SpxTradeSignal | nu
   return {
     action: c.action,
     bias: c.bias,
-    confidence: c.confidence,
+    rawScore: c.rawScore,
     score: c.score,
     headline,
     thesis,

@@ -48,7 +48,7 @@ export type SpxHealthPlaySummary = {
   direction: SpxPlayPayload["direction"];
   grade: string;
   score: number;
-  confidence: number;
+  rawScore: number;
   gates: {
     passed: boolean;
     blocks: string[];
@@ -97,7 +97,7 @@ function summarizePlay(play: SpxPlayPayload): SpxHealthPlaySummary {
     direction: play.direction,
     grade: play.grade,
     score: play.score,
-    confidence: play.confidence,
+    rawScore: play.rawScore,
     gates: {
       passed: play.gates.passed,
       blocks: play.gates.blocks,

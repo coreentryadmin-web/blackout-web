@@ -392,7 +392,7 @@ test("fetchEcosystemContext: spx_play is null for a non-SPX ticker, and the SPX-
 /** The fixture as it should arrive at the model: everything verbatim, minus the uncalibrated
  *  `confidence`, plus the named absence that replaces it. */
 function withConfidenceOmitted(payload: Record<string, unknown>): Record<string, unknown> {
-  const { confidence: _omitted, ...rest } = payload;
+  const { rawScore: _omitted, ...rest } = payload;
   return { ...rest, confidence_omitted: SPX_CONFIDENCE_OMITTED };
 }
 
@@ -432,11 +432,11 @@ test('fetchEcosystemContext("SPX"): spx_full_state reuses getSpxPlayState() verb
   assert.deepEqual(
     ctx.spx_full_state,
     withConfidenceOmitted(SPX_FULL_STATE_FIXTURE as unknown as Record<string, unknown>),
-    "spx_full_state must pass through the entire payload apart from the deliberately-omitted confidence — never a summarized subset"
+    "spx_full_state must pass through the entire payload apart from the deliberately-omitted rawScore — never a summarized subset"
   );
   assert.ok(
-    ctx.spx_full_state && !("confidence" in ctx.spx_full_state),
-    "the uncalibrated confidence must not reach the model through this door either"
+    ctx.spx_full_state && !("rawScore" in ctx.spx_full_state),
+    "the uncalibrated rawScore must not reach the model through this door either"
   );
 });
 

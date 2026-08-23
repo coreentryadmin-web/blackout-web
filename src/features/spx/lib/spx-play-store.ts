@@ -410,7 +410,7 @@ export async function openPlay(
     ? {
         entry_path: outcome.entry_path,
         score: outcome.score,
-        confidence: outcome.confidence,
+        rawScore: outcome.rawScore,
         factors: outcome.factors,
         confirmations: outcome.confirmations,
         mtf: outcome.mtf,

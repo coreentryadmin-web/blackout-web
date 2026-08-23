@@ -20,7 +20,7 @@ export type PowerHourRecord = {
   stop_pts: number;
   stop_price: number | null;
   peak_pnl_pts: number;
-  confidence: number;
+  rawScore: number;
   headline: string;
   thesis: string;
   started_at: string;

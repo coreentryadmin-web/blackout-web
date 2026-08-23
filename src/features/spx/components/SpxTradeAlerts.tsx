@@ -86,7 +86,7 @@ function playDeskAlert(type: "buy" | "watch") {
 }
 
 function playId(p: SpxPlayPayload): string {
-  return `${p.action}|${p.direction}|${p.confidence}|${Math.round(p.score)}|${p.headline}`;
+  return `${p.action}|${p.direction}|${p.rawScore}|${Math.round(p.score)}|${p.headline}`;
 }
 
 function hasOpenPlay(play: SpxPlayPayload): boolean {

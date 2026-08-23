@@ -15,7 +15,7 @@ export type PlayEntrySnapshot = {
   entry_path: PlayEntryPath;
   grade: string;
   score: number;
-  confidence: number;
+  rawScore: number;
   entry_price: number;
   stop: number | null;
   target: number | null;
@@ -51,7 +51,7 @@ export type PlayOutcomeRow = {
   entry_path: PlayEntryPath;
   grade: string;
   score: number;
-  confidence: number;
+  rawScore: number;
   entry_price: number;
   exit_price: number | null;
   stop: number | null;
@@ -199,7 +199,7 @@ export async function recordPlayEntry(snapshot: PlayEntrySnapshot): Promise<numb
       entry_path: snapshot.entry_path,
       grade: snapshot.grade,
       score: snapshot.score,
-      confidence: snapshot.confidence,
+      rawScore: snapshot.rawScore,
       entry_price: snapshot.entry_price,
       exit_price: null,
       stop: snapshot.stop,
@@ -226,7 +226,7 @@ export async function recordPlayEntry(snapshot: PlayEntrySnapshot): Promise<numb
       entry_path: snapshot.entry_path,
       grade: snapshot.grade,
       score: snapshot.score,
-      confidence: snapshot.confidence,
+      rawScore: snapshot.rawScore,
       entry_price: snapshot.entry_price,
       stop: snapshot.stop,
       target: snapshot.target,

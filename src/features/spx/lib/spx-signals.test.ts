@@ -167,7 +167,7 @@ function richDesk(): SpxDeskPayload {
 const GOLDEN = {
   action: "BUY_CALL",
   bias: "bullish",
-  confidence: 96,
+  rawScore: 96,
   score: 100,
   grade: "A+",
   conflicts: 1,
