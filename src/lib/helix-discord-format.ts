@@ -16,6 +16,7 @@ import {
   type FlowStackHit,
   type FlowStrikeStack,
 } from "@/lib/largo/flow-strike-stacks";
+import { contractSizeRounded } from "@/features/helix/lib/helix-contract-size";
 import { HELIX_STRIKE_HITS_WINDOW_MIN } from "@/features/helix/lib/helix-strike-leaders";
 import { buildHelixFlowDeepLink, helixDiscordFlowToDeepLink } from "@/lib/helix-flow-deep-link";
 
@@ -242,11 +243,9 @@ export function helixDiscordHeadline(flow: HelixDiscordFlowInput, now = new Date
 export function helixDiscordWriteup(flow: HelixDiscordFlowInput, now = new Date()): string {
   const isCall = String(flow.option_type || "").toUpperCase().startsWith("C");
   const prem = moneyShort(Number(flow.premium));
-  const fill = flow.fill_price != null ? Number(flow.fill_price) : null;
-  const size =
-    fill != null && fill > 0 && Number(flow.premium) > 0
-      ? Math.round(Number(flow.premium) / (fill * 100))
-      : null;
+  // Same derivation the drilldown's `Size` chip shows, so the Discord post and the desk cannot
+  // disagree about how many contracts a print was.
+  const size = contractSizeRounded(flow.premium, flow.fill_price);
   const gex = gexPhrase(flow.gex_proximity ?? null);
   const leg = isCall ? "call" : "put";
 

@@ -14,11 +14,15 @@
  * check is here, in code, on the execution path — the only place a caller cannot route around.
  *
  * THE POLICY, stated because the alternative is a plausible-looking disaster: the registry is an
- * allowlist of **RESTRICTED** tools, not of permitted ones. 49 of 116 tools are catalogued. Failing
- * closed on the uncatalogued 67 would silently disable most of Largo the moment this shipped, and
- * the symptom — "Largo got worse at everything" — would be nearly impossible to trace back here.
- * So a tool is denied only when the catalog explicitly says `admin` and the viewer is not one.
- * Cataloguing a tool can therefore only ever ADD a restriction, never remove one by omission.
+ * allowlist of **RESTRICTED** tools, not of permitted ones. When this shipped only 49 of the
+ * then-116 tools were catalogued, and failing closed on the uncatalogued 67 would have silently disabled
+ * most of Largo on the spot — with a symptom, "Largo got worse at everything", nearly impossible to
+ * trace back here. The catalog has since caught up: 129 of 129 today, and `registry.test.ts` holds
+ * the 1:1. But the rule does NOT rest on that number, and must not be re-argued from it — a gap
+ * reopens the moment anyone adds a tool ahead of its capability, and that gap must not be able to
+ * take Largo down with it. So a tool is denied only when the catalog explicitly says `admin` and
+ * the viewer is not one. Cataloguing a tool can therefore only ever ADD a restriction, never remove
+ * one by omission.
  *
  * A denial returns a structured refusal rather than throwing. The model needs to know it was
  * denied so it can say so; an exception would surface as a generic tool failure and get narrated
@@ -37,6 +41,9 @@ import {
   type LargoCapability,
 } from "@/lib/largo/registry/capability-registry";
 import { roundResultForReading } from "./round-for-reading";
+// Pure module, deliberately NOT `providers/anthropic` — see tool-result-cap.ts for why the constant
+// was split out. This file must stay free of the SDK/telemetry/Redis graph.
+import { exceedsToolResultCap, MAX_TOOL_RESULT_CHARS } from "@/lib/providers/tool-result-cap";
 
 export type ToolCallDiagnostic = {
   tool: string;
@@ -47,6 +54,15 @@ export type ToolCallDiagnostic = {
   failed: boolean;
   /** Serialized result size. A tool returning 0 bytes is a silent-empty, not a success. */
   bytes: number;
+  /**
+   * This result is OVER the transport cap, so the model will be handed a head-slice of it.
+   *
+   * Derived from `bytes`, which this file has always measured and never compared to anything. That
+   * omission is why three truncation defects (#2433, #2436, #2480) shipped and were each found only
+   * by asking the live model whether its payload arrived — an over-cap tool still "succeeds", so
+   * nothing here objected. The number was already in hand; only the comparison was missing.
+   */
+  truncated: boolean;
 };
 
 export type ToolGuardViewer = {
@@ -58,7 +74,7 @@ export type ToolGuardViewer = {
  * The entitlement the catalog declares for a tool, or null when the tool is uncatalogued.
  *
  * `catalog` is injectable ONLY so the enforcement path can be tested against a synthetic catalog.
- * As of this writing every one of the 120 catalogued capabilities declares `premium`, so against
+ * As of this writing every one of the 129 catalogued capabilities declares `premium`, so against
  * the real registry this mechanism is armed but inert — it restricts nothing today. That is the
  * honest state: the gate is in place and proven, and the day a capability is marked `admin` it is
  * enforced in code rather than by asking the model nicely.
@@ -99,7 +115,7 @@ export function checkToolEntitlement(
 
 export type GuardedRunnerOptions = {
   viewer: ToolGuardViewer;
-  /** The real executor. Injected so this module stays free of the 116-tool dependency graph. */
+  /** The real executor. Injected so this module stays free of the 129-tool dependency graph. */
   execute: (name: string, input: Record<string, unknown>, userId: string) => Promise<unknown>;
   /** Tools actually CALLED. Denied tools are excluded — see the note in the runner. */
   toolsUsed: string[];
@@ -128,7 +144,7 @@ export function makeGuardedToolRunner(opts: GuardedRunnerOptions) {
       // Deliberately NOT pushed to `toolsUsed`. That array is persisted to the interaction log and
       // buckets calibration cohorts, so it must record tools that RAN. A denied call ran nothing;
       // recording it would make an admin-denied turn indistinguishable from one that used the tool.
-      opts.diagnostics.push({ tool: name, ms: now() - started, denied: true, failed: false, bytes: 0 });
+      opts.diagnostics.push({ tool: name, ms: now() - started, denied: true, failed: false, bytes: 0, truncated: false });
       return denial;
     }
 
@@ -142,16 +158,18 @@ export function makeGuardedToolRunner(opts: GuardedRunnerOptions) {
       // provider functions that feed compute paths are untouched. See round-for-reading.ts.
       const result = roundResultForReading(await opts.execute(name, input, opts.viewer.userId));
       opts.capturedResults.push(result);
+      const bytes = sizeOf(result);
       opts.diagnostics.push({
         tool: name,
         ms: now() - started,
         denied: false,
         failed: false,
-        bytes: sizeOf(result),
+        bytes,
+        truncated: exceedsToolResultCap(bytes),
       });
       return result;
     } catch (err) {
-      opts.diagnostics.push({ tool: name, ms: now() - started, denied: false, failed: true, bytes: 0 });
+      opts.diagnostics.push({ tool: name, ms: now() - started, denied: false, failed: true, bytes: 0, truncated: false });
       throw err;
     }
   };
@@ -180,17 +198,33 @@ export function formatToolDiagnostics(diagnostics: readonly ToolCallDiagnostic[]
   const parts = [...diagnostics]
     .sort((a, b) => b.ms - a.ms)
     .map((d) => {
-      const flag = d.denied ? " DENIED" : d.failed ? " FAILED" : d.bytes === 0 ? " EMPTY" : "";
+      // TRUNCATED carries its size because the number is the actionable part: "9.2s" tells you to
+      // make a tool faster, "TRUNCATED 41203/16000" tells you exactly how much has to come off and
+      // whether the fix is pagination or a leaner shape.
+      const flag = d.denied
+        ? " DENIED"
+        : d.failed
+          ? " FAILED"
+          : d.truncated
+            ? ` TRUNCATED ${d.bytes}/${MAX_TOOL_RESULT_CHARS}`
+            : d.bytes === 0
+              ? " EMPTY"
+              : "";
       return `${d.tool} ${Math.round(d.ms)}ms${flag}`;
     });
   const denied = diagnostics.filter((d) => d.denied).length;
   const failed = diagnostics.filter((d) => d.failed).length;
   const empty = diagnostics.filter((d) => !d.denied && !d.failed && d.bytes === 0).length;
+  const truncated = diagnostics.filter((d) => d.truncated).length;
   return (
     `[largo] tools: ${diagnostics.length} calls, ${Math.round(total)}ms total` +
     (denied ? `, ${denied} denied` : "") +
     (failed ? `, ${failed} failed` : "") +
     (empty ? `, ${empty} empty` : "") +
+    // Named LAST in the counts but FIRST in severity: a slow tool gives a late answer, a truncated
+    // one gives a confident answer built on a fragment. It is the only entry here that means the
+    // member may have been told something false.
+    (truncated ? `, ${truncated} TRUNCATED` : "") +
     ` — ${parts.join(" | ")}`
   );
 }

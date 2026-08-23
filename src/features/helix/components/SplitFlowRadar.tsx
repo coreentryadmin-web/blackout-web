@@ -5,22 +5,25 @@ import { usePulse } from "@/lib/usePulse";
 import { clsx } from "clsx";
 import { fmtPremium } from "@/lib/api";
 import { Panel } from "@/components/ui";
+import { SignalCoverageNote } from "@/features/helix/components/SignalCoverageNote";
+import type { SignalEligibility } from "@/features/helix/lib/helix-signal-detection";
 
-export type SplitFlowEntry = {
-  ticker: string;
-  callPremium: number;
-  putPremium: number;
-  callPct: number;
-  total: number;
-  direction: "bullish" | "bearish" | "mixed";
-};
+// Re-exported, not re-declared. This component previously kept its OWN copy of the shape, which is
+// how it kept rendering a `direction` the detector had stopped meaning — a duplicated type is a
+// second reader of one definition, the same failure this lane has now fixed five times.
+export type { SplitFlowEntry } from "@/features/helix/lib/helix-signal-detection";
+import type { SplitFlowEntry } from "@/features/helix/lib/helix-signal-detection";
 
 export function SplitFlowRadar({
   entries,
   onTickerClick,
+  eligibility,
 }: {
   entries: SplitFlowEntry[];
   onTickerClick?: (ticker: string) => void;
+  /** The denominator these entries were computed over — see SignalCoverageNote. Optional so an
+   *  existing caller keeps working. */
+  eligibility?: SignalEligibility;
 }) {
   // Hoisted above the early return (Rules of Hooks). Static for reduced-motion users.
   const pulse = usePulse({ opacity: [1, 0.3, 1] }, { repeat: Infinity, duration: 2, ease: "easeInOut" });
@@ -38,6 +41,8 @@ export function SplitFlowRadar({
         <div className="flow-panel-body py-6 text-center">
           <p className="font-mono text-[11px] text-gold/70">No split-flow tickers this session</p>
           <p className="font-mono text-[10px] text-sky-300/55 mt-1">Needs both call and put flow in the last 30 min</p>
+          {/* Naming only the threshold implies the tape was scanned and came up quiet. */}
+          {eligibility ? <SignalCoverageNote eligibility={eligibility} /> : null}
         </div>
       </Panel>
     );
@@ -129,7 +134,17 @@ export function SplitFlowRadar({
                           : "text-sky-300 border-sky-300/20 bg-sky-300/[0.06]"
                     )}
                   >
-                    {isBull ? "▲ CALL BIAS" : isBear ? "▼ PUT BIAS" : "⇋ NEUTRAL"}
+                    {/* The value no longer means "more call premium than put premium" — it means
+                        what the flow says about the UNDERLYING, from option type × aggressor side.
+                        "CALL BIAS" would now be actively wrong: a bullish read can come entirely
+                        from SOLD PUTS, with no call buying at all. */}
+                    {isBull
+                      ? "▲ BULLISH"
+                      : isBear
+                        ? "▼ BEARISH"
+                        : e.direction === "mixed"
+                          ? "⇋ MIXED"
+                          : "— UNREAD"}
                   </span>
                 </div>
 
@@ -182,9 +197,12 @@ export function SplitFlowRadar({
         </AnimatePresence>
 
         {/* Legend */}
-        <p className="font-mono text-[10px] text-sky-300/70 text-center pt-1">
-          Both call &amp; put ≥ $500K within 30 min window
-        </p>
+        <div className="text-center pt-1">
+          <p className="font-mono text-[10px] text-sky-300/70">
+            Both call &amp; put ≥ $500K within 30 min window
+          </p>
+          {eligibility ? <SignalCoverageNote eligibility={eligibility} /> : null}
+        </div>
       </div>
     </Panel>
   );

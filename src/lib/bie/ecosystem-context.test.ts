@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 // doc for the full rationale.
 import { SPX_FULL_STATE_FIXTURE } from "./spx-full-state-fixture";
 import { VECTOR_FULL_STATE_FIXTURE } from "./vector-full-state-fixture";
+import { fitVectorFullStateForModel } from "@/lib/bie/vector-full-state-fit";
 import type { SpxPlayPayload } from "@/features/spx/lib/spx-play-payload";
 import type { FlowTapeSummary } from "@/lib/platform/types";
 import type { FlowRow } from "@/lib/db";
@@ -21,6 +22,7 @@ import type { RelatedCompanies } from "@/lib/providers/polygon-related";
 import type { NewsResult } from "@/lib/providers/polygon-news";
 import type { PolygonMacroBackdrop } from "@/lib/providers/polygon-macro";
 import type { MarketBreadthBundle } from "@/lib/bie/market-breadth";
+import { SPX_CONFIDENCE_OMITTED } from "@/lib/largo/spx-confidence-boundary";
 
 // mock.module() must be registered before ecosystem-context.ts (and therefore
 // its "@/lib/db" import) is ever loaded — an ordinary top-level `import` of
@@ -386,6 +388,14 @@ test("fetchEcosystemContext: spx_play is null for a non-SPX ticker, and the SPX-
   assert.equal(closedPlayCalls, 0, "fetchClosedPlayOutcomes must not run for a non-SPX ticker");
 });
 
+
+/** The fixture as it should arrive at the model: everything verbatim, minus the uncalibrated
+ *  `confidence`, plus the named absence that replaces it. */
+function withConfidenceOmitted(payload: Record<string, unknown>): Record<string, unknown> {
+  const { confidence: _omitted, ...rest } = payload;
+  return { ...rest, confidence_omitted: SPX_CONFIDENCE_OMITTED };
+}
+
 // Regression: Largo's own get_spx_play tool (src/lib/largo/run-tool.ts ->
 // src/lib/platform/spx-service.ts::getSpxPlayState()) already returns SPX
 // Slayer's FULL play-engine payload — phase, confluence factors, gates,
@@ -395,6 +405,16 @@ test("fetchEcosystemContext: spx_play is null for a non-SPX ticker, and the SPX-
 // reusing getSpxPlayState() verbatim (not a second derivation), so BIE and
 // Largo see the exact same entire numerical picture per the user's explicit
 // "share its entire data...to both BIE and largo" instruction.
+//
+// ONE FIELD IS DELIBERATELY WITHHELD, and only one: `confidence`. It is a formula over |score| and
+// a COUNT of contributing factors (conflicting ones included) fitted to no outcome data, and the
+// product contract requires omitting a confidence a product cannot calibrate — see
+// src/lib/largo/spx-confidence-boundary.ts. get_spx_play applies the identical omission, so the
+// "exact same object" guarantee between the two doors is preserved; what changed is that neither
+// door now serves the fabricated number.
+//
+// The expectations below are built FROM the fixture (drop one key, add one key) rather than
+// hand-written, so this stays a full-fidelity guard: trim any OTHER field and it still fails.
 
 test('fetchEcosystemContext("SPX"): spx_full_state reuses getSpxPlayState() verbatim, full fidelity', async () => {
   fullStateCalls = 0;
@@ -409,7 +429,15 @@ test('fetchEcosystemContext("SPX"): spx_full_state reuses getSpxPlayState() verb
   // the same response, undermining the "one derivation" guarantee this field
   // exists to provide.
   assert.equal(fullStateCalls, 1, "getSpxPlayState should run exactly once for ticker SPX");
-  assert.deepEqual(ctx.spx_full_state, SPX_FULL_STATE_FIXTURE, "spx_full_state must pass through the entire payload untouched, not a summarized subset");
+  assert.deepEqual(
+    ctx.spx_full_state,
+    withConfidenceOmitted(SPX_FULL_STATE_FIXTURE as unknown as Record<string, unknown>),
+    "spx_full_state must pass through the entire payload apart from the deliberately-omitted confidence — never a summarized subset"
+  );
+  assert.ok(
+    ctx.spx_full_state && !("confidence" in ctx.spx_full_state),
+    "the uncalibrated confidence must not reach the model through this door either"
+  );
 });
 
 test('fetchEcosystemContext("SPXW"): spx_full_state also populates (same single-instrument engine as SPX)', async () => {
@@ -418,7 +446,10 @@ test('fetchEcosystemContext("SPXW"): spx_full_state also populates (same single-
 
   const ctx = await fetchEcosystemContext("SPXW");
   assert.equal(fullStateCalls, 1, "getSpxPlayState should run exactly once for ticker SPXW");
-  assert.deepEqual(ctx.spx_full_state, mockFullState);
+  assert.deepEqual(
+    ctx.spx_full_state,
+    withConfidenceOmitted(mockFullState as unknown as Record<string, unknown>)
+  );
 });
 
 test("fetchEcosystemContext: spx_full_state is null for a non-SPX ticker, and getSpxPlayState never runs", async () => {
@@ -619,16 +650,39 @@ test('fetchEcosystemContext("AAPL"): gex_positioning populates for an ordinary s
 // computes a full desk state (regime/walls/beads/VEX/dark-pool/play) for any
 // optionable ticker, but "what does the desk know about this name" via BIE never
 // surfaced it. vector_full_state closes that gap by calling fetchVectorFullState()
-// verbatim, unconditionally, horizon "all" — the Vector analogue of spx_full_state.
+// unconditionally, horizon "all" — the Vector analogue of spx_full_state.
+//
+// THESE TWO ASSERTIONS USED TO SAY "verbatim" / "the entire object untouched", and that
+// invariant is exactly what shipped the defect: the raw state carries the whole bead rail and
+// runs up to 948x the 16,000-char tool_result cap during RTH, so the transport head-sliced it
+// and the model lost everything after `wallHistory` in key order — including the entire absence
+// report and freshness block. The field's contract is "the exact same object
+// get_vector_full_state returns", so BOTH sides now apply fitVectorFullStateForModel.
+//
+// Pinning to the helper's own output is STRONGER than the old check, not weaker: it asserts the
+// two paths cannot drift apart, which is the property the contract actually promises. A future
+// change that fits one side and not the other fails here.
 
-test('fetchEcosystemContext("NVDA"): vector_full_state reuses fetchVectorFullState() verbatim, horizon "all"', async () => {
+test('fetchEcosystemContext("NVDA"): vector_full_state is fetchVectorFullState() fitted for the model, horizon "all"', async () => {
   vectorFullStateCalls = [];
   mockVectorFullState = VECTOR_FULL_STATE_FIXTURE;
 
   const ctx = await fetchEcosystemContext("NVDA");
 
   assert.deepEqual(vectorFullStateCalls, [["NVDA", "all"]], "fetchVectorFullState should run once, uppercased ticker + 'all' horizon");
-  assert.deepEqual(ctx.vector_full_state, VECTOR_FULL_STATE_FIXTURE, "vector_full_state must pass through the entire object untouched");
+  assert.deepEqual(
+    ctx.vector_full_state,
+    fitVectorFullStateForModel(VECTOR_FULL_STATE_FIXTURE),
+    "vector_full_state must be the SAME fitted object get_vector_full_state returns"
+  );
+  // The fit is shape-preserving for everything a reader cites: no scalar and no disclosure
+  // field may be dropped on the way through.
+  const fitted = ctx.vector_full_state as unknown as Record<string, unknown>;
+  assert.equal(fitted.ticker, VECTOR_FULL_STATE_FIXTURE.ticker);
+  assert.equal(fitted.spot, VECTOR_FULL_STATE_FIXTURE.spot);
+  assert.deepEqual(fitted.gexWalls, VECTOR_FULL_STATE_FIXTURE.gexWalls);
+  assert.deepEqual(fitted.play, VECTOR_FULL_STATE_FIXTURE.play);
+  assert.equal(fitted.asOf, VECTOR_FULL_STATE_FIXTURE.asOf);
 });
 
 test("fetchEcosystemContext: vector_full_state is null when fetchVectorFullState has no live spot", async () => {
@@ -650,7 +704,7 @@ test('fetchEcosystemContext: vector_full_state is NOT gated by isSpxSlayerTicker
   const ctx = await fetchEcosystemContext("SPX");
 
   assert.deepEqual(vectorFullStateCalls, [["SPX", "all"]]);
-  assert.deepEqual(ctx.vector_full_state, VECTOR_FULL_STATE_FIXTURE);
+  assert.deepEqual(ctx.vector_full_state, fitVectorFullStateForModel(VECTOR_FULL_STATE_FIXTURE));
   // Distinct gate check: the SPX-only spx_full_state still populates here too.
   assert.equal(fullStateCalls, 1);
 });

@@ -679,20 +679,27 @@ export async function horizonOutcomesForLargo(days = 30) {
  * Deliberately mirrors `vectorPulseForLargo`'s existing `{ available:false, reason }` shape rather
  * than inventing a second convention for the same idea.
  *
- * THE SUCCESS PATH IS UNCHANGED — the state is returned exactly as `fetchVectorFullState` produces
- * it, freshness/absence blocks included. That matters: `get_ecosystem_context.vector_full_state`
- * is documented as "the exact same object get_vector_full_state returns", and wrapping the
- * populated case would have made that promise false. Only the `null` is replaced.
+ * THE SUCCESS PATH IS SHAPE-PRESERVING, NOT VERBATIM — see `fitVectorFullStateForModel`. Every
+ * scalar and every freshness/absence field is carried through untouched; only the four unbounded
+ * list sections are sampled, each with an explicit `fit.*` scope note. That was forced: the raw
+ * state is up to 948x the transport's 16,000-char `tool_result` cap during RTH (the whole bead
+ * rail rides on it), and the cap is a HEAD slice, so what the model actually lost was everything
+ * after `wallHistory` in key order — including the entire absence report and freshness block.
+ * `get_ecosystem_context.vector_full_state` applies the SAME helper, so its documented promise to
+ * return "the exact same object get_vector_full_state returns" stays true; leaving either side
+ * unfitted is what would break it. Only the `null` case is replaced wholesale.
  */
 export async function vectorFullStateForLargo(ticker: string, horizon = "all") {
   try {
-    const [{ fetchVectorFullState }, { normalizeDteHorizon }] = await Promise.all([
-      import("@/lib/bie/vector-full-state"),
-      import("@/features/vector/lib/vector-dte-horizon"),
-    ]);
+    const [{ fetchVectorFullState }, { normalizeDteHorizon }, { fitVectorFullStateForModel }] =
+      await Promise.all([
+        import("@/lib/bie/vector-full-state"),
+        import("@/features/vector/lib/vector-dte-horizon"),
+        import("@/lib/bie/vector-full-state-fit"),
+      ]);
     const h = normalizeDteHorizon(horizon);
     const state = await fetchVectorFullState(ticker, h);
-    if (state) return state;
+    if (state) return fitVectorFullStateForModel(state);
 
     return {
       available: false,
@@ -874,12 +881,14 @@ export async function helixDerivedForLargo(
       { marketPlatform },
       { computeFlowStrikeStacks },
       { selectTopPrints },
-      { detectVelocitySpikes, detectSplitFlow },
+      { positionIntent },
+      { detectVelocitySpikes, detectSplitFlow, signalEligibility },
       { HELIX_STRIKE_HITS_WINDOW_MIN },
     ] = await Promise.all([
       import("@/lib/platform"),
       import("@/lib/largo/flow-strike-stacks"),
       import("@/features/helix/lib/helix-top-prints"),
+      import("@/features/helix/lib/helix-position-intent"),
       import("@/features/helix/lib/helix-signal-detection"),
       import("@/features/helix/lib/helix-strike-leaders"),
     ]);
@@ -921,6 +930,11 @@ export async function helixDerivedForLargo(
         session_date: etSessionDate(nowMs),
         prints_analyzed: 0,
         empty_reason: "no_prints_in_window",
+        // Shape stays stable across every branch — a field that disappears on the empty path is a
+        // field a consumer reads as "not applicable" when it means "nothing to count".
+        signal_eligible_prints: 0,
+        signal_ineligible_prints: 0,
+        signal_ineligible_tickers: [],
         stacked_hits: [],
         top_prints: [],
         velocity_spikes: [],
@@ -932,6 +946,11 @@ export async function helixDerivedForLargo(
     const top = selectTopPrints(alerts, { nowMs });
     const velocity = detectVelocitySpikes(alerts, nowMs);
     const split = detectSplitFlow(alerts, nowMs);
+    // C3 / rule 7. `prints_analyzed` is the whole window, but BOTH signals can only see prints that
+    // carry a real UW timestamp — measured live at 30% of the tape. Without this denominator an
+    // empty `velocity_spikes` reads as "the tape was quiet", which for SPX and SPY is false: they
+    // were never scanned. Same eligibility function the detectors themselves use.
+    const eligibility = signalEligibility(alerts);
 
     // NO SILENT CAPS (rule 7). Each panel below is capped for payload size, but the cap was
     // invisible: a model seeing 20 stacked_hits had no way to know 34 contracts were stacking, so
@@ -940,7 +959,20 @@ export async function helixDerivedForLargo(
     // get_helix_signal_outcomes (rows_shown/rows_summarized) and get_helix_tape_analytics
     // (expiry_concentration_truncated) already use.
     const stackedHits = cappedList(stacks, 20);
-    const topPrints = cappedList(top.rows, 12);
+    // POSITION INTENT on the leaders. The model would otherwise have to re-derive
+    // `premium / (fill_price * 100)` against `open_interest` AND re-pick the margin — a second
+    // reader of one fact, which is the failure this lane has now fixed five times. Stated once, by
+    // the same function the tape badge uses, so the desk and the model cannot disagree about
+    // whether a print is provably new positioning.
+    //
+    // The verdict is carried WHOLE, including its refusals: `indeterminate` (below open interest,
+    // could be either) and `unknown` (no open interest reported — never examined) are distinct
+    // facts and neither may be read as "closing". Flattening them to a boolean would delete
+    // exactly the distinction that makes the field honest.
+    const topPrints = cappedList(
+      top.rows.map((row) => ({ ...row, position_intent: positionIntent(row) })),
+      12
+    );
     const velocitySpikes = cappedList(velocity, 12);
     const splitFlow = cappedList(split, 12);
 
@@ -966,12 +998,34 @@ export async function helixDerivedForLargo(
 
       /** TOP PRINTS — the conviction-scored leaders. `mode` says which ranking is in force, and
        *  `session_fallback` flags that every row is OUTSIDE the rolling window, i.e. these are
-       *  stale session leaders rather than live conviction. Reporting them as live would be wrong. */
+       *  stale session leaders rather than live conviction. Reporting them as live would be wrong.
+       *
+       *  Each row also carries `position_intent` — whether the print PROVABLY opened new
+       *  positioning, from `premium / (fill_price * 100)` against `open_interest`. Three outcomes,
+       *  two of them refusals: `opening` (the size exceeds what exists to close, so at least part
+       *  is new), `indeterminate` (below open interest — could be opening OR closing, and is NEVER
+       *  evidence of closing), and `unknown` (no open interest reported, so nothing was examined).
+       *  Measured live 2026-08-23: only 30% of the tape carries open interest at all, so `unknown`
+       *  is the common case and must not be read as a negative answer. */
       top_prints: topPrints.items,
       top_prints_total: topPrints.total,
       top_prints_truncated: topPrints.truncated,
       top_prints_mode: top.mode,
       top_prints_session_fallback: top.sessionFallback,
+
+      /** SIGNAL ELIGIBILITY — the denominator BOTH radars below were computed over.
+       *
+       *  `prints_analyzed` counts the whole window; these count what could be placed in time. A
+       *  print with no real UW timestamp cannot be windowed, so neither detector can see it. When
+       *  `signal_ineligible_prints` is non-zero, an empty spike/split list is partly a statement
+       *  about COVERAGE and must not be reported as a quiet tape. `signal_ineligible_tickers`
+       *  names which symbols were unscanned. Measured live 2026-08-23: SPX and SPY, 70% of rows and
+       *  ~92% of premium — then 0 ineligible on the same query once #2723 deployed and the index
+       *  feed's epoch timestamps parsed (HELIX-MAP.md §9.0 / §4A). Quote the FIELD, never that
+       *  first number: it described a parse bug, not the feed. */
+      signal_eligible_prints: eligibility.eligible,
+      signal_ineligible_prints: eligibility.ineligible,
+      signal_ineligible_tickers: eligibility.ineligibleTickers,
 
       /** VELOCITY RADAR — prints per 15min vs the prior window, per ticker. */
       velocity_spikes: velocitySpikes.items,
@@ -994,6 +1048,9 @@ export async function helixDerivedForLargo(
         true
       ),
       ...HELIX_TAPE_PROVENANCE,
+      signal_eligible_prints: 0,
+      signal_ineligible_prints: 0,
+      signal_ineligible_tickers: [],
       stacked_hits: [],
       top_prints: [],
       velocity_spikes: [],

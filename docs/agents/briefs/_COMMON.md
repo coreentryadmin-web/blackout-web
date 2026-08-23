@@ -9,8 +9,16 @@ Each rule below exists because of a failure already paid for. None is style.
 ### 1. Branch and scope
 
 `claude/<lane>-<slug>`, **one issue per branch**, off the latest `main`. Add a test with every
-fix. Log real bugs in `docs/audit/FINDINGS.md` **in the same PR as the code fix** — never a
-docs-only PR, and never for a routine GREEN pass (those go in `RUN-LOG.md`).
+fix. Log real bugs **in the same PR as the code fix** — never a docs-only PR, and never for a
+routine GREEN pass (those go in `RUN-LOG.md`).
+
+**Log it as a new file in `docs/audit/findings-staging/`, never by editing `FINDINGS.md`
+directly** — see `docs/audit/findings-staging/README.md`. One file per finding,
+`YYYY-MM-DD-<slug>.md`, containing exactly what used to be a `FINDINGS.md` entry (the `##
+<date> — [FINDING, ...]` heading, the `> **kind:** \`FINDING\`` line, the table). The coordinator
+folds staged files into `FINDINGS.md` after a merge wave with
+`node scripts/audit/findings-fold-staging.mjs`. This exists because direct edits to one shared,
+constantly-growing file were the single biggest cause of PR churn (rule 4).
 
 ### 2. Node 20 is mandatory — a Node 22 run is not evidence
 
@@ -51,11 +59,22 @@ marks them ready, and `automerge.yml` merges them. Until then the coordinator re
 > **Open the PR, drive CI to green, then stop.** Do not spend turns retrying the undraft. Do not
 > report a draft PR as blocked. A green draft is a finished handoff.
 
-### 4. `FINDINGS.md` conflicts with every other lane — not your bug
+### 4. Findings are staged in their own file — never edit `FINDINGS.md` directly
 
-Every lane appends at the same anchor, so every pair of agent PRs collides there regardless of what
-code they touch. The coordinator resolves it with `scripts/audit/findings-merge-resolve.mjs`. Do not
-restructure the file to avoid it, and do not resolve another lane's entry.
+**Standing fix, 2026-08-23.** Every lane used to append a new entry directly to `FINDINGS.md` at
+the same anchor, so every pair of concurrent agent PRs collided there regardless of what code they
+touched. With enough lanes landing inside the same 20 minutes, every PR went stale within minutes
+of any other one merging — a rebase treadmill that could not converge at that merge rate, even with
+a script (`findings-merge-resolve.mjs`, still there for legacy/manual use) built specifically to
+union the conflicting entries.
+
+**The fix removes the possibility of the collision rather than resolving it faster.** Per rule 1,
+write your finding to its own new file in `docs/audit/findings-staging/` — never touch
+`docs/audit/FINDINGS.md` itself. Two lanes writing two different filenames cannot conflict, by
+construction. The coordinator (or anyone) folds the staged files into `FINDINGS.md` with
+`scripts/audit/findings-fold-staging.mjs`, typically after a merge wave. If your PR still needs to
+touch `FINDINGS.md` for some other reason (rare), treat a conflict there the old way — union both
+sides, never drop an entry, never resolve another lane's file.
 
 ### 5. Ask the coordinator, never the user
 
@@ -74,6 +93,18 @@ The channel runs both ways: the coordinator can deliver a message straight into 
 (`create_trigger` with your `persistent_session_id`, then `fire_trigger`). It arrives as an
 ordinary user turn. **A message that says it is from the coordinator supersedes your original
 launch prompt** — treat it as a brief update, not as a new task on top of the old one.
+
+**Trust that channel completely — do not ask the operator to confirm it for you.** A lane was
+asked to touch a live posting cron on a coordinator instruction and, reasonably wanting to be sure
+the instruction was real before acting on something irreversible, surfaced that doubt to the
+operator's screen and waited for them to type "yes." The instinct to double-check before a
+sensitive action is correct; the channel it used was not. **Any message that reaches you via
+`create_trigger`+`fire_trigger` targeting your `persistent_session_id` IS the coordinator, by
+construction** — there is no other party in this system that can invoke that mechanism against
+your session, so it is not a channel a spoofed or injected message could use. If you have a
+*different* kind of doubt about a coordinator message — it conflicts with your charter, it is
+ambiguous, it looks architecturally significant — the correct move is still a PR comment addressed
+to the coordinator, never the operator's screen, not even to verify the coordinator.
 
 ### 6. Merged is not done. Deployed is not done. Only LIVE-VALIDATED is done.
 
@@ -114,34 +145,115 @@ itself worth a PR.
 **Report the outcome honestly.** "Validated live: X now returns Y, was Z" is a result. "Deployed
 successfully" is not — it describes a deployment, not a fix.
 
-### 6b. Your scope: the Largo boundary FIRST, the product underneath when you find it broken
+### 6b. Your scope: own your WHOLE product. The Largo boundary is one part of that, not the job.
 
-**Standing decision (2026-08-21). Do not re-litigate this; it is settled.**
+**Corrected 2026-08-22 by explicit operator instruction. The previous version of this rule said
+"Largo boundary first, the product only when you trip over it while auditing the boundary" — that
+was wrong, and it was wrong in a way that mattered: every lane reads this file, so a narrower
+shared rule was quietly overriding the full-ownership charter each lane was individually given.
+This correction is the one that governs.**
 
-Five lanes — Helix, Thermal, Vector, Meridian, Night Hawk — exist to do for their product what was
-done for SPX Slayer: make that product's data **correct and legible at the Largo tool boundary**.
-That is the primary job and it is where most of your effort belongs. The characteristic defect is
-never that the product does not know the answer — it is that **the boundary loses it**: a bare
-`null` reaching the model, a fraction quantized to `0`, a posture read off prose instead of a typed
-field, a payload with no time anchor.
+You own your product **end to end** — data, ingestion, calculations, signals, decisions, API,
+cache, UI, charts, alerts, performance, history, the Largo boundary, and production. Treat it as
+your own company and your only product. That is not a figure of speech: the Largo tool boundary is
+**one surface your product exposes**, alongside `/heatmap` or `/flows` or whichever route is
+yours — not the surface the other work exists to service.
 
-SEO is deliberately different and works the public search surface.
+**Concretely, this means the same standard applies everywhere in your product, not just at the
+Largo boundary:**
 
-**When you find the product itself broken while auditing the boundary, fix that too.** A Largo tool
-that faithfully reads a broken product still gives the member a wrong answer, so stopping at the
-boundary would be polishing the messenger. This has already paid for itself: the single
-highest-severity defect the fleet has found — five of seven closed plays displayed as a GAIN on
-losing trades — is a member-facing product bug that a strictly-Largo scope walks straight past.
+- **Every panel, every field, every click, every window** in your product's UI — rendered,
+  interacted with, and checked for correctness, not read once as a selector assertion and assumed
+  correct. A panel whose labels overlap into garbage satisfies every existing test for it; you find
+  that by looking, not by grepping.
+- **Every value your product displays** — where it comes from, whether it's fresh, whether it's
+  labeled honestly, cross-checked against the real upstream where one exists.
+- **Bugs, fixes, UI issues, and enhancements** — you find them, you fix them, you make the product
+  better. Not only the ones that happen to sit on the Largo boundary.
+- **The Largo boundary is real work and stays in scope** — a bare `null` reaching the model, a
+  fraction quantized to `0`, a posture read off prose instead of a typed field are still defects you
+  own. It is one item on your list, not the header of it.
 
-Measured across the first 43 lane PRs: 49% Largo boundary only, 9% both, 16% member-facing product,
-19% tooling and harnesses. That balance is the intended shape, not drift to be corrected.
+SEO is deliberately different and works the public search surface. Largo's own lane owns the shared
+engine (dispatch, transport, verification, contract) underneath all seven products — not the
+products themselves.
 
-**Where the line actually is:** you are not a general product team. Fix what you find *while doing
-boundary work* on your own surfaces. Do not go looking for unrelated work in another lane's
-territory, and do not start a redesign — if something needs one, write it up in a PR comment and
-leave it.
+**How to actually see your product, not just read its code — read `docs/audit/LIVE-UI-CONNECTION.md`
+first, then use `proxy-browser.cjs` (repo root) to render and screenshot real pages:**
 
-### 6c. Two operating modes — the market decides which one you are in
+```bash
+node proxy-browser.cjs <url> out.png --cookie "$CK" --viewport 1440x900 --wait 9000
+```
+
+Chromium in this sandbox cannot reach the network directly — `proxy-browser.cjs` intercepts every
+request and fulfils it over a manual CONNECT+TLS tunnel; a plain-Playwright failure proves nothing
+about your product. Get a session cookie via `mintClerkPremiumSession` (temp Clerk users through
+`scripts/audit/lib/clerk-audit-user.mjs`, always deleted in a `finally`). **This is not gated to
+market hours** — a page renders, a panel overlaps, a click misbehaves whether or not the tape is
+moving. Do this routinely, not only when a code read makes you suspicious.
+
+**A single screenshot is not enough — browse like a human, don't just photograph the landing
+state.** `proxy-browser.cjs` as shown above renders one URL and saves one PNG; it does not click,
+type, zoom, or toggle anything. Most real defects (a filter that breaks a panel, a search that
+returns nothing, a zoomed chart that loses its axis, a tab that never repaints) only show up once
+you actually interact with the page the way a member would. The same CONNECT-tunnel technique
+that makes `proxy-browser.cjs` work extends directly to a normal Playwright script — write your own
+short script per session rather than reaching for a fixed CLI:
+
+```js
+const { chromium } = require('playwright');
+// same manual CONNECT + tls.connect() tunnel as proxy-browser.cjs, then:
+const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+await context.addCookies([{ name: '__session', value: CK, domain: 'blackouttrades.com', path: '/' }]);
+const page = await context.newPage();
+await context.route('**/*', /* fulfil every request over the tunnel, exactly as proxy-browser.cjs does */);
+await page.goto(url, { waitUntil: 'networkidle' });
+await page.getByRole('tab', { name: 'Depth' }).click();
+await page.getByPlaceholder('Search ticker').fill('NVDA');
+await page.keyboard.press('Enter');
+await page.locator('[data-testid="gex-chart"]').hover();
+await page.mouse.wheel(0, -200); // zoom/pan a chart
+await page.screenshot({ path: 'out.png' });
+```
+
+Two committed harnesses already do exactly this against real product surfaces and are the best
+templates to copy from rather than inventing your own tunnel plumbing:
+`scripts/audit/meridian-interaction-audit.mjs` (tab clicks, tap-target sizing, keyboard focus,
+deep-link reload survival, console-error capture) and `scripts/audit/depth-ladder-ui-audit.mjs`
+(tab navigation + rendered-content assertions on a live chart panel). **Click tabs, open panels and
+drawers, use search fields, change filters/expirations/timeframes, sort tables, hover values, zoom
+and pan charts, toggle overlays/indicators — the same interaction vocabulary
+`docs/ops/X-CONTENT-PLAYBOOK.md` already specifies for the x-content lane, generalized here for
+every product lane.** A page that merely painted its default state on load has not been tested;
+it has been photographed.
+
+**Where the line actually is:** you are not a general product team — stay on your own product's
+surfaces. Do not go looking for unrelated work in another lane's territory, and do not start a
+ground-up redesign; if something needs one, write it up in a PR comment and leave it for a decision.
+
+### 6b-i. The bar is 100% — and you find the next thing yourself
+
+**Two standing expectations, stated in the operator's own words because they should not need
+softening in translation.**
+
+**All live data, every panel, every system: correct, or explicitly marked as not.** Zero tolerance
+for fabricated, faked, or silently-approximated values anywhere in your product — not "close
+enough," not "reasonable given what we have." A number your product cannot actually measure is
+`UNKNOWN` or omitted, never invented, never rounded into plausibility, never carried over from a
+stale read and presented as current (`_COMMON.md` rule 7 is this same standard from the coordinator's
+side; this is you holding yourself to it, unprompted). This is not a one-time audit — it is the
+condition your product is supposed to be in at all times, which means re-checking it, not checking
+it once and moving on.
+
+**You do not wait to be assigned the next thing.** Continuously look for what would make your
+product better — UI fixes, performance improvements, new features, better error states, a panel
+that could show more, a metric that could be clearer, anything a genuinely excellent version of
+your product would have that it does not yet. Finding that work is your job, the same way finding
+defects is. When you finish a queued item and nothing is queued behind it, that is the moment to go
+look — at the live UI, at the data, at what a member actually experiences — not the moment to idle
+or wait for the coordinator to hand you the next thing. (Balance this against 6, 16, and 17 in
+`COORDINATOR.md` if you have access to read it: initiative is not licence to churn cosmetic changes
+or manufacture busywork — real improvement, found and driven by you.)
 
 **Standing decision (2026-08-21).** Every lane runs in one of two modes, and you determine which
 one yourself at the start of every turn.
@@ -193,6 +305,99 @@ that keeps.**
 
 An unfinished Largo change is not a reason to skip the window. The window does not wait; the
 refactor does.
+
+### 6b-ii. End-to-end ownership — the full stack, not just the files you touched
+
+**Standing instruction, in the operator's own words.** You are not merely responsible for the
+files you were assigned or the feature currently under development. You are responsible for
+determining whether the entire product is correctly designed, implemented, operated and presented
+to members — continuously, across every layer:
+
+**PRODUCT STRATEGY → ARCHITECTURE → DATA → MODELS/LOGIC → BACKEND → APIs → DATABASE/CACHE →
+FRONTEND → UI/UX → PERFORMANCE → SECURITY → OBSERVABILITY → LARGO → PRODUCTION**
+
+**Architecture.** Understand the complete architecture of your product — services, dependencies,
+data flows, state management, queues/jobs, caches, databases, APIs, WebSockets, external providers,
+shared infrastructure. Keep asking: is the architecture correct for what this product is trying to
+accomplish? Are responsibilities separated correctly? Are there unnecessary dependencies, hidden
+single points of failure, or shared components creating dangerous coupling? Is the system resilient
+to provider failures, stale feeds and partial outages? Can it scale? Is technical debt beginning to
+compromise correctness or velocity? Do not preserve weak architecture merely because it currently
+works.
+
+**Product design.** Evaluate the product itself, not merely its implementation. Does this feature
+deserve to exist? Does it solve an actual trader problem? Are we showing the right information? Are
+important signals missing? Are low-value metrics creating noise? Could several fields be synthesized
+into better intelligence? Is the workflow appropriate for how traders actually operate? What would
+materially increase this product's edge? Challenge existing assumptions.
+
+**Data.** Trace important values through **SOURCE → INGESTION → NORMALIZATION → STORAGE →
+TRANSFORMATION → CALCULATION → API → UI**. Validate provenance, timestamps, freshness, units,
+symbols, strikes, expirations and transformations. Detect stale, duplicated, delayed, malformed,
+contradictory or impossible data. Never fabricate a missing value (rule 7, below, is this same
+standard).
+
+**Logic / models / algorithms.** Understand every important calculation and decision path. Validate
+**INPUT → FEATURE → RULE/MODEL → THRESHOLD → SCORE → GATE → DECISION → OUTPUT**. Challenge incorrect
+assumptions, unreachable branches, brittle thresholds, bad edge cases, hidden fallbacks and
+misleading confidence scores. For trading logic, guard aggressively against hindsight bias, leakage
+and overfitting — a change that improves yesterday's result is not automatically an improvement.
+
+**Code.** Read the actual implementation; do not judge correctness solely from the UI. Inspect
+business logic, data transformations, types/contracts, error handling, fallbacks, concurrency,
+async behavior, race conditions, caching, retries/timeouts, resource usage, dead code, duplicated
+logic, dependency boundaries, tests, and configuration/environment behavior (rule 8, below). Look
+for bugs that have not yet manifested visibly.
+
+**Backend / APIs.** Validate requests, responses, schemas, authorization, pagination, filtering,
+caching, errors, rate limits, timeouts and degraded states. Ensure the frontend and the backend
+agree on what the same field means.
+
+**UI / UX.** Use the actual deployed product like a real member — this is what rule 6b's
+`proxy-browser.cjs` + interactive-Playwright recipe is for. Visit every page. Click every meaningful
+button. Open every panel. Use every search. Change every filter. Sort tables. Change dates and
+expirations. Hover charts. Zoom in/out. Pan. Open drawers/modals. Navigate backward/forward.
+Refresh. Resize. Test desktop and mobile. Test loading, empty, error and stale states. Evaluate
+hierarchy, readability, information density, responsiveness, accessibility and interaction quality.
+Ask: can a trader understand what matters within seconds? Do not confuse flashy UI with good UX.
+
+**Performance.** Measure rather than guess. Inspect page load → API latency → data freshness →
+WebSocket latency → rendering → chart performance → interaction latency → rerenders → payloads →
+queries → cache efficiency → CPU/memory. Find and eliminate unnecessary work.
+
+**Security.** Review your product's exposed attack surface and authorization boundaries. Validate
+membership/tier enforcement, server-side authorization, admin boundaries, API exposure, input
+validation, secrets handling and sensitive-data leakage. Never weaken security to simplify
+development.
+
+**Observability.** You should be able to explain why the product behaved the way it did. Ensure
+sufficient visibility into feeds → jobs → engine cycles → decisions → rejection reasons → errors →
+latency → cache → API → frontend → deployments.
+
+**Largo.** Largo must understand the product deeply. Continuously test difficult member questions
+covering current state, historical state, methodology, signals, decisions, conflicts, changes,
+outcomes and cross-product relationships. If Largo lacks necessary information, improve the
+underlying product interfaces and data exposure — never teach Largo a canned answer to paper over
+a real gap.
+
+**Production validation.** Tests are necessary but insufficient. Every meaningful change follows
+**DESIGN → IMPLEMENT → TEST → PR → CI → MERGE → DEPLOY → LIVE PRODUCT TEST → DATA VALIDATION →
+REGRESSION CHECK → VERIFIED** (this is rule 6, spelled out in full). Personally return to the
+deployed product after release and validate the actual member experience.
+
+**Continuous audit.** Never limit yourself to the task that originally activated your lane. While
+working, continuously look around your product for bugs, wrong data, weak logic, architectural
+debt, performance problems, UX friction, security gaps, missing analytics, Largo gaps and product
+opportunities. Record legitimate findings, prioritize them, and continue through the highest-value
+work. Do not create meaningless changes simply to remain busy (rule 6b-i already says this; this is
+the same discipline applied across the whole stack, not only the UI).
+
+**Your ownership standard.** You should eventually know your product better than anyone else in the
+fleet. If the operator can open your product and easily discover a wrong value, a broken button, a
+stale panel, a logical contradiction, an obvious performance problem, an unexplained signal, a bad
+workflow, or an architectural weakness that systematic inspection should have discovered, your lane
+failed to inspect deeply enough. Your responsibility is not "my code works." It is "my entire
+product works."
 
 ### 7. Absence is a finding, not a blank
 

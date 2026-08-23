@@ -6,6 +6,7 @@ import { shouldFanOut } from "@/lib/flow-fanout";
 import { flowFallbackAlertId } from "@/lib/flow-alert-id";
 import { markFlowFrameDelivered } from "@/lib/flow-liveness";
 import { extractChainFieldsFromRaw } from "@/lib/flow-raw-fields";
+import { dteFromExpiry } from "@/lib/flow-dte";
 
 /**
  * SSE row shape published to the live tape. Extends FlowRow with the canonical
@@ -35,16 +36,10 @@ export function requiredMinPremium(dte: number | null | undefined): number {
   return dte != null && Number.isFinite(dte) && dte <= 1 ? MIN_PREMIUM_NEAR_DATED : MIN_PREMIUM;
 }
 
-/** Calendar days from now (UTC) to an expiry (YYYY-MM-DD). `MarketFlowAlert` carries only
- *  `expiry`, not a precomputed `dte`, so this derives it — same calendar-day convention as
- *  `horizon-fanout.ts`'s `calendarDte`, kept local here to avoid coupling a persistence
- *  module to the horizon-scoring module for one date-diff. */
-export function dteFromExpiry(expiryYmd: string, nowMs = Date.now()): number | null {
-  const expiryMs = Date.parse(`${expiryYmd.slice(0, 10)}T00:00:00Z`);
-  if (!Number.isFinite(expiryMs)) return null;
-  const todayMs = Date.parse(`${new Date(nowMs).toISOString().slice(0, 10)}T00:00:00Z`);
-  return Math.round((expiryMs - todayMs) / 86_400_000);
-}
+/** Calendar days from today to an expiry, ET-anchored. Moved to `@/lib/flow-dte` so the ingest
+ *  parser and this persistence gate share ONE derivation (HELIX-MAP.md §9.2) — re-exported here
+ *  because existing callers and tests import it from this module. */
+export { dteFromExpiry } from "@/lib/flow-dte";
 
 /** The broadest floor any UPSTREAM fetch/subscribe should apply — always the lower of the
  *  two, so near-dated prints between the two floors actually reach `requiredMinPremium`'s
@@ -189,10 +184,16 @@ export async function persistAndPublishFlowAlert(
     ...extractChainFieldsFromRaw(raw, flow),
   };
   event.event_at = realCreatedAt;
-  // alerted_at drives the live tape's sort + LIVE badge. Use the REAL UW time
-  // (realCreatedAt) when known; otherwise leave it null so the UI excludes the row
-  // from LIVE/sort rather than trusting parseUwFlowAlert's "" / a fabricated now()
+  // alerted_at drives the live tape's sort + LIVE badge. Use the REAL UW time (realCreatedAt) when
+  // known; otherwise leave it empty rather than trusting parseUwFlowAlert's "" / a fabricated now()
   // (audit gap #6). The DB-backed REST read keeps its own historical fallback.
+  //
+  // CORRECTED 2026-08-23: this comment used to say the empty value made "the UI exclude the row
+  // from LIVE/sort". It did not. Nothing excluded it — `flowTimeSortKey` fabricated a 0, which on a
+  // newest-first tape is 1970, so a print that had just streamed in rendered LAST. The comment
+  // answered the question a reader would have asked, which is why it stayed invisible for so long.
+  // The sort now reports "no usable time" honestly and each caller places it; see
+  // helix-flow-tape-merge.ts.
   event.alerted_at = realCreatedAt ?? "";
   let inserted = false;
   let insertFailed = false;

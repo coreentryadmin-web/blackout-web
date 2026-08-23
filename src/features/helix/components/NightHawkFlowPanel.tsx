@@ -4,6 +4,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import { usePulse } from "@/lib/usePulse";
 import { clsx } from "clsx";
 import { fmtPremium } from "@/lib/api";
+import {
+  thesisAgreementCopy,
+  type DirectionRead,
+  type ThesisAgreement,
+} from "@/features/helix/lib/helix-direction-read";
 import type { PlaybookPlay } from "@/features/nighthawk/lib/types";
 
 export type FlowConviction = "strong" | "moderate" | "weak" | "none";
@@ -15,7 +20,14 @@ export type NightHawkPlayWithFlow = PlaybookPlay & {
     totalPremium: number;
     topPrint: number;
     printCount: number;
-    flowAgreement: boolean; // flow direction agrees with play direction
+    /** True ONLY for evidenced agreement. Kept for callers that want the yes/no. */
+    flowAgreement: boolean;
+    /** The four-way verdict. `false` used to mean two different things — "the tape points the
+     *  other way" and "the tape cannot be read" — and rendered as one line. Those are opposite
+     *  messages to someone deciding whether to take this trade. */
+    flowThesis: ThesisAgreement;
+    /** The read the verdict came from, so the copy can say how much premium backed it. */
+    flowRead: DirectionRead;
     conviction: FlowConviction;
   };
 };
@@ -174,16 +186,28 @@ export function NightHawkFlowPanel({
                         </span>
                       </div>
                     </div>
-                    {flowData.flowAgreement && (
-                      <p className="font-mono text-[10px] text-bull mt-1">
-                        ✓ tape agrees with {isLong ? "long" : "short"} thesis
-                      </p>
-                    )}
-                    {!flowData.flowAgreement && flowData.conviction !== "none" && (
-                      <p className="font-mono text-[10px] text-gold mt-1">
-                        ⚠ tape diverges from {isLong ? "long" : "short"} thesis
-                      </p>
-                    )}
+                    {/* Four states, one line each. The old code had two branches for four facts,
+                        so "could not read the tape" printed as "the tape diverges" — a fabricated
+                        disagreement, and the exact mirror of the fabricated agreement above it. */}
+                    {(() => {
+                      const c = thesisAgreementCopy(flowData.flowThesis, Boolean(isLong), flowData.flowRead);
+                      return (
+                        <p
+                          className={clsx(
+                            "font-mono text-[10px] mt-1",
+                            c.tone === "bull"
+                              ? "text-bull"
+                              : c.tone === "bear"
+                                ? "text-gold"
+                                : c.tone === "warn"
+                                  ? "text-sky-300"
+                                  : "text-sky-300/60"
+                          )}
+                        >
+                          {c.text}
+                        </p>
+                      );
+                    })()}
                   </>
                 ) : (
                   <p className="font-mono text-[11px] text-cyan-400 mt-1">
@@ -196,7 +220,7 @@ export function NightHawkFlowPanel({
         </AnimatePresence>
 
         <p className="font-mono text-[10px] text-sky-300/70 text-center pt-1">
-          Flow conviction from 7d tape · strong = $2M+ aligned
+          Flow conviction from 7d tape · strong = $2M+ with the tape measurably aligned
         </p>
       </div>
     </div>

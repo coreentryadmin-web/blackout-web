@@ -26,7 +26,7 @@ import {
   fmtOtm,
   fmtSpot,
   premiumDisplay,
-  ruleLabel,
+  ruleBadge,
   sortFlows,
   type HelixFlowSortDir,
   type HelixFlowSortKey,
@@ -34,15 +34,15 @@ import {
 import {
   HELIX_TAPE_OVERSCAN,
   HELIX_TAPE_ROW_HEIGHT,
+  WHALE_PRINT_PREMIUM,
 } from "@/features/helix/lib/helix-flow-limits";
-
-const WHALE_PREMIUM = 1_000_000;
+import { tapeTimeDisplay } from "@/features/helix/lib/helix-tape-time";
 
 type SignalTone = "bull" | "bear" | "gold" | "sky" | "purple" | "ember";
 
-function SignalPill({ label, tone }: { label: string; tone: SignalTone }) {
+function SignalPill({ label, tone, title }: { label: string; tone: SignalTone; title?: string }) {
   return (
-    <span className={clsx("helix-tape-signal", `helix-tape-signal--${tone}`)} title={label}>
+    <span className={clsx("helix-tape-signal", `helix-tape-signal--${tone}`)} title={title ?? label}>
       {label}
     </span>
   );
@@ -116,15 +116,21 @@ function renderCell(
     case "time":
       // Full absolute ET stamp "MM/DD/YYYY - HH:MM" (was a relative age via timeAgo). fmtFullTimestamp
       // returns "—" for empty/invalid, so no separate guard is needed. tabular-nums keeps it aligned.
-      return <span
-        className={clsx(
-          "helix-tape-time tabular-nums",
-          flow.tape_time_estimated && "helix-tape-time--estimated"
-        )}
-        title={flow.tape_time_estimated ? "Ingest time — UW print time unknown" : undefined}
-      >
-        {fmtFullTimestamp(flow.alerted_at)}
-      </span>;
+      // Shared with the mobile tape (helix-tape-time.ts) so the two surfaces cannot present one
+      // field differently. The visible `~` is new here: the estimated mark was a dimmed italic plus
+      // a TOOLTIP, and a tooltip is unreachable on touch — including on a tablet showing this very
+      // table. A dimmed italic is not a legend.
+      {
+        const t = tapeTimeDisplay(flow);
+        return (
+          <span
+            className={clsx("helix-tape-time tabular-nums", t.estimated && "helix-tape-time--estimated")}
+            title={t.title}
+          >
+            {t.label}
+          </span>
+        );
+      }
     case "ticker":
       return (
         <div className="helix-tape-symbol">
@@ -207,11 +213,9 @@ function renderCell(
     case "otm":
       return <span className="helix-tape-muted tabular-nums">{fmtOtm(flow.otm_pct)}</span>;
     case "rule":
-      return (
-        <span className="helix-tape-rule">
-          {flow.alert_rule ? ruleLabel(flow.alert_rule) : flow.route?.slice(0, 8) || "—"}
-        </span>
-      );
+      // Reports UW's alert_rule or nothing — never flow.route, which is our own premium/tenor
+      // bucket and not a rule at all. See ruleBadge's header for the measurement.
+      return <span className="helix-tape-rule">{ruleBadge(flow)}</span>;
     case "score":
       return (
         <span className="helix-tape-score tabular-nums">
@@ -222,7 +226,7 @@ function renderCell(
       return (
         <div className="helix-tape-signals">
           {visibleSignals.map((s) => (
-            <SignalPill key={s.id} label={s.label} tone={s.tone} />
+            <SignalPill key={s.id} label={s.label} tone={s.tone} title={s.title} />
           ))}
           {extraSignals > 0 && (
             <span className="helix-tape-signal helix-tape-signal--muted">+{extraSignals}</span>
@@ -441,7 +445,7 @@ export function HelixFlowTable({
                 if (!flow) return null;
                 const i = vRow.index;
                 const isCall = flow.option_type?.toUpperCase() === "CALL";
-                const isWhale = flow.premium >= WHALE_PREMIUM;
+                const isWhale = flow.premium >= WHALE_PRINT_PREMIUM;
                 const dte = flow.dte ?? daysToExpiry(flow.expiry);
                 const is0dte = dte === 0;
                 const isCompound = compoundTickers?.has(flow.ticker) ?? false;

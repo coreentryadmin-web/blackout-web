@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   isPinStable,
+  nextConfirmedPin,
   pushPinSample,
   PIN_STABILITY_WINDOW,
   PIN_STABILITY_TOLERANCE_PTS,
@@ -70,4 +71,60 @@ test("end-to-end: three agreeing polls confirm, one wild poll un-confirms, re-ag
     stableAt.push(isPinStable(h));
   }
   assert.deepEqual(stableAt, [false, false, true, false, false, true]);
+});
+
+// ── nextConfirmedPin: the "held steady" half of the contract ────────────────────────────────────
+//
+// Regression for the defect measured live 2026-08-07: `pinConfirmed === pin` on 16/16 consecutive
+// observations while the "confirmed" pin travelled 9.8 points in six minutes. The old wrapper did
+// `if (stable) confirmed = latest`, so the held value tracked the raw pin instead of resisting it.
+
+test("nextConfirmedPin: an unstable window never moves the displayed number", () => {
+  // A single wild poll breaks the window; whatever is displayed must survive it untouched.
+  assert.equal(nextConfirmedPin(7700, [7700, 7702, 7850]), 7700);
+  assert.equal(nextConfirmedPin(7700, [7700, null, 7701]), 7700);
+  // ...including before anything has ever been confirmed.
+  assert.equal(nextConfirmedPin(null, [7700, 7850, 7600]), null);
+});
+
+test("nextConfirmedPin: first stable cluster of the session is adopted", () => {
+  assert.equal(nextConfirmedPin(null, [7700, 7701, 7703]), 7703);
+});
+
+test("REGRESSION: a stable cluster that AGREES with the held value does not move it", () => {
+  // This is the line whose absence was the bug. Every one of these is within tolerance (5pts) of
+  // 7700, so the member-facing number must not budge — previously each returned `latest`.
+  assert.equal(nextConfirmedPin(7700, [7701, 7702, 7703]), 7700);
+  assert.equal(nextConfirmedPin(7700, [7699, 7698, 7697]), 7700);
+  assert.equal(nextConfirmedPin(7700, [7703, 7704, 7705]), 7700, "exactly at tolerance still holds");
+});
+
+test("REGRESSION: the 2026-08-07 drift — 9.8pts of wiggle no longer drags the displayed pin", () => {
+  // Replays the shape of the live capture: a slow walk, each step tiny, each window internally
+  // agreeing. The old code re-stamped `confirmed` every pass and followed the walk all the way.
+  const walk = [7721.33, 7722.4, 7723.1, 7724.0, 7725.2, 7726.1, 7727.0, 7728.2, 7729.4, 7730.1, 7731.15];
+  let held: number | null = null;
+  let samples: (number | null)[] = [];
+  for (const p of walk) {
+    samples = pushPinSample(samples, p);
+    held = nextConfirmedPin(held, samples);
+  }
+  assert.notEqual(held, 7731.15, "must not have tracked the raw pin to the end of the walk");
+  assert.ok(held != null && Math.abs(held - 7721.33) < 12, `held near the first cluster, got ${held}`);
+});
+
+test("a GENUINE relocation still comes through — holding a stale pin would be its own lie", () => {
+  // Beyond tolerance: the book really moved, so the number must follow.
+  assert.equal(nextConfirmedPin(7700, [7740, 7741, 7742]), 7742);
+});
+
+test("nextConfirmedPin is pure — it never mutates the sample window", () => {
+  const samples = [7700, 7701, 7702];
+  const copy = [...samples];
+  nextConfirmedPin(7690, samples);
+  assert.deepEqual(samples, copy);
+});
+
+test("a non-finite held value is replaced rather than held", () => {
+  assert.equal(nextConfirmedPin(Number.NaN, [7700, 7701, 7702]), 7702);
 });

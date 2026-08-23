@@ -1,6 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { detectVelocitySpikes, detectSplitFlow, type MinimalFlow } from "./helix-signal-detection";
+import {
+  detectVelocitySpikes,
+  detectSplitFlow,
+  signalEligible,
+  signalEligibility,
+  type MinimalFlow,
+} from "./helix-signal-detection";
 
 // Extracted verbatim from FlowFeed.tsx's own inline useMemo blocks (2026-08-02 Helix audit,
 // Tier 2 item #9) so the client badge and the new server-side outcome-persisting cron share
@@ -61,7 +67,13 @@ test("detectSplitFlow: fires only when BOTH legs clear the $500K minimum", () =>
   assert.equal(splits[0].ticker, "SPX");
   assert.equal(splits[0].callPremium, 600_000);
   assert.equal(splits[0].putPremium, 550_000);
-  assert.equal(splits[0].direction, "mixed"); // callPct = round(600000/1150000*100) = 52
+  // DETECTION is unchanged; only the direction READ changed. These fixtures carry no `ask_pct`,
+  // so the aggressor side is unknown and the honest answer is `undetermined` — NOT "mixed", which
+  // asserts the flow was read successfully and came back genuinely two-sided.
+  assert.equal(splits[0].direction, "undetermined");
+  assert.equal(splits[0].directional.undetermined, 1_150_000);
+  assert.equal(splits[0].directional.bullish, 0);
+  assert.equal(splits[0].directional.bearish, 0);
 });
 
 test("detectSplitFlow: excludes rows outside the 30-min window and undated rows", () => {
@@ -78,13 +90,139 @@ test("detectSplitFlow: excludes rows outside the 30-min window and undated rows"
   assert.deepEqual(detectSplitFlow(flows, now), []);
 });
 
-test("detectSplitFlow: direction reflects the dominant leg", () => {
+test("detectSplitFlow: direction reads the AGGRESSOR, not the dominant leg", () => {
   const now = Date.now();
   const recentIso = new Date(now - 5 * 60_000).toISOString();
-  const bullish: MinimalFlow[] = [
-    flow({ ticker: "IWM", option_type: "CALL", premium: 900_000, alerted_at: recentIso }),
-    flow({ ticker: "IWM", option_type: "PUT", premium: 550_000, alerted_at: recentIso }),
+
+  // The case that proves the change. Call premium DOMINATES (900k vs 550k), so the old
+  // option_type-only rule called this bullish. But the calls were SOLD (ask_pct 5) and the puts
+  // were BOUGHT (ask_pct 95) — short calls and long puts, which is bearish on both legs.
+  // MEASURED live 2026-08-23: this disagreement sign-flips 37 of 83 tickers (44.6%).
+  const callHeavyButSold: MinimalFlow[] = [
+    flow({ ticker: "IWM", option_type: "CALL", premium: 900_000, ask_pct: 5, alerted_at: recentIso }),
+    flow({ ticker: "IWM", option_type: "PUT", premium: 550_000, ask_pct: 95, alerted_at: recentIso }),
   ];
-  const [entry] = detectSplitFlow(bullish, now);
-  assert.equal(entry.direction, "bullish"); // 900k/1450k = 62% >= 60
+  const [entry] = detectSplitFlow(callHeavyButSold, now);
+  assert.equal(entry.callPct, 62, "the call leg still dominates — detection is unchanged");
+  assert.equal(entry.direction, "bearish", "sold calls + bought puts is bearish, however the legs split");
+  assert.equal(entry.directional.bearish, 1_450_000);
+  assert.equal(entry.directional.bullish, 0);
+
+  // And the mirror: put premium dominates, but the puts were SOLD and the calls BOUGHT.
+  const putHeavyButSold: MinimalFlow[] = [
+    flow({ ticker: "IWM", option_type: "PUT", premium: 900_000, ask_pct: 5, alerted_at: recentIso }),
+    flow({ ticker: "IWM", option_type: "CALL", premium: 550_000, ask_pct: 95, alerted_at: recentIso }),
+  ];
+  assert.equal(detectSplitFlow(putHeavyButSold, now)[0].direction, "bullish");
+});
+
+test("detectSplitFlow: a verdict resting on a minority of the premium is not a verdict", () => {
+  const now = Date.now();
+  const recentIso = new Date(now - 5 * 60_000).toISOString();
+  // 600k readable-bullish against 1.4M unreadable. Reporting "bullish" here would let a third of
+  // the premium decide for the whole ticker while the rest was never read at all.
+  const mostlyUnread: MinimalFlow[] = [
+    flow({ ticker: "AMD", option_type: "CALL", premium: 600_000, ask_pct: 95, alerted_at: recentIso }),
+    flow({ ticker: "AMD", option_type: "PUT", premium: 700_000, alerted_at: recentIso }),
+    flow({ ticker: "AMD", option_type: "PUT", premium: 700_000, alerted_at: recentIso }),
+  ];
+  const [entry] = detectSplitFlow(mostlyUnread, now);
+  assert.equal(entry.direction, "undetermined");
+  assert.equal(entry.directional.undetermined, 1_400_000);
+});
+
+test("detectSplitFlow: genuinely two-sided flow is MIXED, which is not the same as unread", () => {
+  const now = Date.now();
+  const recentIso = new Date(now - 5 * 60_000).toISOString();
+  // Both legs bought: long calls (bullish) and long puts (bearish), near enough to even that
+  // neither side clears the 60/40 margin. Read successfully; genuinely two-sided.
+  const twoSided: MinimalFlow[] = [
+    flow({ ticker: "NVDA", option_type: "CALL", premium: 1_000_000, ask_pct: 95, alerted_at: recentIso }),
+    flow({ ticker: "NVDA", option_type: "PUT", premium: 1_000_000, ask_pct: 95, alerted_at: recentIso }),
+  ];
+  const [entry] = detectSplitFlow(twoSided, now);
+  assert.equal(entry.direction, "mixed");
+  assert.equal(entry.directional.undetermined, 0, "nothing was unread — MIXED and UNDETERMINED are different facts");
+});
+
+// ── §9.0 — signal eligibility is stated once, and both detectors read it ───────────────────────
+
+test("signalEligible accepts a real print time and refuses an undatable print", () => {
+  // The Group A shape: UW reported a time.
+  assert.equal(signalEligible({ ticker: "NVDA", premium: 1, event_at: "2026-08-23T14:00:00Z" }), true);
+  // A real, non-estimated alerted_at IS a real time — flowEventTimeMs's documented contract.
+  assert.equal(
+    signalEligible({ ticker: "NVDA", premium: 1, alerted_at: "2026-08-23T14:00:00Z", tape_time_estimated: false }),
+    true
+  );
+  // The Group B shape (§4A): the index feed sends no time, so the tape stamps an ESTIMATE. An
+  // estimated time is an ingest time, not a print time, and must never place a print in a window.
+  assert.equal(
+    signalEligible({ ticker: "SPX", premium: 1, alerted_at: "2026-08-23T14:00:00Z", tape_time_estimated: true }),
+    false
+  );
+  assert.equal(signalEligible({ ticker: "SPX", premium: 1 }), false);
+  assert.equal(signalEligible({ ticker: "SPX", premium: 1, event_at: "not-a-date" }), false);
+});
+
+test("the two detectors and the reported denominator select the SAME prints", () => {
+  // The defect this closes is a THIRD rule drifting from the two detectors (§9.9). Rather than
+  // trusting the shared call, drive real prints through both detectors and assert that every
+  // ticker either is eligible or cannot appear in either result.
+  const now = Date.parse("2026-08-23T18:00:00Z");
+  const iso = (minsAgo: number) => new Date(now - minsAgo * 60_000).toISOString();
+  const flows = [
+    // Datable, and shaped to fire BOTH signals on DTBL.
+    ...Array.from({ length: 4 }, () => ({ ticker: "DTBL", premium: 600_000, option_type: "CALL", event_at: iso(2) })),
+    { ticker: "DTBL", premium: 900_000, option_type: "PUT", event_at: iso(3) },
+    // Undatable: the index-feed shape. Enough volume and premium to fire both, if it could.
+    ...Array.from({ length: 40 }, () => ({
+      ticker: "SPX", premium: 5_000_000, option_type: "CALL", alerted_at: iso(2), tape_time_estimated: true,
+    })),
+    ...Array.from({ length: 40 }, () => ({
+      ticker: "SPX", premium: 5_000_000, option_type: "PUT", alerted_at: iso(2), tape_time_estimated: true,
+    })),
+  ];
+
+  const cov = signalEligibility(flows);
+  assert.equal(cov.total, 85);
+  assert.equal(cov.eligible, 5);
+  assert.equal(cov.ineligible, 80);
+  assert.deepEqual(cov.ineligibleTickers, ["SPX"]);
+
+  const spikeTickers = new Set(detectVelocitySpikes(flows, now).map((s) => s.ticker));
+  const splitTickers = new Set(detectSplitFlow(flows, now).map((s) => s.ticker));
+  // SPX has 80 prints, $400M, both legs, inside both windows — and fires NEITHER. That is the
+  // finding: not a threshold it missed, a scan it was never in.
+  assert.equal(spikeTickers.has("SPX"), false);
+  assert.equal(splitTickers.has("SPX"), false);
+  assert.equal(splitTickers.has("DTBL"), true);
+  // Whatever DID fire must have come from the eligible pool, in both detectors.
+  for (const t of [...spikeTickers, ...splitTickers]) {
+    assert.ok(!cov.ineligibleTickers.includes(t), `${t} fired a signal but was counted ineligible`);
+  }
+});
+
+test("signalEligibility reports a clean tape as fully scanned, so the panels stay quiet", () => {
+  const flows = [
+    { ticker: "NVDA", premium: 1, event_at: "2026-08-23T14:00:00Z" },
+    { ticker: "TSLA", premium: 1, event_at: "2026-08-23T14:01:00Z" },
+  ];
+  const cov = signalEligibility(flows);
+  assert.equal(cov.eligible, 2);
+  assert.equal(cov.ineligible, 0);
+  assert.deepEqual(cov.ineligibleTickers, []);
+  // Empty input must not read as "everything was skipped".
+  const none = signalEligibility([]);
+  assert.deepEqual(none, { total: 0, eligible: 0, ineligible: 0, ineligibleTickers: [] });
+});
+
+test("ineligible tickers are ranked by how much of the tape each one costs", () => {
+  const flows = [
+    ...Array.from({ length: 3 }, () => ({ ticker: "SPY", premium: 1 })),
+    ...Array.from({ length: 9 }, () => ({ ticker: "SPX", premium: 1 })),
+    { ticker: "QQQ", premium: 1 },
+  ];
+  // SPX first because it costs the most coverage — the live ordering (SPX 3079 · SPY 421).
+  assert.deepEqual(signalEligibility(flows).ineligibleTickers, ["SPX", "SPY", "QQQ"]);
 });

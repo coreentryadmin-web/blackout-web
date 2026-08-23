@@ -28,6 +28,7 @@ import {
   type SwingSectionFilter,
 } from "./swing-section-filter";
 import { NIGHTHAWK_COMPACT_LANE_LABEL } from "@/features/nighthawk/lib/nighthawk-view";
+import { zeroDteEmptyHint } from "../lib/deck-empty-hint";
 import { etNowParts } from "@/features/nighthawk/lib/session";
 import { LOW_N_THRESHOLD } from "@/lib/zerodte/record";
 
@@ -35,7 +36,11 @@ const json = (u: string) => fetch(u, { cache: "no-store", credentials: "same-ori
 
 /** Board payload may carry session.heat — keep the type loose so a missing field never breaks the deck. */
 type BoardRespWithSession = BoardResp & {
-  session?: { heat?: { state?: string | null } | null } | null;
+  // `note` is the data layer's own member-facing sentence for the current heat state
+  // (board.ts sessionHeat). It has always been on the wire; this local type used to model
+  // only `state`, so the deck literally could not reach it — which is how the empty board
+  // ended up claiming an active scan on a closed market. See lib/deck-empty-hint.ts.
+  session?: { heat?: { state?: string | null; note?: string | null } | null } | null;
 };
 
 /** Board SWR cadence: 1s RTH when open plays need live thesis/gates; marks SSE drives marks/PnL at 1s. */
@@ -112,11 +117,11 @@ export function ZeroDteDeck({
         marketState={data?.market_state ?? null}
         discoveryFunnel={data?.discovery_funnel ?? null}
         spxSlayerBadge={data?.spx_slayer_badge}
-        emptyHint={
-          degraded
-            ? "Board data unavailable right now — retrying. Any open position is still live; this is a data outage, not a flat tape."
-            : "Scanning the whole market — no 0DTE setup has cleared the floor right now."
-        }
+        emptyHint={zeroDteEmptyHint({
+          degraded,
+          heatState: sessionHeat,
+          heatNote: data?.session?.heat?.note ?? null,
+        })}
       />
     </>
   );

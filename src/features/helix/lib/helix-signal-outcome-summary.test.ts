@@ -247,3 +247,106 @@ test("each signal type carries its OWN graded span", () => {
   assert.equal(vs?.gradedNewestFiredAt, "2026-08-20T14:00:00.000Z");
   assert.equal(sf?.gradedNewestFiredAt, "2026-08-19T14:00:00.000Z", "split_flow's window is its own, a day staler");
 });
+
+// ── The unfalsifiable-row inflation (2026-08-23) ──────────────────────────────────────────────
+//
+// `gradeOutcome` branches on bullish/bearish and lets everything else fall through to "continued".
+// A split-flow firing that REFUSED to state a direction (`undetermined`/`mixed`) therefore grades
+// continued on any move past the flat threshold, in EITHER direction, and can never be reversed.
+// Those rows pool with genuine directional predictions and inflate the continuation rate.
+
+const gradedRow = (
+  over: Partial<HelixSignalOutcomeRow> = {}
+): HelixSignalOutcomeRow => ({
+  id: 1,
+  signal_type: "split_flow",
+  ticker: "NVDA",
+  direction: "bullish",
+  fired_at: "2026-08-21T18:00:00.000Z",
+  price_at_fire: 100,
+  price_5m: 100,
+  price_15m: 100,
+  price_1h: 101,
+  outcome: "continued",
+  ...over,
+});
+
+test("a refusal is counted as unfalsifiable, not as a directional prediction", () => {
+  const rows = [
+    ...Array.from({ length: 6 }, (_, i) => gradedRow({ id: i, direction: "undetermined" })),
+    ...Array.from({ length: 4 }, (_, i) => gradedRow({ id: 100 + i, direction: "mixed" })),
+  ];
+  const s = summarizeHelixSignalOutcomes(rows);
+  assert.equal(s.gradedCount, 10);
+  assert.equal(s.directionalGradedCount, 0);
+  assert.equal(s.unfalsifiableGradedCount, 10);
+  // The headline rate still says 100% — that is exactly the inflation being surfaced, not hidden.
+  assert.equal(s.winRatePct, 100);
+  // ...and the honest one refuses, because no row could have been wrong.
+  assert.equal(s.directionalWinRatePct, null);
+});
+
+test("velocity's explicit null direction is unfalsifiable too — it never claimed a side", () => {
+  const rows = Array.from({ length: 10 }, (_, i) =>
+    gradedRow({ id: i, signal_type: "velocity_spike", direction: null })
+  );
+  const s = summarizeHelixSignalOutcomes(rows);
+  assert.equal(s.directionalGradedCount, 0);
+  assert.equal(s.unfalsifiableGradedCount, 10);
+});
+
+test("the two rates diverge exactly as far as the unfalsifiable share is large", () => {
+  // 10 directional rows going 6 continued / 4 reversed, plus 10 refusals that cannot lose.
+  const rows = [
+    ...Array.from({ length: 6 }, (_, i) => gradedRow({ id: i, direction: "bullish", outcome: "continued" })),
+    ...Array.from({ length: 4 }, (_, i) => gradedRow({ id: 50 + i, direction: "bearish", outcome: "reversed" })),
+    ...Array.from({ length: 10 }, (_, i) => gradedRow({ id: 100 + i, direction: "undetermined", outcome: "continued" })),
+  ];
+  const s = summarizeHelixSignalOutcomes(rows);
+  assert.equal(s.gradedCount, 20);
+  assert.equal(s.winRatePct, 80);            // 16/20 — inflated by the 10 that could not lose
+  assert.equal(s.directionalGradedCount, 10);
+  assert.equal(s.directionalWinRatePct, 60); // 6/10 — the number that answers "is it right?"
+});
+
+test("the two counts always reconcile to gradedCount", () => {
+  const rows = [
+    gradedRow({ id: 1, direction: "bullish" }),
+    gradedRow({ id: 2, direction: null }),
+    gradedRow({ id: 3, direction: "undetermined" }),
+    gradedRow({ id: 4, direction: "a value nobody has added yet" }),
+    gradedRow({ id: 5, outcome: "pending" }),
+  ];
+  const s = summarizeHelixSignalOutcomes(rows);
+  assert.equal(s.directionalGradedCount + s.unfalsifiableGradedCount, s.gradedCount);
+  // An unrecognised direction must land on the UNFALSIFIABLE side — `gradeOutcome` will send it
+  // through the same fall-through. Testing by inclusion on bullish/bearish is what guarantees this.
+  assert.equal(s.directionalGradedCount, 1);
+});
+
+test("pending rows count toward neither", () => {
+  const s = summarizeHelixSignalOutcomes([
+    gradedRow({ id: 1, direction: "bullish", outcome: "pending" }),
+    gradedRow({ id: 2, direction: "undetermined", outcome: "pending" }),
+  ]);
+  assert.equal(s.gradedCount, 0);
+  assert.equal(s.directionalGradedCount, 0);
+  assert.equal(s.unfalsifiableGradedCount, 0);
+  assert.equal(s.directionalWinRatePct, null);
+});
+
+test("per-signal-type rows carry the split too, so split_flow can be read on its own", () => {
+  const rows = [
+    ...Array.from({ length: 10 }, (_, i) => gradedRow({ id: i, signal_type: "split_flow", direction: "bullish" })),
+    ...Array.from({ length: 10 }, (_, i) =>
+      gradedRow({ id: 100 + i, signal_type: "velocity_spike", direction: null })
+    ),
+  ];
+  const s = summarizeHelixSignalOutcomes(rows);
+  const split = s.bySignalType.find((t) => t.signal_type === "split_flow")!;
+  const velocity = s.bySignalType.find((t) => t.signal_type === "velocity_spike")!;
+  assert.equal(split.directionalGradedCount, 10);
+  assert.equal(split.directionalWinRatePct, 100);
+  assert.equal(velocity.directionalGradedCount, 0);
+  assert.equal(velocity.directionalWinRatePct, null);
+});

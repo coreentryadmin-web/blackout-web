@@ -92,7 +92,7 @@ the TTL governs when a refresh is *started*, not how stale a response may be.
    fields off the merged bundle gets them up to 15× staler than the same fields off `/pulse`.
    The dashboard avoids this by polling `/desk`, `/pulse` and `/flow` separately after the initial
    bootstrap (`useMergedDesk.ts`) — **any new consumer that reads pulse fields off `/merged`
-   inherits the 20s staleness silently.**
+   inherits the 30s staleness silently.**
 3. **Three lanes each compute their own `gamma_flip`** (desk, flow, pin), plus the matrix's own.
    They are *different questions* (expiry scope differs), not a race — see §5.
 
@@ -146,16 +146,99 @@ That check is reproducible and should be part of a pre-open gate — see §8.
 
 ### 3.2 Fields whose provenance is UNKNOWN
 
-- **The writer of Redis `spx:pulse:snapshot`.** The reader is `fetchPulseLaneSnapshots`
-  (`spx-desk.ts:595`). The writer is in the market-worker lane, outside `src/features/spx`, and
-  was **not** traced. Its `change_pct` anchor is therefore UNKNOWN at source — the app now
-  fails closed on it (§6.1), which is why this is a gap and not an outage.
+- ~~**The writer of Redis `spx:pulse:snapshot`.**~~ **TRACED 2026-08-23 — and it found a live
+  defect.** The writer is `src/lib/ws/polygon-socket.ts:464`: the indices-WS `A` (aggregate)
+  handler `setex`es the whole `indexStore` under a 30s TTL on every bar. The `V` (value/tick)
+  handler deliberately does **not** write it — it refreshes only the local in-process store, so
+  Redis is not hammered at tick rate. A second, conditional seeder lives at
+  `src/lib/ws/socket-cluster-health.ts:161` (UW stock-state, used when the Polygon indices WS is
+  not writing).
+
+  **The `change_pct` anchor at source is TWO different anchors behind one field name**, carried
+  on `IndexStoreEntry.open_source`:
+
+  | `open_source` | `session_open` is… | so `change_pct` is measured from… |
+  |---|---|---|
+  | `"rest"` | `price / (1 + change_pct/100)` where `change_pct` is Polygon `/v3/snapshot/indices` → `session.change_percent` | the **PRIOR CLOSE** |
+  | `"ws-bar"` | `agg.o`, the bar's own open | a **BAR OPEN** |
+
+  `seedSessionOpenFromRest()` only runs on a connect at or after **09:31 ET**, so a replica whose
+  socket comes up before the bell never gets a REST anchor and rides a bar-open anchor for the
+  whole session. The two differ by the overnight gap. The value crosses Redis and the SSE wire
+  with **no anchor attached**, which is precisely the 2026-08-07 P0 that
+  `pulseChangePctFromPriorClose` was written to make unexpressible.
+
+  The REST pulse derives correctly (`spx-desk.ts:1683`, `:2017`). The SSE overlay did **not** —
+  `usePulseStream`'s `overlayFromStream` spread the transported value over the derived one, and
+  the overlay wins (`{ ...basePulse, ...overlay }`). Fixed 2026-08-23; see the findings entry.
+  **Still open:** `vix_change_pct` on the same overlay has no VIX prior close on `SpxDeskPulse` to
+  derive from, and Thermal's `/heatmap` header (`GexHeatmap.tsx:3475`, `pushedChangePct`) consumes
+  the same transported field for SPX/VIX — that surface is the Thermal lane's.
 - **`leader_stocks`, `lit_dark_ratio`, `vix_term`, `gap_source`, `data_quality`** — carried on the
   pulse payload, not traced to source in this pass. UNKNOWN.
-- **Every field on `/journal`, `/commentary`, `/outcomes`, `/power-hour`, `/signals`.** Phase 0
-  mapped the desk/pulse/flow/pin spine only. UNKNOWN — next increment of this file.
+- ~~**Every field on `/journal`, `/commentary`, `/outcomes`, `/power-hour`, `/signals`.**~~
+  **MAPPED 2026-08-23 — see §3.3.**
 - **The `ios/` component set** (`SpxIosMetricGroups` and siblings) renders its own field list;
   only `Max pain` was checked. UNKNOWN whether its labels track the desktop header's.
+
+### 3.3 The other five routes — `/journal` `/commentary` `/outcomes` `/power-hour` `/signals`
+
+Phase 0 mapped the desk/pulse/flow/pin spine and left these UNKNOWN (§8 item 4). Mapped
+2026-08-23. All five are `dynamic = "force-dynamic"` and send `NO_STORE_HEADERS`; only
+`/commentary` caches, and it caches server-side.
+
+| route | method | auth | cache | payload |
+|---|---|---|---|---|
+| `/api/market/spx/journal` | GET, POST | `authorizeMarketDeskApi` (community) **+ a `userId` requirement** | none | `{ entries: Record<open_play_id, JournalEntry> }` — the only PER-USER surface on this desk |
+| `/api/market/spx/commentary` | **POST** | `requireTierApi("premium")` | `serverCache` + Redis, **5-min wall-clock window** | `{ commentary, window_slot, next_refresh_ms }` |
+| `/api/market/spx/outcomes` | GET | `authorizeMarketDeskApi` (community) | none | `{ stats: PlayOutcomeStats, adaptive, rows: PlayOutcomeRow[] }`, `limit` 1…200 (default 50) |
+| `/api/market/spx/power-hour` | GET | `authorizeCronOrTierApi(req, "premium")` | none | `{ available, as_of, power_hour: PowerHourPlayPayload }` |
+| `/api/market/spx/signals` | GET | `authorizeMarketDeskApi` (community) | none | `{ rows: SpxSignalLogRow[] }`, `limit` 1…200 (default 50) |
+
+**Four things the table does not show, each checked rather than assumed:**
+
+1. **Three different auth entry points across twelve SPX routes.** Eight use
+   `authorizeMarketDeskApi` (which is `authorizeCronOrTierApi(req, "community")`); `/play` and
+   `/power-hour` call `authorizeCronOrTierApi(req, "premium")` **directly** rather than through the
+   named `authorizePremiumDeskApi`; `/commentary` uses `requireTierApi("premium")`. The tier split
+   is coherent as a product decision — community gets the desk, premium gets the plays. The
+   *naming* split is not: `authorizePremiumDeskApi`'s doc comment claims to be "the data-API gate
+   for every product whose page calls `requireTier("premium")`" and enumerates Helix/Thermal/Vector/
+   briefs, so an auditor grepping its callers to inventory premium APIs **misses SPX's two**.
+   Repo-wide the split is 25 named vs 17 raw across six lanes, so this is not an SPX defect to fix
+   unilaterally — it is a comment that reads as an inventory and is not one.
+
+2. **`/commentary` cannot be pre-warmed by a cron.** `requireTierApi` takes no cron bearer, unlike
+   every other route here. The route's own design is "one deterministic read per 5-minute window
+   serves every connected session — first request in the window composes it", so **the first member
+   into each window pays the composition cost** (merged desk + open play + lotto + power-hour
+   stores + `generateSpxCommentary`). A cron warm is the obvious mitigation and the auth choice
+   blocks it. Not changed here; recorded because the cost is real and invisible.
+
+3. **Error shapes disagree, deliberately in one case and by omission in the others.** `/signals`
+   returns a bare `{ error }` with **no `rows`** on 502, and says so at the line — ISSUE-30, clients
+   should check HTTP status, not peek at a field. `/outcomes` returns
+   `{ stats: null, adaptive: null, rows: [], error }` and `/journal` returns `{ entries: {}, error }`
+   — the pre-ISSUE-30 shape. A client written against one breaks on the other.
+
+4. **`PlayOutcomeStats.win_rate` is `0` for an empty cohort, not `null`**
+   (`spx-play-outcomes.ts:359,387` — `count > 0 ? wins / count : 0`). That is absence published as a
+   measurement in the type. **It is contained today, and I checked rather than reported it:**
+   `computeAdaptiveGates` gates on `total_closed >= minTrades && days_of_data >= minDays` before
+   reading any rate, every per-path branch gates on `count >= minPathTrades`, and
+   `telemetrySummary` nulls the rates for display (`cold_buy.count > 0 ? … : null`). So no consumer
+   currently reads the fabricated zero. Latent hazard, not a live defect — the next consumer that
+   forgets the count gate inherits it.
+
+**One dead surface found while mapping.** `useSpxDayPerformance`
+(`src/features/spx/hooks/useSpxDayPerformance.ts`) is exported and imported by **nothing**. It also
+carries the same latent bug: `fetch(...).then(r => r.json())` with **no `r.ok` check**, so on a 502
+it parses the error body, finds `rows: []`, and `computeDayStats([])` returns a stats object of
+zeros rather than null. Harmless while unused; a hazard the moment someone wires it up.
+
+`SpxSignalLogRow.confidence` and `PlayOutcomeRow.confidence` are the persisted form of the field
+§7.2 measured as a **constant 96 across all 51 rows**. The ledger is where that measurement came
+from; both routes serve it unchanged.
 
 ---
 
@@ -226,14 +309,24 @@ Recorded so no future lane "fixes" this by collapsing them, which would make the
 | `desk.max_pain` | **OI only** | `gexPositioningFromHeatmap` |
 | pin magnet max pain | **OI + intraday volume** | `pinMaxPain`, same file |
 
-Both max pains are *correct*; they are two metrics wearing one word. The disambiguation is
-partially shipped: the pin panel now says **"effective max pain" / "EFF MAX PAIN"**
-(`SpxPinForecast.tsx:18,281`) and the header tooltips now name the basis split for `flip`,
-`maxPain` and `regime` (`SpxSniperHeader.tsx:96-98`). **What is still open:** the visible header
-label is still bare `Max Pain` (`SpxSniperHeader.tsx:223`) and `Max pain` on iOS
-(`SpxIosMetricGroups.tsx:115`) — a tooltip is not disclosure on a touch device, where there is no
-hover. And there is still no coherence assertion anywhere that two member-facing values sharing a
-label must agree within a stated tolerance.
+Both max pains are *correct*; they are two metrics wearing one word. **The max-pain half is now
+fully disambiguated (2026-08-23).** The pin panel already said **"effective max pain" /
+"EFF MAX PAIN"**; the desk header and the iOS desk now say **"OI Max Pain" / "OI max pain"**, and
+all four strings are constants in `src/features/spx/lib/spx-metric-labels.ts` with
+`spx-metric-labels.test.ts` asserting they stay distinct *after normalisation* — bare `Max Pain`
+vs `EFF MAX PAIN` would pass a `!==` check while still colliding for a reader. A tooltip was not
+enough: `MetricRow` (`ios/SpxIosMetricGroups.tsx`) has no title prop and a phone has no hover, so
+on that surface the label is the only place the basis can live.
+
+**What is still open:**
+- The same shape on the FLIP. `desk.gamma_flip` is the near-term multi-expiry aggregate while the
+  chart/pin flip is 0DTE-scoped; the desktop header discloses that in `METRIC_TIPS.flip`, and the
+  iOS row is a bare `Flip` with no tooltip and no qualifier. Not renamed in the same pass — the
+  flip's disambiguator has to name a SCOPE (which expiries) rather than a BASIS, and there is no
+  shipped counterpart label to make it distinct *from*, the way `EFF` gave max pain one.
+- Still no coherence assertion anywhere that two member-facing values sharing a label must agree
+  within a stated tolerance (§8 item 7). Distinct labels remove the false-collision; they do not
+  detect a real disagreement between two values that are supposed to match.
 
 ---
 
@@ -280,10 +373,42 @@ Actual TTL is 1s. §2.
 environment that was **fully decommissioned on 2026-07-25** (CLAUDE.md). The comments are not
 merely stale prose — they gate live code paths. §7.1.
 
-### 6.4 Not re-checked in this pass
+### 6.4 The eleven `PLAYBOOK-*.md` documents — audited 2026-08-22
 
-The eleven `docs/spx/PLAYBOOK-*.md` documents were **not** line-audited. That is the largest
-remaining Phase 0 gap and the next increment of this file. UNKNOWN.
+**The result is not what the shape of this section predicted.** These documents are *accurate about
+the code* and *false about the world*, often in the same paragraph — which is worse than being
+uniformly stale, because nothing tells a reader which half they are looking at.
+
+**What held up.** Every mechanically checkable engineering claim was correct at `9b20b63c`:
+
+- `PLAYBOOK-ARCHITECTURE-STATUS.md` §6's per-playbook matrix — **all 70 cells** match
+  `PLAYBOOK_SURFACE_STATUS`.
+- §16's hard constants — wall proximity 10pts, MTF buffer 1.0, flow materiality 100k — all match
+  `spx-play-config.ts`.
+- §17's code map — every module listed exists.
+- Referenced source paths across all eleven — 37 of 40 exist; the 3 missing are staging artifacts.
+
+**What is false.** Every one of the eleven references staging (~154 times), decommissioned
+2026-07-25. The worst is concentrated in the file that calls itself the **"Single Source of
+Truth"** and tells the reader to *"start here for current truth"*:
+
+| Claim in `PLAYBOOK-ARCHITECTURE-STATUS.md` | Reality |
+|---|---|
+| **Repo:** `coreentryadmin-web/blackout-web-sandbox` | Not this repo. This is `blackout-web`. |
+| `→ https://staging.blackouttrades.com` | Decommissioned 2026-07-25. |
+| *"do not merge to **Railway** prod"* | There is no Railway. All infra is AWS ECS. |
+| §9 *"Prod — Playbook live gate **off** unless `PLAYBOOK_LIVE_GATE=1`"* | It **is** `1` in production. The sentence is literally true and practically inverted. |
+| §9 *"Infra: `apply-staging-env-overrides.mjs` sets `PLAYBOOK_LIVE_ALLOWLIST`"* | Unset in production; the allowlist resolves to `null`. |
+| §18 `npm run validate:staging-playbook` | Removed from `package.json` with staging. |
+
+Each file now carries a banner naming exactly these, so a reader cannot take the environment
+claims at face value. **Do not delete these documents** — the design intent and per-playbook detail
+in them is the best record that exists, and it is correct.
+
+**Enforced going forward:** `src/features/spx/lib/playbook-status-doc-sync.test.ts` asserts §6's
+matrix still matches `PLAYBOOK_SURFACE_STATUS` (and that a parse finding zero rows fails rather
+than passing vacuously). The half that can be checked mechanically now is, so it cannot silently
+join the half that rotted.
 
 ---
 
@@ -296,9 +421,65 @@ remaining Phase 0 gap and the next increment of this file. UNKNOWN.
 and **staging was fully decommissioned on 2026-07-25** — there is no deploy target that can make
 this true. Every branch behind it is dead code in every environment that exists:
 
+> **CORRECTION (2026-08-22): this section originally said "five call sites". That was an undercount
+> by roughly 3×** — it counted only what a grep of `spx-desk.ts` and `spx-play-config.ts` turned up.
+> The rest reach it through `playbookStagingLabEnabled()`, which is `isStagingDeploy()` wearing a
+> different name, so grepping the direct call alone misses them.
+
+**SWEPT 2026-08-23 — every SPX-lane site enumerated and classified.** The count was the least
+interesting part: the branches are not one kind of thing, and treating them as one is why "delete
+the dead code" was the wrong next step. Three categories, with different correct answers:
+
+**(A) Deliberate staging-only WIDENING — dead code, and production behaviour is the intended one.**
+Each carries its own `PROD IS UNCHANGED` comment. Deleting them changes nothing at runtime; the
+only question is whether to keep the affordance for a future ephemeral pre-prod target.
+
+| Site | What it widened on staging |
+|---|---|
+| `spx-play-gates.ts:205` | let plays flow from the legacy confluence engine with no fired primary |
+| `playbook-regime-router.ts:93` | every playbook regime-eligible, bypassing the regime bucket |
+| `spx-play-config.ts:483,493` | full PB-01…14 allowlist / execution-mode lift |
+| `spx-play-config.ts` `parsePlaybookLiveAllowlist` staging branch | PB-01…04 default allowlist |
+| `spx-play-kanban-chips.ts:131` | a low-conviction SCANNING chip so the desk is never blank |
+| `SpxCommentaryRail.tsx:354` | a "BlackOut Intelligence" sub-label |
+| `spx-play-engine.ts:875`, `spx-play-gates.ts:168` | `playbookLabActive` / `stagingLab` — relaxed starter entries |
+| `spx-play-config.ts:90` `playClaudeGateEnabled` | Claude gate on by default; prod is opt-in via `SPX_CLAUDE_GATE` (unset) |
+
+**(B) A TIGHTENING guard behind a widening flag — the real finding.** Two data-quality blocks sit
+inside `playbookStagingLabEnabled()`, so they read as safeguards and have never run in production:
+`trade-governor.ts:167` and `playbook-session-risk.ts:47`.
+
+- **Severe data quality on a live BUY is STILL GUARDED** — but by `spx-play-gates.ts:222`, inside
+  `if (buyIntent && playbookLiveGateEnabled())`, and that predicate IS true in production. The
+  governor's copy is redundant, not load-bearing. *(An earlier draft of this section was about to
+  claim the desk had no severe-data-quality fail-closed at all. It does. Checking the second call
+  site before writing the sentence is the only reason that is not recorded here as fact.)*
+- **Degraded-feed size reduction is NOT implemented anywhere**, and it is broken **twice over**:
+  the only branch that lowers `size_multiplier` is staging-gated, *and* `playbook_size_multiplier`
+  (`spx-play-gates.ts:496`) has **no reader** — so a reduced value would change nothing even if it
+  were computed. Fixing either half alone is a no-op. `PLAYBOOK_DEGRADED_SIZE_MULT` is an inert knob.
+
+**(C) Genuinely environment-shaped, outside this lane.** `clerk-env.ts`'s satellite/proxy/domain
+helpers (a real staging hostname concern), plus three sites in `src/lib/ai-env.ts` and one in
+`src/lib/largo-env.ts`.
+
+**What was done, and what deliberately was not.** Both (B) sites now carry a comment stating they
+are dead and naming what is and is not still guarded, and
+`src/features/spx/lib/trade-governor-staging-gate.test.ts` **characterises** production's real
+behaviour in executable form — severe data quality does not halt the governor, degraded feeds do
+not reduce size — after first asserting that `isStagingDeploy()` is false, so the suite cannot pass
+vacuously. Re-predicating the guards on `playbookLiveGateEnabled()` was **not** done: switching a
+fail-closed halt from inert to live is a blocking/sizing change on a member-facing desk, and the
+fire rate of `liveDataQualityMode() === "severe"` over a real RTH session has never been measured.
+That measurement is on the market-open battery. Category (A)'s deletion is a scope call for the
+coordinator — the branches are inert, but they are the only record of what a pre-prod lab was
+meant to do.
+
+> **Only the VWAP site is FIXED** (the one that unblocks PB-01/PB-02).
+
 | Site | Effect now |
 |---|---|
-| `spx-desk.ts:129` `sessionStatsWithProxyVwap` | SPY-volume-proxy merge never runs → SPX VWAP is an equal-weight typical-price mean, and `vwap_volume_weighted` is permanently `false` |
+| `spx-desk.ts:129` `sessionStatsWithProxyVwap` | **FIXED.** Was: SPY-volume-proxy merge never ran → SPX VWAP was an equal-weight typical-price mean and `vwap_volume_weighted` permanently `false`. Now resolved by `spx-vwap-proxy.ts` behind `SPX_VWAP_SPY_PROXY` (default ON, env-reversible), which also reports `vwap_volume_source` so `true` never silently claims SPX volume that does not exist. |
 | `spx-play-config.ts:419` `playbookStagingLabEnabled` | always false |
 | `spx-play-config.ts:427` `playbookLiveGateEnabled` | falls through to `PLAYBOOK_LIVE_GATE` (default false) |
 | `spx-play-config.ts:483` `playbookLiveAllowlist` | full-enablement branch unreachable |
@@ -384,11 +565,60 @@ Two specific defects inside the formula, beyond the calibration question:
 2. **Gates never revise it.** Confidence is fixed before `evaluatePlayGates` runs, so a play held
    by four gates reports the same conviction as one that passed clean (§4).
 
+**MEASURED 2026-08-23 — it is worse than "uncalibrated": it is a CONSTANT.** Across every closed
+play in production, **51 of 51 over 54.3 days, `confidence` is 96** — the clamp ceiling, zero
+variance. The `factors.length * 3` term contributes 24–42 points on a typical 8–14 factor desk, so
+anything clearing the entry thresholds (full 52 / starter 48 / cold-buy 78) saturates the cap. The
+desk renders it to members as `"{n}% conviction"` per play. It has said 96 for eight weeks.
+
+Measured with `scripts/audit/spx-confidence-calibration.mjs`. On the same 51 plays the substitutes
+this map recommended are themselves weak: `r(|score|, win) = 0.172`, `r(grade_rank, win) = −0.038`
+— n=51, indicative only, but `grade` shows no signal in this sample and should not be presented as
+a calibrated stand-in.
+
+**The Largo boundary is fixed (#2646); the member-facing number is not.** That is with the
+coordinator, since they directed it be left alone when the field was believed merely uncalibrated.
+
 The tool *description* for `get_spx_confluence` (`tool-defs.ts:506`) lists action, bias, score,
 grade, agreeing/conflicting factors, levels — and **does not mention confidence at all**. So the
 field is arriving undocumented as well as uncalibrated.
 
-**UNKNOWN:** whether `get_spx_play`'s payload carries the same field. Not traced this pass.
+**RESOLVED (2026-08-22): it does, and so do two more paths.** The uncalibrated value reached the
+model on **four** doors, not one — `get_spx_confluence` (`run-tool.ts:1564`), `get_spx_play`
+(`run-tool.ts:960`, the payload carries it at top level from 12 assignment sites in
+`spx-play-engine.ts`), `get_ecosystem_context.spx_full_state` (`ecosystem-context.ts:847`), and
+`largo-live-feed.ts:784`, which **whitelisted it explicitly** into the feed the model reads without
+any tool call. `tool-defs.ts:217` also advertised the field. All four now omit it and name the
+absence (`src/lib/largo/spx-confidence-boundary.ts`); the member-facing UI number is unchanged.
+
+**LIVE-VALIDATED 2026-08-23 — GREEN on both tools**, with
+`scripts/audit/spx-largo-confidence-probe.mjs`:
+
+```
+[spx-confluence] OMITTED  no `confidence`, `confidence_omitted` present   control: GRADE=D SCORE=12
+[spx-play]       OMITTED  no `confidence`, `confidence_omitted` present   control: GRADE=D SCORE=12
+```
+
+**The two obvious ways to check this both fail, and the second one fails misleadingly.** Running the
+tool in-process is impossible from the audit sandbox (`getSpxPlayState` is DB/HTTP-backed behind
+`server-only`). And grepping the ANSWER ENVELOPE is the wrong vantage point entirely — the
+substitution happens inside the TOOL RESULT handed to the model, and the envelope returned to the
+client never carried it either way. Measured on a live envelope: the string `confidence` is present
+(from unrelated keys) and `confidence_omitted` is absent, which proves nothing in either direction
+and reads as a regression to anyone who stops there. So the probe asks the LIVE agent to report what
+its own tool result contained — the trick `largo-truncation-probe.mjs` uses for the 16k cap — and
+carries a CONTROL: it also asks for `grade` and `score`, fields known to be present, and reports
+**UNVERIFIED** rather than clean if those come back empty. A model saying "there was no confidence
+field" is otherwise indistinguishable from a model that never looked.
+
+Two paths remain unvalidated by that probe and are named rather than assumed:
+`get_ecosystem_context.spx_full_state` and `largo-live-feed.ts` — neither is reachable by naming a
+tool in a question.
+
+**Still open, and logged here rather than fixed:** `spx-play-engine.ts:1633` sets
+`confidence: closedConfluence?.confidence ?? 0` on the session-closed path. A `0` reads as a
+measured floor, not as "unknown" — absence published as measurement, in the member payload. It
+belongs with the calibrated-confidence work, not the boundary fix.
 
 ---
 
@@ -396,29 +626,297 @@ field is arriving undocumented as well as uncalibrated.
 
 Ranked. These are the `UNKNOWN`s above, restated as tasks.
 
-0. **Audit every SPX-relevant key in `blackout-production/app/env` against its code default.**
-   Three cache TTLs and `PLAYBOOK_LIVE_GATE` are all overridden in production, and none of that was
-   discoverable from the repo. Reading a default out of `config.ts` and calling it "the freshness"
-   was wrong by 50% on the desk lane; assuming the live gate matched its `false` default understated
-   a P1. **Anywhere this product's behaviour is env-tunable, the deployed value is the fact and the
-   default is a decoy.** No file in the repo lists which keys are actually set.
+0a. ~~**Cross-check the desk's own numbers against a provider.**~~ **STARTED 2026-08-23 — the gap
+   was smaller than "wait for RTH" made it look.** `data-validator.mjs` already fetched
+   `/api/market/spx/desk`, but only to feed the malformed-number scan; not one of the desk's own
+   fields had ever been compared to Polygon by this lane. It now carries an **SPX DESK vs Polygon**
+   block, built so most of it is decidable **off-hours** — an instrument that can only be exercised
+   in the one scarce RTH window is an instrument nobody has debugged.
 
-1. **Line-audit the eleven `docs/spx/PLAYBOOK-*.md` documents** and mark what is now wrong (§6.4).
-   Largest remaining gap.
-2. **Trace the `spx:pulse:snapshot` writer** in the market-worker lane and record its `change_pct`
+   **First run (market closed): every check PASS.**
+
+   | check | desk | Polygon | Δ |
+   |---|---|---|---|
+   | price | 7674.37 | 7674.37 | 0.000% |
+   | prior_close | 7674.37 | 7674.37 | 0.0000% |
+   | pdh | 7697.11 | 7697.110000000001 | — |
+   | pdl | 7660.06 | 7660.06 | — |
+   | ema20 | 7658.03 | 7658.02 *(recomputed from 138 dailies)* | 0.000% |
+   | ema50 | 7551.56 | 7551.71 *(recomputed)* | 0.002% |
+
+   The EMA result is the strongest: an independent recomputation from raw daily closes landing
+   within 0.002% is evidence the math is right, not merely that the field returns a number.
+
+   **What it does NOT establish, and says so in its own output rather than leaving it to the
+   reader:** off-hours the desk's price IS the prior close, so the change%-identity check has both
+   sides at 0 and passes without exercising anything — exactly the assertion #2692 was about. It
+   reports `INFO … DEGENERATE`, not PASS. `hod`/`lod` are skipped with their reason. **VWAP is
+   deliberately absent**: SPX index bars carry no volume and the desk uses a SPY-volume proxy, so a
+   reference value must re-perform the same merge — that belongs with #2636's validation, on the
+   market-open battery.
+
+0. ~~**Audit every SPX-relevant key in `blackout-production/app/env` against its code default.**~~
+   **DONE — and made reproducible rather than snapshotted.** `scripts/audit/spx-env-drift.mjs`
+   scans the SPX surface for `process.env.X`, extracts each one's code default from the source,
+   reads the deployed values, and classifies every key **unset / no-op / override / unknown**.
+   A markdown snapshot of the answer would rot exactly the way the documents §6 reconciles had
+   rotted; a script does not. Run it before quoting any env-tunable behaviour.
+
+   **Measured 2026-08-22 — 142 keys referenced, and only 6 actually override their default:**
+
+   | key | code default | **production** |
+   |---|---|---|
+   | `PLAYBOOK_LIVE_GATE` | `false` | **`1`** — this is what makes §7.1 a P1 rather than latent |
+   | `SPX_DESK_CACHE_SEC` | 20 | **30** |
+   | `SPX_PULSE_CACHE_SEC` | 1 | **2** |
+   | `SPX_FLOW_CACHE_SEC` | 2 | **5** |
+   | `SPX_PLAY_MEMBER_READ_CACHE_SEC` | 5 | **2** |
+   | `SPX_CHAIN_QUOTE_TTL_MS` | 5000 | **4000** |
+
+   132 are unset (the code default genuinely governs), 1 is a no-op (`ENGINE_INTEL_OVERLAY="0"`,
+   which equals its default — it *looks* like a deliberate override and is not one), and 3 are
+   secrets with no determinable default. **So the trap is small and enumerable, not everywhere** —
+   which is the useful form of "check the deployed value": there are six of them, and five are
+   latency knobs. Note the shape of the tuning: the three shared lanes are all *slowed* while the
+   per-member play read is *sped up*. That is coherent, not drift.
+
+   Without credentials the script reports **SKIPPED, never GREEN** — "I could not look" must not
+   render as "clean".
+
+1. ~~**Line-audit the eleven `docs/spx/PLAYBOOK-*.md` documents**~~ **DONE — see §6.4.** Accurate
+   about the code, false about the world; all eleven bannered, and §6's matrix is now ratcheted
+   against its source constant.
+2. **Build a calibrated confidence from `spx-play-outcomes`, out-of-sample validated** — and fix
+   `spx-play-engine.ts:1633`'s `?? 0` fallback with it. The Largo boundary now omits the
+   uncalibrated number, which is honest but not an answer; the member UI still renders it.
+   **Partially addressed 2026-08-23:** the `?? "D"` / `?? 0` fallbacks are no longer
+   *indistinguishable* from a measurement — `SpxPlayPayload.assessed` now marks the three sites
+   that fabricate them, and the Play Verdict Bar suppresses the fabricated grade/score. That
+   removes the false publication; it does not produce a calibrated number, which is still this
+   item. The three literals themselves remain in the payload because the type is non-nullable —
+   see §8b.
+   **Start from the measurement, not from the field's history:** `scripts/audit/spx-confidence-calibration.mjs` shows the stored `confidence` is 96 on all 51 rows (§7.2), so the ledger carries no recoverable conviction signal — a calibration has to be built from `score`/`grade`/factors. On those same rows `r(|score|, win) = 0.172` and `r(grade_rank, win) = −0.038` (n=51, indicative only).
+3. **Trace the `spx:pulse:snapshot` writer** in the market-worker lane and record its `change_pct`
    anchor at source (§3.2).
-3. **Map `/journal`, `/commentary`, `/outcomes`, `/power-hour`, `/signals`** to this file's schema.
-4. **Run `scripts/audit/largo-truncation-probe.mjs` against all seven SPX tools** and read the
-   CONTROL line — a run whose control does not come back TRUNCATED reports every COMPLETE as
-   UNVERIFIED, not clean.
-5. **Build the SPX interaction audit** on the `meridian-interaction-audit.mjs` pattern — physical
-   text intersection, sub-24px tap targets, overflow, tab-hammering, keyboard reach — gated on a
-   PAGE-LOADED proof so a blank render reports HARNESS, never a product verdict. This is what
-   closes the three UNVERIFIED backlog items in §6.1 (and would have caught the P2 collisions).
-6. **A coherence assertion in the pre-open gate**: any two member-facing values sharing a label
-   must agree within a stated tolerance or the label must differ (§5). The reproducible OI-only
-   max-pain check against a full Polygon SPXW chain is the model.
-7. **Confirm `spx-signal-weight-optimize`'s DST correctness** — the other three crons are done.
+4. ~~**Map `/journal`, `/commentary`, `/outcomes`, `/power-hour`, `/signals`**~~ **DONE — see §3.3.**
+   Four things it turned up that the route table alone does not show: three different auth entry
+   points across twelve SPX routes (and a helper doc-comment that reads as an inventory and is not
+   one); `/commentary` cannot be cron-warmed, so the first member into each 5-minute window pays the
+   composition cost; three disagreeing 502 error shapes; and `PlayOutcomeStats.win_rate` reporting
+   `0` for an empty cohort — contained today by sample-size gates at every consumer, **checked
+   rather than reported**, and latent for the next one that forgets.
+5. ~~**Run `scripts/audit/largo-truncation-probe.mjs` against the SPX tools**~~ **DONE 2026-08-23 —
+   and the probe carried no SPX tools at all until this pass.** "Never probed" is not "probed
+   clean": all three shipped truncation defects in this repo were found by asking, and nobody had
+   asked here. Eight tools, **control PROVEN in both batches**:
+
+   | tool | verdict |
+   |---|---|
+   | **`get_spx_structure`** | **TRUNCATED with NO arguments** — fixed, see the findings entry |
+   | `get_spx_play` | COMPLETE |
+   | `get_spx_confluence` | COMPLETE |
+   | `get_spx_pin` | COMPLETE |
+   | `get_spx_pulse` | COMPLETE |
+   | `get_spx_vs_nighthawk_comparison` | COMPLETE |
+   | `get_gate_rules` | COMPLETE |
+   | `get_spx_engine_snapshots` | COMPLETE at its own default — see below |
+
+   **The half that looked like a finding and is not.** `get_spx_engine_snapshots` truncated at the
+   recipe *"the largest window available"*. Re-probed at its **own default (limit 20)** it is
+   COMPLETE. Every list tool truncates if you ask for enough of it; reporting that as a defect would
+   have put a false entry in the log. The probe's recipe now asks the question that matters — does
+   it truncate **as normally called** — with the wide-window result kept in the comment rather than
+   discarded. The SPX lane is in `LANE_TOOLS` permanently now, so this cannot go unasked again.
+6. ~~**Build the SPX interaction audit**~~ **DON'T — one already exists and covers `/dashboard`.**
+   `scripts/audit/live-ui-interaction-audit.mjs` ships `/dashboard` in its default page list and
+   shares `lib/ui-geometry-probe.mjs`. It did not need writing; it needed running. First run
+   2026-08-23 confirmed the 2026-08-07 backlog's chart-control collision on **desktop** (3
+   collisions: `SPX` over the timeframe selector, `▶ Replay` over `GEX`, both ways) and exposed a
+   defect in the harness itself — four false Escape FAILs per page from comparing dialog counts
+   across a navigation, fixed and validated live (6 failures → 1).
+
+   **LOCALISED AND FIXED 2026-08-23 — and the first candidate fix was wrong, measured.**
+   `scripts/audit/spx-collision-localise.mjs` takes the pairs `probeGeometry` already vetted (it now
+   tags them with `data-collide-id`) and reports both boxes, the first common ancestor, and that
+   ancestor's `scrollWidth` vs `clientWidth` — the discriminator between *a row that cannot fit its
+   children* and *one element stacked on another*, which take opposite fixes and look identical from
+   a text pair.
+
+   The answer: `.vector-toolbar-desk` is `flex-wrap: nowrap` at ≥768px and the only `wrap` override
+   is scoped to `.vector-page-toolbar`, the wrapper the **standalone** `/vector` page puts around it.
+   On this desk the toolbar renders inline inside `.vector-chart-wrap` — the measured ancestor chain
+   contains no `.vector-page-toolbar` at all — so the override never reaches it and the row is asked
+   to fit **997px of controls into a 620px column** with `overflow: visible`. Control:
+   `/vector` standalone at the same viewport, **0 collisions**.
+
+   **Three things this only knew because it measured rather than reasoned:**
+   - The defect is **intermittent — 3 of 5 runs** on production, always with identical geometry. A
+     single clean run is not evidence it is gone.
+   - The obvious one-line fix is a **half-fix**. Injecting `flex-wrap: wrap` on `.vector-toolbar-desk`
+     alone into the live page moved `.vector-toolbar-desk-right` from 295px to a full 620px row and
+     the `▶ Replay` × `GEX` overlap **survived, 5/5 runs** — `-right` carries its own
+     `flex-wrap: nowrap` and still needs 672px. Both selectors are required.
+   - That half-fix turned an intermittent defect into a **deterministic** one, which is worse than
+     leaving it. Shipping it on reasoning alone would have looked like progress.
+
+   Both selectors together, injected the same way into the same live page: **0 collisions, 5/5
+   runs**, against a 3/5 baseline. That is what shipped, scoped to `.spx-sniper-vector-col` so the
+   standalone page stays byte-identical. Injection proves the RULE works, not that it deployed —
+   re-run the localiser against the built page after the merge, and eyeball the wrapped toolbar's
+   height once: it is one row taller and `-right`'s controls move to the left of the second row.
+
+   Two earlier root-cause hypotheses were killed by reading the code rather than by a test failing
+   later: "Vector's toolbar CSS is wrong" (it is correct for its own page) and "the portal target
+   arrives after paint, so `useEffect` is the bug" (the code already uses `useLayoutEffect`).
+
+   **THE PHONE VIEWPORT IS REACHABLE — measured 2026-08-23, and the 2026-08-07 mobile collision is
+   REPRODUCED.** It had failed with `ERR_CONNECTION_RESET` on every previous attempt and was
+   recorded here as permanently UNVERIFIED. A single-page, single-context, fresh-process run loads
+   it fine. On `/dashboard` at 430×932, phone device class: **one collision, 3/3 runs** —
+
+   ```
+   "BLACKOUT" × "☰"   overlap 36x18px
+     span.nav-wordmark      rect {left:233, top:21, w:72,  h:18}  transform: matrix(0.84,…)
+     button.nav-sheet-toggle rect {left:225, top:8,  w:44,  h:44}
+     COMMON ANCESTOR  div.nav-inner  display=grid  clientWidth=430 scrollWidth=430
+       => content fits — something is STACKED
+   ```
+
+   The wordmark's left edge sits **inside the hamburger's 44px tap target**. `div.nav-inner` is a
+   3-track grid here (`.nav-bar-ios-tool .nav-inner { minmax(0,1fr) auto auto }`) while the
+   ≤mobile base rule declares 2 (`:1908`) — the more specific ios-tool rule wins at every width.
+
+   **Two traps this run walked into, both worth carrying forward:**
+   - **The device CLASS changes the answer, not just the width.** A desktop UA at 430px reports
+     **3** collisions (intel-rail tabs over the pin panel); the true phone class reports **1**. The
+     three are an artifact of a page no member sees — this app keys `ios-native-shell` rules off the
+     `BlackOutiOSApp` UA. A narrow-viewport run must state which class it measured.
+   - **The `ERR_CONNECTION_RESET` was NOT the tunnel deadline.** That was the obvious theory and it
+     is wrong: re-running at the default `requestTimeoutMs: 20_000` loads the page and finds the
+     same collision. The likelier cause is the one `live-ui-interaction-audit.mjs` already documents
+     — a phone pass running **after** another pass in the same process. Not isolated further.
+
+   **Ownership:** `div.nav-inner` is the site-wide `Nav`, global chrome shared by every lane, so the
+   fix is not this lane's to make unilaterally. Reported with the measurement above.
+
+   Also unowned: a React **#418** hydration (text-content mismatch) `pageerror` fires after clicking
+   the nav's **Learn** pill, which lands on `/learn` — a marketing page. Reported, not fixed.
+
+
+7. ~~**A coherence assertion in the pre-open gate**~~ **BUILT 2026-08-23 — but not yet a
+   measurement.** `src/features/spx/lib/spx-label-coherence.ts` (pure, 13 unit tests) +
+   `scripts/audit/spx-label-coherence.mjs` (live capture). The rule it enforces is the one stated
+   in §5: two simultaneously-visible values must either share a label AND agree within a stated
+   tolerance, or carry different labels. It checks the **inverse** defect too — one quantity under
+   two labels reads as two findings where there is one.
+
+   Three properties that decide whether a checker like this is worth having, all tested:
+   - **Absence is never agreement.** A group with fewer than two observed values is INSUFFICIENT,
+     never GREEN, and the script exits non-zero on it unless `--allow-insufficient`.
+   - **Different labels are never compared.** That is the sanctioned escape hatch, so comparing
+     them anyway would flag every deliberate distinction — including the OI/EFF max-pain split — as
+     a defect.
+   - **Greek symbols expand before punctuation is stripped.** Without that, `"γ Flip"` normalises
+     to `"flip"` and `"Gamma flip"` to `"gammaflip"`, so two labels a member reads as identical land
+     in different groups and are never compared — a silent false negative in the one check whose
+     job is catching shared names.
+
+   **CORRECTION (2026-08-23, same day): the first live run's INSUFFICIENT was right by accident,
+   and the script was reading nothing at all.** `fetchAuditJson` returns a RESULT OBJECT —
+   `{ ok, status, json, via }` — and **never throws**; a failed lane comes back as `ok: false`. The
+   shipped version read the fields straight off that wrapper, so **every value was `undefined` on
+   every lane, including during RTH**, and the `try/catch` guarding the fetch could never fire. The
+   verdict was INSUFFICIENT for a transport reason wearing a data reason's clothes — the exact
+   absence-as-fact trap this checker exists to prevent, arriving through its own front door.
+
+   Fixed by unwrapping `.json` and treating `ok: false` as a lane error. Same instant, re-run:
+
+   ```
+   capture skew=461ms
+   lanes with a body: 3/3   values extracted: 1/4
+   LABEL COHERENCE: INSUFFICIENT
+     INSUFFICIENT "γ Flip"   was not observed on any surface — nothing to compare
+     INSUFFICIENT "Max Pain" was observed on only desk-header — a single value cannot corroborate itself
+   ```
+
+   `desk.max_pain` is **7700 right now, off-hours** — a value the broken version reported as "not
+   observed on any surface". Same verdict word, a different and true reason.
+
+   Three guards added so this class cannot recur quietly: an **extraction self-check** (lanes that
+   answered with a body vs values actually extracted — healthy bodies and zero extractions is now
+   `HARNESS`, exit 2, and says "this is a bug in this script, not a fact about the desk"); a **lane
+   error can no longer produce GREEN** (a surface you failed to read cannot be certified coherent
+   with the ones you read); and both counts print on every run.
+
+   The earlier warm-up fix stands and was worth it — the first authenticated fetch pays the whole
+   Clerk mint (~6s), which registered as capture skew and would have downgraded every RED to
+   INDETERMINATE, disarming the check exactly when it fires. **The 3018ms figure this file used to
+   quote was measured through the broken path; the corrected run is 461ms.** Monday should still
+   re-measure against warm RTH caches before anyone trusts a RED, but from the working script.
+
+   **What it still cannot see:** it reads the API, and a member reads the DOM. The label strings are
+   a hand-maintained transcription of what the components render (each carries a `src:` pointer). A
+   rename that misses the map makes the script check a fiction. The DOM half belongs to
+   `live-ui-interaction-audit.mjs`.
+8. ~~**Confirm `spx-signal-weight-optimize`'s DST correctness**~~ **DONE 2026-08-23 — and it was
+   not merely unconfirmed, it was UNAUDITABLE.** `cron-dst-audit.mjs` evaluates a hand-curated
+   `GATES` + `INTENTS` list, and this job was **deployed and in neither**, so the audit had never
+   looked at it and still exited 0. That is the audit's own absence-as-health failure mode, inside
+   the instrument.
+
+   **Verdict: OK (UTC-labelled), correct in both offsets.** Verified rather than assumed — the
+   route applies **no ET gate at all**: its window is `observed_at > now − 30 days`, a rolling
+   ABSOLUTE-time lookback. So there is no gate to stop being satisfied (form A) and nothing it must
+   land relative to (form B); a 30-day accuracy report is insensitive to a one-hour shift. Deployed
+   `0 22 * * 1-5`, registry mirror identical, ET span 18:00 EDT / 17:00 EST.
+
+   Two small fixes came out of it. The audit first returned **LABEL DRIFTS**, correctly: its
+   UTC-labelled check asks whether the deployed label owns the hour shift, and
+   `"Nightly 10 PM UTC"` names the UTC time and neither ET rendering. The route's own docstring
+   already stated both, so the registry label was simply short — now
+   `"Nightly 10 PM UTC (6 PM ET in EDT, 5 PM ET in EST)"`, the same form `x-analytics` uses. And
+   the route column was a 27-char literal that this 26-char key exactly filled, so the table
+   silently stopped being a table; the width is now derived from the data.
+
+   **Reported, not fixed — a gap this lane does not own:** `39` jobs are deployed and `27` are in
+   the two tables. The audit now PRINTS the remaining **12** and says they are UNAUDITED, not OK.
+   It deliberately does not fail on them: classifying a job means reading its route, each belongs
+   to the lane that ships it, and a hard failure would turn one lane's unclassified job into every
+   other lane's red build.
+
+---
+
+## 8b. Known-open — recorded, deliberately not fixed
+
+Things measured and understood, where the fix was scoped out on purpose. Recorded here so they
+are open work rather than forgotten work. A row leaves this list only when it is fixed or
+reclassified with a reason.
+
+| # | What | Why not fixed here |
+|---|---|---|
+| b1 | `SpxPlayPayload.grade`/`score`/`confidence` are non-nullable (`string`/`number`/`number`), so the three fabrication sites must invent `"D"`/`0`/`0` when nothing was assessed. `assessed` flags it; the literals are still in the payload. | Making them nullable produced 13+ `tsc` errors that force a nullability decision through gate arithmetic (`buildSpxPlayDeskContext` → `mixedTapeBlockThreshold`), **Vector's** `PlayStateSnapshot`, and the Night Hawk badge map. Each needs its own answer to "what does an ungraded desk mean here"; that is a typed-absence refactor across three lanes, not a UI fix. |
+| b2 | `spx-slayer-badge-map.ts:37-38` forwards `payload.grade`/`payload.score` into `SpxSlayerBadge` (typed `string`/`number`), and `unavailableSpxSlayerBadge()` hard-codes `grade: "D", score: 0` — the same absence-as-measurement defect, rendered on the **Night Hawk** board (`zerodte-board-strips.tsx`, `CommandDeck.tsx`). | The DTO and both renderers are Night Hawk-lane surfaces. The `assessed` flag is now on the payload for that lane to act on; changing another lane's display types inside an SPX UI fix is the cross-lane push this repo's merge history keeps punishing. |
+| b3 | The chart-control collisions on `/dashboard` desktop (3, reproduced live 2026-08-23) are localised to the harness output but the CSS rule is not yet identified. | §8 item 6 — the 2026-08-07 entry's caution against guessing a layout rule stands; needs the phone viewport too, which the sandbox tunnel has never reached. |
+| b4 | **Pin stability window size** — `PIN_STABILITY_WINDOW = 3` at the deployed 2s pin TTL asks "did the pin move more than a strike in ~6 seconds", which is structurally almost always no. | Calibration, not a defect. Needs out-of-sample evidence over real sessions. The 2026-08-23 hold-steady fix (this PR) is correct at any window size. |
+| b5 | **Pin stability state is per-process** — `spx-pin.ts` holds the rolling window at module scope; production runs multiple ECS tasks, so a member round-robins across replicas each with its own window and its own held pin. | Needs shared state (the Redis lane the desk already uses). Architectural, not a lane's unilateral change. |
+| b6 | **`spx-play-engine.ts:1633`** — `confidence: closedConfluence?.confidence ?? 0` on the session-closed path; `0` reads as a measured floor, not "unknown". | Belongs with the calibrated-confidence work (§8 item 2), which is measured infeasible until ~264 closed plays exist. |
+| b7 | **~15 `isStagingDeploy()` dead branches** across nine SPX files (§7.1). | Each needs a per-site judgment about correct production behaviour; several are staging-only debug affordances whose removal is a UI change. |
+
+### Cross-lane: the Vector toolbar collides with itself, on BOTH surfaces
+
+Found while auditing `/dashboard`, localised, and **handed to the Vector lane rather than fixed
+here** — the component is theirs and a fix changes their page too.
+
+- **`/dashboard`**: `.vector-replay-bar` (inside `.vector-replay-controls.flex.min-w-0`) computes to
+  **width 0** while its buttons still render at full size with `overflow: visible`, so `▶ Replay`
+  prints over the `.vector-desk-seg` GEX/VEX segment — 17x27px of real intersection.
+- **`/vector`**: the same segment is overlapped by the price readouts — `"7,775"` over `GEX`,
+  `"+$30.6M"` over `VEX`, `"—"` over `VEX`.
+
+One component, two surfaces. Mechanism: `min-w-0` lets the flex child shrink to nothing, and
+`overflow: visible` means its content spills onto its neighbour instead of clipping. Reproduce with
+`NODE_USE_ENV_PROXY=1 node --import tsx scripts/audit/live-ui-interaction-audit.mjs
+--pages=/dashboard,/vector --desktop-only`.
 
 ---
 

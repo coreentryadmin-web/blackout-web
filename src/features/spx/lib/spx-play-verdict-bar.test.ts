@@ -195,3 +195,68 @@ test("buildPlayVerdictBarModel: pin/play divergence surfaces align hint", () => 
   assert.match(model.alignHint ?? "", /downward pin drift/i);
   assert.match(model.alignHint ?? "", /bullish structure/i);
 });
+
+// ---------------------------------------------------------------------------
+// Absence must not be published as a measurement (Largo product contract, pt 3).
+// scanningPayload(desk, null, …) fabricates grade "D" / score 0 when NO confluence was computed,
+// and both literals pass the old guards ("D" is truthy, 0 is finite), so the bar rendered
+// "Grade D · 0" on a desk that had assessed nothing. `assessed:false` is the discriminator.
+// ---------------------------------------------------------------------------
+
+test("buildPlayVerdictBarModel: assessed:false suppresses the fabricated D/0 grade", () => {
+  const model = buildPlayVerdictBarModel(
+    basePlay({ assessed: false, grade: "D", score: 0, confidence: 0 }),
+    { sessionActive: true, loading: false }
+  );
+  assert.equal(model.mode, "hunting");
+  assert.equal(model.grade, null, "no confluence was computed — there is no grade to show");
+  assert.equal(model.score, null, "0 is the placeholder literal, not a measured score");
+  // The member still gets a reason; only the invented number is withheld.
+  assert.ok(model.statusLine.length > 0);
+});
+
+test("buildPlayVerdictBarModel: assessed:false still surfaces a REAL grade off an open position", () => {
+  // A committed position's grade was measured when it was opened, so it survives the suppression.
+  const model = buildPlayVerdictBarModel(
+    basePlay({
+      assessed: false,
+      grade: "D",
+      score: 0,
+      phase: "OPEN",
+      action: "HOLD",
+      open_play: {
+        id: 9,
+        direction: "long",
+        entry_price: 7440,
+        stop: 7425,
+        target: 7465,
+        grade: "A",
+        opened_at: new Date().toISOString(),
+        mfe_pts: 3,
+        trim_done: false,
+      },
+    }),
+    { sessionActive: true, loading: false }
+  );
+  assert.equal(model.grade, "A");
+  assert.equal(model.score, null, "the payload score is still a placeholder");
+});
+
+test("buildPlayVerdictBarModel: assessed absent (legacy payload) keeps the measured grade", () => {
+  // Back-compat: only an EXPLICIT false means absence. An older payload with no flag is trusted.
+  const model = buildPlayVerdictBarModel(basePlay({ grade: "B", score: 52 }), {
+    sessionActive: true,
+    loading: false,
+  });
+  assert.equal(model.grade, "B");
+  assert.equal(model.score, 52);
+});
+
+test("buildPlayVerdictBarModel: assessed:true passes the measured grade through unchanged", () => {
+  const model = buildPlayVerdictBarModel(
+    basePlay({ assessed: true, grade: "A+", score: 81 }),
+    { sessionActive: true, loading: false }
+  );
+  assert.equal(model.grade, "A+");
+  assert.equal(model.score, 81);
+});

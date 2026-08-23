@@ -72,12 +72,21 @@ function baseRef(): string | null {
   return null;
 }
 
-/** Entry headings, in file order. Duplicates are real in this file, so this is a LIST, not a set. */
-function headings(text: string): string[] {
-  return text.split("\n").filter((l) => l.startsWith("## "));
+/**
+ * Entry-level loss detection lives in `scripts/audit/lib/findings-entry-set.mjs` so the fold script
+ * and this guard share ONE definition of what a lost entry is. See that file's header for why the
+ * previous heading-multiset rule had to change: it counted a REDUNDANT byte-identical copy as a
+ * finding, so removing one read as a deletion — and its prescribed remedy ("restore whatever the
+ * resolver does not") re-added the copy, which then merged. Measured on `main`: the Night Hawk
+ * entry reached THREE identical copies that way, the third added by the remedy itself.
+ */
+async function loadEntrySet(): Promise<{
+  lostEntries: (base: string, head: string) => string[];
+}> {
+  return (await import("../scripts/audit/lib/findings-entry-set.mjs")) as never;
 }
 
-test("no FINDINGS entry present in the merge base has been removed", () => {
+test("no FINDINGS entry present in the merge base has been removed", async () => {
   const base = baseRef();
   if (!base) {
     // Loud, and paired with fetch-depth: 0 in ci.yml so it is not the normal path.
@@ -92,21 +101,12 @@ test("no FINDINGS entry present in the merge base has been removed", () => {
   }
   const after = git(["show", `HEAD:${FILE}`]) ?? "";
 
-  // Counted, not set-differenced: the file genuinely carries repeated headings, and dropping one of
-  // a duplicated pair is exactly as much a loss as dropping a unique entry.
-  const tally = (list: string[]) => {
-    const m = new Map<string, number>();
-    for (const h of list) m.set(h, (m.get(h) ?? 0) + 1);
-    return m;
-  };
-  const wasThere = tally(headings(before));
-  const stillThere = tally(headings(after));
-
-  const lost: string[] = [];
-  for (const [h, n] of wasThere) {
-    const kept = stillThere.get(h) ?? 0;
-    for (let i = kept; i < n; i += 1) lost.push(h);
-  }
+  // HEAD must retain, per heading, at least as many copies as the base had DISTINCT VERSIONS.
+  // Keyed on the heading so an entry superseded by editing its Status still passes; counted by
+  // distinct bodies so a same-heading entry with DIFFERENT content still cannot be dropped
+  // (`main` carries two such pairs), while N byte-identical copies may honestly collapse to one.
+  const { lostEntries } = await loadEntrySet();
+  const lost = lostEntries(before, after);
 
   assert.deepEqual(
     lost.map((h) => h.slice(0, 110)),
@@ -114,7 +114,9 @@ test("no FINDINGS entry present in the merge base has been removed", () => {
     `${lost.length} finding(s) present at ${base.slice(0, 8)} are missing from HEAD. ` +
       `Entries are append-only: a finding is superseded by editing its Status, never by deleting it. ` +
       `If a merge resolution dropped them, re-run scripts/audit/findings-merge-resolve.mjs and restore ` +
-      `whatever it does not — a union cannot recover an entry its own side discarded.`,
+      `whatever it does not — a union cannot recover an entry its own side discarded. ` +
+      `NOTE: collapsing byte-identical duplicate copies is allowed and is NOT what this is reporting; ` +
+      `every heading below lost a copy that carried content no remaining copy has.`,
   );
 });
 

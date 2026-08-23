@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { publicFreshnessCopy } from "@/lib/public-gex-snapshot-types";
 import type { PublicGexSnapshot, PublicGexTicker } from "@/lib/public-gex-snapshot";
 
 const TICKERS: PublicGexTicker[] = ["SPX", "SPY", "QQQ"];
@@ -37,15 +38,18 @@ function fmtLevel(n: number | null): string {
   return n.toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
 
-function fmtAge(asof: string | null): string {
-  if (!asof) return "—";
-  const ms = Date.now() - new Date(asof).getTime();
-  if (!Number.isFinite(ms) || ms < 0) return "—";
-  const mins = Math.round(ms / 60_000);
-  if (mins < 1) return "just now";
-  if (mins === 1) return "1 min ago";
-  return `${mins} min ago`;
-}
+/**
+ * The freshness line, split into what it can honestly claim.
+ *
+ * This used to be `fmtAge(asof)` rendered as "Updated {age}". `asof` is the MATRIX COMPUTE time,
+ * not the price's — on a closed market the builder recomputes every few seconds over an unchanged
+ * book, so it read "Updated just now" beside a spot that had not moved since the last bell.
+ * Measured on production 2026-08-22 19:15 ET (Saturday): SPX 7674.37 and SPY 765.72 were Friday's
+ * closes to the cent, stamped under 20 seconds old, with no session label on the page.
+ *
+ * `publicFreshnessCopy` lives in the client-safe types module so the wording is unit-tested; this
+ * component only places it.
+ */
 
 export function GammaSnapshotWidget({ initial }: { initial: PublicGexSnapshot }) {
   const [ticker, setTicker] = useState<PublicGexTicker>(initial.ticker as PublicGexTicker);
@@ -120,6 +124,12 @@ export function GammaSnapshotWidget({ initial }: { initial: PublicGexSnapshot })
     await load(next, true);
   }
 
+  // Recomputed on every render (the 5s poll re-renders), so the age phrase tracks the clock.
+  const freshness = publicFreshnessCopy({
+    asof: snapshot.asof,
+    market_session: snapshot.market_session,
+  });
+
   return (
     <div className="rounded-2xl border border-white/[0.08] bg-[#050608]/60 backdrop-blur-md p-6">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
@@ -141,7 +151,7 @@ export function GammaSnapshotWidget({ initial }: { initial: PublicGexSnapshot })
           ))}
         </div>
         <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-sky-300/50">
-          {loading ? "Loading…" : `Updated ${fmtAge(snapshot.asof)}`}
+          {loading ? "Loading…" : freshness.levels}
         </p>
       </div>
 
@@ -157,6 +167,13 @@ export function GammaSnapshotWidget({ initial }: { initial: PublicGexSnapshot })
               <p className="font-anton text-4xl md:text-5xl text-white leading-none tabular-nums">
                 {fmtLevel(snapshot.spot)}
               </p>
+              {/* Sits under the PRICE, not in the corner beside the levels age — the false claim
+                  was about the price, so the correction belongs where a reader looks for it. */}
+              {freshness.priceNote && (
+                <p className="mt-1 font-mono text-[10px] leading-snug text-amber-300/70">
+                  {freshness.priceNote}
+                </p>
+              )}
             </div>
             <div className="text-right">
               <p

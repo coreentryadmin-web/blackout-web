@@ -6462,6 +6462,34 @@ export async function fetchZeroDteSetupLogRange(sinceDate: string, limit = 500):
 
 /** Ungraded ledger rows from sessions strictly before `beforeDate` (grading needs a
  *  finished session's close). Capped — grading is lazy/incremental. */
+/**
+ * Ungraded 0DTE ledger rows STRICTLY BEFORE `beforeDate` — callers pass today, so this never
+ * returns the current session.
+ *
+ * ⚠ THE `session_date < $1` PREDICATE IS LOAD-BEARING FOR CORRECTNESS, NOT JUST SCOPE. It is the
+ * only thing keeping `zerodte-grade` from stamping permanent wrong grades for ~5 months a year,
+ * and nothing at the call site or in the cron says so (documented 2026-08-23,
+ * `NIGHTHAWK-MAP.md` §12):
+ *
+ *   · the cron's UTC schedule (every 15 min across UTC hours 20-22) is 16:00-18:45 ET under EDT
+ *     but **15:00-17:45 ET under EST**, so four fires a day land at or BEFORE the 16:00
+ *     close every winter;
+ *   · `/api/cron/zerodte-grade` has no ET gate — it calls `gradeZeroDteLedger(force: true)`
+ *     unconditionally;
+ *   · grading is TERMINAL: `gradeZeroDteSetupRow` stamps `graded_at`, which removes the row from
+ *     every future pass, so a wrong grade is never revisited;
+ *   · `gradePlanFromBars` on an incomplete session sees no bar past the 15:30 time stop and falls
+ *     through to `time_stop` priced at the LAST AVAILABLE BAR.
+ *
+ * Compose those and a mid-session fire would freeze a fabricated outcome — wrong in the
+ * flattering direction as often as not — onto a real member's play. The only reason it cannot is
+ * that this query refuses today's rows.
+ *
+ * **So do not widen this to `<=` or to today's session** (the obvious "grade same-day plays
+ * faster" change) without FIRST giving the cron a real ET post-close gate. Doing so is a
+ * money-adjacent behaviour change that looks like a one-character scope tweak and would leave no
+ * schedule edit for a reviewer to catch.
+ */
 export async function fetchUngradedZeroDteRows(beforeDate: string, limit = 12): Promise<ZeroDteSetupLogRow[]> {
   await ensureSchema();
   const normalized = normalizeIsoDateInput(beforeDate);
@@ -9537,6 +9565,33 @@ export async function recordCronJobRun(input: {
       // Best-effort prune; never let retention failures break run recording.
     }
   }
+}
+
+/**
+ * The most recent run of ONE cron job, or null if the table holds none.
+ *
+ * `fetchCronJobLastRuns()` returns the latest row for EVERY job — fine for the ops dashboard,
+ * wasteful for a member request that cares about a single key. More importantly, a caller asking
+ * "has this writer run at all?" must not have to distinguish "key missing from a 40-row array"
+ * from "array empty because the query failed"; here the absence has one shape.
+ *
+ * Note what a null means: no run inside the table's 30-day retention (pruned above), NOT "never".
+ * Callers must bound their claim accordingly.
+ */
+export async function fetchLatestCronJobRun(jobKey: string): Promise<CronJobRunRow | null> {
+  await ensureSchema();
+  const res = await (await getPool()).query(
+    `
+    SELECT id, job_key, status, started_at, duration_ms, message, meta_json
+    FROM cron_job_runs
+    WHERE job_key = $1
+    ORDER BY started_at DESC
+    LIMIT 1
+    `,
+    [jobKey]
+  );
+  const row = res.rows[0];
+  return row ? mapCronJobRunRow(row) : null;
 }
 
 export async function fetchCronJobLastRuns(): Promise<CronJobRunRow[]> {

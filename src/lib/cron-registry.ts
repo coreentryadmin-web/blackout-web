@@ -378,7 +378,13 @@ export const CRON_JOBS: CronJobDefinition[] = [
     name: "SPX Signal Optimizer",
     kind: "http",
     path: "/api/cron/spx-signal-weight-optimize",
-    schedule_label: "Nightly 10 PM UTC",
+    // Names BOTH ET renderings, not just the UTC time. `cron-dst-audit.mjs`'s UTC-labelled check
+    // asks exactly this — does the deployed label own the fact that its ET placement shifts an hour
+    // across the changeover — and returned LABEL DRIFTS on the bare "Nightly 10 PM UTC". The job
+    // itself is DST-correct by construction (no ET gate at all: its window is a rolling
+    // `observed_at > now - 30 days`, absolute time), so the schedule is right and only the label
+    // was short. Same form as x-analytics.
+    schedule_label: "Nightly 10 PM UTC (6 PM ET in EDT, 5 PM ET in EST)",
     // Mirrors railway.spx-signal-weight-optimize.toml — off-window stale suppression (ops #1550).
     schedule_cron_utc: "0 22 * * 1-5",
     stale_after_min: 36 * 60,

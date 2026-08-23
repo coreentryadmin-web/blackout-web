@@ -1,6 +1,7 @@
 import type { ClaimVerification } from "@/lib/bie/verifier";
 import type { BieAnswerEnvelope } from "@/lib/bie/answer-envelope";
 import type { LargoDepth } from "@/lib/largo/largo-depth-mode";
+import type { HelixSignalLedgerStatus } from "@/features/helix/lib/helix-signal-ledger-status";
 
 /** The server's auto-render directive — mirrors `VisualDirective` in largo-terminal.ts. */
 type LargoVisualDirective = {
@@ -211,9 +212,21 @@ export interface FlowAlert {
   implied_volatility?: number;
   otm_pct?: number;
   /** GEX wall cross-reference computed server-side. One of: 'at_gamma_flip' | 'at_call_wall' |
-   *  'at_put_wall' | 'near_call_wall' | 'near_put_wall'. Absent when GEX data is cold or the
-   *  strike is not near any key level. Never fabricated — null/absent = no signal. */
+   *  'at_put_wall' | 'near_call_wall' | 'near_put_wall'. Absent when the strike is not near any
+   *  key level — OR when the print was never evaluated at all. Read `gex_evaluated` to tell those
+   *  apart; never fabricated. */
   gex_proximity?: string;
+  /** Whether this print's strike was actually COMPARED against real GEX levels.
+   *
+   *  `false` means no comparison happened — the ticker fell past the 100-name enrichment cap on a
+   *  wide page, or its levels lookup timed out (300ms) / came back empty. It does NOT mean the
+   *  strike is far from a level.
+   *
+   *  Load-bearing because absence is the common case, not the edge: measured live 2026-08-22, a
+   *  5000-row tape spanned 273 tickers (173 past the cap) and carried `gex_proximity` on 2.2% of
+   *  rows. Without this flag "no wall badge" reads as "not near a wall" for prints nobody looked
+   *  at. See docs/audit/HELIX-MAP.md §9.3. */
+  gex_evaluated?: boolean;
 }
 
 export interface DarkPoolRow {
@@ -371,11 +384,17 @@ export interface HelixSignalOutcomeSummary {
 }
 
 /** Tier 2 item #10 follow-through tracker — reads the ledger helix-signal-outcomes-job.ts
- *  (Tier 2 item #9) writes. See docs/audit/FINDINGS.md for the full root-cause writeup. */
+ *  (Tier 2 item #9) writes. See docs/audit/FINDINGS.md for the full root-cause writeup.
+ *
+ *  `ledger` distinguishes an EMPTY ledger from an UNWRITTEN one — identical from a row count,
+ *  opposite facts. `null` is a third state: the server could not determine which, and the panel
+ *  must not resolve it into either. */
 export async function fetchHelixSignalOutcomes() {
-  return marketFetch<{ rows: HelixSignalOutcomeRow[]; summary: HelixSignalOutcomeSummary | null }>(
-    "/helix/signal-outcomes"
-  );
+  return marketFetch<{
+    rows: HelixSignalOutcomeRow[];
+    summary: HelixSignalOutcomeSummary | null;
+    ledger: HelixSignalLedgerStatus | null;
+  }>("/helix/signal-outcomes");
 }
 
 /** Per-ticker dark pool snapshot — call/put split, PCR, institutional prints by strike. */

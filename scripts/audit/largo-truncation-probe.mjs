@@ -1,8 +1,9 @@
 /**
  * LARGO TRUNCATION PROBE — does the model actually RECEIVE each tool's payload?
  *
- * WHY THIS EXISTS. `anthropicToolLoop` caps every `tool_result` at `MAX_TOOL_RESULT_CHARS` and
- * enforces it with a TAIL slice. A tool over that cap still "works": the call succeeds, the loop
+ * WHY THIS EXISTS. `anthropicToolLoop` caps every `tool_result` at `MAX_TOOL_RESULT_CHARS` by
+ * KEEPING THE FIRST that-many characters AND DISCARDING EVERYTHING AFTER — `raw.slice(0, MAX)`, so
+ * key order decides what survives. A tool over that cap still "works": the call succeeds, the loop
  * completes, and the model writes a fluent answer from whatever survived. Three defects shipped
  * that way in the Night Hawk lane alone — `get_zerodte_record` delivered 1.5% of itself with every
  * aggregate cut off, `get_nighthawk_edition` cut off every play, and `get_nighthawk_outcomes` had
@@ -31,6 +32,7 @@
  *     [--tools=a,b] [--control=get_x] [--base=https://blackouttrades.com] [--json]
  */
 import { mintClerkPremiumSession } from "./lib/prod-clerk-session.mjs";
+import { makeCookieJar } from "./lib/clerk-cookie-jar.mjs";
 import { mentionsTool, parseProbeReply, probeQuestion, summarizeRun } from "./lib/truncation-verdict.mjs";
 
 const arg = (k, d) => {
@@ -41,14 +43,24 @@ const JSON_OUT = process.argv.includes("--json");
 const BASE = arg("base", "https://blackouttrades.com").replace(/\/$/, "");
 
 /**
- * Night Hawk lane tools, with the args each needs. Deliberately the LANE's list rather than all
- * 126 — another lane's owner is better placed to say which of theirs carry enough data to be at
- * risk, and `--tools=` lets them point this at their own without editing the file.
+ * Lane tools, with the args each needs. Deliberately the LANES' list rather than all 129 — a
+ * lane's owner is better placed to say which of theirs carry enough data to be at risk, and
+ * `--tools=` lets them point this at their own subset.
+ *
+ * HELIX's four were added 2026-08-23 by that lane, per this file's own invitation. Their args are
+ * chosen to make the payload as LARGE as it legitimately gets, because a probe run against a small
+ * payload proves nothing about the cap: market-wide (no ticker) is bigger than any single name,
+ * and the tape tools default to 500/400 rows over a 168h window.
  */
 const LANE_TOOLS = [
   ["get_zerodte_record", "days=30"],
   ["get_zerodte_plays", ""],
-  ["get_zerodte_rejections", ""],
+  // Wide window deliberately. Measured 2026-08-23: at "the largest window available" this tool
+  // comes back TRUNCATED, which is (a) the only over-cap tool found across five candidates and so
+  // the current CONTROL, and (b) a real finding about this tool that the Night Hawk lane owns —
+  // reported rather than quietly baked in. A bare "" probes a payload small enough to prove
+  // nothing.
+  ["get_zerodte_rejections", "the largest window available"],
   ["get_nighthawk_edition", ""],
   ["get_nighthawk_outcomes", "window_days=30"],
   ["get_nighthawk_horizons", ""],
@@ -59,6 +71,43 @@ const LANE_TOOLS = [
   ["get_grader_agreement", "days=90"],
   ["get_banger_board", ""],
   ["get_swing_horizon", ""],
+  // ── HELIX lane (docs/audit/HELIX-MAP.md) ──────────────────────────────────────────────────
+  // Market-wide deliberately: no ticker means the whole tape, which is the biggest this gets.
+  ["get_helix_tape_analytics", "no ticker, since_hours=168"],
+  ["get_helix_derived", "no ticker"],
+  ["get_helix_signal_outcomes", ""],
+  // The only one of the four that REQUIRES a ticker. SPX carries the most tape premium.
+  ["get_helix_thermal_compare", "ticker SPX"],
+  // ── SPX SLAYER lane (docs/spx/SLAYER-MAP.md §8 item 5) ────────────────────────────────────
+  // Added 2026-08-23. This lane had never been probed at all, which is not the same as having
+  // been probed clean: the three shipped truncation defects were all found by asking, and nobody
+  // had asked here. Ordered biggest-payload-first from the tool descriptions, so a run that has
+  // to be split with --tools= still covers the likeliest offenders in its first batch.
+  //
+  // `get_spx_play` and `get_spx_structure` are the two fat ones by construction — the play tool
+  // returns "every confluence factor with its weight/detail, full gate pass/fail state, the
+  // 10-item confirmation checklist, MTF/RSI/EMA technicals, adaptive-gate telemetry, watch state,
+  // the AI arbiter's verdict, the option ticket", and the structure tool the whole desk including
+  // the flow tape and dark pool. `get_spx_engine_snapshots` is a HISTORY, so it is probed at a
+  // wide window rather than bare: a default-window read proves nothing about the cap.
+  ["get_spx_play", ""],
+  ["get_spx_structure", ""],
+  // Probed at the tool's OWN DEFAULT (limit 20), not at "the largest window available".
+  // Measured 2026-08-23: it truncates at a wide window, which is a weaker finding than it looks —
+  // any list tool truncates if you ask for enough of it. The question that matters is whether it
+  // truncates AS NORMALLY CALLED, so that is what this recipe asks.
+  ["get_spx_engine_snapshots", "limit 20"],
+  ["get_spx_confluence", ""],
+  ["get_spx_pin", ""],
+  ["get_spx_vs_nighthawk_comparison", ""],
+  // Named `get_gate_rules`, not `get_spx_gates` — it is SPX Slayer's gate-threshold tool despite
+  // the un-prefixed name, and guessing the prefixed one would have named a tool that does not
+  // exist. Verified against tool-defs.ts:268 rather than inferred from the lane.
+  ["get_gate_rules", ""],
+  // Deliberately last and deliberately included: the lightest SPX tool by its own description
+  // ("~2s lane"). A lane where every tool truncates and a lane where none does are both possible;
+  // probing only the fat ones cannot tell those apart.
+  ["get_spx_pulse", ""],
 ];
 
 /**
@@ -71,7 +120,19 @@ const LANE_TOOLS = [
  * `--control=` (it must be one of LANE_TOOLS, so it runs with real arguments), or retire the
  * harness if nothing is over cap any more.
  */
-const DEFAULT_CONTROL = ["get_nighthawk_outcomes", "window_days=180"];
+/**
+ * UPDATED 2026-08-23, exactly as the note above anticipated. #2628 fixed `get_nighthawk_outcomes`,
+ * so it now returns COMPLETE and can no longer prove the instrument — the first HELIX run with it
+ * correctly reported 4 UNVERIFIED rather than 4 clean.
+ *
+ * Replacement found by probing five candidates at their widest windows: `get_zerodte_record`,
+ * `get_grader_agreement`, `get_nighthawk_outcomes` and `get_gate_blocked_value` all came back
+ * COMPLETE at 365 days; only `get_zerodte_rejections` truncated. That it was the ONLY one is worth
+ * noting — the cap is not being hit widely any more, which is good news and also means the pool of
+ * usable controls is thin. When this one is fixed too, the run will go UNVERIFIED again and the
+ * next owner must find another rather than assume the check still works.
+ */
+const DEFAULT_CONTROL = ["get_zerodte_rejections", "the largest window available"];
 
 const only = (arg("tools", "") || "").split(",").map((t) => t.trim()).filter(Boolean);
 const TOOLS = only.length ? LANE_TOOLS.filter(([n]) => only.includes(n)) : LANE_TOOLS;
@@ -107,12 +168,30 @@ if (session.skip) {
   process.exit(2);
 }
 
-async function probe(tool, args) {
-  const res = await fetch(`${BASE}/api/market/largo/query`, {
+// The `__session` JWT dies at ~72s and one Largo question takes seconds, so a multi-tool run
+// ALWAYS outlives a single token. Before this the probe captured `session.cookieHeader` once:
+// measured 2026-08-23, a four-tool run aborted at the fourth with HTTP 401 and that tool went
+// unprobed. The abort is honest — it refuses to call the remainder clean — but it capped this
+// probe at two or three tools per invocation, against a lane list of THIRTEEN, and the documented
+// workaround was to keep splitting `--tools=` by hand.
+const jar = makeCookieJar(session);
+
+async function askLargo(tool, args, cookie) {
+  return fetch(`${BASE}/api/market/largo/query`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Cookie: session.cookieHeader },
+    headers: { "Content-Type": "application/json", Cookie: cookie },
     body: JSON.stringify({ question: probeQuestion(tool, args), depth: "concrete" }),
   });
+}
+
+async function probe(tool, args) {
+  let res = await askLargo(tool, args, await jar.get());
+  // One forced re-mint + retry: the 45s timer can still lose a race against a token that expired
+  // mid-request. A 401 that SURVIVES a fresh token is a real auth failure — the run aborts on it
+  // below, exactly as before — so this narrows what "aborted" means rather than hiding it.
+  if (res.status === 401 || res.status === 403) {
+    res = await askLargo(tool, args, await jar.force());
+  }
   // A transport failure and a hedging model both used to land here as a bare INDETERMINATE, and
   // the report printed them identically. They are not the same finding: one says the harness
   // could not ask, the other says the product could not answer.

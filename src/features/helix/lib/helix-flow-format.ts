@@ -1,5 +1,10 @@
 import type { FlowAlert } from "@/lib/api";
 import { fmtPremium } from "@/lib/api";
+import {
+  openingBadgeLabel,
+  positionIntent,
+  positionIntentTitle,
+} from "@/features/helix/lib/helix-position-intent";
 
 export type HelixFlowSortKey =
   | "time"
@@ -84,25 +89,142 @@ export function daysToExpiry(expiry: string, now: Date = new Date()): number {
   return Math.max(0, Math.round((expMs - todayMs) / 86_400_000));
 }
 
-export function ruleLabel(rule: string): string {
-  const r = rule.toLowerCase();
-  if (r.includes("repeated")) return "REPEAT";
-  if (r.includes("sweep")) return "SWEEP";
-  if (r.includes("floor")) return "FLOOR";
-  if (r.includes("grenade")) return "GRENADE";
-  if (r.includes("block")) return "BLOCK";
-  return rule.toUpperCase().slice(0, 8);
+/**
+ * The shared WORD SET for reading UW's free-text `alert_rule`.
+ *
+ * Two functions parse this field — `ruleLabel` (the tape's per-print badge) and
+ * `executionRouteKey` (the Route Breakdown panel + Largo's `route_breakdown`) — and until now they
+ * knew DIFFERENT words: the badge knew REPEATED and GRENADE, the panel knew SPLIT, CROSS and
+ * MULTI, and neither knew the other's. That gap is measurable, not theoretical.
+ *
+ * MEASURED (live prod tape, 5000 rows / 168h, 2026-08-22 — docs/audit/HELIX-MAP.md §9.8): the panel
+ * bucketed **98.8% of the tape as OTHER**. `RepeatedHits` + `RepeatedHitsAscendingFill` +
+ * `RepeatedHitsDescendingFill` are **28.7% of all prints** and matched none of the panel's six
+ * words — while `ruleLabel` had been rendering all three as a REPEAT badge on that same tape the
+ * whole time.
+ *
+ * Sharing the SET (not the order — see below) means neither reader can silently gain or lose a
+ * word again; `helix-flow-format.test.ts` asserts both draw from exactly this set.
+ */
+const ALERT_RULE_WORDS = {
+  REPEAT: "REPEATED",
+  SWEEP: "SWEEP",
+  FLOOR: "FLOOR",
+  GRENADE: "GRENADE",
+  BLOCK: "BLOCK",
+  SPLIT: "SPLIT",
+  CROSS: "CROSS",
+  MULTI: "MULTI",
+} as const;
+
+export type AlertRuleWord = keyof typeof ALERT_RULE_WORDS;
+
+/**
+ * The two readers answer DIFFERENT QUESTIONS about the same string, so they order the same words
+ * differently. This is deliberate and is the one thing to understand before editing either.
+ *
+ * - The BADGE asks *which rule fired*. `RepeatedHitsSweep` is a repeated-hits alert, so it reads
+ *   REPEAT — and it has rendered that way to members for as long as the function has existed.
+ * - The PANEL asks *how the order executed* (its kicker is literally "◇ execution"). Sweeping is
+ *   an execution mechanism; "repeated hits" is a PATTERN ACROSS PRINTS, not a mechanism. So a rule
+ *   naming both is filed under the mechanism, and REPEAT ranks last — it is the answer only when
+ *   no mechanism was named at all.
+ *
+ * An earlier draft of this change collapsed the two orders into one and flipped `RepeatedHitsSweep`
+ * from SWEEP to REPEAT in the panel. That was wrong: it "fixed" a disagreement that is not a
+ * defect, and it would have quietly redefined an execution panel as a rule-family panel without
+ * anyone deciding to.
+ */
+const BADGE_PRECEDENCE: readonly AlertRuleWord[] = ["REPEAT", "SWEEP", "FLOOR", "GRENADE", "BLOCK"];
+const ROUTE_PRECEDENCE: readonly AlertRuleWord[] = [
+  // Genuine execution mechanisms first, in the panel's original order — so no print that already
+  // had a route changes bucket.
+  "SWEEP", "BLOCK", "SPLIT", "CROSS", "FLOOR", "MULTI", "GRENADE",
+  // ...then the pattern word, which rescues the 28.7% that named no mechanism.
+  "REPEAT",
+];
+
+/** First word of `precedence` contained in `rule`, or null when it names none of them. */
+function matchAlertRule(rule: string | null | undefined, precedence: readonly AlertRuleWord[]): AlertRuleWord | null {
+  const r = String(rule ?? "").toUpperCase();
+  if (!r) return null;
+  for (const key of precedence) {
+    if (r.includes(ALERT_RULE_WORDS[key])) return key;
+  }
+  return null;
 }
 
-/** UW execution route (SWEEP/BLOCK/…) from alert_rule — NOT internal route (whale/0dte/stock). */
-export function executionRouteKey(alert: Pick<FlowAlert, "alert_rule">): string {
-  const rule = (alert.alert_rule || "").toUpperCase();
-  const keys = ["SWEEP", "BLOCK", "SPLIT", "CROSS", "FLOOR", "MULTI"] as const;
-  for (const k of keys) {
-    if (rule.includes(k)) return k;
-  }
-  return "OTHER";
+export function ruleLabel(rule: string): string {
+  // Unmatched rules keep the truncated raw text: the BADGE shows what UW called this print, so a
+  // rule we have no word for is more useful shown than collapsed. Different job from the panel's
+  // bucketing below, which is why the fallbacks differ.
+  return matchAlertRule(rule, BADGE_PRECEDENCE) ?? rule.toUpperCase().slice(0, 8);
 }
+
+/**
+ * What the tape's **Rule** column shows for one print.
+ *
+ * THE RULE IS: the column reports UW's `alert_rule` or it reports NOTHING. It never substitutes a
+ * different field.
+ *
+ * WHY THIS EXISTS AS A FUNCTION. The column used to read
+ * `flow.alert_rule ? ruleLabel(flow.alert_rule) : flow.route?.slice(0, 8) || "—"`, and
+ * `flow.route` is not a rule, a route, or anything UW reported. It is OUR OWN derived
+ * size/tenor bucket, assigned in `unusual-whales.ts`:
+ * `premium >= 1_000_000 ? "whale" : dte == null ? "" : dte <= 0 ? "0dte" : "stock"`.
+ *
+ * So a print with no reported rule rendered the word `whale` or `stock` in a column headed
+ * **Rule**, one row below a print showing `SWEEP`. Those are not the same kind of claim: `SWEEP`
+ * is how the order filled, reported by UW; `whale` is us restating the Prem column that is already
+ * on screen two columns to the left. A member cannot tell them apart, and the substituted value
+ * carries no information the row does not already show.
+ *
+ * MEASURED (live prod tape, 500 rendered rows, 2026-08-23): the Rule column read
+ * `stock:271 · whale:126 · REPEAT:99 · FLOOR:3 · SWEEP:1` — **397 of 500 rows, 79.4%, showed an
+ * internal bucket name** where a member reads execution rules.
+ *
+ * WHY IT IS A CONTRADICTION AND NOT ONLY A MISLABEL. `executionRouteKey` below was fixed to
+ * return `UNREPORTED` for exactly these prints, because no rule was ever reported for them. Live,
+ * the Route Breakdown panel now says **UNREPORTED 95%** while the Rule column beside it shows
+ * `stock`/`whale` for those same rows. Two readers of one field, disagreeing on screen about
+ * whether the field is present — the same one-field-two-readers pattern as §9.8 (`ruleLabel` vs
+ * `executionRouteKey`) and §9.4 (IV units), arriving a third time.
+ *
+ * Absence is returned as `"—"`, matching every other unmeasured cell in the tape (`fmtIv`,
+ * `fmtSpot`, `score`), so "no rule reported" reads the same as every other honest blank.
+ */
+export function ruleBadge(flow: Pick<FlowAlert, "alert_rule">): string {
+  const raw = flow.alert_rule;
+  if (raw == null || String(raw).trim() === "") return "—";
+  return ruleLabel(String(raw));
+}
+
+/**
+ * Bucket for the Route Breakdown panel + Largo's `route_breakdown`, from UW's `alert_rule` —
+ * NOT the internal route (whale/0dte/stock).
+ *
+ * THREE OUTCOMES, and the third is the point:
+ *  - a word (SWEEP/BLOCK/…/REPEAT) when the rule names one;
+ *  - `OTHER` when a rule IS present and names none of them — a real measurement whose answer is
+ *    "some other rule";
+ *  - `UNREPORTED` when the print carries **no `alert_rule` at all**, which is not a route reading
+ *    and must not be counted as one.
+ *
+ * WHY THE THIRD MATTERS. `UNREPORTED` is **70% of the live tape** — every row from the second
+ * writer (HELIX-MAP.md §4A: an SPX/SPY-only feed that sends no rule field). Folding those into
+ * `OTHER` told a member, and told Largo, that we had looked at 5000 prints and found their
+ * execution route to be "other", when no route had ever been reported for 3500 of them. That is
+ * absence published as measurement (_COMMON.md #7) — the same defect class this lane already
+ * fixed in `call_pct`, `pct` and `confidence`.
+ */
+export function executionRouteKey(alert: Pick<FlowAlert, "alert_rule">): string {
+  const raw = alert.alert_rule;
+  if (raw == null || String(raw).trim() === "") return "UNREPORTED";
+  return matchAlertRule(raw, ROUTE_PRECEDENCE) ?? "OTHER";
+}
+
+/** Exported for the drift test only — the word set both readers must draw from. */
+export const ALERT_RULE_WORD_KEYS = Object.keys(ALERT_RULE_WORDS) as AlertRuleWord[];
 
 export function fmtSpot(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n) || n <= 0) return "—";
@@ -122,10 +244,34 @@ export function fmtOi(n: number | null | undefined): string {
   return String(Math.round(n));
 }
 
+/**
+ * Implied volatility, rendered from the ONE unit the feed actually uses: a FRACTION (0.17 = 17%).
+ *
+ * WAS: `iv < 3 ? iv * 100 : iv` — a per-row guess at fraction-vs-percent, which is only safe if
+ * the feed is genuinely mixed-unit. MEASURED (live prod tape, 3500 rows carrying IV, 2026-08-22):
+ * min 0.07, p25 0.13, median 0.17, p75 0.23 — one fractional mode, no second cluster in the tens.
+ * The feed is uniform, so the branch had nothing to disambiguate and only ever mis-scaled its own
+ * tail.
+ *
+ * WHAT THE TAIL ACTUALLY IS, because it changes what "correct" means here. The 148 rows (4.2%) at
+ * or above the old branch point are NOT legitimately high-IV contracts. Every one is SPY, expiry
+ * 2026-08-21, `dte: -1` — EXPIRED, deep-in-the-money calls (365C/400C/500C against a ~640 spot),
+ * mean DTE 3d against the body's 146d. An expiring deep-ITM option is almost entirely intrinsic,
+ * so the provider's IV solve is degenerate and returns noise: 106.2, 69.24, 43.12.
+ *
+ * That is why the old branch was worse than either honest alternative. It rendered 106.2 as
+ * **"106%"** — a plausible-looking IV a member has no reason to distrust. Rendered in the feed's
+ * real unit it reads "10620%", which is self-evidently not a measurement. Given a choice between
+ * a number that lies quietly and one that announces itself, take the second.
+ *
+ * NOT DONE HERE, deliberately: suppressing IV on contracts where the solve is degenerate. That
+ * needs a threshold nobody has justified — real 0DTE contracts do trade at several hundred percent
+ * — and "which IV readings are meaningless" is a product question. Written up in HELIX-MAP §9.4
+ * rather than decided by a magic number in a formatter.
+ */
 export function fmtIv(iv: number | null | undefined): string {
   if (iv == null || !Number.isFinite(iv) || iv <= 0) return "—";
-  if (iv < 3) return `${(iv * 100).toFixed(0)}%`;
-  return `${iv.toFixed(0)}%`;
+  return `${(iv * 100).toFixed(0)}%`;
 }
 
 export function fmtOtm(pct: number | null | undefined): string {
@@ -177,7 +323,15 @@ export function sortFlows(
   });
 }
 
-export type HelixFlowSignal = { id: string; label: string; tone: "bull" | "bear" | "gold" | "sky" | "purple" | "ember" };
+export type HelixFlowSignal = {
+  id: string;
+  label: string;
+  tone: "bull" | "bear" | "gold" | "sky" | "purple" | "ember";
+  /** Optional hover text. Falls back to the label, which is what every existing badge showed —
+   *  a tooltip repeating the badge. Set it where the badge asserts something a reader would
+   *  reasonably want the basis for. */
+  title?: string;
+};
 
 export function flowSignals(flow: FlowAlert, ctx: {
   isWhale?: boolean;
@@ -192,6 +346,21 @@ export function flowSignals(flow: FlowAlert, ctx: {
   const out: HelixFlowSignal[] = [];
   if (ctx.isCompound) out.push({ id: "stack", label: "STACK", tone: "gold" });
   if (ctx.isWhale) out.push({ id: "whale", label: "WHALE", tone: "purple" });
+  // NEW POSITIONING — pushed HERE, third at the latest, on purpose. The desktop tape renders only
+  // `signals.slice(0, 3)` and collapses the rest into a "+N", and almost every Group A print
+  // already carries a `rule` badge — so appending this at the end of the list would have hidden
+  // the badge behind the overflow counter on exactly the rows that have one. Size (WHALE) and
+  // newness (NEW) are the two headline facts about a print; the rest qualify them.
+  //
+  // Only emitted when the derived size PROVES the print cannot be entirely closing (see
+  // helix-position-intent.ts). The other two outcomes — "we looked and cannot tell" and "open
+  // interest was never reported" — deliberately render NO badge: an absent badge here means
+  // "unproven", never "closing".
+  const intent = positionIntent(flow);
+  const opening = openingBadgeLabel(intent);
+  if (opening) {
+    out.push({ id: "opening", label: opening, tone: "gold", title: positionIntentTitle(intent) ?? opening });
+  }
   if (flow.alert_rule) out.push({ id: "rule", label: ruleLabel(flow.alert_rule), tone: "sky" });
   if (ctx.is0dte) out.push({ id: "0dte", label: "0DTE", tone: "ember" });
   if (ctx.hasSplit) out.push({ id: "split", label: "SPLIT", tone: "gold" });

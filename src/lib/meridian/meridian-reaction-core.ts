@@ -69,7 +69,10 @@ export function reactionsForDates(
 // this wrong silently inverts the meaning of the number rather than merely degrading it:
 //
 //   BMO (before market open) — the print lands before the bell, so the report date's own
-//     session IS the reaction. Correct as-is.
+//     session is the one that traded it. But that session must be read from the PRIOR CLOSE,
+//     not its own open: the premarket has already priced the print by the time the bell rings,
+//     so it arrives as an opening GAP that an open→close read starts after. This was wrong
+//     here until 2026-08-22 and inverted the sign on 27% of pre-open prints.
 //   AMC (after market close) — the print lands AFTER that session closed. The report date's
 //     open→close is the drift BEFORE anyone saw the numbers; the reaction is the NEXT
 //     trading session. Attributing the prior session to the print is not a rounding error —
@@ -101,11 +104,42 @@ export type ReactionBasis = "bmo_session" | "amc_next_session" | "assumed_report
  * e.g. MSFT 2025-04-30 (AMC): gapped +9.07%, then drifted -1.32% through the session. An
  * open→close read reports the stock FELL on the print. It rose 7.63%.
  *
+ * THE SAME ARGUMENT APPLIES TO A PRE-OPEN PRINT, AND IT USED TO BE MISSED HERE.
+ *
+ * This comment previously ended by saying open→close was "correct for a pre-open print, which the
+ * market has all session to price". That is false, and it is false for exactly the reason stated
+ * above: a BMO print is released BEFORE the bell, the premarket prices it, and it arrives as an
+ * OPENING GAP. An open→close read starts after that gap — the same half-measurement the AMC case
+ * was fixed for, on the other 43.6% of prints. Measured over 519 settled BMO prints across 120
+ * `importance>=4` names (2025-08 → 2026-08, Benzinga timings, Polygon daily bars):
+ *
+ *   mean |open→close − prior_close→close|                 4.31%
+ *   p90 / max                                            10.04% / 30.94%
+ *   prints where open→close carries the OPPOSITE SIGN    140/519 = 27.0%
+ *
+ * e.g. DDOG 2026-08-06 (BMO): gapped -19.68%, then drifted +0.81% through the session. An
+ * open→close read reports a small GAIN on a print the stock fell 19.03% on. WMT 2026-08-20
+ * (07:00 ET) served -2.39% here while `get_earnings_history` served UW's -9.15% for the same
+ * print — one model, one question, 6.76 points apart depending on which tool it called.
+ *
+ * WHY `prior_close_to_close` AND NOT A PREMARKET-ANCHORED READ. A third candidate — anchor to the
+ * last trade BEFORE the print time, isolating the print from unrelated overnight drift — was
+ * measured against both (90 prints, extended-hours minute bars). It is better where it applies and
+ * it does not apply: 47 of the 90 prints had NO premarket trade before the print at all, and where
+ * premarket volume is thin a single small trade would anchor the headline number. That trades a
+ * known ~4pp bias for an unbounded and invisible one. What it did establish is that
+ * `prior_close_to_close` carries a REAL residual — on the 43 prints where the premarket read is
+ * independent, the two differ by a median 1.18pp (p90 4.10pp) and disagree in sign on 9.3%. That
+ * residual is genuine pre-print drift being attributed to the print. It is disclosed on the value
+ * (see `reaction_includes_prior_drift`) rather than left for a reader to discover.
+ *
  * So the measure travels with the value, the way `reaction_basis` already carries the session:
- *   session_open_to_close — the anchor session's own open→close (correct for a pre-open print,
- *                           which the market has all session to price).
  *   prior_close_to_close  — the last close BEFORE the print → the anchor session's close. The
- *                           only read that contains the gap, and the correct one for AMC.
+ *                           only read that contains the gap. Correct for BOTH bell-relative
+ *                           timings; they differ in WHICH session anchors, not in how it is read.
+ *   session_open_to_close — the anchor session's own open→close. Now reached only when the print
+ *                           timing is UNKNOWN, i.e. a mid-session timestamp, where the release
+ *                           genuinely is priced inside that session and there is no gap to catch.
  */
 export type ReactionMeasure =
   | "session_open_to_close"
@@ -156,6 +190,20 @@ function nextSessionYmd(orderedYmds: string[], afterYmd: string): string | null 
   return null;
 }
 
+/**
+ * The last ET session STRICTLY BEFORE `ymd` present in the bar series.
+ *
+ * The close of that session is the last price that did not know the numbers, which is what a
+ * pre-open print's reaction is measured from. Walks backwards over the series rather than
+ * subtracting a day, so weekends, holidays and any gap in the data are handled by the data.
+ */
+function prevSessionYmd(orderedYmds: string[], beforeYmd: string): string | null {
+  for (let i = orderedYmds.length - 1; i >= 0; i -= 1) {
+    if (orderedYmds[i]! < beforeYmd) return orderedYmds[i]!;
+  }
+  return null;
+}
+
 export type PrintReaction = SessionReaction & {
   reaction_basis: ReactionBasis | null;
   /**
@@ -167,11 +215,24 @@ export type PrintReaction = SessionReaction & {
   reaction_settled: boolean | null;
   /**
    * THE reaction to the print, measured the way `reaction_measure` says. Prefer this over
-   * `session_change_pct` for anything that calls itself a reaction: the two are the same
-   * number for a pre-open print and routinely differ in SIGN for a post-close one.
+   * `session_change_pct` for anything that calls itself a reaction: for a print with a known
+   * bell-relative timing the two routinely differ in SIGN (31.6% of post-close prints, 27.0%
+   * of pre-open ones), because only this one contains the gap.
    */
   reaction_pct: number | null;
   reaction_measure: ReactionMeasure | null;
+  /**
+   * True when `reaction_pct` spans a period the market was CLOSED for, so it necessarily
+   * includes any drift that had nothing to do with the print.
+   *
+   * This is the honest residual on a `prior_close_to_*` read, and it is stated rather than left
+   * to be discovered. Measured against a premarket-anchored read on 43 pre-open prints where
+   * that read is independent: median 1.18pp of the value is pre-print drift, p90 4.10pp, and the
+   * two disagree in sign on 9.3%. Including that drift is the accepted cost of catching the gap
+   * — the alternative anchors the headline number to whatever thin premarket trade happened to
+   * print, which is a worse error because it is invisible. Null when nothing was measured.
+   */
+  reaction_includes_prior_drift: boolean | null;
 };
 
 /**
@@ -200,33 +261,47 @@ export function reactionForPrint(
     reaction_pct: null,
     reaction_measure: null,
     reaction_settled: null,
+    reaction_includes_prior_drift: null,
   };
   if (!anchor) return nulls;
   const rx = reactionForYmd(byYmd, orderedYmds, anchor);
 
-  // The headline reaction. A post-close print is priced overnight, so it is read from the LAST
-  // CLOSE BEFORE THE PRINT (the report date's own close) to the anchor session's close — an
-  // open→close read on the anchor session would skip the gap that is the reaction. A pre-open
-  // print is read open→close, because the market has that whole session to price it.
+  // The headline reaction. A print with a KNOWN bell-relative timing — pre-open or post-close —
+  // is priced while the market is shut, so it arrives as a gap and must be read from the LAST
+  // CLOSE BEFORE THE PRINT to the anchor session's close. An open→close read on the anchor
+  // session starts after that gap and drops the part that IS the reaction.
+  //
+  // The two timings differ only in WHICH close is "before the print":
+  //   AMC — the report date's own close (the print lands after it, reaction is the next session)
+  //   BMO — the close of the session BEFORE the report date (the print lands before that morning's
+  //         bell, so the premarket has already priced it by the open)
+  //
+  // A mid-session (`unknown`) print is the one case with no gap to catch: the release is priced
+  // inside the session it landed in, so open→close remains the right read — and `reaction_basis`
+  // already marks it as an assumption rather than a measurement.
   const anchorBar = byYmd.get(anchor);
-  const priorClose = timing === "amc" ? byYmd.get(reportYmd)?.c : undefined;
-  const reaction_pct =
-    timing === "amc"
-      ? priorClose != null && anchorBar != null
-        ? pctChange(priorClose, anchorBar.c)
-        : null
-      : rx.session_change_pct;
+  const priorCloseYmd =
+    timing === "amc" ? reportYmd : timing === "bmo" ? prevSessionYmd(orderedYmds, reportYmd) : null;
+  const priorClose = priorCloseYmd != null ? byYmd.get(priorCloseYmd)?.c : undefined;
+  const spansClosedMarket = timing === "amc" || timing === "bmo";
+  const reaction_pct = spansClosedMarket
+    ? // No close before the print means no anchor for the gap. Falling back to the anchor
+      // session's open→close here would quietly substitute a DIFFERENT quantity under the same
+      // field name — the exact failure the AMC branch already refuses. Null instead.
+      priorClose != null && anchorBar != null
+      ? pctChange(priorClose, anchorBar.c)
+      : null
+    : rx.session_change_pct;
   // The anchor session being TODAY-and-open is what makes the far end a last trade rather than a
   // close, so the measure says so and `reaction_settled` carries the same fact as a boolean.
   const settled = !(openSessionYmd != null && anchor === openSessionYmd);
-  const measure: ReactionMeasure =
-    timing === "amc"
-      ? settled
-        ? "prior_close_to_close"
-        : "prior_close_to_last"
-      : settled
-        ? "session_open_to_close"
-        : "session_open_to_last";
+  const measure: ReactionMeasure = spansClosedMarket
+    ? settled
+      ? "prior_close_to_close"
+      : "prior_close_to_last"
+    : settled
+      ? "session_open_to_close"
+      : "session_open_to_last";
 
   // Basis only means something once a real move was measured — reporting a basis beside two
   // nulls would claim we know how a value we do not have was derived. Same for the measure:
@@ -238,6 +313,9 @@ export function reactionForPrint(
     reaction_pct,
     reaction_measure: reaction_pct != null ? measure : null,
     reaction_settled: reaction_pct != null ? settled : null,
+    // Describes `reaction_pct`, so like the measure it is only claimed when there is a value to
+    // describe. A `session_open_to_*` read spans no closed market, hence false rather than null.
+    reaction_includes_prior_drift: reaction_pct != null ? spansClosedMarket : null,
   };
 }
 

@@ -194,6 +194,10 @@ export async function probeGeometry(page) {
         (el) => vis(el) && !hiddenByScroll(el) && visibleFraction(el) >= HIDDEN_BY_CLIP && !animated(el)
       );
       const collide = [];
+      /** Detected pairs, tagged with `data-collide-id` so a localiser pass can re-find them. */
+      const collidePairs = [];
+      const collideSeen = new Set();
+      let collideSeq = 1;
       for (const t of leaves) {
         if (t.closest("[role=dialog], [aria-modal=true], [role=menu], [role=listbox], [role=tooltip]")) continue;
         if (hiddenByScroll(t) || visibleFraction(t) < HIDDEN_BY_CLIP || animated(t)) continue;
@@ -228,7 +232,39 @@ export async function probeGeometry(page) {
           // A quarter of the smaller box: a 1px kiss is a rounding artifact, a quarter is a collision.
           if (ov > 0.25 * Math.min(a.width * a.height, b.width * b.height)) {
             const ctrl = (c.innerText || c.getAttribute("aria-label") || c.tagName).trim();
-            collide.push(`"${t.textContent.trim().slice(0, 20)}" over control "${ctrl.slice(0, 20)}"`);
+            const key = `"${t.textContent.trim().slice(0, 20)}" over control "${ctrl.slice(0, 20)}"`;
+            collide.push(key);
+            // TAG THE ACTUAL ELEMENTS so a follow-up pass can LOCALISE what this pass DETECTED.
+            //
+            // The strings above prove a collision exists and are useless for fixing one — they name
+            // no boxes, no shared ancestor, and no layout rule. A localiser that re-finds the pair
+            // by its own geometry has to re-implement every predicate above (scroll-clipping,
+            // clip fraction, animation, fixed/floating layering), and a first attempt at exactly
+            // that reported EIGHT scrolled-away GEX-matrix rows sitting on the sticky header — the
+            // precise false-positive class the `hiddenByScroll` comment documents — while missing
+            // all three real collisions. So the pass that already applied the predicates marks its
+            // survivors instead. Purely additive: `collide` is unchanged, and callers that ignore
+            // `collidePairs` see no difference.
+            const mark = (el) => {
+              let id = el.getAttribute("data-collide-id");
+              if (!id) {
+                id = String(collideSeq++);
+                el.setAttribute("data-collide-id", id);
+              }
+              return id;
+            };
+            // Deduped on the SAME key `collide` is deduped on, so the two outputs stay one-to-one.
+            // Without this a localiser prints the same pair twice for a repeated label while the
+            // detector reports it once, and the counts silently disagree.
+            if (!collideSeen.has(key)) {
+              collideSeen.add(key);
+              collidePairs.push({
+                a: mark(t),
+                b: mark(c),
+                text: t.textContent.trim().slice(0, 40),
+                control: ctrl.slice(0, 40),
+              });
+            }
           }
         }
       }
@@ -236,7 +272,8 @@ export async function probeGeometry(page) {
       return {
         clipped: [...clipped].map(([k, px]) => `${k} — cut by ${px}px`),
         collide: [...new Set(collide)],
+        collidePairs,
       };
     })
-    .catch(() => ({ clipped: [], collide: [] }));
+    .catch(() => ({ clipped: [], collide: [], collidePairs: [] }));
 }

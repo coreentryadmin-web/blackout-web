@@ -7,6 +7,7 @@ import {
   flowMatchesDeepLink,
   parseHelixDeepLink,
 } from "./helix-flow-deep-link.ts";
+import type { FlowAlert } from "./api.ts";
 
 test("buildHelixFlowDeepLink prefers alert_id", () => {
   const url = buildHelixFlowDeepLink({
@@ -85,4 +86,75 @@ test("darkpoolMatchesDeepLink matches ticker time premium", () => {
     ),
     true
   );
+});
+
+// ── Strike precision (2026-08-23) ─────────────────────────────────────────────────────────────
+//
+// `buildHelixFlowDeepLink` rounded the strike, mirroring the `premium` rounding beside it. Rounding
+// a premium drops cents nobody needs; rounding a strike NAMES A DIFFERENT CONTRACT. Measured live:
+// 99 of 5000 rows (2.0%) carry a fractional strike, so a shared link for any of them stated a
+// strike that does not exist — and a link built from 182.5 also matched a DIFFERENT 183 print.
+
+const dlFlow = (over: Partial<FlowAlert> = {}): FlowAlert =>
+  ({
+    ticker: "NVDA", strike: 180, option_type: "CALL", expiry: "2026-08-28",
+    premium: 1_000_000, direction: "bullish", score: 60, route: "sweep",
+    alerted_at: "2026-08-21T18:00:00.000Z",
+    ...over,
+  }) as FlowAlert;
+
+const dlTarget = (qs: string) => parseHelixDeepLink(new URLSearchParams(qs))!;
+
+test("a fractional strike survives into the URL instead of being rounded away", () => {
+  const url = buildHelixFlowDeepLink(dlFlow({ strike: 182.5 }));
+  assert.match(url, /strike=182\.5/);
+  assert.doesNotMatch(url, /strike=183/);
+});
+
+test("a new fractional link matches ONLY its own contract", () => {
+  const target = dlTarget(buildHelixFlowDeepLink(dlFlow({ strike: 182.5 })).split("?")[1]);
+  assert.equal(flowMatchesDeepLink(dlFlow({ strike: 182.5 }), target), true);
+  // The collision this fixes: before, the rounded link matched the neighbouring integer strike.
+  assert.equal(flowMatchesDeepLink(dlFlow({ strike: 183 }), target), false);
+  assert.equal(flowMatchesDeepLink(dlFlow({ strike: 182 }), target), false);
+});
+
+test("links ALREADY SHARED with a rounded strike are not stranded", () => {
+  // The whole reason the matcher keys off the TARGET's precision rather than comparing exactly.
+  // Every link posted to Discord before this change carries a rounded strike.
+  const legacy = dlTarget("ticker=NVDA&strike=183&expiry=2026-08-28&type=C&premium=1000000");
+  assert.equal(flowMatchesDeepLink(dlFlow({ strike: 182.5 }), legacy), true, "legacy link must still resolve");
+  assert.equal(flowMatchesDeepLink(dlFlow({ strike: 183 }), legacy), true);
+});
+
+test("an integer strike still round-trips exactly", () => {
+  const target = dlTarget(buildHelixFlowDeepLink(dlFlow({ strike: 180 })).split("?")[1]);
+  assert.equal(flowMatchesDeepLink(dlFlow({ strike: 180 }), target), true);
+  assert.equal(flowMatchesDeepLink(dlFlow({ strike: 181 }), target), false);
+});
+
+test("premium keeps its rounding — cents are noise, strike halves are not", () => {
+  // Deliberately unchanged: the two look alike and are not the same judgement.
+  const url = buildHelixFlowDeepLink(dlFlow({ premium: 1_000_000.49 }));
+  assert.match(url, /premium=1000000/);
+});
+
+test("the full build -> parse -> match round trip holds across contract shapes", () => {
+  // The invariant a member depends on: click a shared link, the print highlights. Previously only
+  // build -> parse was covered, never build -> parse -> MATCH.
+  for (const over of [
+    { alert_id: "abc123" },
+    {},
+    { alerted_at: "2026-08-21T18:00:00.847Z" },
+    { option_type: "PUT" },
+    { strike: 182.5 },
+    { strike: 437.5, ticker: "DELL" },
+    { tape_time_estimated: true },
+  ] as Partial<FlowAlert>[]) {
+    const flow = dlFlow(over);
+    const url = buildHelixFlowDeepLink(flow);
+    const target = parseHelixDeepLink(new URLSearchParams(url.split("?")[1] ?? ""));
+    assert.ok(target, `no target parsed for ${JSON.stringify(over)}`);
+    assert.equal(flowMatchesDeepLink(flow, target), true, `round trip broke for ${JSON.stringify(over)}`);
+  }
 });

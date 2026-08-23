@@ -7,6 +7,7 @@ import { ProductMark } from "@/components/marks/ProductMark";
 import { SpxLiveSpotPrice, priceVsLevel, PriceLevelIndicator } from "./SpxLiveSpotPrice";
 import { SpxIosMarketStrip } from "./ios/SpxIosMarketStrip";
 import { SpxIosMetricGroups } from "./ios/SpxIosMetricGroups";
+import { SPX_DESK_MAX_PAIN_LABEL } from "@/features/spx/lib/spx-metric-labels";
 
 type Props = {
   desk?: SpxDeskPayload;
@@ -91,11 +92,15 @@ export function SpxSniperHeader({
 const METRIC_TIPS = {
   vix: "CBOE Volatility Index — the market's 30-day implied-volatility gauge. Higher = bigger expected swings.",
   vwap: "Volume-weighted average price for today's session — the fair-value line institutions track.",
-  vwapVW: "True volume-weighted via SPY minute volume.",
+  vwapVWProxy:
+    "Volume-weighted using SPY 1-minute share volume as the index proxy — SPX index bars carry no volume of their own (ISSUE-16).",
+  vwapVWNative: "Volume-weighted using the index bars' own volume.",
+  vwapEqualWeight:
+    "NOT volume-weighted: SPX index bars carry no volume, so this is an equal-weight average of each minute's typical price.",
   gex: "Net dealer gamma exposure — positive dampens moves, negative amplifies them.",
   regime: "TREND regime — price vs the 20/50-day EMAs (bullish / bearish / neutral). Distinct from the GAMMA regime (long/short gamma) the chart banner and EOD pin show, which is spot vs the gamma flip — the two answer different questions.",
   flip: "Strike where net dealer gamma flips sign — above it dealers dampen moves, below it they amplify. This desk value is the NEAR-TERM aggregate (multiple expiries); the chart's flip line is 0DTE-scoped, so the two can read differently.",
-  maxPain: "Strike where the most option value expires worthless — a common pin magnet into the close. This desk value is the NEAR-TERM aggregate (multiple expiries); the EOD pin + chart use the 0DTE-scoped max pain, so the two can read differently.",
+  maxPain: "Strike where the most option value expires worthless — a common pin magnet into the close. OI = computed from OPEN INTEREST only, aggregated across the near-term expiries. The EOD pin panel shows EFF MAX PAIN instead — 0DTE-scoped and weighted by open interest AND today's volume — so the two are different numbers by design and can read differently.",
   ivRank: "Where implied volatility sits inside its 1-year range (0–100).",
   ema: "Exponential moving averages (20/50/200-day) — trend guide rails; recent price weighs more.",
   sma: "Simple moving averages (50/200-day) — slower structural trend lines.",
@@ -192,9 +197,15 @@ function DeskTopStatsRow({
           level={desk?.vwap ?? null}
           spot={spot}
           title={
-            desk?.vwap_volume_weighted
-              ? `${METRIC_TIPS.vwap} ${METRIC_TIPS.vwapVW}`
-              : METRIC_TIPS.vwap
+            // Name the actual basis. The old copy hardcoded "via SPY minute volume" for every
+            // weighted read, which would be a false provenance claim the moment the bars carry
+            // their own volume — and said nothing at all in the unweighted case, leaving a member
+            // to assume a plain VWAP. `vwap_volume_source` is the field that knows.
+            desk?.vwap_volume_source === "spy_proxy"
+              ? `${METRIC_TIPS.vwap} ${METRIC_TIPS.vwapVWProxy}`
+              : desk?.vwap_volume_source === "native"
+                ? `${METRIC_TIPS.vwap} ${METRIC_TIPS.vwapVWNative}`
+                : `${METRIC_TIPS.vwap} ${METRIC_TIPS.vwapEqualWeight}`
           }
           vw={desk?.vwap_volume_weighted === true}
         />
@@ -220,7 +231,7 @@ function DeskTopStatsRow({
           title={METRIC_TIPS.flip}
         />
         <StatPill
-          label="Max Pain"
+          label={SPX_DESK_MAX_PAIN_LABEL}
           value={showValues ? fmtPrice(desk?.max_pain ?? null) : "—"}
           tone="cyan"
           level={desk?.max_pain ?? null}

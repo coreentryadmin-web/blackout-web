@@ -9,6 +9,7 @@ const BASE = {
   dteFilter: "all" as const,
   indicesOnly: false,
   watchlistOnly: false,
+  watchlistCount: 0,
   tickerFilter: "",
 };
 
@@ -26,7 +27,11 @@ test("countActiveHelixFilters: counts each non-default filter independently", ()
   assert.equal(countActiveHelixFilters({ ...BASE, whalesOnly: true }), 1);
   assert.equal(countActiveHelixFilters({ ...BASE, dteFilter: "0dte" }), 1);
   assert.equal(countActiveHelixFilters({ ...BASE, indicesOnly: true }), 1);
-  assert.equal(countActiveHelixFilters({ ...BASE, watchlistOnly: true }), 1);
+  // CHANGED 2026-08-23, deliberately: this line used to read `{ ...BASE, watchlistOnly: true }`
+  // and expect 1 — i.e. it asserted the defect. `applyTapeFilters` skips the watchlist filter on
+  // an empty list, so the flag alone narrows nothing, and counting it told the member they had
+  // filtered something when the tape was unfiltered. The count now needs the list too.
+  assert.equal(countActiveHelixFilters({ ...BASE, watchlistOnly: true, watchlistCount: 3 }), 1);
   assert.equal(countActiveHelixFilters({ ...BASE, tickerFilter: "SPX" }), 1);
 });
 
@@ -40,4 +45,15 @@ test("countActiveHelixFilters: sums multiple simultaneous non-default filters", 
     }),
     3
   );
+});
+
+test("countActiveHelixFilters: an INERT watchlist filter counts as zero", () => {
+  // The flag is on and the chip renders lit, but the list is empty so nothing is filtered. This
+  // is the state the old assertion above blessed.
+  assert.equal(countActiveHelixFilters({ ...BASE, watchlistOnly: true, watchlistCount: 0 }), 0);
+});
+
+test("countActiveHelixFilters: starred tickers alone are not a filter", () => {
+  // A member can star names without switching the filter on; that must not read as filtering.
+  assert.equal(countActiveHelixFilters({ ...BASE, watchlistCount: 9 }), 0);
 });
