@@ -24,6 +24,7 @@ import "server-only";
  */
 
 import { roundFloats } from "@/lib/round-floats";
+import { fitVectorAnalyticsForModel } from "@/lib/largo/vector-analytics-fit";
 import { normalizeVectorTicker } from "@/features/vector/lib/vector-ticker";
 import { computeVectorBarAnalytics, opexContext } from "@/lib/largo/vector-analytics-core";
 import { etStamp, etSessionDate } from "@/lib/largo/temporal/bar-session-date";
@@ -218,7 +219,10 @@ export async function vectorAnalyticsForLargo(
           .catch(() => null)
       : null;
 
-    return roundFloats({
+    // Rounded at the data boundary, THEN fitted for the transport. Order matters: rounding shrinks
+    // the payload (7499.360000000001 -> 7499.36), so fitting first would budget against numbers
+    // wider than the ones actually served and trim more than necessary.
+    return fitVectorAnalyticsForModel(roundFloats({
       available: true,
       ticker,
       as_of: new Date(nowMs).toISOString(),
@@ -263,7 +267,7 @@ export async function vectorAnalyticsForLargo(
       /** Coaching is an SPX desk product, not a per-ticker one — its absence on a single name is
        *  scope, not an outage, and must not be reported as one. */
       coaching_scope: isSpx ? "spx" : "not_applicable_non_spx",
-    });
+    }));
   } catch (e) {
     return {
       available: false,
