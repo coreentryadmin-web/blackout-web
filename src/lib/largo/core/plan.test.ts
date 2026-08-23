@@ -134,7 +134,12 @@ test("the caveat is APPENDED — an answer is never suppressed on a heuristic", 
   const answer = "**Verdict**\nSPX is at 7757.64.";
   const out = applyPlanCaveat(answer, [{ code: "historical_answered_from_live_only", detail: "X happened." }]);
   assert.ok(out.startsWith(answer), "the original answer survives verbatim");
-  assert.match(out, /Timeframe caveat/);
+  // "Timeframe NOTE", not "caveat": the heading must match the terminal's caveat matcher
+  // (/^>\s*\*\*(?:Timeframe|Plan) note\.\*\*/) and the label it renders. With "caveat" the block was
+  // still peeled off the body but classified as the generic `other` kind and shown under the label
+  // "Note", so the timeframe warning lost its identity on the way to the member. Pinned as a
+  // blockquote too — italic or bare prose matches nothing and stays buried in the answer body.
+  assert.match(out, /\n> \*\*Timeframe note\.\*\*/);
   assert.match(out, /X happened\./);
   assert.match(out, /current, not as of that period/);
   assert.equal(applyPlanCaveat(answer, []), answer, "no violation, no change");

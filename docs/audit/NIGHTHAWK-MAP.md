@@ -450,12 +450,12 @@ Every line here is a gap, not a conclusion.
 | # | UNKNOWN | Why it is not answerable from the tree | How to close it |
 |---|---|---|---|
 | U1 | Does deployed EventBridge carry `banger-discovery`'s two-hour schedule? | `blackout-infra` is out of session scope; the registry is a mirror | run `scripts/audit/cron-dst-audit.mjs --infra=<path>` with the infra repo attached |
-| U2 | DST-correctness of the other 8 NH crons | the 2026-08-21 audit run covered `nighthawk-morning-confirm`, `nighthawk-outcomes`, `swing-discovery` (all correct in both offsets) and `banger-discovery`; **`banger-live-sync`, `nighthawk-edition`, `swing-active-refresh`, `zerodte-grade`, `zerodte-warm` were not reported** | same run, reading the per-route table |
+| U2 | DST-correctness of the remaining NH crons | the 2026-08-21 audit covered `nighthawk-morning-confirm`, `nighthawk-outcomes`, `swing-discovery` (correct in both offsets) and `banger-discovery`. **Three of the five it missed are now resolved by inspection (2026-08-23) — see §13.** `banger-live-sync` brackets RTH in both offsets; `zerodte-grade` DRIFTS but is harmless; `zerodte-warm` is immune by construction. Still open: **`nighthawk-edition`, `swing-active-refresh`** | run `cron-dst-audit.mjs --infra=<path>` with blackout-infra attached — inspection cannot see the DEPLOYED schedule |
 | U3 | Does `get_nighthawk_outcomes` still deliver its full payload in production? | **Unanswerable right now, and the reason is NOT Night Hawk.** #2480 fixed it once, it recurred 2026-08-22, #2628 is the follow-up. Two probe runs on 2026-08-22 ~23:30 UTC both came back INDETERMINATE, and the second (scoped to one tool, so it outlived its session) showed why: Largo returned its canned fallback — *"I couldn't pull enough live data to answer that"* — instead of calling the tool. **Measured platform-wide, not NH-specific:** the same fallback came back for an SPX-structure question, a flow-tape question, a second NH tool, and even a plain non-data question ("what products does BlackOut offer"), i.e. the fallback's own suggested remedy also fails. So the Largo agent is degraded in production and no Largo-boundary claim about ANY product is verifiable until it recovers | re-run `largo-truncation-probe.mjs` once Largo answers a control question at all. **Also needs a new `--control=`**: the probe's default control is `get_nighthawk_outcomes` itself, and the probe's own header (line 68) predicts that #2480/#2628 make it return COMPLETE, at which point it can no longer prove the instrument |
 | U4 | Real board-build p50/p95 during RTH | the 3s never-block ladder means a slow build is invisible as latency — it shows up as an empty board instead | instrument `buildAndPublishBoard`; measure during RTH, not off-hours |
 | U5 | How often the never-block ladder actually serves `buildMinimalBoardFallback()` | nothing counts it today | a counter on the fallback branch; an empty board with `discovery_health` all-`ok` is the signature |
 | U6 | Live pixel state of `/nighthawk` at desktop + 430 | not measurable off-hours; a selector assertion is not a UI test | `proxy-browser.cjs` from the repo root during RTH |
-| U7 | `feature_vector` is persisted and, per the provenance doc §7G, **consumed by nothing** | still true at `9b20b63c` as far as this pass could tell | either wire it into calibration or record why it is retained |
+| ~~U7~~ | ~~`feature_vector` is persisted and consumed by nothing~~ **— WRONG, and it was inherited.** The claim came from `NIGHTHAWK-DATA-PROVENANCE.md` §7G (2026-07-25); this map repeated it as an open UNKNOWN | **CLOSED 2026-08-23.** It has at least four readers: `largo/play-similarity.ts` (this lane's own Largo boundary, casts it to `SetupFeatureVector`), `calibration-rail-graduation.ts` (reads pinned `reg_structure`), `feature-store.ts`, and `thesis-health.ts` (compares the pinned commit structure against live) | nothing — closed. The lesson is the one §9 already makes: a stale doc's absence-claim is not evidence, and this map inherited one without re-checking it |
 
 ---
 
@@ -544,7 +544,61 @@ removed from the deploy. FINDINGS entry carries the same status.
 
 ---
 
-## 12. How to use this file
+## 12. Cron DST exposure — inspected 2026-08-23
+
+Closes three of the five NH crons `cron-dst-audit.mjs` had not reported on (U2). **This is code
+inspection against `cron-registry.ts`, which is a MIRROR of the deployed EventBridge manifest** — it
+cannot see what production actually fires, so each verdict below is "correct as written", not
+"verified deployed". The real audit still needs `blackout-infra` attached.
+
+| Cron | Registry UTC | Under EDT | Under EST | Verdict |
+|---|---|---|---|---|
+| `banger-live-sync` | `*/5 11-21 * * 1-5` | 07:00–17:00 ET | 06:00–16:00 ET | **CORRECT** — a wide band that brackets RTH in *both* offsets, the audit's own "not drift" discrimination |
+| `zerodte-grade` | `*/15 20-22 * * 1-5` | 16:00–18:45 ET | **15:00–17:45 ET** | **DRIFTS, but harmless — see below** |
+| `zerodte-warm` | `market_hours_only` | — | — | **IMMUNE by construction — see below** |
+| `nighthawk-edition` | — | — | — | **UNKNOWN**, still open |
+| `swing-active-refresh` | — | — | — | **UNKNOWN**, still open |
+
+### `zerodte-grade` — the near-miss worth reading
+
+The chain looks damning, and was investigated as a suspected P1 before being cleared:
+
+- the schedule genuinely drifts — under EST four fires land at or **before** the 16:00 close;
+- `/api/cron/zerodte-grade/route.ts` has **no ET gate**; it calls `gradeZeroDteLedger(force: true)`
+  unconditionally;
+- grading is **terminal** — `gradeZeroDteSetupRow` stamps `graded_at`, which removes the row from
+  every future pass ("everything must land in this one try");
+- `gradePlanFromBars` (`plan.ts:405-433`) never sees a bar past the time stop on an incomplete
+  session, so it falls through to `time_stop` priced at **the last available bar**.
+
+Composed, that stamps a permanent wrong grade — in the flattering *and* unflattering direction — for
+roughly five months a year.
+
+**It does not happen, because `fetchUngradedZeroDteRows` (`db.ts:6465`) selects
+`WHERE graded_at IS NULL AND session_date < $1::date`.** The grader never touches the current
+session, so its bars are always complete.
+
+> **The safety lives outside the schedule, and that is the finding.** `zerodte-grade` is correct
+> only because of a `WHERE` clause in a different file. A plausible future change — "grade same-day
+> plays faster" — would silently arm a money-adjacent defect with **no schedule edit to review**.
+> The coupling is now commented at the query.
+
+### `zerodte-warm` — immune for a structurally better reason
+
+`warmZeroDteBoard` does not self-gate on ET either, but it cannot commit off-hours regardless of
+when its cron fires: **G-2 (opening window) and G-14 (late afternoon) compute ET wall-clock
+in-process** via `etNowParts()`, evaluated at scan time.
+
+That is the pattern worth generalising across the fleet:
+
+**A gate that derives its own ET is immune to cron drift. A job whose correctness depends on *when
+it was invoked* is not.** `zerodte-warm` is the first kind. `zerodte-grade` is the second kind that
+happens to be saved by an unrelated query predicate — which is a weaker guarantee wearing the same
+green badge.
+
+---
+
+## 13. How to use this file
 
 - **Before any Night Hawk fix**, check §9 — three of the most-cited open defects are already fixed,
   and a PR that "fixes" them again is noise.
