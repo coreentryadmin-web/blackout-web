@@ -105,6 +105,11 @@ test("RATCHET: no HELIX file quantises a strike to the nearest dollar for contra
     const line = lines[i]!;
     if (!/:\d+:.*Math\.round\(.*strike/.test(line)) continue; // context lines use `-`, not `:`
     if (line.includes(".test.ts")) continue;
+    // Prose, not code. This module's own header NAMES the pattern it exists to remove, and a
+    // ratchet that fires on its own documentation turns every future edit to that comment into a
+    // red build — the failure mode where a guard is weakened because it cries wolf.
+    const code = line.replace(/^[^:]*:\d+:/, "").trim();
+    if (code.startsWith("*") || code.startsWith("//") || code.startsWith("/*")) continue;
     if (/strike\s*\*\s*1000/.test(line)) continue;            // mills — the CORRECT precision
     if (line.includes("strike-rounding: intentional")) continue;
     const above = `${lines[i - 1] ?? ""}\n${lines[i - 2] ?? ""}`;
