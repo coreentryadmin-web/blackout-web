@@ -25,6 +25,25 @@ a defect. Live-market interaction testing (clicking, filtering, sorting, hoverin
 item 2's "a single screenshot is not enough") is queued for the next **LIVE VALIDATION** window
 (Mon–Fri 09:30–13:00 ET, `_COMMON.md` rule 6b-i) and is a known gap in this pass, not an omission.
 
+**⚠️ THIRD METHODOLOGY NOTE — CORRECTION, added 2026-08-23 same day: every desktop shot in the
+original pass used the WRONG user agent, and one finding built on it was FALSE. `proxy-browser.cjs`
+defaults to a fixed iPhone UA (`BlackOutiOSApp/1.0`) regardless of `--viewport` — its own doc
+comment says so explicitly ("note the UA stays mobile, so a UA-gated shell will still render its
+mobile variant"), and every `*-desktop` shot in the original pass was taken with `--viewport
+1440x900` but WITHOUT the required `--desktop` flag. Several BLACKOUT components read the UA
+(`useIosNativeShell()`) to switch into a compact/native single-panel layout — so every "desktop"
+shot in this file's first version was actually showing the MOBILE/COMPACT layout stretched into a
+1440px frame, not the real desktop layout. This produced one confirmed false finding: §2's original
+"P0" (SPX Slayer's Vector panel leaving ~45% of the desktop content blank) does not exist — it was
+the compact single-panel-tab layout incorrectly engaging under the iPhone UA. **Re-shot with the
+correct `--desktop` flag (real desktop UA, `deviceScaleFactor:1`, `isMobile:false`) same day; every
+`§N` LIVE desktop entry below is now marked either `RE-VERIFIED 2026-08-23 (correct UA)` or, where
+not yet re-shot, `UNVERIFIED — ORIGINAL SHOT USED WRONG UA, DO NOT TRUST` until it is.** The
+original mobile shots are unaffected — mobile pages are supposed to render with a mobile UA, so
+those entries stand as recorded. Lesson for the next pass: always pass `--desktop` alongside
+`--viewport 1440x900` per `docs/audit/LIVE-UI-CONNECTION.md`'s own recipe, which shows the flag but
+doesn't shout its necessity — this file now does.
+
 ---
 
 ## 0. What this map covers
@@ -53,19 +72,34 @@ gates renders `ComingSoon` (§1.3 below), never a 404 or a blank page.
 
 ---
 
-## 1. Shared chrome — the one thing every route has in common
+## 1. Shared chrome — CORRECTED 2026-08-23: there are TWO nav components, not one
 
-**Coordinates:** `src/components/Nav.tsx` (550 lines) is the ENTIRE top navigation for the whole
-site — marketing pages and every authenticated desk page render the exact same component. There is
-no separate "app nav" / desk-only chrome. `src/components/layout/DeskShell.tsx` (28 lines) wraps
-desk routes with a `--nav-offset` top-padding var and does nothing else — desk pages do not add
-their own navigation rail, breadcrumb, or product switcher on top of it.
+**This whole section originally claimed a single shared nav across the entire site. That claim was
+WRONG**, and wrong for the same root cause as every other correction in this file (top-of-file
+note): the original pass's screenshots all used the wrong UA, and `/`, `/pricing`, and `/upgrade`
+happened to be exactly the pages where that mattered architecturally, not just cosmetically.
 
-**LIVE 2026-08-23** — confirmed identical nav bar (logo · Features ▾ dropdown · FAQ · Learn ·
-"Open desk →" CTA) rendered pixel-for-pixel across `/flows`, `/heatmap`, `/vector`, `/meridian`,
-`/nighthawk` screenshots.
+**Coordinates, corrected:** there are two distinct nav components. **`src/components/Nav.tsx`**
+(550 lines, "Features ▾" dropdown + FAQ + Pricing + Learn + "Open desk →") is used on every
+authenticated desk route (`/flows`, `/heatmap`, `/vector`, `/meridian`, `/nighthawk`, `/terminal`,
+`/dashboard`) AND `/account`. **`src/components/landing/StaticMarketingNav.tsx`** (40 lines — flat
+links "Platform" → `/#protocol`, "Products" → `/#modules`, "Free Tool" → `/tools/gamma-snapshot`,
+"Learn", "FAQ", "Pricing", no dropdown) is used by `MarketingPageShell.tsx` on the `(marketing)`
+route group: `/`, `/pricing`, `/upgrade`, and presumably the rest of that group (`/about`,
+`/faq`, `/learn*`, `/vs/others`, `/why-blackout`, legal pages — not individually confirmed this
+pass). `src/components/layout/DeskShell.tsx` (28 lines) wraps desk routes with a `--nav-offset`
+top-padding var and does nothing else — desk pages do not add their own navigation rail,
+breadcrumb, or product switcher beyond `Nav.tsx`.
 
-### 1.1 The "Features" dropdown IS the cross-product switcher
+**`RE-VERIFIED 2026-08-23 (correct UA)`** — confirmed `Nav.tsx` (logo · Features ▾ dropdown · FAQ ·
+Pricing · Learn · "Open desk →") identical across `/flows`, `/heatmap`, `/vector`, `/meridian`,
+`/nighthawk`, `/terminal`, `/account`. Confirmed `StaticMarketingNav.tsx` (BLACKOUT wordmark ·
+Platform · Products · Free Tool · Learn · FAQ · Pricing · "Open desk →") identical across `/`,
+`/pricing`, `/upgrade`. **The original entries for `/`, `/pricing`, `/upgrade` below are corrected
+in place — see each one's own correction note** rather than re-deriving them from scratch, since
+the underlying page CONTENT (pricing tiers, hero copy) was also affected, not just the nav.
+
+### 1.1 The "Features" dropdown IS the cross-product switcher (desk pages only)
 
 `Nav.tsx:22-30`'s `FEATURE_LINKS` is the complete list a member uses to move between products:
 
@@ -138,47 +172,50 @@ favor of the single embedded Vector chart; the removed components remain in the 
 3-way panel focus state on compact/native layouts: `iosPanel: "vector" | "matrix" | "intel"`,
 persisted to `sessionStorage["spx-ios-panel"]`.
 
-**LIVE 2026-08-23** (`dashboard-desktop`, 1440×900):
+**`UNVERIFIED — ORIGINAL SHOT USED WRONG UA` (see the top-of-file correction) →
+`RE-VERIFIED 2026-08-23 (correct UA)`** (`dashboard-desktop`, 1440×900, real desktop UA):
 
 ```
 PAGE /dashboard
 └─ HEADER "SPX Slayer" wordmark + "SPX · 0DTE DESK"
    └─ inline stat strip   SPX 7,674.37 +0.00% | EMA 20/50/200 | SMA 50/200 | SESSION HOD/LOD | VIX 15.13 | VWAP — | GEX -$21.1B | TREND Bullish | Γ FLIP — | OI MAX PAIN ▼7,700.00 | IV RANK 9
-└─ TAB group (panel)   Vector (active) | Matrix | Intel
-└─ CONTENT — with "Vector" selected: the embedded Vector toolbar + chart (SPX · 3 MIN · INDICATORS 3 · Replay · GEX/VEX · 0DTE/WEEKLY/MONTHLY · EVENTS · NODES · AUG 21 CLOSE) plus candlestick+GEX-band+volume chart, right-aligned in the content area
+└─ TAB group (left rail)   PULSE (active) | LARGO
+└─ 4-COLUMN GRID, all panels mounted simultaneously (this is the real desktop layout — NOT tabs):
+   ├─ COL 1 "⚡ PULSE" — filter chips ALL/REGIME/WALLS/FLOW/MACRO/PLAYS, "Watching the tape — no events yet this session", "structure holding — no Tier-1 events yet this session"
+   ├─ COL 2 "SPX · GEX MATRIX · NEAR-TERM — DEALER GAMMA MAP" — GEX/VEX toggle, Γ FLIP (COL)/NET GEX stats, "Loading gamma matrix…"
+   ├─ COL 3 "EOD PIN FORECASTER" (SPX · 0DTE) — Analytic/Monte Carlo toggle, explainer copy ("No 0DTE expiry today… the desk reports nothing rather than projecting a close from a later expiry"), + "SPX PLAY — Slayer CLOSED — Session closed, play engine idle until next RTH" card
+   └─ COL 4 — embedded Vector chart, "Loading Vector chart…" (still hydrating at the 9s capture point — a loading state, not blank/broken; same pattern as the mobile shot's honest "Loading Vector chart…" label)
 ```
 
-**Real defect, screenshot-confirmed, severe:** with the "Vector" panel tab active, roughly the
-**left half of the content area (~830px of 1440px wide, full height) renders completely blank** —
-no panel, no loading state, no placeholder, just background. `SpxDashboard.tsx`'s `iosPanel:
-"vector" | "matrix" | "intel"` state (§2) is documented in-code as a **compact/native-only**
-concept, but this shot is desktop at 1440×900 and is clearly showing single-panel tabs (Vector /
-Matrix / Intel) rather than the multi-panel grid the component composition (`SpxSniperHeader` →
-`SpxGexMatrixHeatmap` → `SpxPinForecast` → `SpxPlayVerdictBar` → `SpxIntelRail`, all mounted
-together) implies for a full desktop layout. Either the compact single-panel mode is incorrectly
-engaging at a desktop viewport width, or the non-Vector panels (Matrix/Intel) are meant to render
-beside the chart and are not. This is the single most visually severe issue found in this pass —
-**candidate P0** — **reproduced on an independent retry** (fresh session mint, same viewport,
-~10 minutes later: identical blank left half, identical proportions). Not a one-off timing
-artifact. Still needs a click-through on Matrix/Intel tabs and a real-browser confirmation before a
-fix PR (this pass only exercised the default Vector tab), but the blank-on-load state itself is now
-confirmed, not provisional.
+**CORRECTION — the original "P0" (blank left half of the desktop content area) was FALSE, caused
+by this pass's own methodology error (see the top-of-file note), not a product defect.** The
+original desktop shot used `proxy-browser.cjs` WITHOUT `--desktop`, so it rendered with the fixed
+iPhone UA even at a 1440×900 viewport, which engaged `useIosNativeShell()`'s compact single-panel
+`iosPanel: "vector"|"matrix"|"intel"` tab layout — exactly the behavior the component's own code
+comment says is compact/native-only. **The real desktop layout is a 4-column grid with all panels
+(Pulse/Largo rail, Dealer Gamma Map, EOD Pin Forecaster, Vector chart) mounted simultaneously, no
+tabs, no blank space.** This is corroborated by the SPX lane's own same-day
+`docs/spx/SPX-SLAYER-CERTIFICATION.md` (PR #2776, merged the same day as the original version of
+this file), which describes this exact 4-panel composition and reports **zero blank-panel
+findings** — only 3 small CSS collision defects (Replay button overlapping the GEX tile, etc.,
+already handed to/partly fixed by the Vector lane) at desktop 1440×900. **Retracted, not filed to
+`findings-staging/`.** The `iosPanel` single-panel-tab layout itself is real and correctly
+compact/native-scoped — it just isn't what desktop 1440×900 shows with the right UA, and this
+pass's tooling was the bug, not the product.
 
-**Second, smaller defect, likely shared with §5's Vector-mobile finding:** the chart footer legend
-at the bottom overlaps its own x-axis time labels — "ODTE · RECONSTRUCTED" text sits on top of the
-"18:00"/"20:00" axis ticks. Same class of bug as the Vector-mobile footer overlap (§5); since this
-is the SAME embedded `SpxVectorEmbed`/`VectorChart.tsx` component on both surfaces, this is likely
-**one root cause in the shared chart component**, not two separate bugs — worth fixing once at the
-component level rather than twice per surface (brief item 14).
+**One genuine observation surviving the correction:** the Vector chart column was still showing
+"Loading Vector chart…" at the 9s capture mark on desktop, same as the mobile shot recorded in the
+original pass. Not filed as a finding — 9s may simply be short for this specific embed's cold load,
+and the SPX certification doc's own §4.1/§4.2 found the Vector embed sound. Worth a longer `--wait`
+on a future re-check if it recurs.
 
 **LIVE 2026-08-23** (`dashboard-mobile`, 430×932) — same header stat cards, stacked; Vector/Matrix/
-Intel tabs render as a full-width 3-way segmented control (not the desktop's asymmetric bar). Below
-it, the content panel is centered text **"Loading Vector chart…"** that never resolved inside the
-9s wait — a full-width, correctly-labeled loading state, not a blank. This is useful corroborating
-context for the desktop P0 above: mobile's panel is honest about still loading and reserves the
-FULL width for the eventual chart, while desktop's identical panel finished loading but only into
-the right ~55% — supporting "the left column is unfilled reserved space" over "the chart is
-deliberately narrow" as the likely root cause. Still needs the live click-through before a fix PR.
+Intel tabs render as a full-width 3-way segmented control — correctly so on mobile, this shot used
+the iPhone UA on purpose. Below it, the content panel is centered text **"Loading Vector chart…"**
+that never resolved inside the 9s wait — a full-width, correctly-labeled loading state, not a
+blank. Matches the corrected desktop shot above (§2's retraction note) showing the same "Loading
+Vector chart…" state in its own column — consistent behavior across viewports, not a discrepancy.
+No finding here.
 
 ---
 
@@ -192,27 +229,35 @@ only covers what's relevant to cross-product UX; defer to that file for data cor
 
 **LIVE 2026-08-23** (`flows-desktop`, 1440×900):
 
+**Original version of this entry used the wrong UA (see top-of-file correction) — re-shot
+2026-08-23 same day with `--desktop`. Corrected structure:**
+
 ```
-PAGE /flows
+PAGE /flows (RE-VERIFIED, correct desktop UA)
+└─ HEADER  Helix wordmark + BULLISH badge + bidirectional $ bar ("$17M calls sold" / "$130M puts sold", properly spaced, no overflow — the concatenation/overflow bug in the mobile finding below does NOT reproduce on desktop) + "TIDE" label
 └─ SECTION filter bar
    ├─ FLOOR chips        $200K · $500K · $1M · $20M  (radio-style, one active)
    ├─ SIDE chips         ALL 500 · CALL 253 · PUT 247
    ├─ SYMBOL search       "SPX" (free text)
    ├─ QUICK filter chips  WHALES · 0DTE · INDICES · WATCH
    ├─ DTE chips           ALL DTE · 0DTE · ≤7D · >7D
-   └─ STATUS badge        "● STALE  500 · 45h ago"  (correct — weekend, market closed)
+   └─ STATUS badge        "● STALE  500 · 46h ago"  (correct — weekend, market closed)
    TOOLBAR                HIDE ANALYTICS toggle · TOOLS
-   ├─ PANEL flow tape (left, ~2/3 width)
-   │  └─ CARD × N          ticker+side+STACK/WHALE badges, strike/expiry/DTE, $ premium, Δ%+age
+   ├─ TABLE flow tape (left, ~2/3 width) — a REAL TABLE, not cards: columns TIME ▼ · SYM · SIDE ·
+   │  EXPIRY · STRIKE · PREM · FILL · DTE, color-coded by call(green)/put(red), one row per print
    └─ PANEL analytics rail (right, ~1/3 width)
       ├─ tab-like header  ALL FLOW · "MORE PANELS" button
       └─ CARD "TOP PRINTS" list — Δ, ticker, strike/exp, $ premium, "No hits in last 15 min" / At bid|ask / %sold|bought
 ```
 
-STACK and WHALE are visually distinct badge chips on each row (STACK = repeated-print marker,
-WHALE = size marker) — this is the tape's own visual vocabulary for "what makes this print
-notable," worth reusing as a pattern name if the design system formalizes badge semantics
-platform-wide (brief item 14, "different meanings for identical colors").
+**Correction:** the original entry described a card-based tape with STACK/WHALE badges on desktop —
+that was the mobile `HelixMobileFlowTape` card layout (§ below) rendered under the wrong UA at a
+1440px viewport, not the real desktop component. The real desktop tape is `HelixFlowTable.tsx`
+(541 lines, cited in the coordinates above but not previously distinguished from the mobile
+component in this section) — a genuine data table with a sortable TIME column, no STACK/WHALE
+badge chips visible in this shot (badges may be a mobile-only affordance, or a column this table
+expresses differently — not yet confirmed either way, flagged as an open question rather than
+asserted).
 
 **LIVE 2026-08-23** (`flows-mobile`, 430×932):
 
@@ -248,7 +293,10 @@ product, larger than the next 3 Thermal components combined). 11 component files
 `ThermalCompareStrip` (213), `ThermalGridSectorPicker` (169), `ThermalRegimeStrip` (159),
 `ThermalFreshnessBar` (91), `ThermalIntensityRail` (70).
 
-**LIVE 2026-08-23** (`heatmap-desktop`, 1440×900):
+**`RE-VERIFIED 2026-08-23 (correct UA)`** (`heatmap-desktop`, 1440×900) — layout/structure below is
+unchanged from the original wrong-UA shot (Thermal's page structure is not `useIosNativeShell()`-
+gated the way SPX Slayer's is, so the UA bug did not distort this section's structural claims) — the
+ONE thing that changed on re-shoot is the cross-product Helix strip, corrected below the block:
 
 ```
 PAGE /heatmap
@@ -262,7 +310,7 @@ PAGE /heatmap
 └─ PANEL "THERMAL STATE" summary card
    ├─ regime dot + label            ● SHORT GAMMA
    ├─ inline stat row                NET GEX -$778.7M ↑$397.3M · MAGNET 765 · FLIP 767 · CALL WALL 772 · PUT WALL 765 · MAX PAIN 768 · VOL EXPANDED
-   ├─ CARD cross-product strip       "FLOW TODAY [HELIX] +$403.8K" — mini bidirectional bar (C $1.2M green / P $749.6K red)
+   ├─ CARD cross-product strip       "[HELIX] FLOW UNAVAILABLE" (CORRECTED — see below; the original wrong-UA shot showed a populated "+$403.8K" bar here, which does not reproduce with the correct UA)
    └─ 2-line plain-English narrative  "Dealers are amplifying moves below 767. 765 is the dominant pin..."
 └─ FILTER expiry chip row (horizontal scroll)  ALL · 0DTE · NEAR · MONTHLY (active=AUG 24) · [15 more dated chips through JAN 15]
 └─ BAR key-levels strip             "SPY · GEX  Shift  C 770 +0% 768 -0% | P 771 -0% 759 -0% 765 +0% 766 +0%"
@@ -278,13 +326,21 @@ heavier hydration path on mobile), not a reproducible product defect — **not f
 but flagged for anyone re-running this: mobile Thermal is worth a second live confirmation with a
 longer-lived member session before ruling it out completely.
 
-**One real cross-viewport difference worth chasing, not yet confirmed as a defect:** the retried
-mobile shot's cross-product strip renders `[HELIX] FLOW UNAVAILABLE` where the desktop shot (same
-day, same closed-market data) renders a populated `+$403.8K` bar with a call/put split. Both are
-reading the same underlying Helix-flow-today figure for a closed market, so a genuine
-desktop/mobile divergence in whether that fetch resolves would be a real defect — but this was
-observed on ONE retried mobile shot against ONE clean desktop shot, not a controlled A/B, so it is
-recorded as an **OPEN QUESTION**, not a finding, pending a same-session comparison.
+**OPEN QUESTION above — RESOLVED, and not the way originally framed.** The original desktop shot
+(populated `+$403.8K` Helix flow bar with a call/put split) used the wrong UA (top-of-file
+correction). Re-shot 2026-08-23 with the correct `--desktop` UA: **desktop ALSO shows `[HELIX]
+FLOW UNAVAILABLE`** (see the corrected structure block above), identical to the mobile-retry shot.
+So there is **no desktop/mobile divergence** — both real viewports agree. The actual open question
+is now the reverse of what it was: why did the WRONG-UA "desktop" shot show populated data at all,
+when the two CORRECT-UA shots (one mobile, one desktop) both show unavailable? Possibly the
+compact/native code path the wrong UA accidentally engaged reads a different (possibly stale-cached
+Friday) source for this strip than the real desktop path does — or it's simply a timing
+coincidence across three separate short-lived sessions. Not chased further this pass; flagged as a
+loose thread rather than asserted. **Genuinely new observation:** `[HELIX] FLOW UNAVAILABLE` on
+BOTH correct-UA viewports for a weekend-closed market — worth confirming during the next LIVE
+VALIDATION window whether this strip populates correctly once the market is open, since a
+cross-product strip that's "unavailable" even off-hours (when Thermal's own data is happily
+showing Friday's close) is a different, milder question than the one originally asked.
 
 ---
 
@@ -295,7 +351,12 @@ recorded as an **OPEN QUESTION**, not a finding, pending a same-session comparis
 product by component count. `VectorChart.tsx` is 4978 lines, the single largest file on the
 platform. Also embeds into `/dashboard` via `SpxVectorEmbed`.
 
-**LIVE 2026-08-23** (`vector-desktop`, 1440×900):
+**`RE-VERIFIED 2026-08-23 (correct UA)`** (`vector-desktop`, 1440×900) — structure below CONFIRMED
+unchanged with the correct desktop UA (toolbar, 0DTE matrix, composite chart, LIVE HELIX rail all
+present and laid out identically to the original shot). The chart's bottom volume/footer strip
+(where the overlap finding in Finding #3 was recorded on mobile) is below the 900px fold in this
+non-full-page capture, so this re-shoot can neither confirm nor deny the withdrawn desktop half of
+that finding — still open, per §10's table.
 
 ```
 PAGE /vector
@@ -387,9 +448,19 @@ PAGE /meridian
 
 **The catalyst list did not finish loading in this shot** — the harness log recorded
 `FAIL [GET] /api/market/meridian/timeline?days=21: timeout` (the tunnel's own 20s fetch timeout,
-not necessarily the real API). **Resolved by the mobile shot taken ~1 minute later (below), which
-loaded the same data cleanly** — treated as a one-off tunnel/session timing artifact, not a
-Meridian defect. Not filed as a finding.
+not necessarily the real API). Originally treated as resolved by the mobile shot ~1 minute later,
+which loaded cleanly. **Update: the desktop re-shoot taken specifically to fix the UA methodology
+bug (same day, `RE-VERIFIED` marker below) hit the SAME timeout a second time** — 2 of 3 desktop
+attempts now stall on this fetch within a 9s capture window, only the one mobile attempt succeeded.
+Downgrading from "one-off artifact" to **OPEN QUESTION**: still plausibly this harness's own 9s
+wait being short for a genuinely-slower-than-that desktop-only query, but a 2-for-3 stall rate is
+too consistent to keep calling a fluke without a longer `--wait` re-check. Not filed as a finding
+pending that re-check — a slow endpoint and a broken one need different fixes and this pass can't
+yet tell which it is.
+
+**`RE-VERIFIED 2026-08-23 (correct UA)`** — layout structure otherwise unchanged from the original
+shot; the loading-skeleton state above is what this second desktop attempt also captured, so no
+new structural detail to add beyond the timeout note.
 
 **LIVE 2026-08-23** (`meridian-mobile`, 430×932):
 
@@ -424,21 +495,33 @@ engine.
 ```
 PAGE /nighthawk
 └─ HEADER "OVERNIGHT PLAYBOOK" kicker + "Night Hawk" wordmark + radar icon + STATUS pill "● NIGHT HAWK"
-└─ TAB group (engine)   0DTE (active) | Swings | Bangers | Legacy
+└─ TAB group (engine)   "0DTESwingsBangersLegacy" — see defect below
 └─ subtitle copy         "Same-day trades across the whole market — hot flow, minutes-to-hours."
 └─ PANEL board (left)
-   ├─ HEADER strip        "0DTE · SAME-DAY  OPPS 0  TOP —  EDGE —"  ·  ENGINE Standby ✓  ·  UPDATED 13 sec ago  ·  chip "SPX SLAYER  IDLE"  ·  RISK —  ·  P&L —
+   ├─ HEADER strip        "0DTE · SAME-DAY  OPPS 0  TOP —  EDGE —"  ·  ENGINE Standby ✓  ·  UPDATED 8 sec ago  ·  chip "SPX SLAYER  IDLE"  ·  RISK —  ·  P&L —
    ├─ FILTER tabs          ALL 0 (active) · OPEN 0 · WATCH 0 · CLOSED 0
    └─ EMPTY state           "No session today — Night Hawk's evening playbook covers the next open." (correct — Sunday)
 └─ PANEL detail (right)
    └─ EMPTY state           "◂ select a play to break it down"
 ```
 
-Clean, correctly-labeled empty state for a weekend/no-session day — good reference pattern for
-brief item 4 (progressive disclosure: the header strip states OPPS/TOP/EDGE/ENGINE/RISK/P&L as
-"—" rather than hiding the fields or showing 0 where 0 would be misleading). `UPDATED 13 sec ago`
-confirms the engine polling loop is live even with nothing to show, which is itself useful
-information the UI is correctly surfacing.
+**`RE-VERIFIED 2026-08-23 (correct UA)` — and this re-shoot surfaced a NEW real defect the original
+wrong-UA shot did not show.** The original entry described the engine tab row as four
+visually-distinct pill buttons ("0DTE | Swings | Bangers | Legacy"), each in its own rounded box —
+that was, ironically, the compact/mobile CSS applying styling that happens to look correct. **The
+real desktop render has NO spacing or visual separation between the four tab labels at all** —
+"0DTESwingsBangersLegacy" reads as one unbroken run of text with no button boundaries, no gaps, no
+distinguishing "0DTE" (the active one) from the rest except by careful reading. This is a genuine
+desktop-only regression, the opposite direction from every other correction in this pass (here the
+WRONG UA accidentally looked fine and the RIGHT UA is broken) — candidate **P1** (primary
+navigation for the product's 4 trading engines, unreadable as tabs on the platform's own reference
+desktop viewport).
+
+Otherwise a clean, correctly-labeled empty state for a weekend/no-session day — good reference
+pattern for brief item 4 (progressive disclosure: the header strip states OPPS/TOP/EDGE/ENGINE/
+RISK/P&L as "—" rather than hiding the fields or showing 0 where 0 would be misleading). "UPDATED
+8 sec ago" confirms the engine polling loop is live even with nothing to show, which is itself
+useful information the UI is correctly surfacing.
 
 **LIVE 2026-08-23** (`nighthawk-mobile`, 430×932) — same structure as desktop, stacked
 single-column. Two things worth recording:
@@ -475,7 +558,8 @@ entirely"). A fabricated-liveness badge is exactly the class of defect `_COMMON.
 already caught and fixed it — a pattern to hold other status badges platform-wide to (brief item 14,
 consistent status semantics).
 
-**LIVE 2026-08-23** (`terminal-desktop`, 1440×900):
+**`RE-VERIFIED 2026-08-23 (correct UA)`** (`terminal-desktop`, 1440×900) — structure and content
+below CONFIRMED unchanged with the correct desktop UA:
 
 ```
 PAGE /terminal
@@ -515,25 +599,46 @@ module grid + one-price membership block, `revalidate: 3600`), `/pricing`, `/upg
 (`/terms`, `/privacy`, `/disclaimer`, `/cookie-policy`, `/refund-policy`). Shared footer:
 `StaticLandingFooter.tsx`.
 
-**LIVE 2026-08-23** (`home-desktop`, 1440×900) — above-the-fold hero: BLACKOUT wordmark nav (no
-Features/FAQ/Learn on this exact fold — those appear once scrolled/on other pages per §1) +
-animated cracked-glass "B" mark with a lightning/particle field + large headline mid-reveal
-("TRADE LIKE" — the rest of the line, presumably "…THE DESK" or similar, is either still animating
-in or below the fold at the 9s capture point; not a defect, just an animation-timing artifact of a
-single-frame screenshot). Confirms `RedesignHome`'s "lights on" canvas hero is live in production
-as documented in the page's own source comment. Full scroll-depth inventory (module grid,
-membership block, footer) not yet captured — fold in on next pass.
+**`RE-VERIFIED 2026-08-23 (correct UA)` — MAJOR CORRECTION** (`home-desktop`, 1440×900). The
+original entry is wrong in two ways, not one: it described the nav as bare "BLACKOUT wordmark, no
+Features/FAQ/Learn," attributing the missing links to scroll position — the real reason is `/`
+uses the entirely different `StaticMarketingNav.tsx` (§1), whose real content ("Platform · Products
+· Free Tool · Learn · FAQ · Pricing") was ALSO suppressed under the wrong UA. **The `isIosAppShell()`
+detection (`src/lib/ios-app-shell.ts`) reads the exact same `BlackOutiOSApp` UA token
+`proxy-browser.cjs` defaults to** — so every original shot wasn't just triggering a compact CSS
+layout, it was telling the app "you are the real iOS native app," which per an App Store guideline
+3.1.1 comment in the source hides purchase-flow links/language site-wide. With the correct UA the
+nav shows in full. The hero itself (animated cracked-glass "B" mark, particle field, "TRADE LIKE"
+headline mid-reveal at the 9s capture point) is unchanged — that part of the original entry stands.
+Full scroll-depth inventory (module grid, membership block, footer) still not captured this pass.
 
-**LIVE 2026-08-23** (`pricing-desktop`, 1440×900) — for our signed-in test account, `/pricing`
-does not render plan tiers at all: it shows "HOME / PRICING" breadcrumb, a centered **"MEMBERSHIP
-— Your membership is managed on the web. Once active, sign in here to access the full desk."**
-message, then the full site footer (DESK / LEGAL / COMMUNITY link columns, risk disclosure,
-copyright). This reads as deliberate signed-in-member routing (don't show pricing tiers to someone
-who already has an account) rather than a defect — consistent with `/account` (below) showing a
-real "Free" plan + "Upgrade" CTA as the actual upgrade path for a signed-in member. Not confirmed
-against an anonymous visit this pass.
+**`RE-VERIFIED 2026-08-23 (correct UA)` — the original `/pricing` entry was ENTIRELY WRONG, same
+root cause.** The original said `/pricing` shows a "Your membership is managed on the web…"
+redirect message instead of pricing tiers, and attributed it to deliberate signed-in-member
+routing. **That is not what happens.** With the correct UA, `/pricing` renders the REAL pricing
+page in full: "ONE DESK. YOUR PRICE." headline, three tier cards (**SPX Slayer $49/mo**; **Premium
+Monthly $199/mo**, marked "FULL DESK"; **Premium Yearly $1,999/yr ≈$167/mo, "BEST VALUE — SAVE
+$389"**), each with a feature checklist and its own CTA ("GET SPX ACCESS" / "START MONTHLY →" /
+"GO YEARLY"), then the standard footer. **The "managed on the web" message the original entry
+described is the copy `isIosAppShell()` swaps in specifically to satisfy App Store guideline
+3.1.1** (no in-app purchase links) — it is what a member sees inside the native iOS app, not what
+a desktop web visitor sees. Confusing the two is exactly the false-positive trap this file's
+methodology notes exist to prevent, and this entry fell into it originally. Not filed as a defect —
+the swap is correct App-Store-compliance behavior — but the original inventory row was simply
+describing the wrong platform's UI as if it were the desktop web page.
 
-**LIVE 2026-08-23** (`account-desktop`, 1440×900):
+**`RE-VERIFIED 2026-08-23 (correct UA)` — the original `/upgrade` entry inherited the same error**
+("same signed-in-member routing pattern as `/pricing`, no drift found" — there was no such pattern
+to begin with). Corrected: `/upgrade` renders "PREMIUM ACCESS — Unlock the full floor." then a
+single featured **Premium Yearly $1,999/yr** card ("BEST VALUE — SAVE $389", feature checklist,
+"UNLOCK PREMIUM →" CTA) followed by two smaller cards (**Premium Monthly $199/mo**, **SPX Slayer
+$49/mo**) below the fold. Real pricing content, same as `/pricing`, laid out with the yearly plan
+as the hero rather than three equal columns — a legitimate design difference between the two entry
+points (upgrade nudges toward yearly; pricing presents three options evenly), not a defect.
+
+**`RE-VERIFIED 2026-08-23 (correct UA)`** (`account-desktop`, 1440×900) — content and nav (`Nav.tsx`,
+correctly rendering here in both the original and corrected passes, since `/account` was never
+`StaticMarketingNav.tsx`-routed) CONFIRMED unchanged from the original entry:
 
 ```
 PAGE /account
@@ -550,12 +655,6 @@ Confirms our minted test account is genuinely tier `Free` with `role:admin` — 
 bypasses tool gates (per CLAUDE.md's auth model) without upgrading the billing tier itself, which
 is why every desk screenshot in this pass rendered full data despite this page showing "Free."
 
-**LIVE 2026-08-23** (`upgrade-desktop`, 1440×900) — "PREMIUM ACCESS" kicker + headline "Unlock the
-full floor." + subcopy, then the same "Your membership is managed on the web…" card as `/pricing`
-plus an "OPEN SPX DESK" button and "← Back to home" link, then the standard footer. Same
-signed-in-member routing pattern as `/pricing` — consistent copy/behavior between the two upgrade
-entry points, no drift found.
-
 `home-mobile` scroll-depth beyond the hero fold not yet reviewed — fold in on next edit.
 
 ---
@@ -567,20 +666,29 @@ writeup. **None of these are filed to `docs/audit/findings-staging/` yet** — p
 issue-handling policy a finding is staged in the same PR as its code fix, and this PR is the Phase 0
 inventory, not a fix. This table is the punch list the next PRs work from.
 
+**Status as of this revision: every desktop route in §2–§9 has now been re-shot with the correct
+`--desktop` UA (`docs-audit/UI-UX-MAP.md`'s top-of-file correction).** Two more real findings
+surfaced during re-verification (#8, #9 below) that the original wrong-UA pass never saw because
+the wrong UA rendered those specific spots differently — one accidentally cleaner (#8), proving the
+wrong UA can mask real bugs, not just invent fake ones.
+
 | # | Surface | Summary | Severity | Section | Confidence |
 |---|---|---|---|---|---|
-| 1 | `/dashboard` desktop+mobile | Vector panel tab leaves ~45% of the content width blank (desktop) / stuck on "Loading Vector chart…" (mobile) | **P0** | §2 | Reproduced on independent retry |
-| 2 | `/flows` mobile | Header flow-split bar overflows viewport horizontally; two stat strings concatenate with no separating space | **P1** | §3 | Single shot |
-| 3 | `/vector` mobile + `/dashboard` desktop | Chart footer legend text overlaps itself ("16:30" on "08:30", "RECONSTRUCTED" on "SPOT-ALIGNED") — likely one root cause in the shared `VectorChart.tsx`/`SpxVectorEmbed` component, hit twice | **P1** | §5, §2 | Single shot each, same defect shape on 2 surfaces |
-| 4 | `/nighthawk` mobile | Header stat strip truncates ("UPDATED 12" cuts off "sec ago") instead of wrapping | **P1** | §7 | Single shot |
-| 5 | `/terminal` mobile | Toolbar label collapses to bare "L…"; composer placeholder overflows its input box | **P3** | §8 | Single shot |
-| 6 | `/nighthawk` mobile | ~45% of viewport left blank below the no-session empty state | **P2/P3** | §7 | Single shot |
-| 7 | `/vector` mobile | Drops ticker search, metric/expiry toggles, matrix table, and live tape entirely (chart-only) — scope call, not necessarily a bug | **P2** (needs Vector-lane input) | §5 | Single shot |
+| ~~1~~ | ~~`/dashboard` desktop~~ | ~~Vector panel tab leaves ~45% of the content width blank~~ | **RETRACTED** | §2 | **FALSE — original shot used wrong UA (iPhone UA at desktop viewport); real desktop layout is a 4-col grid, no blank space.** |
+| 2 | `/flows` mobile | Header flow-split bar overflows viewport horizontally; two stat strings concatenate with no separating space | **P1** | §3 | Correct mobile UA. Desktop RE-VERIFIED clean (proper spacing, no overflow) — mobile-only. |
+| 3 | `/vector` mobile | Chart footer legend text overlaps itself ("16:30" on "08:30", "RECONSTRUCTED" on "SPOT-ALIGNED") | **P1** | §5 | Correct mobile UA. **Desktop half still unconfirmed** — the re-shot's Vector column was still "Loading Vector chart…" at capture, footer never rendered to compare. Plausibly the same shared `VectorChart.tsx` bug, not proven on desktop. |
+| 4 | `/nighthawk` mobile | Header stat strip truncates ("UPDATED 12" cuts off "sec ago") instead of wrapping | **P1** | §7 | Correct mobile UA |
+| 5 | `/terminal` mobile | Toolbar label collapses to bare "L…"; composer placeholder overflows its input box | **P3** | §8 | Correct mobile UA |
+| 6 | `/nighthawk` mobile | ~45% of viewport left blank below the no-session empty state | **P2/P3** | §7 | Correct mobile UA |
+| 7 | `/vector` mobile | Drops ticker search, metric/expiry toggles, matrix table, and live tape entirely (chart-only) — scope call | **P2** (needs Vector-lane input) | §5 | Correct mobile UA |
+| 8 | `/nighthawk` **desktop** | Engine tab bar ("0DTE/Swings/Bangers/Legacy") renders with NO spacing between labels — reads as one unbroken word, no button boundaries | **P1** | §7 | Correct desktop UA, single shot. **The wrong-UA original shot showed this correctly styled** — an inversion of every other finding in this pass, worth independent confirmation before a fix PR. |
+| 9 | `/meridian` desktop | Catalyst-list fetch (`/api/market/meridian/timeline?days=21`) has now timed out on 2 of 3 desktop attempts (one mobile attempt succeeded) | **OPEN QUESTION**, not yet a finding | §6 | 2 correct-UA desktop attempts, both stalled; needs a longer `--wait` re-check to separate "slow" from "broken." |
 
 Cross-product patterns, not yet P0–P3 classified pending more coverage:
 
-1. **One nav for marketing + every desk (§1)** — by far the biggest structural fact this pass
-   surfaced. Any navigation redesign work starts here, not per-product.
+1. **TWO navs, not one (§1, corrected)** — `Nav.tsx` on desk pages + `/account`, `StaticMarketingNav.tsx`
+   on `/`, `/pricing`, `/upgrade` (and presumably the rest of the `(marketing)` route group). Any
+   navigation-consistency work has to treat these as two systems to reconcile, not one to extend.
 2. **STATUS/freshness badge vocabulary already has 4+ visual forms** across the shots so far:
    Helix's "● STALE  500 · 45h ago", Thermal's "MARKET CLOSED" pill + "as of HH:MM:SS ET" text,
    Vector's "● STALE" + "● AUG 21 CLOSE", Meridian's "● LIVE STRUCTURE", Largo's per-subsystem
@@ -596,10 +704,11 @@ Cross-product patterns, not yet P0–P3 classified pending more coverage:
    shot so far — matrix table + composite chart + live cross-product rail on one 1440px viewport
    with no panel feeling like it needed to be cut. Worth using as the density baseline other
    products are compared against, rather than inventing a new density target from scratch.
-5. **Chart footer legend overlap (finding #3 above) is the clearest evidence yet found that a bug
-   in a SHARED component (`VectorChart.tsx`, 4978 lines, embedded on both `/vector` and
-   `/dashboard`) manifests on every surface that embeds it** — exactly the "fix once at the system
-   level" case brief item 14 asks for, and a concrete first candidate for that discipline.
+5. **Chart footer legend overlap (finding #3 above) is confirmed on `/vector` mobile and PLAUSIBLE
+   but not yet confirmed on `/dashboard` desktop** (same `VectorChart.tsx`, 4978 lines, embedded on
+   both surfaces via `SpxVectorEmbed`) — if a desktop re-check confirms it, this is exactly the
+   "fix once at the system level" case brief item 14 asks for; if it doesn't, the bug may be
+   mobile-viewport-specific rather than shared-component-wide, which changes the fix's scope.
 
 ---
 
@@ -608,21 +717,25 @@ Cross-product patterns, not yet P0–P3 classified pending more coverage:
 Per the file's own opening rule (an honest gap is a finding, a plausible guess is a lie that
 outlives whoever wrote it):
 
-- **Shot but not yet visually reviewed:** `upgrade-desktop`; `home-mobile` beyond the hero fold.
-- **No interaction testing yet** — every shot in this pass is a default-state screenshot, which
-  brief item 2 and `_COMMON.md` rule 6b are explicit is "a photograph of the feature having not
-  been touched," not a test of it. Tabs, filters, search, sort, drawers/modals, chart zoom/pan, and
-  ticker switching are all unexercised — in particular, finding #1 (§2, the P0) still needs an
-  actual click on the Matrix/Intel tabs before a fix PR, not just the default Vector tab. Queued for
-  the next LIVE VALIDATION window against a moving tape, where most of this class of defect is
+- **`home-mobile` beyond the hero fold** — not yet reviewed.
+- **No interaction testing yet** — every shot in this pass, including all the corrected-UA
+  re-shots, is a default-state screenshot, which brief item 2 and `_COMMON.md` rule 6b are explicit
+  is "a photograph of the feature having not been touched," not a test of it. Tabs, filters,
+  search, sort, drawers/modals, chart zoom/pan, and ticker switching are all unexercised. Queued
+  for the next LIVE VALIDATION window against a moving tape, where most of this class of defect is
   actually observable (§0).
 - **No admin surfaces** (`/admin*`) — explicitly noted as lower priority in the charter, not
   covered this pass.
-- **One OPEN QUESTION remains unresolved:** mobile Thermal's Helix-flow-strip divergence (§4) —
-  desktop showed a populated flow bar, one retried mobile shot showed "FLOW UNAVAILABLE." Meridian's
-  equivalent open question (§6) was resolved this same pass (mobile shot loaded cleanly ~1 minute
-  after the desktop timeout) — Thermal's has not yet had that same second look.
+- **Two OPEN QUESTIONs remain, both about `/meridian`'s slow desktop fetch (§6/§10 #9)** and
+  **§5's withdrawn desktop-half of the Vector footer-overlap finding** — both need a longer
+  `--wait` or a chart-loaded re-check rather than another default 9s shot.
 - **`docs/audit/UI-UX-OPPORTUNITIES.md`** stubbed in this PR per brief item 16 but not yet
   populated with real backlog items beyond what's in §10's table.
+- **This correction pass itself is proof the methodology needs a permanent fix, not just a one-time
+  re-shoot:** `proxy-browser.cjs`'s own doc comment already warned that the UA stays mobile without
+  `--desktop`, and this pass still shipped 8 desktop entries (later corrected) without it. The
+  durable fix is upstream of any single map entry — see `docs/audit/UI-UX-OPPORTUNITIES.md` for the
+  proposed tooling change (a loud default-arg warning or requiring `--desktop` explicitly) so the
+  next lane pass, or this lane's own next pass, can't repeat it silently.
 
 Next edit of this file should close these gaps rather than starting a second document.

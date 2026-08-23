@@ -79,11 +79,19 @@ node proxy-browser.cjs "https://blackouttrades.com/nighthawk" shot.png \
 ```
 
 Flags: `--cookie "k=v; k2=v2"` · `--viewport WxH` (default `430x932`, iPhone) · `--wait ms`
-(default 5000 — raise it for SWR/SSE panels that hydrate late) · `--full` (full-page).
+(default 5000 — raise it for SWR/SSE panels that hydrate late) · `--full` (full-page) ·
+`--desktop` (real desktop UA — **required** for any desktop-viewport shot, see below).
 
-The context is fixed to an iPhone UA with `BlackOutiOSApp/1.0`, `deviceScaleFactor: 3`,
-`isMobile: true`. For a desktop shot, pass `--viewport 1440x900` — note the UA stays mobile,
-so a UA-gated shell will still render its mobile variant.
+**⚠️ For a desktop shot, `--viewport 1440x900` is NOT enough on its own — pass `--desktop` too.**
+The context defaults to an iPhone UA (`BlackOutiOSApp/1.0`, `deviceScaleFactor: 3`, `isMobile:
+true`) regardless of `--viewport`. Components gated on that UA (`useIosNativeShell()`,
+`isIosAppShell()`) render their compact/native-app variant stretched into whatever viewport you
+asked for — which reads as a genuine desktop layout bug (missing panels, wrong nav, hidden pricing
+content) to anyone screenshotting it, not as "oh, I forgot a flag." **This cost a live UI/UX audit
+pass a false P0 and several miscategorized findings** before being caught and corrected same-day
+(`docs/audit/UI-UX-MAP.md`'s top-of-file correction, 2026-08-23) — the tool now prints a loud
+stderr warning if you pass a desktop-width `--viewport` without `--desktop`, but the warning is not
+a substitute for reading this paragraph: pass both flags together for any real desktop shot.
 
 **Session JWTs are short-lived (~60s `exp`).** Mint immediately before shooting; if a run is
 slow, re-mint rather than reusing. Batch pages in one process if you need many.

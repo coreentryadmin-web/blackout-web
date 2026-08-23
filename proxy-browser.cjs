@@ -27,9 +27,33 @@ function parseArgs() {
   return { ...opts, url: pos[0], out: pos[1]||'screenshot.png' };
 }
 
+// Desktop-width viewport without --desktop silently renders with the mobile UA
+// (BlackOutiOSApp/1.0) and isMobile:true — components that gate on that UA (useIosNativeShell(),
+// isIosAppShell()) then render their compact/native-app variant stretched into a wide frame, which
+// reads as a genuine desktop layout bug to anyone screenshotting it. Cost a whole Phase-0 UI/UX
+// audit pass a false P0 and several miscategorized findings before being caught (see
+// docs/audit/UI-UX-MAP.md's top-of-file correction, 2026-08-23). Exported so it's independently
+// testable without spinning up a browser.
+function mobileUaWarning(viewport, desktop) {
+  const width = parseInt(String(viewport).split('x')[0], 10);
+  if (desktop || !Number.isFinite(width) || width < 1024) return null;
+  return (
+    `⚠️  --viewport ${viewport} looks like a desktop width but --desktop was not passed — ` +
+    `this will render with the MOBILE UA (BlackOutiOSApp/1.0, isMobile:true), not a real ` +
+    `desktop browser. UA-gated components (useIosNativeShell, isIosAppShell) will show their ` +
+    `compact/native-app variant, not the real desktop layout. Add --desktop if you want the real ` +
+    `desktop UI. See docs/audit/LIVE-UI-CONNECTION.md.`
+  );
+}
+
 async function main() {
   const o = parseArgs();
   if (!o.url) { console.error('Usage: node proxy-browser.cjs <url> [out.png]'); process.exit(1); }
+
+  // A caller intentionally wanting the mobile UA at a wide viewport (e.g. proving a UA-gated
+  // component's fallback) is rare but legitimate, so this stays a warning, not a refusal.
+  const warning = mobileUaWarning(o.vp, o.desktop);
+  if (warning) console.warn(warning);
 
   const { browser, ctx, counts } = await createTunneledContext({
     url: o.url,
@@ -62,4 +86,8 @@ async function main() {
   await browser.close();
 }
 
-main().catch(e => { console.error(e.message); process.exit(1); });
+if (require.main === module) {
+  main().catch(e => { console.error(e.message); process.exit(1); });
+}
+
+module.exports = { mobileUaWarning };

@@ -55,11 +55,23 @@ a pattern worth generalizing. Classify with the brief's own scale:
    urgent — it's not broken, just under-used space on a day with genuinely nothing to show.
 
 6. **[P3] A shared chart-footer-legend component to prevent the overlap bug from recurring.**
-   `UI-UX-MAP.md` finding #3 (Vector mobile + SPX Slayer desktop) is one root cause manifesting on
-   two surfaces because they share `VectorChart.tsx`. Once that specific overlap is fixed, the
-   larger opportunity is auditing whether other embeds of the same component (any future ones)
-   inherit the same footer-legend layout logic, so a fix to the shared component doesn't need to be
-   re-verified per embed site by hand each time.
+   `UI-UX-MAP.md` finding #3 is confirmed on `/vector` mobile; whether it also affects `/dashboard`
+   desktop (same `VectorChart.tsx` via `SpxVectorEmbed`) is still an open question pending a
+   chart-loaded re-check. If it does turn out to affect both, the larger opportunity is auditing
+   whether other embeds of the same component (any future ones) inherit the same footer-legend
+   layout logic, so a fix to the shared component doesn't need to be re-verified per embed site by
+   hand each time.
+
+7. **[DONE, 2026-08-23] `proxy-browser.cjs` now warns loud when `--viewport` implies desktop but
+   `--desktop` is omitted.** This Phase 0 pass shipped 8 desktop findings built on the wrong UA
+   (`docs/audit/UI-UX-MAP.md`'s top-of-file correction) because the script's own doc comment warned
+   about this exact trap but nothing enforced it — a viewport of `1440x900` silently rendering with
+   `isMobile:true` and the `BlackOutiOSApp` UA is a footgun the tool handed every user of it, on
+   every lane, not just this one. Fixed in the same PR as this file's correction pass: `mobileUaWarning()`
+   in `proxy-browser.cjs` prints a loud stderr warning (not a hard refusal — an intentional
+   mobile-UA-at-wide-viewport shot is rare but legitimate) when width ≥ 1024px is passed without
+   `--desktop`. Unit-tested in `proxy-browser.test.mjs`. Kept here rather than deleted so the next
+   reader can see WHY the warning exists, not just that it does.
 
 ---
 
