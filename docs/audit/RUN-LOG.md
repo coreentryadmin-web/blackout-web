@@ -606,6 +606,51 @@ reported on #2591; Night Hawk owns the diagnosis). Until that is fixed AND each 
 
 ---
 
+## 2026-08-22 — Vector Phase 0: cron manifest + DST + test baseline (Vector lane)
+
+**Severity.** — (no product defect; one dormant-feature gap recorded in `VECTOR-MAP.md` §7)
+
+**Why it ran.** Phase 0 of the Vector owner lane needed the facts a map cannot assert from source
+alone: which of Vector's six declared crons actually exist in deployed infra, whether their fixed
+UTC schedules satisfy their ET gates in both offsets, and a trustworthy Node 20 test baseline.
+
+**Deployed cron manifest — Vector is 4-of-6.** `coreentryadmin-web/blackout-infra` @ `68a0aa0f`
+(39 EventBridge rules). Deployed: `vector-walls-warm` (`*/5 11-21 * * 1-5`),
+`vector-universe-snapshot` (`1-59/5`), `vector-full-state-snapshot` (`2-59/5`),
+`vector-dark-pool-warm` (`3-59/10`). Absent: `vector-bead-record`, `vector-alerts`.
+
+**DST — all four PASS in both offsets.** `node scripts/audit/cron-dst-audit.mjs
+--infra=/home/user/blackout-infra`: 395/395, 390/390, 390/390, 195/195 in-window fires under EDT/EST
+respectively. The 11–21 UTC band brackets 09:30–16:00 ET in both offsets, so no Vector cron has the
+silent-dark exposure that `x-autopost` has. First time Vector's crons have been checked against the
+deployed manifest rather than the registry mirror.
+
+**`vector-bead-record` absence is deliberate and documented** — `cron-schedule-coverage.mjs` lists
+it under `INTENTIONALLY_UNSCHEDULED` (the primary 5s writer is the in-process leader).
+**`vector-alerts` is listed as UNSCHEDULED AND UNEXPLAINED** and is this lane's to close; measured
+alongside it, `VECTOR_ALERTS_PUSH` is absent from `blackout-production/app/env` (checked by key
+name only), so the route would be inert even if scheduled. Not a broken member promise — the alerts
+panel only ever offers background-tab delivery — but the server mirror in
+`VectorPageShell.persistRules` writes rules to Postgres for a consumer that does not run. Recorded
+as Phase 1 item #3.
+
+**Production env: for Vector, the source IS the deployed truth.** Of 98 keys in
+`blackout-production/app/env`, the only Vector-namespaced override is `VECTOR_SEED_CACHE_SEC = 120`.
+`SSE_MAX_STREAMS`, `VECTOR_WALL_TRAIL_SAMPLE_SEC` and its `NEXT_PUBLIC_` twin are all unset, so the
+code defaults hold. This is the opposite of SPX Slayer, where three lane TTLs are overridden and a
+freshness claim quoted from source is wrong by up to 50%.
+
+**Test baseline: 1065 pass / 0 fail**, 110 Vector lib test files, Node 20.20.2, ~23s, at `9b20b63c`
+(`node --import tsx --experimental-test-module-mocks --test src/features/vector/lib/*.test.ts`).
+Container had Node 20 pre-installed at `/opt/node20/bin` and an **empty** `node_modules` — `npm ci`
+first, per #2633.
+
+**Not validated here.** Nothing in this pass touches live market data: run on a Saturday with the
+tape closed. Correctness-against-Polygon, the rail accumulating, the UI at pixels, and the Largo
+truncation probe are all Phase 1 and queued in `VECTOR-MAP.md` §10.
+
+---
+
 ## 2026-08-22 — SPX env-drift audit, first run (GREEN, no defect found)
 
 **Lane:** SPX Slayer. **Tool:** `scripts/audit/spx-env-drift.mjs` (new, this run's subject).

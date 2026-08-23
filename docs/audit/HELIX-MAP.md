@@ -5,9 +5,18 @@ keep it current forever after; a field added to the tape or to a Largo payload w
 an undocumented field.
 
 **Status:** first pass, written 2026-08-22 (Sat, market closed) from the tree at `9b20b63`. Every
-line/threshold below was read out of the source on that commit. **Nothing here has been re-measured
-against production in this pass** — where a value's correctness depends on live data, the row says
-so and the claim is marked `UNVERIFIED-LIVE`, not asserted.
+line/threshold below was read out of the source on that commit.
+
+**Measured live the same day** against production, read-only, via `scripts/audit/helix-tape-inventory.mjs`
+(committed alongside this map — HELIX had no harness at all before it). One 5000-row / 168h member
+tape. Numbers sourced from that run are marked **`MEASURED 2026-08-22`**; numbers carried from an
+earlier run keep their own date; anything still unmeasured is marked **`UNVERIFIED-LIVE`** rather
+than asserted. The market was closed, so this measures a *settled* tape — an RTH re-run is queued
+(§12) and some ratios will move.
+
+> **Finding IDs (§9.1 … §9.9) are stable identifiers, cited from the PR thread and from the
+> harness source. They do not track the section numbers above them** — the findings live under
+> §11. Do not renumber them.
 
 **The rule this file is written under:** where provenance could not be established, the row says
 **UNKNOWN**. An honest gap is a finding; a plausible guess is a lie that outlives whoever wrote it.
@@ -27,6 +36,10 @@ Two things it is NOT, and both matter for reading the tables below:
 - It is **not a full tape**. Two independent caps bind before the requested window does — a
   persistence floor at ingest (§4) and a row `LIMIT` at read (§5). Both are load-bearing and both
   have produced defects that reached members.
+- It is **not one tape**. Two producers with different payload schemas write `flow_alerts`, split
+  cleanly rather than statistically, and 70% of rows come from a feed covering only SPX and SPY.
+  **Read §4A before trusting any HELIX aggregate** — several of them cannot be interpreted without
+  it.
 
 ---
 
@@ -110,10 +123,12 @@ Rules currently enforced in code:
   simply not allowed to affect the freshness badge.
 - **Largo's `window` block uses `flowEventTimeMs`**, deliberately — `helix-tape-analytics.ts`
   documents that reading `alerted_at` instead reported a tape 27 minutes fresher than it was.
-- **`tape_time_estimated` is routinely the MAJORITY of the tape.** Measured live 2026-08-20 (recorded
-  in `helix-tape-analytics.ts`): **438 of 500 prints, 87.6%**, carried no real UW time. Any HELIX
-  calculation that filters on a real print time is therefore operating on a small minority of rows.
-  `UNVERIFIED-LIVE` today — the 87.6% is a prior measurement, not one taken this pass.
+- **`tape_time_estimated` is routinely the MAJORITY of the tape** — but it is **not a property of
+  the tape**. `MEASURED 2026-08-22`: **3500 of 5000 rows (70.0%)** carry no real UW print time
+  (2026-08-20 recorded 438/500 = 87.6% on a smaller page). The share moves because it is a **mix
+  ratio between two writers**, not a per-row accident: every timeless row comes from one producer
+  and every timed row from the other, with no overlap. See §4A — reading this number as "prints
+  sometimes lack a timestamp" is the specific mistake that section exists to prevent.
 
 **Session anchoring (contract C1).** ET, never UTC:
 - SQL `dte` = `expiry - (NOW() AT TIME ZONE 'America/New_York')::date` — ET-anchored ✅
@@ -144,6 +159,77 @@ REST poll, `limit: 100`, `newer_than: cursor`. Poll interval `UW_FLOW_POLL_SEC`,
 The `pgTape.fresh` conjunct is load-bearing and was added for a measured failure: a stale cluster
 heartbeat used to silence REST while `flow_alerts` had stopped receiving rows (`ws_active_cluster`
 false-green).
+
+---
+
+## 4A. THE TWO WRITERS — the structural fact underneath most of this map
+
+`MEASURED 2026-08-22`, one 5000-row / 168h member tape, via `scripts/audit/helix-tape-inventory.mjs`.
+
+The HELIX tape is written by **two producers with different payload schemas**, and the boundary
+between them is **exact, not statistical**:
+
+```
+cross-tab  event_at x alert_rule
+  both present : 1500      event_at only : 0
+  alert_rule only : 0      neither      : 3500
+```
+
+Zero rows in either off-diagonal cell. That is a schema boundary, not a distribution.
+
+| | **Group A** — UW `flow_alerts` | **Group B** — index-only feed |
+|---|---|---|
+| Rows | 1500 (30%) | 3500 (70%) |
+| Tickers | **273** | **2 — SPX and SPY only** |
+| `event_at`, `alert_rule`, `open_interest`, `underlying_price`, `otm_pct` | **100%** | **0%** |
+| `ask_pct` | 96.9% | 0% |
+| `implied_volatility` | **0%** | **100%** |
+| `fill_price`, `alert_id`, `score` | 100% | 100% |
+| Total premium | $854,960,120 | **$9,992,246,317** |
+| Median premium | $258,408 | $522,348 |
+
+**Group B carries 92.1% of all premium on the tape**, from two tickers.
+
+**Hypothesis for Group B's identity, stated as a hypothesis:** `flow-ingest.ts` documents an
+external Python bot that "writes to the shared Postgres and publishes to the
+`blackout:flow-events` Redis channel" when `FLOW_INGEST_BOT_PRIMARY=1`, bypassing REST ingestion
+entirely. A second producer writing rows directly with its own payload shape fits every observation
+here. **UNKNOWN** — that bot's source is not in this repo and nothing was read to confirm it. Do not
+state it as fact without checking.
+
+### Three consequences that change how HELIX numbers must be read
+
+**(a) SPX and SPY can NEVER fire either persisted HELIX signal.** `detectVelocitySpikes` skips any
+row without `event_at`; `detectSplitFlow` filters on `flowEventTimeMs`, which returns null for the
+same rows. Group B has no `event_at`, so **only 30% of the tape is signal-eligible at all**, and the
+excluded 70% is precisely SPX and SPY. Neither detector is wrong — each is correctly refusing to
+date a print it cannot date. But the product has a population that **dominates every premium panel
+while being invisible to every time-based signal**, and nothing anywhere says so.
+
+**(b) The Net Premium leaderboard is decided by Group B.** `MEASURED`: SPX **$9,984,228,007** vs
+TSLA $40,522,361 — a **246×** gap, and SPX's total is ~99.9% Group B rows. The leaderboard is not
+wrong about the arithmetic; it is answering "which name saw the most premium" with a number
+dominated by one feed that only covers two tickers. Same for session skew, expiry concentration and
+route breakdown, all of which sum over both groups.
+
+**(c) Half the tape's columns are structurally blank per group, not per row.** A member scanning
+`/flows` sees Ask%, OI, Spot, OTM% and Rule populated on equity names and **always empty on SPX/SPY**
+— and IV populated **only** on SPX/SPY. That is legible as a data-quality problem when it is
+actually two feeds. `UNVERIFIED-LIVE`: whether the UI communicates this at all (no HELIX UI harness
+existed until now — §10).
+
+### A hypothesis this map raised and the measurement KILLED
+
+Group B's largest print is **$1,307,530,000** — $1.3 billion on one SPX contract. That read as an
+obvious units error (notional booked as premium), which would have meant every SPX premium number in
+HELIX was inflated ~100×. **It is not an error.** `premium = fill × 100 × contracts` reproduces it
+exactly: 14,000 × 100 × $933.95 = $1,307,530,000. Implied contract counts across Group B top out at
+**14,000** (median 32), comfortably inside what SPX bears; Group A's max is 100,000. The premium
+field is internally consistent in both groups.
+
+Recorded because the wrong hypothesis is as much a part of the map as the right one: **a number
+being astonishing is not evidence that it is wrong**, and `impliedContracts()` in
+`lib/helix-tape-inventory-eval.mjs` is now the cheap check that separates the two.
 
 ---
 
@@ -403,6 +489,12 @@ as an open question (§9.6), not a defect — the shared *definition* is what th
 `src/findings-hygiene.test.ts`, `src/lib/cron-registry.test.ts` (route↔registry drift).
 
 **Harnesses that can see HELIX:**
+- **`scripts/audit/helix-tape-inventory.mjs` — NEW, committed with this map.** The first harness
+  HELIX has ever had. Read-only against prod, one temp Clerk user deleted in a `finally`, imports
+  the REAL `executionRouteKey` rather than reimplementing it. Reports writer split, per-group field
+  presence, signal eligibility, route buckets, `alert_rule` distribution, IV unit verdict, implied
+  contract counts and tape shape. Every `MEASURED 2026-08-22` number in this map is one run of it.
+  Pure helpers in `lib/helix-tape-inventory-eval.mjs`, 12 unit tests (`npx tsx --test`, Node 20).
 - `scripts/audit/largo-truncation-probe.mjs` — asks the LIVE agent whether each tool's payload
   actually arrived. **Not yet run against all four HELIX tools in this pass** (Phase 1 queue).
 - `scripts/audit/data-validator.mjs` — cross-provider ground truth; auth block reusable.
@@ -412,7 +504,7 @@ as an open question (§9.6), not a defect — the shared *definition* is what th
 
 | Gap | Why it matters |
 |---|---|
-| No live UW-vs-tape reconciliation | nothing checks that a print UW emitted actually landed in `flow_alerts` — a missing print is invisible by construction |
+| No live UW-vs-tape reconciliation | nothing checks that a print UW emitted actually landed in `flow_alerts` — a missing print is invisible by construction. Now sharper: §4A shows one whole producer bypasses the UW REST path entirely, so "reconcile against UW" would not even cover 70% of rows |
 | No `/flows` UI harness | there is no HELIX equivalent of `meridian-interaction-audit.mjs`. Every `/flows` claim rests on selector-free reasoning about the code |
 | `ask_pct` SQL ↔ SSE parity untested | the two derivations must agree; nothing asserts it |
 | Signal ledger not reconciled against the badges | §9.6 |
@@ -425,6 +517,21 @@ as an open question (§9.6), not a defect — the shared *definition* is what th
 Ranked by IMPACT × FREQUENCY × CONFIDENCE-IN-FIX × IMPLEMENTATION-RISK, per the charter. **None of
 these has a fix PR yet — the Phase 0 gate is that this map merges first.** They are recorded here
 with their evidence so the next pass starts from a position, not from scratch.
+
+**9.0 — SPX and SPY cannot fire either HELIX signal, while carrying 92% of the tape's premium.**
+The lane's highest-impact structural finding, and it only became visible by measuring the live
+population (§4A). Both persisted signals require a real print time; the Group B feed has none; Group
+B is SPX and SPY. So the two names that top every premium panel are **structurally incapable** of
+producing a velocity spike or a split-flow signal, and `MEASURED 2026-08-22` only **30% of the tape
+(1500/5000 rows) is signal-eligible at all**. Neither detector is buggy — each correctly refuses to
+date an undatable print. The defect is that **nothing states it**: not the panels, not the ledger,
+not `get_helix_derived`, whose `velocity_spikes` / `split_flow` arrays report a total and a
+truncation flag but never the eligible denominator they were computed over. A member or a model
+reading "no velocity spikes on SPX" concludes the tape was quiet, when SPX was never eligible.
+Minimum honest fix: carry the eligible-vs-total denominator into the payload and the panel
+(`signalEligibility()` in `lib/helix-tape-inventory-eval.mjs` already computes it). The deeper
+question — whether Group B should be given a print time at all — is upstream of this lane and needs
+the coordinator.
 
 **9.1 — `helix-discord-digest` is unreachable in production.** The route is complete (filters
 ≥$500k · fill <$10 · ≤30 DTE, Redis NX dedup, two embed builders), `railway.helix-discord-digest.toml`
@@ -447,19 +554,29 @@ trade 20:00–24:00 ET, so the window is nearly empty of live prints. Worth fixi
 because it is exactly the class the C1 ratchet exists to catch, but it is not an incident. The REST
 read path is unaffected (its `dte`/`route` are ET-anchored in SQL).
 
-**9.3 — `gex_proximity` absence is ambiguous.** The field is omitted in three different situations
-that the payload cannot distinguish: the strike genuinely is not near a level; the GEX lookup timed
-out (300ms) or the cache was cold; or the ticker fell beyond the 100-name enrichment cap on a wide
-page. On the tape all three render as *no badge*. This is the `_COMMON.md` #7 shape — absence
+**9.3 — `gex_proximity` absence is ambiguous — CONFIRMED, and the cap really does bind.** The field
+is omitted in three different situations that the payload cannot distinguish: the strike genuinely
+is not near a level; the GEX lookup timed out (300ms) or the cache was cold; or the ticker fell
+beyond the 100-name enrichment cap on a wide page. On the tape all three render as *no badge*.
+`MEASURED 2026-08-22`: the tape spans **273 distinct tickers**, so **173 of them are past the cap and
+were never evaluated at all**; `gex_proximity` is present on just **2.2%** of rows (3.9% Group A,
+1.5% Group B). The dominant reason for absence is therefore *not* "not near a level" — it is "never
+checked" — and that is the reading the payload cannot express. This is the `_COMMON.md` #7 shape — absence
 published as measurement — and it reaches Largo too, since enriched rows ride into
 `get_ecosystem_context`'s `flow_full_state`. A `gex_evaluated: true|false` companion would separate
 "checked, not near" from "never checked". Highest-value item on this list.
 
-**9.4 — `implied_volatility` units are unestablished.** `fmtIv` branches on `iv < 3` to decide
-fraction-vs-percent per row. Nothing documents UW's actual contract and no test pins it. A ticker
-whose true IV is 250% would render as 250% via one branch and a 2.5-fraction row as 250% via the
-other — indistinguishable, and a genuinely sub-3% IV would be multiplied by 100. Needs one live
-measurement against the raw payload before anything is changed.
+**9.4 — `implied_volatility` units — RESOLVED, and `fmtIv` misrenders its own tail.** `fmtIv`
+branches on `iv < 3` to decide fraction-vs-percent **per row**, which is only safe if the feed is
+genuinely mixed-unit. It is not. `MEASURED 2026-08-22` over 3500 rows carrying IV: **min 0.07, p25
+0.13, median 0.17, p75 0.23, max 106.2** — a single fractional mode with a long right tail, not the
+bimodal shape a mixed-unit feed produces (which would put a second cluster around 15–30). The feed
+is **uniformly fractional**, so the branch is misreading its own tail: **148 rows (4.2%)** sit at or
+above 3 and render divided by 100 — a `3.5` (350% IV, ordinary for a near-dated contract) shows as
+**"4%"**. Two further facts from §4A: IV is present **only** on Group B, so the IV column is blank
+for every equity name and populated only for SPX/SPY; and no row was below 0.03, so the
+oft-feared "genuinely sub-3% IV multiplied by 100" case does not occur on this tape. The fix is a
+fixed unit, not a smarter threshold.
 
 **9.5 — The Expiry Concentration panel files expired contracts under "This week".** The panel reads
 `a.dte ?? daysToExpiry(a.expiry)` and its `bucketLabel` tests `dte === 0` exactly. The SQL `dte` is
@@ -468,7 +585,9 @@ genuinely negative for an already-expired print, so it misses the `=== 0` branch
 fallback clamps to 0 and would bucket it correctly, so the defect only shows on the normal path where
 the API supplied `dte` — which is every row.) Largo's copy (`expiryHorizonLabel`) already uses `dte <= 0`
 and buckets them as 0DTE. Known and logged when the Largo side was fixed; the member-facing half is
-still open. Small, contained, member-visible.
+still open. `MEASURED 2026-08-22`: **803 of 5000 rows (16.1%) carry a negative `dte`** — this is not
+a rare edge, it is a sixth of the tape being filed under a future horizon. Small, contained,
+member-visible, and now quantified.
 
 **9.6 — Nothing records which population fired a persisted signal.** Client badges run the detectors
 over the filtered/floored/scoped client buffer; the cron runs them over the unfiltered last hour.
@@ -483,12 +602,37 @@ only by the sweep (+25) and 0DTE (+15) flags. Whether that is intended compressi
 retune it on intuition: the ledger in §9 is the only instrument that could say whether score
 correlates with follow-through, and that measurement has not been run.
 
-**9.8 — `executionRouteKey` is substring matching on a free-text UW field.** `alert_rule` is matched
-against `["SWEEP","BLOCK","SPLIT","CROSS","FLOOR","MULTI"]` by `String.includes`, first hit wins, so
-a rule naming two mechanisms is silently attributed to whichever appears first in that fixed list,
-and any rule UW renames lands in `OTHER`. The Route Breakdown panel and Largo's `route_breakdown`
-both read it. **UNKNOWN:** the actual distinct `alert_rule` values UW emits, and what share currently
-falls to `OTHER`. One query answers it; it has not been run.
+**9.8 — the Route Breakdown panel is 98.8% "OTHER" — RESOLVED, and it is the most broken thing
+found this pass.** `executionRouteKey` matches `alert_rule` against
+`["SWEEP","BLOCK","SPLIT","CROSS","FLOOR","MULTI"]` by `String.includes`, first hit wins.
+`MEASURED 2026-08-22`:
+
+| bucket | rows | share |
+|---|---|---|
+| **OTHER** | 4939 | **98.8%** |
+| FLOOR | 58 | 1.2% |
+| SWEEP | 3 | 0.1% |
+| BLOCK · SPLIT · CROSS · MULTI | **0** | **never fire at all** |
+
+A panel titled "Route Breakdown" that renders one bar reading OTHER is not a breakdown. Two
+independent causes, both fixable:
+
+1. **70% of rows carry no `alert_rule`** — the entire Group B feed (§4A) has no rule field, and
+   every one of those rows is bucketed `OTHER`.
+2. **The dominant real rule family matches none of the six keys.** `RepeatedHits` (19.2%),
+   `RepeatedHitsAscendingFill` (5.6%) and `RepeatedHitsDescendingFill` (3.9%) — **28.7% of the
+   tape** — all fall to `OTHER`. And `ruleLabel()`, **in the same file**, already maps `"repeated"`
+   to a `REPEAT` badge shown on the tape. So HELIX has two functions parsing one field with
+   different vocabularies, and the panel uses the one that does not know the most common value.
+
+The nine distinct `alert_rule` values live are: `RepeatedHits`, `RepeatedHitsAscendingFill`,
+`RepeatedHitsDescendingFill`, `FloorTradeLargeCap`, `LowHistoricVolumeFloor`, `FloorTradeMidCap`,
+`SweepsFollowedByFloor`, `FloorTradeSmallCap`, and absent. The multi-match ambiguity is real but
+tiny: **3 rows** of `SweepsFollowedByFloor` match SWEEP+FLOOR and are filed as SWEEP by list order.
+Fixing the vocabulary matters; fixing the precedence barely does.
+
+Blast radius: the member panel **and** Largo's `route_breakdown` field, which is currently telling
+the model that 98.8% of institutional flow has an unknown execution route.
 
 **9.9 — Style inconsistency, not (currently) a defect.** `detectVelocitySpikes` reads
 `alert.event_at` directly while `detectSplitFlow` uses `flowEventTimeMs`. For rows produced by the
@@ -500,14 +644,27 @@ diverging, and the two detectors sit in the same file for the express purpose of
 
 ## 12. Phase 1 queue (what this map says to do next)
 
-1. Run `scripts/audit/largo-truncation-probe.mjs` against all four HELIX tools **with a control**;
+Reordered after the live measurement — three items moved up because they are no longer hypotheses,
+and one moved down because it was answered.
+
+1. **Take §9.0 to the coordinator first.** It is the only finding here whose fix may not belong to
+   this lane: giving Group B a print time is an upstream/ingest decision. The in-lane half (carry
+   the eligible denominator into payload + panel) is a normal small PR and can land regardless.
+2. **§9.8 — the Route Breakdown vocabulary.** Highest member-visible impact per unit of risk: teach
+   `executionRouteKey` the `RepeatedHits*` family (reusing `ruleLabel`'s existing vocabulary rather
+   than inventing a second one), and decide explicitly what a rule-less Group B row should bucket as
+   — `OTHER` is defensible, but only once it stops meaning four different things.
+3. **§9.4 — pin the IV unit** and delete the `iv < 3` guess. Add a unit test with the measured
+   distribution so a future feed change fails loudly instead of silently rescaling 4.2% of rows.
+4. **§9.3 — `gex_evaluated` companion flag.** Now known to matter for 173 of 273 tickers.
+5. **§9.5 — the expired-contract bucket** (16.1% of the tape). Small and contained.
+6. Run `scripts/audit/largo-truncation-probe.mjs` against all four HELIX tools **with a control**;
    report every `COMPLETE` as UNVERIFIED if the control does not come back TRUNCATED.
-2. Answer §9.8 and §9.4 with one live read each — both are single queries and both currently block a
-   correctness claim.
-3. Build the missing `/flows` interaction harness (§10) on the `meridian-interaction-audit.mjs`
-   pattern, gated on a PAGE-LOADED proof.
-4. §9.3, then §9.5, then §9.6 as fix PRs, one issue per PR, each with a test and a FINDINGS entry in
-   the same PR.
-5. During the next LIVE VALIDATION window (Mon–Fri 09:30–13:00 ET): re-measure §3's 87.6%
-   ingest-stamped share, the `window.actual_hours`-vs-requested gap, and the LIVE/STALE badge against
-   a moving tape.
+7. Build the `/flows` interaction harness on the `meridian-interaction-audit.mjs` pattern, gated on
+   a PAGE-LOADED proof. `helix-tape-inventory.mjs` covers the DATA; nothing yet covers the PIXELS.
+8. **Re-run `helix-tape-inventory.mjs` during RTH.** Everything above was measured on a settled
+   weekend tape. The ratios that will move: signal eligibility, the A/B row mix, `gex_proximity`
+   presence (a warm cache should raise it), and the real-print span. If the writer split does *not*
+   hold during RTH, that is a bigger finding than anything in §11.
+9. §9.6, §9.7, §9.1 as the coordinator directs — §9.7 (score saturation) explicitly needs the
+   ledger measurement before anyone touches a threshold.
