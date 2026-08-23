@@ -25,6 +25,7 @@ import {
 import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
 import { notifyOpsDiscord } from "@/features/spx/lib/spx-play-notify";
 import { claudeEnabled, largoClaudeEnabled } from "@/lib/ai-env";
+import { MAX_TOOL_RESULT_CHARS } from "./tool-result-cap";
 
 export type AnthropicAiGate = "global" | "largo";
 
@@ -170,10 +171,11 @@ export const LARGO_MODEL = "claude-sonnet-5";
 export const LARGO_ESCALATION_MODEL = "claude-sonnet-4-6";
 export const COMMENTARY_MODEL = "claude-haiku-4-5";
 const TEMPERATURE = 0.3;
-/** Per-tool_result size cap. Heavy tools (GEX bundles, full flow payloads) are
- *  re-sent every loop round; without a cap they overflow the context window and
- *  Anthropic 400s with prompt-too-long (LARGO-5). */
-export const MAX_TOOL_RESULT_CHARS = 16_000;
+// Re-exported, not redeclared: the value moved to a dependency-free module so `tool-guard.ts` can
+// read it without pulling this file's SDK/telemetry/Redis/Discord graph in behind it. Imported as
+// well as re-exported because the tool loop below uses it directly. Every existing
+// `import { MAX_TOOL_RESULT_CHARS } from "@/lib/providers/anthropic"` keeps working unchanged.
+export { MAX_TOOL_RESULT_CHARS };
 
 export type AnthropicSystemBlock = {
   type: "text";
@@ -528,6 +530,46 @@ export type AnthropicToolLoopEvent =
    */
   | { type: "answer_reset" };
 
+/**
+ * Why the tool loop stopped.
+ *
+ * WHY THIS EXISTS. `anthropicToolLoop` returns `string | null`, and EIGHT structurally different
+ * outcomes collapse into that one `null`: the AI gate is closed, there is no API key, the spend
+ * ceiling tripped, a model call threw, the model returned an empty round, the wall-clock budget
+ * ran out, or rounds ran out and the synthesis pass produced nothing. The caller cannot tell them
+ * apart, so `classifyEmptyAnswer` guessed from elapsed time and defaulted to "no data" — and a
+ * member was told *"I couldn't pull enough live data"* for every one of them.
+ *
+ * That is not hypothetical. On 2026-08-22 every round-0 call was failing with an HTTP 400
+ * *"Your credit balance is too low to access the Anthropic API"*, and for a full day Largo told
+ * everyone who asked that it could not pull enough live data — a billing failure narrated as a
+ * data gap, on a desk whose data was fine. It cost three lanes a day of investigation, because the
+ * one thing the answer could not say was what had actually happened.
+ *
+ * Reported through a callback rather than by widening the return type: the reason is diagnostic
+ * metadata about the turn, not part of the answer, and every existing caller keeps compiling and
+ * behaving identically if it does not ask.
+ */
+export type ToolLoopStopReason =
+  /** Text was produced — the normal path. */
+  | "answered"
+  /** `anthropicGateOpen` said no: Claude is disabled in this environment. */
+  | "ai_disabled"
+  /** No client — `ANTHROPIC_API_KEY` is missing or empty. */
+  | "not_configured"
+  /** The daily AI-spend ceiling was tripped (pre-flight or mid-loop). */
+  | "spend_ceiling"
+  /** A model create/stream threw after retries — including the escalation retry. UPSTREAM, ours to
+   *  report and not to blame on the data. `detail` carries the provider message for the LOG ONLY;
+   *  it is never shown to a member (it can name billing state). */
+  | "upstream_error"
+  /** The model returned a round with no tool calls and no text. */
+  | "empty_round"
+  /** The loop's wall-clock budget ran out between rounds. */
+  | "loop_budget"
+  /** `maxRounds` exhausted and the final synthesis pass produced nothing usable. */
+  | "max_rounds";
+
 export async function anthropicToolLoop(params: {
   system: AnthropicSystem;
   tools: AnthropicToolDef[];
@@ -568,13 +610,31 @@ export async function anthropicToolLoop(params: {
   onEvent?: (event: AnthropicToolLoopEvent) => void;
   /** When "largo", uses largoClaudeEnabled() so staging Largo can call Claude without STAGING_CLAUDE=1. */
   aiGate?: AnthropicAiGate;
+  /** Called EXACTLY ONCE with the reason this loop stopped, immediately before it returns. Optional
+   *  so existing callers are untouched; see ToolLoopStopReason for why a bare `null` was not enough. */
+  onStop?: (stop: { reason: ToolLoopStopReason; detail?: string }) => void;
 }): Promise<string | null> {
-  if (!anthropicGateOpen(params.aiGate)) return null;
+  // Fires the callback once and passes the value straight through, so every `return` in this
+  // function reports a reason by construction. A `return` that forgets to go through `stop()` is
+  // the bug this wrapper exists to make hard: there are nine of them and they are far apart.
+  let stopped = false;
+  const stop = <T,>(reason: ToolLoopStopReason, value: T, detail?: string): T => {
+    if (!stopped) {
+      stopped = true;
+      try {
+        params.onStop?.({ reason, ...(detail ? { detail } : {}) });
+      } catch {
+        /* a diagnostic callback must never change the turn's outcome */
+      }
+    }
+    return value;
+  };
+  if (!anthropicGateOpen(params.aiGate)) return stop("ai_disabled", null);
   const client = getClient();
-  if (!client) return null;
+  if (!client) return stop("not_configured", null);
   if (await isAiSpendCeilingTripped()) {
     console.warn("[anthropic] daily AI spend ceiling reached — skipping anthropic tool loop");
-    return null;
+    return stop("spend_ceiling", null);
   }
 
   const model = resolveModel(params.model);
@@ -638,11 +698,11 @@ export async function anthropicToolLoop(params: {
       console.warn(
         `[anthropic] tool loop hit its ${loopBudgetMs}ms wall-clock budget after ${round} round(s) — returning partial`
       );
-      return extractTextFromLastAssistant(messages as unknown as AnthropicMessage[]) ?? null;
+      return stop("loop_budget", extractTextFromLastAssistant(messages as unknown as AnthropicMessage[]) ?? null);
     }
     if (await isAiSpendCeilingTripped()) {
       console.warn("[anthropic] daily AI spend ceiling reached mid tool-loop — stopping");
-      return extractTextFromLastAssistant(messages as unknown as AnthropicMessage[]) ?? null;
+      return stop("spend_ceiling", extractTextFromLastAssistant(messages as unknown as AnthropicMessage[]) ?? null);
     }
 
     const createParams: MessageCreateParams = {
@@ -710,9 +770,10 @@ export async function anthropicToolLoop(params: {
           loopMaxRetries
         );
       } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
         console.error(
           "[anthropic] tool-loop stream round failed — falling back to accumulated assistant text",
-          err instanceof Error ? err.message : String(err)
+          detail
         );
         if (shouldFallBackToEscalationModel({ round, alreadyTried: escalationTried, activeModel, escalationModel: LARGO_ESCALATION_MODEL })) {
           console.warn(`[anthropic] round 0 stream on ${activeModel} failed — retrying once on ${LARGO_ESCALATION_MODEL}`);
@@ -721,7 +782,9 @@ export async function anthropicToolLoop(params: {
           round--; // retry round 0 on the escalation model — messages carries no assistant turn yet
           continue;
         }
-        return extractTextFromLastAssistant(messages as unknown as AnthropicMessage[]) ?? null;
+        // UPSTREAM, not a data gap. `detail` is for the log only — it can name account/billing
+        // state, which no member may be shown.
+        return stop("upstream_error", extractTextFromLastAssistant(messages as unknown as AnthropicMessage[]) ?? null, detail);
       }
       trackSpend(activeModel, finalMessage.usage);
       logCacheUsage("tool-loop-stream", finalMessage.usage);
@@ -738,9 +801,10 @@ export async function anthropicToolLoop(params: {
           loopMaxRetries
         );
       } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
         console.error(
           "[anthropic] tool-loop round create failed — falling back to accumulated assistant text",
-          err instanceof Error ? err.message : String(err)
+          detail
         );
         if (shouldFallBackToEscalationModel({ round, alreadyTried: escalationTried, activeModel, escalationModel: LARGO_ESCALATION_MODEL })) {
           console.warn(`[anthropic] round 0 create on ${activeModel} failed — retrying once on ${LARGO_ESCALATION_MODEL}`);
@@ -749,7 +813,8 @@ export async function anthropicToolLoop(params: {
           round--; // retry round 0 on the escalation model — messages carries no assistant turn yet
           continue;
         }
-        return extractTextFromLastAssistant(messages as unknown as AnthropicMessage[]) ?? null;
+        // UPSTREAM, not a data gap — see the streaming branch above.
+        return stop("upstream_error", extractTextFromLastAssistant(messages as unknown as AnthropicMessage[]) ?? null, detail);
       }
       trackSpend(activeModel, data.usage);
       logCacheUsage("tool-loop-round", data.usage);
@@ -781,14 +846,19 @@ export async function anthropicToolLoop(params: {
       // round WITH text is the normal way a turn ends and logging it would bury the signal.
       if (!text) {
         const kinds = (content as Array<{ type?: string }>).map((b) => b?.type ?? "?");
+        // The consequence named in this line MUST track the copy `empty_round` actually renders. It
+        // used to promise the "couldn't pull enough live data" copy, which stopped being true the
+        // moment this branch got its own stop reason — and an operator grepping the log for what a
+        // member reported would have been sent to the wrong branch by a stale sentence. Kept
+        // outside the call so the string itself stays assertable.
         console.warn(
           `[anthropic] tool-loop round ${round} produced NO tool calls and NO text — ` +
             `model=${activeModel} blocks=${content.length}[${kinds.join(",")}] ` +
-            `this surfaces to the member as the "couldn't pull enough live data" fallback`
+            `stop=empty_round — surfaces to the member as the "model came back empty" fallback`
         );
       }
 
-      return text || null;
+      return text ? stop("answered", text) : stop("empty_round", null);
     }
 
     messages.push({ role: "assistant", content: content as unknown as MessageParam["content"] });
@@ -875,12 +945,11 @@ export async function anthropicToolLoop(params: {
     );
     trackSpend(activeModel, final.usage);
     logCacheUsage("tool-loop-final", final.usage);
-    return extractTextFromBlocks(final.content as Array<{ type: string; text?: string }>) || null;
+    const finalText = extractTextFromBlocks(final.content as Array<{ type: string; text?: string }>) || null;
+    return finalText ? stop("answered", finalText) : stop("max_rounds", null);
   } catch (err) {
-    console.error(
-      "[anthropic] tool-loop final synthesis failed",
-      err instanceof Error ? err.message : String(err)
-    );
-    return extractTextFromLastAssistant(messages as unknown as AnthropicMessage[]) ?? null;
+    const detail = err instanceof Error ? err.message : String(err);
+    console.error("[anthropic] tool-loop final synthesis failed", detail);
+    return stop("upstream_error", extractTextFromLastAssistant(messages as unknown as AnthropicMessage[]) ?? null, detail);
   }
 }

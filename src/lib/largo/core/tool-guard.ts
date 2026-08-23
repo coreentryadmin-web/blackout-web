@@ -37,6 +37,9 @@ import {
   type LargoCapability,
 } from "@/lib/largo/registry/capability-registry";
 import { roundResultForReading } from "./round-for-reading";
+// Pure module, deliberately NOT `providers/anthropic` — see tool-result-cap.ts for why the constant
+// was split out. This file must stay free of the SDK/telemetry/Redis graph.
+import { exceedsToolResultCap, MAX_TOOL_RESULT_CHARS } from "@/lib/providers/tool-result-cap";
 
 export type ToolCallDiagnostic = {
   tool: string;
@@ -47,6 +50,15 @@ export type ToolCallDiagnostic = {
   failed: boolean;
   /** Serialized result size. A tool returning 0 bytes is a silent-empty, not a success. */
   bytes: number;
+  /**
+   * This result is OVER the transport cap, so the model will be handed a head-slice of it.
+   *
+   * Derived from `bytes`, which this file has always measured and never compared to anything. That
+   * omission is why three truncation defects (#2433, #2436, #2480) shipped and were each found only
+   * by asking the live model whether its payload arrived — an over-cap tool still "succeeds", so
+   * nothing here objected. The number was already in hand; only the comparison was missing.
+   */
+  truncated: boolean;
 };
 
 export type ToolGuardViewer = {
@@ -128,7 +140,7 @@ export function makeGuardedToolRunner(opts: GuardedRunnerOptions) {
       // Deliberately NOT pushed to `toolsUsed`. That array is persisted to the interaction log and
       // buckets calibration cohorts, so it must record tools that RAN. A denied call ran nothing;
       // recording it would make an admin-denied turn indistinguishable from one that used the tool.
-      opts.diagnostics.push({ tool: name, ms: now() - started, denied: true, failed: false, bytes: 0 });
+      opts.diagnostics.push({ tool: name, ms: now() - started, denied: true, failed: false, bytes: 0, truncated: false });
       return denial;
     }
 
@@ -142,16 +154,18 @@ export function makeGuardedToolRunner(opts: GuardedRunnerOptions) {
       // provider functions that feed compute paths are untouched. See round-for-reading.ts.
       const result = roundResultForReading(await opts.execute(name, input, opts.viewer.userId));
       opts.capturedResults.push(result);
+      const bytes = sizeOf(result);
       opts.diagnostics.push({
         tool: name,
         ms: now() - started,
         denied: false,
         failed: false,
-        bytes: sizeOf(result),
+        bytes,
+        truncated: exceedsToolResultCap(bytes),
       });
       return result;
     } catch (err) {
-      opts.diagnostics.push({ tool: name, ms: now() - started, denied: false, failed: true, bytes: 0 });
+      opts.diagnostics.push({ tool: name, ms: now() - started, denied: false, failed: true, bytes: 0, truncated: false });
       throw err;
     }
   };
@@ -180,17 +194,33 @@ export function formatToolDiagnostics(diagnostics: readonly ToolCallDiagnostic[]
   const parts = [...diagnostics]
     .sort((a, b) => b.ms - a.ms)
     .map((d) => {
-      const flag = d.denied ? " DENIED" : d.failed ? " FAILED" : d.bytes === 0 ? " EMPTY" : "";
+      // TRUNCATED carries its size because the number is the actionable part: "9.2s" tells you to
+      // make a tool faster, "TRUNCATED 41203/16000" tells you exactly how much has to come off and
+      // whether the fix is pagination or a leaner shape.
+      const flag = d.denied
+        ? " DENIED"
+        : d.failed
+          ? " FAILED"
+          : d.truncated
+            ? ` TRUNCATED ${d.bytes}/${MAX_TOOL_RESULT_CHARS}`
+            : d.bytes === 0
+              ? " EMPTY"
+              : "";
       return `${d.tool} ${Math.round(d.ms)}ms${flag}`;
     });
   const denied = diagnostics.filter((d) => d.denied).length;
   const failed = diagnostics.filter((d) => d.failed).length;
   const empty = diagnostics.filter((d) => !d.denied && !d.failed && d.bytes === 0).length;
+  const truncated = diagnostics.filter((d) => d.truncated).length;
   return (
     `[largo] tools: ${diagnostics.length} calls, ${Math.round(total)}ms total` +
     (denied ? `, ${denied} denied` : "") +
     (failed ? `, ${failed} failed` : "") +
     (empty ? `, ${empty} empty` : "") +
+    // Named LAST in the counts but FIRST in severity: a slow tool gives a late answer, a truncated
+    // one gives a confident answer built on a fragment. It is the only entry here that means the
+    // member may have been told something false.
+    (truncated ? `, ${truncated} TRUNCATED` : "") +
     ` — ${parts.join(" | ")}`
   );
 }
