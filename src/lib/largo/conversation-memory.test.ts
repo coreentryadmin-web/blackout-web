@@ -229,7 +229,7 @@ test("formatMemoryForSystemPrompt returns empty string if no ticker/consensus", 
 test("resetMemory clears all state", () => {
   let memory = updateMemoryWithConsensus(initializeMemory(), mockConsensus, "SPX");
   memory = updateMemoryWithLevels(memory, 7600, 7650, 7750);
-  recordDecisionInMemory(memory, mockDecision);
+  memory = recordDecisionInMemory(memory, mockDecision);
 
   const reset = resetMemory();
 
