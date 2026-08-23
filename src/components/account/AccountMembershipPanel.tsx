@@ -1,7 +1,7 @@
 "use client";
 
 import { useAppAuth } from "@/lib/auth-client";
-import { parseTier, TIER_LABELS } from "@/lib/tiers";
+import { resolveDisplayTier, TIER_LABELS } from "@/lib/tiers";
 import { WHOP_CHECKOUT } from "@/lib/whop-checkout";
 
 /**
@@ -12,7 +12,9 @@ import { WHOP_CHECKOUT } from "@/lib/whop-checkout";
  */
 export function AccountMembershipPanel() {
   const { tier: rawTier, isLoaded } = useAppAuth();
-  const tier = parseTier(rawTier);
+  // resolveDisplayTier (not parseTier): an admin member's rawTier is the synthetic "admin"
+  // string, which parseTier doesn't recognize and falls through to "free" — see tiers.ts.
+  const tier = resolveDisplayTier(rawTier);
   const manageHref = WHOP_CHECKOUT.store || WHOP_CHECKOUT.monthly || WHOP_CHECKOUT.community;
 
   return (

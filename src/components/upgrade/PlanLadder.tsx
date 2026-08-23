@@ -9,7 +9,7 @@ import { valuePropFor } from "@/lib/upsell-features";
 import { BorderBeam } from "@/components/ui/motion/BorderBeam";
 import { MEMBERSHIP_PRICING, usd } from "@/lib/pricing";
 import { useAppAuth } from "@/lib/auth-client";
-import { tierAtLeast, parseTier } from "@/lib/tiers";
+import { tierAtLeast, resolveDisplayTier } from "@/lib/tiers";
 
 const COMMUNITY_FEATURES = [
   "SPX Slayer desk — live",
@@ -29,7 +29,9 @@ const PREMIUM_FEATURES = [
 
 export function PlanLadder() {
   const { tier, isLoaded } = useAppAuth();
-  const userTier = parseTier(tier ?? "");
+  // resolveDisplayTier (not parseTier): an admin member's tier is the synthetic "admin" string,
+  // which parseTier doesn't recognize and falls through to "free" — see tiers.ts.
+  const userTier = resolveDisplayTier(tier ?? "");
   const hasCommunity = isLoaded && tierAtLeast(userTier, "community");
   const hasPremium = isLoaded && tierAtLeast(userTier, "premium");
 

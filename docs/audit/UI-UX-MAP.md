@@ -163,16 +163,23 @@ premium account would see with a fully-hydrated session (e.g. a "Manage subscrip
 instead). **The `/account` "Free" plan entries in §2 and §9 are corrected in place below** — they
 previously asserted this was the account's real tier rather than flagging the hydration gap.
 
-**One more thing this surfaced, NOT confirmed either way:** `ClerkAuthBridge` in `auth-client.tsx`
-sets `tier = "admin"` (a literal string) for `role:admin` users, but `parseTier()`
-(`src/lib/tiers.ts`) only recognizes `"premium"`/`"pro"`/`"elite"`/`"community"` — `"admin"` falls
-through to `"free"`. **If a REAL admin member's browser fully hydrates a Clerk session** (unlike
-our minted ones), `parseTier("admin")` would still resolve to `"free"` and their own account page
-would show "Free" too. This cannot be confirmed or ruled out from this pass's tooling — it needs a
-real signed-in admin browser session, not a minted one, to test. Recorded as an **OPEN QUESTION**,
-not a finding, and specifically NOT filed to `findings-staging/` without that confirmation — an
-unverified claim about real admin members' billing display is exactly the kind of thing that must
-not be asserted as fact on a guess (per this file's own opening rule).
+**RESOLVED same day, WITHOUT needing a real browser (§1.2b's own open question).** `ClerkAuthBridge`
+in `auth-client.tsx` sets `tier = "admin"` (a literal string) for `role:admin` users, but
+`parseTier()` (`src/lib/tiers.ts`) only recognizes `"premium"`/`"pro"`/`"elite"`/`"community"` —
+`"admin"` falls through to `"free"`. This was originally recorded as needing a real hydrated admin
+session to confirm, on the theory that a minted session couldn't distinguish "never hydrated" from
+"hydrated and genuinely Free." That theory doesn't hold for THIS specific question: whether
+`parseTier("admin")` returns `"free"`, and whether any real component feeds it that value, is a pure
+static-tracing question — independent of hydration timing, answerable by reading the source. Traced
+it: `AccountMembershipPanel` (`/account`) and `PlanLadder` (`/pricing`, `/upgrade`) both fed
+`useAppAuth().tier` straight into `parseTier`, so any real admin member with a normally-hydrated
+session WOULD see "Free" + not-yet-subscribed CTAs despite full access — a real, confirmed defect,
+not merely a hypothetical. Fixed with a new `resolveDisplayTier()` used only by those two
+display/CTA-gating consumers (NOT folded into `parseTier` itself — `Ga4ConversionTracker` also
+reads this same value to detect a tier upgrade and fire a purchase-conversion event; mapping
+`"admin"→"premium"` inside `parseTier` would make every admin page load read as a fresh premium
+purchase and fire a false conversion event). See
+`docs/audit/findings-staging/2026-08-23-admin-tier-display-fallthrough.md`.
 
 ### 1.3 Locked-tool empty state
 
@@ -820,11 +827,11 @@ outlives whoever wrote it):
   actually observable (§0).
 - **No admin surfaces** (`/admin*`) — explicitly noted as lower priority in the charter, not
   covered this pass.
-- **Three OPEN QUESTIONs remain:** `/meridian`'s slow desktop fetch (§6/§10 #9) and §5's withdrawn
+- **Two OPEN QUESTIONs remain:** `/meridian`'s slow desktop fetch (§6/§10 #9) and §5's withdrawn
   desktop-half of the Vector footer-overlap finding both need a longer `--wait` or a chart-loaded
-  re-check rather than another default 9s shot. §1.2b's `parseTier("admin")` fallthrough needs a
-  REAL signed-in admin browser session (not this lane's minted, unhydrated sessions) to confirm or
-  rule out — this pass's tooling structurally cannot answer it.
+  re-check rather than another default 9s shot. (§1.2b's `parseTier("admin")` fallthrough, third of
+  the original three, turned out NOT to need a real browser session — it resolved by static tracing
+  the same day; see §1.2b.)
 - **A second, distinct methodology gap found the same day as the UA correction (§1.2b): every
   client-side tier-dependent UI element (`useAppAuth()` consumers — the `/account` plan display,
   `/pricing` and `/upgrade` CTAs) rendered in its default/unhydrated state in EVERY screenshot this

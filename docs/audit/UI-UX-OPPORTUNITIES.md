@@ -73,19 +73,17 @@ a pattern worth generalizing. Classify with the brief's own scale:
    `--desktop`. Unit-tested in `proxy-browser.test.mjs`. Kept here rather than deleted so the next
    reader can see WHY the warning exists, not just that it does.
 
-8. **[P2, needs a real browser to confirm] Possible `parseTier("admin")` fallthrough to "Free" for
-   real admin members.** `UI-UX-MAP.md` §1.2b: `ClerkAuthBridge` (`src/lib/auth-client.tsx`) sets
-   `tier = "admin"` for `role:admin` users, but `parseTier()` (`src/lib/tiers.ts`) only recognizes
-   `"premium"/"pro"/"elite"/"community"` — `"admin"` isn't one of them, so it falls through to
-   `"free"`. If this is reachable by a real admin member with a normally-hydrated Clerk session
-   (not this lane's minted, unhydrated sessions), their own `/account` page and the `/pricing`/
-   `/upgrade` CTAs would show "Free" and not-yet-subscribed prompts despite having full admin
-   access — a confusing, possibly embarrassing mismatch for internal/admin accounts specifically.
-   **Not filed as a finding — this pass's tooling cannot distinguish "the hook never hydrated" from
-   "the hook hydrated and genuinely resolved to Free" for a minted session, so this needs a real
-   signed-in admin browser test before it's asserted as a real defect.** Quick fix if confirmed:
-   add `"admin"` to `parseTier`'s recognized set (or special-case it the way `ClerkAuthBridge`
-   itself already does for other purposes), mapping it to at least `"premium"`.
+8. **[DONE, 2026-08-23] `parseTier("admin")` fallthrough to "Free" — resolved WITHOUT needing a
+   live browser.** This item originally said the question needed a real hydrated admin session to
+   settle, since this lane's minted sessions can't distinguish "the hook never hydrated" from "the
+   hook hydrated and genuinely resolved to Free." That framing was too cautious: the actual
+   question — does `parseTier("admin")` return `"free"`, and does any real component feed it that
+   value — is a pure static-tracing question, answerable from the source without a browser at all.
+   Traced it: `ClerkAuthBridge` does set `useAppAuth().tier = "admin"` for `role:admin` users
+   (`src/lib/auth-client.tsx`), and `AccountMembershipPanel` (`/account`) and `PlanLadder`
+   (`/pricing`, `/upgrade`) both fed that value straight into `parseTier`, which has never
+   recognized the string `"admin"`. That's independent of hydration timing — confirmed and fixed
+   the same day. See `docs/audit/findings-staging/2026-08-23-admin-tier-display-fallthrough.md`.
 
 ---
 
