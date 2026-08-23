@@ -199,7 +199,11 @@ try {
     if (dead.length) L(`  buckets that never fired: ${dead.join(", ")}`);
     L();
     L(`## alert_rule VALUES`);
-    for (const [r, n] of Object.entries(report.alert_rules)) L(`  ${String(n).padStart(5)} ${String(pct(n, flows.length)).padStart(6)}%  ${r} -> ${r === "(absent)" ? "OTHER" : executionRouteKey({ alert_rule: r })}`);
+    for (const [r, n] of Object.entries(report.alert_rules)) // Ask the REAL function for the absent case too. This line used to hardcode "OTHER" — written
+    // before UNREPORTED existed — so the same run printed UNREPORTED in the bucket table above and
+    // OTHER here, for the same 3500 rows. A harness that contradicts itself in one output teaches
+    // whoever reads it the wrong answer.
+    L(`  ${String(n).padStart(5)} ${String(pct(n, flows.length)).padStart(6)}%  ${r} -> ${executionRouteKey({ alert_rule: r === "(absent)" ? undefined : r })}`);
     for (const [sig, n] of Object.entries(report.route_multi_match)) L(`  !! ${n}x ${sig}`);
     L();
     L(`## implied_volatility UNITS`);

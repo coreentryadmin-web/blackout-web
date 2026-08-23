@@ -80,8 +80,22 @@ function extractAllNumbers(text: string): number[] {
  *  for small values) — tolerant of rounding, intolerant of invention. Derived
  *  values the desk itself teaches (percent deltas, x2/x0.5 of a source value)
  *  also count, so "target $8.40" verifies against a $4.20 entry. */
-/** Marker appended by largo-terminal.ts when Layer-4 coverage drops below threshold. */
-export const LARGO_RUNTIME_CAUTION_MARKER = "BIE verification";
+/**
+ * The heading of the caveat `applyVerificationCaveat` appends when Layer-4 coverage drops below
+ * threshold — and the string `auditLargoAnswerGrounding` looks for to tell "already disclosed" from
+ * "silently ungrounded".
+ *
+ * IT USED TO BE `"BIE verification"`, WHICH NOTHING EVER EMITTED. The producer wrote
+ * `_Data check: …_`, so `alreadyDisclosed` was false on every answer that had in fact been
+ * caveated, and the cron re-flagged disclosures as undisclosed — defeating the entire point of the
+ * check. Two hand-kept strings, drifted, with nothing binding them.
+ *
+ * So it is now the marker the producer BUILDS ITS HEADING FROM (`turn-outcome.ts` imports this),
+ * and it is also the phrase the terminal's caveat matcher keys on
+ * (`features/largo/answer/answer-caveats.ts` → kind `verification` → label "Grounding note").
+ * One constant, one producer, two consumers — it cannot drift again without a test failing.
+ */
+export const LARGO_RUNTIME_CAUTION_MARKER = "Grounding note";
 
 /** Same thresholds largo-terminal.ts uses before appending the caution footer. */
 export const LARGO_GROUNDING_MIN_CLAIMS = 4;
