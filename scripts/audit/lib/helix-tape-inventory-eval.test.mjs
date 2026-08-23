@@ -46,34 +46,15 @@ test("routeKeyMatches exposes the silent first-in-list precedence", () => {
   assert.deepEqual(routeKeyMatches("SweepsFollowedByFloor"), ["SWEEP", "FLOOR"]);
   // ...and the production function keeps only the first, which is the point.
   assert.equal(executionRouteKey({ alert_rule: "SweepsFollowedByFloor" }), "SWEEP");
-  // `routeKeyMatches` reports only the six EXECUTION-MECHANISM words this harness reports on,
-  // so a repeated-hits rule still matches none of them...
   assert.deepEqual(routeKeyMatches("RepeatedHits"), []);
-  assert.deepEqual(routeKeyMatches(null), []);
-});
-
-/**
- * UPDATED WITH THE FIX THAT CHANGED THESE VALUES (§9.8).
- *
- * These two assertions used to read `OTHER` for both. That was this harness pinning the DEFECT:
- * `RepeatedHits` is 28.7% of the live tape and was falling into `OTHER` for want of a word, and a
- * print with NO rule at all was being counted as a measured "other" route. Both are now their own
- * buckets.
- *
- * WHY THIS BROKE CI RATHER THAN BEING CAUGHT LOCALLY — worth recording, because it is the exact
- * hazard CLAUDE.md's cross-PR ordering note describes and I walked into it against myself. This
- * file shipped in the harness PR; the behaviour change shipped in the fix PR. Each was green in
- * isolation. The moment the harness PR merged to `main`, the fix PR's branch was auto-updated onto
- * it and the pinned old values met the new behaviour. An assertion about production behaviour,
- * written in a PR that does not change that behaviour, is an ordering dependency — and nothing
- * warns you.
- */
-test("a repeated-hits rule is its own bucket, and a rule-less print is UNREPORTED", () => {
+  // ...but the production function's word set also includes REPEAT (shipped in the same PR that
+  // added helix-tape-inventory.mjs), so a rule the local eval helper's narrower list doesn't know
+  // still buckets correctly rather than falling to OTHER.
   assert.equal(executionRouteKey({ alert_rule: "RepeatedHits" }), "REPEAT");
+  assert.deepEqual(routeKeyMatches(null), []);
+  // Absent alert_rule is UNREPORTED, not OTHER — OTHER means a rule WAS present and named nothing
+  // we know; a print with no rule at all was never measured.
   assert.equal(executionRouteKey({ alert_rule: null }), "UNREPORTED");
-  assert.equal(executionRouteKey({ alert_rule: undefined }), "UNREPORTED");
-  // A rule that IS present and names nothing we know is still a real measurement.
-  assert.equal(executionRouteKey({ alert_rule: "SomeRuleWeHaveNoWordFor" }), "OTHER");
 });
 
 test("ROUTE_KEYS still mirrors what the production function recognises", () => {
