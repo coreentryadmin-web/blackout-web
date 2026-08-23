@@ -23,6 +23,10 @@
  */
 
 import { contractSizeExact } from "@/features/helix/lib/helix-contract-size";
+import {
+  signalEligible as productSignalEligible,
+  signalEligibility as productSignalEligibility,
+} from "@/features/helix/lib/helix-signal-detection";
 
 /** The six keys `executionRouteKey` (src/features/helix/lib/helix-flow-format.ts) scans for, in
  *  its own precedence order. Duplicated ONLY as a reference for the multi-match report below —
@@ -32,23 +36,34 @@ export const ROUTE_KEYS = Object.freeze(["SWEEP", "BLOCK", "SPLIT", "CROSS", "FL
 /**
  * Which writer produced this row.
  *
- * `event_at` is the discriminator because it is the field whose absence the rest of HELIX already
- * reacts to — but the point of naming the GROUP rather than testing the field at each call site is
- * that "no event_at" is not one fact. It means: this row came from the producer that also sends no
- * alert_rule, no open interest, no ask side, no underlying price and no OTM% — and that IS an
- * SPX-or-SPY row. Reading it as "this particular print happened to lack a timestamp" is the
- * mistake this function exists to prevent.
+ * DISCRIMINATED ON POSITIVE MARKERS, NOT ON A MISSING TIMESTAMP (corrected 2026-08-23).
+ *
+ * This used to test `event_at` — present -> A, absent -> B — because on the live tape the two
+ * co-varied EXACTLY (1500 both / 0 / 0 / 3500 neither). That was true, and it was still the wrong
+ * discriminator: it identified a producer by a field that a PARSE BUG happened to be emptying.
+ * When #2723 taught `toIso` to read an epoch, all 3500 index rows gained an `event_at` and this
+ * function reclassified every one of them from `B` to `mixed` — so the harness reported
+ * "Group B: 0 rows, $0, 0% of all premium" about a population that had not changed at all and
+ * still carries ~92% of the tape's premium. A fix landing read as the writer vanishing.
+ *
+ * Each group is now named by a field only ITS producer writes, so the classification is
+ * independent of whether any timestamp parses:
+ *   A -> `alert_rule`, sent only by the UW `flow_alerts` channel.
+ *   B -> `implied_volatility`, written only by `optionTradePrintToFlowRaw` (the `option_trades`
+ *        WS path). Verified against the same 5000-row tape: the IV-carrying set and the
+ *        no-alert_rule set are the same 3500 rows.
+ *
+ * Both markers, or neither, is still reported rather than folded into a group — the clean split is
+ * the finding, so the first row that breaks it is the news.
  */
 export function writerGroup(row) {
   if (!row || typeof row !== "object") return "unknown";
-  const hasEvent = row.event_at != null && row.event_at !== "";
   const hasRule = row.alert_rule != null && row.alert_rule !== "";
-  if (hasEvent && hasRule) return "A";
-  if (!hasEvent && !hasRule) return "B";
-  // Neither pure A nor pure B. Today this is EMPTY live (0 of 5000), and that is exactly why it
-  // must be reported rather than folded into one of the two: the clean split is the finding, so
-  // the first row that breaks it is the news.
-  return "mixed";
+  const hasIv = row.implied_volatility != null && row.implied_volatility !== "";
+  if (hasRule && hasIv) return "mixed";
+  if (hasRule) return "A";
+  if (hasIv) return "B";
+  return "unknown";
 }
 
 /**
@@ -127,31 +142,37 @@ export function impliedContracts(row) {
 }
 
 /**
- * Can this row EVER fire HELIX's two persisted signals?
+ * Can this row fire HELIX's two persisted signals?
  *
- * `detectVelocitySpikes` skips any row without `event_at`; `detectSplitFlow` filters on
- * `flowEventTimeMs`, which returns null for the same rows. So a Group B row is structurally
- * incapable of contributing to either signal — while still counting toward every PREMIUM
- * aggregate (leaderboard, session skew, expiry concentration, route breakdown).
+ * DELEGATES to the product's own `signalEligible` — it does NOT restate the rule. That is the
+ * whole correction here (2026-08-23). This used to answer `writerGroup(row) === "A"`, a second,
+ * private definition of eligibility that agreed with the detectors only by coincidence: on the
+ * pre-#2723 tape "came from the flow_alerts writer" and "has a parseable print time" happened to
+ * select the same 1500 rows.
  *
- * Measured consequence: Group B is SPX and SPY only and carries 92.1% of all premium on the tape,
- * so the two names that dominate every premium panel are the two that can never raise a signal.
- * That is not a bug in either detector — each is correctly refusing to date a print it cannot
- * date. It is a property of the tape that nothing currently states.
+ * #2723 broke the coincidence and the harness kept answering the old question. It reported
+ * `eligible 1500/5000 (30%) — the rest can never fire either signal` against a deployed tape where
+ * ALL 5000 rows carry a real print time — i.e. it reported the fix as having changed nothing, in
+ * the strongest available words ("can never"), on the one instrument §5k of the market-open runbook
+ * exists to read. A harness that owns its own copy of a product rule reports on a product nobody
+ * ships; this file already refuses that for `executionRouteKey` and `contractSizeExact`, and the
+ * refusal now covers eligibility too.
  */
-export function signalEligible(row) {
-  return writerGroup(row) === "A";
-}
+export const signalEligible = productSignalEligible;
 
-/** Share of a population that is signal-eligible, with the counts that produced it — never a bare
- *  rate. (_COMMON.md #7: a rate without its denominator is not a measurement.) */
+/**
+ * Share of a population that is signal-eligible, with the counts that produced it — never a bare
+ * rate (_COMMON.md #7: a rate without its denominator is not a measurement).
+ *
+ * Wraps the product's `signalEligibility` and adds only the percentage this harness prints, so the
+ * counts and the ineligible-ticker list are byte-identical to what Largo and the member panel are
+ * told. `eligible_pct` stays null on an empty population — 0% would assert a measured rate over
+ * nothing.
+ */
 export function signalEligibility(rows) {
-  const total = (rows ?? []).length;
-  const eligible = (rows ?? []).filter(signalEligible).length;
+  const base = productSignalEligibility(rows ?? []);
   return {
-    total,
-    eligible,
-    ineligible: total - eligible,
-    eligible_pct: total > 0 ? Math.round((1000 * eligible) / total) / 10 : null,
+    ...base,
+    eligible_pct: base.total > 0 ? Math.round((1000 * base.eligible) / base.total) / 10 : null,
   };
 }

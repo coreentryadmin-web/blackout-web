@@ -1019,8 +1019,10 @@ export async function helixDerivedForLargo(
        *  print with no real UW timestamp cannot be windowed, so neither detector can see it. When
        *  `signal_ineligible_prints` is non-zero, an empty spike/split list is partly a statement
        *  about COVERAGE and must not be reported as a quiet tape. `signal_ineligible_tickers`
-       *  names which symbols were unscanned — measured live 2026-08-23 as SPX and SPY, 70% of
-       *  rows and ~92% of premium (HELIX-MAP.md §9.0 / §4A). */
+       *  names which symbols were unscanned. Measured live 2026-08-23: SPX and SPY, 70% of rows and
+       *  ~92% of premium — then 0 ineligible on the same query once #2723 deployed and the index
+       *  feed's epoch timestamps parsed (HELIX-MAP.md §9.0 / §4A). Quote the FIELD, never that
+       *  first number: it described a parse bug, not the feed. */
       signal_eligible_prints: eligibility.eligible,
       signal_ineligible_prints: eligibility.ineligible,
       signal_ineligible_tickers: eligibility.ineligibleTickers,

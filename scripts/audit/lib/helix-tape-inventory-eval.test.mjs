@@ -15,6 +15,10 @@ const SRC = new URL("../../../src/", import.meta.url).pathname;
 // The REAL production bucketing function. The harness must never reimplement it — if the panel's
 // vocabulary changes, this test is where the reference list finds out.
 const { executionRouteKey } = await import(`${SRC}features/helix/lib/helix-flow-format.ts`);
+// Ditto for eligibility: the harness must answer with the detectors' own rule, not a copy of it.
+const { signalEligible: productSignalEligible } = await import(
+  `${SRC}features/helix/lib/helix-signal-detection.ts`
+);
 
 const rowA = (over = {}) => ({
   ticker: "TSLA", premium: 250_000, option_type: "CALL", fill_price: 5,
@@ -26,19 +30,26 @@ const rowB = (over = {}) => ({
   event_at: null, alert_rule: undefined, implied_volatility: 0.17, ...over,
 });
 
-test("writerGroup separates the two producers on the fields that actually co-vary", () => {
+test("writerGroup names each producer by a field only that producer writes", () => {
   assert.equal(writerGroup(rowA()), "A");
   assert.equal(writerGroup(rowB()), "B");
-  // Empty string is absence, not a value — the REST path serves "" for a timestampless print.
-  assert.equal(writerGroup(rowB({ event_at: "" })), "B");
-  assert.equal(writerGroup(rowA({ alert_rule: "" })), "mixed");
+  // Empty string is absence, not a value — the REST path serves "" rather than null for some fields.
+  assert.equal(writerGroup(rowA({ alert_rule: "" })), "unknown");
+  assert.equal(writerGroup(rowB({ implied_volatility: "" })), "unknown");
   assert.equal(writerGroup(null), "unknown");
 });
 
-test("a row that breaks the clean split is reported as mixed, never folded into A or B", () => {
-  // 0 of 5000 live today. The whole value of the finding is that the split is exact, so the first
-  // row that violates it must surface rather than be absorbed.
-  assert.equal(writerGroup(rowA({ event_at: null })), "mixed");
+test("writerGroup does NOT move when a timestamp appears or disappears", () => {
+  // The regression this file exists to prevent. Classifying on `event_at` made #2723 — a fix that
+  // gave 3500 index rows a real print time — look like Group B evaporating: "0 rows, $0, 0% of all
+  // premium" about a population that had not changed at all.
+  assert.equal(writerGroup(rowB({ event_at: "2026-08-21T18:00:00.000Z" })), "B");
+  assert.equal(writerGroup(rowA({ event_at: null })), "A");
+});
+
+test("a row carrying BOTH producers' markers is reported as mixed, never folded into A or B", () => {
+  // 0 of 5000 live. The value of the finding is that the split is exact, so the first row that
+  // violates it must surface rather than be absorbed.
   assert.equal(writerGroup(rowB({ alert_rule: "SweepsFollowedByFloor" })), "mixed");
 });
 
@@ -102,15 +113,32 @@ test("impliedContracts refuses to invent a denominator", () => {
   assert.equal(impliedContracts(null), null);
 });
 
-test("signalEligible: only Group A rows can ever fire velocity/split", () => {
+test("signalEligible is the PRODUCT's rule — a placeable print time, not the writer group", () => {
   assert.equal(signalEligible(rowA()), true);
   assert.equal(signalEligible(rowB()), false);
+  // The two are independent, and #2723 pulled them apart on the live tape: a Group B row that now
+  // carries a parseable `event_at` IS eligible. Asserted against the real production function, so
+  // this cannot pass by agreeing with a second copy of the rule.
+  assert.equal(productSignalEligible(rowB({ event_at: "2026-08-21T18:00:00.000Z" })), true);
+  assert.equal(signalEligible(rowB({ event_at: "2026-08-21T18:00:00.000Z" })), true);
+  assert.equal(writerGroup(rowB({ event_at: "2026-08-21T18:00:00.000Z" })), "B");
+});
+
+test("signalEligibility names which tickers went unscanned, not just how many rows", () => {
+  const e = signalEligibility([rowA(), rowB({ ticker: "SPX" }), rowB({ ticker: "SPY" })]);
+  assert.equal(e.eligible, 1);
+  assert.equal(e.ineligible, 2);
+  assert.deepEqual(e.ineligibleTickers, ["SPX", "SPY"]);
 });
 
 test("signalEligibility reports the denominator alongside the rate", () => {
   const rows = [rowA(), rowA(), rowB(), rowB(), rowB()];
   const e = signalEligibility(rows);
-  assert.deepEqual(e, { total: 5, eligible: 2, ineligible: 3, eligible_pct: 40 });
+  // deepEqual, not a field-by-field check: the shape is now the PRODUCT's SignalEligibility plus
+  // this harness's one added percentage, and a silently dropped field would be a silent divergence.
+  assert.deepEqual(e, {
+    total: 5, eligible: 2, ineligible: 3, ineligibleTickers: ["SPX"], eligible_pct: 40,
+  });
 });
 
 test("signalEligibility returns a null rate on an empty population, not 0%", () => {

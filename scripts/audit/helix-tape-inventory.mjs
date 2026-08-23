@@ -12,12 +12,13 @@
  *      carrying implied_volatility and none of the rest. Nothing in the product says so, and
  *      several HELIX numbers cannot be read correctly without knowing it.
  *
- *   2. WHAT THAT COSTS. Both persisted HELIX signals need a real print time — detectVelocitySpikes
- *      skips rows without event_at, detectSplitFlow filters on flowEventTimeMs. Group B has
- *      neither, so SPX and SPY can NEVER fire a velocity spike or a split-flow signal, while
- *      carrying 92.1% of all premium on the tape and topping the Net Premium leaderboard by 246x.
- *      Every premium panel is dominated by exactly the population every time-based signal is blind
- *      to.
+ *   2. WHAT THAT COSTS — and it is now much less than it was. Both persisted HELIX signals need a
+ *      real print time; on 2026-08-22 Group B had none, so SPX and SPY — 92.1% of all tape premium
+ *      — could fire NEITHER signal. #2723 found the cause was a PARSE, not the feed: `toIso` could
+ *      not read the epoch those rows carry. Re-measured against the deployed fix on 2026-08-23,
+ *      `event_at` presence is 100% (was 30%) and eligibility is 5000/5000 (was 1500/5000).
+ *      Eligibility is therefore read from the PRODUCT's rule, never from the writer group — the
+ *      two agreed only by coincidence, and the coincidence is over.
  *
  *   3. WHETHER THE ROUTE BREAKDOWN PANEL MEANS ANYTHING. Measured: 98.8% OTHER, 1.2% FLOOR,
  *      0.1% SWEEP. BLOCK / SPLIT / CROSS / MULTI never fire at all. 70% of rows carry no
@@ -179,8 +180,8 @@ try {
     L(`  HTTP 200 in ${fetchMs}ms · source=${report.response.source} · rows=${flows.length} · has_more=${report.response.has_more}`);
     L();
     L(`## WRITERS  (the tape has two producers with different payload schemas)`);
-    L(`  A  UW flow_alerts   ${String(groups.A.length).padStart(5)} rows · ${report.writers.A.tickers} tickers · ${usd(premA)}`);
-    L(`  B  index-only feed  ${String(groups.B.length).padStart(5)} rows · ${report.writers.B.tickers} tickers · ${usd(premB)}`);
+    L(`  A  UW flow_alerts   ${String(groups.A.length).padStart(5)} rows · ${report.writers.A.tickers} tickers · ${usd(premA)}   [alert_rule]`);
+    L(`  B  index-only feed  ${String(groups.B.length).padStart(5)} rows · ${report.writers.B.tickers} tickers · ${usd(premB)}   [implied_volatility]`);
     if (groups.mixed.length) L(`  !! MIXED (breaks the clean split — this is news): ${groups.mixed.length}`);
     L(`  Group B carries ${report.writers.B_premium_share_pct}% of ALL premium on this tape`);
     L();
@@ -191,7 +192,15 @@ try {
     }
     L();
     L(`## SIGNAL ELIGIBILITY   (velocity + split both require a real print time)`);
-    L(`  eligible ${eligibility.eligible}/${eligibility.total} rows (${eligibility.eligible_pct}%) — the rest can never fire either signal`);
+    // Read from the PRODUCT's rule, not this harness's own — see helix-tape-inventory-eval.mjs.
+    // The ineligible clause is printed only when there ARE ineligible rows: a blanket "the rest can
+    // never fire either signal" is how this harness reported #2723 as having changed nothing.
+    L(`  eligible ${eligibility.eligible}/${eligibility.total} rows (${eligibility.eligible_pct}%)`);
+    if (eligibility.ineligible > 0) {
+      const names = eligibility.ineligibleTickers.slice(0, 8).join(", ");
+      const more = eligibility.ineligibleTickers.length > 8 ? ` +${eligibility.ineligibleTickers.length - 8} more` : "";
+      L(`  !! ${eligibility.ineligible} rows carry no placeable print time and can fire NEITHER signal: ${names}${more}`);
+    }
     L();
     L(`## ROUTE BREAKDOWN   (what the member panel shows)`);
     for (const [k, n] of Object.entries(report.route_breakdown)) L(`  ${String(n).padStart(5)} ${String(pct(n, flows.length)).padStart(6)}%  ${k}`);

@@ -121,7 +121,9 @@ never printed. Pure verdict/coherence logic lives in
 ## WATCH LIST — HELIX, first session on 2026-08-24 (read this before the routine pass)
 
 Fourteen HELIX fixes merged over 2026-08-22/23. **Twelve are member-facing and none has been seen
-under a moving tape.** §5k is the highest-impact item on this list and should be checked first. Every one was validated off-hours at best, and three could not be validated at all
+under a moving tape.** §5k is the highest-impact item on this list and should be checked first —
+its **parse half is now live-validated off-hours (2026-08-23) and needs no re-run**; what remains
+there is the consequence, which only a moving tape can show. Every one was validated off-hours at best, and three could not be validated at all
 because the population they act on does not exist while the market is closed. This section is the
 list of things that are *only* checkable at the open, with the baseline each one must be diffed
 against.
@@ -469,28 +471,43 @@ and `event_at` is present on a row **iff** `alert_rule` is — SPX **39/39**, SP
 prints with a falsy `executed_at`. So every one of those rows arrived WITH a truthy `executed_at`
 that `new Date()` could not parse.
 
-- **Run first:** the same measurement, at the open.
-  `event_at`-present count vs `alert_rule`-present count per ticker. **They must now DIFFER** — SPX
-  should show thousands with `event_at` and only tens with `alert_rule`. If they still match
-  exactly, the deploy does not carry this, or the wire format is something the magnitude parser
-  does not cover (capture one raw `option_trades` frame and say so — that is the measurement the
-  closed market made impossible).
-- **THEN CHECK WHAT IT CHANGED, because this is the risky half.** Both persisted signals filter on
-  `flowEventTimeMs`. If the fix works, **70% of the tape moves from structurally-invisible to
-  signal-eligible in one deploy.** Expect the Velocity and Split Flow radars to fire on SPX/SPY for
-  the first time ever. Capture the before/after firing counts — a large jump is the fix working,
+- **✅ ANSWERED OFF-HOURS 2026-08-23 — the parse half is live-validated; do not re-run it.**
+  `node --import tsx scripts/audit/helix-tape-inventory.mjs` against production, same 5000-row/168h
+  query as the pre-deploy run: **`event_at` presence 30% → 100%, `alert_rule` unchanged at 30%.**
+  The two counts have stopped co-varying, which is exactly what this bullet asked for, so the
+  wire format IS within the magnitude parser and no raw `option_trades` capture is needed.
+  Group B is intact at **3500 rows / 2 tickers / $9,992,246,317 = 92.1% of tape premium** — the
+  §4A figure recovered exactly — and signal eligibility went **1500/5000 → 5000/5000**.
+  The times are coherent, not merely present: 5000 dated prints span **363 minutes** (one RTH
+  session), newest **2392 min** old against a market closed since Friday. So the parser picked the
+  right unit, and the last bullet below is answered too.
+  *(Reading this required fixing the instrument first — the harness classified writers by the
+  absence of `event_at` and so reported the fix as Group B vanishing. See
+  `findings-staging/2026-08-23-helix-inventory-eligibility-rule.md`. Any harness output from
+  before that fix is void on these four numbers.)*
+- **⚠️ STILL OPEN — THE RISKY HALF, and it is now CONFIRMED to have happened.** Both persisted
+  signals filter on `flowEventTimeMs`, and eligibility is measured at 5000/5000, so **70% of the
+  tape has already moved from structurally-invisible to signal-eligible.** What that does to
+  FIRING counts is unmeasurable off-hours — the eligible population exists now, but a velocity
+  spike needs prints arriving in a moving window. Expect the Velocity and Split Flow radars to fire
+  on SPX/SPY for the first time ever. Capture the before/after firing counts — a large jump is the fix working,
   but it is also a large change in what members are shown, and it is the coordinator's call whether
   the thresholds still suit a population 3× larger.
-- **The coverage note must shrink.** Off-hours it reads *"Scanned 103 of 500 prints — 397 (SPX, SPY)
-  carry no reported print time"*. That 397 should collapse toward zero. If it does not, the fix is
-  not live.
+- **The coverage note must be GONE, not merely smaller.** It rendered *"Scanned 103 of 500 prints —
+  397 (SPX, SPY) carry no reported print time"*. At 5000/5000 eligible the note renders **nothing**
+  by design, so on the open both radars should show no coverage line at all. A note still naming
+  SPX or SPY means that request's tape disagrees with this measurement — capture it, it is news.
 - **The mobile `~` marker (5f) should mostly disappear** on SPX/SPY rows — they will have real print
   times rather than ingest estimates. A row still showing `~` after this is a row that genuinely has
   no parseable time, which is now a much smaller and more interesting population.
-- **Sanity-check the times themselves, do not just count them.** A magnitude-scaled epoch that
-  picked the wrong unit yields a plausible-looking but wrong instant. Compare a handful of new
-  `event_at` values against the same prints' `alerted_at` — they should be close, and `event_at`
-  should never be in the future.
+- **Sanity-check the times themselves, do not just count them — partly answered.** A magnitude-scaled
+  epoch that picked the wrong unit yields a plausible-looking but wrong instant. The 363-minute span
+  over 5000 prints above rules out a unit error by three orders of magnitude in either direction.
+  What it does NOT rule out is a small forward skew, so still compare a handful of new `event_at`
+  values against the same prints' `alerted_at` under a moving tape: they should be close, and
+  `event_at` should never be in the future. #2725 keeps a future-stamped print out of both
+  detectors, so a future value would be silently *excluded* rather than visibly wrong — check the
+  ineligible count, not the radars.
 
 ### 6. Open questions an RTH session can actually answer
 
