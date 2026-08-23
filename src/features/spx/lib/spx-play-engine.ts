@@ -1630,7 +1630,7 @@ async function evaluateSpxPlayCore(
       direction: dir ?? null,
       grade: closedConfluence?.grade ?? "D",
       score: closedConfluence?.score ?? 0,
-      confidence: closedConfluence?.confidence ?? 0,
+      rawScore: closedConfluence?.rawScore ?? 0,
       // Off-hours the desk may have no confluence to close out on; when it doesn't, the three
       // `??` fallbacks above are placeholders and must not be read as a grade of the session.
       assessed: closedConfluence != null,
