@@ -21,6 +21,7 @@ import type { RelatedCompanies } from "@/lib/providers/polygon-related";
 import type { NewsResult } from "@/lib/providers/polygon-news";
 import type { PolygonMacroBackdrop } from "@/lib/providers/polygon-macro";
 import type { MarketBreadthBundle } from "@/lib/bie/market-breadth";
+import { SPX_CONFIDENCE_OMITTED } from "@/lib/largo/spx-confidence-boundary";
 
 // mock.module() must be registered before ecosystem-context.ts (and therefore
 // its "@/lib/db" import) is ever loaded — an ordinary top-level `import` of
@@ -386,6 +387,14 @@ test("fetchEcosystemContext: spx_play is null for a non-SPX ticker, and the SPX-
   assert.equal(closedPlayCalls, 0, "fetchClosedPlayOutcomes must not run for a non-SPX ticker");
 });
 
+
+/** The fixture as it should arrive at the model: everything verbatim, minus the uncalibrated
+ *  `confidence`, plus the named absence that replaces it. */
+function withConfidenceOmitted(payload: Record<string, unknown>): Record<string, unknown> {
+  const { confidence: _omitted, ...rest } = payload;
+  return { ...rest, confidence_omitted: SPX_CONFIDENCE_OMITTED };
+}
+
 // Regression: Largo's own get_spx_play tool (src/lib/largo/run-tool.ts ->
 // src/lib/platform/spx-service.ts::getSpxPlayState()) already returns SPX
 // Slayer's FULL play-engine payload — phase, confluence factors, gates,
@@ -395,6 +404,16 @@ test("fetchEcosystemContext: spx_play is null for a non-SPX ticker, and the SPX-
 // reusing getSpxPlayState() verbatim (not a second derivation), so BIE and
 // Largo see the exact same entire numerical picture per the user's explicit
 // "share its entire data...to both BIE and largo" instruction.
+//
+// ONE FIELD IS DELIBERATELY WITHHELD, and only one: `confidence`. It is a formula over |score| and
+// a COUNT of contributing factors (conflicting ones included) fitted to no outcome data, and the
+// product contract requires omitting a confidence a product cannot calibrate — see
+// src/lib/largo/spx-confidence-boundary.ts. get_spx_play applies the identical omission, so the
+// "exact same object" guarantee between the two doors is preserved; what changed is that neither
+// door now serves the fabricated number.
+//
+// The expectations below are built FROM the fixture (drop one key, add one key) rather than
+// hand-written, so this stays a full-fidelity guard: trim any OTHER field and it still fails.
 
 test('fetchEcosystemContext("SPX"): spx_full_state reuses getSpxPlayState() verbatim, full fidelity', async () => {
   fullStateCalls = 0;
@@ -409,7 +428,15 @@ test('fetchEcosystemContext("SPX"): spx_full_state reuses getSpxPlayState() verb
   // the same response, undermining the "one derivation" guarantee this field
   // exists to provide.
   assert.equal(fullStateCalls, 1, "getSpxPlayState should run exactly once for ticker SPX");
-  assert.deepEqual(ctx.spx_full_state, SPX_FULL_STATE_FIXTURE, "spx_full_state must pass through the entire payload untouched, not a summarized subset");
+  assert.deepEqual(
+    ctx.spx_full_state,
+    withConfidenceOmitted(SPX_FULL_STATE_FIXTURE as unknown as Record<string, unknown>),
+    "spx_full_state must pass through the entire payload apart from the deliberately-omitted confidence — never a summarized subset"
+  );
+  assert.ok(
+    ctx.spx_full_state && !("confidence" in ctx.spx_full_state),
+    "the uncalibrated confidence must not reach the model through this door either"
+  );
 });
 
 test('fetchEcosystemContext("SPXW"): spx_full_state also populates (same single-instrument engine as SPX)', async () => {
@@ -418,7 +445,10 @@ test('fetchEcosystemContext("SPXW"): spx_full_state also populates (same single-
 
   const ctx = await fetchEcosystemContext("SPXW");
   assert.equal(fullStateCalls, 1, "getSpxPlayState should run exactly once for ticker SPXW");
-  assert.deepEqual(ctx.spx_full_state, mockFullState);
+  assert.deepEqual(
+    ctx.spx_full_state,
+    withConfidenceOmitted(mockFullState as unknown as Record<string, unknown>)
+  );
 });
 
 test("fetchEcosystemContext: spx_full_state is null for a non-SPX ticker, and getSpxPlayState never runs", async () => {
