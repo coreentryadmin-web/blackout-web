@@ -11,7 +11,7 @@ import {
 import { largoAvailable, largoClaudeEnabled } from "@/lib/ai-env";
 import { randomUUID } from "node:crypto";
 import { dbConfigured } from "@/lib/db";
-import { getLargoSystemPrompt } from "@/lib/largo/system-prompt";
+import { LARGO_SYSTEM_PROMPT, getLargoSystemPrompt } from "@/lib/largo/system-prompt";
 import { LARGO_TOOL_DEFS } from "@/lib/largo/tool-defs";
 import { runLargoTool } from "@/lib/largo/run-tool";
 import { detectIntentCategory, selectToolsForIntent } from "@/lib/largo/question-intent-category";
@@ -34,7 +34,7 @@ import { parseAnswerEnvelope, validateAnswerContract, fallbackAnswerEnvelope } f
 import { sanitizeLargoMemberText } from "@/lib/largo/sanitize-member-text";
 import { truncateCapturedResultsForPersist } from "@/lib/largo/persist-tool-results";
 import { stripLargoBlocks } from "@/features/largo/blocks/extract";
-import { collectContextNumbers, unverifiedTurn, verifyClaims, type ClaimVerification } from "@/lib/bie/verifier";
+import { collectContextNumbers, verifyClaims, type ClaimVerification } from "@/lib/bie/verifier";
 import { resetLargoSpxDeskCache } from "@/lib/largo/spx-desk-cache";
 import {
   appendLargoMessage,
@@ -446,7 +446,6 @@ async function prepareLargoTurn(
   activeDeskScope: string | null;
   deskScopeArgs: DeskSlashArgs | null;
   miniPanelKind: string | null;
-  conversationMemory: ConversationMemoryState;
 }> {
   let sid = sessionId.trim() || `web-${userId}-${Date.now()}`;
   try {
@@ -468,14 +467,6 @@ async function prepareLargoTurn(
   const history = await fetchLargoHistory(sid, userId);
   const sessionMetadata = await fetchLargoSessionMetadata(sid, userId);
   const depth = parseLargoDepth(turnOptions.depth ?? sessionMetadata.depth ?? "deep");
-
-  // Initialize conversation memory — tracks ticker/consensus/regime/levels within this turn
-  // Multi-turn persistence deferred to Phase 4b (requires sessionMetadata schema extension)
-  let conversationMemory = initializeMemory();
-  const suggestedTicker = suggestTickerFromQuestion(question, conversationMemory);
-  if (suggestedTicker) {
-    conversationMemory.ticker = suggestedTicker;
-  }
   void updateLargoSessionMetadata(sid, userId, { depth }).catch(() => {});
   void maybePersistWatchlistFromQuestion(sid, userId, question).catch(() => {});
   if (turnOptions.playContext?.ticker) {
@@ -647,7 +638,7 @@ async function prepareLargoTurn(
   // The model had the tool and no way to know it was the past-capable one, because a description
   // says what a tool returns, never whether it can reach a past window.
   //
-  // Hints only. All 129 tools stay in the request, so this can never make an answer impossible
+  // Hints only. All 116 tools stay in the request, so this can never make an answer impossible
   // the way the deleted intent allowlist could.
   const capabilityBlock = formatCapabilityBlock(question, { historical: timeframe.historical });
 
@@ -670,7 +661,7 @@ async function prepareLargoTurn(
 
   // SUGGESTED PLAN — composed from what code already resolved (entities, timeframe, ranked
   // capabilities, the registry's DECLARED join edges), handed over as a starting point. It routes
-  // nothing and hides nothing; the model may ignore it, and the full 129-tool surface is still in
+  // nothing and hides nothing; the model may ignore it, and the full 116-tool surface is still in
   // the request. Its real value is telling the model which results can be CORRELATED: a join edge
   // here means the two capabilities share an entity key, which registry.test.ts proves, so a
   // cross-product claim built on one is sound rather than a string coincidence.
@@ -774,10 +765,6 @@ async function prepareLargoTurn(
 
   const tier = await getUserTier(userId).catch(() => null);
   const isAdmin = await isAdminUser(userId).catch(() => false);
-
-  // Format conversation memory for inclusion in system prompt
-  const memoryBlock = formatMemoryForSystemPrompt(conversationMemory);
-
   const extraBlocks =
     deskScopeBlock +
     diffBlock +
@@ -792,7 +779,6 @@ async function prepareLargoTurn(
     }) +
     formatRegimePersonalityBlock(marketPhase) +
     formatCalibrationBlock() +
-    (memoryBlock ? `\n\n${memoryBlock}` : "") +
     (compareCard
       ? compareCard.kind === "peer_tickers"
         ? `\n\n## Peer ticker compare (prefetched — cite these numbers)\n${JSON.stringify(compareCard, null, 0).slice(0, 5000)}\n`
@@ -874,7 +860,6 @@ async function prepareLargoTurn(
     activeDeskScope,
     deskScopeArgs,
     miniPanelKind: scopeCfg?.miniPanel ?? null,
-    conversationMemory,
   };
 }
 
@@ -987,9 +972,6 @@ export async function runLargoQuery(
   const diagnostics: ToolCallDiagnostic[] = [];
 
   try {
-    // Conversation memory evolves through the turn: fetch → tool results → record decisions
-    // (Within-turn tracking only; multi-turn persistence deferred to Phase 4b)
-
     // Mark the prefetch/loop boundary so the phase split below can attribute the wall clock. See
     // turn-phase-timings.ts: everything before this line was deterministic prefetch (no model call).
     const loopStartedAt = Date.now();
@@ -1142,10 +1124,6 @@ export async function runLargoQuery(
     const envelope = envelopeFromContract(text, question, capturedResults, marketEvidence);
     // The turn id rides on the envelope so a follow-up can name the exact turn it refers to.
     if (envelope && turnId != null) envelope.turnId = turnId;
-
-    // PHASE 4: Response component generation infrastructure is in place but component
-    // integration into the answer envelope is deferred (Phase 5 integration testing)
-
     const followups = withResolutionChips(
       [
         ...contextualFollowupsFromAnswer({
@@ -1183,7 +1161,7 @@ export async function runLargoQuery(
       userId,
       question,
       toolsUsed,
-      verification: unverifiedTurn(),
+      verification: { total: 0, verified: 0, coverage: 1, unverified: [] },
       startedAt,
       answerSource: "error",
     });
@@ -1201,7 +1179,7 @@ export async function runLargoQuery(
       source: dbConfigured() ? "blackout-web+postgres" : "blackout-web",
       tools_used: Array.from(new Set(toolsUsed)),
       followups: deterministicLargoFollowups(question, tickerHint).slice(0, 3),
-      verification: unverifiedTurn(),
+      verification: { total: 0, verified: 0, coverage: 1, unverified: [] },
       ticker: tickerHint,
       turn_id: null,
       envelope,
@@ -1439,10 +1417,6 @@ export async function runLargoQueryStream(
     const envelope = envelopeFromContract(text, question, capturedResults, marketEvidence);
     // The turn id rides on the envelope so a follow-up can name the exact turn it refers to.
     if (envelope && turnId != null) envelope.turnId = turnId;
-
-    // PHASE 4: Response component generation infrastructure is in place but component
-    // integration into the answer envelope is deferred (Phase 5 integration testing)
-
     const followups = withResolutionChips(
       [
         ...contextualFollowupsFromAnswer({
@@ -1492,7 +1466,7 @@ export async function runLargoQueryStream(
       userId,
       question,
       toolsUsed,
-      verification: unverifiedTurn(),
+      verification: { total: 0, verified: 0, coverage: 1, unverified: [] },
       startedAt,
       answerSource: "error",
     });
