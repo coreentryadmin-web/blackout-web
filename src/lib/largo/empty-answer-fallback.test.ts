@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { classifyEmptyAnswer, emptyAnswerFallback } from "./empty-answer-fallback";
+import { classifyEmptyAnswer, emptyAnswerFallback, type LoopStopReason } from "./empty-answer-fallback";
 
 /**
  * The fallback blamed the DATA for a TIMEOUT.
@@ -104,4 +104,165 @@ test("ceilingTripped:false is inert — the existing timeout/no_data logic is un
     classifyEmptyAnswer({ elapsedMs: 21_300, budgetMs: 30_000, toolsUsed: [], ceilingTripped: false }),
     "no_data"
   );
+});
+
+/**
+ * ── THE SAME DEFECT, ONE LAYER DEEPER (2026-08-22) ───────────────────────────────────────────
+ *
+ * The timeout regression above was fixed by measuring elapsed time. This one could not be, because
+ * by the time the copy is chosen the ONLY thing left is a bare `null`: `anthropicToolLoop` collapses
+ * eight structurally different outcomes into it — closed gate, missing key, spend ceiling, upstream
+ * failure, empty model round, exhausted budget, exhausted rounds.
+ *
+ * MEASURED ON PROD 2026-08-22 — every round-0 Anthropic call was failing with HTTP 400 *"Your credit
+ * balance is too low to access the Anthropic API"*, and for a full day Largo answered "I couldn't
+ * pull enough live data" to every question, on a desk whose data was fine. Nine sampled turns, both
+ * depths, three models (sonnet-5 → sonnet-4-6 escalation, haiku-4-5 → sonnet-4-6), all identical.
+ * A billing failure narrated as a data gap, which cost three lanes a day of investigation because
+ * the answer could not say what had actually happened.
+ *
+ * So the loop now REPORTS which exit it took, and these tests hold the two properties that matter:
+ * a stated reason outranks the elapsed-time guess, and only a genuine data gap may say "no data".
+ */
+
+test("REGRESSION: an upstream provider failure is never narrated as missing data", () => {
+  const out = emptyAnswerFallback({
+    elapsedMs: 3_546,
+    budgetMs: 30_000,
+    toolsUsed: ["live_feed_capture", "platform_vitals_prefetch"],
+    stopReason: "upstream_error",
+  });
+  assert.doesNotMatch(out, /couldn't pull enough live data/i, "the exact string that shipped the defect");
+  assert.doesNotMatch(out, /naming a ticker/i, "advice that cannot help — the cause is not the data");
+  assert.match(out, /provider/i, "must name what actually failed");
+  assert.match(out, /not a gap in the desk's data/i, "must say plainly that the data was fine");
+});
+
+test("the provider message NEVER reaches the member — it can name our billing state", () => {
+  const out = emptyAnswerFallback({
+    elapsedMs: 900,
+    budgetMs: 30_000,
+    toolsUsed: [],
+    stopReason: "upstream_error",
+  });
+  assert.doesNotMatch(out, /credit/i);
+  assert.doesNotMatch(out, /balance/i);
+  assert.doesNotMatch(out, /\b400\b/);
+  assert.doesNotMatch(out, /anthropic/i);
+});
+
+test("A STATED REASON OUTRANKS THE ELAPSED-TIME GUESS — a fact must never lose to a heuristic", () => {
+  // Elapsed is past the 85% timeout threshold, which alone would classify "timeout". The loop said
+  // the upstream failed, and that is what actually happened.
+  assert.equal(
+    classifyEmptyAnswer({ elapsedMs: 70_000, budgetMs: 75_000, toolsUsed: [], stopReason: "upstream_error" }),
+    "provider_error"
+  );
+  // ...and the converse: a fast failure that the heuristic would call "no_data".
+  assert.equal(
+    classifyEmptyAnswer({ elapsedMs: 900, budgetMs: 75_000, toolsUsed: [], stopReason: "upstream_error" }),
+    "provider_error"
+  );
+});
+
+test("every loop stop reason maps to its own cause", () => {
+  const cases = [
+    ["spend_ceiling", "budget_ceiling"],
+    ["upstream_error", "provider_error"],
+    ["ai_disabled", "unavailable"],
+    ["not_configured", "unavailable"],
+    ["empty_round", "empty_round"],
+    ["loop_budget", "timeout"],
+  ] as const;
+  for (const [reason, expected] of cases) {
+    assert.equal(
+      classifyEmptyAnswer({ elapsedMs: 1_000, budgetMs: 75_000, toolsUsed: [], stopReason: reason }),
+      expected,
+      `${reason} must classify as ${expected}`
+    );
+  }
+});
+
+test("ONLY a genuine data gap may say 'no data' — every other cause must not", () => {
+  const reasons = [
+    "spend_ceiling",
+    "upstream_error",
+    "ai_disabled",
+    "not_configured",
+    "empty_round",
+    "loop_budget",
+  ] as const;
+  for (const stopReason of reasons) {
+    const out = emptyAnswerFallback({ elapsedMs: 2_000, budgetMs: 75_000, toolsUsed: [], stopReason });
+    assert.doesNotMatch(
+      out,
+      /couldn't pull enough live data/i,
+      `${stopReason} must not be narrated as a data gap`
+    );
+  }
+});
+
+test("an empty round says the data was not the problem, without narrating machinery", () => {
+  const out = emptyAnswerFallback({ elapsedMs: 4_000, budgetMs: 75_000, toolsUsed: [], stopReason: "empty_round" });
+  assert.match(out, /came back empty/i);
+  assert.match(out, /isn't a gap in the desk's data/i);
+  // A member does not know what a model, a tool call or a prefetch is — the vocabulary that reached
+  // member prose in the defect `never-narrate-machinery.test.ts` was written for.
+  for (const noun of [/\bthe model\b/i, /\btool\b/i, /\bprefetch\b/i, /\bAPI\b/i]) {
+    assert.doesNotMatch(out, noun, `internal vocabulary reached member copy: ${noun}`);
+  }
+});
+
+test("BACK-COMPAT: with no stopReason the classification is exactly what it was", () => {
+  assert.equal(classifyEmptyAnswer({ elapsedMs: 81_712, budgetMs: 75_000, toolsUsed: [] }), "timeout");
+  assert.equal(classifyEmptyAnswer({ elapsedMs: 21_300, budgetMs: 30_000, toolsUsed: [] }), "no_data");
+  assert.equal(
+    classifyEmptyAnswer({ elapsedMs: 1_000, budgetMs: 75_000, toolsUsed: [], ceilingTripped: true }),
+    "budget_ceiling"
+  );
+  // "answered" and "max_rounds" deliberately carry no more information than the heuristic does.
+  assert.equal(
+    classifyEmptyAnswer({ elapsedMs: 21_300, budgetMs: 30_000, toolsUsed: [], stopReason: "max_rounds" }),
+    "no_data"
+  );
+});
+
+/**
+ * THE UNION IS DECLARED ONCE — and this test is what is left of the guard that tried to police two.
+ *
+ * The first version of this fix duplicated the union into empty-answer-fallback.ts and pinned the
+ * copies with a type-level assertion here. It was INERT: `tsconfig.json` excludes `**\/*.test.ts`,
+ * so `tsc` never type-checks this file. Proven by adding a member to one union and watching the
+ * build stay green — the guard could not have fired for any drift, ever.
+ *
+ * Worth stating plainly for the next person: **a compile-time assertion written in a `*.test.ts`
+ * file in this repo does nothing.** Put it in a checked source file, or make it a runtime test.
+ *
+ * The duplicate was deleted rather than re-guarded, so drift is now impossible by construction:
+ * `providers/anthropic` owns `ToolLoopStopReason`, this module imports it type-only. What remains
+ * worth testing is the thing that would still rot silently — a reason the `switch` forgets, which
+ * falls through to "no_data" and reinstates the defect.
+ */
+
+test("every stop reason the loop can emit is handled — a forgotten one falls through to 'no data'", () => {
+  const everyReason: LoopStopReason[] = [
+    "answered",
+    "ai_disabled",
+    "not_configured",
+    "spend_ceiling",
+    "upstream_error",
+    "empty_round",
+    "loop_budget",
+    "max_rounds",
+  ];
+  // "answered" and "max_rounds" legitimately fall through to the heuristics; every OTHER reason
+  // must be explicitly classified, because each names a cause that is not a data gap.
+  const mustNotBeNoData = everyReason.filter((r) => r !== "answered" && r !== "max_rounds");
+  for (const stopReason of mustNotBeNoData) {
+    assert.notEqual(
+      classifyEmptyAnswer({ elapsedMs: 2_000, budgetMs: 75_000, toolsUsed: [], stopReason }),
+      "no_data",
+      `${stopReason} fell through to no_data — add it to the switch in classifyEmptyAnswer`
+    );
+  }
 });

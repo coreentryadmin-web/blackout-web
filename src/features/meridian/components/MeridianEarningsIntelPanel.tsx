@@ -2,7 +2,7 @@
 
 import type { MeridianEarningsIntel, MeridianEarningsPrint } from "@/features/meridian/lib/meridian-types";
 import { fmtPct } from "./MeridianDesk";
-import { MeridianAnalyticsBanner, MeridianDataCard } from "./meridian-ui";
+import { MeridianAnalyticsBanner, MeridianDataCard, ReactionFlag } from "./meridian-ui";
 
 function beatArrow(beat: boolean | null): string {
   if (beat == null) return "→";
@@ -115,6 +115,7 @@ export function MeridianEarningsIntelPanel({ intel, printHistory, tickerExpected
                         {" "}
                         {moveArrow(row.reaction_pct ?? row.session_change_pct)}
                       </span>
+                      <ReactionFlag print={row} />
                     </span>
                   )}
                 </li>

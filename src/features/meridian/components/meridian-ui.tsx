@@ -1,7 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import type { MeridianEventKind, MeridianTimelineItem } from "@/features/meridian/lib/meridian-types";
+import type {
+  MeridianEarningsPrint,
+  MeridianEventKind,
+  MeridianTimelineItem,
+} from "@/features/meridian/lib/meridian-types";
+import { reactionQualifier } from "@/features/meridian/lib/meridian-reaction-display";
+
+/**
+ * The qualifier badge beside a displayed reaction — renders nothing for the common case.
+ *
+ * One component rather than three copies: the reaction is printed at three render sites and all
+ * three omitted this, so a per-site fix would leave the fourth site free to omit it again.
+ */
+export function ReactionFlag({ print }: { print: MeridianEarningsPrint }) {
+  const q = reactionQualifier(print);
+  if (!q) return null;
+  return (
+    <span className="meridian-reaction-flag" title={q.title}>
+      {q.mark}
+    </span>
+  );
+}
 
 export const KIND_THEME: Record<
   MeridianEventKind,
