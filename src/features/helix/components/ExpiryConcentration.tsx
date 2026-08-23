@@ -4,9 +4,25 @@ import { useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { fmtPremium, type FlowAlert } from "@/lib/api";
 import { daysToExpiry } from "@/features/helix/lib/helix-flow-format";
+import {
+  horizonDirection,
+  horizonDirectionTitle,
+  horizonTone,
+  type HorizonDirection,
+} from "@/features/helix/lib/helix-expiry-horizon";
 import { Panel } from "@/components/ui";
 
-type Bucket = { label: string; callPremium: number; putPremium: number; total: number; callPct: number; count: number };
+type Bucket = {
+  label: string;
+  /** Native call/put premium — kept because it is this panel's own fact, and the product contract
+   *  is additive. It no longer decides the colour; see `direction`. */
+  callPremium: number;
+  putPremium: number;
+  total: number;
+  count: number;
+  /** Aggression-aware verdict plus the share of premium it could actually be read from. */
+  direction: HorizonDirection;
+};
 
 /**
  * Horizon bucket for a print, matching `expiryHorizonLabel` in
@@ -69,15 +85,19 @@ const MIN_BAR_PCT = 8;
 export function ExpiryConcentration({ alerts, loading }: { alerts: FlowAlert[]; loading: boolean }) {
   const buckets = useMemo(() => {
     if (!alerts.length) return [];
-    const map = new Map<string, { callPremium: number; putPremium: number; count: number }>();
+    const map = new Map<
+      string,
+      { callPremium: number; putPremium: number; count: number; flows: FlowAlert[] }
+    >();
 
     for (const a of alerts) {
       const dte = a.dte ?? daysToExpiry(a.expiry);
       const label = bucketLabel(dte);
-      const cur = map.get(label) ?? { callPremium: 0, putPremium: 0, count: 0 };
+      const cur = map.get(label) ?? { callPremium: 0, putPremium: 0, count: 0, flows: [] };
       if (a.option_type === "CALL") cur.callPremium += a.premium;
       else if (a.option_type === "PUT") cur.putPremium += a.premium;
       cur.count++;
+      cur.flows.push(a);
       map.set(label, cur);
     }
 
@@ -85,10 +105,16 @@ export function ExpiryConcentration({ alerts, loading }: { alerts: FlowAlert[]; 
     return order
       .filter((l) => map.has(l))
       .map((label) => {
-        const { callPremium, putPremium, count } = map.get(label)!;
+        const { callPremium, putPremium, count, flows } = map.get(label)!;
         const total = callPremium + putPremium;
-        const callPct = total > 0 ? Math.round((callPremium / total) * 100) : 50;
-        return { label, callPremium, putPremium, total, callPct, count } as Bucket;
+        return {
+          label,
+          callPremium,
+          putPremium,
+          total,
+          count,
+          direction: horizonDirection(flows),
+        } as Bucket;
       })
       .filter((b) => b.total >= 50_000);
   }, [alerts]);
@@ -104,8 +130,13 @@ export function ExpiryConcentration({ alerts, loading }: { alerts: FlowAlert[]; 
         {buckets.map((b, i) => {
           const pct = grandTotal > 0 ? Math.round((b.total / grandTotal) * 100) : 0;
           const barW = barWidthPct(b.total, maxTotal);
-          const isBull = b.callPct >= 55;
-          const isBear = b.callPct <= 45;
+          // Colour comes from the aggression-aware read, not from call-vs-put premium: a SOLD call
+          // is bearish, and by the old rule every one of the four horizons rendered green while
+          // disagreeing with the rule the rest of this page already uses.
+          const tone = horizonTone(b.direction);
+          const isBull = tone === "bull";
+          const isBear = tone === "bear";
+          const dirTitle = horizonDirectionTitle(b.direction);
           return (
             <motion.div
               key={b.label}
@@ -115,11 +146,21 @@ export function ExpiryConcentration({ alerts, loading }: { alerts: FlowAlert[]; 
               exit={{ opacity: 0 }}
               transition={{ delay: i * 0.04, duration: 0.25 }}
               className="space-y-1"
+              title={dirTitle}
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="font-mono text-[12px] font-bold text-purple-200 w-20">{b.label}</span>
                   <span className="font-mono text-[10px] tabular-nums text-sky-300/60">{b.count} prints</span>
+                  {/* A neutral bar and an UNREADABLE one look identical, and the second is the
+                      common case here: the index feed carries no ask side, so 94% of Monthly and
+                      97% of LEAPS premium has no readable direction. Saying so is the difference
+                      between "balanced" and "we cannot tell". */}
+                  {b.direction.minorityEvidence && b.direction.readablePct != null && (
+                    <span className="font-mono text-[9px] tabular-nums text-amber-300/70">
+                      direction unread · {Math.round(b.direction.readablePct)}% sided
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="font-mono text-[10px] font-semibold tabular-nums text-purple-300/80">{pct}%</span>
