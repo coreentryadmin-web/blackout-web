@@ -392,15 +392,24 @@ Key order puts `unavailable_sections` and `coaching_scope` **last** here too, so
 first is again the absence labelling. Same fix, same module — but P3, since nothing is losing
 bytes at the default parameters today.
 
-**The fix is the module that already exists.** `fitToolResult`/`LARGO_RESULT_CHAR_BUDGET`
-(14,000) with the rail reordered last and its kept-count stated out loud, so the model can never
-read a 25-bead sample as the whole session. That is a code change and Phase 0 is a gate, so it is
-recorded here and queued as Phase 1 item #1 rather than fixed in this PR.
+**FIXED in #2649** (merged 2026-08-23). `src/lib/bie/vector-full-state-fit.ts` →
+`fitVectorFullStateForModel`, built on the existing `fit-tool-result.ts`
+(`LARGO_RESULT_CHAR_BUDGET` = 14,000). Every scalar and every disclosure field passes through
+verbatim and is placed BEFORE the trimmable sections; the four unbounded lists are sampled in
+descending information-per-byte order (`wallEvents` → `ladder.rows` → `flowMarkers.prints` →
+`wallHistory`), each measured against the whole assembled object, each carrying a `fit.<section>`
+scope with `returned` / `total` / `truncated` / `note`. King strikes are force-retained. Applied at
+BOTH `vectorFullStateForLargo` and `ecosystem-context`, because the latter promises "the exact same
+object" — fitting one and not the other is what would have broken that promise. The fit is at the
+TOOL boundary, not in `computeVectorFullState`, because `buildPulseSignalsForState`,
+`scoreTopWalls` and `eventsFromWallHistory` all read the whole rail; that is also what makes the
+scope note true.
 
-**Still owed:** `scripts/audit/largo-truncation-probe.mjs` against all three tools, to confirm this
-live. Note when reading its result: **an off-hours run proves nothing about this defect** — outside
-RTH the rail is empty, so the payload is small and every tool comes back COMPLETE. The probe must
-run during RTH.
+**STILL OWED — do not read the merge as the end of this.** `scripts/audit/largo-truncation-probe.mjs`
+against all three tools, **during RTH**. This is not a formality: **an off-hours run proves nothing
+about this defect** — outside RTH the rail is empty, the payload is small, and every Vector tool
+returns COMPLETE. An off-hours green here is a false pass, and banking one would be the same
+absence-read-as-measurement error the fix exists to prevent. First real window: the next RTH open.
 
 ---
 
@@ -506,12 +515,11 @@ Required by the charter. A single wall-rail bead on SPX, 5s bucket, function nam
 
 ## 10. UNKNOWNs — the Phase 1 queue, ranked
 
-1. **Fit `get_vector_full_state` under the transport cap** — §6 measures it at 92× the cap after
-   30 minutes of oracle rail, with the absence and freshness blocks landing past the cut. Route it
-   through `fit-tool-result.ts`, rail last, kept-count stated. Then run
-   `largo-truncation-probe.mjs` **during RTH** (an off-hours run cannot see this) to confirm live,
-   and to settle `get_vector_analytics`, estimated at 93% of the cap at default parameters and
-   **over it** at the `regimeDays = 30` its own clamp accepts.
+1. ~~Fit `get_vector_full_state` under the transport cap~~ — **FIXED, #2649.** What remains is
+   the confirmation, and it is a real item, not a formality: run `largo-truncation-probe.mjs`
+   **during RTH** (an off-hours run cannot see this defect and returns a false COMPLETE). Same run
+   settles `get_vector_analytics`, estimated at 93% of the cap at default parameters and **over it**
+   at the `regimeDays = 30` its own clamp accepts — queued as its own P3 fix behind #2649.
 2. **Every number, against Polygon, on a live tape.** Nothing in this file is a correctness claim
    about a served value — the market was closed. Walls, flip, expected move, max pain, magnet,
    ladder, universe rows.
