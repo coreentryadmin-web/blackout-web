@@ -28,7 +28,7 @@ yours.
 
 | Area | Where |
 |---|---|
-| Member surface | `/terminal` (`src/features/largo/components/LargoTerminal.tsx`), plus mini-panels embedded on other product pages (`LargoDeskMiniPanel.tsx`) |
+| Member surface | `/terminal` (`src/features/largo/components/LargoTerminal.tsx`). **That is the whole member surface.** This row used to add "plus mini-panels embedded on other product pages (`LargoDeskMiniPanel.tsx`)" — corrected 2026-08-23: #2358 added those panels and #2387 (*"drop the two side panels"*) removed the mount. `LargoDeskMiniPanel.tsx` still exists and **nothing imports it**; its premium-gated route `/api/market/largo/mini-panel` is still live and serves no caller. Verified by grep across `src/**/*.tsx` and by `git log -S`. See the map's L-11. |
 | Admin preview | `/admin/largo-answer-preview` |
 | Core engine | `src/lib/largo/` — 138 files, 18,947 lines. Largest: `run-tool.ts` (1942 — the tool-call loop itself), `product-reads.ts` (1395 — the read functions every tool calls into), `tool-defs.ts` (1178 — the 127 tool schemas), `largo-live-feed.ts`, `slash-submodules.ts`, `slash-prompts.ts`, `question-intent.ts`, `largo-store.ts`, `answer-contract.ts`, `system-prompt.ts` (460 — what the model is told about itself and every product) |
 | Tool registry | `src/lib/largo/registry/capability-registry.ts` — 1956 lines, 127 tools, one capability entry each |
@@ -37,7 +37,7 @@ yours.
 | Empty/degraded answers | `src/lib/largo/empty-answer-fallback.ts` — `classifyEmptyAnswer`, decides what a member sees when the model returns nothing usable |
 | Transport | `src/lib/providers/anthropic.ts` — `anthropicToolLoop`, `MAX_TOOL_RESULT_CHARS = 16_000` (every `tool_result` is capped and TAIL-sliced; an over-cap tool still "succeeds" and the model answers from the fragment) |
 | Spend ceiling | `src/lib/ai-spend-headroom.ts`, folded into `src/lib/admin-health.ts`'s `ai_spend` / `health_ok` |
-| Member APIs | `/api/market/largo/{query,session,status,context,mini-panel,slash-prompts,draft-x-post,share-discord}` |
+| Member APIs | `/api/market/largo/{query,session,status,context,mini-panel,slash-prompts,draft-x-post,share-discord}` — `mini-panel` is live but **orphaned** (no caller since #2387). |
 | Crons | `largo-cleanup`, `largo-morning-brief` |
 | Tool count by product (roughly) | 127 tools total across Helix, Thermal, Vector, Meridian, Night Hawk, SPX, plus cross-cutting (`get_cross_product_read`, `get_market_context`, `get_news`, `get_web_search`, etc.) |
 
@@ -163,7 +163,7 @@ every tone rule. Read it critically: is it internally consistent with what the p
 serve today? Does it correctly instruct omission over fabrication? Does it explain the disagreement
 rule clearly enough that the model represents rather than reconciles?
 
-In the UI itself (`/terminal` and the mini-panels): can a member tell, at a glance, when an answer is
+In the UI itself (`/terminal` — the mini-panels were unmounted in #2387, see the table above): can a member tell, at a glance, when an answer is
 fully grounded versus caveated versus degraded? A verification caveat buried in prose is not the same
 as one rendered distinctly.
 
