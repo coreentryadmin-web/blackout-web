@@ -84,25 +84,104 @@ export function daysToExpiry(expiry: string, now: Date = new Date()): number {
   return Math.max(0, Math.round((expMs - todayMs) / 86_400_000));
 }
 
-export function ruleLabel(rule: string): string {
-  const r = rule.toLowerCase();
-  if (r.includes("repeated")) return "REPEAT";
-  if (r.includes("sweep")) return "SWEEP";
-  if (r.includes("floor")) return "FLOOR";
-  if (r.includes("grenade")) return "GRENADE";
-  if (r.includes("block")) return "BLOCK";
-  return rule.toUpperCase().slice(0, 8);
+/**
+ * The shared WORD SET for reading UW's free-text `alert_rule`.
+ *
+ * Two functions parse this field — `ruleLabel` (the tape's per-print badge) and
+ * `executionRouteKey` (the Route Breakdown panel + Largo's `route_breakdown`) — and until now they
+ * knew DIFFERENT words: the badge knew REPEATED and GRENADE, the panel knew SPLIT, CROSS and
+ * MULTI, and neither knew the other's. That gap is measurable, not theoretical.
+ *
+ * MEASURED (live prod tape, 5000 rows / 168h, 2026-08-22 — docs/audit/HELIX-MAP.md §9.8): the panel
+ * bucketed **98.8% of the tape as OTHER**. `RepeatedHits` + `RepeatedHitsAscendingFill` +
+ * `RepeatedHitsDescendingFill` are **28.7% of all prints** and matched none of the panel's six
+ * words — while `ruleLabel` had been rendering all three as a REPEAT badge on that same tape the
+ * whole time.
+ *
+ * Sharing the SET (not the order — see below) means neither reader can silently gain or lose a
+ * word again; `helix-flow-format.test.ts` asserts both draw from exactly this set.
+ */
+const ALERT_RULE_WORDS = {
+  REPEAT: "REPEATED",
+  SWEEP: "SWEEP",
+  FLOOR: "FLOOR",
+  GRENADE: "GRENADE",
+  BLOCK: "BLOCK",
+  SPLIT: "SPLIT",
+  CROSS: "CROSS",
+  MULTI: "MULTI",
+} as const;
+
+export type AlertRuleWord = keyof typeof ALERT_RULE_WORDS;
+
+/**
+ * The two readers answer DIFFERENT QUESTIONS about the same string, so they order the same words
+ * differently. This is deliberate and is the one thing to understand before editing either.
+ *
+ * - The BADGE asks *which rule fired*. `RepeatedHitsSweep` is a repeated-hits alert, so it reads
+ *   REPEAT — and it has rendered that way to members for as long as the function has existed.
+ * - The PANEL asks *how the order executed* (its kicker is literally "◇ execution"). Sweeping is
+ *   an execution mechanism; "repeated hits" is a PATTERN ACROSS PRINTS, not a mechanism. So a rule
+ *   naming both is filed under the mechanism, and REPEAT ranks last — it is the answer only when
+ *   no mechanism was named at all.
+ *
+ * An earlier draft of this change collapsed the two orders into one and flipped `RepeatedHitsSweep`
+ * from SWEEP to REPEAT in the panel. That was wrong: it "fixed" a disagreement that is not a
+ * defect, and it would have quietly redefined an execution panel as a rule-family panel without
+ * anyone deciding to.
+ */
+const BADGE_PRECEDENCE: readonly AlertRuleWord[] = ["REPEAT", "SWEEP", "FLOOR", "GRENADE", "BLOCK"];
+const ROUTE_PRECEDENCE: readonly AlertRuleWord[] = [
+  // Genuine execution mechanisms first, in the panel's original order — so no print that already
+  // had a route changes bucket.
+  "SWEEP", "BLOCK", "SPLIT", "CROSS", "FLOOR", "MULTI", "GRENADE",
+  // ...then the pattern word, which rescues the 28.7% that named no mechanism.
+  "REPEAT",
+];
+
+/** First word of `precedence` contained in `rule`, or null when it names none of them. */
+function matchAlertRule(rule: string | null | undefined, precedence: readonly AlertRuleWord[]): AlertRuleWord | null {
+  const r = String(rule ?? "").toUpperCase();
+  if (!r) return null;
+  for (const key of precedence) {
+    if (r.includes(ALERT_RULE_WORDS[key])) return key;
+  }
+  return null;
 }
 
-/** UW execution route (SWEEP/BLOCK/…) from alert_rule — NOT internal route (whale/0dte/stock). */
-export function executionRouteKey(alert: Pick<FlowAlert, "alert_rule">): string {
-  const rule = (alert.alert_rule || "").toUpperCase();
-  const keys = ["SWEEP", "BLOCK", "SPLIT", "CROSS", "FLOOR", "MULTI"] as const;
-  for (const k of keys) {
-    if (rule.includes(k)) return k;
-  }
-  return "OTHER";
+export function ruleLabel(rule: string): string {
+  // Unmatched rules keep the truncated raw text: the BADGE shows what UW called this print, so a
+  // rule we have no word for is more useful shown than collapsed. Different job from the panel's
+  // bucketing below, which is why the fallbacks differ.
+  return matchAlertRule(rule, BADGE_PRECEDENCE) ?? rule.toUpperCase().slice(0, 8);
 }
+
+/**
+ * Bucket for the Route Breakdown panel + Largo's `route_breakdown`, from UW's `alert_rule` —
+ * NOT the internal route (whale/0dte/stock).
+ *
+ * THREE OUTCOMES, and the third is the point:
+ *  - a word (SWEEP/BLOCK/…/REPEAT) when the rule names one;
+ *  - `OTHER` when a rule IS present and names none of them — a real measurement whose answer is
+ *    "some other rule";
+ *  - `UNREPORTED` when the print carries **no `alert_rule` at all**, which is not a route reading
+ *    and must not be counted as one.
+ *
+ * WHY THE THIRD MATTERS. `UNREPORTED` is **70% of the live tape** — every row from the second
+ * writer (HELIX-MAP.md §4A: an SPX/SPY-only feed that sends no rule field). Folding those into
+ * `OTHER` told a member, and told Largo, that we had looked at 5000 prints and found their
+ * execution route to be "other", when no route had ever been reported for 3500 of them. That is
+ * absence published as measurement (_COMMON.md #7) — the same defect class this lane already
+ * fixed in `call_pct`, `pct` and `confidence`.
+ */
+export function executionRouteKey(alert: Pick<FlowAlert, "alert_rule">): string {
+  const raw = alert.alert_rule;
+  if (raw == null || String(raw).trim() === "") return "UNREPORTED";
+  return matchAlertRule(raw, ROUTE_PRECEDENCE) ?? "OTHER";
+}
+
+/** Exported for the drift test only — the word set both readers must draw from. */
+export const ALERT_RULE_WORD_KEYS = Object.keys(ALERT_RULE_WORDS) as AlertRuleWord[];
 
 export function fmtSpot(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n) || n <= 0) return "—";
