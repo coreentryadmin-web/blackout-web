@@ -4,6 +4,22 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-23 — [FINDING, P3 Largo] The lane charter described a member surface that was removed 300 PRs ago — and a premium-gated route still serves it to nobody — FIXED (docs + tripwire)
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `docs/agents/briefs/largo.md` listed the member surface as *"`/terminal` … plus mini-panels embedded on other product pages (`LargoDeskMiniPanel.tsx`)"*. **Nothing mounts that component.** A Largo session reading the charter — the file that explicitly outranks the launch prompt — would go looking for a UI that has not existed for months, and Phase 1's "can a member tell, at a glance…" instruction pointed at it too. |
+| **Root cause** | #2358 added `LargoDeskMiniPanel`, its route and its mount. #2387 — *"human-readable Concrete answers + **drop the two side panels**"* — removed the mount and left the component **and** its premium-gated route `/api/market/largo/mini-panel` behind. Nothing noticed because nothing could: an unmounted component does not fail, and a live route with no caller returns 200 to the nobody asking. |
+| **Evidence** | Exhaustive grep for `LargoDeskMiniPanel` across `src/**/*.tsx` returns only its own definition — no import, no dynamic import, no re-export. `git log -S "LargoDeskMiniPanel" -- 'src/**/*.tsx'` shows exactly two touches: #2358 (added, mounted) and #2387 (unmounted). The route still calls `fetchMiniPanelPayload` and does real desk work per request. |
+| **Fix** | Charter corrected — the member-surface row now states `/terminal` is the whole surface, records that #2387 removed the mount, and points at the map's new **L-11**; the Phase 1 line that referenced "the mini-panels" corrected; the Member-APIs row marks `mini-panel` as live-but-orphaned. A tripwire test pins the documented state against the measured one. |
+| **Blast radius** | Documentation only, plus a dead component and one orphaned premium-gated route. No member-visible behaviour: the panel is not rendered, so nothing calls the route. |
+| **Fix rationale** | **Deleting the component and the route is a PRODUCT call, not this lane's** — they may be staged for a re-mount — so it is flagged as L-11 for the coordinator to route rather than actioned unilaterally, per the charter's "do not start a redesign; write it up". What IS fixed is the part that actively misleads: a standing document asserting a surface that does not exist. Note the charter itself instructs *"If you find the charter itself wrong, fix it — that's your job, not an overstep."* |
+| **Regression guard** | `src/lib/largo/mini-panel-orphaned.test.ts` (2 tests): the panel is mounted by nothing — **measured by walking every `.tsx` under `src/`**, not remembered — and the documented member surface agrees with the mounted one. Deliberately bidirectional: it is a tripwire on the doc/code gap, **not a ban on the feature**. Re-mounting the panel fails both tests, which forces the charter and L-11 to be updated in the same change. **Proven to fire**: adding a probe component that mounts the panel fails 2/2; removing it passes 2/2. |
+| **Secondary note** | The first draft of that guard searched the charter for the phrase it had just removed — which the corrected row *quotes* in order to explain the change — so the test matched its own explanation and failed. Re-keyed onto the corrected assertion. Third instance in this lane of an assertion satisfiable by the prose documenting it; the other two passed silently, this one failed loudly, which is the improvement. |
+| **Status** | FIXED (docs + tripwire). L-11 open for the coordinator: delete the orphan, or re-mount it and update the docs the tripwire now guards. |
+
 ## 2026-08-23 — [FINDING, P4 Vector/Largo] `get_vector_analytics` had spent its whole transport safety margin, and the one parameter a model can vary was the one eating it — FIXED
 
 > **kind:** `FINDING`
