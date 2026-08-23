@@ -3,6 +3,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { clsx } from "clsx";
 import { fetchHelixSignalOutcomes, type HelixSignalOutcomeRow, type HelixSignalOutcomeSummary } from "@/lib/api";
+import {
+  signalLedgerCopy,
+  type HelixSignalLedgerStatus,
+} from "@/features/helix/lib/helix-signal-ledger-status";
 import { relativeAge } from "@/lib/relative-time";
 import { Panel, Skeleton, EmptyState } from "@/components/ui";
 import { MIN_GRADED_SAMPLE_FOR_WIN_RATE } from "@/features/helix/lib/helix-signal-outcome-summary";
@@ -30,10 +34,18 @@ function signalLabel(signalType: string): string {
  * that, the panel says "Collecting data" rather than a fabricated/noisy percentage. Individual
  * graded rows ARE shown regardless of sample size, since a single row's own real outcome is
  * honest history, not a claimed statistic.
+ *
+ * The SAME discipline applies one level up, and did not used to. With zero rows the panel asserted
+ * "No velocity-spike or split-flow firings recorded yet this session" — a claim about the session,
+ * made from a row count, which cannot see whether anything is recording at all. On production it
+ * was false in both halves: the ledger's only writer is not deployed, and signals fire constantly
+ * in the two radar panels beside this one. `helix-signal-ledger-status.ts` separates an EMPTY
+ * ledger from an UNWRITTEN one, and a third state for "the server could not tell".
  */
 export function SignalOutcomeTracker() {
   const [rows, setRows] = useState<HelixSignalOutcomeRow[]>([]);
   const [summary, setSummary] = useState<HelixSignalOutcomeSummary | null>(null);
+  const [ledger, setLedger] = useState<HelixSignalLedgerStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [errored, setErrored] = useState(false);
 
@@ -42,6 +54,7 @@ export function SignalOutcomeTracker() {
       const res = await fetchHelixSignalOutcomes();
       setRows(res.rows ?? []);
       setSummary(res.summary ?? null);
+      setLedger(res.ledger ?? null);
       setErrored(false);
     } catch (e) {
       console.warn("[SignalOutcomeTracker] fetch error:", e);
@@ -74,11 +87,31 @@ export function SignalOutcomeTracker() {
       ) : errored ? (
         <p className="font-mono text-[10px] text-bear text-center py-3">Outcome ledger unavailable</p>
       ) : rows.length === 0 ? (
-        <EmptyState
-          className="!border-transparent !bg-transparent !py-6"
-          title="Collecting data"
-          description="No velocity-spike or split-flow firings recorded yet this session."
-        />
+        // Three distinguishable facts, not one. The old copy said "Collecting data / No firings
+        // recorded yet this session" for all of them — an assertion about the SESSION made from a
+        // row count, which cannot see whether anything is recording at all. `ledger === null` is
+        // the server declining to say; it gets the neutral wording, never either verdict.
+        (() => {
+          const copy = ledger ? signalLedgerCopy(ledger) : null;
+          // "Not recording" is a defect report, not a quiet session, so it must not wear the same
+          // neutral placeholder styling as one. Done with `className` — the shared `EmptyState`
+          // has no tone prop and adding one from this lane would change every empty state in the
+          // app to fix one panel.
+          const notRecording = ledger?.state === "no_writer_observed";
+          return (
+            <EmptyState
+              className={clsx(
+                "!bg-transparent !py-6",
+                notRecording ? "!border-amber-400/40" : "!border-transparent"
+              )}
+              title={copy?.title ?? "No graded firings"}
+              description={
+                copy?.description ??
+                "No velocity-spike or split-flow outcomes are available to show."
+              }
+            />
+          );
+        })()
       ) : (
         <>
           <div className="flex items-center justify-between px-1 pb-1">

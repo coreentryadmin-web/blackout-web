@@ -1,6 +1,7 @@
 import type { ClaimVerification } from "@/lib/bie/verifier";
 import type { BieAnswerEnvelope } from "@/lib/bie/answer-envelope";
 import type { LargoDepth } from "@/lib/largo/largo-depth-mode";
+import type { HelixSignalLedgerStatus } from "@/features/helix/lib/helix-signal-ledger-status";
 
 /** The server's auto-render directive — mirrors `VisualDirective` in largo-terminal.ts. */
 type LargoVisualDirective = {
@@ -383,11 +384,17 @@ export interface HelixSignalOutcomeSummary {
 }
 
 /** Tier 2 item #10 follow-through tracker — reads the ledger helix-signal-outcomes-job.ts
- *  (Tier 2 item #9) writes. See docs/audit/FINDINGS.md for the full root-cause writeup. */
+ *  (Tier 2 item #9) writes. See docs/audit/FINDINGS.md for the full root-cause writeup.
+ *
+ *  `ledger` distinguishes an EMPTY ledger from an UNWRITTEN one — identical from a row count,
+ *  opposite facts. `null` is a third state: the server could not determine which, and the panel
+ *  must not resolve it into either. */
 export async function fetchHelixSignalOutcomes() {
-  return marketFetch<{ rows: HelixSignalOutcomeRow[]; summary: HelixSignalOutcomeSummary | null }>(
-    "/helix/signal-outcomes"
-  );
+  return marketFetch<{
+    rows: HelixSignalOutcomeRow[];
+    summary: HelixSignalOutcomeSummary | null;
+    ledger: HelixSignalLedgerStatus | null;
+  }>("/helix/signal-outcomes");
 }
 
 /** Per-ticker dark pool snapshot — call/put split, PCR, institutional prints by strike. */
