@@ -13,10 +13,8 @@ import {
 } from "@/lib/x-content";
 import { checkPostGuard, isTweetContentValid } from "@/lib/x-post-guard";
 import { xMarketingPostsPaused } from "@/lib/x-marketing-env";
-import {
-  saveQueueRow,
-  type XIntelQueueDraft,
-} from "@/lib/x-intel/queue-store";
+import { saveQueueRow } from "@/lib/x-intel/queue-store";
+import type { XIntelQueueDraft } from "@/lib/x-intel/queue-types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -211,38 +209,50 @@ export async function GET(req: NextRequest) {
         ]
       : [];
 
+    const headline = content.split("\n")[0] ?? "Market update";
     const draft: XIntelQueueDraft = {
       cycle_key: cycleName(postType),
       session_date: etDateString(),
       created_at_et: etTimeString(),
       status: "REVIEW",
       ticker_or_market: "SPX",
-      headline: generated?.headline || (content.split("\n")[0] ?? content),
+      headline,
       post_copy: content,
       attachments,
-      products_referenced: generated?.products || [],
-      underlying_evidence: generated?.evidence || [],
-      confidence: generated?.confidence,
+      products_referenced: [],
+      underlying_evidence: [],
       reason_selected: `Scheduled template: ${postType}`,
       franchise: "desk",
     };
 
     const saved = await saveQueueRow(draft);
+    if (!saved) {
+      await logCronRun("x-intel", started, {
+        ok: false,
+        error: "Failed to save queue row",
+        postType,
+      });
+      return NextResponse.json(
+        { ok: false, error: "Queue save failed" },
+        { status: 200 },
+      );
+    }
+
     await logCronRun("x-intel", started, {
       ok: true,
       queued: true,
       postType,
-      queueId: saved.id,
-      status: saved.status,
+      queueId: saved.row.id,
+      status: saved.row.status,
     });
 
     return NextResponse.json({
       ok: true,
       queued: true,
       postType,
-      queueId: saved.id,
-      status: saved.status,
-      headline: draft.headline,
+      queueId: saved.row.id,
+      status: saved.row.status,
+      headline,
     });
   } catch (err) {
     const message =
