@@ -164,6 +164,8 @@ export type EcosystemSpxPlay = {
 // type without a second import from spx-play-payload.ts.
 export type { SpxPlayPayload };
 
+import { omitUncalibratedSpxConfidence } from "@/lib/largo/spx-confidence-boundary";
+
 // Re-exported so a consumer of EcosystemContext can name the gex_positioning
 // type without a second import from gex-positioning.ts.
 export type { GexPositioning };
@@ -845,7 +847,10 @@ export async function fetchEcosystemContext(ticker: string): Promise<EcosystemCo
         direction: a.direction,
       })),
       spx_play: spxPlay,
-      spx_full_state: spxFullState,
+      // Uncalibrated `confidence` is stripped at the Largo boundary, exactly as get_spx_play
+      // does — this field is documented as "the exact same object", and that must stay true for
+      // the omission too or the model gets the fabricated number by taking the other door.
+      spx_full_state: omitUncalibratedSpxConfidence(spxFullState),
       flow_feed_fresh: flowFeedFresh,
       gex_positioning: gexPositioning,
       // FITTED for the model, exactly as `get_vector_full_state` fits it. The raw state carries the
