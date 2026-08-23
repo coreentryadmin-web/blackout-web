@@ -447,13 +447,26 @@ PAGE /vector (mobile)
 └─ FOOTER legend row     "SPY VOL  16:30  ◇ 0DTE · RECONSTRUCTED · SPOT-ALIGNED"
 ```
 
-**Real defect, screenshot-confirmed:** the footer legend row has two labels overlapping at the same
-position — "16:30" is drawn on top of "08:30", and "RECONSTRUCTED" is drawn on top of
-"SPOT-ALIGNED" (both pairs legible only as garbled overlapping glyphs in the capture). This is the
-exact "labels overlap into garbage" defect class `meridian-interaction-audit.mjs`'s own rationale
-describes — two footer elements sharing one position instead of being laid out sequentially.
-Candidate **P1** (visibly broken, low-traffic footer text but on every mobile Vector load) —
-needs a fix PR with a live re-check before/after, not just this screenshot, per rule 6.
+**Real defect, screenshot-confirmed:** **corrected read, after zooming into the crop** — the single
+GEX-scope chip "◇ 0DTE · RECONSTRUCTED · SPOT-ALIGNED" (one `<p>`, not two separate labels as
+originally described) is wide enough on mobile to overlap TWO of the chart's own canvas-drawn
+x-axis time ticks underneath it — a mid-chart "16:30" tick and a second right-side tick, both
+legible only as garbled glyphs interleaved with the chip's own letters. This is the exact "labels
+overlap into garbage" defect class `meridian-interaction-audit.mjs`'s own rationale describes — an
+overlay label with no width bound and no background, sharing pixels with whatever the chart canvas
+draws underneath it. **P1** (every mobile Vector load).
+
+**FIXED same day.** Root cause: the chip (and its sibling "dim = modeled" honesty label) had no
+width bound and no background — fully transparent text growing to its natural width regardless of
+what the chart canvas draws at those pixels. A percentage width cap alone was tried and rejected
+(the chart's tick positions move with zoom/pan/time-range, so no fixed percentage guarantees
+avoiding every tick position) — the actual fix is an opaque background pill (`bg-black/70`,
+kept with a width cap + truncate as a second, independent guard). Verified with an isolated CSS
+repro built from the exact production text (live component couldn't be locally rendered — no dev
+market data). Finding staged:
+`docs/audit/findings-staging/2026-08-23-vector-chart-footer-legend-overlap.md`.
+Regression-guarded by `src/features/vector/components/VectorChart-footer-labels.test.ts` (verified
+to fail pre-fix, pass post-fix). Pending live validation before this is fully closed (rule 6).
 
 **Also notable — mobile drops far more than a responsive reflow of desktop:** no ticker search, no
 COMPARE/FULL SCREEN/INDICATORS/TOOLS buttons, no GEX/VEX metric toggle, no 0DTE/WEEKLY/MONTHLY/
@@ -740,7 +753,7 @@ wrong UA can mask real bugs, not just invent fake ones.
 |---|---|---|---|---|---|
 | ~~1~~ | ~~`/dashboard` desktop~~ | ~~Vector panel tab leaves ~45% of the content width blank~~ | **RETRACTED** | §2 | **FALSE — original shot used wrong UA (iPhone UA at desktop viewport); real desktop layout is a 4-col grid, no blank space.** |
 | ~~2~~ | ~~`/flows` mobile~~ | ~~Header flow-split bar overflows viewport horizontally; two stat strings concatenate with no separating space~~ | **FIXED** | §3 | Root-caused (`justify-between` with no gap/wrap) and fixed same day — see §3 and `docs/audit/findings-staging/2026-08-23-helix-mobile-tide-bar-overflow.md`. Verified via isolated CSS repro (live component couldn't be locally rendered — no dev flow data). Pending live validation post-deploy. |
-| 3 | `/vector` mobile | Chart footer legend text overlaps itself ("16:30" on "08:30", "RECONSTRUCTED" on "SPOT-ALIGNED") | **P1** | §5 | Correct mobile UA. **Desktop half still unconfirmed** — the re-shot's Vector column was still "Loading Vector chart…" at capture, footer never rendered to compare. Plausibly the same shared `VectorChart.tsx` bug, not proven on desktop. |
+| ~~3~~ | ~~`/vector` mobile~~ | ~~GEX-scope chip overlaps the chart's own axis time ticks~~ | **FIXED** | §5 | Root-caused (unbounded-width, no-background overlay label vs. canvas-drawn ticks) and fixed same day — see §5 and `docs/audit/findings-staging/2026-08-23-vector-chart-footer-legend-overlap.md`. Verified via isolated CSS repro built from the real production text. Same fix applied on `/dashboard`'s embedded chart too (shared `VectorChart.tsx`) — that desktop half was never independently confirmed broken, but the fix is defensive there regardless. Pending live validation post-deploy. |
 | 4 | `/nighthawk` mobile | Header stat strip truncates ("UPDATED 12" cuts off "sec ago") instead of wrapping | **P1** | §7 | Correct mobile UA |
 | 5 | `/terminal` mobile | Toolbar label collapses to bare "L…"; composer placeholder overflows its input box | **P3** | §8 | Correct mobile UA |
 | 6 | `/nighthawk` mobile | ~45% of viewport left blank below the no-session empty state | **P2/P3** | §7 | Correct mobile UA |
@@ -768,11 +781,10 @@ Cross-product patterns, not yet P0–P3 classified pending more coverage:
    shot so far — matrix table + composite chart + live cross-product rail on one 1440px viewport
    with no panel feeling like it needed to be cut. Worth using as the density baseline other
    products are compared against, rather than inventing a new density target from scratch.
-5. **Chart footer legend overlap (finding #3 above) is confirmed on `/vector` mobile and PLAUSIBLE
-   but not yet confirmed on `/dashboard` desktop** (same `VectorChart.tsx`, 4978 lines, embedded on
-   both surfaces via `SpxVectorEmbed`) — if a desktop re-check confirms it, this is exactly the
-   "fix once at the system level" case brief item 14 asks for; if it doesn't, the bug may be
-   mobile-viewport-specific rather than shared-component-wide, which changes the fix's scope.
+5. **Chart footer legend overlap (finding #3 above), FIXED — a genuine "fix once at the system
+   level" case** (brief item 14): the bug lived in `VectorChart.tsx` (4978 lines, embedded on both
+   `/vector` and `/dashboard` via `SpxVectorEmbed`), so the one fix (bounded width + opaque
+   background on the overlay labels) protects both surfaces without needing two patches.
 
 ---
 
