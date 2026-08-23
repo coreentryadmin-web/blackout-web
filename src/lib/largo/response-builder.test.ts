@@ -74,15 +74,35 @@ test("QUICK_FACT generates no components (prose only)", () => {
   assert.strictEqual(result.header, undefined);
 });
 
-test("LEVEL_STRUCTURE generates levels component", () => {
+test("LEVEL_STRUCTURE generates levels component with tool results", () => {
   const orchestrated = buildOrchestration("LEVEL_STRUCTURE");
   orchestrated.consensus.reads = [];
+  orchestrated.toolResults = {
+    positioning: {
+      put_wall: 7600,
+      spot: 7640,
+      call_wall: 7750,
+    },
+    get_quote: {
+      current_price: 7640,
+    },
+  };
 
   const result = buildResponseComponents(orchestrated, "Where are the walls?");
 
-  // levels component would be generated if levels data was present
-  // (omitted in this test fixture since we'd need full tool context)
-  assert.ok(result.components !== undefined);
+  assert.ok(result.levels, "should have levels component");
+  assert.strictEqual(result.levels!.type, "levels");
+  assert.ok(result.components.some((c) => c.type === "levels"));
+});
+
+test("LEVEL_STRUCTURE without tool results skips levels component", () => {
+  const orchestrated = buildOrchestration("LEVEL_STRUCTURE");
+  orchestrated.consensus.reads = [];
+  // No toolResults provided
+
+  const result = buildResponseComponents(orchestrated, "Where are the walls?");
+
+  assert.strictEqual(result.levels, undefined);
 });
 
 test("MARKET_READ generates header + consensus + evidence", () => {
@@ -123,6 +143,27 @@ test("TRADE_INTENT generates header + consensus + decision + risk", () => {
   assert.ok(result.components.some((c) => c.type === "header"));
   assert.ok(result.components.some((c) => c.type === "comparison"));
   assert.ok(result.components.some((c) => c.type === "risk"));
+});
+
+test("TRADE_INTENT with tool results includes levels component", () => {
+  const orchestrated = buildOrchestration("TRADE_INTENT");
+  orchestrated.consensus = mockConsensus;
+  orchestrated.toolResults = {
+    positioning: {
+      put_wall: 7600,
+      spot: 7640,
+      call_wall: 7750,
+    },
+    get_quote: {
+      current_price: 7640,
+    },
+  };
+  const result = buildResponseComponents(orchestrated, "Should I buy calls?");
+
+  assert.ok(result.levels, "should have levels component");
+  // Should now have 5 components: header + consensus + levels + decision + risk
+  assert.strictEqual(result.components.length, 5);
+  assert.ok(result.components.some((c) => c.type === "levels"));
 });
 
 test("WHY generates evidence + risk", () => {
