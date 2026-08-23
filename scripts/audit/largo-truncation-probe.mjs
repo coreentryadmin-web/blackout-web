@@ -32,6 +32,7 @@
  *     [--tools=a,b] [--control=get_x] [--base=https://blackouttrades.com] [--json]
  */
 import { mintClerkPremiumSession } from "./lib/prod-clerk-session.mjs";
+import { makeCookieJar } from "./lib/clerk-cookie-jar.mjs";
 import { mentionsTool, parseProbeReply, probeQuestion, summarizeRun } from "./lib/truncation-verdict.mjs";
 
 const arg = (k, d) => {
@@ -167,12 +168,30 @@ if (session.skip) {
   process.exit(2);
 }
 
-async function probe(tool, args) {
-  const res = await fetch(`${BASE}/api/market/largo/query`, {
+// The `__session` JWT dies at ~72s and one Largo question takes seconds, so a multi-tool run
+// ALWAYS outlives a single token. Before this the probe captured `session.cookieHeader` once:
+// measured 2026-08-23, a four-tool run aborted at the fourth with HTTP 401 and that tool went
+// unprobed. The abort is honest — it refuses to call the remainder clean — but it capped this
+// probe at two or three tools per invocation, against a lane list of THIRTEEN, and the documented
+// workaround was to keep splitting `--tools=` by hand.
+const jar = makeCookieJar(session);
+
+async function askLargo(tool, args, cookie) {
+  return fetch(`${BASE}/api/market/largo/query`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Cookie: session.cookieHeader },
+    headers: { "Content-Type": "application/json", Cookie: cookie },
     body: JSON.stringify({ question: probeQuestion(tool, args), depth: "concrete" }),
   });
+}
+
+async function probe(tool, args) {
+  let res = await askLargo(tool, args, await jar.get());
+  // One forced re-mint + retry: the 45s timer can still lose a race against a token that expired
+  // mid-request. A 401 that SURVIVES a fresh token is a real auth failure — the run aborts on it
+  // below, exactly as before — so this narrows what "aborted" means rather than hiding it.
+  if (res.status === 401 || res.status === 403) {
+    res = await askLargo(tool, args, await jar.force());
+  }
   // A transport failure and a hedging model both used to land here as a bare INDETERMINATE, and
   // the report printed them identically. They are not the same finding: one says the harness
   // could not ask, the other says the product could not answer.

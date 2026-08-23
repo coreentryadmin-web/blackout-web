@@ -28,6 +28,7 @@
  */
 
 import { mintClerkPremiumSession } from "./lib/prod-clerk-session.mjs";
+import { makeCookieJar } from "./lib/clerk-cookie-jar.mjs";
 
 const BASE = (process.env.VALIDATE_BASE || "https://blackouttrades.com").replace(/\/$/, "");
 const args = process.argv.slice(2);
@@ -149,20 +150,6 @@ async function polyGet(path) {
   return r.ok ? r.json().catch(() => null) : null;
 }
 
-function makeCookieJar(session) {
-  let cookie = session.cookieHeader;
-  let mintedAt = Date.now();
-  return async () => {
-    if (Date.now() - mintedAt < 45_000) return cookie;
-    const next = await session.refresh?.().catch(() => null);
-    if (next?.cookieHeader) {
-      cookie = next.cookieHeader;
-      mintedAt = Date.now();
-    }
-    return cookie;
-  };
-}
-
 async function readSource(cookie, src) {
   try {
     const r = await fetch(`${BASE}${src.path}`, { headers: { Cookie: cookie, Accept: "application/json" } });
@@ -188,7 +175,7 @@ async function main() {
 
   try {
     for (const fact of FACTS) {
-      const cookie = await jar();
+      const cookie = await jar.get();
       // Sequential, not parallel: the point is comparing values read at the SAME moment, and a
       // burst of concurrent requests against one origin invites rate-limiting that would show up
       // as a fake UNREACHABLE.
