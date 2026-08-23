@@ -51,6 +51,9 @@ export function flowAlertToTapeItem(alert: {
   strike: number;
   direction: string;
   alerted_at: string;
+  /** Aggressor share, carried through so the merged tape scores direction the same way the
+   *  desk-built tape does. Absent on callers that never had it — see `SpxFlowBrief.ask_pct`. */
+  ask_pct?: number | null;
 }): SpxTapeItem {
   const isPut = alert.option_type.toUpperCase().startsWith("P");
   return {
@@ -60,6 +63,7 @@ export function flowAlertToTapeItem(alert: {
     label: `${isPut ? "PUT" : "CALL"} ${alert.strike}`,
     premium: alert.premium,
     detail: `${alert.ticker} | ${alert.direction}`,
+    ask_pct: alert.ask_pct ?? null,
   };
 }
 

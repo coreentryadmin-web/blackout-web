@@ -6,6 +6,7 @@ import { computeWeightedConflicts } from "@/features/spx/lib/spx-play-conflicts"
 import { playDynamicTargetPts } from "@/features/spx/lib/spx-play-config";
 import type { FlowStrikeStack } from "@/lib/largo/flow-strike-stacks";
 import { todayEt } from "@/lib/et-date";
+import { spxTapeSkew, spxTapeVerdict } from "@/features/spx/lib/spx-tape-direction";
 
 export type SpxSignalAction = "BUY_CALL" | "BUY_PUT" | "HOLD" | "WAIT";
 export type SpxPlayAction = "SCANNING" | "WATCHING" | "BUY" | "HOLD" | "TRIM" | "SELL";
@@ -133,17 +134,14 @@ function scoreHelixFlowAlignment(
   return w;
 }
 
-function tapeSkew(desk: SpxDeskPayload): { bull: number; bear: number } {
-  let bull = 0;
-  let bear = 0;
+/** The window the tape factor scores: the 8 most recent FLOW prints. */
+const TAPE_WINDOW = 8;
+
+function tapeWindow(desk: SpxDeskPayload) {
   // Filter by kind before slicing so dark-pool prints don't crowd out flow items.
   // Without this, a premarket or dark-pool-heavy tape would yield 0 bull/bear and
   // the tape signal would silently drop out even with plenty of flow prints present.
-  for (const t of (desk.unified_tape ?? []).filter((t) => t.kind === "flow").slice(0, 8)) {
-    if (t.side === "call") bull += t.premium;
-    else if (t.side === "put") bear += t.premium;
-  }
-  return { bull, bear };
+  return (desk.unified_tape ?? []).filter((t) => t.kind === "flow").slice(0, TAPE_WINDOW);
 }
 
 function scoreToGrade(absScore: number, conflicts: number): SpxConfluenceGrade {
@@ -542,18 +540,36 @@ export function computeSpxConfluence(desk: SpxDeskPayload): SpxConfluence | null
     });
   }
 
-  const { bull, bear } = tapeSkew(desk);
-  // Raised minimum notional from $100K to $250K to filter retail noise in SPX tape.
-  if (bull + bear > 250_000) {
-    const w = bull > bear * 1.25 ? 12 : bear > bull * 1.25 ? -12 : 0;
-    if (w) {
-      score += w;
-      factors.push({
-        label: "Live tape",
-        weight: w,
-        detail: w > 0 ? "Recent SPX flow skews calls" : "Recent SPX flow skews puts",
-      });
-    }
+  // AGGRESSION-AWARE (2026-08-23). This factor used to count every call print as bullish premium
+  // and every put print as bearish, ignoring who was the aggressor — so an aggressively SOLD call
+  // block, which `printBias` and Split Flow both call BEARISH, pushed this score +12. Measured on
+  // the 168h SPX tape: 167 of 993 8-print windows (16.8%) sign-flip between the two rules, a
+  // 24-point swing against grade boundaries of 72/58/45/30. See `spx-tape-direction.ts`.
+  const skew = spxTapeSkew(tapeWindow(desk));
+  const tape = spxTapeVerdict(skew);
+  if (tape.verdict !== "none") {
+    // Minimum notional was raised from $100K to $250K to filter retail noise; it now applies to
+    // the READABLE premium only, which is the premium the verdict actually rests on.
+    const w = tape.verdict === "bullish" ? 12 : -12;
+    score += w;
+    factors.push({
+      label: "Live tape",
+      weight: w,
+      detail:
+        tape.verdict === "bullish"
+          ? `Recent SPX flow bought calls / sold puts — $${(skew.bull / 1e6).toFixed(1)}M vs $${(skew.bear / 1e6).toFixed(1)}M`
+          : `Recent SPX flow bought puts / sold calls — $${(skew.bear / 1e6).toFixed(1)}M vs $${(skew.bull / 1e6).toFixed(1)}M`,
+    });
+  } else if (tape.reason === "unreadable" && skew.unreadable > 0) {
+    // Absence, stated. Roughly a third of SPX prints carry no two-sided premium split at all
+    // (both legs zero), and the largest prints carry it least often. Showing nothing here would
+    // be indistinguishable from a quiet tape — and scoring those prints as balanced would be the
+    // same fabrication the aggression-aware rule exists to remove. Zero weight, named reason.
+    factors.push({
+      label: "Live tape",
+      weight: 0,
+      detail: `Aggressor unreadable on $${(skew.unreadable / 1e6).toFixed(1)}M of the last ${TAPE_WINDOW} prints — no directional read`,
+    });
   }
 
   if (desk.ema20 != null) {

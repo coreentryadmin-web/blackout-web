@@ -1408,12 +1408,30 @@ export async function fetchUwSpotExposuresByStrike(ticker = "SPX", limit = 500) 
   return extractRows(data);
 }
 
-/** Per-ticker flow — GET /api/stock/{t}/flow-alerts */
-export async function fetchUwTickerFlowAlerts(ticker = "SPX", limit = 15) {
+/**
+ * Per-ticker flow, WITH the raw UW row alongside the parsed alert — GET /api/stock/{t}/flow-alerts
+ *
+ * `parseUwFlowAlert` deliberately narrows to the fields `MarketFlowAlert` declares, and the
+ * aggressor is not one of them: UW does not send `ask_side_pct` on flow-alerts (0/50 rows on both
+ * SPX and SPXW, live-verified 2026-08-23 — the same 0/2780 the persist path measured in July) but
+ * DOES send `total_ask_side_prem` + `total_bid_side_prem` on every row. Callers that need to know
+ * WHO was the aggressor must therefore see the raw row and derive it with
+ * `askPctFromTwoSidedPremium`, exactly as `extractChainFieldsFromRaw` already does on the persist
+ * path. Same shape as `fetchMarketFlowAlertPage` returns for the market-wide feed.
+ */
+export async function fetchUwTickerFlowAlertsWithRaw(
+  ticker = "SPX",
+  limit = 15
+): Promise<Array<{ raw: Record<string, unknown>; flow: MarketFlowAlert }>> {
   const data = await uwGetSafe<unknown>(`/api/stock/${safeTicker(ticker)}/flow-alerts`, {
     limit: Math.min(limit, 50),
   });
-  return extractRows(data).map((raw) => rowToFlow(raw));
+  return extractRows(data).map((raw) => ({ raw, flow: rowToFlow(raw) }));
+}
+
+/** Per-ticker flow — GET /api/stock/{t}/flow-alerts */
+export async function fetchUwTickerFlowAlerts(ticker = "SPX", limit = 15) {
+  return (await fetchUwTickerFlowAlertsWithRaw(ticker, limit)).map((r) => r.flow);
 }
 
 export type NetPremTick = { time: string; net: number };

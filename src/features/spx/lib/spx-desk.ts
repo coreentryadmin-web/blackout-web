@@ -8,6 +8,7 @@ import {
   deskFlowRaceMs,
   deskPulseMaxBlockMs,
 } from "@/lib/providers/config";
+import { askPctFromRaw } from "@/lib/flow-raw-fields";
 import { pulseChangePctFromPriorClose } from "./spx-change-anchor";
 import { rebaseChangePct } from "@/lib/providers/change-pct";
 import { serverCache } from "@/lib/server-cache";
@@ -97,7 +98,7 @@ import {
   fetchUwNetFlowExpiry,
   fetchUwNetPremTicks,
   fetchUwNope,
-  fetchUwTickerFlowAlerts,
+  fetchUwTickerFlowAlertsWithRaw,
   type DarkPoolSnapshot,
   type IvTermPoint,
   type NetPremTick,
@@ -874,6 +875,14 @@ export type SpxFlowBrief = {
   alert_rule: string | null;
   trade_count: number | null;
   has_sweep: boolean;
+  /**
+   * Ask-side share of two-sided premium, 0-100 — WHO was the aggressor. UW never sends
+   * `ask_side_pct` on flow-alerts; it is derived from `total_ask_side_prem`/`total_bid_side_prem`
+   * on the UW path and read from the SQL mirror of that derivation on the DB path. `null` when
+   * both premium legs are zero, which is a genuine unknown and must stay one — see
+   * `spx-tape-direction.ts` for why an unreadable print is not a balanced one.
+   */
+  ask_pct?: number | null;
 };
 
 /** Honest flow age for desk payloads — caps sparse-tape age when cluster WS is live. */
@@ -891,6 +900,8 @@ export type SpxTapeItem = {
   label: string;
   premium: number;
   detail: string;
+  /** Aggressor share carried through from the flow brief; see `SpxFlowBrief.ask_pct`. */
+  ask_pct?: number | null;
 };
 
 export type DeskNewsHeadline = {
@@ -1187,6 +1198,7 @@ function buildUnifiedTape(
       // spx-signals.ts tapeSkew, `bull += t.premium` then produces NaN. Guard here.
       premium: f.premium ?? 0,
       detail: `${f.ticker} | ${f.direction}`,
+      ask_pct: f.ask_pct ?? null,
     });
   }
 
@@ -1234,10 +1246,10 @@ function spxTapeMinPremium(): number {
 async function fetchSpxDeskFlowAlerts(limit = 32): Promise<SpxFlowBrief[]> {
   if (!uwConfigured()) return lastGoodSpxFlowBriefs;
 
-  const rows = await fetchUwTickerFlowAlerts("SPX", limit);
+  const rows = await fetchUwTickerFlowAlertsWithRaw("SPX", limit);
   if (!rows.length) return lastGoodSpxFlowBriefs;
 
-  const mapped = rows.map((f) => ({
+  const mapped = rows.map(({ raw, flow: f }) => ({
     ticker: f.ticker,
     premium: f.premium,
     option_type: f.option_type,
@@ -1248,6 +1260,10 @@ async function fetchSpxDeskFlowAlerts(limit = 32): Promise<SpxFlowBrief[]> {
     alert_rule: f.alert_rule,
     trade_count: f.trade_count,
     has_sweep: f.has_sweep,
+    // Same helper, and therefore the same precedence, as the persist path's
+    // `extractChainFieldsFromRaw` — a REST-sourced desk print and a persisted one cannot
+    // disagree about who was the aggressor.
+    ask_pct: askPctFromRaw(raw) ?? null,
   }));
   lastGoodSpxFlowBriefs = mapped;
   return mapped;
@@ -1300,7 +1316,12 @@ async function _fetchSpxDeskFlowAlertsWithDbInner(limit = 32): Promise<SpxFlowBr
         alerted_at: f.alerted_at,
         alert_rule: null,
         trade_count: null,
+        // The DB tape has no has_sweep column at all — `false` here is absence, not a dropped
+        // field. (`scoreHelixFlowAlignment` gates on has_sweep, so it cannot fire on DB-only
+        // rows; that is a separate question from this one and is raised, not changed, here.)
         has_sweep: false,
+        // db.ts derives ask_pct in SQL as the mirror of askPctFromTwoSidedPremium.
+        ask_pct: f.ask_pct ?? null,
       }));
     if (spxDb.length) {
       lastGoodSpxFlowBriefs = spxDb.slice(0, limit);
@@ -1327,7 +1348,12 @@ async function _fetchSpxDeskFlowAlertsWithDbInner(limit = 32): Promise<SpxFlowBr
         alerted_at: f.alerted_at,
         alert_rule: null,
         trade_count: null,
+        // The DB tape has no has_sweep column at all — `false` here is absence, not a dropped
+        // field. (`scoreHelixFlowAlignment` gates on has_sweep, so it cannot fire on DB-only
+        // rows; that is a separate question from this one and is raised, not changed, here.)
         has_sweep: false,
+        // db.ts derives ask_pct in SQL as the mirror of askPctFromTwoSidedPremium.
+        ask_pct: f.ask_pct ?? null,
       }));
 
     const merged = [...fromUw, ...spxDb].sort(
