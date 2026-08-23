@@ -15,6 +15,7 @@ import { getActiveTradingHalts, isTradingHaltChannelStale, tideStore, warmUwClus
 import { getLargoSpxLiveDesk } from "@/lib/largo/spx-desk-cache";
 import { computeSpxConfluence } from "@/features/spx/lib/spx-signals";
 import { loadLottoRecord } from "@/features/spx/lib/spx-lotto-store";
+import { SPX_CONFIDENCE_OMITTED } from "@/lib/largo/spx-confidence-boundary";
 
 type FeedKey =
   | "market"
@@ -781,7 +782,10 @@ export function formatLargoLiveFeed(rawFeed: LargoLiveFeed, ticker: string): str
       direction: play.direction,
       grade: play.grade,
       score: play.score,
-      confidence: play.confidence,
+      // NOT `play.confidence` — the whitelist below is what the model actually reads, so echoing
+      // the engine's uncalibrated number here would reintroduce it after the tools stopped
+      // serving it. See spx-confidence-boundary.ts for why it is not a probability.
+      confidence_omitted: SPX_CONFIDENCE_OMITTED,
       headline: typeof play.headline === "string" ? sanitizeFeedText(play.headline) : play.headline,
       thesis: typeof play.thesis === "string" ? sanitizeFeedText(play.thesis) : play.thesis,
     };
