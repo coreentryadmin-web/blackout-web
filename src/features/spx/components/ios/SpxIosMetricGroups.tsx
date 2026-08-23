@@ -5,6 +5,7 @@ import { clsx } from "clsx";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
 import { fmtPct, fmtPremium, fmtPrice } from "@/lib/api";
 import { priceVsLevel, PriceLevelIndicator } from "../SpxLiveSpotPrice";
+import { SPX_DESK_MAX_PAIN_LABEL_IOS } from "@/features/spx/lib/spx-metric-labels";
 
 type Props = {
   desk?: SpxDeskPayload;
@@ -112,7 +113,7 @@ export function SpxIosMetricGroups({ desk, showValues, spot, defaultCollapsed = 
             tone={(desk?.gex_net ?? 0) >= 0 ? "bull" : "bear"}
           />
           <MetricRow label="Flip" value={showValues ? fmtPrice(desk?.gamma_flip ?? null) : "—"} spot={spot} level={desk?.gamma_flip ?? null} />
-          <MetricRow label="Max pain" value={showValues ? fmtPrice(desk?.max_pain ?? null) : "—"} spot={spot} level={desk?.max_pain ?? null} />
+          <MetricRow label={SPX_DESK_MAX_PAIN_LABEL_IOS} value={showValues ? fmtPrice(desk?.max_pain ?? null) : "—"} spot={spot} level={desk?.max_pain ?? null} />
         </>
       ),
     },

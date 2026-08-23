@@ -20,6 +20,7 @@ import {
   UW_KEYS,
 } from "@/lib/providers/uw-shared-cache";
 import { uwConfigured } from "./config";
+import { dteFromExpiry } from "@/lib/flow-dte";
 
 // REDIS CACHE ACTIVE: with Redis caching most responses are served from cache, so
 // live UW calls are rare. Pacing is owned by uw-rate-limiter.ts (UW_MAX_RPS default 2);
@@ -267,7 +268,15 @@ export function parseUwFlowAlert(row: Record<string, unknown>): MarketFlowAlert 
   const premium = Number(row.total_premium ?? row.premium ?? 0);
   // Leave dte null (route unknown) when expiry is absent — do NOT default dte to 99,
   // which previously forced route="stock" on every timestamp/expiry-less print.
-  const dte = expiry ? Math.ceil((new Date(expiry).getTime() - Date.now()) / 86400000) : null;
+  //
+  // ET-ANCHORED via the shared `dteFromExpiry` (HELIX-MAP.md §9.2). This was
+  // `ceil((new Date(expiry).getTime() - Date.now()) / 86400000)`, a UTC diff — and
+  // `new Date("YYYY-MM-DD")` is UTC midnight, so between 20:00 and 24:00 ET the UTC date is
+  // already tomorrow and a NEXT-SESSION expiry evaluated as 0DTE. That fed `route` (the
+  // TickerDrawer 0DTE badge), the +15 0DTE score bonus — which is PERSISTED and so outlives the
+  // window — and the near-dated persistence floor. Shared rather than re-derived because §9.2 is
+  // literally "two derivations of one number"; the read path in db.ts anchors the same way.
+  const dte = expiry ? dteFromExpiry(expiry) : null;
   const route =
     premium >= 1_000_000 ? "whale" : dte == null ? "" : dte <= 0 ? "0dte" : "stock";
 
