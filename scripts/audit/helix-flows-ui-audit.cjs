@@ -46,14 +46,16 @@
 const path = require("path");
 const { createTunneledContext } = require("./lib/proxy-tunnel-context.cjs");
 const {
-  routeBucketVerdict,
-  newBadgeVerdict,
+  consoleErrorsNotFromFailedLoads,
   coverageNoteVerdict,
   directionLabelVerdict,
   expiryBucketVerdict,
-  panelVerdict,
   freshnessVerdict,
+  newBadgeVerdict,
   overallVerdict,
+  pageLoadGate,
+  panelVerdict,
+  routeBucketVerdict,
 } = require("./lib/helix-ui-audit-eval.cjs");
 
 const BASE = (process.env.VALIDATE_BASE || "https://blackouttrades.com").replace(/\/$/, "");
@@ -382,6 +384,15 @@ async function runViewport(session, vp) {
   page.on("console", (m) => {
     if (m.type() === "error") consoleErrors.push(m.text().slice(0, 200));
   });
+  // A response that ROUTED fine and came back 404 is not a routing failure, so the tunnel's own
+  // `counts.fail` stays 0 for it — yet the page is just as unpainted. Collected here so the load
+  // gate can see both ways a page fails to finish.
+  const failedResponses = [];
+  page.on("response", (r) => {
+    if (r.status() >= 400) {
+      failedResponses.push({ status: r.status(), resourceType: r.request().resourceType(), url: r.url() });
+    }
+  });
 
   try {
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45_000 });
@@ -537,10 +548,19 @@ async function runViewport(session, vp) {
       fails.push(`horizontal body overflow (${snap.layout.scrollWidth}px in a ${snap.layout.innerWidth}px viewport)`);
     }
     if (snap.layout.visibleError) fails.push(`visible error text: "${snap.layout.visibleError}"`);
-    if (consoleErrors.length) fails.push(`${consoleErrors.length} console error(s): ${consoleErrors[0]}`);
-    if (counts.fail > 0) {
-      // Assets that never painted cannot be judged — say so instead of reporting a clean run.
-      return { viewport: vp.id, verdict: "HARNESS", reason: `${counts.fail} routed request(s) failed — page did not fully paint`, counts, shot, snap };
+    // Console errors that are just the failed loads restated are attributed to the gate below,
+    // not counted as independent product signal — one cause must not read as two.
+    const realConsoleErrors = consoleErrorsNotFromFailedLoads(consoleErrors);
+    if (realConsoleErrors.length) {
+      fails.push(`${realConsoleErrors.length} console error(s): ${realConsoleErrors[0]}`);
+    }
+
+    // THE LOAD GATE. Runs before any product verdict is returned: a page that did not finish
+    // painting cannot be judged, and calling its missing panels a product FAIL is how a transient
+    // mid-load state became "Route Breakdown did not render" on 2026-08-23.
+    const loadGate = pageLoadGate(failedResponses, counts.fail);
+    if (loadGate) {
+      return { viewport: vp.id, verdict: "HARNESS", reason: loadGate.detail, counts, shot, snap };
     }
 
     // A real product failure still leads. But with nothing failing and something unreadable, the
