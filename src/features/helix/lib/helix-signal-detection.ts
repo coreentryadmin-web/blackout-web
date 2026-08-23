@@ -106,6 +106,59 @@ export type VelocitySpike = {
   recentPremium: number;
 };
 
+/**
+ * How long ago a print happened — or `null` when it claims to be from the FUTURE.
+ *
+ * ── THE DEFECT ──────────────────────────────────────────────────────────────────────────────────
+ *
+ * Both detectors compared a raw `nowMs - eventMs` against their window:
+ *
+ *     detectVelocitySpikes:  const age = nowMs - eventMs; if (age <= RECENT_WINDOW) recent++
+ *     detectSplitFlow:       if (ms == null || nowMs - ms > SPLIT_WINDOW_MS) continue
+ *
+ * A print stamped in the future gives a NEGATIVE age, and a negative number is `<=` every window
+ * and `>` none. So a future-dated print counted as **maximally recent** in both.
+ *
+ * REPRODUCED against the real detectors: six prints stamped **one year ahead** of `nowMs` produced
+ * a velocity spike (`recent=6, ratio=6`) and a split-flow firing ($3.0M call / $600k put). Not a
+ * near-miss — a full firing, out of data that has not happened.
+ *
+ * ── HOW IT IS REACHED ───────────────────────────────────────────────────────────────────────────
+ *
+ * `resolveFlowTimes` does not bound `event_at` to the past, so any clock skew between UW and us, or
+ * any timestamp that parses to the wrong magnitude, lands here. #2723 makes the second route
+ * slightly wider: it parses epochs by magnitude, and a value that scales into 2027–2286 is
+ * "valid" and still in the future.
+ *
+ * ── WHY THIS BUG SHAPE IS WORTH NAMING ──────────────────────────────────────────────────────────
+ *
+ * The identical error broke this lane's own velocity-cap harness earlier the same day: replaying
+ * the detector at a historical `nowMs` made every LATER print in the session read as "the last
+ * fifteen minutes", and the harness reported 91 simultaneous spikes with the cap binding 95.4% of
+ * windows. The corrected figure was 14 and 11.3% — a 7x error, from exactly this sign. Having found
+ * it in the instrument, the honest next step was to check whether the product had it too. It did.
+ *
+ * ── THE TOLERANCE IS NOT ZERO, DELIBERATELY ─────────────────────────────────────────────────────
+ *
+ * Rejecting anything even a millisecond ahead would drop real prints over ordinary clock skew
+ * between UW's stamp and our clock. One minute is generous for skew and nowhere near a window, so a
+ * genuinely mis-stamped print is still excluded while a normal one survives.
+ */
+export const FUTURE_PRINT_TOLERANCE_MS = 60 * 1000;
+
+export function signalWindowAgeMs(
+  eventMs: number | null,
+  nowMs: number,
+  toleranceMs: number = FUTURE_PRINT_TOLERANCE_MS
+): number | null {
+  if (eventMs == null || !Number.isFinite(eventMs)) return null;
+  const age = nowMs - eventMs;
+  // Beyond tolerance into the future: we cannot say when this happened, so it is evidence about
+  // nothing. Clamping to 0 instead would silently make it the newest print on the tape.
+  if (age < -toleranceMs) return null;
+  return age;
+}
+
 const VELOCITY_RECENT_WINDOW_MS = 15 * 60 * 1000;
 const VELOCITY_PRIOR_WINDOW_MS = 30 * 60 * 1000;
 const VELOCITY_MIN_RECENT = 2;
@@ -120,8 +173,10 @@ export function detectVelocitySpikes(flows: MinimalFlow[], nowMs: number): Veloc
     // Shared eligibility (see signalEligible) rather than a direct `event_at` test, so this
     // detector, detectSplitFlow and the reported denominator cannot drift apart.
     const eventMs = flowEventTimeMs(alert);
-    if (eventMs == null) continue;
-    const age = nowMs - eventMs;
+    // `null` for an undatable print AND for one dated beyond tolerance into the future — a
+    // negative age is `<=` every window below, so an unguarded one counts as maximally recent.
+    const age = signalWindowAgeMs(eventMs, nowMs);
+    if (age == null) continue;
     const cur = byTicker.get(alert.ticker) ?? { recent: 0, prior: 0, recentPremium: 0 };
     if (age <= VELOCITY_RECENT_WINDOW_MS) {
       cur.recent++;
@@ -175,8 +230,10 @@ export function detectSplitFlow(flows: MinimalFlow[], nowMs: number): SplitFlowE
   const byTicker = new Map<string, { callPrem: number; putPrem: number; rows: MinimalFlow[] }>();
 
   for (const alert of flows) {
-    const ms = flowEventTimeMs(alert);
-    if (ms == null || nowMs - ms > SPLIT_WINDOW_MS) continue;
+    // Same guard as the velocity detector: a negative age is `>` no window, so a future-dated
+    // print used to slip into every one of them.
+    const age = signalWindowAgeMs(flowEventTimeMs(alert), nowMs);
+    if (age == null || age > SPLIT_WINDOW_MS) continue;
     const cur = byTicker.get(alert.ticker) ?? { callPrem: 0, putPrem: 0, rows: [] };
     if (alert.option_type === "CALL") cur.callPrem += alert.premium;
     else if (alert.option_type === "PUT") cur.putPrem += alert.premium;
