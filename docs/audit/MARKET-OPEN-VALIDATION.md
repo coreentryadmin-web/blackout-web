@@ -151,7 +151,7 @@ git merge-base --is-ancestor <fix-sha> <deployed-head-sha> && echo IN || echo NO
 The six SHAs to check are the merge commits of **#2647 (§9.8)**, **#2669 (§9.4)**, **#2670 (§9.3)**,
 **#2673 (§9.5)**, **#2680 (§9.10)** and — if merged by then — **#2681 (§9.0)**.
 
-### 1. §9.5 — the Expiry panel's 0DTE bucket must carry the expired rows (#2673)
+### 1. §9.5 — VALIDATED off-hours 2026-08-23; re-check under the RTH population (#2673)
 
 `bucketLabel` tested `dte === 0` exactly, so already-expired prints (negative `dte`) fell through to
 `dte <= 7` and were filed under **"This week"** — a future horizon for a contract that has expired.
@@ -159,33 +159,41 @@ The six SHAs to check are the merge commits of **#2647 (§9.8)**, **#2669 (§9.4
 - **Pre-fix baseline:** 803 of 5000 rows (**16.1%**) carry a negative `dte`.
 - **Measured 2026-08-23 (closed):** 801 of 5000 (**16.0%**), `dte === 0`: **zero**, top names
   `SPY:250 · TSLA:59 · QQQ:57 · SPXW:54`.
-- **What to check at the open:** the 0DTE bucket carries those rows and **"This week" no longer
-  does.** During RTH the population changes shape — genuinely-0DTE contracts appear
+- **Validated 2026-08-23 post-deploy:** all four buckets matched the rendered tape exactly —
+  `0DTE 11/11 · This week 18/18 · Monthly 140/140 · LEAPS 331/331`. Pre-fix "This week" would
+  have read 29.
+- **What is still open at the open:** the 0DTE bucket carries those rows and **"This week" no
+  longer does**, During RTH the population changes shape — genuinely-0DTE contracts appear
   (`dte === 0`, which did not exist at all in the closed window) alongside the expired ones. **That
   mix is the case nobody has seen**, and it is the case where a wrong bucket is most visible.
 
-### 2. §9.10 — the Rule column must show `—`, never `stock`/`whale`/`0dte` (#2680)
+### 2. §9.10 — VALIDATED off-hours 2026-08-23; re-check the word/`—` mix under RTH (#2680)
 
 The column headed **Rule** substituted `flow.route` — our own premium/tenor bucket — where UW
 reported no rule.
 
 - **Pre-fix baseline, 500 rendered rows:** `stock:271 · whale:126 · REPEAT:99 · FLOOR:3 · SWEEP:1`
   — **397 of 500 (79.4%)** showing an internal bucket name.
-- **Expected after:** the same ~103 real rule words, and every other row `—`. **Zero** occurrences
-  of `stock`, `whale` or `0dte` anywhere in that column.
+- **Validated 2026-08-23 post-deploy:** `—:397 · REPEAT:99 · FLOOR:3 · SWEEP:1`. Zero `stock`,
+  `whale` or `0dte`, and the 103 real rule words preserved exactly.
 - **Why RTH matters:** under a live tape the rule-carrying feed is much more active, so the *mix*
   shifts toward real words. A run that shows mostly `—` off-hours and mostly words at the open is
   correct in both cases — do not read the shift as a regression.
 
-### 3. §9.3 — `gex_evaluated: false` on rows past the enrichment cap (#2670)
+### 3. §9.3 — flag VALIDATED; the CAP itself is still untested (#2670)
 
 An absent GEX badge meant three different things; only one of them was "the strike is not near a
 level". The cap is `clamp(ceil((qualifying) × 0.30), 40, 100)` names.
 
 - **What to check:** rows whose ticker falls **beyond** the cap carry `gex_evaluated: false`, and
   rows inside it carry `true` whether or not a proximity was found.
-- **Only checkable at the open.** Off-hours the tape is narrow enough that the cap may not bind at
-  all, so an all-`true` reading proves nothing. **Confirm the cap actually bound** (count distinct
+- **Validated 2026-08-23 post-deploy — the FLAG only.** Present on 5000/5000 rows, **zero absent**,
+  split `true 689 / false 4311`. But only **5 of 272** tickers were evaluated, far below the
+  `clamp(…, 40, 100)` cap: off-hours the GEX matrices are not rebuilt, so most lookups return empty
+  rather than being CUT BY THE CAP. **The cap as a binding constraint is still untested** — that is
+  the RTH-only half.
+- Off-hours the tape is narrow enough that the cap may not bind at all, so an all-`true` reading
+  proves nothing. **Confirm the cap actually bound** (count distinct
   tickers in the payload against the cap) before recording a verdict — an unbound cap is a
   `HARNESS` result, not a PASS.
 

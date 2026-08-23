@@ -52,6 +52,54 @@ seconds later. **A single-shot probe cannot tell "cold, warming" from "broken"**
 `heatmap-warm` cron is not running to hide the difference. Any future post-deploy Thermal probe
 should read each ticker at least twice before reporting an availability verdict.
 
+## 2026-08-23 — [Helix] Post-deploy live validation of §9.3 + §9.5 + §9.10 — all three PASS
+
+**Severity.** — (no product defect found; one harness error, corrected mid-run and recorded below)
+
+**Why it ran.** The three remaining merged-but-unvalidated HELIX fixes. Deploy `32618414670`
+completed **success** at 05:32:10Z; all three confirmed present by ancestry against the deployed
+head `8dc301ad` before anything was measured — `#2670` (7bd99a49), `#2673` (9da026d0), `#2680`
+(8dc301ad itself). Two earlier attempts were correctly refused because the only completed deploy at
+the time predated all three.
+
+**§9.10 — PASS, and the cleanest result of the batch.** The Rule column, 500 rendered rows:
+
+| | before | after |
+|---|---|---|
+| `stock` | 271 | **0** |
+| `whale` | 126 | **0** |
+| `0dte` | 0 | 0 |
+| `—` (honest absence) | 0 | **397** |
+| `REPEAT` / `FLOOR` / `SWEEP` | 99 / 3 / 1 | **99 / 3 / 1** |
+
+The 397 rows that displayed an internal bucket name now display `—`, and the 103 real rule words are
+**preserved exactly**. It removed the lies without removing the truth, which is the only acceptable
+shape for a fix that deletes displayed content.
+
+**§9.5 — PASS.** Expiry Concentration, compared bucket-by-bucket against the tape's own rendered
+DTE column: `0DTE 11/11 · This week 18/18 · Monthly 140/140 · LEAPS 331/331`, panel total 500. The
+11 expired prints (negative `dte`) are in **0DTE**; pre-fix they fell through to `dte <= 7` and
+"This week" would have read **29**.
+
+**§9.3 — PASS, and the cap genuinely binds.** `gex_evaluated` present on **5000/5000 rows — zero
+absent**, split `true 689 / false 4311`, across 272 distinct tickers of which **5** were evaluated.
+The flag discriminates, which is the whole fix: "no wall badge" can no longer be confused with "not
+near a wall".
+
+**Worth recording, not a defect:** only **5 of 272** tickers were evaluated, far below the
+`clamp(…, 40, 100)` cap. Off-hours the GEX matrices are not being rebuilt, so most lookups return
+empty rather than being cut by the cap. So this run proves the FLAG works; it does **not** exercise
+the cap as the binding constraint. That distinction is exactly what §9.3 exists to express, and the
+RTH re-run is what will test the cap itself.
+
+**The harness error, recorded because it produced a false FAIL.** The first §9.5 pass compared the
+panel's bucket counts against the **5000-row API window** and reported `"This week" 18 vs 155 —
+FAIL`. The panel reads the **500 rendered rows**, not the API window; its four buckets summed to
+exactly 500, which is what gave it away. Re-run against the tape's own rendered DTE column, all four
+buckets matched exactly. **A denominator taken from the wrong population turns a correct fix into a
+reported failure** — the same class as the 2026-08-23 UI-harness FALSE PASS earlier in this file,
+arriving from the opposite direction. Suspect the instrument before the product.
+
 ## 2026-08-23 — [Helix] Post-deploy live validation of §9.8 + §9.4 — both PASS, and the harness needed recalibrating
 
 **Severity.** — (no product defect found; one instrument defect, fixed in the same PR as this log)
