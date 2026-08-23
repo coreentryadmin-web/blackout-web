@@ -243,6 +243,32 @@ in the batch, so it has no prior baseline to diff against — the check is coher
   Under live flow, opening trades are exactly what a busy session is made of, so **the decisive share
   should RISE**. If it does not, the margin or the OI freshness is worth re-examining.
 
+### 5c. Split Flow direction — a graded prediction that changed definition (#2691)
+
+**The highest-stakes item on this list, and the only one that cannot be checked off-hours at all**
+— split flow needs a live 30-minute window, so both radars are empty until the open.
+
+`detectSplitFlow` read direction from option type alone, counting sold calls as bullish premium.
+`printBias` — the contract drilldown, on the same page — already read option type **×** aggressor
+side. Measured 2026-08-23 over the 1454 rows carrying `ask_pct`: **37 of 83 tickers (44.6%)
+sign-flip** between the two rules, and 47.7% of all call premium was SOLD.
+
+**Why this one matters more than a label:** `direction` is persisted and `gradeOutcome` scores it
+continued/reversed, so it is a prediction the record grades. Rows before this change were graded
+under the old rule.
+
+- **Check on screen:** a ticker showing `▲ BULLISH` must agree with the **contract drilldown's own
+  bias** for prints from that ticker. Open one and compare — they now read the same rule, and this
+  is the first session where both can be seen populated at once.
+- **Check the refusal works:** `— UNREAD` must appear **only** where the `Ask%` column is genuinely
+  absent. If `— UNREAD` dominates a busy tape, `ask_pct` coverage has regressed — measured at
+  **29.1% of all rows but ~96.9% of Group A**, and split flow only ever sees Group A.
+- **Check `⇋ MIXED` still occurs.** MIXED (read, genuinely two-sided) and UNREAD (could not read)
+  are different facts and must both be reachable. If MIXED never appears, the margin is wrong.
+- **Ledger, worth capturing once:** new rows carry `context.direction_basis =
+  "aggression_aware_v1"`. Confirm it is present on rows written after the deploy — rows without it
+  are the old rule and **must not be pooled** with the new ones in any track-record number.
+
 ### 6. Open questions an RTH session can actually answer
 
 These are recorded as needing a decision; RTH is when the data exists to inform them.
