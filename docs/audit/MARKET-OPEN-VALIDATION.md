@@ -120,8 +120,8 @@ never printed. Pure verdict/coherence logic lives in
 
 ## WATCH LIST — HELIX, first session on 2026-08-24 (read this before the routine pass)
 
-Eleven HELIX fixes merged over 2026-08-22/23. **Nine are member-facing and none has been seen under a
-moving tape.** Every one was validated off-hours at best, and three could not be validated at all
+Thirteen HELIX fixes merged over 2026-08-22/23. **Eleven are member-facing and none has been seen
+under a moving tape.** Every one was validated off-hours at best, and three could not be validated at all
 because the population they act on does not exist while the market is closed. This section is the
 list of things that are *only* checkable at the open, with the baseline each one must be diffed
 against.
@@ -405,6 +405,56 @@ readable**.
   the first time. That is the fix working, not a regression — but it is also the first time this
   panel has ever asserted a direction on evidence, so **check one bar's colour against its own
   tooltip numbers by hand** before trusting the rest.
+
+### 5i. Largo answered bullish/bearish from `call_pct` — the AI and the UI disagreeing (#2718)
+
+`get_helix_tape_analytics`'s own tool description told the model to use `session.call_pct` for
+*"ANY 'call vs put', 'skew', or bullish/bearish premium question"*. Since #2691/#2713/#2715 the
+member panels do NOT read direction that way, so the two audiences for one tape were about to give
+opposite answers. Measured 2026-08-23: **CG was 100% call premium at 100% readable and BEARISH** —
+the panel says bearish, Largo with only `call_pct` says bullish, about the same $8.0M.
+
+`direction` / `direction_readable_pct` / `direction_minority_evidence` / `direction_basis` are now
+on `session`, on every `net_premium_leaders` row and on every `expiry_horizons` row. `call_pct`
+stays — it is a real quantity, correctly named, and the contract is additive.
+
+- **Ask Largo directly, at the open:** *"is the flow on <ticker> bullish or bearish?"* for a ticker
+  whose panel reads neutral or bearish while its call share is high. **The answer must match the
+  panel.** This is the whole point of the change and the only check that exercises it end-to-end.
+- **Then ask a name the index feed dominates** (SPX): Largo must say it cannot determine direction
+  and **state the readable share**, not fall back to `call_pct`. If it quotes a direction for SPX,
+  the model is ignoring `direction_minority_evidence` and the tool description needs sharpening.
+- **RE-RUN THE TRUNCATION PROBE — this is a gate, not a nicety:**
+  `node --import tsx scripts/audit/largo-truncation-probe.mjs --tools=get_helix_tape_analytics`.
+  The change adds **~1,515 chars (9.5% of the 16,000-char cap)** to a payload that measured
+  **COMPLETE** on production on 2026-08-23 (control PROVEN in the same run). The probe is BINARY —
+  it says truncated or not, never how much headroom is left — so *"it was complete before"* is not
+  evidence it still is. **#2480 was exactly this failure**: a HELIX tool silently delivering a
+  fraction of itself while the model answered fluently from what survived. Under RTH the tape is
+  busier and the payload larger, so the open is when it would first bite.
+- **If it comes back TRUNCATED:** the aggregates are cut from the tail, so `expiry_horizons` and
+  `session` go first. Do not "fix" it by dropping the direction fields — trim `recent`, which is
+  the print list and is already available in full from `get_postgres_flows`.
+
+### 5j. "Tape agrees with long thesis" on bearish flow (#2717)
+
+`FlowFeed` gave every Night Hawk play a `flowAgreement` BOOLEAN from `callPremium/totalPremium`,
+rendered as prose beside a tradeable play. Measured over the **59 tickers at the $2M
+strong-conviction gate: 32 disagree (54%)**. `CG` — 100% call premium, 100% readable, verdict
+**BEARISH** — printed `✓ tape agrees with long thesis`. And `false` meant two opposite things:
+with no readable side it printed `⚠ tape diverges`, a fabricated disagreement (SPX, 0.1% readable).
+
+- **Check on screen (`/flows`, Night Hawk panel):** no play may show `✓ tape agrees` unless its own
+  call/put split AND the aggression-aware read support it. Open one and check the numbers by hand.
+- **`◆ tape direction unread` must appear** on index-dominated tickers, with its coverage stated.
+  Four distinct lines exist (agrees / diverges / two-sided / unread); seeing only two means the
+  deploy does not carry this.
+- **The `strong` badge count must FALL.** 42 of 59 gate-eligible tickers claimed agreement under
+  the old rule; the honest count is 20. **A count that does not fall is the failure signal here** —
+  and it is the opposite of the usual instinct, so record the before/after rather than eyeballing.
+- **The RTH-only part:** off-hours the tape is stale and Night Hawk's edition may be empty, so the
+  panel renders nothing at all. This has never been seen with live plays AND live flow at once,
+  which is the only condition under which the four states can all occur.
 
 ### 6. Open questions an RTH session can actually answer
 

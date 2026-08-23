@@ -5,6 +5,9 @@ import {
   readDirection,
   readDirectionTitle,
   directionTone,
+  thesisAgreement,
+  thesisAgreementConfirms,
+  thesisAgreementCopy,
   type DirectionReadFlow,
 } from "./helix-direction-read";
 
@@ -140,4 +143,80 @@ test("direction and net-premium sign are independent — neither is derived from
   for (const c of cases) {
     assert.equal(directionTone(readDirection([...c.flows])), c.tone, JSON.stringify(c.flows));
   }
+});
+
+/* ── Thesis agreement — the Night Hawk conviction claim ──────────────────────────────────────────
+ * `flowAgreement` gated a "strong" conviction badge and the prose "✓ tape agrees with long thesis"
+ * beside a tradeable play. It was a BOOLEAN over four facts, so "could not read" printed as
+ * "diverges". These use the live 2026-08-23 shapes as fixtures.
+ */
+
+test("a wall of SOLD calls does NOT confirm a long thesis — the live CG case", () => {
+  // CG: 100% call premium, 100% readable, verdict bearish. The old rule printed
+  // "✓ tape agrees with long thesis" on $8.0M of flow that was pointing the other way.
+  const d = readDirection([soldCall(8_000_000)]);
+  assert.equal(d.label, "bearish");
+  assert.equal(thesisAgreement(d, true), "diverges");
+  assert.equal(thesisAgreementConfirms(thesisAgreement(d, true)), false);
+  // ...and it DOES confirm a short thesis, which the old rule got backwards too.
+  assert.equal(thesisAgreement(d, false), "agrees");
+});
+
+test("sold PUTS confirm a long thesis even though calls are a minority — the live AVGO case", () => {
+  // AVGO: 28.2% call premium, 100% readable, verdict bullish. The old rule reported divergence.
+  const d = readDirection([
+    { option_type: "PUT", ask_pct: 5, premium: 7_000_000 },
+    boughtCall(2_750_000),
+  ]);
+  assert.equal(d.label, "bullish");
+  assert.equal(thesisAgreement(d, true), "agrees");
+});
+
+test("unreadable flow is NOT divergence — the fabricated disagreement", () => {
+  // The live SPX case: 0.1% readable. The old boolean was `false`, and `false` rendered as
+  // "⚠ tape diverges from long thesis" — a confident claim drawn from nothing.
+  const d = readDirection([boughtCall(4_000_000), unsided(4_000_000_000)]);
+  const v = thesisAgreement(d, true);
+  assert.equal(v, "unreadable");
+  assert.notEqual(v, "diverges");
+  assert.equal(thesisAgreementConfirms(v), false);
+});
+
+test("two-sided is its own verdict, distinct from unreadable", () => {
+  // Well covered AND genuinely even. Folding this into `unreadable` would repeat, one level up,
+  // the conflation this module exists to undo.
+  const d = readDirection([boughtCall(26_231_879), boughtPut(26_302_085)]);
+  assert.equal(d.minorityEvidence, false);
+  assert.equal(thesisAgreement(d, true), "two_sided");
+  assert.notEqual(thesisAgreement(d, true), "unreadable");
+});
+
+test("only evidenced agreement can support a strong conviction claim", () => {
+  const verdicts = ["agrees", "diverges", "two_sided", "unreadable"] as const;
+  const confirming = verdicts.filter((v) => thesisAgreementConfirms(v));
+  assert.deepEqual(confirming, ["agrees"]);
+});
+
+test("all four verdicts render a DIFFERENT line — none may share copy", () => {
+  const reads = {
+    agrees: readDirection([boughtCall(1_000_000)]),
+    diverges: readDirection([soldCall(1_000_000)]),
+    two_sided: readDirection([boughtCall(500_000), boughtPut(500_000)]),
+    unreadable: readDirection([boughtCall(1), unsided(999)]),
+  };
+  const texts = (["agrees", "diverges", "two_sided", "unreadable"] as const).map(
+    (v) => thesisAgreementCopy(v, true, reads[v]).text
+  );
+  assert.equal(new Set(texts).size, 4, `copy collided: ${JSON.stringify(texts)}`);
+  // The refusal must state its coverage, so it cannot be read as either verdict.
+  assert.match(texts[3]!, /unread/i);
+  assert.match(texts[3]!, /aggressor side/);
+  // And the two-sided line must not claim the tape leans against the thesis.
+  assert.doesNotMatch(texts[2]!, /diverge/i);
+});
+
+test("the copy names the thesis it is talking about, long or short", () => {
+  const d = readDirection([boughtCall(1_000_000)]);
+  assert.match(thesisAgreementCopy("agrees", true, d).text, /long thesis/);
+  assert.match(thesisAgreementCopy("diverges", false, d).text, /short thesis/);
 });

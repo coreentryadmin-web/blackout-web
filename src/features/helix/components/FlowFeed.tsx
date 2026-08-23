@@ -11,6 +11,11 @@ import {
 import { computeFlowStrikeStacks } from "@/lib/largo/flow-strike-stacks";
 import { HELIX_TOP_STRIKES_LIMIT } from "@/features/helix/lib/helix-strike-leaders";
 import { getSector } from "@/lib/sector-map";
+import {
+  readDirection,
+  thesisAgreement,
+  thesisAgreementConfirms,
+} from "@/features/helix/lib/helix-direction-read";
 import { HelixFlowTable } from "@/features/helix/components/HelixFlowTable";
 import { HelixMobileFlowTape } from "@/features/helix/components/HelixMobileFlowTape";
 import { HelixCommandBar } from "@/features/helix/components/HelixCommandBar";
@@ -456,22 +461,24 @@ export function FlowFeed() {
 
   // Feature 11: sector rotation — aggregate flow premium by sector
   const sectorFlowEntries = useMemo<SectorFlowEntry[]>(() => {
-    const map = new Map<string, { callPremium: number; putPremium: number }>();
+    const map = new Map<string, { callPremium: number; putPremium: number; flows: FlowAlert[] }>();
 
     for (const alert of filteredTapeBuffer) {
       const sector = getSector(alert.ticker);
-      const cur = map.get(sector) ?? { callPremium: 0, putPremium: 0 };
+      const cur = map.get(sector) ?? { callPremium: 0, putPremium: 0, flows: [] };
       if (alert.option_type === "CALL") cur.callPremium += alert.premium;
       else if (alert.option_type === "PUT") cur.putPremium += alert.premium;
       // gap-#6: UNKNOWN/typeless prints count toward NEITHER side (never fabricate a put)
+      cur.flows.push(alert);
       map.set(sector, cur);
     }
 
     return Array.from(map.entries())
-      .map(([sector, { callPremium, putPremium }]) => {
+      .map(([sector, { callPremium, putPremium, flows }]) => {
         const total   = callPremium + putPremium;
-        const callPct = total > 0 ? Math.round((callPremium / total) * 100) : 50;
-        return { sector, callPremium, putPremium, total, callPct };
+        // `50` here was a fabricated even split; a sector with no premium has no share.
+        const callPct = total > 0 ? Math.round((callPremium / total) * 100) : null;
+        return { sector, callPremium, putPremium, total, callPct, direction: readDirection(flows) };
       })
       .filter((e) => e.total >= 100_000)
       .sort((a, b) => b.total - a.total)
@@ -484,26 +491,39 @@ export function FlowFeed() {
       return { nighthawkPlaysWithFlow: [] as NightHawkPlayWithFlow[], hawkTickers: new Set<string>() };
     }
 
-    const alertsByTicker = new Map<string, { callPremium: number; putPremium: number; topPrint: number; count: number }>();
+    const alertsByTicker = new Map<
+      string,
+      { callPremium: number; putPremium: number; topPrint: number; count: number; flows: FlowAlert[] }
+    >();
     for (const a of filteredTapeBuffer) {
-      const e = alertsByTicker.get(a.ticker) ?? { callPremium: 0, putPremium: 0, topPrint: 0, count: 0 };
+      const e = alertsByTicker.get(a.ticker) ?? { callPremium: 0, putPremium: 0, topPrint: 0, count: 0, flows: [] };
       if (a.option_type === "CALL") e.callPremium += a.premium;
       else if (a.option_type === "PUT") e.putPremium += a.premium;
       if (a.premium > e.topPrint) e.topPrint = a.premium;
       e.count += 1;
+      e.flows.push(a);
       alertsByTicker.set(a.ticker, e);
     }
 
     const playsWithFlow: NightHawkPlayWithFlow[] = nighthawkEdition.plays.map((play) => {
-      const agg = alertsByTicker.get(play.ticker) ?? { callPremium: 0, putPremium: 0, topPrint: 0, count: 0 };
-      const { callPremium, putPremium, topPrint, count: printCount } = agg;
+      const agg = alertsByTicker.get(play.ticker) ?? { callPremium: 0, putPremium: 0, topPrint: 0, count: 0, flows: [] };
+      const { callPremium, putPremium, topPrint, count: printCount, flows } = agg;
       const totalPremium = callPremium + putPremium;
 
       const isLong = play.direction?.toLowerCase().includes("long") ||
                      play.direction?.toLowerCase().includes("bull");
-      const flowCallPct    = totalPremium > 0 ? callPremium / totalPremium : 0.5;
-      const flowAgreement  = isLong ? flowCallPct >= 0.55 : flowCallPct <= 0.45;
+      // Agreement is a claim about DIRECTION, so it reads the aggression-aware rule rather than
+      // call-vs-put share: a wall of SOLD calls is bearish flow, and under the old rule it
+      // "confirmed" a long thesis. Measured live 2026-08-23 over the 59 tickers at the $2M
+      // strong-conviction gate: 32 (54%) disagreed, CG among them at 100% call premium, 100%
+      // readable, verdict BEARISH.
+      const flowRead      = readDirection(flows);
+      const flowThesis    = thesisAgreement(flowRead, Boolean(isLong));
+      const flowAgreement = thesisAgreementConfirms(flowThesis);
 
+      // "strong" still requires genuine agreement — and now that is evidenced agreement, so an
+      // unreadable tape can no longer produce it. That is the intended effect, not a side effect:
+      // conviction asserted from flow nobody could read is the thing being removed.
       const conviction = totalPremium >= 2_000_000 && flowAgreement ? "strong"
         : totalPremium >= 500_000 ? "moderate"
         : totalPremium > 0       ? "weak"
@@ -511,7 +531,17 @@ export function FlowFeed() {
 
       return {
         ...play,
-        flowData: { callPremium, putPremium, totalPremium, topPrint, printCount, flowAgreement, conviction },
+        flowData: {
+          callPremium,
+          putPremium,
+          totalPremium,
+          topPrint,
+          printCount,
+          flowAgreement,
+          flowThesis,
+          flowRead,
+          conviction,
+        },
       } as NightHawkPlayWithFlow;
     });
 
