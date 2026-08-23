@@ -733,7 +733,19 @@ from option type × aggressor side.
 flip — and average favourable move is negative in almost every cell. More telling than any single
 number: **the best-performing bucket CHANGES at every horizon** (20–39 at 15min, 60 at 30min, 0–19
 at 60min). A real ranking is stable and roughly monotonic; an ordering that reshuffles with the
-horizon is the signature of noise. Score does not rank directional follow-through.
+horizon is the signature of noise.
+
+**Quantified after the harness was corrected:** the verdict is **`SPREAD WITHOUT ORDER` at every
+horizon**, and the rank correlation between score bucket and win rate is **ρ = +0.40 at +30min and
+ρ = −0.40 at +60min** — it flips sign. A score that ranked would hold its sign. Score does not rank
+directional follow-through.
+
+**The harness was wrong first, and the fix is the point.** `scoreSeparation` originally graded on
+SPREAD alone and labelled a 10.9pp spread `SEPARATES` — on a run whose best bucket was 20–39 and
+whose worst was the MIDDLE one. A spread is not a ranking; an instrument that conflates them would
+have contradicted the very write-up it exists to support. It now requires a monotonic trend
+(Spearman ρ) as well as a spread, and reports `SPREAD WITHOUT ORDER` and `INVERTED` as distinct
+outcomes from `RANKS`.
 
 **The saturation is confirmed as a shape problem too:** only **84 of 748 graded prints (11.2%)**
 score above 59 at all, so the top 40% of the range is nearly empty — exactly what

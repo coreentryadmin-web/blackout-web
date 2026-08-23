@@ -66,19 +66,63 @@ test("scoreSeparation refuses a verdict built on thin buckets, and names what it
   assert.match(r.excluded.join(" "), /n=1/);
 });
 
-test("scoreSeparation grades FLAT / WEAK / SEPARATES off the spread, not a coefficient", () => {
-  const mk = (bucketScore, wins, losses) => [
-    ...Array.from({ length: wins }, () => ({ score: bucketScore, premium: 1, graded: { win: true, favorablePct: 1 } })),
-    ...Array.from({ length: losses }, () => ({ score: bucketScore, premium: 1, graded: { win: false, favorablePct: -1 } })),
-  ];
-  // 50% vs 52% -> FLAT
+const mk = (bucketScore, wins, losses) => [
+  ...Array.from({ length: wins }, () => ({ score: bucketScore, premium: 1, graded: { win: true, favorablePct: 1 } })),
+  ...Array.from({ length: losses }, () => ({ score: bucketScore, premium: 1, graded: { win: false, favorablePct: -1 } })),
+];
+
+test("a tight spread is FLAT regardless of ordering", () => {
   assert.equal(scoreSeparation(summarizeByBucket([...mk(60, 50, 50), ...mk(90, 52, 48)]), 30).verdict, "FLAT");
-  // 50% vs 57% -> WEAK
-  assert.equal(scoreSeparation(summarizeByBucket([...mk(60, 50, 50), ...mk(90, 57, 43)]), 30).verdict, "WEAK");
-  // 40% vs 70% -> SEPARATES
-  const sep = scoreSeparation(summarizeByBucket([...mk(60, 40, 60), ...mk(90, 70, 30)]), 30);
-  assert.equal(sep.verdict, "SEPARATES");
-  assert.equal(sep.best.bucket, "85-100");
-  assert.equal(sep.worst.bucket, "60 (saturated)");
-  assert.ok(Math.abs(sep.spreadPp - 30) < 0.001);
+});
+
+test("RANKS requires the win rate to TREND with the score, not merely differ", () => {
+  // Monotonically rising across three buckets -> a real ranking.
+  const r = scoreSeparation(summarizeByBucket([...mk(10, 40, 60), ...mk(50, 55, 45), ...mk(90, 70, 30)]), 30);
+  assert.equal(r.verdict, "RANKS");
+  assert.ok(r.rho > 0.9, `expected a strong positive trend, got rho=${r.rho}`);
+  assert.equal(r.best.bucket, "85-100");
+  assert.equal(r.worst.bucket, "0-19");
+});
+
+test("a BIG spread with SCRAMBLED ordering is not a ranking — the trap that prompted this", () => {
+  // Zig-zag: 45 / 55 / 40 / 50 across rising score buckets. Spearman is exactly 0 — no trend at
+  // all — while the spread is 15pp. An earlier version of this function called that "SEPARATES",
+  // which would have contradicted the very write-up it was measuring for.
+  const r = scoreSeparation(summarizeByBucket([
+    ...mk(10, 45, 55),   // 0-19    45%
+    ...mk(30, 55, 45),   // 20-39   55%  <- best
+    ...mk(50, 40, 60),   // 40-59   40%  <- worst
+    ...mk(90, 50, 50),   // 85-100  50%
+  ]), 30);
+  assert.ok(r.spreadPp > 10, "the spread really is large");
+  assert.ok(Math.abs(r.rho) < 0.6, `ordering must read as no trend, got rho=${r.rho}`);
+  assert.equal(r.verdict, "SPREAD WITHOUT ORDER", "a large spread with no trend must not read as a ranking");
+});
+
+test("the REAL 400-row run's shape does not read as a working score", () => {
+  // Measured 2026-08-23 at +30min over 367 graded prints: 0-19 48.8%, 20-39 49.6%, 40-59 38.7%,
+  // 60 53.8%. The best bucket is 20-39 and the worst is the MIDDLE one. Whatever label it lands on,
+  // the one thing it must never be is RANKS — that is the claim the PR rests on.
+  const r = scoreSeparation(summarizeByBucket([
+    ...mk(10, 488, 512),
+    ...mk(30, 496, 504),
+    ...mk(50, 387, 613),
+    ...mk(60, 538, 462),
+  ]), 30);
+  assert.notEqual(r.verdict, "RANKS", "a mid bucket worst and a low bucket best is not a ranking");
+  assert.ok(r.spreadPp > 10, "and the spread alone would have looked like signal");
+});
+
+test("a score that ranks BACKWARDS is reported as INVERTED, not as working", () => {
+  const r = scoreSeparation(summarizeByBucket([...mk(10, 70, 30), ...mk(50, 55, 45), ...mk(90, 40, 60)]), 30);
+  assert.equal(r.verdict, "INVERTED");
+  assert.ok(r.rho < -0.9);
+});
+
+test("tied win rates cannot masquerade as agreement", () => {
+  // Three buckets all at exactly 50%: no spread, so FLAT — and averaged ranks keep rho from
+  // reporting a trend that does not exist.
+  const r = scoreSeparation(summarizeByBucket([...mk(10, 50, 50), ...mk(50, 50, 50), ...mk(90, 50, 50)]), 30);
+  assert.equal(r.verdict, "FLAT");
+  assert.equal(r.spreadPp, 0);
 });
