@@ -591,6 +591,30 @@ model on **four** doors, not one — `get_spx_confluence` (`run-tool.ts:1564`), 
 any tool call. `tool-defs.ts:217` also advertised the field. All four now omit it and name the
 absence (`src/lib/largo/spx-confidence-boundary.ts`); the member-facing UI number is unchanged.
 
+**LIVE-VALIDATED 2026-08-23 — GREEN on both tools**, with
+`scripts/audit/spx-largo-confidence-probe.mjs`:
+
+```
+[spx-confluence] OMITTED  no `confidence`, `confidence_omitted` present   control: GRADE=D SCORE=12
+[spx-play]       OMITTED  no `confidence`, `confidence_omitted` present   control: GRADE=D SCORE=12
+```
+
+**The two obvious ways to check this both fail, and the second one fails misleadingly.** Running the
+tool in-process is impossible from the audit sandbox (`getSpxPlayState` is DB/HTTP-backed behind
+`server-only`). And grepping the ANSWER ENVELOPE is the wrong vantage point entirely — the
+substitution happens inside the TOOL RESULT handed to the model, and the envelope returned to the
+client never carried it either way. Measured on a live envelope: the string `confidence` is present
+(from unrelated keys) and `confidence_omitted` is absent, which proves nothing in either direction
+and reads as a regression to anyone who stops there. So the probe asks the LIVE agent to report what
+its own tool result contained — the trick `largo-truncation-probe.mjs` uses for the 16k cap — and
+carries a CONTROL: it also asks for `grade` and `score`, fields known to be present, and reports
+**UNVERIFIED** rather than clean if those come back empty. A model saying "there was no confidence
+field" is otherwise indistinguishable from a model that never looked.
+
+Two paths remain unvalidated by that probe and are named rather than assumed:
+`get_ecosystem_context.spx_full_state` and `largo-live-feed.ts` — neither is reachable by naming a
+tool in a question.
+
 **Still open, and logged here rather than fixed:** `spx-play-engine.ts:1633` sets
 `confidence: closedConfluence?.confidence ?? 0` on the session-closed path. A `0` reads as a
 measured floor, not as "unknown" — absence published as measurement, in the member payload. It

@@ -9,6 +9,46 @@ already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
 
+## 2026-08-23 — [SPX Slayer] Post-deploy live validation of #2646, #2694 and #2699 — three PASS, and one of them needed a new instrument
+
+**Severity.** — (no product defect found; one harness defect of my own fixed the same session, #2729)
+
+**Why it ran.** Three merged SPX fixes carried "pending live validation" and Largo had just
+recovered (`largo-availability-probe.mjs`, 3/3 ANSWERED_OK, 0 declined), which unblocked the one
+that needed it. `deploy-freshness --since=6h` confirmed the deploy at 11:54Z, well after the 06:38Z
+merges — a check run before the deploy proves nothing.
+
+**#2699, chart toolbar collision — PASS.** `spx-collision-localise.mjs` against production,
+**0 collisions 5/5 runs**, against a pre-fix baseline of 3/5 colliding with identical geometry each
+time. Pre-merge evidence was CSS injection, which proves the rule; this is the deployed build,
+which is the claim that was owed. Still unautomatable: a human eyeballing the wrapped toolbar's
+height once.
+
+**#2694, max-pain labels — PASS, on both viewports.** `OI Max Pain` renders 1× in
+`p.spx-hero-stat-label` at 1440×1000 AND at 430×932, with the only bare `Max Pain` being the one
+inside it. **The obvious check was the wrong one:** fetching `/dashboard` and grepping the HTML
+reports every desk label ABSENT, including `EFF MAX PAIN` which has been live for weeks — the page
+is a ~50KB client shell. Hence `spx-rendered-text-probe.mjs`, which reads the rendered DOM, ignores
+text that is present but invisible, treats a forbidden needle occurring INSIDE a required one as the
+rename working, and takes a `--gate` page-loaded proof so a blank render reports HARNESS rather than
+"the label is missing".
+
+**#2646, confidence omitted at the Largo boundary — PASS on the two tool doors.**
+`spx-largo-confidence-probe.mjs`: `get_spx_confluence` and `get_spx_play` both returned no
+`confidence` and a present `confidence_omitted`, control proven (`GRADE=D SCORE=12`). Two of the
+four doors — `get_ecosystem_context.spx_full_state` and `largo-live-feed.ts` — are **not reachable
+by naming a tool in a question** and are recorded as still unvalidated rather than folded into the
+pass.
+
+**A correction this pass forced.** #2694's own entry said the iOS metric row was "pending a run"
+once the phone viewport became reachable. It is not a run — it is a different surface:
+`useIosNativeShell()` needs four conditions, and `SpxIosMetricGroups` then sits in a
+`<details open={!iosVectorFocus}>` that defaults closed. Validating it needs the native shell AND a
+click. Corrected in the entry rather than left to expire.
+
+**What this pass does NOT claim.** Nothing about whether any NUMBER is right — the tape was closed.
+Every correctness check against a live provider is still owed, and is Monday's Priority 0.
+
 ## 2026-08-23 — [Helix] `/flows` UI audit exercised pre-Monday — PASS, after one TRANSIENT desktop FAIL
 
 **Severity.** — (no product defect found; one harness defect fixed, #2722)
