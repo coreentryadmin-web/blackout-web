@@ -122,6 +122,49 @@ seconds later. **A single-shot probe cannot tell "cold, warming" from "broken"**
 `heatmap-warm` cron is not running to hide the difference. Any future post-deploy Thermal probe
 should read each ticker at least twice before reporting an availability verdict.
 
+## 2026-08-23 — [Helix] Post-deploy live validation of #2689 + §9.0 + #2691 — two PASS, one honestly NOT EXERCISED
+
+**Severity.** — (no product defect found)
+
+**Why it ran.** Three member-facing changes reached a COMPLETED deploy (`32621010394`, head `34da0a97`,
+finished 06:16:04Z; both merge commits confirmed present by ancestry before measuring). The watch
+list had them queued for Monday's open; two turned out to be checkable now, so they were taken off
+that list rather than left to consume RTH attention.
+
+**#2689 NEW-positioning badge — PASS on all three stated criteria.** 500 rendered rows, 10 badged.
+
+| criterion | result |
+|---|---|
+| never on a row whose OI reads `—` (fabrication) | **0** — PASS |
+| ratio agrees with the row's own OI / Prem / Fill columns | **8 of 8** checked — PASS |
+| badge visible, not collapsed into the `+N` overflow | PASS — every pill was read from the DOM |
+| tooltip explains rather than echoing the label | **10 of 10** |
+
+Sample: `NEW 5.7×  oi=884  prem=$1.4M  fill=2.75`, rendered as `WHALE NEW 5.7× REPEAT` — **the badge
+sits second, ahead of the rule badge**, which is the ordering fix working on the exact row shape that
+would otherwise have hidden it. Tooltip: *"New positioning: 5,000 contracts traded against 884
+outstanding, so at least 4,116 are newly opened — this print cannot be entirely closing."*
+
+**§9.0 signal-coverage line (#2681) — PASS.** Rendered verbatim on the empty Velocity/Split radars:
+
+> *Scanned 103 of 500 prints — 397 (SPX, SPY) carry no reported print time and cannot be scanned for
+> this signal.*
+
+Naming the symbols, as designed. Note **103 of 500**, not the 30% measured over the 5000-row API
+window: the panel reads the RENDERED page. Same denominator lesson as the Expiry panel earlier in
+this file — a percentage is only meaningful with the population it was taken over.
+
+**#2691 split-flow direction — one half PASS, one half NOT EXERCISED.** The legacy `CALL BIAS` /
+`PUT BIAS` labels are **gone** from the served page: a real check, and it passed. The new
+`▲ BULLISH` / `▼ BEARISH` / `⇋ MIXED` / `— UNREAD` labels could not be exercised — split flow needs a
+live 30-minute window and the market is closed, so the radar is legitimately empty. Reported as
+**NOT EXERCISED**, never as a pass; an empty radar proves nothing about labels that only render when
+it is populated.
+
+**Watch-list consequence.** #2689 and the §9.0 line are struck from the 2026-08-24 list. What remains
+genuinely RTH-only: §9.3's cap, #2691's populated labels, #2704's tide bar, and the
+whale-outranks-0dte collision.
+
 ## 2026-08-23 — [Helix] Post-deploy live validation of §9.3 + §9.5 + §9.10 — all three PASS
 
 **Severity.** — (no product defect found; one harness error, corrected mid-run and recorded below)

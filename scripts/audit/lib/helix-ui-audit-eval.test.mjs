@@ -3,7 +3,10 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 
 const require_ = createRequire(import.meta.url);
-const { routeBucketVerdict, panelVerdict, freshnessVerdict, overallVerdict, DOMINANT_BUCKET_PCT } =
+const {
+  routeBucketVerdict, panelVerdict, freshnessVerdict, overallVerdict, DOMINANT_BUCKET_PCT,
+  newBadgeVerdict, coverageNoteVerdict, directionLabelVerdict, expiryBucketVerdict, parseCompactNumber,
+} =
   require_("./helix-ui-audit-eval.cjs");
 
 test("routeBucketVerdict fails the §9.8 signature — one bucket holding the whole tape", () => {
@@ -202,4 +205,109 @@ test("any OTHER-family bucket dominating still fails, named plainly", () => {
   });
   assert.equal(v.status, "FAIL");
   assert.match(v.detail, /REPEAT at 97%/);
+});
+
+// ── Surfaces shipped 2026-08-23 ────────────────────────────────────────────────────────────────
+
+const row = (over) => ({ oi: "884", prem: "$1.4M", fill: "2.75", newLabel: null, ...over });
+
+test("newBadgeVerdict: a badge on a row whose OI reads '—' is FABRICATION", () => {
+  // 70% of the live tape reports no open interest. A badge there would be the single most-repeated
+  // lie the feature could tell, so it is the first thing checked.
+  const v = newBadgeVerdict([row({ oi: "—", newLabel: "NEW 5.7×" }), row({ newLabel: "NEW" })]);
+  assert.equal(v.status, "FAIL");
+  assert.match(v.detail, /never examined|fabricated/);
+});
+
+test("newBadgeVerdict: the ratio must agree with the row's OWN columns", () => {
+  // 5000 contracts ($1.4M / 2.75 / 100) against OI 884 is 5.7x — the real production row.
+  assert.equal(newBadgeVerdict([row({ newLabel: "NEW 5.7×" })]).status, "PASS");
+  // Same row, badge claiming 50x: badge and columns disagree on screen.
+  const bad = newBadgeVerdict([row({ newLabel: "NEW 50×" })]);
+  assert.equal(bad.status, "FAIL");
+  assert.match(bad.detail, /disagree/);
+});
+
+test("newBadgeVerdict: display rounding is tolerated, a wrong ratio is not", () => {
+  // Prem and Fill are ROUNDED for display, so exact equality would fail on correct rows. The
+  // tolerance covers what that rounding can produce and nothing more.
+  assert.equal(newBadgeVerdict([row({ prem: "$1.4M", fill: "2.75", oi: "884", newLabel: "NEW 6.0×" })]).status, "PASS");
+  assert.equal(newBadgeVerdict([row({ prem: "$1.4M", fill: "2.75", oi: "884", newLabel: "NEW 9.0×" })]).status, "FAIL");
+});
+
+test("newBadgeVerdict: a bare NEW carries no ratio, and no badges at all is NOT_EXERCISED", () => {
+  assert.equal(newBadgeVerdict([row({ newLabel: "NEW" })]).status, "PASS");
+  const none = newBadgeVerdict([row(), row()]);
+  assert.equal(none.status, "NOT_EXERCISED", "a page with no qualifying print is not a failure");
+  assert.equal(newBadgeVerdict(null).status, "HARNESS");
+});
+
+test("parseCompactNumber reads the tape's own formats, and refuses '—'", () => {
+  assert.equal(parseCompactNumber("$1.4M"), 1_400_000);
+  assert.equal(parseCompactNumber("1.5K"), 1500);
+  assert.equal(parseCompactNumber("884"), 884);
+  assert.equal(parseCompactNumber("2.75"), 2.75);
+  for (const bad of ["—", "-", "", null, undefined, "n/a"]) {
+    assert.equal(parseCompactNumber(bad), null, `${String(bad)} is not a number`);
+  }
+});
+
+test("coverageNoteVerdict: silence is correct only when everything was scannable", () => {
+  assert.equal(coverageNoteVerdict(null, 0).status, "PASS");
+  assert.equal(coverageNoteVerdict("Scanned 103 of 500 prints — 397 (SPX, SPY) …", 397).status, "PASS");
+  // The defect §9.0 fixed: prints skipped, and nothing says so.
+  assert.equal(coverageNoteVerdict(null, 397).status, "FAIL");
+  // The inverse: a note claiming skipped prints on a fully scannable tape.
+  assert.equal(coverageNoteVerdict("Scanned 1 of 500 prints …", 0).status, "FAIL");
+  // Without the population, the note's absence cannot be judged — that is a harness gap, not a pass.
+  assert.equal(coverageNoteVerdict(null, undefined).status, "HARNESS");
+});
+
+test("directionLabelVerdict: the legacy wording fails even on an empty radar", () => {
+  // This half works off-hours, which is why it is separated from the populated-state check.
+  assert.equal(directionLabelVerdict({ legacyPresent: true, newLabels: [], radarEmpty: true }).status, "FAIL");
+  const empty = directionLabelVerdict({ legacyPresent: false, newLabels: [], radarEmpty: true });
+  assert.equal(empty.status, "NOT_EXERCISED");
+  assert.match(empty.detail, /legacy wording is gone/);
+  assert.equal(directionLabelVerdict({ legacyPresent: false, newLabels: ["BULLISH"], radarEmpty: false }).status, "PASS");
+  // Populated but no label found: suspect the locator, not the product.
+  assert.equal(directionLabelVerdict({ legacyPresent: false, newLabels: [], radarEmpty: false }).status, "HARNESS");
+});
+
+test("expiryBucketVerdict: expired prints belong in 0DTE, not 'This week'", () => {
+  const dte = [-2, -1, 0, 3, 5, 12, 40, 90];
+  const correct = { "0DTE": 3, "This week": 2, Monthly: 1, LEAPS: 2 };
+  const v = expiryBucketVerdict(correct, dte);
+  assert.equal(v.status, "PASS");
+  assert.match(v.detail, /2 expired print\(s\) correctly in 0DTE/);
+  // The pre-#2673 shape: the two negatives fell through into "This week".
+  const buggy = { "0DTE": 1, "This week": 4, Monthly: 1, LEAPS: 2 };
+  const bad = expiryBucketVerdict(buggy, dte);
+  assert.equal(bad.status, "FAIL");
+  assert.match(bad.detail, /0DTE panel=1 tape=3/);
+});
+
+test("expiryBucketVerdict: the DTE column must come from the RENDERED rows", () => {
+  // Comparing against the wider API window produced a false FAIL once (RUN-LOG 2026-08-23). With no
+  // rendered column supplied the answer is HARNESS, never a product verdict.
+  assert.equal(expiryBucketVerdict({ "0DTE": 11 }, []).status, "HARNESS");
+  assert.equal(expiryBucketVerdict({}, [1, 2, 3]).status, "NOT_EXERCISED");
+});
+
+test("overallVerdict: NOT_EXERCISED does not poison the rollup", () => {
+  // A market-closed page legitimately cannot populate the split-flow radar. Reporting HARNESS for
+  // that would make every off-hours run look broken and teach its reader to skip the report.
+  assert.equal(overallVerdict([{ verdict: "PASS" }, { verdict: "NOT_EXERCISED" }]), "PASS (partial)");
+  assert.equal(overallVerdict([{ verdict: "PASS" }, { verdict: "PASS" }]), "PASS");
+  assert.equal(overallVerdict([{ verdict: "NOT_EXERCISED" }, { verdict: "FAIL" }]), "FAIL");
+  assert.equal(overallVerdict([{ verdict: "NOT_EXERCISED" }, { verdict: "HARNESS" }]), "HARNESS");
+});
+
+test("coverageNoteVerdict: 'cannot be counted here' is not the same as 'nobody counted'", () => {
+  // null  = this layout offers no marker (mobile flow-cards) -> NOT_EXERCISED
+  // undefined = the caller forgot to measure                 -> HARNESS
+  // Collapsing them flagged the instrument on every mobile run.
+  assert.equal(coverageNoteVerdict(null, null).status, "NOT_EXERCISED");
+  assert.equal(coverageNoteVerdict(null, undefined).status, "HARNESS");
+  assert.equal(coverageNoteVerdict(null, 0).status, "PASS");
 });

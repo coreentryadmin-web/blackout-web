@@ -161,8 +161,181 @@ function panelVerdict(panel, name, { mayBeEmpty = false } = {}) {
 function overallVerdict(results) {
   if (!Array.isArray(results) || results.length === 0) return "HARNESS";
   if (results.some((r) => r?.verdict === "FAIL")) return "FAIL";
-  if (results.some((r) => r?.verdict !== "PASS")) return "HARNESS";
-  return "PASS";
+  // NOT_EXERCISED is not a harness fault and must not poison the rollup: a market-closed page
+  // legitimately cannot populate the split-flow radar, and reporting HARNESS for that would make
+  // every off-hours run look broken. It is surfaced per-check instead, where it is actionable.
+  if (results.some((r) => r?.verdict !== "PASS" && r?.verdict !== "NOT_EXERCISED")) return "HARNESS";
+  return results.some((r) => r?.verdict === "NOT_EXERCISED") ? "PASS (partial)" : "PASS";
 }
 
-module.exports = { routeBucketVerdict, panelVerdict, freshnessVerdict, overallVerdict, DOMINANT_BUCKET_PCT };
+
+// ── Surfaces shipped 2026-08-23, added so Monday's manual checklist becomes assertions ──────────
+//
+// Every one of these can be legitimately UNPOPULATED off-hours, so each returns NOT_EXERCISED
+// rather than FAIL when its population is absent. That distinction is the whole point: a harness
+// that reports FAIL on a market-closed page teaches its reader to skip the report, which this repo
+// already paid for once in the Vector lane.
+
+/**
+ * #2689 — the NEW-positioning badge. Three criteria, all from the PR's own acceptance list.
+ *
+ * (1) A badge on a row whose OI column reads "—" is FABRICATION: that row was never examined.
+ * (2) The ratio in "NEW xN" must agree with that row's OWN OI/Prem/Fill columns — badge and
+ *     columns are derived from the same three numbers and must agree ON SCREEN. The tolerance is
+ *     what DISPLAY ROUNDING can produce (Prem shows "$1.4M", Fill "2.75"), not a fudge factor.
+ * (3) A badge collapsed into the "+N" overflow is invisible, which for this feature is the same as
+ *     absent — the desktop tape renders only `signals.slice(0, 3)`.
+ */
+const NEW_RATIO_TOLERANCE = 0.25;
+
+function newBadgeVerdict(rows) {
+  if (!Array.isArray(rows)) return { status: "HARNESS", detail: "tape rows were never read" };
+  const badged = rows.filter((r) => r && typeof r.newLabel === "string" && r.newLabel);
+  if (!badged.length) {
+    return {
+      status: "NOT_EXERCISED",
+      detail: `no NEW badge in ${rows.length} rendered rows — the badge only fires on prints that PROVE new positioning, and a given page may hold none`,
+    };
+  }
+  const fabricated = badged.filter((r) => r.oi == null || r.oi === "" || /^[—-]$/.test(String(r.oi).trim()));
+  if (fabricated.length) {
+    return {
+      status: "FAIL",
+      detail: `${fabricated.length} of ${badged.length} NEW badges sit on a row whose OI reads "—" — that row was never examined, so the badge is fabricated`,
+    };
+  }
+  let checked = 0;
+  const mismatches = [];
+  for (const r of badged) {
+    const m = /^NEW\s+([\d.]+)×$/.exec(r.newLabel);
+    if (!m) continue; // a bare "NEW" carries no ratio to cross-check
+    const prem = parseCompactNumber(r.prem);
+    const fill = parseCompactNumber(r.fill);
+    const oi = parseCompactNumber(r.oi);
+    if (prem == null || fill == null || oi == null || oi <= 0 || fill <= 0) continue;
+    checked++;
+    const shown = Number(m[1]);
+    const derived = prem / (fill * 100) / oi;
+    if (!(Math.abs(derived - shown) / shown < NEW_RATIO_TOLERANCE)) {
+      mismatches.push(`${r.newLabel} vs oi=${r.oi} prem=${r.prem} fill=${r.fill} (derived ${derived.toFixed(1)}x)`);
+    }
+  }
+  if (mismatches.length) {
+    return {
+      status: "FAIL",
+      detail: `${mismatches.length} of ${checked} NEW ratios disagree with the row's own columns: ${mismatches.slice(0, 3).join(" · ")}`,
+    };
+  }
+  return {
+    status: "PASS",
+    detail: `${badged.length} NEW badge(s), 0 on an unexamined row, ${checked} ratio(s) agreeing with their own OI/Prem/Fill columns`,
+  };
+}
+
+/** "$1.4M" / "1.5K" / "884" / "2.75" -> a number. Null when it is not a number at all (e.g. "—"). */
+function parseCompactNumber(raw) {
+  const s = String(raw ?? "").replace(/[$,]/g, "").trim();
+  const m = /^([\d.]+)([KMB])?$/.exec(s);
+  if (!m) return null;
+  const mult = m[2] === "B" ? 1e9 : m[2] === "M" ? 1e6 : m[2] === "K" ? 1e3 : 1;
+  const n = Number(m[1]) * mult;
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * §9.0 (#2681) — the signal-coverage line.
+ *
+ * It renders ONLY when part of the tape is unscannable, so its absence is a PASS on a fully
+ * scannable tape and a FAIL only when the tape demonstrably has ineligible prints. The caller
+ * supplies that population; without it the verdict is HARNESS, not a guess.
+ */
+function coverageNoteVerdict(coverageLine, ineligibleRows) {
+  // `null` means the LAYOUT offers no way to count them — distinct from `undefined`, which means
+  // the caller forgot to measure. Desktop marks an estimated-time row with
+  // `helix-tape-time--estimated`; `HelixMobileFlowTape` marks nothing at all, so on mobile the
+  // population is unmeasurable rather than absent. Collapsing the two reported a harness fault on
+  // every mobile run — flagging the instrument for a layout difference.
+  if (ineligibleRows === null) {
+    return {
+      status: "NOT_EXERCISED",
+      detail: "this layout carries no estimated-time marker, so the unscannable population cannot be counted here (mobile flow-cards; desktop marks them)",
+    };
+  }
+  if (typeof ineligibleRows !== "number") {
+    return { status: "HARNESS", detail: "the tape's ineligible-row count was never measured, so the note's absence cannot be judged" };
+  }
+  if (ineligibleRows <= 0) {
+    return coverageLine
+      ? { status: "FAIL", detail: `every print was scannable, yet the coverage note still claims prints were skipped: "${coverageLine}"` }
+      : { status: "PASS", detail: "every print was scannable and the note correctly stays quiet" };
+  }
+  if (!coverageLine) {
+    return { status: "FAIL", detail: `${ineligibleRows} rendered print(s) cannot be scanned and nothing on the page says so` };
+  }
+  return { status: "PASS", detail: `coverage stated: "${coverageLine}"` };
+}
+
+/**
+ * §9.11 (#2691) — the split-flow direction labels.
+ *
+ * Two independent facts. The legacy "CALL BIAS"/"PUT BIAS" wording describes a quantity the code no
+ * longer computes, so its presence is a FAIL whether or not the radar is populated — that check
+ * works off-hours. The NEW labels only render on a populated radar, so their absence there is
+ * NOT_EXERCISED.
+ */
+function directionLabelVerdict({ legacyPresent, newLabels, radarEmpty }) {
+  if (legacyPresent) {
+    return { status: "FAIL", detail: '"CALL BIAS"/"PUT BIAS" still rendered — that wording describes the pre-#2691 quantity' };
+  }
+  if (Array.isArray(newLabels) && newLabels.length) {
+    return { status: "PASS", detail: `legacy wording gone; direction labels rendered: ${newLabels.join(", ")}` };
+  }
+  if (radarEmpty) {
+    return {
+      status: "NOT_EXERCISED",
+      detail: "legacy wording is gone (a real check, and it passed), but the radar is empty — split flow needs a live 30-min window, so the populated labels are unverified",
+    };
+  }
+  return { status: "HARNESS", detail: "radar is populated yet no direction label was found — the locator, not the product, is the likely fault" };
+}
+
+/**
+ * §9.5 — the Expiry panel's buckets must agree with the tape's OWN rendered DTE column.
+ *
+ * The panel reads the RENDERED page, not the API window. Comparing against the wider API set
+ * produced a false FAIL once (RUN-LOG 2026-08-23), so the caller must pass counts derived from the
+ * same rendered rows.
+ */
+function expiryBucketVerdict(panelBuckets, renderedDte) {
+  if (!panelBuckets || !Object.keys(panelBuckets).length) {
+    return { status: "NOT_EXERCISED", detail: "no expiry buckets rendered" };
+  }
+  if (!Array.isArray(renderedDte) || !renderedDte.length) {
+    return { status: "HARNESS", detail: "the tape's own DTE column was never read, so the buckets cannot be cross-checked" };
+  }
+  const n = renderedDte.filter((v) => Number.isFinite(v));
+  const expect = {
+    "0DTE": n.filter((v) => v <= 0).length,
+    "This week": n.filter((v) => v > 0 && v <= 7).length,
+    Monthly: n.filter((v) => v > 7 && v <= 30).length,
+    LEAPS: n.filter((v) => v > 30).length,
+  };
+  const bad = [];
+  for (const [label, want] of Object.entries(expect)) {
+    const got = panelBuckets[label];
+    if (got == null) { if (want > 0) bad.push(`${label} missing (expected ${want})`); continue; }
+    if (got !== want) bad.push(`${label} panel=${got} tape=${want}`);
+  }
+  if (bad.length) return { status: "FAIL", detail: `expiry buckets disagree with the rendered DTE column: ${bad.join(" · ")}` };
+  const expired = n.filter((v) => v < 0).length;
+  return {
+    status: "PASS",
+    detail: `all buckets match the rendered tape${expired ? ` (${expired} expired print(s) correctly in 0DTE, not "This week")` : " (no expired prints in this render to exercise §9.5)"}`,
+  };
+}
+
+module.exports = {
+  routeBucketVerdict, panelVerdict, freshnessVerdict, overallVerdict, DOMINANT_BUCKET_PCT,
+  newBadgeVerdict, coverageNoteVerdict, directionLabelVerdict, expiryBucketVerdict,
+  parseCompactNumber, NEW_RATIO_TOLERANCE,
+};
