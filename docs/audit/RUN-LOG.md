@@ -603,3 +603,47 @@ Defect found + shipped this session: **#2578** (signal follow-through rate carri
 reported on #2591; Night Hawk owns the diagnosis). Until that is fixed AND each PR's deploy drains,
 `get_helix_signal_outcomes.graded_window`, `get_helix_thermal_compare.window_hours`, and
 `get_helix_tape_analytics.session_skew_baseline` cannot be exercised through their intended surface.
+
+---
+
+## 2026-08-22 — SPX env-drift audit, first run (GREEN, no defect found)
+
+**Lane:** SPX Slayer. **Tool:** `scripts/audit/spx-env-drift.mjs` (new, this run's subject).
+
+Closes `docs/spx/SLAYER-MAP.md` §8 item 0. Not logged in `FINDINGS.md` — nothing here is broken;
+the production overrides are coherent operational tuning, and the only defect this question
+produced (a map freshness table built from code defaults, wrong by 50% on the desk lane) was
+already fixed in #2632.
+
+**142 SPX-relevant `process.env` keys referenced across 156 files. Six override their code default:**
+
+```
+PLAYBOOK_LIVE_GATE               code=false   deployed=1
+SPX_DESK_CACHE_SEC               code=20      deployed=30
+SPX_PULSE_CACHE_SEC              code=1       deployed=2
+SPX_FLOW_CACHE_SEC               code=2       deployed=5
+SPX_PLAY_MEMBER_READ_CACHE_SEC   code=5       deployed=2
+SPX_CHAIN_QUOTE_TTL_MS           code=5000    deployed=4000
+```
+
+132 unset (the code default genuinely governs) · 1 no-op (`ENGINE_INTEL_OVERLAY="0"`, equal to its
+default — looks deliberate, is not) · 3 secrets with no determinable default.
+
+**The useful shape:** the trap is small and enumerable, not everywhere. Five of the six are latency
+knobs, and the tuning is coherent — the three shared lanes are all *slowed* while the per-member
+play read is *sped up*. `PLAYBOOK_LIVE_GATE=1` is the one with teeth: it is what made the
+PB-01/PB-02 defect (#2636) a live P1 rather than a latent landmine.
+
+**Two self-caught bugs during the run, worth recording because both would have reported a clean
+sheet from a broken instrument:**
+
+1. The first extractor read defaults only from the same line, so every `const raw = process.env.X;
+   const v = raw ? Number(raw) : 20;` — the shape this repo uses for *every* cache TTL — reported
+   `unknown`. That silently excused the three overrides the script was written to catch.
+2. Fixing (1) with a consuming 240-char window advanced the regex past any other `process.env`
+   reference inside it: **142 keys became 97 and two known overrides vanished.** Caught only by
+   comparing against the hand-derived answer from a manual boto3 read minutes earlier. Now a
+   lookahead. A scan that silently drops 45 keys still prints a confident summary.
+
+Without credentials the script prints **SKIPPED, never GREEN**, and says so in those words —
+"I could not look" must not render as "clean". Verified with bogus creds: exit 0, `SKIPPED`.
