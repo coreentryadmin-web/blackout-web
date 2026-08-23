@@ -143,10 +143,27 @@ async function testTabs(page, route, vpName) {
     await h.click({ timeout: 8000 }).catch(() => {});
     await page.waitForTimeout(1300);
     tested++;
-    const after = await page.evaluate(CONTENT_FINGERPRINT).catch(() => "");
-    const activeCount = await page.evaluate(ACTIVE_TAB_COUNT).catch(() => -1);
+    // Poll for a DIFFERENT fingerprint rather than reading once — same rationale as the active-tab
+    // poll below: a route that client-navigates (router.replace) on a tab switch can still be
+    // settling at a fixed 1300ms mark on a loaded proxy.
+    let after = await page.evaluate(CONTENT_FINGERPRINT).catch(() => "");
+    for (let poll = 0; poll < 4 && before && after === before; poll++) {
+      await page.waitForTimeout(400);
+      after = await page.evaluate(CONTENT_FINGERPRINT).catch(() => "");
+    }
+    // POLL, don't sample once. A one-shot check here produced a false "0 tabs active" on a live
+    // pass (2026-08-23) that could not be reproduced across 3 follow-up attempts against the same
+    // page/tab — a transient render/proxy race, not a product defect. A same-route client-side
+    // navigation (e.g. this app's `router.replace` on view switches) can legitimately leave the DOM
+    // in a brief inconsistent state; only report a defect if it is STILL wrong after settling.
+    let activeCount = -1;
+    for (let poll = 0; poll < 5; poll++) {
+      activeCount = await page.evaluate(ACTIVE_TAB_COUNT).catch(() => -1);
+      if (activeCount === 1) break;
+      await page.waitForTimeout(400);
+    }
     if (activeCount !== 1) {
-      record({ severity: "P2", route, viewport: vpName, where: `tab:${meta.label}`, issue: `${activeCount} tabs marked active after click (expected exactly 1)` });
+      record({ severity: "P2", route, viewport: vpName, where: `tab:${meta.label}`, issue: `${activeCount} tabs marked active 3s after click and settling (expected exactly 1)` });
     }
     if (before && after && before === after) {
       record({ severity: "P2", route, viewport: vpName, where: `tab:${meta.label}`, issue: "clicking this tab produced no observable content change in the panel" });
@@ -240,7 +257,12 @@ async function testSelects(page, route, vpName) {
     await page.waitForTimeout(1500);
     tested++;
     const afterVal = await h.inputValue().catch(() => "");
-    const after = await page.evaluate(CONTENT_FINGERPRINT).catch(() => "");
+    // Poll rather than a single read — see testTabs's note on the same class of false positive.
+    let after = await page.evaluate(CONTENT_FINGERPRINT).catch(() => "");
+    for (let poll = 0; poll < 4 && before && after === before; poll++) {
+      await page.waitForTimeout(400);
+      after = await page.evaluate(CONTENT_FINGERPRINT).catch(() => "");
+    }
     if (afterVal === beforeVal) {
       record({ severity: "P2", route, viewport: vpName, where: `select:${meta.label}`, issue: "changing this dropdown did not change its own value — selection not applied" });
     } else if (before && after && before === after) {
