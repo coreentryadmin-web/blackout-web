@@ -4,6 +4,37 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-23 — [FINDING, P2 tooling] The interaction audit's Escape check compared dialog counts ACROSS a navigation — four false FAILs per page with nav links — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | `live-ui-interaction-audit.mjs` reported four failures on `/dashboard`: *"dialog opened by \"BLACKOUT TRADING\" does NOT close on Escape"*, and the same for **FAQ**, **Pricing** and **Learn**. None is real. Nothing opened, so nothing could close. |
+| **Root cause** | `fingerprint()` counts `[role=dialog],[aria-modal=true]` **in the current document**. The Escape check (`after.dialogs > before.dialogs`) sat ABOVE the navigate-and-return block, so for a click that navigates it compared two *different pages* — and any dialog-shaped furniture on the destination read as "a dialog opened". Escape then cannot close it, because nothing opened. |
+| **Evidence** | Measured on live production 2026-08-23. All four labels are nav links; their destinations each ship exactly **2** such elements in served HTML: `curl -s https://blackouttrades.com{/,/faq,/pricing,/learn} \| grep -c 'role="dialog"\|aria-modal="true"'` → `2, 2, 2, 2`. Four failures, one per nav link, all from the same mechanism. Reproduced identically on two consecutive runs before the fix. |
+| **Fix** | Predicate extracted to `scripts/audit/lib/dialog-escape-gate.mjs` — `shouldCheckEscape(before, after)` returns false when `after.url !== before.url`, so a navigation is never Escape-checked. It is audited on its own next pass, where `before` is that page's own baseline. Extracted rather than inlined because the audit needs a live browser and this rule does not — and the rule is the part that was wrong. |
+| **Evidence the fix is right** | Same command against live production, before and after: **6 failures → 1**. The four Escape FAILs are gone and the one real finding (3 geometry collisions on the SPX chart control cluster) still fires. It removed the lies without removing the truth, which is the only acceptable outcome for a check that was over-reporting. |
+| **Blast radius** | `live-ui-interaction-audit.mjs` only — the sole consumer of that check. It runs across 8 default pages (`/vector, /heatmap, /flows, /nighthawk, /terminal, /dashboard, /track-record, /account`), **every one of which has the same site nav**, so this was producing ~4 false failures per page per run on every surface, not just SPX. No product code touched. Deliberately did not relax the check itself: a real same-page drawer that traps focus is still reported, which is the case that costs a member something. |
+| **Fix rationale** | Gated rather than tolerated, on this repo's own standing principle — recorded in `ui-geometry-probe.mjs`'s header — that **a check which fires on healthy pages teaches its reader to skip the report, which is worse than having no check at all.** Four guaranteed false FAILs per page is exactly that. |
+| **Regression guard** | `scripts/audit/lib/dialog-escape-gate.test.mjs`, 5 tests: the real same-page trap is still checked; each of the four measured production navigations is not; a query-string change counts as a navigation; no-new-dialog is not checked; and a null fingerprint returns false — an unmeasured click is never a clean one. |
+| **Status** | FIXED — validated against live production, not just unit-tested. |
+
+## 2026-08-22 — [FINDING, P2 Helix] The Expiry panel filed a sixth of the tape — already-expired contracts — under a FUTURE horizon — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | HELIX's Expiry Concentration panel showed prints on **already-expired** contracts inside its **"This week"** bucket — a future horizon for a contract whose expiry has passed. A member reading the panel sees near-dated positioning that does not exist. |
+| **Root cause** | `bucketLabel` in `src/features/helix/components/ExpiryConcentration.tsx` tested `dte === 0` **exactly**. The tape's `dte` is computed in SQL as `expiry - (NOW() AT TIME ZONE 'America/New_York')::date` and is genuinely NEGATIVE for an expired contract — routine rather than exceptional, because the tape's default window is 168h of history. A negative value misses the `=== 0` branch and falls through to `dte <= 7`. (The `daysToExpiry` fallback clamps to 0 and would bucket correctly, so the defect only showed on the normal path where the API supplied `dte` — which is every row.) |
+| **Evidence** | Live production tape, 5000 rows / 168h, 2026-08-22, via `scripts/audit/helix-tape-inventory.mjs`: **803 rows (16.1%) carry a negative `dte`**. A sixth of the panel, not an edge case. |
+| **Fix** | `bucketLabel` tests `dte <= 0`, identical to `expiryHorizonLabel` in `src/lib/largo/helix-tape-analytics.ts`. |
+| **Fix rationale** | The two functions describe the SAME panel to two audiences and had drifted: the Largo half was corrected when the defect was first found (2026-08-20) and its comment explicitly named this panel as the deferred remaining half — out of that PR's blast radius at the time. For that window the member's screen and the model's payload disagreed about 16.1% of the tape. This closes it. **`bucketLabel` was private**, which is exactly why nothing could test the function that shipped the defect; it is now exported. **Deliberately NOT done:** an "Expired" bucket of its own. Folding into `0DTE` is the nearest honest bucket but not a good one — "0DTE" means expiring today, and this now labels 16.1% of the panel that way while those contracts are days expired. A separate bucket would change `EXPIRY_HORIZONS`, which is a Largo contract, and the deeper question (why week-old expired prints are in a current-tape panel at all) is a product call. Raised for the coordinator. |
+| **Blast radius** | One consumer: the member panel. Largo's copy was already correct. `daysToExpiry` is untouched — its `Math.max(0, …)` clamp is right for its own callers and only masked this on a fallback path that never runs in practice. |
+| **Regression guard** | `ExpiryConcentration.test.ts`, +3 tests: expired DTEs (−1, −3, −30, −365) asserted NOT to land in any future horizon; every non-negative boundary pinned (0/1/7/8/30/31/846); and — the anti-drift one — **every DTE from −400 to +900 asserted to bucket identically under `bucketLabel` and Largo's `expiryHorizonLabel`**, so the two cannot silently diverge again. |
+| **Status** | FIXED — **pending live validation.** The panel must be observed on production with the 0DTE bucket carrying the expired rows before this is closed. |
+
 ## 2026-08-23 — [FINDING, P2 Night Hawk] The 0DTE board told members it was "scanning the whole market" while the market was CLOSED — and contradicted itself on screen doing it — FIXED
 
 > **kind:** `FINDING`
@@ -33,7 +64,6 @@ docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / 
 | **Fix rationale** | Narrowed a false claim rather than inventing a new "unknown" state: an unknown/null heat state falls through to the prior scanning wording, because the deck has no design for a third visual state and adding one would be scope the evidence does not support. Reused `heat.note` rather than writing parallel copy, since two sentences describing one state is how they drift apart. |
 | **Regression guard** | `src/features/nighthawk/lib/deck-empty-hint.test.ts`, 9 tests — the shipped defect reproduced from the REAL observed payload; `heat.note` preferred; PRE_MARKET (wrong every weekday before 09:30, not just weekends); legacy/blank-note fallback never falling through to the scan claim; **RTH/OPENING_DRIVE unchanged**; POST_COMMIT/LATE_SESSION pinned as deliberate; degraded still winning over closed; unknown state falling through; case-insensitivity. Suites: nighthawk lib **768 pass / 0 fail** (was 759), command-deck **324 pass / 0 fail**, `tsc --noEmit` clean, Node 20.20.2. |
 | **Status** | FIXED — **pending live validation.** Merged is not done: re-render `/nighthawk` on production after deploy and confirm the closed-market sentence replaces the scan claim. This one is cheaply verifiable off-hours, unlike NH-2. |
-
 
 ## 2026-08-23 — [FINDING, P2 Largo] Three hand-written `coverage: 1` literals survived #2626 — one of them leaves the process — FIXED
 
