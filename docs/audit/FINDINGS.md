@@ -4,6 +4,21 @@
 conflict-resolution mishap. Historical entries live in git history — `git log --all --
 docs/audit/FINDINGS.md`. New entries append below; keep severity / root cause / file:line /
 
+## 2026-08-22 — [FINDING, P2 Helix] The Expiry panel filed a sixth of the tape — already-expired contracts — under a FUTURE horizon — FIXED
+
+> **kind:** `FINDING`
+
+| Field | Detail |
+|---|---|
+| **Symptom** | HELIX's Expiry Concentration panel showed prints on **already-expired** contracts inside its **"This week"** bucket — a future horizon for a contract whose expiry has passed. A member reading the panel sees near-dated positioning that does not exist. |
+| **Root cause** | `bucketLabel` in `src/features/helix/components/ExpiryConcentration.tsx` tested `dte === 0` **exactly**. The tape's `dte` is computed in SQL as `expiry - (NOW() AT TIME ZONE 'America/New_York')::date` and is genuinely NEGATIVE for an expired contract — routine rather than exceptional, because the tape's default window is 168h of history. A negative value misses the `=== 0` branch and falls through to `dte <= 7`. (The `daysToExpiry` fallback clamps to 0 and would bucket correctly, so the defect only showed on the normal path where the API supplied `dte` — which is every row.) |
+| **Evidence** | Live production tape, 5000 rows / 168h, 2026-08-22, via `scripts/audit/helix-tape-inventory.mjs`: **803 rows (16.1%) carry a negative `dte`**. A sixth of the panel, not an edge case. |
+| **Fix** | `bucketLabel` tests `dte <= 0`, identical to `expiryHorizonLabel` in `src/lib/largo/helix-tape-analytics.ts`. |
+| **Fix rationale** | The two functions describe the SAME panel to two audiences and had drifted: the Largo half was corrected when the defect was first found (2026-08-20) and its comment explicitly named this panel as the deferred remaining half — out of that PR's blast radius at the time. For that window the member's screen and the model's payload disagreed about 16.1% of the tape. This closes it. **`bucketLabel` was private**, which is exactly why nothing could test the function that shipped the defect; it is now exported. **Deliberately NOT done:** an "Expired" bucket of its own. Folding into `0DTE` is the nearest honest bucket but not a good one — "0DTE" means expiring today, and this now labels 16.1% of the panel that way while those contracts are days expired. A separate bucket would change `EXPIRY_HORIZONS`, which is a Largo contract, and the deeper question (why week-old expired prints are in a current-tape panel at all) is a product call. Raised for the coordinator. |
+| **Blast radius** | One consumer: the member panel. Largo's copy was already correct. `daysToExpiry` is untouched — its `Math.max(0, …)` clamp is right for its own callers and only masked this on a fallback path that never runs in practice. |
+| **Regression guard** | `ExpiryConcentration.test.ts`, +3 tests: expired DTEs (−1, −3, −30, −365) asserted NOT to land in any future horizon; every non-negative boundary pinned (0/1/7/8/30/31/846); and — the anti-drift one — **every DTE from −400 to +900 asserted to bucket identically under `bucketLabel` and Largo's `expiryHorizonLabel`**, so the two cannot silently diverge again. |
+| **Status** | FIXED — **pending live validation.** The panel must be observed on production with the 0DTE bucket carrying the expired rows before this is closed. |
+
 ## 2026-08-22 — [FINDING, P2 Meridian] `reaction_basis` / `reaction_settled` reached the UI and NO component read them — assumptions and still-moving numbers rendered as settled measurements — FIXED
 
 > **kind:** `FINDING`

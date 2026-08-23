@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { bucketMaxTotal, barWidthPct } from "./ExpiryConcentration";
+import { bucketLabel, bucketMaxTotal, barWidthPct } from "./ExpiryConcentration";
 
 /**
  * Expiry Concentration's bars saturated exactly when one horizon started dominating.
@@ -84,4 +84,39 @@ test("the ceiling holds even if a caller passes a max smaller than the value", (
   // Defence in depth: the bug was a wrong maxTotal, so the width function itself refuses to
   // exceed the rail regardless of what it is handed.
   assert.equal(barWidthPct(9_000_000, 1_000_000), 100);
+});
+
+
+// ── §9.5: an expired contract is not "This week" ─────────────────────────────────────────────
+// The tape's `dte` is SQL's `expiry - (NOW() AT TIME ZONE 'America/New_York')::date` and is
+// genuinely NEGATIVE for a print on an already-expired contract — routine, since the tape's
+// default window is 7 days of history. Measured live 2026-08-22: 803 of 5000 rows (16.1%).
+
+test("a print on an already-expired contract does not land in a FUTURE horizon", () => {
+  for (const dte of [-1, -3, -30, -365]) {
+    assert.notEqual(bucketLabel(dte), "This week", `dte ${dte} must not read as a future horizon`);
+    assert.notEqual(bucketLabel(dte), "Monthly", `dte ${dte}`);
+    assert.notEqual(bucketLabel(dte), "LEAPS", `dte ${dte}`);
+    assert.equal(bucketLabel(dte), "0DTE", `dte ${dte} folds into the nearest honest bucket`);
+  }
+});
+
+test("bucketLabel boundaries are unchanged for every non-negative DTE", () => {
+  assert.equal(bucketLabel(0), "0DTE");
+  assert.equal(bucketLabel(1), "This week");
+  assert.equal(bucketLabel(7), "This week");
+  assert.equal(bucketLabel(8), "Monthly");
+  assert.equal(bucketLabel(30), "Monthly");
+  assert.equal(bucketLabel(31), "LEAPS");
+  assert.equal(bucketLabel(846), "LEAPS");
+});
+
+test("the panel and Largo bucket every DTE identically — they describe the same panel", async () => {
+  // The anti-drift guarantee. These two functions answer the same question for two audiences, and
+  // they HAD drifted: Largo was fixed when the defect was found, the panel was left for later, and
+  // for that window the member's screen and the model's payload disagreed about a sixth of the tape.
+  const { expiryHorizonLabel } = await import("@/lib/largo/helix-tape-analytics");
+  for (let dte = -400; dte <= 900; dte++) {
+    assert.equal(bucketLabel(dte), expiryHorizonLabel(dte), `dte ${dte}`);
+  }
 });
