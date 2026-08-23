@@ -65,6 +65,20 @@ const SETTLE_MS = Number(flag("settle-ms", "9000"));
  * row does to everything below it. Both of those still need eyes on a deployed build.
  */
 const INJECT_CSS = flag("inject-css", "");
+/**
+ * Playwright device class, NOT just a viewport size. `desktop:false` turns on touch emulation and
+ * the mobile UA; `desktop:true` keeps the desktop UA at whatever width you ask for. They render
+ * DIFFERENT pages here — this app keys its `ios-native-shell` rules off the `BlackOutiOSApp` UA,
+ * and several breakpoint rules key off pointer/touch — so a narrow-viewport run has to say which
+ * one it measured or the numbers describe a page no member sees. Defaults to desktop; pass
+ * `--desktop=0` for the phone class, which is what live-ui-interaction-audit.mjs uses at 430x932.
+ */
+const DESKTOP = flag("desktop", "1") !== "0";
+/**
+ * Per-request tunnel deadline. Exposed rather than hardcoded because it is the variable that
+ * decides whether this page loads at all from this sandbox — see the createTunneledContext call.
+ */
+const REQUEST_TIMEOUT_MS = Number(flag("request-timeout-ms", "60000"));
 
 async function main() {
   const session = await mintClerkPremiumSession({ appUrl: BASE });
@@ -76,13 +90,13 @@ async function main() {
   const { browser, ctx } = await createTunneledContext({
     url,
     viewport: VIEWPORT,
-    desktop: true,
+    desktop: DESKTOP,
     cookie: session.cookieHeader,
     // /dashboard pulls the SPX desk, which forces a GEX matrix rebuild measured at 5-7s p95 with a
     // 56s tail. The tunnel's default 20s deadline would drop that panel and this probe would then
     // report a page missing the very controls it is here to measure — a latency observation
     // masquerading as a rendering defect.
-    requestTimeoutMs: 60_000,
+    requestTimeoutMs: REQUEST_TIMEOUT_MS,
   });
   try {
     const page = await ctx.newPage();
@@ -229,9 +243,9 @@ async function main() {
     }, pairs);
 
     if (JSON_OUT) {
-      console.log(JSON.stringify({ url, viewport: VIEWPORT, detected: geo.collide, ...result }, null, 2));
+      console.log(JSON.stringify({ url, viewport: VIEWPORT, device: DESKTOP ? "desktop" : "phone", detected: geo.collide, ...result }, null, 2));
     } else {
-      console.log(`${url}  viewport ${result.viewport.w}x${result.viewport.h}`);
+      console.log(`${url}  viewport ${result.viewport.w}x${result.viewport.h}  device=${DESKTOP ? "desktop" : "phone"}`);
       console.log(`  detected by probeGeometry: ${geo.collide.length} collision(s)`);
       if (!geo.collide.length) {
         // Say what ran, not just what was found — a probe that found nothing and a probe that never

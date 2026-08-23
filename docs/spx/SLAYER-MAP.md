@@ -551,11 +551,38 @@ Ranked. These are the `UNKNOWN`s above, restated as tasks.
    later: "Vector's toolbar CSS is wrong" (it is correct for its own page) and "the portal target
    arrives after paint, so `useEffect` is the bug" (the code already uses `useLayoutEffect`).
 
-   **Still open here:** audit the **phone** viewport — it has failed navigation with
-   `ERR_CONNECTION_RESET` on every attempt, which is the sandbox tunnel and not the server, so the
-   mobile brand/menu collision stays UNVERIFIED. Also unowned: a React **#418** hydration
-   (text-content mismatch) `pageerror` fires after clicking the nav's **Learn** pill, which lands on
-   `/learn` — a marketing page, not this lane's. Reported, not fixed.
+   **THE PHONE VIEWPORT IS REACHABLE — measured 2026-08-23, and the 2026-08-07 mobile collision is
+   REPRODUCED.** It had failed with `ERR_CONNECTION_RESET` on every previous attempt and was
+   recorded here as permanently UNVERIFIED. A single-page, single-context, fresh-process run loads
+   it fine. On `/dashboard` at 430×932, phone device class: **one collision, 3/3 runs** —
+
+   ```
+   "BLACKOUT" × "☰"   overlap 36x18px
+     span.nav-wordmark      rect {left:233, top:21, w:72,  h:18}  transform: matrix(0.84,…)
+     button.nav-sheet-toggle rect {left:225, top:8,  w:44,  h:44}
+     COMMON ANCESTOR  div.nav-inner  display=grid  clientWidth=430 scrollWidth=430
+       => content fits — something is STACKED
+   ```
+
+   The wordmark's left edge sits **inside the hamburger's 44px tap target**. `div.nav-inner` is a
+   3-track grid here (`.nav-bar-ios-tool .nav-inner { minmax(0,1fr) auto auto }`) while the
+   ≤mobile base rule declares 2 (`:1908`) — the more specific ios-tool rule wins at every width.
+
+   **Two traps this run walked into, both worth carrying forward:**
+   - **The device CLASS changes the answer, not just the width.** A desktop UA at 430px reports
+     **3** collisions (intel-rail tabs over the pin panel); the true phone class reports **1**. The
+     three are an artifact of a page no member sees — this app keys `ios-native-shell` rules off the
+     `BlackOutiOSApp` UA. A narrow-viewport run must state which class it measured.
+   - **The `ERR_CONNECTION_RESET` was NOT the tunnel deadline.** That was the obvious theory and it
+     is wrong: re-running at the default `requestTimeoutMs: 20_000` loads the page and finds the
+     same collision. The likelier cause is the one `live-ui-interaction-audit.mjs` already documents
+     — a phone pass running **after** another pass in the same process. Not isolated further.
+
+   **Ownership:** `div.nav-inner` is the site-wide `Nav`, global chrome shared by every lane, so the
+   fix is not this lane's to make unilaterally. Reported with the measurement above.
+
+   Also unowned: a React **#418** hydration (text-content mismatch) `pageerror` fires after clicking
+   the nav's **Learn** pill, which lands on `/learn` — a marketing page. Reported, not fixed.
 
 
 7. **A coherence assertion in the pre-open gate**: any two member-facing values sharing a label
