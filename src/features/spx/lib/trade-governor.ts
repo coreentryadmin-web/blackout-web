@@ -1,13 +1,5 @@
 import type { PlaybookId } from "@/features/spx/lib/playbook-registry";
-import {
-  liveDataQualityMode,
-  playbookDataQualityFlags,
-  shouldFailClosedLiveOnDataQuality,
-} from "@/features/spx/lib/playbook-data-quality";
-import {
-  playbookDegradedSizeMultiplier,
-  playbookSessionMaxTriggersPerPb,
-} from "@/features/spx/lib/playbook-session-risk";
+import { playbookSessionMaxTriggersPerPb } from "@/features/spx/lib/playbook-session-risk";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
 import {
   playBuyCooldownSec,
@@ -15,7 +7,6 @@ import {
   playReentryLockSec,
   playSessionMaxEntries,
   playSessionMaxLosses,
-  playbookStagingLabEnabled,
 } from "@/features/spx/lib/spx-play-config";
 
 export type TradeGovernorTier = "normal" | "reduced" | "halt";
@@ -161,20 +152,6 @@ export function evaluateTradeGovernor(input: TradeGovernorInput): TradeGovernorR
     if (count >= max) {
       blocks.push(`Playbook ${input.playbook_id} session trigger cap (${max})`);
       tier = "halt";
-    }
-  }
-
-  if (playbookStagingLabEnabled()) {
-    const dq = playbookDataQualityFlags(input.desk);
-    const mode = liveDataQualityMode(dq);
-    if (shouldFailClosedLiveOnDataQuality(mode)) {
-      blocks.push(`Trade governor: severe data quality (${mode}) — fail-closed`);
-      tier = "halt";
-      emergency_shutdown = true;
-    } else if (mode === "degraded") {
-      size_multiplier = Math.min(size_multiplier, playbookDegradedSizeMultiplier());
-      tier = tier === "halt" ? "halt" : "reduced";
-      warnings.push(`Degraded feeds — size ×${size_multiplier}`);
     }
   }
 

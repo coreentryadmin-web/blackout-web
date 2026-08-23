@@ -7,6 +7,7 @@ import { validateGexAgainstUW, type GexCrossValidationResult } from "@/lib/provi
 import { resolveNearTermExpiriesForCrossValidation, kingFromStrikeTotals, strikeTotalsFromLadder, wallsFromStrikeTotals, cumulativeGammaFlipDetail } from "@/lib/providers/gex-cross-validation-core";
 import { hasLiveGexStrikeExpiry, getGexStrikeExpiryLadder } from "@/lib/ws/uw-socket";
 import { fmtPremium } from "@/lib/fmt-money";
+import { etSessionFacts, ageSecondsFromIso, type MarketPhase } from "@/lib/et-session-facts";
 
 // ---------------------------------------------------------------------------
 // Canonical cross-tool GEX/VEX positioning contract.
@@ -43,8 +44,32 @@ export type GexPositioning = {
   spot: number;
   /** Day change %, signed. */
   change_pct: number;
-  /** ISO timestamp the underlying matrix was computed. */
+  /** ISO timestamp the underlying matrix was computed. UTC — see the ET fields below. */
   asof: string;
+  /**
+   * WHEN, in the terms a consumer can actually reason about.
+   *
+   * `asof` alone was this contract's only time signal, and it is a UTC instant describing the
+   * MATRIX COMPUTE. Two failures follow. A UTC calendar date rolls at 20:00 ET, so any session
+   * derived from it is a full session ahead for the last four hours of every trading day (#2418 /
+   * #2420 class). And compute age is not PRICE age — measured 2026-08-22, this contract would
+   * serve MSFT `spot: 483.49` (a 16:00 ET close) off a matrix 6,040 seconds old with nothing
+   * marking the market shut.
+   *
+   * `get_thermal_compare` and `get_helix_thermal_compare` — both of which read THIS object —
+   * already publish these facts and document them; the canonical contract underneath did not, so
+   * every other consumer had to re-derive or go without. Shared derivation in `et-session-facts.ts`
+   * (holiday-aware, unlike `marketPhaseFromEt` alone).
+   */
+  as_of_et: string;
+  /** ET session date (YYYY-MM-DD) this read belongs to. */
+  session_date: string;
+  /** OPEN | PRE-MARKET | AFTER-HOURS | CLOSED — holiday-aware. */
+  market_session: MarketPhase;
+  /** Age of the matrix COMPUTATION in seconds, not of the price it models. Null when unusable. */
+  matrix_age_sec: number | null;
+  /** Always 'cached' — this contract is a strict cache reader over the shared matrix. */
+  freshness: "cached";
   /** Zero-gamma flip strike, or null when undetermined. */
   flip: number | null;
   /** Largest-positive net-gamma strike (resistance / pin), or null. */
@@ -326,11 +351,21 @@ export function gexPositioningFromHeatmap(
   // that could drift from it.
   const nearTermExpiries = resolveNearTermExpiriesForCrossValidation(hm);
 
+  // ONE frozen instant for the whole read, so the phase, the session date and the matrix age all
+  // describe the same moment rather than whenever each line happened to execute.
+  const nowMs = Date.now();
+  const session = etSessionFacts(new Date(nowMs));
+
   return {
     ticker: root,
     spot,
     change_pct: hm.change_pct,
     asof: hm.asof,
+    as_of_et: session.as_of_et,
+    session_date: session.session_date,
+    market_session: session.market_session,
+    matrix_age_sec: ageSecondsFromIso(hm.asof, nowMs),
+    freshness: "cached",
     flip,
     call_wall: callWall,
     put_wall: putWall,

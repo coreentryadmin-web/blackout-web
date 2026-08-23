@@ -14,6 +14,7 @@ import {
 import { resolvePinSpotInputs } from "@/features/spx/lib/spx-pin-spot";
 import {
   isPinStable,
+  nextConfirmedPin,
   pushPinSample,
   type PinStabilitySample,
 } from "@/features/spx/lib/spx-pin-stability";
@@ -64,7 +65,12 @@ function trackPinStability(sessionYmd: string, rawPin: number | null): { stable:
   }
   pinStabilitySamples = pushPinSample(pinStabilitySamples, rawPin);
   const stable = isPinStable(pinStabilitySamples);
-  if (stable) pinStabilityConfirmed = pinStabilitySamples[pinStabilitySamples.length - 1] as number;
+  // HOLD, don't track. This used to be `if (stable) confirmed = latest`, which overwrote the held
+  // value with the raw pin on every stable pass — so `pinConfirmed` equalled `pin` on 16/16 live
+  // observations and the anti-flicker this module exists for never happened. `nextConfirmedPin`
+  // implements the header's actual contract: keep the displayed number until a stable cluster
+  // moves genuinely away from it. See spx-pin-stability.ts.
+  pinStabilityConfirmed = nextConfirmedPin(pinStabilityConfirmed, pinStabilitySamples);
   return { stable, confirmed: pinStabilityConfirmed };
 }
 

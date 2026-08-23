@@ -208,6 +208,95 @@ const SMALL_TARGET_PROBE = (rootSel) => {
     .slice(0, 10);
 };
 
+/**
+ * Reaction flag badges — check for presence, visibility, dimensions, and collision with reaction text.
+ *
+ * Badges mark unsettled (live) and assumed-timing reactions. They render only when a reaction
+ * needs qualification (provisional or assumed timing). We check that where badges ARE present,
+ * they render correctly and don't collide with the reaction percentage.
+ *
+ * A panel with zero badges just means all reactions on that tab are settled — that's not a defect,
+ * so we report separately on badge quality (issues) vs coverage (count).
+ */
+const REACTION_FLAG_PROBE = (rootSel) => {
+  const root = document.querySelector(rootSel);
+  if (!root) return null;
+  const results = {
+    flagCount: 0,
+    flagsWithIssues: 0,
+    issues: [],
+  };
+  // Find all reaction flag badges in the panel.
+  const flags = [...root.querySelectorAll(".meridian-reaction-flag")];
+  if (flags.length === 0) return null; // No badges = all reactions are settled, not a defect.
+  for (const flagEl of flags) {
+    results.flagCount++;
+    // Check visibility
+    const s = getComputedStyle(flagEl);
+    if (s.visibility === "hidden" || s.display === "none" || Number(s.opacity) < 0.15) {
+      results.flagsWithIssues++;
+      results.issues.push({
+        type: "invisible",
+        sample: `flag "${flagEl.textContent.trim()}" is ${s.display === "none" ? "hidden" : "low-opacity"}`,
+      });
+      continue;
+    }
+    // Check dimensions — flag should be visible and reasonably sized
+    const flagBox = flagEl.getBoundingClientRect();
+    if (flagBox.width < 6 || flagBox.height < 6) {
+      results.flagsWithIssues++;
+      results.issues.push({
+        type: "small",
+        sample: `flag "${flagEl.textContent.trim()}" is ${Math.round(flagBox.width)}x${Math.round(flagBox.height)}px (too small)`,
+      });
+      continue;
+    }
+    if (flagBox.width > 120 || flagBox.height > 30) {
+      results.flagsWithIssues++;
+      results.issues.push({
+        type: "large",
+        sample: `flag "${flagEl.textContent.trim()}" is ${Math.round(flagBox.width)}x${Math.round(flagBox.height)}px (too large)`,
+      });
+      continue;
+    }
+    // Check collision with adjacent reaction text/percentage. In the React tree, the flag is
+    // typically a sibling to a percentage span or other reaction value in the same parent.
+    // Look for nearby text (previous sibling, or siblings in a reaction container).
+    let parent = flagEl.parentElement;
+    let nearbyText = null;
+    if (parent) {
+      // Find text within the parent that looks like a percentage or reaction value
+      const leaves = [...parent.querySelectorAll("*")].filter((el) => {
+        if (el.children.length > 0) return false;
+        const t = (el.textContent ?? "").trim();
+        // Look for percentage-like values
+        return t.match(/^[+-]?\d+(\.\d+)?%?/) && el !== flagEl;
+      });
+      // Use the closest leaf to the flag that's not the flag itself
+      for (const leaf of leaves) {
+        if (leaf === flagEl || leaf.contains(flagEl) || flagEl.contains(leaf)) continue;
+        nearbyText = leaf;
+        break;
+      }
+    }
+    if (nearbyText) {
+      const textBox = nearbyText.getBoundingClientRect();
+      // Check for significant overlap (more than just subpixel/rounding)
+      const ox = Math.min(flagBox.right, textBox.right) - Math.max(flagBox.left, textBox.left);
+      const oy = Math.min(flagBox.bottom, textBox.bottom) - Math.max(flagBox.top, textBox.top);
+      if (ox > 4 && oy > 4) {
+        results.flagsWithIssues++;
+        const txt = nearbyText.textContent.trim().slice(0, 20);
+        results.issues.push({
+          type: "overlap",
+          sample: `flag overlaps "${txt}" by ${Math.round(ox)}x${Math.round(oy)}px`,
+        });
+      }
+    }
+  }
+  return results;
+};
+
 async function openEarningsEvent(page, vp) {
   const goto = () => page.goto(`${BASE}/meridian`, { waitUntil: "domcontentloaded", timeout: 90_000 });
   // THE LAST VIEWPORT WAS NEVER AUDITED — the agent proxy saturates after two passes and refuses
@@ -367,6 +456,34 @@ async function auditViewport(vp, cookie) {
           issue: `${small.length} controls under 24px`,
           sample: small.map((s) => `${s.label} ${s.w}x${s.h}`),
         });
+      }
+
+      // ── REACTION FLAGS: check badge quality where they appear.
+      // A null result just means no badges on this tab (all reactions are settled) — that's normal.
+      const flags = await page.evaluate(REACTION_FLAG_PROBE, ".meridian-desk").catch(() => null);
+      if (flags === undefined) {
+        record({
+          severity: "HARNESS",
+          viewport: vp.name,
+          where: `${tab}:flags`,
+          issue: "reaction-flag probe did not execute",
+        });
+      } else if (flags !== null) {
+        // Badges exist on this tab. Check their quality.
+        if (flags.issues.length > 0) {
+          record({
+            severity: "P2",
+            viewport: vp.name,
+            where: `${tab}:flags`,
+            issue: `${flags.issues.length}/${flags.flagCount} badges have rendering issues`,
+            sample: flags.issues.slice(0, 4).map((i) => `${i.type}: ${i.sample}`),
+          });
+        } else if (flags.flagCount > 0) {
+          console.log(`  [badge] ${tab}: ${flags.flagCount} badges, all rendered cleanly`);
+        }
+      } else {
+        // No badges on this tab — all reactions are settled (not unsettled/assumed)
+        console.log(`  [badge] ${tab}: no badges (all reactions settled)`);
       }
 
       const overflow = await page.evaluate(

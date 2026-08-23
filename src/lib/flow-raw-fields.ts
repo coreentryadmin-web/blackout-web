@@ -56,6 +56,25 @@ export function askPctFromTwoSidedPremium(
   return (askPrem / total) * 100;
 }
 
+/**
+ * The WHOLE aggressor-recovery rule for a raw UW row, stated once: prefer a real `ask_side_pct`
+ * if UW ever starts sending one, otherwise derive the ask-side share from the two premium legs it
+ * actually does send. Returns undefined when neither is available — never 0, which would read as
+ * "100% sold" and invert conviction on a print whose aggressor is simply unknown.
+ *
+ * Extracted so consumers outside the persist path (the SPX desk tape) recover the aggressor by
+ * calling this rather than re-implementing the precedence and drifting from it.
+ */
+export function askPctFromRaw(raw: Record<string, unknown>): number | undefined {
+  return (
+    numFromRaw(raw, "ask_side_pct") ??
+    askPctFromTwoSidedPremium(
+      numFromRaw(raw, "total_ask_side_prem"),
+      numFromRaw(raw, "total_bid_side_prem")
+    )
+  );
+}
+
 export function extractChainFieldsFromRaw(
   raw: Record<string, unknown>,
   flow: Pick<MarketFlowAlert, "strike" | "option_type">
@@ -66,12 +85,7 @@ export function extractChainFieldsFromRaw(
   // Was `numFromRaw(raw, "ask_side_pct")` alone — null on every production print (UW omits that
   // field), which pinned board.ts aggressionWeight to the neutral 0.5 for every ticker: a dead
   // SETUP_MIN_AGGR_SHARE gate and direction decided by raw call/put premium, not aggressor flow.
-  const ask_pct =
-    numFromRaw(raw, "ask_side_pct") ??
-    askPctFromTwoSidedPremium(
-      numFromRaw(raw, "total_ask_side_prem"),
-      numFromRaw(raw, "total_bid_side_prem")
-    );
+  const ask_pct = askPctFromRaw(raw);
   const underlying_price = numFromRaw(raw, "underlying_last", "underlying_price", "stock_price");
   const open_interest = numFromRaw(raw, "open_interest", "oi");
   const implied_volatility = numFromRaw(raw, "iv", "implied_volatility");

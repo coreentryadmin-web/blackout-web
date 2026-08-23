@@ -95,6 +95,7 @@ function richDesk(): SpxDeskPayload {
         option_type: "C",
         strike: 7425,
         expiry: "2026-07-04",
+        ask_pct: 75,
         direction: "bullish",
         alerted_at: "2026-07-04T17:50:00.000Z",
         alert_rule: null,
@@ -107,6 +108,7 @@ function richDesk(): SpxDeskPayload {
         option_type: "P",
         strike: 7350,
         expiry: "2026-07-04",
+        ask_pct: 75,
         direction: "bearish",
         alerted_at: "2026-07-04T17:50:00.000Z",
         alert_rule: null,
@@ -115,8 +117,8 @@ function richDesk(): SpxDeskPayload {
       },
     ],
     unified_tape: [
-      { kind: "flow", side: "call", time: "2026-07-04T17:55:00.000Z", label: "SPX C", premium: 260_000, detail: "" },
-      { kind: "flow", side: "put", time: "2026-07-04T17:54:00.000Z", label: "SPX P", premium: 50_000, detail: "" },
+      { kind: "flow", side: "call", time: "2026-07-04T17:55:00.000Z", label: "SPX C", premium: 260_000, detail: "", ask_pct: 75 },
+      { kind: "flow", side: "put", time: "2026-07-04T17:54:00.000Z", label: "SPX P", premium: 50_000, detail: "", ask_pct: 75 },
     ],
     strike_stacks: [
       {
@@ -183,7 +185,7 @@ const GOLDEN = {
     },
     { label: "0DTE flow", weight: 14, detail: "Call premium leading 0DTE tape" },
     { label: "VWAP", weight: 12, detail: "Above VWAP 7400.00 — buyers in control" },
-    { label: "Live tape", weight: 12, detail: "Recent SPX flow skews calls" },
+    { label: "Live tape", weight: 12, detail: "Recent SPX flow bought calls / sold puts — $0.3M vs $0.1M" },
     { label: "γ regime", weight: 10, detail: "Above γ flip 7380 — mean-revert favors dips bought" },
     { label: "Market tide", weight: 10, detail: "bullish broad flow" },
     { label: "TICK", weight: 8, detail: "NYSE TICK +250" },

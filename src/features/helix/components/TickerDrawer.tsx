@@ -3,9 +3,17 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { motion } from "framer-motion";
 import { clsx } from "clsx";
+import {
+  directionTone,
+  readDirection,
+  readDirectionTitle,
+} from "@/features/helix/lib/helix-direction-read";
 import { Drawer, Skeleton, EmptyState } from "@/components/ui";
 import { relativeAge } from "@/lib/relative-time";
 import { fetchFlows, fetchDarkPoolPrints, fmtPremium, type FlowAlert, type DarkPoolRow } from "@/lib/api";
+import {
+  WHALE_PRINT_PREMIUM,
+} from "@/features/helix/lib/helix-flow-limits";
 
 // Guarded via the shared relativeAge: a null/unparseable alerted_at previously rendered "NaNh ago".
 function timeAgo(iso: string | null | undefined): string {
@@ -22,7 +30,7 @@ type State = { flows: FlowAlert[]; dp: DarkPoolRow[]; loading: boolean };
 
 function FlowRow({ f }: { f: FlowAlert }) {
   const isCall = f.option_type === "CALL";
-  const isWhale = f.premium >= 1_000_000;
+  const isWhale = f.premium >= WHALE_PRINT_PREMIUM;
   return (
     <div className={clsx(
       "flex items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors",
@@ -107,8 +115,14 @@ export function TickerDrawer({
   const callPrem = displayFlows.filter((f) => f.option_type === "CALL").reduce((s, f) => s + f.premium, 0);
   const putPrem  = displayFlows.filter((f) => f.option_type === "PUT").reduce((s, f) => s + f.premium, 0);
   const total    = callPrem + putPrem;
-  const callPct  = total > 0 ? Math.round((callPrem / total) * 100) : 0;
-  const isBull   = callPrem >= putPrem;
+  const callPct  = total > 0 ? Math.round((callPrem / total) * 100) : null;
+  // The pill is a DIRECTION claim (an arrow, a bull/bear colour) and must not be derived from
+  // call-vs-put premium — a sold call is bearish. It reads the aggression-aware rule the rest of
+  // /flows uses, and stays neutral when too little of the premium carries a readable side. The
+  // Call/Put Premium boxes below are untouched: they label themselves as call and put premium and
+  // claim no direction, which is honest already.
+  const dirRead  = readDirection(displayFlows);
+  const dirTone  = directionTone(dirRead);
 
   const header = (
     <div className="flex items-center gap-3">
@@ -128,11 +142,19 @@ export function TickerDrawer({
       )}
       <span className="font-anton text-[28px] text-white leading-none tracking-wide">{ticker}</span>
       {!state.loading && state.flows.length > 0 && (
-        <div className={clsx(
-          "px-2 py-1 rounded-md border font-mono text-[10px] font-semibold",
-          isBull ? "border-emerald-800 text-emerald-300 bg-emerald-950" : "border-rose-800 text-rose-300 bg-rose-950"
-        )}>
-          {isBull ? "↑" : "↓"} {callPct}% calls
+        <div
+          className={clsx(
+            "px-2 py-1 rounded-md border font-mono text-[10px] font-semibold",
+            dirTone === "bull"
+              ? "border-emerald-800 text-emerald-300 bg-emerald-950"
+              : dirTone === "bear"
+                ? "border-rose-800 text-rose-300 bg-rose-950"
+                : "border-sky-800 text-sky-300 bg-sky-950"
+          )}
+          title={readDirectionTitle(dirRead)}
+        >
+          {dirTone === "bull" ? "↑" : dirTone === "bear" ? "↓" : "◆"}{" "}
+          {callPct == null ? "—" : `${callPct}% calls`}
         </div>
       )}
     </div>
@@ -163,12 +185,12 @@ export function TickerDrawer({
                       <div className="rounded-lg border border-emerald-900/40 bg-emerald-950/15 p-3">
                         <p className="font-mono text-[10px] tracking-widest text-emerald-400 uppercase mb-1.5">Call Premium</p>
                         <p className="font-mono text-lg font-bold text-emerald-400 tabular-nums">{fmtPremium(callPrem)}</p>
-                        <p className="font-mono text-[10px] text-emerald-400 mt-0.5">{callPct}% of flow</p>
+                        <p className="font-mono text-[10px] text-emerald-400 mt-0.5">{callPct ?? 0}% of flow</p>
                       </div>
                       <div className="rounded-lg border border-rose-900/40 bg-rose-950/15 p-3">
                         <p className="font-mono text-[10px] tracking-widest text-rose-400 uppercase mb-1.5">Put Premium</p>
                         <p className="font-mono text-lg font-bold text-rose-400 tabular-nums">{fmtPremium(putPrem)}</p>
-                        <p className="font-mono text-[10px] text-rose-400 mt-0.5">{100 - callPct}% of flow</p>
+                        <p className="font-mono text-[10px] text-rose-400 mt-0.5">{100 - (callPct ?? 0)}% of flow</p>
                       </div>
                     </div>
                   )}
@@ -180,13 +202,13 @@ export function TickerDrawer({
                         <motion.div
                           className="h-full bg-gradient-to-r from-[#0f9d58] to-bull"
                           initial={{ width: 0 }}
-                          animate={{ width: `${callPct}%` }}
+                          animate={{ width: `${callPct ?? 0}%` }}
                           transition={{ duration: 0.7, ease: [0.34, 1.56, 0.64, 1] }}
                         />
                         <motion.div
                           className="h-full bg-gradient-to-r from-rose-700 to-rose-500 flex-1"
                           initial={{ width: 0 }}
-                          animate={{ width: `${100 - callPct}%` }}
+                          animate={{ width: `${100 - (callPct ?? 0)}%` }}
                           transition={{ duration: 0.7, ease: [0.34, 1.56, 0.64, 1], delay: 0.05 }}
                         />
                       </div>

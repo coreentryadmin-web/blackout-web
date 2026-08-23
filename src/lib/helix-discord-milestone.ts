@@ -2,15 +2,26 @@
  * HELIX repeat-hit milestone gate — ping at 3rd / 5th / 10th contract hit, not every repeat.
  */
 import type { HelixDiscordFlowInput } from "@/lib/helix-discord-format";
+import { flowContractKeyOrUnknown } from "@/lib/helix/contract-identity";
 import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
 
 export const HELIX_STACK_MILESTONES = [3, 5, 10] as const;
 
 const MILESTONE_TTL_SEC = 8 * 60 * 60;
 
+/**
+ * Cache key holding which milestone a contract has already posted.
+ *
+ * This used to quantise the strike to the nearest DOLLAR, which made two separately traded
+ * contracts share ONE counter — and here that direction is SUPPRESSION, not overstatement: once
+ * `INTC 92.5P` had posted its 3rd-hit milestone, a genuine 3rd hit on `INTC 93P` read
+ * `lastPosted: 3` and never posted. No error, no log, just an alert that does not arrive.
+ *
+ * A cache bucket must exist even for a malformed row, so this uses the never-null variant — which
+ * keeps ticker/expiry/side rather than collapsing every unusable-strike row onto one counter.
+ */
 export function helixContractKey(flow: HelixDiscordFlowInput): string {
-  const side = String(flow.option_type || "").toUpperCase().startsWith("C") ? "C" : "P";
-  return `${String(flow.ticker).toUpperCase()}|${Math.round(Number(flow.strike))}|${String(flow.expiry).slice(0, 10)}|${side}`;
+  return flowContractKeyOrUnknown(flow);
 }
 
 export function isHelixRepeatFlow(flow: HelixDiscordFlowInput): boolean {

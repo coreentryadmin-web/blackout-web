@@ -3,11 +3,19 @@
 import { useState, useEffect, useRef } from "react";
 import { AreaChart, Area, ResponsiveContainer, Tooltip, ReferenceLine } from "recharts";
 import { clsx } from "clsx";
+import { directionTone, readDirection } from "@/features/helix/lib/helix-direction-read";
 import type { FlowAlert } from "@/lib/api";
 import { fmtPremium } from "@/lib/api";
 import { Panel, Skeleton } from "@/components/ui";
 
-type Point = { t: number; net: number };
+type Point = {
+  t: number;
+  /** calls − puts across the loaded tape at sample time. A call-vs-put figure, not a direction. */
+  net: number;
+  /** The aggression-aware direction read AT SAMPLE TIME. `null` = too little readable premium to
+   *  say, which is the common state here and must render neutral rather than pick a side. */
+  tone: "bull" | "bear" | null;
+};
 const MAX_POINTS = 50;
 
 function CustomTooltip({ active, payload }: { active?: boolean; payload?: { value: number }[] }) {
@@ -43,14 +51,28 @@ export function CumulativeNetPremiumChart({ alerts }: { alerts: FlowAlert[] }) {
     const calls = alerts.filter((a) => a.option_type === "CALL").reduce((s, a) => s + a.premium, 0);
     const puts  = alerts.filter((a) => a.option_type === "PUT").reduce((s, a) => s + a.premium, 0);
 
-    setPoints((prev) => [...prev.slice(-(MAX_POINTS - 1)), { t: Date.now(), net: calls - puts }]);
+    // Direction is read separately from the aggression-aware rule and stored alongside, because
+    // the SIGN of calls−puts is not a direction: a positive net built out of sold calls is bearish.
+    // Sampled here rather than derived at render so each point keeps the read that was true when
+    // it was taken — the series is a running total, and re-reading history would rewrite it.
+    const tone = directionTone(readDirection(alerts));
+
+    setPoints((prev) => [
+      ...prev.slice(-(MAX_POINTS - 1)),
+      { t: Date.now(), net: calls - puts, tone },
+    ]);
   }, [alerts]);
 
   const latestNet = points[points.length - 1]?.net ?? 0;
   const prevNet   = points[points.length - 2]?.net ?? 0;
   const delta     = latestNet - prevNet;
-  const isBull    = latestNet >= 0;
-  const color     = isBull ? "#a3e635" : "#ff2d55";
+  // `netPositive` colours the FIGURE, which is arithmetic about the named quantity. `tone` colours
+  // the LINE, which is the direction claim. On this tape the whole-market read is usually
+  // unreadable (the index feed carries no ask side and dominates premium), so the line will
+  // usually be neutral — that is the honest state, not a rendering failure.
+  const netPositive = latestNet >= 0;
+  const tone        = points[points.length - 1]?.tone ?? null;
+  const color       = tone === "bull" ? "#a3e635" : tone === "bear" ? "#ff2d55" : "#a78bfa";
 
   return (
     <Panel
@@ -60,8 +82,14 @@ export function CumulativeNetPremiumChart({ alerts }: { alerts: FlowAlert[] }) {
       actions={
         points.length >= 2 ? (
           <div className="flex items-center gap-1.5">
-            <span className={clsx("font-mono text-[10px] font-semibold tabular-nums", isBull ? "text-bull" : "text-bear")}>
-              {isBull ? "+" : ""}{fmtPremium(latestNet)}
+            <span
+              className={clsx(
+                "font-mono text-[10px] font-semibold tabular-nums",
+                netPositive ? "text-bull" : "text-bear"
+              )}
+              title="Cumulative call premium minus put premium across the loaded tape. A call-vs-put figure, not a direction — the line colour carries the direction read."
+            >
+              {netPositive ? "+" : ""}{fmtPremium(latestNet)}
             </span>
             {delta !== 0 && (
               <span className={clsx("font-mono text-[10px]", delta > 0 ? "text-bull" : "text-bear")}>

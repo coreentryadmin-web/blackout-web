@@ -24,9 +24,9 @@ import {
   fmtSpot,
   ruleLabel,
 } from "@/features/helix/lib/helix-flow-format";
+import { contractSizeRounded } from "@/features/helix/lib/helix-contract-size";
 import {
   aggressorRead,
-  estContractSize,
   estNotional,
   gexProximityLabel,
   printBias,
@@ -168,7 +168,7 @@ export function ContractDrilldownDrawer({
   const detail = useMemo(() => {
     if (!flow) return null;
     const dte = flow.dte ?? daysToExpiry(flow.expiry);
-    const size = estContractSize(flow.premium, flow.fill_price);
+    const size = contractSizeRounded(flow.premium, flow.fill_price);
     const notional = estNotional(flow.strike, flow.premium, flow.fill_price);
     const aggr = aggressorRead(flow.ask_pct);
     const wall = gexProximityLabel(flow.gex_proximity);

@@ -32,8 +32,22 @@ export type PlaybookSurfaceStatus = {
 };
 
 /**
- * Per-playbook surface status — single source for architecture matrix.
+ * Per-playbook surface status — single source for the architecture matrix.
  * Allowlist_gate=implemented does NOT imply matcher=validated.
+ *
+ * ⚠ THIS TABLE IS DESCRIPTIVE. IT GATES NOTHING. Measured 2026-08-22: nothing outside this file
+ * reads `production_eligible`, or `PLAYBOOK_SURFACE_STATUS` at all.
+ *
+ * That matters because every one of the 14 rows says `production_eligible: "not_started"`, which
+ * reads as a hard safety gate — "no playbook can run in production yet" — while
+ * `PLAYBOOK_LIVE_GATE="1"` in `blackout-production/app/env` means gate A17 REQUIRES a matched
+ * primary playbook before any BUY. Playbooks decide live entries today; this field does not stop
+ * them, and never has. A reader who trusts it will de-prioritise a real production defect, which
+ * is close to what happened with PB-01/PB-02 (see `docs/spx/SLAYER-MAP.md` §7.1, fixed in #2636).
+ *
+ * Whether it SHOULD gate is an open question for the coordinator, not something to change here
+ * unilaterally — wiring it as written would block all 14 playbooks and stop the engine entering.
+ * `playbook-status-doc-sync.test.ts` pins the current values so the question cannot be lost.
  */
 export const PLAYBOOK_SURFACE_STATUS: Record<PlaybookId, PlaybookSurfaceStatus> = {
   "PB-01": {

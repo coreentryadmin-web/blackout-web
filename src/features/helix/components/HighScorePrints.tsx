@@ -23,7 +23,7 @@ export function scoreTone(score: number): { bg: string; border: string; text: st
 
 // Visual hierarchy (2026-08-02 Helix audit, Tier 1): scoreTone alone made almost every
 // row gold, since the top-N by score routinely clusters near the max — nothing read as
-// THE standout print. Only rank 0 (the single most conviction-worthy print) now gets the
+// THE standout print. Only rank 0 (the single most featured/highest-premium print) now gets the
 // full-strength tone + a mild glow; every other row is flattened to one quiet neutral
 // style so the #1 print is the one thing that visually pops, not all ten.
 export function rowStyle(isTop: boolean, tone: { bg: string; border: string }): CSSProperties {
@@ -58,7 +58,7 @@ export function HighScorePrints({
   return (
     <Panel
       accent="gold"
-      kicker={mode === "score" ? "★ conviction" : "◆ size"}
+      kicker={mode === "score" ? "★ premium concentration" : "◆ size"}
       title="Top Prints"
       className="helix-pro-rail-panel"
       bodyClassName="space-y-1.5"

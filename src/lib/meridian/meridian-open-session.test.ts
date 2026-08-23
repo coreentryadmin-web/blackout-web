@@ -46,20 +46,22 @@ describe("a reaction from a session that has not closed says so", () => {
   const ordered = [...byYmd.keys()].sort();
 
   test("the live defect: a BMO print mid-session is NOT presented as measured", () => {
-    // Production returned reaction_measure "session_open_to_close" at 09:46 ET on a session
-    // closing at 16:00, with no provisional marker anywhere in the payload.
+    // Production returned a settled-looking measure at 09:46 ET on a session closing at 16:00,
+    // with no provisional marker anywhere in the payload.
     const live = reactionForPrint(byYmd, ordered, "2026-08-21", "bmo", "2026-08-21");
-    assert.equal(live.reaction_measure, "session_open_to_last");
+    assert.equal(live.reaction_measure, "prior_close_to_last");
     assert.equal(live.reaction_settled, false);
-    assert.equal(live.reaction_pct, -4.9, "the value is still reported — it is real, just not final");
+    // 100 -> 97. Was -4.9 (102 -> 97) while BMO was read open→close; that read started AFTER the
+    // premarket gap and is the defect fixed alongside this one.
+    assert.equal(live.reaction_pct, -3, "the value is still reported — it is real, just not final");
     assert.equal(live.reaction_basis, "bmo_session", "the basis is unchanged; only the far end moved");
   });
 
   test("the SAME print after the close is settled", () => {
     const done = reactionForPrint(byYmd, ordered, "2026-08-21", "bmo", null);
-    assert.equal(done.reaction_measure, "session_open_to_close");
+    assert.equal(done.reaction_measure, "prior_close_to_close");
     assert.equal(done.reaction_settled, true);
-    assert.equal(done.reaction_pct, -4.9, "same number — the label changes, not the arithmetic");
+    assert.equal(done.reaction_pct, -3, "same number — the label changes, not the arithmetic");
   });
 
   test("an AMC print anchored on the open session is prior_close_to_last", () => {
@@ -72,9 +74,13 @@ describe("a reaction from a session that has not closed says so", () => {
 
   test("history is untouched — only the anchor session in progress is provisional", () => {
     // The whole risk of this change is mislabelling settled history as unsettled.
-    const old = reactionForPrint(byYmd, ordered, "2026-08-19", "bmo", "2026-08-21");
-    assert.equal(old.reaction_measure, "session_open_to_close");
+    // 08-20, not 08-19: a BMO reaction is measured from the session BEFORE the print, and 08-19
+    // is the oldest bar in this fixture, so it has none. That case is covered in
+    // meridian-reaction-core.test.ts ("no session before it yields no reaction, not a fallback").
+    const old = reactionForPrint(byYmd, ordered, "2026-08-20", "bmo", "2026-08-21");
+    assert.equal(old.reaction_measure, "prior_close_to_close");
     assert.equal(old.reaction_settled, true);
+    assert.equal(old.reaction_pct, 1.01, "99 -> 100, both sessions long closed");
 
     const oldAmc = reactionForPrint(byYmd, ordered, "2026-08-19", "amc", "2026-08-21");
     assert.equal(oldAmc.reaction_measure, "prior_close_to_close", "anchors on 08-20, which closed");
@@ -91,11 +97,11 @@ describe("a reaction from a session that has not closed says so", () => {
   test("the batch threads the open session to every print", () => {
     const out = reactionsForPrints(
       BARS,
-      [{ ymd: "2026-08-21", timing: "bmo" }, { ymd: "2026-08-19", timing: "bmo" }],
+      [{ ymd: "2026-08-21", timing: "bmo" }, { ymd: "2026-08-20", timing: "bmo" }],
       "2026-08-21"
     );
     assert.equal(out.get("2026-08-21")?.reaction_settled, false);
-    assert.equal(out.get("2026-08-19")?.reaction_settled, true);
+    assert.equal(out.get("2026-08-20")?.reaction_settled, true);
   });
 
   test("defaulting to no open session keeps every existing caller settled", () => {

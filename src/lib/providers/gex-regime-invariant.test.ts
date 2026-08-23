@@ -227,3 +227,85 @@ test("REGRESSION: both producers pass the reason through", () => {
   assert.match(overlay, /cumulativeGammaFlipDetail/, "overlay must compute the DETAIL");
   assert.match(overlay, /flipReason: flipDetail\.reason/, "and pass its own reason, not a stale one");
 });
+
+/**
+ * `walls_by_horizon` — the same "two assignments must travel together" property, for the field that
+ * answers "where is the wall for the trade I am putting on TODAY".
+ *
+ * WHAT WAS WRONG. The field was assigned in exactly ONE place, `prunePastExpiriesFromHeatmap`, and
+ * that function early-returns the heatmap unchanged when it finds no past expiry columns. Fresh
+ * builds already drop `expiry < today` at ingest, so the prune is always a no-op on a fresh build
+ * and the field never shipped. Measured on prod 2026-08-22 across SPY, SPX, QQQ, NVDA, MSFT and
+ * AAPL: ABSENT on all six, including two matrices already 1.7 hours old.
+ *
+ * WHY IT MATTERS. The served `call_wall` is a FIFTEEN-expiry aggregate. On SPX 2026-08-20 at spot
+ * 7641.16 it read 7800 (+2.1%) while the front expiry alone read 7700 (+0.8%). Without the horizons
+ * neither a member nor Largo can name which scope a wall belongs to — the exact ambiguity the field
+ * was added to remove.
+ */
+test("REGRESSION: the fresh matrix build publishes walls_by_horizon, not just the rollover prune", () => {
+  const src = readFileSync(
+    join(process.cwd(), "src/lib/providers/polygon-options-gex.ts"),
+    "utf8"
+  );
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, " ");
+
+  const buildStart = code.indexOf("async function buildGexHeatmapUncached(");
+  assert.notEqual(buildStart, -1, "buildGexHeatmapUncached must still exist");
+  const buildBody = code.slice(buildStart, code.indexOf("\n}", buildStart));
+  assert.match(
+    buildBody,
+    /walls_by_horizon:\s*wallsByHorizon\(/,
+    "the FRESH build must publish the horizons — the prune path alone never fires on a fresh matrix"
+  );
+
+  // The prune path must keep doing it too: it re-derives every other level after dropping settled
+  // columns, and a horizon block spanning a settled expiry is worse than none.
+  const pruneStart = code.indexOf("export function prunePastExpiriesFromHeatmap(");
+  assert.notEqual(pruneStart, -1, "prunePastExpiriesFromHeatmap must still exist");
+  const pruneBody = code.slice(pruneStart, code.indexOf("\n}", pruneStart));
+  assert.match(pruneBody, /walls_by_horizon:\s*wallsByHorizon\(/, "the rollover prune still recomputes them");
+});
+
+test("REGRESSION: the SPX 0DTE overlay recomputes walls_by_horizon alongside the flip it rewrites", () => {
+  // Behaviourally covered in spx-odte-gex-uw-overlay.test.ts; asserted on source here for the same
+  // reason the regime assertion above is — the risk is a future edit that updates one and not the
+  // other, and this function has now been fixed for that exact failure three times (regime,
+  // flip_reason, and these horizons). The overlay REPLACES today's 0DTE column, so the 0DTE bucket
+  // is the one it definitionally invalidates.
+  const src = readFileSync(
+    join(process.cwd(), "src/lib/providers/spx-odte-gex-uw-overlay.ts"),
+    "utf8"
+  );
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, " ");
+  const fn = code.slice(code.indexOf("recomputeNearTermGexStrikeTotals"));
+  const body = fn.slice(0, fn.indexOf("\n}"));
+  assert.match(body, /hm\.gex\.flip\s*=/, "the overlay still sets the flip");
+  assert.match(
+    body,
+    /hm\.gex\.walls_by_horizon\s*=\s*wallsByHorizon\(/,
+    "and must recompute the DTE horizons from the overlaid cells"
+  );
+});
+
+test("the degraded UW fallback matrix deliberately publishes NO horizons", () => {
+  // NOT an oversight — do not "complete" this. UW `/spot-exposures/strike` returns an ALL-EXPIRY
+  // dealer-gamma ladder with no per-row expiry, and the fallback files every strike under a single
+  // synthetic `{ [today]: net }` column. Running wallsByHorizon over that would return the SAME
+  // whole-chain wall in the 0DTE, 3DTE and 7DTE buckets and label the first one "0DTE" — asserting
+  // a DTE breakdown the source cannot support. An omitted optional field says "not computable
+  // here"; three identical buckets would be a fabricated one.
+  const src = readFileSync(
+    join(process.cwd(), "src/lib/providers/polygon-options-gex.ts"),
+    "utf8"
+  );
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, " ");
+  const start = code.indexOf("async function buildGexHeatmapFromUwStrikeExposures(");
+  assert.notEqual(start, -1, "the UW fallback must still exist");
+  const body = code.slice(start, code.indexOf("\n}", start));
+  assert.doesNotMatch(
+    body,
+    /walls_by_horizon/,
+    "the all-expiry UW fallback has no expiry axis to bucket by — leave the field omitted"
+  );
+});

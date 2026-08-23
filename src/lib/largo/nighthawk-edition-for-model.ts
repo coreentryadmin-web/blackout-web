@@ -4,7 +4,8 @@
  * WHY. `get_nighthawk_edition` returned `rowToNightHawkEdition`'s raw object, which
  * inserts `market_recap` (key 6) before `plays` (key 7). On a live edition that is
  * 41,471 bytes of recap in front of 5,239 bytes of plays — and the answer loop caps
- * every tool_result at `MAX_TOOL_RESULT_CHARS` with a **tail** slice. Measured on
+ * every tool_result at `MAX_TOOL_RESULT_CHARS`, **keeping the head and discarding
+ * the tail**. Measured on
  * prod 2026-08-21: the whole edition is 47,307 chars, `"plays":` begins at char
  * 42,001, and the cut lands at 16,000. **Every Night Hawk play was cut off**, from
  * the tool whose description promises "all plays with rank, conviction, thesis,

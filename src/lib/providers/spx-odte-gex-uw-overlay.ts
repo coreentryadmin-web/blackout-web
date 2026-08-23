@@ -1,6 +1,6 @@
 import type { GexHeatmap, SpxOdteOverlayState } from "@/lib/providers/polygon-options-gex";
 import { resolveOdteExpiry } from "@/lib/correctness/gex-odte-scope";
-import { wallsFromStrikeTotals, cumulativeGammaFlipDetail, buildGexRegime } from "@/lib/providers/gex-cross-validation-core";
+import { wallsFromStrikeTotals, cumulativeGammaFlipDetail, buildGexRegime, wallsByHorizon } from "@/lib/providers/gex-cross-validation-core";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 import {
   getSpxOdteScopedUwLadderMap,
@@ -10,8 +10,14 @@ import {
 /** Re-export for tests that reset overlay + scoped ladder caches together. */
 export { resetSpxOdteScopedUwLadderCacheForTests as resetSpxOdteUwLadderCacheForTests };
 
-/** Re-sum near-term strike_totals after a 0DTE column overlay. */
-export function recomputeNearTermGexStrikeTotals(hm: GexHeatmap): void {
+/**
+ * Re-sum near-term strike_totals after a 0DTE column overlay.
+ *
+ * `sessionYmd` is the ET SESSION the DTE horizons are counted from — deliberately NOT named
+ * `today`, and deliberately NOT the overlay's target expiry. Those are different values and
+ * conflating them is a shipped bug (see the horizons block below).
+ */
+export function recomputeNearTermGexStrikeTotals(hm: GexHeatmap, sessionYmd = todayEtYmd()): void {
   const near = new Set(hm.near_term_expiries?.length ? hm.near_term_expiries : hm.expiries.slice(0, 8));
   const totals: Record<string, number> = {};
   let total = 0;
@@ -64,6 +70,33 @@ export function recomputeNearTermGexStrikeTotals(hm: GexHeatmap): void {
   // was "short" either way, which is precisely why this survived unnoticed — the failure only bites
   // when spot sits BETWEEN the two.
   hm.gex.regime = buildGexRegime({ spot: hm.spot, flip, callWall, putWall, flipReason: flipDetail.reason });
+
+  // AND THE HORIZONS, for the same reason and with sharper stakes.
+  //
+  // This overlay REPLACES today's 0DTE column with the UW dealer-gamma ladder, so the "0DTE" bucket
+  // is the one bucket it definitionally invalidates. Until now that was harmless only because
+  // `walls_by_horizon` was never populated on a fresh build at all (it was set solely by
+  // prunePastExpiriesFromHeatmap, which no-ops on a fresh matrix). Populating it upstream would
+  // have made this function carry a PRE-overlay 0DTE wall beside a POST-overlay flip and regime —
+  // the third instance of exactly the staleness this function has already been fixed for twice
+  // (first `regime`, then `flip_reason`). Recomputing it here means the two cannot separate.
+  //
+  // Same input as the fresh build: the post-overlay cells, the ET session, and this heatmap's own
+  // spot, so every bucket is side-constrained against the price the rest of the payload describes.
+  //
+  // THE SESSION, NOT THE OVERLAY'S TARGET EXPIRY — these are different values and I shipped them
+  // conflated. `applySpxOdteGexUwOverlayWithLadder`'s third parameter is the 0DTE COLUMN to write
+  // into, and its caller resolves that with `resolveOdteExpiry`, which post-close falls back to the
+  // FRONT expiry. Threading that value in here made `wallsByHorizon` count DTE relative to the
+  // front expiry, so the front expiry sat 0 sessions from itself and was labelled "0DTE".
+  //
+  // MEASURED ON PROD 2026-08-23 03:30Z (Saturday 23:30 ET), the deploy that first shipped these
+  // horizons: SPX reported `0DTE expiries=[2026-08-24] call=7725 put=7630` — Monday's front-expiry
+  // walls, labelled 0DTE on a Saturday. NVDA, which has no overlay and therefore took the fresh-build
+  // path with the real session date, correctly reported `0DTE expiries=[] call=null put=null` and put
+  // 2026-08-24 in its 3DTE bucket. Two tickers, same minute, same function, different answers — which
+  // is what exposed it.
+  hm.gex.walls_by_horizon = wallsByHorizon(hm.gex.cells, sessionYmd, hm.spot);
 }
 
 /**
@@ -73,15 +106,22 @@ export function recomputeNearTermGexStrikeTotals(hm: GexHeatmap): void {
 export function applySpxOdteGexUwOverlayWithLadder(
   hm: GexHeatmap,
   ladder: ReadonlyMap<number, number>,
-  today = todayEtYmd()
+  /**
+   * The expiry COLUMN the UW ladder is written into. Callers resolve it with `resolveOdteExpiry`,
+   * which falls back to the FRONT expiry once today's has settled — so outside RTH this is
+   * routinely NOT today. Renamed from `today`, which is what invited it to be used as a session.
+   */
+  odteExpiry = todayEtYmd(),
+  /** The ET session the DTE horizons are counted from. Separate from `odteExpiry` on purpose. */
+  sessionYmd = todayEtYmd()
 ): GexHeatmap {
   if (hm.underlying !== "SPX" || !(hm.spot > 0) || hm.strikes.length === 0) return hm;
-  if (!hm.expiries.includes(today) || ladder.size === 0) return hm;
+  if (!hm.expiries.includes(odteExpiry) || ladder.size === 0) return hm;
 
   const cells: Record<string, Record<string, number>> = {};
   for (const [sk, byExp] of Object.entries(hm.gex.cells)) {
     const row = { ...byExp };
-    delete row[today];
+    delete row[odteExpiry];
     if (Object.keys(row).length > 0) cells[sk] = row;
   }
 
@@ -93,7 +133,7 @@ export function applySpxOdteGexUwOverlayWithLadder(
   for (const [strike, net] of ladder) {
     const sk = String(strike);
     const row = { ...(cells[sk] ?? {}) };
-    row[today] = net;
+    row[odteExpiry] = net;
     cells[sk] = row;
     strikeSet.add(strike);
   }
@@ -103,7 +143,9 @@ export function applySpxOdteGexUwOverlayWithLadder(
     strikes: Array.from(strikeSet).sort((a, b) => b - a),
     gex: { ...hm.gex, cells },
   };
-  recomputeNearTermGexStrikeTotals(out);
+  // The SESSION, not the expiry column just written. Passing `odteExpiry` here is the bug this
+  // parameter split exists to make impossible.
+  recomputeNearTermGexStrikeTotals(out, sessionYmd);
   return out;
 }
 
@@ -159,7 +201,9 @@ export async function applySpxOdteGexUwOverlay(hm: GexHeatmap): Promise<GexHeatm
     return mark(false, "ladder_unavailable");
   }
 
-  const out = applySpxOdteGexUwOverlayWithLadder(hm, ladder, expiry);
+  // Both, explicitly: `expiry` is the column to overlay (front expiry once today's has settled),
+  // `today` is the ET session the DTE horizons are counted from.
+  const out = applySpxOdteGexUwOverlayWithLadder(hm, ladder, expiry, today);
   out.gex.odte_overlay = { applied: true, reason: "applied" };
   return out;
 }

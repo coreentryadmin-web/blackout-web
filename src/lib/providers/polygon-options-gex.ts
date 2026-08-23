@@ -2964,6 +2964,16 @@ async function buildGexHeatmapFromUwStrikeExposures(
         put_wall: gexLevels.putWall,
         total: totalGamma,
         flip: gexFlip,
+        // `walls_by_horizon` is DELIBERATELY OMITTED on this degraded path — do not "complete" it.
+        //
+        // This fallback has no expiry axis. UW `/spot-exposures/strike` returns an ALL-EXPIRY
+        // dealer-gamma ladder with no per-row expiry, and the loop above files every strike under a
+        // single synthetic `{ [today]: net }` column. Running wallsByHorizon over those cells would
+        // therefore return the SAME all-expiry wall in the 0DTE, 3DTE and 7DTE buckets and label
+        // the first one "0DTE" — a whole-chain number presented as today's, which is worse than the
+        // absent field it replaces. Omission is the honest answer: an optional field left off says
+        // "not computable here", where three identical buckets assert a DTE breakdown that does not
+        // exist in the source.
         regime: {
           flip: gexFlip,
           posture: gexLevels.regime.posture,
@@ -3601,6 +3611,30 @@ async function buildGexHeatmapUncached(
       total: gexBuilt.total ?? totalGamma,
       flip: gexFlip,
       flip_reason: gexFlipDetail.reason,
+      // THE HORIZONS BELONG ON EVERY BUILD, NOT ONLY ON A ROLLOVER-PRUNED ONE.
+      //
+      // `walls_by_horizon` was assigned in exactly one place — prunePastExpiriesFromHeatmap — and
+      // that function early-returns the heatmap UNCHANGED when it finds no past expiry columns.
+      // Fresh builds already drop `expiry < today` at ingest (accumulateContract), so the prune is
+      // always a no-op on a fresh build and this literal, which omitted the field, was the one that
+      // actually shipped. Net effect: the horizons appeared only on a cached matrix that happened
+      // to survive an ET date rollover.
+      //
+      // MEASURED ON PROD 2026-08-22, six tickers (SPY, SPX, QQQ, NVDA, MSFT, AAPL) through an
+      // authenticated read: `walls_by_horizon` ABSENT on all six — including two matrices already
+      // 1.7 hours old. So `get_gex_heatmap.walls_by_horizon` was null in practice.
+      //
+      // That is the precise ambiguity the field was added to remove. The served `call_wall` is a
+      // FIFTEEN-expiry aggregate running ~three weeks out; on SPX 2026-08-20 at spot 7641.16 it
+      // read 7800 (+2.1%) while the front expiry alone read 7700 (+0.8%). A wall 2.1% OTM is not
+      // actionable on a 0DTE trade, and with the horizons absent neither a member nor Largo had any
+      // way to name which scope they were quoting.
+      //
+      // Pure + cheap: wallsByHorizon is a re-sum of cells already in hand, no fetch, and it filters
+      // to DTE <= 7 itself, so passing the full near+far axis is correct (the far-dated monthly
+      // columns fall outside every bucket by construction). `today` is the ET session the DTE is
+      // counted from — a horizon is meaningless without the day it is relative to.
+      walls_by_horizon: wallsByHorizon(gexBuilt.cells, today, spot),
       regime: gexRegime,
     },
     vex: {
@@ -3667,6 +3701,7 @@ function emptyHeatmap(
     change_pct: ctx?.changePct ?? 0,
     asof: new Date().toISOString(),
     expiries: [],
+    near_term_expiries: [],
     strikes: [],
     max_pain: null,
     gex: {

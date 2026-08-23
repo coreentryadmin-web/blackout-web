@@ -182,6 +182,27 @@ test("contractStackHitsFromFlows returns oldest-first timeline", () => {
   assert.match(timeline, /ET ·/);
 });
 
+test("contractStackHitsFromFlows excludes the neighbouring half-dollar strike", () => {
+  // Same root cause as the Top Prints hit count, but this timeline ALSO produces the hit count fed
+  // to the milestone gate — so an inflated count here posts a Repeat Hits embed describing prints
+  // on two different contracts.
+  const now = new Date("2026-08-21T14:32:00.000Z");
+  const target = {
+    ...base,
+    ticker: "INTC",
+    option_type: "PUT",
+    expiry: "2026-08-21",
+    strike: 93,
+    fill_price: 5,
+    dte: 0,
+    event_at: "2026-08-21T14:30:00.000Z",
+  };
+  const neighbour = { ...target, strike: 92.5, event_at: "2026-08-21T14:24:00.000Z" };
+  const hits = contractStackHitsFromFlows(target, [target, neighbour], { now });
+  assert.equal(hits.length, 1);
+  assert.equal(contractStackHitsFromFlows(neighbour, [target, neighbour], { now }).length, 1);
+});
+
 test("selectHelixDiscordDigest prefers in-window score then premium", () => {
   const now = new Date("2026-07-29T15:00:00.000Z");
   const recent = now.toISOString();

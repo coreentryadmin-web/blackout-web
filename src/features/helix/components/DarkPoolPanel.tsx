@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { motion, AnimatePresence } from "framer-motion";
 import { usePulse } from "@/lib/usePulse";
 import { relativeAge } from "@/lib/relative-time";
+import { readDarkPoolBias, type DarkPoolBiasRead } from "@/features/helix/lib/helix-darkpool-bias";
 // Code-split: the dark-pool sparkline (recharts) is the only recharts use in
 // this file. It is extracted to DarkPoolSpark and lazy-loaded (ssr:false) so
 // recharts stays out of DarkPoolPanel's static client graph while the rest of
@@ -32,7 +33,11 @@ function timeAgo(iso: string | null | undefined): string {
   return relativeAge(iso);
 }
 
-function fmtDate(iso: string): string {
+function fmtDate(iso: string | null | undefined): string {
+  // An undated print renders as the dash `relativeAge` already uses, NOT as today's date. The two
+  // branches of the caller must agree about absence, or the same row reads "just now" in one column
+  // width and "08/23 14:02" in another.
+  if (iso == null || iso === "") return timeAgo(iso);
   try {
     const d = new Date(iso);
     // new Date(bad) is Invalid Date (does NOT throw), so getMonth() etc. would render "NaN/NaN".
@@ -53,21 +58,33 @@ function fmtShares(n: number): string {
   return String(n);
 }
 
-function biasFromSide(prints: DarkPoolRow[]) {
-  const buy   = prints.filter((p) => p.side === "buy").reduce((s, p) => s + p.premium, 0);
-  const sell  = prints.filter((p) => p.side === "sell").reduce((s, p) => s + p.premium, 0);
-  const total = buy + sell;
-  // When no print has a buy/sell side (UW market-wide endpoint omits direction),
-  // show "—" rather than "MIXED" to avoid implying the data is split.
-  if (total <= 0) {
-    const hasSideData = prints.some((p) => p.side === "buy" || p.side === "sell");
-    if (!hasSideData) return { label: "—", color: "#9fb4d4", glow: "rgba(159,180,212,0.2)" };
-    return { label: "MIXED", color: "#7dd3fc", glow: "rgba(125,211,252,0.3)" };
+/**
+ * Presentation for the dark-pool bias verdict. The JUDGEMENT lives in
+ * `readDarkPoolBias` (helix-darkpool-bias.ts) — this only picks a colour for it.
+ *
+ * The ratio used to be computed here, over `buy / (buy + sell)`, which silently excluded every
+ * print carrying no direction from its own denominator. See that module for the measurement and
+ * why the coverage gate is the fix.
+ *
+ * `unreadable` renders as the same neutral dash the old all-neutral branch produced, and the
+ * caller adds the coverage beside it — a dash on its own is indistinguishable from "no data",
+ * which is the confusion this whole change is about.
+ */
+function biasStyle(read: DarkPoolBiasRead) {
+  switch (read.label) {
+    case "BULLISH": return { label: "BULLISH", color: "#a3e635", glow: "rgba(0,230,118,0.35)" };
+    case "BEARISH": return { label: "BEARISH", color: "#ff2d55", glow: "rgba(255,45,85,0.35)" };
+    case "MIXED":   return { label: "MIXED",   color: "#7dd3fc", glow: "rgba(125,211,252,0.3)" };
+    default:        return { label: "—",       color: "#9fb4d4", glow: "rgba(159,180,212,0.2)" };
   }
-  const r = buy / total;
-  if (r >= 0.65) return { label: "BULLISH",  color: "#a3e635", glow: "rgba(0,230,118,0.35)" };
-  if (r <= 0.35) return { label: "BEARISH",  color: "#ff2d55", glow: "rgba(255,45,85,0.35)" };
-  return         { label: "MIXED",   color: "#7dd3fc", glow: "rgba(125,211,252,0.3)" };
+}
+
+/** The coverage line shown beside a refusal. `null` when there was no premium at all — "0% of
+ *  side data" would assert a measurement over an empty population. */
+function biasCoverageNote(read: DarkPoolBiasRead): string | null {
+  if (!read.minorityEvidence) return null;
+  if (read.readablePct == null) return null;
+  return `side known on ${read.readablePct.toFixed(0)}% of premium`;
 }
 
 // ─── Shared print row ─────────────────────────────────────────────────────────
@@ -208,7 +225,9 @@ export function DarkPoolPanel({
     ? allPrints.filter((p) => p.ticker === filterTicker)
     : allPrints.slice(0, 60);
 
-  const bias       = biasFromSide(visible);
+  const biasRead   = readDarkPoolBias(visible);
+  const bias       = biasStyle(biasRead);
+  const biasNote   = biasCoverageNote(biasRead);
   const latestNet  = history[history.length - 1]?.net ?? 0;
   const isBull     = latestNet >= 0;
   const sparkColor = isBull ? "#a3e635" : "#ff2d55";
@@ -314,6 +333,9 @@ export function DarkPoolPanel({
                       >
                         {bias.label}
                       </span>
+                      {biasNote && (
+                        <span className="font-mono text-[10px] text-purple-light/60">{biasNote}</span>
+                      )}
                     </div>
                   )}
                 </div>
@@ -333,6 +355,9 @@ export function DarkPoolPanel({
                 >
                   {bias.label}
                 </span>
+                {biasNote && (
+                  <span className="font-mono text-[10px] text-purple-light/60">{biasNote}</span>
+                )}
                 {history.length >= 3 && (
                   <div className="flex-1 h-6">
                     <DarkPoolSpark history={history} color={sparkColor} />

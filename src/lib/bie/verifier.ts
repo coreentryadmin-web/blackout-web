@@ -16,6 +16,29 @@ export type ClaimVerification = {
   coverage: number | null;
 };
 
+/**
+ * The verification of a turn that produced NO answer to verify.
+ *
+ * WHY A CONSTRUCTOR AND NOT A LITERAL. #2582's follow-up fixed `verifyClaims` to return
+ * `coverage: null` over zero claims — coverage is `verified/total`, and at `total === 0` that is
+ * `0/0`, so inventing `1` advertised a data-less answer as perfectly grounded. That is the
+ * fabricated certainty `LARGO-PRODUCT-CONTRACT.md` forbids: a score a product cannot calibrate must
+ * be OMITTED, never invented, because it is compared against another lane's MEASURED one.
+ *
+ * The fix landed at the source and **three hand-written copies of the forbidden shape survived it**
+ * in `largo-terminal.ts`'s error paths (`{ total: 0, verified: 0, coverage: 1, unverified: [] }`),
+ * one of which leaves the process on the non-streaming API's internal-error response. They compiled
+ * because the field is legitimately `number | null`, so nothing could object.
+ *
+ * A convention ("remember to use null") gets skipped. A constructor cannot be: there is now one
+ * place that knows what an unverifiable turn looks like, and a source guard asserts the literal
+ * never returns. Same reasoning as the union that was deduplicated rather than re-guarded — remove
+ * the second copy instead of policing it.
+ */
+export function unverifiedTurn(): ClaimVerification {
+  return { total: 0, verified: 0, unverified: [], coverage: null };
+}
+
 /** Numbers an answer "claims": decimals, percents, $-amounts, 3+ digit ints.
  *  Small bare integers (list counts, "3 lines"), years, and times are not claims. */
 export function extractNumericClaims(text: string): number[] {
@@ -80,8 +103,22 @@ function extractAllNumbers(text: string): number[] {
  *  for small values) — tolerant of rounding, intolerant of invention. Derived
  *  values the desk itself teaches (percent deltas, x2/x0.5 of a source value)
  *  also count, so "target $8.40" verifies against a $4.20 entry. */
-/** Marker appended by largo-terminal.ts when Layer-4 coverage drops below threshold. */
-export const LARGO_RUNTIME_CAUTION_MARKER = "BIE verification";
+/**
+ * The heading of the caveat `applyVerificationCaveat` appends when Layer-4 coverage drops below
+ * threshold — and the string `auditLargoAnswerGrounding` looks for to tell "already disclosed" from
+ * "silently ungrounded".
+ *
+ * IT USED TO BE `"BIE verification"`, WHICH NOTHING EVER EMITTED. The producer wrote
+ * `_Data check: …_`, so `alreadyDisclosed` was false on every answer that had in fact been
+ * caveated, and the cron re-flagged disclosures as undisclosed — defeating the entire point of the
+ * check. Two hand-kept strings, drifted, with nothing binding them.
+ *
+ * So it is now the marker the producer BUILDS ITS HEADING FROM (`turn-outcome.ts` imports this),
+ * and it is also the phrase the terminal's caveat matcher keys on
+ * (`features/largo/answer/answer-caveats.ts` → kind `verification` → label "Grounding note").
+ * One constant, one producer, two consumers — it cannot drift again without a test failing.
+ */
+export const LARGO_RUNTIME_CAUTION_MARKER = "Grounding note";
 
 /** Same thresholds largo-terminal.ts uses before appending the caution footer. */
 export const LARGO_GROUNDING_MIN_CLAIMS = 4;

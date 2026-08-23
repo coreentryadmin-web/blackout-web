@@ -51,7 +51,12 @@ export function buildHelixFlowDeepLink(input: HelixFlowDeepLinkInput): string {
 
   params.set("ticker", ticker);
   if (input.strike != null && Number.isFinite(Number(input.strike))) {
-    params.set("strike", String(Math.round(Number(input.strike))));
+    // The EXACT strike, not a rounded one. This used to be `Math.round(...)`, mirroring the
+    // `premium` rounding below — but rounding a premium drops cents nobody needs, while rounding a
+    // strike names a DIFFERENT CONTRACT. Measured on the live tape: 99 of 5000 rows (2.0%) carry a
+    // fractional strike (PLTR 182.5, DELL 437.5, TLT 82.5, SLV 70.5 …), so a shared link for any of
+    // them stated a strike that does not exist.
+    params.set("strike", String(Number(input.strike)));
   }
   const exp = String(input.expiry ?? "").slice(0, 10);
   if (/^\d{4}-\d{2}-\d{2}$/.test(exp)) params.set("expiry", exp);
@@ -136,6 +141,8 @@ function contractKey(flow: {
   const side = normType(flow.option_type) ?? "?";
   const at = String(flow.at ?? "").slice(0, 19);
   const prem = flow.premium != null ? Math.round(Number(flow.premium)) : 0;
+  // strike-rounding: intentional — this is a PRINT key (it carries `at` and `premium`), and it must
+  // stay byte-compatible with links already shared before 2026-08-23. See flowMatchesDeepLink.
   return `${flow.ticker.toUpperCase()}|${Math.round(flow.strike)}|${String(flow.expiry).slice(0, 10)}|${side}|${at}|${prem}`;
 }
 
@@ -149,7 +156,27 @@ export function flowMatchesDeepLink(flow: FlowAlert, target: HelixDeepLinkTarget
     // REST rows may omit alert_id — fall through to contract match below.
   }
   if (!target.ticker || flow.ticker.toUpperCase() !== target.ticker.toUpperCase()) return false;
-  if (target.strike != null && Math.round(flow.strike) !== Math.round(target.strike)) return false;
+  if (target.strike != null) {
+    // BACKWARD COMPATIBILITY IS THE WHOLE DESIGN HERE. Links already shared in Discord carry a
+    // ROUNDED strike, because that is what the builder emitted until 2026-08-23. Comparing exactly
+    // would strand every one of them.
+    //
+    // So the precision of the TARGET decides the comparison: a fractional target can only have come
+    // from the new builder, so it is matched exactly and cannot collide with the neighbouring
+    // integer strike. An integer target might be a genuine integer strike OR an old rounded link,
+    // and there is no way to tell — so it keeps the legacy rounded comparison.
+    //
+    // Verified before the change: a link built from strike 182.5 also matched a DIFFERENT 183
+    // print. That collision needs identical ticker, expiry and premium-to-the-dollar as well, and
+    // is measured at 0 occurrences on a live 5000-row tape — latent, not live. Fixed for new links
+    // without stranding old ones.
+    const targetIsExact = Number.isFinite(target.strike) && Number(target.strike) % 1 !== 0;
+    const mismatch = targetIsExact
+      ? Number(flow.strike) !== Number(target.strike)
+      // strike-rounding: intentional — legacy links carry a rounded strike; see the block above.
+      : Math.round(flow.strike) !== Math.round(target.strike);
+    if (mismatch) return false;
+  }
   if (target.expiry && String(flow.expiry).slice(0, 10) !== target.expiry.slice(0, 10)) return false;
   if (target.option_type) {
     const want = normType(target.option_type);

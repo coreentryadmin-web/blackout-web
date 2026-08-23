@@ -1631,6 +1631,9 @@ async function evaluateSpxPlayCore(
       grade: closedConfluence?.grade ?? "D",
       score: closedConfluence?.score ?? 0,
       confidence: closedConfluence?.confidence ?? 0,
+      // Off-hours the desk may have no confluence to close out on; when it doesn't, the three
+      // `??` fallbacks above are placeholders and must not be read as a grade of the session.
+      assessed: closedConfluence != null,
       headline: "Session closed",
       thesis: `Desk offline · ${desk.market_label ?? "CLOSED"} · resumes 6:30 AM PT`,
       idle_message: null,

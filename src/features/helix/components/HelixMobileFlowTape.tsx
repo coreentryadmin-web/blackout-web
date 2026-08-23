@@ -11,8 +11,11 @@ import {
   fmtExpiryShort,
   sortFlows,
 } from "@/features/helix/lib/helix-flow-format";
+import { tapeTimeDisplay } from "@/features/helix/lib/helix-tape-time";
+import {
+  WHALE_PRINT_PREMIUM,
+} from "@/features/helix/lib/helix-flow-limits";
 
-const WHALE_PREMIUM = 1_000_000;
 
 // Real mobile-web tape layout (2026-08-02 Helix audit, Tier 1 item #8). Mobile web (and the
 // native iOS shell — both go through useCompactDeskPanels) previously rendered the SAME
@@ -137,7 +140,7 @@ export function HelixMobileFlowTape({
           <div className="flex flex-col gap-1.5 px-1 py-2">
             {visible.map((flow, i) => {
               const isCall = flow.option_type?.toUpperCase() === "CALL";
-              const isWhale = flow.premium >= WHALE_PREMIUM;
+              const isWhale = flow.premium >= WHALE_PRINT_PREMIUM;
               const dte = flow.dte ?? daysToExpiry(flow.expiry);
               const is0dte = dte === 0;
               const isCompound = compoundTickers?.has(flow.ticker) ?? false;
@@ -245,16 +248,38 @@ export function HelixMobileFlowTape({
                         </>
                       )}
                     </p>
-                    {flow.score > 0 && (
-                      <span
-                        className={clsx(
-                          "font-mono text-[10px] font-medium shrink-0",
-                          flow.score >= 8 ? "text-purple-light" : flow.score >= 6 ? "text-purple" : "text-cyan-400"
-                        )}
-                      >
-                        ▲{flow.score.toFixed(1)}
-                      </span>
-                    )}
+                    <span className="flex items-center gap-2 shrink-0">
+                      {flow.score > 0 && (
+                        <span
+                          className={clsx(
+                            "font-mono text-[10px] font-medium",
+                            flow.score >= 8 ? "text-purple-light" : flow.score >= 6 ? "text-purple" : "text-cyan-400"
+                          )}
+                        >
+                          ▲{flow.score.toFixed(1)}
+                        </span>
+                      )}
+                      {/* PRINT TIME. This card previously rendered NONE — not an unmarked one, none
+                          at all — so a member could not tell whether the top card was thirty seconds
+                          or thirty-five hours old, on a tape whose default window is 168h. Compact
+                          age here because the card is dense; the exact ET stamp rides in `title`,
+                          and the `~` marks an ingest estimate visibly, since a tooltip is
+                          unreachable on touch. Shared with the desktop tape. */}
+                      {(() => {
+                        const t = tapeTimeDisplay(flow, { compact: true });
+                        return (
+                          <span
+                            className={clsx(
+                              "font-mono text-[10px] tabular-nums",
+                              t.estimated ? "helix-tape-time--estimated" : "text-sky-300/70"
+                            )}
+                            title={t.title}
+                          >
+                            {t.label}
+                          </span>
+                        );
+                      })()}
+                    </span>
                   </div>
                 </div>
               );

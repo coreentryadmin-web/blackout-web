@@ -485,13 +485,13 @@ export function SignalAnalyticsPanel() {
                 <span className="ml-2 text-white/30">last {data.recent_observations.length}</span>
               </h3>
             </div>
-            <div className="overflow-y-auto max-h-96 overflow-x-auto">
+            <div className="overflow-auto max-h-96">
               <table className="w-full text-xs font-mono">
                 <thead className="sticky top-0 bg-black/80 backdrop-blur-sm">
                   <tr className="border-b border-white/5">
                     <th className="text-left px-5 py-2 text-white/30 font-normal">Time</th>
-                    <th className="text-right px-2 py-2 text-white/30 font-normal">Score</th>
-                    <th className="text-center px-2 py-2 text-white/30 font-normal">Grade</th>
+                    <th className="text-right p-2 text-white/30 font-normal">Score</th>
+                    <th className="text-center p-2 text-white/30 font-normal">Grade</th>
                     <th className="text-left px-3 py-2 text-white/30 font-normal">Action</th>
                     <th className="text-left px-3 py-2 text-white/30 font-normal">Dir</th>
                     <th className="text-left px-5 py-2 text-white/30 font-normal">Top Factors</th>
@@ -509,8 +509,8 @@ export function SignalAnalyticsPanel() {
                     return (
                       <tr key={obs.id} className="border-b border-white/5 hover:bg-white/[0.02]">
                         <td className="px-5 py-2 text-white/40 whitespace-nowrap">{formatTime(obs.observed_at)}</td>
-                        <td className="px-2 py-2 text-right text-white">{obs.score}</td>
-                        <td className="px-2 py-2 text-center">
+                        <td className="p-2 text-right text-white">{obs.score}</td>
+                        <td className="p-2 text-center">
                           <span className={`inline-block px-1.5 py-0.5 rounded border text-[10px] font-bold ${gradeColor(obs.grade)}`}>
                             {obs.grade}
                           </span>

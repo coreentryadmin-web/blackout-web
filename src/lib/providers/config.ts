@@ -211,6 +211,28 @@ export function deskFlowCacheTtlMs(): number {
 }
 
 /** Optional merge from engine /spx/state. Off by default — website owns live desk data. */
+/**
+ * SPY-minute-volume proxy for the SPX session VWAP. **Default ON.**
+ *
+ * SPX index minute bars carry no volume (ISSUE-16), so without a proxy the desk "VWAP" is an
+ * equal-weight typical-price mean and `vwap_volume_weighted` is false. SPY 1m share volume is the
+ * standard index proxy and is already what the Vector chart weights with.
+ *
+ * This used to be gated on `isStagingDeploy()`. Staging was decommissioned 2026-07-25, so that
+ * gate has been permanently false in every environment that exists — which left PB-01 (VWAP
+ * Reclaim) and PB-02 (VWAP Reject) unable to satisfy their `volumeWeightedVwap` data requirement,
+ * and therefore unable to fire at all while `PLAYBOOK_LIVE_GATE=1` in production. See
+ * `docs/spx/SLAYER-MAP.md` §7.1.
+ *
+ * Default ON so the capability ships without a secret change; set `SPX_VWAP_SPY_PROXY=0` to revert
+ * to the typical-price fallback instantly, without a deploy, if it ever misbehaves.
+ */
+export function spxVwapSpyProxyEnabled(): boolean {
+  const raw = process.env.SPX_VWAP_SPY_PROXY?.trim().toLowerCase();
+  if (!raw) return true;
+  return raw === "1" || raw === "true";
+}
+
 export function engineIntelOverlayEnabled(): boolean {
   return process.env.ENGINE_INTEL_OVERLAY?.trim().toLowerCase() === "1";
 }

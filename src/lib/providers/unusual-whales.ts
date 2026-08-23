@@ -20,6 +20,7 @@ import {
   UW_KEYS,
 } from "@/lib/providers/uw-shared-cache";
 import { uwConfigured } from "./config";
+import { dteFromExpiry } from "@/lib/flow-dte";
 
 // REDIS CACHE ACTIVE: with Redis caching most responses are served from cache, so
 // live UW calls are rare. Pacing is owned by uw-rate-limiter.ts (UW_MAX_RPS default 2);
@@ -267,7 +268,15 @@ export function parseUwFlowAlert(row: Record<string, unknown>): MarketFlowAlert 
   const premium = Number(row.total_premium ?? row.premium ?? 0);
   // Leave dte null (route unknown) when expiry is absent — do NOT default dte to 99,
   // which previously forced route="stock" on every timestamp/expiry-less print.
-  const dte = expiry ? Math.ceil((new Date(expiry).getTime() - Date.now()) / 86400000) : null;
+  //
+  // ET-ANCHORED via the shared `dteFromExpiry` (HELIX-MAP.md §9.2). This was
+  // `ceil((new Date(expiry).getTime() - Date.now()) / 86400000)`, a UTC diff — and
+  // `new Date("YYYY-MM-DD")` is UTC midnight, so between 20:00 and 24:00 ET the UTC date is
+  // already tomorrow and a NEXT-SESSION expiry evaluated as 0DTE. That fed `route` (the
+  // TickerDrawer 0DTE badge), the +15 0DTE score bonus — which is PERSISTED and so outlives the
+  // window — and the near-dated persistence floor. Shared rather than re-derived because §9.2 is
+  // literally "two derivations of one number"; the read path in db.ts anchors the same way.
+  const dte = expiry ? dteFromExpiry(expiry) : null;
   const route =
     premium >= 1_000_000 ? "whale" : dte == null ? "" : dte <= 0 ? "0dte" : "stock";
 
@@ -1178,13 +1187,27 @@ export function normalizeOptionTradesWsPayload(raw: unknown): UwOptionTradePrint
         : [];
     const ivRaw = Number(r.iv ?? r.implied_volatility ?? r.volatility ?? NaN);
     out.push({
+      // The id is derived from the RAW `executedAt`, deliberately unchanged. It is the dedupe key
+      // (`ON CONFLICT (alert_id) DO NOTHING`), so re-deriving it from a normalised timestamp would
+      // mint new ids for prints already stored and re-insert a window of duplicates.
       id: String(r.id ?? `${underlying}-${executedAt}-${price}-${size}`),
       underlying,
       option_symbol: String(r.option_symbol ?? r.option_chain ?? ""),
       price,
       size,
       premium,
-      executed_at: executedAt.slice(0, 19),
+      /**
+       * VERBATIM — no `.slice(0, 19)`.
+       *
+       * The slice was there to trim sub-second precision, but it destroyed two things instead.
+       * On an ISO string it strips the trailing `Z`: `"2026-06-30T15:04:00Z"` becomes
+       * `"2026-06-30T15:04:00"`, which ES parses as **LOCAL time**, not UTC — silently correct only
+       * because production runs UTC, and silently wrong the moment it does not. On an epoch it
+       * kept the digits and left a value `new Date()` cannot parse at all, which is how 70% of the
+       * tape lost its print time (see `flow-timestamp.ts`). Sub-second precision parses fine in
+       * both forms, so there was nothing to trim.
+       */
+      executed_at: executedAt,
       tags,
       ...(Number.isFinite(ivRaw) && ivRaw > 0 ? { iv: ivRaw } : {}),
     });
@@ -1385,12 +1408,30 @@ export async function fetchUwSpotExposuresByStrike(ticker = "SPX", limit = 500) 
   return extractRows(data);
 }
 
-/** Per-ticker flow — GET /api/stock/{t}/flow-alerts */
-export async function fetchUwTickerFlowAlerts(ticker = "SPX", limit = 15) {
+/**
+ * Per-ticker flow, WITH the raw UW row alongside the parsed alert — GET /api/stock/{t}/flow-alerts
+ *
+ * `parseUwFlowAlert` deliberately narrows to the fields `MarketFlowAlert` declares, and the
+ * aggressor is not one of them: UW does not send `ask_side_pct` on flow-alerts (0/50 rows on both
+ * SPX and SPXW, live-verified 2026-08-23 — the same 0/2780 the persist path measured in July) but
+ * DOES send `total_ask_side_prem` + `total_bid_side_prem` on every row. Callers that need to know
+ * WHO was the aggressor must therefore see the raw row and derive it with
+ * `askPctFromTwoSidedPremium`, exactly as `extractChainFieldsFromRaw` already does on the persist
+ * path. Same shape as `fetchMarketFlowAlertPage` returns for the market-wide feed.
+ */
+export async function fetchUwTickerFlowAlertsWithRaw(
+  ticker = "SPX",
+  limit = 15
+): Promise<Array<{ raw: Record<string, unknown>; flow: MarketFlowAlert }>> {
   const data = await uwGetSafe<unknown>(`/api/stock/${safeTicker(ticker)}/flow-alerts`, {
     limit: Math.min(limit, 50),
   });
-  return extractRows(data).map((raw) => rowToFlow(raw));
+  return extractRows(data).map((raw) => ({ raw, flow: rowToFlow(raw) }));
+}
+
+/** Per-ticker flow — GET /api/stock/{t}/flow-alerts */
+export async function fetchUwTickerFlowAlerts(ticker = "SPX", limit = 15) {
+  return (await fetchUwTickerFlowAlertsWithRaw(ticker, limit)).map((r) => r.flow);
 }
 
 export type NetPremTick = { time: string; net: number };

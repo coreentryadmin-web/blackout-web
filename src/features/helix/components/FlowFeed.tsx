@@ -11,6 +11,11 @@ import {
 import { computeFlowStrikeStacks } from "@/lib/largo/flow-strike-stacks";
 import { HELIX_TOP_STRIKES_LIMIT } from "@/features/helix/lib/helix-strike-leaders";
 import { getSector } from "@/lib/sector-map";
+import {
+  readDirection,
+  thesisAgreement,
+  thesisAgreementConfirms,
+} from "@/features/helix/lib/helix-direction-read";
 import { HelixFlowTable } from "@/features/helix/components/HelixFlowTable";
 import { HelixMobileFlowTape } from "@/features/helix/components/HelixMobileFlowTape";
 import { HelixCommandBar } from "@/features/helix/components/HelixCommandBar";
@@ -21,7 +26,7 @@ import {
   type HelixTableDensity,
 } from "@/features/helix/lib/helix-table-columns";
 import { daysToExpiry, flowTimeMs } from "@/features/helix/lib/helix-flow-format";
-import { findMatchingFlow, mergeFlowAlerts } from "@/features/helix/lib/helix-flow-merge";
+import { findMatchingFlow, flowCompositeKey, mergeFlowAlerts } from "@/features/helix/lib/helix-flow-merge";
 import {
   appendFlowTapePage,
   mergeFlowTapeHead,
@@ -40,10 +45,18 @@ import {
   type HelixDarkpoolHighlight,
 } from "@/features/helix/lib/use-helix-deep-link";
 import {
+  HELIX_DEFAULT_MIN_PREMIUM,
   HELIX_FLOW_DEFAULT_SINCE_HOURS,
   HELIX_FLOW_PAGE_SIZE,
   HELIX_MEMBER_PANEL_PREMIUM_FLOOR,
+  HELIX_PREMIUM_PRESETS,
+  WHALE_PRINT_PREMIUM,
 } from "@/features/helix/lib/helix-flow-limits";
+import { hasCoincidentBlock } from "@/features/helix/lib/helix-coord-window";
+import {
+  watchlistFilterActive,
+  watchlistFilterStuck,
+} from "@/features/helix/lib/helix-watchlist-filter";
 import { FlowBrief } from "@/features/helix/components/FlowBrief";
 import { NetPremiumLeaderboard } from "@/features/helix/components/NetPremiumLeaderboard";
 import { StrikeStackDetector } from "@/features/helix/components/StrikeStackDetector";
@@ -71,8 +84,11 @@ const ContractDrilldownDrawer = dynamic(
   { ssr: false }
 );
 import { SplitFlowRadar } from "@/features/helix/components/SplitFlowRadar";
-import { VelocityRadar } from "@/features/helix/components/VelocityRadar";
-import { detectSplitFlow, detectVelocitySpikes } from "@/features/helix/lib/helix-signal-detection";
+import {
+  VELOCITY_RADAR_DISPLAY_LIMIT,
+  VelocityRadar,
+} from "@/features/helix/components/VelocityRadar";
+import { detectSplitFlow, detectVelocitySpikes, signalEligibility } from "@/features/helix/lib/helix-signal-detection";
 import { SectorFlowPanel, type SectorFlowEntry } from "@/features/helix/components/SectorFlowPanel";
 import { NightHawkFlowPanel, type NightHawkPlayWithFlow } from "@/features/helix/components/NightHawkFlowPanel";
 import { ExpiryConcentration } from "@/features/helix/components/ExpiryConcentration";
@@ -90,14 +106,12 @@ import { IosNativeSegment } from "@/components/ios/IosNativeSegment";
 import { IosSectionHeader } from "@/components/ios/IosSectionHeader";
 import { IosNativeChipRail } from "@/components/ios/IosNativeChipRail";
 
-const PREMIUM_PRESETS = [200_000, 500_000, 1_000_000, 20_000_000] as const;
 // Audit gap #16: the client floor MUST match the server ingest floor (flow-persist
 // MIN_PREMIUM, default UW_FLOW_MIN_PREMIUM = $200K). A $100K floor was dead UI — no
 // row below $200K is ever persisted, so requesting them returned nothing. Keep this
 // in sync with UW_FLOW_MIN_PREMIUM if that env is lowered server-side.
 // Single definition, shared with Largo's tape tools so the two surfaces cannot drift apart.
 const FLOOR_PREMIUM = HELIX_MEMBER_PANEL_PREMIUM_FLOOR;
-const WHALE_PREMIUM = 1_000_000;
 type TypeFilter = "ALL" | "CALL" | "PUT";
 const FLOW_POLL_MS   = 30_000;
 const REPLAY_TICK_MS = 450;
@@ -124,9 +138,6 @@ function flowFreshnessAtMs(a: {
 // Postgres ON-CONFLICT. SSE rows now carry alert_id; DB-served REST rows do not, so we
 // fall back to the seconds-precision composite for cross-path (REST↔SSE) matching. The
 // SSE path registers BOTH keys so a reconnect can't slip a duplicate past either one.
-function flowCompositeKey(a: { ticker: string; strike: number; option_type: string; alerted_at?: string | null }): string {
-  return `${a.ticker}|${a.strike}|${a.option_type}|${String(a.alerted_at ?? "").slice(0, 19)}`;
-}
 function flowAlertId(a: { alert_id?: string }): string | null {
   return a.alert_id ? `id:${a.alert_id}` : null;
 }
@@ -208,7 +219,7 @@ export function FlowFeed() {
   const [nextBefore, setNextBefore]       = useState<string | null>(null);
   const [live, setLive]                   = useState(false);
   // Filters
-  const [minPremium, setMinPremium]       = useState(200_000);
+  const [minPremium, setMinPremium]       = useState<number>(HELIX_DEFAULT_MIN_PREMIUM);
   const [typeFilter, setTypeFilter]       = useState<TypeFilter>("ALL");
   const [whalesOnly, setWhalesOnly]         = useState(false);
   const [dteFilter, setDteFilter]           = useState<HelixDteFilter>("all");
@@ -272,7 +283,17 @@ export function FlowFeed() {
   // Feature 2: dark pool prints — deferred like earnings (secondary panel).
   useEffect(() => {
     const load = () =>
-      fetchDarkPoolPrints({ min_premium: 500_000 })
+      // EXPLICIT LIMIT, not the route's default. `/api/market/dark-pool` defaults `limit` to 50 and
+      // hard-caps it at 100, and this population feeds the COORD signal below — the
+      // dark-pool-block-plus-options-sweep coincidence search. Passing no limit meant that search
+      // ran over HALF the prints the endpoint would return, by omission rather than decision, while
+      // `DarkPoolPanel` right beside it already asks for the full 100.
+      //
+      // The failure is one-directional and therefore invisible: a smaller pool can only produce
+      // FALSE NEGATIVES — a coordination that happened and was not found — and a member reading no
+      // COORD badge concludes there was none. 100 is not a tuned number; it is all the data the
+      // endpoint will give, which is the only defensible size for a coincidence search.
+      fetchDarkPoolPrints({ min_premium: 500_000, limit: 100 })
         .then((d) => setDarkPoolPrints(d.prints ?? []))
         .catch((e) => console.warn("[FlowFeed] dark-pool fetch:", e));
     deferNonCriticalWork(load);
@@ -300,10 +321,12 @@ export function FlowFeed() {
     (base: FlowAlert[], { includeType = true }: { includeType?: boolean } = {}) => {
       let rows = base.filter((a) => a.premium >= Math.max(FLOOR_PREMIUM, minPremium));
       if (tickerFilter) rows = rows.filter((a) => a.ticker === tickerFilter.toUpperCase());
-      if (watchlistOnly && watchlist.watchlistSet.size > 0) {
+      // Same predicate the chip counter reads, so the filter and the chrome cannot disagree
+      // about whether this filter is doing anything.
+      if (watchlistFilterActive(watchlistOnly, watchlist.watchlistSet.size)) {
         rows = rows.filter((a) => watchlist.watchlistSet.has(a.ticker));
       }
-      if (whalesOnly) rows = rows.filter((a) => a.premium >= WHALE_PREMIUM);
+      if (whalesOnly) rows = rows.filter((a) => a.premium >= WHALE_PRINT_PREMIUM);
       if (indicesOnly) {
         rows = rows.filter((a) =>
           (HELIX_INDEX_TICKERS as readonly string[]).includes(a.ticker)
@@ -347,6 +370,14 @@ export function FlowFeed() {
     return { callCount: call, putCount: put, allCount: call + put };
   }, [countSource]);
 
+  // Removing the LAST ticker — via the bar's ✕, or by un-starring from the tape or the drawer —
+  // used to leave `watchlistOnly` on with nothing to filter: a lit, counted chip that narrowed
+  // nothing, and `disabled` (because the list is empty) so it could not be switched off. `onClear`
+  // hand-applied this reset; the other two paths did not. Here it holds for all of them.
+  useEffect(() => {
+    if (watchlistFilterStuck(watchlistOnly, watchlist.watchlistSet.size)) setWatchlistOnly(false);
+  }, [watchlistOnly, watchlist.watchlistSet]);
+
   const tapeBuffer = replayMode ? replayAlerts : alerts;
 
   useHelixDeepLink({
@@ -379,6 +410,13 @@ export function FlowFeed() {
     () => detectSplitFlow(filteredTapeBuffer, Date.now()),
     [filteredTapeBuffer]
   );
+  // The denominator BOTH radars were computed over. Same buffer the detectors get, and the same
+  // eligibility rule they use — so the number the panels report cannot drift from what was
+  // actually scanned. HELIX-MAP.md §9.0.
+  const signalCoverage = useMemo(
+    () => signalEligibility(filteredTapeBuffer),
+    [filteredTapeBuffer]
+  );
   const splitFlowTickers = useMemo(
     () => new Set(splitFlowEntries.map((e) => e.ticker)),
     [splitFlowEntries]
@@ -399,10 +437,15 @@ export function FlowFeed() {
 
   // Feature 1: velocity spike detection — prints per 15min vs prior 15min window.
   // Same shared helix-signal-detection.ts as the split-flow detector above.
-  const { velocityEntries, velocitySpikeTickers } = useMemo(() => {
+  const { velocityEntries, velocityTotal, velocitySpikeTickers } = useMemo(() => {
     const spikes = detectVelocitySpikes(filteredTapeBuffer, Date.now());
     return {
-      velocityEntries: spikes.slice(0, 8),
+      velocityEntries: spikes.slice(0, VELOCITY_RADAR_DISPLAY_LIMIT),
+      // The FULL count, handed to the panel so its header can say "8 of 14" rather than assert
+      // that 8 is how many there were. `velocitySpikeTickers` below is deliberately built from the
+      // full list — the tape badges every spiking ticker — which is exactly why the radar must not
+      // claim a smaller number: one computation, two surfaces, and they were disagreeing.
+      velocityTotal: spikes.length,
       velocitySpikeTickers: new Set(spikes.map((e) => e.ticker)),
     };
   }, [filteredTapeBuffer]);
@@ -419,11 +462,7 @@ export function FlowFeed() {
       // skip rows with no trustworthy time — they can't be time-correlated to a block.
       const alertTime = flowFreshnessAtMs(alert);
       if (alertTime == null) continue;
-      const hasBlock = darkPoolPrints.some(
-        (dp) =>
-          dp.ticker === alert.ticker &&
-          Math.abs(new Date(dp.executed_at).getTime() - alertTime) <= WINDOW_MS
-      );
+      const hasBlock = hasCoincidentBlock(darkPoolPrints, alert.ticker, alertTime, WINDOW_MS);
       if (hasBlock) coordinated.add(alert.ticker);
     }
     return coordinated;
@@ -431,22 +470,24 @@ export function FlowFeed() {
 
   // Feature 11: sector rotation — aggregate flow premium by sector
   const sectorFlowEntries = useMemo<SectorFlowEntry[]>(() => {
-    const map = new Map<string, { callPremium: number; putPremium: number }>();
+    const map = new Map<string, { callPremium: number; putPremium: number; flows: FlowAlert[] }>();
 
     for (const alert of filteredTapeBuffer) {
       const sector = getSector(alert.ticker);
-      const cur = map.get(sector) ?? { callPremium: 0, putPremium: 0 };
+      const cur = map.get(sector) ?? { callPremium: 0, putPremium: 0, flows: [] };
       if (alert.option_type === "CALL") cur.callPremium += alert.premium;
       else if (alert.option_type === "PUT") cur.putPremium += alert.premium;
       // gap-#6: UNKNOWN/typeless prints count toward NEITHER side (never fabricate a put)
+      cur.flows.push(alert);
       map.set(sector, cur);
     }
 
     return Array.from(map.entries())
-      .map(([sector, { callPremium, putPremium }]) => {
+      .map(([sector, { callPremium, putPremium, flows }]) => {
         const total   = callPremium + putPremium;
-        const callPct = total > 0 ? Math.round((callPremium / total) * 100) : 50;
-        return { sector, callPremium, putPremium, total, callPct };
+        // `50` here was a fabricated even split; a sector with no premium has no share.
+        const callPct = total > 0 ? Math.round((callPremium / total) * 100) : null;
+        return { sector, callPremium, putPremium, total, callPct, direction: readDirection(flows) };
       })
       .filter((e) => e.total >= 100_000)
       .sort((a, b) => b.total - a.total)
@@ -459,26 +500,39 @@ export function FlowFeed() {
       return { nighthawkPlaysWithFlow: [] as NightHawkPlayWithFlow[], hawkTickers: new Set<string>() };
     }
 
-    const alertsByTicker = new Map<string, { callPremium: number; putPremium: number; topPrint: number; count: number }>();
+    const alertsByTicker = new Map<
+      string,
+      { callPremium: number; putPremium: number; topPrint: number; count: number; flows: FlowAlert[] }
+    >();
     for (const a of filteredTapeBuffer) {
-      const e = alertsByTicker.get(a.ticker) ?? { callPremium: 0, putPremium: 0, topPrint: 0, count: 0 };
+      const e = alertsByTicker.get(a.ticker) ?? { callPremium: 0, putPremium: 0, topPrint: 0, count: 0, flows: [] };
       if (a.option_type === "CALL") e.callPremium += a.premium;
       else if (a.option_type === "PUT") e.putPremium += a.premium;
       if (a.premium > e.topPrint) e.topPrint = a.premium;
       e.count += 1;
+      e.flows.push(a);
       alertsByTicker.set(a.ticker, e);
     }
 
     const playsWithFlow: NightHawkPlayWithFlow[] = nighthawkEdition.plays.map((play) => {
-      const agg = alertsByTicker.get(play.ticker) ?? { callPremium: 0, putPremium: 0, topPrint: 0, count: 0 };
-      const { callPremium, putPremium, topPrint, count: printCount } = agg;
+      const agg = alertsByTicker.get(play.ticker) ?? { callPremium: 0, putPremium: 0, topPrint: 0, count: 0, flows: [] };
+      const { callPremium, putPremium, topPrint, count: printCount, flows } = agg;
       const totalPremium = callPremium + putPremium;
 
       const isLong = play.direction?.toLowerCase().includes("long") ||
                      play.direction?.toLowerCase().includes("bull");
-      const flowCallPct    = totalPremium > 0 ? callPremium / totalPremium : 0.5;
-      const flowAgreement  = isLong ? flowCallPct >= 0.55 : flowCallPct <= 0.45;
+      // Agreement is a claim about DIRECTION, so it reads the aggression-aware rule rather than
+      // call-vs-put share: a wall of SOLD calls is bearish flow, and under the old rule it
+      // "confirmed" a long thesis. Measured live 2026-08-23 over the 59 tickers at the $2M
+      // strong-conviction gate: 32 (54%) disagreed, CG among them at 100% call premium, 100%
+      // readable, verdict BEARISH.
+      const flowRead      = readDirection(flows);
+      const flowThesis    = thesisAgreement(flowRead, Boolean(isLong));
+      const flowAgreement = thesisAgreementConfirms(flowThesis);
 
+      // "strong" still requires genuine agreement — and now that is evidenced agreement, so an
+      // unreadable tape can no longer produce it. That is the intended effect, not a side effect:
+      // conviction asserted from flow nobody could read is the thing being removed.
       const conviction = totalPremium >= 2_000_000 && flowAgreement ? "strong"
         : totalPremium >= 500_000 ? "moderate"
         : totalPremium > 0       ? "weak"
@@ -486,7 +540,17 @@ export function FlowFeed() {
 
       return {
         ...play,
-        flowData: { callPremium, putPremium, totalPremium, topPrint, printCount, flowAgreement, conviction },
+        flowData: {
+          callPremium,
+          putPremium,
+          totalPremium,
+          topPrint,
+          printCount,
+          flowAgreement,
+          flowThesis,
+          flowRead,
+          conviction,
+        },
       } as NightHawkPlayWithFlow;
     });
 
@@ -658,7 +722,7 @@ export function FlowFeed() {
         });
         setLive(true);
         // Bug 14: play beep for whale prints when audio is enabled
-        if (audioEnabledRef.current && alert.premium >= 1_000_000) playWhaleBeep();
+        if (audioEnabledRef.current && alert.premium >= WHALE_PRINT_PREMIUM) playWhaleBeep();
       },
       { onOpen: () => { setLive(true); stop(); }, onClose: () => { setLive(false); go(); refreshHead(); } }
     );
@@ -857,7 +921,12 @@ export function FlowFeed() {
   const moreAnalyticsPanels = (
     <>
       {marketWidePanels && (
-        <VelocityRadar entries={velocityEntries} onTickerClick={setSelectedTicker} />
+        <VelocityRadar
+          entries={velocityEntries}
+          totalSpikes={velocityTotal}
+          onTickerClick={setSelectedTicker}
+          eligibility={signalCoverage}
+        />
       )}
       <NightHawkFlowPanel
         plays={nighthawkPlaysVisible}
@@ -865,7 +934,7 @@ export function FlowFeed() {
         scopedTicker={scopedTicker || undefined}
         onTickerClick={setSelectedTicker}
       />
-      <SplitFlowRadar entries={splitFlowEntries} onTickerClick={setSelectedTicker} />
+      <SplitFlowRadar entries={splitFlowEntries} onTickerClick={setSelectedTicker} eligibility={signalCoverage} />
       <RouteBreakdown alerts={displayAlerts} loading={loading} />
       <SignalOutcomeTracker />
       {marketWidePanels && <SectorFlowPanel entries={sectorFlowEntries} />}
@@ -963,7 +1032,7 @@ export function FlowFeed() {
           {iosView === "tape" ? (
           <div className="helix-native-toolbar-row">
             <div className="flow-seg-group">
-              {PREMIUM_PRESETS.map((v) => (
+              {HELIX_PREMIUM_PRESETS.map((v) => (
                 <button
                   key={v}
                   type="button"
