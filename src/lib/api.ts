@@ -211,9 +211,21 @@ export interface FlowAlert {
   implied_volatility?: number;
   otm_pct?: number;
   /** GEX wall cross-reference computed server-side. One of: 'at_gamma_flip' | 'at_call_wall' |
-   *  'at_put_wall' | 'near_call_wall' | 'near_put_wall'. Absent when GEX data is cold or the
-   *  strike is not near any key level. Never fabricated — null/absent = no signal. */
+   *  'at_put_wall' | 'near_call_wall' | 'near_put_wall'. Absent when the strike is not near any
+   *  key level — OR when the print was never evaluated at all. Read `gex_evaluated` to tell those
+   *  apart; never fabricated. */
   gex_proximity?: string;
+  /** Whether this print's strike was actually COMPARED against real GEX levels.
+   *
+   *  `false` means no comparison happened — the ticker fell past the 100-name enrichment cap on a
+   *  wide page, or its levels lookup timed out (300ms) / came back empty. It does NOT mean the
+   *  strike is far from a level.
+   *
+   *  Load-bearing because absence is the common case, not the edge: measured live 2026-08-22, a
+   *  5000-row tape spanned 273 tickers (173 past the cap) and carried `gex_proximity` on 2.2% of
+   *  rows. Without this flag "no wall badge" reads as "not near a wall" for prints nobody looked
+   *  at. See docs/audit/HELIX-MAP.md §9.3. */
+  gex_evaluated?: boolean;
 }
 
 export interface DarkPoolRow {

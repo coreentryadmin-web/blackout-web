@@ -554,17 +554,25 @@ trade 20:00–24:00 ET, so the window is nearly empty of live prints. Worth fixi
 because it is exactly the class the C1 ratchet exists to catch, but it is not an incident. The REST
 read path is unaffected (its `dte`/`route` are ET-anchored in SQL).
 
-**9.3 — `gex_proximity` absence is ambiguous — CONFIRMED, and the cap really does bind.** The field
-is omitted in three different situations that the payload cannot distinguish: the strike genuinely
-is not near a level; the GEX lookup timed out (300ms) or the cache was cold; or the ticker fell
-beyond the 100-name enrichment cap on a wide page. On the tape all three render as *no badge*.
-`MEASURED 2026-08-22`: the tape spans **273 distinct tickers**, so **173 of them are past the cap and
-were never evaluated at all**; `gex_proximity` is present on just **2.2%** of rows (3.9% Group A,
-1.5% Group B). The dominant reason for absence is therefore *not* "not near a level" — it is "never
-checked" — and that is the reading the payload cannot express. This is the `_COMMON.md` #7 shape — absence
-published as measurement — and it reaches Largo too, since enriched rows ride into
-`get_ecosystem_context`'s `flow_full_state`. A `gex_evaluated: true|false` companion would separate
-"checked, not near" from "never checked". Highest-value item on this list.
+**9.3 — `gex_proximity` absence was ambiguous — FIXED.** The field was omitted in three situations
+the payload could not distinguish: the strike genuinely is not near a level; the GEX lookup timed
+out (300ms) or the cache was cold; or the ticker fell beyond the 100-name enrichment cap on a wide
+page. On the tape all three render as *no badge*, and they reached Largo identically through
+`get_ecosystem_context`'s `flow_full_state`.
+
+`MEASURED 2026-08-22`: the tape spans **273 distinct tickers**, so **173 were past the cap and never
+evaluated at all**; `gex_proximity` was present on just **2.2%** of rows (3.9% Group A, 1.5% Group
+B). The dominant reason for absence is therefore *not* "not near a level" — it is **"never
+checked"**, which is the reading the payload could not express.
+
+**FIXED:** every enriched row now carries **`gex_evaluated: boolean`**, set explicitly on both
+branches — `true` whenever real levels were in hand and the comparison was made (including when the
+answer is "not near anything", which is a known state), `false` when the print was never looked up.
+`tool-defs.ts` teaches Largo to read it before drawing anything from an absent label. The cap
+decision moved into the pure `tickersToEvaluate()` in `flow-gex-proximity.ts` — `flow-gex-enrichment.ts`
+reaches `server-only`, so nothing in it could be unit-tested, which is exactly how a cap this
+consequential went unmeasured. 9 tests cover the split, the cap boundary, blank tickers, and that
+"checked, not near" is never encoded as absence.
 
 **9.4 — `implied_volatility` units — RESOLVED, and `fmtIv` misrenders its own tail.** `fmtIv`
 branches on `iv < 3` to decide fraction-vs-percent **per row**, which is only safe if the feed is
