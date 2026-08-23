@@ -81,7 +81,11 @@ function extractRefs(text) {
     let def = null;
     let mm;
     if ((mm = /^\s*(?:\?\.trim\(\))?\s*\?\?\s*([^;,)\n]+)/.exec(tail))) def = mm[1].trim();
-    else if ((mm = /^[^\n]*?===\s*"([^"]+)"/.exec(tail))) def = "false"; // `env === "1"` → default false
+    // `env === "1"` → the default is `false` by construction, so this branch needs the MATCH but
+    // not the capture. `.test()` rather than an assignment CodeQL correctly flagged as dead
+    // (code-scanning/757): assigning `mm` here and then never reading it invites the next reader
+    // to assume the captured value is what sets `def`, which it is not.
+    else if (/^[^\n]*?===\s*"[^"]+"/.test(tail)) def = "false";
     else if ((mm = /^\s*,\s*([^)\n]+)\)/.exec(tail))) def = mm[1].trim();
     // THE SHAPE THIS REPO ACTUALLY USES FOR EVERY CACHE TTL, and the one an earlier version of
     // this scan missed — which mattered, because those three keys are exactly the overrides that
