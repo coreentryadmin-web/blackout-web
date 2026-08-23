@@ -3,7 +3,6 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { clsx } from "clsx";
 import { fmtPremium } from "@/lib/api";
-import { SECTOR_ORDER } from "@/lib/sector-map";
 import { Panel } from "@/components/ui";
 import {
   directionTone,
@@ -39,15 +38,19 @@ export function SectorFlowPanel({
     );
   }
 
-  // Sort by SECTOR_ORDER then by total premium for unlisted sectors
-  const sorted = [...entries].sort((a, b) => {
-    const ai = SECTOR_ORDER.indexOf(a.sector);
-    const bi = SECTOR_ORDER.indexOf(b.sector);
-    if (ai !== -1 && bi !== -1) return b.total - a.total;
-    if (ai !== -1) return -1;
-    if (bi !== -1) return 1;
-    return b.total - a.total;
-  }).sort((a, b) => b.total - a.total);
+  // Ordered by total premium, largest first — which is also what `maxTotal` below is read off, so
+  // the widest bar is always the first row.
+  //
+  // This used to run a SECTOR_ORDER-aware comparator FIRST and then `.sort((a, b) => b.total -
+  // a.total)` over the result. The second sort replaced the ordering wholesale, so the curated
+  // sector grouping never reached the screen — proven by running both against the same input and
+  // getting byte-identical output. The comparator, and this file's only use of `SECTOR_ORDER`,
+  // were dead. Removed rather than left, because someone changing the sector ordering would edit
+  // those lines and watch nothing happen.
+  //
+  // Whether the panel SHOULD group by SECTOR_ORDER instead of ranking by premium is a product
+  // question, not a cleanup: the behaviour here is exactly what shipped.
+  const sorted = [...entries].sort((a, b) => b.total - a.total);
 
   const maxTotal = sorted[0]?.total ?? 1;
 

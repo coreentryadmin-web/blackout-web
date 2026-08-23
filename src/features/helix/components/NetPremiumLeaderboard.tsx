@@ -7,6 +7,7 @@ import type { FlowAlert } from "@/lib/api";
 import { fmtPremium } from "@/lib/api";
 import { Panel, Skeleton } from "@/components/ui";
 import { HELIX_NET_PREMIUM_LEADERS_LIMIT } from "@/features/helix/lib/helix-strike-leaders";
+import { leaderBarWidths } from "@/features/helix/lib/helix-bar-widths";
 import {
   directionTone,
   readDirection,
@@ -91,9 +92,7 @@ export function NetPremiumLeaderboard({ alerts, loading = false }: { alerts: Flo
             // is exactly the case the old green triangle hid.
             const tone = directionTone(row.direction);
             const netPositive = row.net >= 0;
-            const barW = Math.round((row.total / maxTotal) * 100);
-            const callBarW = Math.round((row.calls / row.total) * barW);
-            const putBarW  = barW - callBarW;
+            const { barW, callBarW, putBarW } = leaderBarWidths(row, maxTotal);
 
             return (
               <motion.div
