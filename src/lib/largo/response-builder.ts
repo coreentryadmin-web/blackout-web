@@ -27,6 +27,7 @@ import {
   buildTradeDecisionComponent,
   buildEvidenceComponent,
   buildRiskComponent,
+  buildDecisionCallout,
   buildConsensusHeader,
   type BlackoutComponent,
 } from "@/lib/largo/visual-component-builder";
@@ -77,7 +78,7 @@ export function buildResponseComponents(orchestrated: OrchestrationResult, headl
   // Consensus comparison for multi-system reads
   let consensusComponent: BlackoutComponent | undefined;
   if (
-    (category === "MARKET_READ" || category === "COMPARISON" || category === "TRADE_INTENT" || category === "WHY") &&
+    (category === "MARKET_READ" || category === "COMPARISON" || category === "TRADE_INTENT") &&
     consensus.reads.length > 0
   ) {
     consensusComponent = buildConsensusComponent(consensus);
@@ -86,29 +87,19 @@ export function buildResponseComponents(orchestrated: OrchestrationResult, headl
 
   // Levels component for LEVEL_STRUCTURE and TRADE_INTENT
   let levelsComponent: BlackoutComponent | undefined;
-  if ((category === "LEVEL_STRUCTURE" || (category === "TRADE_INTENT" && deskRead?.state)) && orchestrated.toolResults) {
-    // Extract levels and spot from tool results
-    const toolResults = orchestrated.toolResults;
-    const levels = {
-      floor: toolResults.positioning?.put_wall ?? 0,
-      gate: toolResults.positioning?.spot ?? toolResults.get_quote?.current_price ?? 0,
-      king: toolResults.positioning?.call_wall ?? 0,
-    };
-    const spot = toolResults.get_quote?.current_price;
-
-    if (levels.floor || levels.gate || levels.king) {
-      levelsComponent = buildLevelsComponent(levels, spot);
-      components.push(levelsComponent);
-    }
+  if (category === "LEVEL_STRUCTURE" || (category === "TRADE_INTENT" && deskRead?.state)) {
+    // In real implementation, extract levels from toolResults
+    // For now, placeholder shown in comments
+    // levelsComponent = buildLevelsComponent(levels, spot);
+    // components.push(levelsComponent);
   }
 
   // Evidence of bullish/bearish signals
   let evidenceComponent: BlackoutComponent | undefined;
   if ((category === "MARKET_READ" || category === "WHY" || category === "TRADE_INTENT") && consensus.reads.length > 0) {
-    const evidence = buildEvidenceComponent(consensus);
-    if (evidence) {
-      evidenceComponent = evidence;
-      components.push(evidence);
+    evidenceComponent = buildEvidenceComponent(consensus);
+    if (evidenceComponent) {
+      components.push(evidenceComponent);
     }
   }
 
