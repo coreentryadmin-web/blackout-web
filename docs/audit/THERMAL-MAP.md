@@ -400,7 +400,7 @@ follow-up. See §9.4.
 Recorded here, **not fixed** — Phase 0 gates fix PRs. Each gets its own branch, test and
 `FINDINGS.md` entry when it is worked.
 
-### 9.1 [P1, public surface] The public gamma snapshot presents a prior-session close as a live quote
+### 9.1 [P1, public surface] The public gamma snapshot presents a prior-session close as a live quote — **FIXED**
 
 `/tools/gamma-snapshot` renders `{ticker} Spot` beside `Updated {fmtAge(asof)}`, and the page copy
 says it *"refreshes live every 5 seconds"*. `asof` is the **matrix build time**, so on a closed
@@ -419,6 +419,15 @@ last session's close, with no session label anywhere on the page.
 stale close" class the lane brief lists, on the one surface where a member context never gates it.
 `get_thermal_compare` already solved exactly this for its own payload (`market_session`, `et_time`,
 `session_date`) after measuring the same failure; the public page has no equivalent.
+
+**FIXED — Phase 1, second fix.** `PublicGexSnapshot` now carries `market_session`, `session_date`
+and `as_of_et` from one frozen instant, and `publicFreshnessCopy` splits the line into the two
+claims it was conflating: the levels age (still shown, still true) and a price caveat rendered
+under the price itself. `priceNote` is null only when the session is OPEN; an absent session — a
+Redis entry from the previous deploy — reads as UNKNOWN and still carries a caveat, never as open.
+Reused `marketPhaseFromEt` rather than writing a third market-phase function. See the staged
+finding `docs/audit/findings-staging/2026-08-23-thermal-public-snapshot-freshness.md`.
+**Still to do: observe the caveat on production after deploy.**
 
 ### 9.2 [P1, Largo boundary] `walls_by_horizon` is never set on a freshly-built matrix — **FIXED**
 

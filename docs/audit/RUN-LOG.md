@@ -9,6 +9,59 @@ already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
 
+## 2026-08-23 — [Helix] Post-deploy live validation of §9.8 + §9.4 — both PASS, and the harness needed recalibrating
+
+**Severity.** — (no product defect found; one instrument defect, fixed in the same PR as this log)
+
+**Why it ran.** Two HELIX fixes merged and deployed — §9.8 (Route Breakdown bucketed 98.8% of the
+tape as `OTHER`) and §9.4 (the IV column guessed its units per row). Neither had been observed on
+production. Deploy `32611168595` completed **success** 02:20:08Z (ECS web roll 02:17:02, Cloudflare
+purge 02:17:02, static assets 02:17:22, worker roll 02:20:08); everything below was measured after
+that, not before.
+
+**§9.8 — PASS, both viewports.** Route Breakdown, live production:
+
+| bucket | before | after |
+|---|---|---|
+| OTHER | 100% | **0% — gone** |
+| UNREPORTED | — | 95% |
+| REPEAT | — | 4% |
+| FLOOR / SWEEP | 0% / 0% | 0% / 0% |
+
+Confirmed through two instruments with disjoint failure modes — the rendered DOM (UI harness,
+desktop + mobile 430) and the API-side tape inventory. They agree.
+
+**§9.4 — PASS.** Rendered DOM read against the raw API in one pass: raw `min 0.07 / median 0.17 /
+max 106.2`; rendered `median 16% / max 6921%`, with four cells at or above 1000%
+(4013 / 4016 / 4312 / 6921%). `69.21 × 100 = 6921` — and a rendered value above 1000% is
+unreachable under the old `iv < 3 ? iv*100 : iv` branch, so this cannot be a stale bundle. Pre-fix
+that same row read **"69%"**.
+
+**The instrument defect this run caught.** The UI harness's first post-deploy run reported **FAIL —
+`UNREPORTED at 95%` — the §9.8 signature**. Wrong label: §9.8 is the `OTHER`-vocabulary bug and it
+is fixed. Two steps to the real answer, the first of them a wrong guess:
+
+1. Assumed the panel's 95% vs the API's 70% was the $200k member floor. **Measured: the floor moves
+   it 70% → 79.4%, not 95%.** Hypothesis dead.
+2. The panel's `pct` is a share of **PREMIUM**, not of prints, and the routeless SPX/SPY feed
+   carries **92.1%** of tape premium while being ~79% of rows. 95% premium-weighted and 79%
+   count-weighted are both correct.
+
+The dominance threshold had been written pre-fix, when one bucket at ~100% could only mean the
+vocabulary bug, and went stale the moment that bug was fixed. Recalibrated so `OTHER` dominating
+still FAILS as a regression, `UNREPORTED` dominating **with other buckets present** PASSES as
+honest, and `UNREPORTED` **alone** still FAILS — that last branch preserves the "rule-carrying feed
+has died" incident a blanket exemption would have discarded. Re-run after the change: **PASS**.
+
+**Rule worth keeping:** a check calibrated against a defect needs re-checking when that defect is
+fixed, or its first correct run reads as a failure and the fix looks broken.
+
+**Also measured, not a defect:** a production deploy here is **~1 hour end-to-end** — 24 min runner
+queue + 5 min build + 26 min ECS web roll + worker roll. Every "wait for the deploy" instruction in
+this repo, including ones written earlier the same evening, was calibrated far too optimistically.
+
+**Still owed:** §9.3 (#2670) and §9.5 (#2673) are merged-pending / open and have not deployed yet.
+
 ## 2026-08-20 — [UI] Post-deploy live validation of #2368 (ET clocks) — PASS; #2372 SKIPPED off-hours
 
 **Severity.** — (no product defect found)
