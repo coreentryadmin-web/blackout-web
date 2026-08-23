@@ -91,7 +91,8 @@ measured one, so fabrication corrupts cross-product ranking, not just this one s
 - A window claimed in the copy that does not match the window actually aggregated (this class has
   shipped on this exact lane before: "7 days" quoted over 54 minutes of real data).
 - A truncated list served under a universe-wide name.
-- A tool payload the model never receives — `anthropicToolLoop` TAIL-truncates over-cap results.
+- A tool payload the model never receives — `anthropicToolLoop` cuts an over-cap result down to its
+  FIRST 16,000 characters and discards the rest, so key order decides what survives.
   Run `scripts/audit/largo-truncation-probe.mjs` against all four of your Largo tools and read the
   CONTROL line: if the control is not TRUNCATED, every COMPLETE that run reports is UNVERIFIED.
 

@@ -624,7 +624,7 @@ async function prepareLargoTurn(
   // The model had the tool and no way to know it was the past-capable one, because a description
   // says what a tool returns, never whether it can reach a past window.
   //
-  // Hints only. All 116 tools stay in the request, so this can never make an answer impossible
+  // Hints only. All 129 tools stay in the request, so this can never make an answer impossible
   // the way the deleted intent allowlist could.
   const capabilityBlock = formatCapabilityBlock(question, { historical: timeframe.historical });
 
@@ -647,7 +647,7 @@ async function prepareLargoTurn(
 
   // SUGGESTED PLAN — composed from what code already resolved (entities, timeframe, ranked
   // capabilities, the registry's DECLARED join edges), handed over as a starting point. It routes
-  // nothing and hides nothing; the model may ignore it, and the full 116-tool surface is still in
+  // nothing and hides nothing; the model may ignore it, and the full 129-tool surface is still in
   // the request. Its real value is telling the model which results can be CORRELATED: a join edge
   // here means the two capabilities share an entity key, which registry.test.ts proves, so a
   // cross-product claim built on one is sound rather than a string coincidence.
@@ -805,7 +805,8 @@ async function prepareLargoTurn(
   //
   // This used to be `LARGO_TOOL_DEFS.filter(t => getToolsForIntent(question).has(t.name))`, a
   // hand-written regex allowlist deciding which tools Claude was even SHOWN. Measured over 20
-  // realistic member questions it exposed a mean of 21.9 / 116 tools (19%), and the failure was
+  // realistic member questions against the then-116-tool surface, it exposed a mean of 21.9 (19%)
+  // — the denominator is the count as it stood at that measurement, not today's. The failure was
   // silent: "what's the biggest risk in my open positions" reached 4 tools and could not call
   // get_open_plays; "how many trades did we win last month" could not reach get_trade_history or
   // get_zerodte_record. Largo did not decline those — it answered from the live feed alone, which

@@ -4,8 +4,12 @@
  * WHY THIS EXISTS. Meridian is the desk's event brain — macro releases, earnings prints, OpEx and
  * FDA decisions, each with a detail payload carrying dealer structure, print history anchored to
  * BMO/AMC timing, pin accuracy, prior-release reactions. **None of it was reachable from Largo.**
- * Measured against the shipped tool table: 0 of 127 tool descriptions mention Meridian, and
- * `runLargoTool` has no Meridian case at all.
+ * Measured against the shipped tool table AT THE TIME: 0 of the then-127 tool descriptions
+ * mentioned Meridian, and `runLargoTool` had no Meridian case at all. **That gap is closed** — the
+ * work described below is what closed it — and this paragraph is kept as the WHY, in the past
+ * tense so it cannot be read as a live measurement. Today 3 of 129 descriptions name Meridian
+ * (`get_meridian_timeline`, `get_meridian_event`, `get_cross_product_read`) and `runLargoTool`
+ * dispatches the first two.
  *
  * What existed instead was a PUSH. `meridianTimelineForLargo` is injected into the prompt by
  * `largo-terminal.ts` — but only when `questionWantsMeridianPrefetch()` fires, and that gate is a

@@ -37,15 +37,27 @@ Measured by importing the real modules (`LARGO_TOOL_DEFS`, `LARGO_CAPABILITIES`)
 - **129 capability entries** in `capability-registry.ts`.
 - **1:1** — no tool without a capability, no capability without a tool. `registry.test.ts` holds this.
 
-Every count written elsewhere in the tree is stale and should be read as historical:
+Every count written elsewhere in the tree WAS stale (L-9). All corrected and now pinned by
+`src/lib/largo/tool-count-claims.test.ts`, which re-derives the count from `LARGO_TOOL_DEFS` and
+fails naming any sentence that disagrees — so this table records history, not an open gap:
 
-| Source | Says | Actual |
-|---|---|---|
-| `docs/agents/briefs/largo.md` | 127 tools | 129 |
-| `tool-defs.ts` prompt-cache comment | 116 tools | 129 |
-| `capability-registry.ts` header | 120 tools | 129 |
-| `tool-guard.ts` entitlement docstring | "49 of 116 catalogued" | 129 of 129 catalogued |
-| `largo-truncation-probe.mjs` header | "all 126" | 129 |
+| Source | Said | Actual | |
+|---|---|---|---|
+| `docs/agents/briefs/largo.md` (×5) | 127 tools | 129 | fixed |
+| `tool-defs.ts` prompt-cache comment | 116 tools | 129 | fixed |
+| `capability-registry.ts` header + ranking note | 120 / 116 tools | 129 | fixed |
+| `tool-guard.ts` entitlement docstring | "49 of 116 catalogued" | 129 of 129 catalogued | fixed — and the fail-open policy it argued now says outright that it does not rest on the count |
+| `largo-truncation-probe.mjs` header | "all 126" | 129 | fixed |
+| `largo-terminal.ts` (×2) | 116 tools | 129 | fixed |
+| `tool-guard.test.ts` (×2) | 120 capabilities | 129 | fixed |
+
+Two were deliberately NOT renumbered, because a count that is the **denominator of a past
+measurement** is not a claim about today: `largo-terminal.ts`'s *"a mean of 21.9 / 116 tools (19%)"*
+(dated instead — renumbering would have falsified a real result) and
+`meridian-timeline-for-largo.ts`'s *"0 of 127 … mention Meridian"* (re-measured at **3 of 129**, and
+`runLargoTool` now dispatches two Meridian cases, so it was rewritten to the past tense). And
+`tool-guard.test.ts`'s *"the other 127"* is `129 − 2`, correct arithmetic that a blind replace would
+have broken.
 
 Distribution:
 
@@ -164,14 +176,21 @@ const capped = raw.length > MAX_TOOL_RESULT_CHARS
   : raw;
 ```
 
-**The transport KEEPS the first 16 000 characters and discards everything after them.** Six places
-in the tree describe this as a "TAIL slice" — `CLAUDE.md`, `docs/agents/briefs/largo.md`,
-`largo-truncation-probe.mjs`, `fit-tool-result.ts`, `nighthawk-edition-for-model.ts` and
-`run-tool.ts:1078`. They mean *"the tail is cut off"*, and every one of them then reasons correctly
-from that (`fit-tool-result.ts` puts aggregates FIRST precisely so the cut eats the row sample). But
-read cold, "tail slice" states the opposite of what the code does, and a payload designed on the
-wrong reading would put its aggregates last — which is exactly the #2433 defect. **State it as
-"keeps the head, drops the tail" and the ambiguity disappears.**
+**The transport KEEPS the first 16 000 characters and discards everything after them.** ~~Six~~
+**seven** places in the tree described this as a "TAIL slice" — `CLAUDE.md`,
+`docs/agents/briefs/largo.md`, `docs/agents/briefs/helix.md`, `docs/agents/briefs/spx-slayer.md`,
+`largo-truncation-probe.mjs`, `fit-tool-result.ts` and `nighthawk-edition-for-model.ts`. (Two peer-lane
+charters — `helix.md`, `spx-slayer.md` — were missed by this section's first pass, and
+`run-tool.ts:1078` was wrongly counted here: it says "tail-TRUNCATES", which can only mean the tail
+is removed. Six minus one plus two = seven.) They
+meant *"the tail is cut off"*, and every one of them then reasoned correctly from that
+(`fit-tool-result.ts` puts aggregates FIRST precisely so the cut eats the row sample). But read
+cold, "tail slice" states the opposite of what the code does, and a payload designed on the wrong
+reading would put its aggregates last — which is exactly the #2433 defect.
+
+**RESOLVED.** All seven now state what SURVIVES, and `tool-count-claims.test.ts` bans the phrase's
+return across the files that describe the cap — with `tool-result-cap.ts`, which quotes it in order
+to correct it, serving as the scanner's control.
 
 The measured evidence agrees with the code, not the phrasing: `get_zerodte_record` delivered 1.5%
 of itself *"with every aggregate cut off"* — aggregates were serialized third, i.e. late, i.e. in
@@ -601,8 +620,8 @@ would be worth, not by how easy it is.
 | L-7 | `tools_used` conflates seeded markers, prefetch markers and real model dispatches. BIE calibration cohorts bucket on this array. | `largo-terminal.ts:483` + prefetch pushes | observability / data integrity |
 | L-11 | `LargoDeskMiniPanel` is mounted by nothing, and its premium-gated route `/api/market/largo/mini-panel` is live with no caller. #2358 added and mounted it; #2387 ("drop the two side panels") removed the mount and left both behind. The lane charter still described the panels as a current member surface — corrected. **Delete-vs-remount is a product call, not this lane's**, so it is flagged rather than actioned. | `LargoDeskMiniPanel.tsx`, `api/market/largo/mini-panel/route.ts` | dead surface / stale doc |
 | L-8 | The truncation probe's control is expected COMPLETE post-#2628, so every run reports UNVERIFIED until a new control is chosen from measured sizes. **Unblocked by L-1**, but needs a live turn to produce the measurement — waiting on the upstream outage to clear. | `largo-truncation-probe.mjs:74` | tooling (unblocked, awaiting live data) |
-| L-9 | Five stale tool counts across the tree (116/120/126/127 vs 129), including in the charter and in the entitlement docstring. | see §1 | documentation |
-| L-10 | "TAIL slice" in six places describes a HEAD-keeping cut. Every current reader reasons correctly from it; a new one would not. | see §2.5 | documentation |
+| L-9 | ~~Five stale tool counts across the tree (116/120/126/127 vs 129), including in the charter and in the entitlement docstring.~~ **FIXED** — 14 live claims corrected and pinned by `tool-count-claims.test.ts`; two historical measurements dated rather than renumbered. | see §1 | documentation |
+| L-10 | ~~"TAIL slice" in six places describes a HEAD-keeping cut. Every current reader reasons correctly from it; a new one would not.~~ **FIXED** — seven sites (not six) rewritten to say what survives; a scanner test with a control bans the phrase's return. | see §2.5 | documentation |
 
 **Suggested order.** L-1 first — it is the instrument the others are measured with, and it unblocks
 L-8, which unblocks probing the remaining 116 tools. **L-3 is done** — the coordinator released it

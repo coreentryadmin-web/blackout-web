@@ -6,17 +6,22 @@
  * `SpendTracker`. Reading one number therefore cost a caller that entire graph. `tool-guard.ts` —
  * the one place that measures every tool result's size and so the only place that can DETECT a
  * result heading for this cap — is deliberately kept free of that graph (its own comment: "injected
- * so this module stays free of the 116-tool dependency graph"), so it could not see the number it
+ * so this module stays free of the 129-tool dependency graph"), so it could not see the number it
  * needed. Splitting the constant out is what lets detection live where the measurement already is.
  *
- * WHAT THE CAP ACTUALLY DOES, stated here because six places in this repo describe it backwards.
- * `anthropicToolLoop` serializes each tool result and, if it is over this many characters, sends
- * `raw.slice(0, MAX_TOOL_RESULT_CHARS) + "…[truncated]"`. It **KEEPS THE HEAD AND DISCARDS THE
- * TAIL**. The phrase "tail slice" used elsewhere means "the tail is cut off", and every current
- * reader reasons correctly from it — `fit-tool-result.ts` puts aggregates FIRST precisely so the cut
- * eats the row sample — but read cold it states the opposite, and a payload designed on the wrong
- * reading puts its aggregates last. That is exactly how `get_zerodte_record` came to deliver 1.5% of
- * itself with every aggregate gone (#2433).
+ * WHAT THE CAP ACTUALLY DOES, stated here because seven places in this repo used to describe it
+ * ambiguously. `anthropicToolLoop` serializes each tool result and, if it is over this many
+ * characters, sends `raw.slice(0, MAX_TOOL_RESULT_CHARS) + "…[truncated]"`. It **KEEPS THE HEAD AND
+ * DISCARDS THE TAIL**, so KEY ORDER DECIDES WHAT SURVIVES.
+ *
+ * All seven called it a "TAIL slice", meaning "the tail is cut off", and every one of them then
+ * reasoned correctly from it — `fit-tool-result.ts` puts aggregates FIRST precisely so the cut eats
+ * the row sample. But that phrase reads both ways, and the two readings are exact opposites: a
+ * payload designed on the wrong one puts its aggregates LAST. That is exactly how
+ * `get_zerodte_record` came to deliver 1.5% of itself with every aggregate gone (#2433). All seven
+ * were rewritten to say what SURVIVES rather than what is cut. The lowercase "tail-truncates" in
+ * `product-reads.ts`, `product-reads.test.ts` and `run-tool.ts` was deliberately left alone —
+ * truncating the tail can only mean removing it, so that form was never ambiguous.
  *
  * An over-cap tool still "succeeds": the call returns, the loop completes, and the model writes a
  * fluent answer from the fragment. Three defects shipped that way (#2433, #2436, #2480) and none was

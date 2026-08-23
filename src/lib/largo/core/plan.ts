@@ -2,8 +2,9 @@
  * QUERY PLANNER — a suggested plan, and the check that the turn actually followed one.
  *
  * WHAT THIS IS NOT. It is not a router. It does not decide which tools run, and it cannot make a
- * capability unreachable — that was the deleted intent allowlist, which hid a mean 21.9 of 116
- * tools and failed silently on every phrasing nobody anticipated. The model still chooses. This
+ * capability unreachable — that was the deleted intent allowlist, which hid a mean 21.9 of the
+ * then-116 tools and failed silently on every phrasing nobody anticipated. The model still chooses.
+ * This
  * composes a PLAN from what deterministic code already resolved (entities, timeframe, ranked
  * capabilities, declared join edges) and hands it over as a starting point.
  *

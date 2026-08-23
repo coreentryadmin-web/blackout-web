@@ -2,7 +2,7 @@
  * Fit a model-facing tool result under the transport's per-`tool_result` cap.
  *
  * WHY THIS EXISTS. `anthropicToolLoop` caps every tool_result at
- * `MAX_TOOL_RESULT_CHARS` and enforces it with a **tail** slice
+ * `MAX_TOOL_RESULT_CHARS` by **keeping the head and discarding the tail**
  * (`raw.slice(0, MAX) + "…[truncated]"`). That is the correct thing for the
  * transport to do — an uncapped heavy tool re-sent every loop round overflows the
  * context window and Anthropic 400s. But a tail cut means **key order decides what
