@@ -370,27 +370,42 @@ own documented promise to return "the exact same object".
 
 **`get_vector_analytics` is not broken today, and has no margin.** Estimated by reconstructing the
 payload at the tool's OWN documented caps (`MAX_SCREENER_ROWS = 15` × 3 presets, `MAX_PIVOTS = 12`,
-`MAX_EVENTS = 8`, `MAX_BUCKETS = 8`, `DAILY_REGIME_DEFAULT_DAYS = 15`) with realistic values — a
-construction, **not** a live capture, so read it as ±10–20%, not to the character:
+`MAX_EVENTS = 8`, `MAX_BUCKETS = 8`, `DAILY_REGIME_DEFAULT_DAYS = 15`,
+`DEFAULT_MAX_COMPARISONS = 4`) with realistic values — a construction, **not** a live capture, so
+read it as ±10–20%, not to the character:
 
-| `regimeDays` | Estimated chars | % of the 16,000 cap |
-|---|---|---|
-| 1 | 13,632 | 85% |
-| **15 (default)** | **14,948** | **93%** |
-| 22 | 15,606 | 98% |
-| 25 | 15,888 | 99% |
-| **30 (the tool's own maximum)** | **16,358** | **102% — over** |
+| `regimeDays` | Estimated chars | % of the 16,000 transport cap | vs the 14,000 budget |
+|---|---|---|---|
+| 1 | 12,622 | 79% | under |
+| **15 (default)** | **13,938** | **87%** | at it (1.00×) |
+| 22 | 14,596 | 91% | **over** |
+| 30 (the tool's own maximum) | 15,348 | **96%** | **over** |
 
-Three structural facts survive the estimate's error bars. `screener` alone is **46%** of the
-payload (three presets × fifteen rows). `daily_regime` scales linearly with `regimeDays`, which is
-**caller-settable** and clamped to `[1, 30]` by `clampDailyRegimeDays` — so the one parameter a
-model can vary is the one that pushes it over. And the default already exceeds the repo's own
+> **CORRECTION (2026-08-23).** An earlier revision of this section put the default at 14,948 chars
+> (93%) and `regimeDays = 30` at 16,358 (**102% — over the transport cap**). **That was wrong.** It
+> modelled `ticker_comparison` at fifteen rows; `buildTickerComparisonRows` is capped by
+> `DEFAULT_MAX_COMPARISONS = 4`, so the strip is the active ticker plus at most four peers — five
+> rows, ~534 chars, not ~1,544. **`get_vector_analytics` does not exceed the transport cap at any
+> `regimeDays` its clamp accepts.** The wrong figure was published in #2649's commit message and
+> PR thread before it was caught; it is corrected here because this file is the durable record.
+> The error is instructive rather than embarrassing: every OTHER cap in that reconstruction was
+> read out of the source, and this one was assumed from the screener's fifteen sitting next to it.
+> **An estimate is only as good as its least-checked input, and the least-checked one is the one
+> that looked like its neighbour.**
+
+Three structural facts survive the correction, and they are why this is still worth fixing.
+`screener` alone is **49%** of the payload (three presets × fifteen rows). `daily_regime` scales
+linearly with `regimeDays`, which is **caller-settable** and clamped to `[1, 30]` by
+`clampDailyRegimeDays` — so the one parameter a model can vary is the one that eats the remaining
+headroom. And from `regimeDays ≈ 16` upward the payload exceeds the repo's own
 `LARGO_RESULT_CHAR_BUDGET` (14,000), which `fit-tool-result.ts` sets deliberately below the
-transport cap because "a caller may still round, wrap or annotate the object afterwards".
+transport cap because "a caller may still round, wrap or annotate the object afterwards" — so the
+margin that budget exists to preserve is already spent, even though the cap itself is not breached.
 
-Key order puts `unavailable_sections` and `coaching_scope` **last** here too, so what a cut takes
-first is again the absence labelling. Same fix, same module — but P3, since nothing is losing
-bytes at the default parameters today.
+Key order puts `unavailable_sections` and `coaching_scope` **last** here too, so if it ever does
+overflow, what goes first is again the absence labelling. Same fix, same module — but **P4**
+(downgraded from P3 by the correction above): nothing is losing bytes at any accepted parameter
+today, and the case for fixing it is the vanished safety margin, not a live truncation.
 
 **FIXED in #2649** (merged 2026-08-23). `src/lib/bie/vector-full-state-fit.ts` →
 `fitVectorFullStateForModel`, built on the existing `fit-tool-result.ts`
@@ -518,8 +533,10 @@ Required by the charter. A single wall-rail bead on SPX, 5s bucket, function nam
 1. ~~Fit `get_vector_full_state` under the transport cap~~ — **FIXED, #2649.** What remains is
    the confirmation, and it is a real item, not a formality: run `largo-truncation-probe.mjs`
    **during RTH** (an off-hours run cannot see this defect and returns a false COMPLETE). Same run
-   settles `get_vector_analytics`, estimated at 93% of the cap at default parameters and **over it**
-   at the `regimeDays = 30` its own clamp accepts — queued as its own P3 fix behind #2649.
+   settles `get_vector_analytics`, estimated at 87% of the transport cap at default parameters and
+   96% at the `regimeDays = 30` its clamp accepts — **under the cap at every setting** (see the
+   correction in §6), but past the 14,000 safety budget from `regimeDays ≈ 16` up. Queued as its
+   own P4 fix behind #2649.
 2. **Every number, against Polygon, on a live tape.** Nothing in this file is a correctness claim
    about a served value — the market was closed. Walls, flip, expected move, max pain, magnet,
    ladder, universe rows.
