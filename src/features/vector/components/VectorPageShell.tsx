@@ -464,8 +464,17 @@ export function VectorPageShell({
       saveAlertRules(activeTicker, next);
       // Best-effort SERVER mirror (task: server-side wall-touch/flip-cross delivery). localStorage
       // above is still the source of truth for this tab's in-page experience — a failed/slow sync
-      // here must never block or break it, so it's fire-and-forget with the error swallowed. The
-      // mirrored copy is what `/api/cron/vector-alerts` reads to fire push alerts to a closed tab.
+      // here must never block or break it, so it's fire-and-forget with the error swallowed.
+      //
+      // WHAT THE MIRROR IS FOR, AND WHAT IT IS NOT DOING TODAY. `/api/cron/vector-alerts` reads
+      // this copy to push alerts to a CLOSED tab. That cron is dormant on two independent counts,
+      // both verified 2026-08-22: it has no deployed EventBridge rule, and `VECTOR_ALERTS_PUSH` is
+      // not set in production, so the route self-reports `{ok:true, inert:true}` even when called
+      // by hand. Nothing member-facing is broken by that — the alerts panel only ever offers
+      // delivery "while this tab is in the background", never closed-tab — but this comment used
+      // to state the closed-tab behaviour as a live guarantee, which it is not. Keep writing the
+      // mirror: it is what makes turning the feature on a config decision rather than a rebuild.
+      // See docs/audit/VECTOR-MAP.md section 7.
       fetch("/api/vector/alerts/rules", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
