@@ -34,7 +34,7 @@ import { parseAnswerEnvelope, validateAnswerContract, fallbackAnswerEnvelope } f
 import { sanitizeLargoMemberText } from "@/lib/largo/sanitize-member-text";
 import { truncateCapturedResultsForPersist } from "@/lib/largo/persist-tool-results";
 import { stripLargoBlocks } from "@/features/largo/blocks/extract";
-import { collectContextNumbers, verifyClaims, type ClaimVerification } from "@/lib/bie/verifier";
+import { collectContextNumbers, unverifiedTurn, verifyClaims, type ClaimVerification } from "@/lib/bie/verifier";
 import { resetLargoSpxDeskCache } from "@/lib/largo/spx-desk-cache";
 import {
   appendLargoMessage,
@@ -1158,7 +1158,7 @@ export async function runLargoQuery(
       userId,
       question,
       toolsUsed,
-      verification: { total: 0, verified: 0, coverage: 1, unverified: [] },
+      verification: unverifiedTurn(),
       startedAt,
       answerSource: "error",
     });
@@ -1176,7 +1176,7 @@ export async function runLargoQuery(
       source: dbConfigured() ? "blackout-web+postgres" : "blackout-web",
       tools_used: Array.from(new Set(toolsUsed)),
       followups: deterministicLargoFollowups(question, tickerHint).slice(0, 3),
-      verification: { total: 0, verified: 0, coverage: 1, unverified: [] },
+      verification: unverifiedTurn(),
       ticker: tickerHint,
       turn_id: null,
       envelope,
@@ -1470,7 +1470,7 @@ export async function runLargoQueryStream(
       userId,
       question,
       toolsUsed,
-      verification: { total: 0, verified: 0, coverage: 1, unverified: [] },
+      verification: unverifiedTurn(),
       startedAt,
       answerSource: "error",
     });
