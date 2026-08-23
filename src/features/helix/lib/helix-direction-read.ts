@@ -130,3 +130,86 @@ export function readDirectionTitle(d: DirectionRead): string {
   }
   return `Direction read from ${share}: ${split}. ${unread}. Bought calls and sold puts are bullish; sold calls and bought puts are bearish.`;
 }
+
+/**
+ * Does the tape AGREE with a stated directional thesis — or is it simply unreadable?
+ *
+ * ── WHY THREE STATES AND NOT A BOOLEAN ──────────────────────────────────────────────────────────
+ *
+ * `FlowFeed` enriched every Night Hawk play with a `flowAgreement` boolean:
+ *
+ *     const flowCallPct  = totalPremium > 0 ? callPremium / totalPremium : 0.5;
+ *     const flowAgreement = isLong ? flowCallPct >= 0.55 : flowCallPct <= 0.45;
+ *
+ * and `NightHawkFlowPanel` rendered it as prose beside a tradeable play — `✓ tape agrees with long
+ * thesis`, or `⚠ tape diverges from long thesis` on the `false` branch. `conviction: "strong"`
+ * also required it.
+ *
+ * Two problems, and the second is the one a boolean cannot express:
+ *
+ * 1. It is the option-type rule. A SOLD call is bearish, so a wall of sold calls "confirmed" a
+ *    LONG thesis. MEASURED live 2026-08-23 over the 59 tickers at or above the $2M strong-conviction
+ *    gate: **32 disagree (54%)**. `CG` was **100% call premium at 100% readable — verdict BEARISH**;
+ *    so were `DRAM` (100%/100%), `MSTR` (100%/92%), `SMCI` (93.1%/100%), `MRVL` (77.3%/100%) and
+ *    `BE` (95.9%/96.4%). Each would have printed `✓ tape agrees` on a long thesis while the fully
+ *    readable evidence said the opposite. It fails the other way too: `AVGO` 28.2% calls, `TLT`
+ *    10.4%, `SKHY` 29.8% all read **bullish** at 91–100% coverage (puts being sold), and each was
+ *    reported as divergence.
+ *
+ * 2. **`false` meant two different things and rendered as one.** With no readable side the boolean
+ *    is `false`, and the panel printed `⚠ tape diverges` — a FABRICATED DISAGREEMENT, the exact
+ *    mirror of the fabricated agreement above and just as confident. `SPX` (0.1% readable), `MRNA`
+ *    (44.7%) and `CRWD` (7.4%) are all in that bucket. "The tape points the other way" and "the
+ *    tape cannot be read" are opposite messages to someone deciding whether to take a trade.
+ *
+ * So the verdict has FOUR members, not three — and the fourth is the one it is tempting to drop.
+ * `two_sided` means the tape WAS read and genuinely leans neither way; `unreadable` means it could
+ * not be read at all. Folding them together would repeat, one level up, the exact conflation this
+ * whole module exists to undo: it is the same mistake as a neutral bar that could mean "balanced"
+ * or "unknown". Neither is a soft `diverges`; both are refusals, and they refuse for opposite
+ * reasons — one because the evidence is complete and even, one because there is barely any.
+ */
+export type ThesisAgreement = "agrees" | "diverges" | "two_sided" | "unreadable";
+
+export function thesisAgreement(read: DirectionRead, isLong: boolean): ThesisAgreement {
+  // Too little of the premium carries a side to say anything at all.
+  if (read.minorityEvidence) return "unreadable";
+  const want = isLong ? "bullish" : "bearish";
+  const against = isLong ? "bearish" : "bullish";
+  if (read.label === want) return "agrees";
+  if (read.label === against) return "diverges";
+  // `mixed`: READ, well covered, and genuinely two-sided. Not agreement — and calling it divergence
+  // would claim the tape leans against the thesis when it measurably leans neither way.
+  return "two_sided";
+}
+
+/** Only genuine, evidenced agreement may support a "strong" conviction claim. */
+export function thesisAgreementConfirms(a: ThesisAgreement): boolean {
+  return a === "agrees";
+}
+
+/** The line a member reads beside a play. One sentence per state, and no two states share one. */
+export function thesisAgreementCopy(
+  a: ThesisAgreement,
+  isLong: boolean,
+  read: DirectionRead
+): { text: string; tone: "bull" | "bear" | "warn" | "muted" } {
+  const thesis = isLong ? "long" : "short";
+  const covered =
+    read.readablePct == null ? "none of it" : `${Math.round(read.readablePct)}% of the premium`;
+  switch (a) {
+    case "agrees":
+      return { text: `✓ tape agrees with ${thesis} thesis`, tone: "bull" };
+    case "diverges":
+      return { text: `⚠ tape diverges from ${thesis} thesis`, tone: "bear" };
+    case "two_sided":
+      // Measured and even. A real finding, and NOT the same as having no reading.
+      return { text: `◆ tape is two-sided — neither confirms nor contradicts`, tone: "warn" };
+    case "unreadable":
+      // The refusal. Says why, so it cannot be mistaken for either verdict.
+      return {
+        text: `◆ tape direction unread — only ${covered} carries an aggressor side`,
+        tone: "muted",
+      };
+  }
+}
