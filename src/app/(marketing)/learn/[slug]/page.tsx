@@ -116,7 +116,6 @@ export default async function LearnSlugPage({ params }: Props) {
         datePublished={articleDates.datePublished}
         dateModified={articleDates.dateModified}
       />
-      <FAQPageJsonLd items={getArticleFaqs(article.slug)} />
       <Breadcrumbs
         items={[
           { name: "Home", href: "/" },
