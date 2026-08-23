@@ -3,7 +3,7 @@ import "server-only";
 /**
  * VECTOR ANALYTICS for Largo — the nine client-only Vector analytics, served server-side.
  *
- * THE GAP THIS CLOSES. A coverage audit of Largo's 117 tools against every product panel found
+ * THE GAP THIS CLOSES. A coverage audit of Largo's then-117 tools against every product panel found
  * SPX Slayer, Helix, Thermal and Night Hawk fully reachable at the data level and Vector NOT:
  * `get_vector_full_state` and `get_vector_pulse` cover walls / flip / magnet / beads / play /
  * technicals, and nine analytics had zero references from `src/lib/largo` or `src/lib/bie` —

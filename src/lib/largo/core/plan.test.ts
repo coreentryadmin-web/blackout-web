@@ -113,9 +113,16 @@ test("a present-tense question is never flagged", () => {
 });
 
 test("silence means NO PROOF of a problem, never proven fine", () => {
-  // 67 of 116 tools are uncatalogued. Treating "I cannot classify this tool" as "this tool cannot
-  // reach the past" would fire the warning on turns that were fine, which is how a useful check
-  // gets disabled by whoever gets tired of it.
+  // Treating "I cannot classify this tool" as "this tool cannot reach the past" would fire the
+  // warning on turns that were fine, which is how a useful check gets disabled by whoever gets
+  // tired of it. When this was written 67 of the then-116 tools were uncatalogued, so the case was
+  // the common one.
+  //
+  // It is now the RARE one — coverage is 129 of 129 — and that is exactly why this test must stay
+  // rather than be retired as unreachable. Complete coverage is not an invariant: it lapses the
+  // moment anyone adds a tool ahead of its capability entry, and that is precisely when a
+  // silence-means-broken planner would start firing on healthy turns. The tool name below is
+  // synthetic on purpose, so the case stays exercised whatever the real catalog looks like.
   const v = validatePlanExecution({
     timeframe: past,
     toolsCalled: ["some_uncatalogued_tool", "live_feed_capture"],

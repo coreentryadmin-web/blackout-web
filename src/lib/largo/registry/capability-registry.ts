@@ -3,7 +3,7 @@ import { LARGO_TOOL_DEFS } from "@/lib/largo/tool-defs";
 /**
  * LARGO CAPABILITY REGISTRY — the data catalog Largo queries to discover what it can answer.
  *
- * THE PROBLEM THIS SOLVES. Largo is handed 120 tools, each with a one-line description. That is
+ * THE PROBLEM THIS SOLVES. Largo is handed 129 tools, each with a one-line description. That is
  * enough for "which tool fetches an SPX quote" and nowhere near enough for the questions that make
  * Largo worth having: *"what changed on SPX in the last 30 minutes"*, *"which Helix flow eventually
  * became a Night Hawk trade"*, *"where do Helix and Thermal disagree"*. Those need facts a tool
@@ -875,10 +875,14 @@ export const LARGO_CAPABILITIES: readonly LargoCapability[] = [
 
   // ── COVERAGE PASS 2026-08-10 · the remaining 67 tools ────────────────────────────────────────
   //
-  // WHY THIS BLOCK EXISTS. The catalog covered 51 of 118 tools, and `plan.ts` therefore raised its
-  // temporal violation only when EVERY tool a turn called was catalogued — with 57% uncatalogued
-  // that was almost never. The guard was armed and dormant: a turn mixing one catalogued source
-  // with three unknown ones passed the check without the check meaning anything.
+  // WHY THIS BLOCK EXISTS. The catalog covered 51 of the then-118 tools, and `plan.ts` therefore
+  // raised its temporal violation only when EVERY tool a turn called was catalogued — with 57%
+  // uncatalogued that was almost never. The guard was armed and dormant: a turn mixing one
+  // catalogued source with three unknown ones passed the check without the check meaning anything.
+  //
+  // That pass closed the gap and the catalog has stayed complete since: coverage is 129 of 129
+  // today, held 1:1 by `registry.test.ts`. The numbers above are the state BEFORE this block, kept
+  // as the reason it exists — do not read them as current.
   //
   // THE CLASSIFICATION RULE, applied to every entry below: `temporal` is read off the
   // IMPLEMENTATION in `run-tool.ts`, and ambiguity resolves DOWNWARD. Marking a live-only source
@@ -1909,7 +1913,7 @@ export function uncataloguedTools(): string[] {
  * question it lists the past-capable capabilities FIRST and states plainly that they are the ones
  * that can cover the window.
  *
- * RANKING, NEVER FILTERING. This block adds information; it removes nothing. All 116 tools stay in
+ * RANKING, NEVER FILTERING. This block adds information; it removes nothing. All 129 tools stay in
  * the request, so a capability that ranks poorly is merely further down a hint list — it can still
  * be called. That distinction is the entire lesson of the deleted intent allowlist
  * (FINDINGS 2026-08-10): a discovery mechanism that can HIDE a capability can make an answer

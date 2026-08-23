@@ -1,8 +1,9 @@
 /**
  * LARGO TRUNCATION PROBE — does the model actually RECEIVE each tool's payload?
  *
- * WHY THIS EXISTS. `anthropicToolLoop` caps every `tool_result` at `MAX_TOOL_RESULT_CHARS` and
- * enforces it with a TAIL slice. A tool over that cap still "works": the call succeeds, the loop
+ * WHY THIS EXISTS. `anthropicToolLoop` caps every `tool_result` at `MAX_TOOL_RESULT_CHARS` by
+ * KEEPING THE FIRST that-many characters AND DISCARDING EVERYTHING AFTER — `raw.slice(0, MAX)`, so
+ * key order decides what survives. A tool over that cap still "works": the call succeeds, the loop
  * completes, and the model writes a fluent answer from whatever survived. Three defects shipped
  * that way in the Night Hawk lane alone — `get_zerodte_record` delivered 1.5% of itself with every
  * aggregate cut off, `get_nighthawk_edition` cut off every play, and `get_nighthawk_outcomes` had
@@ -41,7 +42,7 @@ const JSON_OUT = process.argv.includes("--json");
 const BASE = arg("base", "https://blackouttrades.com").replace(/\/$/, "");
 
 /**
- * Lane tools, with the args each needs. Deliberately the LANES' list rather than all 126 — a
+ * Lane tools, with the args each needs. Deliberately the LANES' list rather than all 129 — a
  * lane's owner is better placed to say which of theirs carry enough data to be at risk, and
  * `--tools=` lets them point this at their own subset.
  *
