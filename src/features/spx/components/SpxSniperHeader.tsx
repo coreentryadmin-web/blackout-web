@@ -7,6 +7,7 @@ import { ProductMark } from "@/components/marks/ProductMark";
 import { SpxLiveSpotPrice, priceVsLevel, PriceLevelIndicator } from "./SpxLiveSpotPrice";
 import { SpxIosMarketStrip } from "./ios/SpxIosMarketStrip";
 import { SpxIosMetricGroups } from "./ios/SpxIosMetricGroups";
+import { SPX_DESK_MAX_PAIN_LABEL } from "@/features/spx/lib/spx-metric-labels";
 
 type Props = {
   desk?: SpxDeskPayload;
@@ -99,7 +100,7 @@ const METRIC_TIPS = {
   gex: "Net dealer gamma exposure — positive dampens moves, negative amplifies them.",
   regime: "TREND regime — price vs the 20/50-day EMAs (bullish / bearish / neutral). Distinct from the GAMMA regime (long/short gamma) the chart banner and EOD pin show, which is spot vs the gamma flip — the two answer different questions.",
   flip: "Strike where net dealer gamma flips sign — above it dealers dampen moves, below it they amplify. This desk value is the NEAR-TERM aggregate (multiple expiries); the chart's flip line is 0DTE-scoped, so the two can read differently.",
-  maxPain: "Strike where the most option value expires worthless — a common pin magnet into the close. This desk value is the NEAR-TERM aggregate (multiple expiries); the EOD pin + chart use the 0DTE-scoped max pain, so the two can read differently.",
+  maxPain: "Strike where the most option value expires worthless — a common pin magnet into the close. OI = computed from OPEN INTEREST only, aggregated across the near-term expiries. The EOD pin panel shows EFF MAX PAIN instead — 0DTE-scoped and weighted by open interest AND today's volume — so the two are different numbers by design and can read differently.",
   ivRank: "Where implied volatility sits inside its 1-year range (0–100).",
   ema: "Exponential moving averages (20/50/200-day) — trend guide rails; recent price weighs more.",
   sma: "Simple moving averages (50/200-day) — slower structural trend lines.",
@@ -230,7 +231,7 @@ function DeskTopStatsRow({
           title={METRIC_TIPS.flip}
         />
         <StatPill
-          label="Max Pain"
+          label={SPX_DESK_MAX_PAIN_LABEL}
           value={showValues ? fmtPrice(desk?.max_pain ?? null) : "—"}
           tone="cyan"
           level={desk?.max_pain ?? null}
