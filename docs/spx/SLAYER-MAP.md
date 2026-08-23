@@ -502,6 +502,12 @@ Ranked. These are the `UNKNOWN`s above, restated as tasks.
 2. **Build a calibrated confidence from `spx-play-outcomes`, out-of-sample validated** — and fix
    `spx-play-engine.ts:1633`'s `?? 0` fallback with it. The Largo boundary now omits the
    uncalibrated number, which is honest but not an answer; the member UI still renders it.
+   **Partially addressed 2026-08-23:** the `?? "D"` / `?? 0` fallbacks are no longer
+   *indistinguishable* from a measurement — `SpxPlayPayload.assessed` now marks the three sites
+   that fabricate them, and the Play Verdict Bar suppresses the fabricated grade/score. That
+   removes the false publication; it does not produce a calibrated number, which is still this
+   item. The three literals themselves remain in the payload because the type is non-nullable —
+   see §8b.
    **Start from the measurement, not from the field's history:** `scripts/audit/spx-confidence-calibration.mjs` shows the stored `confidence` is 96 on all 51 rows (§7.2), so the ledger carries no recoverable conviction signal — a calibration has to be built from `score`/`grade`/factors. On those same rows `r(|score|, win) = 0.172` and `r(grade_rank, win) = −0.038` (n=51, indicative only).
 3. **Trace the `spx:pulse:snapshot` writer** in the market-worker lane and record its `change_pct`
    anchor at source (§3.2).
@@ -527,6 +533,20 @@ Ranked. These are the `UNKNOWN`s above, restated as tasks.
    must agree within a stated tolerance or the label must differ (§5). The reproducible OI-only
    max-pain check against a full Polygon SPXW chain is the model.
 8. **Confirm `spx-signal-weight-optimize`'s DST correctness** — the other three crons are done.
+
+---
+
+## 8b. Known-open — recorded, deliberately not fixed
+
+Things measured and understood, where the fix was scoped out on purpose. Recorded here so they
+are open work rather than forgotten work. A row leaves this list only when it is fixed or
+reclassified with a reason.
+
+| # | What | Why not fixed here |
+|---|---|---|
+| b1 | `SpxPlayPayload.grade`/`score`/`confidence` are non-nullable (`string`/`number`/`number`), so the three fabrication sites must invent `"D"`/`0`/`0` when nothing was assessed. `assessed` flags it; the literals are still in the payload. | Making them nullable produced 13+ `tsc` errors that force a nullability decision through gate arithmetic (`buildSpxPlayDeskContext` → `mixedTapeBlockThreshold`), **Vector's** `PlayStateSnapshot`, and the Night Hawk badge map. Each needs its own answer to "what does an ungraded desk mean here"; that is a typed-absence refactor across three lanes, not a UI fix. |
+| b2 | `spx-slayer-badge-map.ts:37-38` forwards `payload.grade`/`payload.score` into `SpxSlayerBadge` (typed `string`/`number`), and `unavailableSpxSlayerBadge()` hard-codes `grade: "D", score: 0` — the same absence-as-measurement defect, rendered on the **Night Hawk** board (`zerodte-board-strips.tsx`, `CommandDeck.tsx`). | The DTO and both renderers are Night Hawk-lane surfaces. The `assessed` flag is now on the payload for that lane to act on; changing another lane's display types inside an SPX UI fix is the cross-lane push this repo's merge history keeps punishing. |
+| b3 | The chart-control collisions on `/dashboard` desktop (3, reproduced live 2026-08-23) are localised to the harness output but the CSS rule is not yet identified. | §8 item 6 — the 2026-08-07 entry's caution against guessing a layout rule stands; needs the phone viewport too, which the sandbox tunnel has never reached. |
 
 ---
 

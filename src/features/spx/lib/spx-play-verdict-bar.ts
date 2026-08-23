@@ -175,6 +175,12 @@ export function buildPlayVerdictBarModel(
         ? "Trim zone — scale partial"
         : null;
 
+  // `assessed === false` means the payload carries the placeholder "D"/0 literals because no
+  // confluence was computed at all (see SpxPlayPayload.assessed). "D" is truthy and 0 is finite,
+  // so both sail straight through the fallthrough below and the bar renders "Grade D · 0" — a
+  // measurement the desk never made. Publish absence instead; the status line still explains why.
+  const assessed = play.assessed !== false;
+
   const playDirection = play.direction ?? play.open_play?.direction ?? null;
   const alignHint = pinPlayAlignmentHint(playDirection, opts.pin?.magnet?.direction);
 
@@ -183,8 +189,8 @@ export function buildPlayVerdictBarModel(
     badge,
     direction: playDirection,
     contract,
-    grade: play.grade || play.open_play?.grade || null,
-    score: Number.isFinite(play.score) ? play.score : null,
+    grade: assessed ? play.grade || play.open_play?.grade || null : play.open_play?.grade ?? null,
+    score: assessed && Number.isFinite(play.score) ? play.score : null,
     pnlLabel: pnl.label,
     pnlTone: pnl.tone,
     levelsLine: levels,
