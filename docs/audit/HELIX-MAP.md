@@ -642,11 +642,24 @@ prints appear in a current-tape panel at all. It also overlaps §9.4, since ever
 measured there was one of these expired contracts. Raised for the coordinator rather than decided
 here; an "Expired" bucket would change `EXPIRY_HORIZONS`, which is a Largo contract.
 
-**9.6 — Nothing records which population fired a persisted signal.** Client badges run the detectors
+**9.6 — Nothing records which population fired a persisted signal — FIXED.** Client badges run the detectors
 over the filtered/floored/scoped client buffer; the cron runs them over the unfiltered last hour.
 Same definition, different inputs — so ledger and badge can legitimately disagree, and today neither
 the row nor the panel says so. Cheap fix (stamp the population into `context`), and it is the
 precondition for ever using the ledger's follow-through rate to describe what a member *saw*.
+
+**FIXED 2026-08-23.** Every firing — both signal types — now carries `context.population`:
+`{source, since_hours, limit, scanned, signal_eligible, signal_ineligible,
+signal_ineligible_tickers, client_equivalent}`. Built by the pure, exported
+`buildSignalPopulation`, so it is testable without a database (the job around it is not).
+`signal_eligible` reuses §9.0's `signalEligibility`, which is what made this cheap — a row that
+fired among 1500 eligible prints and one that fired among 30 are not the same evidence, and the
+record could not previously tell them apart. `client_equivalent: false` states outright that this
+is NOT the member's population.
+
+The job's own header claimed the shared detector meant badge and record "can never disagree". That
+was false and is now corrected in place, with the old wording quoted so the history survives — the
+detector is shared, the INPUTS are not.
 
 **9.7 — The conviction score saturates at $1M.** `min(60, premium/$1M × 60)` means every print at or
 above $1M contributes the same 60 premium points, so a $50M block and a $1.1M print are separated
