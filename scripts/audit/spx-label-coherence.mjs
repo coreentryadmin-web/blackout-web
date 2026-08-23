@@ -136,8 +136,25 @@ async function main() {
     LABEL_MAP.map(async (lane) => {
       const at = Date.now();
       try {
-        const payload = await fetchAuditJson(BASE, lane.path);
-        return { lane, payload, at, fetchedMs: Date.now() - at, error: null };
+        // `fetchAuditJson` returns a RESULT OBJECT — `{ ok, status, json, via }` — and never
+        // throws; a failed lane comes back as `ok: false`, not as a rejection. The first version
+        // of this script assumed a throwing fetch and read the fields straight off the wrapper,
+        // so EVERY value was `undefined` and EVERY run reported "not observed on any surface"
+        // — including during RTH. The verdict was INSUFFICIENT for a transport reason dressed
+        // as a data reason, which is the exact absence-as-fact trap this checker exists to
+        // prevent, arriving through its own front door. The `try/catch` is kept for a genuine
+        // throw (an auth mint failure inside the helper) but is not the failure path that matters.
+        const res = await fetchAuditJson(BASE, lane.path);
+        if (!res?.ok) {
+          return {
+            lane,
+            payload: null,
+            at,
+            fetchedMs: Date.now() - at,
+            error: `HTTP ${res?.status ?? 0}`,
+          };
+        }
+        return { lane, payload: res.json ?? null, at, fetchedMs: Date.now() - at, error: null };
       } catch (err) {
         return { lane, payload: null, at, fetchedMs: Date.now() - at, error: String(err?.message ?? err) };
       }
@@ -147,9 +164,21 @@ async function main() {
 
   const values = [];
   const laneErrors = [];
+  /**
+   * EXTRACTION SELF-CHECK. A lane that answers 200 with a real body but whose fields we read from
+   * the wrong place looks exactly like a lane with nothing to report — that is how this script
+   * shipped reading a result-object wrapper and calling it "not observed on any surface". So count
+   * lanes that returned a NON-EMPTY payload separately from values actually extracted: healthy
+   * lanes with zero extracted values is a BUG IN THIS SCRIPT, not a fact about the desk, and it
+   * must say so rather than printing a clean-looking INSUFFICIENT.
+   */
+  let lanesWithBody = 0;
   for (const r of results) {
     if (r.error) {
       laneErrors.push(`${r.lane.lane}: ${r.error}`);
+    }
+    if (r.payload && typeof r.payload === "object" && Object.keys(r.payload).length > 0) {
+      lanesWithBody += 1;
     }
     for (const f of r.lane.fields) {
       if (f.onlyWhen && !f.onlyWhen(r.payload)) continue;
@@ -160,11 +189,17 @@ async function main() {
   }
 
   const report = checkLabelCoherence(values, TOLERANCE_PTS);
+  const observedCount = values.filter((v) => v.value != null && Number.isFinite(v.value)).length;
+  const extractionSuspect = lanesWithBody > 0 && observedCount === 0;
 
   // A capture whose lanes are too far apart in time cannot support a COLLISION verdict — the
   // spread could be the tape moving. Downgrade rather than report a number we cannot defend.
   const skewed = skewMs > MAX_SKEW_MS;
-  const verdict = skewed && report.verdict === "RED" ? "INDETERMINATE" : report.verdict;
+  let verdict = skewed && report.verdict === "RED" ? "INDETERMINATE" : report.verdict;
+  // A lane we could not READ cannot be certified coherent with the ones we could.
+  if (laneErrors.length && verdict === "GREEN") verdict = "INSUFFICIENT";
+  // And a healthy body with nothing extracted is this script's fault, not the desk's.
+  if (extractionSuspect) verdict = "HARNESS";
 
   if (JSON_OUT) {
     console.log(
@@ -175,6 +210,9 @@ async function main() {
           capture_skew_ms: skewMs,
           max_skew_ms: MAX_SKEW_MS,
           skew_exceeded: skewed,
+          lanes_with_body: lanesWithBody,
+          observed_values: observedCount,
+          extraction_suspect: extractionSuspect,
           verdict,
           lane_errors: laneErrors,
           values,
@@ -192,11 +230,18 @@ async function main() {
         `  SKEW         capture spanned ${skewMs}ms (> ${MAX_SKEW_MS}ms) — a spread this wide may be the tape, not the labels`
       );
     }
+    console.log(`  lanes with a body: ${lanesWithBody}/${LABEL_MAP.length}   values extracted: ${observedCount}/${values.length}`);
+    if (extractionSuspect) {
+      console.log(
+        "  HARNESS      every lane answered with a body and NOTHING was extracted — the field paths in LABEL_MAP no longer match the payloads. This is a bug in this script, not a fact about the desk."
+      );
+    }
     console.log(formatCoherenceReport(report));
-    if (verdict !== report.verdict) console.log(`  -> downgraded to ${verdict} on capture skew`);
+    if (verdict !== report.verdict) console.log(`  -> verdict ${verdict} (skew / lane errors / extraction self-check)`);
   }
 
   if (verdict === "RED") return 1;
+  if (verdict === "HARNESS") return 2;
   if (verdict === "INDETERMINATE") return 1;
   if (verdict === "INSUFFICIENT") return ALLOW_INSUFFICIENT ? 0 : 1;
   return 0;

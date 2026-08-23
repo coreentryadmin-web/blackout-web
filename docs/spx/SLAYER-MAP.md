@@ -602,6 +602,35 @@ belongs with the calibrated-confidence work, not the boundary fix.
 
 Ranked. These are the `UNKNOWN`s above, restated as tasks.
 
+0a. ~~**Cross-check the desk's own numbers against a provider.**~~ **STARTED 2026-08-23 — the gap
+   was smaller than "wait for RTH" made it look.** `data-validator.mjs` already fetched
+   `/api/market/spx/desk`, but only to feed the malformed-number scan; not one of the desk's own
+   fields had ever been compared to Polygon by this lane. It now carries an **SPX DESK vs Polygon**
+   block, built so most of it is decidable **off-hours** — an instrument that can only be exercised
+   in the one scarce RTH window is an instrument nobody has debugged.
+
+   **First run (market closed): every check PASS.**
+
+   | check | desk | Polygon | Δ |
+   |---|---|---|---|
+   | price | 7674.37 | 7674.37 | 0.000% |
+   | prior_close | 7674.37 | 7674.37 | 0.0000% |
+   | pdh | 7697.11 | 7697.110000000001 | — |
+   | pdl | 7660.06 | 7660.06 | — |
+   | ema20 | 7658.03 | 7658.02 *(recomputed from 138 dailies)* | 0.000% |
+   | ema50 | 7551.56 | 7551.71 *(recomputed)* | 0.002% |
+
+   The EMA result is the strongest: an independent recomputation from raw daily closes landing
+   within 0.002% is evidence the math is right, not merely that the field returns a number.
+
+   **What it does NOT establish, and says so in its own output rather than leaving it to the
+   reader:** off-hours the desk's price IS the prior close, so the change%-identity check has both
+   sides at 0 and passes without exercising anything — exactly the assertion #2692 was about. It
+   reports `INFO … DEGENERATE`, not PASS. `hod`/`lod` are skipped with their reason. **VWAP is
+   deliberately absent**: SPX index bars carry no volume and the desk uses a SPY-volume proxy, so a
+   reference value must re-perform the same merge — that belongs with #2636's validation, on the
+   market-open battery.
+
 0. ~~**Audit every SPX-relevant key in `blackout-production/app/env` against its code default.**~~
    **DONE — and made reproducible rather than snapshotted.** `scripts/audit/spx-env-drift.mjs`
    scans the SPX surface for `process.env.X`, extracts each one's code default from the source,
@@ -652,9 +681,28 @@ Ranked. These are the `UNKNOWN`s above, restated as tasks.
    composition cost; three disagreeing 502 error shapes; and `PlayOutcomeStats.win_rate` reporting
    `0` for an empty cohort — contained today by sample-size gates at every consumer, **checked
    rather than reported**, and latent for the next one that forgets.
-5. **Run `scripts/audit/largo-truncation-probe.mjs` against all seven SPX tools** and read the
-   CONTROL line — a run whose control does not come back TRUNCATED reports every COMPLETE as
-   UNVERIFIED, not clean.
+5. ~~**Run `scripts/audit/largo-truncation-probe.mjs` against the SPX tools**~~ **DONE 2026-08-23 —
+   and the probe carried no SPX tools at all until this pass.** "Never probed" is not "probed
+   clean": all three shipped truncation defects in this repo were found by asking, and nobody had
+   asked here. Eight tools, **control PROVEN in both batches**:
+
+   | tool | verdict |
+   |---|---|
+   | **`get_spx_structure`** | **TRUNCATED with NO arguments** — fixed, see the findings entry |
+   | `get_spx_play` | COMPLETE |
+   | `get_spx_confluence` | COMPLETE |
+   | `get_spx_pin` | COMPLETE |
+   | `get_spx_pulse` | COMPLETE |
+   | `get_spx_vs_nighthawk_comparison` | COMPLETE |
+   | `get_gate_rules` | COMPLETE |
+   | `get_spx_engine_snapshots` | COMPLETE at its own default — see below |
+
+   **The half that looked like a finding and is not.** `get_spx_engine_snapshots` truncated at the
+   recipe *"the largest window available"*. Re-probed at its **own default (limit 20)** it is
+   COMPLETE. Every list tool truncates if you ask for enough of it; reporting that as a defect would
+   have put a false entry in the log. The probe's recipe now asks the question that matters — does
+   it truncate **as normally called** — with the wide-window result kept in the comment rather than
+   discarded. The SPX lane is in `LANE_TOOLS` permanently now, so this cannot go unasked again.
 6. ~~**Build the SPX interaction audit**~~ **DON'T — one already exists and covers `/dashboard`.**
    `scripts/audit/live-ui-interaction-audit.mjs` ships `/dashboard` in its default page list and
    shares `lib/ui-geometry-probe.mjs`. It did not need writing; it needed running. First run
@@ -749,20 +797,68 @@ Ranked. These are the `UNKNOWN`s above, restated as tasks.
      in different groups and are never compared — a silent false negative in the one check whose
      job is catching shared names.
 
-   **First live run 2026-08-23 (market closed): INSUFFICIENT, correctly** — no flip or max pain
-   observed on any lane, reported as "nothing to compare, and that is not agreement" rather than as
-   a pass. It also measured a defect in itself: the first authenticated fetch pays the whole Clerk
-   mint (~6s), which registered as capture skew and would have downgraded every RED to
-   INDETERMINATE — i.e. the skew guard disarmed the check exactly when it fires. Fixed with a
-   warm-up fetch before the timed window; skew fell to **3018ms**, still off-hours-cold and close
-   enough to the 4000ms default that Monday should re-measure it against warm RTH caches before
-   anyone trusts a RED.
+   **CORRECTION (2026-08-23, same day): the first live run's INSUFFICIENT was right by accident,
+   and the script was reading nothing at all.** `fetchAuditJson` returns a RESULT OBJECT —
+   `{ ok, status, json, via }` — and **never throws**; a failed lane comes back as `ok: false`. The
+   shipped version read the fields straight off that wrapper, so **every value was `undefined` on
+   every lane, including during RTH**, and the `try/catch` guarding the fetch could never fire. The
+   verdict was INSUFFICIENT for a transport reason wearing a data reason's clothes — the exact
+   absence-as-fact trap this checker exists to prevent, arriving through its own front door.
+
+   Fixed by unwrapping `.json` and treating `ok: false` as a lane error. Same instant, re-run:
+
+   ```
+   capture skew=461ms
+   lanes with a body: 3/3   values extracted: 1/4
+   LABEL COHERENCE: INSUFFICIENT
+     INSUFFICIENT "γ Flip"   was not observed on any surface — nothing to compare
+     INSUFFICIENT "Max Pain" was observed on only desk-header — a single value cannot corroborate itself
+   ```
+
+   `desk.max_pain` is **7700 right now, off-hours** — a value the broken version reported as "not
+   observed on any surface". Same verdict word, a different and true reason.
+
+   Three guards added so this class cannot recur quietly: an **extraction self-check** (lanes that
+   answered with a body vs values actually extracted — healthy bodies and zero extractions is now
+   `HARNESS`, exit 2, and says "this is a bug in this script, not a fact about the desk"); a **lane
+   error can no longer produce GREEN** (a surface you failed to read cannot be certified coherent
+   with the ones you read); and both counts print on every run.
+
+   The earlier warm-up fix stands and was worth it — the first authenticated fetch pays the whole
+   Clerk mint (~6s), which registered as capture skew and would have downgraded every RED to
+   INDETERMINATE, disarming the check exactly when it fires. **The 3018ms figure this file used to
+   quote was measured through the broken path; the corrected run is 461ms.** Monday should still
+   re-measure against warm RTH caches before anyone trusts a RED, but from the working script.
 
    **What it still cannot see:** it reads the API, and a member reads the DOM. The label strings are
    a hand-maintained transcription of what the components render (each carries a `src:` pointer). A
    rename that misses the map makes the script check a fiction. The DOM half belongs to
    `live-ui-interaction-audit.mjs`.
-8. **Confirm `spx-signal-weight-optimize`'s DST correctness** — the other three crons are done.
+8. ~~**Confirm `spx-signal-weight-optimize`'s DST correctness**~~ **DONE 2026-08-23 — and it was
+   not merely unconfirmed, it was UNAUDITABLE.** `cron-dst-audit.mjs` evaluates a hand-curated
+   `GATES` + `INTENTS` list, and this job was **deployed and in neither**, so the audit had never
+   looked at it and still exited 0. That is the audit's own absence-as-health failure mode, inside
+   the instrument.
+
+   **Verdict: OK (UTC-labelled), correct in both offsets.** Verified rather than assumed — the
+   route applies **no ET gate at all**: its window is `observed_at > now − 30 days`, a rolling
+   ABSOLUTE-time lookback. So there is no gate to stop being satisfied (form A) and nothing it must
+   land relative to (form B); a 30-day accuracy report is insensitive to a one-hour shift. Deployed
+   `0 22 * * 1-5`, registry mirror identical, ET span 18:00 EDT / 17:00 EST.
+
+   Two small fixes came out of it. The audit first returned **LABEL DRIFTS**, correctly: its
+   UTC-labelled check asks whether the deployed label owns the hour shift, and
+   `"Nightly 10 PM UTC"` names the UTC time and neither ET rendering. The route's own docstring
+   already stated both, so the registry label was simply short — now
+   `"Nightly 10 PM UTC (6 PM ET in EDT, 5 PM ET in EST)"`, the same form `x-analytics` uses. And
+   the route column was a 27-char literal that this 26-char key exactly filled, so the table
+   silently stopped being a table; the width is now derived from the data.
+
+   **Reported, not fixed — a gap this lane does not own:** `39` jobs are deployed and `27` are in
+   the two tables. The audit now PRINTS the remaining **12** and says they are UNAUDITED, not OK.
+   It deliberately does not fail on them: classifying a job means reading its route, each belongs
+   to the lane that ships it, and a hard failure would turn one lane's unclassified job into every
+   other lane's red build.
 
 ---
 
