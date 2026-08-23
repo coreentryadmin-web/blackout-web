@@ -38,9 +38,11 @@ export interface CaptureResult {
 export interface CaptureHarnessConfig {
   proxyBrowserPath?: string;
   sessionCookie?: string;
+  clerkSecretKey?: string; // For minting temp users (optional)
   cacheMs?: number; // How long to cache captures within a session
   maxRetries?: number;
   timeoutMs?: number;
+  viewport?: "desktop" | "tablet" | "mobile";
 }
 
 /** Map each product to its dashboard URL and capture points */
@@ -135,17 +137,96 @@ export function formatTimeEt(ms: number): string {
 }
 
 /**
+ * Get an authenticated session cookie by minting a temp Clerk user.
+ * Returns the __session JWT cookie for authenticated API calls.
+ * Requires CLERK_SECRET_KEY env var or config.clerkSecretKey.
+ */
+async function getAuthenticatedSession(
+  clerkSecretKey: string = process.env.CLERK_SECRET_KEY || ""
+): Promise<string | null> {
+  if (!clerkSecretKey) {
+    return null; // Caller must provide or set env var
+  }
+
+  try {
+    // Generate random phone for this session
+    const phone = `+1415555${String(Math.floor(Math.random() * 10000)).padStart(4, "0")}`;
+    const email = `claude-audit-temp+${Date.now()}@blackouttrades.com`;
+
+    // Create Clerk user via Backend API
+    const createRes = await fetch("https://api.clerk.com/v1/users", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${clerkSecretKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        email_address: [email],
+        phone_number: [phone],
+        public_metadata: { role: "admin", tier: "premium" },
+      }),
+    });
+
+    if (!createRes.ok) {
+      const err = await createRes.text();
+      throw new Error(`Clerk user creation failed: ${err}`);
+    }
+
+    const user = (await createRes.json()) as { id: string };
+
+    // Get sign-in token
+    const tokenRes = await fetch(`https://api.clerk.com/v1/users/${user.id}/sign_in_tokens`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${clerkSecretKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({}),
+    });
+
+    if (!tokenRes.ok) {
+      throw new Error("Failed to get sign-in token");
+    }
+
+    const { token } = (await tokenRes.json()) as { token: string };
+
+    // Exchange token for session via FAPI
+    const sessionRes = await fetch("https://clerk.blackouttrades.com/v1/sign_in_tokens", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "User-Agent": "BlackOutAudit/1.0",
+      },
+      body: new URLSearchParams({
+        token,
+        _clerk_js_version: "5.57.0",
+      }).toString(),
+    });
+
+    if (!sessionRes.ok) {
+      throw new Error(`Session exchange failed: ${sessionRes.status}`);
+    }
+
+    // Extract __session cookie from Set-Cookie headers
+    const setCookie = sessionRes.headers.get("set-cookie");
+    const sessionMatch = setCookie?.match(/__session=([^;]+)/);
+
+    if (!sessionMatch?.[1]) {
+      throw new Error("No session cookie in response");
+    }
+
+    return sessionMatch[1];
+  } catch (err) {
+    console.error("Failed to get authenticated session:", err);
+    return null;
+  }
+}
+
+/**
  * Main capture harness: fetch live screenshots from specified surfaces.
  *
- * FUTURE: When proxy-browser integration is complete, this will:
- * 1. Auth with session cookie
- * 2. Navigate to each URL
- * 3. Screenshot the visible panel
- * 4. Return structured attachments
- *
- * CURRENT (MVP): Returns mock/stubbed attachments for testing queue validation.
- * The actual implementation requires the proxy-browser to be callable from
- * within the cron environment (cross-process screenshot is expensive).
+ * Authenticates with Clerk (mints temp admin user if no cookie provided),
+ * then uses proxy-browser.cjs to capture each surface through an authenticated session.
  */
 export async function captureForQueuePackage(
   sources: CaptureSource[],
@@ -153,11 +234,32 @@ export async function captureForQueuePackage(
 ): Promise<CaptureResult[]> {
   const { maxRetries = 2, timeoutMs = 30000 } = config;
 
+  // Get session cookie if not provided
+  let sessionCookie = config.sessionCookie;
+  if (!sessionCookie && config.clerkSecretKey) {
+    sessionCookie = (await getAuthenticatedSession(config.clerkSecretKey)) || undefined;
+  }
+
+  if (!sessionCookie) {
+    return [
+      {
+        source: sources[0] || "helix",
+        success: false,
+        error: "No session cookie provided and CLERK_SECRET_KEY not configured",
+      },
+    ];
+  }
+
   const results: CaptureResult[] = [];
 
   for (const source of sources) {
     try {
-      const result = await captureSingleSource(source, { ...config, timeoutMs, maxRetries });
+      const result = await captureSingleSource(source, {
+        ...config,
+        sessionCookie,
+        timeoutMs,
+        maxRetries
+      });
       results.push(result);
     } catch (err) {
       results.push({
@@ -172,10 +274,8 @@ export async function captureForQueuePackage(
 }
 
 /**
- * Capture a single source. MVP returns mock data for queue validation testing.
- *
- * FUTURE: Replace with actual proxy-browser invocation:
- *   await spawnSync('node', ['proxy-browser.cjs', url, out.png, '--cookie', cookie, ...])
+ * Capture a single source using proxy-browser authenticated session.
+ * Requires sessionCookie (Clerk __session JWT) to authenticate with the live site.
  */
 async function captureSingleSource(
   source: CaptureSource,
@@ -186,20 +286,68 @@ async function captureSingleSource(
     return { source, success: false, error: `Unknown surface: ${source}` };
   }
 
-  // MVP: Return mock captures with realistic metadata
-  // In production, this calls proxy-browser and stores real PNGs
-  const nowMs = Date.now();
-  const nowEt = formatTimeEt(nowMs);
+  if (!config.sessionCookie) {
+    return { source, success: false, error: "Session cookie required for live capture" };
+  }
 
-  return {
-    source,
-    success: true,
-    imageUrl: `/x-intel/captures/${source}-${Math.random().toString(36).slice(2, 8)}.png`,
-    caption: surface.caption,
-    capturedAtMs: nowMs,
-    capturedAtEt: nowEt,
-    fromCache: false,
-  };
+  try {
+    const { execSync } = await import("child_process");
+    const { mkdirSync, writeFileSync, existsSync } = await import("fs");
+    const { join } = await import("path");
+
+    const now = Date.now();
+    const nowEt = formatTimeEt(now);
+    const captureId = Math.random().toString(36).slice(2, 8);
+    const filename = `${source}-${captureId}.png`;
+
+    // Create capture directory if needed (for development/testing)
+    const captureDir = join(process.cwd(), "public", "x-intel", "captures");
+    if (!existsSync(captureDir)) {
+      mkdirSync(captureDir, { recursive: true });
+    }
+
+    const outPath = join(captureDir, filename);
+    const viewport = config.viewport ?? "desktop";
+    const viewportSize = viewport === "mobile" ? "430x932" : viewport === "tablet" ? "1024x768" : "1440x900";
+
+    // Call proxy-browser.cjs to capture the live site
+    // Must run from repo root for proxy-browser.cjs to resolve
+    const cmd = `node proxy-browser.cjs "${surface.url}" "${outPath}" --cookie "${config.sessionCookie}" --viewport ${viewportSize} --wait ${config.timeoutMs ?? 30000}`;
+
+    try {
+      execSync(cmd, {
+        cwd: process.cwd(),
+        timeout: (config.timeoutMs ?? 30000) + 5000,
+        stdio: "pipe"
+      });
+    } catch (err) {
+      return {
+        source,
+        success: false,
+        error: err instanceof Error ? err.message : "proxy-browser capture failed",
+      };
+    }
+
+    // Verify file was created
+    if (!existsSync(outPath)) {
+      return { source, success: false, error: "Capture file not created" };
+    }
+
+    const imageUrl = `/x-intel/captures/${filename}`;
+
+    return {
+      source,
+      success: true,
+      imageUrl,
+      caption: surface.caption,
+      capturedAtMs: now,
+      capturedAtEt: nowEt,
+      fromCache: false,
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return { source, success: false, error: `Capture failed: ${message}` };
+  }
 }
 
 /**
