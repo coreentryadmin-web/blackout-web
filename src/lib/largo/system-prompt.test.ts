@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { LARGO_SYSTEM_PROMPT } from "./system-prompt";
+import { LARGO_SYSTEM_PROMPT, getLargoSystemPrompt } from "./system-prompt";
 
 /**
  * These lock the two rules that exist because Largo got them WRONG in production, in the same
@@ -150,4 +150,61 @@ test("dealer-gamma: the regime is never labelled bullish/bearish, even under a l
   assert.match(p, /Never answer "bullish" or "bearish" ABOUT THE GAMMA REGIME ITSELF/);
   // and it must point the direction question at the axes that actually carry it
   assert.match(p, /order flow \(Helix\) and dealer DELTA/);
+});
+
+/**
+ * INTENT-AWARE PROMPT GUIDANCE — new in Phase 2a
+ *
+ * getLargoSystemPrompt() appends intent-specific instructions to the base prompt.
+ * Each intent category narrows the scope of the answer: QUICK_FACT → 1 line, TRADE_INTENT → decision hierarchy.
+ */
+
+test("intent-aware prompt includes base prompt unchanged", () => {
+  const p = getLargoSystemPrompt();
+  assert.strictEqual(p, LARGO_SYSTEM_PROMPT, "no intent → base prompt only");
+});
+
+test("QUICK_FACT intent adds one-line guidance", () => {
+  const p = getLargoSystemPrompt("QUICK_FACT");
+  assert.match(p, /Answer in.*one sentence.*under Verdict/);
+  assert.match(p, /No template bloat/);
+  assert.match(p, /Verdict only: the fact itself/);
+});
+
+test("LEVEL_STRUCTURE intent guides on walls and technicals", () => {
+  const p = getLargoSystemPrompt("LEVEL_STRUCTURE");
+  assert.match(p, /Price Levels & Structure/);
+  assert.match(p, /walls, support, resistance, key levels, or technical structure/);
+  assert.match(p, /Do NOT mix SPX and SPY strikes/);
+});
+
+test("FLOW intent forbids narrative gaps", () => {
+  const p = getLargoSystemPrompt("FLOW");
+  assert.match(p, /Tape & Flow Analysis/);
+  assert.match(p, /Sparse flow = "flow light, tools to follow" — do NOT fill gaps with narrative/);
+});
+
+test("MARKET_READ intent emphasizes consensus and conflict", () => {
+  const p = getLargoSystemPrompt("MARKET_READ");
+  assert.match(p, /Full Cross-Product Consensus/);
+  assert.match(p, /Never reconcile disagreements — surface them so the member decides/);
+});
+
+test("TRADE_INTENT intent mandates decision hierarchy", () => {
+  const p = getLargoSystemPrompt("TRADE_INTENT");
+  assert.match(p, /Trade Decision Hierarchy/);
+  assert.match(p, /🟢 PLAY.*🟡 WAIT.*🔴 NO_TRADE/);
+  assert.match(p, /If any is weak, WAIT or NO_TRADE — do NOT invent conviction/);
+});
+
+test("VALIDATION intent forbids invented fills", () => {
+  const p = getLargoSystemPrompt("VALIDATION");
+  assert.match(p, /Trade Outcome Grading/);
+  assert.match(p, /Never invent fills/);
+});
+
+test("WHY intent guides on root cause vs symptom", () => {
+  const p = getLargoSystemPrompt("WHY");
+  assert.match(p, /Root Cause & Precedent/);
+  assert.match(p, /Root cause lives in the market.*or in execution.*never in "bad luck"/);
 });

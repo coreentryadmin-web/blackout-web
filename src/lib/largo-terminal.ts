@@ -11,9 +11,10 @@ import {
 import { largoAvailable, largoClaudeEnabled } from "@/lib/ai-env";
 import { randomUUID } from "node:crypto";
 import { dbConfigured } from "@/lib/db";
-import { LARGO_SYSTEM_PROMPT } from "@/lib/largo/system-prompt";
+import { LARGO_SYSTEM_PROMPT, getLargoSystemPrompt } from "@/lib/largo/system-prompt";
 import { LARGO_TOOL_DEFS } from "@/lib/largo/tool-defs";
 import { runLargoTool } from "@/lib/largo/run-tool";
+import { detectIntentCategory, selectToolsForIntent } from "@/lib/largo/question-intent-category";
 import {
   formatToolDiagnostics,
   makeGuardedToolRunner,
@@ -320,7 +321,10 @@ function buildDynamicSystem(
    */
   etMinutesNow?: number
 ): AnthropicSystemBlock[] {
-  const intent = analyzeLargoQuestion(question, history);
+  const binaryIntent = analyzeLargoQuestion(question, history);
+  const intentCategory = detectIntentCategory(question, binaryIntent);
+  const selectedTools = selectToolsForIntent(intentCategory);
+
   const platformSection = platformVitalsBlock.trim()
     ? `\n\n${platformVitalsBlock.trim()}\n`
     : "";
@@ -338,20 +342,25 @@ function buildDynamicSystem(
     depth === "concrete"
       ? "keep opinion to the closing clause of your own prose — no labelled section, and no **Bottom line**."
       : "opinion in Bottom line.";
+
+  const toolContext = selectedTools.required.length > 0
+    ? `\n\nAdapted tools for this intent: ${selectedTools.required.join(", ")}${selectedTools.optional.length > 0 ? "; optional: " + selectedTools.optional.join(", ") : ""}`
+    : "";
+
   const dynamicPart = `## This turn
 
 ${formatSessionCalendarBlock(todayEtYmd(), 5, etMinutesNow)}
 
 ${liveFeedBlock}${platformSection}${extraBlocks}
 
-${intent.guidance}
+${binaryIntent.guidance}${toolContext}
 
 Session memory is in Postgres — honor follow-ups. Re-fetch via tools if you need fresher flow, matrix, or platform numbers. Facts from the live feed and platform vitals only; ${opinionClause}`;
 
   return [
     {
       type: "text",
-      text: LARGO_SYSTEM_PROMPT,
+      text: getLargoSystemPrompt(intentCategory.category),
       cache_control: { type: "ephemeral" },
     },
     { type: "text", text: dynamicPart },
