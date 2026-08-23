@@ -38,5 +38,24 @@ test("shouldPostHelixRepeatLive only on milestones", () => {
 });
 
 test("helixContractKey is stable per contract", () => {
-  assert.equal(helixContractKey(flow), "NVDA|140|2026-08-21|C");
+  // Strike is now quantised in MILLS, not dollars — see lib/helix/contract-identity.ts.
+  assert.equal(helixContractKey(flow), "NVDA|140000|2026-08-21|C");
+  assert.equal(helixContractKey({ ...flow, strike: 140.0000000001 }), helixContractKey(flow));
+});
+
+test("helixContractKey separates a half-dollar strike from the strike above it", () => {
+  // The old assertion above checked only that ONE contract keyed stably, so it could not see that
+  // TWO contracts keyed the SAME. Under the dollar-rounded key, 92.5P and 93P shared one milestone
+  // counter, and the second contract's genuine 3rd hit found lastPosted:3 and never posted.
+  const p925 = { ...flow, ticker: "INTC", option_type: "PUT", strike: 92.5 };
+  const p93 = { ...p925, strike: 93 };
+  assert.notEqual(helixContractKey(p925), helixContractKey(p93));
+});
+
+test("helixContractKey still buckets a strikeless row by ticker/expiry/side", () => {
+  // A cache key must exist for every row, but an unusable strike must not collapse unrelated
+  // contracts onto one counter.
+  const noStrike = { ...flow, strike: Number.NaN };
+  assert.match(helixContractKey(noStrike), /nostrike/);
+  assert.notEqual(helixContractKey(noStrike), helixContractKey({ ...noStrike, option_type: "PUT" }));
 });

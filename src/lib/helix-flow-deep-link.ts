@@ -141,6 +141,8 @@ function contractKey(flow: {
   const side = normType(flow.option_type) ?? "?";
   const at = String(flow.at ?? "").slice(0, 19);
   const prem = flow.premium != null ? Math.round(Number(flow.premium)) : 0;
+  // strike-rounding: intentional — this is a PRINT key (it carries `at` and `premium`), and it must
+  // stay byte-compatible with links already shared before 2026-08-23. See flowMatchesDeepLink.
   return `${flow.ticker.toUpperCase()}|${Math.round(flow.strike)}|${String(flow.expiry).slice(0, 10)}|${side}|${at}|${prem}`;
 }
 
@@ -171,6 +173,7 @@ export function flowMatchesDeepLink(flow: FlowAlert, target: HelixDeepLinkTarget
     const targetIsExact = Number.isFinite(target.strike) && Number(target.strike) % 1 !== 0;
     const mismatch = targetIsExact
       ? Number(flow.strike) !== Number(target.strike)
+      // strike-rounding: intentional — legacy links carry a rounded strike; see the block above.
       : Math.round(flow.strike) !== Math.round(target.strike);
     if (mismatch) return false;
   }

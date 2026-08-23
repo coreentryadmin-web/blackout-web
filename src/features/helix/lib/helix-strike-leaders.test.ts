@@ -43,6 +43,52 @@ test("countMatchingContractHits matches MM/DD/YYYY expiry variants", () => {
   assert.equal(hits, 2);
 });
 
+test("countMatchingContractHits does not count the neighbouring half-dollar strike", () => {
+  // MEASURED on the live tape 2026-08-23: INTC 92.5P and INTC 93P both printed on 2026-08-21, and
+  // the old Math.round(strike) comparison counted each toward the other's "N hits" line — the exact
+  // number a member reads as repeat conviction on ONE contract.
+  const nowMs = Date.parse("2026-08-21T16:00:00.000Z");
+  const at = "2026-08-21T15:55:00.000Z";
+  const row = (strike: number) => ({
+    ticker: "INTC",
+    strike,
+    option_type: "PUT",
+    expiry: "2026-08-21",
+    premium: 500_000,
+    event_at: at,
+    alerted_at: at,
+  });
+  const alerts = [row(92.5), row(92.5), row(93)];
+  assert.equal(
+    countMatchingContractHits(alerts, row(93), HELIX_STRIKE_HITS_WINDOW_MS, nowMs),
+    1
+  );
+  assert.equal(
+    countMatchingContractHits(alerts, row(92.5), HELIX_STRIKE_HITS_WINDOW_MS, nowMs),
+    2
+  );
+});
+
+test("countMatchingContractHits refuses to count when the target strike is unusable", () => {
+  // Number(null) is 0, so a strikeless target must be rejected rather than silently counting every
+  // strike-0 row — or worse, every row whose strike also failed to parse.
+  const nowMs = Date.parse("2026-08-21T16:00:00.000Z");
+  const at = "2026-08-21T15:55:00.000Z";
+  const mk = (strike: unknown) => ({
+    ticker: "INTC",
+    strike: strike as number,
+    option_type: "PUT",
+    expiry: "2026-08-21",
+    premium: 500_000,
+    event_at: at,
+    alerted_at: at,
+  });
+  assert.equal(
+    countMatchingContractHits([mk(null), mk(93)], mk(null), HELIX_STRIKE_HITS_WINDOW_MS, nowMs),
+    0
+  );
+});
+
 test("countMatchingContractHits ignores tape_time_estimated ingest fallback", () => {
   const nowMs = Date.parse("2026-07-20T16:00:00.000Z");
   const alerts = [

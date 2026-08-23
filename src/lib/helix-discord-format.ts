@@ -19,6 +19,7 @@ import {
 import { contractSizeRounded } from "@/features/helix/lib/helix-contract-size";
 import { HELIX_STRIKE_HITS_WINDOW_MIN } from "@/features/helix/lib/helix-strike-leaders";
 import { buildHelixFlowDeepLink, helixDiscordFlowToDeepLink } from "@/lib/helix-flow-deep-link";
+import { flowContractKey } from "@/lib/helix/contract-identity";
 
 export const HELIX_DISCORD_MIN_PREMIUM = 500_000;
 export const HELIX_DISCORD_MAX_FILL = 10;
@@ -507,18 +508,15 @@ export function contractStackHitsFromFlows(
   const windowMin = opts?.windowMin ?? HELIX_STRIKE_HITS_WINDOW_MIN;
   const windowMs = windowMin * 60_000;
   const nowMs = (opts?.now ?? new Date()).getTime();
-  const ticker = String(flow.ticker).toUpperCase();
-  const side = String(flow.option_type || "").toUpperCase().startsWith("C") ? "CALL" : "PUT";
-  const exp = String(flow.expiry).slice(0, 10);
-  const strike = Number(flow.strike);
+  // One shared contract key rather than four inline comparisons. The strike component used to be
+  // Math.round(...), so a Repeat Hits timeline could list prints from a NEIGHBOURING half-dollar
+  // strike and the resulting hit count fed the milestone gate. See contract-identity.ts.
+  const key = flowContractKey(flow);
+  if (key == null) return [];
 
   const hits: FlowStackHit[] = [];
   for (const row of pool) {
-    if (String(row.ticker).toUpperCase() !== ticker) continue;
-    if (Math.round(Number(row.strike)) !== Math.round(strike)) continue;
-    if (String(row.expiry).slice(0, 10) !== exp) continue;
-    const rowSide = String(row.option_type || "").toUpperCase().startsWith("C") ? "CALL" : "PUT";
-    if (rowSide !== side) continue;
+    if (flowContractKey(row) !== key) continue;
     if (!passesHelixDiscordFilters(row, opts?.now)) continue;
     const at = row.event_at || row.alerted_at;
     if (!at) continue;
