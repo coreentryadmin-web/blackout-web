@@ -28,7 +28,7 @@ export type SpxPlayPayload = {
   direction: SpxPlayDirection | null;
   grade: string;
   score: number;
-  confidence: number;
+  rawScore: number;
   headline: string;
   thesis: string;
   idle_message: string | null;
@@ -103,7 +103,7 @@ export type SpxPlayPayload = {
   /**
    * False ONLY when no confluence was computed for this payload — i.e. the desk produced no
    * assessment at all (engine timeout/error, or computeSpxConfluence() returned null). In that
-   * case `grade`/`score`/`confidence` are placeholder literals ("D"/0/0), NOT a measurement: a
+   * case `grade`/`score`/`rawScore` are placeholder literals ("D"/0/0), NOT a measurement: a
    * "D" here means "nothing was graded", not "graded and it's a D". Absent (undefined) means the
    * payload predates this flag or was built from a real confluence — readers must treat only an
    * explicit `false` as absence, so no existing producer is retroactively marked unassessed.
@@ -176,7 +176,7 @@ export function degradedPlayPayload(
     direction: null,
     grade: "D",
     score: 0,
-    confidence: 0,
+    rawScore: 0,
     // Nothing was evaluated on this path — the three literals above are placeholders, not a grade.
     assessed: false,
     headline: "Desk warming — play state unavailable",
@@ -244,7 +244,7 @@ export function scanningPayload(
     direction: confluence?.direction ?? null,
     grade: confluence?.grade ?? "D",
     score: confluence?.score ?? 0,
-    confidence: confluence?.confidence ?? 0,
+    rawScore: confluence?.rawScore ?? 0,
     // Without a confluence the three fields above are the `??` fallbacks, not an assessment.
     assessed: confluence != null,
     headline: idle,
