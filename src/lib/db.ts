@@ -9567,6 +9567,33 @@ export async function recordCronJobRun(input: {
   }
 }
 
+/**
+ * The most recent run of ONE cron job, or null if the table holds none.
+ *
+ * `fetchCronJobLastRuns()` returns the latest row for EVERY job — fine for the ops dashboard,
+ * wasteful for a member request that cares about a single key. More importantly, a caller asking
+ * "has this writer run at all?" must not have to distinguish "key missing from a 40-row array"
+ * from "array empty because the query failed"; here the absence has one shape.
+ *
+ * Note what a null means: no run inside the table's 30-day retention (pruned above), NOT "never".
+ * Callers must bound their claim accordingly.
+ */
+export async function fetchLatestCronJobRun(jobKey: string): Promise<CronJobRunRow | null> {
+  await ensureSchema();
+  const res = await (await getPool()).query(
+    `
+    SELECT id, job_key, status, started_at, duration_ms, message, meta_json
+    FROM cron_job_runs
+    WHERE job_key = $1
+    ORDER BY started_at DESC
+    LIMIT 1
+    `,
+    [jobKey]
+  );
+  const row = res.rows[0];
+  return row ? mapCronJobRunRow(row) : null;
+}
+
 export async function fetchCronJobLastRuns(): Promise<CronJobRunRow[]> {
   await ensureSchema();
   const res = await (await getPool()).query(
