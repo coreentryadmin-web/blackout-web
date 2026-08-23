@@ -521,18 +521,26 @@ session with `scripts/audit/gex-wall-snapshot-poll.mjs`, then run `wall-temporal
 against them. **Until then, the honest status of INTENTIONAL-DESIGN item #3 is "enforced,
 unmeasured", not "parked".**
 
-### NH-2 — `BREAKOUT_DYNAMIC_CAP="1"` is a key nothing reads
+### NH-2 — `BREAKOUT_DYNAMIC_CAP="1"` was a key nothing reads — **FIXED**
 
 Production sets `BREAKOUT_DYNAMIC_CAP="1"`. The only env name `breakout-cap.ts` ever reads is
 **`BREAKOUT_DYNAMIC_CAP_DISABLED`** (`breakout-cap.ts:47,64`). There is no read of the bare key
 anywhere in `src/`.
 
 The dynamic cap is on regardless — `disabled` resolves false when `BREAKOUT_DYNAMIC_CAP_DISABLED`
-is unset — so **today the deployed behaviour matches the evident intent by coincidence, not by the
-flag.** The trap is the inverse operation: someone trying to turn the dynamic cap OFF by setting
-`BREAKOUT_DYNAMIC_CAP="0"` would change nothing and would have no way to tell. Low severity, but it
-is a lie in the deploy config and costs one line to resolve (either read the bare name as an
-enable-flag, or drop the key).
+is unset — so **the deployed behaviour matched the evident intent by coincidence, not by the flag.**
+The trap was the inverse operation: turning the dynamic cap OFF with `BREAKOUT_DYNAMIC_CAP="0"`
+changed nothing, silently, on the emergency revert path.
+
+**Fixed** by `resolveBreakoutDynamicCapDisabled(env)`, which honours both names and is read at CALL
+time rather than module-eval, so a deploy-time value is actually consulted. Precedence is
+deliberate: **`BREAKOUT_DYNAMIC_CAP_DISABLED` wins outright**, because a stale enable flag in the
+deploy config must never defeat someone actively reverting mid-incident. Behaviour is unchanged for
+every value deployed today, which the tests pin explicitly.
+
+**Not closed until live-validated** — this is a config-path change, so it is only really done once
+`BREAKOUT_DYNAMIC_CAP=0` is observed reverting to the static floor on production, or the key is
+removed from the deploy. FINDINGS entry carries the same status.
 
 ---
 
