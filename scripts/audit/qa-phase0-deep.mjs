@@ -453,12 +453,25 @@ async function runDeep() {
           await page.waitForTimeout(2500 - sinceNav);
           continue;
         }
+        // Scoped OUTSIDE header/nav/footer, matching INVENTORY's own inShell filter — the shared
+        // site chrome (nav links, the "Open desk" button) is present within ~1s on EVERY route and
+        // satisfies "interactive > 0" trivially, so an unscoped probe reports "settled" before the
+        // actual product panel has loaded at all. Caught live on /vector (2026-08-23): screenshot
+        // still read "LOADING VECTOR" after the full interaction pass, while a direct patient probe
+        // showed the real panel (chart, GEX/VEX/0DTE tabs, indicators, live tape) fully up at 6s —
+        // well inside this deadline. The unscoped probe had already declared victory on nav alone.
         const probe = await page
-          .evaluate(() => ({
-            ready: document.readyState === "complete",
-            textLen: (document.body?.innerText ?? "").trim().length,
-            interactive: document.querySelectorAll("button, [role=tab], select, [role=switch]").length,
-          }))
+          .evaluate(() => {
+            const root = document.querySelector("main") ?? document.body;
+            const inShell = (el) => !el.closest("header, nav, [role=navigation], footer");
+            const text = [...root.querySelectorAll("body *")]
+              .filter((el) => el.children.length === 0 && inShell(el))
+              .map((el) => el.textContent ?? "")
+              .join(" ")
+              .trim();
+            const interactive = [...document.querySelectorAll("button, [role=tab], select, [role=switch]")].filter(inShell).length;
+            return { ready: document.readyState === "complete", textLen: text.length, interactive };
+          })
           .catch(() => null);
         if (probe && probe.ready && (probe.textLen > 200 || probe.interactive > 0)) {
           settled = true;
