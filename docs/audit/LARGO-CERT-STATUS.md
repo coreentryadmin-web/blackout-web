@@ -1,4 +1,5 @@
 # LARGO CERTIFICATION STATUS
+
 ## 2026-08-23 Progress Report (UPDATED)
 
 **Order Received:** 2026-08-23T17:09:11Z  
@@ -26,6 +27,39 @@
 ### ✓ AUTOMATED TESTING (2026-08-23)
 
 **Pre-Certification Tests: 38/38 PASS**
+
+| Test Suite | Count | Pass | Fail | Coverage |
+|-----------|-------|------|------|----------|
+| slash-commands.test.ts | 17 | 17 | 0 | All 7 nav + 4 terminal commands |
+| inline-markdown.test.ts | 14 | 14 | 0 | Number tokenization (comma-grouped) |
+| tool-count-claims.test.ts | 4 | 4 | 0 | Tool drift prevention (sweep-based) |
+| tools-used-provenance.test.ts | 3 | 3 | 0 | Collision detection, calibration |
+
+**What Passed:**
+- [x] Slash command filtering, sorting, argument parsing
+- [x] Ticker extraction and navigation href resolution
+- [x] Watch list parsing (`/watch NVDA,TSLA`)
+- [x] Terminal command desk scope assignment (`/diff`, `/board`, `/trinity`)
+- [x] Number tokenization (7,500 stays whole, not split)
+- [x] Multi-group numbers (7,500,000)
+- [x] Number composition (sign, decimal, percent with comma)
+- [x] Tool count drift detection (no silent narrowing)
+- [x] Stale count markers (14→129 corrected; 7→live measured dated)
+- [x] Tools_used collision detection
+- [x] KNOWN_AMBIGUOUS shrinking (only `get_helix_thermal_compare`)
+- [x] No marker sits in BIE calibration cohort unless intentional
+
+### ✓ COHORT MEMBERSHIP VERIFIED
+
+**Engine Tool Lists Verified Against TOOL_GROUPS:**
+- [x] SPX_ENGINE_TOOL_NAMES (11) ⊆ TOOL_GROUPS.spx_desk (19)
+- [x] HELIX_ENGINE_TOOL_NAMES (8) ⊆ TOOL_GROUPS.flow_analysis (18)
+- [x] THERMAL_ENGINE_TOOL_NAMES (6) ⊆ TOOL_GROUPS.stock_analysis (20)
+- [x] VECTOR_ENGINE_TOOL_NAMES (4) ⊆ TOOL_GROUPS.stock_analysis (20)
+- [x] NIGHTHAWK_ENGINE_TOOL_NAMES (8) ⊆ TOOL_GROUPS.platform (14+)
+- [x] MARKET_ENGINE_TOOL_NAMES (1) ⊆ TOOL_GROUPS.vol_analysis (7)
+- [x] BIE_TOOL_NAMES (9) in BIE_TOOL_NAMES + distributed
+- [x] No orphaned tools (all accounted for)
 
 ---
 

@@ -8,6 +8,37 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-08-23 — [SEO] Lane heartbeat: CLS production validation + PR sweep
+
+**Severity.** — (no defect found)
+
+**Why it ran.** Scheduled SEO lane heartbeat (routine weekly validation on merged work).
+
+**Result — `OVERALL: PASS`, `EXIT=0`:**
+
+1. **Homepage CLS (post-Cloudflare purge):**
+   - Desktop 1440×900: **0.0000** (64/64 assets routed ok)
+   - Mobile 430×932: **0.0012** (59/59 assets routed ok)
+   - Verdict: **GOOD** (both well under 0.1 threshold)
+
+2. **OG image crawlability (`/api/og`):**
+   - HTTP 200, content-type: image/png
+   - Unauthenticated (signed-out, `x-clerk-auth-status: signed-out`)
+   - Cache: DYNAMIC (fresh on each request, not edge-cached)
+   - Verdict: **LIVE** (OG + Article JSON-LD images crawlable)
+
+3. **PR sweep (`agent-pr-sweep.mjs`):**
+   - 3 open agent PRs total
+   - 2 with CI running (will auto-merge when complete)
+   - 1 mergeable (#2773, waiting for coordinator release)
+   - 0 conflicted — no rebases needed
+
+**Lane-specific state (known, documented, not rediscovered):**
+- GA4 (G-YLN4K37KYF) live and firing on every page; client-side Google Ads conversion code ready (`src/lib/analytics/google-ads.ts`). Gap: environment variables not configured (`NEXT_PUBLIC_GOOGLE_ADS_ID`, labels), so conversions never reach Google Ads account. Status: waiting for ads/analytics lane.
+- GSC ground truth available (service account `claude-seo@...`, verified siteOwner on `sc-domain:blackouttrades.com`); reproducible opportunity-finder wired (`gsc-opportunities-report.mjs`).
+- Bing: IndexNow live, pings on every deploy via `deploy-smoke.yml`. Webmaster Tools dashboard only (human login needed).
+
+---
 ## 2026-08-23 — [Helix] Live /flows UI audit on the settled build — PASS both viewports, and it live-validates three merged fixes
 
 **Severity.** — (no defect found)

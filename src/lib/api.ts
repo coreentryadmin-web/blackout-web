@@ -233,7 +233,13 @@ export interface DarkPoolRow {
   ticker: string;
   premium: number;
   side: string;
-  executed_at: string;
+  /**
+   * NULLABLE — a print upstream did not date arrives with no time, rather than one invented at
+   * request time. This is the CLIENT mirror of `DarkPoolRow` in `api/market/dark-pool/route.ts`;
+   * the two are joined only by the wire, so tsc cannot catch them drifting apart. They were
+   * already the same shape, and this keeps them so.
+   */
+  executed_at: string | null;
   share_size?: number;
 }
 

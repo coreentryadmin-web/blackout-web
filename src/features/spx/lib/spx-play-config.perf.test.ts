@@ -3,24 +3,21 @@ import { describe, it } from "node:test";
 import { playClaudeGateEnabled, playMemberReadCacheSec } from "./spx-play-config";
 
 describe("playClaudeGateEnabled", () => {
-  it("defaults off on non-staging when SPX_CLAUDE_GATE unset", () => {
+  it("defaults off when SPX_CLAUDE_GATE unset and not staging", () => {
     delete process.env.SPX_CLAUDE_GATE;
     delete process.env.NEXT_PUBLIC_SITE_URL;
     assert.equal(playClaudeGateEnabled(), false);
   });
 
-  it("defaults on for staging deploy when SPX_CLAUDE_GATE unset", () => {
-    delete process.env.SPX_CLAUDE_GATE;
-    process.env.NEXT_PUBLIC_SITE_URL = "https://staging.blackouttrades.com";
+  it("explicit SPX_CLAUDE_GATE=1 enables the gate", () => {
+    process.env.SPX_CLAUDE_GATE = "1";
     assert.equal(playClaudeGateEnabled(), true);
-    delete process.env.NEXT_PUBLIC_SITE_URL;
+    delete process.env.SPX_CLAUDE_GATE;
   });
 
-  it("explicit SPX_CLAUDE_GATE=0 overrides staging default", () => {
-    process.env.NEXT_PUBLIC_SITE_URL = "https://staging.blackouttrades.com";
+  it("explicit SPX_CLAUDE_GATE=0 disables the gate", () => {
     process.env.SPX_CLAUDE_GATE = "0";
     assert.equal(playClaudeGateEnabled(), false);
-    delete process.env.NEXT_PUBLIC_SITE_URL;
     delete process.env.SPX_CLAUDE_GATE;
   });
 });

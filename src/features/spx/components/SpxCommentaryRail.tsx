@@ -26,7 +26,6 @@ import { clsx } from "clsx";
 import type { SpxDeskPayload } from "@/lib/api";
 import { readSessionCache, writeSessionCache } from "@/lib/session-cache";
 import { largoEnabled } from "@/lib/largo-env";
-import { isStagingDeploy } from "@/lib/clerk-env";
 import {
   commentaryOfflineTone,
   pickCommentaryOfflineCopy,
@@ -351,11 +350,6 @@ export function SpxCommentaryRail({
           <span className="font-syne text-base tracking-[0.12em] text-purple-light block font-bold">
             Largo
           </span>
-          {isStagingDeploy() && (
-            <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-cyan-400/90">
-              BlackOut Intelligence
-            </span>
-          )}
         </div>
         {live && (
           <button

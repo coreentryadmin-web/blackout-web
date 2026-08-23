@@ -1,13 +1,5 @@
 import type { PlaybookId } from "@/features/spx/lib/playbook-registry";
-import {
-  liveDataQualityMode,
-  playbookDataQualityFlags,
-  shouldFailClosedLiveOnDataQuality,
-} from "@/features/spx/lib/playbook-data-quality";
-import {
-  playbookDegradedSizeMultiplier,
-  playbookSessionMaxTriggersPerPb,
-} from "@/features/spx/lib/playbook-session-risk";
+import { playbookSessionMaxTriggersPerPb } from "@/features/spx/lib/playbook-session-risk";
 import type { SpxDeskPayload } from "@/features/spx/lib/spx-desk";
 import {
   playBuyCooldownSec,
@@ -15,7 +7,6 @@ import {
   playReentryLockSec,
   playSessionMaxEntries,
   playSessionMaxLosses,
-  playbookStagingLabEnabled,
 } from "@/features/spx/lib/spx-play-config";
 
 export type TradeGovernorTier = "normal" | "reduced" | "halt";
@@ -161,39 +152,6 @@ export function evaluateTradeGovernor(input: TradeGovernorInput): TradeGovernorR
     if (count >= max) {
       blocks.push(`Playbook ${input.playbook_id} session trigger cap (${max})`);
       tier = "halt";
-    }
-  }
-
-  // ⚠ DEAD IN EVERY DEPLOYED ENVIRONMENT — read this before citing the governor as a
-  // data-quality safeguard. `playbookStagingLabEnabled()` is `isStagingDeploy()` under another
-  // name, i.e. `NEXT_PUBLIC_SITE_URL.includes("staging.")`, and staging was decommissioned
-  // 2026-07-25. Nothing in this block has run in production, and it reads as though it does.
-  //
-  // What is actually still guarded, and what is not:
-  //   • SEVERE data quality on a live BUY — STILL GUARDED, but by `spx-play-gates.ts:222`, inside
-  //     `if (buyIntent && playbookLiveGateEnabled())`, which IS true in production
-  //     (PLAYBOOK_LIVE_GATE="1", measured 2026-08-22). The copy below is redundant, not load-bearing.
-  //   • DEGRADED-feed size reduction — NOT GUARDED ANYWHERE. It is broken twice over: this is the
-  //     only branch that lowers `size_multiplier`, and it never runs; and `playbook_size_multiplier`
-  //     (spx-play-gates.ts:496) has NO reader, so a reduced value would change nothing even if it
-  //     were computed. Fixing either half alone is a no-op. Characterised by
-  //     `trade-governor-staging-gate.test.ts` so production's real behaviour is executable, not prose.
-  //
-  // Deliberately NOT re-predicated on `playbookLiveGateEnabled()` here: switching a fail-closed halt
-  // from inert to live is a sizing/blocking behaviour change on a member-facing desk, and the fire
-  // rate of `liveDataQualityMode() === "severe"` over a real RTH session has never been measured.
-  // See docs/spx/SLAYER-MAP.md §7.1 — it is on the market-open battery.
-  if (playbookStagingLabEnabled()) {
-    const dq = playbookDataQualityFlags(input.desk);
-    const mode = liveDataQualityMode(dq);
-    if (shouldFailClosedLiveOnDataQuality(mode)) {
-      blocks.push(`Trade governor: severe data quality (${mode}) — fail-closed`);
-      tier = "halt";
-      emergency_shutdown = true;
-    } else if (mode === "degraded") {
-      size_multiplier = Math.min(size_multiplier, playbookDegradedSizeMultiplier());
-      tier = tier === "halt" ? "halt" : "reduced";
-      warnings.push(`Degraded feeds — size ×${size_multiplier}`);
     }
   }
 

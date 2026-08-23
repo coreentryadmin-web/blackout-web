@@ -33,7 +33,11 @@ function timeAgo(iso: string | null | undefined): string {
   return relativeAge(iso);
 }
 
-function fmtDate(iso: string): string {
+function fmtDate(iso: string | null | undefined): string {
+  // An undated print renders as the dash `relativeAge` already uses, NOT as today's date. The two
+  // branches of the caller must agree about absence, or the same row reads "just now" in one column
+  // width and "08/23 14:02" in another.
+  if (iso == null || iso === "") return timeAgo(iso);
   try {
     const d = new Date(iso);
     // new Date(bad) is Invalid Date (does NOT throw), so getMonth() etc. would render "NaN/NaN".

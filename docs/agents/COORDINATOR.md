@@ -144,6 +144,17 @@ Once a deploy succeeds, the owning lane goes back into the real product to valid
 against the real UI and live data — not just against the workflow log. Failed validation reopens
 the work immediately; it does not sit as a footnote on a closed PR.
 
+**No major product release is considered fully certified solely by the owning lane's own
+VERIFIED — standing rule, added with the QA/Adversarial lane (2026-08-23).** A product lane's
+VERIFIED is first-party validation: the person who built it, checking their own work. That is
+necessary but not sufficient. The QA/Adversarial lane (`lane:qa-adversarial`) is the required
+second-party validation — independent, incentivized to disprove rather than confirm, working from
+the change scope I hand it rather than the owning lane's own account of what it did. A release is
+only fully certified once QA has had a chance to independently try to break it and could not
+reproduce a blocking defect. Route the change scope to QA the same way I route anything else —
+`create_trigger`+`fire_trigger` into its `persistent_session_id` — rather than letting the owning
+lane's self-report stand alone as the final word.
+
 ## 10. RTH discipline: correctness over velocity during live hours
 
 During live trading hours, product correctness and production stability outrank feature velocity.

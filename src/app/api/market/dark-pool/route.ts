@@ -2,35 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { authorizeMarketDeskApi } from "@/lib/market-api-auth";
 import { serverCache, TTL } from "@/lib/server-cache";
 import { NO_STORE_HEADERS } from "@/lib/no-store-headers";
+import { normalizeRow, type DarkPoolRow } from "./normalize";
 
 export const dynamic = "force-dynamic";
-
-export interface DarkPoolRow {
-  ticker: string;
-  premium: number;
-  side: string;
-  executed_at: string;
-  share_size?: number;
-}
-
-function normalizeRow(raw: unknown): DarkPoolRow | null {
-  if (!raw || typeof raw !== "object") return null;
-  const r = raw as Record<string, unknown>;
-
-  const ticker = String(r.ticker ?? r.symbol ?? r.underlying ?? "").toUpperCase();
-  if (!ticker) return null;
-
-  const premium = Number(r.premium ?? r.notional ?? r.size_premium ?? 0);
-  if (premium <= 0) return null;
-
-  const sideRaw = String(r.side ?? r.sentiment ?? r.direction ?? "neutral").toLowerCase();
-  const side = sideRaw.includes("buy") ? "buy" : sideRaw.includes("sell") ? "sell" : "neutral";
-
-  const executed_at = String(r.executed_at ?? r.date ?? r.timestamp ?? new Date().toISOString());
-  const share_size = r.size != null ? Number(r.size) : undefined;
-
-  return { ticker, premium, side, executed_at, share_size };
-}
 
 export async function GET(req: NextRequest) {
   const auth = await authorizeMarketDeskApi(req);
