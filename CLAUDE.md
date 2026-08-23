@@ -83,6 +83,37 @@ failure it was written to prevent.
 `main`, re-run the affected check AGAINST `origin/main` rather than trusting that the merge did what
 you expected. That is how the twenty-minute red window above was caught at all.
 
+**A PUSH TO AN ALREADY-MERGED PR IS SILENT — CHECK BEFORE YOU PUSH, AND AFTER (2026-08-23).** With
+`automerge.yml` armed, a green PR can go from opened to merged in **thirteen minutes**. Widen the
+scope of your own PR, run the suite, push — and the push can land after it merged. Measured that
+day: #2713 merged 08:44:02 and the widening was committed 08:47:41 (**3m39s late**); #2711 merged
+08:48:37 and its correction 08:49:16 (**39s late**). Both pushes SUCCEEDED. Git accepts them, the
+branch moves, GitHub reports nothing, and a merged PR simply ignores everything that arrives after.
+
+**There is no error anywhere in this.** The PR reads merged, green, closed; CI is untouched; the
+branch has your commit on it. The only symptom is that `main` is missing work you believe you
+shipped — and the two dropped commits here were the ones that made `main` SELF-CONSISTENT, so what
+landed was a runbook describing four fixed panels beside a probe that checks one. A half-merged
+change reads at validation time as "the fix is broken", not as "the fix is half-merged", which is a
+strictly more expensive way to find out.
+
+The cheap guard, one API call, after every push to a PR branch:
+
+```bash
+curl -s "https://api.github.com/repos/$REPO/pulls/$N" -H "Authorization: Bearer $GITHUB_TOKEN" \
+  | python3 -c "import sys,json;d=json.load(sys.stdin);print(d['state'],d['merged'],d['head']['sha'][:8])"
+# state must be `open`, merged `False`, and head sha must equal what you just pushed.
+```
+
+If it comes back merged: **do not push more commits to that branch** and do not reopen it. Branch
+fresh off `origin/main` and open a NEW PR for the remainder — the same rule the agent harness states
+for a merged designated branch, and it applies to any PR, not just that one. Then verify by
+ancestry/content against `origin/main`, never by the PR's own status.
+
+**The generalisation worth keeping:** the faster the merge queue, the smaller the window in which
+"my open PR" is still true. Treat a PR as open only as of the last time you actually looked, and
+prefer landing a widened scope as a NEW PR over racing a push into an old one.
+
 ## PR write-up policy (standing instruction)
 Every PR — fix or docs — gets a deep, clean write-up so Cursor (a parallel agent working the
 same repo) can read the diff cold and understand it without asking follow-up questions:
