@@ -228,7 +228,7 @@ Three whole-table facts, stated once rather than repeated 129 times:
    wrapper internally from five adapters. **No individual product tool is contract-wrapped.** The
    contract is real as types and as the C1 session-anchor ratchet; its adoption at the tool boundary
    is one tool out of 129.
-2. **Size bound: 2 of 129.** Only `get_zerodte_record` and `get_nighthawk_outcomes` pass their rows
+2. **Size bound: 2 of 129 at the time of this inventory — 3 within hours** (#2649 fitted `get_vector_full_state` by hand). Only `get_zerodte_record` and `get_nighthawk_outcomes` pass their rows
    through `fitRowsToBudget` (budget `LARGO_RESULT_CHAR_BUDGET` = 14 000 = 87.5% of the cap, the
    headroom absorbing downstream rounding/wrapping). Those are precisely the two tools someone
    already caught being truncated (#2433, #2480, #2628). **The other 127 are capped blind.**
