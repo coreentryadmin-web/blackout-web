@@ -341,14 +341,31 @@ mobile card carried **no timestamp whatsoever** — not a wrong time, an absent 
 #2706 said mobile showed "a timestamp with no indication it is an ingest time"; that was wrong and is
 corrected here: there was no timestamp.)
 
-- **Check on mobile 430×932 (`proxy-browser.cjs`, `flow-card`):** every card shows a print time, and
-  a Group B row (SPX / SPY — no `event_at`, §4A) shows it **prefixed `~`** without needing hover.
-- **Check on desktop 1440:** the `~` is visible in the cell, not only in the `title`.
-- **The RTH-only question:** off-hours the whole tape is stale, so `~` is near-universal and proves
-  nothing about discrimination. Under live flow Group A rows carry a real `event_at` and must render
-  **without** the `~`, while SPX/SPY keep it. **If every row still shows `~` under a moving tape, the
-  three-timestamp model is not reaching the renderer** — that is the failure this check exists for,
-  and it is only detectable when both populations are fresh.
+> **⚠️ THIS SECTION'S PASS CONDITION EXPIRED WHEN #2723 DEPLOYED — corrected 2026-08-23.** It used
+> to require that *"a Group B row (SPX / SPY — no `event_at`, §4A) shows it **prefixed `~`**"*, and
+> that under live flow *"SPX/SPY keep it"*. **Both are now impossible.** `resolveFlowTimes` sets
+> `tape_time_estimated: false` whenever an `event_at` resolves, and #2723 gave every index row one.
+> Measured on the live tape: **0 of 5000 rows carry `tape_time_estimated` — 0 of 3621 SPX+SPY.**
+> A checker following the old text finds no `~` anywhere and marks a working #2707 FAILED. This is
+> the second criterion in this runbook that #2723 expired (see §5k); when a fix changes a
+> population, every check written against the old one becomes a false negative, not a stale note.
+
+- **Check on mobile 430×932 (`proxy-browser.cjs`, `flow-card`):** **every card shows a print time.**
+  That is #2707's actual fix and it is still fully checkable — the defect was an *absent* timestamp,
+  not a mislabelled one.
+- **Check on desktop 1440:** where a `~` does render it is visible in the cell, not only in the
+  `title`. Note this is now hard to exercise — see below.
+- **The `~` path is currently unfalsifiable, and that is the honest status.** With every row
+  carrying a real `event_at`, no row takes the estimated branch, so neither the mobile nor the
+  desktop `~` assertion can pass or fail. Do **not** record "no `~` seen" as either a pass or a
+  failure of the marker itself. If you need it exercised, the only rows that can reach that branch
+  are ones with no parseable time at all — count them first:
+  `node --import tsx scripts/audit/helix-tape-inventory.mjs` → the `event_at` presence row. At 100%
+  there is nothing to render and nothing to check.
+- **What to watch for instead, and it is more interesting than the original check:** a row that
+  DOES show `~` under a moving tape is now a genuine outlier — a print whose `executed_at` the
+  magnitude parser could not read. **Capture it.** That is the population #2723's write-up said it
+  could not name off-hours, and one live example would settle what the wire format actually is.
 
 ### 5g. Contract size — one derivation, and a `0` that was a measurement (#2710)
 
