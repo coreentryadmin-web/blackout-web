@@ -138,91 +138,28 @@ export function formatTimeEt(ms: number): string {
 
 /**
  * Get an authenticated session cookie by minting a temp Clerk user.
- * Returns the __session JWT cookie for authenticated API calls.
- * Requires CLERK_SECRET_KEY env var or config.clerkSecretKey.
+ * Uses the existing mintClerkPremiumSession helper from audit toolkit.
+ * Returns the Cookie header value (includes all session cookies) or null on failure.
  */
-async function getAuthenticatedSession(
-  clerkSecretKey: string = process.env.CLERK_SECRET_KEY || ""
-): Promise<string | null> {
-  if (!clerkSecretKey) {
-    return null; // Caller must provide or set env var
-  }
-
+async function getAuthenticatedSession(): Promise<{ cookie: string; cleanup: () => Promise<void> } | null> {
   try {
-    // Generate random phone for this session
-    const phone = `+1415555${String(Math.floor(Math.random() * 10000)).padStart(4, "0")}`;
-    const email = `claude-audit-temp+${Date.now()}@blackouttrades.com`;
+    // Import the existing audit toolkit helper
+    const { mintClerkPremiumSession } = await import("../../scripts/audit/lib/prod-clerk-session.mjs");
 
-    // Create Clerk user via Backend API
-    // Generate random password (Clerk instance requires one)
-    const password = Math.random().toString(36).slice(2, 18) + "Aa1!";
+    const appUrl = process.env.NEXT_PUBLIC_URL || "https://blackouttrades.com";
+    const result = await mintClerkPremiumSession({ appUrl });
 
-    const createRes = await fetch("https://api.clerk.com/v1/users", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${clerkSecretKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        email_address: [email],
-        phone_number: [phone],
-        password,
-        public_metadata: { role: "admin", tier: "premium" },
-      }),
-    });
-
-    if (!createRes.ok) {
-      const err = await createRes.text();
-      throw new Error(`Clerk user creation failed: ${err}`);
+    if (result.skip) {
+      console.warn("Clerk session unavailable:", result.reason);
+      return null;
     }
 
-    const user = (await createRes.json()) as { id: string };
+    // cookieHeader is already formatted as "__session=<jwt>; __client_uat=<timestamp>"
+    const cleanup = result.cleanup;
 
-    // Get sign-in token
-    const tokenRes = await fetch(`https://api.clerk.com/v1/users/${user.id}/sign_in_tokens`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${clerkSecretKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({}),
-    });
-
-    if (!tokenRes.ok) {
-      const err = await tokenRes.text();
-      throw new Error(`Failed to get sign-in token: ${err}`);
-    }
-
-    const { token } = (await tokenRes.json()) as { token: string };
-
-    // Exchange token for session via FAPI
-    const sessionRes = await fetch("https://clerk.blackouttrades.com/v1/sign_in_tokens", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        "User-Agent": "BlackOutAudit/1.0",
-      },
-      body: new URLSearchParams({
-        token,
-        _clerk_js_version: "5.57.0",
-      }).toString(),
-    });
-
-    if (!sessionRes.ok) {
-      throw new Error(`Session exchange failed: ${sessionRes.status}`);
-    }
-
-    // Extract __session cookie from Set-Cookie headers
-    const setCookie = sessionRes.headers.get("set-cookie");
-    const sessionMatch = setCookie?.match(/__session=([^;]+)/);
-
-    if (!sessionMatch?.[1]) {
-      throw new Error("No session cookie in response");
-    }
-
-    return sessionMatch[1];
+    return { cookie: result.cookieHeader, cleanup };
   } catch (err) {
-    console.error("Failed to get authenticated session:", err);
+    console.error("Failed to mint Clerk session:", err);
     return null;
   }
 }
@@ -241,8 +178,12 @@ export async function captureForQueuePackage(
 
   // Get session cookie if not provided
   let sessionCookie = config.sessionCookie;
-  if (!sessionCookie && config.clerkSecretKey) {
-    sessionCookie = (await getAuthenticatedSession(config.clerkSecretKey)) || undefined;
+  if (!sessionCookie) {
+    const authResult = await getAuthenticatedSession();
+    if (authResult) {
+      sessionCookie = authResult.cookie;
+      // TODO: call authResult.cleanup() after capture completes
+    }
   }
 
   if (!sessionCookie) {
