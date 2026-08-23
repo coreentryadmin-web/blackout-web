@@ -1,5 +1,26 @@
 # SPX Playbook — External Review Response (ChatGPT, 2026-07-10)
 
+> ### ⚠ ENVIRONMENT CLAIMS IN THIS FILE ARE STALE — audited 2026-08-22
+>
+> This document predates the **decommissioning of staging on 2026-07-25**. Its *engineering* content
+> was re-checked against the code at `9b20b63c` and is largely **accurate**; its *environment* content
+> is **false**. Specifically, anywhere in this file:
+>
+> - **`staging.blackouttrades.com` / "staging lab" / "on staging"** — that environment no longer
+>   exists. ECS, RDS, Cognito, ALB, crons, secrets: all deleted. There is no pre-prod deploy target;
+>   changes ship straight to production.
+> - **`coreentryadmin-web/blackout-web-sandbox`** — not this repo. This is `blackout-web`.
+> - **"Railway prod"** — there is no Railway. All infrastructure is AWS ECS.
+> - **`isStagingDeploy()`-gated behaviour described as active** — that predicate has been
+>   permanently false in every environment since 2026-07-25, so those code paths run nowhere. See
+>   `docs/spx/SLAYER-MAP.md` §7.1 (it left PB-01/PB-02 unable to fire at all, fixed in #2636).
+> - **"prod: playbook live gate off"** — measured false. `PLAYBOOK_LIVE_GATE="1"` in
+>   `blackout-production/app/env`, so gate A17 requires a matched primary playbook before any BUY.
+>
+> **`docs/spx/SLAYER-MAP.md` is the live inventory.** Read this file for design intent and the
+> per-playbook detail; do not read it for where anything runs or what is currently enabled.
+
+
 **Source:** independent review of `PLAYBOOK-ARCHITECTURE-DEEP-DIVE.md`, `PLAYBOOK-FULL-SPEC-v2.md`, `PLAYBOOK-EVIDENCE-BASE.md`, `PLAYBOOK-E2E-FOUNDATION.md`.
 
 **Official stance:** We **agree with the core verdict** — strong architecture, unproven strategy. Staging playbook lab is **research instrumentation**, not trusted autonomous production capital deployment.
