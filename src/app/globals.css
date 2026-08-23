@@ -4895,6 +4895,31 @@ html.product-shell .nav-mega {
     .largo-toolbar-sub {
       display: none;
     }
+    /* MEASURED ON PROD 2026-08-23 at 430x932: .largo-toolbar-actions rendered 344px wide inside a
+       404px toolbar (85% of the row) — mostly the answer-mode toggle's full "Concrete"/"Deep dive"
+       text (163.5px), which never got the icon-only compaction .largo-toolbar-btn-label{display:
+       none} above already gives every OTHER toolbar button. `.largo-toolbar-actions{flex-shrink:0}`
+       then forces the brand (`.largo-toolbar-name`, flex-shrink:1 by default) down to whatever's
+       left — 24.6px against its own 119px content width, which is why "Largo Terminal" collapsed to
+       a bare "L…": the ellipsis on .largo-toolbar-name (added 2026-08-20 for a different overlap
+       bug) was correctly engaging, just against a box far too small to show anything meaningful.
+       Docs/audit/UI-UX-MAP.md §8, finding #5: "a label that becomes zero-information is worse than
+       omitting it" — so this caps actions to leave the brand its needed ~134px and makes actions
+       scroll internally for the rest, the same trade-off already shipped for .nh-deck-hdr-row--
+       primary (docs/audit/findings-staging/2026-08-23-nighthawk-mobile-header-scroll-affordance.md)
+       — every action stays reachable via scroll, none are hidden or renamed. */
+    .largo-toolbar-actions {
+      max-width: 60%;
+      flex-shrink: 1;
+      min-width: 0;
+      overflow-x: auto;
+      scrollbar-width: none;
+      -webkit-mask-image: linear-gradient(90deg, #000 0, #000 88%, transparent 100%);
+      mask-image: linear-gradient(90deg, #000 0, #000 88%, transparent 100%);
+    }
+    .largo-toolbar-actions::-webkit-scrollbar {
+      display: none;
+    }
   }
   .largo-toolbar-actions {
     display: flex;
@@ -6570,6 +6595,17 @@ html.product-shell .nav-mega {
     position: absolute;
     inset: 0;
     overflow: hidden;
+    /* MEASURED ON PROD 2026-08-23 at 430x932 (docs/audit/UI-UX-MAP.md §8, finding #5): the marquee
+       child below is `will-change: transform`, which promotes it to its own GPU compositing layer —
+       and its 36px-radius text-shadow glow was rendering past THIS box's own left edge (into the
+       page margin outside the composer entirely), even though `overflow: hidden` is set right here.
+       This is a known cross-engine gap: overflow:hidden reliably clips a descendant's own box, but
+       a composited layer's blurred shadow can still paint outside it. `clip-path` clips the actual
+       painted output regardless of compositing, so it's added as the belt to overflow:hidden's
+       suspenders — screenshot evidence is on the finding write-up; a plain isolated repro without
+       the surrounding page's own composited ancestors did not reproduce it, so this is verified
+       against live production only, not locally. */
+    clip-path: inset(0);
     pointer-events: none;
   }
 

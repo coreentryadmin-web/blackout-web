@@ -82,3 +82,35 @@ test("nh-deck-hdr-row--primary: has a right-edge scroll-affordance fade", () => 
   const block = css.match(/\.nh-deck-hdr-row--primary\s*\{[^}]*\}/)?.[0] ?? "";
   assert.match(block, /mask-image:\s*linear-gradient/, "must fade its right edge — the row scrolls but nothing else on mobile signals that");
 });
+
+// Regression guard for the Largo terminal toolbar "L…" collapse (docs/audit/UI-UX-MAP.md §8,
+// finding #5, 2026-08-23): .largo-toolbar-actions is flex-shrink:0, so at narrow widths it always
+// renders at its full content width and forces .largo-toolbar-brand (flex-shrink:1) down to almost
+// nothing — measured live at 430x932: actions 344px of a 404px toolbar, brand's "Largo Terminal"
+// squeezed to a 24.6px box against its own 119px content width, ellipsizing to "L…". The dominant
+// contributor is .largo-answer-mode-toolbar (163.5px measured) — the only toolbar control that never
+// got the icon-only mobile compaction every OTHER toolbar button already has via
+// .largo-toolbar-btn-label{display:none}. Fix caps actions to 60% of the row and lets it scroll
+// internally instead, giving the brand its guaranteed space — same trade-off as the nh-deck fix
+// above. Asserts the cap + scroll are present in the narrow-viewport media query.
+test("largo-toolbar-actions: capped and scrollable at narrow widths so the brand label isn't starved", () => {
+  const css = read("src/app/globals.css");
+  const blocks = [...css.matchAll(/\.largo-toolbar-actions\s*\{[^}]*\}/g)].map((m) => m[0]);
+  assert.ok(blocks.length >= 2, "expected both the base rule and a narrow-viewport override for .largo-toolbar-actions");
+  const capped = blocks.find((b) => /max-width:\s*60%/.test(b) && /overflow-x:\s*auto/.test(b));
+  assert.ok(capped, "a .largo-toolbar-actions block must cap width and scroll — otherwise the brand is squeezed to near-zero at narrow widths");
+});
+
+// Regression guard for the Largo composer placeholder text bleeding past its input box
+// (docs/audit/UI-UX-MAP.md §8, finding #5, 2026-08-23): the animated placeholder marquee is
+// `will-change: transform` (GPU layer promotion) with a 36px-radius text-shadow glow, and that glow
+// was rendering outside .largo-input-placeholder's own overflow:hidden clip on production (confirmed
+// by a live screenshot at 430x932 — the pink glow text extended left of the composer's own border,
+// into the page margin). overflow:hidden reliably clips a descendant's box but not always a
+// composited layer's shadow — clip-path clips the actual paint regardless, so it's the fix.
+test("largo-input-placeholder: clips the animated marquee's glow, not just its box", () => {
+  const css = read("src/app/globals.css");
+  const block = css.match(/\.largo-input-placeholder\s*\{[^}]*\}/)?.[0] ?? "";
+  assert.match(block, /overflow:\s*hidden/, "keep the existing box clip");
+  assert.match(block, /clip-path:\s*inset\(0\)/, "must also clip-path — overflow:hidden alone let the composited marquee's shadow paint outside the box on production");
+});
