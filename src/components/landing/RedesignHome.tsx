@@ -326,7 +326,7 @@ export function RedesignHome({ initialGamma }: { initialGamma: PublicGexSnapshot
               <div className="pipe-summary-inner">
                 <canvas id="cv-pipe-summary" width={120} height={120} />
                 <div className="pipe-summary-text">
-                  <span className="pipe-summary-stat">~3%</span>
+                  <span className="pipe-summary-stat">High selectivity</span>
                   <span className="pipe-summary-label">of scanned setups survive to your screen</span>
                 </div>
               </div>
