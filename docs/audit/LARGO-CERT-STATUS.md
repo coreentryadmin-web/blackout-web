@@ -84,26 +84,53 @@
 
 ### ◯ PHASE 4: END-TO-END INTEGRATION & VERIFICATION
 
-**Flows to Validate (manual + Playwright):**
-- [ ] Spend ceiling enforcement (agent stops at limit, renders caveat)
-- [ ] Session reset (clears message history, resets spend tracker)
-- [ ] Cross-product consensus (Helix + Thermal on same tape, grading agreement)
-- [ ] Answer completeness (model answers with truncated payloads vs full payloads — drift measurement)
-- [ ] Citations & evidence rendering (claims traceable to tool results)
+**Comprehensive E2E Validation (see `LARGO-PHASE-4-5-PLAN.md` for full details):**
 
-**Estimated:** 2–3 hours (depends on measurement depth)
+4.1 Answer Quality Validation
+- [ ] 5 representative questions (simple → complex) with full vs truncated payloads
+- [ ] Measure completeness: ≥80% required per question
+- [ ] Detect hallucinations or missing evidence from truncation
+
+4.2 Cross-Product Agreement
+- [ ] 4 factual tests (breadth, VIX regime, earnings impact, flow direction)
+- [ ] Verify ≥80% agreement on objective facts
+- [ ] Identify legitimate vs truncation-caused disagreements
+
+4.3 Citation & Evidence Validation
+- [ ] Audit 20 model claims per session for traceability
+- [ ] Verify claims come from tool data (not hallucinated)
+- [ ] Flag any claims based on truncated data
+
+4.4 Session Stability & Coherence
+- [ ] 3 conversation flows (simple, moderate, complex)
+- [ ] Measure: context retention, consistency, data sufficiency
+- [ ] Targets: ≥90% coherence, ≥95% consistency
+
+**Estimated:** 4–6 hours total (measurement + validation)
 
 ---
 
 ### ◯ PHASE 5: PERFORMANCE BASELINES
 
 **Latency Targets (from LARGO-VALIDATION-MATRIX.md):**
-- Time to first token (TTFT): **p95 < 2.0s** (baseline not yet measured)
-- Full answer latency: **p95 < 12s** (baseline not yet measured)
-- Tool call round-trip: **p95 < 500ms** (baseline not yet measured)
-- Payload sizes: measure which tools are closest to 16k cap
+- Time to first token (TTFT): **p95 < 2.0s**
+- Full answer latency: **p95 < 12s**
+- Tool call round-trip: **p95 < 500ms**
 
-**Estimated:** 1–2 hours (run live questions, collect metrics)
+**Measurement Strategy (see `LARGO-PHASE-4-5-PLAN.md` §5):**
+- [ ] 10 questions per category (simple, moderate, complex, cross-product, stress)
+- [ ] Measure on production environment
+- [ ] Analyze: p50, p95, max per category
+- [ ] Compare truncated vs full payloads (latency should improve)
+- [ ] Verify answer quality unchanged despite truncation
+
+**Pass Criteria:**
+- [ ] p95 TTFT < 2.0s across all categories
+- [ ] p95 Full Latency < 12s across all categories
+- [ ] No outliers > 2× p95
+- [ ] Truncated payloads do not degrade answer quality
+
+**Estimated:** 2–3 hours (measurement + analysis)
 
 ---
 
@@ -129,22 +156,37 @@
 
 ## Next Actions
 
-**Immediate (next 30 min):**
-1. Batch 7 probe completion (await 7a retry or 7b results)
-2. Fold any additional truncations into findings-staging
-3. Push all findings to remote branch for review
+**IMMEDIATE (Next 4–6 hours):**
+1. Run Phase 4 answer quality validation (4 hrs)
+   - Run: `node --import tsx scripts/audit/largo-comprehensive-validation.mjs --phase=1`
+   - Measure completeness of 5 representative questions
+   - Document any quality gaps from truncation
+2. Run Phase 4 cross-product agreement test (2 hrs)
+   - Run: `node --import tsx scripts/audit/largo-comprehensive-validation.mjs --phase=2`
+   - Verify ≥80% agreement on factual questions
+   - Identify legitimate vs truncation-caused disagreements
 
-**Short-term (1–2 hours):**
-1. Measurement phase for each truncation (last_key, exact counts, impact on answer quality)
-2. Root cause analysis (architecture cap vs field inclusion vs payload scope)
-3. Design fixes (per-product payloads, pagination, field stripping, limits)
+**SHORT-TERM (Next 24 hours):**
+1. Measurement phase for P2 truncations (6 hrs)
+   - Run: `node --import tsx scripts/audit/largo-truncation-measurement.mjs --tools=get_market_context,get_nighthawk_dossier,get_banger_board`
+   - Capture exact field counts, last_key, lost_fields for each
+2. Implement P2 fixes (12–18 hrs, 3 issues)
+   - One PR per issue per CLAUDE.md
+   - Verify no regression with Phase 4 E2E test
+   - Merge when green
 
-**Medium-term (before sign-off):**
-1. Implement fixes (one issue per PR, per CLAUDE.md)
-2. Re-run probe on fixed tools to verify COMPLETE status
-3. Phase 4 validation (E2E, answer quality, completeness)
-4. Phase 5 baselines (performance, latency)
-5. Final sign-off: all 129 tools probed, all truncations fixed, all phases validated
+**MEDIUM-TERM (2–5 days):**
+1. Measurement phase for P3 truncations (8 hrs)
+2. Implement P3 fixes (15–24 hrs, 7 issues)
+3. Phase 5 performance baselines (2–3 hrs)
+4. Final probe run: all 129 tools → verify all COMPLETE
+5. Final sign-off: phases 1–5 complete, certification DONE
+
+**SIGN-OFF CRITERIA:**
+- ✓ All 10 truncations fixed and verified COMPLETE on main
+- ✓ Phase 4: answer quality ≥80%, cross-product agreement ≥80%, session stability ≥90%
+- ✓ Phase 5: p95 TTFT < 2s, p95 latency < 12s
+- ✓ Final probe: 129/129 tools COMPLETE, 0 unexpected truncations
 
 ---
 
@@ -162,7 +204,14 @@
 
 ## Status Summary
 
-- **Phases 1–2:** ✓ COMPLETE (inventory, static tests)
-- **Phase 3:** ✓ COMPLETE (all 129 tools probed, 10 truncations documented)
-- **Phase 4–5:** ◯ NEXT (measurement phase, fix implementation, E2E validation)
-- **Overall:** 50% complete (phase 3 done, phases 4-5 ready to start)
+- **Phases 1–2:** ✓ COMPLETE (inventory, static tests — 38/38 passing)
+- **Phase 3:** ✓ COMPLETE (all 129 tools probed, 10 truncations found & documented)
+- **Phase 4–5:** ◐ IN PROGRESS (validation harnesses built, starting E2E + performance tests)
+- **Overall:** 55% complete (phases 1–3 done, phases 4–5 in progress)
+
+**Phase 4–5 Harnesses Ready:**
+- `scripts/audit/largo-comprehensive-validation.mjs` — Answer quality, cross-product agreement, conversation stress, performance baseline
+- `scripts/audit/largo-truncation-measurement.mjs` — Exact truncation point measurement for fix design
+- `docs/audit/LARGO-PHASE-4-5-PLAN.md` — Complete validation plan with per-tool fix strategy
+
+**Planned Completion:** 2026-08-28 (end of week)
