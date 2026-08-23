@@ -469,7 +469,7 @@ wrong-side walls** across every bucket, and an empty `0DTE` correctly reads `exp
 expiry in range) rather than "no wall". Measured numbers in `RUN-LOG.md`. The same probe caught the
 SPX mislabel above; five tickers agreeing and one disagreeing is what exposed it.
 
-### 9.3 [P2, Largo boundary] `get_gex_heatmap` and `get_positioning` carry no session anchor and no freshness
+### 9.3 [P2, Largo boundary] `get_gex_heatmap` and `get_positioning` carry no session anchor and no freshness — **FIXED**
 
 Both publish a bare UTC `asof` and nothing else about time. `get_thermal_compare` and
 `get_helix_thermal_compare` — reading the **same** `getGexPositioning` object — carry `as_of` as an ET
@@ -479,6 +479,8 @@ because a UTC instant rolls its calendar date at 20:00 ET and a matrix age is no
 Measured above: `get_gex_heatmap` on MSFT would have served a **6,040-second-old** matrix with
 `asof` as its only time signal, and `spot: 483.49` — a 16:00 ET close — with nothing in the payload
 saying the market was shut. Contract points 1 (time) and 2 (freshness).
+
+**FIXED — Phase 1, third fix.** New shared `src/lib/et-session-facts.ts` publishes `as_of_et`, `session_date`, `market_session`, `matrix_age_sec` and `freshness` on both reads, and on `GexPositioning` itself so every downstream consumer inherits them. The helper is **holiday-aware** (`isTradingDayEt` composed with `marketPhaseFromEt`), which also retroactively closes the gap §9.1 documented as acceptable — that reasoning was wrong, the repo already had a holiday calendar. `publicSnapshotSessionFacts` now delegates to it. See `docs/audit/findings-staging/2026-08-23-thermal-largo-session-anchor.md`. **Still to do: live-validate.**
 
 ### 9.4 [P2, member-facing] The client's scoped wall scan is unconstrained while the server's is side-constrained
 

@@ -1,6 +1,7 @@
 /** Client-safe types/constants for the public GEX snapshot lead magnet. */
 
-import { marketPhaseFromEt, type MarketPhase } from "@/lib/largo/core/system-status";
+import { etSessionFacts } from "@/lib/et-session-facts";
+import { type MarketPhase } from "@/lib/largo/core/system-status";
 
 export type { MarketPhase };
 
@@ -130,41 +131,23 @@ export function correctPublicRead(
 /**
  * ET session facts for a public snapshot, from ONE instant.
  *
- * Derived with the SAME `marketPhaseFromEt` the Largo product reads and the terminal status strip
- * use — a third copy of "is the market open" is how two surfaces start disagreeing about the same
- * minute. That helper deliberately does not model holidays (see its doc); a holiday therefore reads
- * as a normal session here, which is a known and bounded inaccuracy rather than an invented
- * calendar.
+ * Delegates to the shared `etSessionFacts` so the public page, `get_positioning` and
+ * `get_gex_heatmap` cannot disagree about the same minute.
+ *
+ * HOLIDAYS ARE NOW MODELLED. This originally composed `marketPhaseFromEt` directly and documented
+ * the gap honestly — that helper carries no holiday calendar, so Thanksgiving read as a normal
+ * session. That was written as a bounded inaccuracy rather than an invented calendar, which was the
+ * right call at the time but the wrong conclusion: the repo already HAS a holiday-aware trading-day
+ * gate (`isTradingDayEt`, which `isEtCashRth` uses), so the platform could tell the market was shut
+ * while this page could not. The shared helper composes the two.
  */
 export function publicSnapshotSessionFacts(now: Date = new Date()): {
   market_session: MarketPhase;
   session_date: string;
   as_of_et: string;
 } {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "numeric",
-    minute: "numeric",
-    weekday: "short",
-    hour12: false,
-  }).formatToParts(now);
-  const part = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
-  const DAYS: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
-  // `hour12: false` renders midnight as "24" in some ICU versions; normalise so 24:07 -> 00:07 and
-  // the phase lookup cannot land a whole day out.
-  const rawHour = Number(part("hour"));
-  const hour = rawHour === 24 ? 0 : rawHour;
-  const minute = Number(part("minute"));
-  const hh = String(hour).padStart(2, "0");
-  const mm = String(minute).padStart(2, "0");
-  return {
-    market_session: marketPhaseFromEt(DAYS[part("weekday")] ?? 1, hour * 60 + minute),
-    session_date: `${part("year")}-${part("month")}-${part("day")}`,
-    as_of_et: `${part("year")}-${part("month")}-${part("day")} ${hh}:${mm} ET`,
-  };
+  const { market_session, session_date, as_of_et } = etSessionFacts(now);
+  return { market_session, session_date, as_of_et };
 }
 
 /**
