@@ -260,7 +260,21 @@ async function testSearch(page, route, vpName) {
     tested++;
     const value = await h.inputValue().catch(() => "");
     if (value !== query) {
-      record({ severity: "P2", route, viewport: vpName, where: "search", issue: `typed "${query}" but input now reads "${value}" — value not retained` });
+      // P3, not P2, and explicitly flagged for manual verification. A ticker "search" input can
+      // legitimately be an autocomplete/combobox that reverts to the last CONFIRMED symbol when
+      // Enter is pressed without selecting a suggestion, rather than accepting arbitrary typed
+      // text — that is a different (and correct) interaction model, not a value-retention bug, and
+      // this harness cannot yet tell the two apart generically. Confirmed live on /vector: 2
+      // back-to-back probes of the same input disagreed on whether it was even present/visible at
+      // that moment (a collapsed search-icon trigger, not a plain always-open text field), which is
+      // its own evidence this needs a combobox-aware interaction, not a stronger claim of a defect.
+      record({
+        severity: "P3",
+        route,
+        viewport: vpName,
+        where: "search",
+        issue: `typed "${query}" but input now reads "${value}" — could be a real value-retention bug, or a combobox reverting to the last confirmed symbol (this harness cannot yet tell the two apart); verify manually`,
+      });
     }
     const bodyText = await page.evaluate(() => document.body.innerText.slice(0, 3000)).catch(() => "");
     if (!bodyText.toUpperCase().includes(query)) {
