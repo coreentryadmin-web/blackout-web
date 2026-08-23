@@ -518,7 +518,7 @@ Ranked by IMPACT × FREQUENCY × CONFIDENCE-IN-FIX × IMPLEMENTATION-RISK, per t
 these has a fix PR yet — the Phase 0 gate is that this map merges first.** They are recorded here
 with their evidence so the next pass starts from a position, not from scratch.
 
-**9.0 — SPX and SPY cannot fire either HELIX signal, while carrying 92% of the tape's premium.**
+**9.0 — SPX and SPY cannot fire either HELIX signal, while carrying 92% of the tape's premium — REPORTING FIXED, the underlying gap is a coordinator decision.**
 The lane's highest-impact structural finding, and it only became visible by measuring the live
 population (§4A). Both persisted signals require a real print time; the Group B feed has none; Group
 B is SPX and SPY. So the two names that top every premium panel are **structurally incapable** of
@@ -528,10 +528,26 @@ date an undatable print. The defect is that **nothing states it**: not the panel
 not `get_helix_derived`, whose `velocity_spikes` / `split_flow` arrays report a total and a
 truncation flag but never the eligible denominator they were computed over. A member or a model
 reading "no velocity spikes on SPX" concludes the tape was quiet, when SPX was never eligible.
-Minimum honest fix: carry the eligible-vs-total denominator into the payload and the panel
-(`signalEligibility()` in `lib/helix-tape-inventory-eval.mjs` already computes it). The deeper
-question — whether Group B should be given a print time at all — is upstream of this lane and needs
-the coordinator.
+**RE-MEASURED 2026-08-23 and FIXED (reporting half).** Live tape, 5000 rows: **1500 eligible
+(30.0%) / 3500 ineligible (70.0%)**, the ineligible spanning exactly **SPX (3079) and SPY (421)** —
+confirming the §4A prediction against a second day's data. `signalEligible` / `signalEligibility`
+now live in `helix-signal-detection.ts` beside the detectors, both detectors read the predicate, and
+the denominator reaches BOTH surfaces: `get_helix_derived`'s `signal_eligible_prints` /
+`signal_ineligible_prints` / `signal_ineligible_tickers`, and a `SignalCoverageNote` on both radars
+in their empty AND populated states.
+
+Two things that decided the shape, worth keeping:
+ - The two detectors had **different** eligibility expressions (§9.9). Both were run over the same
+   5000 live rows: **0 velocity-only, 0 split-only** — identical selection, so unifying them on
+   `flowEventTimeMs` is behaviour-neutral, measured rather than argued. That closes §9.9's drift
+   risk as a side effect of the fix rather than as a separate change.
+ - A denominator computed by its **own** rule would have been a third reader of the same fact — the
+   exact failure of §9.4/§9.5/§9.8/§9.10. Eligibility is stated once and read by everything.
+
+**STILL OPEN, and it is the bigger half:** whether Group B should be given a print time at all.
+That means either sourcing a timestamp for the SPX/SPY writer or deciding those prints are
+ingest-dated forever. Upstream of this lane — the fix above makes the cost visible and measurable,
+it does not remove it. 70% of the tape remains unscannable, now honestly so.
 
 **9.1 — `helix-discord-digest` is unreachable in production.** The route is complete (filters
 ≥$500k · fill <$10 · ≤30 DTE, Redis NX dedup, two embed builders), `railway.helix-discord-digest.toml`
@@ -692,8 +708,19 @@ readers **agree** — not a test of either one. Worth applying forward: when a H
 second reader, the question to ask is not "is this reader correct" but "what does this field mean,
 including when it is missing, and do both readers say so."
 
-**9.9 — Style inconsistency, not (currently) a defect.** `detectVelocitySpikes` reads
-`alert.event_at` directly while `detectSplitFlow` uses `flowEventTimeMs`. For rows produced by the
+**FOURTH instance, and the one where the rule paid off before the bug shipped.** §9.0's fix needed a
+count of how many prints the two signal detectors could actually see. The obvious implementation —
+a denominator with its own eligibility test — would have been a THIRD reader of the same fact, i.e.
+this defect, written deliberately. Recognising the class is what turned it into one shared
+`signalEligible` predicate instead, and the equivalence of the two existing rules was **measured**
+(0 disagreement over 5000 live rows) rather than assumed. The class is now a design check, not only
+a post-mortem heading.
+
+**9.9 — Style inconsistency, not (currently) a defect — CLOSED by §9.0's fix.** Both detectors now
+read the shared `signalEligible` predicate; the divergence risk below is gone, and the equivalence
+it assumed was measured (0 disagreement over 5000 live rows) rather than left as reasoning. Kept
+here as the record of why. `detectVelocitySpikes` read
+`alert.event_at` directly while `detectSplitFlow` used `flowEventTimeMs`. For rows produced by the
 current REST and SSE paths the two agree, because a row with no `event_at` is always
 `tape_time_estimated` and `flowEventTimeMs` returns null for it too. It is one shape change away from
 diverging, and the two detectors sit in the same file for the express purpose of not drifting.

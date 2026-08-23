@@ -5,6 +5,8 @@ import { usePulse } from "@/lib/usePulse";
 import { clsx } from "clsx";
 import { fmtPremium } from "@/lib/api";
 import { Panel } from "@/components/ui";
+import { SignalCoverageNote } from "@/features/helix/components/SignalCoverageNote";
+import type { SignalEligibility } from "@/features/helix/lib/helix-signal-detection";
 
 export type SplitFlowEntry = {
   ticker: string;
@@ -18,9 +20,13 @@ export type SplitFlowEntry = {
 export function SplitFlowRadar({
   entries,
   onTickerClick,
+  eligibility,
 }: {
   entries: SplitFlowEntry[];
   onTickerClick?: (ticker: string) => void;
+  /** The denominator these entries were computed over — see SignalCoverageNote. Optional so an
+   *  existing caller keeps working. */
+  eligibility?: SignalEligibility;
 }) {
   // Hoisted above the early return (Rules of Hooks). Static for reduced-motion users.
   const pulse = usePulse({ opacity: [1, 0.3, 1] }, { repeat: Infinity, duration: 2, ease: "easeInOut" });
@@ -38,6 +44,8 @@ export function SplitFlowRadar({
         <div className="flow-panel-body py-6 text-center">
           <p className="font-mono text-[11px] text-gold/70">No split-flow tickers this session</p>
           <p className="font-mono text-[10px] text-sky-300/55 mt-1">Needs both call and put flow in the last 30 min</p>
+          {/* Naming only the threshold implies the tape was scanned and came up quiet. */}
+          {eligibility ? <SignalCoverageNote eligibility={eligibility} /> : null}
         </div>
       </Panel>
     );
@@ -182,9 +190,12 @@ export function SplitFlowRadar({
         </AnimatePresence>
 
         {/* Legend */}
-        <p className="font-mono text-[10px] text-sky-300/70 text-center pt-1">
-          Both call &amp; put ≥ $500K within 30 min window
-        </p>
+        <div className="text-center pt-1">
+          <p className="font-mono text-[10px] text-sky-300/70">
+            Both call &amp; put ≥ $500K within 30 min window
+          </p>
+          {eligibility ? <SignalCoverageNote eligibility={eligibility} /> : null}
+        </div>
       </div>
     </Panel>
   );

@@ -91,3 +91,62 @@ test("token classes are stable — the CSS depends on these names", () => {
   assert.equal(tokenClass("num"), "largo-fmt-num");
   assert.equal(tokenClass("text"), "");
 });
+
+// ── Comma-grouped numbers: the class this tokeniser silently split for its whole life ──
+//
+// Nothing here existed before, which is why `7,500` rendered as text "7," + num "500" on every
+// Largo answer surface. The three tests below are the three distinct harms, kept separate so a
+// future regression says which one came back.
+
+test("a comma-grouped number is ONE token — not the last three digits", () => {
+  // The bug: the money branch accepts commas and the percent branch required a trailing `%`, so a
+  // bare `7,500` matched neither and fell through to `\d{2,}` — which cannot match the lone `7`.
+  // The engine skipped ahead and highlighted `500`.
+  //
+  // This is not a cosmetic miss. `.largo-fmt-num` is what the UI uses to say "this is the figure",
+  // and on this desk 500 and 7,500 are different numbers, not different renderings of one.
+  const t = parseMarkdownTokens("Sustained trade below 7,500 (loses the flip)");
+  const nums = t.filter((x) => x.kind === "num").map((x) => x.value);
+  assert.deepEqual(nums, ["7,500"], kinds(t).join(" | "));
+
+  // And the separator must not be stranded in the text run either — a mid-number font switch is
+  // how the split became VISIBLE ("7, 500"), since `.largo-fmt-num` is monospace and the body is not.
+  assert.ok(
+    !t.some((x) => x.kind === "text" && /\d,$/.test(x.value)),
+    `a text token still ends in a dangling separator: ${kinds(t).join(" | ")}`,
+  );
+});
+
+test("a multi-group number is not split into several numbers", () => {
+  // `1,234,567` used to emit TWO num tokens, `234` and `567` — two highlighted figures where the
+  // answer stated one.
+  const nums = parseMarkdownTokens("1,234,567 contracts")
+    .filter((x) => x.kind === "num")
+    .map((x) => x.value);
+  assert.deepEqual(nums, ["1,234,567"]);
+});
+
+test("commas compose with sign, decimals and percent rather than defeating them", () => {
+  const one = (s: string) =>
+    parseMarkdownTokens(s)
+      .filter((x) => x.kind === "num")
+      .map((x) => x.value);
+
+  assert.deepEqual(one("VWAP 7,498.36"), ["7,498.36"]); // decimal tail survives
+  assert.deepEqual(one("-1,205.50 net"), ["-1,205.50"]); // leading sign survives
+  assert.deepEqual(one("up 12,000%"), ["12,000%"]); // percent is consumed, not clipped to `12`
+  assert.deepEqual(one("$1,250 premium"), ["$1,250"]); // the money branch still wins first
+});
+
+test("the comma branch does not lower the bare-integer floor", () => {
+  // `\d{2,}` deliberately leaves 1-digit integers unhighlighted, so ordinary prose ("3 plays")
+  // is not littered with underlines. The comma branch uses `(?:,\d{3})+` — one or MORE — precisely
+  // so it cannot match a bare `7` and undo that. If someone relaxes it to `*`, this fails.
+  const nums = (s: string) =>
+    parseMarkdownTokens(s)
+      .filter((x) => x.kind === "num")
+      .map((x) => x.value);
+
+  assert.deepEqual(nums("3 plays"), []);
+  assert.deepEqual(nums("7 and 12 only"), ["12"]);
+});

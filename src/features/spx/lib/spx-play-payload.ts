@@ -100,6 +100,19 @@ export type SpxPlayPayload = {
    * true signal_committed BUY before acting, not the snapshot signal alone.
    */
   signal_committed: boolean;
+  /**
+   * False ONLY when no confluence was computed for this payload — i.e. the desk produced no
+   * assessment at all (engine timeout/error, or computeSpxConfluence() returned null). In that
+   * case `grade`/`score`/`confidence` are placeholder literals ("D"/0/0), NOT a measurement: a
+   * "D" here means "nothing was graded", not "graded and it's a D". Absent (undefined) means the
+   * payload predates this flag or was built from a real confluence — readers must treat only an
+   * explicit `false` as absence, so no existing producer is retroactively marked unassessed.
+   *
+   * Exists because the two states are otherwise indistinguishable downstream: the verdict bar was
+   * rendering "Grade D · 0" to a member on a desk that had assessed nothing (Largo product
+   * contract, point 3 — absence must be representable, never published as a measurement).
+   */
+  assessed?: boolean;
   /** Phase-1 playbook matcher — shadow telemetry surfaced for staging validation only. */
   playbook_shadow?: PlaybookShadowPanel | null;
   desk_context?: SpxPlayDeskContext;
@@ -164,6 +177,8 @@ export function degradedPlayPayload(
     grade: "D",
     score: 0,
     confidence: 0,
+    // Nothing was evaluated on this path — the three literals above are placeholders, not a grade.
+    assessed: false,
     headline: "Desk warming — play state unavailable",
     thesis: "Scanning all lanes.",
     idle_message: "Desk warming — play state unavailable",
@@ -230,6 +245,8 @@ export function scanningPayload(
     grade: confluence?.grade ?? "D",
     score: confluence?.score ?? 0,
     confidence: confluence?.confidence ?? 0,
+    // Without a confluence the three fields above are the `??` fallbacks, not an assessment.
+    assessed: confluence != null,
     headline: idle,
     thesis,
     idle_message: idle,

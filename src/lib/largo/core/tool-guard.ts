@@ -14,11 +14,15 @@
  * check is here, in code, on the execution path — the only place a caller cannot route around.
  *
  * THE POLICY, stated because the alternative is a plausible-looking disaster: the registry is an
- * allowlist of **RESTRICTED** tools, not of permitted ones. 49 of 116 tools are catalogued. Failing
- * closed on the uncatalogued 67 would silently disable most of Largo the moment this shipped, and
- * the symptom — "Largo got worse at everything" — would be nearly impossible to trace back here.
- * So a tool is denied only when the catalog explicitly says `admin` and the viewer is not one.
- * Cataloguing a tool can therefore only ever ADD a restriction, never remove one by omission.
+ * allowlist of **RESTRICTED** tools, not of permitted ones. When this shipped only 49 of the
+ * then-116 tools were catalogued, and failing closed on the uncatalogued 67 would have silently disabled
+ * most of Largo on the spot — with a symptom, "Largo got worse at everything", nearly impossible to
+ * trace back here. The catalog has since caught up: 129 of 129 today, and `registry.test.ts` holds
+ * the 1:1. But the rule does NOT rest on that number, and must not be re-argued from it — a gap
+ * reopens the moment anyone adds a tool ahead of its capability, and that gap must not be able to
+ * take Largo down with it. So a tool is denied only when the catalog explicitly says `admin` and
+ * the viewer is not one. Cataloguing a tool can therefore only ever ADD a restriction, never remove
+ * one by omission.
  *
  * A denial returns a structured refusal rather than throwing. The model needs to know it was
  * denied so it can say so; an exception would surface as a generic tool failure and get narrated
@@ -70,7 +74,7 @@ export type ToolGuardViewer = {
  * The entitlement the catalog declares for a tool, or null when the tool is uncatalogued.
  *
  * `catalog` is injectable ONLY so the enforcement path can be tested against a synthetic catalog.
- * As of this writing every one of the 120 catalogued capabilities declares `premium`, so against
+ * As of this writing every one of the 129 catalogued capabilities declares `premium`, so against
  * the real registry this mechanism is armed but inert — it restricts nothing today. That is the
  * honest state: the gate is in place and proven, and the day a capability is marked `admin` it is
  * enforced in code rather than by asking the model nicely.
@@ -111,7 +115,7 @@ export function checkToolEntitlement(
 
 export type GuardedRunnerOptions = {
   viewer: ToolGuardViewer;
-  /** The real executor. Injected so this module stays free of the 116-tool dependency graph. */
+  /** The real executor. Injected so this module stays free of the 129-tool dependency graph. */
   execute: (name: string, input: Record<string, unknown>, userId: string) => Promise<unknown>;
   /** Tools actually CALLED. Denied tools are excluded — see the note in the runner. */
   toolsUsed: string[];

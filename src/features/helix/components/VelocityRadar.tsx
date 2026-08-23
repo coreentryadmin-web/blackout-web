@@ -3,6 +3,8 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { usePulse } from "@/lib/usePulse";
 import { fmtPremium } from "@/lib/api";
+import { SignalCoverageNote } from "@/features/helix/components/SignalCoverageNote";
+import type { SignalEligibility } from "@/features/helix/lib/helix-signal-detection";
 
 export type VelocityEntry = {
   ticker: string;
@@ -15,9 +17,13 @@ export type VelocityEntry = {
 export function VelocityRadar({
   entries,
   onTickerClick,
+  eligibility,
 }: {
   entries: VelocityEntry[];
   onTickerClick?: (ticker: string) => void;
+  /** The denominator these entries were computed over. Optional so an existing caller keeps
+   *  working; when supplied and part of the tape was unscannable, the panel says so. */
+  eligibility?: SignalEligibility;
 }) {
   // Hoisted above the early return (Rules of Hooks). Static for reduced-motion users.
   const pulse = usePulse({ opacity: [1, 0.2, 1] }, { repeat: Infinity, duration: 1.4, ease: "easeInOut" });
@@ -30,6 +36,9 @@ export function VelocityRadar({
         <div className="flow-panel-body py-6 text-center">
           <p className="font-mono text-[11px] text-orange-300/70">No velocity spikes this session</p>
           <p className="font-mono text-[10px] text-sky-300/55 mt-1">≥3× acceleration vs prior 15 min window</p>
+          {/* The threshold above reads as "we scanned and nothing cleared it". Say what was
+              actually scanned, or a never-scanned name looks like a quiet one. */}
+          {eligibility ? <SignalCoverageNote eligibility={eligibility} /> : null}
         </div>
       </div>
     );
@@ -136,9 +145,14 @@ export function VelocityRadar({
           })}
         </AnimatePresence>
 
-        <p className="font-mono text-[10px] text-sky-300/70 text-center pt-1">
-          ≥3× acceleration vs prior 15 min window · min 2 prints
-        </p>
+        <div className="text-center pt-1">
+          <p className="font-mono text-[10px] text-sky-300/70">
+            ≥3× acceleration vs prior 15 min window · min 2 prints
+          </p>
+          {/* Also shown when spikes DID fire: a member seeing two names still cannot tell that the
+              largest names on the tape were never eligible to be among them. */}
+          {eligibility ? <SignalCoverageNote eligibility={eligibility} /> : null}
+        </div>
       </div>
     </div>
   );

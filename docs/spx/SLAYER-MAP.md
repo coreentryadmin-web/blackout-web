@@ -502,6 +502,12 @@ Ranked. These are the `UNKNOWN`s above, restated as tasks.
 2. **Build a calibrated confidence from `spx-play-outcomes`, out-of-sample validated** — and fix
    `spx-play-engine.ts:1633`'s `?? 0` fallback with it. The Largo boundary now omits the
    uncalibrated number, which is honest but not an answer; the member UI still renders it.
+   **Partially addressed 2026-08-23:** the `?? "D"` / `?? 0` fallbacks are no longer
+   *indistinguishable* from a measurement — `SpxPlayPayload.assessed` now marks the three sites
+   that fabricate them, and the Play Verdict Bar suppresses the fabricated grade/score. That
+   removes the false publication; it does not produce a calibrated number, which is still this
+   item. The three literals themselves remain in the payload because the type is non-nullable —
+   see §8b.
    **Start from the measurement, not from the field's history:** `scripts/audit/spx-confidence-calibration.mjs` shows the stored `confidence` is 96 on all 51 rows (§7.2), so the ledger carries no recoverable conviction signal — a calibration has to be built from `score`/`grade`/factors. On those same rows `r(|score|, win) = 0.172` and `r(grade_rank, win) = −0.038` (n=51, indicative only).
 3. **Trace the `spx:pulse:snapshot` writer** in the market-worker lane and record its `change_pct`
    anchor at source (§3.2).
@@ -530,17 +536,21 @@ Ranked. These are the `UNKNOWN`s above, restated as tasks.
 
 ---
 
-## 8b. Known-open, recorded rather than fixed
+## 8b. Known-open — recorded, deliberately not fixed
 
-Deliberate non-fixes. Each is real, each is left alone for a stated reason, and none should be
-"discovered" again as if new.
+Things measured and understood, where the fix was scoped out on purpose. Recorded here so they
+are open work rather than forgotten work. A row leaves this list only when it is fixed or
+reclassified with a reason.
 
-| Item | Why it is not fixed here |
-|---|---|
-| **Pin stability window size** — `PIN_STABILITY_WINDOW = 3` at the deployed 2s pin TTL asks "did the pin move more than a strike in ~6 seconds", which is structurally almost always no | Calibration, not a defect. Needs out-of-sample evidence over real sessions. The 2026-08-23 hold-steady fix is correct at any window size. |
-| **Pin stability state is per-process** — `spx-pin.ts` holds the rolling window at module scope; production runs multiple ECS tasks, so a member round-robins across replicas each with its own window and its own held pin | Needs shared state (the Redis lane the desk already uses). Architectural, not a lane's unilateral change. |
-| **`spx-play-engine.ts:1633`** — `confidence: closedConfluence?.confidence ?? 0` on the session-closed path; `0` reads as a measured floor, not "unknown" | Belongs with the calibrated-confidence work (§8 item 2), which is measured infeasible until ~264 closed plays exist. |
-| **~15 `isStagingDeploy()` dead branches** across nine SPX files (§7.1) | Each needs a per-site judgment about correct production behaviour; several are staging-only debug affordances whose removal is a UI change. |
+| # | What | Why not fixed here |
+|---|---|---|
+| b1 | `SpxPlayPayload.grade`/`score`/`confidence` are non-nullable (`string`/`number`/`number`), so the three fabrication sites must invent `"D"`/`0`/`0` when nothing was assessed. `assessed` flags it; the literals are still in the payload. | Making them nullable produced 13+ `tsc` errors that force a nullability decision through gate arithmetic (`buildSpxPlayDeskContext` → `mixedTapeBlockThreshold`), **Vector's** `PlayStateSnapshot`, and the Night Hawk badge map. Each needs its own answer to "what does an ungraded desk mean here"; that is a typed-absence refactor across three lanes, not a UI fix. |
+| b2 | `spx-slayer-badge-map.ts:37-38` forwards `payload.grade`/`payload.score` into `SpxSlayerBadge` (typed `string`/`number`), and `unavailableSpxSlayerBadge()` hard-codes `grade: "D", score: 0` — the same absence-as-measurement defect, rendered on the **Night Hawk** board (`zerodte-board-strips.tsx`, `CommandDeck.tsx`). | The DTO and both renderers are Night Hawk-lane surfaces. The `assessed` flag is now on the payload for that lane to act on; changing another lane's display types inside an SPX UI fix is the cross-lane push this repo's merge history keeps punishing. |
+| b3 | The chart-control collisions on `/dashboard` desktop (3, reproduced live 2026-08-23) are localised to the harness output but the CSS rule is not yet identified. | §8 item 6 — the 2026-08-07 entry's caution against guessing a layout rule stands; needs the phone viewport too, which the sandbox tunnel has never reached. |
+| b4 | **Pin stability window size** — `PIN_STABILITY_WINDOW = 3` at the deployed 2s pin TTL asks "did the pin move more than a strike in ~6 seconds", which is structurally almost always no. | Calibration, not a defect. Needs out-of-sample evidence over real sessions. The 2026-08-23 hold-steady fix (this PR) is correct at any window size. |
+| b5 | **Pin stability state is per-process** — `spx-pin.ts` holds the rolling window at module scope; production runs multiple ECS tasks, so a member round-robins across replicas each with its own window and its own held pin. | Needs shared state (the Redis lane the desk already uses). Architectural, not a lane's unilateral change. |
+| b6 | **`spx-play-engine.ts:1633`** — `confidence: closedConfluence?.confidence ?? 0` on the session-closed path; `0` reads as a measured floor, not "unknown". | Belongs with the calibrated-confidence work (§8 item 2), which is measured infeasible until ~264 closed plays exist. |
+| b7 | **~15 `isStagingDeploy()` dead branches** across nine SPX files (§7.1). | Each needs a per-site judgment about correct production behaviour; several are staging-only debug affordances whose removal is a UI change. |
 
 ### Cross-lane: the Vector toolbar collides with itself, on BOTH surfaces
 

@@ -119,8 +119,9 @@ measured one. The same logic governs every field you serve.
 - **Absence published as measurement** — an unmeasured tape as a confident 50/50, a failed read as
   `0`, a rate with no denominator.
 - **A truncated list served under a universe-wide name.**
-- **A tool payload the model never receives.** `anthropicToolLoop` caps every `tool_result` and
-  TAIL-slices it; the call still "succeeds" and the model writes a fluent answer from the fragment.
+- **A tool payload the model never receives.** `anthropicToolLoop` caps every `tool_result` by
+  keeping the FIRST 16,000 characters and discarding everything after — so key order decides what
+  survives. The call still "succeeds" and the model writes a fluent answer from the fragment.
   Three shipped that way. Run `scripts/audit/largo-truncation-probe.mjs` against all seven of your
   tools — and read the CONTROL line: if the control does not come back TRUNCATED, every COMPLETE is
   **UNVERIFIED**, not clean.
