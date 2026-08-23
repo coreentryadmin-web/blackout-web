@@ -72,7 +72,7 @@ const ContractDrilldownDrawer = dynamic(
 );
 import { SplitFlowRadar } from "@/features/helix/components/SplitFlowRadar";
 import { VelocityRadar } from "@/features/helix/components/VelocityRadar";
-import { detectSplitFlow, detectVelocitySpikes } from "@/features/helix/lib/helix-signal-detection";
+import { detectSplitFlow, detectVelocitySpikes, signalEligibility } from "@/features/helix/lib/helix-signal-detection";
 import { SectorFlowPanel, type SectorFlowEntry } from "@/features/helix/components/SectorFlowPanel";
 import { NightHawkFlowPanel, type NightHawkPlayWithFlow } from "@/features/helix/components/NightHawkFlowPanel";
 import { ExpiryConcentration } from "@/features/helix/components/ExpiryConcentration";
@@ -377,6 +377,13 @@ export function FlowFeed() {
   // here and the persisted record can never disagree about what counts as a split.
   const splitFlowEntries = useMemo(
     () => detectSplitFlow(filteredTapeBuffer, Date.now()),
+    [filteredTapeBuffer]
+  );
+  // The denominator BOTH radars were computed over. Same buffer the detectors get, and the same
+  // eligibility rule they use — so the number the panels report cannot drift from what was
+  // actually scanned. HELIX-MAP.md §9.0.
+  const signalCoverage = useMemo(
+    () => signalEligibility(filteredTapeBuffer),
     [filteredTapeBuffer]
   );
   const splitFlowTickers = useMemo(
@@ -857,7 +864,7 @@ export function FlowFeed() {
   const moreAnalyticsPanels = (
     <>
       {marketWidePanels && (
-        <VelocityRadar entries={velocityEntries} onTickerClick={setSelectedTicker} />
+        <VelocityRadar entries={velocityEntries} onTickerClick={setSelectedTicker} eligibility={signalCoverage} />
       )}
       <NightHawkFlowPanel
         plays={nighthawkPlaysVisible}
@@ -865,7 +872,7 @@ export function FlowFeed() {
         scopedTicker={scopedTicker || undefined}
         onTickerClick={setSelectedTicker}
       />
-      <SplitFlowRadar entries={splitFlowEntries} onTickerClick={setSelectedTicker} />
+      <SplitFlowRadar entries={splitFlowEntries} onTickerClick={setSelectedTicker} eligibility={signalCoverage} />
       <RouteBreakdown alerts={displayAlerts} loading={loading} />
       <SignalOutcomeTracker />
       {marketWidePanels && <SectorFlowPanel entries={sectorFlowEntries} />}

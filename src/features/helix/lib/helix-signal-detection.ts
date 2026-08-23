@@ -24,6 +24,70 @@ export type MinimalFlow = {
   tape_time_estimated?: boolean;
 };
 
+/**
+ * Can this print fire a HELIX signal at all?
+ *
+ * Both detectors need to place a print IN TIME — a velocity spike is prints-per-window and a split
+ * is call-vs-put premium inside a window. A print with no real UW timestamp cannot be placed, so
+ * both correctly skip it. Neither is buggy. The defect (HELIX-MAP.md §9.0) is that **nothing said
+ * so**, and the consequence is not small.
+ *
+ * MEASURED (live prod tape, 5000 rows / 168h, 2026-08-23): **1500 rows (30.0%) are signal-eligible;
+ * 3500 (70.0%) can fire NEITHER signal — and those 3500 span exactly TWO tickers, SPX (3079) and
+ * SPY (421).** They come from the second writer (§4A), an index feed that sends no time field, and
+ * they carry ~92% of the tape's premium. So the two names that top every premium panel are
+ * structurally incapable of producing either signal, and a member or a model reading "no velocity
+ * spikes on SPX" concludes the tape was quiet when SPX was never scanned.
+ *
+ * WHY THIS IS ONE FUNCTION AND NOT A THIRD RULE. The two detectors expressed eligibility
+ * differently — velocity tested `alert.event_at` directly, split called `flowEventTimeMs` — which
+ * §9.9 flagged as one shape change from diverging. Adding a denominator computed by its own third
+ * rule would have made that worse: a reported "eligible" count that neither detector actually uses
+ * is the one-field-many-readers failure this lane has now fixed three times (§9.4, §9.5, §9.8,
+ * §9.10). So eligibility is stated ONCE, here, and both detectors and the reported denominator read
+ * it.
+ *
+ * The unification is BEHAVIOUR-NEUTRAL on live data, measured rather than assumed: across the same
+ * 5000 rows the two rules selected **the same rows — 0 velocity-only, 0 split-only.** `flowEventTimeMs`
+ * is the canonical helper ("real UW time only, never ingest fallback"), and is marginally the more
+ * correct of the two: velocity's direct `event_at` test also discarded a row carrying a real,
+ * non-estimated `alerted_at`, which is a genuine time.
+ */
+export function signalEligible(flow: MinimalFlow): boolean {
+  return flowEventTimeMs(flow) != null;
+}
+
+export type SignalEligibility = {
+  /** Every print the detectors were handed. */
+  total: number;
+  /** How many of them could be placed in time, i.e. the denominator the signals were computed over. */
+  eligible: number;
+  /** total − eligible. Non-zero means a "no signals" reading is partly a statement about coverage. */
+  ineligible: number;
+  /** Which tickers the ineligible prints belong to, commonest first. Named because "70% of the tape"
+   *  is abstract while "SPX and SPY" is actionable — a member can see whether the name they care
+   *  about was scanned at all. */
+  ineligibleTickers: string[];
+};
+
+/** The denominator both signal surfaces must report. Pure; same input the detectors get. */
+export function signalEligibility(flows: MinimalFlow[]): SignalEligibility {
+  const counts = new Map<string, number>();
+  let eligible = 0;
+  for (const flow of flows) {
+    if (signalEligible(flow)) eligible++;
+    else counts.set(flow.ticker, (counts.get(flow.ticker) ?? 0) + 1);
+  }
+  return {
+    total: flows.length,
+    eligible,
+    ineligible: flows.length - eligible,
+    ineligibleTickers: Array.from(counts)
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([ticker]) => ticker),
+  };
+}
+
 export type VelocitySpike = {
   ticker: string;
   recent: number;
@@ -43,9 +107,11 @@ export function detectVelocitySpikes(flows: MinimalFlow[], nowMs: number): Veloc
   const byTicker = new Map<string, { recent: number; prior: number; recentPremium: number }>();
 
   for (const alert of flows) {
-    if (!alert.event_at) continue;
-    const age = nowMs - new Date(alert.event_at).getTime();
-    if (!Number.isFinite(age)) continue;
+    // Shared eligibility (see signalEligible) rather than a direct `event_at` test, so this
+    // detector, detectSplitFlow and the reported denominator cannot drift apart.
+    const eventMs = flowEventTimeMs(alert);
+    if (eventMs == null) continue;
+    const age = nowMs - eventMs;
     const cur = byTicker.get(alert.ticker) ?? { recent: 0, prior: 0, recentPremium: 0 };
     if (age <= VELOCITY_RECENT_WINDOW_MS) {
       cur.recent++;

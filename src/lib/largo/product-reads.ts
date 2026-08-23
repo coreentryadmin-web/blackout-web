@@ -881,7 +881,7 @@ export async function helixDerivedForLargo(
       { marketPlatform },
       { computeFlowStrikeStacks },
       { selectTopPrints },
-      { detectVelocitySpikes, detectSplitFlow },
+      { detectVelocitySpikes, detectSplitFlow, signalEligibility },
       { HELIX_STRIKE_HITS_WINDOW_MIN },
     ] = await Promise.all([
       import("@/lib/platform"),
@@ -928,6 +928,11 @@ export async function helixDerivedForLargo(
         session_date: etSessionDate(nowMs),
         prints_analyzed: 0,
         empty_reason: "no_prints_in_window",
+        // Shape stays stable across every branch — a field that disappears on the empty path is a
+        // field a consumer reads as "not applicable" when it means "nothing to count".
+        signal_eligible_prints: 0,
+        signal_ineligible_prints: 0,
+        signal_ineligible_tickers: [],
         stacked_hits: [],
         top_prints: [],
         velocity_spikes: [],
@@ -939,6 +944,11 @@ export async function helixDerivedForLargo(
     const top = selectTopPrints(alerts, { nowMs });
     const velocity = detectVelocitySpikes(alerts, nowMs);
     const split = detectSplitFlow(alerts, nowMs);
+    // C3 / rule 7. `prints_analyzed` is the whole window, but BOTH signals can only see prints that
+    // carry a real UW timestamp — measured live at 30% of the tape. Without this denominator an
+    // empty `velocity_spikes` reads as "the tape was quiet", which for SPX and SPY is false: they
+    // were never scanned. Same eligibility function the detectors themselves use.
+    const eligibility = signalEligibility(alerts);
 
     // NO SILENT CAPS (rule 7). Each panel below is capped for payload size, but the cap was
     // invisible: a model seeing 20 stacked_hits had no way to know 34 contracts were stacking, so
@@ -980,6 +990,18 @@ export async function helixDerivedForLargo(
       top_prints_mode: top.mode,
       top_prints_session_fallback: top.sessionFallback,
 
+      /** SIGNAL ELIGIBILITY — the denominator BOTH radars below were computed over.
+       *
+       *  `prints_analyzed` counts the whole window; these count what could be placed in time. A
+       *  print with no real UW timestamp cannot be windowed, so neither detector can see it. When
+       *  `signal_ineligible_prints` is non-zero, an empty spike/split list is partly a statement
+       *  about COVERAGE and must not be reported as a quiet tape. `signal_ineligible_tickers`
+       *  names which symbols were unscanned — measured live 2026-08-23 as SPX and SPY, 70% of
+       *  rows and ~92% of premium (HELIX-MAP.md §9.0 / §4A). */
+      signal_eligible_prints: eligibility.eligible,
+      signal_ineligible_prints: eligibility.ineligible,
+      signal_ineligible_tickers: eligibility.ineligibleTickers,
+
       /** VELOCITY RADAR — prints per 15min vs the prior window, per ticker. */
       velocity_spikes: velocitySpikes.items,
       velocity_spikes_total: velocitySpikes.total,
@@ -1001,6 +1023,9 @@ export async function helixDerivedForLargo(
         true
       ),
       ...HELIX_TAPE_PROVENANCE,
+      signal_eligible_prints: 0,
+      signal_ineligible_prints: 0,
+      signal_ineligible_tickers: [],
       stacked_hits: [],
       top_prints: [],
       velocity_spikes: [],
