@@ -367,27 +367,40 @@ callers now read one module; display rounds, the size-vs-OI counting argument do
   is a live-tape population. Off-hours none exist, so the corrected branch has never executed on
   production data.
 
-### 5h. Expiry Concentration bar colours — all four were green under the wrong rule (#2713)
+### 5h. Direction from call-vs-put premium — FOUR panels, one wrong rule (#2713)
 
-The panel coloured each horizon from `callPremium / (call + put)` — option type alone, the rule
-#2691 replaced everywhere else on this page. Measured off-hours (5000 rows / 168h): **all four
-horizons rendered BULLISH GREEN and all four disagree** with the shipped aggression-aware rule.
-`This week` is the sharpest: bearish premium **$26,302,085** slightly exceeded bullish
-**$26,231,879**, under a green bar.
+`ExpiryConcentration`, `NetPremiumLeaderboard`, `TickerDrawer`'s bias pill and
+`CumulativeNetPremiumChart` all derived a DIRECTION claim from call-vs-put premium — the rule #2691
+replaced everywhere else on this page. Measured off-hours (5000 rows / 168h): **all four expiry
+horizons rendered BULLISH GREEN and all four disagree**, and **7 of the leaderboard's top 10
+tickers disagree with the arrow they render**. Two numbers carry it: `This week`'s bearish premium
+(**$26,302,085**) slightly exceeded its bullish (**$26,231,879**) under a green bar; and the
+leaderboard's own TOP ROW was **SPX — a green ▲ over $4,022,945,927 whose direction is 0.1%
+readable**.
 
-- **Run the probe first, it gates:** `node --import tsx scripts/audit/helix-expiry-direction-probe.mjs`.
+- **Run the probe first, it gates:** `node --import tsx scripts/audit/helix-direction-read-probe.mjs`.
   It exits **non-zero on any disagreement**, so after deploy it must report **0/4**. A non-zero exit
   means the deploy does not carry the fix — check that before reading anything else here.
-- **Check on screen:** `Monthly` and `LEAPS` must render **neutral purple** with an amber
+- **Check on screen — expiry:** `Monthly` and `LEAPS` must render **neutral purple** with an amber
   `direction unread · N% sided` note, **not green**. Off-hours their premium is 6.1% and 3.2%
   readable respectively, because `ask_pct` is a Group A field and both horizons are dominated by
   the SPX/SPY index feed (§4A).
+- **Check on screen — leaderboard:** the **SPX** row must show a neutral `◆`, not a green ▲, while
+  still reading `+$4.0B`. **AMD and MU must stay green, SMH must stay red** — that half of the check
+  matters as much as the first: if everything went neutral, the gate is mis-set and the panel has
+  stopped saying anything rather than started saying it honestly.
+- **`net` was NOT redefined.** It is still `calls − puts` and its sign still colours the figure. A
+  row showing `+$4.0B` beside a neutral or bearish arrow is **correct, not a bug** — that
+  divergence is the finding, and it is the first session in which it is visible.
 - **The RTH-only question, and it is a real one:** does the readable share RISE under live flow?
   Group A prints arrive all session and carry `ask_pct`; the index feed's share of premium should
-  fall as they accumulate. If Monthly/LEAPS stay near 3–6% readable through a full session, then
-  those two horizons are structurally uncolourable and the honest follow-up is to say so in the
-  panel rather than to keep withholding a colour without explanation. **Capture the readable % per
-  horizon at the open, at midday and at the close** — that series is the argument either way.
+  fall as they accumulate. If Monthly/LEAPS/SPX stay near 0–6% readable through a full session,
+  those surfaces are structurally uncolourable and the honest follow-up is to say so outright
+  rather than keep withholding a colour without explanation. **Capture the readable % per horizon
+  and per leader at the open, at midday and at the close** — that series is the argument either way.
+- **Expect `CumulativeNetPremiumChart` to render a NEUTRAL line most of the session.** It reads the
+  whole loaded tape, which the index feed dominates. That is the honest state, not a rendering
+  failure — do not file it as a regression.
 - **Watch for the opposite failure:** a horizon crossing 50% readable and turning green or red for
   the first time. That is the fix working, not a regression — but it is also the first time this
   panel has ever asserted a direction on evidence, so **check one bar's colour against its own
@@ -401,7 +414,7 @@ These are recorded as needing a decision; RTH is when the data exists to inform 
 - **§9.7 score saturation.** $1.3B and $1.0M prints both score 60; 24.1% of tape pinned at saturation, measured off-hours. Re-measure under RTH volume — saturation should be *worse*, and the size of that is the argument.
 - **Whether Route Breakdown should stay premium-weighted.** The 95%-vs-79% gap is entirely premium weighting. Under RTH the two diverge differently; capture both.
 - **`helix-signal-outcomes` has no writer.** The cron is fully registered in `cron-registry.ts` and **absent from the deployed manifest** (`blackout-infra/cron-jobs.json`, 39 jobs, none mentioning helix). So the signal ledger is never written and every "graded" HELIX signal number rests on an empty table. **Not fixable from this lane** — it is an infra change in another repo against production. Raised on #2698; awaiting a decision to either schedule it or list it INTENTIONALLY_UNSCHEDULED. Until then, **treat any HELIX track-record figure as unbacked**, and say so rather than reporting a rate. **#2712 makes the gap visible in the product** rather than fixing it: the Signal Outcomes panel now separates an empty ledger from an unwritten one, so at the open it must read **"Not recording"**, not "No firings yet". If it reads the latter, something is writing `cron_job_runs` under this key that the deployed manifest says cannot exist — chase that discrepancy before trusting anything else here.
-- **Whether Monthly and LEAPS can EVER carry a colour.** #2713 withholds a directional colour below 50% readable premium, and off-hours those two horizons read **6.1%** and **3.2%** — because `ask_pct` is a Group A field and both are dominated by the index feed. If a full RTH session does not move them, they are structurally uncolourable and the panel should say so outright rather than withhold a colour without explanation. The measurement that decides it is 5h's readable-% series (open / midday / close). Same underlying gap as the print-time question below, surfacing on a different panel.
+- **Whether the index-dominated surfaces can EVER carry a colour.** #2713 withholds a directional colour below 50% readable premium. Off-hours: Monthly **6.1%**, LEAPS **3.2%**, **SPX 0.1%** — because `ask_pct` is a Group A field and all three are dominated by the index feed. If a full RTH session does not move them, they are structurally uncolourable, and the honest follow-up is to say so outright in the product rather than withhold a colour without explanation. The same gap makes `CumulativeNetPremiumChart` render a permanently neutral line. **The fix, if one is wanted, is to source ask-side data for the index feed — not to resume colouring on a rule that does not hold.** The measurement that decides it is 5h's readable-% series (open / midday / close). Same root as the print-time question below, surfacing on four more panels.
 - **Whether the SPX/SPY index feed should get a print time at all.** Group B carries 92.1% of premium and no `event_at`, so it can never fire either persisted signal (§4A) and now renders a permanent `~` (5f). Adding a synthetic time would make it *look* eligible without making it so — worse than the gap. The decision is whether to source a real one upstream or to state the exclusion in the product. Awaiting the coordinator.
 
 ### Commands
@@ -415,8 +428,8 @@ node scripts/audit/helix-flows-ui-audit.cjs
 # API-side tape inventory — writer groups, route keys, IV units, signal eligibility
 node scripts/audit/helix-tape-inventory.mjs
 
-# Expiry Concentration bar colours — EXITS NON-ZERO on any legacy/shipped disagreement (#2713)
-node --import tsx scripts/audit/helix-expiry-direction-probe.mjs
+# Aggregate DIRECTION claims (expiry bars + Net Premium leaders) — EXITS NON-ZERO on disagreement (#2713)
+node --import tsx scripts/audit/helix-direction-read-probe.mjs
 
 # Dark-pool field inventory + COORD directional coverage (#2708)
 node --import tsx scripts/audit/helix-darkpool-inventory.mjs
