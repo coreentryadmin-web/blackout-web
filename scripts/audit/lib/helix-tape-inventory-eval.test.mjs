@@ -47,9 +47,14 @@ test("routeKeyMatches exposes the silent first-in-list precedence", () => {
   // ...and the production function keeps only the first, which is the point.
   assert.equal(executionRouteKey({ alert_rule: "SweepsFollowedByFloor" }), "SWEEP");
   assert.deepEqual(routeKeyMatches("RepeatedHits"), []);
-  assert.equal(executionRouteKey({ alert_rule: "RepeatedHits" }), "OTHER");
+  // ...but the production function's word set also includes REPEAT (shipped in the same PR that
+  // added helix-tape-inventory.mjs), so a rule the local eval helper's narrower list doesn't know
+  // still buckets correctly rather than falling to OTHER.
+  assert.equal(executionRouteKey({ alert_rule: "RepeatedHits" }), "REPEAT");
   assert.deepEqual(routeKeyMatches(null), []);
-  assert.equal(executionRouteKey({ alert_rule: null }), "OTHER");
+  // Absent alert_rule is UNREPORTED, not OTHER — OTHER means a rule WAS present and named nothing
+  // we know; a print with no rule at all was never measured.
+  assert.equal(executionRouteKey({ alert_rule: null }), "UNREPORTED");
 });
 
 test("ROUTE_KEYS still mirrors what the production function recognises", () => {

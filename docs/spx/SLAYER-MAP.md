@@ -454,12 +454,33 @@ belongs with the calibrated-confidence work, not the boundary fix.
 
 Ranked. These are the `UNKNOWN`s above, restated as tasks.
 
-0. **Audit every SPX-relevant key in `blackout-production/app/env` against its code default.**
-   Three cache TTLs and `PLAYBOOK_LIVE_GATE` are all overridden in production, and none of that was
-   discoverable from the repo. Reading a default out of `config.ts` and calling it "the freshness"
-   was wrong by 50% on the desk lane; assuming the live gate matched its `false` default understated
-   a P1. **Anywhere this product's behaviour is env-tunable, the deployed value is the fact and the
-   default is a decoy.** No file in the repo lists which keys are actually set.
+0. ~~**Audit every SPX-relevant key in `blackout-production/app/env` against its code default.**~~
+   **DONE — and made reproducible rather than snapshotted.** `scripts/audit/spx-env-drift.mjs`
+   scans the SPX surface for `process.env.X`, extracts each one's code default from the source,
+   reads the deployed values, and classifies every key **unset / no-op / override / unknown**.
+   A markdown snapshot of the answer would rot exactly the way the documents §6 reconciles had
+   rotted; a script does not. Run it before quoting any env-tunable behaviour.
+
+   **Measured 2026-08-22 — 142 keys referenced, and only 6 actually override their default:**
+
+   | key | code default | **production** |
+   |---|---|---|
+   | `PLAYBOOK_LIVE_GATE` | `false` | **`1`** — this is what makes §7.1 a P1 rather than latent |
+   | `SPX_DESK_CACHE_SEC` | 20 | **30** |
+   | `SPX_PULSE_CACHE_SEC` | 1 | **2** |
+   | `SPX_FLOW_CACHE_SEC` | 2 | **5** |
+   | `SPX_PLAY_MEMBER_READ_CACHE_SEC` | 5 | **2** |
+   | `SPX_CHAIN_QUOTE_TTL_MS` | 5000 | **4000** |
+
+   132 are unset (the code default genuinely governs), 1 is a no-op (`ENGINE_INTEL_OVERLAY="0"`,
+   which equals its default — it *looks* like a deliberate override and is not one), and 3 are
+   secrets with no determinable default. **So the trap is small and enumerable, not everywhere** —
+   which is the useful form of "check the deployed value": there are six of them, and five are
+   latency knobs. Note the shape of the tuning: the three shared lanes are all *slowed* while the
+   per-member play read is *sped up*. That is coherent, not drift.
+
+   Without credentials the script reports **SKIPPED, never GREEN** — "I could not look" must not
+   render as "clean".
 
 1. ~~**Line-audit the eleven `docs/spx/PLAYBOOK-*.md` documents**~~ **DONE — see §6.4.** Accurate
    about the code, false about the world; all eleven bannered, and §6's matrix is now ratcheted

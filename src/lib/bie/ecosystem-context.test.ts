@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 // doc for the full rationale.
 import { SPX_FULL_STATE_FIXTURE } from "./spx-full-state-fixture";
 import { VECTOR_FULL_STATE_FIXTURE } from "./vector-full-state-fixture";
+import { fitVectorFullStateForModel } from "@/lib/bie/vector-full-state-fit";
 import type { SpxPlayPayload } from "@/features/spx/lib/spx-play-payload";
 import type { FlowTapeSummary } from "@/lib/platform/types";
 import type { FlowRow } from "@/lib/db";
@@ -649,16 +650,39 @@ test('fetchEcosystemContext("AAPL"): gex_positioning populates for an ordinary s
 // computes a full desk state (regime/walls/beads/VEX/dark-pool/play) for any
 // optionable ticker, but "what does the desk know about this name" via BIE never
 // surfaced it. vector_full_state closes that gap by calling fetchVectorFullState()
-// verbatim, unconditionally, horizon "all" — the Vector analogue of spx_full_state.
+// unconditionally, horizon "all" — the Vector analogue of spx_full_state.
+//
+// THESE TWO ASSERTIONS USED TO SAY "verbatim" / "the entire object untouched", and that
+// invariant is exactly what shipped the defect: the raw state carries the whole bead rail and
+// runs up to 948x the 16,000-char tool_result cap during RTH, so the transport head-sliced it
+// and the model lost everything after `wallHistory` in key order — including the entire absence
+// report and freshness block. The field's contract is "the exact same object
+// get_vector_full_state returns", so BOTH sides now apply fitVectorFullStateForModel.
+//
+// Pinning to the helper's own output is STRONGER than the old check, not weaker: it asserts the
+// two paths cannot drift apart, which is the property the contract actually promises. A future
+// change that fits one side and not the other fails here.
 
-test('fetchEcosystemContext("NVDA"): vector_full_state reuses fetchVectorFullState() verbatim, horizon "all"', async () => {
+test('fetchEcosystemContext("NVDA"): vector_full_state is fetchVectorFullState() fitted for the model, horizon "all"', async () => {
   vectorFullStateCalls = [];
   mockVectorFullState = VECTOR_FULL_STATE_FIXTURE;
 
   const ctx = await fetchEcosystemContext("NVDA");
 
   assert.deepEqual(vectorFullStateCalls, [["NVDA", "all"]], "fetchVectorFullState should run once, uppercased ticker + 'all' horizon");
-  assert.deepEqual(ctx.vector_full_state, VECTOR_FULL_STATE_FIXTURE, "vector_full_state must pass through the entire object untouched");
+  assert.deepEqual(
+    ctx.vector_full_state,
+    fitVectorFullStateForModel(VECTOR_FULL_STATE_FIXTURE),
+    "vector_full_state must be the SAME fitted object get_vector_full_state returns"
+  );
+  // The fit is shape-preserving for everything a reader cites: no scalar and no disclosure
+  // field may be dropped on the way through.
+  const fitted = ctx.vector_full_state as unknown as Record<string, unknown>;
+  assert.equal(fitted.ticker, VECTOR_FULL_STATE_FIXTURE.ticker);
+  assert.equal(fitted.spot, VECTOR_FULL_STATE_FIXTURE.spot);
+  assert.deepEqual(fitted.gexWalls, VECTOR_FULL_STATE_FIXTURE.gexWalls);
+  assert.deepEqual(fitted.play, VECTOR_FULL_STATE_FIXTURE.play);
+  assert.equal(fitted.asOf, VECTOR_FULL_STATE_FIXTURE.asOf);
 });
 
 test("fetchEcosystemContext: vector_full_state is null when fetchVectorFullState has no live spot", async () => {
@@ -680,7 +704,7 @@ test('fetchEcosystemContext: vector_full_state is NOT gated by isSpxSlayerTicker
   const ctx = await fetchEcosystemContext("SPX");
 
   assert.deepEqual(vectorFullStateCalls, [["SPX", "all"]]);
-  assert.deepEqual(ctx.vector_full_state, VECTOR_FULL_STATE_FIXTURE);
+  assert.deepEqual(ctx.vector_full_state, fitVectorFullStateForModel(VECTOR_FULL_STATE_FIXTURE));
   // Distinct gate check: the SPX-only spx_full_state still populates here too.
   assert.equal(fullStateCalls, 1);
 });
