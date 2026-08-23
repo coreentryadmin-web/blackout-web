@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { clsx } from "clsx";
 import type { HelixDteFilter } from "@/features/helix/lib/helix-table-columns";
+import { watchlistFilterActive } from "@/features/helix/lib/helix-watchlist-filter";
 
 const PREMIUM_PRESETS = [200_000, 500_000, 1_000_000, 20_000_000] as const;
 const DTE_OPTIONS: { id: HelixDteFilter; label: string }[] = [
@@ -24,6 +25,9 @@ export function countActiveHelixFilters(f: {
   dteFilter: HelixDteFilter;
   indicesOnly: boolean;
   watchlistOnly: boolean;
+  /** How many tickers are actually starred. `watchlistOnly` alone cannot say whether the filter
+   *  narrows anything — with an empty list it is inert, and counting it claimed otherwise. */
+  watchlistCount: number;
   tickerFilter: string;
 }): number {
   return (
@@ -32,7 +36,7 @@ export function countActiveHelixFilters(f: {
     (f.whalesOnly ? 1 : 0) +
     (f.dteFilter !== "all" ? 1 : 0) +
     (f.indicesOnly ? 1 : 0) +
-    (f.watchlistOnly ? 1 : 0) +
+    (watchlistFilterActive(f.watchlistOnly, f.watchlistCount) ? 1 : 0) +
     (f.tickerFilter ? 1 : 0)
   );
 }
@@ -151,6 +155,7 @@ export function HelixCommandBar({
     dteFilter,
     indicesOnly,
     watchlistOnly,
+    watchlistCount,
     tickerFilter,
   });
 
