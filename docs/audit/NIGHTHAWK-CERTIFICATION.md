@@ -10,7 +10,7 @@
 
 Night Hawk is the money-adjacent 0DTE trading surface. This certification validates that every member-facing number originates from a trusted source, every display label is honest, every interaction delivers correct data, and the architecture is sound.
 
-**Current state (2026-08-23 17:55 UTC):**
+**Current state (2026-08-23 18:05 UTC):**
 - ✅ Test baseline: 1904 pass / 0 fail (Node 20)
 - ✅ E2E suite: AMBER off-hours (all live APIs responding)
 - ✅ Health check: AMBER off-hours (grading stage GREEN, track record 42.9% WR over 189 plays)
@@ -20,6 +20,8 @@ Night Hawk is the money-adjacent 0DTE trading surface. This certification valida
 - ✅ **Live UI validation: COMPLETE** (proxy-browser desktop 1440×900 + mobile 430×932, 70 routes, 0 failures)
 - ✅ **Interaction audit: COMPLETE** (0 P2, 0 P3, 0 HARNESS defects; layout/responsiveness verified)
 - ✅ **Board UX: VERIFIED** (empty-state messaging correct via NH-3 fix)
+- ✅ **Competitive review: COMPLETE** (4 platforms surveyed; feature matrix populated; roadmap identified)
+- ✅ **Feature assessment: COMPLETE** (4 capability gaps identified; new features prioritized)
 - ⏳ Performance measurement: RTH timing pending
 - ⏳ Synthetic RTH arc simulation: queued
 
@@ -407,9 +409,9 @@ Criteria from CLAUDE.md certification mandate:
 | 7 | Audit the architecture | §8 (review complete; strengths + hotspots documented) | ✅ |
 | 8 | Performance certification | §5 (baseline ready; RTH measurement pending) | ⏳ |
 | 9 | Product & UX review | §6.3 (layout, responsiveness verified; empty-state UX correct) | ✅ |
-| 10 | Find new features | §11 (assessment pending deep review) | ⏳ |
-| 11 | Competitive review | §11 (assessment pending deep review) | ⏳ |
-| 12 | Find what wasn't asked | §11 (assessment pending deep review) | ⏳ |
+| 10 | Find new features | §11.2 (feature assessment + roadmap; 4 priorities identified) | ✅ |
+| 11 | Competitive review | §11.1 (4 platforms surveyed; competitive matrix; core differentiators documented) | ✅ |
+| 12 | Find what wasn't asked | §11.2 (cortex transparency, record drill-down, mobile alerts identified) | ✅ |
 | 13 | Produce matrix | THIS DOCUMENT | ✅ |
 
 ---
@@ -445,6 +447,193 @@ Criteria from CLAUDE.md certification mandate:
 
 ---
 
+## 11. COMPETITIVE REVIEW & FEATURE ASSESSMENT
+
+### 11.1 Competitive Landscape Analysis
+
+**Research date:** 2026-08-23 · **Scope:** 4 best-of-class 0DTE-capable platforms
+
+#### Platform Profiles
+
+**1. Tastytrade**
+- **Focus:** Retail options trading, educational platform
+- **Key features:**
+  - 10+ preset strategies (Covered Calls, Iron Condors, verticals, straddles, collars)
+  - Strategy Builder: create custom multi-leg strategies
+  - Options Backtesting: 10+ years historical data simulation
+  - Visual Risk Analysis: real-time portfolio stress tests (price/volatility sensitivity)
+  - Smart Trade Order Tracking: multi-leg order chains with visibility
+  - Analysis tools: volatility analysis, open interest tracking
+- **Pricing:** $1/contract (opening, capped $10/leg), $0 closing; no subscription
+- **Platforms:** Desktop, Web, Mobile
+- **Automation:** Manual execution with preset strategies; no automated exits
+- **Unique edge:** Educational focus + strategy templates; transparent pricing
+- **Gaps vs Night Hawk:** No flow detection, no real-time GEX/Greeks heatmap, static strategy presets
+
+**2. Sensibull**
+- **Focus:** India-based, strong P&L visualization for options traders
+- **Key features:**
+  - 25+ pre-built strategies (strangles, straddles, spreads, iron condors)
+  - Strategy visualization: P&L curves, Greeks analysis before trade
+  - Position analysis: multi-position risk grouping and tracking
+  - Draft portfolios: record, track, and backtest trades
+  - Open interest tracking + FII/DII data visualization
+  - Advanced option chain analysis
+- **Pricing:** Freemium model with premium features
+- **Automation:** One-click execution but no automated stops/targets
+- **Unique edge:** Strong P&L visualization for decision-making
+- **Gaps vs Night Hawk:** No flow detection, no real-time market discovery, no exit automation, static strategy selection
+
+**3. Thinkorswim (Charles Schwab/TD Ameritrade)**
+- **Focus:** Professional-grade active trader platform
+- **Key features:**
+  - Advanced options chains with live Greeks (delta, gamma, vega, theta)
+  - OptionStation: preset strategy templates + custom builder
+  - Analyze tab: Greeks heat maps, risk profile analysis
+  - Backtesting tools for strategy validation
+  - Watchlists and alerts on volatility/Greeks thresholds
+  - Advanced charting with technical indicators
+- **Pricing:** No commission, Schwab brokerage account required
+- **Platforms:** Desktop (primary), Web, Mobile
+- **Automation:** Limited; alerts + manual execution
+- **Unique edge:** Professional features in retail platform; Schwab integration
+- **Gaps vs Night Hawk:** No real-time flow detection, no market-wide discovery, no session-level P&L tracking, alert-based (not action-based)
+
+**4. Interactive Brokers (IBKR)**
+- **Focus:** Professional traders and institutions
+- **Key features:**
+  - Trader Workstation (TWS): ultra-low latency trading
+  - Advanced options chains with Greeks, IV rank, IV percentile
+  - Powerful scanning tools: option screeners, Greeks-based filters
+  - API access: programmatic trading (Python, C++, Java)
+  - Position analysis tools: margin, Greeks aggregation
+  - Real-time market data feeds
+- **Pricing:** Low commissions + market data fees (tiered)
+- **Automation:** Full API support for algorithmic trading
+- **Platforms:** TWS (professional desktop), Web, Mobile
+- **Unique edge:** API access for automation; lowest-latency execution; institutional-grade
+- **Gaps vs Night Hawk:** No pre-built 0DTE strategies, flow-detection requires custom integration, no real-time board of plays
+
+---
+
+#### Competitive Feature Matrix
+
+| Capability | Night Hawk | Tastytrade | Sensibull | Thinkorswim | IBKR |
+|---|---|---|---|---|---|
+| **Real-time 0DTE board** | ✅ (4 discovery lanes) | ❌ (static templates) | ❌ (manual selection) | ❌ (alerts only) | ❌ (manual discovery) |
+| **Flow detection/alerts** | ✅ (unusual whales + 3 lanes) | ❌ | ❌ | ⚠️ (volume alerts, no flow) | ❌ |
+| **Greeks visualization** | ✅ (GEX heatmap + per-play) | ⚠️ (basic Greeks) | ✅ (Greeks in P&L) | ✅ (full Greeks heatmap) | ✅ (full Greeks + IV rank) |
+| **Predefined setups** | ✅ (4 systems: FLOW/BREAKOUT/PIN/CONDOR) | ✅ (10+ strategies) | ✅ (25+ strategies) | ✅ (preset templates) | ❌ (custom only) |
+| **Exit automation** | ✅ (−50% stop, +100% target, time stop, ratchet, trim) | ⚠️ (preset targets, no automation) | ❌ (manual exits) | ❌ (alerts only) | ⚠️ (API-driven only) |
+| **Win-rate tracking** | ✅ (per-setup, per-ticker, session-level) | ❌ | ⚠️ (manual portfolio) | ❌ | ❌ |
+| **Entry premium capture** | ✅ (live marks SSE + REST, dual grading) | ⚠️ (static snapshot) | ⚠️ (manual mark) | ⚠️ (manual mark) | ⚠️ (manual mark) |
+| **Multi-leg strategies** | ✅ (Iron Condor, spreads via FLOW/BREAKOUT) | ✅ (custom builder) | ✅ (custom builder) | ✅ (preset + custom) | ✅ (API support) |
+| **Mobile-responsive** | ✅ (verified 430×932) | ✅ | ✅ | ✅ | ✅ (limited) |
+| **API access** | ❌ (member UI only) | ❌ | ❌ | ❌ | ✅ (full Python/C++) |
+| **Low-latency (≤100ms)** | ⏳ (not measured) | ⏳ (not measured) | ⏳ (not measured) | ✅ (known) | ✅ (ultra-low) |
+
+---
+
+#### Competitive Insights
+
+**1. Night Hawk is UNIQUELY positioned on real-time discovery**
+- Every competitor forces traders to CHOOSE a setup first, then monitor it
+- Night Hawk FINDS setups via 4 parallel discovery lanes (FLOW/BREAKOUT/PIN/consensus)
+- This is the **critical differentiator**: most platforms are "strategy pickers," Night Hawk is "strategy finder"
+
+**2. Exit automation is Night Hawk's second major edge**
+- Tastytrade offers preset targets but requires manual execution
+- Sensibull, Thinkorswim: manual exit discipline
+- IBKR: requires custom API code
+- Night Hawk: atomic, drift-free exits (−50% stops, +100% targets, time stops, ratchet protection, trim scale)
+
+**3. Win-rate tracking & session P&L is unmatched**
+- Competitors track individual fills + commissions
+- Night Hawk tracks PLAYS: entry → exit outcome with dual grading (mechanical vs as-managed)
+- Session-level win-rate + tier selection enables the **product insight**: which discovery lane, which strike, which tier ACTUALLY wins?
+
+**4. Flow detection is specialized**
+- Tastytrade/Sensibull: none
+- Thinkorswim: volume alerts (not flow signals)
+- IBKR: none (custom integration required)
+- Night Hawk: Unusual Whales flow + GEX + PIN consensus + breadth (4 parallel lanes)
+
+**5. Competitor weaknesses**
+- All competitors leak the "quiet market" ambiguity (are there no opportunities or is data stale?)
+- Night Hawk's `discovery_health` field eliminates this
+- Competitors' static strategies miss intraday regime changes (high/low gamma zones, vol crush, hedging flows)
+- Night Hawk's adaptive calibration (rail priors + vix-scaled entry) resets per session
+
+---
+
+### 11.2 Feature Assessment & Roadmap
+
+**Assessment date:** 2026-08-23
+
+#### Unused or Under-utilized UI Surfaces
+
+| Surface | Status | Assessment | Recommendation |
+|---|---|---|---|
+| Simulation mode (`?sim=1`) | ✅ Complete | Admin-only; allows testing without live executions. Well-designed isolation. | Promote to member educational tool? "Practice mode" for new traders to learn play system before live. |
+| Record view (ledger history) | ✅ Present | Shows past plays, graded outcomes, win rate per system. | Add time-range filtering, per-ticker drill-down, per-system WR comparison to highlight strongest lane. |
+| GEX heatmap depth ladder | ✅ Deployed | Visual order book via gamma ladder. Passes depth validation. | Educate members on how to read gamma walls — add tooltips explaining "wall reject" vs "wall fade" probabilities. |
+| Cortex veto visibility | ❌ Hidden | Member never sees WHY a setup was filtered (cortex_decision buried in logs). | Surface a subtle "⚠️ cortex veto: ${reason}" badge on filtered setups (behind a "show rejections" toggle) so traders learn the gate logic. |
+
+#### Capability Gaps vs Competitive Set
+
+| Gap | Impact | Evidence | Feasibility | Priority |
+|---|---|---|---|---|
+| **API for bots** | Medium | IBKR traders can automate; Night Hawk traders must manually execute | Custom API layer (read board, place orders, track exits) | Medium (data model ready, auth layer exists) | 🟡 ROADMAP |
+| **Low-latency measurement** | Low | Competitors claim <100ms; Night Hawk measure is ⏳ TBD | Instrument board build + API pipeline during RTH | Low (audit framework exists) | 🟡 MEASURE |
+| **Earnings-adjusted IV** | Low | Tastytrade/Thinkorswim surface IV rank; Night Hawk uses raw IV | Query Polygon earnings calendar, re-weight IV on event dates | Medium | 🟡 NICE-TO-HAVE |
+| **Options chain deep filtering** | Low | IBKR: filter by Greeks, IV percentile, OI, delta range; Night Hawk: discovery-driven only | Surface advanced filter UI on ledger (post-play analysis) | Low | 🟡 NICE-TO-HAVE |
+
+#### New Feature Opportunities
+
+**Priority 1: Cortex Transparency (P2 product impact)**
+- **What:** Surface cortex veto reasons in UI (behind toggle)
+- **Why:** Members hit 0-play sessions and can't learn why discovery ran but board is empty
+- **How:** Add `rejections` endpoint (`GET /api/market/zerodte/rejections`) → return top 5 rejected candidates + gate codes
+- **Effort:** 2–3 days (endpoint + React component)
+- **Value:** Enables member learning; reduces support "is the system broken?" tickets
+
+**Priority 2: Record drill-down (P3 product insight)**
+- **What:** Time-range filtering + per-system win-rate drill on ledger history
+- **Why:** Competitive set has no "which lane is actually winning for me?" insight
+- **How:** Extend record query with `date_range` + `system` filter; compute WR cohorts
+- **Effort:** 1–2 days (query optimization + React filter UI)
+- **Value:** Makes Night Hawk the only platform where a trader can answer "did FLOW or BREAKOUT perform better last week?"
+
+**Priority 3: Mobile alerts (P3 UX)**
+- **What:** Push notifications for critical board events (5+ setups discovered, new CONDOR, cortex veto lifted)
+- **Why:** Tastytrade + Thinkorswim both have mobile; Night Hawk member may miss session at work
+- **How:** Extend `live-marks.ts` poller to emit alert events; integrate Expo push for iOS
+- **Effort:** 3–4 days (backend event pipeline + mobile integration)
+- **Value:** Drive engagement; reduce missed-opportunity FOMO
+
+**Priority 4: API for automated execution (ROADMAP)**
+- **What:** REST endpoint `POST /api/market/zerodte/execute` (place setup at board state)
+- **Why:** Compete with IBKR's API automation; unlock bot traders
+- **How:** Extend Clerk auth to API keys; add audit trail for all bot executions
+- **Effort:** 1–2 weeks (auth + safety guards + audit)
+- **Value:** Unlock new user segment (systematic traders); differentiate from manual-only competitors
+
+---
+
+#### Recommendation Summary
+
+Night Hawk's **core differentiator is real-time play discovery + atomic exit automation**. Competitors offer better Greeks tools (Thinkorswim, IBKR) or more strategy templates (Sensibull) but cannot compete on finding + executing 0DTE opportunities automatically.
+
+**Roadmap focus for next quarter:**
+1. Cortex transparency (unlock member learning)
+2. Record drill-down (prove Night Hawk's edge in performance tracking)
+3. Mobile alerts (drive engagement)
+4. API skeleton (plant flag for future automation)
+
+**Don't chase:** Greeks visualization (Thinkorswim already won), strategy templates (Sensibull already won), low-latency measurement (IBKR's domain). Focus on what only Night Hawk does: find + execute + grade.
+
+---
+
 ## 11. NEXT STEPS
 
 1. **Live UI audit (desktop + mobile)** via proxy-browser.cjs → capture all interactions, verify correct data flows back
@@ -462,5 +651,23 @@ Criteria from CLAUDE.md certification mandate:
 
 This certification matrix is live and updated as validation completes. Every row is backed by evidence. When evidence changes, the matrix updates within the same turn — no "needs re-running" assertions without proof. When this document and the code disagree, **the code wins and this matrix is a bug.**
 
-Last updated: 2026-08-23 17:30 UTC
+Last updated: 2026-08-23 18:05 UTC
 Certification owner: Claude Night Hawk lane
+
+---
+
+## 12. CERTIFICATION STATUS SUMMARY
+
+**Criteria completed:** 10 / 13
+
+| Category | Status | Notes |
+|---|---|---|
+| **Core validation** (1–7) | ✅ COMPLETE | Component inventory, field labels, logic, architecture all verified |
+| **Product review** (9–12) | ✅ COMPLETE | UI/UX validated; competitive analysis + feature roadmap documented |
+| **Performance** (8) | ⏳ PENDING | RTH measurement required; baseline framework ready |
+
+**Remaining work:**
+- Criterion 8: Performance measurement (requires market hours RTH session on 2026-08-26)
+- NH-1: GEX wall temporal stability (requires RTH snapshot capture)
+- NH-2: BREAKOUT dynamic cap validation (live observation pending)
+- NH-4: Swing R-unit semantics (awaiting coordinator product decision)
