@@ -3,6 +3,7 @@ import { sharedCacheGet, sharedCacheSet } from "@/lib/shared-cache";
 import {
   classifyWall,
   correctPublicRead,
+  publicSnapshotSessionFacts,
   type PublicGexSnapshot,
   type PublicGexTicker,
   sanitizePublicRead,
@@ -13,7 +14,9 @@ export {
   classifyWall,
   correctPublicRead,
   isPublicGexTicker,
+  publicFreshnessCopy,
   publicGexTickers,
+  publicSnapshotSessionFacts,
   sanitizePublicRead,
 } from "@/lib/public-gex-snapshot-types";
 
@@ -40,12 +43,19 @@ const CACHE_TTL_SEC = 5;
 const EMPTY_CACHE_TTL_SEC = 30; // short-lived so a transient upstream miss self-heals fast
 
 function emptySnapshot(ticker: string): PublicGexSnapshot {
+  // Session facts are stamped even on the empty payload: "we could not build a snapshot" and "the
+  // market is closed" are different statements, and a consumer that gets nulls for both cannot
+  // tell them apart.
+  const session = publicSnapshotSessionFacts();
   return {
     available: false,
     ticker,
     spot: null,
     change_pct: null,
     asof: null,
+    market_session: session.market_session,
+    session_date: session.session_date,
+    as_of_et: session.as_of_et,
     call_wall: null,
     put_wall: null,
     flip: null,
@@ -72,12 +82,19 @@ export async function buildPublicGexSnapshot(ticker: PublicGexTicker): Promise<P
       await sharedCacheSet(cacheKey, empty, EMPTY_CACHE_TTL_SEC).catch(() => undefined);
       return empty;
     }
+    // ONE instant for the whole payload — the phase, the session date and the ET stamp must all
+    // describe the same moment, or a snapshot built across 15:59:59 -> 16:00:01 reports OPEN over
+    // post-close levels.
+    const session = publicSnapshotSessionFacts();
     const snapshot: PublicGexSnapshot = {
       available: true,
       ticker,
       spot: heatmap.spot,
       change_pct: heatmap.change_pct,
       asof: heatmap.asof,
+      market_session: session.market_session,
+      session_date: session.session_date,
+      as_of_et: session.as_of_et,
       call_wall: heatmap.gex.call_wall,
       put_wall: heatmap.gex.put_wall,
       flip: heatmap.gex.flip,
