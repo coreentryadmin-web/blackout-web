@@ -4947,15 +4947,26 @@ export function VectorChart({
           SPY vol
         </p>
         {/* Honesty label — visible whenever any modeled (reconstructed) bead is on screen, absent
-            once the trail is fully observed. Matches the SPY-vol caption's font-mono/opacity style. */}
+            once the trail is fully observed. Matches the SPY-vol caption's font-mono/opacity style.
+            `max-w-[42%] truncate` + an opaque background pill: right-anchored with no width bound
+            and no backing, this and the GEX-scope chip below it used to grow to full text width
+            over a transparent background — on a narrow (mobile) chart the GEX chip's text ran wide
+            enough to overlap TWO of the chart's own canvas-drawn x-axis time ticks underneath it
+            (measured live, 2026-08-23: a mid-chart "16:30" tick and a right-side tick both rendered
+            behind "RECONSTRUCTED"/"SPOT-ALIGNED", illegibly interleaved). A width cap alone isn't
+            enough on its own — the chart's tick positions move with zoom/pan/time-range, so a
+            percentage guess can't guarantee avoiding every possible tick position. The opaque pill
+            background is the actual fix (legible regardless of what's drawn underneath); the width
+            cap+truncate is a second, independent guard against the label's own text overrunning the
+            chart's right edge on the narrowest viewports. */}
         {hasModeledBeads && (
-          <p className="pointer-events-none absolute bottom-2 right-2 z-10 font-mono text-[10px] uppercase tracking-wide text-sky-300/70">
+          <p className="pointer-events-none absolute bottom-2 right-2 z-10 max-w-[42%] truncate rounded bg-black/70 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-sky-300/70 backdrop-blur-sm">
             ◇ dim = modeled · ● solid = recorded
           </p>
         )}
         {showGexHeatmapReconstructedChip && (
           <p
-            className={`pointer-events-none absolute z-10 font-mono text-[10px] uppercase tracking-wide text-emerald-400/80 ${
+            className={`pointer-events-none absolute z-10 max-w-[42%] truncate rounded bg-black/70 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-emerald-400/80 backdrop-blur-sm ${
               hasModeledBeads ? "bottom-8 right-2" : "bottom-2 right-2"
             }`}
           >
