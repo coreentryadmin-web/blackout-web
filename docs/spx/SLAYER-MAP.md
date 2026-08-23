@@ -92,7 +92,7 @@ the TTL governs when a refresh is *started*, not how stale a response may be.
    fields off the merged bundle gets them up to 15× staler than the same fields off `/pulse`.
    The dashboard avoids this by polling `/desk`, `/pulse` and `/flow` separately after the initial
    bootstrap (`useMergedDesk.ts`) — **any new consumer that reads pulse fields off `/merged`
-   inherits the 20s staleness silently.**
+   inherits the 30s staleness silently.**
 3. **Three lanes each compute their own `gamma_flip`** (desk, flow, pin), plus the matrix's own.
    They are *different questions* (expiry scope differs), not a race — see §5.
 
@@ -403,7 +403,18 @@ The tool *description* for `get_spx_confluence` (`tool-defs.ts:506`) lists actio
 grade, agreeing/conflicting factors, levels — and **does not mention confidence at all**. So the
 field is arriving undocumented as well as uncalibrated.
 
-**UNKNOWN:** whether `get_spx_play`'s payload carries the same field. Not traced this pass.
+**RESOLVED (2026-08-22): it does, and so do two more paths.** The uncalibrated value reached the
+model on **four** doors, not one — `get_spx_confluence` (`run-tool.ts:1564`), `get_spx_play`
+(`run-tool.ts:960`, the payload carries it at top level from 12 assignment sites in
+`spx-play-engine.ts`), `get_ecosystem_context.spx_full_state` (`ecosystem-context.ts:847`), and
+`largo-live-feed.ts:784`, which **whitelisted it explicitly** into the feed the model reads without
+any tool call. `tool-defs.ts:217` also advertised the field. All four now omit it and name the
+absence (`src/lib/largo/spx-confidence-boundary.ts`); the member-facing UI number is unchanged.
+
+**Still open, and logged here rather than fixed:** `spx-play-engine.ts:1633` sets
+`confidence: closedConfluence?.confidence ?? 0` on the session-closed path. A `0` reads as a
+measured floor, not as "unknown" — absence published as measurement, in the member payload. It
+belongs with the calibrated-confidence work, not the boundary fix.
 
 ---
 
@@ -420,20 +431,23 @@ Ranked. These are the `UNKNOWN`s above, restated as tasks.
 
 1. **Line-audit the eleven `docs/spx/PLAYBOOK-*.md` documents** and mark what is now wrong (§6.4).
    Largest remaining gap.
-2. **Trace the `spx:pulse:snapshot` writer** in the market-worker lane and record its `change_pct`
+2. **Build a calibrated confidence from `spx-play-outcomes`, out-of-sample validated** — and fix
+   `spx-play-engine.ts:1633`'s `?? 0` fallback with it. The Largo boundary now omits the
+   uncalibrated number, which is honest but not an answer; the member UI still renders it.
+3. **Trace the `spx:pulse:snapshot` writer** in the market-worker lane and record its `change_pct`
    anchor at source (§3.2).
-3. **Map `/journal`, `/commentary`, `/outcomes`, `/power-hour`, `/signals`** to this file's schema.
-4. **Run `scripts/audit/largo-truncation-probe.mjs` against all seven SPX tools** and read the
+4. **Map `/journal`, `/commentary`, `/outcomes`, `/power-hour`, `/signals`** to this file's schema.
+5. **Run `scripts/audit/largo-truncation-probe.mjs` against all seven SPX tools** and read the
    CONTROL line — a run whose control does not come back TRUNCATED reports every COMPLETE as
    UNVERIFIED, not clean.
-5. **Build the SPX interaction audit** on the `meridian-interaction-audit.mjs` pattern — physical
+6. **Build the SPX interaction audit** on the `meridian-interaction-audit.mjs` pattern — physical
    text intersection, sub-24px tap targets, overflow, tab-hammering, keyboard reach — gated on a
    PAGE-LOADED proof so a blank render reports HARNESS, never a product verdict. This is what
    closes the three UNVERIFIED backlog items in §6.1 (and would have caught the P2 collisions).
-6. **A coherence assertion in the pre-open gate**: any two member-facing values sharing a label
+7. **A coherence assertion in the pre-open gate**: any two member-facing values sharing a label
    must agree within a stated tolerance or the label must differ (§5). The reproducible OI-only
    max-pain check against a full Polygon SPXW chain is the model.
-7. **Confirm `spx-signal-weight-optimize`'s DST correctness** — the other three crons are done.
+8. **Confirm `spx-signal-weight-optimize`'s DST correctness** — the other three crons are done.
 
 ---
 
