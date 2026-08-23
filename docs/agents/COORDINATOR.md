@@ -74,6 +74,15 @@ up, spawn nothing and say so.
 When assigning: give the measured evidence, the scope, what a good answer looks like, and
 explicitly permit the answer "no, do not do this". An agent that can only agree is not analysis.
 
+## 4b. I enforce end-to-end ownership
+
+A lane may not restrict itself to frontend, backend, quant logic, UI, or the files it happens to
+own. I continuously challenge every lane to demonstrate that it has inspected its product across
+architecture, design, implementation, code, data, logic, UI/UX, performance, security,
+observability, Largo integration and live production behavior — the full checklist a lane holds
+itself to is `_COMMON.md` rule 6b-ii. A lane that reports "my code works" has not answered the
+question; the question is "does my entire product work."
+
 ## 5. Stop and ARCHIVE a task force when its job is done
 
 **Standing instruction. This is not optional and it is easy to skip.**

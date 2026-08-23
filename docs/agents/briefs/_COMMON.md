@@ -275,6 +275,99 @@ that keeps.**
 An unfinished Largo change is not a reason to skip the window. The window does not wait; the
 refactor does.
 
+### 6b-ii. End-to-end ownership — the full stack, not just the files you touched
+
+**Standing instruction, in the operator's own words.** You are not merely responsible for the
+files you were assigned or the feature currently under development. You are responsible for
+determining whether the entire product is correctly designed, implemented, operated and presented
+to members — continuously, across every layer:
+
+**PRODUCT STRATEGY → ARCHITECTURE → DATA → MODELS/LOGIC → BACKEND → APIs → DATABASE/CACHE →
+FRONTEND → UI/UX → PERFORMANCE → SECURITY → OBSERVABILITY → LARGO → PRODUCTION**
+
+**Architecture.** Understand the complete architecture of your product — services, dependencies,
+data flows, state management, queues/jobs, caches, databases, APIs, WebSockets, external providers,
+shared infrastructure. Keep asking: is the architecture correct for what this product is trying to
+accomplish? Are responsibilities separated correctly? Are there unnecessary dependencies, hidden
+single points of failure, or shared components creating dangerous coupling? Is the system resilient
+to provider failures, stale feeds and partial outages? Can it scale? Is technical debt beginning to
+compromise correctness or velocity? Do not preserve weak architecture merely because it currently
+works.
+
+**Product design.** Evaluate the product itself, not merely its implementation. Does this feature
+deserve to exist? Does it solve an actual trader problem? Are we showing the right information? Are
+important signals missing? Are low-value metrics creating noise? Could several fields be synthesized
+into better intelligence? Is the workflow appropriate for how traders actually operate? What would
+materially increase this product's edge? Challenge existing assumptions.
+
+**Data.** Trace important values through **SOURCE → INGESTION → NORMALIZATION → STORAGE →
+TRANSFORMATION → CALCULATION → API → UI**. Validate provenance, timestamps, freshness, units,
+symbols, strikes, expirations and transformations. Detect stale, duplicated, delayed, malformed,
+contradictory or impossible data. Never fabricate a missing value (rule 7, below, is this same
+standard).
+
+**Logic / models / algorithms.** Understand every important calculation and decision path. Validate
+**INPUT → FEATURE → RULE/MODEL → THRESHOLD → SCORE → GATE → DECISION → OUTPUT**. Challenge incorrect
+assumptions, unreachable branches, brittle thresholds, bad edge cases, hidden fallbacks and
+misleading confidence scores. For trading logic, guard aggressively against hindsight bias, leakage
+and overfitting — a change that improves yesterday's result is not automatically an improvement.
+
+**Code.** Read the actual implementation; do not judge correctness solely from the UI. Inspect
+business logic, data transformations, types/contracts, error handling, fallbacks, concurrency,
+async behavior, race conditions, caching, retries/timeouts, resource usage, dead code, duplicated
+logic, dependency boundaries, tests, and configuration/environment behavior (rule 8, below). Look
+for bugs that have not yet manifested visibly.
+
+**Backend / APIs.** Validate requests, responses, schemas, authorization, pagination, filtering,
+caching, errors, rate limits, timeouts and degraded states. Ensure the frontend and the backend
+agree on what the same field means.
+
+**UI / UX.** Use the actual deployed product like a real member — this is what rule 6b's
+`proxy-browser.cjs` + interactive-Playwright recipe is for. Visit every page. Click every meaningful
+button. Open every panel. Use every search. Change every filter. Sort tables. Change dates and
+expirations. Hover charts. Zoom in/out. Pan. Open drawers/modals. Navigate backward/forward.
+Refresh. Resize. Test desktop and mobile. Test loading, empty, error and stale states. Evaluate
+hierarchy, readability, information density, responsiveness, accessibility and interaction quality.
+Ask: can a trader understand what matters within seconds? Do not confuse flashy UI with good UX.
+
+**Performance.** Measure rather than guess. Inspect page load → API latency → data freshness →
+WebSocket latency → rendering → chart performance → interaction latency → rerenders → payloads →
+queries → cache efficiency → CPU/memory. Find and eliminate unnecessary work.
+
+**Security.** Review your product's exposed attack surface and authorization boundaries. Validate
+membership/tier enforcement, server-side authorization, admin boundaries, API exposure, input
+validation, secrets handling and sensitive-data leakage. Never weaken security to simplify
+development.
+
+**Observability.** You should be able to explain why the product behaved the way it did. Ensure
+sufficient visibility into feeds → jobs → engine cycles → decisions → rejection reasons → errors →
+latency → cache → API → frontend → deployments.
+
+**Largo.** Largo must understand the product deeply. Continuously test difficult member questions
+covering current state, historical state, methodology, signals, decisions, conflicts, changes,
+outcomes and cross-product relationships. If Largo lacks necessary information, improve the
+underlying product interfaces and data exposure — never teach Largo a canned answer to paper over
+a real gap.
+
+**Production validation.** Tests are necessary but insufficient. Every meaningful change follows
+**DESIGN → IMPLEMENT → TEST → PR → CI → MERGE → DEPLOY → LIVE PRODUCT TEST → DATA VALIDATION →
+REGRESSION CHECK → VERIFIED** (this is rule 6, spelled out in full). Personally return to the
+deployed product after release and validate the actual member experience.
+
+**Continuous audit.** Never limit yourself to the task that originally activated your lane. While
+working, continuously look around your product for bugs, wrong data, weak logic, architectural
+debt, performance problems, UX friction, security gaps, missing analytics, Largo gaps and product
+opportunities. Record legitimate findings, prioritize them, and continue through the highest-value
+work. Do not create meaningless changes simply to remain busy (rule 6b-i already says this; this is
+the same discipline applied across the whole stack, not only the UI).
+
+**Your ownership standard.** You should eventually know your product better than anyone else in the
+fleet. If the operator can open your product and easily discover a wrong value, a broken button, a
+stale panel, a logical contradiction, an obvious performance problem, an unexplained signal, a bad
+workflow, or an architectural weakness that systematic inspection should have discovered, your lane
+failed to inspect deeply enough. Your responsibility is not "my code works." It is "my entire
+product works."
+
 ### 7. Absence is a finding, not a blank
 
 The defect class this fleet keeps finding is **a fact that exists in the system and is not wired to
