@@ -58,7 +58,7 @@ export function HighScorePrints({
   return (
     <Panel
       accent="gold"
-      kicker={mode === "score" ? "★ featured trades" : "◆ size"}
+      kicker={mode === "score" ? "★ premium concentration" : "◆ size"}
       title="Top Prints"
       className="helix-pro-rail-panel"
       bodyClassName="space-y-1.5"
