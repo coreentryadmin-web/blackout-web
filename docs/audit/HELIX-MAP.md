@@ -403,6 +403,68 @@ outside that blast radius). It is still open — §9.5.
 
 ---
 
+## 8A. THE DARK-POOL HALF — inventoried 2026-08-23, having been one line until then
+
+The charter defines HELIX as the options-flow **and dark-pool** tape reader. Everything above this
+section is the options tape. Dark pool had **one row** in the panel inventory and no field-level
+measurement at all — a real hole in this map's Phase 0 claim, closed here.
+
+Instrument: `scripts/audit/helix-darkpool-inventory.mjs` (pure helpers in
+`lib/helix-darkpool-eval.mjs`, 8 unit tests). A harness rather than a one-off probe, so these
+numbers can be re-taken instead of quoted from memory.
+
+**Surfaces.** `DarkPoolPanel.tsx` (401 lines), `DarkPoolSpark.tsx` (30), plus two consumers:
+`TickerDrawer` (per-ticker prints) and `FlowFeed` (the COORD signal). Route
+`/api/market/dark-pool` → `fetchUwDarkPoolRecent`, server-cached.
+
+**Field inventory — MEASURED 2026-08-23, market-wide, 20 prints:**
+
+| field | fill | distinct | informative |
+|---|---|---|---|
+| `ticker` | 100% | 15 | yes |
+| `premium` | 100% | 20 | yes |
+| `executed_at` | 100% | 13 | yes |
+| `share_size` | 100% | 19 | yes |
+| **`side`** | **100%** | **1** | **NO — every value is the string `"neutral"`** |
+
+**A fill rate is not a fact about a field's INFORMATION CONTENT.** A fill-rate inventory of the kind
+`meridian-earnings-data-inventory.mjs` produces would report `side: 100% ALWAYS` and a reader would
+design a directional panel on it. UW's market-wide endpoint omits direction, and
+`dark-pool/route.ts:27` collapses anything that is not buy/sell into `"neutral"`. CLAUDE.md already
+records that a fill rate without its COHORT is not a fact about a field; this is the same lesson one
+turn on — **a fill rate without its VARIANCE is not one either.** The harness reports the two side by
+side so they cannot be confused again.
+
+**Directional bias — the panel is CORRECT, and its guard is half-covered.** `biasFromSide` renders
+`—` rather than `MIXED` when no print carries a side, which is right and is what production shows
+(0 of 20 sided). But the guard fires only when NEITHER side is present: a **partially** sided
+population would compute a ratio over whatever fraction happens to carry a side, dropping the rest —
+the minority-verdict shape `directionLabel` refuses for split flow. **Latent, not live**, so it is
+reported by the harness (`MINORITY_VERDICT_RISK`) rather than fixed on a guess. If UW ever starts
+returning partial direction, the harness exits non-zero and says what to change.
+
+**Freshness.** Newest print measured **31.5h old** on a Sunday — normal over a weekend, and reported
+rather than assumed fresh. `newestPrintAgeHours` returns `null` rather than `0` when nothing is
+readable, because `0` reads as "live".
+
+**8A.1 — the COORD signal searched HALF the available prints, by omission — FIXED.**
+`/api/market/dark-pool` defaults `limit` to **50** and hard-caps it at **100**.
+`DarkPoolPanel.tsx:175` passes `{ limit: 100 }` with the comment *"API hard-caps at 100"*;
+`TickerDrawer.tsx:84` passes `{ limit: 20 }` deliberately. **`FlowFeed.tsx:275` passed no limit at
+all** — and that population is the input to the COORD badge, the dark-pool-block-plus-options-sweep
+coincidence search. So one sibling asked for everything the endpoint would give and the other took a
+default nobody chose, for a signal where pool size directly determines what can be found.
+
+The failure is **one-directional and therefore invisible**: a smaller pool can only produce FALSE
+NEGATIVES — a coordination that happened and was not found — and a member reading no COORD badge
+concludes there was none. Fixed by passing `limit: 100` explicitly. Not a tuned number: it is all
+the data the endpoint will give, which is the only defensible size for a coincidence search.
+
+**Does not bind off-hours** (the whole feed returned 20–40 prints, below even the 50 default), so
+this is unverifiable until RTH — added to the 2026-08-24 watch list rather than claimed as fixed-and-seen.
+
+---
+
 ## 9. Trace — one signal, function by function
 
 `velocity_spike` and `split_flow`, the only two HELIX signals with a persisted outcome ledger.
