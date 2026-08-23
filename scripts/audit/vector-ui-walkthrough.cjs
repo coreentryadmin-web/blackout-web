@@ -295,15 +295,21 @@ async function inspect(page, { daily }) {
         play: Boolean(document.querySelector("[data-testid=vector-play-card]")),
         regime: Boolean(document.querySelector("[data-testid=vector-regime-banner]")),
         ladder: Boolean(document.querySelector(".vector-odte-matrix-rail")),
+        // This entry ALSO stands in for the panel check that used to be `.vector-pulse`.
+        // `VectorPulse.tsx` (528 lines) is imported by no component and is not exported from the
+        // feature index — it cannot render on any shell, so asserting it produced a FAIL on every
+        // state of a healthy desk. Its TECHNICALS card was extracted into `VectorTechnicalsPanel`
+        // (see that file's header), which IS mounted, so this is the honest replacement. Whether
+        // the rest of VectorPulse was retired on purpose or orphaned is a product question, raised
+        // separately — not something to assert here.
+        //
+        // Keep BOTH selectors: the fallback predates this change and is deliberately broader than
+        // the single class. Re-adding `technicals` as a second key below (which is what the first
+        // draft of this fix did) silently narrows it, because the later key wins — caught by
+        // CodeQL's "Overwritten property", which is exactly the class of edit that looks correct
+        // in a diff and quietly weakens an assertion.
         technicals: Boolean(document.querySelector(".vector-technicals-panel, .vector-technicals")),
         alerts: Boolean(document.querySelector(".vector-alerts-panel, .vector-alert-rules")),
-        // NOT `.vector-pulse`. `VectorPulse.tsx` (528 lines) is imported by no component and is
-        // not exported from the feature index — it cannot render on any shell, so asserting it
-        // produced a FAIL on every state of a healthy desk. Its TECHNICALS card was extracted into
-        // `VectorTechnicalsPanel` (see that file's header), which IS mounted, so that is what a
-        // side-panel check should look for. Whether the rest of VectorPulse was retired on purpose
-        // or orphaned is a product question, raised separately — not something to assert here.
-        technicals: Boolean(document.querySelector(".vector-technicals-panel")),
       },
       ladderRows,
       // The card's first line is the grade badge ("B"), which is present even when the engine
