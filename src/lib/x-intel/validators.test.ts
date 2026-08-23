@@ -1,0 +1,166 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+import { validateChronology, validateConfidence } from "@/lib/x-intel/validators";
+
+describe("x-intel validators", () => {
+  describe("chronology validator", () => {
+    it("passes when no chronology is provided", () => {
+      const result = validateChronology(null);
+      assert.equal(result, null);
+    });
+
+    it("passes when precedence is not claimed", () => {
+      const result = validateChronology({
+        precedence_claimed: false,
+        detection: null,
+        market_event: null,
+        marks: [],
+      });
+      assert.equal(result, null);
+    });
+
+    it("fails when precedence is claimed but detection is missing", () => {
+      const result = validateChronology({
+        precedence_claimed: true,
+        detection: null,
+        market_event: {
+          at_et: "2026-08-21 10:34 ET",
+          at_ms: 1000,
+          what: "price break",
+        },
+        marks: [],
+      });
+      assert(result);
+      assert.match(result.reason, /requires both/i);
+    });
+
+    it("fails when precedence is claimed but market_event is missing", () => {
+      const result = validateChronology({
+        precedence_claimed: true,
+        detection: {
+          at_et: "2026-08-21 10:30 ET",
+          at_ms: 900,
+          what: "signal detected",
+          surface: "helix",
+        },
+        market_event: null,
+        marks: [],
+      });
+      assert(result);
+      assert.match(result.reason, /requires both/i);
+    });
+
+    it("fails when detection is not strictly before market event", () => {
+      const result = validateChronology({
+        precedence_claimed: true,
+        detection: {
+          at_et: "2026-08-21 10:34 ET",
+          at_ms: 1000,
+          what: "signal detected",
+          surface: "helix",
+        },
+        market_event: {
+          at_et: "2026-08-21 10:34 ET",
+          at_ms: 1000,
+          what: "price break",
+        },
+        marks: [],
+      });
+      assert(result);
+      assert.match(result.reason, /strictly BEFORE/i);
+    });
+
+    it("fails when detection is after market event", () => {
+      const result = validateChronology({
+        precedence_claimed: true,
+        detection: {
+          at_et: "2026-08-21 10:40 ET",
+          at_ms: 1100,
+          what: "signal detected",
+          surface: "helix",
+        },
+        market_event: {
+          at_et: "2026-08-21 10:34 ET",
+          at_ms: 1000,
+          what: "price break",
+        },
+        marks: [],
+      });
+      assert(result);
+      assert.match(result.reason, /strictly BEFORE/i);
+    });
+
+    it("passes when detection is strictly before market event", () => {
+      const result = validateChronology({
+        precedence_claimed: true,
+        detection: {
+          at_et: "2026-08-21 10:30 ET",
+          at_ms: 900,
+          what: "signal detected",
+          surface: "helix",
+        },
+        market_event: {
+          at_et: "2026-08-21 10:34 ET",
+          at_ms: 1000,
+          what: "price break",
+        },
+        marks: [],
+      });
+      assert.equal(result, null);
+    });
+  });
+
+  describe("confidence validator", () => {
+    it("passes when confidence is not provided", () => {
+      const result = validateConfidence({ confidence: null } as any);
+      assert.equal(result, null);
+    });
+
+    it("fails when score is not a number", () => {
+      const result = validateConfidence({
+        confidence: {
+          score: "0.75",
+          basis: "test",
+          sample_size: 10,
+        },
+      } as any);
+      assert(result);
+      assert.match(result.reason, /must be a number/i);
+    });
+
+    it("fails when score is out of range", () => {
+      const result = validateConfidence({
+        confidence: {
+          score: 1.5,
+          basis: "test",
+          sample_size: 10,
+        },
+      } as any);
+      assert(result);
+      assert.match(result.reason, /between 0 and 1/i);
+    });
+
+    it("fails when basis is missing", () => {
+      const result = validateConfidence({
+        confidence: {
+          score: 0.75,
+          basis: "",
+          sample_size: 10,
+        },
+      } as any);
+      assert(result);
+      assert.match(result.reason, /must explain its basis/i);
+    });
+
+    it("passes when all fields are valid", () => {
+      const result = validateConfidence({
+        confidence: {
+          score: 0.75,
+          basis: "n=47 similar prior signals, 68% hit rate",
+          sample_size: 47,
+        },
+      } as any);
+      assert.equal(result, null);
+    });
+  });
+});
