@@ -731,9 +731,37 @@ Ranked. These are the `UNKNOWN`s above, restated as tasks.
    the nav's **Learn** pill, which lands on `/learn` — a marketing page. Reported, not fixed.
 
 
-7. **A coherence assertion in the pre-open gate**: any two member-facing values sharing a label
-   must agree within a stated tolerance or the label must differ (§5). The reproducible OI-only
-   max-pain check against a full Polygon SPXW chain is the model.
+7. ~~**A coherence assertion in the pre-open gate**~~ **BUILT 2026-08-23 — but not yet a
+   measurement.** `src/features/spx/lib/spx-label-coherence.ts` (pure, 13 unit tests) +
+   `scripts/audit/spx-label-coherence.mjs` (live capture). The rule it enforces is the one stated
+   in §5: two simultaneously-visible values must either share a label AND agree within a stated
+   tolerance, or carry different labels. It checks the **inverse** defect too — one quantity under
+   two labels reads as two findings where there is one.
+
+   Three properties that decide whether a checker like this is worth having, all tested:
+   - **Absence is never agreement.** A group with fewer than two observed values is INSUFFICIENT,
+     never GREEN, and the script exits non-zero on it unless `--allow-insufficient`.
+   - **Different labels are never compared.** That is the sanctioned escape hatch, so comparing
+     them anyway would flag every deliberate distinction — including the OI/EFF max-pain split — as
+     a defect.
+   - **Greek symbols expand before punctuation is stripped.** Without that, `"γ Flip"` normalises
+     to `"flip"` and `"Gamma flip"` to `"gammaflip"`, so two labels a member reads as identical land
+     in different groups and are never compared — a silent false negative in the one check whose
+     job is catching shared names.
+
+   **First live run 2026-08-23 (market closed): INSUFFICIENT, correctly** — no flip or max pain
+   observed on any lane, reported as "nothing to compare, and that is not agreement" rather than as
+   a pass. It also measured a defect in itself: the first authenticated fetch pays the whole Clerk
+   mint (~6s), which registered as capture skew and would have downgraded every RED to
+   INDETERMINATE — i.e. the skew guard disarmed the check exactly when it fires. Fixed with a
+   warm-up fetch before the timed window; skew fell to **3018ms**, still off-hours-cold and close
+   enough to the 4000ms default that Monday should re-measure it against warm RTH caches before
+   anyone trusts a RED.
+
+   **What it still cannot see:** it reads the API, and a member reads the DOM. The label strings are
+   a hand-maintained transcription of what the components render (each carries a `src:` pointer). A
+   rename that misses the map makes the script check a fiction. The DOM half belongs to
+   `live-ui-interaction-audit.mjs`.
 8. **Confirm `spx-signal-weight-optimize`'s DST correctness** — the other three crons are done.
 
 ---
