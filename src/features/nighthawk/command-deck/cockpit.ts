@@ -86,6 +86,12 @@ export interface SessionTape {
   openCount: number;
   /** True when NO row carried a P&L to tape (the whole session is pre-entry) — render "—". */
   empty: boolean;
+  /** Horizons that contributed to this tape (so we can label when R is mixed/derived). */
+  horizons: Set<TerminalPlay["horizon"]>;
+  /** True when the tape includes SWING or other non-0DTE plays — the R-unit is 0DTE-derived
+   *  proxy, not native to swings' thesis-primary exit model. Members should understand the
+   *  −50% stop is a reference, not the actual swing thesis break that drove a position's exit. */
+  hasProxyR: boolean;
 }
 
 /**
@@ -93,13 +99,21 @@ export interface SessionTape {
  * board's plays. A play with no P&L (a WATCH/SKIP pre-entry row, or a working row with no mark yet) is
  * skipped — never counted as 0, so an un-priced book reads honestly as `empty`, not "flat". Pure over
  * TerminalPlay[] so it composes with the same list the deck renders.
+ *
+ * R-UNIT NOTE: the −50% stop (R_STOP_ABS_PCT) is 0DTE's native 1R unit. For SWING plays, this is a
+ * derived proxy — swings use thesis-primary exits (structural breaks), not premium stops. The tape
+ * still uses 50% for consistency and comparability, but hasProxyR flags when the board includes
+ * plays whose actual risk model differs, so a label can be rendered (members should understand the
+ * −50% is a reference, not the break that actually closed a swing position).
  */
 export function sessionTape(plays: readonly TerminalPlay[]): SessionTape {
   let realizedR = 0;
   let openR = 0;
   let realizedCount = 0;
   let openCount = 0;
+  const horizons = new Set<TerminalPlay["horizon"]>();
   for (const p of plays) {
+    horizons.add(p.horizon);
     if (p.pnlPct == null) continue; // no P&L to tape — pre-entry / un-priced
     const r = p.pnlPct / R_STOP_ABS_PCT;
     if (p.status === "CLOSED") {
@@ -111,6 +125,7 @@ export function sessionTape(plays: readonly TerminalPlay[]): SessionTape {
     }
     // WATCH / SKIP are not entered — excluded even if a would-be mark exists.
   }
+  const hasProxyR = horizons.has("SWING") || horizons.has("LEAPS") || horizons.has("LEGACY");
   return {
     realizedR: round1(realizedR),
     openR: round1(openR),
@@ -118,6 +133,8 @@ export function sessionTape(plays: readonly TerminalPlay[]): SessionTape {
     realizedCount,
     openCount,
     empty: realizedCount === 0 && openCount === 0,
+    horizons,
+    hasProxyR,
   };
 }
 

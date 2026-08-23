@@ -74,6 +74,9 @@ test("sessionTape: realized (CLOSED) + open (working) in R; WATCH/pre-entry excl
   assert.equal(t.realizedCount, 2);
   assert.equal(t.openCount, 1);
   assert.equal(t.empty, false);
+  // All 0DTE → no proxy R
+  assert.equal(t.hasProxyR, false);
+  assert.deepEqual([...t.horizons].sort(), ["ZERO_DTE"]);
 });
 
 test("sessionTape: no entered plays → empty (never painted as a flat 0R)", () => {
@@ -84,6 +87,33 @@ test("sessionTape: no entered plays → empty (never painted as a flat 0R)", () 
   assert.equal(t.empty, true);
   assert.equal(t.realizedCount, 0);
   assert.equal(t.openCount, 0);
+  // Pre-entry 0DTE plays → no proxy R
+  assert.equal(t.hasProxyR, false);
+});
+
+test("sessionTape: SWING plays → hasProxyR=true (R-unit is 0DTE-derived, not native to swing model)", () => {
+  const t = sessionTape([
+    play({ id: "1", ticker: "A", status: "CLOSED", pnlPct: 50, horizon: "SWING" }), // +1R realized
+    play({ id: "2", ticker: "B", status: "OPEN", pnlPct: 25, horizon: "SWING" }), // +0.5R open
+  ]);
+  assert.equal(t.realizedR, 1);
+  assert.equal(t.openR, 0.5);
+  assert.equal(t.totalR, 1.5);
+  // SWING plays present → R-unit is proxy (0DTE-derived)
+  assert.equal(t.hasProxyR, true);
+  assert.deepEqual([...t.horizons].sort(), ["SWING"]);
+});
+
+test("sessionTape: mixed horizons (0DTE + SWING) → hasProxyR=true", () => {
+  const t = sessionTape([
+    play({ id: "1", ticker: "A", status: "CLOSED", pnlPct: 100, horizon: "ZERO_DTE" }), // +2R
+    play({ id: "2", ticker: "B", status: "OPEN", pnlPct: 50, horizon: "SWING" }), // +1R open
+  ]);
+  assert.equal(t.realizedR, 2);
+  assert.equal(t.openR, 1);
+  // Mixed horizons → hasProxyR=true (SWING present)
+  assert.equal(t.hasProxyR, true);
+  assert.deepEqual([...t.horizons].sort(), ["SWING", "ZERO_DTE"]);
 });
 
 test("workingTickersOf: only OPEN/HOLD/TRIM, uppercased", () => {

@@ -517,6 +517,9 @@ const CockpitStrip = memo(function CockpitStrip({
           ) : (
             <span className={clsx("ckv", totalCls)}>
               <b>{total > 0 ? "+" : ""}{total.toFixed(1)}R</b>
+              {tape.hasProxyR && (
+                <span className="dim" title="R-unit includes Swing/LEAPS/Legacy plays — the −50% stop is 0DTE-derived, not native to these models' thesis-primary exits">*</span>
+              )}
             </span>
           )}
         </div>
@@ -543,7 +546,12 @@ const CockpitStrip = memo(function CockpitStrip({
           <div className="ckv dim" title="No entered plays yet this session">—</div>
         ) : (
           <>
-            <div className={clsx("ckv", totalCls)}><b>{total > 0 ? "+" : ""}{total.toFixed(1)} R</b></div>
+            <div className={clsx("ckv", totalCls)}>
+              <b>{total > 0 ? "+" : ""}{total.toFixed(1)} R</b>
+              {tape.hasProxyR && (
+                <span className="dim" title="R-unit includes Swing/LEAPS/Legacy plays — the −50% stop is 0DTE-derived, not native to these models' thesis-primary exits">*</span>
+              )}
+            </div>
             <div className="cksub">
               realized {tape.realizedR > 0 ? "+" : ""}{tape.realizedR.toFixed(1)} · open {tape.openR > 0 ? "+" : ""}{tape.openR.toFixed(1)}
             </div>
