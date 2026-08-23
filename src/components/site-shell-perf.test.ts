@@ -17,6 +17,26 @@ test("nighthawk layout owns nighthawk-v2.css", () => {
   assert.match(read("src/app/(site)/nighthawk/layout.tsx"), /nighthawk-v2\.css/);
 });
 
+// Regression guard for the desktop tab-bar spacing bug (docs/audit/UI-UX-MAP.md §7, finding #8,
+// 2026-08-23): NightHawkFeed.tsx renders <IosNativeSegment> unconditionally as its ONLY view
+// switcher (0DTE/Swings/Bangers/Legacy), on desktop web too — unlike every other IosNativeSegment
+// call site, which early-returns null off the native shell. The component's base flex/gap/padding/
+// button-chrome CSS lives in ios-native-pages.css, which IosNativeStylesLoader deliberately never
+// loads on desktop web (the test above confirms that boundary). Without those rules mirrored into
+// nighthawk-v2.css (which IS always loaded for /nighthawk), the four tab labels render with zero
+// layout — no gap, no button chrome — reading as one unbroken word. This test does not render the
+// page; it asserts the structural CSS properties are present in the always-loaded file, so removing
+// them (e.g. while "cleaning up" the color-only overrides this block started as) fails loud instead
+// of silently reintroducing the bug.
+test("nighthawk-v2.css: view-tab segment has its own structural CSS, not just color overrides", () => {
+  const css = read("src/app/nighthawk-v2.css");
+  const segmentBlock = css.match(/\.nh-v2-page \.ios-native-segment\s*\{[^}]*\}/)?.[0] ?? "";
+  const btnBlock = css.match(/\.nh-v2-page \.ios-native-segment-btn\s*\{[^}]*\}/)?.[0] ?? "";
+  assert.match(segmentBlock, /display:\s*flex/, "segment container must be a flex row");
+  assert.match(segmentBlock, /gap:/, "segment container must space its buttons — this is the exact property whose absence produced the bug");
+  assert.match(btnBlock, /flex:\s*1/, "each tab button must claim equal flex space, not collapse to content width");
+});
+
 test("admin layout owns admin-console.css", () => {
   assert.match(read("src/app/(site)/admin/layout.tsx"), /admin-console\.css/);
 });

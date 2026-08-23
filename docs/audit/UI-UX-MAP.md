@@ -546,9 +546,18 @@ real desktop render has NO spacing or visual separation between the four tab lab
 "0DTESwingsBangersLegacy" reads as one unbroken run of text with no button boundaries, no gaps, no
 distinguishing "0DTE" (the active one) from the rest except by careful reading. This is a genuine
 desktop-only regression, the opposite direction from every other correction in this pass (here the
-WRONG UA accidentally looked fine and the RIGHT UA is broken) — candidate **P1** (primary
-navigation for the product's 4 trading engines, unreadable as tabs on the platform's own reference
-desktop viewport).
+WRONG UA accidentally looked fine and the RIGHT UA is broken) — **P1** (primary navigation for the
+product's 4 trading engines, unreadable as tabs on the platform's own reference desktop viewport).
+
+**FIXED same day.** Root cause: `NightHawkFeed.tsx` renders `<IosNativeSegment>` unconditionally as
+its only view switcher — unlike every other call site of that component, which never renders on
+desktop web at all. The component's structural CSS lives entirely in a bundle
+(`ios-native-pages.css`) that `IosNativeStylesLoader` deliberately skips on desktop web to save
+~210KB. Fix mirrors the missing structural properties into `nighthawk-v2.css` (always loaded for
+`/nighthawk`), which already carried a color-only override for the same selectors. Finding staged:
+`docs/audit/findings-staging/2026-08-23-nighthawk-desktop-tab-bar-unstyled.md`. Regression-guarded
+by a new test in `src/components/site-shell-perf.test.ts` (verified to fail against the pre-fix CSS
+and pass with the fix). Pending live validation before this is fully closed (rule 6).
 
 Otherwise a clean, correctly-labeled empty state for a weekend/no-session day — good reference
 pattern for brief item 4 (progressive disclosure: the header strip states OPPS/TOP/EDGE/ENGINE/
@@ -726,7 +735,7 @@ wrong UA can mask real bugs, not just invent fake ones.
 | 5 | `/terminal` mobile | Toolbar label collapses to bare "L…"; composer placeholder overflows its input box | **P3** | §8 | Correct mobile UA |
 | 6 | `/nighthawk` mobile | ~45% of viewport left blank below the no-session empty state | **P2/P3** | §7 | Correct mobile UA |
 | 7 | `/vector` mobile | Drops ticker search, metric/expiry toggles, matrix table, and live tape entirely (chart-only) — scope call | **P2** (needs Vector-lane input) | §5 | Correct mobile UA |
-| 8 | `/nighthawk` **desktop** | Engine tab bar ("0DTE/Swings/Bangers/Legacy") renders with NO spacing between labels — reads as one unbroken word, no button boundaries | **P1** | §7 | Correct desktop UA, single shot. **The wrong-UA original shot showed this correctly styled** — an inversion of every other finding in this pass, worth independent confirmation before a fix PR. |
+| ~~8~~ | ~~`/nighthawk` **desktop**~~ | ~~Engine tab bar renders with NO spacing between labels~~ | **FIXED** | §7 | Root-caused (`IosNativeSegment`'s structural CSS never loads on desktop web) and fixed same day — see §7 and `docs/audit/findings-staging/2026-08-23-nighthawk-desktop-tab-bar-unstyled.md`. Locally verified via `next dev` + real Playwright before AND after the fix. Pending live validation post-deploy. |
 | 9 | `/meridian` desktop | Catalyst-list fetch (`/api/market/meridian/timeline?days=21`) has now timed out on 2 of 3 desktop attempts (one mobile attempt succeeded) | **OPEN QUESTION**, not yet a finding | §6 | 2 correct-UA desktop attempts, both stalled; needs a longer `--wait` re-check to separate "slow" from "broken." |
 
 Cross-product patterns, not yet P0–P3 classified pending more coverage:

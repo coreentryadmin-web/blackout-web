@@ -169,22 +169,59 @@
   opacity: 1 !important;
 }
 
-/* View tabs (0DTE / Swings / LEAPS / Legacy) — inactive was ghosted */
+/* View tabs (0DTE / Swings / LEAPS / Legacy) — inactive was ghosted.
+ *
+ * The base flex/gap/padding/button-chrome for .ios-native-segment lives in
+ * ios-native-pages.css, which IosNativeStylesLoader deliberately skips on desktop web (it's
+ * ~210KB of iOS-only CSS the loader only fetches once it sees html.ios-app). This page's
+ * <IosNativeSegment> (NightHawkFeed.tsx) is rendered UNCONDITIONALLY though — it's Night Hawk's
+ * only view switcher on desktop web too, not native-shell-only like the other IosNativeSegment
+ * call sites (SPX Slayer's panel picker, the Flow|Thermal intel-hub segment) that early-return
+ * null off the desk. Without the structural rules duplicated here, the four labels rendered with
+ * zero layout at all — no flex, no gap, no button chrome — reading as one unbroken word
+ * ("0DTESwingsBangersLegacy"). Structural rules mirrored from ios-native-pages.css so this page
+ * doesn't depend on a bundle it never loads; the color/theme rules below are unchanged.
+ */
 .nh-v2-page .ios-native-segment {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  margin: 0.35rem 0 0.65rem;
+  border-radius: 14px;
   border-color: rgba(125, 211, 252, 0.28);
   background: rgba(8, 20, 32, 0.72);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .nh-v2-page .ios-native-segment-btn {
+  flex: 1;
+  min-height: 2.625rem;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
   color: #bae6fd !important; /* sky-200 */
   font-weight: 800 !important;
   font-size: 14px !important;
   letter-spacing: 0.04em;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    transform 0.15s ease,
+    background 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.nh-v2-page .ios-native-segment-btn:active {
+  transform: scale(0.97);
 }
 
 .nh-v2-page .ios-native-segment-btn-active {
   color: #fff !important;
   font-weight: 800 !important;
+  background: color-mix(in srgb, var(--segment-accent, #ff2d55) 18%, transparent);
+  box-shadow:
+    0 0 20px color-mix(in srgb, var(--segment-accent, #ff2d55) 22%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 /* Kill muted utility classes inside the desk (keep intentional stale/pulled opacity) */
