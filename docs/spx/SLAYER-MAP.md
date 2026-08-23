@@ -226,14 +226,24 @@ Recorded so no future lane "fixes" this by collapsing them, which would make the
 | `desk.max_pain` | **OI only** | `gexPositioningFromHeatmap` |
 | pin magnet max pain | **OI + intraday volume** | `pinMaxPain`, same file |
 
-Both max pains are *correct*; they are two metrics wearing one word. The disambiguation is
-partially shipped: the pin panel now says **"effective max pain" / "EFF MAX PAIN"**
-(`SpxPinForecast.tsx:18,281`) and the header tooltips now name the basis split for `flip`,
-`maxPain` and `regime` (`SpxSniperHeader.tsx:96-98`). **What is still open:** the visible header
-label is still bare `Max Pain` (`SpxSniperHeader.tsx:223`) and `Max pain` on iOS
-(`SpxIosMetricGroups.tsx:115`) — a tooltip is not disclosure on a touch device, where there is no
-hover. And there is still no coherence assertion anywhere that two member-facing values sharing a
-label must agree within a stated tolerance.
+Both max pains are *correct*; they are two metrics wearing one word. **The max-pain half is now
+fully disambiguated (2026-08-23).** The pin panel already said **"effective max pain" /
+"EFF MAX PAIN"**; the desk header and the iOS desk now say **"OI Max Pain" / "OI max pain"**, and
+all four strings are constants in `src/features/spx/lib/spx-metric-labels.ts` with
+`spx-metric-labels.test.ts` asserting they stay distinct *after normalisation* — bare `Max Pain`
+vs `EFF MAX PAIN` would pass a `!==` check while still colliding for a reader. A tooltip was not
+enough: `MetricRow` (`ios/SpxIosMetricGroups.tsx`) has no title prop and a phone has no hover, so
+on that surface the label is the only place the basis can live.
+
+**What is still open:**
+- The same shape on the FLIP. `desk.gamma_flip` is the near-term multi-expiry aggregate while the
+  chart/pin flip is 0DTE-scoped; the desktop header discloses that in `METRIC_TIPS.flip`, and the
+  iOS row is a bare `Flip` with no tooltip and no qualifier. Not renamed in the same pass — the
+  flip's disambiguator has to name a SCOPE (which expiries) rather than a BASIS, and there is no
+  shipped counterpart label to make it distinct *from*, the way `EFF` gave max pain one.
+- Still no coherence assertion anywhere that two member-facing values sharing a label must agree
+  within a stated tolerance (§8 item 7). Distinct labels remove the false-collision; they do not
+  detect a real disagreement between two values that are supposed to match.
 
 ---
 
