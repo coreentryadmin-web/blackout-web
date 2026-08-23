@@ -797,14 +797,38 @@ Ranked. These are the `UNKNOWN`s above, restated as tasks.
      in different groups and are never compared — a silent false negative in the one check whose
      job is catching shared names.
 
-   **First live run 2026-08-23 (market closed): INSUFFICIENT, correctly** — no flip or max pain
-   observed on any lane, reported as "nothing to compare, and that is not agreement" rather than as
-   a pass. It also measured a defect in itself: the first authenticated fetch pays the whole Clerk
-   mint (~6s), which registered as capture skew and would have downgraded every RED to
-   INDETERMINATE — i.e. the skew guard disarmed the check exactly when it fires. Fixed with a
-   warm-up fetch before the timed window; skew fell to **3018ms**, still off-hours-cold and close
-   enough to the 4000ms default that Monday should re-measure it against warm RTH caches before
-   anyone trusts a RED.
+   **CORRECTION (2026-08-23, same day): the first live run's INSUFFICIENT was right by accident,
+   and the script was reading nothing at all.** `fetchAuditJson` returns a RESULT OBJECT —
+   `{ ok, status, json, via }` — and **never throws**; a failed lane comes back as `ok: false`. The
+   shipped version read the fields straight off that wrapper, so **every value was `undefined` on
+   every lane, including during RTH**, and the `try/catch` guarding the fetch could never fire. The
+   verdict was INSUFFICIENT for a transport reason wearing a data reason's clothes — the exact
+   absence-as-fact trap this checker exists to prevent, arriving through its own front door.
+
+   Fixed by unwrapping `.json` and treating `ok: false` as a lane error. Same instant, re-run:
+
+   ```
+   capture skew=461ms
+   lanes with a body: 3/3   values extracted: 1/4
+   LABEL COHERENCE: INSUFFICIENT
+     INSUFFICIENT "γ Flip"   was not observed on any surface — nothing to compare
+     INSUFFICIENT "Max Pain" was observed on only desk-header — a single value cannot corroborate itself
+   ```
+
+   `desk.max_pain` is **7700 right now, off-hours** — a value the broken version reported as "not
+   observed on any surface". Same verdict word, a different and true reason.
+
+   Three guards added so this class cannot recur quietly: an **extraction self-check** (lanes that
+   answered with a body vs values actually extracted — healthy bodies and zero extractions is now
+   `HARNESS`, exit 2, and says "this is a bug in this script, not a fact about the desk"); a **lane
+   error can no longer produce GREEN** (a surface you failed to read cannot be certified coherent
+   with the ones you read); and both counts print on every run.
+
+   The earlier warm-up fix stands and was worth it — the first authenticated fetch pays the whole
+   Clerk mint (~6s), which registered as capture skew and would have downgraded every RED to
+   INDETERMINATE, disarming the check exactly when it fires. **The 3018ms figure this file used to
+   quote was measured through the broken path; the corrected run is 461ms.** Monday should still
+   re-measure against warm RTH caches before anyone trusts a RED, but from the working script.
 
    **What it still cannot see:** it reads the API, and a member reads the DOM. The label strings are
    a hand-maintained transcription of what the components render (each carries a `src:` pointer). A
