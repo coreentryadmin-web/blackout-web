@@ -54,6 +54,41 @@ export type HelixOutcomeDistribution = {
    */
   gradedOldestFiredAt: string | null;
   gradedNewestFiredAt: string | null;
+  /**
+   * Graded rows that made a DIRECTIONAL claim and could therefore have been wrong.
+   *
+   * WHY THIS EXISTS, and it is the sharpest scope gap left in this payload. `gradeOutcome`
+   * (helix-signal-outcomes-job.ts) branches on `bullish` / `bearish` and lets EVERYTHING ELSE fall
+   * through to `return "continued"` — a branch written for velocity spikes, which carry an explicit
+   * `direction: null` because they are a magnitude signal. But split-flow rows pass their own
+   * `direction` straight through, and that can be `mixed` or `undetermined`. Executed against the
+   * real function: `undetermined` grades **continued at +1% AND at −1%**. A firing that explicitly
+   * REFUSED to state a direction is therefore scored as a correct directional call on any move past
+   * the flat threshold, in either direction. It cannot ever be `reversed`.
+   *
+   * Those rows land in the same `split_flow` bucket as genuine directional predictions, and
+   * `winCount` is `continuedCount`, so the continuation rate is inflated by firings that were
+   * structurally incapable of losing.
+   *
+   * The size of it is not marginal after #2723. Replayed over a live session, `undetermined` is now
+   * the PLURALITY of split-flow firings — **162 of 333 (48.6%)** — with **SPX 67/67 and SPY 65/65**
+   * every one undetermined, because the index feed carries no aggressor side at all (`ask_pct` on
+   * 0 of 3500 rows). So roughly half the split-flow ledger would be unlosable by construction.
+   */
+  directionalGradedCount: number;
+  /** Graded rows that made NO directional claim — `null` (velocity, honestly non-directional) or a
+   *  refusal (`mixed` / `undetermined`). Reported rather than hidden: these are exactly the rows
+   *  the rate above cannot be wrong about. */
+  unfalsifiableGradedCount: number;
+  /**
+   * Continuation rate over ONLY the rows that could have been reversed.
+   *
+   * This is the number to quote when asking "is this signal right?" — `winRatePct` answers a
+   * different question, "how often did price continue after any firing", and the two diverge
+   * exactly as far as the unfalsifiable share is large. Null below the same sample floor, never a
+   * fabricated 0%.
+   */
+  directionalWinRatePct: number | null;
 };
 
 export type HelixSignalOutcomeSummary = HelixOutcomeDistribution & {
@@ -101,6 +136,14 @@ function distributionOf(rows: HelixSignalOutcomeRow[]): HelixOutcomeDistribution
   // The rate describes the GRADED rows, so its window is the graded rows' span — NOT the fetched
   // set's (whose newest rows are today's still-pending fires that the rate does not include).
   const span = firedAtSpan(graded);
+  // A row could have been WRONG only if it named a side. `bullish`/`bearish` are the two values
+  // `gradeOutcome` actually branches on; anything else — null, mixed, undetermined, or a value
+  // nobody has added yet — falls through to "continued" and is unfalsifiable. Tested by inclusion
+  // on the two real values rather than by excluding a list of known refusals, so a NEW refusal
+  // value cannot silently join the falsifiable set.
+  const directional = graded.filter((r) => r.direction === "bullish" || r.direction === "bearish");
+  const directionalGradedCount = directional.length;
+  const directionalContinued = directional.filter((r) => r.outcome === "continued").length;
   return {
     gradedCount,
     pendingCount: rows.length - gradedCount,
@@ -117,6 +160,13 @@ function distributionOf(rows: HelixSignalOutcomeRow[]): HelixOutcomeDistribution
     otherCount: gradedCount - continuedCount - flatCount - reversedCount,
     gradedOldestFiredAt: span.oldest,
     gradedNewestFiredAt: span.newest,
+    directionalGradedCount,
+    // By subtraction, so the two always reconcile to gradedCount however `direction` grows.
+    unfalsifiableGradedCount: gradedCount - directionalGradedCount,
+    directionalWinRatePct:
+      directionalGradedCount >= MIN_GRADED_SAMPLE_FOR_WIN_RATE
+        ? Math.round((directionalContinued / directionalGradedCount) * 1000) / 10
+        : null,
   };
 }
 
