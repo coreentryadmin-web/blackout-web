@@ -603,16 +603,28 @@ trade at several hundred percent — and it overlaps §9.5, since every degenera
 contract the panel is also mis-bucketing. Raised for the coordinator rather than decided by a magic
 number.
 
-**9.5 — The Expiry Concentration panel files expired contracts under "This week".** The panel reads
-`a.dte ?? daysToExpiry(a.expiry)` and its `bucketLabel` tests `dte === 0` exactly. The SQL `dte` is
-genuinely negative for an already-expired print, so it misses the `=== 0` branch and lands in
-`dte <= 7` — "This week", a future horizon, for a contract that has expired. (The `daysToExpiry`
-fallback clamps to 0 and would bucket it correctly, so the defect only shows on the normal path where
-the API supplied `dte` — which is every row.) Largo's copy (`expiryHorizonLabel`) already uses `dte <= 0`
-and buckets them as 0DTE. Known and logged when the Largo side was fixed; the member-facing half is
-still open. `MEASURED 2026-08-22`: **803 of 5000 rows (16.1%) carry a negative `dte`** — this is not
-a rare edge, it is a sixth of the tape being filed under a future horizon. Small, contained,
-member-visible, and now quantified.
+**9.5 — The Expiry Concentration panel filed expired contracts under "This week" — FIXED.** The
+panel read `a.dte ?? daysToExpiry(a.expiry)` and its `bucketLabel` tested `dte === 0` exactly. The
+SQL `dte` is genuinely negative for an already-expired print — routine, because the tape's default
+window is 7 days of history — so those rows missed the `=== 0` branch and landed in `dte <= 7`:
+**"This week", a FUTURE horizon, for a contract that has already expired.**
+
+`MEASURED 2026-08-22`: **803 of 5000 rows (16.1%)** carry a negative `dte`. Not an edge case — a
+sixth of the panel.
+
+**FIXED:** `bucketLabel` now tests `dte <= 0`, identical to Largo's `expiryHorizonLabel`. The two
+had drifted because the Largo half was fixed when the defect was first found and the member-facing
+half was deferred as out of that PR's blast radius — so for that window the member's screen and the
+model's payload disagreed about a sixth of the tape. `bucketLabel` is now exported (it was private,
+which is why nothing could test the function that shipped the defect), and a test walks **every DTE
+from −400 to +900** asserting the two functions agree, so they cannot drift again.
+
+**STILL OPEN, and it is a product question:** folding expired prints into `0DTE` is the nearest
+honest bucket, but it is not a *good* one — "0DTE" means expiring today, and 16.1% of the panel is
+now labelled that while being days or weeks expired. The deeper question is why week-old expired
+prints appear in a current-tape panel at all. It also overlaps §9.4, since every degenerate-IV row
+measured there was one of these expired contracts. Raised for the coordinator rather than decided
+here; an "Expired" bucket would change `EXPIRY_HORIZONS`, which is a Largo contract.
 
 **9.6 — Nothing records which population fired a persisted signal.** Client badges run the detectors
 over the filtered/floored/scoped client buffer; the cron runs them over the unfiltered last hour.
