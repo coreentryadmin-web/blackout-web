@@ -77,6 +77,36 @@ const LANE_TOOLS = [
   ["get_helix_signal_outcomes", ""],
   // The only one of the four that REQUIRES a ticker. SPX carries the most tape premium.
   ["get_helix_thermal_compare", "ticker SPX"],
+  // ── SPX SLAYER lane (docs/spx/SLAYER-MAP.md §8 item 5) ────────────────────────────────────
+  // Added 2026-08-23. This lane had never been probed at all, which is not the same as having
+  // been probed clean: the three shipped truncation defects were all found by asking, and nobody
+  // had asked here. Ordered biggest-payload-first from the tool descriptions, so a run that has
+  // to be split with --tools= still covers the likeliest offenders in its first batch.
+  //
+  // `get_spx_play` and `get_spx_structure` are the two fat ones by construction — the play tool
+  // returns "every confluence factor with its weight/detail, full gate pass/fail state, the
+  // 10-item confirmation checklist, MTF/RSI/EMA technicals, adaptive-gate telemetry, watch state,
+  // the AI arbiter's verdict, the option ticket", and the structure tool the whole desk including
+  // the flow tape and dark pool. `get_spx_engine_snapshots` is a HISTORY, so it is probed at a
+  // wide window rather than bare: a default-window read proves nothing about the cap.
+  ["get_spx_play", ""],
+  ["get_spx_structure", ""],
+  // Probed at the tool's OWN DEFAULT (limit 20), not at "the largest window available".
+  // Measured 2026-08-23: it truncates at a wide window, which is a weaker finding than it looks —
+  // any list tool truncates if you ask for enough of it. The question that matters is whether it
+  // truncates AS NORMALLY CALLED, so that is what this recipe asks.
+  ["get_spx_engine_snapshots", "limit 20"],
+  ["get_spx_confluence", ""],
+  ["get_spx_pin", ""],
+  ["get_spx_vs_nighthawk_comparison", ""],
+  // Named `get_gate_rules`, not `get_spx_gates` — it is SPX Slayer's gate-threshold tool despite
+  // the un-prefixed name, and guessing the prefixed one would have named a tool that does not
+  // exist. Verified against tool-defs.ts:268 rather than inferred from the lane.
+  ["get_gate_rules", ""],
+  // Deliberately last and deliberately included: the lightest SPX tool by its own description
+  // ("~2s lane"). A lane where every tool truncates and a lane where none does are both possible;
+  // probing only the fat ones cannot tell those apart.
+  ["get_spx_pulse", ""],
 ];
 
 /**
