@@ -128,7 +128,6 @@ import {
   suggestTickerFromQuestion,
   type ConversationMemoryState,
 } from "@/lib/largo/conversation-memory";
-import { buildResponseComponents } from "@/lib/largo/response-builder";
 import {
   fetchLargoSessionMetadata,
   maybePersistWatchlistFromQuestion,
@@ -972,7 +971,7 @@ export async function runLargoQuery(
   const {
     sid, history, system, filteredTools, toolsUsed, tickerHint, viewer, timeframe, persistedQuestion,
     liveFeedResults, depth, compareCard, playSimilarity, preEarningsPack, socialPack,
-    activeDeskScope, deskScopeArgs, miniPanelKind, conversationMemory: initialMemory,
+    activeDeskScope, deskScopeArgs, miniPanelKind,
   } = await prepareLargoTurn(
     question,
     sessionId,
