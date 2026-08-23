@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { auditLargoAnswerGrounding } from "./verifier";
+import { auditLargoAnswerGrounding, LARGO_RUNTIME_CAUTION_MARKER } from "./verifier";
+import { applyVerificationCaveat } from "@/lib/largo/turn-outcome";
 
 test("auditLargoAnswerGrounding: self-test fixture flags invented targets below coverage threshold", () => {
   const answer =
@@ -14,11 +15,33 @@ test("auditLargoAnswerGrounding: self-test fixture flags invented targets below 
   assert.equal(shouldFlag, true);
 });
 
+/**
+ * THIS TEST NEVER EXERCISED THE THING ITS NAME CLAIMS.
+ *
+ * Its fixture was `"SPX at 9999 with fake levels."` plus a hand-written footer. `extractNumericClaims`
+ * finds exactly ONE claim there (9999 — the footer's own "5" and "6" are bare ints <= 31 and are not
+ * claims), while `shouldFlag` requires `total >= 4`. So it short-circuited on the threshold and never
+ * reached `alreadyDisclosed` at all: it passed, and would have passed identically with the disclosure
+ * check deleted outright. A guard that cannot fail is not a guard.
+ *
+ * Rebuilt so it actually reaches the branch — four-plus untraceable claims so the low-coverage
+ * threshold IS crossed, and the footer produced by the REAL `applyVerificationCaveat` rather than a
+ * hand-copied string. Hand-copying is what let the old fixture go on asserting a footer format the
+ * producer had long since stopped emitting.
+ */
 test("auditLargoAnswerGrounding: skips answers that already carry the runtime caution footer", () => {
-  const answer =
-    "SPX at 9999 with fake levels.\n\n_BIE verification: 5 of 6 figures in this answer could not be traced to data pulled this turn — treat those specific numbers with caution._";
-  const { shouldFlag } = auditLargoAnswerGrounding(answer, [{ spot: 5900 }]);
-  assert.equal(shouldFlag, false);
+  const ungrounded = "SPX at 9999.5 with 8888.25 resistance, 77.7% call share and $6543.21 premium.";
+  const toolResults = [{ spot: 5900 }];
+
+  // Precondition: WITHOUT the footer this answer must flag, else the assertion below proves nothing.
+  const bare = auditLargoAnswerGrounding(ungrounded, toolResults);
+  assert.ok(bare.verification.total >= 4, `fixture must carry >= 4 claims, got ${bare.verification.total}`);
+  assert.equal(bare.shouldFlag, true, "an ungrounded answer with no footer must be flagged");
+
+  // WITH the footer the runtime actually appends, the cron must not re-flag it.
+  const disclosed = applyVerificationCaveat(ungrounded, bare.verification);
+  assert.ok(disclosed.includes(LARGO_RUNTIME_CAUTION_MARKER), "the producer must emit the marker the auditor seeks");
+  assert.equal(auditLargoAnswerGrounding(disclosed, toolResults).shouldFlag, false);
 });
 
 test("auditLargoAnswerGrounding: does not false-flag list markers like '- 8 alerts'", () => {
