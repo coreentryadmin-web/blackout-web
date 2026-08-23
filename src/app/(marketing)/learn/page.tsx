@@ -1,6 +1,6 @@
 ﻿import type { Metadata } from "next";
 import { LearnHub } from "@/components/learn/LearnHub";
-import { CollectionPageJsonLd, ItemListJsonLd, CourseJsonLd } from "@/components/seo/JsonLd";
+import { WebSiteJsonLd, CollectionPageJsonLd, ItemListJsonLd, CourseJsonLd } from "@/components/seo/JsonLd";
 import { Breadcrumbs } from "@/components/seo/Breadcrumbs";
 import { LEARN_ARTICLES } from "@/lib/learn/articles";
 import { LEARN_NAV, learnHref } from "@/lib/learn/nav";
@@ -21,6 +21,7 @@ export default function LearnPage() {
 
   return (
     <>
+      <WebSiteJsonLd />
       <CollectionPageJsonLd
         title="BlackOut Academy — Learn Options Flow & Dealer Gamma"
         description="Free guides to dealer gamma, 0DTE options strategy, order flow, and reading market positioning like the desks do."

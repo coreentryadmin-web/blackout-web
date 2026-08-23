@@ -59,7 +59,7 @@ export const GUIDE_SEO: Record<LearnSlug, GuideSeo> = {
     breadcrumb: "Thermal",
   },
   glossary: {
-    metaTitle: "Options Trading Glossary — Gamma, 0DTE, Flow Terms",
+    metaTitle: "BlackOut Glossary — Dealer Greeks, Gamma Flip, and 0DTE Terms",
     metaDescription:
       "BlackOut platform glossary: dealer Greeks (CHARM, DEX, VEX), King node, gamma flip, call/put walls, and Night Hawk and SPX Slayer terms explained simply.",
     datePublished: "2026-01-15",

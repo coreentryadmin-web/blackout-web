@@ -233,7 +233,7 @@ export function WebPageJsonLd({
         name: title,
         description,
         url: `${SITE.url}${path}`,
-        isPartOf: { "@type": "WebSite", name: SITE.name, url: SITE.url },
+        isPartOf: { "@id": "#website" },
       }}
     />
   );
@@ -256,7 +256,7 @@ export function CollectionPageJsonLd({
         name: title,
         description,
         url: `${SITE.url}${path}`,
-        isPartOf: { "@type": "WebSite", name: SITE.name, url: SITE.url },
+        isPartOf: { "@id": "#website" },
       }}
     />
   );
