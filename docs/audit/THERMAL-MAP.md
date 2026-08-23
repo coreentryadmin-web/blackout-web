@@ -427,7 +427,13 @@ under the price itself. `priceNote` is null only when the session is OPEN; an ab
 Redis entry from the previous deploy — reads as UNKNOWN and still carries a caveat, never as open.
 Reused `marketPhaseFromEt` rather than writing a third market-phase function. See the staged
 finding `docs/audit/findings-staging/2026-08-23-thermal-public-snapshot-freshness.md`.
-**Still to do: observe the caveat on production after deploy.**
+**LIVE-VALIDATED 2026-08-23 05:26Z**, unauthenticated, ~28 min after deploy `7bd99a49` (ancestry
+verified). Payload carries `market_session: CLOSED` / `session_date: 2026-08-23` /
+`as_of_et: 2026-08-23 01:26 ET` on all three tickers, matching the real ET clock. The rendered page
+shows *"Market closed — price is the last session's close, not a live quote"* under the price and
+*"Levels computed just now"* for the levels; **the defect string "Updated just now" is gone from the
+page entirely**. Measured detail in `RUN-LOG.md`. Note the holiday-aware derivation is #2683 and is
+NOT in this deploy — a Sunday reads CLOSED either way, so this pass does not validate that path.
 
 ### 9.2 [P1, Largo boundary] `walls_by_horizon` is never set on a freshly-built matrix — **FIXED**
 

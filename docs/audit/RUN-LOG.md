@@ -9,6 +9,43 @@ already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
 
+## 2026-08-23 — [Thermal] Post-deploy validation of §9.1 public snapshot freshness — PASS, unauthenticated
+
+**Severity.** — (no defect found)
+
+**Why it ran.** #2676 (`cb70a03f`) fixed the public gamma-snapshot page dating a prior-session close
+as "Updated just now". Deploy `7bd99a49` completed **success** 04:58:05Z and carries it — confirmed
+with `git merge-base --is-ancestor cb70a03f 7bd99a49`, not by assuming the newest completed run was
+the right one. Measured 05:26Z, ~28 minutes after the roll, well past the 5s public cache.
+
+**Payload — `/api/public/gex-snapshot`, no credentials, all three allowlisted tickers:**
+
+| ticker | available | spot | `market_session` | `session_date` | `as_of_et` |
+|---|---|---|---|---|---|
+| SPX | true | 7674.37 | CLOSED | 2026-08-23 | 2026-08-23 01:26 ET |
+| SPY | true | 765.72 | CLOSED | 2026-08-23 | 2026-08-23 01:26 ET |
+| QQQ | true | 714.25 | CLOSED | 2026-08-23 | 2026-08-23 01:26 ET |
+
+Real ET clock at measurement: **Sun Aug 23 01:26 EDT**. Matches. The UTC `asof` is retained
+alongside, so nothing was traded away for the new fields.
+
+**Rendered page — the part that actually matters.** A field in a payload is not a disclosure; the
+defect was what a reader SEES. Fetched the HTML and extracted the rendered text:
+
+```
+CAVEAT: Market closed — price is the last session's close, not a live quote
+LEVELS: Levels computed just now
+```
+
+`"Updated just now"` — the exact string of the defect — **no longer appears anywhere in the page**.
+The two claims are now separated: the levels age is still shown and is still true, and the price
+carries its own caveat directly beneath it. Spot renders as `7,674.37`, Friday's close, now labelled.
+
+**Not yet covered by this pass.** The holiday-aware session derivation is in #2683 and NOT in this
+deploy — `cb70a03f` composes `marketPhaseFromEt` directly, so a market holiday would still read as a
+normal session here. Sunday is CLOSED under either derivation, so this measurement does not
+discriminate between them and must not be read as validating the holiday path.
+
 ## 2026-08-23 — [Thermal] Post-deploy validation of §9.2 `walls_by_horizon` — PASS on all six tickers, and it caught a regression of my own
 
 **Severity.** — (the field validated GREEN; the probe also found a mislabel I had introduced, filed
