@@ -130,6 +130,26 @@ against.
 
 **Run the whole list, then the routine pass.** Order matters only for step 0.
 
+> **#2723 EXPIRED THREE OF THE CRITERIA BELOW — the sweep is done, do not redo it, and do not
+> extend it (2026-08-23).** §5k, §5f and §5c were each correct when written, each written against
+> the pre-#2723 population, and each now returns a **wrong verdict** rather than a stale note: two
+> false failures and one false alarm. All three are rewritten in place with the measurement that
+> retired them.
+>
+> **The boundary is exact, and was checked rather than assumed.** #2723 changed which rows carry a
+> **print time**, so the checks that expired are precisely the ones gated on *time*-eligibility.
+> §5h and §5j also reference §4A and the writer groups, and **both remain correct**: they depend on
+> **aggressor-side coverage** (`ask_pct`), which #2723 did not touch — measured unchanged at
+> **1454/1500 Group A and 0/3500 Group B**, the exact figures §5h already quotes. §5b, §5d, §5e,
+> §5g and §5i carry no population dependency at all. **Do not "correct" §5h or §5j to match; they
+> are not stale.**
+>
+> The rule worth carrying forward: **when a fix changes a POPULATION, every check written against
+> the old one is a false verdict waiting to fire** — not a stale note, a wrong answer delivered
+> confidently on the morning you most need the runbook to be right. Sweep them together, on one
+> body of evidence, and record which checks you verified were NOT affected — otherwise the next
+> reader re-sweeps, or worse, "fixes" the ones that were fine.
+
 ### 0. FIRST — prove the deploy actually carries these, before measuring anything
 
 The single most expensive mistake available here: measuring a pre-fix bundle and reporting correct
