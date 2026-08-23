@@ -90,6 +90,56 @@ slow, re-mint rather than reusing. Batch pages in one process if you need many.
 
 ---
 
+## Recipe: interactive browsing (clicking, searching, zooming — not just one screenshot)
+
+`proxy-browser.cjs` above renders one URL and saves one PNG. It does not click a tab, type into
+a search field, sort a table, or zoom a chart. Most real defects only show up once you actually
+*use* the page the way a member would — a filter that breaks a panel on selection, a search that
+silently returns nothing, a chart that loses its axis on zoom, a tab whose content never repaints.
+**A default-state screenshot is not a test of the feature; it is a photograph of the feature
+having not been touched.**
+
+The fix is the same CONNECT-tunnel technique `proxy-browser.cjs` already uses, just driving a
+normal interactive Playwright session instead of a single `goto` + `screenshot`:
+
+```js
+const { chromium } = require('playwright');
+// mint CK via mintClerkPremiumSession as in the recipe above, then reuse
+// proxy-browser.cjs's own CONNECT + tls.connect() tunnel setup for context.route('**/*')
+// rather than re-deriving it — read proxy-browser.cjs itself for the exact tunnel code.
+const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+await context.addCookies([{ name: '__session', value: CK, domain: 'blackouttrades.com', path: '/' }]);
+const page = await context.newPage();
+await page.goto('https://blackouttrades.com/heatmap', { waitUntil: 'networkidle' });
+
+await page.getByRole('tab', { name: 'Depth' }).click();
+await page.getByPlaceholder(/search/i).fill('NVDA');
+await page.keyboard.press('Enter');
+await page.locator('[data-testid="expiry-select"]').selectOption('2026-08-28');
+await page.locator('table thead th', { hasText: 'Volume' }).click(); // sort
+await page.locator('[data-testid="gex-chart"]').hover();
+await page.mouse.wheel(0, -200); // zoom/pan the chart
+await page.screenshot({ path: 'after-interaction.png' });
+```
+
+Do not invent the tunnel plumbing from scratch — copy it out of `proxy-browser.cjs` or, better,
+start from a harness that already drives real interaction end to end:
+
+- `scripts/audit/meridian-interaction-audit.mjs` — tab clicks, tap-target sizing, keyboard
+  reachability + focus rings, deep-link survival across a reload, duplicated/failed API requests,
+  console errors.
+- `scripts/audit/depth-ladder-ui-audit.mjs` — tab navigation into a live chart panel plus
+  rendered-content assertions on what painted.
+
+**What "interactive" means in practice, generalized from `docs/ops/X-CONTENT-PLAYBOOK.md`'s
+human-browsing rule for every product lane, not just x-content:** click tabs, open panels and
+drawers, use search fields, change filters/expirations/timeframes, sort tables, hover values,
+expand analytics, zoom and pan charts, move crosshairs, toggle indicators/overlays, switch
+GEX/VEX/DEX/Charm. Browse the product like a curious expert human, not a screenshot script that
+photographs whatever loaded first.
+
+---
+
 ## Real route names (a 404 is usually a wrong path, not a broken page)
 
 The desk lives under a route group, so the URL has **no** group segment. There is no
