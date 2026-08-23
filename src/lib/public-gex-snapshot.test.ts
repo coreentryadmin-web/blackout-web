@@ -4,7 +4,9 @@ import {
   classifyWall,
   correctPublicRead,
   isPublicGexTicker,
+  publicFreshnessCopy,
   publicGexTickers,
+  publicSnapshotSessionFacts,
   sanitizePublicRead,
 } from "./public-gex-snapshot-types.ts";
 
@@ -105,4 +107,97 @@ test("correctPublicRead: both walls wrong-side says so instead of leaving a bare
 test("correctPublicRead: unmatched wording passes through — can only remove a false claim", () => {
   const read = "Spot 100 is above the gamma flip (95) → long gamma.";
   assert.equal(correctPublicRead(read, { spot: 100, call_wall: 90, put_wall: 110 }), read);
+});
+
+
+// ── Session + freshness disclosure (the public page's "Updated just now" defect) ──────────────
+//
+// MEASURED ON PRODUCTION 2026-08-22 23:15Z (Saturday, 19:15 ET): the public snapshot served SPX
+// spot 7674.37 and SPY 765.72 — Polygon's 2026-08-21 closes to the cent — with `asof` under 20
+// seconds old, rendered as "Updated just now" with no session label anywhere on the page. `asof`
+// is the MATRIX COMPUTE time; on a closed market the builder recomputes over an unchanged book, so
+// it is honestly fresh while the price it models is stale. These tests pin the two claims apart.
+
+test("a closed market never lets the price read as live, however fresh the levels are", () => {
+  const now = Date.parse("2026-08-23T00:00:00Z");
+  const copy = publicFreshnessCopy({
+    asof: "2026-08-22T23:59:55Z", // 5s old — genuinely "just now"
+    market_session: "CLOSED",
+    now,
+  });
+  assert.equal(copy.levels, "Levels computed just now", "the levels ARE that fresh — say so");
+  assert.match(copy.priceNote ?? "", /not a live quote/i);
+  assert.match(copy.priceNote ?? "", /last session's close/i);
+});
+
+test("an OPEN market is the only case with no price caveat", () => {
+  const copy = publicFreshnessCopy({
+    asof: "2026-08-21T15:00:00Z",
+    market_session: "OPEN",
+    now: Date.parse("2026-08-21T15:00:05Z"),
+  });
+  assert.equal(copy.priceNote, null, "during RTH the spot really is a live quote");
+  assert.equal(copy.levels, "Levels computed just now");
+});
+
+test("pre-market and after-hours each name their own kind of not-live price", () => {
+  const at = (session: "PRE-MARKET" | "AFTER-HOURS") =>
+    publicFreshnessCopy({ asof: "2026-08-21T12:00:00Z", market_session: session, now: Date.parse("2026-08-21T12:00:00Z") });
+  assert.match(at("PRE-MARKET").priceNote ?? "", /pre-market/i);
+  assert.match(at("PRE-MARKET").priceNote ?? "", /not a live quote/i);
+  assert.match(at("AFTER-HOURS").priceNote ?? "", /after hours/i);
+  assert.match(at("AFTER-HOURS").priceNote ?? "", /not a live quote/i);
+});
+
+test("an UNKNOWN session is not treated as open — absence is not a green light", () => {
+  // The failure mode this guards: a legacy Redis entry written before these fields existed arrives
+  // with market_session undefined. Rendering no caveat there would silently restore the defect for
+  // the whole cache TTL.
+  const copy = publicFreshnessCopy({ asof: "2026-08-22T23:59:55Z", market_session: null, now: Date.parse("2026-08-23T00:00:00Z") });
+  assert.notEqual(copy.priceNote, null, "unknown must still carry a caveat");
+  assert.match(copy.priceNote ?? "", /unknown/i);
+});
+
+test("an unusable or future asof says so instead of inventing an age", () => {
+  const now = Date.parse("2026-08-23T00:00:00Z");
+  assert.match(publicFreshnessCopy({ asof: null, market_session: "CLOSED", now }).levels, /timing unavailable/i);
+  assert.match(publicFreshnessCopy({ asof: "not-a-date", market_session: "CLOSED", now }).levels, /timing unavailable/i);
+  // A clock-skewed future stamp must not render as a negative age.
+  assert.match(
+    publicFreshnessCopy({ asof: "2026-08-23T00:05:00Z", market_session: "CLOSED", now }).levels,
+    /timing unavailable/i
+  );
+});
+
+test("age wording is singular at one minute and plural beyond it", () => {
+  const now = Date.parse("2026-08-23T00:10:00Z");
+  assert.equal(publicFreshnessCopy({ asof: "2026-08-23T00:09:00Z", market_session: "OPEN", now }).levels, "Levels computed 1 min ago");
+  assert.equal(publicFreshnessCopy({ asof: "2026-08-23T00:05:00Z", market_session: "OPEN", now }).levels, "Levels computed 5 min ago");
+});
+
+test("session facts are derived in ET, not UTC — the Saturday-evening case that produced the bug", () => {
+  // 2026-08-23T00:00:00Z is Saturday 20:00 ET on 2026-08-22. A UTC-derived session date would say
+  // 2026-08-23 (a Sunday) — a full session ahead, the #2418/#2420 class.
+  const facts = publicSnapshotSessionFacts(new Date("2026-08-23T00:00:00Z"));
+  assert.equal(facts.session_date, "2026-08-22", "the ET session date, not the UTC calendar date");
+  assert.equal(facts.market_session, "CLOSED", "Saturday is closed regardless of the hour");
+  assert.match(facts.as_of_et, /^2026-08-22 20:00 ET$/);
+});
+
+test("session facts track the RTH boundaries on a weekday", () => {
+  // 13:30Z = 09:30 ET (EDT) — the open is inclusive.
+  assert.equal(publicSnapshotSessionFacts(new Date("2026-08-21T13:30:00Z")).market_session, "OPEN");
+  // 13:29Z = 09:29 ET — still pre-market.
+  assert.equal(publicSnapshotSessionFacts(new Date("2026-08-21T13:29:00Z")).market_session, "PRE-MARKET");
+  // 20:00Z = 16:00 ET — the close is exclusive, so this is after-hours.
+  assert.equal(publicSnapshotSessionFacts(new Date("2026-08-21T20:00:00Z")).market_session, "AFTER-HOURS");
+});
+
+test("midnight ET renders as 00:xx, not 24:xx", () => {
+  // `hour12: false` yields "24" for midnight in some ICU builds; unnormalised that is 1440 minutes,
+  // which falls outside every phase window and would silently read CLOSED for the wrong reason.
+  const facts = publicSnapshotSessionFacts(new Date("2026-08-21T04:07:00Z")); // 00:07 ET
+  assert.match(facts.as_of_et, /00:07 ET$/);
+  assert.equal(facts.session_date, "2026-08-21");
+  assert.equal(facts.market_session, "CLOSED", "00:07 ET is before the 04:00 pre-market open");
 });
