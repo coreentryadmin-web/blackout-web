@@ -485,12 +485,31 @@ that `new Date()` could not parse.
   absence of `event_at` and so reported the fix as Group B vanishing. See
   `findings-staging/2026-08-23-helix-inventory-eligibility-rule.md`. Any harness output from
   before that fix is void on these four numbers.)*
-- **⚠️ STILL OPEN — THE RISKY HALF, and it is now CONFIRMED to have happened.** Both persisted
-  signals filter on `flowEventTimeMs`, and eligibility is measured at 5000/5000, so **70% of the
-  tape has already moved from structurally-invisible to signal-eligible.** What that does to
-  FIRING counts is unmeasurable off-hours — the eligible population exists now, but a velocity
-  spike needs prints arriving in a moving window. Expect the Velocity and Split Flow radars to fire
-  on SPX/SPY for the first time ever. Capture the before/after firing counts — a large jump is the fix working,
+- **⚠️ THE RISKY HALF — MEASURED, AND IT DOES NOT GO THE WAY THIS SECTION ORIGINALLY SAID.**
+  This bullet used to read *"expect the Velocity and Split Flow radars to fire on SPX/SPY for the
+  first time ever … a large jump is the fix working."* **Half of that is backwards, and following
+  it would mis-diagnose a working deploy.** Replayed off-hours over the same live session with both
+  real detectors — `node --import tsx scripts/audit/helix-signal-population-ab.mjs`, 363 min,
+  67 five-minute steps:
+  - **SPLIT FLOW rises and then SATURATES.** SPX **24 → 67 firings of 67 steps**, SPY 23 → 65.
+    At mid-session SPX's legs are **$246,955,657 call / $186,889,748 put** against a **$500,000**
+    per-leg threshold — 494× and 374× over. It now fires on **every scan** of both index names,
+    which is not a strong signal but an absent one.
+  - **VELOCITY FALLS.** Total ticker-firings **239 → 220**, and **SPX 13 → 1**, SPY 13 → 6. SPX
+    drops out of the top-6 entirely. **A reader expecting a jump sees this and concludes the deploy
+    does not carry #2723.** It does.
+  - **Why**, and it is a third defect the parse was hiding: the old detectors saw **39 of SPX's
+    3118 prints — 1.3%**. Every one of those 13 firings was `recent=3, prior=0, ratio=3.0` — three
+    prints against a **literally empty** prior window, cleared by the `max(1, prior)` floor. The
+    same instants on the full population read `recent=34, prior=86, **ratio=0.40**`. SPX was never
+    quiet-then-spiking; the Velocity Radar was showing members a spike the full tape contradicts,
+    and the fix **removes a false positive** rather than adding a true one.
+  - **The control**: SPY (16.3% visible) keeps its genuine spike — 15:51 reads `recent=42, prior=9`
+    on the full population and fires in **both** runs — while losing the artifacts. Real spikes
+    survive; only the sample artifacts go.
+  - **What to check at the open, then:** that SPX/SPY split flow is firing (it will be, constantly)
+    and that SPX velocity is *quiet*. Both are the fix working. n=1 session — re-run the harness on
+    the live session and compare. Capture the before/after firing counts — a large jump is the fix working,
   but it is also a large change in what members are shown, and it is the coordinator's call whether
   the thresholds still suit a population 3× larger.
 - **The coverage note must be GONE, not merely smaller.** It rendered *"Scanned 103 of 500 prints —
@@ -514,6 +533,22 @@ that `new Date()` could not parse.
 These are recorded as needing a decision; RTH is when the data exists to inform them.
 
 - **The `whale`-outranks-`0dte` collision** (`db.ts:2646`). `route` is `premium >= $1M ? 'whale' : expiry = TODAY ? '0dte' : 'stock'`, so the largest 0DTE prints never get the 0DTE badge. **Unmeasurable off-hours** — the closed window holds **zero** `dte === 0` rows. At the open, count prints with `expiry = TODAY` **and** `premium >= $1M`: that is the exact population being denied the badge.
+- **`SPLIT_MIN_LEG` against an index feed — NEW, and the sharpest of these. AWAITING COORDINATOR;
+  do not tune it from this lane.** Split flow fires when a ticker shows opposing call AND put
+  premium of **$500K each** inside 30 minutes. That threshold was set against single names. #2723
+  admitted a feed carrying **$9.99B/week across two tickers**, and measured off-hours SPX clears it
+  by 494× on every scan — 67 of 67 replay steps, SPY 65 of 67. **A signal that is always on for a
+  name carries no information about that name**, and both radars now lead with SPX and SPY. The
+  options are a premium-relative leg threshold, a per-ticker floor, or accepting index saturation as
+  correct; each changes when a **persisted, graded** row is written, so each breaks continuity of
+  the record and none is this lane's call. Re-measure under RTH volume first —
+  `scripts/audit/helix-signal-population-ab.mjs` — the off-hours number is a floor.
+- **The velocity `max(1, prior)` floor.** Observed rather than fixed: `ratio = recent / max(1,
+  prior)` means 3 prints against an EMPTY prior window scores exactly 3.0 and fires. On the
+  pre-#2723 tape that produced 13 phantom SPX spikes off a 1.3% sample. With the full population it
+  no longer misfires there, so nothing was changed — but the floor still makes "3 prints after
+  silence" indistinguishable from a real burst on any genuinely thin name. Worth a decision, not an
+  edit.
 - **§9.7 score saturation.** $1.3B and $1.0M prints both score 60; 24.1% of tape pinned at saturation, measured off-hours. Re-measure under RTH volume — saturation should be *worse*, and the size of that is the argument.
 - **Whether Route Breakdown should stay premium-weighted.** The 95%-vs-79% gap is entirely premium weighting. Under RTH the two diverge differently; capture both.
 - **`helix-signal-outcomes` has no writer.** The cron is fully registered in `cron-registry.ts` and **absent from the deployed manifest** (`blackout-infra/cron-jobs.json`, 39 jobs, none mentioning helix). So the signal ledger is never written and every "graded" HELIX signal number rests on an empty table. **Not fixable from this lane** — it is an infra change in another repo against production. Raised on #2698; awaiting a decision to either schedule it or list it INTENTIONALLY_UNSCHEDULED. Until then, **treat any HELIX track-record figure as unbacked**, and say so rather than reporting a rate. **#2712 makes the gap visible in the product** rather than fixing it: the Signal Outcomes panel now separates an empty ledger from an unwritten one, so at the open it must read **"Not recording"**, not "No firings yet". If it reads the latter, something is writing `cron_job_runs` under this key that the deployed manifest says cannot exist — chase that discrepancy before trusting anything else here.
