@@ -185,8 +185,8 @@ async function testTabs(page, route, vpName) {
     // poll below: a route that client-navigates (router.replace) on a tab switch can still be
     // settling at a fixed 1300ms mark on a loaded proxy.
     let after = await page.evaluate(CONTENT_FINGERPRINT).catch(() => "");
-    for (let poll = 0; poll < 4 && before && after === before; poll++) {
-      await page.waitForTimeout(400);
+    for (let poll = 0; poll < 8 && before && after === before; poll++) {
+      await page.waitForTimeout(500);
       after = await page.evaluate(CONTENT_FINGERPRINT).catch(() => "");
     }
     // POLL, don't sample once. A one-shot check here produced a false "0 tabs active" on a live
@@ -224,8 +224,21 @@ async function testTabs(page, route, vpName) {
     // "no content change" defect — re-clicking the current tab is expected to be a no-op. Only
     // flag when the click was a REAL switch (a different tab becoming active) and content still
     // didn't move.
+    //
+    // P3, not P2, with a manual-verify caveat: a live pass on /dashboard's "Largo" tab reported
+    // "no change" here, but a direct follow-up probe found a REAL, if delayed, change (body text
+    // 39731 -> 40946 chars) — plausibly a chat/async panel that settles slower than this poll
+    // window (up to ~5s of polling plus the initial 1300ms). This harness cannot yet reliably
+    // distinguish "genuinely broken" from "correct but slower than polled," so it flags rather
+    // than asserts.
     if (!meta.wasActive && before && after && before === after) {
-      record({ severity: "P2", route, viewport: vpName, where: `tab:${meta.label}`, issue: "clicking this (previously inactive) tab produced no observable content change in the panel" });
+      record({
+        severity: "P3",
+        route,
+        viewport: vpName,
+        where: `tab:${meta.label}`,
+        issue: "clicking this (previously inactive) tab produced no observable content change within the poll window — verify manually (may be a slow-settling async panel)",
+      });
     }
   }
   return tested;
@@ -326,7 +339,15 @@ async function testSelects(page, route, vpName) {
     if (!meta || !meta.inShell || !meta.visible || meta.optionCount < 2) continue;
     const before = await page.evaluate(CONTENT_FINGERPRINT).catch(() => "");
     const beforeVal = await h.inputValue().catch(() => "");
-    await h.selectOption({ index: 1 }).catch(() => {});
+    // Pick an option index that is NOT already selected. Blindly using index 1 produced a false
+    // "selection not applied" on /dashboard's timeframe select (2026-08-23), whose default value
+    // WAS already the option at index 1 — selecting the currently-selected option again is a no-op
+    // by construction, not a defect.
+    const targetIndex = await h
+      .evaluate((el, curVal) => [...el.options].findIndex((o) => o.value !== curVal), beforeVal)
+      .catch(() => 1);
+    if (targetIndex < 0) continue; // every option shares the same value — nothing to test
+    await h.selectOption({ index: targetIndex }).catch(() => {});
     await page.waitForTimeout(1500);
     tested++;
     const afterVal = await h.inputValue().catch(() => "");
@@ -337,9 +358,21 @@ async function testSelects(page, route, vpName) {
       after = await page.evaluate(CONTENT_FINGERPRINT).catch(() => "");
     }
     if (afterVal === beforeVal) {
-      record({ severity: "P2", route, viewport: vpName, where: `select:${meta.label}`, issue: "changing this dropdown did not change its own value — selection not applied" });
+      record({ severity: "P2", route, viewport: vpName, where: `select:${meta.label}`, issue: `selected an option with a different value ("${afterVal}" expected, was "${beforeVal}") but the input's own value did not change — selection not applied` });
     } else if (before && after && before === after) {
-      record({ severity: "P2", route, viewport: vpName, where: `select:${meta.label}`, issue: `changed from "${beforeVal}" to "${afterVal}" but the panel's visible content did not change` });
+      // P3, not P2, and flagged for manual verification — same rationale as the search-box check:
+      // a live pass found a case where the value change was real (verified directly) but the
+      // panel content this harness samples may settle slower than the poll window covers (a
+      // streaming/async panel), or the changed control may affect a part of the page not in the
+      // currently-visible tab. This harness cannot yet tell "no effect" from "effect not yet
+      // visible in this scope" apart with confidence.
+      record({
+        severity: "P3",
+        route,
+        viewport: vpName,
+        where: `select:${meta.label}`,
+        issue: `changed from "${beforeVal}" to "${afterVal}" but the panel's visible content did not change within the poll window — verify manually (may affect a non-visible panel, or settle slower than polled)`,
+      });
     }
   }
   return tested;
