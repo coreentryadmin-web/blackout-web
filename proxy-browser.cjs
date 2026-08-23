@@ -51,6 +51,14 @@ async function main() {
   await page.waitForTimeout(o.wait);
   console.log(`Routed: ${counts.ok} ok, ${counts.fail} fail`);
 
+  // Wait for network to settle (all pending requests to complete or timeout)
+  try {
+    await page.waitForLoadState('networkidle', { timeout: 15000 });
+    console.log('Network idle');
+  } catch (e) {
+    console.warn('Network timeout (continuing)');
+  }
+
   // A LIVE desk never stops moving — SSE ticks, marks, pulsing status dots. Playwright's
   // screenshot waits for visual stability, so on /nighthawk it burned the whole 10s budget and
   // threw, leaving NO image while the page had loaded perfectly (145 requests routed, 0 failed).
