@@ -549,14 +549,43 @@ That means either sourcing a timestamp for the SPX/SPY writer or deciding those 
 ingest-dated forever. Upstream of this lane — the fix above makes the cost visible and measurable,
 it does not remove it. 70% of the tape remains unscannable, now honestly so.
 
-**9.1 — `helix-discord-digest` is unreachable in production.** The route is complete (filters
+**9.1 — `helix-discord-digest` is unreachable in production — VERIFIED against the deployed manifest.** The route is complete (filters
 ≥$500k · fill <$10 · ≤30 DTE, Redis NX dedup, two embed builders), `railway.helix-discord-digest.toml`
 exists as a schedule *catalog* entry, but the job is in `INTENTIONALLY_UNREGISTERED` ("Unscheduled in
 cron-jobs.json") and **no code in `src/` invokes it** — unlike `darkpool-discord`, which the same
 comment says is "invoked off another job's path". Per-print HELIX Discord alerts *do* fire
 (`notifyHelixDiscordFlow` from `flow-persist`), so the channel is alive; only the digest is dormant.
-Needs a decision, not a patch: schedule it, or delete it and drop the catalog file. `UNVERIFIED-LIVE`
-— the blackout-infra `cron-jobs.json` was not read this pass.
+Needs a decision, not a patch: schedule it, or delete it and drop the catalog file.
+
+**VERIFIED 2026-08-23** — the `UNVERIFIED-LIVE` caveat is discharged. `blackout-infra` was attached
+to the session and cloned; `terraform/modules/crons/cron-jobs.json` carries **39 jobs and not one
+mentions `helix` or `discord`**. `helix-discord-digest` is confirmed unscheduled in production.
+
+**AND THE LARGER FACT NEXT TO IT, which matters more to this lane than §9.1 does.**
+`helix-signal-outcomes` is dark too — and unlike the digest it is **fully registered** in
+`cron-registry.ts` (`schedule_label: "~Every 15 min (market hours)"`, `stale_after_min: 45`,
+`weekdays_only`, `market_hours_only`) while being absent from the deployed manifest. Its only
+invoker is its own unscheduled route; nothing else in `src/` calls `recordHelixSignalFirings`.
+
+**This is NOT a new discovery and must not be written up as one.** It is already named in five
+places in `src/` as the canonical example of a fully-built capability with no path to run
+(`product-reads.ts:655` and `:858`, `evidence-reads.ts:14`, `vector-analytics-core.ts:14`,
+`admin-cron-health.ts:184`), and `cron-schedule-coverage.mjs` ends its own output with
+*"Leaving it unlisted is how helix-signal-outcomes stayed dark."* It is known, documented, unfixed.
+
+**What it means for this map.** The signal ledger has no writer running, so every ledger-dependent
+statement here is about a table that is not being filled: §9.6's `context.population` stamp,
+§9.11's `direction_basis`, and §9.7's note that the ledger is *"the only instrument that could say
+whether score correlates with follow-through"*. Those changes are correct and are PRECONDITIONS —
+they are not measurements, and no follow-through number should be quoted from this ledger until the
+cron runs.
+
+**Not actioned from this lane, deliberately.** Scheduling it is an infra change in another repo that
+starts a job running against production. CLAUDE.md is explicit that terraform in a PR is a RECORD,
+not an instruction to apply, and that new resources are created deliberately rather than swept in.
+Raised for the coordinator with the evidence above rather than taken. The same run also flags
+`darkpool-discord`, `largo-morning-brief`, `meridian-warm`, `thermal-discord`, `welcome-sequence`
+and `zerodte-grade` as unscheduled-and-unexplained — other lanes' surfaces, reported not touched.
 
 **9.2 — Two UTC-anchored DTE derivations at ingest (C1 class).** `parseUwFlowAlert`
 (`unusual-whales.ts:270`) computes `dte` from `new Date(expiry) − Date.now()` in UTC and derives
