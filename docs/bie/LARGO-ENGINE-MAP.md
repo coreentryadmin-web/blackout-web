@@ -592,14 +592,14 @@ would be worth, not by how easy it is.
 
 | # | What | Where | Class |
 |---|---|---|---|
-| L-1 | No truncation detection anywhere, despite per-call bytes already being measured. 127 of 129 tools have no size bound at all. | `tool-guard.ts` `sizeOf`/`formatToolDiagnostics` | observability / transport |
+| ~~L-1~~ **FIXED** | No truncation detection anywhere, despite per-call bytes already being measured. 127 of 129 tools have no size bound at all. Now flagged as `TRUNCATED <bytes>/<cap>` from the size the guard already recorded; the cap moved to a dependency-free `tool-result-cap.ts` so `tool-guard.ts` could read it without pulling the SDK graph. Detection only — no payload changes. | `tool-guard.ts`, `tool-result-cap.ts` | observability / transport |
 | L-2 | The grounding caveat never renders as a caveat — `applyVerificationCaveat` emits italics, the UI matches blockquotes. The `verification` kind is dead code. | `turn-outcome.ts:19` vs `answer-caveats.ts:17` | member-facing honesty |
 | **L-3** | **Four different null paths — gate closed, no client, spend stop, round-0 model failure — all reported as "I couldn't pull enough live data." REPRODUCED LIVE 9/9 turns, see §9b.** | `anthropic.ts:572,574,577,761-791`, `empty-answer-fallback.ts` | member-facing honesty |
 | L-4 | SPX Slayer is a declared `ProductId` with no cross-product source or adapter, and is absent from the coverage denominator rather than reported missing. | `cross-product-read.ts:35` | cross-product coherence |
 | L-5 | Three `coverage: 1` literals survive #2626; one leaves the process on the non-streaming error path. | `largo-terminal.ts:1149,1167,1454` | fabricated certainty |
 | L-6 | `applyPlanCaveat` emits "Timeframe caveat.", matcher expects "Timeframe note." → renders as generic "Note". | `plan.ts:194` vs `answer-caveats.ts:17` | UI classification |
 | L-7 | `tools_used` conflates seeded markers, prefetch markers and real model dispatches. BIE calibration cohorts bucket on this array. | `largo-terminal.ts:483` + prefetch pushes | observability / data integrity |
-| L-8 | The truncation probe's control is expected COMPLETE post-#2628, so every run reports UNVERIFIED until a new control is chosen from measured sizes. | `largo-truncation-probe.mjs:74` | tooling (blocked on L-1) |
+| L-8 | The truncation probe's control is expected COMPLETE post-#2628, so every run reports UNVERIFIED until a new control is chosen from measured sizes. **Unblocked by L-1**, but needs a live turn to produce the measurement — waiting on the upstream outage to clear. | `largo-truncation-probe.mjs:74` | tooling (unblocked, awaiting live data) |
 | L-9 | Five stale tool counts across the tree (116/120/126/127 vs 129), including in the charter and in the entitlement docstring. | see §1 | documentation |
 | L-10 | "TAIL slice" in six places describes a HEAD-keeping cut. Every current reader reasons correctly from it; a new one would not. | see §2.5 | documentation |
 

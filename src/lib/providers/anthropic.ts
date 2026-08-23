@@ -25,6 +25,7 @@ import {
 import { getUwCacheRedis } from "@/lib/providers/uw-shared-cache";
 import { notifyOpsDiscord } from "@/features/spx/lib/spx-play-notify";
 import { claudeEnabled, largoClaudeEnabled } from "@/lib/ai-env";
+import { MAX_TOOL_RESULT_CHARS } from "./tool-result-cap";
 
 export type AnthropicAiGate = "global" | "largo";
 
@@ -170,10 +171,11 @@ export const LARGO_MODEL = "claude-sonnet-5";
 export const LARGO_ESCALATION_MODEL = "claude-sonnet-4-6";
 export const COMMENTARY_MODEL = "claude-haiku-4-5";
 const TEMPERATURE = 0.3;
-/** Per-tool_result size cap. Heavy tools (GEX bundles, full flow payloads) are
- *  re-sent every loop round; without a cap they overflow the context window and
- *  Anthropic 400s with prompt-too-long (LARGO-5). */
-export const MAX_TOOL_RESULT_CHARS = 16_000;
+// Re-exported, not redeclared: the value moved to a dependency-free module so `tool-guard.ts` can
+// read it without pulling this file's SDK/telemetry/Redis/Discord graph in behind it. Imported as
+// well as re-exported because the tool loop below uses it directly. Every existing
+// `import { MAX_TOOL_RESULT_CHARS } from "@/lib/providers/anthropic"` keeps working unchanged.
+export { MAX_TOOL_RESULT_CHARS };
 
 export type AnthropicSystemBlock = {
   type: "text";
