@@ -549,16 +549,45 @@ That means either sourcing a timestamp for the SPX/SPY writer or deciding those 
 ingest-dated forever. Upstream of this lane — the fix above makes the cost visible and measurable,
 it does not remove it. 70% of the tape remains unscannable, now honestly so.
 
-**9.1 — `helix-discord-digest` is unreachable in production.** The route is complete (filters
+**9.1 — `helix-discord-digest` is unreachable in production — VERIFIED against the deployed manifest.** The route is complete (filters
 ≥$500k · fill <$10 · ≤30 DTE, Redis NX dedup, two embed builders), `railway.helix-discord-digest.toml`
 exists as a schedule *catalog* entry, but the job is in `INTENTIONALLY_UNREGISTERED` ("Unscheduled in
 cron-jobs.json") and **no code in `src/` invokes it** — unlike `darkpool-discord`, which the same
 comment says is "invoked off another job's path". Per-print HELIX Discord alerts *do* fire
 (`notifyHelixDiscordFlow` from `flow-persist`), so the channel is alive; only the digest is dormant.
-Needs a decision, not a patch: schedule it, or delete it and drop the catalog file. `UNVERIFIED-LIVE`
-— the blackout-infra `cron-jobs.json` was not read this pass.
+Needs a decision, not a patch: schedule it, or delete it and drop the catalog file.
 
-**9.2 — Two UTC-anchored DTE derivations at ingest (C1 class).** `parseUwFlowAlert`
+**VERIFIED 2026-08-23** — the `UNVERIFIED-LIVE` caveat is discharged. `blackout-infra` was attached
+to the session and cloned; `terraform/modules/crons/cron-jobs.json` carries **39 jobs and not one
+mentions `helix` or `discord`**. `helix-discord-digest` is confirmed unscheduled in production.
+
+**AND THE LARGER FACT NEXT TO IT, which matters more to this lane than §9.1 does.**
+`helix-signal-outcomes` is dark too — and unlike the digest it is **fully registered** in
+`cron-registry.ts` (`schedule_label: "~Every 15 min (market hours)"`, `stale_after_min: 45`,
+`weekdays_only`, `market_hours_only`) while being absent from the deployed manifest. Its only
+invoker is its own unscheduled route; nothing else in `src/` calls `recordHelixSignalFirings`.
+
+**This is NOT a new discovery and must not be written up as one.** It is already named in five
+places in `src/` as the canonical example of a fully-built capability with no path to run
+(`product-reads.ts:655` and `:858`, `evidence-reads.ts:14`, `vector-analytics-core.ts:14`,
+`admin-cron-health.ts:184`), and `cron-schedule-coverage.mjs` ends its own output with
+*"Leaving it unlisted is how helix-signal-outcomes stayed dark."* It is known, documented, unfixed.
+
+**What it means for this map.** The signal ledger has no writer running, so every ledger-dependent
+statement here is about a table that is not being filled: §9.6's `context.population` stamp,
+§9.11's `direction_basis`, and §9.7's note that the ledger is *"the only instrument that could say
+whether score correlates with follow-through"*. Those changes are correct and are PRECONDITIONS —
+they are not measurements, and no follow-through number should be quoted from this ledger until the
+cron runs.
+
+**Not actioned from this lane, deliberately.** Scheduling it is an infra change in another repo that
+starts a job running against production. CLAUDE.md is explicit that terraform in a PR is a RECORD,
+not an instruction to apply, and that new resources are created deliberately rather than swept in.
+Raised for the coordinator with the evidence above rather than taken. The same run also flags
+`darkpool-discord`, `largo-morning-brief`, `meridian-warm`, `thermal-discord`, `welcome-sequence`
+and `zerodte-grade` as unscheduled-and-unexplained — other lanes' surfaces, reported not touched.
+
+**9.2 — Two UTC-anchored DTE derivations at ingest (C1 class) — FIXED, and the impact assessment was confirmed by measurement.** `parseUwFlowAlert`
 (`unusual-whales.ts:270`) computes `dte` from `new Date(expiry) − Date.now()` in UTC and derives
 `route` from it; `dteFromExpiry` (`flow-persist.ts:42`) does the same for the premium-floor decision.
 Between **20:00 and 24:00 ET** the UTC date is already tomorrow, so a next-session expiry evaluates
@@ -569,6 +598,22 @@ score is **persisted**, so it outlives the window and shows in the Score column 
 trade 20:00–24:00 ET, so the window is nearly empty of live prints. Worth fixing for correctness and
 because it is exactly the class the C1 ratchet exists to catch, but it is not an incident. The REST
 read path is unaffected (its `dte`/`route` are ET-anchored in SQL).
+
+**MEASURED 2026-08-23, confirming LOW rather than assuming it.** Live prod tape, 5000 rows / 168h:
+rows timestamped 20:00–23:59 ET **0 of 5000**; `route="0dte"` with ET-anchored `dte >= 1` **0**;
+ET-anchored `dte === 0` with `route` not `0dte`/`whale` **0**. The window is genuinely empty, so
+this fixed no live defect.
+
+**FIXED anyway.** §9.2's title is "two derivations", so the fix is to have ONE:
+`src/lib/flow-dte.ts` holds the single ET-anchored `dteFromExpiry`, imported by
+`parseUwFlowAlert` and re-exported by `flow-persist` for its existing callers. A standalone module
+rather than living in `flow-persist`, because the provider must not pull `@/lib/db` in behind a date
+helper. Ingest now anchors the same way the read path already did.
+
+**A detail worth keeping:** the old form returned **negative zero** — `Math.ceil(-0.041)` is `-0`,
+so `assert.equal(x, 0)` fails on it while `x <= 0` is true. `-0` takes the `dte <= 0` branch exactly
+like `0`, which is why the defect fired at all and why the regression test asserts the BRANCH rather
+than the literal.
 
 **9.3 — `gex_proximity` absence was ambiguous — FIXED.** The field was omitted in three situations
 the payload could not distinguish: the strike genuinely is not near a level; the GEX lookup timed
@@ -642,18 +687,70 @@ prints appear in a current-tape panel at all. It also overlaps §9.4, since ever
 measured there was one of these expired contracts. Raised for the coordinator rather than decided
 here; an "Expired" bucket would change `EXPIRY_HORIZONS`, which is a Largo contract.
 
-**9.6 — Nothing records which population fired a persisted signal.** Client badges run the detectors
+**9.6 — Nothing records which population fired a persisted signal — FIXED.** Client badges run the detectors
 over the filtered/floored/scoped client buffer; the cron runs them over the unfiltered last hour.
 Same definition, different inputs — so ledger and badge can legitimately disagree, and today neither
 the row nor the panel says so. Cheap fix (stamp the population into `context`), and it is the
 precondition for ever using the ledger's follow-through rate to describe what a member *saw*.
 
-**9.7 — The conviction score saturates at $1M.** `min(60, premium/$1M × 60)` means every print at or
+**FIXED 2026-08-23.** Every firing — both signal types — now carries `context.population`:
+`{source, since_hours, limit, scanned, signal_eligible, signal_ineligible,
+signal_ineligible_tickers, client_equivalent}`. Built by the pure, exported
+`buildSignalPopulation`, so it is testable without a database (the job around it is not).
+`signal_eligible` reuses §9.0's `signalEligibility`, which is what made this cheap — a row that
+fired among 1500 eligible prints and one that fired among 30 are not the same evidence, and the
+record could not previously tell them apart. `client_equivalent: false` states outright that this
+is NOT the member's population.
+
+The job's own header claimed the shared detector meant badge and record "can never disagree". That
+was false and is now corrected in place, with the old wording quoted so the history survives — the
+detector is shared, the INPUTS are not.
+
+**9.7 — The conviction score saturates at $1M — MEASURED 2026-08-23; it does not rank direction. Decision still open.** `min(60, premium/$1M × 60)` means every print at or
 above $1M contributes the same 60 premium points, so a $50M block and a $1.1M print are separated
 only by the sweep (+25) and 0DTE (+15) flags. Whether that is intended compression or an accident is
 **UNKNOWN** — the score predates this lane's records and no design note explains the shape. Do not
 retune it on intuition: the ledger in §9 is the only instrument that could say whether score
 correlates with follow-through, and that measurement has not been run.
+
+**IT HAS NOW BEEN RUN — by a different route, because the one the map named is un-runnable.** The
+signal ledger has no writer (§9.1: `helix-signal-outcomes` is registered but absent from the
+deployed cron manifest), so `scripts/audit/helix-score-signal.mjs` grades each print's own
+underlying forward on REAL Polygon minute bars instead. 5000-row tape, **748 prints graded**
+(only 27.4% carry a real `event_at` and a readable direction — the §9.0 denominator again), direction
+from option type × aggressor side.
+
+| score bucket | n | +15min | +30min | +60min |
+|---|---|---|---|---|
+| 0–19 | ~246 | 50.4% | 47.2% | 48.5% |
+| 20–39 | ~261 | 51.1% | 49.0% | 45.6% |
+| 40–59 | ~157 | 43.3% | 46.5% | 41.3% |
+| **60 (saturated)** | 51 | 43.1% | 52.9% | 47.1% |
+| 61–84 | 29 | 41.4% | 44.8% | 58.6% |
+| 85–100 | 4 | 25.0% | 75.0% | 50.0% |
+
+**The reading, stated conservatively.** Every win rate sits between 41% and 53% — around a coin
+flip — and average favourable move is negative in almost every cell. More telling than any single
+number: **the best-performing bucket CHANGES at every horizon** (20–39 at 15min, 60 at 30min, 0–19
+at 60min). A real ranking is stable and roughly monotonic; an ordering that reshuffles with the
+horizon is the signature of noise. Score does not rank directional follow-through.
+
+**The saturation is confirmed as a shape problem too:** only **84 of 748 graded prints (11.2%)**
+score above 59 at all, so the top 40% of the range is nearly empty — exactly what
+`min(60, premium/$1M × 60)` predicts.
+
+**WHAT THIS DOES NOT SAY, and the temptation to guard against.** It measures direction in the
+UNDERLYING, not option P&L — no strike, no decay, no exit rule. So it is evidence that score does
+not rank *direction*; it is **not** proof score is useless for sizing or for surfacing. The obvious
+next move after a flat result is to retune the score, and that is precisely the intuition-driven
+change this entry forbids. Sample caveat: the 168h window spans a weekend, so the prints are one
+session-type.
+
+**Still the coordinator's decision.** The score drives a member-visible column and its sort. Three
+options, unchanged from the earlier PR comment, now with evidence behind them rather than
+speculation: leave it (it is a *display* heuristic, not a claim), re-scale the premium term so the
+top of the range is populated, or drop the numeric score for an explicit ranked label. No change
+taken from this lane.
 
 **9.8 — the Route Breakdown panel is 98.8% "OTHER" — RESOLVED, and it is the most broken thing
 found this pass.** `executionRouteKey` matches `alert_rule` against

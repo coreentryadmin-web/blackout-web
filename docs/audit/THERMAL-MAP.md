@@ -427,7 +427,13 @@ under the price itself. `priceNote` is null only when the session is OPEN; an ab
 Redis entry from the previous deploy — reads as UNKNOWN and still carries a caveat, never as open.
 Reused `marketPhaseFromEt` rather than writing a third market-phase function. See the staged
 finding `docs/audit/findings-staging/2026-08-23-thermal-public-snapshot-freshness.md`.
-**Still to do: observe the caveat on production after deploy.**
+**LIVE-VALIDATED 2026-08-23 05:26Z**, unauthenticated, ~28 min after deploy `7bd99a49` (ancestry
+verified). Payload carries `market_session: CLOSED` / `session_date: 2026-08-23` /
+`as_of_et: 2026-08-23 01:26 ET` on all three tickers, matching the real ET clock. The rendered page
+shows *"Market closed — price is the last session's close, not a live quote"* under the price and
+*"Levels computed just now"* for the levels; **the defect string "Updated just now" is gone from the
+page entirely**. Measured detail in `RUN-LOG.md`. Note the holiday-aware derivation is #2683 and is
+NOT in this deploy — a Sunday reads CLOSED either way, so this pass does not validate that path.
 
 ### 9.2 [P1, Largo boundary] `walls_by_horizon` is never set on a freshly-built matrix — **FIXED**
 
@@ -454,6 +460,10 @@ carried the FRONT expiry's walls on a closed market, because the overlay's targe
 session date. NVDA, which has no overlay, was correct at the same instant — the divergence between
 two tickers in one probe is what exposed it. Fixed by splitting the parameter into `odteExpiry` and
 `sessionYmd`; see `docs/audit/findings-staging/2026-08-23-thermal-odte-horizon-session-mixup.md`.
+**LIVE-VALIDATED 2026-08-23 05:33Z** after deploy `8dc301ad`: SPX's `0DTE` bucket is now empty
+(`exp=0`, both walls null) and matches all five other tickers, and its `3DTE` moved 4 -> 3 expiries
+to agree with SPY and QQQ — the arithmetic of counting DTE from the real session. The overlaid and
+non-overlaid paths agree again, which is the same signal that exposed the divergence.
 
 **FIXED — the original defect.** `buildGexHeatmapUncached` now publishes the block, and
 `recomputeNearTermGexStrikeTotals` recomputes it so the SPX 0DTE overlay cannot leave a pre-overlay
@@ -469,7 +479,7 @@ wrong-side walls** across every bucket, and an empty `0DTE` correctly reads `exp
 expiry in range) rather than "no wall". Measured numbers in `RUN-LOG.md`. The same probe caught the
 SPX mislabel above; five tickers agreeing and one disagreeing is what exposed it.
 
-### 9.3 [P2, Largo boundary] `get_gex_heatmap` and `get_positioning` carry no session anchor and no freshness
+### 9.3 [P2, Largo boundary] `get_gex_heatmap` and `get_positioning` carry no session anchor and no freshness — **FIXED**
 
 Both publish a bare UTC `asof` and nothing else about time. `get_thermal_compare` and
 `get_helix_thermal_compare` — reading the **same** `getGexPositioning` object — carry `as_of` as an ET
@@ -479,6 +489,8 @@ because a UTC instant rolls its calendar date at 20:00 ET and a matrix age is no
 Measured above: `get_gex_heatmap` on MSFT would have served a **6,040-second-old** matrix with
 `asof` as its only time signal, and `spot: 483.49` — a 16:00 ET close — with nothing in the payload
 saying the market was shut. Contract points 1 (time) and 2 (freshness).
+
+**FIXED — Phase 1, third fix.** New shared `src/lib/et-session-facts.ts` publishes `as_of_et`, `session_date`, `market_session`, `matrix_age_sec` and `freshness` on both reads, and on `GexPositioning` itself so every downstream consumer inherits them. The helper is **holiday-aware** (`isTradingDayEt` composed with `marketPhaseFromEt`), which also retroactively closes the gap §9.1 documented as acceptable — that reasoning was wrong, the repo already had a holiday calendar. `publicSnapshotSessionFacts` now delegates to it. See `docs/audit/findings-staging/2026-08-23-thermal-largo-session-anchor.md`. **Still to do: live-validate.**
 
 ### 9.4 [P2, member-facing] The client's scoped wall scan is unconstrained while the server's is side-constrained
 

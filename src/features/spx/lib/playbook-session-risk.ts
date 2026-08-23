@@ -8,7 +8,13 @@ export function playbookSessionMaxTriggersPerPb(): number {
   return Number.isFinite(n) && n >= 1 ? Math.floor(n) : 3;
 }
 
-/** Size multiplier when staging lab + degraded data quality (not fail-closed). */
+/**
+ * Size multiplier when staging lab + degraded data quality (not fail-closed).
+ *
+ * Both of its callers are behind `playbookStagingLabEnabled()`, so in production this function's
+ * value is never applied — and `playbook_size_multiplier`, the field it would flow into, has no
+ * reader. The knob (`PLAYBOOK_DEGRADED_SIZE_MULT`) is therefore inert end to end.
+ */
 export function playbookDegradedSizeMultiplier(): number {
   const n = Number(process.env.PLAYBOOK_DEGRADED_SIZE_MULT ?? "0.5");
   return Number.isFinite(n) && n > 0 && n <= 1 ? n : 0.5;
@@ -44,6 +50,9 @@ export function evaluatePlaybookSessionRisk(input: PlaybookSessionRiskInput): Pl
     };
   }
 
+  // ⚠ DEAD IN EVERY DEPLOYED ENVIRONMENT — see the long note at the matching block in
+  // trade-governor.ts. `playbookStagingLabEnabled()` is `isStagingDeploy()`, false since staging was
+  // decommissioned 2026-07-25, so this degraded-size path has never run in production either.
   if (playbookStagingLabEnabled()) {
     const dq = playbookDataQualityFlags(input.desk as Parameters<typeof playbookDataQualityFlags>[0]);
     const mode = liveDataQualityMode(dq);

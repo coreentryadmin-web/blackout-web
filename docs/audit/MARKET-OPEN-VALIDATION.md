@@ -118,6 +118,193 @@ never printed. Pure verdict/coherence logic lives in
 
 ---
 
+## WATCH LIST — HELIX, first session on 2026-08-24 (read this before the routine pass)
+
+Six HELIX fixes merged over 2026-08-22/23. **Four are member-facing and none has been seen under a
+moving tape.** Every one was validated off-hours at best, and three could not be validated at all
+because the population they act on does not exist while the market is closed. This section is the
+list of things that are *only* checkable at the open, with the baseline each one must be diffed
+against.
+
+**Run the whole list, then the routine pass.** Order matters only for step 0.
+
+### 0. FIRST — prove the deploy actually carries these, before measuring anything
+
+The single most expensive mistake available here: measuring a pre-fix bundle and reporting correct
+fixes as broken. It has already cost this repo an hour once (2026-08-12) and nearly again on
+2026-08-23.
+
+```bash
+export PATH=/opt/node20/bin:$PATH
+node scripts/audit/deploy-freshness.mjs --since=12h
+# then confirm the RUN COMPLETED — freshness only says a run was CREATED:
+#   gh/API: actions/workflows/ecr-push-production.yml/runs  -> status=completed conclusion=success
+```
+
+A deploy here is **~1 hour end-to-end** (24 min runner queue + 5 min build + 26 min ECS roll +
+worker roll). Confirm by **ancestry**, not by timestamp:
+
+```bash
+git merge-base --is-ancestor <fix-sha> <deployed-head-sha> && echo IN || echo NOT-IN
+```
+
+The six SHAs to check are the merge commits of **#2647 (§9.8)**, **#2669 (§9.4)**, **#2670 (§9.3)**,
+**#2673 (§9.5)**, **#2680 (§9.10)** and — if merged by then — **#2681 (§9.0)**.
+
+### 1. §9.5 — VALIDATED off-hours 2026-08-23; re-check under the RTH population (#2673)
+
+`bucketLabel` tested `dte === 0` exactly, so already-expired prints (negative `dte`) fell through to
+`dte <= 7` and were filed under **"This week"** — a future horizon for a contract that has expired.
+
+- **Pre-fix baseline:** 803 of 5000 rows (**16.1%**) carry a negative `dte`.
+- **Measured 2026-08-23 (closed):** 801 of 5000 (**16.0%**), `dte === 0`: **zero**, top names
+  `SPY:250 · TSLA:59 · QQQ:57 · SPXW:54`.
+- **Validated 2026-08-23 post-deploy:** all four buckets matched the rendered tape exactly —
+  `0DTE 11/11 · This week 18/18 · Monthly 140/140 · LEAPS 331/331`. Pre-fix "This week" would
+  have read 29.
+- **What is still open at the open:** the 0DTE bucket carries those rows and **"This week" no
+  longer does**, During RTH the population changes shape — genuinely-0DTE contracts appear
+  (`dte === 0`, which did not exist at all in the closed window) alongside the expired ones. **That
+  mix is the case nobody has seen**, and it is the case where a wrong bucket is most visible.
+
+### 2. §9.10 — VALIDATED off-hours 2026-08-23; re-check the word/`—` mix under RTH (#2680)
+
+The column headed **Rule** substituted `flow.route` — our own premium/tenor bucket — where UW
+reported no rule.
+
+- **Pre-fix baseline, 500 rendered rows:** `stock:271 · whale:126 · REPEAT:99 · FLOOR:3 · SWEEP:1`
+  — **397 of 500 (79.4%)** showing an internal bucket name.
+- **Validated 2026-08-23 post-deploy:** `—:397 · REPEAT:99 · FLOOR:3 · SWEEP:1`. Zero `stock`,
+  `whale` or `0dte`, and the 103 real rule words preserved exactly.
+- **Why RTH matters:** under a live tape the rule-carrying feed is much more active, so the *mix*
+  shifts toward real words. A run that shows mostly `—` off-hours and mostly words at the open is
+  correct in both cases — do not read the shift as a regression.
+
+### 3. §9.3 — flag VALIDATED; the CAP itself is still untested (#2670)
+
+An absent GEX badge meant three different things; only one of them was "the strike is not near a
+level". The cap is `clamp(ceil((qualifying) × 0.30), 40, 100)` names.
+
+- **What to check:** rows whose ticker falls **beyond** the cap carry `gex_evaluated: false`, and
+  rows inside it carry `true` whether or not a proximity was found.
+- **Validated 2026-08-23 post-deploy — the FLAG only.** Present on 5000/5000 rows, **zero absent**,
+  split `true 689 / false 4311`. But only **5 of 272** tickers were evaluated, far below the
+  `clamp(…, 40, 100)` cap: off-hours the GEX matrices are not rebuilt, so most lookups return empty
+  rather than being CUT BY THE CAP. **The cap as a binding constraint is still untested** — that is
+  the RTH-only half.
+- Off-hours the tape is narrow enough that the cap may not bind at all, so an all-`true` reading
+  proves nothing. **Confirm the cap actually bound** (count distinct
+  tickers in the payload against the cap) before recording a verdict — an unbound cap is a
+  `HARNESS` result, not a PASS.
+
+### 4. §9.0 — the signal-coverage line, and the first chance to see the radars actually fire (#2681)
+
+Both HELIX signals skip every print with no real UW timestamp.
+
+- **Measured 2026-08-23 (closed):** 1500 of 5000 eligible (**30.0%**); **3500 (70.0%) ineligible,
+  spanning exactly SPX (3079) and SPY (421)**, ~92% of tape premium.
+- **What to check:** `get_helix_derived` carries a non-zero `signal_ineligible_prints` naming
+  SPX/SPY, and both radars render *"Scanned N of M prints — …"* in **both** the empty and populated
+  states.
+- **The part that has never been seen:** off-hours both radars are **empty**, so only the empty-state
+  line has ever rendered. At the open, spikes and splits actually fire — that is the first time the
+  populated-state line renders **beside real entries**, which is the layout most likely to be wrong.
+- **Also worth capturing while the tape is live:** whether the eligible fraction stays ~30% under
+  RTH. If the index feed's share of prints changes intraday, the coverage number changes with it,
+  and that is worth knowing before anyone quotes 30% as a constant.
+
+### 5. §9.8 + §9.4 — already live-validated, but only against a CLOSED tape
+
+Both passed on production 2026-08-23 (`RUN-LOG.md`). Both baselines were taken with the market shut
+and are worth re-taking once, because both are population-dependent:
+
+| | validated off-hours | what to re-check at the open |
+|---|---|---|
+| §9.8 Route Breakdown | `UNREPORTED 95% · REPEAT 4% · FLOOR 0% · SWEEP 0%`, `OTHER` gone | `OTHER` must stay at 0%. The premium-weighted `UNREPORTED` share should FALL as the rule-carrying feed wakes up — a fall is health, not regression |
+| §9.4 IV column | `median 15% / max 6921%`, 0 unparseable, 4 cells >500% | every cell still a percent or `—`. **The >500% tail should shrink toward zero**: every degenerate solve measured was an *expired* contract, so a live tape should carry far fewer |
+
+That IV tail is also the evidence for an open question — whether degenerate IV should be suppressed,
+and whether "expired" is a better gate than any IV threshold. **An RTH reading is the measurement
+that decides it**, so capture it rather than just passing the check.
+
+### 5b. NEW-positioning badges — first live sighting of a brand-new signal (#2689)
+
+The tape now proves which prints cannot be entirely closing: `size = premium / (fill_price × 100)`
+against `open_interest`, with a 1.05 margin. This is the **only genuinely new member-facing signal**
+in the batch, so it has no prior baseline to diff against — the check is coherence, not delta.
+
+- **Measured off-hours 2026-08-23:** of 1500 judgeable rows, **220 decisive** (12 at `OI === 0`,
+  208 clearing the margin) = 4.4% of the tape, 14.7% of the judgeable population.
+- **What to check on screen, per badged row:**
+  1. a **NEW** badge never appears on a row whose **OI** column reads `—` (that row was never
+     examined; a badge there is fabrication);
+  2. the ratio in `NEW ×N` matches the row's own **OI** and **Prem** columns — the badge and the
+     columns are derived from the same three numbers and must agree on screen;
+  3. the badge is **actually visible**, not collapsed into the `+N` overflow. It is ordered third at
+     the latest for exactly this reason, and RTH is when rows carry the most competing badges —
+     which is the condition that would expose an ordering mistake.
+- **Also check `VectorHelixRail` on `/vector`.** `flowSignals` is shared, so NEW propagates there
+  too, and Vector's rail budgets only **2** badges. A whale print with a rule badge may push NEW out
+  of view there. That is Vector's display budget, not a HELIX defect — record what it does rather
+  than "fixing" it from this lane.
+- **The RTH-only question this answers:** off-hours the decisive population is 4.4% of a stale tape.
+  Under live flow, opening trades are exactly what a busy session is made of, so **the decisive share
+  should RISE**. If it does not, the margin or the OI freshness is worth re-examining.
+
+### 5c. Split Flow direction — a graded prediction that changed definition (#2691)
+
+**The highest-stakes item on this list, and the only one that cannot be checked off-hours at all**
+— split flow needs a live 30-minute window, so both radars are empty until the open.
+
+`detectSplitFlow` read direction from option type alone, counting sold calls as bullish premium.
+`printBias` — the contract drilldown, on the same page — already read option type **×** aggressor
+side. Measured 2026-08-23 over the 1454 rows carrying `ask_pct`: **37 of 83 tickers (44.6%)
+sign-flip** between the two rules, and 47.7% of all call premium was SOLD.
+
+**Why this one matters more than a label:** `direction` is persisted and `gradeOutcome` scores it
+continued/reversed, so it is a prediction the record grades. Rows before this change were graded
+under the old rule.
+
+- **Check on screen:** a ticker showing `▲ BULLISH` must agree with the **contract drilldown's own
+  bias** for prints from that ticker. Open one and compare — they now read the same rule, and this
+  is the first session where both can be seen populated at once.
+- **Check the refusal works:** `— UNREAD` must appear **only** where the `Ask%` column is genuinely
+  absent. If `— UNREAD` dominates a busy tape, `ask_pct` coverage has regressed — measured at
+  **29.1% of all rows but ~96.9% of Group A**, and split flow only ever sees Group A.
+- **Check `⇋ MIXED` still occurs.** MIXED (read, genuinely two-sided) and UNREAD (could not read)
+  are different facts and must both be reachable. If MIXED never appears, the margin is wrong.
+- **Ledger, worth capturing once:** new rows carry `context.direction_basis =
+  "aggression_aware_v1"`. Confirm it is present on rows written after the deploy — rows without it
+  are the old rule and **must not be pooled** with the new ones in any track-record number.
+
+### 6. Open questions an RTH session can actually answer
+
+These are recorded as needing a decision; RTH is when the data exists to inform them.
+
+- **The `whale`-outranks-`0dte` collision** (`db.ts:2646`). `route` is `premium >= $1M ? 'whale' : expiry = TODAY ? '0dte' : 'stock'`, so the largest 0DTE prints never get the 0DTE badge. **Unmeasurable off-hours** — the closed window holds **zero** `dte === 0` rows. At the open, count prints with `expiry = TODAY` **and** `premium >= $1M`: that is the exact population being denied the badge.
+- **§9.7 score saturation.** $1.3B and $1.0M prints both score 60; 24.1% of tape pinned at saturation, measured off-hours. Re-measure under RTH volume — saturation should be *worse*, and the size of that is the argument.
+- **Whether Route Breakdown should stay premium-weighted.** The 95%-vs-79% gap is entirely premium weighting. Under RTH the two diverge differently; capture both.
+
+### Commands
+
+```bash
+export PATH=/opt/node20/bin:$PATH NODE_USE_ENV_PROXY=1
+
+# Rendered UI — Route Breakdown, Net Premium, Expiry Concentration, freshness (desktop + mobile)
+node scripts/audit/helix-flows-ui-audit.cjs
+
+# API-side tape inventory — writer groups, route keys, IV units, signal eligibility
+node scripts/audit/helix-tape-inventory.mjs
+
+# Largo payload arrival (needs the live agent)
+node scripts/audit/largo-truncation-probe.mjs
+```
+
+**The tape is a CSS GRID, not a `<table>`** — `role=grid`, headers in `.helix-tape-col-row`, body
+cells `role=gridcell`. A probe written against `<table>`/`<th>`/`<tbody>` returns zero rows and reads
+as "the tape is empty", which is a harness failure wearing a product verdict. This cost seven false
+results on 2026-08-23; read a component's real class names before writing an assertion.
+
 ## WATCH LIST — first session on 2026-08-12 (read this before the routine pass)
 
 Five fixes plus one new surface shipped overnight on 2026-08-11/12. **Two of them changed what members SEE and are
