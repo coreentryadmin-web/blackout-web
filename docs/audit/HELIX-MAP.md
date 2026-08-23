@@ -648,12 +648,51 @@ Same definition, different inputs — so ledger and badge can legitimately disag
 the row nor the panel says so. Cheap fix (stamp the population into `context`), and it is the
 precondition for ever using the ledger's follow-through rate to describe what a member *saw*.
 
-**9.7 — The conviction score saturates at $1M.** `min(60, premium/$1M × 60)` means every print at or
+**9.7 — The conviction score saturates at $1M — MEASURED 2026-08-23; it does not rank direction. Decision still open.** `min(60, premium/$1M × 60)` means every print at or
 above $1M contributes the same 60 premium points, so a $50M block and a $1.1M print are separated
 only by the sweep (+25) and 0DTE (+15) flags. Whether that is intended compression or an accident is
 **UNKNOWN** — the score predates this lane's records and no design note explains the shape. Do not
 retune it on intuition: the ledger in §9 is the only instrument that could say whether score
 correlates with follow-through, and that measurement has not been run.
+
+**IT HAS NOW BEEN RUN — by a different route, because the one the map named is un-runnable.** The
+signal ledger has no writer (§9.1: `helix-signal-outcomes` is registered but absent from the
+deployed cron manifest), so `scripts/audit/helix-score-signal.mjs` grades each print's own
+underlying forward on REAL Polygon minute bars instead. 5000-row tape, **748 prints graded**
+(only 27.4% carry a real `event_at` and a readable direction — the §9.0 denominator again), direction
+from option type × aggressor side.
+
+| score bucket | n | +15min | +30min | +60min |
+|---|---|---|---|---|
+| 0–19 | ~246 | 50.4% | 47.2% | 48.5% |
+| 20–39 | ~261 | 51.1% | 49.0% | 45.6% |
+| 40–59 | ~157 | 43.3% | 46.5% | 41.3% |
+| **60 (saturated)** | 51 | 43.1% | 52.9% | 47.1% |
+| 61–84 | 29 | 41.4% | 44.8% | 58.6% |
+| 85–100 | 4 | 25.0% | 75.0% | 50.0% |
+
+**The reading, stated conservatively.** Every win rate sits between 41% and 53% — around a coin
+flip — and average favourable move is negative in almost every cell. More telling than any single
+number: **the best-performing bucket CHANGES at every horizon** (20–39 at 15min, 60 at 30min, 0–19
+at 60min). A real ranking is stable and roughly monotonic; an ordering that reshuffles with the
+horizon is the signature of noise. Score does not rank directional follow-through.
+
+**The saturation is confirmed as a shape problem too:** only **84 of 748 graded prints (11.2%)**
+score above 59 at all, so the top 40% of the range is nearly empty — exactly what
+`min(60, premium/$1M × 60)` predicts.
+
+**WHAT THIS DOES NOT SAY, and the temptation to guard against.** It measures direction in the
+UNDERLYING, not option P&L — no strike, no decay, no exit rule. So it is evidence that score does
+not rank *direction*; it is **not** proof score is useless for sizing or for surfacing. The obvious
+next move after a flat result is to retune the score, and that is precisely the intuition-driven
+change this entry forbids. Sample caveat: the 168h window spans a weekend, so the prints are one
+session-type.
+
+**Still the coordinator's decision.** The score drives a member-visible column and its sort. Three
+options, unchanged from the earlier PR comment, now with evidence behind them rather than
+speculation: leave it (it is a *display* heuristic, not a claim), re-scale the premium term so the
+top of the range is populated, or drop the numeric score for an explicit ranked label. No change
+taken from this lane.
 
 **9.8 — the Route Breakdown panel is 98.8% "OTHER" — RESOLVED, and it is the most broken thing
 found this pass.** `executionRouteKey` matches `alert_rule` against
