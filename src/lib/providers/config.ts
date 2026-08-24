@@ -15,11 +15,15 @@ export function marketDataConfigured(): boolean {
   return polygonConfigured() || uwConfigured();
 }
 
-/** Full SPX desk cache (UW + Polygon). Default 20s — SWR serves stale while revalidating. */
+/** Full SPX desk cache (UW + Polygon). Default 10s — SWR serves stale while revalidating.
+ *  Reduced from 20s to 10s to minimize flow data staleness during RTH. Flow data from UW
+ *  accumulates in batches and can be 30+ seconds old by the time we fetch; shorter cache TTL
+ *  ensures members see fresher flow data for playbook entry timing decisions. See spx-desk.ts § 1554.
+ */
 export function deskCacheTtlMs(): number {
   const raw = process.env.SPX_DESK_CACHE_SEC?.trim();
-  const sec = raw ? Number(raw) : 20;
-  if (!Number.isFinite(sec) || sec < 0) return 20_000;
+  const sec = raw ? Number(raw) : 10;
+  if (!Number.isFinite(sec) || sec < 0) return 10_000;
   return Math.round(sec * 1000);
 }
 
@@ -194,10 +198,13 @@ export function gexHeatmapEnrichmentMaxMs(): number {
   return Math.round(ms);
 }
 
-/** Slower pulse structure refresh (EMAs, minute bars, mega-caps). Default 5s with live Polygon. */
+/** Slower pulse structure refresh (EMAs, minute bars, mega-caps). Default 2s with live Polygon.
+ *  Reduced from 5s to 2s to minimize intraday lod/hod staleness — a 5s cache meant lod could lag
+ *  intraday lows by up to 5 seconds + minute-bar latency, causing desk to show stale extremes
+ *  that mislead pin forecasts and GEX anchoring (FINDING 2026-08-24). See spx-desk.ts § 1989. */
 export function deskPulseStructureCacheTtlMs(): number {
   const raw = process.env.SPX_PULSE_STRUCTURE_SEC?.trim();
-  const sec = raw ? Number(raw) : 5;
+  const sec = raw ? Number(raw) : 2;
   if (!Number.isFinite(sec) || sec < 0) return 10_000;
   return Math.round(sec * 1000);
 }
