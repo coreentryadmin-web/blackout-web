@@ -116,18 +116,18 @@ export async function GET(req: NextRequest) {
   const postType = forceType ?? selectPostType(et);
 
   if (!postType && !forceType) {
-    const inWindow = isPostWindow(et);
+    // selectPostType returned null, which means isPostWindow(et) is false
+    const hour = et.getHours();
+    const min = String(et.getMinutes()).padStart(2, "0");
     await logCronRun("x-autopost", started, {
       ok: true,
       skipped: true,
-      reason: inWindow
-        ? "Outside 2-hour post window"
-        : `No post slot — next at even ET hour 8–20 (now ${et.getHours()}:${String(et.getMinutes()).padStart(2, "0")})`,
+      reason: `Outside 2-hour post window (now ${hour}:${min} ET, next window at 8:00)`,
     });
     return NextResponse.json({
       ok: true,
       skipped: true,
-      hour: et.getHours(),
+      hour,
       day: et.getDay(),
     });
   }
