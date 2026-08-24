@@ -1,10 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import type { XIntelQueueRow } from "@/lib/x-intel/queue-types";
 
-export default function XIntelDetailPage({ params }: { params: { id: string } }) {
+export default function XIntelDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = use(params);
   const [row, setRow] = useState<XIntelQueueRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -13,7 +18,7 @@ export default function XIntelDetailPage({ params }: { params: { id: string } })
 
   useEffect(() => {
     fetchRow();
-  }, [params.id]);
+  }, [id]);
 
   async function fetchRow() {
     setLoading(true);
@@ -22,7 +27,7 @@ export default function XIntelDetailPage({ params }: { params: { id: string } })
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const data = await res.json();
-      const found = data.rows?.find((r: XIntelQueueRow) => String(r.id) === params.id);
+      const found = data.rows?.find((r: XIntelQueueRow) => String(r.id) === id);
       if (!found) throw new Error("Row not found");
 
       setRow(found);
