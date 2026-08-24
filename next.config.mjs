@@ -137,6 +137,10 @@ const nextConfig = {
     return [
       { source: "/learn/helix", destination: "/learn/helix-flows", permanent: true },
       { source: "/helix", destination: "/flows", permanent: true },
+      // Legacy browsers and crawlers request /favicon.ico by convention; without this they get a
+      // 28KB HTML 404 (see docs/audit/SEO-BASELINE-2026-08-21 P3-1). icon-192.png is the committed
+      // manifest icon and is already edge-cacheable.
+      { source: "/favicon.ico", destination: "/icon-192.png", permanent: true },
     ];
   },
   async headers() {

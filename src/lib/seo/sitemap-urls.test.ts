@@ -11,6 +11,12 @@ describe("publicSitemapEntries", () => {
     }
   });
 
+  it("does not include research gamma-levels paths while licensing is unresolved", () => {
+    const paths = publicSitemapEntries().map((e) => e.path);
+    const research = paths.filter((p) => p.startsWith("/research/gamma-levels"));
+    assert.equal(research.length, 0);
+  });
+
   it("matches article count plus marketing, curriculum, and legal", () => {
     const entries = publicSitemapEntries();
     assert.ok(entries.length >= 45 + 7 + 5);
