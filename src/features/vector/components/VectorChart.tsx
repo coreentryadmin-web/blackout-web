@@ -220,9 +220,16 @@ import {
   vectorCandlestickOptions,
   vectorTimeScaleSpacingOptions,
   visibleBarCountFromRange,
-  volumeAlphaForBar,
   type IntradayZoomPreset,
 } from "@/features/vector/lib/vector-candle-render";
+import {
+  volumeAverageLineData,
+  volumeHistogramData,
+  VECTOR_VOLUME_MODES,
+  VECTOR_VOLUME_MODE_STORAGE_KEY,
+  type VectorVolumeMode,
+} from "@/features/vector/lib/vector-volume-render";
+import { readPersisted, writePersisted } from "@/features/vector/lib/vector-chart-view";
 import {
   applyFlowConfluenceToCandles,
   FLOW_CONFLUENCE_PULSE_INTERVAL_MS,
@@ -472,9 +479,6 @@ function pinCandlesOnTop(candleSeries: ISeriesApi<"Candlestick">): void {
 }
 
 
-const VOLUME_UP_BASE = "#00e676";
-const VOLUME_DOWN_BASE = "#ff2d55";
-
 /** Optional flow-confluence pulse styling — set by VectorChart mount. */
 const flowPulseRenderRef: {
   current: ((bars: VectorBar[]) => ReturnType<typeof toCandlestickDisplayData>) | null;
@@ -486,37 +490,25 @@ function candlestickDisplayData(bars: VectorBar[]) {
     : toCandlestickDisplayData(bars);
 }
 
-function volumeColor(baseHex: string, alpha: number): string {
-  const r = parseInt(baseHex.slice(1, 3), 16);
-  const g = parseInt(baseHex.slice(3, 5), 16);
-  const b = parseInt(baseHex.slice(5, 7), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
-function volumeHistogramData(bars: VectorBar[]): HistogramData<Time>[] {
-  const extended = hasExtendedHoursBars(bars);
-  const out: HistogramData<Time>[] = [];
-  for (const bar of bars) {
-    const value = bar.volume;
-    if (value == null || value <= 0) continue;
-    const alpha = volumeAlphaForBar(bar.time as number, extended);
-    const up = bar.close >= bar.open;
-    out.push({
-      time: bar.time as Time,
-      value,
-      color: volumeColor(up ? VOLUME_UP_BASE : VOLUME_DOWN_BASE, alpha),
-    });
-  }
-  return out;
-}
-
 function applyDisplayBars(
   candleSeries: ISeriesApi<"Candlestick">,
   volumeSeries: ISeriesApi<"Histogram"> | null,
-  bars: VectorBar[]
+  volumeAvgSeries: ISeriesApi<"Line"> | null,
+  bars: VectorBar[],
+  volumeMode: VectorVolumeMode
 ): void {
   candleSeries.setData(candlestickDisplayData(bars) as VectorBar[]);
-  volumeSeries?.setData(volumeHistogramData(bars));
+  if (volumeSeries) {
+    const extended = hasExtendedHoursBars(bars);
+    volumeSeries.setData(volumeHistogramData(bars, volumeMode, extended));
+  }
+  if (volumeAvgSeries) {
+    if (volumeMode === "relative") {
+      volumeAvgSeries.setData(volumeAverageLineData(bars));
+    } else {
+      volumeAvgSeries.setData([]);
+    }
+  }
 }
 
 /**
@@ -535,14 +527,16 @@ function applyDisplayBarsPreservingView(
   chart: IChartApi | null,
   candleSeries: ISeriesApi<"Candlestick">,
   volumeSeries: ISeriesApi<"Histogram"> | null,
+  volumeAvgSeries: ISeriesApi<"Line"> | null,
   bars: VectorBar[],
+  volumeMode: VectorVolumeMode,
   liveFollowEnabled: boolean
 ): void {
   const timeScale = chart?.timeScale() ?? null;
   const following = chart ? chartIsFollowingLive(chart) : false;
   const prevRange =
     timeScale && !(following && liveFollowEnabled) ? timeScale.getVisibleLogicalRange() : null;
-  applyDisplayBars(candleSeries, volumeSeries, bars);
+  applyDisplayBars(candleSeries, volumeSeries, volumeAvgSeries, bars, volumeMode);
   if (following && liveFollowEnabled) {
     maybeScrollToLive(chart, true);
   } else if (prevRange && timeScale) {
@@ -1368,6 +1362,7 @@ export function VectorChart({
     onPriceScaleRenderRef.current = onPriceScaleRender;
   });
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+  const volumeAvgSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   // Always-on technicals narration (VWAP/EMA/RSI/MACD/pocket/structure) → terminal, computed on
   // every paint from the shown bars regardless of which overlays are toggled. `onTechnicalsChangeRef`
   // keeps the latest callback for the []-dep paintOverlays; `lastTechnicalsRef` dedupes emits.
@@ -2016,6 +2011,10 @@ export function VectorChart({
   const [openingRangeMinutes, setOpeningRangeMinutes] = useState<VectorOpeningRangeMinutes>(
     DEFAULT_OPENING_RANGE_MINUTES
   );
+  const [volumeMode, setVolumeModeState] = useState<VectorVolumeMode>(() =>
+    readPersisted(VECTOR_VOLUME_MODE_STORAGE_KEY, VECTOR_VOLUME_MODES, "relative")
+  );
+  const volumeModeRef = useRef<VectorVolumeMode>(volumeMode);
   // Count of bars currently shown (at the active timeframe). Drives the indicator menu's
   // "not enough bars" annotation so an MA family that can't compute at this timeframe is explained
   // rather than looking broken. Updated imperatively from paintOverlays; setState bails out when
@@ -2072,7 +2071,7 @@ export function VectorChart({
     const series = seriesRef.current;
     if (!series) return;
     const bars = displayBarsFromMinute(minuteBarsRef.current, timeframeRef.current);
-    applyDisplayBars(series, volumeSeriesRef.current, bars);
+    applyDisplayBars(series, volumeSeriesRef.current, volumeAvgSeriesRef.current, bars, volumeModeRef.current);
   }, []);
 
   const ensureFlowPulseLoop = useCallback(() => {
@@ -2747,6 +2746,26 @@ export function VectorChart({
     paintOverlays(lastDisplayBarsRef.current);
   }, [openingRangeMinutes, paintOverlays]);
 
+  useEffect(() => {
+    volumeModeRef.current = volumeMode;
+    const bars = lastDisplayBarsRef.current;
+    if (bars.length && seriesRef.current) {
+      applyDisplayBars(
+        seriesRef.current,
+        volumeSeriesRef.current,
+        volumeAvgSeriesRef.current,
+        bars,
+        volumeMode
+      );
+    }
+  }, [volumeMode]);
+
+  const handleVolumeMode = useCallback((next: VectorVolumeMode) => {
+    volumeModeRef.current = next;
+    setVolumeModeState(next);
+    writePersisted(VECTOR_VOLUME_MODE_STORAGE_KEY, next);
+  }, []);
+
   // Lazy prior-day OHLC fetch: only when a prior-day/pivot level is enabled, and only once per
   // ticker. The PDH/PDL/PDC + floor-pivot lines need the prior session's high/low/close, which the
   // session bars don't carry. On success, repaint so the lines appear without waiting for a tick.
@@ -2919,7 +2938,7 @@ export function VectorChart({
       if (!chart || !series) return;
 
       const visibleBars = displayBarsFromMinute(bars, timeframeRef.current, cursorTime);
-      applyDisplayBars(series, volumeSeriesRef.current, visibleBars);
+      applyDisplayBars(series, volumeSeriesRef.current, volumeAvgSeriesRef.current, visibleBars, volumeModeRef.current);
       paintOverlays(visibleBars);
       lastDisplayBarsRef.current = visibleBars;
       const barTimes = visibleBars.map((b) => b.time);
@@ -3659,7 +3678,9 @@ export function VectorChart({
             chartRef.current,
             seriesRef.current,
             volumeSeriesRef.current,
+            volumeAvgSeriesRef.current,
             display,
+            volumeModeRef.current,
             liveFollowEnabledRef.current
           );
           paintOverlays(display);
@@ -3800,7 +3821,15 @@ export function VectorChart({
           if (lastDisplay) {
             displayBarTimeRef.current = lastDisplay.time;
             seriesRef.current?.update(lastDisplay);
-            volumeSeriesRef.current?.setData(volumeHistogramData(displayBars));
+            if (volumeSeriesRef.current) {
+              const extended = hasExtendedHoursBars(displayBars);
+              volumeSeriesRef.current.setData(
+                volumeHistogramData(displayBars, volumeModeRef.current, extended)
+              );
+            }
+            if (volumeAvgSeriesRef.current && volumeModeRef.current === "relative") {
+              volumeAvgSeriesRef.current.setData(volumeAverageLineData(displayBars));
+            }
           }
         }
       }
@@ -3991,6 +4020,7 @@ export function VectorChart({
     // Volume in its OWN sub-pane below price (like RSI/MACD), not overlaid on the candles. Compare
     // panes omit volume entirely so candles + beads get the full pane height.
     let volumeSeries: ISeriesApi<"Histogram"> | null = null;
+    let volumeAvgSeries: ISeriesApi<"Line"> | null = null;
     if (!hideVolumePaneRef.current) {
       volumeSeries = chart.addSeries(
         HistogramSeries,
@@ -4004,11 +4034,24 @@ export function VectorChart({
       volumeSeries.priceScale().applyOptions({
         scaleMargins: { top: 0.1, bottom: 0 },
       });
+      volumeAvgSeries = chart.addSeries(
+        LineSeries,
+        {
+          color: "rgba(186, 230, 253, 0.55)",
+          lineWidth: 1,
+          lineStyle: LineStyle.Dashed,
+          priceLineVisible: false,
+          lastValueVisible: false,
+          crosshairMarkerVisible: false,
+          title: "Vol avg",
+        },
+        VOLUME_PANE_INDEX
+      );
     }
     applyPaneStretch(chart, hideVolumePaneRef.current);
 
     const initialDisplay = displayBarsFromMinute(initialBars, initialTimeframe);
-    applyDisplayBars(series, volumeSeries, initialDisplay);
+    applyDisplayBars(series, volumeSeries, volumeAvgSeries, initialDisplay, volumeModeRef.current);
     paintOverlays(initialDisplay);
     displayBarTimeRef.current = initialBars[initialBars.length - 1]?.time ?? 0;
     lastDisplayBarsRef.current = initialDisplay;
@@ -4082,6 +4125,7 @@ export function VectorChart({
     chartRef.current = chart;
     seriesRef.current = series;
     volumeSeriesRef.current = volumeSeries;
+    volumeAvgSeriesRef.current = volumeAvgSeries;
     setChartReady(true);
     callBeadsRef.current = createSeriesMarkers(series, []);
     putBeadsRef.current = createSeriesMarkers(series, []);
@@ -4405,6 +4449,7 @@ export function VectorChart({
       // Same lifecycle — chart.remove() disposed the volume-profile primitive too.
       volumeProfilePrimitiveRef.current = null;
       volumeSeriesRef.current = null;
+      volumeAvgSeriesRef.current = null;
       setChartReady(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -4456,7 +4501,9 @@ export function VectorChart({
           chartRef.current,
           seriesRef.current!,
           volumeSeriesRef.current,
+          volumeAvgSeriesRef.current,
           display,
+          volumeModeRef.current,
           liveFollowEnabledRef.current
         );
         paintOverlays(display);
@@ -4528,7 +4575,7 @@ export function VectorChart({
     const display = displayBarsFromMinute(bars, timeframeRef.current);
     displayBarTimeRef.current = display[display.length - 1]?.time ?? 0;
     if (seriesRef.current) {
-      applyDisplayBars(seriesRef.current, volumeSeriesRef.current, display);
+      applyDisplayBars(seriesRef.current, volumeSeriesRef.current, volumeAvgSeriesRef.current, display, volumeModeRef.current);
       paintOverlays(display);
     }
     const history = wallHistoryRef.current;
@@ -4736,7 +4783,7 @@ export function VectorChart({
         timeScale && !timeframeChanged && !following && (!sessionFramed || viewportLocked)
           ? timeScale.getVisibleLogicalRange()
           : null;
-      applyDisplayBars(series, volumeSeriesRef.current, display);
+      applyDisplayBars(series, volumeSeriesRef.current, volumeAvgSeriesRef.current, display, volumeModeRef.current);
       paintOverlays(display);
       lastDisplayBarsRef.current = display;
       if (timeframeChanged) {
@@ -4907,6 +4954,9 @@ export function VectorChart({
       nodeDensity={nodeDensity}
       onNodeDensity={handleNodeDensity}
       nodeAutoCount={effectiveNodeCount(wallCountForHorizon(timeframe, dteHorizon))}
+      volumeMode={volumeMode}
+      onVolumeMode={handleVolumeMode}
+      hideVolumePane={hideVolumePane}
     />
   );
 

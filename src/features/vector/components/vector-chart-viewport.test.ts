@@ -84,8 +84,9 @@ test("VectorDailyChart: shared candle spacing and borders", () => {
 
 test("VectorChart: off-hours candle dimming wired", () => {
   const src = read("src/features/vector/components/VectorChart.tsx");
+  const vol = read("src/features/vector/lib/vector-volume-render.ts");
   assert.match(src, /toCandlestickDisplayData/);
-  assert.match(src, /volumeAlphaForBar/);
+  assert.match(vol, /volumeAlphaForBar/);
   assert.match(read("src/features/vector/lib/vector-candle-render.ts"), /hasExtendedHoursBars/);
 });
 
