@@ -230,7 +230,6 @@ import {
   VECTOR_VOLUME_MODE_STORAGE_KEY,
   type VectorVolumeMode,
 } from "@/features/vector/lib/vector-volume-render";
-import { readPersisted, writePersisted } from "@/features/vector/lib/vector-chart-view";
 import {
   applyFlowConfluenceToCandles,
   FLOW_CONFLUENCE_PULSE_INTERVAL_MS,
