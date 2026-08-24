@@ -63,6 +63,7 @@ describe("x-marketing-env", () => {
     assert.equal(xMentionRepliesPaused(), true);
     assert.equal(xMarketingPostsPaused(), false);
     assert.equal(xMarketingCronPaused("x-replies"), true);
+    assert.equal(xMarketingCronPaused("x-intel"), false);
     assert.equal(xMarketingCronPaused("x-autopost"), false);
   });
 

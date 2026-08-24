@@ -557,7 +557,7 @@ export const CRON_JOBS: CronJobDefinition[] = [
     schedule_label: "Every 2h (same as x-autopost)",
     stale_after_min: 240,
     schedule_cron_utc: "0 12,14,16,18,20,22,0 * * *",
-    description: "Generate X content candidates and write to review queue (never publishes)",
+    description: "Generate X content candidates and write to review queue (paused via X marketing env; never publishes)",
   },
   {
     key: "x-autopost",

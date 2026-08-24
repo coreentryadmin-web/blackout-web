@@ -40,7 +40,7 @@ const X_MARKETING_CRON_KEYS = new Set([
 export function xMarketingCronPaused(jobKey: string): boolean {
   if (!X_MARKETING_CRON_KEYS.has(jobKey)) return false;
   if (jobKey === "x-replies") return xMentionRepliesPaused();
-  if (jobKey === "x-autopost") return xMarketingPostsPaused();
+  if (jobKey === "x-intel" || jobKey === "x-autopost") return xMarketingPostsPaused();
   // x-growth / x-analytics: no separate pause — full marketing pause gates them.
   return xMarketingPostsPaused();
 }
