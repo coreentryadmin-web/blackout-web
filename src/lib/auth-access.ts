@@ -46,7 +46,11 @@ export async function requireTier(minTier: Tier) {
     redirect("/upgrade");
   }
 
-  const { isAdminUser } = await import("@/lib/admin-access");
+  // Relative, not "@/lib/admin-access": identical at runtime (same directory), but a path-alias
+  // specifier inside a dynamic import() resolves fine under webpack/SWC (production) while
+  // failing to resolve under the tsx/node:test harness used by src/**/*.test.ts — this keeps the
+  // lazy import (still avoids the static circular import with admin-access.ts) test-reachable.
+  const { isAdminUser } = await import("./admin-access");
   if (await isAdminUser(userId, sessionClaims)) {
     return { userId, tier: "premium" as Tier, sessionClaims };
   }
