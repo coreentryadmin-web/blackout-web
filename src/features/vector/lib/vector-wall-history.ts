@@ -202,13 +202,20 @@ export const MAX_STRIKE_TRAILS_PER_SIDE = 8;
  * top-6 rollback. If the "static rail" complaint returns, TSLA is where it will show first and this
  * constant is the first thing to put back to 3.
  *
+ * ── WHY 6 (2026-08-24) ───────────────────────────────────────────────────────────────────────
+ * Raised 5→6 after a live META audit: the matrix ladder showed real GEX at 565/575/585 but bead
+ * trails were missing for rank-6 strikes — a visible "dead band" members read as broken recording.
+ * Rank-6 walls (e.g. META 565) must be able to BORN. Same static-rail risk as the original top-6
+ * rollback — re-measure on TSLA with scripts/audit/vector-dominant-cap-ab.mjs if the complaint
+ * returns.
+ *
  * NOT env-tunable on purpose: this module is consumed by VectorChart.tsx, a "use client" component,
  * so a server env var is undefined in the browser and a NEXT_PUBLIC_ one is inlined at BUILD time.
  * Either way changing it costs a full rebuild + deploy — exactly what editing this line costs — so
  * the indirection would buy no operational flexibility while hiding the value from this docblock.
  * The durable fix for "members disagree about density" is a chart-level control, not a constant.
  */
-export const DOMINANT_WALLS_PER_BUCKET = 5;
+export const DOMINANT_WALLS_PER_BUCKET = 6;
 
 /** Live session: only render wall beads within this many seconds of the chart's leading edge. */
 export const LIVE_TRAIL_LOOKBACK_SEC = 45 * 60;
