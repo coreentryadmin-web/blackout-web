@@ -38,7 +38,7 @@ function returnPct(bars: Bar[], days: number): number | null {
   if (bars.length <= days) return null;
   const last = bars[bars.length - 1].c;
   const prev = bars[bars.length - 1 - days].c;
-  if (!prev) return null;
+  if (!Number.isFinite(prev) || prev <= 0 || !Number.isFinite(last)) return null;
   return Number((((last - prev) / prev) * 100).toFixed(2));
 }
 
@@ -183,7 +183,9 @@ export async function buildSeasonality() {
   for (let i = 1; i < bars.length; i++) {
     const d = new Date(bars[i].t ?? 0);
     const m = d.getUTCMonth();
-    const ret = ((bars[i].c - bars[i - 1].c) / bars[i - 1].c) * 100;
+    const prevC = bars[i - 1].c;
+    if (!Number.isFinite(prevC) || prevC <= 0 || !Number.isFinite(bars[i].c)) continue;
+    const ret = ((bars[i].c - prevC) / prevC) * 100;
     const arr = byMonth.get(m) ?? [];
     arr.push(ret);
     byMonth.set(m, arr);
@@ -193,7 +195,7 @@ export async function buildSeasonality() {
     proxy: "SPY",
     months: Array.from(byMonth.entries()).map(([m, rets]) => ({
       month: monthNames[m],
-      avg_return_pct: Number((rets.reduce((a, b) => a + b, 0) / rets.length).toFixed(2)),
+      avg_return_pct: rets.length > 0 ? Number((rets.reduce((a, b) => a + b, 0) / rets.length).toFixed(2)) : null,
       samples: rets.length,
     })),
   };
