@@ -2747,6 +2747,7 @@ export function VectorChart({
     paintOverlays(lastDisplayBarsRef.current);
   }, [openingRangeMinutes, paintOverlays]);
 
+<<<<<<< HEAD
   useEffect(() => {
     volumeModeRef.current = volumeMode;
     const bars = lastDisplayBarsRef.current;
@@ -2767,6 +2768,8 @@ export function VectorChart({
     writePersisted(VECTOR_VOLUME_MODE_STORAGE_KEY, next);
   }, []);
 
+=======
+>>>>>>> 63a1b410 (fix(vector): move DP walls effect after liveGexWalls declaration)
   const handleDarkPoolWalls = useCallback((enabled: boolean) => {
     darkPoolWallsEnabledRef.current = enabled;
     setDarkPoolWallsEnabled(enabled);
@@ -3068,6 +3071,18 @@ export function VectorChart({
       pickHorizonScopedValue(dteHorizonRef.current, horizonFlipRef.current, gammaFlipRef.current),
     []
   );
+
+  useEffect(() => {
+    darkPoolWallsEnabledRef.current = darkPoolWallsEnabled;
+    refreshOverlays(
+      lensRef.current,
+      liveGexWalls(),
+      vexWallsRef.current,
+      liveGammaFlip(),
+      vexFlipRef.current,
+      darkPoolRef.current
+    );
+  }, [darkPoolWallsEnabled, refreshOverlays, liveGexWalls, liveGammaFlip]);
 
   // Compute the gamma regime from the current spot / flip / walls and emit it up to
   // the page banner. Uses the HORIZON-SCOPED view (liveGexWalls/liveGammaFlip) so the
