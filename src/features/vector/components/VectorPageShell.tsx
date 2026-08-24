@@ -727,6 +727,7 @@ export function VectorPageShell({
       defaultDteHorizon={defaultDteHorizon}
       defaultTimeframe={defaultTimeframe}
       defaultChartViewport={defaultChartViewport}
+      defaultNodeDensity={defaultNodeDensity}
       onFreshness={liveSession ? setStreamUpdatedAt : undefined}
       onSpotChange={liveSession ? setLiveSpot : undefined}
       onWallEventsChange={setWallEvents}

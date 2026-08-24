@@ -16,6 +16,7 @@ export {
   VECTOR_ORACLE_TICKERS,
   defaultVectorDteHorizon,
   defaultVectorNodeDensity,
+  defaultVectorDeskOpenProps,
   VECTOR_ORACLE_DEFAULT_NODE_DENSITY,
 } from "./lib/vector-ticker";
 export {

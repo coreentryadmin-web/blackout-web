@@ -1,5 +1,6 @@
 import type { VectorDteHorizon } from "./vector-dte-horizon";
 import type { VectorNodeDensity } from "./vector-node-density";
+import { VECTOR_DEFAULT_TIMEFRAME, type VectorPresetTimeframe } from "./vector-bar-timeframes";
 
 /** Default Vector chart symbol — SPX index options desk anchor. */
 export const VECTOR_DEFAULT_TICKER = "SPX";
@@ -79,4 +80,24 @@ export function defaultVectorNodeDensity(raw: string | null | undefined): Vector
   return VECTOR_ORACLE_TICKERS.has(normalizeVectorTicker(raw))
     ? VECTOR_ORACLE_DEFAULT_NODE_DENSITY
     : "auto";
+}
+
+/** Opening desk props shared by SPX Slayer embed and standalone /vector — one showcase contract. */
+export type VectorDeskOpenDefaults = {
+  defaultDteHorizon: VectorDteHorizon;
+  defaultChartViewport: "session";
+  defaultTimeframe: VectorPresetTimeframe;
+  defaultNodeDensity: VectorNodeDensity;
+};
+
+/** SPX Slayer reference load: session overview · 3m · oracle 0DTE · 20-row beads when applicable. */
+export function defaultVectorDeskOpenProps(
+  raw: string | null | undefined
+): VectorDeskOpenDefaults {
+  return {
+    defaultDteHorizon: defaultVectorDteHorizon(raw),
+    defaultChartViewport: "session",
+    defaultTimeframe: VECTOR_DEFAULT_TIMEFRAME,
+    defaultNodeDensity: defaultVectorNodeDensity(raw),
+  };
 }
