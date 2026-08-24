@@ -482,6 +482,37 @@ Some of this is a reasonable mobile simplification; whether the metric/expiry to
 should survive on mobile (they're compact chip rows, not dense tables) is a candidate **P2** worth
 raising with Vector's owning lane rather than deciding unilaterally (boundary rule).
 
+**LIVE INTERACTION TEST, 2026-08-23** (`vector-ui-walkthrough.cjs`, desktop 1680×1050, SPY) — the
+committed interaction harness (clicks every control: timeframe, DTE, lens, ladder reset, indicator
+menu, replay, chart view). First real exercise of this product beyond a default-state screenshot,
+closing part of §11's "no interaction testing yet" gap.
+
+- **Clean:** no error text, no broken chart canvas, GEX ladder always populated, play card headline
+  always present across all 16 states — the engine never threw (the #1958 failure mode this harness
+  exists to catch). Replay and daily chart views (1D/1W/4H) correctly render without side rails,
+  matching their own documented "renders nothing when there's nothing to show" design.
+- **OPEN QUESTION, evidence-backed, NOT filed as a finding:** the regime banner
+  (`[data-testid=vector-regime-banner]`, `VectorRegimeBanner.tsx`) was absent in all 12 non-exempt
+  interaction states, including the very first load. `VectorRegimeBanner` self-hides when
+  `deriveVectorRegime()` returns `posture:"unknown"` (no `spot`/`gammaFlip`) — a documented,
+  intentional "nothing to show" state, same pattern as the technicals panel. Two things point
+  opposite directions on whether this is real: (a) the walkthrough's routing log shows 2 timed-out
+  requests (`/api/market/vector/walls`, `/api/market/vector/expected-move`) — endpoints that
+  `deriveVectorRegime`'s SSR seed path also reads from; **but** (b) a direct, isolated fetch of both
+  endpoints (outside the interaction harness, no concurrent tunnel load) returned real, fresh data
+  3/3 attempts (real `flip`, `callWalls`, `putWalls`, spot 765.72, IV 0.1053) — proving the
+  underlying data genuinely exists right now. The regime banner's initial value is SSR-seeded
+  (`VectorPageShell.tsx`'s `initialGammaFlip`/`initialWalls` props, computed server-side via
+  `loadVectorSeedProps` → `getVectorGammaFlip`/`getVectorGexWalls`), NOT a client-side fetch through
+  the tunnel — so this isn't obviously explained by the harness's own documented SSE/streaming
+  tunnel limitation either. **Root cause not established** — could be a genuine SSR-path cache/data
+  mismatch (the SSR seed reads a different store than the REST route I verified directly) or a
+  harness artifact still not fully understood. Filing a fix here would mean guessing at a root cause
+  this pass's evidence doesn't actually nail down — logged as an open question in
+  `docs/audit/UI-UX-OPPORTUNITIES.md` item 9 instead, with the exact repro command, pending a
+  focused trace of `loadVectorSeedProps`'s two data calls against the SSR render path specifically
+  (not the REST route, which is confirmed working).
+
 ---
 
 ## 6. Meridian — `/meridian`
@@ -819,12 +850,16 @@ Per the file's own opening rule (an honest gap is a finding, a plausible guess i
 outlives whoever wrote it):
 
 - **`home-mobile` beyond the hero fold** — not yet reviewed.
-- **No interaction testing yet** — every shot in this pass, including all the corrected-UA
-  re-shots, is a default-state screenshot, which brief item 2 and `_COMMON.md` rule 6b are explicit
-  is "a photograph of the feature having not been touched," not a test of it. Tabs, filters,
-  search, sort, drawers/modals, chart zoom/pan, and ticker switching are all unexercised. Queued
-  for the next LIVE VALIDATION window against a moving tape, where most of this class of defect is
-  actually observable (§0).
+- **Interaction testing STARTED, 2026-08-23 — Vector only so far.** `vector-ui-walkthrough.cjs`
+  (committed harness) run live against production: 16 states, no engine crashes, no broken canvas,
+  ladder/play card always populated — but surfaced one evidence-backed open question (regime banner
+  absent across the run; see §5 and `UI-UX-OPPORTUNITIES.md` item 9). Every OTHER product's tabs,
+  filters, search, sort, drawers/modals, and ticker switching are still unexercised — Largo,
+  Thermal, and Meridian each already have their own committed interaction harnesses
+  (`largo-ui-walkthrough.cjs`, `thermal-interaction-audit.cjs`, `meridian-interaction-audit.mjs`)
+  not yet run this pass. Night Hawk, SPX Slayer, and Helix have no dedicated interaction harness at
+  all yet. Queued for the next LIVE VALIDATION window against a moving tape, where most of this
+  class of defect is actually observable (§0).
 - **No admin surfaces** (`/admin*`) — explicitly noted as lower priority in the charter, not
   covered this pass.
 - **Two OPEN QUESTIONs remain:** `/meridian`'s slow desktop fetch (§6/§10 #9) and §5's withdrawn

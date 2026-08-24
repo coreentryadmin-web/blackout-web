@@ -85,6 +85,24 @@ a pattern worth generalizing. Classify with the brief's own scale:
    recognized the string `"admin"`. That's independent of hydration timing — confirmed and fixed
    the same day. See `docs/audit/findings-staging/2026-08-23-admin-tier-display-fallthrough.md`.
 
+9. **[P2, needs a focused SSR-path trace to confirm] Vector's gamma-regime banner absent across a
+   full live interaction walkthrough — root cause not established.** `UI-UX-MAP.md` §5: a live run
+   of the committed `vector-ui-walkthrough.cjs` harness (desktop, SPY, 16 interaction states) found
+   `[data-testid=vector-regime-banner]` missing in all 12 non-exempt states, including the first
+   load. `VectorRegimeBanner` self-hides on `posture:"unknown"` (documented, intentional), so
+   absence alone isn't proof of a bug — but a direct, isolated fetch of the two endpoints its SSR
+   seed path depends on (`/api/market/vector/walls`, `/api/market/vector/expected-move`) returned
+   real, fresh positioning data 3/3 attempts outside the harness, which argues the underlying data
+   was genuinely available. The regime banner's initial value is SSR-seeded (`VectorPageShell.tsx`
+   `initialGammaFlip`/`initialWalls` ← `loadVectorSeedProps` → `getVectorGammaFlip`/
+   `getVectorGexWalls`), not a client fetch through the tunnel, so the harness's own documented
+   SSE/streaming-tunnel caveat doesn't obviously explain it either. **Two live/verified facts point
+   opposite directions and neither has been reconciled** — that's exactly why this stays an open
+   question rather than a finding with a guessed fix. Repro: `env -u AWS_ACCESS_KEY_ID -u
+   AWS_SECRET_ACCESS_KEY NODE_USE_ENV_PROXY=1 node scripts/audit/vector-ui-walkthrough.cjs
+   --ticker=SPY`. Next step: trace `loadVectorSeedProps`'s two data calls specifically (not the REST
+   route, which is confirmed working) to see whether the SSR path reads a different/stale store.
+
 ---
 
 ## Declined / deferred
