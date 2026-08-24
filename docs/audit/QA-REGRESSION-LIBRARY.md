@@ -57,6 +57,61 @@ cadence. This file is the QA-specific index on top of that: "have we seen this s
 
 ---
 
+### SPX Slayer — two unlabeled GEX figures disagree ~3.5x live
+
+| Field | Detail |
+|---|---|
+| **Severity** | P2 |
+| **Found** | 2026-08-24, RTH live cross-check on `/dashboard` (desktop) |
+| **Reproduction** | Load `/dashboard` during RTH. Compare the toolbar `GEX` stat pill (top) against the `GEX MATRIX` panel's `NET GEX` figure, both visible in the same screenful. They disagree by a stable ~3.5x with no label distinguishing scope. |
+| **Root cause** | Two independent pipelines: toolbar `GEX` renders `desk.gex_net` (`SpxSniperHeader.tsx:214`, from `spx-desk.ts`, likely 0DTE-scoped per the "0DTE DESK" branding); the `GEX MATRIX` panel (`SpxGexMatrixHeatmap.tsx`) does its own independent SWR fetch to Thermal's shared gex-heatmap route and computes `NET GEX` from a `21 EXPIRIES`/`FULL` toggle. Plausibly two correctly-computed, differently-scoped numbers with no scope label on either. |
+| **Regression scenario** | During RTH, load `/dashboard` and read both GEX figures simultaneously — a fix should either label each by scope ("0DTE GEX" vs "Full-chain GEX") or reconcile them to one source; either way the two numbers on screen should no longer read as a bare unexplained contradiction. |
+| **Automated coverage** | none yet — owning lane's call |
+| **Findings-staging entry** | `docs/audit/findings-staging/2026-08-24-spx-slayer-dual-gex-figures-unlabeled.md`, routed via #2818 |
+| **Verified live** | Confirmed live at time of finding (2 independent samples ~7 min apart during RTH, consistent ~3.5x ratio both times). Pending fix from the owning lane. |
+| **Related, lower-confidence observation** | Same investigation caught the play-gate's `Desk data stale (Ns)` warning (`spx-play-gates.ts:293`) firing 717s→751s over one continuous window, then not reproducing on 3 follow-up loads. `gexDataAgeMs()` depends on `lastGoodGexComputedAt`, a **per-process module-level variable** (`spx-desk.ts:165`) — on multi-replica ECS this would explain a one-off stale reading that clears on a different replica/request. Not filed as a confirmed standing defect; worth a watch if it recurs. See the findings-staging entry for full detail. |
+
+---
+
+## RTH live-testing pass (2026-08-24) — status
+
+Coordinator directive: with the market open (RTH live, Mon 2026-08-24), test RTH-only states that
+off-hours testing can't cover — live data flowing, real board activity, freshness/staleness gates
+actually exercised.
+
+**Checked so far this pass (desktop unless noted):**
+
+| Route | Result |
+|---|---|
+| `/nighthawk` | Healthy after investigating a transient crash (not reproduced independently) |
+| `/flows` | Healthy — "LIVE" / "500 · 22s ago" |
+| `/heatmap` | Healthy — "QUOTE LIVE" |
+| `/dashboard` | Investigated deeply — produced the dual-GEX-figures finding above (#2818) |
+| `/vector` | Healthy |
+| `/meridian` | Healthy — "LIVE STRUCTURE", catalyst lane rendered, analytics grid ready |
+| `/terminal` | Healthy — Largo terminal loaded and ready. A `ChunkLoadError`/CSS-MIME-refused pair appeared on the first load and did NOT reproduce on 2 of 3 direct follow-ups (1 follow-up repeated only the benign CSS-MIME console warning, self-recovering; the 3rd was fully clean) — consistent with the already-documented concurrent-deploy-noise pattern (see "Mid-interaction rollout resilience" below), not filed as a standing defect. |
+
+**Mobile viewport checks this pass (iOS-app-shell, per the methodology note below):**
+
+| Route | Result |
+|---|---|
+| `/nighthawk` mobile | Healthy — live play card fully rendered (MARA, live mark/greeks, management panel) |
+| `/dashboard` mobile | Healthy — toolbar GEX read `-$29.0B`, consistent with the same figure's already-documented natural drift over the session (`-$32.5B → -$32.1B → -$29.9B`) from the dual-GEX finding above; not a new discrepancy. Vector-tab sub-chart showed "Loading Vector chart..." at t=7s — not independently re-verified past that point this pass, flagged for the same slow-settle-vs-broken ambiguity already tracked for this route's other tabs (see items 2-4 below). |
+| `/vector` mobile | Healthy, but slow to settle — at t=7s showed "Loading chart..." and the Live Helix tape marked "STALE"/"Connecting...". Re-checked with longer waits: fully loaded by ~t25-40s (chart rendered, tape flipped to "LIVE" with real flow prints populated). Confirms this is a slow-settle state, not stuck — worth noting mobile Vector can take ~30s+ to fully populate live flow, which is slower than desktop but not broken. |
+
+| `/meridian` mobile | Healthy — "LIVE STRUCTURE, As of 12:32 PM ET", 217 catalysts / 200 earnings populated with real prints (GRRR, TUYA, PDD, NSSC) |
+| `/terminal` mobile | Healthy — Largo module picker fully rendered (SPX Slayer/Helix/Thermal/Vector/Night Hawk modules), input ready |
+
+**RTH live-testing pass (2026-08-24) complete for all 7 routes × both viewports.** One confirmed
+product defect this pass (SPX Slayer dual-GEX-figures, above, #2818). No other reproducible defects
+found — the `/vector` mobile slow-settle and `/terminal` desktop transient ChunkLoadError were both
+investigated and traced to known, already-documented non-product causes (slow client-side data
+population and concurrent-deploy noise respectively), not filed as findings. Remaining open item:
+premarket/close state transitions were not specifically tested (would need to be timed around the
+actual transition, not available on-demand within this pass).
+
+---
+
 ## Phase 0 status (2026-08-24) — full coverage achieved
 
 A broad interaction sweep (`qa-phase0-sweep.mjs`, #2775) followed by an exhaustive per-element
