@@ -36,12 +36,8 @@ test("adaptiveAutoNodeCount: SPX keeps timeframe AUTO cap (10 on 3m)", () => {
   assert.equal(n, tfAuto, "dense ladder should not self-limit");
 });
 
-test("adaptiveAutoNodeCount: NVDA self-limits below 10 on a quiet session", () => {
+test("adaptiveAutoNodeCount: NVDA self-limits below timeframe cap but respects AUTO floor", () => {
   const tfAuto = wallCountForTimeframe(3);
-  // The 3m AUTO cap tracks wallCountForTimeframe(3) — a dense-ladder count. This test cares that
-  // NVDA self-limits BELOW that cap on a quiet session, not about its exact value, which timeframe
-  // tuning changes (it was 10 when this was written and is 11 on current main). Asserting the
-  // literal made the test brittle to another module's constant; assert the property instead.
   assert.ok(tfAuto >= 10, `3m AUTO cap should be a dense-ladder count, got ${tfAuto}`);
   const candle = {
     minValue: NVDA.spot - NVDA.sessionSpan / 2,
@@ -53,8 +49,8 @@ test("adaptiveAutoNodeCount: NVDA self-limits below 10 on a quiet session", () =
     candleRange: candle,
     tfAutoCount: tfAuto,
   });
-  assert.ok(n < tfAuto, `NVDA should self-limit, got ${n}`);
-  assert.ok(n >= 3 && n <= 6, `expected ~4-6 rows at 20% candle share, got ${n}`);
+  assert.ok(n < tfAuto, `NVDA should self-limit below cap, got ${n}`);
+  assert.ok(n >= 7 && n <= tfAuto, `expected AUTO floor ~7 rows, got ${n}`);
 });
 
 test("adaptiveAutoNodeCount: volatile NVDA day allows more rows", () => {

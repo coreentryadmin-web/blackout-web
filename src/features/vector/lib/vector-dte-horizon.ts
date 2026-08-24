@@ -17,7 +17,11 @@ export type VectorDteHorizon = "0dte" | "weekly" | "monthly" | "all";
 /** Display order for the horizon toggle. */
 export const VECTOR_DTE_HORIZONS: readonly VectorDteHorizon[] = ["0dte", "weekly", "monthly", "all"];
 
-export const VECTOR_DEFAULT_DTE_HORIZON: VectorDteHorizon = "all";
+/** Standalone /vector default for single names — NOT oracle indices.
+ *  Measured 2026-08-24: the blended "all" rail on stocks carries ~60s sample gaps and sparse
+ *  beads/row, while weekly/0dte per-horizon rails record at 5s with full session density.
+ *  Oracle tickers override to 0DTE at the page layer (see defaultVectorDteHorizon). */
+export const VECTOR_DEFAULT_DTE_HORIZON: VectorDteHorizon = "weekly";
 
 /** Inclusive DTE ceiling per horizon (calendar days from today). "all" is unbounded. */
 const HORIZON_MAX_DTE: Record<Exclude<VectorDteHorizon, "all">, number> = {

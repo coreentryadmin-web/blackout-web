@@ -4,7 +4,7 @@ import { ComingSoon } from "@/components/ComingSoon";
 import {
   VectorPageClient,
   normalizeVectorTicker,
-  VECTOR_ORACLE_TICKERS,
+  defaultVectorDteHorizon,
 } from "@/features/vector";
 import { noindexPageMetadata } from "@/lib/page-metadata";
 import { Suspense } from "react";
@@ -40,7 +40,7 @@ export default async function VectorPage({ searchParams }: PageProps) {
       <VectorPageClient
         ticker={ticker}
         initialCompareRaw={compareRaw ?? null}
-        defaultDteHorizon={VECTOR_ORACLE_TICKERS.has(ticker) ? "0dte" : "all"}
+        defaultDteHorizon={defaultVectorDteHorizon(ticker)}
         defaultChartViewport="session"
       />
     </Suspense>

@@ -13,8 +13,14 @@ import { VECTOR_WALL_NODES_PER_SIDE } from "./vector-bar-timeframes";
 import type { VectorNodeDensity } from "./vector-node-density";
 import { resolveNodeCount } from "./vector-node-density";
 
-/** Candles must occupy at least this share of the visible price-axis span (member-readable tape). */
-export const AUTO_MIN_CANDLE_SHARE = 0.2;
+/** Candles must occupy at least this share of the visible price-axis span (member-readable tape).
+ *  Was 0.2 — lowered slightly (2026-08-24) so coarse single-name ladders can show one more bead
+ *  row without collapsing candles; paired with AUTO_MIN_ROWS_PER_SIDE below. */
+export const AUTO_MIN_CANDLE_SHARE = 0.16;
+
+/** AUTO never draws fewer rows than this when the timeframe cap allows — single names were self-
+ *  limiting to ~4 rows while the rail carries 8+ (measured NVDA 2026-08-24). Clamped to cap. */
+export const AUTO_MIN_ROWS_PER_SIDE = 7;
 
 export type AdaptiveNodeInputs = {
   spot: number;
@@ -54,9 +60,12 @@ export function adaptiveAutoNodeCount({
   if (rowAwareSpanPct(spot, strikes, cap, 0, hardCapPct) <= maxAxisSpanPct) return cap;
 
   for (let n = cap - 1; n >= 1; n--) {
-    if (rowAwareSpanPct(spot, strikes, n, 0, hardCapPct) <= maxAxisSpanPct) return n;
+    if (rowAwareSpanPct(spot, strikes, n, 0, hardCapPct) <= maxAxisSpanPct) {
+      const minRows = Math.min(AUTO_MIN_ROWS_PER_SIDE, cap);
+      return Math.max(minRows, n);
+    }
   }
-  return 1;
+  return Math.min(AUTO_MIN_ROWS_PER_SIDE, cap);
 }
 
 /** High/low from intraday bars — null when the session seed is empty or flat. */
