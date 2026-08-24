@@ -32,12 +32,12 @@ export type VectorOverlayDef = {
   /** Line colour — chosen distinct from the gold/purple beads and the cyan gamma-flip line. */
   color: string;
   /** Optional line width override (default 2 in the chart layer). */
-  lineWidth?: number;
+  lineWidth?: 1 | 2 | 3 | 4;
 };
 
 export const VECTOR_OVERLAYS: readonly VectorOverlayDef[] = [
   // Bright sky + thicker stroke — default-on VWAP was invisible against dark candles + yellow beads.
-  { id: "vwap", label: "VWAP", kind: "vwap", family: "vwap", color: "#7dd3fc", lineWidth: 3 },
+  { id: "vwap", label: "VWAP", kind: "vwap", family: "vwap", color: "#7dd3fc", lineWidth: 3 as const },
   { id: "ema9", label: "EMA 9", kind: "ema", family: "ema", period: 9, color: "#fb923c" },
   { id: "ema21", label: "EMA 21", kind: "ema", family: "ema", period: 21, color: "#fbbf24" },
   { id: "ema50", label: "EMA 50", kind: "ema", family: "ema", period: 50, color: "#f472b6" },

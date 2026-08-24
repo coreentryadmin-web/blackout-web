@@ -18,6 +18,7 @@ import {
   type IPriceLine,
   type ISeriesApi,
   type ISeriesMarkersPluginApi,
+  type LineWidth,
   type SeriesMarker,
   type Time,
   type UTCTimestamp,
@@ -2482,7 +2483,7 @@ export function VectorChart({
         if (v != null) data.push({ time: bars[i]!.time, value: v });
       }
       let line = existing;
-      const overlayLineWidth = def.lineWidth ?? 2;
+      const overlayLineWidth: LineWidth = (def.lineWidth ?? 2) as LineWidth;
       if (!line) {
         line = chart.addSeries(LineSeries, {
           color: def.color,
