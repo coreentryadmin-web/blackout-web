@@ -105,6 +105,10 @@ A score with no basis is not a fact. **If a product cannot produce a calibrated 
 field.** An invented `0.7` is worse than nothing, because it will be compared against another lane's
 real one. Omission is honest; fabrication is not.
 
+**HELIX NOTE:** The conviction score shown in the Helix tape UI (order size + sweep/0DTE flags) is a
+**notability heuristic, not a calibrated confidence measure**, and must never be sent to Largo as a
+confidence field. It is documented in the UI with a caveat: *"Notability heuristic: order size + sweep/0DTE flags. Not a validated directional-conviction ranking."* Confidence to Largo, if needed, must be omitted or derived separately from real evidence.
+
 ### C7 — EVIDENCE.
 
 ```ts
