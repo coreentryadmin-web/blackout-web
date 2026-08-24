@@ -708,6 +708,20 @@ single-column. Two things worth recording:
   could show something (recent closed plays, a teaser for the other 3 engine tabs, next-session
   countdown) instead of the page just stopping.
 
+**LIVE INTERACTION TEST, 2026-08-24** (`live-ui-interaction-audit.mjs`, desktop 1440): an isolated
+run reported `[FAIL] BACK from "0DTE" left the page unusable (loading) {"chars":0}` — investigated
+and determined to be an AUDIT-TOOLING false positive, not a Night Hawk defect. Root cause: the "0DTE"
+engine tab uses `router.replace()` (`NightHawkFeed.tsx:65`, deliberate — avoids polluting browser
+history on a tab switch), so the URL changes without pushing a history entry. The harness's
+recovery logic called `page.goBack()` on any URL change regardless, which in a fresh audit context
+(no real prior browsing history) pops into the browser's own blank initial page rather than
+anything Night Hawk rendered — confirmed via `history.length` being identical before and after the
+click, and reproduced identically with JS-level `window.history.back()`, ruling out a
+Playwright/CDP quirk. Fixed in the harness itself (`needsBackRecovery()`,
+`scripts/audit/lib/back-nav-recovery.mjs`) rather than the product — see
+`docs/audit/findings-staging/2026-08-24-live-ui-audit-back-recovery-false-positive.md`. No Night
+Hawk code change.
+
 ---
 
 ## 8. Largo — `/terminal`
