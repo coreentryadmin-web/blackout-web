@@ -961,3 +961,62 @@ test("diversity hedge skipped when NH_LEGACY_DIVERSITY_HEDGE=0", () => {
     else process.env[key] = prev;
   }
 });
+
+// ── Day-trade mode: skip stock-only plays when no 0DTE/1DTE contract ──────────
+// Regression (2026-08-24): buildDeterministicEditionPlays was building stock-only
+// plays (contract=null) even in day-trade mode (maxDte ≤ 1). These had unparseable
+// options_play strings that failed DTE filter, dropping 31% of built plays downstream.
+// Fix: skip stock-only in day-trade; overnight swing still builds them as fallback.
+
+test("buildDeterministicEditionPlays: day-trade mode (maxDte=1) skips candidates with no 0/1DTE contract", () => {
+  // Chain with only 7+ DTE contracts (no same-day or next-day expiry).
+  const longDtedChain: EditionChainData = {
+    spot: 100,
+    rows: [row(100, { expiry: ymdPlus(7), callAsk: 4.2, callBid: 3.8 })],
+  };
+
+  const ranked = [scored("AAA", "long", 68), scored("BBB", "long", 65)];
+  const chains = {
+    AAA: longDtedChain, // no 0/1DTE contracts
+    BBB: chainAround(100), // has far-dated chain (will also have none when filtered)
+  };
+  const dossierMap = { AAA: dossier("AAA", 100), BBB: dossier("BBB", 100) };
+
+  // Day-trade mode: maxDte=1 means only 0DTE and 1DTE are acceptable.
+  const { plays } = buildDeterministicEditionPlays({
+    ranked,
+    dossierMap,
+    chains,
+    target: 5,
+    maxDte: 1,
+  });
+
+  // Both candidates should be skipped because the longDtedChain has no 0/1DTE contracts,
+  // and chainAround defaults to 120 days out (far from today).
+  assert.equal(plays.length, 0, "day-trade mode must skip candidates with no 0/1DTE contract");
+});
+
+test("buildDeterministicEditionPlays: overnight swing mode (maxDte=null) builds stock-only as fallback", () => {
+  // Chain with only 7+ DTE contracts.
+  const longDtedChain: EditionChainData = {
+    spot: 100,
+    rows: [row(100, { expiry: ymdPlus(7), callAsk: 4.2, callBid: 3.8 })],
+  };
+
+  const ranked = [scored("AAA", "long", 68)];
+  const chains = { AAA: longDtedChain };
+  const dossierMap = { AAA: dossier("AAA", 100) };
+
+  // Overnight swing mode: maxDte=null (or omitted) allows any expiry.
+  const { plays } = buildDeterministicEditionPlays({
+    ranked,
+    dossierMap,
+    chains,
+    target: 5,
+    maxDte: null, // swing mode
+  });
+
+  // Swing mode should accept the 7-DTE contract (meets the ≥5 DTE requirement).
+  assert.equal(plays.length, 1, "overnight swing builds the 7-DTE contract");
+  assert.equal(plays[0]!.ticker, "AAA");
+});
