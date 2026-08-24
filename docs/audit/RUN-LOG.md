@@ -8,7 +8,41 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
-## 2026-08-24 — [SEO] Lane heartbeat: Production validation + PR sweep + GSC opportunities scan
+## 2026-08-24 (12:20 UTC) — [SEO] Lane heartbeat: Repeat validation cycle — state STABLE
+
+**Severity.** — (no defect found)
+
+**Why it ran.** Scheduled SEO lane heartbeat (routine weekly validation, second fire today).
+
+**Result — `OVERALL: PASS`, `EXIT=0` — IDENTICAL to 06:19 UTC cycle:**
+
+1. **Homepage CLS (post-Cloudflare purge):**
+   - Desktop 1440×900: **0.0008** (60/60 assets routed ok)
+   - Mobile 430×932: **0.0000** (59/59 assets routed ok)
+   - Verdict: **GOOD** (both well under 0.1 threshold; fixes holding)
+
+2. **OG image crawlability (`/api/og`):**
+   - HTTP 200, PNG image response
+   - Unauthenticated (crawlable by search engines)
+   - Verdict: **LIVE** (OG crawlability confirmed)
+
+3. **PR sweep (`agent-pr-sweep.mjs`):**
+   - 1 open agent PR (not SEO-related; #2806 CSS timeouts, CI running)
+   - 0 conflicted — no rebases needed
+   - 0 red CI blocking SEO work
+   - Verdict: **CLEAR** (no SEO-lane blockers)
+
+4. **GSC opportunities scan (`gsc-opportunities-report.mjs`, 2026-05-24 — 2026-08-21):**
+   - **Striking distance (page 2):** 1 query only: "is 0dte gambling" at pos 11.5, 4 imp, 0 CTR — already optimized, no action
+   - **Deep demand (pos 67+):** "options assignment" (pos 67.4, 10 imp) + "what is gex" (pos 67, 6 imp) — require authority, out-of-lane
+   - **High-impression pages:** 9 pages with 11–123 impressions, all 0 CTR — brand/site:search only, not actionable
+   - Verdict: **IDENTICAL TO 06:19 RUN — no new opportunities**
+
+**Interpretation:**
+Production state is **STABLE AND UNCHANGED** across two heartbeat cycles (6 hours apart). All fixes hold. No new SEO work emerged. Lane correctly awaits out-of-lane blockers: authority/backlinks and GA4→Google Ads conversion environment variables.
+
+---
+## 2026-08-24 (06:19 UTC) — [SEO] Lane heartbeat: Production validation + PR sweep + GSC opportunities scan
 
 **Severity.** — (no defect found)
 
