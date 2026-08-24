@@ -59,6 +59,11 @@ export function omitUncalibratedSpxConfidence<T>(payload: T): T {
   if (payload == null || typeof payload !== "object" || Array.isArray(payload)) return payload;
   const obj = payload as MaybeConfidence;
   if (!("rawScore" in obj)) return payload;
-  const { rawScore: _dropped, ...rest } = obj;
+  // Policy: per LARGO-PRODUCT-CONTRACT.md, omit confidence when uncalibrated.
+  // This field is an arbitrary formula (|score|*1.15 + #factors*3, clamped 0-96)
+  // with no measured calibration against outcomes — measured win rate on these plays
+  // is ~50% while the field reads constant 96, so fabricated confidence would corrupt
+  // cross-product ranking. See FINDINGS 2026-08-23-spx-confidence-uncalibrated.md.
+  const { rawScore: _dropped, confidence: _confidenceOmitted, ...rest } = obj;
   return { ...rest, confidence_omitted: SPX_CONFIDENCE_OMITTED } as unknown as T;
 }
