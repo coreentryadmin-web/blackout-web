@@ -112,7 +112,7 @@ export function macroSurpriseScore(
 ): MacroSurpriseScore {
   let surprise_pct: number | null = null;
   let verdict: MacroSurpriseScore["verdict"] = "unknown";
-  if (actual != null && estimate != null && estimate !== 0) {
+  if (actual != null && estimate != null && Number.isFinite(actual) && Number.isFinite(estimate) && estimate !== 0) {
     surprise_pct = Number((((actual - estimate) / Math.abs(estimate)) * 100).toFixed(2));
     if (Math.abs(surprise_pct) < 1) verdict = "inline";
     else verdict = surprise_pct > 0 ? "beat" : "miss";
