@@ -505,13 +505,24 @@ closing part of §11's "no interaction testing yet" gap.
   (`VectorPageShell.tsx`'s `initialGammaFlip`/`initialWalls` props, computed server-side via
   `loadVectorSeedProps` → `getVectorGammaFlip`/`getVectorGexWalls`), NOT a client-side fetch through
   the tunnel — so this isn't obviously explained by the harness's own documented SSE/streaming
-  tunnel limitation either. **Root cause not established** — could be a genuine SSR-path cache/data
-  mismatch (the SSR seed reads a different store than the REST route I verified directly) or a
-  harness artifact still not fully understood. Filing a fix here would mean guessing at a root cause
-  this pass's evidence doesn't actually nail down — logged as an open question in
-  `docs/audit/UI-UX-OPPORTUNITIES.md` item 9 instead, with the exact repro command, pending a
-  focused trace of `loadVectorSeedProps`'s two data calls against the SSR render path specifically
-  (not the REST route, which is confirmed working).
+  tunnel limitation either.
+
+  **RE-RUN 2026-08-24 during live RTH (Mon, market open) — same result, off-hours ruled out.**
+  The harness's play card generated genuinely fresh, live-computed reads this time ("SCALP ·
+  momentum short on continuation → target magnet/VWAP 763.67"), proving live data was flowing
+  through the page — yet the regime banner was still absent in all 12 states. Code trace (same
+  day): `emitRegime()` (`VectorChart.tsx` ~line 3048) fires **unconditionally on interaction**, not
+  just via SSE — the lens-change effect (~line 3611) calls it directly on the walkthrough's own
+  GEX↔VEX clicks (states 07/08). It reads `liveGexWalls()`/`liveGammaFlip()`, which — like the SSR
+  seed path — pull from the **same per-process, in-memory server cache** (`vector-snapshot.ts`'s
+  `state(ticker)`), populated by that process's own live UW WebSocket connection, with **no
+  cross-instance sync** (unlike the Redis-backed caches used elsewhere in this codebase for exactly
+  this reason). **Leading hypothesis, not confirmed:** on ECS, a request landing on a task whose UW
+  WS connection is cold could see `posture:"unknown"` regardless of interaction, while a different
+  request (e.g. the direct REST checks that verified data exists) lands on a warm task. Confirming
+  this needs per-task visibility (ECS exec / task-level logging) this sandbox doesn't have — so
+  it's recorded as a leading hypothesis, not a finding with a guessed fix. Full detail and next
+  steps: `docs/audit/UI-UX-OPPORTUNITIES.md` item 9.
 
 ---
 
