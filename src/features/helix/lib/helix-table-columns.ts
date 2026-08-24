@@ -174,7 +174,7 @@ export const HELIX_TABLE_COLUMNS: HelixColumnDef[] = [
     id: "score",
     label: "Score",
     shortLabel: "Sc",
-    hint: "Blackout conviction score",
+    hint: "Notability heuristic: order size + sweep/0DTE flags. Not a validated directional-conviction ranking.",
     group: "intel",
     sortKey: "score",
     align: "right",
