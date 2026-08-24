@@ -88,10 +88,11 @@ actually exercised.
 | `/heatmap` | Healthy — "QUOTE LIVE" |
 | `/dashboard` | Investigated deeply — produced the dual-GEX-figures finding above (#2818) |
 | `/vector` | Healthy |
+| `/meridian` | Healthy — "LIVE STRUCTURE", catalyst lane rendered, analytics grid ready |
+| `/terminal` | Healthy — Largo terminal loaded and ready. A `ChunkLoadError`/CSS-MIME-refused pair appeared on the first load and did NOT reproduce on 2 of 3 direct follow-ups (1 follow-up repeated only the benign CSS-MIME console warning, self-recovering; the 3rd was fully clean) — consistent with the already-documented concurrent-deploy-noise pattern (see "Mid-interaction rollout resilience" below), not filed as a standing defect. |
 
-**Not yet RTH-tested this pass:** `/meridian`, `/terminal`, mobile viewports during RTH, and other
-RTH-sensitive state transitions (premarket→open, open→close). Continuing this pass while the market
-remains open.
+**Not yet RTH-tested this pass:** mobile viewports during RTH, and other RTH-sensitive state
+transitions (premarket→open, open→close). Continuing this pass while the market remains open.
 
 ---
 
