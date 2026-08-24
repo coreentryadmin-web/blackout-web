@@ -394,8 +394,12 @@ showing Friday's close) is a different, milder question than the one originally 
 
 **LIVE INTERACTION TEST, 2026-08-24** (`thermal-interaction-audit.cjs`, live RTH, desktop 1440 +
 mobile 430) — the committed interaction harness (pixel-level collision/overflow/tap-target
-measurement, not just selector presence). Desktop run hit a **HARNESS** failure (`TypeError:
-Cannot read properties of null`, not a product verdict — not yet re-diagnosed). Mobile run: page
+measurement, not just selector presence). Desktop run originally hit a **HARNESS** failure
+(`TypeError: Cannot read properties of null`) — root-caused later the same day as the deploy-window
+`ChunkLoadError` crash (see below), and confirmed by an isolated re-run outside any deploy window
+after the fix merged: `PAGE LOADED in 10804ms`, `routed 114 ok / 0 fail`, `0` console errors, `0`
+horizontal overflow, `0` elements past viewport — desktop interaction coverage is clean
+(`UI-UX-OPPORTUNITIES.md` item 11). Mobile run: page
 loaded (149 routed, 0 fail), `body horizontal overflow: 0px`, `elements past viewport: 0`. Two
 real observations:
 - **5 text collisions** measured on the mobile GEX matrix table ("Strike" ∩ "773", "Aug 25" ∩
