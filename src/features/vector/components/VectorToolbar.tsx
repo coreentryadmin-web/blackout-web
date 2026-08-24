@@ -5,6 +5,7 @@ import { VectorDteToggle } from "@/features/vector/components/VectorDteToggle";
 import { VectorLensToggle } from "@/features/vector/components/VectorLensToggle";
 import { VectorBeadRailToggle } from "@/features/vector/components/VectorBeadRailToggle";
 import { VectorNodesToggle } from "@/features/vector/components/VectorNodesToggle";
+import { VectorVolumeModeToggle } from "@/features/vector/components/VectorVolumeModeToggle";
 import { VectorReplayControls } from "@/features/vector/components/VectorReplayControls";
 import { VectorTimeframeSelect } from "@/features/vector/components/VectorTimeframeSelect";
 import { VectorIndicatorMenu } from "@/features/vector/components/VectorIndicatorMenu";
@@ -17,6 +18,7 @@ import type { VectorTimeframeMinutes } from "@/features/vector/lib/vector-bar-ti
 import type { VectorDteHorizon } from "@/features/vector/lib/vector-dte-horizon";
 import type { VectorIndicatorId, VectorOpeningRangeMinutes } from "@/features/vector/lib/vector-indicators-config";
 import type { VectorNodeDensity } from "@/features/vector/lib/vector-node-density";
+import type { VectorVolumeMode } from "@/features/vector/lib/vector-volume-render";
 
 type Props = {
   interval: VectorTimeframeMinutes;
@@ -76,6 +78,10 @@ type Props = {
   onNodeDensity: (density: VectorNodeDensity) => void;
   /** What "auto" resolves to right now, so the AUTO chip can show a real count. */
   nodeAutoCount: number;
+  /** Volume sub-pane paint mode (RVOL / pressure / direction). Hidden when volume pane omitted. */
+  volumeMode?: VectorVolumeMode;
+  onVolumeMode?: (mode: VectorVolumeMode) => void;
+  hideVolumePane?: boolean;
 };
 
 /** Single compact toolbar — timeframe left, replay + lens right. */
@@ -125,6 +131,9 @@ export function VectorToolbar(props: Props) {
     nodeDensity,
     onNodeDensity,
     nodeAutoCount,
+    volumeMode = "relative",
+    onVolumeMode,
+    hideVolumePane = false,
   } = props;
 
   const drawMenu = drawTools ? <VectorDrawToolsMenu {...drawTools} /> : null;
@@ -257,6 +266,9 @@ export function VectorToolbar(props: Props) {
           autoCount={nodeAutoCount}
           exposeTestIds={false}
         />
+        {!hideVolumePane && onVolumeMode ? (
+          <VectorVolumeModeToggle value={volumeMode} onChange={onVolumeMode} exposeTestIds={false} />
+        ) : null}
         {trailSlot}
       </div>
 
@@ -319,6 +331,9 @@ export function VectorToolbar(props: Props) {
           ) : null}
           <VectorBeadRailToggle enabled={indicators} onToggle={onToggleIndicator} lens={lens} />
           <VectorNodesToggle value={nodeDensity} onChange={onNodeDensity} autoCount={nodeAutoCount} />
+          {!hideVolumePane && onVolumeMode ? (
+            <VectorVolumeModeToggle value={volumeMode} onChange={onVolumeMode} />
+          ) : null}
           {trailSlot}
         </div>
       </div>
