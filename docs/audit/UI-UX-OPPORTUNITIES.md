@@ -42,12 +42,20 @@ a pattern worth generalizing. Classify with the brief's own scale:
    equivalent (not just iOS) is warranted given brief item 10's cross-product investigation
    standard.
 
-4. **[P2] SPX Slayer's Vector/Matrix/Intel single-panel tabs vs. a true multi-panel desktop
-   layout.** Once `UI-UX-MAP.md` §2's P0 (blank left column) is root-caused, there's a design
-   question sitting behind the bug fix: should desktop SPX Slayer show all three panels at once
-   (matching the multi-panel composition `SpxDashboard.tsx` actually wires up) rather than
-   single-panel tabs borrowed from the compact/native layout? That's a bigger call than the bug fix
-   and belongs here until it's decided, not folded silently into the P0 fix PR.
+4. **[ANSWERED, 2026-08-24 — already resolved by the same-day P0 retraction, no separate decision
+   needed] SPX Slayer's Vector/Matrix/Intel single-panel tabs vs. a true multi-panel desktop
+   layout.** This item asked, pending the §2 P0 (blank left column) being root-caused, whether
+   desktop SPX Slayer *should* show all panels at once rather than single-panel tabs. That P0 was
+   root-caused the same day it was filed (`UI-UX-MAP.md` §2's correction note) as a wrong-UA
+   methodology bug, not a product defect — and the correction already answers this item's design
+   question in the process: **the real desktop layout already IS the 4-column multi-panel
+   composition** (Pulse/Largo rail, Dealer Gamma Map, EOD Pin Forecaster, Vector chart, all mounted
+   simultaneously, no tabs) — confirmed independently by the SPX lane's own same-day
+   `docs/spx/SPX-SLAYER-CERTIFICATION.md`, which reports zero blank-panel findings on this exact
+   layout. The single-panel `iosPanel` tabs are real but correctly scoped to the compact/native
+   shell only, never shown at desktop 1440×900 with the correct UA — so there's no separate "should
+   desktop show all panels" decision left to make; it already does. Closing this item rather than
+   leaving a design question open that the evidence already settled.
 
 5. **[P3] Night Hawk's empty state on a no-session day leaves ~45% of the mobile viewport
    blank.** (`UI-UX-MAP.md` §7.) Candidate content for that space: recent closed plays, a teaser
@@ -126,6 +134,52 @@ a pattern worth generalizing. Classify with the brief's own scale:
    same result). Next step for whoever picks this up: either get ECS task-level visibility to
    confirm the multi-instance-cache theory directly, or ask Vector's lane whether a client-side
    fallback fetch is an intentional trade-off they've already made (vs. an oversight).
+
+10. **[P2, needs root-cause] Thermal mobile GEX matrix — 5 measured text collisions.**
+    `thermal-interaction-audit.cjs` (live RTH, 430×932) measured 5 physical text-leaf collisions on
+    the GEX matrix table: `"Strike" ∩ "773"` (23×10px), `"Aug 25" ∩ "+$9.6M"` (47×17px),
+    `"Aug 25" ∩ "+181%"` (29×10px), `"Net flow" ∩ "$484.9M"` (60×17px, and again at 60×3px — two
+    overlapping pairs at the same header). These are the harness's own filtered, physical
+    getBoundingClientRect() intersections (off-screen and clipped-by-scroll-ancestor leaves already
+    excluded per that harness's own documented false-positive lesson), so they're a real measured
+    overlap, not noise — but not yet traced to the specific component/CSS rule or fixed. Also
+    measured in the same run: 1 clipped text leaf, 1 sub-24px tap target (a `<a>"Skip to content"`
+    1×1 — likely an intentionally visually-hidden accessibility skip-link, not a real visible tap
+    target, but not yet confirmed either way). Repro: `NODE_USE_ENV_PROXY=1 PROBE_COOKIE=<cookie>
+    node scripts/audit/thermal-interaction-audit.cjs` (mint a cookie via
+    `mintClerkPremiumSession` first). Next step: screenshot/zoom the matrix table's header row at
+    430px to see the collision directly (this pass's own live screenshot attempts at `/heatmap`
+    kept landing on the deploy-window `ChunkLoadError` crash — see item 11 / the same-day finding —
+    before a clean repro could be captured of this specific table state).
+
+11. **Thermal desktop interaction audit — HARNESS failure, likely the SAME root cause as item 12's
+    fixed ChunkLoadError crash, not yet re-run to confirm.** `thermal-interaction-audit.cjs` at
+    1440×900 threw `TypeError: Cannot read properties of null (reading 'scrollWidth')` inside its
+    own `page.evaluate`, reading `document.documentElement.scrollWidth` /
+    `document.body.scrollWidth` — properties that are normally never null once a page has loaded,
+    which is exactly why this reads as suspicious rather than a simple missing-selector bug. The
+    harness's OWN page-loaded gate had already passed (`loaded.thermal && loaded.matrix` both
+    true) before this evaluate ran, meaning the DOM went from "confirmed present" to "document.body
+    is null" in the ~2.5s settle window between the gate check and the geometry read — consistent
+    with a page-level crash/reload happening mid-measurement, not a selector the probe got wrong.
+    This ran in the same overall session, during the same deploy-heavy window, as the
+    `ChunkLoadError` crashes found and fixed same day
+    (`docs/audit/findings-staging/2026-08-24-chunk-load-error-critical-crash.md`) — very likely the
+    identical root cause manifesting as a harness-level null-property error instead of a visible
+    "CRITICAL ERROR" screen. Not chased further to full proof (would mean deliberately re-running
+    during another live deploy window, which isn't reliably reproducible on demand). Next step:
+    re-run `thermal-interaction-audit.cjs` at 1440×900 outside any deploy window to confirm desktop
+    Thermal interaction coverage is otherwise clean, now that #2842 (the chunk-error self-heal) is
+    merged.
+
+12. **[DONE, 2026-08-24] Platform-wide `ChunkLoadError` during a deploy could crash any page to a
+    dead-end "CRITICAL ERROR" screen — found via a Thermal interaction-audit run, fixed the same
+    day.** Not Thermal-specific — surfaced there by coincidence of timing (a live deploy window),
+    but the fix is in the shared root/route error boundaries and applies to every route. Both
+    `global-error.tsx` and `route-error-boundary.tsx` now detect a `ChunkLoadError` and perform one
+    guarded `window.location.reload()`, self-healing a client stuck on a stale chunk manifest from
+    before the deploy rotated instead of leaving it on a manual "Try again." See
+    `docs/audit/findings-staging/2026-08-24-chunk-load-error-critical-crash.md`.
 
 ---
 
