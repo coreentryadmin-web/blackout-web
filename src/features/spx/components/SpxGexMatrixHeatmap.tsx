@@ -500,7 +500,7 @@ export function SpxGexMatrixHeatmap({
   return (
     <Panel
       accent={panelAccent}
-      kicker={`SPX · ${lensLabel} matrix · near-term`}
+      kicker={`SPX · ${lensLabel} matrix · all expiries`}
       title="Dealer gamma map"
       actions={
         <span className="flex items-center gap-2 font-mono text-[10px] tabular-nums text-sky-300">

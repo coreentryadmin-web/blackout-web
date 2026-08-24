@@ -97,7 +97,7 @@ const METRIC_TIPS = {
   vwapVWNative: "Volume-weighted using the index bars' own volume.",
   vwapEqualWeight:
     "NOT volume-weighted: SPX index bars carry no volume, so this is an equal-weight average of each minute's typical price.",
-  gex: "Net dealer gamma exposure — positive dampens moves, negative amplifies them.",
+  gex: "Net dealer gamma exposure, 0DTE-scoped (near-term positioning) — positive dampens moves, negative amplifies them. See GEX MATRIX panel for full-chain aggregate.",
   regime: "TREND regime — price vs the 20/50-day EMAs (bullish / bearish / neutral). Distinct from the GAMMA regime (long/short gamma) the chart banner and EOD pin show, which is spot vs the gamma flip — the two answer different questions.",
   flip: "Strike where net dealer gamma flips sign — above it dealers dampen moves, below it they amplify. This desk value is the NEAR-TERM aggregate (multiple expiries); the chart's flip line is 0DTE-scoped, so the two can read differently.",
   maxPain: "Strike where the most option value expires worthless — a common pin magnet into the close. OI-scoped: computed from open interest only, aggregated across the near-term expiries.",
@@ -210,7 +210,7 @@ function DeskTopStatsRow({
           vw={desk?.vwap_volume_weighted === true}
         />
         <StatPill
-          label="GEX"
+          label="GEX (0DTE)"
           value={showValues && desk?.gex_net != null ? fmtPremium(desk.gex_net) : "—"}
           tone={(desk?.gex_net ?? 0) >= 0 ? "bull" : "bear"}
           title={METRIC_TIPS.gex}
