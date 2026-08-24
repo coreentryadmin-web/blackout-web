@@ -250,6 +250,15 @@ test("wall-history route serves the blended 'all' rail instead of short-circuiti
   assert.match(route, /enrichSessionWallHistory/, "blended rail must gap-fill like SSR seed");
 });
 
+test("VectorChart: standalone desk uses flex-fill canvas (volume sub-pane must not clip)", () => {
+  const src = read("src/features/vector/components/VectorChart.tsx");
+  assert.match(src, /vector-chart-canvas--desk-fill/);
+  assert.doesNotMatch(src, /calc\(100vh - 132px\)/);
+  const css = read("src/app/globals.css");
+  assert.match(css, /\.vector-page-shell \.vector-chart-canvas--desk-fill/);
+  assert.match(css, /\.vector-page-shell \.vector-chart-stage/);
+});
+
 test("VectorChart: session overview tightens vertical autoscale for readable beads", () => {
   const src = read("src/features/vector/components/VectorChart.tsx");
   assert.match(src, /SESSION_OVERVIEW_BEAD_VIEW_MAX_PCT/);

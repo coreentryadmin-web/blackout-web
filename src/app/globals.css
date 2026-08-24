@@ -8528,6 +8528,47 @@ html.product-shell .nav-mega {
     touch-action: none;
   }
 
+  /*
+   * Standalone /vector desk — flex-fill chart height. The old inline calc(100vh - 132px) assumed
+   * only site nav above the canvas; the real page stacks toolbar + view toggle + regime banner +
+   * a 3-col grid, so the canvas overflowed its column and clipped the volume sub-pane at the bottom.
+   * Same flex chain as SPX embed (spx-sniper-vector-col) and compare panes.
+   */
+  .vector-page-shell .vector-chart-terminal-grid {
+    min-height: calc(100dvh - 10.5rem);
+    align-items: stretch;
+  }
+
+  .vector-page-shell .vector-chart-terminal-chart {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+  }
+
+  .vector-page-shell .vector-chart-wrap {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 0;
+    min-height: 0;
+    min-width: 0;
+  }
+
+  .vector-page-shell .vector-chart-stage {
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .vector-page-shell .vector-chart-canvas--desk-fill {
+    flex: 1 1 0;
+    min-height: 320px !important;
+    height: auto !important;
+    width: 100%;
+  }
+
   .vector-chart-column-head {
     @apply mb-1 flex flex-wrap items-center gap-2;
   }

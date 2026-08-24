@@ -854,8 +854,9 @@ function applyPinProjection(
  * oscillator panes are (re)built, since a freshly-created pane starts at the default stretch of 1.
  */
 const VOLUME_PANE_INDEX = 1;
-const PRICE_PANE_STRETCH = 8;
-const VOLUME_PANE_STRETCH = 1.4;
+const PRICE_PANE_STRETCH = 7;
+/** Volume sub-pane — tall enough to read RVOL bars; price pane stays dominant. */
+const VOLUME_PANE_STRETCH = 2.2;
 const OSCILLATOR_PANE_STRETCH = 2.6;
 
 function applyPaneStretch(chart: IChartApi, hideVolumePane = false): void {
@@ -4377,8 +4378,9 @@ export function VectorChart({
       );
       intersectionObserver.observe(container);
     }
-    // WKWebView flex layouts often settle one frame late — double-rAF resize for fillHost embeds.
-    if (fillHost) {
+    // Flex-hosted canvases (SPX embed + standalone /vector desk-fill) mount after layout settles —
+    // nudge autosize once flex assigns a definite height (WKWebView can miss the first tick at 0×0).
+    if (fillHost || container.classList.contains("vector-chart-canvas--desk-fill")) {
       requestAnimationFrame(() => {
         requestAnimationFrame(nudgeChartSize);
       });
@@ -5049,12 +5051,10 @@ export function VectorChart({
         )}
         <div
           ref={containerRef}
-          className={clsx("vector-chart-canvas", fillHost && "vector-chart-canvas--fill-host")}
-          style={
-            fillHost
-              ? undefined
-              : { height: "calc(100vh - 132px)", minHeight: 520 }
-          }
+          className={clsx(
+            "vector-chart-canvas",
+            fillHost ? "vector-chart-canvas--fill-host" : "vector-chart-canvas--desk-fill"
+          )}
           aria-busy={liveSession && !replayMode}
         />
       </div>
