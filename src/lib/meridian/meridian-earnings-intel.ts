@@ -136,7 +136,7 @@ export async function loadMeridianEarningsIntel(input: {
 
   const expected_move_pct =
     earningsEm ??
-    (vectorCoversPrint && Number.isFinite(vectorEm!.movePct) ? Number((vectorEm!.movePct * 100).toFixed(1)) : null) ??
+    (vectorCoversPrint ? Number((vectorEm!.movePct * 100).toFixed(1)) : null) ??
     input.pack.expected_move_pct;
 
   const expected_move_source =

@@ -143,9 +143,9 @@ function contractKey(flow: {
   const side = normType(flow.option_type) ?? "?";
   const at = String(flow.at ?? "").slice(0, 19);
   const prem = flow.premium != null && Number.isFinite(flow.premium) ? Math.round(Number(flow.premium)) : 0;
-  const strike = Number.isFinite(flow.strike) ? Math.round(flow.strike) : 0;
   // strike-rounding: intentional — this is a PRINT key (it carries `at` and `premium`), and it must
   // stay byte-compatible with links already shared before 2026-08-23. See flowMatchesDeepLink.
+  const strike = Number.isFinite(flow.strike) ? Math.round(flow.strike) : 0;
   return `${flow.ticker.toUpperCase()}|${strike}|${String(flow.expiry).slice(0, 10)}|${side}|${at}|${prem}`;
 }
 
