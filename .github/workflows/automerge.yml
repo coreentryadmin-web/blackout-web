@@ -42,6 +42,29 @@ name: Auto-merge agent PRs
 # Token: the built-in GITHUB_TOKEN is sufficient for the current ruleset (0 required
 # approvals). If approvals are ever required, swap in a PAT/app token that can approve.
 #
+# ── SILENT NO-DEPLOY: GITHUB_TOKEN MERGES DON'T TRIGGER DOWNSTREAM WORKFLOWS (2026-08-24) ──
+#
+# GitHub's documented anti-recursion rule: an event created by the default GITHUB_TOKEN
+# inside a workflow run does not trigger ANY other workflow (push-triggered CI, CodeQL,
+# ecr-push-production.yml — nothing). This workflow's merge step used GITHUB_TOKEN, so
+# every PR it auto-merged landed on `main` with NO verify re-run and NO production deploy,
+# silently. Nothing failed — the merge commit just never fired a single downstream run.
+#
+# Measured twice same-day on the SAME lane (#2783, #2796 — both `claude/largo-53p3kg`,
+# both merged by `github-actions[bot]` via this workflow): zero check-runs beyond the
+# no-op `collect-and-dispatch`, and the last successful `ecr-push-production.yml` run
+# stayed pinned to an earlier commit while real `src/lib/largo/**` changes sat undeployed
+# on `main`. Every merge done manually via the GitHub API/MCP (a real user identity, not
+# GITHUB_TOKEN) fired CI/deploy correctly in the same window — that contrast is what
+# isolated the cause. Caught only because the coordinator re-checked `main`'s HEAD sha
+# against the deploy workflow's last-run sha rather than trusting the merge itself.
+#
+# Fix: use `AGENT_RELEASE_TOKEN` (the same PAT `agent-pr-release.yml` already uses to
+# undraft PRs, since GITHUB_TOKEN is refused that too) for the merge step specifically —
+# a PAT is a real identity, so its push events trigger downstream workflows normally.
+# Falls back to GITHUB_TOKEN if the secret is unset (existing behavior, still silent on
+# deploy — better than erroring the whole workflow over a missing optional secret).
+#
 # Prerequisites (one-time): repo Settings → General → Pull Requests → "Allow auto-merge"
 # must be ON, and the `cursor-merge` ruleset must require the `verify` check.
 
@@ -85,7 +108,9 @@ jobs:
       - name: Enable auto-merge (squash) — merges once `verify` passes
         if: steps.gate.outputs.skip != 'true'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # AGENT_RELEASE_TOKEN so the merge event fires downstream workflows (CI/deploy) —
+          # GITHUB_TOKEN merges are invisible to push-triggered workflows, see note above.
+          GH_TOKEN: ${{ secrets.AGENT_RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
         run: |
           gh pr merge --auto --squash \
             "${{ github.event.pull_request.number }}" \
