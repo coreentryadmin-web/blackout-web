@@ -86,6 +86,12 @@ export async function buildPublicGexSnapshot(ticker: PublicGexTicker): Promise<P
     // describe the same moment, or a snapshot built across 15:59:59 -> 16:00:01 reports OPEN over
     // post-close levels.
     const session = publicSnapshotSessionFacts();
+    // Client-side wall constraint: a call wall must be above spot (resistance), a put wall below
+    // (support). If a wall lands on the wrong side, return null rather than an inverted level.
+    // This is applied defensively here to protect against unconstrained cached heatmaps while the
+    // server-side source (wallsFromStrikeTotals with spot) is the primary gate.
+    const constrainedCallWall = heatmap.gex.call_wall != null && heatmap.gex.call_wall > heatmap.spot ? heatmap.gex.call_wall : null;
+    const constrainedPutWall = heatmap.gex.put_wall != null && heatmap.gex.put_wall < heatmap.spot ? heatmap.gex.put_wall : null;
     const snapshot: PublicGexSnapshot = {
       available: true,
       ticker,
@@ -95,19 +101,20 @@ export async function buildPublicGexSnapshot(ticker: PublicGexTicker): Promise<P
       market_session: session.market_session,
       session_date: session.session_date,
       as_of_et: session.as_of_et,
-      call_wall: heatmap.gex.call_wall,
-      put_wall: heatmap.gex.put_wall,
+      call_wall: constrainedCallWall,
+      put_wall: constrainedPutWall,
       flip: heatmap.gex.flip,
       posture: heatmap.gex.regime.posture,
-      call_wall_role: classifyWall("call", heatmap.gex.call_wall, heatmap.spot),
-      put_wall_role: classifyWall("put", heatmap.gex.put_wall, heatmap.spot),
+      call_wall_role: classifyWall("call", constrainedCallWall, heatmap.spot),
+      put_wall_role: classifyWall("put", constrainedPutWall, heatmap.spot),
       // Sanitize (drop vendor provenance) THEN correct (drop wrong-side level claims).
       read: correctPublicRead(sanitizePublicRead(heatmap.gex.regime.read), {
         spot: heatmap.spot,
-        call_wall: heatmap.gex.call_wall,
-        put_wall: heatmap.gex.put_wall,
+        call_wall: constrainedCallWall,
+        put_wall: constrainedPutWall,
       }),
       ...(heatmap.spot_source !== undefined ? { spot_source: heatmap.spot_source } : {}),
+      ...(heatmap.chain_truncated ? { chain_truncated: true } : {}),
     };
     await sharedCacheSet(cacheKey, snapshot, CACHE_TTL_SEC).catch(() => undefined);
     return snapshot;

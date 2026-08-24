@@ -201,3 +201,37 @@ test("midnight ET renders as 00:xx, not 24:xx", () => {
   assert.equal(facts.session_date, "2026-08-21");
   assert.equal(facts.market_session, "CLOSED", "00:07 ET is before the 04:00 pre-market open");
 });
+
+test("classifyWall correctly handles inverted walls from constraint test data", () => {
+  // Live 2026-08-20 examples: walls landing on the wrong side of spot occur naturally.
+  // classifyWall is part of the public snapshot's defensive constraint — it returns null
+  // for walls that cannot be claimed as support/resistance given their spot position.
+
+  // AAPL: spot 312.66, call_wall 310 (below spot, cannot be resistance).
+  assert.equal(
+    classifyWall("call", 310, 312.66),
+    "concentration",
+    "call wall below spot degrades to concentration"
+  );
+
+  // SPY: spot 763.11, put_wall 765 (above spot, cannot be support).
+  assert.equal(
+    classifyWall("put", 765, 763.11),
+    "concentration",
+    "put wall above spot degrades to concentration"
+  );
+
+  // AAPL corrected: call_wall 320 above spot 312.66 is valid resistance.
+  assert.equal(
+    classifyWall("call", 320, 312.66),
+    "resistance",
+    "call wall above spot is resistance"
+  );
+
+  // SPY corrected: put_wall 760 below spot 763.11 is valid support.
+  assert.equal(
+    classifyWall("put", 760, 763.11),
+    "support",
+    "put wall below spot is support"
+  );
+});
