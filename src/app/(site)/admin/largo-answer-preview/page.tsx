@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { requireAdmin } from "@/lib/admin-access";
 import { LargoAnswerPreview } from "@/features/largo/answer/LargoAnswerPreview";
 import { noindexPageMetadata } from "@/lib/page-metadata";
 
@@ -16,9 +15,7 @@ export const revalidate = 0;
 // it renders fixture envelopes so the section cards / evidence panel / levels table /
 // scenario cards / confidence + provenance chips can be verified in a real build
 // before they're wired into the live terminal (PR 3).
-export default async function LargoAnswerPreviewPage() {
-  await requireAdmin();
-
+export default function LargoAnswerPreviewPage() {
   return (
     <div className="admin-page admin-page-canvas">
       <main id="main" className="admin-page-main">

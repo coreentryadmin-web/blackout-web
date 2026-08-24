@@ -1,6 +1,4 @@
 import type { Metadata } from "next";
-import { requireDeskTool } from "@/lib/auth-access";
-import { ComingSoon } from "@/components/ComingSoon";
 import {
   VectorPageClient,
   normalizeVectorTicker,
@@ -18,8 +16,6 @@ type PageProps = {
 };
 
 export default async function VectorPage({ searchParams }: PageProps) {
-  if (!(await requireDeskTool("premium", "vector"))) return <ComingSoon toolKey="vector" />;
-
   const { ticker: rawTicker, compare: compareRaw } = await searchParams;
   const ticker = normalizeVectorTicker(rawTicker);
 

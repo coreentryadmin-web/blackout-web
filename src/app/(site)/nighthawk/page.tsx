@@ -1,6 +1,4 @@
 import type { Metadata } from "next";
-import { requireDeskTool } from "@/lib/auth-access";
-import { ComingSoon } from "@/components/ComingSoon";
 import { NighthawkPageShell } from "@/features/nighthawk/components/NighthawkPageShell";
 import { parseNightHawkView } from "@/features/nighthawk/lib/nighthawk-view";
 import { noindexPageMetadata } from "@/lib/page-metadata";
@@ -14,8 +12,6 @@ type PageProps = {
 };
 
 export default async function NightHawkPage({ searchParams }: PageProps) {
-  if (!(await requireDeskTool("premium", "nighthawk"))) return <ComingSoon toolKey="nighthawk" />;
-
   const { view } = await searchParams;
   // Client SWR loads /api/market/zerodte/board — skip SSR getZeroDteBoardPayload() so HTML
   // is not blocked on a cold board rebuild (same class of ~30–60s TTFB as dashboard Vector SSR).
