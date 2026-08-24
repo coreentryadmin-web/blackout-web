@@ -313,3 +313,77 @@ test("tierFromEntryContext: no blob at all is untierable (null), not a fake C", 
   assert.equal(tierFromEntryContext(null), null);
   assert.equal(tierFromEntryContext(undefined), null);
 });
+
+// ── WS-20: source-aware scoreFloor (BREAKOUT/PIN floor=50 vs FLOW floor=65) ───────
+test("tierFromEntryContext: BREAKOUT origin uses lower scoreFloor (50)", () => {
+  // A score of 55 is "below floor" at FLOW level (65) but "above floor" at BREAKOUT level (50).
+  // With BREAKOUT origin, it should be rated as "mid score band" not "below floor".
+  const breakout = tierFromEntryContext({
+    ...PINNED_FULL,
+    score: 55,
+    discovery_origin: ["BREAKOUT"],
+    vix_open: 16,
+  });
+  assert.ok(breakout);
+  // Score 55 with BREAKOUT floor (50): +1 point (mid band). Plus calm VIX (+2) +
+  // clean Cortex (+2) = 5 points → A tier. (Would be C tier if FLOW floor 65 was used.)
+  assert.equal(breakout.tier, "A");
+  assert.ok(!breakout.factors.some((f) => f.label === "Score below floor"));
+  assert.ok(breakout.factors.some((f) => f.label === "Mid score band"));
+});
+
+test("tierFromEntryContext: PIN origin uses lower scoreFloor (50)", () => {
+  const pin = tierFromEntryContext({
+    ...PINNED_FULL,
+    score: 52,
+    discovery_origin: ["PIN"],
+    vix_open: 16,
+  });
+  assert.ok(pin);
+  // Score 52 with PIN floor (50): +1 point (mid band). Plus calm VIX (+2) +
+  // clean Cortex (+2) = 5 points → A tier.
+  assert.equal(pin.tier, "A");
+  assert.ok(!pin.factors.some((f) => f.label === "Score below floor"));
+});
+
+test("tierFromEntryContext: FLOW origin uses standard scoreFloor (65)", () => {
+  const flow = tierFromEntryContext({
+    ...PINNED_FULL,
+    score: 55,
+    discovery_origin: ["FLOW"],
+    vix_open: 16,
+  });
+  assert.ok(flow);
+  // Score 55 with FLOW floor (65): -2 points (below floor). Plus calm VIX (+2) +
+  // clean Cortex (+2) = 2 points → B tier.
+  assert.equal(flow.tier, "B");
+  assert.ok(flow.factors.some((f) => f.label === "Score below floor"));
+});
+
+test("tierFromEntryContext: multi-source (FLOW+BREAKOUT) uses lower BREAKOUT floor", () => {
+  // When a play has multiple origins, use the lower floor to be fair to all contributors.
+  const multi = tierFromEntryContext({
+    ...PINNED_FULL,
+    score: 55,
+    discovery_origin: ["FLOW", "BREAKOUT"],
+    vix_open: 16,
+  });
+  assert.ok(multi);
+  // Score 55 with BREAKOUT floor (50): +1 point. Plus calm VIX (+2) + clean Cortex (+2) = 5 points → A.
+  assert.equal(multi.tier, "A");
+  assert.ok(!multi.factors.some((f) => f.label === "Score below floor"));
+});
+
+test("tierFromEntryContext: missing origin defaults to FLOW floor (65)", () => {
+  // Pre-WS-20 rows carry no discovery_origin; default to standard FLOW floor.
+  const noOrigin = tierFromEntryContext({
+    ...PINNED_FULL,
+    score: 55,
+    discovery_origin: undefined,
+    vix_open: 16,
+  });
+  assert.ok(noOrigin);
+  // Score 55 with FLOW floor (65): -2 points. Plus calm VIX (+2) + clean Cortex (+2) = 2 points → B.
+  assert.equal(noOrigin.tier, "B");
+  assert.ok(noOrigin.factors.some((f) => f.label === "Score below floor"));
+});

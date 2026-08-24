@@ -33,7 +33,13 @@
 // entry_context blobs — which is what makes the record analysis able to grade the
 // tier function retroactively on day one.
 
-import { ZERODTE_SCORE_FLOOR, VIX_ELEVATED_THRESHOLD, VIX_EXTREME_THRESHOLD } from "./gates";
+import {
+  ZERODTE_SCORE_FLOOR,
+  ZERODTE_SCORE_FLOOR_BREAKOUT,
+  ZERODTE_SCORE_FLOOR_PIN,
+  VIX_ELEVATED_THRESHOLD,
+  VIX_EXTREME_THRESHOLD,
+} from "./gates";
 
 /** Assignable tiers, best → worst. "A+" is deliberately NOT here (rule 1 above)
  *  and "F" is not either — F is the skip pile (tierForSkip), never a ranking of a
@@ -382,6 +388,32 @@ export function tierForSkip(
   };
 }
 
+// ── Source-aware scoreFloor (WS-20: BREAKOUT/PIN now have floor=50) ─────────────
+/**
+ * Derive the commit-time scoreFloor from discovery_origin. After WS-20, BREAKOUT
+ * and PIN sources use a lower floor (50) than FLOW (65) to reflect their scoring
+ * distributions. This is used retroactively for entry_context blobs that pin the
+ * origin set (pre-WS-20 rows carry none and default to FLOW floor).
+ *
+ * Logic:
+ * - If origin includes FLOW only: use ZERODTE_SCORE_FLOOR (65)
+ * - If origin includes BREAKOUT or PIN: use ZERODTE_SCORE_FLOOR_BREAKOUT (50)
+ *   (these floors are identical for BREAKOUT and PIN)
+ * - If origin is absent or empty: default to ZERODTE_SCORE_FLOOR (65)
+ *
+ * For multi-source plays (e.g. FLOW + BREAKOUT), we use the lower floor (50)
+ * to be fair to the BREAKOUT/PIN contribution to the merged score.
+ */
+function scoreFloorForOrigin(origin: string[] | undefined | null): number {
+  if (!origin || origin.length === 0) return ZERODTE_SCORE_FLOOR;
+  // If any source is BREAKOUT or PIN, use their floor (both are 50).
+  if (origin.includes("BREAKOUT") || origin.includes("PIN")) {
+    return ZERODTE_SCORE_FLOOR_BREAKOUT;
+  }
+  // FLOW only or unrecognized origin: use the standard floor.
+  return ZERODTE_SCORE_FLOOR;
+}
+
 // ── Retroactive tiering off the pinned entry_context blob ─────────────────────────
 /**
  * Adapt an ALREADY-PINNED entry_context blob (entry-context.ts's ZeroDteEntryContext,
@@ -394,11 +426,6 @@ export function tierForSkip(
  * about the play — the record analysis counts these as untiered instead.
  *
  * Fields the blob CANNOT recover (documented, not guessed):
- * - scoreFloor: the floor at COMMIT time is not pinned anywhere (entry_context nor
- *   gate_calibration_json carry it). G-3's floor has been 65 since it shipped, so
- *   today's ZERODTE_SCORE_FLOOR is exact for every existing row; if the floor ever
- *   moves, rows committed before the move will be judged against the new floor
- *   until a floor-at-commit pin ships.
  * - spy_bias / gamma_regime are pinned but deliberately NOT scored: G-1 hard-blocks
  *   counter-tape commits, so alignment is a precondition of every committed row
  *   (no ranking variance left), and gamma regime has no measured prior yet.
@@ -435,9 +462,16 @@ export function tierFromEntryContext(
     if (m) committedEtMinutes = Number(m[1]) * 60 + Number(m[2]);
   }
 
+  // discovery_origin (WS-20): determines the source-specific scoreFloor. Pre-WS-20
+  // rows carry none; scoreFloorForOrigin defaults to ZERODTE_SCORE_FLOOR.
+  let origin: string[] | undefined;
+  if (Array.isArray(ctx.discovery_origin)) {
+    origin = ctx.discovery_origin.filter((s) => typeof s === "string");
+  }
+
   return assignZeroDteTier({
     score: num(ctx.score),
-    scoreFloor: null, // → today's ZERODTE_SCORE_FLOOR; see the doc comment above.
+    scoreFloor: scoreFloorForOrigin(origin),
     cortexScore,
     cortexVetoCount,
     cortexSupportCount,
