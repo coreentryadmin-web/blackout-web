@@ -136,33 +136,6 @@ export function formatTimeEt(ms: number): string {
   return `${partMap.year}-${partMap.month}-${partMap.day} ${partMap.hour}:${partMap.minute}:${partMap.second} ET`;
 }
 
-/**
- * Get an authenticated session cookie by minting a temp Clerk user.
- * Uses the existing mintClerkPremiumSession helper from audit toolkit.
- * Returns the Cookie header value (includes all session cookies) or null on failure.
- */
-async function getAuthenticatedSession(): Promise<{ cookie: string; cleanup: () => Promise<void> } | null> {
-  try {
-    // Import the existing audit toolkit helper
-    const { mintClerkPremiumSession } = await import("../../scripts/audit/lib/prod-clerk-session.mjs");
-
-    const appUrl = process.env.NEXT_PUBLIC_URL || "https://blackouttrades.com";
-    const result = await mintClerkPremiumSession({ appUrl });
-
-    if (result.skip) {
-      console.warn("Clerk session unavailable:", result.reason);
-      return null;
-    }
-
-    // cookieHeader is already formatted as "__session=<jwt>; __client_uat=<timestamp>"
-    const cleanup = result.cleanup;
-
-    return { cookie: result.cookieHeader, cleanup };
-  } catch (err) {
-    console.error("Failed to mint Clerk session:", err);
-    return null;
-  }
-}
 
 /**
  * Main capture harness: fetch live screenshots from specified surfaces.
@@ -176,22 +149,14 @@ export async function captureForQueuePackage(
 ): Promise<CaptureResult[]> {
   const { maxRetries = 2, timeoutMs = 30000 } = config;
 
-  // Get session cookie if not provided
-  let sessionCookie = config.sessionCookie;
-  if (!sessionCookie) {
-    const authResult = await getAuthenticatedSession();
-    if (authResult) {
-      sessionCookie = authResult.cookie;
-      // TODO: call authResult.cleanup() after capture completes
-    }
-  }
-
+  // Session cookie must be provided by the caller (e.g., via environment or parameter)
+  const sessionCookie = config.sessionCookie;
   if (!sessionCookie) {
     return [
       {
         source: sources[0] || "helix",
         success: false,
-        error: "No session cookie provided and CLERK_SECRET_KEY not configured",
+        error: "No session cookie provided and no auth configuration available",
       },
     ];
   }
