@@ -505,13 +505,24 @@ closing part of §11's "no interaction testing yet" gap.
   (`VectorPageShell.tsx`'s `initialGammaFlip`/`initialWalls` props, computed server-side via
   `loadVectorSeedProps` → `getVectorGammaFlip`/`getVectorGexWalls`), NOT a client-side fetch through
   the tunnel — so this isn't obviously explained by the harness's own documented SSE/streaming
-  tunnel limitation either. **Root cause not established** — could be a genuine SSR-path cache/data
-  mismatch (the SSR seed reads a different store than the REST route I verified directly) or a
-  harness artifact still not fully understood. Filing a fix here would mean guessing at a root cause
-  this pass's evidence doesn't actually nail down — logged as an open question in
-  `docs/audit/UI-UX-OPPORTUNITIES.md` item 9 instead, with the exact repro command, pending a
-  focused trace of `loadVectorSeedProps`'s two data calls against the SSR render path specifically
-  (not the REST route, which is confirmed working).
+  tunnel limitation either.
+
+  **RE-RUN 2026-08-24 during live RTH (Mon, market open) — same result, off-hours ruled out.**
+  The harness's play card generated genuinely fresh, live-computed reads this time ("SCALP ·
+  momentum short on continuation → target magnet/VWAP 763.67"), proving live data was flowing
+  through the page — yet the regime banner was still absent in all 12 states. Code trace (same
+  day): `emitRegime()` (`VectorChart.tsx` ~line 3048) fires **unconditionally on interaction**, not
+  just via SSE — the lens-change effect (~line 3611) calls it directly on the walkthrough's own
+  GEX↔VEX clicks (states 07/08). It reads `liveGexWalls()`/`liveGammaFlip()`, which — like the SSR
+  seed path — pull from the **same per-process, in-memory server cache** (`vector-snapshot.ts`'s
+  `state(ticker)`), populated by that process's own live UW WebSocket connection, with **no
+  cross-instance sync** (unlike the Redis-backed caches used elsewhere in this codebase for exactly
+  this reason). **Leading hypothesis, not confirmed:** on ECS, a request landing on a task whose UW
+  WS connection is cold could see `posture:"unknown"` regardless of interaction, while a different
+  request (e.g. the direct REST checks that verified data exists) lands on a warm task. Confirming
+  this needs per-task visibility (ECS exec / task-level logging) this sandbox doesn't have — so
+  it's recorded as a leading hypothesis, not a finding with a guessed fix. Full detail and next
+  steps: `docs/audit/UI-UX-OPPORTUNITIES.md` item 9.
 
 ---
 
@@ -823,7 +834,7 @@ wrong UA can mask real bugs, not just invent fake ones.
 | ~~1~~ | ~~`/dashboard` desktop~~ | ~~Vector panel tab leaves ~45% of the content width blank~~ | **RETRACTED** | §2 | **FALSE — original shot used wrong UA (iPhone UA at desktop viewport); real desktop layout is a 4-col grid, no blank space.** |
 | ~~2~~ | ~~`/flows` mobile~~ | ~~Header flow-split bar overflows viewport horizontally; two stat strings concatenate with no separating space~~ | **FIXED** | §3 | Root-caused (`justify-between` with no gap/wrap) and fixed same day — see §3 and `docs/audit/findings-staging/2026-08-23-helix-mobile-tide-bar-overflow.md`. Verified via isolated CSS repro (live component couldn't be locally rendered — no dev flow data). Pending live validation post-deploy. |
 | ~~3~~ | ~~`/vector` mobile~~ | ~~GEX-scope chip overlaps the chart's own axis time ticks~~ | **FIXED** | §5 | Root-caused (unbounded-width, no-background overlay label vs. canvas-drawn ticks) and fixed same day — see §5 and `docs/audit/findings-staging/2026-08-23-vector-chart-footer-legend-overlap.md`. Verified via isolated CSS repro built from the real production text. Same fix applied on `/dashboard`'s embedded chart too (shared `VectorChart.tsx`) — that desktop half was never independently confirmed broken, but the fix is defensive there regardless. Pending live validation post-deploy. |
-| ~~4~~ | ~~`/nighthawk` mobile~~ | ~~Header stat strip truncates ("UPDATED 12" cuts off "sec ago") instead of wrapping~~ | **FIXED** | §7 | Root-caused (corrected from the original candidate): live measurement showed the row is deliberately `overflow-x:auto` and the text was never lost — `scrollWidth` 672px vs `clientWidth` 411px, and scrolling the row to its end fully revealed the same text. The real defect was a missing scroll affordance (mobile Safari hides the scrollbar), fixed with a static right-edge fade — see §7 and `docs/audit/findings-staging/2026-08-23-nighthawk-mobile-header-scroll-affordance.md`. Verified live against production via a tunneled Playwright session (scroll-position check), and the regression test fails against pre-fix CSS / passes with the fix. Pending live validation post-deploy. |
+| ~~4~~ | ~~`/nighthawk` mobile~~ | ~~Header stat strip truncates ("UPDATED 12" cuts off "sec ago") instead of wrapping~~ | **FIXED, live-validated** | §7 | Root-caused (corrected from the original candidate): live measurement showed the row is deliberately `overflow-x:auto` and the text was never lost — `scrollWidth` 672px vs `clientWidth` 411px, and scrolling the row to its end fully revealed the same text. The real defect was a missing scroll affordance (mobile Safari hides the scrollbar), fixed with a static right-edge fade — see §7 and `docs/audit/findings-staging/2026-08-23-nighthawk-mobile-header-scroll-affordance.md`. **Live-validated 2026-08-24 during RTH** with real board density (55 opportunities, `scrollWidth` grew to 921px) — a zoomed screenshot confirms the fade visibly dims the trailing text rather than hard-cutting it. Closed. |
 | ~~5~~ | ~~`/terminal` mobile~~ | ~~Toolbar label collapses to bare "L…"; composer placeholder overflows its input box~~ | **FIXED, then self-corrected** | §8 | Root-caused (two independent causes: a non-shrinking actions row starving the brand label; a composited layer's shadow escaping `overflow:hidden`) and fixed 2026-08-23 — see §8 and `docs/audit/findings-staging/2026-08-23-largo-terminal-mobile-toolbar-composer.md`. **Live post-deploy validation on 2026-08-24 caught a regression the fix itself introduced** (the answer-mode toggle crushed to 56.7px, clipping "Concrete"/"Deep dive" mid-word) — fixed same day, see `docs/audit/findings-staging/2026-08-24-largo-toolbar-answer-mode-squish.md`. Composer glow-clip fix unaffected, still pending its own live re-check. |
 | 6 | `/nighthawk` mobile | ~45% of viewport left blank below the no-session empty state | **P2/P3** | §7 | Correct mobile UA |
 | 7 | `/vector` mobile | Drops ticker search, metric/expiry toggles, matrix table, and live tape entirely (chart-only) — scope call | **P2** (needs Vector-lane input) | §5 | Correct mobile UA |

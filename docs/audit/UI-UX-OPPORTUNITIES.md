@@ -85,23 +85,47 @@ a pattern worth generalizing. Classify with the brief's own scale:
    recognized the string `"admin"`. That's independent of hydration timing — confirmed and fixed
    the same day. See `docs/audit/findings-staging/2026-08-23-admin-tier-display-fallthrough.md`.
 
-9. **[P2, needs a focused SSR-path trace to confirm] Vector's gamma-regime banner absent across a
-   full live interaction walkthrough — root cause not established.** `UI-UX-MAP.md` §5: a live run
-   of the committed `vector-ui-walkthrough.cjs` harness (desktop, SPY, 16 interaction states) found
-   `[data-testid=vector-regime-banner]` missing in all 12 non-exempt states, including the first
-   load. `VectorRegimeBanner` self-hides on `posture:"unknown"` (documented, intentional), so
-   absence alone isn't proof of a bug — but a direct, isolated fetch of the two endpoints its SSR
-   seed path depends on (`/api/market/vector/walls`, `/api/market/vector/expected-move`) returned
-   real, fresh positioning data 3/3 attempts outside the harness, which argues the underlying data
-   was genuinely available. The regime banner's initial value is SSR-seeded (`VectorPageShell.tsx`
-   `initialGammaFlip`/`initialWalls` ← `loadVectorSeedProps` → `getVectorGammaFlip`/
-   `getVectorGexWalls`), not a client fetch through the tunnel, so the harness's own documented
-   SSE/streaming-tunnel caveat doesn't obviously explain it either. **Two live/verified facts point
-   opposite directions and neither has been reconciled** — that's exactly why this stays an open
-   question rather than a finding with a guessed fix. Repro: `env -u AWS_ACCESS_KEY_ID -u
+9. **[P2, needs infra-level (ECS task) visibility this sandbox doesn't have — leading hypothesis
+   identified, NOT confirmed] Vector's gamma-regime banner absent across TWO independent live
+   interaction walkthroughs — off-hours AND live RTH.** `UI-UX-MAP.md` §5: the committed
+   `vector-ui-walkthrough.cjs` harness (desktop, SPY, 16 interaction states) found
+   `[data-testid=vector-regime-banner]` missing in all 12 non-exempt states on **both** an
+   off-hours run (2026-08-23, weekend) and a live-RTH re-run (2026-08-24, Mon, market open) —
+   the second run's play card generated genuinely fresh, live-computed reads ("SCALP · momentum
+   short on continuation → target magnet/VWAP 763.67"), ruling out "no data exists right now" as
+   the explanation. `VectorRegimeBanner` self-hides on `posture:"unknown"` (documented,
+   intentional) so absence alone isn't proof of a bug — but a direct, isolated fetch of the two
+   endpoints its SSR seed path depends on (`/api/market/vector/walls`,
+   `/api/market/vector/expected-move`) returned real, fresh positioning data 3/3 attempts outside
+   the harness both times.
+   **Code trace, 2026-08-24 — narrowed the mechanism without fully confirming it.** Regime is
+   computed by `emitRegime()` in `VectorChart.tsx` (~line 3048) from `liveGexWalls()`/
+   `liveGammaFlip()`, and — contrary to the original hypothesis — this fires **unconditionally on
+   interaction**, not just via the SSE stream: the `lens`-change effect (~line 3611) resets the
+   dedup key and calls `emitRegime()` directly, and the walkthrough's own GEX↔VEX lens clicks
+   (states 07/08) should have triggered it. Both `liveGexWalls`/`liveGammaFlip` and the SSR seed
+   (`loadVectorSeedProps` → `getVectorGammaFlip`/`getVectorGexWalls`, `vector-snapshot.ts`) read
+   from the **same per-request-process, in-memory server cache** (`state(ticker)`), populated by
+   that specific server process's own live UW WebSocket connection or a fallback poll — there is
+   no cross-instance sync (unlike the Redis-backed caches used elsewhere in this codebase for
+   exactly this reason). **Leading hypothesis:** on ECS, multiple task instances each run this
+   in-memory cache independently; a request that happens to land (via the ALB) on a task whose UW
+   WS connection is cold/reconnecting, or whose fallback poll hasn't warmed yet, would see
+   `posture:"unknown"` regardless of interaction, while a *different* request (a fresh direct REST
+   call, or a differently-routed page load) lands on a warm task and gets real data — fully
+   consistent with everything measured. **Why this stays unconfirmed, not filed as a finding:**
+   confirming it requires seeing per-task cache/WS-connection state (ECS `exec` or task-level
+   logging), which this sandbox has no access to (`CLAUDE.md`'s standing note: AWS creds are
+   session-dependent and even when present there's no ECS exec path documented here). A fix would
+   mean either backing this cache with something cross-instance-consistent (a real architecture
+   change) or having the client self-heal a cold SSR seed with its own direct fetch instead of
+   relying solely on the SSE stream — both are decisions for Vector's owning lane, not something to
+   guess at unilaterally (per this file's own boundary rule). Repro: `env -u AWS_ACCESS_KEY_ID -u
    AWS_SECRET_ACCESS_KEY NODE_USE_ENV_PROXY=1 node scripts/audit/vector-ui-walkthrough.cjs
-   --ticker=SPY`. Next step: trace `loadVectorSeedProps`'s two data calls specifically (not the REST
-   route, which is confirmed working) to see whether the SSR path reads a different/stale store.
+   --ticker=SPY` (run during RTH to rule out off-hours as a confound — already done once with the
+   same result). Next step for whoever picks this up: either get ECS task-level visibility to
+   confirm the multi-instance-cache theory directly, or ask Vector's lane whether a client-side
+   fallback fetch is an intentional trade-off they've already made (vs. an oversight).
 
 ---
 
