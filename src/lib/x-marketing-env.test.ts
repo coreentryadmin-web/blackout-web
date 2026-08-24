@@ -68,6 +68,7 @@ describe("x-marketing-env", () => {
 
   it("xMarketingCronPaused gates all X marketing cron keys on full pause", () => {
     process.env.X_MARKETING_POSTS_PAUSED = "1";
+    assert.equal(xMarketingCronPaused("x-intel"), true);
     assert.equal(xMarketingCronPaused("x-autopost"), true);
     assert.equal(xMarketingCronPaused("x-growth"), true);
     assert.equal(xMarketingCronPaused("x-replies"), true);

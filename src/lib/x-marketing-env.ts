@@ -26,6 +26,7 @@ export function xMentionRepliesPaused(): boolean {
 }
 
 const X_MARKETING_CRON_KEYS = new Set([
+  "x-intel",
   "x-autopost",
   "x-growth",
   "x-replies",
