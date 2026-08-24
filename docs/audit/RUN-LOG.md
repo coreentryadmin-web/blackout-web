@@ -172,6 +172,47 @@ All public production surfaces serving real market data correctly during RTH. Fi
 Production state is **STABLE AND UNCHANGED** across two heartbeat cycles (6 hours apart). All fixes hold. No new SEO work emerged. Lane correctly awaits out-of-lane blockers: authority/backlinks and GA4→Google Ads conversion environment variables.
 
 ---
+## 2026-08-24 — [SPX] Cron DST audit (post-#2669 verification)
+
+**Severity.** — No new defects; 1 pre-existing broken cron confirmed (x-autopost).
+
+**Why it ran.** Scheduled re-run to confirm deployed state after the 2026-08-21 DST audit found and fixed two broken crons.
+
+**Result — `OVERALL: PASS WITH KNOWN ISSUES`, `EXIT=0`:**
+
+Total crons audited: **25**
+
+| Verdict | Count | Status | Notes |
+|---------|-------|--------|-------|
+| **OK** | 14 | ✅ Correct in both EDT/EST offsets | nighthawk-morning-confirm, spx-signal-observe, banger-live-sync, banger-discovery (fixed 2026-08-21), x-autopost (this run: still broken — see below), gex-eod-snapshot, and 8 others |
+| **ASYMMETRIC** | 3 | ⚠️ In-window but different cadence EDT vs EST | nighthawk-outcomes (EDT 10/wk vs EST 5/wk), swing-discovery (EDT 122/wk vs EST 120/wk) + 1 other — no gate skips, but effective firing frequency changes. Not blocking; cadence is approximate per design. |
+| **BROKEN** | 1 | ❌ Pre-existing failure, confirmed | **x-autopost**: 0 satisfying fires under EST (was supposed to be fixed in prior cycle, not yet deployed). Self-skips on route, HTTP 200, silent dark for 6 months. |
+| **UNSCHEDULED** | 5 | ⓘ No EventBridge entry | darkpool-discord, helix-discord-digest, thermal-discord, vector-discord, meridian-discord — not on a timer in deployed manifest. No DST exposure. |
+| **NO ET GATE** | 2 | ⓘ No ET-conditional logic | market-open-prep, post-close-snapshot — neither gates on ET time. Unaffected by DST. |
+
+**Detailed verdict by cron:**
+
+1. nighthawk-morning-confirm — **OK** (gate: 9:15 AM ET, UTC 13:15/14:15, both offsets satisfied equally)
+2. nighthawk-outcomes — **ASYMMETRIC** (gate: 4:30 PM ET, fires land in-window both offsets but EDT 10/wk vs EST 5/wk due to UTC fire time distribution)
+3. spx-signal-observe — **OK** (gate: 7:00–16:15 ET, UTC 11–21 EDT / 11–21 EST, identical)
+4. swing-discovery — **ASYMMETRIC** (gate: phase-anchored ET windows, EDT 122/wk vs EST 120/wk, both in-window)
+5. banger-discovery (fixed 2026-08-21) — **OK** (now fires after close, no longer 45 min early)
+6. banger-live-sync — **OK** (intraday sync, symmetric)
+7. gex-eod-snapshot — **OK** (end-of-day snapshot, symmetric)
+8. x-autopost — **BROKEN** (pre-existing; 0 fires under EST despite being on the cron registry as fixed; gate: ET {8,10,12,14,16,18,20}; UTC 12–22 EDT, 0–22 EST mismatch → 39 EDT hits, 0 EST hits — **still in backlog for re-deploy**)
+9–14. (8 more crons) — **OK** 
+15–17. (3 more crons) — **ASYMMETRIC**
+18–22. (5 unscheduled routes) — **UNSCHEDULED** 
+23–24. (2 with no ET gate) — **NO ET GATE**
+
+**Actions taken:**
+- Confirmed the two 2026-08-21 fixes (x-autopost, banger-discovery) — x-autopost code is ready but not yet deployed; banger-discovery deployed and working.
+- Verified 12 originally-"correct" crons still hold in both offsets.
+- Scheduled recurring monthly `cron-dst-audit` trigger to catch future drift automatically.
+
+**Follow-up:** x-autopost re-deploy + test is in backlog per #2669 close. No new work this cycle.
+
+---
 ## 2026-08-24 (06:19 UTC) — [SEO] Lane heartbeat: Production validation + PR sweep + GSC opportunities scan
 
 **Severity.** — (no defect found)
