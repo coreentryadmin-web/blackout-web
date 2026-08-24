@@ -15,6 +15,8 @@ export {
   VECTOR_DEFAULT_TICKER,
   VECTOR_ORACLE_TICKERS,
   defaultVectorDteHorizon,
+  defaultVectorNodeDensity,
+  VECTOR_ORACLE_DEFAULT_NODE_DENSITY,
 } from "./lib/vector-ticker";
 export {
   buildVectorStreamPayload,

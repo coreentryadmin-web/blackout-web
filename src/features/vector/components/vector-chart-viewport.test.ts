@@ -6,8 +6,10 @@ import { join } from "node:path";
 const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
 
 test("SPX embed seeds 0DTE horizon history and opens on session viewport", () => {
-  assert.match(read("src/features/spx/components/SpxVectorEmbed.tsx"), /defaultDteHorizon="0dte"/);
-  assert.match(read("src/features/spx/components/SpxVectorEmbed.tsx"), /defaultChartViewport="session"/);
+  const embed = read("src/features/spx/components/SpxVectorEmbed.tsx");
+  assert.match(embed, /defaultDteHorizon="0dte"/);
+  assert.match(embed, /defaultNodeDensity=\{defaultVectorNodeDensity\("SPX"\)\}/);
+  assert.match(embed, /defaultChartViewport="session"/);
   const shell = read("src/features/vector/components/VectorPageShell.tsx");
   assert.match(shell, /defaultChartViewport = "session"/);
   assert.match(shell, /defaultChartViewport=\{defaultChartViewport\}/);
@@ -19,6 +21,8 @@ test("/vector page preloads 0DTE rail for oracle tickers and weekly for single n
   assert.match(page, /defaultVectorDteHorizon/);
   assert.match(page, /defaultDteHorizon=\{defaultVectorDteHorizon\(ticker\)\}/);
   assert.match(page, /defaultChartViewport="session"/);
+  const client = read("src/features/vector/components/VectorPageClient.tsx");
+  assert.match(client, /defaultNodeDensity=\{defaultVectorNodeDensity\(seed\.ticker\)\}/);
 });
 
 test("VectorChart: session viewport defers live-edge scroll until member pans", () => {

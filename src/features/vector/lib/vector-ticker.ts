@@ -1,4 +1,5 @@
 import type { VectorDteHorizon } from "./vector-dte-horizon";
+import type { VectorNodeDensity } from "./vector-node-density";
 
 /** Default Vector chart symbol — SPX index options desk anchor. */
 export const VECTOR_DEFAULT_TICKER = "SPX";
@@ -65,4 +66,17 @@ export function vectorHasWsOracle(ticker: string): boolean {
 /** Opening DTE horizon: oracle indices on 0DTE; everything else on weekly (5s per-horizon rail). */
 export function defaultVectorDteHorizon(raw: string | null | undefined): VectorDteHorizon {
   return VECTOR_ORACLE_TICKERS.has(normalizeVectorTicker(raw)) ? "0dte" : "weekly";
+}
+
+/**
+ * Opening NODES density — oracle desks (SPX/SPY/QQQ) open at 20 rows/side so beads + walls read
+ * clearly on first paint (member showcase / SPX Slayer reference). Single names keep AUTO so coarse
+ * ladders do not sacrifice candle share on load.
+ */
+export const VECTOR_ORACLE_DEFAULT_NODE_DENSITY = 20 as const satisfies VectorNodeDensity;
+
+export function defaultVectorNodeDensity(raw: string | null | undefined): VectorNodeDensity {
+  return VECTOR_ORACLE_TICKERS.has(normalizeVectorTicker(raw))
+    ? VECTOR_ORACLE_DEFAULT_NODE_DENSITY
+    : "auto";
 }

@@ -7,6 +7,7 @@ import {
   fetchVectorClientSeed,
   fetchVectorEmbedFastSeed,
 } from "@/features/vector/lib/vector-client-seed";
+import { defaultVectorNodeDensity } from "@/features/vector/lib/vector-ticker";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 
 const VectorPageShell = dynamic(
@@ -143,6 +144,7 @@ export function SpxVectorEmbed({
       defaultDteHorizon="0dte"
       defaultChartViewport="session"
       defaultTimeframe={3}
+      defaultNodeDensity={defaultVectorNodeDensity("SPX")}
       onPriceScaleRender={onPriceScaleRender}
       focusLevel={focusLevel}
       playLevels={playLevels}

@@ -30,9 +30,9 @@ type PaneRendererTarget = Parameters<IPrimitivePaneRenderer["draw"]>[0];
 type AttachedSeries = ISeriesApi<SeriesType, Time>;
 
 /** Outside the ~70% value area — neutral warm gray, low alpha. */
-export const VP_BAR_FILL = "rgba(161, 161, 170, 0.16)";
+export const VP_BAR_FILL = "rgba(161, 161, 170, 0.22)";
 /** Value-area buckets — violet, distinct from put/call bead rails. */
-export const VP_VALUE_AREA_FILL = "rgba(192, 132, 252, 0.32)";
+export const VP_VALUE_AREA_FILL = "rgba(192, 132, 252, 0.40)";
 /** POC bucket highlight. */
 export const VP_POC_FILL = "rgba(251, 191, 36, 0.88)";
 /** POC full-width guide. */
@@ -42,7 +42,8 @@ export const VP_VA_LINE = "rgba(196, 181, 253, 0.62)";
 export const VP_LABEL_COLOR = "rgba(250, 250, 250, 0.92)";
 
 /** Widest a bucket bar can extend from the right edge, as a fraction of the pane width. */
-const MAX_BAR_WIDTH_FRAC = 0.16;
+/** Wider profile bars so POC/VA read clearly on desk screenshots and first paint. */
+const MAX_BAR_WIDTH_FRAC = 0.20;
 const RIGHT_PAD_PX = 2;
 const LABEL_FONT = "600 10px ui-monospace, SFMono-Regular, Menlo, monospace";
 

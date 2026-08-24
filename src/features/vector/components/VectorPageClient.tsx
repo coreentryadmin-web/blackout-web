@@ -9,7 +9,10 @@ import {
   fetchVectorEmbedFastSeed,
 } from "@/features/vector/lib/vector-client-seed";
 import type { VectorClientSeed } from "@/features/vector/lib/vector-client-seed";
-import { VECTOR_DEFAULT_TICKER } from "@/features/vector/lib/vector-ticker";
+import {
+  VECTOR_DEFAULT_TICKER,
+  defaultVectorNodeDensity,
+} from "@/features/vector/lib/vector-ticker";
 import {
   comparePath,
   isCompareMode,
@@ -205,6 +208,7 @@ export function VectorPageClient({
       defaultDteHorizon={defaultDteHorizon}
       defaultChartViewport={defaultChartViewport}
       defaultTimeframe={defaultTimeframe}
+      defaultNodeDensity={defaultVectorNodeDensity(seed.ticker)}
       onTickerSelect={onTickerSelect}
       tickerNavBusy={navBusy}
       onEnterCompare={onEnterCompare}
