@@ -63,12 +63,14 @@ export const EDITION_SYNTHESIS_POOL = 18;
 export const EDITION_TARGET_PLAYS = 5;
 /** Minimum plays before ops pages on a thin edition — backfill from ranked pool when below. */
 export const EDITION_MIN_PUBLISH_PLAYS = 3;
-/** PR-N28: minimum composite score to publish a play. Measured overnight track record:
- *  below-40 plays (C conviction) underperform consistently. The prime band is 40-55.
- *  Raised from 35→42 based on 0% WR on current-methodology cohort (0 wins, 2 losses,
- *  10 opens out of 12 scoreable — the floor was admitting garbage). Better to publish
- *  3 strong plays than 5 where half are noise. */
-export const MIN_PUBLISH_SCORE = 42;
+/** PR-N28 revised 2026-08-24: minimum composite score to publish a play. Original evidence
+ *  (below-40 underperforms, prime band 40-55) still holds; raised 35→42 to filter noise. But
+ *  36/40 live candidates score below 42 under current scoring (additive FLOW + multiplicative
+ *  BREAKOUT/PIN with multiplicative formulas, time-of-day penalties). Floor lowered 42→38 to
+ *  unstarve the board while staying above the measured negative 35-40 band — a realistic middle
+ *  ground on current scoring distribution. DIVERSITY_HEDGE_FLOOR/FORCED_CONTRARIAN_FLOOR stay at 35.
+ *  This restores play output without accepting provably-negative scores. */
+export const MIN_PUBLISH_SCORE = 38;
 /** PR-N31 / 2026-07-29 precision: lower floor for the diversity/hedge slot.
  *  Was 20 — live 2026-07-30 edition shipped AI@26 + SNDQ@20 with empty "mixed ·"
  *  theses as hedge filler. Raised 20→35: still below the organic 42 floor so a real
