@@ -8,6 +8,45 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-08-24 — [SEO] Lane heartbeat: Production validation + PR sweep + GSC opportunities scan
+
+**Severity.** — (no defect found)
+
+**Why it ran.** Scheduled SEO lane heartbeat (routine weekly validation).
+
+**Result — `OVERALL: PASS`, `EXIT=0`:**
+
+1. **Homepage CLS (post-Cloudflare purge):**
+   - Desktop 1440×900: **0.0001** (60/60 assets routed ok)
+   - Mobile 430×932: **0.0001** (60/60 assets routed ok)
+   - Verdict: **GOOD** (both well under 0.1 threshold; #2453 fix holds)
+
+2. **OG image crawlability (`/api/og`):**
+   - HTTP 200, PNG image response
+   - Unauthenticated (crawlable by search engines)
+   - Verdict: **LIVE** (OG + Article JSON-LD images crawlable; #2448 fix holds)
+
+3. **PR sweep (`agent-pr-sweep.mjs`):**
+   - 5 open agent PRs in repo (across all lanes)
+   - 0 conflicted — no rebases needed
+   - 0 red CI — no work blocked
+   - Verdict: **CLEAR** (SEO lane has no active work queued)
+
+4. **GSC opportunities scan (`gsc-opportunities-report.mjs`, 2026-05-24 — 2026-08-21):**
+   - **Striking distance (page 2):** 1 query only: "is 0dte gambling" at pos 11.5, 4 imp, 0 CTR — already optimized, no action
+   - **Deep demand (pos 67+):** "options assignment" (pos 67.4, 10 imp) + "what is gex" (pos 67, 6 imp) — require authority, out-of-lane
+   - **High-impression pages:** 9 pages with 11–123 impressions, all 0 CTR — brand/site:search only, not actionable per #2454
+   - Verdict: **NO NEW ON-PAGE WORK THIS CYCLE**
+
+**Lane-specific state (established, not rediscovered):**
+- GA4 (G-YLN4K37KYF) live, firing on every page; client-side Google Ads code ready. Gap: environment variables (`NEXT_PUBLIC_GOOGLE_ADS_ID`, labels) not configured. Waiting for ads/analytics lane.
+- GSC ground truth available (service account verified `siteOwner` on `sc-domain:blackouttrades.com`).
+- Bing: IndexNow live and pinging on every deploy.
+
+**Interpretation per SEO-GROWTH-STRATEGY.md (step 3: Monitor, don't churn):**
+Per the roadmap, the only on-page action gate is: "Act on-page ONLY when a query enters the striking-distance band (page 2)." This cycle, that query is still just "is 0dte gambling" and it is already optimized. The deep-demand terms require backlink authority (blocked by licensing on programmatic expansion). The striking pages with high impressions are brand/site: searches (not demand queries). **Bottleneck remains out-of-lane: authority/backlinks and programmatic page licensing.**
+
+---
 ## 2026-08-23 — [SEO] Lane heartbeat: CLS production validation + PR sweep
 
 **Severity.** — (no defect found)
