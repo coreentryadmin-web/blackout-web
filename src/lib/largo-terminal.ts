@@ -34,7 +34,7 @@ import { parseAnswerEnvelope, validateAnswerContract, fallbackAnswerEnvelope } f
 import { sanitizeLargoMemberText } from "@/lib/largo/sanitize-member-text";
 import { truncateCapturedResultsForPersist } from "@/lib/largo/persist-tool-results";
 import { stripLargoBlocks } from "@/features/largo/blocks/extract";
-import { collectContextNumbers, verifyClaims, type ClaimVerification } from "@/lib/bie/verifier";
+import { collectContextNumbers, unverifiedTurn, verifyClaims, type ClaimVerification } from "@/lib/bie/verifier";
 import { resetLargoSpxDeskCache } from "@/lib/largo/spx-desk-cache";
 import {
   appendLargoMessage,
@@ -647,7 +647,7 @@ async function prepareLargoTurn(
   // The model had the tool and no way to know it was the past-capable one, because a description
   // says what a tool returns, never whether it can reach a past window.
   //
-  // Hints only. All 116 tools stay in the request, so this can never make an answer impossible
+  // Hints only. All 129 tools stay in the request, so this can never make an answer impossible
   // the way the deleted intent allowlist could.
   const capabilityBlock = formatCapabilityBlock(question, { historical: timeframe.historical });
 
@@ -670,7 +670,7 @@ async function prepareLargoTurn(
 
   // SUGGESTED PLAN — composed from what code already resolved (entities, timeframe, ranked
   // capabilities, the registry's DECLARED join edges), handed over as a starting point. It routes
-  // nothing and hides nothing; the model may ignore it, and the full 116-tool surface is still in
+  // nothing and hides nothing; the model may ignore it, and the full 129-tool surface is still in
   // the request. Its real value is telling the model which results can be CORRELATED: a join edge
   // here means the two capabilities share an entity key, which registry.test.ts proves, so a
   // cross-product claim built on one is sound rather than a string coincidence.
@@ -1183,7 +1183,7 @@ export async function runLargoQuery(
       userId,
       question,
       toolsUsed,
-      verification: { total: 0, verified: 0, coverage: 1, unverified: [] },
+      verification: unverifiedTurn(),
       startedAt,
       answerSource: "error",
     });
@@ -1201,7 +1201,7 @@ export async function runLargoQuery(
       source: dbConfigured() ? "blackout-web+postgres" : "blackout-web",
       tools_used: Array.from(new Set(toolsUsed)),
       followups: deterministicLargoFollowups(question, tickerHint).slice(0, 3),
-      verification: { total: 0, verified: 0, coverage: 1, unverified: [] },
+      verification: unverifiedTurn(),
       ticker: tickerHint,
       turn_id: null,
       envelope,
@@ -1492,7 +1492,7 @@ export async function runLargoQueryStream(
       userId,
       question,
       toolsUsed,
-      verification: { total: 0, verified: 0, coverage: 1, unverified: [] },
+      verification: unverifiedTurn(),
       startedAt,
       answerSource: "error",
     });
