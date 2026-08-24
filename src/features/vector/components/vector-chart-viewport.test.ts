@@ -82,6 +82,15 @@ test("VectorDailyChart: shared candle spacing and borders", () => {
   assert.match(src, /adaptiveBarSpacingForZoom/);
 });
 
+test("VectorChart: dark-pool walls toggle wired to applyDarkPoolGuides", () => {
+  const src = read("src/features/vector/components/VectorChart.tsx");
+  const toolbar = read("src/features/vector/components/VectorToolbar.tsx");
+  assert.match(src, /darkPoolWallsEnabledRef/);
+  assert.match(src, /applyDarkPoolGuides\(series, dpGuideRefs, dp, darkPoolWallsEnabledRef\.current\)/);
+  assert.match(src, /VECTOR_DARK_POOL_WALLS_STORAGE_KEY/);
+  assert.match(toolbar, /VectorDarkPoolToggle/);
+});
+
 test("VectorChart: off-hours candle dimming wired", () => {
   const src = read("src/features/vector/components/VectorChart.tsx");
   const vol = read("src/features/vector/lib/vector-volume-render.ts");
