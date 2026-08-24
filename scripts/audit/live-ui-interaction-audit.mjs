@@ -365,7 +365,24 @@ async function auditPage(session, path, device) {
     note("INFO", `${tag}: exercising ${Math.min(controls.length, MAX_CONTROLS)} of ${controls.length} controls`);
 
     const dead = [];
-    for (const ctl of controls.slice(0, MAX_CONTROLS)) {
+    // A QUEUE, not a fixed array sliced once. `safeControls()` re-stamps every element's
+    // `data-audit-idx` from scratch, by DOM traversal order, whenever it runs — including the
+    // re-stamp below after any URL-changing click. Iterating a single array captured before the
+    // loop started meant a LATER `ctl.idx` could resolve, via `data-audit-idx`, to a completely
+    // different element than the one `ctl.label` describes, once an earlier click restructured
+    // the page (a tab switch, a filter, a route change) and triggered a re-stamp. Measured live
+    // 2026-08-24 on /nighthawk: a real, working "WATCH" filter button reported as a DEAD control
+    // — verified live that clicking it in isolation changes the interactive-control count 31→16,
+    // so the harness was very likely reporting on whatever NOW occupied that stale index, not on
+    // WATCH itself. `exercised` tracks the budget across every re-stamp; `queue`/`qi` are always
+    // replaced together so `qi` never indexes into a list that isn't the one it came from.
+    let queue = controls;
+    let qi = 0;
+    let exercised = 0;
+    while (exercised < MAX_CONTROLS && qi < queue.length) {
+      const ctl = queue[qi];
+      qi += 1;
+      exercised += 1;
       const before = await fingerprint(page);
       if (!before) break;
       consoleErrors = [];
@@ -482,11 +499,16 @@ async function auditPage(session, path, device) {
           });
           break;
         }
-        // The audit indices were stamped on the previous DOM; re-stamp for the restored one.
-        await safeControls(page, DESTRUCTIVE_TEXT.source);
+        // The audit indices were stamped on the previous DOM; re-stamp for the restored one, and
+        // swap the queue itself so the NEXT ctl.idx resolves against this fresh stamp, not the
+        // stale one `queue` was built from.
+        queue = await safeControls(page, DESTRUCTIVE_TEXT.source);
+        qi = 0;
       } else if (after.url !== before.url) {
-        // In-place (replace-based) URL change: still on `path`, just re-stamp for the new view.
-        await safeControls(page, DESTRUCTIVE_TEXT.source);
+        // In-place (replace-based) URL change: still on `path`, just re-stamp for the new view —
+        // and re-queue from it for the same reason as above.
+        queue = await safeControls(page, DESTRUCTIVE_TEXT.source);
+        qi = 0;
       }
     }
 
