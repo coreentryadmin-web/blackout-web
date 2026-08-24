@@ -91,8 +91,17 @@ actually exercised.
 | `/meridian` | Healthy — "LIVE STRUCTURE", catalyst lane rendered, analytics grid ready |
 | `/terminal` | Healthy — Largo terminal loaded and ready. A `ChunkLoadError`/CSS-MIME-refused pair appeared on the first load and did NOT reproduce on 2 of 3 direct follow-ups (1 follow-up repeated only the benign CSS-MIME console warning, self-recovering; the 3rd was fully clean) — consistent with the already-documented concurrent-deploy-noise pattern (see "Mid-interaction rollout resilience" below), not filed as a standing defect. |
 
-**Not yet RTH-tested this pass:** mobile viewports during RTH, and other RTH-sensitive state
-transitions (premarket→open, open→close). Continuing this pass while the market remains open.
+**Mobile viewport checks this pass (iOS-app-shell, per the methodology note below):**
+
+| Route | Result |
+|---|---|
+| `/nighthawk` mobile | Healthy — live play card fully rendered (MARA, live mark/greeks, management panel) |
+| `/dashboard` mobile | Healthy — toolbar GEX read `-$29.0B`, consistent with the same figure's already-documented natural drift over the session (`-$32.5B → -$32.1B → -$29.9B`) from the dual-GEX finding above; not a new discrepancy. Vector-tab sub-chart showed "Loading Vector chart..." at t=7s — not independently re-verified past that point this pass, flagged for the same slow-settle-vs-broken ambiguity already tracked for this route's other tabs (see items 2-4 below). |
+| `/vector` mobile | Healthy, but slow to settle — at t=7s showed "Loading chart..." and the Live Helix tape marked "STALE"/"Connecting...". Re-checked with longer waits: fully loaded by ~t25-40s (chart rendered, tape flipped to "LIVE" with real flow prints populated). Confirms this is a slow-settle state, not stuck — worth noting mobile Vector can take ~30s+ to fully populate live flow, which is slower than desktop but not broken. |
+
+**Not yet RTH-tested this pass:** `/meridian` and `/terminal` at mobile viewport, and other
+RTH-sensitive state transitions (premarket→open, open→close). Continuing this pass while the market
+remains open.
 
 ---
 
