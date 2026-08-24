@@ -2747,7 +2747,6 @@ export function VectorChart({
     paintOverlays(lastDisplayBarsRef.current);
   }, [openingRangeMinutes, paintOverlays]);
 
-<<<<<<< HEAD
   useEffect(() => {
     volumeModeRef.current = volumeMode;
     const bars = lastDisplayBarsRef.current;
@@ -2768,8 +2767,6 @@ export function VectorChart({
     writePersisted(VECTOR_VOLUME_MODE_STORAGE_KEY, next);
   }, []);
 
-=======
->>>>>>> 63a1b410 (fix(vector): move DP walls effect after liveGexWalls declaration)
   const handleDarkPoolWalls = useCallback((enabled: boolean) => {
     darkPoolWallsEnabledRef.current = enabled;
     setDarkPoolWallsEnabled(enabled);
