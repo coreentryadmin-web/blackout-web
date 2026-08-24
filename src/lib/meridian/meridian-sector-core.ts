@@ -287,7 +287,7 @@ export function describeCohortPosition(
   const d = cohort.distribution;
   const unit = opts.unit ?? "";
   const median = `${d.median}${unit}`;
-  if (d.percentile == null) {
+  if (d.percentile == null || !Number.isFinite(d.percentile)) {
     return `${cohort.label} peers are pricing a median ${median} (n=${d.peers})`;
   }
   const pct = Math.round(d.percentile * 100);

@@ -131,6 +131,7 @@ function hashStr(s: string): number {
   return h;
 }
 function fmtUsd(n: number): string {
+  if (!Number.isFinite(n)) return "$—M";
   return `$${(n / 1e6).toLocaleString("en-US", { maximumFractionDigits: 2 })}M`;
 }
 
