@@ -82,7 +82,7 @@ cadence. This file is the QA-specific index on top of that: "have we seen this s
 | **Regression scenario** | During RTH, load `/dashboard` and read both GEX figures simultaneously — a fix should either label each by scope ("0DTE GEX" vs "Full-chain GEX") or reconcile them to one source; either way the two numbers on screen should no longer read as a bare unexplained contradiction. |
 | **Automated coverage** | none yet — owning lane's call |
 | **Findings-staging entry** | `docs/audit/findings-staging/2026-08-24-spx-slayer-dual-gex-figures-unlabeled.md`, routed via #2818 |
-| **Verified live** | Confirmed live at time of finding (2 independent samples ~7 min apart during RTH, consistent ~3.5x ratio both times). Pending fix from the owning lane. |
+| **Verified live** | Confirmed live at time of finding (2 independent samples ~7 min apart during RTH, consistent ~3.5x ratio both times). **Apparent partial fix observed 2026-08-24 ~23:42 UTC** (post-RTH, market closed): the toolbar stat pill now reads `GEX (0DTE)` instead of a bare `GEX`, which is exactly the scope-labeling fix this finding recommended. Not independently confirmed live during RTH with both figures compared side by side (market was closed at observation time, so this is encouraging but not a full re-verification) — re-check during the next RTH session before marking this closed. |
 | **Related, lower-confidence observation** | Same investigation caught the play-gate's `Desk data stale (Ns)` warning (`spx-play-gates.ts:293`) firing 717s→751s over one continuous window, then not reproducing on 3 follow-up loads. `gexDataAgeMs()` depends on `lastGoodGexComputedAt`, a **per-process module-level variable** (`spx-desk.ts:165`) — on multi-replica ECS this would explain a one-off stale reading that clears on a different replica/request. Not filed as a confirmed standing defect; worth a watch if it recurs. See the findings-staging entry for full detail. |
 
 ---
@@ -207,13 +207,14 @@ verified:
    real change (body text 39,731 → 40,946 characters) — the panel likely just settles slower than
    polled (chat/async content). Needs confirmation the Largo panel actually finishes loading in a
    reasonable time for a real member, not just that it eventually changes.
-3. **SPX Slayer (`/dashboard`) — two unlabeled selects** (timeframe: `1/3/5/15/30/60/custom`; a
-   second with `auto/6/8/12/16/20`, likely a row-count control). Both selects's own values updated
-   correctly, but the panel's visible content didn't change within the poll window. Could be the
-   same slow-settle pattern as the Largo tab, or the affected panel may not be in the
-   currently-visible tab when tested. Also worth separately noting: both selects carry no
-   accessible name (`aria-label` empty, `name` empty) — worth a small a11y fix regardless of the
-   content-change question.
+3. **SPX Slayer (`/dashboard`) — two unlabeled selects — STALE, superseded by a redesign.** Original
+   report: timeframe select (`1/3/5/15/30/60/custom`) and a row-count select (`auto/6/8/12/16/20`),
+   neither with an accessible name. **Re-checked 2026-08-24 ~23:42 UTC: `document.querySelectorAll("select")`
+   returns zero results on `/dashboard`** — the panel has been visibly redesigned since this was
+   filed (new `NODES 20 ROWS ▾` / `VOL RVOL ▾` custom dropdown-styled controls in the GEX chart
+   toolbar, not native `<select>` elements). Whether the new controls carry accessible names was not
+   checked — this entry is stale as originally written and shouldn't be re-tested against the old
+   selector; a fresh a11y pass on the new dropdown components would need to start over.
 4. **SPX Slayer (`/dashboard`) mobile — three more tabs, same shape** ("Matrix", "Intel", "Largo").
    Same slow-settle-vs-genuinely-broken ambiguity as items 2-3 above, at a higher hit rate (3 of 5
    mobile tabs vs. 1 of 4 on desktop) — consistent with mobile generally being slower to render
