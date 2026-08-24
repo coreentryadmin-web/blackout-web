@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { etDateTimeShort } from "@/lib/et-clock";
 import type { XIntelQueueRow, XIntelStatus } from "@/lib/x-intel/queue-types";
 
 export default function XIntelQueuePage() {
@@ -34,14 +35,8 @@ export default function XIntelQueuePage() {
     }
   }
 
-  function formatDate(d: string | Date): string {
-    const date = typeof d === "string" ? new Date(d) : d;
-    return date.toLocaleString("en-US", {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+  function formatDate(d: string | Date | null | undefined): string {
+    return etDateTimeShort(d) || "(unknown)";
   }
 
   return (
