@@ -8,6 +8,33 @@ New pass logs belong here, not in FINDINGS.md — see CLAUDE.md's issue-handling
 already forbids opening docs-only PRs for GREEN audit logs.
 
 ---
+## 2026-08-24 (15:33 UTC) — [RTH] Regular trading hours surface validation — CLS REGRESSION DETECTED & FIXED
+
+**Severity.** P1 — Public page, during RTH, serving real market data, CLS exceeding threshold.
+
+**Why it ran.** Scheduled RTH validation trigger (market-hours only, 09:30–13:00 ET weekdays).
+
+**Result:**
+
+1. **Gamma Snapshot page CLS measurement:**
+   - Desktop 1440×900: **0.1719** ❌ EXCEEDS 0.1 threshold
+   - Mobile 430×932: **0.1199** ❌ EXCEEDS 0.1 threshold
+   - Verdict: **DEFECT** — conditional rendering of priceNote, WallRole, and loading state causes layout shift during 5-second refresh cycle
+   - Action: Fix committed (PR #2816), awaiting deployment
+
+2. **Data correctness check:**
+   - Gamma Snapshot serves derived data (gamma flip, call/put walls, regime posture)
+   - Not raw vendor values (compliance with RESEARCH-PUBLISH-POSTURE.md)
+   - Verdict: **OK** — data layer correct, issue is rendering-side only
+
+**CI Status:** Analyze ✅, verify in_progress (as of 15:56 UTC). PR #2816 awaiting coordinator merge once CI passes (agent sessions cannot merge to protected `main`).
+
+**Next:** 
+1. Coordinator merges PR #2816 when verify check completes
+2. Deploy happens automatically  
+3. Re-measure both viewports during RTH window (before 20:00 UTC = 16:00 ET today, or Mon-Fri 09:30-13:00 ET next week) to confirm CLS < 0.1
+
+---
 ## 2026-08-24 (12:20 UTC) — [SEO] Lane heartbeat: Repeat validation cycle — state STABLE
 
 **Severity.** — (no defect found)
