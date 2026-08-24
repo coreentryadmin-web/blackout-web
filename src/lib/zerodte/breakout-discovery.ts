@@ -87,18 +87,24 @@ export const BREAKOUT_SCREEN_POOL = 200;
 
 /**
  * Rank screened movers for the chain-fetch budget. Liquidity already gated the pool; this orders
- * by momentum quality so a sharp mid-cap continuation outranks a sluggish mega-cap grind.
- * - long / breakout: `gain × close_strength` (strong close = conviction)
- * - short / breakdown: `gain × (1 − close_strength)` (weak close = conviction)
- * Ties break by $-volume (still prefer tradeable names). Pure.
+ * by gain-over-range: the move relative to the daily volatility (measured 2026-08-06: +11.3pt signal
+ * vs the prior −5.2pt momentum ranking). Ties break by $-volume (still prefer tradeable names). Pure.
+ *
+ * EVIDENCE (docs/audit/FINDINGS.md 2026-08-06): breakout-ranking-signal.mjs over 15 sessions
+ * (3,305 graded names) shows gain_over_range +11.3pt (p=0.000) vs momentum −5.2pt (p=0.945).
+ * Held-out cohort (15 disjoint sessions, 2,538 names): +15.7pt vs −6.4pt. Current momentum ranking
+ * is harmful; gain_over_range captures whether a move is "clean" (most of the day's range) or
+ * exhausted (already priced in volatility).
  */
-export function rankMoversForChainFetch<T extends { gain: number; close_strength: number; dollar: number }>(
+export function rankMoversForChainFetch<T extends { gain: number; close_strength: number; dollar: number; bar: { h: number; l: number; o: number } }>(
   movers: readonly T[],
   maxKeep: number,
   side: "long" | "short"
 ): T[] {
-  const quality = (m: T): number =>
-    side === "long" ? m.gain * m.close_strength : m.gain * (1 - m.close_strength);
+  const quality = (m: T): number => {
+    const range = m.bar.h - m.bar.l;
+    return range > 0 ? m.gain / (range / m.bar.o) : 0;
+  };
   return [...movers]
     .sort((a, b) => {
       const dq = quality(b) - quality(a);
