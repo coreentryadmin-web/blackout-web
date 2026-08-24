@@ -55,7 +55,7 @@ export function buildProviderHealthIssues(
         severity: "warning",
         category: PROVIDER_HEALTH_CATEGORY,
         title: `${row.provider} upstream errors elevated`,
-        detail: `${baseDetail} · fail rate ${(failRate * 100).toFixed(1)}%`,
+        detail: `${baseDetail} · fail rate ${Number.isFinite(failRate) ? (failRate * 100).toFixed(1) : "—"}%`,
       });
     }
 
