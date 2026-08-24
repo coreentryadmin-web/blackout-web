@@ -10,6 +10,7 @@ import type {
   SeriesAttachedParameter,
 } from "lightweight-charts";
 import type { VolumeProfile } from "./vector-volume-profile";
+import { volumeProfileBarRect, volumeProfileGutter } from "./vector-volume-profile-layout";
 
 /**
  * SESSION VOLUME PROFILE as a lightweight-charts SERIES PRIMITIVE — horizontal bars anchored to the
@@ -41,9 +42,6 @@ export const VP_POC_LINE = "rgba(251, 191, 36, 0.72)";
 export const VP_VA_LINE = "rgba(196, 181, 253, 0.62)";
 export const VP_LABEL_COLOR = "rgba(250, 250, 250, 0.92)";
 
-/** Widest a bucket bar can extend from the right edge, as a fraction of the pane width. */
-/** Wider profile bars so POC/VA read clearly on desk screenshots and first paint. */
-const MAX_BAR_WIDTH_FRAC = 0.20;
 const RIGHT_PAD_PX = 2;
 const LABEL_FONT = "600 10px ui-monospace, SFMono-Regular, Menlo, monospace";
 
@@ -116,6 +114,7 @@ export class VolumeProfilePrimitive implements ISeriesPrimitive<Time> {
   private _requestUpdate: (() => void) | null = null;
   private _profile: VolumeProfile | null = null;
   private _enabled = false;
+  private _lastBarTime: Time | null = null;
   private _overlayDim = 1;
   private readonly _paneViews: readonly IPrimitivePaneView[] = [new VolumeProfilePaneView(this)];
 
@@ -133,9 +132,10 @@ export class VolumeProfilePrimitive implements ISeriesPrimitive<Time> {
     return this._paneViews;
   }
 
-  setData(profile: VolumeProfile | null, enabled: boolean): void {
+  setData(profile: VolumeProfile | null, enabled: boolean, lastBarTime: Time | null = null): void {
     this._profile = profile;
     this._enabled = enabled;
+    this._lastBarTime = lastBarTime;
     this._requestUpdate?.();
   }
 
@@ -158,8 +158,11 @@ export class VolumeProfilePrimitive implements ISeriesPrimitive<Time> {
     if (!profile.buckets.length || profile.maxVolume <= 0) return null;
     const width = this._chart.paneSize?.().width ?? this._chart.timeScale().width();
     if (!(width > 0)) return null;
-    const rightX = width - RIGHT_PAD_PX;
-    const maxBarWidth = width * MAX_BAR_WIDTH_FRAC;
+    const timeScale = this._chart.timeScale();
+    const lastX =
+      this._lastBarTime != null ? timeScale.timeToCoordinate(this._lastBarTime) : null;
+    const gutter = volumeProfileGutter(width, lastX, RIGHT_PAD_PX);
+    if (!gutter) return null;
     const series = this._series;
     const half = profile.bucketSize / 2;
     const pocPrice = profile.poc;
@@ -176,8 +179,9 @@ export class VolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         b.price >= profile.valueAreaLow &&
         b.price <= profile.valueAreaHigh;
       const frac = b.volume / profile.maxVolume;
-      const barWidth = Math.max(1, frac * maxBarWidth);
-      bars.push({ yTop, yBottom, xLeft: rightX - barWidth, isPoc, inValueArea });
+      const rect = volumeProfileBarRect(gutter, frac);
+      if (!rect) continue;
+      bars.push({ yTop, yBottom, xLeft: rect.xLeft, isPoc, inValueArea });
     }
     if (!bars.length) return null;
 
@@ -192,6 +196,6 @@ export class VolumeProfilePrimitive implements ISeriesPrimitive<Time> {
     addLevel(profile.valueAreaHigh, "VAH", VP_VA_LINE, [6, 4]);
     addLevel(profile.valueAreaLow, "VAL", VP_VA_LINE, [6, 4]);
 
-    return { rightX, bars, levels };
+    return { rightX: gutter.rightX, bars, levels };
   }
 }

@@ -263,6 +263,15 @@ test("VectorChart: standalone desk uses flex-fill canvas (volume sub-pane must n
   assert.match(css, /\.vector-page-shell \.vector-chart-stage/);
 });
 
+test("VectorChart: volume profile bars render in the right gutter beside the last candle", () => {
+  const chart = read("src/features/vector/components/VectorChart.tsx");
+  const primitive = read("src/features/vector/lib/vector-volume-profile-primitive.ts");
+  assert.match(chart, /vectorChartRightOffsetBars/);
+  assert.match(chart, /lastBarTime/);
+  assert.match(primitive, /volumeProfileGutter/);
+  assert.match(primitive, /volumeProfileBarRect/);
+});
+
 test("VectorChart: session overview tightens vertical autoscale for readable beads", () => {
   const src = read("src/features/vector/components/VectorChart.tsx");
   assert.match(src, /SESSION_OVERVIEW_BEAD_VIEW_MAX_PCT/);
