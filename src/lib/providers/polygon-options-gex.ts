@@ -477,6 +477,7 @@ export type GexHeatmap = {
   spot: number;
   spot_source?: "ws" | "redis_cluster" | "rest" | "prev_bar" | "synthetic";
   change_pct: number;
+  chain_truncated?: boolean;
   asof: string;
   /**
    * Ascending expiry axis (SHARED by all metrics): the ~8 NEAREST expirations (dailies/weeklies)
@@ -2038,7 +2039,7 @@ async function fetchHeatmapBandLoHi(
   underlying: string,
   lo: number,
   hi: number
-): Promise<ChainContract[]> {
+): Promise<{ contracts: ChainContract[]; truncated: boolean }> {
   const params = new URLSearchParams({
     "strike_price.gte": String(lo),
     "strike_price.lte": String(hi),
@@ -2055,12 +2056,13 @@ async function fetchHeatmapBandLoHi(
     page = await polygonFetchUrl(page.next_url);
     guard += 1;
   }
-  if (page?.next_url) warnChainTruncated("fetchHeatmapBand", underlying, guard);
-  return out;
+  const truncated = !!page?.next_url;
+  if (truncated) warnChainTruncated("fetchHeatmapBand", underlying, guard);
+  return { contracts: out, truncated };
 }
 
 /** Full chain snapshot (no strike filter) — only for tiny low-priced chains (NIO-class). */
-async function fetchHeatmapBandUnfiltered(underlying: string): Promise<ChainContract[]> {
+async function fetchHeatmapBandUnfiltered(underlying: string): Promise<{ contracts: ChainContract[]; truncated: boolean }> {
   const params = new URLSearchParams({ limit: "250", apiKey: KEY });
   const out: ChainContract[] = [];
   let page = await polygonFetchUrl(`/v3/snapshot/options/${underlying}?${params}`);
@@ -2071,17 +2073,20 @@ async function fetchHeatmapBandUnfiltered(underlying: string): Promise<ChainCont
     page = await polygonFetchUrl(page.next_url);
     guard += 1;
   }
-  if (page?.next_url) warnChainTruncated("fetchHeatmapBandUnfiltered", underlying, guard);
-  return out;
+  const truncated = !!page?.next_url;
+  if (truncated) warnChainTruncated("fetchHeatmapBandUnfiltered", underlying, guard);
+  return { contracts: out, truncated };
 }
 
 async function fetchHeatmapBand(
   underlying: string,
   spot: number,
   root: string
-): Promise<ChainContract[]> {
+): Promise<{ contracts: ChainContract[]; truncated: boolean }> {
   const { lo, hi } = resolveHeatmapStrikeBounds(spot, root);
-  let contracts = await fetchHeatmapBandLoHi(underlying, lo, hi);
+  let result = await fetchHeatmapBandLoHi(underlying, lo, hi);
+  let contracts = result.contracts;
+  let truncated = result.truncated;
 
   // A thin ladder means the band missed most of the chain — escalate at ANY price, not just
   // NIO-class. See shouldEscalateToFullChain: ASTS ($71.66) returned 30 of its 119 listed strikes,
@@ -2096,10 +2101,12 @@ async function fetchHeatmapBand(
   // "cache stale" without shipping instrumentation first. One request now answers it.
   const inBand = countUniqueChainStrikes(contracts);
   if (shouldEscalateToFullChain(inBand, spot)) {
-    const full = await fetchHeatmapBandUnfiltered(underlying);
+    const fullResult = await fetchHeatmapBandUnfiltered(underlying);
+    const full = fullResult.contracts;
     const fullStrikes = countUniqueChainStrikes(full);
     if (fullStrikes > inBand) {
       contracts = full;
+      truncated = fullResult.truncated;
       console.info(
         `[polygon-gex] full-chain escalation ADOPTED for ${underlying}: ${inBand} -> ${fullStrikes} strikes ` +
           `(spot ${spot.toFixed(2)}, band ${lo}-${hi}).`
@@ -2108,6 +2115,8 @@ async function fetchHeatmapBand(
       // The interesting case: we asked for the whole chain and got nothing better. Either the
       // unfiltered snapshot failed/was throttled (it returns [] rather than throwing) or the band
       // genuinely already held the chain. Without this line the two look identical from the API.
+      // If escalation was attempted, use the unfiltered truncation status; otherwise keep the banded status.
+      truncated = fullResult.truncated;
       console.warn(
         `[polygon-gex] full-chain escalation NO-OP for ${underlying}: band gave ${inBand} strikes, ` +
           `unfiltered pull gave ${fullStrikes} — keeping the banded ladder. If ${underlying} is known ` +
@@ -2116,7 +2125,7 @@ async function fetchHeatmapBand(
     }
   }
 
-  return contracts;
+  return { contracts, truncated };
 }
 
 
@@ -3081,10 +3090,12 @@ async function buildGexHeatmapUncached(
   if (isHeatmapPreset(root)) recordHeatmapPriceObservation(root, spot);
 
   // Band sizing stays RELATIVE (% of spot) so it works for $5 and $900 names.
-  const [contracts, dividendYieldQ] = await Promise.all([
+  const [chainResult, dividendYieldQ] = await Promise.all([
     fetchHeatmapBand(optionsRoot, spot, root),
     resolveHeatmapDividendYield(root),
   ]);
+  const contracts = chainResult.contracts;
+  const chainTruncated = chainResult.truncated;
   if (!contracts.length) {
     console.warn(
       `[gex-heatmap] 0 contracts for ${optionsRoot} @ ${spot} via ${hostOf(BASE)} — trying UW strike-exposure fallback.`
@@ -3673,6 +3684,7 @@ async function buildGexHeatmapUncached(
     source: "polygon",
     data_delay: POLYGON_OPTIONS_DATA_DELAY,
     ...(spotSource !== undefined ? { spot_source: spotSource } : {}),
+    ...(chainTruncated ? { chain_truncated: true } : {}),
   };
 
   // Cache once for everyone: in-memory + Redis. 500 users → one matrix, zero per-user fetch.
