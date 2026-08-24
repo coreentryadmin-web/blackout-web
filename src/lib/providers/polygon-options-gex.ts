@@ -475,6 +475,7 @@ export type GexShift = {
 export type GexHeatmap = {
   underlying: string;
   spot: number;
+  spot_source?: "ws" | "redis_cluster" | "rest" | "prev_bar" | "synthetic";
   change_pct: number;
   asof: string;
   /**
@@ -1236,21 +1237,25 @@ async function fetchSpotFromPrevBar(
 async function resolveSpotSnapshotLastResort(
   optionsRoot: string,
   isIndex: boolean
-): Promise<{ price: number; change_pct: number } | null> {
+): Promise<{ price: number; change_pct: number; source: "prev_bar" | "synthetic" } | null> {
   if (isIndex) {
     // I:SPX prev is often plan-gated; SPY prev × 10 tracks within ~0.4% (data-integrity C4).
     if (optionsRoot === "I:SPX") {
       const spy = await fetchSpotFromPrevBar("SPY");
-      if (spy) return { price: spy.price * 10, change_pct: spy.change_pct };
+      if (spy) return { price: spy.price * 10, change_pct: spy.change_pct, source: "prev_bar" };
     }
-    return fetchSpotFromPrevBar(optionsRoot);
+    const prevBar = await fetchSpotFromPrevBar(optionsRoot);
+    if (prevBar) return { ...prevBar, source: "prev_bar" };
+  } else {
+    const prevBar = await fetchSpotFromPrevBar(optionsRoot);
+    if (prevBar) return { ...prevBar, source: "prev_bar" };
   }
-  return fetchSpotFromPrevBar(optionsRoot);
+  return null;
 }
 
 async function resolveSpotSnapshot(
   optionsRoot: string
-): Promise<{ price: number; change_pct: number } | null> {
+): Promise<{ price: number; change_pct: number; source: "ws" | "redis_cluster" | "rest" | "prev_bar" | "synthetic" } | null> {
   const root = optionsRoot.toUpperCase();
   const isIndex = root.startsWith("I:") || Object.values(INDEX_ROOTS).includes(root);
 
@@ -1271,6 +1276,7 @@ async function resolveSpotSnapshot(
       return {
         price: ws.price,
         change_pct: ws.change_pct ?? rebaseChangePct(ws.price, restSnap) ?? restSnap?.change_pct ?? 0,
+        source: "ws",
       };
     }
     // Cross-replica fallback: ingest leader writes indexStore → Redis every ~1s. Web-tier
@@ -1279,7 +1285,7 @@ async function resolveSpotSnapshot(
     const { readClusterIndexSpot } = await import("../ws/socket-cluster-health");
     const cluster = await readClusterIndexSpot(root, GEX_INDEX_WS_STALE_MS);
     if (cluster) {
-      return cluster;
+      return { ...cluster, source: "redis_cluster" };
     }
   } else {
     const ws = await liveWsStockSpot(root);
@@ -1293,6 +1299,7 @@ async function resolveSpotSnapshot(
       return {
         price: ws.price,
         change_pct: rebaseChangePct(ws.price, restSnap) ?? restSnap?.change_pct ?? 0,
+        source: "ws",
       };
     }
   }
@@ -1303,7 +1310,7 @@ async function resolveSpotSnapshot(
     : await fetchStockSnapshot(root).catch(() => null);
   const restPrice = snap && snap.price > 0 ? snap.price : 0;
   if (restPrice > 0) {
-    return { price: restPrice, change_pct: snap?.change_pct ?? 0 };
+    return { price: restPrice, change_pct: snap?.change_pct ?? 0, source: "rest" };
   }
   const prevBar = await resolveSpotSnapshotLastResort(root, isIndex);
   if (prevBar && prevBar.price > 0) return prevBar;
@@ -1311,7 +1318,7 @@ async function resolveSpotSnapshot(
   // Last resort: UW stock-state (Polygon 403 / circuit-open must not blank the GEX matrix).
   const { resolveSpotFromUwStockState } = await import("./spot-fallback");
   const uw = await resolveSpotFromUwStockState(optionsRoot, Date.now());
-  if (uw && uw.price > 0) return uw;
+  if (uw && uw.price > 0) return { ...uw, source: "synthetic" };
 
   return null;
 }
@@ -3048,6 +3055,7 @@ async function buildGexHeatmapUncached(
   // the indices snapshot — the stocks snapshot returns no row for I:* and yields spot 0.
   const snap = await resolveSpotSnapshot(optionsRoot);
   const spot = snap?.price ?? 0;
+  const spotSource = snap?.source;
   // Graceful empty: no spot (thin / unknown / dead name) → valid empty payload, NOT a throw.
   // CRITICAL: cache this empty result with the SAME ctx the sibling empty paths pass (below),
   // otherwise a dead/unknown ticker re-runs resolveSpotSnapshot — a fresh Polygon spot fetch —
@@ -3061,6 +3069,7 @@ async function buildGexHeatmapUncached(
       now,
       cacheKey,
       ttlMs: Math.min(ttlMs, EMPTY_SPOT_NEGATIVE_TTL_MS),
+      spotSource: undefined,
     });
   }
   const changePct = snap?.change_pct ?? 0;
@@ -3089,7 +3098,7 @@ async function buildGexHeatmapUncached(
       ttlMs
     );
     if (uwMatrix) return uwMatrix;
-    return emptyHeatmap(root, { spot, changePct, now, cacheKey, ttlMs });
+    return emptyHeatmap(root, { spot, changePct, now, cacheKey, ttlMs, spotSource });
   }
 
   const today = todayEtYmd();
@@ -3268,7 +3277,7 @@ async function buildGexHeatmapUncached(
   }
 
   if (expirySet.size === 0) {
-    return emptyHeatmap(root, { spot, changePct, now, cacheKey, ttlMs });
+    return emptyHeatmap(root, { spot, changePct, now, cacheKey, ttlMs, spotSource });
   }
 
   // SHARED expiry axis (ascending) = the nearest NEAR_TERM_EXPIRY_COUNT expiries (UNCHANGED
@@ -3663,6 +3672,7 @@ async function buildGexHeatmapUncached(
     ...(depth_by_scope !== undefined ? { depth_by_scope } : {}),
     source: "polygon",
     data_delay: POLYGON_OPTIONS_DATA_DELAY,
+    ...(spotSource !== undefined ? { spot_source: spotSource } : {}),
   };
 
   // Cache once for everyone: in-memory + Redis. 500 users → one matrix, zero per-user fetch.
@@ -3693,7 +3703,7 @@ async function buildGexHeatmapUncached(
  */
 function emptyHeatmap(
   underlying: string,
-  ctx?: { spot?: number; changePct?: number; now?: number; cacheKey?: string; ttlMs?: number }
+  ctx?: { spot?: number; changePct?: number; now?: number; cacheKey?: string; ttlMs?: number; spotSource?: "ws" | "redis_cluster" | "rest" | "prev_bar" | "synthetic" }
 ): GexHeatmap {
   const heatmap: GexHeatmap = {
     underlying,
@@ -3757,6 +3767,7 @@ function emptyHeatmap(
     // No prior history to diff → no events (omitted, never fabricated).
     source: "polygon",
     data_delay: POLYGON_OPTIONS_DATA_DELAY,
+    ...(ctx?.spotSource !== undefined ? { spot_source: ctx.spotSource } : {}),
   };
   if (ctx?.cacheKey && ctx.now != null && ctx.ttlMs != null) {
     const entry = { at: ctx.now, data: heatmap };

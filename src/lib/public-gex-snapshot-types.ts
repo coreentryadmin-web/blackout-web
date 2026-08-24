@@ -21,6 +21,8 @@ export type PublicGexSnapshot = {
   call_wall_role: PublicWallRole | null;
   put_wall_role: PublicWallRole | null;
   read: string;
+  /** Origin of the spot price: ws=live WebSocket, redis_cluster=cross-replica fallback, rest=Polygon REST, prev_bar=prior session, synthetic=UW fallback (omitted when unavailable). */
+  spot_source?: "ws" | "redis_cluster" | "rest" | "prev_bar" | "synthetic";
   /**
    * WHEN, as three separate facts — because `asof` alone was being read as a fourth thing it is not.
    *

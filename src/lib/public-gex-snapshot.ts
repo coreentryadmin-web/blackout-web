@@ -107,6 +107,7 @@ export async function buildPublicGexSnapshot(ticker: PublicGexTicker): Promise<P
         call_wall: heatmap.gex.call_wall,
         put_wall: heatmap.gex.put_wall,
       }),
+      ...(heatmap.spot_source !== undefined ? { spot_source: heatmap.spot_source } : {}),
     };
     await sharedCacheSet(cacheKey, snapshot, CACHE_TTL_SEC).catch(() => undefined);
     return snapshot;
