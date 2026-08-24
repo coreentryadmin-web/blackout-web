@@ -1,3 +1,5 @@
+import type { VectorDteHorizon } from "./vector-dte-horizon";
+
 /** Default Vector chart symbol — SPX index options desk anchor. */
 export const VECTOR_DEFAULT_TICKER = "SPX";
 
@@ -58,4 +60,9 @@ export function vectorPolygonMinuteSymbol(ticker: string): string {
  */
 export function vectorHasWsOracle(ticker: string): boolean {
   return VECTOR_ORACLE_TICKERS.has(normalizeVectorTicker(ticker));
+}
+
+/** Opening DTE horizon: oracle indices on 0DTE; everything else on weekly (5s per-horizon rail). */
+export function defaultVectorDteHorizon(raw: string | null | undefined): VectorDteHorizon {
+  return VECTOR_ORACLE_TICKERS.has(normalizeVectorTicker(raw)) ? "0dte" : "weekly";
 }
