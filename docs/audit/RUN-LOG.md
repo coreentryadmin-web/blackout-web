@@ -41,6 +41,32 @@ already forbids opening docs-only PRs for GREEN audit logs.
 **Status:** CLOSED. Fix validated across both RTH measurement viewports. No further action required.
 
 ---
+## 2026-08-24 (16:33 UTC) — [RTH] Gamma Snapshot live RTH validation — data + CLS confirmed GOOD
+
+**Severity.** — (no defect found)
+
+**Why it ran.** Scheduled RTH SEO validation trigger (market-hours only, Mon-Fri 09:30-13:00 ET).
+
+**When.** 2026-08-24 12:33 ET, market open, live tape running.
+
+**Result:**
+
+1. **CLS measurement on live page with real market data:**
+   - Desktop 1440×900: **0** ✅ GOOD (56/56 assets routed ok)
+   - Mobile 430×932: **0** ✅ GOOD (57/57 assets routed ok)
+   - Verdict: **FIX CONFIRMED UNDER LIVE CONDITIONS** — CLS regression fix (#2816) holds during RTH with real market rendering (no stale snapshots, actual 5-second refresh cycle)
+
+2. **Data correctness check (live API response):**
+   - Page serves derived data only (call_wall, put_wall, posture, flip, wall_role, description)
+   - NOT raw vendor values — compliant with RESEARCH-PUBLISH-POSTURE.md
+   - Live example: SPX spot 7663.82 (−0.14%), call_wall 7900 (resistance), put_wall 7600 (support), posture short gamma
+   - Timestamp: 2026-08-24T16:34:03Z (just seconds old at measurement time)
+   - Verdict: **LIVE AND CORRECT** — page data accuracy validated with real market conditions
+
+**Interpretation:**
+The CLS fix is proven under the conditions it will encounter in production: live market data, live tape, real page refresh cycle. Not a static snapshot. Both desktop and mobile viewports stable. No new defects detected. `/tools/gamma-snapshot` remains a compliant public surface per RESEARCH-PUBLISH-POSTURE.md.
+
+---
 ## 2026-08-24 (12:20 UTC) — [SEO] Lane heartbeat: Repeat validation cycle — state STABLE
 
 **Severity.** — (no defect found)
