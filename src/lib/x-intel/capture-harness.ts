@@ -238,7 +238,7 @@ async function captureSingleSource(
 
   try {
     const { execSync } = await import("child_process");
-    const { mkdirSync, writeFileSync, existsSync } = await import("fs");
+    const { mkdirSync, existsSync } = await import("fs");
     const { join } = await import("path");
 
     const now = Date.now();

@@ -191,8 +191,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const { url: attachmentUrl, source: attachmentSource } =
-      await captureAttachments(postType, data);
+    const { url: attachmentUrl } = await captureAttachments(postType, data);
 
     const attachments = attachmentUrl
       ? [
