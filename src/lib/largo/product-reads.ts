@@ -958,7 +958,12 @@ export async function helixDerivedForLargo(
     // `cappedList` carries the true total + a truncated flag beside each list, the same discipline
     // get_helix_signal_outcomes (rows_shown/rows_summarized) and get_helix_tape_analytics
     // (expiry_concentration_truncated) already use.
-    const stackedHits = cappedList(stacks, 20);
+    //
+    // TRANSPORT CAP FIX (HELIX-MAP §9.6, 2026-08-24): Reduced caps to fit within MAX_TOOL_RESULT_CHARS
+    // (16k), as the full payload exceeded the limit and got truncated by the transport layer. The
+    // model still receives _total counts and _truncated flags so it knows when lists are capped.
+    // Measured live: caps of 12/8/8/8 keep payload <16k chars while maintaining useful signal.
+    const stackedHits = cappedList(stacks, 12);
     // POSITION INTENT on the leaders. The model would otherwise have to re-derive
     // `premium / (fill_price * 100)` against `open_interest` AND re-pick the margin — a second
     // reader of one fact, which is the failure this lane has now fixed five times. Stated once, by
@@ -971,10 +976,10 @@ export async function helixDerivedForLargo(
     // exactly the distinction that makes the field honest.
     const topPrints = cappedList(
       top.rows.map((row) => ({ ...row, position_intent: positionIntent(row) })),
-      12
+      8
     );
-    const velocitySpikes = cappedList(velocity, 12);
-    const splitFlow = cappedList(split, 12);
+    const velocitySpikes = cappedList(velocity, 8);
+    const splitFlow = cappedList(split, 8);
 
     return roundFloats({
       available: true,
