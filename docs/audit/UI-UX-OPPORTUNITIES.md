@@ -152,25 +152,24 @@ a pattern worth generalizing. Classify with the brief's own scale:
     kept landing on the deploy-window `ChunkLoadError` crash — see item 11 / the same-day finding —
     before a clean repro could be captured of this specific table state).
 
-11. **Thermal desktop interaction audit — HARNESS failure, likely the SAME root cause as item 12's
-    fixed ChunkLoadError crash, not yet re-run to confirm.** `thermal-interaction-audit.cjs` at
-    1440×900 threw `TypeError: Cannot read properties of null (reading 'scrollWidth')` inside its
-    own `page.evaluate`, reading `document.documentElement.scrollWidth` /
-    `document.body.scrollWidth` — properties that are normally never null once a page has loaded,
-    which is exactly why this reads as suspicious rather than a simple missing-selector bug. The
-    harness's OWN page-loaded gate had already passed (`loaded.thermal && loaded.matrix` both
-    true) before this evaluate ran, meaning the DOM went from "confirmed present" to "document.body
-    is null" in the ~2.5s settle window between the gate check and the geometry read — consistent
-    with a page-level crash/reload happening mid-measurement, not a selector the probe got wrong.
-    This ran in the same overall session, during the same deploy-heavy window, as the
-    `ChunkLoadError` crashes found and fixed same day
-    (`docs/audit/findings-staging/2026-08-24-chunk-load-error-critical-crash.md`) — very likely the
-    identical root cause manifesting as a harness-level null-property error instead of a visible
-    "CRITICAL ERROR" screen. Not chased further to full proof (would mean deliberately re-running
-    during another live deploy window, which isn't reliably reproducible on demand). Next step:
-    re-run `thermal-interaction-audit.cjs` at 1440×900 outside any deploy window to confirm desktop
-    Thermal interaction coverage is otherwise clean, now that #2842 (the chunk-error self-heal) is
-    merged.
+11. **[ANSWERED, 2026-08-24 — confirmed clean] Thermal desktop interaction audit — the earlier
+    HARNESS failure was the deploy-window ChunkLoadError crash; a clean re-run outside that window
+    found no product defects.** Originally, `thermal-interaction-audit.cjs` at 1440×900 threw
+    `TypeError: Cannot read properties of null (reading 'scrollWidth')` inside its own
+    `page.evaluate`, reading `document.documentElement.scrollWidth` /
+    `document.body.scrollWidth` — properties that are normally never null once a page has loaded.
+    The harness's OWN page-loaded gate had already passed (`loaded.thermal && loaded.matrix` both
+    true) before this evaluate ran, consistent with a page-level crash/reload happening
+    mid-measurement — very likely the same `ChunkLoadError` root cause found and fixed the same day
+    (`docs/audit/findings-staging/2026-08-24-chunk-load-error-critical-crash.md`), now that #2842
+    (the chunk-error self-heal) has merged. **Re-ran isolated, outside any deploy window, 2026-08-24
+    off-hours:** `PAGE LOADED in 10804ms`, `routed 114 ok / 0 fail`, `body horizontal overflow: 0px`,
+    `0 elements past viewport`, `0 console errors`. Two low-severity, already-understood
+    observations, not new findings: 7 text collisions matching the exact opaque-sticky-`<thead>`
+    pattern confirmed benign for mobile in item 10 (same table, same shape — `"Strike" ∩ "773"`,
+    `"Net flow" ∩ "$482.2M"` ×2, etc.), and the same `"Skip to content"` `1×1` accessibility
+    skip-link already hypothesized as intentionally hidden, not a real tap target. Desktop Thermal
+    interaction coverage is clean; closing this item.
 
 12. **[DONE, 2026-08-24] Platform-wide `ChunkLoadError` during a deploy could crash any page to a
     dead-end "CRITICAL ERROR" screen — found via a Thermal interaction-audit run, fixed the same
