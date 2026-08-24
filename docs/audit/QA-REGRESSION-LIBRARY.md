@@ -42,6 +42,19 @@ cadence. This file is the QA-specific index on top of that: "have we seen this s
 
 ## Entries
 
+### Platform/Auth — page-level `redirect()` gates broken app-wide (P0: full paywall + admin bypass)
+
+| Field | Detail |
+|---|---|
+| **Severity** | P0 — the most severe finding this lane has filed to date. |
+| **Found** | 2026-08-24, authorization-boundary sweep prompted by a mid-session coordinator directive to own the product and keep testing without stopping to ask. |
+| **Reproduction** | Mint a signed-in Clerk session with `publicMetadata.tier: "free"` (no admin role). Navigate to any of `/nighthawk`, `/flows`, `/heatmap`, `/vector`, `/meridian`, `/dashboard`, `/terminal` — every one renders the full `200` product page instead of redirecting to `/upgrade`. Separately, any non-admin session (even explicit `role:"member"`) navigating to `/admin`, `/admin/users`, `/admin/largo-answer-preview`, or `/embed/track-record` gets the full admin page instead of a redirect to `/dashboard`. |
+| **Root cause** | `requireTier()` (`src/lib/auth-access.ts:32-60`) and `requireAdmin()` (`src/lib/admin-access.ts:44-55`) both call `redirect()` from `next/navigation` when their access check fails — and both checks are proven correct (the identical predicates, called from the API-route siblings `requireTierApi`/`resolveAdminApi` with the same session, correctly return 403). The `redirect()` call itself is not taking effect in the page-render path. A zero-logic, non-async, unconditional `redirect()` call (`admin/track-record/page.tsx`) is *also* affected, which rules out "only broken inside complex async gate functions" and points at something broader — possibly middleware/rewrite interaction (`x-middleware-rewrite: /admin` was observed on the affected responses). Exact single-line root cause not isolated — needs production log/debugger access. |
+| **Regression scenario** | For each of the 7 desk routes and the 4 admin-family routes above: mint a session below the required tier/role, request the page directly (not via browser navigation, so no client-side redirect can mask a broken server one), and assert the response is a redirect (30x to `/upgrade` or `/dashboard`), not a `200` render of the gated page. |
+| **Automated coverage** | none yet — owning lane's call. The PR write-up recommends the fix add an integration test that renders each gated page with a non-qualifying session and asserts a redirect, since unit tests on the predicate functions alone were apparently green while this shipped. |
+| **Findings-staging entry** | `docs/audit/findings-staging/2026-08-24-admin-page-authz-bypass.md`, routed via #2836 |
+| **Verified live** | Confirmed live at time of finding: 7/7 paid products + 4/4 admin-family routes reproduced, multiple independent non-admin/free-tier identities. API layer independently confirmed NOT affected (44 admin routes + 5 market-data routes sampled, all correctly 401/403). Pending fix from the owning lane — re-verify all 11 routes once fixed. |
+
 ### Marketing/public site — mobile sticky CTA blocks a home-page FAQ tap
 
 | Field | Detail |

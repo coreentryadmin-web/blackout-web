@@ -1,7 +1,6 @@
 import { requireAdmin } from "@/lib/admin-access";
-import "../../styles/admin-console.css";
 
-export default async function AdminLayout({
+export default async function EmbedTrackRecordLayout({
   children,
 }: {
   children: React.ReactNode;

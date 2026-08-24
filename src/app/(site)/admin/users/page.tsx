@@ -1,6 +1,5 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { requireAdmin } from "@/lib/admin-access";
 import { UserManagement } from "@/components/admin/UserManagement";
 import { noindexPageMetadata } from "@/lib/page-metadata";
 
@@ -9,9 +8,7 @@ export const revalidate = 0;
 
 export const metadata: Metadata = noindexPageMetadata("User management · Admin · BlackOut", "/admin/users");
 
-export default async function AdminUsersPage() {
-  await requireAdmin();
-
+export default function AdminUsersPage() {
   return (
     <div className="admin-page admin-page-v2">
       <main id="main" className="admin-page-main admin-v2-users-page">

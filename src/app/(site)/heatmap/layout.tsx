@@ -1,16 +1,15 @@
 import { requireDeskTool } from "@/lib/auth-access";
 import { ComingSoon } from "@/components/ComingSoon";
-import "../../nighthawk-v2.css";
 
-export default async function NighthawkLayout({
+export default async function HeatmapLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   // Tier gate at layout level before rendering any children.
   // This ensures redirect() is handled before the error boundary can catch it.
-  const access = await requireDeskTool("premium", "nighthawk");
-  if (!access) return <ComingSoon toolKey="nighthawk" />;
+  const access = await requireDeskTool("premium", "heatmap");
+  if (!access) return <ComingSoon toolKey="heatmap" />;
 
   return children;
 }
