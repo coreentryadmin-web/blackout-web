@@ -1390,3 +1390,25 @@ tape, so no mobile segment is empty despite `VectorPulse` being unmounted.
 closed (Saturday, "AUG 21 CLOSE" in the header, which is the correct prior session). This is a
 render-and-interaction pass. Correctness against Polygon on a moving tape is still owed, as is the
 RTH truncation probe for #2649.
+
+## 2026-08-24 SPX Slayer Certification — Cron DST Audit Re-Run
+
+Re-ran `cron-dst-audit.mjs` to verify the 2026-08-21 findings and catch any drift post-fix:
+
+**Status from 2026-08-21 audit:**
+- `x-autopost`: BROKEN (0 EST fires; went dark in winter)
+- `banger-discovery`: BROKEN (fired 45 min early in EST)
+
+**Status from 2026-08-24 re-run:**
+- `x-autopost`: Still BROKEN (0 EST fires) — **NOT FIXED YET**
+- `banger-discovery`: Registry mismatch detected (registry says `20,21` @ UTC, deployed says `20` UTC only)
+- `nighthawk-outcomes`: ASYMMETRIC (EDT 10 fires vs EST 5 fires)
+- `swing-discovery`: ASYMMETRIC (EDT 122 fires vs EST 120 fires)
+- 12 unaudited crons (no entry in deployed manifest or registry)
+
+**Known gaps from 2026-08-21:**
+- Two crons still need DST fixes (x-autopost, banger-discovery)
+- Asymmetric fire counts on nighthawk-outcomes and swing-discovery need review
+- Registry/manifest mismatches need reconciliation
+
+**No new infrastructure applied.** This is a measurement re-run to confirm drift status, not a remediation. The x-autopost fix from 2026-08-21 did not land.
