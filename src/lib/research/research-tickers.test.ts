@@ -36,25 +36,16 @@ test("paths are lowercase and rooted at the research hub", () => {
   assert.equal(researchTickerPath("  spx  "), "/research/gamma-levels/spx");
 });
 
-test("SITEMAP AND ROUTES CANNOT DRIFT — every research ticker has exactly one entry", () => {
-  // The failure this catches is silent in both directions: a sitemap entry with no route is a
-  // crawl error on every pass, and a route with no entry is a page nothing ever finds.
+test("SITEMAP EXCLUDES RESEARCH UNTIL LICENSING — routes exist but are not submitted", () => {
+  // Vendor redistribution for public derived gamma pages is still an open legal question.
+  // Submitting 50+ programmatic URLs while that is unresolved is worse than not listing them.
   const paths = publicSitemapEntries().map((e) => e.path);
   const research = paths.filter((p) => p.startsWith("/research/gamma-levels"));
-
-  assert.ok(research.includes("/research/gamma-levels"), "the hub must be listed");
-  for (const t of researchTickers()) {
-    assert.ok(research.includes(researchTickerPath(t)), `${t} missing from the sitemap`);
-  }
-  assert.equal(
-    research.length,
-    researchTickers().length + 1,
-    "the sitemap must carry the hub plus one entry per ticker and nothing else"
-  );
+  assert.equal(research.length, 0, `research paths must not be in sitemap: ${research.join(", ")}`);
   assert.equal(new Set(paths).size, paths.length, "no duplicate sitemap paths");
 });
 
-test("research pages are crawlable — no disallow rule shadows them", async () => {
+test("research pages are not robots-blocked (noindex is layout-level, not disallow)", async () => {
   const robots = (await import("@/app/robots")).default();
   const disallowed = robots.rules;
   const rules = Array.isArray(disallowed) ? disallowed : [disallowed];
