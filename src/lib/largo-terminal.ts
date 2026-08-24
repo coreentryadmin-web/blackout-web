@@ -1,7 +1,6 @@
 import {
   anthropicText,
   anthropicToolLoop,
-  type ToolLoopStopReason,
   COMMENTARY_MODEL,
   isAiSpendCeilingTripped,
   LARGO_MODEL,
@@ -129,7 +128,6 @@ import {
   suggestTickerFromQuestion,
   type ConversationMemoryState,
 } from "@/lib/largo/conversation-memory";
-import { buildResponseComponents } from "@/lib/largo/response-builder";
 import {
   fetchLargoSessionMetadata,
   maybePersistWatchlistFromQuestion,
@@ -835,8 +833,7 @@ async function prepareLargoTurn(
   //
   // This used to be `LARGO_TOOL_DEFS.filter(t => getToolsForIntent(question).has(t.name))`, a
   // hand-written regex allowlist deciding which tools Claude was even SHOWN. Measured over 20
-  // realistic member questions against the then-116-tool surface, it exposed a mean of 21.9 (19%)
-  // — the denominator is the count as it stood at that measurement, not today's. The failure was
+  // realistic member questions it exposed a mean of 21.9 / then-116 tools (19%), and the failure was
   // silent: "what's the biggest risk in my open positions" reached 4 tools and could not call
   // get_open_plays; "how many trades did we win last month" could not reach get_trade_history or
   // get_zerodte_record. Largo did not decline those — it answered from the live feed alone, which
@@ -974,7 +971,7 @@ export async function runLargoQuery(
   const {
     sid, history, system, filteredTools, toolsUsed, tickerHint, viewer, timeframe, persistedQuestion,
     liveFeedResults, depth, compareCard, playSimilarity, preEarningsPack, socialPack,
-    activeDeskScope, deskScopeArgs, miniPanelKind, conversationMemory: initialMemory,
+    activeDeskScope, deskScopeArgs, miniPanelKind,
   } = await prepareLargoTurn(
     question,
     sessionId,
@@ -996,17 +993,7 @@ export async function runLargoQuery(
     // Mark the prefetch/loop boundary so the phase split below can attribute the wall clock. See
     // turn-phase-timings.ts: everything before this line was deterministic prefetch (no model call).
     const loopStartedAt = Date.now();
-    // WHY THE LOOP'S OWN REASON IS CAPTURED. `anthropicToolLoop` returns `string | null`, and eight
-    // different outcomes collapse into that `null` — a closed gate, a missing key, the spend
-    // ceiling, an upstream failure, an empty model round, an exhausted budget. Without this the
-    // empty-answer copy had to GUESS from elapsed time, and its default guess was "no data": on
-    // 2026-08-22 that told every asker the desk had no data for a whole day while the real cause
-    // was an HTTP 400 on the Anthropic account. See ToolLoopStopReason.
-    let stopReason: ToolLoopStopReason | undefined;
     const answer = await anthropicToolLoop({
-      onStop: (s) => {
-        stopReason = s.reason;
-      },
       system,
       tools: filteredTools,
       messages: history,
@@ -1057,7 +1044,6 @@ export async function runLargoQuery(
         budgetMs: largoLoopBudgetMs(depth),
         toolsUsed,
         ceilingTripped,
-        stopReason,
       });
     }
 
@@ -1284,13 +1270,7 @@ export async function runLargoQueryStream(
     // Mark the prefetch/loop boundary so the phase split below can attribute the wall clock. See
     // turn-phase-timings.ts: everything before this line was deterministic prefetch (no model call).
     const loopStartedAt = Date.now();
-    // Same reason-capture as the non-streaming path above — the browser ALWAYS takes this branch,
-    // so an unexplained `null` here is the one members actually see.
-    let stopReason: ToolLoopStopReason | undefined;
     const answer = await anthropicToolLoop({
-      onStop: (s) => {
-        stopReason = s.reason;
-      },
       system,
       tools: filteredTools,
       messages: history,
@@ -1358,7 +1338,6 @@ export async function runLargoQueryStream(
         budgetMs: largoLoopBudgetMs(depth),
         toolsUsed,
         ceilingTripped,
-        stopReason,
       });
     }
 

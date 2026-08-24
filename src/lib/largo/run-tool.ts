@@ -724,6 +724,12 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
     case "get_risk_reversal_skew":
       return { ticker: uwTicker(ticker), skew: await fetchUwRiskReversalSkew(uwTicker(ticker)) };
     case "get_market_context": {
+      // Helper to trim snapshot to essential Largo fields only (fix for P2 truncation)
+      const trimSnapshot = (snap: Record<string, any>) => {
+        const { ticker, prevClose, last, change, changePercent, volume } = snap;
+        return { ticker, prevClose, last, change, changePercent, volume };
+      };
+
       // spx desk is per-user-session and must stay outside the shared cache
       const desk = await getLargoSpxLiveDesk(userId).catch(() => null);
       const shared = await serverCache("market_context", TTL.MARKET_SNAPSHOT, async () => {
@@ -734,7 +740,16 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
           fetchMarketStatusNow(),
           fetchMarketUpcomingStatus(),
         ]);
-        return { indices: { ...indices, ...etfs }, market_tide: tide, market_status: status, upcoming_sessions: upcoming };
+        // Trim all snapshots to essential fields to stay under transport cap
+        const trimmedIndices = Object.entries(indices).reduce(
+          (acc, [key, snap]) => ({ ...acc, [key]: trimSnapshot(snap as Record<string, any>) }),
+          {} as Record<string, any>
+        );
+        const trimmedEtfs = Object.entries(etfs).reduce(
+          (acc, [key, snap]) => ({ ...acc, [key]: trimSnapshot(snap as Record<string, any>) }),
+          {} as Record<string, any>
+        );
+        return { indices: { ...trimmedIndices, ...trimmedEtfs }, market_tide: tide, market_status: status };
       });
       return {
         ...shared,
@@ -1037,7 +1052,9 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
     }
     case "get_banger_board": {
       const { bangerBoardForLargo } = await import("@/lib/largo/product-reads");
-      return bangerBoardForLargo(Number(input.limit ?? 40));
+      // Reduced from 40 to 25 to stay under 16k transport cap (P2 truncation fix)
+      // 40 rows at full detail exceeded cap; 25 fits comfortably
+      return bangerBoardForLargo(Number(input.limit ?? 25));
     }
     case "get_swing_horizon": {
       const { swingHorizonForLargo } = await import("@/lib/largo/product-reads");
@@ -1852,6 +1869,35 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
       };
     }
     case "get_nighthawk_dossier": {
+      // Helper to prune dossier entry_context fields unused by Largo (P2 truncation fix)
+      // Largo needs: entry timestamp, current marks, P&L, exit state. It doesn't need:
+      // flow_breakdown (internal state), regime_state (internal calibration), prior-day ref
+      const pruneDossier = (d: Record<string, any>) => {
+        const { ticker, plays, scored } = d;
+        if (!plays || !Array.isArray(plays)) return d;
+        return {
+          ticker,
+          plays: plays.map((p: Record<string, any>) => {
+            // Keep: entry/exit metadata, current position state, marks, P&L, greeks
+            // Drop: full entry_context (use only essential entry fields)
+            const { id, ticker: pTicker, position, marks, pnl, current_mark, greeks, exit_state, entry_timestamp, created_at } = p;
+            return {
+              id,
+              ticker: pTicker,
+              position,
+              marks,
+              pnl,
+              current_mark,
+              greeks,
+              exit_state,
+              entry_timestamp,
+              created_at,
+            };
+          }),
+          scored,
+        };
+      };
+
       let editionFor = input.date ? String(input.date) : null;
       if (!editionFor) {
         const latest = await marketPlatform.nighthawk.getLatestNightHawkEdition();
@@ -1862,7 +1908,7 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         const all = await fetchStagedDossiers(editionFor);
         const one = all.find((d) => d.ticker === tickerFilter);
         if (one) {
-          return { edition_for: editionFor, ticker: tickerFilter, dossier: one, archived: false };
+          return { edition_for: editionFor, ticker: tickerFilter, dossier: pruneDossier(one), archived: false };
         }
         // Live staging is cleared the moment an edition publishes (task #129) — fall back to the
         // durable nighthawk_scoring_history archive so "why was ticker X scored" stays answerable
@@ -1870,7 +1916,7 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         const history = await fetchNighthawkScoringHistory(editionFor, tickerFilter);
         const archivedRow = history[0];
         const dossier = archivedRow
-          ? { ticker: archivedRow.ticker, dossier: archivedRow.dossier, scored: archivedRow.scored }
+          ? { ticker: archivedRow.ticker, dossier: pruneDossier(archivedRow.dossier), scored: archivedRow.scored }
           : null;
         return { edition_for: editionFor, ticker: tickerFilter, dossier, archived: Boolean(archivedRow) };
       }
