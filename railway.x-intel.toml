@@ -21,6 +21,6 @@ watchPatterns = [
 # 0 12,14,16,18,20,22,0 * * * fires at 00:00, 12:00, 14:00, 16:00, 18:00, 20:00, 22:00 UTC
 # every day. Covers market hours and pre-market for content generation.
 startCommand = "node scripts/hit-cron.mjs /api/cron/x-intel"
-cronSchedule = "0 0,12,14,16,18,20,22 * * *"
+cronSchedule = "0 12,14,16,18,20,22,0 * * *"
 restartPolicyType = "never"
 numReplicas = 1
