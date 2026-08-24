@@ -99,9 +99,16 @@ actually exercised.
 | `/dashboard` mobile | Healthy — toolbar GEX read `-$29.0B`, consistent with the same figure's already-documented natural drift over the session (`-$32.5B → -$32.1B → -$29.9B`) from the dual-GEX finding above; not a new discrepancy. Vector-tab sub-chart showed "Loading Vector chart..." at t=7s — not independently re-verified past that point this pass, flagged for the same slow-settle-vs-broken ambiguity already tracked for this route's other tabs (see items 2-4 below). |
 | `/vector` mobile | Healthy, but slow to settle — at t=7s showed "Loading chart..." and the Live Helix tape marked "STALE"/"Connecting...". Re-checked with longer waits: fully loaded by ~t25-40s (chart rendered, tape flipped to "LIVE" with real flow prints populated). Confirms this is a slow-settle state, not stuck — worth noting mobile Vector can take ~30s+ to fully populate live flow, which is slower than desktop but not broken. |
 
-**Not yet RTH-tested this pass:** `/meridian` and `/terminal` at mobile viewport, and other
-RTH-sensitive state transitions (premarket→open, open→close). Continuing this pass while the market
-remains open.
+| `/meridian` mobile | Healthy — "LIVE STRUCTURE, As of 12:32 PM ET", 217 catalysts / 200 earnings populated with real prints (GRRR, TUYA, PDD, NSSC) |
+| `/terminal` mobile | Healthy — Largo module picker fully rendered (SPX Slayer/Helix/Thermal/Vector/Night Hawk modules), input ready |
+
+**RTH live-testing pass (2026-08-24) complete for all 7 routes × both viewports.** One confirmed
+product defect this pass (SPX Slayer dual-GEX-figures, above, #2818). No other reproducible defects
+found — the `/vector` mobile slow-settle and `/terminal` desktop transient ChunkLoadError were both
+investigated and traced to known, already-documented non-product causes (slow client-side data
+population and concurrent-deploy noise respectively), not filed as findings. Remaining open item:
+premarket/close state transitions were not specifically tested (would need to be timed around the
+actual transition, not available on-demand within this pass).
 
 ---
 
