@@ -23,6 +23,8 @@ export type PublicGexSnapshot = {
   read: string;
   /** Origin of the spot price: ws=live WebSocket, redis_cluster=cross-replica fallback, rest=Polygon REST, prev_bar=prior session, synthetic=UW fallback (omitted when unavailable). */
   spot_source?: "ws" | "redis_cluster" | "rest" | "prev_bar" | "synthetic";
+  /** True when the options chain was truncated by pagination guards, signaling strikes may exist beyond the fetched range. Omitted when the full chain was retrieved. */
+  chain_truncated?: boolean;
   /**
    * WHEN, as three separate facts — because `asof` alone was being read as a fourth thing it is not.
    *
