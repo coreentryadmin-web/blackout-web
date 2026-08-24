@@ -550,6 +550,16 @@ export const CRON_JOBS: CronJobDefinition[] = [
     produces_member_alert: true,
   },
   {
+    key: "x-intel",
+    name: "X Intel Queue Writer",
+    kind: "http",
+    path: "/api/cron/x-intel",
+    schedule_label: "Every 2h (same as x-autopost)",
+    stale_after_min: 240,
+    schedule_cron_utc: "0 12,14,16,18,20,22,0 * * *",
+    description: "Generate X content candidates and write to review queue (never publishes)",
+  },
+  {
     key: "x-autopost",
     name: "X Autopost",
     kind: "http",

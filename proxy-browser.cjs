@@ -61,6 +61,7 @@ async function main() {
     viewport: o.vp,
     desktop: o.desktop,
     seedStorage: o.seed ? JSON.parse(o.seed) : null,
+    requestTimeoutMs: 45000,
   });
 
   const page = await ctx.newPage();
@@ -74,6 +75,14 @@ async function main() {
 
   await page.waitForTimeout(o.wait);
   console.log(`Routed: ${counts.ok} ok, ${counts.fail} fail`);
+
+  // Wait for network to settle (all pending requests to complete or timeout)
+  try {
+    await page.waitForLoadState('networkidle', { timeout: 15000 });
+    console.log('Network idle');
+  } catch (e) {
+    console.warn('Network timeout (continuing)');
+  }
 
   // A LIVE desk never stops moving — SSE ticks, marks, pulsing status dots. Playwright's
   // screenshot waits for visual stability, so on /nighthawk it burned the whole 10s budget and

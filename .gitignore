@@ -59,3 +59,4 @@ brag-output-*/
 # Ad-hoc live probes. /tmp is wiped between captures while the repo survives, so probes live
 # here — but they are throwaway diagnostics, not committed tooling.
 scratch/
+public/x-intel/captures/
