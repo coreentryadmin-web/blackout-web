@@ -392,6 +392,22 @@ VALIDATION window whether this strip populates correctly once the market is open
 cross-product strip that's "unavailable" even off-hours (when Thermal's own data is happily
 showing Friday's close) is a different, milder question than the one originally asked.
 
+**LIVE INTERACTION TEST, 2026-08-24** (`thermal-interaction-audit.cjs`, live RTH, desktop 1440 +
+mobile 430) — the committed interaction harness (pixel-level collision/overflow/tap-target
+measurement, not just selector presence). Desktop run hit a **HARNESS** failure (`TypeError:
+Cannot read properties of null`, not a product verdict — not yet re-diagnosed). Mobile run: page
+loaded (149 routed, 0 fail), `body horizontal overflow: 0px`, `elements past viewport: 0`. Two
+real observations:
+- **5 text collisions** measured on the mobile GEX matrix table ("Strike" ∩ "773", "Aug 25" ∩
+  "+$9.6M", "Aug 25" ∩ "+181%", "Net flow" ∩ "$484.9M" ×2) — not yet root-caused or filed; flagged
+  for follow-up (`UI-UX-OPPORTUNITIES.md`).
+- **A platform-wide crash, unrelated to Thermal itself, found and FIXED the same day:** the run's
+  console carried `ChunkLoadError: Loading chunk 6750 failed.` A follow-up live check reproduced a
+  full-page crash to `global-error.tsx`'s "CRITICAL ERROR" screen on 2 of 4 `/heatmap` loads,
+  correlated with an in-progress production deploy. Root-caused and fixed — see
+  `docs/audit/findings-staging/2026-08-24-chunk-load-error-critical-crash.md`. Not a Thermal-specific
+  bug — the fix is in the shared root/route error boundaries and applies to every page.
+
 ---
 
 ## 5. Vector — `/vector`

@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
+import { autoReloadOnceOnChunkError } from "@/lib/chunk-load-error";
 
 /** Shared App Router error UI — dependency-light for use in segment error boundaries. */
 export default function RouteErrorBoundary({
@@ -13,6 +14,9 @@ export default function RouteErrorBoundary({
 }) {
   useEffect(() => {
     console.error(error);
+    // Stale-chunk error from a deploy mid-rollout — self-heal with a hard reload rather than
+    // leaving the member stuck on a manual "Try again" for a problem their own next load clears.
+    autoReloadOnceOnChunkError(error);
   }, [error]);
 
   return (
