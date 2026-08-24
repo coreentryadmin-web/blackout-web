@@ -37,6 +37,7 @@ async function main() {
     viewport: o.vp,
     desktop: o.desktop,
     seedStorage: o.seed ? JSON.parse(o.seed) : null,
+    requestTimeoutMs: 45000,
   });
 
   const page = await ctx.newPage();
