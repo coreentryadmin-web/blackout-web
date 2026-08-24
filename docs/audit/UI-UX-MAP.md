@@ -588,6 +588,31 @@ yet tell which it is.
 shot; the loading-skeleton state above is what this second desktop attempt also captured, so no
 new structural detail to add beyond the timeout note.
 
+**LIVE INTERACTION TEST, 2026-08-24** (`meridian-interaction-audit.mjs`, live off-hours, desktop
+1440 + tablet 1024; mobile HARNESS'd — see below). Isolated, uncontended runs (a first parent-mode
+pass fanned all three viewports over a shared proxy tunnel while a second standalone desktop run
+was accidentally in flight at the same time, which produced spurious `tab button not present` /
+`0 tabs active` / `execution context destroyed` P2s on that pass's desktop child alone — re-run
+desktop in isolation twice and got 0 P2 both times, confirming the first pass's P2s were proxy
+contention between the two concurrent runs, not a product defect; not filed):
+- **Desktop and tablet, real P3s:** 10 (Report), 6 (Estimates), 10 (Positioning) interactive
+  controls under the 24px tap-target minimum on BOTH viewports (same shapes: `561x20`/`470x20`
+  wall/pin rows with adequate width but ~20px height, `18x18` intel-source badges, `8x8`
+  price-target/analyst-rating dots in Estimates). Real, reproducible, `button`/`a[href]`/
+  `[role=button]` elements per the harness's own interactive-element filter — not a text-collision
+  false positive. See `UI-UX-OPPORTUNITIES.md` item 13.
+- **Tablet only: a P3 saying "selecting an event does not change the URL."** This directly
+  contradicts a static trace of `meridian-deeplink-core.ts` (built and unit-tested 2026-08-18 for
+  exactly this behavior) and `MeridianDesk.tsx` (`onSelect={() => setSelectedId(item.id)}` →
+  a `useEffect` on `[selectedId, view, filter]` → `router.push` with the serialized state) — the
+  wiring is correct by inspection. A follow-up isolated live probe timed out waiting for the
+  earnings row selector before it could even test the click (consistent with this section's own
+  already-documented cold-timeline-fetch stalls, not a new failure). **Left unresolved rather than
+  guessed either way** — see `UI-UX-OPPORTUNITIES.md` item 14.
+- **Mobile: HARNESS**, not a verdict — `net::ERR_CONNECTION_RESET` navigating to `/meridian` after
+  4 retries, the documented proxy-tunnel-saturation signature (tablet+mobile both fetch on a shared
+  budget and mobile runs last — see this harness's own top-of-file history). Not a product finding.
+
 **LIVE 2026-08-23** (`meridian-mobile`, 430×932):
 
 ```
