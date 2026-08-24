@@ -137,11 +137,11 @@ gex-wall-snapshot-poll.mjs` is that live intraday poller — built + smoke-teste
 
 | | value | where |
 |---|---|---|
-| screen pool per side | `max(ceiling × 4, BREAKOUT_SCREEN_POOL)` = **400** | `breakout-discovery.ts:295` |
+| screen pool per side | `max(ceiling × 4, BREAKOUT_SCREEN_POOL)` = **600** | `breakout-discovery.ts:295` |
 | cap floor | `BREAKOUT_MAX_CANDIDATES` = **40** (a floor, not a ceiling) | `breakout-discovery.ts:69` |
-| cap ceiling | `BREAKOUT_MAX_CANDIDATES_CEILING` = **100** | `breakout-discovery.ts:74` |
+| cap ceiling | `BREAKOUT_MAX_CANDIDATES_CEILING` = **150** | `breakout-discovery.ts:74` |
 | cap formula | `clamp(ceil(qualifying × 0.30), 40, 100)`, `qualifying` = **long + short** pools | `breakout-cap.ts:41-56` |
-| ordering | `rankMoversForChainFetch` — long `gain × close_strength`, short `gain × (1 − close_strength)`, $-volume breaks ties | `breakout-discovery.ts:91-105`, applied `:378-379` |
+| ordering | `rankMoversForChainFetch` — **gain-over-range** (`gain / ((h−l)/o)`) for both sides, $-volume breaks ties | `breakout-discovery.ts:91-112`, applied `:378-379` |
 | chain-fetch budget | `min(max(cap × 4, 60), BREAKOUT_SCREEN_POOL)` | `breakout-discovery.ts:378` |
 
 **Corrected measurement — 13 sessions (2026-07-20 … 2026-08-05), long side, favorable-first
@@ -188,8 +188,18 @@ The dropped tail won ≥ the kept cohort on **7 of 13** sessions.
    top-400 *by $-volume* — the very ordering the momentum re-rank exists to correct, reappearing one
    layer upstream.
 
-**Decision: nothing changed in the engine on 2026-08-06.** The recorded evidence was corrected; the
-cap and ranking ship as they are. Operator call on whether to pursue (2).
+**REVISED 2026-08-24 (WS-21: ranking improvement).** The 2026-08-06 evidence exposed that momentum
+ranking carries **no discriminating power** (flat 43–45% win rate across all rank bands). On
+2026-08-24 the ranking was **replaced with gain-over-range** (`gain / ((h−l)/o)` — a mover's clean
+gain relative to daily volatility). Measured signal: **+11.3pt to +15.7pt** (p<0.001) across 3,305+
+names on breakout/breakdown discovery (see `scripts/audit/breakout-ranking-signal.mjs`); the
+prior momentum ranking measured **−5.2pt to −6.4pt** (negative). This single ranking change carries
+a measured **~6 percentage point improvement** in capture-set win rate on historical backtests.
+Screen pool raised to 600 (ceiling × 4 where ceiling is now 150) and chain-fetch budget scaling
+adjusted accordingly.
+
+**Decision: ship the ranking change (WS-21).** Gain-over-range is the ranking that should have
+shipped; the 2026-08-06 evidence pointed exactly here and was misread as "don't change anything."
 
 **Caveat on the proxy.** Grading is an *underlying*-continuation proxy applied identically to every
 cohort, not an option P&L path, and it models the best case for the cap (every kept name builds a
