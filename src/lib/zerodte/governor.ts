@@ -261,7 +261,7 @@ export function timeOfDaySizingFactor(etMinutes: number): {
 }
 
 export function premiumBudgetReason(premiumAtRisk: number): string | null {
-  if (premiumAtRisk < GOVERNOR_MAX_PREMIUM_AT_RISK) return null;
+  if (!Number.isFinite(premiumAtRisk) || premiumAtRisk < GOVERNOR_MAX_PREMIUM_AT_RISK) return null;
   return (
     `Session governor (MEASURE): aggregate entry premium $${premiumAtRisk.toLocaleString()} at/over ` +
     `$${GOVERNOR_MAX_PREMIUM_AT_RISK.toLocaleString()} budget — further adds over-concentrate capital. ` +
