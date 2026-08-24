@@ -340,7 +340,7 @@ export function targetRail(
     high,
     consensus,
     spot: s,
-    upsidePct: s !== null && s > 0 ? Number((((consensus - s) / s) * 100).toFixed(1)) : null,
+    upsidePct: s !== null && s > 0 && Number.isFinite(consensus) ? Number((((consensus - s) / s) * 100).toFixed(1)) : null,
     targets,
   };
 }
@@ -429,7 +429,7 @@ export function structureLadder(
       key,
       label,
       value,
-      distPct: spot !== null && spot > 0 ? Number((((value - spot) / spot) * 100).toFixed(2)) : null,
+      distPct: spot !== null && spot > 0 && Number.isFinite(value) ? Number((((value - spot) / spot) * 100).toFixed(2)) : null,
       scope: (sourceField && levelScopes?.[sourceField]) || null,
       // Only the walls. `gamma_flip`, `king_node` and `max_pain` are measured strikes whose
       // position in the list is their own value, not a remapping.

@@ -229,7 +229,7 @@ export async function loadMeridianEarningsIntel(input: {
    * moves, and a quote that cannot describe this print is not evidence about this print.
    */
   const vector_move_pct =
-    vectorCoversPrint && vectorEm?.movePct != null
+    vectorCoversPrint && vectorEm?.movePct != null && Number.isFinite(vectorEm.movePct)
       ? Number((vectorEm.movePct * 100).toFixed(1))
       : null;
 
