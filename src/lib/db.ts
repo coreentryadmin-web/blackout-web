@@ -2225,6 +2225,13 @@ async function runMigrations(): Promise<void> {
     `CREATE INDEX IF NOT EXISTS idx_x_intel_queue_session
        ON x_intel_queue(session_date DESC, created_at DESC)`
   );
+  // #2499 shipped the table without session_claim; #2574 added it to CREATE TABLE IF NOT EXISTS
+  // which does not alter an existing relation. Prod x-intel cron INSERTs failed with
+  // `column "session_claim" of relation "x_intel_queue" does not exist` until this runs.
+  await p.query(`
+    ALTER TABLE x_intel_queue
+      ADD COLUMN IF NOT EXISTS session_claim BOOLEAN NOT NULL DEFAULT FALSE
+  `);
 
   } finally {
     // Release the advisory lock + return the dedicated connection to the pool.

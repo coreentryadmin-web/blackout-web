@@ -94,7 +94,19 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  const forceType = req.nextUrl.searchParams.get("type") as PostType | null;
+  const validTypes = new Set<string>([
+    "desk_open",
+    "desk_flow",
+    "desk_ai",
+    "desk_matrix",
+    "desk_midday",
+    "desk_close",
+    "desk_evening",
+    "weekend_desk",
+  ]);
+  const rawType = req.nextUrl.searchParams.get("type");
+  const forceType =
+    rawType && validTypes.has(rawType) ? (rawType as PostType) : null;
   const et = nowET();
   const postType = forceType ?? selectPostType(et);
 
@@ -299,7 +311,7 @@ export async function GET(req: NextRequest) {
       postType,
     });
     return NextResponse.json(
-      { ok: false, error: "X intel generation failed" },
+      { ok: false, error: "X intel generation failed", detail: message },
       { status: 200 },
     );
   }
