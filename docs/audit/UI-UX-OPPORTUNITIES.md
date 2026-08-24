@@ -135,22 +135,28 @@ a pattern worth generalizing. Classify with the brief's own scale:
    confirm the multi-instance-cache theory directly, or ask Vector's lane whether a client-side
    fallback fetch is an intentional trade-off they've already made (vs. an oversight).
 
-10. **[P2, needs root-cause] Thermal mobile GEX matrix — 5 measured text collisions.**
+10. **[ANSWERED, 2026-08-24 — confirmed benign, no fix needed] Thermal mobile GEX matrix — 5
+    measured text collisions, root-caused as the opaque sticky-header-over-scrolled-row pattern.**
     `thermal-interaction-audit.cjs` (live RTH, 430×932) measured 5 physical text-leaf collisions on
     the GEX matrix table: `"Strike" ∩ "773"` (23×10px), `"Aug 25" ∩ "+$9.6M"` (47×17px),
     `"Aug 25" ∩ "+181%"` (29×10px), `"Net flow" ∩ "$484.9M"` (60×17px, and again at 60×3px — two
-    overlapping pairs at the same header). These are the harness's own filtered, physical
-    getBoundingClientRect() intersections (off-screen and clipped-by-scroll-ancestor leaves already
-    excluded per that harness's own documented false-positive lesson), so they're a real measured
-    overlap, not noise — but not yet traced to the specific component/CSS rule or fixed. Also
-    measured in the same run: 1 clipped text leaf, 1 sub-24px tap target (a `<a>"Skip to content"`
-    1×1 — likely an intentionally visually-hidden accessibility skip-link, not a real visible tap
-    target, but not yet confirmed either way). Repro: `NODE_USE_ENV_PROXY=1 PROBE_COOKIE=<cookie>
-    node scripts/audit/thermal-interaction-audit.cjs` (mint a cookie via
-    `mintClerkPremiumSession` first). Next step: screenshot/zoom the matrix table's header row at
-    430px to see the collision directly (this pass's own live screenshot attempts at `/heatmap`
-    kept landing on the deploy-window `ChunkLoadError` crash — see item 11 / the same-day finding —
-    before a clean repro could be captured of this specific table state).
+    overlapping pairs at the same header). Live geometry re-check (2026-08-24, off-hours):
+    scrolled the matrix's own internal scroll container (`.gex-matrix-scroll`, `overflow-y:auto`,
+    the sticky `<thead>`'s actual scrolling ancestor) and measured a real body row's rect
+    (`y: 89.6–122.1`, strike `885`) physically intersecting the sticky `<thead>`'s rect
+    (`y: 90.1–144.6`) — i.e. exactly the shape the harness's own collision detector flags, and
+    exactly what happens on any table with `position: sticky; top: 0` headers over a scrolling
+    body. `GexHeatmap.tsx`'s `<thead>` carries an explicit **opaque** background
+    (`sticky top-0 z-20 bg-[#08080e]`, the app's solid void-black), so a row scrolled underneath it
+    is fully covered, not rendered as garbled overlapping text a user would actually see — the
+    harness measures raw DOM rect intersection, which cannot distinguish "hidden behind an opaque
+    layer" from "visibly garbled," so it correctly flags the geometry but the visual result is the
+    ordinary, intended behavior of any sticky table header. This is the same benign shape this
+    harness's own top-of-file history already documented for Thermal desktop — now confirmed on
+    mobile too with live measured rects, not just pattern-matched. Closing as answered rather than
+    a defect; no fix needed. (The 1 clipped text leaf / 1 sub-24px `"Skip to content"` tap target
+    noted in the same run were not re-investigated — low-severity and very likely the same
+    visually-hidden accessibility skip-link hypothesized originally, not chased further.)
 
 11. **Thermal desktop interaction audit — HARNESS failure, likely the SAME root cause as item 12's
     fixed ChunkLoadError crash, not yet re-run to confirm.** `thermal-interaction-audit.cjs` at
