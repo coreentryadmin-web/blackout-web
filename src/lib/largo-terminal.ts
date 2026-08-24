@@ -833,7 +833,7 @@ async function prepareLargoTurn(
   //
   // This used to be `LARGO_TOOL_DEFS.filter(t => getToolsForIntent(question).has(t.name))`, a
   // hand-written regex allowlist deciding which tools Claude was even SHOWN. Measured over 20
-  // realistic member questions it exposed a mean of 21.9 / 116 tools (19%), and the failure was
+  // realistic member questions it exposed a mean of 21.9 / then-116 tools (19%), and the failure was
   // silent: "what's the biggest risk in my open positions" reached 4 tools and could not call
   // get_open_plays; "how many trades did we win last month" could not reach get_trade_history or
   // get_zerodte_record. Largo did not decline those — it answered from the live feed alone, which
