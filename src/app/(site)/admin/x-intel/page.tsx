@@ -45,7 +45,7 @@ export default function XIntelQueuePage() {
         <h1 className="text-3xl font-bold">X Intel Queue</h1>
         <Link
           href="/admin"
-          className="text-sm px-3 py-2 rounded bg-gray-200 hover:bg-gray-300 transition"
+          className="text-sm px-3 py-2 rounded bg-white/10 hover:bg-white/15 transition"
         >
           ← Back to Admin
         </Link>
@@ -60,7 +60,7 @@ export default function XIntelQueuePage() {
             className={`px-4 py-2 rounded transition ${
               status === s
                 ? "bg-blue-600 text-white"
-                : "bg-gray-200 hover:bg-gray-300"
+                : "bg-white/10 hover:bg-white/15"
             }`}
           >
             {s} ({s === "ALL" ? "all" : s.toLowerCase()})
@@ -75,20 +75,20 @@ export default function XIntelQueuePage() {
       )}
 
       {loading ? (
-        <div className="text-center py-8 text-gray-500">Loading queue...</div>
+        <div className="text-center py-8 text-white/30">Loading queue...</div>
       ) : rows.length === 0 ? (
-        <div className="text-center py-8 text-gray-500">No {status} rows</div>
+        <div className="text-center py-8 text-white/30">No {status} rows</div>
       ) : (
         <div className="space-y-4">
           {rows.map((row) => (
             <div
               key={row.id}
-              className="border rounded-lg p-4 hover:bg-gray-50 transition"
+              className="border border-white/10 rounded-lg p-4 hover:bg-white/5 transition"
             >
               <div className="flex justify-between items-start mb-2">
                 <div>
                   <h3 className="font-bold text-lg">{row.headline}</h3>
-                  <p className="text-sm text-gray-600">
+                  <p className="text-sm text-white/40">
                     {row.ticker_or_market} · {row.franchise}
                   </p>
                 </div>
@@ -99,7 +99,7 @@ export default function XIntelQueuePage() {
                         ? "bg-green-100 text-green-800"
                         : row.status === "REVIEW"
                           ? "bg-yellow-100 text-yellow-800"
-                          : "bg-gray-100 text-gray-800"
+                          : "bg-white/10 text-white"
                     }`}
                   >
                     {row.status}
@@ -109,25 +109,25 @@ export default function XIntelQueuePage() {
 
               <div className="grid grid-cols-2 gap-4 text-sm mb-3">
                 <div>
-                  <span className="text-gray-600">Created</span>
+                  <span className="text-white/40">Created</span>
                   <p className="font-mono">{formatDate(row.created_at)}</p>
                 </div>
                 <div>
-                  <span className="text-gray-600">Session</span>
+                  <span className="text-white/40">Session</span>
                   <p className="font-mono">{row.session_date}</p>
                 </div>
               </div>
 
               {row.post_copy && (
-                <div className="mb-3 p-2 bg-gray-50 rounded border border-gray-200 text-sm">
-                  <div className="text-gray-600 mb-1">Post Copy</div>
+                <div className="mb-3 p-2 bg-white/5 rounded border border-white/10 text-sm">
+                  <div className="text-white/40 mb-1">Post Copy</div>
                   <p className="line-clamp-3">{row.post_copy}</p>
                 </div>
               )}
 
               {row.attachments.length > 0 && (
                 <div className="mb-3">
-                  <div className="text-gray-600 text-sm mb-1">
+                  <div className="text-white/40 text-sm mb-1">
                     Attachments ({row.attachments.length})
                   </div>
                   <div className="flex gap-2">
@@ -148,7 +148,7 @@ export default function XIntelQueuePage() {
 
               {row.confidence && (
                 <div className="mb-3 text-sm">
-                  <div className="text-gray-600 mb-1">Confidence</div>
+                  <div className="text-white/40 mb-1">Confidence</div>
                   <p className="font-mono">
                     {(row.confidence.score * 100).toFixed(0)}% · {row.confidence.basis}
                   </p>
@@ -157,12 +157,12 @@ export default function XIntelQueuePage() {
 
               {row.reason_selected && (
                 <div className="mb-3 text-sm">
-                  <div className="text-gray-600 mb-1">Reason Selected</div>
+                  <div className="text-white/40 mb-1">Reason Selected</div>
                   <p className="font-mono">{row.reason_selected}</p>
                 </div>
               )}
 
-              <div className="flex gap-2 pt-3 border-t">
+              <div className="flex gap-2 pt-3 border-t border-white/10">
                 <Link
                   href={`/admin/x-intel/${row.id}`}
                   className="flex-1 px-3 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 transition text-center"

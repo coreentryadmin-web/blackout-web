@@ -76,7 +76,7 @@ export default function XIntelDetailPage({
   if (loading) {
     return (
       <div className="p-6">
-        <div className="text-center py-8 text-gray-500">Loading...</div>
+        <div className="text-center py-8 text-white/30">Loading...</div>
       </div>
     );
   }
@@ -104,7 +104,7 @@ export default function XIntelDetailPage({
         <div className="flex justify-between items-start">
           <div>
             <h1 className="text-3xl font-bold mb-2">{row.headline}</h1>
-            <div className="flex gap-4 text-sm text-gray-600">
+            <div className="flex gap-4 text-sm text-white/40">
               <span>ID: {row.id}</span>
               <span>Cycle: {row.cycle_key}</span>
               <span>Session: {row.session_date}</span>
@@ -116,7 +116,7 @@ export default function XIntelDetailPage({
                 ? "bg-green-100 text-green-800"
                 : row.status === "REVIEW"
                   ? "bg-yellow-100 text-yellow-800"
-                  : "bg-gray-100 text-gray-800"
+                  : "bg-white/10 text-white"
             }`}
           >
             {row.status}
@@ -136,9 +136,9 @@ export default function XIntelDetailPage({
           <h2 className="font-bold mb-3">Attachments ({row.attachments.length})</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {row.attachments.map((a, i) => (
-              <div key={i} className="border rounded p-3">
+              <div key={i} className="border border-white/10 rounded p-3">
                 <div className="font-bold text-sm mb-1">{a.role}</div>
-                <div className="text-xs text-gray-600 mb-2">
+                <div className="text-xs text-white/40 mb-2">
                   {a.source_surface} · {a.captured_at_et}
                 </div>
                 {a.image_url && (
@@ -169,7 +169,7 @@ export default function XIntelDetailPage({
             <h3 className="font-bold mb-2">Products Referenced</h3>
             <ul className="text-sm space-y-1">
               {(row.products_referenced as string[]).map((p) => (
-                <li key={p} className="font-mono bg-gray-100 px-2 py-1 rounded">
+                <li key={p} className="font-mono bg-white/10 px-2 py-1 rounded">
                   {p}
                 </li>
               ))}
@@ -184,9 +184,9 @@ export default function XIntelDetailPage({
               <div className="font-mono mb-1">
                 Score: {(row.confidence.score * 100).toFixed(0)}%
               </div>
-              <div className="text-gray-700">Basis: {row.confidence.basis}</div>
+              <div className="text-white/40">Basis: {row.confidence.basis}</div>
               {row.confidence.sample_size && (
-                <div className="text-gray-700">n = {row.confidence.sample_size}</div>
+                <div className="text-white/40">n = {row.confidence.sample_size}</div>
               )}
             </div>
           </div>
@@ -196,7 +196,7 @@ export default function XIntelDetailPage({
       {row.underlying_evidence && row.underlying_evidence.length > 0 && (
         <div className="mb-6">
           <h3 className="font-bold mb-2">Underlying Evidence</h3>
-          <div className="bg-gray-50 rounded p-3 text-sm space-y-1">
+          <div className="bg-white/5 rounded p-3 text-sm space-y-1">
             {(row.underlying_evidence as any[]).map((e, i) => (
               <div key={i} className="font-mono text-xs">
                 {e.what}: {e.value} ({e.source})
@@ -213,13 +213,13 @@ export default function XIntelDetailPage({
           <div className="text-sm space-y-1">
             {row.chronology.detection && (
               <div>
-                <span className="text-gray-600">Detection:</span>
+                <span className="text-white/40">Detection:</span>
                 <span className="font-mono ml-2">{row.chronology.detection.at_et}</span>
               </div>
             )}
             {row.chronology.market_event && (
               <div>
-                <span className="text-gray-600">Market Event:</span>
+                <span className="text-white/40">Market Event:</span>
                 <span className="font-mono ml-2">{row.chronology.market_event.at_et}</span>
               </div>
             )}
@@ -230,12 +230,12 @@ export default function XIntelDetailPage({
       {row.reason_selected && (
         <div className="mb-6">
           <h3 className="font-bold mb-2">Why This Package?</h3>
-          <p className="text-sm text-gray-700">{row.reason_selected}</p>
+          <p className="text-sm text-white/40">{row.reason_selected}</p>
         </div>
       )}
 
       {/* Record tweet ID */}
-      <form onSubmit={recordTweetId} className="mb-6 p-4 border rounded bg-gray-50">
+      <form onSubmit={recordTweetId} className="mb-6 p-4 border border-white/10 rounded bg-white/5">
         <h3 className="font-bold mb-3">After Publishing to X</h3>
         <div className="flex gap-2 mb-3">
           <input
@@ -253,7 +253,7 @@ export default function XIntelDetailPage({
             {submitting ? "Recording..." : "Record"}
           </button>
         </div>
-        <p className="text-xs text-gray-600">
+        <p className="text-xs text-white/40">
           The tweet ID is the number in the X URL. Example:
           https://x.com/user/status/
           <span className="font-mono">1234567890</span>
@@ -263,7 +263,7 @@ export default function XIntelDetailPage({
       {row.posted_tweet_id && (
         <div className="p-4 bg-green-50 border border-green-200 rounded">
           <div className="text-sm">
-            <span className="text-gray-600">Posted at:</span>
+            <span className="text-white/40">Posted at:</span>
             <a
               href={`https://x.com/i/web/status/${row.posted_tweet_id}`}
               target="_blank"
