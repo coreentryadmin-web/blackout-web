@@ -223,6 +223,23 @@ a pattern worth generalizing. Classify with the brief's own scale:
     8.5s-cold-then-occasional-stall pattern) to get a clean click-through and a real before/after
     URL comparison.
 
+15. **[P2, needs re-confirmation outside a deploy window] Largo `/terminal` — clicking "Pricing"
+    produced chunk 404s matching the ChunkLoadError deploy-window shape.** `UI-UX-MAP.md` §8: an
+    isolated `live-ui-interaction-audit.mjs` run measured `webpack-*.js` / `app/error-*.js` /
+    `app/global-error-*.js` all 404ing with a MIME-type refusal after clicking "Pricing" — the same
+    symptom class as the already-fixed `docs/audit/findings-staging/2026-08-24-chunk-load-error-critical-crash.md`
+    (#2842), and this run landed inside a confirmed active deploy window (this session's own
+    doc-PR merges triggered back-to-back `ecr-push-production.yml` runs). Not filed as a new
+    finding because it may simply be the same already-fixed root cause recurring during a deploy —
+    but also not dismissed, because this specific shape (the core webpack RUNTIME chunk itself
+    404ing, not just a lazy route chunk) hasn't been proven to be fully covered by #2842's
+    self-heal reload; if the reload itself lands on a still-rotating manifest during a rapid
+    multi-deploy sequence, a member could see two failures in a row with only one reload attempt
+    budgeted. Next step: `NODE_USE_ENV_PROXY=1 node --import tsx
+    scripts/audit/live-ui-interaction-audit.mjs --pages=/terminal --desktop-only`, isolated, well
+    outside any deploy window (check `ecr-push-production.yml` run status first) — if it reproduces
+    cleanly there, this is a real, separate defect; if not, close as deploy noise.
+
 ---
 
 ## Declined / deferred

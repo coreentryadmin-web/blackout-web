@@ -257,6 +257,11 @@ blank. Matches the corrected desktop shot above (§2's retraction note) showing 
 Vector chart…" state in its own column — consistent behavior across viewports, not a discrepancy.
 No finding here.
 
+**LIVE INTERACTION TEST, 2026-08-24** (`live-ui-interaction-audit.mjs`, isolated single-page run,
+desktop 1440): clean — `exercising 20 of 34 controls`, `every exercised control did something`, no
+FAIL, no HARNESS, no dead controls, no post-click geometry defects, no dialog-escape or console
+issues.
+
 ---
 
 ## 3. Helix — `/flows`
@@ -331,6 +336,11 @@ finding for the full repro method). Finding staged:
 `docs/audit/findings-staging/2026-08-23-helix-mobile-tide-bar-overflow.md`. Regression-guarded by
 `src/features/helix/components/HelixTideBar.test.ts` (verified to fail pre-fix, pass post-fix).
 Pending live validation before this is fully closed (rule 6).
+
+**LIVE INTERACTION TEST, 2026-08-24** (`live-ui-interaction-audit.mjs`, desktop 1440): clean —
+`exercising 20 of 555 controls`, `every exercised control did something`, no FAIL, no HARNESS. 555
+is by far the largest control count of any product swept this pass (SPX Slayer 34, Night Hawk 26),
+consistent with the dense flow-tape row-per-print layout.
 
 ---
 
@@ -782,6 +792,23 @@ with `.largo-toolbar-actions > * { flex-shrink: 0; }`. See
 "pending live validation" is tracked as a real open step, not boilerplate** — a source-level
 regression test asserting the fix's own new properties passed clean; only rendering the actual
 layout caught the side effect on a sibling element.
+
+**LIVE INTERACTION TEST, 2026-08-24 — NOT YET CONFIRMED, deploy-window confound.** An isolated
+`live-ui-interaction-audit.mjs` run (desktop 1440) exercised 19/19 controls cleanly, but clicking a
+"Pricing" link produced console errors and 404s for `webpack-*.js`, `app/error-*.js`, and
+`app/global-error-*.js` (MIME-type-refused scripts) — the same shape as the deploy-window
+`ChunkLoadError` crash found and fixed same day
+(`docs/audit/findings-staging/2026-08-24-chunk-load-error-critical-crash.md`, #2842). This run
+landed squarely inside a confirmed active deploy window (`ecr-push-production.yml` had a `pending`
+run and an `in_progress` run at the same timestamp, triggered by this session's own doc-PR merges)
+— strongly consistent with the same root cause, not re-confirmed outside a deploy window. Left
+open rather than filed: unlike the Thermal case, this specific failure mode (the core webpack
+runtime chunk itself 404ing, alongside both error-boundary bundles) has not been isolated to prove
+`#2842`'s self-heal reload fully covers it — a residual gap is plausible if the self-heal's own
+`window.location.reload()` can land on a manifest that is ALSO stale during a rapid multi-deploy
+sequence. Next step: re-run `--pages=/terminal` in isolation, outside any deploy window, and if it
+reproduces cleanly there, escalate; if it doesn't reproduce, close as deploy noise (item to be added
+to `UI-UX-OPPORTUNITIES.md`).
 
 ---
 
