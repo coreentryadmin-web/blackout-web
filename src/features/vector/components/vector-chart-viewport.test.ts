@@ -266,7 +266,8 @@ test("VectorChart: standalone desk uses flex-fill canvas (volume sub-pane must n
 test("VectorChart: volume profile bars render in the right gutter beside the last candle", () => {
   const chart = read("src/features/vector/components/VectorChart.tsx");
   const primitive = read("src/features/vector/lib/vector-volume-profile-primitive.ts");
-  assert.match(chart, /vectorChartRightOffsetBars/);
+  assert.match(chart, /vectorChartTimeScaleGutter/);
+  assert.match(read("src/features/vector/lib/vector-volume-profile-layout.ts"), /rightOffsetPixels/);
   assert.match(chart, /lastBarTime/);
   assert.match(primitive, /volumeProfileGutter/);
   assert.match(primitive, /volumeProfileBarRect/);

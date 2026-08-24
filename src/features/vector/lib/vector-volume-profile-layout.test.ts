@@ -2,17 +2,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   VECTOR_BASE_RIGHT_OFFSET_BARS,
-  VECTOR_VP_RIGHT_OFFSET_BARS,
-  vectorChartRightOffsetBars,
+  VECTOR_VP_RIGHT_OFFSET_PX,
+  vectorChartTimeScaleGutter,
   volumeProfileBarRect,
   volumeProfileGutter,
   VP_CANDLE_GAP_PX,
 } from "./vector-volume-profile-layout";
 
-test("vectorChartRightOffsetBars: wider gutter when session volume profile is on", () => {
-  assert.equal(vectorChartRightOffsetBars(false), VECTOR_BASE_RIGHT_OFFSET_BARS);
-  assert.equal(vectorChartRightOffsetBars(true), VECTOR_VP_RIGHT_OFFSET_BARS);
-  assert.ok(VECTOR_VP_RIGHT_OFFSET_BARS > VECTOR_BASE_RIGHT_OFFSET_BARS);
+test("vectorChartTimeScaleGutter: pixel gutter when VP on, bar offset when off", () => {
+  assert.deepEqual(vectorChartTimeScaleGutter(false), { rightOffset: VECTOR_BASE_RIGHT_OFFSET_BARS });
+  assert.deepEqual(vectorChartTimeScaleGutter(true), { rightOffsetPixels: VECTOR_VP_RIGHT_OFFSET_PX });
 });
 
 test("volumeProfileGutter: reserves space only to the right of the last candle", () => {
