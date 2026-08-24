@@ -28,7 +28,7 @@ const require = createRequire(import.meta.url);
 
 const __filename = fileURLToPath(import.meta.url);
 
-import { mintClerkPremiumSession } from "./lib/clerk-audit-user.mjs";
+import { mintClerkPremiumSession } from "./lib/prod-clerk-session.mjs";
 
 const BASE = process.env.VALIDATE_BASE || "https://blackouttrades.com";
 const VIEWPORT_W = 1440;
