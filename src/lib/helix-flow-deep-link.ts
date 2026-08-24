@@ -88,7 +88,9 @@ export function buildHelixDarkpoolDeepLink(input: HelixDarkpoolDeepLinkInput): s
   params.set("ticker", String(input.ticker).toUpperCase());
   params.set("darkpool", "1");
   params.set("at", String(input.executed_at).slice(0, 19));
-  params.set("premium", String(Math.round(input.premium)));
+  if (Number.isFinite(Number(input.premium))) {
+    params.set("premium", String(Math.round(input.premium)));
+  }
   return `${APP_BASE}/flows?${params.toString()}`;
 }
 
@@ -140,10 +142,11 @@ function contractKey(flow: {
 }): string {
   const side = normType(flow.option_type) ?? "?";
   const at = String(flow.at ?? "").slice(0, 19);
-  const prem = flow.premium != null ? Math.round(Number(flow.premium)) : 0;
+  const prem = flow.premium != null && Number.isFinite(flow.premium) ? Math.round(Number(flow.premium)) : 0;
+  const strike = Number.isFinite(flow.strike) ? Math.round(flow.strike) : 0;
   // strike-rounding: intentional — this is a PRINT key (it carries `at` and `premium`), and it must
   // stay byte-compatible with links already shared before 2026-08-23. See flowMatchesDeepLink.
-  return `${flow.ticker.toUpperCase()}|${Math.round(flow.strike)}|${String(flow.expiry).slice(0, 10)}|${side}|${at}|${prem}`;
+  return `${flow.ticker.toUpperCase()}|${strike}|${String(flow.expiry).slice(0, 10)}|${side}|${at}|${prem}`;
 }
 
 /** Match a tape row to a parsed deep link (alert_id first, then contract fingerprint). */
@@ -188,7 +191,8 @@ export function flowMatchesDeepLink(flow: FlowAlert, target: HelixDeepLinkTarget
     if (atFlow && atFlow !== target.at.slice(0, 19)) return false;
   }
   if (target.premium != null && Number.isFinite(target.premium)) {
-    if (Math.round(flow.premium) !== Math.round(target.premium)) return false;
+    const flowPrem = flow.premium != null && Number.isFinite(flow.premium) ? Math.round(flow.premium) : 0;
+    if (flowPrem !== Math.round(target.premium)) return false;
   }
   return Boolean(target.strike != null || target.at || target.premium != null || target.alert_id);
 }
@@ -199,6 +203,7 @@ export function darkpoolMatchesDeepLink(
 ): boolean {
   if (target.kind !== "darkpool") return false;
   if (print.ticker.toUpperCase() !== target.ticker.toUpperCase()) return false;
+  if (!Number.isFinite(print.premium) || !Number.isFinite(target.premium)) return false;
   if (Math.round(print.premium) !== Math.round(target.premium)) return false;
   return String(print.executed_at).slice(0, 19) === target.executed_at.slice(0, 19);
 }
@@ -206,7 +211,8 @@ export function darkpoolMatchesDeepLink(
 /** Stable key for deduping deep-link resolution attempts in FlowFeed. */
 export function deepLinkResolutionKey(target: HelixDeepLinkTarget): string {
   if (target.kind === "darkpool") {
-    return `dp:${target.ticker}|${target.executed_at.slice(0, 19)}|${Math.round(target.premium)}`;
+    const prem = Number.isFinite(target.premium) ? Math.round(target.premium) : 0;
+    return `dp:${target.ticker}|${target.executed_at.slice(0, 19)}|${prem}`;
   }
   if (target.alert_id) return `id:${target.alert_id}`;
   return contractKey({
