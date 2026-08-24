@@ -22,18 +22,13 @@
  *   node scripts/audit/helix-interaction-audit.mjs [--base=…] [--viewport=desktop|mobile]
  */
 
-import path from "node:path";
-import os from "node:os";
-import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 import { mintClerkPremiumSession } from "./lib/clerk-audit-user.mjs";
-import { splitConsoleErrors } from "./lib/console-error-triage.mjs";
 
 const BASE = process.env.VALIDATE_BASE || "https://blackouttrades.com";
 const VIEWPORT_W = 1440;
@@ -99,7 +94,7 @@ async function checkPanelInteractivity(page) {
   const checks = [];
 
   // Test clicking on each panel
-  for (const [key, panel] of Object.entries(PANELS)) {
+  for (const [, panel] of Object.entries(PANELS)) {
     const exists = await page.$(panel.selector);
     if (!exists) {
       checks.push({

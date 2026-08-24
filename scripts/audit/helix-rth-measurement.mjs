@@ -22,7 +22,6 @@
  * --json: output JSON instead of formatted text
  */
 
-import fs from "fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -105,40 +104,6 @@ function getMarketPhase() {
   }
 
   return "OFF-HOURS";
-}
-
-/**
- * Comparison helper
- */
-function compareMetrics(current, baseline, expected) {
-  const comparison = {
-    signal_eligibility: {
-      baseline: baseline.signal_eligible_pct,
-      expected: expected.signal_eligible_pct,
-      current: current?.signal_eligible || "unknown",
-      status: null,
-    },
-    gex_proximity: {
-      baseline: baseline.gex_proximity_pct,
-      expected: expected.gex_proximity_pct,
-      current: current?.gex_proximity || "unknown",
-      status: null,
-    },
-    iv_distribution: {
-      baseline: "unimodal (fractional)",
-      expected: expected.iv_distribution,
-      current: current?.iv_mode || "unknown",
-      status: null,
-    },
-    route_vocabulary: {
-      baseline: "FLOOR, SWEEP, OTHER",
-      expected: "FLOOR, SWEEP, OTHER, REPEAT",
-      current: current?.routes_found || "unknown",
-      status: null,
-    },
-  };
-
-  return comparison;
 }
 
 /**
