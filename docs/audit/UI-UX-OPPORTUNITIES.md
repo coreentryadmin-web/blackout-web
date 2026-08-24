@@ -181,6 +181,43 @@ a pattern worth generalizing. Classify with the brief's own scale:
     before the deploy rotated instead of leaving it on a manual "Try again." See
     `docs/audit/findings-staging/2026-08-24-chunk-load-error-critical-crash.md`.
 
+13. **[P3, needs fix] Meridian earnings detail — 26 interactive controls under the 24px tap-target
+    minimum, confirmed on both desktop and tablet.** `meridian-interaction-audit.mjs` (live,
+    isolated runs, 2026-08-24) measured real `button`/`a[href]`/`[role=button]` elements below
+    24px in both axes across three tabs: **Report** (10 — wall/pin rows `470x20`/`561x20`, five
+    `18x18` intel-source badges: HELIX flow, dark pool, thermal nodes, Vector expected move, news &
+    catalysts), **Estimates** (6 — analyst price-target/rating dots, all `8x8`), **Positioning**
+    (10 — same wall/pin rows plus GEX-strike pills, `301x20`/`561x20`). Same shapes on desktop
+    1440×900 and tablet 1024×1100, so this isn't a viewport-specific squeeze — it's the panel's
+    base row/badge sizing. The `8x8` Estimates dots are the sharpest case (tiny icon-only rating
+    markers, not just a few px short). Not yet root-caused to the specific component/CSS (likely
+    `MeridianEarningsReportPanel.tsx` for Report/Positioning, an analyst-estimates panel for
+    Estimates — not yet located precisely) or fixed. Repro:
+    `NODE_USE_ENV_PROXY=1 node scripts/audit/meridian-interaction-audit.mjs --viewport=desktop`
+    (mints its own session; run desktop and tablet as SEPARATE invocations, never concurrently —
+    see item 14's note on why).
+
+14. **[P3, inconclusive — do not treat as confirmed either way] Meridian tablet — "selecting an
+    event does not change the URL" flagged live, but a static code trace says the opposite.**
+    `meridian-interaction-audit.mjs`'s tablet pass measured the desk's URL still bare after opening
+    an earnings event. Traced the actual code path: `MeridianTimelineRow`'s click handler
+    (`onSelect={() => setSelectedId(item.id)}` in `MeridianDesk.tsx`) feeds a `useEffect` watching
+    `[selectedId, view, filter]` that calls `syncDeskUrl` → `router.push` with the serialized state
+    from `meridian-deeplink-core.ts` — a module whose own header comment says this exact gap
+    ("selecting an event changed nothing in the address bar") was found and fixed 2026-08-18, and
+    which carries a dedicated unit test (`meridian-deeplink-core.test.ts`). The wiring reads
+    correct by inspection. A follow-up isolated live probe built to click a real earnings row and
+    read `window.location` before/after timed out waiting for the row to even appear (30s), which
+    this map's own Meridian section already documents as a known cold-timeline-fetch stall — so it
+    neither confirmed nor refuted the harness's tablet finding. **Left genuinely open rather than
+    asserted either way.** Note the harness's separate reload-based deep-link check (does a URL
+    WITH params survive a reload) never even ran on this pass — its own logic only reaches that
+    check when the URL already carries a `?`/`#`, which is exactly the condition in question, so
+    there is no second live signal to lean on either way from this run. Next step: re-run the
+    isolated probe with a longer row-wait (60s+, matching the documented
+    8.5s-cold-then-occasional-stall pattern) to get a clean click-through and a real before/after
+    URL comparison.
+
 ---
 
 ## Declined / deferred
