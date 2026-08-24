@@ -4920,6 +4920,24 @@ html.product-shell .nav-mega {
     .largo-toolbar-actions::-webkit-scrollbar {
       display: none;
     }
+    /* REGRESSION FROM THE FIX ABOVE, caught by live production validation the same day
+       (docs/audit/findings-staging/2026-08-24-largo-toolbar-answer-mode-squish.md). Capping
+       .largo-toolbar-actions to max-width:60% only stops IT from claiming full width — it says
+       nothing about how its CHILDREN share that smaller space, and every child here was still
+       flex-shrink:1 (the default). Flexbox distributes shrinkage by flex-basis × flex-shrink, so
+       the one wide child (.largo-answer-mode-toolbar, ~163px natural width) absorbed nearly all of
+       it while the narrow icon buttons (~30px each) barely moved — measured live at 430x932: the
+       toggle was crushed from 163px to 56.7px, and because IT also has `overflow:hidden`
+       (.largo-answer-mode, for its own border-radius), that crushed box then clipped its own
+       "Concrete"/"Deep dive" buttons mid-word ("CONCRET" with the E gone, "Deep dive" invisible)
+       instead of the ROW scrolling as designed. The fix is the same lesson this file's own
+       .nh-deck-cmd--inline comment already documents for an identical shape of bug: a scrollable
+       row needs its CHILDREN pinned to their natural size (flex-shrink:0), or the browser shrinks
+       them instead of overflowing the row — overflow-x:auto on the parent alone doesn't guarantee
+       that. */
+    .largo-toolbar-actions > * {
+      flex-shrink: 0;
+    }
   }
   .largo-toolbar-actions {
     display: flex;

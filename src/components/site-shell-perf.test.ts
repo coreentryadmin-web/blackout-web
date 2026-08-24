@@ -114,3 +114,19 @@ test("largo-input-placeholder: clips the animated marquee's glow, not just its b
   assert.match(block, /overflow:\s*hidden/, "keep the existing box clip");
   assert.match(block, /clip-path:\s*inset\(0\)/, "must also clip-path — overflow:hidden alone let the composited marquee's shadow paint outside the box on production");
 });
+
+// Regression guard for a bug the ABOVE fix itself introduced, caught by live production
+// validation the same day (docs/audit/findings-staging/2026-08-24-largo-toolbar-answer-mode-squish.md):
+// capping .largo-toolbar-actions to max-width:60% stops the ROW from claiming full width, but says
+// nothing about how its children share that smaller space — every child was still the default
+// flex-shrink:1. Flexbox distributes shrinkage by flex-basis × flex-shrink, so the one wide child
+// (.largo-answer-mode-toolbar, ~163px natural width) absorbed nearly all of it while the narrow
+// icon buttons barely moved. Measured live at 430x932: the toggle was crushed from 163px to 56.7px,
+// and because it also has its own overflow:hidden (for its border-radius), that crushed box then
+// clipped its own "Concrete"/"Deep dive" buttons mid-word instead of the row scrolling as designed.
+test("largo-toolbar-actions: children are pinned to their natural size, not individually crushed", () => {
+  const css = read("src/app/globals.css");
+  const blocks = [...css.matchAll(/\.largo-toolbar-actions\s*>\s*\*\s*\{[^}]*\}/g)].map((m) => m[0]);
+  const pinned = blocks.find((b) => /flex-shrink:\s*0/.test(b));
+  assert.ok(pinned, "a .largo-toolbar-actions > * rule must pin flex-shrink:0 — otherwise capping the row's own width crushes its widest child instead of making the row scroll");
+});

@@ -709,6 +709,19 @@ full-width. Two small mobile-only defects, **both FIXED same day:**
 
 See `docs/audit/findings-staging/2026-08-23-largo-terminal-mobile-toolbar-composer.md`.
 
+**CORRECTION, 2026-08-24 — the toolbar fix above introduced its OWN regression, caught by live
+post-deploy validation.** Capping `.largo-toolbar-actions` to `max-width:60%` stopped the row from
+claiming full width, but its children were still default `flex-shrink:1` — flexbox distributed the
+shrinkage proportionally, crushing the wide answer-mode toggle (163px → 56.7px measured live)
+instead of letting the row scroll as intended, and since the toggle has its own `overflow:hidden`
+that crushed box then clipped "Concrete"/"Deep dive" mid-word ("CONCRET", second button invisible)
+— a different, arguably worse defect on the exact control the original fix touched. Fixed same day
+with `.largo-toolbar-actions > * { flex-shrink: 0; }`. See
+`docs/audit/findings-staging/2026-08-24-largo-toolbar-answer-mode-squish.md`. **This is the reason
+"pending live validation" is tracked as a real open step, not boilerplate** — a source-level
+regression test asserting the fix's own new properties passed clean; only rendering the actual
+layout caught the side effect on a sibling element.
+
 ---
 
 ## 9. Public site — coordinates only this pass
@@ -811,7 +824,7 @@ wrong UA can mask real bugs, not just invent fake ones.
 | ~~2~~ | ~~`/flows` mobile~~ | ~~Header flow-split bar overflows viewport horizontally; two stat strings concatenate with no separating space~~ | **FIXED** | §3 | Root-caused (`justify-between` with no gap/wrap) and fixed same day — see §3 and `docs/audit/findings-staging/2026-08-23-helix-mobile-tide-bar-overflow.md`. Verified via isolated CSS repro (live component couldn't be locally rendered — no dev flow data). Pending live validation post-deploy. |
 | ~~3~~ | ~~`/vector` mobile~~ | ~~GEX-scope chip overlaps the chart's own axis time ticks~~ | **FIXED** | §5 | Root-caused (unbounded-width, no-background overlay label vs. canvas-drawn ticks) and fixed same day — see §5 and `docs/audit/findings-staging/2026-08-23-vector-chart-footer-legend-overlap.md`. Verified via isolated CSS repro built from the real production text. Same fix applied on `/dashboard`'s embedded chart too (shared `VectorChart.tsx`) — that desktop half was never independently confirmed broken, but the fix is defensive there regardless. Pending live validation post-deploy. |
 | ~~4~~ | ~~`/nighthawk` mobile~~ | ~~Header stat strip truncates ("UPDATED 12" cuts off "sec ago") instead of wrapping~~ | **FIXED** | §7 | Root-caused (corrected from the original candidate): live measurement showed the row is deliberately `overflow-x:auto` and the text was never lost — `scrollWidth` 672px vs `clientWidth` 411px, and scrolling the row to its end fully revealed the same text. The real defect was a missing scroll affordance (mobile Safari hides the scrollbar), fixed with a static right-edge fade — see §7 and `docs/audit/findings-staging/2026-08-23-nighthawk-mobile-header-scroll-affordance.md`. Verified live against production via a tunneled Playwright session (scroll-position check), and the regression test fails against pre-fix CSS / passes with the fix. Pending live validation post-deploy. |
-| ~~5~~ | ~~`/terminal` mobile~~ | ~~Toolbar label collapses to bare "L…"; composer placeholder overflows its input box~~ | **FIXED** | §8 | Root-caused (two independent causes: a non-shrinking actions row starving the brand label; a composited layer's shadow escaping `overflow:hidden`) and fixed same day — see §8 and `docs/audit/findings-staging/2026-08-23-largo-terminal-mobile-toolbar-composer.md`. Verified via live production measurement (toolbar) and live screenshot evidence (composer glow); the composer fix specifically could not be reproduced in an isolated local repro, so it's unverified until a live post-deploy re-check. |
+| ~~5~~ | ~~`/terminal` mobile~~ | ~~Toolbar label collapses to bare "L…"; composer placeholder overflows its input box~~ | **FIXED, then self-corrected** | §8 | Root-caused (two independent causes: a non-shrinking actions row starving the brand label; a composited layer's shadow escaping `overflow:hidden`) and fixed 2026-08-23 — see §8 and `docs/audit/findings-staging/2026-08-23-largo-terminal-mobile-toolbar-composer.md`. **Live post-deploy validation on 2026-08-24 caught a regression the fix itself introduced** (the answer-mode toggle crushed to 56.7px, clipping "Concrete"/"Deep dive" mid-word) — fixed same day, see `docs/audit/findings-staging/2026-08-24-largo-toolbar-answer-mode-squish.md`. Composer glow-clip fix unaffected, still pending its own live re-check. |
 | 6 | `/nighthawk` mobile | ~45% of viewport left blank below the no-session empty state | **P2/P3** | §7 | Correct mobile UA |
 | 7 | `/vector` mobile | Drops ticker search, metric/expiry toggles, matrix table, and live tape entirely (chart-only) — scope call | **P2** (needs Vector-lane input) | §5 | Correct mobile UA |
 | ~~8~~ | ~~`/nighthawk` **desktop**~~ | ~~Engine tab bar renders with NO spacing between labels~~ | **FIXED** | §7 | Root-caused (`IosNativeSegment`'s structural CSS never loads on desktop web) and fixed same day — see §7 and `docs/audit/findings-staging/2026-08-23-nighthawk-desktop-tab-bar-unstyled.md`. Locally verified via `next dev` + real Playwright before AND after the fix. Pending live validation post-deploy. |
