@@ -3,12 +3,26 @@ import type { Time } from "lightweight-charts";
 /** Trailing whitespace when volume profile is off — bead bands stop before the price axis. */
 export const VECTOR_BASE_RIGHT_OFFSET_BARS = 6;
 
-/** Wider gutter when session volume profile is on — room for POC/VA bars beside the last candle. */
+/** Fixed pixel gutter when VP is on — stable separation on narrow SPX embed + mobile (bar-count offset varies). */
+export const VECTOR_VP_RIGHT_OFFSET_PX = 108;
+
+/** @deprecated Prefer `vectorChartTimeScaleGutter` — bar offset alone is too narrow on phone embeds. */
 export const VECTOR_VP_RIGHT_OFFSET_BARS = 18;
 
 /** Pixel gap between the last candle and the start of volume-profile bars (member ref). */
-export const VP_CANDLE_GAP_PX = 8;
+export const VP_CANDLE_GAP_PX = 12;
 
+export type VectorChartTimeScaleGutter =
+  | { rightOffset: number; rightOffsetPixels?: undefined }
+  | { rightOffsetPixels: number; rightOffset?: undefined };
+
+export function vectorChartTimeScaleGutter(volumeProfileEnabled: boolean): VectorChartTimeScaleGutter {
+  return volumeProfileEnabled
+    ? { rightOffsetPixels: VECTOR_VP_RIGHT_OFFSET_PX }
+    : { rightOffset: VECTOR_BASE_RIGHT_OFFSET_BARS };
+}
+
+/** @deprecated Use vectorChartTimeScaleGutter */
 export function vectorChartRightOffsetBars(volumeProfileEnabled: boolean): number {
   return volumeProfileEnabled ? VECTOR_VP_RIGHT_OFFSET_BARS : VECTOR_BASE_RIGHT_OFFSET_BARS;
 }

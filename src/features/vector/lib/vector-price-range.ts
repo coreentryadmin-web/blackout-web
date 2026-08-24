@@ -47,8 +47,8 @@ export const COMPARE_BEAD_VIEW_MAX_PCT = 0.24;
 /** Session overview first paint — only nearby bead rows widen the axis (not the full 20% trail). */
 export const SESSION_OVERVIEW_BEAD_VIEW_MAX_PCT = 0.03;
 
-/** Hard cap on total vertical span on session overview so candles + beads read large (member ref: image 2). */
-export const SESSION_OVERVIEW_MAX_SPAN_PCT = 0.024;
+/** Hard cap on total vertical span on session overview so candles + beads read large (member ref). */
+export const SESSION_OVERVIEW_MAX_SPAN_PCT = 0.021;
 
 export function filterStrikesNearSpot(
   strikes: readonly number[],

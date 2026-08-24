@@ -131,7 +131,7 @@ import { ExtendedHoursShadePrimitive } from "@/features/vector/lib/vector-extend
 import { extendedHoursShadeBands } from "@/features/vector/lib/vector-session-hours";
 import { computeVolumeProfile } from "@/features/vector/lib/vector-volume-profile";
 import { VolumeProfilePrimitive } from "@/features/vector/lib/vector-volume-profile-primitive";
-import { vectorChartRightOffsetBars } from "@/features/vector/lib/vector-volume-profile-layout";
+import { vectorChartTimeScaleGutter } from "@/features/vector/lib/vector-volume-profile-layout";
 import type { WallBeadRenderProfile } from "@/features/vector/lib/vector-wall-rail-core";
 import { WallRailPrimitive } from "@/features/vector/lib/vector-wall-rail-primitive";
 import { gexCellAtGridPoint, heatmapBucketSecForChartTimeframe } from "@/features/vector/lib/vector-gex-heatmap-paint";
@@ -2731,9 +2731,7 @@ export function VectorChart({
     indicatorsRef.current = indicators;
     const chart = chartRef.current;
     if (chart) {
-      chart.timeScale().applyOptions({
-        rightOffset: vectorChartRightOffsetBars(indicators.has("volume-profile")),
-      });
+      chart.timeScale().applyOptions(vectorChartTimeScaleGutter(indicators.has("volume-profile")));
     }
     paintOverlays(lastDisplayBarsRef.current);
     if (replayModeRef.current) {
@@ -3915,9 +3913,7 @@ export function VectorChart({
         secondsVisible: true,
         // Live follow is opt-in after load when defaultChartViewport is "session" — see liveFollowEnabledRef.
         shiftVisibleRangeOnNewBar: defaultChartViewport === "live",
-        // Leave whitespace between the last candle and the price axis. Wider when volume profile
-        // is on so POC/VA bars sit in the gutter beside the tape, not over candles/beads.
-        rightOffset: vectorChartRightOffsetBars(initialIndicators.has("volume-profile")),
+        ...vectorChartTimeScaleGutter(initialIndicators.has("volume-profile")),
         ...vectorTimeScaleSpacingOptions(),
       },
       rightPriceScale: { borderColor: "rgba(255,255,255,0.12)" },
