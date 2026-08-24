@@ -745,9 +745,13 @@ control's `data-audit-idx` from scratch after ANY URL-changing click, but the ha
 keeps iterating over the ORIGINAL pre-run `controls` array's indices — so once one control's click
 restructures the DOM (the "0DTE" engine tab, likely index 0, switches which whole section renders),
 every SUBSEQUENT `ctl.idx` in that array can point at a completely different, re-numbered element
-than the one whose `ctl.label` is in the report. Left as a documented, understood limitation rather
-than fixed in this pass — see `UI-UX-OPPORTUNITIES.md` item 16 for the reproduction and the shape
-of the proper fix.
+than the one whose `ctl.label` is in the report. **FIXED same day** — the outer loop now iterates a
+`queue`/`qi` pair that both re-stamp branches REPLACE (not just re-stamp in place), so a stale index
+can never resolve against a DOM it wasn't stamped for; a separate `exercised` counter preserves the
+original click budget across any number of re-stamps. Live-verified: a clean re-run of `/nighthawk`
+post-fix reports `[PASS] every exercised control did something` — no "WATCH 0" false positive, no
+regression on the BACK-recovery fix. See
+`docs/audit/findings-staging/2026-08-24-live-ui-audit-stale-control-index.md`.
 
 ---
 
