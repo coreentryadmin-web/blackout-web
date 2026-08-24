@@ -419,31 +419,12 @@ true desktop-UA capture and must not claim the desktop shell is or is not affect
 covered" below).
 
 ### Status
-**PARTIALLY CONFIRMED on live production 2026-08-23 — the chart-control half is REAL and still
-open; the brand/menu half is still UNVERIFIED.**
-
-`node scripts/audit/live-ui-interaction-audit.mjs --pages=/dashboard` (desktop 1440x1000, live
-prod, reproduced identically on three consecutive runs) reports **3 geometry collisions on load**:
-
-```
-"SPX" over control "1 min 3 min 5 min 15"
-"▶ Replay" over control "GEX"
-"GEX" over control "▶ Replay"
-```
-
-That is this entry's *"the chart control cluster overlaps itself"* claim, measured — on **desktop**,
-which this entry could not check because its harness pinned a mobile UA. The CSS rule is still not
-localised and still not guessed at, for the reason this entry gives.
-
-**The mobile brand/menu collision remains UNVERIFIED.** The phone viewport (430x932, iPhone UA)
-failed navigation with `ERR_CONNECTION_RESET` on every attempt across three runs, so it was never
-audited. That is HARNESS, not a product verdict: plain `curl` serves `/dashboard` identically under
-both UAs (`307` each), so the reset is inside the sandbox's Chromium tunnel, not the server.
-
-**Superseded tooling note:** `SLAYER-MAP.md` §8 item 6 previously called for BUILDING an SPX
-interaction harness. One already exists and already covers `/dashboard` —
-`scripts/audit/live-ui-interaction-audit.mjs`, sharing `lib/ui-geometry-probe.mjs`. It did not need
-writing; it needed running.
+**UNVERIFIED at `963c8448` — needs a live render, not a source read.** This is a pixel defect; its
+own root-cause section correctly declines to guess a CSS rule, and reading the source cannot
+confirm or refute it either. Deliberately NOT marked fixed or open. Closing it honestly is
+work-list item 5 in `docs/spx/SLAYER-MAP.md` §8 (the SPX interaction-audit harness, built on the
+`meridian-interaction-audit.mjs` pattern — physical text intersection, gated on a PAGE-LOADED
+proof so a blank render reports HARNESS, never a product verdict).
 
 ---
 
