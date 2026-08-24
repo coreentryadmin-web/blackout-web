@@ -131,6 +131,7 @@ import { ExtendedHoursShadePrimitive } from "@/features/vector/lib/vector-extend
 import { extendedHoursShadeBands } from "@/features/vector/lib/vector-session-hours";
 import { computeVolumeProfile } from "@/features/vector/lib/vector-volume-profile";
 import { VolumeProfilePrimitive } from "@/features/vector/lib/vector-volume-profile-primitive";
+import { vectorChartRightOffsetBars } from "@/features/vector/lib/vector-volume-profile-layout";
 import type { WallBeadRenderProfile } from "@/features/vector/lib/vector-wall-rail-core";
 import { WallRailPrimitive } from "@/features/vector/lib/vector-wall-rail-primitive";
 import { gexCellAtGridPoint, heatmapBucketSecForChartTimeframe } from "@/features/vector/lib/vector-gex-heatmap-paint";
@@ -276,9 +277,6 @@ const MAX_DP_GUIDES = 6;
  *  strength-scaled beads (Skylit-clean axis), so the full-width "Call/Put wall — %" guide lines
  *  are gone; the axis carries just the current price + the gamma-flip line. */
 const EMPTY_WALLS: VectorWalls = { callWalls: [], putWalls: [] };
-/** Trailing whitespace (in bars) between the last candle and the price axis — so the bead bands
- *  stop short of the axis with breathing room instead of running flush into it (Skylit-style). */
-const VECTOR_RIGHT_OFFSET_BARS = 6;
 /** Re-poll cadence for the SPY volume backfill — Polygon only publishes one new closed
  *  minute bar per minute, so anything faster than that would just refetch the same data. */
 const SPY_VOLUME_BACKFILL_MS = 60_000;
@@ -854,8 +852,9 @@ function applyPinProjection(
  * oscillator panes are (re)built, since a freshly-created pane starts at the default stretch of 1.
  */
 const VOLUME_PANE_INDEX = 1;
-const PRICE_PANE_STRETCH = 8;
-const VOLUME_PANE_STRETCH = 1.4;
+const PRICE_PANE_STRETCH = 7;
+/** Volume sub-pane — tall enough to read RVOL bars; price pane stays dominant. */
+const VOLUME_PANE_STRETCH = 2.2;
 const OSCILLATOR_PANE_STRETCH = 2.6;
 
 function applyPaneStretch(chart: IChartApi, hideVolumePane = false): void {
@@ -2625,9 +2624,11 @@ export function VectorChart({
       // resolution) whenever this paint runs (tick, timeframe switch, toggle). Cheap: a session's
       // worth of 1m bars is at most ~390 rows.
       const volumeProfileOn = enabled.has("volume-profile");
+      const lastBarTime = bars.length ? (bars[bars.length - 1]!.time as Time) : null;
       volumeProfilePrimitiveRef.current?.setData(
         volumeProfileOn ? computeVolumeProfile(minuteBarsRef.current) : null,
-        volumeProfileOn
+        volumeProfileOn,
+        lastBarTime
       );
     }
 
@@ -2728,6 +2729,12 @@ export function VectorChart({
   // tick/timeframe change). paintOverlays is stable, so this runs only when the selection changes.
   useEffect(() => {
     indicatorsRef.current = indicators;
+    const chart = chartRef.current;
+    if (chart) {
+      chart.timeScale().applyOptions({
+        rightOffset: vectorChartRightOffsetBars(indicators.has("volume-profile")),
+      });
+    }
     paintOverlays(lastDisplayBarsRef.current);
     if (replayModeRef.current) {
       const t = timelineRef.current[cursorIndexRef.current];
@@ -3908,9 +3915,9 @@ export function VectorChart({
         secondsVisible: true,
         // Live follow is opt-in after load when defaultChartViewport is "session" — see liveFollowEnabledRef.
         shiftVisibleRangeOnNewBar: defaultChartViewport === "live",
-        // Leave whitespace between the last candle and the price axis so the bead bands stop short
-        // of the axis (Skylit-style) instead of running flush into it.
-        rightOffset: VECTOR_RIGHT_OFFSET_BARS,
+        // Leave whitespace between the last candle and the price axis. Wider when volume profile
+        // is on so POC/VA bars sit in the gutter beside the tape, not over candles/beads.
+        rightOffset: vectorChartRightOffsetBars(initialIndicators.has("volume-profile")),
         ...vectorTimeScaleSpacingOptions(),
       },
       rightPriceScale: { borderColor: "rgba(255,255,255,0.12)" },
@@ -4179,14 +4186,14 @@ export function VectorChart({
     // EOD pin CONE (SPX desk only): attach the converging-cone primitive to the candle series. It
     // renders at zOrder "top" (a translucent gold funnel over the candles) and stays hidden until
     // paintOverlays pushes a real MC cone for SPX. The right-margin room it needs comes from
-    // VECTOR_RIGHT_OFFSET_BARS on the time scale (the cone maps into that whitespace by time-frac).
+    // VECTOR_RIGHT_OFFSET / vectorChartRightOffsetBars on the time scale (cones map into that gutter).
     const pinCone = new PinConePrimitive();
     series.attachPrimitive(pinCone);
     pinConePrimitiveRef.current = pinCone;
     // TIME-CONVERGING EXPECTED-MOVE CONE — attach the "remaining move" funnel primitive. Renders at
     // zOrder "bottom" (a faint cyan wash under the candles, alongside the heatmap/regime glow) and
     // stays hidden until paintOverlays pushes a real cone AND the member enables the toggle. The
-    // right-margin room it maps into is the same VECTOR_RIGHT_OFFSET_BARS whitespace the pin cone uses.
+    // right-margin room it maps into is the same vectorChartRightOffsetBars whitespace the pin cone uses.
     const emCone = new EmConePrimitive();
     series.attachPrimitive(emCone);
     emConePrimitiveRef.current = emCone;
@@ -4377,8 +4384,9 @@ export function VectorChart({
       );
       intersectionObserver.observe(container);
     }
-    // WKWebView flex layouts often settle one frame late — double-rAF resize for fillHost embeds.
-    if (fillHost) {
+    // Flex-hosted canvases (SPX embed + standalone /vector desk-fill) mount after layout settles —
+    // nudge autosize once flex assigns a definite height (WKWebView can miss the first tick at 0×0).
+    if (fillHost || container.classList.contains("vector-chart-canvas--desk-fill")) {
       requestAnimationFrame(() => {
         requestAnimationFrame(nudgeChartSize);
       });
@@ -5049,12 +5057,10 @@ export function VectorChart({
         )}
         <div
           ref={containerRef}
-          className={clsx("vector-chart-canvas", fillHost && "vector-chart-canvas--fill-host")}
-          style={
-            fillHost
-              ? undefined
-              : { height: "calc(100vh - 132px)", minHeight: 520 }
-          }
+          className={clsx(
+            "vector-chart-canvas",
+            fillHost ? "vector-chart-canvas--fill-host" : "vector-chart-canvas--desk-fill"
+          )}
           aria-busy={liveSession && !replayMode}
         />
       </div>

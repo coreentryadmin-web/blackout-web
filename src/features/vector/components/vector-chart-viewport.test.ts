@@ -6,8 +6,9 @@ import { join } from "node:path";
 const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
 
 test("SPX embed seeds 0DTE horizon history and opens on session viewport", () => {
-  assert.match(read("src/features/spx/components/SpxVectorEmbed.tsx"), /defaultDteHorizon="0dte"/);
-  assert.match(read("src/features/spx/components/SpxVectorEmbed.tsx"), /defaultChartViewport="session"/);
+  const embed = read("src/features/spx/components/SpxVectorEmbed.tsx");
+  assert.match(embed, /defaultVectorDeskOpenProps\("SPX"\)/);
+  assert.match(embed, /import \{ defaultVectorDeskOpenProps \}/);
   const shell = read("src/features/vector/components/VectorPageShell.tsx");
   assert.match(shell, /defaultChartViewport = "session"/);
   assert.match(shell, /defaultChartViewport=\{defaultChartViewport\}/);
@@ -16,9 +17,16 @@ test("SPX embed seeds 0DTE horizon history and opens on session viewport", () =>
 
 test("/vector page preloads 0DTE rail for oracle tickers and weekly for single names", () => {
   const page = read("src/app/(site)/vector/page.tsx");
-  assert.match(page, /defaultVectorDteHorizon/);
-  assert.match(page, /defaultDteHorizon=\{defaultVectorDteHorizon\(ticker\)\}/);
-  assert.match(page, /defaultChartViewport="session"/);
+  const client = read("src/features/vector/components/VectorPageClient.tsx");
+  assert.match(client, /defaultVectorDeskOpenProps/);
+  assert.doesNotMatch(page, /defaultVectorDteHorizon/);
+  assert.match(client, /\{\.\.\.deskOpen\}/);
+});
+
+test("VectorPageShell forwards desk-open props to standalone chartBlock", () => {
+  const shell = read("src/features/vector/components/VectorPageShell.tsx");
+  assert.match(shell, /defaultNodeDensity=\{defaultNodeDensity\}/);
+  assert.match(shell, /defaultChartViewport=\{defaultChartViewport\}/);
 });
 
 test("VectorChart: session viewport defers live-edge scroll until member pans", () => {
@@ -244,6 +252,24 @@ test("wall-history route serves the blended 'all' rail instead of short-circuiti
   assert.match(route, /loadSessionWallHistory\(session, ticker, horizon\)/);
   assert.match(route, /if \(!session\)/);
   assert.match(route, /enrichSessionWallHistory/, "blended rail must gap-fill like SSR seed");
+});
+
+test("VectorChart: standalone desk uses flex-fill canvas (volume sub-pane must not clip)", () => {
+  const src = read("src/features/vector/components/VectorChart.tsx");
+  assert.match(src, /vector-chart-canvas--desk-fill/);
+  assert.doesNotMatch(src, /calc\(100vh - 132px\)/);
+  const css = read("src/app/globals.css");
+  assert.match(css, /\.vector-page-shell \.vector-chart-canvas--desk-fill/);
+  assert.match(css, /\.vector-page-shell \.vector-chart-stage/);
+});
+
+test("VectorChart: volume profile bars render in the right gutter beside the last candle", () => {
+  const chart = read("src/features/vector/components/VectorChart.tsx");
+  const primitive = read("src/features/vector/lib/vector-volume-profile-primitive.ts");
+  assert.match(chart, /vectorChartRightOffsetBars/);
+  assert.match(chart, /lastBarTime/);
+  assert.match(primitive, /volumeProfileGutter/);
+  assert.match(primitive, /volumeProfileBarRect/);
 });
 
 test("VectorChart: session overview tightens vertical autoscale for readable beads", () => {

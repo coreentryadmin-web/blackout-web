@@ -7,6 +7,7 @@ import {
   fetchVectorClientSeed,
   fetchVectorEmbedFastSeed,
 } from "@/features/vector/lib/vector-client-seed";
+import { defaultVectorDeskOpenProps } from "@/features/vector/lib/vector-ticker";
 import { todayEtYmd } from "@/lib/providers/spx-session";
 
 const VectorPageShell = dynamic(
@@ -140,9 +141,7 @@ export function SpxVectorEmbed({
       liveSession={liveSession}
       initialWallTrailSec={seed.wallTrailSec}
       embed="chart-only"
-      defaultDteHorizon="0dte"
-      defaultChartViewport="session"
-      defaultTimeframe={3}
+      {...defaultVectorDeskOpenProps("SPX")}
       onPriceScaleRender={onPriceScaleRender}
       focusLevel={focusLevel}
       playLevels={playLevels}

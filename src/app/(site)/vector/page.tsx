@@ -4,7 +4,6 @@ import { ComingSoon } from "@/components/ComingSoon";
 import {
   VectorPageClient,
   normalizeVectorTicker,
-  defaultVectorDteHorizon,
 } from "@/features/vector";
 import { noindexPageMetadata } from "@/lib/page-metadata";
 import { Suspense } from "react";
@@ -40,8 +39,6 @@ export default async function VectorPage({ searchParams }: PageProps) {
       <VectorPageClient
         ticker={ticker}
         initialCompareRaw={compareRaw ?? null}
-        defaultDteHorizon={defaultVectorDteHorizon(ticker)}
-        defaultChartViewport="session"
       />
     </Suspense>
   );
