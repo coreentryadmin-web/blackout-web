@@ -163,22 +163,30 @@ test("expected-move-cone: opt-in companion to the flat band, in the Expected mov
   assert.ok(!defaultVectorIndicators().has("expected-move-cone"));
 });
 
-test("VECTOR_DEFAULT_ENABLED_INDICATORS: dealer gamma + bead rings + event glyphs on by default; volume profile opt-in", () => {
+test("VECTOR_DEFAULT_ENABLED_INDICATORS: VWAP + market structure + volume profile on first paint", () => {
   assert.deepEqual([...VECTOR_DEFAULT_ENABLED_INDICATORS], [
-    "gex-heatmap",
-    "bead-integrity-rings",
-    "bead-event-glyphs",
+    "vwap",
+    "market-structure",
+    "volume-profile",
   ]);
-  assert.ok(defaultVectorIndicators().has("gex-heatmap"));
-  assert.ok(defaultVectorIndicators().has("bead-integrity-rings"));
-  assert.ok(defaultVectorIndicators().has("bead-event-glyphs"));
-  assert.ok(!defaultVectorIndicators().has("volume-profile"));
+  assert.ok(defaultVectorIndicators().has("vwap"));
+  assert.ok(defaultVectorIndicators().has("market-structure"));
+  assert.ok(defaultVectorIndicators().has("volume-profile"));
   assert.equal(defaultVectorIndicators().size, 3);
-  // The new regime glow is opt-in — it must NOT be enabled on first paint.
+  assert.ok(!defaultVectorIndicators().has("gex-heatmap"));
+  assert.ok(!defaultVectorIndicators().has("bead-integrity-rings"));
+  assert.ok(!defaultVectorIndicators().has("bead-event-glyphs"));
   assert.ok(!defaultVectorIndicators().has("gamma-regime"));
 });
 
-test("opening-range preset config: 15m default, isVectorOpeningRangeMinutes gates the preset set, label reflects the window (2026-08-05 audit finding #7)", () => {
+test("VECTOR_OVERLAYS: VWAP ships bright + thick for default-on visibility", () => {
+  const vwap = VECTOR_OVERLAYS.find((o) => o.id === "vwap");
+  assert.ok(vwap);
+  assert.equal(vwap!.lineWidth, 3);
+  assert.equal(vwap!.color, "#7dd3fc");
+});
+
+test("VECTOR_OPENING_RANGE_PRESETS: 5/15/30/60 windows, default 15m, label matches registry", () => {
   assert.deepEqual([...VECTOR_OPENING_RANGE_PRESETS], [5, 15, 30, 60]);
   assert.equal(DEFAULT_OPENING_RANGE_MINUTES, 15);
   assert.ok(VECTOR_OPENING_RANGE_PRESETS.includes(DEFAULT_OPENING_RANGE_MINUTES));

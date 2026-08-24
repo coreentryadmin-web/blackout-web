@@ -19,10 +19,8 @@ import type { VolumeProfile } from "./vector-volume-profile";
  * the same zOrder:"bottom" background-layer convention `GexHeatmapPrimitive`/`GammaRegimePrimitive`
  * use, so it reads as ambient reference under the candles/beads, not a foreground overlay.
  *
- * The value-area band (buckets covering ~70% of volume around the POC) draws at a brighter alpha
- * than buckets outside it; the POC bucket gets a full-width highlight line so it reads as a single
- * price level, the same visual treatment `applyKingAnchor`/`applyMaxPainLine` give other
- * single-price markers.
+ * Palette is deliberately OFF the bead/wall hues (no yellow/magenta/cyan beads): warm stone outside
+ * the value area, violet inside it, amber POC — plus labeled POC / VAH / VAL guide lines.
  *
  * Data + visibility via `setData(profile, enabled)`; an empty profile or `enabled === false` makes
  * the renderer return null → nothing drawn (honest absence, never a fabricated profile).
@@ -31,16 +29,30 @@ import type { VolumeProfile } from "./vector-volume-profile";
 type PaneRendererTarget = Parameters<IPrimitivePaneRenderer["draw"]>[0];
 type AttachedSeries = ISeriesApi<SeriesType, Time>;
 
-const BAR_FILL = "rgba(148, 163, 184, 0.18)";
-const VALUE_AREA_FILL = "rgba(56, 189, 248, 0.28)";
-const POC_FILL = "rgba(253, 224, 71, 0.9)";
-const POC_LINE = "rgba(253, 224, 71, 0.55)";
+/** Outside the ~70% value area — neutral warm gray, low alpha. */
+export const VP_BAR_FILL = "rgba(161, 161, 170, 0.16)";
+/** Value-area buckets — violet, distinct from put/call bead rails. */
+export const VP_VALUE_AREA_FILL = "rgba(192, 132, 252, 0.32)";
+/** POC bucket highlight. */
+export const VP_POC_FILL = "rgba(251, 191, 36, 0.88)";
+/** POC full-width guide. */
+export const VP_POC_LINE = "rgba(251, 191, 36, 0.72)";
+/** VAH / VAL boundary guides. */
+export const VP_VA_LINE = "rgba(196, 181, 253, 0.62)";
+export const VP_LABEL_COLOR = "rgba(250, 250, 250, 0.92)";
+
 /** Widest a bucket bar can extend from the right edge, as a fraction of the pane width. */
 const MAX_BAR_WIDTH_FRAC = 0.16;
 const RIGHT_PAD_PX = 2;
+const LABEL_FONT = "600 10px ui-monospace, SFMono-Regular, Menlo, monospace";
 
+type ProjectedLevel = { y: number; label: string; color: string; dash: number[] };
 type ProjectedBucket = { yTop: number; yBottom: number; xLeft: number; isPoc: boolean; inValueArea: boolean };
-type Projected = { rightX: number; pocY: number | null; bars: ProjectedBucket[] };
+type Projected = {
+  rightX: number;
+  bars: ProjectedBucket[];
+  levels: ProjectedLevel[];
+};
 
 class VolumeProfileRenderer implements IPrimitivePaneRenderer {
   constructor(
@@ -53,23 +65,33 @@ class VolumeProfileRenderer implements IPrimitivePaneRenderer {
       const ctx = scope.context;
       ctx.save();
       ctx.globalAlpha = this._overlayDim;
-      const { rightX, pocY, bars } = this._p;
+      const { rightX, bars, levels } = this._p;
+      const paneW = scope.mediaSize.width;
+
       for (const b of bars) {
-        ctx.fillStyle = b.isPoc ? POC_FILL : b.inValueArea ? VALUE_AREA_FILL : BAR_FILL;
+        ctx.fillStyle = b.isPoc ? VP_POC_FILL : b.inValueArea ? VP_VALUE_AREA_FILL : VP_BAR_FILL;
         const top = Math.min(b.yTop, b.yBottom);
         const height = Math.max(1, Math.abs(b.yBottom - b.yTop));
         ctx.fillRect(b.xLeft, top, rightX - b.xLeft, height);
       }
-      if (pocY != null) {
-        ctx.strokeStyle = POC_LINE;
-        ctx.lineWidth = 1;
-        ctx.setLineDash([2, 3]);
+
+      for (const lvl of levels) {
+        ctx.strokeStyle = lvl.color;
+        ctx.lineWidth = lvl.label === "POC" ? 1.5 : 1;
+        ctx.setLineDash(lvl.dash);
         ctx.beginPath();
-        ctx.moveTo(0, pocY);
-        ctx.lineTo(scope.mediaSize.width, pocY);
+        ctx.moveTo(0, lvl.y);
+        ctx.lineTo(paneW, lvl.y);
         ctx.stroke();
         ctx.setLineDash([]);
+
+        ctx.font = LABEL_FONT;
+        ctx.fillStyle = VP_LABEL_COLOR;
+        ctx.textAlign = "right";
+        ctx.textBaseline = "middle";
+        ctx.fillText(lvl.label, rightX - 6, lvl.y);
       }
+
       ctx.restore();
     });
   }
@@ -77,7 +99,6 @@ class VolumeProfileRenderer implements IPrimitivePaneRenderer {
 
 class VolumeProfilePaneView implements IPrimitivePaneView {
   constructor(private readonly _source: VolumeProfilePrimitive) {}
-  // Background reference layer — under candles/beads, alongside the GEX heatmap/gamma-regime glow.
   zOrder(): PrimitivePaneViewZOrder {
     return "bottom";
   }
@@ -140,14 +161,14 @@ export class VolumeProfilePrimitive implements ISeriesPrimitive<Time> {
     const maxBarWidth = width * MAX_BAR_WIDTH_FRAC;
     const series = this._series;
     const half = profile.bucketSize / 2;
+    const pocPrice = profile.poc;
 
     const bars: ProjectedBucket[] = [];
-    let pocY: number | null = null;
     for (const b of profile.buckets) {
       const yTop = series.priceToCoordinate(b.price + half);
       const yBottom = series.priceToCoordinate(b.price - half);
       if (yTop == null || yBottom == null) continue;
-      const isPoc = profile.poc != null && b.price === profile.poc;
+      const isPoc = pocPrice != null && Math.abs(b.price - pocPrice) <= (half || 1e-9);
       const inValueArea =
         profile.valueAreaLow != null &&
         profile.valueAreaHigh != null &&
@@ -156,9 +177,20 @@ export class VolumeProfilePrimitive implements ISeriesPrimitive<Time> {
       const frac = b.volume / profile.maxVolume;
       const barWidth = Math.max(1, frac * maxBarWidth);
       bars.push({ yTop, yBottom, xLeft: rightX - barWidth, isPoc, inValueArea });
-      if (isPoc) pocY = series.priceToCoordinate(b.price) ?? null;
     }
     if (!bars.length) return null;
-    return { rightX, pocY, bars };
+
+    const levels: ProjectedLevel[] = [];
+    const addLevel = (price: number | null, label: string, color: string, dash: number[]) => {
+      if (price == null || !Number.isFinite(price)) return;
+      const y = series.priceToCoordinate(price);
+      if (y == null) return;
+      levels.push({ y, label, color, dash });
+    };
+    addLevel(profile.poc, "POC", VP_POC_LINE, [4, 3]);
+    addLevel(profile.valueAreaHigh, "VAH", VP_VA_LINE, [6, 4]);
+    addLevel(profile.valueAreaLow, "VAL", VP_VA_LINE, [6, 4]);
+
+    return { rightX, bars, levels };
   }
 }

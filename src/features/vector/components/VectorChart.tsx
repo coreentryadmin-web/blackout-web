@@ -18,6 +18,7 @@ import {
   type IPriceLine,
   type ISeriesApi,
   type ISeriesMarkersPluginApi,
+  type LineWidth,
   type SeriesMarker,
   type Time,
   type UTCTimestamp,
@@ -2482,10 +2483,11 @@ export function VectorChart({
         if (v != null) data.push({ time: bars[i]!.time, value: v });
       }
       let line = existing;
+      const overlayLineWidth: LineWidth = (def.lineWidth ?? 2) as LineWidth;
       if (!line) {
         line = chart.addSeries(LineSeries, {
           color: def.color,
-          lineWidth: 2,
+          lineWidth: overlayLineWidth,
           priceLineVisible: false,
           // Labeled + a live value on the axis (2026-08-05 audit finding): with up to 6 MA lines
           // potentially on screen at once, the toggle menu's color dot was the ONLY way to tell
@@ -2497,6 +2499,8 @@ export function VectorChart({
           title: def.label,
         });
         map.set(def.id, line);
+      } else {
+        line.applyOptions({ color: def.color, lineWidth: overlayLineWidth });
       }
       line.setData(data);
     }
