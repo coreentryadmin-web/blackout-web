@@ -732,6 +732,23 @@ Playwright/CDP quirk. Fixed in the harness itself (`needsBackRecovery()`,
 `docs/audit/findings-staging/2026-08-24-live-ui-audit-back-recovery-false-positive.md`. No Night
 Hawk code change.
 
+**Re-run after the BACK-recovery fix landed, 2026-08-24 — a second, different false positive
+surfaced.** `[FAIL] 1 DEAD control(s) — click changed nothing observable {"dead":["WATCH 0"]}`.
+Investigated directly: an isolated, single-click probe from a fresh page load found "WATCH 0" is a
+real `<button class="nh-deck-filtbtn">` (the Swing lane's WATCH-section filter,
+`containers.tsx`'s `watchCount`), and clicking it in isolation produces a real, measurable change —
+interactive-control count on the page dropped from **31 to 16** (filtering the list) even though
+the first 300 chars of body text (header/toolbar) happened to read identically before and after.
+**Not a Night Hawk defect** — the harness's own "dead" verdict is very likely a DIFFERENT
+audit-tooling bug from the BACK-recovery one, not yet fixed: `safeControls()` re-stamps every
+control's `data-audit-idx` from scratch after ANY URL-changing click, but the harness's outer loop
+keeps iterating over the ORIGINAL pre-run `controls` array's indices — so once one control's click
+restructures the DOM (the "0DTE" engine tab, likely index 0, switches which whole section renders),
+every SUBSEQUENT `ctl.idx` in that array can point at a completely different, re-numbered element
+than the one whose `ctl.label` is in the report. Left as a documented, understood limitation rather
+than fixed in this pass — see `UI-UX-OPPORTUNITIES.md` item 16 for the reproduction and the shape
+of the proper fix.
+
 ---
 
 ## 8. Largo — `/terminal`

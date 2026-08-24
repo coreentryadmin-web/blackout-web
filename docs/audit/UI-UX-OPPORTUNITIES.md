@@ -240,6 +240,39 @@ a pattern worth generalizing. Classify with the brief's own scale:
     outside any deploy window (check `ecr-push-production.yml` run status first) — if it reproduces
     cleanly there, this is a real, separate defect; if not, close as deploy noise.
 
+16. **[P3, audit-tooling, understood but not yet fixed] `live-ui-interaction-audit.mjs` can
+    mislabel or misattribute a "DEAD control" once ANY earlier click restructures the page's DOM.**
+    A post-BACK-recovery-fix re-run of `/nighthawk` (desktop) reported
+    `[FAIL] 1 DEAD control(s) — click changed nothing observable {"dead":["WATCH 0"]}`. Investigated
+    directly: an isolated single click on the real "WATCH 0" button
+    (`.nh-deck-filtbtn`, Swing lane's WATCH-section filter) from a fresh page load produces a real,
+    measurable change — interactive-control count dropped **31 → 16**. Not a Night Hawk defect.
+    **Root cause (hypothesis, not yet fully proven):** `safeControls()` stamps every matched
+    element's `data-audit-idx` fresh, by DOM traversal order, each time it runs — including the
+    re-stamp the URL-changed branch triggers after ANY click that restructures the page (a tab
+    switch, a filter, a route change). But the outer loop
+    (`for (const ctl of controls.slice(0, MAX_CONTROLS))`) keeps iterating over the ORIGINAL,
+    pre-run `controls` array captured once before the loop started. Once one control's click causes
+    a re-stamp, every SUBSEQUENT `ctl.idx` in that stale array can resolve — via
+    `page.locator('[data-audit-idx="${ctl.idx}"]')` — to a DIFFERENT physical element than the one
+    `ctl.label` describes in the report, because the re-stamp renumbers from scratch and the new
+    DOM's control ordering/count rarely matches the old one exactly. The practical effect: a
+    "DEAD"/mislabeled-click verdict can describe the wrong control entirely, or attribute a
+    genuinely-inert click (on whatever now occupies that index) to a label that was real and
+    working. On `/nighthawk` specifically this is very plausible — the "0DTE" engine tab (index 0)
+    switches the entire rendered section via `router.replace()`, which is exactly the shape that
+    triggers a re-stamp before this run reached "WATCH 0"'s original index. Not filed as a Night
+    Hawk finding: the live isolated check disproves the control itself is broken. Not yet fixed in
+    the harness either — the correct fix is more involved than the BACK-recovery one (needs the
+    outer loop to re-fetch a fresh control list after any re-stamp and continue from there, rather
+    than trusting stale indices), and this session's re-runs of SPX Slayer, Helix, and the
+    pre-BACK-recovery-fix runs all came back with 0 dead controls, suggesting the compounding
+    conditions (an early DOM-restructuring click, then a later control landing exactly on the wrong
+    but still-plausible-looking element) are uncommon in practice, not absent. Next step: harden
+    `safeControls`'s call sites so a re-stamp also truncates/refreshes the outer loop's remaining
+    work, then add a unit test simulating two DOM shapes with different control orderings to prove
+    indices are never crossed.
+
 ---
 
 ## Declined / deferred
