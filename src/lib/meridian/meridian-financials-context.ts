@@ -16,14 +16,14 @@ export function buildMeridianFinancialsContext(
   if (!r && !s) return null;
 
   const parts: string[] = [];
-  if (r?.pe_ratio != null) parts.push(`P/E ${r.pe_ratio.toFixed(1)}`);
-  if (r?.price_to_sales != null) parts.push(`P/S ${r.price_to_sales.toFixed(1)}`);
-  if (r?.roe != null) {
+  if (r?.pe_ratio != null && Number.isFinite(r.pe_ratio)) parts.push(`P/E ${r.pe_ratio.toFixed(1)}`);
+  if (r?.price_to_sales != null && Number.isFinite(r.price_to_sales)) parts.push(`P/S ${r.price_to_sales.toFixed(1)}`);
+  if (r?.roe != null && Number.isFinite(r.roe)) {
     const roePct = Math.abs(r.roe) > 1 ? r.roe : r.roe * 100;
     parts.push(`ROE ${roePct.toFixed(0)}%`);
   }
   if (s?.revenue_yoy_pct != null) parts.push(`Rev ${fmtPct(s.revenue_yoy_pct)} YoY`);
-  if (s?.net_margin_pct != null) {
+  if (s?.net_margin_pct != null && Number.isFinite(s.net_margin_pct)) {
     const t =
       s.margin_trend === "expanding" ? " ↑" : s.margin_trend === "contracting" ? " ↓" : "";
     parts.push(`Net margin ${s.net_margin_pct.toFixed(0)}%${t}`);
