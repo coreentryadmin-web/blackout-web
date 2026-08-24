@@ -6,6 +6,7 @@ import { VectorLensToggle } from "@/features/vector/components/VectorLensToggle"
 import { VectorBeadRailToggle } from "@/features/vector/components/VectorBeadRailToggle";
 import { VectorNodesToggle } from "@/features/vector/components/VectorNodesToggle";
 import { VectorVolumeModeToggle } from "@/features/vector/components/VectorVolumeModeToggle";
+import { VectorDarkPoolToggle } from "@/features/vector/components/VectorDarkPoolToggle";
 import { VectorReplayControls } from "@/features/vector/components/VectorReplayControls";
 import { VectorTimeframeSelect } from "@/features/vector/components/VectorTimeframeSelect";
 import { VectorIndicatorMenu } from "@/features/vector/components/VectorIndicatorMenu";
@@ -82,6 +83,8 @@ type Props = {
   volumeMode?: VectorVolumeMode;
   onVolumeMode?: (mode: VectorVolumeMode) => void;
   hideVolumePane?: boolean;
+  darkPoolWallsEnabled?: boolean;
+  onDarkPoolWalls?: (enabled: boolean) => void;
 };
 
 /** Single compact toolbar — timeframe left, replay + lens right. */
@@ -134,6 +137,8 @@ export function VectorToolbar(props: Props) {
     volumeMode = "relative",
     onVolumeMode,
     hideVolumePane = false,
+    darkPoolWallsEnabled = false,
+    onDarkPoolWalls,
   } = props;
 
   const drawMenu = drawTools ? <VectorDrawToolsMenu {...drawTools} /> : null;
@@ -269,6 +274,13 @@ export function VectorToolbar(props: Props) {
         {!hideVolumePane && onVolumeMode ? (
           <VectorVolumeModeToggle value={volumeMode} onChange={onVolumeMode} exposeTestIds={false} />
         ) : null}
+        {onDarkPoolWalls ? (
+          <VectorDarkPoolToggle
+            enabled={darkPoolWallsEnabled}
+            onChange={onDarkPoolWalls}
+            exposeTestIds={false}
+          />
+        ) : null}
         {trailSlot}
       </div>
 
@@ -333,6 +345,9 @@ export function VectorToolbar(props: Props) {
           <VectorNodesToggle value={nodeDensity} onChange={onNodeDensity} autoCount={nodeAutoCount} />
           {!hideVolumePane && onVolumeMode ? (
             <VectorVolumeModeToggle value={volumeMode} onChange={onVolumeMode} />
+          ) : null}
+          {onDarkPoolWalls ? (
+            <VectorDarkPoolToggle enabled={darkPoolWallsEnabled} onChange={onDarkPoolWalls} />
           ) : null}
           {trailSlot}
         </div>

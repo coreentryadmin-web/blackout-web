@@ -203,6 +203,7 @@ import {
 } from "@/features/vector/lib/vector-cadence";
 import { vectorWallTrailSecClient } from "@/features/vector/lib/vector-wall-sample";
 import { vectorHeatmapScopeLabel } from "@/lib/gex-scope-labels";
+import { readPersisted, writePersisted, VECTOR_DARK_POOL_WALLS_STORAGE_KEY } from "@/features/vector/lib/vector-chart-view";
 import {
   applySessionOverviewViewport,
   wantsSessionOverviewViewport,
@@ -624,7 +625,8 @@ function applyWallGuides(
 function applyDarkPoolGuides(
   series: ISeriesApi<"Candlestick">,
   guideRefs: React.MutableRefObject<(IPriceLine | null)[]>,
-  levels: VectorDarkPoolLevel[]
+  levels: VectorDarkPoolLevel[],
+  drawOnChart: boolean
 ): void {
   if (guideRefs.current.length < MAX_DP_GUIDES) {
     guideRefs.current = [
@@ -632,14 +634,11 @@ function applyDarkPoolGuides(
       ...Array.from({ length: MAX_DP_GUIDES - guideRefs.current.length }, () => null),
     ];
   }
-  applyPriceGuides(
-    series,
-    guideRefs,
-    levels.slice(0, MAX_DP_GUIDES).map((l) => ({ strike: l.strike, pct: l.pct, label: "DP" })),
-    DARK_POOL_COLOR,
-    MAX_DP_GUIDES,
-    true
-  );
+  const mapped = drawOnChart
+    ? levels.slice(0, MAX_DP_GUIDES).map((l) => ({ strike: l.strike, pct: l.pct, label: "DP" }))
+    : [];
+  // Visible dashed lines when toggled on; axis-only was the old default-off behaviour (#173).
+  applyPriceGuides(series, guideRefs, mapped, DARK_POOL_COLOR, MAX_DP_GUIDES, !drawOnChart);
 }
 
 function applyFlipGuide(
@@ -2015,6 +2014,10 @@ export function VectorChart({
     readPersisted(VECTOR_VOLUME_MODE_STORAGE_KEY, VECTOR_VOLUME_MODES, "relative")
   );
   const volumeModeRef = useRef<VectorVolumeMode>(volumeMode);
+  const [darkPoolWallsEnabled, setDarkPoolWallsEnabled] = useState(() =>
+    readPersisted(VECTOR_DARK_POOL_WALLS_STORAGE_KEY, ["0", "1"] as const, "0") === "1"
+  );
+  const darkPoolWallsEnabledRef = useRef(darkPoolWallsEnabled);
   // Count of bars currently shown (at the active timeframe). Drives the indicator menu's
   // "not enough bars" annotation so an MA family that can't compute at this timeframe is explained
   // rather than looking broken. Updated imperatively from paintOverlays; setState bails out when
@@ -2421,9 +2424,7 @@ export function VectorChart({
       // still holds from before this deploy.
       applyKingAnchor(series, kingCallLineRef, null, v.callColor);
       applyKingAnchor(series, kingPutLineRef, null, v.putColor);
-      applyDarkPoolGuides(series, dpGuideRefs, []);
-      void dp; // dark-pool level lines intentionally not drawn (clean axis); kept in the signature
-      //         so callers/consumers of dp elsewhere are unaffected.
+      applyDarkPoolGuides(series, dpGuideRefs, dp, darkPoolWallsEnabledRef.current);
       // Feed the just-drawn strikes to the autoscale provider and nudge a rescale, so
       // the axis widens to reveal support/resistance walls the moment the lens/horizon
       // changes (off-hours there's no tick to trigger the recompute otherwise). Sliced to the
@@ -2764,6 +2765,12 @@ export function VectorChart({
     volumeModeRef.current = next;
     setVolumeModeState(next);
     writePersisted(VECTOR_VOLUME_MODE_STORAGE_KEY, next);
+  }, []);
+
+  const handleDarkPoolWalls = useCallback((enabled: boolean) => {
+    darkPoolWallsEnabledRef.current = enabled;
+    setDarkPoolWallsEnabled(enabled);
+    writePersisted(VECTOR_DARK_POOL_WALLS_STORAGE_KEY, enabled ? "1" : "0");
   }, []);
 
   // Lazy prior-day OHLC fetch: only when a prior-day/pivot level is enabled, and only once per
@@ -4957,6 +4964,8 @@ export function VectorChart({
       volumeMode={volumeMode}
       onVolumeMode={handleVolumeMode}
       hideVolumePane={hideVolumePane}
+      darkPoolWallsEnabled={darkPoolWallsEnabled}
+      onDarkPoolWalls={handleDarkPoolWalls}
     />
   );
 
