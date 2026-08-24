@@ -2,6 +2,7 @@
 import { loadProdSecretsFromAws } from "./prod-secrets.mjs";
 
 export const X_MARKETING_CRON_KEYS = new Set([
+  "x-intel",
   "x-autopost",
   "x-growth",
   "x-replies",
