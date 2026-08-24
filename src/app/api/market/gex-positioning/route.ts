@@ -134,7 +134,7 @@ export async function GET(req: NextRequest) {
                     distance_pts: nearest.distance_pts,
                   }
                 : null,
-              distance_to_flip_pct: flip != null && bundle.spot > 0
+              distance_to_flip_pct: flip != null && bundle.spot > 0 && Number.isFinite(flip)
                 ? Number((((bundle.spot - flip) / bundle.spot) * 100).toFixed(2))
                 : null,
               shift_summary: null,
