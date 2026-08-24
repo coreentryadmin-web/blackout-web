@@ -399,8 +399,13 @@ Cannot read properties of null`, not a product verdict — not yet re-diagnosed)
 loaded (149 routed, 0 fail), `body horizontal overflow: 0px`, `elements past viewport: 0`. Two
 real observations:
 - **5 text collisions** measured on the mobile GEX matrix table ("Strike" ∩ "773", "Aug 25" ∩
-  "+$9.6M", "Aug 25" ∩ "+181%", "Net flow" ∩ "$484.9M" ×2) — not yet root-caused or filed; flagged
-  for follow-up (`UI-UX-OPPORTUNITIES.md`).
+  "+$9.6M", "Aug 25" ∩ "+181%", "Net flow" ∩ "$484.9M" ×2) — **ANSWERED, 2026-08-24: confirmed
+  benign.** A live geometry re-check scrolled the matrix's own internal scroll container
+  (`.gex-matrix-scroll`) and measured a real body row physically intersecting the sticky
+  `<thead>`'s rect — the exact shape these collisions match. The `<thead>` carries an explicit
+  **opaque** background (`sticky top-0 z-20 bg-[#08080e]`), so a scrolled-under row is fully
+  covered, not rendered as visibly garbled overlapping text — this is the ordinary behavior of any
+  sticky table header, not a rendering defect. No fix needed; see `UI-UX-OPPORTUNITIES.md` item 10.
 - **A platform-wide crash, unrelated to Thermal itself, found and FIXED the same day:** the run's
   console carried `ChunkLoadError: Loading chunk 6750 failed.` A follow-up live check reproduced a
   full-page crash to `global-error.tsx`'s "CRITICAL ERROR" screen on 2 of 4 `/heatmap` loads,
