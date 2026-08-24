@@ -40,6 +40,15 @@ function historicalExpectedMove(rail: MeridianCorrelationRail): MeridianMacroRep
     };
   }
   const absMove = Math.abs(primary);
+  if (!Number.isFinite(absMove)) {
+    return {
+      available: false,
+      session_pct: session,
+      intraday_60_pct: intra,
+      headline: null,
+      source: "historical",
+    };
+  }
   const headline =
     intra != null
       ? `Historically SPX moves ~${absMove.toFixed(2)}% in the 60m after release (avg of ${rail.sample_size} prints)`
@@ -61,7 +70,7 @@ function buildExpectations(input: MacroReportInput): MeridianMacroReport["expect
     if (h.beats + h.misses > 0) {
       parts.push(`${h.beats} beats / ${h.misses} misses in recent history`);
     }
-    if (h.avg_surprise_pct != null) {
+    if (h.avg_surprise_pct != null && Number.isFinite(h.avg_surprise_pct)) {
       parts.push(`Avg surprise ${h.avg_surprise_pct >= 0 ? "+" : ""}${h.avg_surprise_pct.toFixed(1)}%`);
     }
   }
@@ -115,19 +124,19 @@ function buildWatchList(input: MacroReportInput): string[] {
   if (input.time) watch.push(`Release clock · ${input.time} ET`);
   if (input.estimate) watch.push(`Consensus · ${input.estimate}`);
   if (input.spx_positioning.available) {
-    if (input.spx_positioning.flip != null) {
+    if (input.spx_positioning.flip != null && Number.isFinite(input.spx_positioning.flip)) {
       watch.push(
         `SPX flip ${input.spx_positioning.flip.toLocaleString()} (${input.spx_positioning.flip_distance_pts ?? "—"} pts away)`
       );
     }
-    if (input.spx_positioning.call_wall != null && input.spx_positioning.put_wall != null) {
+    if (input.spx_positioning.call_wall != null && input.spx_positioning.put_wall != null && Number.isFinite(input.spx_positioning.call_wall) && Number.isFinite(input.spx_positioning.put_wall)) {
       watch.push(
         `Walls ${input.spx_positioning.put_wall.toLocaleString()} – ${input.spx_positioning.call_wall.toLocaleString()}`
       );
     }
     if (input.spx_positioning.gamma_regime) watch.push(`Gamma · ${input.spx_positioning.gamma_regime}`);
   }
-  if (input.flow.available && input.flow.call_put_ratio != null) {
+  if (input.flow.available && input.flow.call_put_ratio != null && Number.isFinite(input.flow.call_put_ratio)) {
     watch.push(`HELIX SPX flow C/P ${input.flow.call_put_ratio.toFixed(2)} · ${input.flow.bias}`);
   }
   const intra = input.correlation_rail.avg_intraday_60_pct;
