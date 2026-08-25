@@ -896,7 +896,11 @@ export function railLabelWidthPx(label: string, price: string): number {
 }
 
 export const MV_LADDER_HEIGHT_PX = 132;
-export const MV_LADDER_ROW_PX = 20;
+// 24px, not the measured 20.5px, so the row is also a real ≥24px tap target — see
+// UI-UX-OPPORTUNITIES.md item 13 (`meridian-interaction-audit.mjs` flagged 470x20/561x20 rows as
+// under the touch-target minimum). MV_LADDER_MIN_GAP derives from this, so the collision resolver
+// keeps demanding proportionally more separation automatically; nothing else to update.
+export const MV_LADDER_ROW_PX = 24;
 /** One full row of separation, as the [0,1] fraction `resolveCollisions` works in. */
 export const MV_LADDER_MIN_GAP = MV_LADDER_ROW_PX / MV_LADDER_HEIGHT_PX;
 

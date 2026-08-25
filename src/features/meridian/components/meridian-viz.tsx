@@ -637,6 +637,24 @@ export function MeridianTargetRail({
           // `.mv-ladder-row` in this same file already carries a full aria-label with its level,
           // price and distance from spot. These dots simply never got the same treatment.
           const label = `${t.firm ?? "price target"} ${fmtPrice(t.value)}${t.action ? ` · ${t.action}` : ""}`;
+          // Neither current call site (Report, Estimates) passes `onTargetClick`, so this used to
+          // render a `disabled` button — real markup for a control that can NEVER be activated:
+          // no click, no keyboard focus, nothing a `disabled` state would ever lift. That is not a
+          // small tap target, it is a non-control wearing interactive markup, which is exactly what
+          // meridian-interaction-audit.mjs's button/[role=button] selector picked up as one of the
+          // 6 "8x8" undersized controls (UI-UX-OPPORTUNITIES.md item 13). A `<span>` reports the
+          // same visual dot honestly: present, not interactive, nothing to size as a tap target.
+          if (!onTargetClick) {
+            return (
+              <span
+                key={`${t.value}-${i}`}
+                className="mv-target-dot"
+                style={{ left: `${pctAlong(t.value, domain)! * 100}%` }}
+                title={label}
+                aria-label={label}
+              />
+            );
+          }
           return (
             <button
               type="button"
@@ -645,8 +663,7 @@ export function MeridianTargetRail({
               style={{ left: `${pctAlong(t.value, domain)! * 100}%` }}
               title={label}
               aria-label={label}
-              onClick={onTargetClick ? () => onTargetClick({ value: t.value, firm: t.firm }) : undefined}
-              disabled={!onTargetClick}
+              onClick={() => onTargetClick({ value: t.value, firm: t.firm })}
             />
           );
         })}

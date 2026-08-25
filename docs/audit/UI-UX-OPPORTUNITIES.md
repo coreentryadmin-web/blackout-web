@@ -216,21 +216,32 @@ a pattern worth generalizing. Classify with the brief's own scale:
     before the deploy rotated instead of leaving it on a manual "Try again." See
     `docs/audit/findings-staging/2026-08-24-chunk-load-error-critical-crash.md`.
 
-13. **[P3, needs fix] Meridian earnings detail — 26 interactive controls under the 24px tap-target
-    minimum, confirmed on both desktop and tablet.** `meridian-interaction-audit.mjs` (live,
-    isolated runs, 2026-08-24) measured real `button`/`a[href]`/`[role=button]` elements below
+13. **[FIXED, 2026-08-25 — root-caused to four distinct components, three real fixes + one
+    confirmed audit-tool false positive] Meridian earnings detail — 26 interactive controls under
+    the 24px tap-target minimum, confirmed on both desktop and tablet.** `meridian-interaction-audit.mjs`
+    (live, isolated runs, 2026-08-24) measured real `button`/`a[href]`/`[role=button]` elements below
     24px in both axes across three tabs: **Report** (10 — wall/pin rows `470x20`/`561x20`, five
     `18x18` intel-source badges: HELIX flow, dark pool, thermal nodes, Vector expected move, news &
     catalysts), **Estimates** (6 — analyst price-target/rating dots, all `8x8`), **Positioning**
     (10 — same wall/pin rows plus GEX-strike pills, `301x20`/`561x20`). Same shapes on desktop
     1440×900 and tablet 1024×1100, so this isn't a viewport-specific squeeze — it's the panel's
-    base row/badge sizing. The `8x8` Estimates dots are the sharpest case (tiny icon-only rating
-    markers, not just a few px short). Not yet root-caused to the specific component/CSS (likely
-    `MeridianEarningsReportPanel.tsx` for Report/Positioning, an analyst-estimates panel for
-    Estimates — not yet located precisely) or fixed. Repro:
-    `NODE_USE_ENV_PROXY=1 node scripts/audit/meridian-interaction-audit.mjs --viewport=desktop`
-    (mints its own session; run desktop and tablet as SEPARATE invocations, never concurrently —
-    see item 14's note on why).
+    base row/badge sizing. Root-caused each: (1) `MeridianStructureLadder`'s wall/pin rows — a real
+    undersized control, height was pinned to 20px and coupled to a collision-resolver constant;
+    raised to 24px, the resolver constant derives from it automatically. (2) `MeridianStrikeProfile`'s
+    GEX-strike pills — a real undersized control, no coupling; given `min-height: 24px`. (3)
+    `MeridianOrbital`'s 18×18 intel badges — **not a defect**: they already carry a deliberate
+    invisible `::after` hit-area pad (26×26) so the visually-meaningful orb size doesn't have to be
+    inflated; `getBoundingClientRect()` can't see a pseudo-element's painted area, so the audit
+    flagged an already-correct control. Live-verified the pad genuinely extends the clickable area
+    with a minimal Playwright reproduction (click 12px from center, outside the 9px visible circle,
+    registered). (4) `MeridianTargetRail`'s 8×8 analyst dots — **not an undersized control, a
+    non-control**: both current call sites render them as `disabled` buttons (no `onTargetClick`
+    passed), and a disabled button can never be activated by any means, so no size would make it
+    usable; changed the no-handler path to render a plain `<span>` instead of interactive markup
+    for a control that can never be controlled. See
+    `docs/audit/findings-staging/2026-08-25-meridian-earnings-tap-targets.md` for full evidence,
+    fix rationale, and regression coverage (119 meridian tests + tsc green). Not yet deployed/
+    live-verified against production — that's the natural post-merge follow-up.
 
 14. **[ANSWERED, 2026-08-25 — confirmed working, the original harness finding was a stall, not a
     defect] Meridian tablet deeplink — selecting an event DOES change the URL.**
