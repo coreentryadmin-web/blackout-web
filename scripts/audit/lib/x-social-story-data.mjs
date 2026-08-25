@@ -126,7 +126,7 @@ export function composeKingNodePack(story) {
         id: `vector.desk.${tl}.${horizon}.15m`,
         label: `${t} ${horizon} king node + beads`,
         file: "1-vector-king.png",
-        params: { ticker: t, horizon, timeframe: "15", wait_beads: true, session_viewport: true },
+        params: { ticker: t, horizon, timeframe: "3", nodes: "20", wait_beads: true, zoom: 0 },
       },
       {
         product: "Helix",
@@ -180,7 +180,7 @@ export function composeBangerPack(story, bangerRow) {
         id: `vector.desk.${tl}.weekly.15m`,
         label: `${t} weekly king + bead trail`,
         file: "2-vector-king.png",
-        params: { ticker: t, horizon: "weekly", timeframe: "15", wait_beads: true, session_viewport: true },
+        params: { ticker: t, horizon: "weekly", timeframe: "3", nodes: "20", wait_beads: true, zoom: 0 },
       },
       { product: "Helix", id: `helix.tape.${tl}.1m`, label: `${t} $1M+ tape`, file: "3-helix-tape.png" },
       { product: "Thermal", id: `thermal.matrix.${tl}.vex`, label: `${t} VEX into the move`, file: "4-thermal-vex.png" },
