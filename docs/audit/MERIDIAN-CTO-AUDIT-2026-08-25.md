@@ -118,12 +118,18 @@ already covers them elsewhere on the same tab.
   discipline. But it then lists 6 peers (BBWI, ULTA, TITN, BBW, SPWH, WOOF) each showing only a
   date and a bare "—". As shipped this card can't currently do anything a member couldn't get from
   an earnings calendar. See §5 idea 1 for what would make it earn its space.
-- **Halo dimension scores are inconsistently populated.** Report tab's intelligence halo shows real
-  numbers for FLOW (100) and HISTORY (25), but STRUCTURE, SENTIMENT, and CATALYST all show a bare
-  "○" glyph despite each listing 1-2 "signals." If these three dimensions genuinely can't produce a
-  calibrated score yet (consistent with the Largo-contract "omit, don't fabricate" rule), the UI
-  should say so explicitly (e.g. "n/a" or "no score yet") instead of an unlabeled circle a member
-  could misread as a real zero.
+- ~~Halo dimension scores are inconsistently populated~~ **CORRECTED, same day — not a defect.**
+  Pixel-level re-examination of the same screenshot (2x crop, `dims-crop.png`) shows the glyph
+  originally read as a bare "○" is a real, correctly-rendered **`0`** — `dimensionRollup` computes
+  a genuine 0-100 intensity for every dimension with contributing signals, and STRUCTURE/SENTIMENT
+  scored a real 0 (net-zero: their bullish and bearish signals cancelled exactly), which
+  `MeridianRing` renders as a near-invisible arc plus a small `0` digit, per its own "no arc at all
+  when there is no value — an empty ring is honest, a full grey one is not" comment. `v === null`
+  renders "—" here, never a bare circle; this dimension had a real value, just a small one. Only
+  the visual point stands, softened: a `0` at this size/weight can read as "no score" even though
+  it means something specific (perfect signal disagreement, mirroring the halo's own "agreement"
+  concept) — worth a slightly bolder `0` or a one-word "balanced" label if this comes up again, but
+  not the calibration-honesty issue originally flagged.
 - **Financials context fields are RARE even at importance>=4** (`intel.financials.pe_ratio`,
   `price_to_sales`, `roe_pct`, `price_target_upside_pct` all 0% in today's re-run,
   `min-importance=4`, same cohort where `dark_pool`/`thermal` are 8-10/10 filled). Worth a
@@ -170,18 +176,117 @@ already covers them elsewhere on the same tab.
    CHANGED — Read is firming over 4d (+5)" is already tracked and rendered on Summary, the
    underlying signal exists; only the notification hook is missing.
 
-## 6. Flagged directly to the operator — need a decision, not just code
+## 6. Decisions made and shipped (operator: "drive everything autonomously")
 
-1. **§2.1, the Quarterly Beat/Miss Streak data-source bug** — small, well-scoped, but touches which
-   dataset a whole panel reads from; wanted a second pair of eyes before committing to the
-   `print_history` adapter shape.
-2. **§5 idea 1, sector-peer reaction history** — real, valuable, and buildable from data the product
-   already computes elsewhere, but it's a genuine new feature (more surface, more to maintain), not
-   a bug fix — wanted explicit sign-off before scoping it as a build.
-3. **§3, halo "○" placeholders** — is STRUCTURE/SENTIMENT/CATALYST really uncalibrated for every
-   event (in which case the fix is a clearer "no score" label), or should these three ever produce
-   a number and something upstream is silently dropping it? That's a data question before it's a
-   display question.
+1. **§2.1, Quarterly Beat/Miss Streak data-source bug — FIXED.** `printHistoryToAnalyticsRows`
+   adapter added to `meridian-earnings-analytics-core.ts`; `MeridianEarningsHistoryPanel` now feeds
+   `buildBeatMissStreak` this ticker's real `print_history` instead of the market-wide forward
+   calendar window. Tests added (`meridian-earnings-analytics-core.test.ts`).
+2. **§2.2, History-tab triple redundancy — partially fixed.** The exact-duplicate "Track record"
+   banner (verbatim repeat of the Summary card three lines above it) removed from
+   `MeridianEarningsTabs.tsx`. Left the bar-chart vs. plain-list formats as-is — they overlap in
+   scope but the plain list carries raw EPS actual/estimate values the bar chart doesn't show, so
+   collapsing it further is a real design call, not a duplicate-string cut; parked for a follow-up
+   pass if it still reads as noisy once the one confirmed duplicate is gone.
+3. **§2.3, "GUIDANCE" mislabel — FIXED.** `looksLikeAnalystAction` (new, `meridian-feed-text.ts`)
+   filters Benzinga "guidance"-channel catalyst briefs whose title is really a price-target/rating
+   action out of `catalyst_briefs` — that headline is already shown correctly under
+   `analyst_revisions` elsewhere on the same tab. Reuses `shapeAnalyst`'s existing keyword
+   vocabulary rather than inventing a second one; deliberately narrower (price target / rating tier
+   / upgrade-downgrade / coverage-initiation only) so a real "raises guidance" headline is never
+   caught by the same bare verb an analyst note uses for "raises price target." Extracted the pure
+   shaping logic into a new `meridian-catalyst-enrich-core.ts` (the original file's `import
+   "server-only"` throws unconditionally under `tsx --test`, so nothing in it was unit-testable —
+   this is the same core/enrich split every other Meridian data layer already uses). Tests added.
+4. **§3, halo "○" — CORRECTED, not a bug.** Re-examined the source screenshot at the pixel level:
+   it's a real, correctly-rendered `0` (a genuine net-zero intensity — bullish and bearish signals
+   in that dimension exactly cancelling), not a missing-score placeholder. No code change; the
+   audit finding itself was wrong and is struck through in §3 with the correction.
+5. **§5 idea 1, sector-peer reaction history — built.** See §7 below.
+6. **§5 idea 2, options-play-suggestion card — DESIGNED, deliberately NOT built this pass.** See §8
+   below for why: `MeridianEarningsSummaryPanel.tsx`'s CALL/PUT card carries an explicit, already-
+   considered guard against exactly the thing this feature would add ("nothing here knows a
+   contract price, so 'chance of profit' would be invented"). Turning `idea.impliedProb` into a
+   labeled contract suggestion without breaking that guard is a real design problem, not a
+   presentation change — building it under time pressure risked shipping the fabrication the
+   existing code was written to avoid. §8 lays out the honest version instead of a rushed one.
+
+---
+
+## 7. Sector-peer reaction history — built
+
+Turns the Positioning tab's Sector Peers card from a peer CALENDAR (dates only, most rows a bare
+"—") into something that also answers "how does this whole sector tend to react."
+
+**What it adds**: for each peer in the cohort (capped at `MAX_PEER_REACTION_TICKERS = 6`), a
+second line under the existing implied-move row — `avg +1.2% · 62% beat (n=6)` — computed from
+that peer's own settled print history, or nothing at all when a peer has no usable prints (never a
+fabricated 0%).
+
+**Why it's honest, not a new invented stat**: it reuses the SAME functions the subject's own
+History tab is built from (`settledReactions`, `beatSeries`/`beatTally` from `meridian-viz-core.ts`)
+via a new `summarizePeerReaction` in `meridian-sector-core.ts` — a peer's number and the subject's
+own number are guaranteed to mean the same thing, because they're computed by the same code, not a
+parallel implementation that could quietly drift.
+
+**Why it's a new server route and not just more client computation**: the data (`print_history`)
+doesn't exist for peers on the client at all — only the subject's own detail fetch loads it. Reused
+`loadMeridianEarningsPrintHistory` (the exact function `print_history` already comes from) per
+peer, in a new `meridian-peer-reactions.ts` loader and `GET /api/market/meridian/peer-reactions`
+route, rather than inventing a second earnings-history pipeline.
+
+**Cost control**: each peer fetch is a real Benzinga calendar call plus several Polygon minute-bar
+reaction lookups, so this is deliberately capped (max 6 peers per request, `PRINTS_PER_PEER = 4`)
+and cached hard (6h per-ticker `serverCache` TTL — a peer's historical print record cannot change
+intraday). A single peer's fetch failing (rate limit, no calendar entry) degrades to "no data" for
+that one peer rather than failing the whole cohort.
+
+**Not yet live-verified against production** — this sandbox cannot deploy or hit the live route
+end-to-end; verified via `npx tsc --noEmit`, the full unit suite (`meridian-sector-core.test.ts`,
+21 tests covering `summarizePeerReaction` directly), and reading the actual request/response shapes
+against the existing `lookup` route's established pattern. The natural post-merge follow-up is a
+live check of `/meridian` Positioning tab post-deploy, same as every other UI change in this doc.
+
+**Files**: `meridian-sector-core.ts` (`summarizePeerReaction`, `MAX_PEER_REACTION_TICKERS`),
+`meridian-peer-reactions.ts` (new), `src/app/api/market/meridian/peer-reactions/route.ts` (new),
+`MeridianPeerCohortPanel.tsx` (SWR fetch + row rendering), `desk-app.css` (`.mpeer-reaction`).
+
+## 8. Options-play-suggestion card — design, not yet built
+
+The operator's original ask (before this audit): turn the Summary tab's CALL/PUT cards from an
+abstract wall-probability into something like `NVDA 225C 09/02 — 15% chance — reasoning`.
+
+**Why this wasn't rushed into code today.** `MeridianEarningsSummaryPanel.tsx`'s `IdeaCard`
+already carries a deliberate, already-considered guard, in its own comment: *"The headline number
+is a DISTRIBUTION statement... nothing here knows a contract price, so 'chance of profit' would be
+invented."* `idea.impliedProb` is the options-implied probability the UNDERLYING closes past a
+level (the call/put wall) — a real, market-derived number. A specific contract (a strike, an
+expiry, a premium) has its OWN payoff curve: time decay, the actual premium paid, assignment risk
+near the wall. "15% chance of closing above 210" and "15% chance this 225C is profitable by 09/02"
+are different claims, and conflating them is exactly the kind of fabricated-certainty the Largo
+contract's confidence rules and this file's own comment both exist to prevent.
+
+**What an honest version needs, concretely** (this is the design, not yet implemented):
+1. **Strike/expiry selection is a real algorithm, not a guess.** The natural candidate: the SAME
+   wall already computed (`idea.level`, sourced from `MeridianTargetRail`/dealer structure) as the
+   strike, and the nearest listed expiry AFTER the print (the Positioning tab's Dealer Structure
+   panel already shows this — "2026-09-18 expiry — 24d after the print" in the DKS screenshot).
+   Both numbers already exist on the page; this is a lookup, not new data.
+2. **The probability shown must be labeled for what it is** — "underlying closes past this level"
+   — not "this contract is profitable." If a real contract-profitability number is wanted later,
+   that needs the contract's actual premium/greeks from the options chain (Thermal/Vector already
+   have chain access) and is a materially bigger feature, not a label change.
+3. **Reasoning is already written** — the IdeaCard's existing `evidenceNet`/`historicalRate`/
+   `invalidation` fields are the reasoning; the card doesn't need new copy, it needs the strike/
+   expiry framing wrapped around what's already there.
+4. **Disclaimer language** scales with how directive the new framing reads — a labeled contract
+   idea reads as more of a "trade" than "15% chance of closing above 210" does, even holding the
+   underlying math identical, so the existing "not a trade recommendation" language (already on
+   Positioning's Play Read card) likely needs to move onto this card too, not just live nearby.
+
+Recommend this as a small, separate `feat/` PR once reviewed — the strike/expiry wrapper is
+mechanical, but item 2's exact wording is a real editorial decision worth a second look before it
+ships, not a judgment call to make silently.
 
 ---
 
