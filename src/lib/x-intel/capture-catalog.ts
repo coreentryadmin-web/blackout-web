@@ -420,25 +420,25 @@ function meridianEntries(): CaptureCatalogEntry[] {
   }
 
   const analyticsPanels = [
-    "meridian.high_impact_grid",
-    "meridian.calendar_heat",
-    "meridian.megacap_week",
-    "meridian.next_24h",
-    "meridian.surprise_scatter",
-    "meridian.revision_timeline",
-    "meridian.opex_cross_market",
-    "meridian.after_hours",
+    { viewId: "meridian.high_impact_grid", panel: "high_impact" },
+    { viewId: "meridian.calendar_heat", panel: "calendar_heat" },
+    { viewId: "meridian.megacap_week", panel: "megacap_week" },
+    { viewId: "meridian.next_24h", panel: "next_24h" },
+    { viewId: "meridian.surprise_scatter", panel: "surprise_scatter" },
+    { viewId: "meridian.revision_timeline", panel: "revision_timeline" },
+    { viewId: "meridian.opex_cross_market", panel: "high_impact" },
+    { viewId: "meridian.after_hours", panel: "after_hours" },
   ] as const;
 
-  for (const viewId of analyticsPanels) {
+  for (const { viewId, panel } of analyticsPanels) {
     out.push(
       fromView(v(viewId), {
         recipe: "meridian_analytics_panel",
-        params: [{ key: "panel", label: "Panel id", default: viewId }],
-        clip: { selector: `[aria-label], .meridian-analytics-grid`, max_height: 400 },
+        params: [{ key: "panel", label: "Panel section", default: panel }],
+        clip: { selector: ".meridian-analytics-grid, .meridian-earnings-week, .meridian-earnings-analytics", max_height: 720 },
         story_tags: ["catalyst", "calendar"],
         franchises: ["EARNINGS_WAR_ROOM", "MARKET_PULSE"],
-        signature_template: `${viewId}|desk=analytics`,
+        signature_template: `${viewId}|desk=analytics|panel=${panel}`,
       }),
     );
   }
