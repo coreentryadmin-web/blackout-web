@@ -35,6 +35,9 @@ export function MeridianEarningsSummaryPanel({ detail }: { detail: MeridianEarni
   const summary: MeridianSummary = useMemo(
     () =>
       buildMeridianSummary({
+        ticker: detail.pack?.ticker ?? null,
+        eventYmd: detail.pack?.earnings_date ?? null,
+        coveringExpiry: intel?.thermal?.expiry_used ?? null,
         spot: intel?.thermal?.spot ?? intel?.expected_move_band?.spot ?? pack?.positioning?.spot ?? null,
         movePct: intel?.expected_move_pct ?? pack?.expected_move_pct ?? null,
         moveSource: intel?.expected_move_source ?? null,
@@ -178,18 +181,35 @@ function IdeaCard({
     <article className={`msum-idea msum-idea-${idea.side}${muted ? " is-muted" : ""}`}>
       <header className="msum-idea-head">
         <span className={`msum-idea-side ${bull ? "mv-bull" : "mv-bear"}`}>{bull ? "CALL" : "PUT"}</span>
-        <span className="msum-idea-level">
-          {bull ? "above" : "below"} <b>{idea.level}</b>
-          <span className="msum-idea-src"> · {idea.levelFrom}</span>
-        </span>
+        {idea.contractLabel ? (
+          <span className="msum-idea-contract">{idea.contractLabel}</span>
+        ) : (
+          <span className="msum-idea-level">
+            {bull ? "above" : "below"} <b>{idea.level}</b>
+            <span className="msum-idea-src"> · {idea.levelFrom}</span>
+          </span>
+        )}
       </header>
+
+      {idea.contractLabel && (
+        <p className="msum-idea-framing">
+          {bull ? "Above" : "Below"} <b>{idea.level}</b>
+          <span className="msum-idea-src"> · {idea.levelFrom}</span>
+          {idea.expiryDaysFromEvent != null && idea.expiryDaysFromEvent > 0
+            ? ` · ${idea.expiryDaysFromEvent}d after the print`
+            : idea.expiryYmd
+              ? " · event-covering expiry"
+              : ""}
+        </p>
+      )}
 
       {/* The headline number is a DISTRIBUTION statement. The label says so in as many words —
           nothing here knows a contract price, so "chance of profit" would be invented. */}
       <div className="msum-prob">
         <span className="msum-prob-val">{pct(idea.impliedProb)}</span>
         <span className="msum-prob-label">
-          implied chance of closing {bull ? "above" : "below"} {idea.level}
+          implied chance the underlying closes {bull ? "above" : "below"} {idea.level}
+          {idea.contractLabel ? " by expiry" : ""}
         </span>
       </div>
 
@@ -238,6 +258,11 @@ function IdeaCard({
       {summary.contested && (
         <p className="msum-thin msum-idea-foot">shown because the book is split, not because it won</p>
       )}
+
+      <p className="msum-thin msum-idea-disclaimer">
+        Structure framing only — not a trade recommendation. Probability is for the underlying
+        closing past this level, not contract profit.
+      </p>
     </article>
   );
 }

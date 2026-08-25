@@ -30,6 +30,7 @@
  */
 
 import { clamp, num, round } from "./meridian-viz-core";
+import { daysBetweenYmd } from "./meridian-event-expiry-core";
 
 /* ── probability primitives ───────────────────────────────────────────────────────── */
 
@@ -185,6 +186,12 @@ export type PlayIdea = {
   /** The level the idea needs the stock to clear. Sourced, never invented — see `levelFrom`. */
   level: number;
   levelFrom: string;
+  /** Human contract label when strike + expiry are known — NOT a profit claim. */
+  contractLabel: string | null;
+  /** Nearest listed expiry on or after the print (YYYY-MM-DD). */
+  expiryYmd: string | null;
+  /** Calendar days from the print to `expiryYmd`. */
+  expiryDaysFromEvent: number | null;
   /** P(close beyond `level`) under the implied move. A DISTRIBUTION statement, not profit. */
   impliedProb: number | null;
   /** This name's own base rate in that direction, with its sample size. */
@@ -219,6 +226,10 @@ export type MeridianSummary = {
 };
 
 export type SummaryInput = {
+  ticker?: string | null;
+  eventYmd?: string | null;
+  /** Event-covering expiry from dealer structure (thermal.expiry_used). */
+  coveringExpiry?: string | null;
   spot?: number | null;
   movePct?: number | null;
   moveSource?: string | null;
@@ -271,6 +282,38 @@ function pickLevel(
   return null;
 }
 
+/** MM/DD from YYYY-MM-DD for contract labels. */
+export function formatOptionExpiryShort(ymd: string | null | undefined): string | null {
+  const s = String(ymd ?? "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const [, mm, dd] = s.split("-");
+  return `${mm}/${dd}`;
+}
+
+function fmtContractStrike(strike: number): string {
+  return Number.isInteger(strike) ? String(strike) : strike.toFixed(1);
+}
+
+/**
+ * Label a hypothetical contract at the SAME wall strike and event-covering expiry.
+ * This is framing, not a recommendation — the probability remains an underlying distribution.
+ */
+export function buildPlayContractLabel(input: {
+  ticker?: string | null;
+  side: "call" | "put";
+  strike: number | null | undefined;
+  expiryYmd?: string | null;
+}): string | null {
+  const sym = String(input.ticker ?? "")
+    .trim()
+    .toUpperCase();
+  const strike = num(input.strike);
+  const expiryShort = formatOptionExpiryShort(input.expiryYmd);
+  if (!sym || strike == null || !expiryShort) return null;
+  const cp = input.side === "call" ? "C" : "P";
+  return `${sym} ${fmtContractStrike(strike)}${cp} · ${expiryShort}`;
+}
+
 /**
  * Combine the three components into one 0–100 confidence.
  *
@@ -311,6 +354,14 @@ export function buildMeridianSummary(input: SummaryInput): MeridianSummary {
   const movePct = num(input.movePct);
   const reaction = reactionStats(input.prints);
   const evidence = evidenceLean(input.signals);
+  const eventYmd = String(input.eventYmd ?? "").slice(0, 10);
+  const coveringExpiryRaw = String(input.coveringExpiry ?? "").slice(0, 10);
+  const coveringExpiry =
+    coveringExpiryRaw && /^\d{4}-\d{2}-\d{2}$/.test(coveringExpiryRaw) ? coveringExpiryRaw : null;
+  const expiryDaysFromEvent =
+    eventYmd && coveringExpiry && /^\d{4}-\d{2}-\d{2}$/.test(eventYmd)
+      ? daysBetweenYmd(eventYmd, coveringExpiry)
+      : null;
 
   const levels: SummaryLevel[] = [];
   const pushLevel = (label: string, v: number | null | undefined, kind: SummaryLevel["kind"]) => {
@@ -363,6 +414,14 @@ export function buildMeridianSummary(input: SummaryInput): MeridianSummary {
       side,
       level: picked.level,
       levelFrom: picked.from,
+      contractLabel: buildPlayContractLabel({
+        ticker: input.ticker,
+        side,
+        strike: picked.level,
+        expiryYmd: coveringExpiry,
+      }),
+      expiryYmd: coveringExpiry,
+      expiryDaysFromEvent,
       impliedProb: implied,
       historicalRate: historical,
       historicalSample: reaction.sample,

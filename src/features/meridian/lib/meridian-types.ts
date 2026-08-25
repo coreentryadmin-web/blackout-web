@@ -599,6 +599,45 @@ export type MeridianEarningsVectorRead = {
   freshness_note: string | null;
 };
 
+export type MeridianEarningsNighthawkRead = {
+  available: boolean;
+  on_board: boolean;
+  lane: "setup" | "ledger" | null;
+  direction: "long" | "short" | null;
+  strike: number | null;
+  expiry: string | null;
+  score: number | null;
+  conviction: string | null;
+  status: string | null;
+  headline: string | null;
+  live_pnl_pct: number | null;
+  session_label: string | null;
+};
+
+export type MeridianEarningsSpxStrikeStack = {
+  strike: number | null;
+  premium_label: string;
+  hit_count: number;
+};
+
+export type MeridianEarningsSpxRead = {
+  available: boolean;
+  price: number | null;
+  change_pct: number | null;
+  gamma_regime: string | null;
+  gamma_flip: number | null;
+  gex_king: number | null;
+  call_wall: number | null;
+  put_wall: number | null;
+  tide_bias: string | null;
+  flow_0dte_net: number | null;
+  play_phase: string | null;
+  play_action: string | null;
+  play_grade: string | null;
+  play_headline: string | null;
+  strike_stacks: MeridianEarningsSpxStrikeStack[];
+};
+
 export type MeridianEarningsReportSignal = {
   pillar:
     | "flow"
@@ -653,6 +692,8 @@ export type MeridianEarningsIntel = {
   dark_pool: MeridianEarningsDarkPool;
   thermal: MeridianEarningsThermalRead;
   vector: MeridianEarningsVectorRead;
+  nighthawk: MeridianEarningsNighthawkRead;
+  spx: MeridianEarningsSpxRead;
   report: MeridianEarningsReport;
   play_read: MeridianErPlayRead;
 };

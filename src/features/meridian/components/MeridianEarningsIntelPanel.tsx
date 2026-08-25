@@ -205,6 +205,65 @@ export function MeridianEarningsIntelPanel({ intel, printHistory, tickerExpected
           </MeridianDataCard>
         )}
 
+        {intel.nighthawk.available && (
+          <MeridianDataCard label="Night Hawk · today's board" tone="earnings" delay={220}>
+            {intel.nighthawk.headline && (
+              <p className="meridian-card-value">{intel.nighthawk.headline}</p>
+            )}
+            <ul className="meridian-card-list">
+              {intel.nighthawk.lane && <li>Lane · {intel.nighthawk.lane}</li>}
+              {intel.nighthawk.score != null && <li>Score {intel.nighthawk.score}</li>}
+              {intel.nighthawk.conviction && <li>{intel.nighthawk.conviction}</li>}
+              {intel.nighthawk.live_pnl_pct != null && (
+                <li>Live P&amp;L {intel.nighthawk.live_pnl_pct.toFixed(1)}%</li>
+              )}
+              {intel.nighthawk.session_label && <li>{intel.nighthawk.session_label}</li>}
+            </ul>
+          </MeridianDataCard>
+        )}
+
+        {intel.spx.available && (
+          <MeridianDataCard label="SPX desk · live" tone="earnings" delay={230}>
+            {intel.spx.price != null && (
+              <p className="meridian-card-value">
+                SPX {intel.spx.price.toLocaleString()}
+                {intel.spx.change_pct != null ? ` · ${fmtPct(intel.spx.change_pct)} session` : ""}
+              </p>
+            )}
+            <ul className="meridian-card-list">
+              {intel.spx.gamma_regime && <li>{intel.spx.gamma_regime}</li>}
+              {intel.spx.call_wall != null && intel.spx.put_wall != null && (
+                <li>
+                  Walls {intel.spx.put_wall.toLocaleString()} – {intel.spx.call_wall.toLocaleString()}
+                </li>
+              )}
+              {intel.spx.gamma_flip != null && (
+                <li>Gamma flip {intel.spx.gamma_flip.toLocaleString()}</li>
+              )}
+              {intel.spx.gex_king != null && <li>King {intel.spx.gex_king.toLocaleString()}</li>}
+              {intel.spx.tide_bias && <li>Tide · {intel.spx.tide_bias}</li>}
+              {intel.spx.flow_0dte_net != null && (
+                <li>0DTE flow net {intel.spx.flow_0dte_net.toLocaleString()}</li>
+              )}
+              {intel.spx.play_headline && (
+                <li>
+                  Play · {intel.spx.play_action ?? intel.spx.play_phase}
+                  {intel.spx.play_grade ? ` · grade ${intel.spx.play_grade}` : ""} — {intel.spx.play_headline}
+                </li>
+              )}
+            </ul>
+            {intel.spx.strike_stacks.length > 0 && (
+              <ul className="meridian-card-list meridian-strike-stacks">
+                {intel.spx.strike_stacks.map((s) => (
+                  <li key={`spx-${s.strike}`}>
+                    {s.strike} · {s.premium_label} ({s.hit_count} hits)
+                  </li>
+                ))}
+              </ul>
+            )}
+          </MeridianDataCard>
+        )}
+
         {flow_into_print.available && (
           <MeridianDataCard
             label={`HELIX flow · ${flow_into_print.window_hours}h window`}

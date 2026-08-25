@@ -24,6 +24,13 @@ import {
   shapeMeridianDarkPool,
 } from "@/lib/meridian/meridian-earnings-intel-core";
 import { shapeMeridianVectorDeskRead } from "@/lib/meridian/meridian-vector-for-earnings-core";
+import {
+  isMeridianSpxEarningsTicker,
+  shapeMeridianNighthawkBoardRead,
+  shapeMeridianSpxDeskRead,
+} from "@/lib/meridian/meridian-cross-product-for-earnings-core";
+import { readMeridianBoardSnapshot } from "@/lib/meridian/meridian-board-tickers";
+import { getSpxSlayerBadgeSnapshot } from "@/features/spx/lib/spx-slayer-badge";
 import { fetchVectorFullState } from "@/lib/bie/vector-full-state";
 import { buildMeridianEarningsReport } from "@/lib/meridian/meridian-earnings-report-core";
 import type { PreEarningsPackCard } from "@/lib/largo/pre-earnings-pack";
@@ -70,7 +77,7 @@ export async function loadMeridianEarningsIntel(input: {
       ? Promise.resolve(pf.rawHeatmap)
       : fetchGexHeatmap(sym).catch(() => null);
 
-  const [fundamentals, rawHeatmap, earningsEm, vectorEm, vectorFullState, flowSummary, darkPoolRaw] =
+  const [fundamentals, rawHeatmap, earningsEm, vectorEm, vectorFullState, flowSummary, darkPoolRaw, boardSnapshot, spxSummary, spxPlayBadge] =
     await Promise.all([
       pf != null
         ? Promise.resolve(pf.fundamentals)
@@ -91,6 +98,13 @@ export async function loadMeridianEarningsIntel(input: {
       pf != null
         ? Promise.resolve(pf.darkPoolRaw)
         : fetchUwDarkPool(sym, { limit: 20 }).catch(() => null),
+      readMeridianBoardSnapshot().catch(() => null),
+      isMeridianSpxEarningsTicker(sym)
+        ? marketPlatform.spx.getSpxDeskSummary().catch(() => null)
+        : Promise.resolve(null),
+      isMeridianSpxEarningsTicker(sym)
+        ? getSpxSlayerBadgeSnapshot().catch(() => null)
+        : Promise.resolve(null),
     ]);
 
   const thermal = await gexHeatmapForLargo(sym, {
@@ -390,6 +404,8 @@ export async function loadMeridianEarningsIntel(input: {
       flowMarkers: vectorFullState?.flowMarkers,
       freshness_note: vectorFullState?.note ?? null,
     }),
+    nighthawk: shapeMeridianNighthawkBoardRead({ ticker: sym, board: boardSnapshot }),
+    spx: shapeMeridianSpxDeskRead({ summary: spxSummary, playBadge: spxPlayBadge }),
     report,
     play_read,
   });
