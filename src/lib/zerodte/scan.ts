@@ -40,6 +40,17 @@ import {
 } from "./flow-accumulation-context";
 import { attachConfluence } from "./confluence";
 import { breakoutSourceEnabled, mergeDiscoveryOrigins } from "./breakout-source";
+import {
+  applyFlowCorroboration,
+  breakoutOnlyTickers,
+  deriveFlowCorroborationSetups,
+  enrichCorroboratingFlowSetups,
+  flowCorroborationEnabled,
+  FLOW_CORROBORATION_LIMIT,
+  FLOW_CORROBORATION_MAX_TICKERS,
+  FLOW_CORROBORATION_SINCE_HOURS,
+  mapFlowRowsForCorroboration,
+} from "./flow-corroboration";
 import { deriveWhyNow } from "./why-now";
 import { pinSourceEnabled, mergePinOrigins } from "./pin-source";
 import {
@@ -382,6 +393,52 @@ export async function scanZeroDteBoard(flags?: {
           if (ha !== hb) return hb - ha;
           return b.score - a.score;
         });
+      }
+
+      // Targeted FLOW corroboration: global premium-ranked fetch starves mid-cap BREAKOUT
+      // names of a FLOW merge. Probe each BREAKOUT-only ticker's own near-dated tape.
+      if (flowCorroborationEnabled()) {
+        try {
+          const targets = breakoutOnlyTickers(setups).slice(0, FLOW_CORROBORATION_MAX_TICKERS);
+          if (targets.length > 0) {
+            const corroRows = (
+              await Promise.all(
+                targets.map((ticker) =>
+                  fetchRecentFlows({
+                    ticker,
+                    since_hours: FLOW_CORROBORATION_SINCE_HOURS,
+                    min_premium: MIN_PREMIUM_NEAR_DATED,
+                    max_dte: 1,
+                    limit: FLOW_CORROBORATION_LIMIT,
+                  }).catch(() => [])
+                )
+              )
+            ).flat();
+            if (corroRows.length > 0) {
+              const rawCorro = deriveFlowCorroborationSetups(mapFlowRowsForCorroboration(corroRows), {
+                todayYmd: today,
+                nowMs: Date.now(),
+                excludeTickers: excludes,
+              });
+              const extrasByTicker = new Map(
+                rawCorro.map((s) => [
+                  s.ticker,
+                  {
+                    earnings: flags?.earnings?.get(s.ticker) ?? null,
+                    news_hot: flags?.news?.get(s.ticker) ?? null,
+                  },
+                ])
+              );
+              const enrichedCorro = enrichCorroboratingFlowSetups(rawCorro, extrasByTicker);
+              const nMerged = applyFlowCorroboration(setups, enrichedCorro);
+              if (nMerged > 0) {
+                console.info(`[zerodte-flow-corroboration] merged FLOW onto ${nMerged}/${targets.length} BREAKOUT-only tickers`);
+              }
+            }
+          }
+        } catch (err) {
+          console.warn("[zerodte-flow-corroboration] targeted flow fetch failed — breakout-only board unchanged:", err);
+        }
       }
     } catch (err) {
       // The board is deliberately unaffected (flow-only this cycle) — but the payload now SAYS so,

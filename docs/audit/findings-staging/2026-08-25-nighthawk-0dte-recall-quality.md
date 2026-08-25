@@ -18,6 +18,10 @@ WS-20 lowered `ZERODTE_SCORE_FLOOR_BREAKOUT` / `PIN` to **50** so multiplicative
 1. Restore BREAKOUT/PIN G-3 default floor to **65** (env overrides unchanged).
 2. Bump `BREAKOUT_SCORE_BASE` 15→20 so genuine 7%+ strong-close continuations clear 65 without lowering the bar.
 3. **G-17 single-rail corroboration:** BREAKOUT-only or PIN-only commits require **score ≥ 75** (prime band) unless FLOW is on the merged origin set. Multi-rail FLOW+BREAKOUT may still commit at 65 (+8 corroboration boost on merge).
+
+4. **Targeted FLOW corroboration (this PR):** After BREAKOUT discovery, probe each BREAKOUT-only ticker's own near-dated tape (`fetchRecentFlows({ ticker, max_dte: 1 })`) and merge surviving FLOW setups — fixes 0 multi-rail merges when mid-cap breakouts never appear in the global premium-ranked top-500.
+
+5. **FLOW score calibration:** `calibrateFlowEvidenceScore()` blends tier evidence score with `flow_quality.score` when gross ≥ $5M — fixes QQQ-like ETF tapes where mixed-side hedging crushed dominance points but institutional flow_quality still reads real (live: $7.6M gross scored 58 on tiers alone).
 4. Align `tiers.ts` `scoreFloorForOrigin` with `gates.ts` (FLOW present → strict 65).
 
 DTE window unchanged: board admits **0–4 DTE** same-day contracts (nearest expiry preferred); dte≥5 excluded at persist.
