@@ -202,26 +202,20 @@ a pattern worth generalizing. Classify with the brief's own scale:
     (mints its own session; run desktop and tablet as SEPARATE invocations, never concurrently —
     see item 14's note on why).
 
-14. **[P3, inconclusive — do not treat as confirmed either way] Meridian tablet — "selecting an
-    event does not change the URL" flagged live, but a static code trace says the opposite.**
-    `meridian-interaction-audit.mjs`'s tablet pass measured the desk's URL still bare after opening
-    an earnings event. Traced the actual code path: `MeridianTimelineRow`'s click handler
-    (`onSelect={() => setSelectedId(item.id)}` in `MeridianDesk.tsx`) feeds a `useEffect` watching
-    `[selectedId, view, filter]` that calls `syncDeskUrl` → `router.push` with the serialized state
-    from `meridian-deeplink-core.ts` — a module whose own header comment says this exact gap
-    ("selecting an event changed nothing in the address bar") was found and fixed 2026-08-18, and
-    which carries a dedicated unit test (`meridian-deeplink-core.test.ts`). The wiring reads
-    correct by inspection. A follow-up isolated live probe built to click a real earnings row and
-    read `window.location` before/after timed out waiting for the row to even appear (30s), which
-    this map's own Meridian section already documents as a known cold-timeline-fetch stall — so it
-    neither confirmed nor refuted the harness's tablet finding. **Left genuinely open rather than
-    asserted either way.** Note the harness's separate reload-based deep-link check (does a URL
-    WITH params survive a reload) never even ran on this pass — its own logic only reaches that
-    check when the URL already carries a `?`/`#`, which is exactly the condition in question, so
-    there is no second live signal to lean on either way from this run. Next step: re-run the
-    isolated probe with a longer row-wait (60s+, matching the documented
-    8.5s-cold-then-occasional-stall pattern) to get a clean click-through and a real before/after
-    URL comparison.
+14. **[ANSWERED, 2026-08-25 — confirmed working, the original harness finding was a stall, not a
+    defect] Meridian tablet deeplink — selecting an event DOES change the URL.**
+    `meridian-interaction-audit.mjs`'s original tablet pass measured the desk's URL still bare
+    after opening an earnings event, but a static code trace said the opposite (`MeridianDesk.tsx`
+    → `meridian-deeplink-core.ts`, wiring reads correct by inspection, with its own dedicated unit
+    test). A first live re-check probe timed out waiting for the row to appear (a known
+    cold-timeline-fetch stall) and settled nothing either way. **Re-ran with a longer row-wait
+    (60s) and a direct before/after URL comparison:** `url before:
+    https://blackouttrades.com/meridian`, `url after click:
+    https://blackouttrades.com/meridian?event=earnings%3AGRRR%3A2026-08-24` — the URL correctly
+    carries the selected event. Confirms the static trace was right and the original harness
+    finding was a false negative caused by the cold-fetch stall (the click landed on a
+    not-yet-fully-mounted row, or the harness's own timing raced the same stall this map already
+    documents for Meridian's desktop timeline fetch), not a real product defect. No code change.
 
 15. **[ANSWERED, 2026-08-24 — confirmed deploy noise, no fix needed] Largo `/terminal` —
     "Pricing"-click chunk 404s did not reproduce outside a deploy window.** `UI-UX-MAP.md` §8: an
