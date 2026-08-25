@@ -1,4 +1,4 @@
-import { describe, test } from "node:test";
+import { test } from "node:test";
 import assert from "node:assert/strict";
 import { classifyTradeArchetype, ARCHETYPE_LABEL } from "./archetype";
 import { evaluateArchetypeGates } from "./archetype-gates";
