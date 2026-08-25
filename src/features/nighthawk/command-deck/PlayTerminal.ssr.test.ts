@@ -73,6 +73,7 @@ test("Thesis tab renders ThesisRankCard when thesisFirst is on a 0DTE play", asy
           structural_state: "TRIGGERED",
           trigger_price: 181.5,
           summaries: { FLOW: "campaign", BREAKOUT: "triggered" },
+          disagreeing_rails: [],
         },
         archetype_gates: { verdict: "PASS", archetype: "BREAKOUT", blocks: [], notes: [] },
         expression: null,

@@ -270,7 +270,14 @@ export async function discoverPinSetups(opts: {
             callWall: pos.call_wall,
             putWall: pos.put_wall,
           });
-          if (condorSetup) return condorSetup;
+          if (condorSetup) {
+            return stampPinSetupPositioning(condorSetup, {
+              gamma_posture: pos.gamma_posture,
+              call_wall: pos.call_wall,
+              put_wall: pos.put_wall,
+              gex_king_strike: pos.gex_king_strike ?? null,
+            });
+          }
         }
 
         // Past directional cutoff: never open a directional PIN fade — late window is CONDOR-only.
