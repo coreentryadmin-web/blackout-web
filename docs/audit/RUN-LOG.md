@@ -1363,3 +1363,29 @@ tape, so no mobile segment is empty despite `VectorPulse` being unmounted.
 closed (Saturday, "AUG 21 CLOSE" in the header, which is the correct prior session). This is a
 render-and-interaction pass. Correctness against Polygon on a moving tape is still owed, as is the
 RTH truncation probe for #2649.
+
+## 2026-08-25 10:07 UTC — [RTH VALIDATION, SEO] `/tools/gamma-snapshot` live validation — PASS
+
+**Market status:** Open (10:04 AM ET, Tuesday trading day)
+
+**Public surface validation:**
+- `/tools/gamma-snapshot` rendering REAL derived data (SPX 7,670.36, gamma regime short, call wall 7,690, put wall 7,600, computed JUST NOW)
+- 5-second refresh cycle confirmed working (data fresh during RTH)
+- Licensing posture clean (data is derived, not raw vendor)
+
+**Core Web Vitals (live page, real market data):**
+- Desktop 1440×900: CLS **0** (GOOD)
+- Mobile 430×932: CLS **0.0003** (GOOD)
+- Both well under 0.1 threshold, no layout shifts observed
+- Asset routing: 55 ok, 0 fail (both viewports)
+
+**Defects found:** 0
+
+**SEO heartbeat status (Step 3):**
+- Step 1 ✓: #2453 CLS fix validated post-deployment
+- Step 2 ✓: #2448 OG crawlability validated post-deployment  
+- Step 3 ✓: RTH live-data validation complete (public `/tools/gamma-snapshot` serving real values, stable layout)
+- **Remaining work:** GA4→Google Ads conversion integration (env vars not configured, blocking event routing)
+
+---
+
