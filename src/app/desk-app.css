@@ -2891,6 +2891,14 @@ html.nav-locked body { overflow: hidden; }
   font-family: var(--mv-value); font-size: 0.95rem; font-weight: 800;
   font-variant-numeric: tabular-nums; color: #f2fbff;
 }
+/* A 4th cell in a 3-column row grid — `grid-column: 1 / -1` puts it on its own full-width line
+   under tkr/when/val rather than squeezing into column 1 via default auto-placement. */
+.mpeer-reaction {
+  grid-column: 1 / -1;
+  font-family: var(--mv-label); font-size: 0.66rem; letter-spacing: 0.02em;
+  color: rgba(148, 200, 230, 0.65); font-variant-numeric: tabular-nums;
+}
+.mpeer-reaction-n { color: rgba(148, 200, 230, 0.4); }
 
 /* What changed — the drift panel. Rendered only when a second day exists, because a one-point
    series is not a trend and a panel that implied otherwise would be worse than absent. */
