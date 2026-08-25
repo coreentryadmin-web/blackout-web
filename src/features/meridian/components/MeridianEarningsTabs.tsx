@@ -460,7 +460,6 @@ export function MeridianEarningsTabs({
             ticker={pack.ticker}
             enrichment={enrichment}
             intel={intel}
-            analyticsRows={analyticsRows}
           />
           {enrichment.print_history_summary && (
             <MeridianAnalyticsBanner
