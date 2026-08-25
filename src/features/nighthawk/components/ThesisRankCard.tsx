@@ -1,8 +1,13 @@
 "use client";
 
+import {
+  buildDeskEvidenceLines,
+  countDeskAlignment,
+  type DeskEvidenceLine,
+  type DeskEvidenceStatus,
+} from "@/lib/zerodte/thesis/desk-evidence-lines";
 import type { ThesisPipelineResult } from "@/lib/zerodte/thesis/types";
 import { ARCHETYPE_LABEL } from "@/lib/zerodte/thesis/archetype";
-import { THESIS_RAIL_ORDER } from "@/lib/zerodte/thesis/types";
 
 type Props = {
   thesis: ThesisPipelineResult | null | undefined;
@@ -12,59 +17,101 @@ function fmtStrike(n: number): string {
   return Number.isInteger(n) ? String(n) : n.toFixed(2);
 }
 
+function statusLabel(status: DeskEvidenceStatus): string {
+  switch (status) {
+    case "aligned":
+      return "aligned";
+    case "opposed":
+      return "opp";
+    case "neutral":
+      return "mixed";
+    default:
+      return "—";
+  }
+}
+
+function statusClass(status: DeskEvidenceStatus): string {
+  switch (status) {
+    case "aligned":
+      return "text-cyan-300";
+    case "opposed":
+      return "text-rose-300";
+    case "neutral":
+      return "text-sky-200";
+    default:
+      return "text-sky-200";
+  }
+}
+
+function resolveDeskLines(thesis: ThesisPipelineResult): DeskEvidenceLine[] {
+  if (thesis.desk_evidence?.length) return thesis.desk_evidence;
+  return buildDeskEvidenceLines({
+    thesis: thesis.thesis,
+    rank_tier: thesis.rank_tier,
+  });
+}
+
 /** THESIS | EVIDENCE | CONTRACT | MANAGEMENT rank card for 0DTE Command. */
 export function ThesisRankCard({ thesis }: Props) {
   if (!thesis) return null;
 
   const { thesis: merged, rank_tier, archetype_gates, expression } = thesis;
-  const rails = THESIS_RAIL_ORDER.filter((r) => merged.rail_scores[r] != null);
+  const deskLines = resolveDeskLines(thesis);
+  const { aligned, available } = countDeskAlignment(deskLines);
+  const disagreeing = merged.disagreeing_rails ?? [];
 
   return (
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
       <section className="rounded-lg border border-cyan-400/20 bg-cyan-400/[0.04] p-2.5">
         <h4 className="font-mono text-[9px] uppercase tracking-widest text-cyan-300">Thesis</h4>
         <p className="mt-1 text-[12px] font-semibold text-white">
-          {ARCHETYPE_LABEL[merged.trade_archetype]}
+          {merged.ticker} · {merged.direction.toUpperCase()}
         </p>
         <p className="t-num mt-0.5 text-[11px] text-sky-200">
-          {rank_tier} · {merged.systems_aligned} systems · score {merged.archetype_score}
+          {aligned}/{available || 5} desks aligned · {rank_tier}
+        </p>
+        <p className="mt-1 text-[11px] text-white">
+          {ARCHETYPE_LABEL[merged.trade_archetype]}
         </p>
         {merged.structural_state && (
           <p className="mt-1 text-[10px] text-cyan-200">{merged.structural_state}</p>
         )}
       </section>
 
-      <section className="rounded-lg border border-white/[0.08] bg-white/[0.02] p-2.5">
+      <section className="rounded-lg border border-white/[0.08] bg-white/[0.02] p-2.5 sm:col-span-2">
         <h4 className="font-mono text-[9px] uppercase tracking-widest text-sky-300">Evidence</h4>
-        <ul className="mt-1 space-y-0.5">
-          {rails.length === 0 ? (
-            <li className="text-[11px] text-sky-200">No rails fired</li>
-          ) : (
-            rails.map((r) => (
-              <li key={r} className="flex justify-between gap-2 text-[11px]">
-                <span className="text-white">{r}</span>
-                <span className="t-num text-sky-200">{merged.rail_scores[r]}</span>
-              </li>
-            ))
-          )}
+        <ul className="mt-1 space-y-1">
+          {deskLines.map((line) => (
+            <li key={line.desk} className="grid grid-cols-[4.5rem_1fr] gap-2 text-[11px] leading-snug">
+              <span className={`font-mono text-[10px] uppercase tracking-wide ${statusClass(line.status)}`}>
+                {line.desk}
+              </span>
+              <span className="text-white">
+                {line.text}
+                {line.status !== "unavailable" && (
+                  <span className={`ml-1.5 font-mono text-[9px] uppercase ${statusClass(line.status)}`}>
+                    {statusLabel(line.status)}
+                  </span>
+                )}
+              </span>
+            </li>
+          ))}
         </ul>
-        {archetype_gates.verdict !== "PASS" && (
-          <p className="mt-1 text-[10px] text-cyan-300">
-            Gate {archetype_gates.verdict}
-            {archetype_gates.blocks.length ? ` · ${archetype_gates.blocks.join(", ")}` : ""}
-          </p>
-        )}
-        {(merged.disagreeing_rails?.length ?? 0) > 0 && (
-          <ul className="mt-1 space-y-0.5 border-t border-white/[0.06] pt-1">
-            {(merged.disagreeing_rails ?? []).map((d) => (
-              <li key={`${d.rail}-${d.direction}`} className="flex justify-between gap-2 text-[10px]">
-                <span className="text-cyan-300">
-                  {d.rail} {d.direction.toUpperCase()} (opp)
-                </span>
-                <span className="t-num text-sky-200">{d.score}</span>
+        {disagreeing.length > 0 && (
+          <ul className="mt-2 space-y-0.5 border-t border-white/[0.06] pt-1.5">
+            <li className="font-mono text-[9px] uppercase tracking-widest text-cyan-300">Fracture</li>
+            {disagreeing.map((d) => (
+              <li key={`${d.rail}-${d.direction}`} className="text-[10px] text-cyan-200">
+                {d.rail} {d.direction.toUpperCase()} · {d.summary}
               </li>
             ))}
           </ul>
+        )}
+        {archetype_gates.verdict !== "PASS" && (
+          <p className="mt-1.5 text-[10px] text-cyan-300">
+            Gate {archetype_gates.verdict}
+            {archetype_gates.blocks.length ? ` · ${archetype_gates.blocks.join(", ")}` : ""}
+          </p>
         )}
       </section>
 
@@ -88,13 +135,13 @@ export function ThesisRankCard({ thesis }: Props) {
         )}
       </section>
 
-      <section className="rounded-lg border border-white/[0.08] bg-white/[0.02] p-2.5">
+      <section className="rounded-lg border border-white/[0.08] bg-white/[0.02] p-2.5 lg:col-span-4">
         <h4 className="font-mono text-[9px] uppercase tracking-widest text-sky-300">Management</h4>
         <p className="mt-1 text-[11px] text-sky-100">
           Mechanical −50% stop · +100% trim target · hard exit 3:50 ET
         </p>
         <p className="t-num mt-1 text-[10px] text-sky-200">
-          Tier {rank_tier} · {merged.direction.toUpperCase()} bias
+          Tier {rank_tier} · {merged.systems_aligned} rails · score {merged.archetype_score}
         </p>
       </section>
     </div>

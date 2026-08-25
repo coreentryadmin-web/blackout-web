@@ -27,6 +27,7 @@ describe("scan-shadow", () => {
     attachThesisFirstShadow([setup as never]);
     assert.ok(setup.thesis_first);
     assert.ok(setup.thesis_first!.thesis.rails_fired.length >= 1);
+    assert.ok(setup.thesis_first!.desk_evidence?.length === 5);
 
     const blob = thesisFirstEntryContext(setup.thesis_first);
     assert.ok(blob);

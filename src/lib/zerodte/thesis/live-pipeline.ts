@@ -1,6 +1,7 @@
 import type { EnrichedZeroDteSetup } from "../board";
 import type { ZeroDteGateBlock } from "../gates";
 import { evaluateArchetypeGates } from "./archetype-gates";
+import { deskEvidenceFromPipeline } from "./desk-evidence-lines";
 import { mergeScanPassTheses, runThesisPipelineForSetup } from "./pipeline";
 import { syncSetupDiscoveryFromThesis } from "./thesis-board-sync";
 import type { ThesisPipelineResult, ThesisRankTier } from "./types";
@@ -87,6 +88,14 @@ export function attachThesisFirstLive(
       const rank_tier = resolveThesisRankTier(pipeline.thesis, pipeline.archetype_gates);
       pipeline = { ...pipeline, rank_tier };
     }
+
+    pipeline = {
+      ...pipeline,
+      desk_evidence: deskEvidenceFromPipeline(
+        pipeline,
+        extrasByTicker[tickerKey] ?? {}
+      ),
+    };
 
     s.thesis_first = pipeline;
 

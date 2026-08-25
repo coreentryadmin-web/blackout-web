@@ -23,6 +23,7 @@ export function thesisFirstEntryContext(
   return {
     rail_scores: thesis.rail_scores,
     rails_fired: thesis.rails_fired,
+    summaries: thesis.summaries,
     systems_aligned: thesis.systems_aligned,
     trade_archetype: thesis.trade_archetype,
     archetype_score: thesis.archetype_score,
@@ -32,6 +33,7 @@ export function thesisFirstEntryContext(
     archetype_gate: archetype_gates.verdict,
     archetype_blocks: archetype_gates.blocks,
     disagreeing_rails: thesis.disagreeing_rails,
+    desk_evidence: pipeline.desk_evidence ?? null,
     ...(expression?.contract
       ? {
           expression_horizon: expression.horizon,

@@ -132,6 +132,8 @@ export type ThesisPipelineResult = {
   archetype_gates: ArchetypeGateResult;
   expression: ExpressionDecision | null;
   rank_tier: ThesisRankTier;
+  /** Product-native cross-desk evidence rows (HELIX / THERMAL / VECTOR / …). */
+  desk_evidence?: import("./desk-evidence-lines").DeskEvidenceLine[];
 };
 
 export type ThesisFirstEnv = {
