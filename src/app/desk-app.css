@@ -906,7 +906,13 @@ html.nav-locked body { overflow: hidden; }
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: #7dd3fc;
-  margin: 0 0 0.5rem;
+  margin: 0 0 0.35rem;
+}
+.meridian-action-dock-hint {
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: #22d3ee;
+  margin: 0 0 0.55rem;
 }
 .meridian-action-dock-row {
   display: flex;
@@ -2891,6 +2897,19 @@ html.nav-locked body { overflow: hidden; }
 .msum-idea-level { font-family: var(--mv-label); font-size: 0.76rem; color: #cfe9f8; }
 .msum-idea-level b { font-family: var(--mv-value); font-size: 0.95rem; font-variant-numeric: tabular-nums; }
 .msum-idea-src { color: rgba(148, 200, 230, 0.65); }
+.msum-idea-contract {
+  font-family: var(--mv-value);
+  font-size: 0.95rem;
+  font-variant-numeric: tabular-nums;
+  color: #e8f7ff;
+}
+.msum-idea-framing {
+  margin: 0 0 0.35rem;
+  font-family: var(--mv-label);
+  font-size: 0.74rem;
+  color: rgba(148, 200, 230, 0.85);
+}
+.msum-idea-disclaimer { margin: 0.65rem 0 0; }
 
 .msum-prob { display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
 .msum-prob-val {

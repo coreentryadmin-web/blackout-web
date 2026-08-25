@@ -6,6 +6,8 @@ import {
   reactionStats,
   evidenceLean,
   buildMeridianSummary,
+  buildPlayContractLabel,
+  formatOptionExpiryShort,
 } from "./meridian-summary-core";
 
 /* ── normalCdf ────────────────────────────────────────────────────────────────────── */
@@ -178,6 +180,25 @@ const base = {
     { label: "Street", lean: "bearish", weight: 1 },
   ],
 };
+
+test("summary: with expiry + ticker, contract label uses wall strike — not a profit claim", () => {
+  const s = buildMeridianSummary({
+    ...base,
+    ticker: "NVDA",
+    eventYmd: "2026-08-28",
+    coveringExpiry: "2026-09-18",
+  });
+  assert.equal(s.call!.contractLabel, "NVDA 110C · 09/18");
+  assert.equal(s.call!.expiryDaysFromEvent, 21);
+  assert.equal(buildPlayContractLabel({ ticker: "NVDA", side: "call", strike: 225, expiryYmd: "2026-09-02" }), "NVDA 225C · 09/02");
+  assert.equal(formatOptionExpiryShort("2026-09-18"), "09/18");
+});
+
+test("summary: no contract label without event-covering expiry", () => {
+  const s = buildMeridianSummary({ ...base, ticker: "NVDA", eventYmd: "2026-08-28" });
+  assert.equal(s.call!.contractLabel, null);
+  assert.equal(s.call!.expiryYmd, null);
+});
 
 test("summary: produces BOTH a call and a put idea", () => {
   const s = buildMeridianSummary(base);

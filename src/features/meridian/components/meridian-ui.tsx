@@ -222,6 +222,10 @@ export function MeridianActionDock({ item, boardTickers }: ActionDockProps) {
   return (
     <nav className={`meridian-action-dock ${theme.accent}`} aria-label="Cross-tool navigation">
       <p className="meridian-action-dock-label">Jump to desk</p>
+      <p className="meridian-action-dock-hint">
+        Thermal, HELIX, Vector, Night Hawk, and SPX previews render inline on Positioning when live
+        data is available.
+      </p>
       <div className="meridian-action-dock-row">
         {!ticker && (
           <>

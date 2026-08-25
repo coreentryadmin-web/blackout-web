@@ -23,6 +23,15 @@ import {
   flowWindowHours,
   shapeMeridianDarkPool,
 } from "@/lib/meridian/meridian-earnings-intel-core";
+import { shapeMeridianVectorDeskRead } from "@/lib/meridian/meridian-vector-for-earnings-core";
+import {
+  isMeridianSpxEarningsTicker,
+  shapeMeridianNighthawkBoardRead,
+  shapeMeridianSpxDeskRead,
+} from "@/lib/meridian/meridian-cross-product-for-earnings-core";
+import { readMeridianBoardSnapshot } from "@/lib/meridian/meridian-board-tickers";
+import { getSpxSlayerBadgeSnapshot } from "@/features/spx/lib/spx-slayer-badge";
+import { fetchVectorFullState } from "@/lib/bie/vector-full-state";
 import { buildMeridianEarningsReport } from "@/lib/meridian/meridian-earnings-report-core";
 import type { PreEarningsPackCard } from "@/lib/largo/pre-earnings-pack";
 import type {
@@ -34,6 +43,8 @@ import type {
 export type MeridianEarningsIntelPrefetch = {
   fundamentals: Awaited<ReturnType<typeof fetchTickerFundamentalsBundle>> | null;
   vectorEm: Awaited<ReturnType<typeof getVectorExpectedMove>> | null;
+  /** Cache-first Vector desk snapshot for inline beads/flow card (weekly horizon). */
+  vectorFullState: Awaited<ReturnType<typeof fetchVectorFullState>> | null;
   darkPoolRaw: Awaited<ReturnType<typeof fetchUwDarkPool>> | null;
   rawHeatmap: Awaited<ReturnType<typeof fetchGexHeatmap>> | null;
   windowHours?: number;
@@ -66,7 +77,7 @@ export async function loadMeridianEarningsIntel(input: {
       ? Promise.resolve(pf.rawHeatmap)
       : fetchGexHeatmap(sym).catch(() => null);
 
-  const [fundamentals, rawHeatmap, earningsEm, vectorEm, flowSummary, darkPoolRaw] =
+  const [fundamentals, rawHeatmap, earningsEm, vectorEm, vectorFullState, flowSummary, darkPoolRaw, boardSnapshot, spxSummary, spxPlayBadge] =
     await Promise.all([
       pf != null
         ? Promise.resolve(pf.fundamentals)
@@ -78,12 +89,22 @@ export async function loadMeridianEarningsIntel(input: {
       pf != null
         ? Promise.resolve(pf.vectorEm)
         : getVectorExpectedMove(sym, "weekly").catch(() => null),
+      pf != null
+        ? Promise.resolve(pf.vectorFullState)
+        : fetchVectorFullState(sym, "weekly").catch(() => null),
       marketPlatform.flows
         .getFlowTapeSummary({ ticker: sym, limit: 30, since_hours: windowHours })
         .catch(() => null),
       pf != null
         ? Promise.resolve(pf.darkPoolRaw)
         : fetchUwDarkPool(sym, { limit: 20 }).catch(() => null),
+      readMeridianBoardSnapshot().catch(() => null),
+      isMeridianSpxEarningsTicker(sym)
+        ? marketPlatform.spx.getSpxDeskSummary().catch(() => null)
+        : Promise.resolve(null),
+      isMeridianSpxEarningsTicker(sym)
+        ? getSpxSlayerBadgeSnapshot().catch(() => null)
+        : Promise.resolve(null),
     ]);
 
   const thermal = await gexHeatmapForLargo(sym, {
@@ -352,25 +373,39 @@ export async function loadMeridianEarningsIntel(input: {
           nearest_wall: null,
         };
         })(),
-    vector: vectorEm
-      ? {
-          available: true,
-          expiry: vectorEm.expiry,
-          move_pct: vector_move_pct,
-          spot,
-          bands: vectorEm.bands?.map((b) => ({
-            sigma: b.sigma,
-            low: Number(b.low.toFixed(2)),
-            high: Number(b.high.toFixed(2)),
-          })) ?? null,
-        }
-      : {
-          available: false,
-          expiry: null,
-          move_pct: vector_move_pct,
-          spot,
-          bands: null,
-        },
+    vector: shapeMeridianVectorDeskRead({
+      horizon: vectorFullState?.horizon ?? "weekly",
+      spot: vectorFullState?.spot ?? spot,
+      expiry: vectorEm?.expiry ?? null,
+      move_pct:
+        vector_move_pct ??
+        (vectorFullState?.expectedMove?.movePct != null &&
+        Number.isFinite(vectorFullState.expectedMove.movePct)
+          ? Number((vectorFullState.expectedMove.movePct * 100).toFixed(1))
+          : null),
+      bands:
+        vectorEm?.bands?.map((b) => ({
+          sigma: b.sigma,
+          low: Number(b.low.toFixed(2)),
+          high: Number(b.high.toFixed(2)),
+        })) ??
+        vectorFullState?.expectedMove?.bands?.map((b) => ({
+          sigma: b.sigma,
+          low: Number(b.low.toFixed(2)),
+          high: Number(b.high.toFixed(2)),
+        })) ??
+        null,
+      regime: vectorFullState?.regime?.posture,
+      gexWalls: vectorFullState?.gexWalls,
+      gammaFlip: vectorFullState?.gammaFlip,
+      maxPain: vectorFullState?.maxPain,
+      wallHistory: vectorFullState?.wallHistory,
+      wallEvents: vectorFullState?.wallEvents,
+      flowMarkers: vectorFullState?.flowMarkers,
+      freshness_note: vectorFullState?.note ?? null,
+    }),
+    nighthawk: shapeMeridianNighthawkBoardRead({ ticker: sym, board: boardSnapshot }),
+    spx: shapeMeridianSpxDeskRead({ summary: spxSummary, playBadge: spxPlayBadge }),
     report,
     play_read,
   });
