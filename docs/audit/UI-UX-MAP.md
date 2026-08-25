@@ -985,24 +985,30 @@ Cross-product patterns, not yet P0–P3 classified pending more coverage:
 Per the file's own opening rule (an honest gap is a finding, a plausible guess is a lie that
 outlives whoever wrote it):
 
-- **`home-mobile` beyond the hero fold** — not yet reviewed.
-- **Interaction testing STARTED, 2026-08-23 — Vector only so far.** `vector-ui-walkthrough.cjs`
-  (committed harness) run live against production: 16 states, no engine crashes, no broken canvas,
-  ladder/play card always populated — but surfaced one evidence-backed open question (regime banner
-  absent across the run; see §5 and `UI-UX-OPPORTUNITIES.md` item 9). Every OTHER product's tabs,
-  filters, search, sort, drawers/modals, and ticker switching are still unexercised — Largo,
-  Thermal, and Meridian each already have their own committed interaction harnesses
-  (`largo-ui-walkthrough.cjs`, `thermal-interaction-audit.cjs`, `meridian-interaction-audit.mjs`)
-  not yet run this pass. Night Hawk, SPX Slayer, and Helix have no dedicated interaction harness at
-  all yet. Queued for the next LIVE VALIDATION window against a moving tape, where most of this
-  class of defect is actually observable (§0).
-- **No admin surfaces** (`/admin*`) — explicitly noted as lower priority in the charter, not
-  covered this pass.
-- **Two OPEN QUESTIONs remain:** `/meridian`'s slow desktop fetch (§6/§10 #9) and §5's withdrawn
-  desktop-half of the Vector footer-overlap finding both need a longer `--wait` or a chart-loaded
-  re-check rather than another default 9s shot. (§1.2b's `parseTier("admin")` fallthrough, third of
-  the original three, turned out NOT to need a real browser session — it resolved by static tracing
-  the same day; see §1.2b.)
+- **`home-mobile` beyond the hero fold** — still not reviewed.
+- **Interaction testing — now run against EVERY product, 2026-08-23 through 2026-08-24.** Started
+  with Vector-only (`vector-ui-walkthrough.cjs`, 16 states, no engine crashes) on 2026-08-23. Since
+  then every other product has had at least one live isolated interaction pass: Thermal
+  (`thermal-interaction-audit.cjs`, desktop+mobile, §4), Meridian
+  (`meridian-interaction-audit.mjs`, desktop+tablet+mobile, §6), and — via the generic
+  `live-ui-interaction-audit.mjs` harness built for this pass — SPX Slayer (§2, 20/34 controls,
+  clean), Helix (§3, 20/555 controls, clean), Night Hawk (§7, two real audit-tooling false
+  positives found and fixed in the harness itself, now clean), and Largo (§8, 19/19 controls
+  clean except an unconfirmed deploy-window-confounded observation on the "Pricing" nav link, not
+  yet re-checked outside a deploy window). This closes what was the single largest gap in the
+  original pass — **not** because every interaction on every product has been exercised (each run
+  sampled a bounded number of controls, and `MAX_CONTROLS` on Helix's 555-control page is a small
+  fraction), but because the "no coverage at all" state for 5 of 7 products is gone.
+- **No admin surfaces** (`/admin*`) — explicitly noted as lower priority in the charter, still not
+  covered.
+- **`/meridian`'s slow desktop fetch OPEN QUESTION (§6/§10 #9) — did not reproduce across this
+  session's several later Meridian runs, still not formally closed.** The original 2-of-3-desktop-
+  attempts timeout was never deliberately re-tested with a longer `--wait`, but every Meridian
+  interaction run in this later pass (multiple isolated desktop invocations, 2026-08-24) completed
+  the timeline fetch without a timeout. Consistent with a transient cold-cache stall rather than a
+  standing defect, but left open rather than closed on absence alone — a deliberate longer-`--wait`
+  re-check is still the correct way to settle it. **§5's withdrawn desktop-half of the Vector
+  footer-overlap finding is still genuinely open** — not re-checked this pass either.
 - **A second, distinct methodology gap found the same day as the UA correction (§1.2b): every
   client-side tier-dependent UI element (`useAppAuth()` consumers — the `/account` plan display,
   `/pricing` and `/upgrade` CTAs) rendered in its default/unhydrated state in EVERY screenshot this
@@ -1010,8 +1016,10 @@ outlives whoever wrote it):
   there is no proposed tooling fix for this one yet — establishing a genuinely hydrated Clerk
   client session from a headless mint is a bigger change than a CLI flag, and worth its own design
   discussion rather than a quick patch. Flagged, not solved, this pass.
-- **`docs/audit/UI-UX-OPPORTUNITIES.md`** stubbed in this PR per brief item 16 but not yet
-  populated with real backlog items beyond what's in §10's table.
+- **`docs/audit/UI-UX-OPPORTUNITIES.md`** — no longer just a stub. Actively populated and
+  maintained across this pass: 16 numbered items tracking design questions, live-interaction
+  findings (real and ruled-out), and audit-tooling bugs found and fixed along the way, each closed
+  out with evidence when resolved rather than left to go stale.
 - **This correction pass itself is proof the methodology needs a permanent fix, not just a one-time
   re-shoot:** `proxy-browser.cjs`'s own doc comment already warned that the UA stays mobile without
   `--desktop`, and this pass still shipped 8 desktop entries (later corrected) without it. The
