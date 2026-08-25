@@ -109,6 +109,9 @@ export type ZeroDteEntryContext = {
    *  many pure buildZeroDteEntryContext call sites that don't stamp it carry it undefined;
    *  every present manifest has all keys, null where the input's age was genuinely unknown. */
   input_age_manifest?: ZeroDteInputAgeManifest;
+  /** Thesis-first rail panel pinned at commit (shadow calibration). Optional — absent on
+   *  rows committed before the wire-in. See thesis/scan-shadow.ts thesisFirstEntryContext. */
+  thesis_first?: Record<string, unknown> | null;
 };
 
 /** "YYYY-MM-DD HH:mm ET" for an epoch-ms instant. en-CA date + en-GB 24h time give
