@@ -152,7 +152,7 @@ export function buildZeroDteEntryContext(
     committed_at_et: formatEtStamp(nowMs),
     cortex: play.cortex ?? null,
     tier: null,
-    discovery_origin: play.discovery_origin,
+    ...(play.discovery_origin && { discovery_origin: play.discovery_origin }),
   };
   // Commit-time merit tier (PR-F wiring): computed by feeding the JUST-BUILT blob
   // through tierFromEntryContext — the SAME adapter the calibration/record analyses
