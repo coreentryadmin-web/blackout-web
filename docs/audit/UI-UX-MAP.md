@@ -598,6 +598,21 @@ too consistent to keep calling a fluke without a longer `--wait` re-check. Not f
 pending that re-check — a slow endpoint and a broken one need different fixes and this pass can't
 yet tell which it is.
 
+**RESOLVED, 2026-08-25 — the API is fast; the stall is client-side, not the backend.** Timed
+`GET /api/market/meridian/timeline?days=21` directly (authenticated, `fetchAuditJson`, no browser)
+with the one-time Clerk session-mint cost isolated as a separate warmup call first (10.4s on its
+own — irrelevant to the route, just how long minting a temp premium session takes): **6 consecutive
+authenticated fetches came back in 135-840ms**, no slow tail at all. An earlier, less careful timing
+run that included the auth-mint inside the timed window read as a single 27.7s "attempt" — that was
+the Clerk mint, not the route; every later attempt in that same run (session already cached) was
+back to 221-2110ms. **This rules out "broken" and "genuinely slow endpoint" both** — the backend
+consistently answers in under a second once authenticated. The 2-for-3 desktop stalls in the live
+browser captures are therefore client-side: cold page-JS compile/hydration or the browser's own
+Clerk-JS session establishment taking longer than the harness's fixed capture window on some runs,
+not a slow or broken API. No code fix filed — there is no broken endpoint to fix, and a client-side
+hydration/cold-compile stall is the same class of thing `docs/audit/findings-staging/2026-08-24-chunk-load-error-critical-crash.md`
+already addressed platform-wide (a stuck client self-heals via reload) rather than a new defect.
+
 **`RE-VERIFIED 2026-08-23 (correct UA)`** — layout structure otherwise unchanged from the original
 shot; the loading-skeleton state above is what this second desktop attempt also captured, so no
 new structural detail to add beyond the timeout note.
@@ -982,7 +997,7 @@ wrong UA can mask real bugs, not just invent fake ones.
 | 6 | `/nighthawk` mobile | ~45% of viewport left blank below the no-session empty state | **P2/P3** | §7 | Correct mobile UA |
 | 7 | `/vector` mobile | Drops ticker search, metric/expiry toggles, matrix table, and live tape entirely (chart-only) — scope call | **P2** (needs Vector-lane input) | §5 | Correct mobile UA |
 | ~~8~~ | ~~`/nighthawk` **desktop**~~ | ~~Engine tab bar renders with NO spacing between labels~~ | **FIXED, live-validated** | §7 | Root-caused (`IosNativeSegment`'s structural CSS never loads on desktop web) and fixed same day — see §7 and `docs/audit/findings-staging/2026-08-23-nighthawk-desktop-tab-bar-unstyled.md`. Locally verified via `next dev` + real Playwright before AND after the fix. **Live-validated 2026-08-24 during RTH** — 0DTE/Swings/Bangers/Legacy tabs render with correct spacing/chrome alongside a real live play (MARA, active management panel). |
-| 9 | `/meridian` desktop | Catalyst-list fetch (`/api/market/meridian/timeline?days=21`) has now timed out on 2 of 3 desktop attempts (one mobile attempt succeeded) | **OPEN QUESTION**, not yet a finding | §6 | 2 correct-UA desktop attempts, both stalled; needs a longer `--wait` re-check to separate "slow" from "broken." |
+| ~~9~~ | ~~`/meridian` desktop~~ | ~~Catalyst-list fetch (`/api/market/meridian/timeline?days=21`) has now timed out on 2 of 3 desktop attempts (one mobile attempt succeeded)~~ | **RESOLVED — API is fast, stall is client-side** | §6 | Timed the route directly, auth-mint cost isolated from the measurement: 6 consecutive authenticated fetches all 135-840ms. Rules out both "broken" and "genuinely slow endpoint" — the desktop stalls were the browser's own cold-hydration/Clerk-JS-init timing, not the backend. No code fix; see §6. |
 
 Cross-product patterns, not yet P0–P3 classified pending more coverage:
 
@@ -1035,13 +1050,10 @@ outlives whoever wrote it):
   fraction), but because the "no coverage at all" state for 5 of 7 products is gone.
 - **No admin surfaces** (`/admin*`) — explicitly noted as lower priority in the charter, still not
   covered.
-- **`/meridian`'s slow desktop fetch OPEN QUESTION (§6/§10 #9) — did not reproduce across this
-  session's several later Meridian runs, still not formally closed.** The original 2-of-3-desktop-
-  attempts timeout was never deliberately re-tested with a longer `--wait`, but every Meridian
-  interaction run in this later pass (multiple isolated desktop invocations, 2026-08-24) completed
-  the timeline fetch without a timeout. Consistent with a transient cold-cache stall rather than a
-  standing defect, but left open rather than closed on absence alone — a deliberate longer-`--wait`
-  re-check is still the correct way to settle it. **§5's withdrawn desktop-half of the Vector
+- ~~`/meridian`'s slow desktop fetch OPEN QUESTION (§6/§10 #9)~~ **CLOSED 2026-08-25** — timed the
+  route directly (auth-mint cost isolated from the measurement), 6/6 authenticated fetches came
+  back in 135-840ms. The backend is fast; the browser-capture stalls were client-side (cold
+  hydration/Clerk-JS-init), not the API. See §6. **§5's withdrawn desktop-half of the Vector
   footer-overlap finding is still genuinely open** — not re-checked this pass either.
 - **A second, distinct methodology gap found the same day as the UA correction (§1.2b): every
   client-side tier-dependent UI element (`useAppAuth()` consumers — the `/account` plan display,

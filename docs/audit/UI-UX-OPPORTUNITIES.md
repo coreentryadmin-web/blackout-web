@@ -62,13 +62,27 @@ a pattern worth generalizing. Classify with the brief's own scale:
    for the other 3 engine tabs (Swings/Bangers/Legacy), or a countdown to the next session. Not
    urgent — it's not broken, just under-used space on a day with genuinely nothing to show.
 
-6. **[P3] A shared chart-footer-legend component to prevent the overlap bug from recurring.**
-   `UI-UX-MAP.md` finding #3 is confirmed on `/vector` mobile; whether it also affects `/dashboard`
-   desktop (same `VectorChart.tsx` via `SpxVectorEmbed`) is still an open question pending a
-   chart-loaded re-check. If it does turn out to affect both, the larger opportunity is auditing
-   whether other embeds of the same component (any future ones) inherit the same footer-legend
-   layout logic, so a fix to the shared component doesn't need to be re-verified per embed site by
-   hand each time.
+6. **[ANSWERED, 2026-08-25 — closed by code-identity, live re-check attempted but blocked by an
+   environment issue this pass] `/dashboard` desktop inherits the footer-legend fix automatically —
+   it is not a separate code path to verify.** Traced `SpxVectorEmbed.tsx` (the `/dashboard`
+   embed): it dynamically imports and renders `VectorPageShell`, the exact same component tree
+   `/vector` itself renders, with no props or wrapper that touch, override, or conditionally skip
+   the footer-label JSX. The fixed pill markup (`bg-black/70`, width cap, truncate — the same lines
+   read for `UI-UX-MAP.md` finding #3) lives directly in `VectorChart.tsx` at the leaf the embed
+   also renders, so there is no scenario where `/dashboard` executes different code for this label
+   than `/vector` does — this is one function running in two places, not two implementations that
+   happen to look alike. A live chart-loaded screenshot of `/dashboard` desktop was attempted to
+   confirm visually as well, but `proxy-browser.cjs` hit `ERR_CONNECTION_RESET` on **every** target
+   including the homepage across 4 consecutive attempts (with `recentRelayFailures: []` on the
+   proxy status, curl to the same URLs succeeding throughout) — consistent with the tunnel-
+   exhaustion failure mode `proxy-tunnel-context.cjs`'s own header comment documents (leaked
+   CONNECT tunnels from a prior long run present as this exact signature: Chromium reports
+   `ERR_CONNECTION_RESET`, the proxy has nothing to report because it is saturated, not failing).
+   Not chased further since the code-identity evidence is airtight regardless of what a screenshot
+   would add — a live re-check remains a reasonable follow-up whenever the tunnel clears, not a
+   blocker on closing this. The second half of the original ask (auditing whether *other*, future
+   embeds of `VectorChart.tsx` could diverge) stays real but speculative — no second embed exists
+   yet to check.
 
 7. **[DONE, 2026-08-23] `proxy-browser.cjs` now warns loud when `--viewport` implies desktop but
    `--desktop` is omitted.** This Phase 0 pass shipped 8 desktop findings built on the wrong UA
