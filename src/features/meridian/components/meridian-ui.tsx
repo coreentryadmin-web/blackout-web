@@ -220,15 +220,19 @@ export function MeridianActionDock({ item, boardTickers }: ActionDockProps) {
     <nav className={`meridian-action-dock ${theme.accent}`} aria-label="Cross-tool navigation">
       <p className="meridian-action-dock-label">Jump to desk</p>
       <div className="meridian-action-dock-row">
-        <Link href="/dashboard" className="meridian-dock-btn meridian-dock-btn-primary">
-          SPX desk
-        </Link>
-        <Link href="/heatmap?ticker=SPX" className="meridian-dock-btn">
-          Thermal · SPX
-        </Link>
-        <Link href="/flows?ticker=SPX" className="meridian-dock-btn">
-          HELIX · SPX
-        </Link>
+        {!ticker && (
+          <>
+            <Link href="/dashboard" className="meridian-dock-btn meridian-dock-btn-primary">
+              SPX desk
+            </Link>
+            <Link href="/heatmap?ticker=SPX" className="meridian-dock-btn">
+              Thermal · SPX
+            </Link>
+            <Link href="/flows?ticker=SPX" className="meridian-dock-btn">
+              HELIX · SPX
+            </Link>
+          </>
+        )}
         {ticker && (
           <>
             <Link href={`/vector?ticker=${encodeURIComponent(ticker)}`} className="meridian-dock-btn">
