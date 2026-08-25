@@ -18,7 +18,10 @@ export function ReactionFlag({ print }: { print: MeridianEarningsPrint }) {
   const q = reactionQualifier(print);
   if (!q) return null;
   return (
-    <span className="meridian-reaction-flag" title={q.title}>
+    <span
+      className={`meridian-reaction-flag meridian-reaction-flag-${q.kind}`}
+      title={q.title}
+    >
       {q.mark}
     </span>
   );
@@ -262,6 +265,23 @@ export function MeridianShimmer({ lines = 3 }: { lines?: number }) {
       {Array.from({ length: lines }).map((_, i) => (
         <div key={i} className="meridian-shimmer-line" style={{ animationDelay: `${i * 120}ms` }} />
       ))}
+    </div>
+  );
+}
+
+/** Visible loading copy — silent shimmer reads as a broken empty lane. */
+export function MeridianLoadingNotice({
+  label,
+  sub,
+}: {
+  label: string;
+  sub?: string | null;
+}) {
+  return (
+    <div className="meridian-loading-notice" role="status" aria-live="polite">
+      <p className="meridian-loading-notice-label">{label}</p>
+      {sub ? <p className="meridian-loading-notice-sub">{sub}</p> : null}
+      <MeridianShimmer lines={3} />
     </div>
   );
 }

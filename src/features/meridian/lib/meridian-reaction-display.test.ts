@@ -19,6 +19,7 @@ test("an unsettled reaction is marked live — the BEKE case", () => {
   // Production served a moving number at 09:46 ET on a session closing at 16:00, unmarked.
   const q = reactionQualifier({ ...base, reaction_settled: false });
   assert.equal(q?.mark, "live");
+  assert.equal(q?.kind, "live");
   assert.equal(q?.provisional, true);
   assert.match(q!.title, /has not closed/i);
 });
@@ -26,6 +27,7 @@ test("an unsettled reaction is marked live — the BEKE case", () => {
 test("an assumed-session reaction is marked assumed, and the tooltip says WHY it matters", () => {
   const q = reactionQualifier({ ...base, reaction_basis: "assumed_report_session" });
   assert.equal(q?.mark, "assumed");
+  assert.equal(q?.kind, "assumed");
   assert.equal(q?.provisional, true);
   // The consequence, not just the caveat: 48% of these flip sign read the other way.
   assert.match(q!.title, /opposite sign/i);

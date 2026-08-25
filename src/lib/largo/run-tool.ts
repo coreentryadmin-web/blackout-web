@@ -862,9 +862,28 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
     }
     case "get_earnings_history": {
       const sym = uwTicker(ticker);
-      const [earnings, estimates] = await Promise.all([fetchUwEarnings(sym), fetchUwEarningsEstimates(sym)]);
-      // Same raw-UW units/precision problem as get_earnings — see uw-earnings-normalize.ts.
-      return normalizeUwEarnings({ ticker: sym, source: "unusual_whales", earnings, estimates });
+      return serverCache(`earnings-history:${sym}`, TTL.EARNINGS, async () => {
+        const { loadLargoMeridianEarningsHistory, attachMeridianReactionsToUwRows } = await import(
+          "@/lib/largo/meridian-earnings-for-largo"
+        );
+        const [history, uw, estimates] = await Promise.all([
+          loadLargoMeridianEarningsHistory(sym, 12),
+          fetchUwEarnings(sym),
+          fetchUwEarningsEstimates(sym),
+        ]);
+        const uwEnriched = await attachMeridianReactionsToUwRows(uw as Record<string, unknown>[]);
+        return normalizeUwEarnings({
+          ticker: sym,
+          source: "meridian_print_history",
+          print_history: history.print_history,
+          print_history_summary: history.print_history_summary,
+          history_error: history.history_error,
+          reaction_authority:
+            "print_history.reaction_pct is Meridian timing-aware (same as the desk). unusual_whales rows carry meridian_reaction_pct when enrichable; raw reaction_pct is UW close-to-close on the report session only.",
+          unusual_whales: uwEnriched,
+          estimates,
+        });
+      });
     }
     case "get_analyst_ratings": {
       const sym = uwTicker(ticker);
@@ -1488,6 +1507,11 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         fetchUwEarningsPremarket(30),
         fetchUwEarningsAfterhours(30),
       ]);
+      const { attachMeridianReactionsToUwRows } = await import("@/lib/largo/meridian-earnings-for-largo");
+      const [preEnriched, postEnriched] = await Promise.all([
+        attachMeridianReactionsToUwRows(premarket as Record<string, unknown>[]),
+        attachMeridianReactionsToUwRows(afterhours as Record<string, unknown>[]),
+      ]);
       // `as_of` because the tool description promises "today's" prints and the payload itself
       // carried no clock — the model had to take the framing on trust. The rows' own
       // `report_date` is the authority on which session these are; this says when we asked.
@@ -1502,10 +1526,12 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         as_of: etStamp(Date.now()) ?? new Date().toISOString(),
         as_of_session: asOfSession,
         as_of_weekday: weekdayEt(asOfSession),
-        premarket_count: premarket.length,
-        afterhours_count: afterhours.length,
-        premarket,
-        afterhours,
+        premarket_count: preEnriched.length,
+        afterhours_count: postEnriched.length,
+        premarket: preEnriched,
+        afterhours: postEnriched,
+        reaction_authority:
+          "Prefer meridian_reaction_pct on each row for print reactions — timing-aware BMO/AMC anchor, same engine as the Meridian desk. UW reaction_pct is close-to-close on the report session only.",
       });
     }
     case "get_congress_unusual": {
@@ -1742,6 +1768,24 @@ export async function runLargoTool(name: string, input: Record<string, unknown>,
         };
       }
       return { available: true, ...stamp, id: resolved.id, kind: resolved.kind, detail };
+    }
+    case "get_meridian_peer_cohort": {
+      const { loadMeridianPeerCohortForLargo } = await import(
+        "@/lib/largo/meridian-peer-cohort-for-largo"
+      );
+      const asOfSession = todayEtYmd();
+      const stamp = {
+        as_of: etStamp(Date.now()) ?? new Date().toISOString(),
+        as_of_session: asOfSession,
+        as_of_weekday: weekdayEt(asOfSession),
+      };
+      const result = await loadMeridianPeerCohortForLargo({
+        id: input.id,
+        kind: input.kind,
+        ticker: input.ticker,
+        date: input.date,
+      });
+      return { ...stamp, ...result };
     }
     case "get_earnings_calendar": {
       const { callInternalApiRead } = await import("@/lib/bie/internal-api");

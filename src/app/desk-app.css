@@ -875,15 +875,22 @@ html.nav-locked body { overflow: hidden; }
 .meridian-reaction-flag {
   margin-left: 0.28rem;
   padding: 0 0.28rem;
-  border: 1px solid rgba(251, 191, 36, 0.45);
   border-radius: 3px;
   font-size: 0.62rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: #fbbf24;
   vertical-align: 0.06em;
   white-space: nowrap;
   cursor: help;
+}
+/* Yellow = session still open (provisional tape). Red = timing assumption (wrong-session risk). */
+.meridian-reaction-flag-live {
+  border: 1px solid rgba(251, 191, 36, 0.55);
+  color: #fbbf24;
+}
+.meridian-reaction-flag-assumed {
+  border: 1px solid rgba(248, 113, 113, 0.55);
+  color: #f87171;
 }
 
 /* Action dock */
@@ -961,6 +968,102 @@ html.nav-locked body { overflow: hidden; }
   animation: meridian-shimmer 1.4s ease-in-out infinite;
 }
 .meridian-detail-loading { padding: 0.5rem 0; }
+.meridian-detail-loading-progressive { padding: 0.75rem 0.5rem 0; }
+.meridian-detail-loading-chip {
+  align-self: center;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #22d3ee;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid rgba(34, 211, 238, 0.35);
+  background: rgba(34, 211, 238, 0.08);
+}
+.meridian-loading-notice {
+  padding: 0.65rem 0.85rem;
+  margin-bottom: 0.75rem;
+  border-radius: 0.65rem;
+  border: 1px solid rgba(56, 189, 248, 0.18);
+  background: rgba(8, 10, 16, 0.72);
+}
+.meridian-loading-notice-label {
+  margin: 0 0 0.25rem;
+  font-size: 0.88rem;
+  color: #e0f2fe;
+}
+.meridian-loading-notice-sub {
+  margin: 0 0 0.45rem;
+  font-size: 0.78rem;
+  color: #7dd3fc;
+}
+.meridian-analytics-lane-strip {
+  margin-bottom: 0.85rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(56, 189, 248, 0.16);
+  background: rgba(8, 10, 16, 0.55);
+}
+.meridian-analytics-lane-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.75rem;
+  margin-bottom: 0.55rem;
+}
+.meridian-analytics-lane-sub {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #7dd3fc;
+}
+.meridian-analytics-lane-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 0.45rem;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.meridian-analytics-lane-row {
+  flex: 0 0 auto;
+  min-width: 10.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.55rem;
+  border: 1px solid rgba(125, 211, 252, 0.14);
+  background: rgba(4, 4, 7, 0.65);
+  text-align: left;
+  cursor: pointer;
+}
+.meridian-analytics-lane-row:hover { border-color: rgba(34, 211, 238, 0.45); }
+.meridian-analytics-lane-row.is-active {
+  box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.45);
+}
+.meridian-analytics-lane-kind {
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #22d3ee;
+}
+.meridian-analytics-lane-title {
+  font-size: 0.82rem;
+  color: #f0f9ff;
+  line-height: 1.25;
+}
+.meridian-analytics-lane-meta {
+  font-size: 0.72rem;
+  color: #7dd3fc;
+}
+.meridian-macro-report-unavailable {
+  padding: 0.65rem 0.85rem;
+  margin-bottom: 0.65rem;
+  border-radius: 0.65rem;
+  border: 1px dashed rgba(34, 211, 238, 0.25);
+}
 
 .meridian-earn-wrap { margin-top: 0.5rem; }
 .meridian-earn-enrich { margin-bottom: 0.75rem; }
@@ -1013,6 +1116,21 @@ html.nav-locked body { overflow: hidden; }
 .meridian-revision-link:hover { color: #38bdf8; }
 .meridian-analytics-card.is-printed { opacity: 0.72; }
 .meridian-print-track .meridian-print-arrow { font-weight: 800; margin-left: 0.15rem; }
+.meridian-print-track-details { margin-top: 0.15rem; }
+.meridian-print-track-summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.8125rem;
+  color: #e0f2fe;
+  user-select: none;
+}
+.meridian-print-track-summary::-webkit-details-marker { display: none; }
+.meridian-print-track-summary-note { color: #22d3ee; font-size: 0.75rem; }
+.meridian-print-track-details[open] .meridian-print-track-summary { margin-bottom: 0.55rem; }
 .meridian-print-arrow-↑ { color: #34d399; }
 .meridian-print-arrow-↓ { color: #f87171; }
 .meridian-print-arrow-→ { color: #22d3ee; }
@@ -1626,6 +1744,16 @@ html.nav-locked body { overflow: hidden; }
   color: rgba(125,211,252,0.9);
 }
 .mv-ring-value { font-family: var(--font-syne, sans-serif); font-size: 0.98rem; font-weight: 700; }
+.mv-ring-value.is-balanced { font-size: 1.05rem; letter-spacing: 0.02em; }
+.mv-ring-balanced-note {
+  display: block;
+  margin-top: 0.08rem;
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #22d3ee;
+}
 .mv-ring-sig { margin-left: 0.22rem; font-size: 0.84rem; opacity: 0.85; }
 
 /* ── Rails (expected move + targets) ── */
