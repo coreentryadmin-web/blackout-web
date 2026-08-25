@@ -1897,6 +1897,10 @@ html.nav-locked body { overflow: hidden; }
 }
 .mv-rev-more {
   margin-left: auto; padding: 0.1rem 0.4rem;
+  /* min-height, not a fixed height: content sets ~21px, under the 24px touch-target minimum
+     (UI-UX-OPPORTUNITIES.md item 13, found live post-deploy 2026-08-25 — not in the original
+     audit sample, surfaced by a live re-check with different data in view). */
+  min-height: 24px; display: inline-flex; align-items: center;
   border: 1px solid var(--mv-hairline); border-radius: 0.3rem;
   background: transparent; color: var(--mv-chrome); cursor: pointer;
   font-family: inherit; font-size: 0.66rem; letter-spacing: 0.08em; text-transform: uppercase;
@@ -1913,13 +1917,15 @@ html.nav-locked body { overflow: hidden; }
   flex: none; padding: 0; border-radius: 50%;
   border: 1px solid rgba(167, 139, 250, 0.55);
   background: radial-gradient(circle at 35% 30%, rgba(167,139,250,0.55), rgba(167,139,250,0.16));
-  cursor: pointer;
   opacity: 0;
   animation: mv-pop 0.34s var(--mv-ease) forwards;
   transition: transform 0.16s var(--mv-ease);
 }
-.mv-tape-print:hover:not(:disabled) { transform: scale(1.16); }
-.mv-tape-print:disabled { cursor: default; }
+/* Only the real `<button>` variant (an `onPrintClick` handler was passed) is interactive -- the
+   no-handler case renders a plain `<span>` (see MeridianDarkPoolTape), so cursor/hover are scoped
+   to `type="button"` rather than the shared class, matching .mv-target-dot's split. */
+.mv-tape-print[type="button"] { cursor: pointer; }
+.mv-tape-print[type="button"]:hover { transform: scale(1.16); }
 @keyframes mv-pop { to { opacity: 1; } }
 
 /* ── Countdown ── */

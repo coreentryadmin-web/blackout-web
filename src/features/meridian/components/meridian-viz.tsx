@@ -717,6 +717,22 @@ export function MeridianDarkPoolTape({
           // A dark-pool print square is `title`-only: sized by premium, so its MEANING is carried
           // entirely by pixels and a tooltip, neither of which reaches a screen reader.
           const printLabel = `${p.label ?? p.premium}${p.strike ? ` @ ${fmtPrice(p.strike)}` : ""}${p.at ? ` · ${p.at}` : ""}`;
+          // Neither current call site (Report, Positioning) passes `onPrintClick`, so this used to
+          // render a `disabled` button -- markup for a control that can NEVER be activated. Same
+          // fix as MeridianTargetRail's price-target dots (UI-UX-OPPORTUNITIES.md item 13): a
+          // `<span>` reports the same area-proportional mark honestly without claiming to be a
+          // control nothing can ever enable.
+          if (!onPrintClick) {
+            return (
+              <span
+                key={`${p.at ?? i}-${p.premium}`}
+                className="mv-tape-print"
+                style={{ width: d, height: d, animationDelay: `${i * 30}ms` }}
+                title={printLabel}
+                aria-label={`dark pool print ${printLabel}`}
+              />
+            );
+          }
           return (
             <button
               type="button"
@@ -725,8 +741,7 @@ export function MeridianDarkPoolTape({
               style={{ width: d, height: d, animationDelay: `${i * 30}ms` }}
               title={printLabel}
               aria-label={`dark pool print ${printLabel}`}
-              onClick={onPrintClick ? () => onPrintClick({ premium: p.premium, strike: p.strike, at: p.at }) : undefined}
-              disabled={!onPrintClick}
+              onClick={() => onPrintClick({ premium: p.premium, strike: p.strike, at: p.at })}
             />
           );
         })}
