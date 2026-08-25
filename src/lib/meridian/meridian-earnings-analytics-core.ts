@@ -66,6 +66,56 @@ export function hasPrinted(row: EarningsAnalyticsRow): boolean {
   return row.actual_eps != null && Number.isFinite(row.actual_eps);
 }
 
+/** The minimum shape `printHistoryToAnalyticsRows` needs from a per-ticker print row — deliberately
+ *  structural (not `MeridianEarningsPrint` itself) so this file has no import on `meridian-types`. */
+export type PrintHistoryRowLike = {
+  report_date: string | null;
+  eps_estimate: number | null;
+  eps_actual: number | null;
+  revenue_estimate?: number | null;
+  revenue_actual?: number | null;
+  revenue_surprise_pct?: number | null;
+  surprise_pct: number | null;
+};
+
+/**
+ * Adapts a per-ticker `print_history` array (the real historical print record — what
+ * `MeridianBeatHistory`/`MeridianEarningsHistoryPanel`'s Beat Rates card already reads) into
+ * `EarningsAnalyticsRow` shape, so `buildBeatMissStreak` can read the SAME data instead of the
+ * market-wide forward Benzinga calendar window it was wired to before.
+ *
+ * That prior wiring is why the Quarterly Beat/Miss Streak card could say "No printed quarters on
+ * record" two panels below "7/8 EPS beats" for the same ticker: `earnings_analytics_rows` is a
+ * days-ahead WHO'S-REPORTING-WHEN calendar, not a history of past prints, so `hasPrinted` almost
+ * never found a match there. `print_history` is the real thing; this just reshapes it.
+ *
+ * Rows with no `report_date` are dropped — `EarningsAnalyticsRow.date` is non-nullable and a
+ * streak entry needs a real date to sort and display, not a fabricated one.
+ */
+export function printHistoryToAnalyticsRows(
+  ticker: string,
+  prints: readonly PrintHistoryRowLike[]
+): EarningsAnalyticsRow[] {
+  return prints
+    .filter((p): p is PrintHistoryRowLike & { report_date: string } => p.report_date != null)
+    .map((p) => ({
+      ticker,
+      company_name: null,
+      date: p.report_date,
+      time: null,
+      date_status: null,
+      importance: null,
+      fiscal_period: null,
+      fiscal_year: null,
+      estimated_eps: p.eps_estimate,
+      actual_eps: p.eps_actual,
+      estimated_revenue: p.revenue_estimate ?? null,
+      actual_revenue: p.revenue_actual ?? null,
+      eps_surprise_pct: p.surprise_pct,
+      revenue_surprise_pct: p.revenue_surprise_pct ?? null,
+    }));
+}
+
 export type SurpriseQuadrant =
   | "double_beat"
   | "eps_beat_rev_miss"
