@@ -53,3 +53,32 @@ export function meridianFeedTextOrNull(value: unknown): string | null {
   const out = meridianFeedText(value);
   return out.length > 0 ? out : null;
 }
+
+/**
+ * Does this headline read as a sell-side analyst rating/price-target action (upgrade, downgrade,
+ * initiation, PT change, reiteration) rather than the company's own forward guidance?
+ *
+ * Same keyword set `shapeAnalyst` (`meridian-catalyst-enrich.ts`) already uses to classify
+ * `analyst_revisions[].action` — reused rather than re-invented so the two call sites cannot drift
+ * into disagreeing about what counts as an analyst action.
+ *
+ * Exists because Benzinga's own "guidance" news channel is broader than the word implies: a live
+ * fill-rate check (2026-08-25, `meridian-earnings-data-inventory.mjs --min-importance=4`) found
+ * `enrichment.corporate_guidance` at 0% fill even for mega-cap earnings, while every
+ * `catalyst_briefs` item tagged `type: "guidance"` on a real print was, in fact, an analyst
+ * rating/PT note — the exact same headline `analyst_revisions` already carries elsewhere on the
+ * same page under its own correct label. `shapeCatalystBriefs` uses this to drop that duplicate
+ * rather than let it reach a member mislabeled "GUIDANCE".
+ */
+export function looksLikeAnalystAction(title: string): boolean {
+  // Deliberately narrower than `shapeAnalyst`'s action-classification keywords: those run on rows
+  // Benzinga has ALREADY typed as an analyst note, so a bare "raises"/"lowers"/"cut" is unambiguous
+  // there. Here the input is a "guidance"-typed headline, and a company genuinely "raises
+  // guidance" or "lowers full-year outlook" using those exact verbs -- matching on the verb alone
+  // would misclassify real corporate guidance as an analyst note. So this matches only on
+  // vocabulary that is analyst-specific regardless of context: a price target, a rating tier, or
+  // an explicit upgrade/downgrade/coverage-initiation action.
+  return /price target|upgrade|downgrade|overweight|underweight|outperform|equal.?weight|initiat(?:es|ed|ing|ion)?\s+coverage|reiterat\w*\s+(?:buy|sell|hold|overweight|underweight|outperform|neutral)/i.test(
+    title
+  );
+}
