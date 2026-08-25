@@ -404,10 +404,19 @@ worth a proper `largo-truncation-probe.mjs`-style live instrument to measure it,
 another manual two-shot anecdote.
 
 Merged this session: **#2881** (`fix/meridian-beat-streak-data-source`, squash-merged directly —
-`fix/*` branch, not auto-merge-eligible) and **#2885** (this doc's §9-§11, `docs/*` branch, same
-direct-merge path). Both confirmed `state=open→merged`, `verify=success` on the actual merged SHA
-before merging, per the CLAUDE.md "check before you push, and the merge is not a verification"
-standing rules.
+`fix/*` branch, not auto-merge-eligible), **#2885** (this doc's §9-§10, `docs/*` branch, same
+direct-merge path), and **#2886** (this doc's §11, same path). All three confirmed
+`state=open→merged`, `verify=success` on the actual merged SHA before merging, per the CLAUDE.md
+"check before you push, and the merge is not a verification" standing rules.
+
+**#2881 deploy confirmed live, 2026-08-25 ~06:41 UTC.** `ecr-push-production.yml` run 32814848428
+(sha `e8556bbc`) took an unusually long ~32 minutes on "Roll ECS production web" — checked directly
+against ECS (`describe_services`) rather than assumed stuck: 8/8 tasks, 0 failed, cycling one task
+at a time through the standard drain→deregister→start→register sequence, `rolloutState` eventually
+reaching `COMPLETED`. Re-captured the History tab live post-deploy: **"QUARTERLY BEAT / MISS
+STREAK — DKS · 4 straight beats · 88% beat · 8 graded · avg +215.0%"** with 8 real per-quarter bars,
+no longer contradicting "EARNINGS TRACK RECORD — 7/8 EPS beats" two panels above it. §2.1 from this
+doc's original findings is now resolved in production, not just merged to `main`.
 
 ---
 
