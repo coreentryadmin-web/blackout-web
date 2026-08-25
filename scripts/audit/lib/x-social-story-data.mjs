@@ -142,13 +142,19 @@ export function composeKingNodePack(story) {
       },
       {
         product: "Largo",
-        id: "largo.gamma_read",
-        label: "Largo king-node read",
+        id: t === "SPX" ? "largo.spx_shift" : "largo.gamma_read",
+        label: t === "SPX" ? "Largo SPX shift read" : "Largo king-node read",
         file: "4-largo-read.png",
-        params: {
-          ticker: t,
-          question: `The Vector king anchor is at ${story.kingStrike} on ${t} — what's the gamma setup and where does price go if that node breaks?`,
-        },
+        params:
+          t === "SPX"
+            ? {
+                ticker: "SPX",
+                question: "What changed in SPX in the last 15 minutes — gamma, flow, and levels?",
+              }
+            : {
+                ticker: t,
+                question: `The Vector king anchor is at ${story.kingStrike} on ${t} — what's the gamma setup and where does price go if that node breaks?`,
+              },
       },
     ],
     buildCopy: (s) => buildKingNodeCopy({ ...story, ...s }),
